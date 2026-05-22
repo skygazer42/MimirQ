@@ -95,8 +95,19 @@ Evidence target:
 
 - Local backend health is green on `127.0.0.1:8000`.
 - Latest committed production readiness run exists at `artifacts/production-readiness/rerun-20260522-121334`.
-- Parser matrix still needs action: previous live parser smoke found `docling` and `magicpdf` returning `basic`, and `paddle_vl` unavailable.
+- Remote parser matrix passed after root `.env` parser URLs were aligned to Docker service names:
+  `artifacts/parser-matrix/remote-20260522-051241` reported `Calls: 411 | Failures: 0 | Missing: 0`.
+- Remote explicit parser sample passed for `basic`, `markitdown`, `docling`, `mineru`, `magicpdf`, `paddle_vl`, and `textin`.
+  Detailed artifact: `artifacts/parser-matrix/remote-detail-20260522-052736`.
+- Remote live API chain passed on the server through real HTTP API:
+  `artifacts/remote-api-chain/remote-api-chain-20260522-055729`.
+  The run created dataset `f240f701-1472-4045-b619-b7fe9e8055b2`, uploaded 4 files, completed 4 documents, verified persisted parsed markdown, tested 5 chunk preview strategies, ran KG extraction/search/stats, retrieved 4 RAG citations, and returned a chat answer with status 200 in 0.209s.
+- `scripts/production_readiness_chain.py` is not portable on the remote host/container as-is: the host lacks `python-docx`, and the API container lacks `requests`.
+  The live service passed through `scripts/remote_api_chain_smoke.py`, which uses only the standard library.
 
 ## Execution Log
 
 - 2026-05-22 12:57: Plan created. Next action: reproduce and fix explicit parser fallback behavior.
+- 2026-05-22 13:12: Remote `/data/MimirQ` pulled to commit `386548e0`; API/worker restarted with root `.env`.
+- 2026-05-22 13:27: Remote parser matrix passed for configured live parser backends.
+- 2026-05-22 13:57: Remote API chain passed end to end with parser, ingestion, chunk preview, KG, RAG retrieval, and chat.
