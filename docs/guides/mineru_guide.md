@@ -1,6 +1,6 @@
 # MinerU（本地/在线）解析器集成
 
-MimirQ 支持将 **MinerU** 作为可选 PDF 高级解析后端，支持两种模式：
+MimirQ 支持将 **MinerU** 作为 PDF 高级解析后端，支持两种模式：
 
 - **在线 MinerU**：配置 `MINERU_API_TOKEN` 调用 `mineru.net`（返回 ZIP：Markdown + images）。
 - **本地 MinerU**：启动 MinerU FastAPI（`/file_parse`，返回 ZIP：Markdown + images），MimirQ 通过 `MINERU_LOCAL_SERVER_URL` 调用。
@@ -23,7 +23,21 @@ make up-mineru
 docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml --profile mineru up -d --build
 ```
 
-默认端口映射：宿主机 `30001 -> 容器 8000`。
+默认端口映射：宿主机 `127.0.0.1:30001 -> 容器 8000`。这个服务可以跑 `pipeline`，会使用 GPU 设备但不会启动独立 VLM Server。
+
+如果要走 VLM HTTP 后端，启动：
+
+```bash
+make up-mineru-vlm
+```
+
+等价于：
+
+```bash
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml --profile mineru --profile mineru-vlm up -d --build
+```
+
+VLM Server 默认端口映射：宿主机 `127.0.0.1:30002 -> 容器 30000`。
 
 ### 2) 配置后端环境变量
 
@@ -32,6 +46,7 @@ docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml
 ```env
 MINERU_ENABLED=true
 MINERU_MODEL_SOURCE=local
+MINERU_BACKEND=pipeline
 MINERU_LOCAL_SERVER_URL=http://mimirq-mineru:8000
 ```
 
@@ -40,7 +55,27 @@ MINERU_LOCAL_SERVER_URL=http://mimirq-mineru:8000
 ```env
 MINERU_ENABLED=true
 MINERU_MODEL_SOURCE=local
+MINERU_BACKEND=pipeline
 MINERU_LOCAL_SERVER_URL=http://localhost:30001
+```
+
+VLM HTTP 后端配置：
+
+```env
+MINERU_ENABLED=true
+MINERU_MODEL_SOURCE=local
+MINERU_BACKEND=vlm-http-client
+MINERU_API_ALLOW_PUBLIC_HTTP_CLIENT=1
+# Docker 后端 / worker
+MINERU_LOCAL_SERVER_URL=http://mimirq-mineru:8000
+MINERU_VL_SERVER=http://mimirq-mineru-vlm:30000
+```
+
+本机 Python 后端连接 Docker 里的 VLM 服务时：
+
+```env
+MINERU_LOCAL_SERVER_URL=http://localhost:30001
+MINERU_VL_SERVER=http://localhost:30002
 ```
 
 ### 2.1) 本地模型模式（MinerU 2.5 Pro local）
@@ -68,15 +103,15 @@ MINERU_MODEL_SOURCE=local
 - 解析预览：在解析工作台选择解析器为 `mineru`
 - 入库解析：上传文档时指定 `parser_backend=mineru`（或把默认解析器切到 `mineru`）
 
-说明：MimirQ 调用本地 MinerU 时默认使用 `backend=pipeline`（无需额外 VLM Server）。如果你希望明确只走本地缓存模型，而不是 HuggingFace/ModelScope 在线拉取，请同时设置 `MINERU_MODEL_SOURCE=local`。
+说明：MimirQ 调用本地 MinerU 时默认使用 `backend=pipeline`，无需额外 VLM Server。`MINERU_MODEL_VERSION=vlm` 只影响在线 API 的模型版本，不会让本地 `pipeline` 自动变成 VLM HTTP 后端。要让解析请求真正走 VLM，需要同时启动 `mimirq-mineru-vlm` 并设置 `MINERU_BACKEND=vlm-http-client`。MinerU 3.x 对公网绑定下的 HTTP 后端有 SSRF 防护，Docker 内网调用 VLM Server 时需要 `MINERU_API_ALLOW_PUBLIC_HTTP_CLIENT=1`，不要把 MinerU API 直接暴露到公网。
 
 ## 显存 / 资源说明
 
 基于当前仓库这轮 rebuilt runtime 实测：
 
 - 本地 `mineru-api` 的 `file_parse` 已成功跑通
-- 当前验证使用的是 **`backend=pipeline`**
-- 在这条验证链路里，**没有观测到独立的本地 GPU 峰值分配**
+- `backend=pipeline` 可以作为稳定默认路径
+- `backend=vlm-http-client` 需要独立 `mineru-vllm-server`，容器必须通过 Compose 挂载 GPU
 
 但这并不等于 MinerU 在任何模式下都“完全不吃 GPU”。如果你后续切换：
 

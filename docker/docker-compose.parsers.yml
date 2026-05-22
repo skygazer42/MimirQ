@@ -4,6 +4,7 @@
 #   docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml --profile marker up -d --build
 #   docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml --profile paddlevl up -d --build
 #   docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml --profile mineru up -d --build
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml --profile mineru --profile mineru-vlm up -d --build
 #   docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml --profile olmocr up -d --build
 #   docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml --profile qianfanocr up -d --build
 #
@@ -87,25 +88,30 @@ services:
       timeout: 20s
       retries: 3
 
-  # MinerU local FastAPI service (optional; heavy; typically requires GPU).
+  # MinerU local FastAPI service (heavy; uses GPU when available).
   # Then set `MINERU_ENABLED=true` and `MINERU_LOCAL_SERVER_URL=http://mimirq-mineru:8000` in the root .env.
   mimirq-mineru:
-    profiles: ["mineru"]
+    profiles: ["mineru", "mineru-vlm"]
     build:
       context: ./mineru
     restart: unless-stopped
     hostname: mimirq-mineru
+    gpus: all
     ports:
       # Avoid clashing with MimirQ backend (8000).
-      - "30001:8000"
+      - "127.0.0.1:30001:8000"
     environment:
       TZ: Asia/Shanghai
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+      NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}
       # Model source: "huggingface" (default) or "modelscope" (China-friendly mirror).
       MINERU_MODEL_SOURCE: ${MINERU_MODEL_SOURCE:-huggingface}
       # Keep FastAPI docs enabled by default (so /docs and /openapi.json work).
       MINERU_API_ENABLE_FASTAPI_DOCS: ${MINERU_API_ENABLE_FASTAPI_DOCS:-1}
       # Optional: limit concurrent requests at MinerU side (503 when saturated).
       MINERU_API_MAX_CONCURRENT_REQUESTS: ${MINERU_API_MAX_CONCURRENT_REQUESTS:-1}
+      # Needed when MimirQ sends backend=vlm-http-client + server_url inside the Docker network.
+      MINERU_API_ALLOW_PUBLIC_HTTP_CLIENT: ${MINERU_API_ALLOW_PUBLIC_HTTP_CLIENT:-1}
     networks:
       default:
         aliases:
@@ -118,6 +124,47 @@ services:
       interval: 30s
       timeout: 20s
       retries: 10
+
+  # MinerU VLM OpenAI-compatible server. Start with profile `mineru-vlm`
+  # and set MINERU_BACKEND=vlm-http-client plus
+  # MINERU_VL_SERVER=http://mimirq-mineru-vlm:30000 for Docker backend/worker.
+  mimirq-mineru-vlm:
+    profiles: ["mineru-vlm"]
+    build:
+      context: ./mineru
+    restart: unless-stopped
+    hostname: mimirq-mineru-vlm
+    gpus: all
+    ipc: host
+    command: ["python3", "/app/start_vlm_server.py"]
+    ports:
+      # Host access for local Python backend: http://localhost:30002
+      - "127.0.0.1:30002:30000"
+    environment:
+      TZ: Asia/Shanghai
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+      NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}
+      MINERU_MODEL_SOURCE: ${MINERU_MODEL_SOURCE:-huggingface}
+      MINERU_VLM_GPU_MEMORY_UTILIZATION: ${MINERU_VLM_GPU_MEMORY_UTILIZATION:-0.8}
+      VLLM_WORKER_MULTIPROC_METHOD: ${VLLM_WORKER_MULTIPROC_METHOD:-spawn}
+    volumes:
+      - mineru_cache:/root/.cache
+    networks:
+      default:
+        aliases:
+          - mimirq-mineru-vlm
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python3",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:30000/health', timeout=5).read()",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 180s
 
   # olmOCR PDF -> Markdown parser service (optional; heavyweight; requires GPU).
   # Then set `OLMOCR_ENABLED=true` and `OLMOCR_API_URL=http://mimirq-olmocr:2085/convert` in the root .env.

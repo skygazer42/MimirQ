@@ -3,6 +3,7 @@
 # This is adapted from the upstream MinerU Dockerfiles (see /data/temp34/MinerU/docker/*).
 # Notes:
 # - Default CMD runs `mineru-api` on port 8000.
+# - The same image is used by the `mineru-vlm` profile with command `mineru-vllm-server`.
 # - By default, models are downloaded lazily on first use via HuggingFace/ModelScope cache.
 #   (the `docker-compose.parsers.yml` mounts `/root/.cache` to persist downloads).
 
@@ -39,8 +40,9 @@ RUN if [ "${MINERU_PREFETCH_MODELS}" = "1" ]; then \
     fi
 
 COPY start_local_api.py /app/start_local_api.py
+COPY start_vlm_server.py /app/start_vlm_server.py
 
-EXPOSE 8000
+EXPOSE 8000 30000
 
 # Reset the inherited vLLM entrypoint. MinerU local ZIP mode should start the
 # `mineru-api` service directly, not the OpenAI-compatible vLLM server baked
