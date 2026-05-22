@@ -76,3 +76,46 @@ def test_default_chat_gate_accepts_live_llm_answers_with_citations() -> None:
 
     assert "default_chat_answers_or_degrades_with_citations" not in evidence.failures
     assert "default_chat_degrades_with_citations" not in evidence.failures
+
+
+def test_llm_probe_timeout_is_configurable(monkeypatch) -> None:  # noqa: ANN001
+    from scripts import production_readiness_chain as mod
+    from scripts.production_readiness_chain import Evidence
+
+    class _Response:
+        status_code = 200
+        text = '{"success": true}'
+
+        def json(self):  # noqa: ANN202
+            return {"success": True, "message": "ok"}
+
+    class _FakeApi:
+        captured: dict | None = None
+
+        def json(self, method, path):  # noqa: ANN001, ANN202
+            assert method == "GET"
+            assert path == "/api/v1/settings"
+            return ({"llm": {"api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1", "model": "qwen"}}, 1.0)
+
+        def request(self, method, path, json):  # noqa: ANN001, ANN202
+            assert method == "POST"
+            assert path == "/api/v1/settings/llm/test"
+            self.captured = json
+            return _Response(), 12.0
+
+    monkeypatch.setattr(mod, "load_llm_probe_api_key", lambda _api_base: ("sk-test", "test"), raising=True)
+    evidence = Evidence(
+        started_at="2026-01-01T00:00:00Z",
+        base_url="http://localhost:8000",
+        tenant_id="tenant",
+        user_id="user",
+        corpus_dir="/tmp/corpus",
+        output_dir="/tmp/out",
+    )
+    api = _FakeApi()
+
+    mod.probe_llm_provider(api, evidence, timeout_sec=22.0)  # type: ignore[arg-type]
+
+    assert api.captured is not None
+    assert api.captured["timeout"] == 22.0
+    assert evidence.provider_health["success"] is True

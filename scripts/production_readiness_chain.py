@@ -180,13 +180,11 @@ def download_corpus(corpus_dir: Path, evidence: Evidence) -> list[Path]:
     for source in SOURCES:
         out = corpus_dir / source.filename
         if not out.exists() or out.stat().st_size < 64:
-            started = time.perf_counter()
             response = requests.get(
                 source.url,
                 timeout=60,
                 headers={"User-Agent": "MimirQ-production-readiness/1.0"},
             )
-            elapsed_ms = (time.perf_counter() - started) * 1000.0
             if response.status_code != 200:
                 fail(f"download failed {source.url}: HTTP {response.status_code}")
             out.write_bytes(response.content)
@@ -288,7 +286,7 @@ def ensure_runtime_settings(api: Api, evidence: Evidence) -> None:
     )
 
 
-def probe_llm_provider(api: Api, evidence: Evidence) -> None:
+def probe_llm_provider(api: Api, evidence: Evidence, *, timeout_sec: float = 15.0) -> None:
     """Record whether the configured LLM provider is genuinely callable.
 
     The settings endpoint returns masked secrets, so the runner uses the local
@@ -316,7 +314,7 @@ def probe_llm_provider(api: Api, evidence: Evidence) -> None:
         "api_base": api_base,
         "model": model,
         "temperature": 0,
-        "timeout": 2,
+        "timeout": max(1.0, float(timeout_sec)),
         "max_retries": 0,
     }
     response, elapsed_ms = api.request("POST", "/api/v1/settings/llm/test", json=payload)
@@ -914,6 +912,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--user-id", default=USER_ID)
     parser.add_argument("--timeout", type=float, default=180.0)
     parser.add_argument("--processing-timeout", type=float, default=1800.0)
+    parser.add_argument(
+        "--llm-probe-timeout",
+        type=float,
+        default=15.0,
+        help="Configured provider call timeout for /settings/llm/test.",
+    )
     parser.add_argument("--corpus-dir", default="")
     parser.add_argument("--output-dir", default="")
     return parser.parse_args()
@@ -940,7 +944,7 @@ def main() -> int:
         files = downloaded + generated
         api = Api(args.base_url, args.tenant_id, args.user_id, timeout=float(args.timeout))
         ensure_runtime_settings(api, evidence)
-        probe_llm_provider(api, evidence)
+        probe_llm_provider(api, evidence, timeout_sec=float(args.llm_probe_timeout))
         dataset_id = create_dataset(api, evidence)
         doc_ids = upload_documents(api, dataset_id, files, evidence)
         wait_for_documents(api, doc_ids, evidence, timeout_sec=float(args.processing_timeout))
