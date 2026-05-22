@@ -61,6 +61,41 @@ def test_throughput_per_sec() -> None:
     assert mod.throughput_per_sec(count=100, elapsed_ms=0) == pytest.approx(0.0)
 
 
+def test_evaluate_load_gate_fails_on_errors_and_thresholds() -> None:
+    mod = _load_module()
+    report = {
+        "ingest": {"requested": 2, "completed": 1, "errors": 1, "e2e_latency_ms": {"p95_ms": 9000}},
+        "retrieve": {"requested": 3, "ok": 2, "errors": 1, "latency_ms": {"p95_ms": 1200}},
+        "chat": {"requested": 1, "ok": 1, "errors": 0, "latency_ms": {"p95_ms": 5000}},
+    }
+
+    gate = mod.evaluate_load_gate(
+        report,
+        max_ingest_p95_ms=8000,
+        max_retrieve_p95_ms=1000,
+        max_chat_p95_ms=4000,
+    )
+
+    assert gate["passed"] is False
+    assert "ingest_errors 1 > 0" in gate["failures"]
+    assert "retrieve_ok 2 < requested 3" in gate["failures"]
+    assert "chat_p95_ms 5000 > max 4000" in gate["failures"]
+
+
+def test_evaluate_load_gate_passes_when_counts_match() -> None:
+    mod = _load_module()
+    report = {
+        "ingest": {"requested": 1, "completed": 1, "errors": 0, "e2e_latency_ms": {"p95_ms": 100}},
+        "retrieve": {"requested": 1, "ok": 1, "errors": 0, "latency_ms": {"p95_ms": 80}},
+        "chat": {"requested": 1, "ok": 1, "errors": 0, "latency_ms": {"p95_ms": 300}},
+    }
+
+    gate = mod.evaluate_load_gate(report, max_ingest_p95_ms=1000, max_retrieve_p95_ms=1000, max_chat_p95_ms=1000)
+
+    assert gate["passed"] is True
+    assert gate["failures"] == []
+
+
 def test_main_dry_run(tmp_path: Path) -> None:
     mod = _load_module()
     assert hasattr(mod, "main")

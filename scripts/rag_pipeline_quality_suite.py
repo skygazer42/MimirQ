@@ -144,6 +144,12 @@ def build_phases(args: argparse.Namespace) -> list[Phase]:
                 str(counts["chat_concurrency"]),
                 "--timeout-sec",
                 str(args.http_timeout),
+                "--max-ingest-p95-ms",
+                str(args.max_ingest_p95_ms),
+                "--max-retrieve-p95-ms",
+                str(args.max_retrieve_p95_ms),
+                "--max-chat-p95-ms",
+                str(args.max_chat_p95_ms),
                 "--out",
                 str(out_dir / "rag-e2e-load.json"),
             ],
@@ -328,6 +334,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--http-timeout", type=float, default=180.0)
     parser.add_argument("--processing-timeout", type=float, default=1800.0)
     parser.add_argument("--llm-probe-timeout", type=float, default=15.0)
+    parser.add_argument("--max-ingest-p95-ms", type=int, default=0)
+    parser.add_argument("--max-retrieve-p95-ms", type=int, default=0)
+    parser.add_argument("--max-chat-p95-ms", type=int, default=0)
     parser.add_argument("--include-llm-smoke", action="store_true")
     parser.add_argument("--load-fixture", default=str(REPO_ROOT / "README.md"))
     parser.add_argument("--parser-backend", default="auto")

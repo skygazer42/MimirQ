@@ -43,6 +43,8 @@ def test_suite_builds_server_profile_and_skips_optional_gates() -> None:
             "tenant",
             "--user-id",
             "user",
+            "--max-retrieve-p95-ms",
+            "1500",
         ]
     )
 
@@ -52,6 +54,7 @@ def test_suite_builds_server_profile_and_skips_optional_gates() -> None:
     load_cmd = by_name["rag_e2e_load_test"].command
     assert "--ingest-count" in load_cmd
     assert load_cmd[load_cmd.index("--ingest-count") + 1] == "20"
+    assert load_cmd[load_cmd.index("--max-retrieve-p95-ms") + 1] == "1500"
     assert by_name["live_parser_matrix"].required is False
     assert by_name["kg_regression_gate"].skip_reason
     assert by_name["answer_quality_gate"].skip_reason

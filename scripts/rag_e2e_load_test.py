@@ -75,6 +75,83 @@ def throughput_per_sec(*, count: int, elapsed_ms: int) -> float:
     return float(int(count or 0)) / (float(elapsed_ms) / 1000.0)
 
 
+def _as_int(value: Any) -> int:
+    try:
+        return int(value or 0)
+    except Exception:
+        return 0
+
+
+def _p95_ms(section: dict[str, Any], key: str) -> int:
+    raw = section.get(key)
+    if not isinstance(raw, dict):
+        return 0
+    return _as_int(raw.get("p95_ms"))
+
+
+def evaluate_load_gate(
+    result: dict[str, Any],
+    *,
+    max_ingest_p95_ms: int = 0,
+    max_retrieve_p95_ms: int = 0,
+    max_chat_p95_ms: int = 0,
+) -> dict[str, Any]:
+    """Turn the load-test report into a deterministic pass/fail gate."""
+    ingest = result.get("ingest") if isinstance(result.get("ingest"), dict) else {}
+    retrieve = result.get("retrieve") if isinstance(result.get("retrieve"), dict) else {}
+    chat = result.get("chat") if isinstance(result.get("chat"), dict) else {}
+    failures: list[str] = []
+
+    expected_ingest = _as_int(ingest.get("requested"))
+    completed_ingest = _as_int(ingest.get("completed"))
+    ingest_errors = _as_int(ingest.get("errors"))
+    if expected_ingest > 0 and completed_ingest < expected_ingest:
+        failures.append(f"ingest_completed {completed_ingest} < requested {expected_ingest}")
+    if ingest_errors > 0:
+        failures.append(f"ingest_errors {ingest_errors} > 0")
+
+    expected_retrieve = _as_int(retrieve.get("requested"))
+    ok_retrieve = _as_int(retrieve.get("ok"))
+    retrieve_errors = _as_int(retrieve.get("errors"))
+    if expected_retrieve > 0 and ok_retrieve < expected_retrieve:
+        failures.append(f"retrieve_ok {ok_retrieve} < requested {expected_retrieve}")
+    if retrieve_errors > 0:
+        failures.append(f"retrieve_errors {retrieve_errors} > 0")
+
+    expected_chat = _as_int(chat.get("requested"))
+    ok_chat = _as_int(chat.get("ok"))
+    chat_errors = _as_int(chat.get("errors"))
+    if expected_chat > 0 and ok_chat < expected_chat:
+        failures.append(f"chat_ok {ok_chat} < requested {expected_chat}")
+    if chat_errors > 0:
+        failures.append(f"chat_errors {chat_errors} > 0")
+
+    ingest_p95 = _p95_ms(ingest, "e2e_latency_ms")
+    retrieve_p95 = _p95_ms(retrieve, "latency_ms")
+    chat_p95 = _p95_ms(chat, "latency_ms")
+    if max_ingest_p95_ms > 0 and ingest_p95 > max_ingest_p95_ms:
+        failures.append(f"ingest_p95_ms {ingest_p95} > max {max_ingest_p95_ms}")
+    if max_retrieve_p95_ms > 0 and retrieve_p95 > max_retrieve_p95_ms:
+        failures.append(f"retrieve_p95_ms {retrieve_p95} > max {max_retrieve_p95_ms}")
+    if max_chat_p95_ms > 0 and chat_p95 > max_chat_p95_ms:
+        failures.append(f"chat_p95_ms {chat_p95} > max {max_chat_p95_ms}")
+
+    return {
+        "passed": not failures,
+        "failures": failures,
+        "thresholds": {
+            "max_ingest_p95_ms": max_ingest_p95_ms,
+            "max_retrieve_p95_ms": max_retrieve_p95_ms,
+            "max_chat_p95_ms": max_chat_p95_ms,
+        },
+        "observed": {
+            "ingest_p95_ms": ingest_p95,
+            "retrieve_p95_ms": retrieve_p95,
+            "chat_p95_ms": chat_p95,
+        },
+    }
+
+
 def _join(base_url: str, path: str) -> str:
     b = (base_url or "").rstrip("/")
     p = (path or "").lstrip("/")
@@ -366,6 +443,9 @@ def main(argv: list[str] | None = None) -> int:
 
     p.add_argument("--doc-sample-size", type=int, default=5, help="Max document ids per request (default: %(default)s)")
     p.add_argument("--timeout-sec", type=float, default=60.0, help="HTTP timeout seconds (default: %(default)s)")
+    p.add_argument("--max-ingest-p95-ms", type=int, default=0, help="Fail if ingest P95 exceeds this value; 0 disables")
+    p.add_argument("--max-retrieve-p95-ms", type=int, default=0, help="Fail if retrieve P95 exceeds this value; 0 disables")
+    p.add_argument("--max-chat-p95-ms", type=int, default=0, help="Fail if chat P95 exceeds this value; 0 disables")
     p.add_argument("--out", default="", help="Write JSON report to path (or directory)")
     p.add_argument("--dry-run", action="store_true", help="Validate args and exit without network calls")
 
@@ -444,6 +524,13 @@ def main(argv: list[str] | None = None) -> int:
         f"[rag-e2e-loadtest] chat: ok={chat.get('ok')} errors={chat.get('errors')} "
         f"throughput={float(chat.get('throughput_rps') or 0.0):.2f}/s p95={chat_p95}ms"
     )
+    gate = evaluate_load_gate(
+        result,
+        max_ingest_p95_ms=int(args.max_ingest_p95_ms or 0),
+        max_retrieve_p95_ms=int(args.max_retrieve_p95_ms or 0),
+        max_chat_p95_ms=int(args.max_chat_p95_ms or 0),
+    )
+    result["gate"] = gate
 
     out_path = str(args.out or "").strip()
     if out_path:
@@ -458,6 +545,11 @@ def main(argv: list[str] | None = None) -> int:
         outp.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"[rag-e2e-loadtest] wrote: {outp}")
 
+    if not bool(gate.get("passed")):
+        for failure in gate.get("failures") or []:
+            print(f"[rag-e2e-loadtest] FAIL: {failure}", file=sys.stderr)
+        return 2
+    print("[rag-e2e-loadtest] PASS")
     return 0
 
 
