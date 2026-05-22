@@ -216,10 +216,10 @@ services:
       - "2090:2090"
     environment:
       TZ: Asia/Shanghai
-      # OpenAI-compatible upstream endpoint, e.g. http://host.docker.internal:8000/v1
+      # OpenAI-compatible upstream endpoint, e.g. https://qianfan.baidubce.com/v2 or http://host.docker.internal:8000/v1
       QIANFAN_OCR_SERVER_URL: ${QIANFAN_OCR_SERVER_URL:-}
       QIANFAN_OCR_SERVER_API_KEY: ${QIANFAN_OCR_SERVER_API_KEY:-}
-      QIANFAN_OCR_MODEL: ${QIANFAN_OCR_MODEL:-baidu/Qianfan-OCR}
+      QIANFAN_OCR_MODEL: ${QIANFAN_OCR_MODEL:-deepseek-ocr}
       QIANFAN_OCR_MAX_CONCURRENT_JOBS: ${QIANFAN_OCR_MAX_CONCURRENT_JOBS:-1}
       QIANFAN_OCR_PAGE_CONCURRENCY: ${QIANFAN_OCR_PAGE_CONCURRENCY:-1}
       QIANFAN_OCR_REQUEST_TIMEOUT_SEC: ${QIANFAN_OCR_REQUEST_TIMEOUT_SEC:-120}

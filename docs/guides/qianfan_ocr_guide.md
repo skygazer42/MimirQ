@@ -3,7 +3,7 @@
 MimirQ 支持将 **Qianfan-OCR** 作为可选 PDF OCR 解析后端，通过 **独立服务** 输出 Markdown。
 该模式将模型推理与主后端解耦，避免把 `vllm/torch/transformers` 等重依赖塞进 MimirQ 主镜像。
 
-> `docker/qianfanocr` 是一个轻量包装服务：负责 PDF 分页渲染、调用上游 OpenAI-compatible 视觉接口并汇总 Markdown。实际模型推理在你配置的上游服务中完成。
+> `docker/qianfanocr` 是一个轻量包装服务：负责 PDF 分页渲染、调用百度千帆在线 OCR 或上游 OpenAI-compatible 视觉接口并汇总 Markdown。实际模型推理在你配置的上游服务中完成。
 
 资源说明（当前仓库实测）：
 
@@ -24,11 +24,13 @@ docker compose -f docker/docker-compose.yml -f docker/docker-compose.parsers.yml
 2. 配置包装服务上游（写在 `.env`）：
 
 ```bash
-# 上游 OpenAI-compatible 视觉推理地址（示例）
-QIANFAN_OCR_SERVER_URL=http://host.docker.internal:8000/v1
-QIANFAN_OCR_SERVER_API_KEY=
-QIANFAN_OCR_MODEL=baidu/Qianfan-OCR
+# 百度千帆在线 OCR（推荐先用在线接口验证链路）
+QIANFAN_OCR_SERVER_URL=https://qianfan.baidubce.com/v2
+QIANFAN_OCR_SERVER_API_KEY=your-qianfan-api-key
+QIANFAN_OCR_MODEL=deepseek-ocr
 ```
+
+如果你已经自建 OpenAI-compatible 视觉推理服务，也可以把 `QIANFAN_OCR_SERVER_URL` 改为本地 `/v1` 地址，并把模型名改为上游实际模型。
 
 3. 配置 MimirQ 后端解析器（`.env`）：
 
@@ -67,6 +69,8 @@ QIANFAN_OCR_REQUEST_TIMEOUT_SEC=120
 QIANFAN_OCR_PDF_DPI=200
 QIANFAN_OCR_PROMPT=
 ```
+
+留空 `QIANFAN_OCR_PROMPT` 时，百度千帆在线接口会使用短 OCR 提示词以避免空输出；自建 OpenAI-compatible 服务会使用 Markdown 转换提示词。
 
 ## 产物与清理
 
