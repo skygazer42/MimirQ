@@ -102,6 +102,15 @@ Evidence target:
 - Remote live API chain passed on the server through real HTTP API:
   `artifacts/remote-api-chain/remote-api-chain-20260522-055729`.
   The run created dataset `f240f701-1472-4045-b619-b7fe9e8055b2`, uploaded 4 files, completed 4 documents, verified persisted parsed markdown, tested 5 chunk preview strategies, ran KG extraction/search/stats, retrieved 4 RAG citations, and returned a chat answer with status 200 in 0.209s.
+- Remote chunk/governance matrix passed:
+  `artifacts/chunk-governance-matrix/remote-20260522-063015`.
+  The run tested 15 product-relevant chunk strategies through `/api/v1/documents/chunk-preview` and 6 governance preview cases through `/api/v1/pipeline/clean-preview`.
+  Governance coverage included PII masking, secret masking, URL normalization, duplicate paragraph cleanup, HTML/table normalization, and low-density drop.
+- Remote KG scale guard passed after rebuilding stale API/worker images:
+  `artifacts/kg-scale-guard/remote-20260522-072703`.
+  The first 12-document run exposed a deployment issue: running API/worker containers were older than `/data/MimirQ` and still used the ARQ default 3 tries, leaving 2 documents pending after retry exhaustion.
+  Rebuilt containers now report document max tries 80, KG max tries 80, retry defer 30s, and `/health` is healthy.
+  The rerun completed 12/12 documents and 12/12 KG extracts; average extraction was 8.329s, P95 14.868s, max 14.928s. KG stats returned 12 events, 39 entities, 156 links in 0.153s; KG search returned 200 in 0.408s.
 - `scripts/production_readiness_chain.py` is not portable on the remote host/container as-is: the host lacks `python-docx`, and the API container lacks `requests`.
   The live service passed through `scripts/remote_api_chain_smoke.py`, which uses only the standard library.
 
@@ -111,3 +120,5 @@ Evidence target:
 - 2026-05-22 13:12: Remote `/data/MimirQ` pulled to commit `386548e0`; API/worker restarted with root `.env`.
 - 2026-05-22 13:27: Remote parser matrix passed for configured live parser backends.
 - 2026-05-22 13:57: Remote API chain passed end to end with parser, ingestion, chunk preview, KG, RAG retrieval, and chat.
+- 2026-05-22 14:30: Remote chunk/governance matrix passed: 15/15 chunk strategies and 6/6 governance preview cases.
+- 2026-05-22 15:30: Remote KG scale guard passed after API/worker image rebuild: 12 documents completed, 12 KG extracts succeeded, stats/search endpoints returned 200.
