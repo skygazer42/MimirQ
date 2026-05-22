@@ -2,8 +2,12 @@
 #
 # This image keeps the `magic-pdf` CLI and model runtime outside the main API
 # container so parser dependencies, CUDA, and long-running jobs are isolated.
+#
+# MagicPDF 1.3.x officially supports torch 2.2~2.6 while excluding 2.5, so we
+# pin the base image to 2.6 and preinstall the matching torchvision wheel to
+# avoid pip re-resolving a newer CUDA stack at build time.
 
-FROM pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime
+FROM pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -24,6 +28,7 @@ COPY requirements.txt ./requirements.txt
 
 RUN python -m pip install --upgrade pip setuptools wheel && \
     python -m pip install -r requirements.txt && \
+    python -m pip install torchvision==0.21.0 && \
     python -m pip install magic-pdf==1.3.12
 
 COPY server.py ./server.py
