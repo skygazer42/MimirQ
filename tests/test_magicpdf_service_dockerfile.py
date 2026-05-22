@@ -12,5 +12,5 @@ def test_magicpdf_service_dockerfile_uses_cuda_runtime() -> None:
     assert "2.6.0-cuda12.4-cudnn9-runtime" in from_line
     assert "2.5.1" not in from_line
     assert "torchvision==0.21.0" in dockerfile
-    assert "pip install magic-pdf==1.3.12" in dockerfile
+    assert 'pip install "magic-pdf[full]==1.3.12"' in dockerfile
     assert "https://download.pytorch.org/whl/cpu" not in dockerfile

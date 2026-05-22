@@ -33,6 +33,8 @@ MAGIC_PDF_KEEP_ARTIFACTS=false
 `/health` 会在 `cuda` 模式下检查 `torch.cuda.is_available()`，CUDA 不可用时服务不会被标记为 healthy。
 服务镜像当前固定到 `torch 2.6 + CUDA 12.4`，因为 MagicPDF 1.3.x 官方兼容区间是
 `torch 2.2~2.6`，并明确排除了 `2.5`。
+镜像安装的是 `magic-pdf[full]`，不是最小 core 包；否则 `doclayout_yolo` 路径会缺少
+`cv2` 等运行依赖。
 
 3. 重启 API/worker，让它们读取新的服务 URL：
 
