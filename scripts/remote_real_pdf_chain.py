@@ -20,6 +20,8 @@ from urllib.request import Request, urlopen
 
 DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000000"
 DOCUMENT_CHUNK_LIST_LIMIT = 2000
+DEFAULT_KG_QUERIES = ["What is this paper about"]
+DEFAULT_CHAT_QUESTIONS = ["Summarize what this paper says about large language models in two sentences."]
 
 
 class LiveApi:
@@ -131,6 +133,11 @@ def snippet(body: Any, limit: int = 2000) -> str:
     return json.dumps(body, ensure_ascii=False, default=str)[:limit]
 
 
+def effective_questions(cli_values: list[str] | None, defaults: list[str]) -> list[str]:
+    values = [str(item).strip() for item in (cli_values or []) if str(item).strip()]
+    return values or list(defaults)
+
+
 def download(url: str, target: Path, timeout: int) -> dict[str, Any]:
     if target.exists() and target.stat().st_size > 0:
         return {"url": url, "path": str(target), "bytes": target.stat().st_size, "cached": True}
@@ -240,6 +247,8 @@ def main() -> int:
     parser.add_argument("--poll-timeout", type=int, default=7200)
     parser.add_argument("--skip-kg", action="store_true")
     parser.add_argument("--skip-chat", action="store_true")
+    parser.add_argument("--kg-query", action="append", default=[], help="Repeatable KG search query override")
+    parser.add_argument("--chat-question", action="append", default=[], help="Repeatable chat question override")
     parser.add_argument("--cleanup-mode", default="none")
     parser.add_argument("--delete-dataset-after", action="store_true")
     args = parser.parse_args()
@@ -364,6 +373,9 @@ def main() -> int:
             preview_rows.append({"strategy": strategy, "status_code": status, "elapsed_sec": round(elapsed, 3), "chunk_count": count})
         summary["chunk_preview"] = preview_rows
 
+        kg_queries = effective_questions(list(args.kg_query or []), DEFAULT_KG_QUERIES)
+        chat_questions = effective_questions(list(args.chat_question or []), DEFAULT_CHAT_QUESTIONS)
+
         if not args.skip_kg:
             params = {
                 "replace_existing": "true",
@@ -384,41 +396,90 @@ def main() -> int:
             summary["kg_stats_elapsed_sec"] = round(elapsed, 3)
             summary["kg_stats"] = body
 
-            status, body, elapsed = api.json("POST", "/api/v1/kg/search", payload={"query": "What is this paper about", "dataset_id": dataset_id}, timeout=120)
-            record_step(steps, "kg_search", status, body, elapsed, returned=list_count(body))
-            summary["kg_search_status"] = status
-            summary["kg_search_elapsed_sec"] = round(elapsed, 3)
-            summary["kg_search_count"] = list_count(body)
+            kg_search_rows: list[dict[str, Any]] = []
+            for question in kg_queries:
+                status, body, elapsed = api.json(
+                    "POST",
+                    "/api/v1/kg/search",
+                    payload={"query": question, "dataset_id": dataset_id},
+                    timeout=120,
+                )
+                result_payload = body.get("result") if isinstance(body, dict) and isinstance(body.get("result"), dict) else {}
+                clues = result_payload.get("clues") if isinstance(result_payload, dict) else None
+                events = result_payload.get("events") if isinstance(result_payload, dict) else None
+                clue_count = len(clues) if isinstance(clues, list) else 0
+                event_count = len(events) if isinstance(events, list) else 0
+                record_step(
+                    steps,
+                    "kg_search",
+                    status,
+                    body,
+                    elapsed,
+                    question=question,
+                    clue_count=clue_count,
+                    event_count=event_count,
+                    returned=list_count(body),
+                )
+                kg_search_rows.append(
+                    {
+                        "question": question,
+                        "status_code": status,
+                        "elapsed_sec": round(elapsed, 3),
+                        "clue_count": clue_count,
+                        "event_count": event_count,
+                    }
+                )
+            summary["kg_search_results"] = kg_search_rows
+            if kg_search_rows:
+                summary["kg_search_status"] = kg_search_rows[0]["status_code"]
+                summary["kg_search_elapsed_sec"] = kg_search_rows[0]["elapsed_sec"]
+                summary["kg_search_count"] = kg_search_rows[0]["clue_count"]
 
         if not args.skip_chat:
-            for label, use_graph in (("chat_baseline", False), ("chat_graph", True)):
-                payload = {
-                    "message": "Summarize what this paper says about large language models in two sentences.",
-                    "dataset_id": dataset_id,
-                    "stream": False,
-                    "rag_config": {
-                        "top_k": 6,
-                        "score_threshold": 0.0,
-                        "retrieval_mode": "hybrid",
-                        "use_graph": use_graph,
-                        "enable_reranker": False,
-                        "enable_multi_query": False,
-                        "enable_hyde": False,
-                        "enable_query_decomposition": False,
-                        "max_tokens": 700,
-                        "answer_mode": "extractive",
-                    },
-                }
-                status, body, elapsed = api.json("POST", "/api/v1/chat", payload=payload, timeout=args.timeout)
-                answer = ""
-                if isinstance(body, dict):
-                    answer = str(body.get("response") or body.get("answer") or body.get("message") or body.get("content") or "")
-                record_step(steps, label, status, body, elapsed, answer_preview=answer[:300])
-                summary[label] = {
-                    "status_code": status,
-                    "elapsed_sec": round(elapsed, 3),
-                    "answer_preview": answer[:500],
-                }
+            chat_rows: list[dict[str, Any]] = []
+            for question in chat_questions:
+                for label, use_graph in (("chat_baseline", False), ("chat_graph", True)):
+                    payload = {
+                        "message": question,
+                        "dataset_id": dataset_id,
+                        "stream": False,
+                        "rag_config": {
+                            "top_k": 6,
+                            "score_threshold": 0.0,
+                            "retrieval_mode": "hybrid",
+                            "use_graph": use_graph,
+                            "enable_reranker": False,
+                            "enable_multi_query": False,
+                            "enable_hyde": False,
+                            "enable_query_decomposition": False,
+                            "max_tokens": 700,
+                            "answer_mode": "extractive",
+                        },
+                    }
+                    status, body, elapsed = api.json("POST", "/api/v1/chat", payload=payload, timeout=args.timeout)
+                    answer = ""
+                    citation_count = 0
+                    if isinstance(body, dict):
+                        answer = str(body.get("response") or body.get("answer") or body.get("message") or body.get("content") or "")
+                        citation_count = len(body.get("citations") or [])
+                    record_step(steps, label, status, body, elapsed, question=question, citation_count=citation_count, answer_preview=answer[:300])
+                    row = {
+                        "question": question,
+                        "mode": "graph" if use_graph else "baseline",
+                        "status_code": status,
+                        "elapsed_sec": round(elapsed, 3),
+                        "citation_count": citation_count,
+                        "answer_preview": answer[:500],
+                    }
+                    chat_rows.append(row)
+                    if len(chat_questions) == 1:
+                        summary[label] = {
+                            "status_code": status,
+                            "elapsed_sec": round(elapsed, 3),
+                            "citation_count": citation_count,
+                            "answer_preview": answer[:500],
+                        }
+            summary["chat_results"] = chat_rows
 
         cleanup_summary = perform_cleanup(
             api=api,

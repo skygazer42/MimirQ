@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-from scripts.remote_real_pdf_chain import DOCUMENT_CHUNK_LIST_LIMIT, list_count, parsed_text_from_response
+from scripts.remote_real_pdf_chain import (
+    DEFAULT_CHAT_QUESTIONS,
+    DEFAULT_KG_QUERIES,
+    DOCUMENT_CHUNK_LIST_LIMIT,
+    effective_questions,
+    list_count,
+    parsed_text_from_response,
+)
 
 
 def test_remote_real_pdf_chain_list_count_handles_common_shapes() -> None:
@@ -24,3 +31,12 @@ def test_remote_real_pdf_chain_parsed_text_prefers_markdown_fields() -> None:
 
 def test_remote_real_pdf_chain_uses_document_chunk_api_limit() -> None:
     assert DOCUMENT_CHUNK_LIST_LIMIT == 2000
+
+
+def test_remote_real_pdf_chain_effective_questions_prefers_cli_values() -> None:
+    assert effective_questions(["  A  ", "", "B"], ["fallback"]) == ["A", "B"]
+
+
+def test_remote_real_pdf_chain_effective_questions_falls_back_to_defaults() -> None:
+    assert effective_questions([], DEFAULT_KG_QUERIES) == DEFAULT_KG_QUERIES
+    assert effective_questions(None, DEFAULT_CHAT_QUESTIONS) == DEFAULT_CHAT_QUESTIONS
