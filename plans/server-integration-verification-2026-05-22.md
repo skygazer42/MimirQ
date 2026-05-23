@@ -310,6 +310,14 @@ This task also tracks the next quality pass across the product surface. Do not s
   the `magicpdf + marker` lane: `magicpdf` p50/p95 = `25.655s / 32.649s`,
   `mineru` p50/p95 = `13.228s / 14.314s`. This is currently the strongest
   passing mixed-backend contention baseline on the server.
+- Parser contention now also has one dedicated `magicpdf + deepdoc` server proof:
+  `artifacts/parser-contention/remote-deepdoc-20260523/report.json`
+  ran the same 2-page fixture for `2` rounds (`4` total requests). All requests
+  returned `200` with the requested backend and sufficient markdown. Overall
+  wall time was `35.753s` at `0.112 rps`, which places it close to the
+  `magicpdf + mineru` lane and materially ahead of `magicpdf + marker`.
+  Per-backend latencies were `magicpdf` p50/p95 = `27.325s / 34.848s` and
+  `deepdoc` p50/p95 = `21.029s / 21.033s`.
 - Knowledge-base permissions now also have one dedicated outsider/viewer proof:
   `artifacts/kb-permission-boundary/remote-20260523/report.json`
   normalized `outsider` to `viewer` and covered three read-scope layers on the
@@ -389,4 +397,5 @@ This task also tracks the next quality pass across the product surface. Do not s
 - 2026-05-23 18:19: Extended the same remote-management lane to add a real prompt-template create/delete interaction on `/prompts`. The rerun passed `4/4` in `25.519s`, so the deployed page host now has live proof not just for admin shell pages, but also for group membership mutation, RBAC role mutation, and prompt-template lifecycle mutation.
 - 2026-05-23 18:43: Fixed ingestion-time chunk coverage persistence in `main@2b8f30aa` by computing joined parsed-text length before indexing completes instead of relying on stale `db_document.total_characters`. A live spot-check against the rebuilt remote API then confirmed `DocumentDetail.metadata` now contains both `chunking_stats` and `chunk_coverage`.
 - 2026-05-23 18:49: Rebuilt the remote `api` and `worker` containers from clean worktree `/tmp/MimirQ-main-webfix` at `main@2b8f30aa` and re-ran the new chunking matrix proof. The resulting artifact (`artifacts/chunking-matrix/remote-20260523/report.json`) passed on `7` persisted documents and `26` live preview strategy checks, and the dataset profile summary returned non-empty chunk-count / avg-chars / chunk-length / chunk-coverage / overlap-waste histograms across all tested file types.
+- 2026-05-23 18:57: Reused the bounded mixed-backend contention probe for one more viable heavy backend pairing, `magicpdf + deepdoc`. The resulting artifact (`artifacts/parser-contention/remote-deepdoc-20260523/report.json`) passed `4/4` over `2` rounds with overall wall `35.753s`, throughput `0.112 rps`, `magicpdf` p50/p95 `27.325s / 34.848s`, and `deepdoc` p50/p95 `21.029s / 21.033s`.
 - 2026-05-23 16:10: Added `scripts/remote_kb_format_matrix.py` and verified one mixed-format KB breadth run through the live API. The proof (`artifacts/kb-format-matrix/remote-20260523/report.json`) ingested `md`, `html`, `csv`, `json`, `docx`, and `xlsx` into one disposable dataset, then proved dataset-scoped retrieve + extractive chat on all six formats before purging the dataset.
