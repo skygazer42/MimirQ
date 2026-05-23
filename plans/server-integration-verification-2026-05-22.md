@@ -220,6 +220,15 @@ This task also tracks the next quality pass across the product surface. Do not s
   `BAAI/bge-reranker-v2-m3` download now degrades to base retrieval order
   instead of stalling assistant replies and health checks. After the proof, the
   smoke's `enterprise-telemetry-sample.md` parsing documents were deleted.
+- Knowledge-base dataset boundaries now have one dedicated server proof:
+  `artifacts/kb-boundary-matrix/remote-20260523/report.json`
+  created two disposable datasets (`alpha`, `beta`) with mutually exclusive
+  tokens and verified three things on the live API: dataset-scoped inventory
+  export returned only the owning document; dataset-scoped retrieval/chat did
+  not leak the other dataset's token; and explicit cross-dataset `document_ids`
+  scope could surface the beta document while staying inside the allowed
+  two-document scope. Cleanup purged and deleted both proof datasets, and the
+  earlier failed-iteration leftovers were also swept from the server.
 - Real parsed-output chunking on the same 144-page PDF exposed large strategy spread:
   `langchain_recursive=1151` chunks in `174.793s`,
   `parent_child=3702` chunks in `1.900s`,
@@ -262,3 +271,4 @@ This task also tracks the next quality pass across the product surface. Do not s
 - 2026-05-23 14:54: Rebuilt the remote `web` container from clean worktree `/tmp/MimirQ-main-webfix` at `main@059028d9` and re-ran `pnpm e2e:live:remote-web` through SSH tunnels to the deployed page host and API. The remote-web lane passed (`backend-business-surfaces-live-20260523-remote-web.json`, `1/1` in `12.246s`), closing the last deployment-specific UI walkthrough caveat.
 - 2026-05-23 15:11: A deeper deployed-frontend live-stack smoke initially failed because the first real chat request synchronously triggered a HuggingFace cross-encoder download, which stalled assistant replies and even `/api/v1/health/ready`. `main@ca40dd49` fixed that by bounding local cross-encoder load waits to `2.0s` and degrading to base retrieval order while the model keeps warming in the background.
 - 2026-05-23 15:12: Rebuilt the remote `api` container from `main@ca40dd49` and re-ran the deeper live-stack smoke against the deployed `web` + `api` stack. The run passed (`live-stack-remote-web-20260523.json`, `1/1` in `27.282s`), proving upload -> parse -> viewer -> real chat -> command-menu handoff on the deployed page host without sacrificing API health during the cross-encoder cold start.
+- 2026-05-23 15:27: Added `scripts/remote_kb_boundary_matrix.py` and verified one dedicated knowledge-base boundary run through the live API. The proof (`artifacts/kb-boundary-matrix/remote-20260523/report.json`) created two disposable datasets, checked dataset-scoped inventory export, dataset-scoped retrieve/chat non-leakage, and explicit cross-dataset `document_ids` scope, then purged/deleted both datasets and swept the earlier failed-run leftovers.

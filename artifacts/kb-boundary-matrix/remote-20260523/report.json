@@ -1,0 +1,310 @@
+{
+  "summary": {
+    "ok": true,
+    "base_url": "http://127.0.0.1:8000",
+    "artifact_dir": "/data/temp34/MimirQ/artifacts/kb-boundary-matrix/remote-20260523",
+    "datasets": {
+      "alpha": {
+        "dataset_id": "e5f8abd3-3c25-4cbd-8a5d-a41e5de20015",
+        "document_id": "cae9b5c0-6959-402d-b181-f7013c3c0aa8",
+        "status": "completed",
+        "chunk_count": 1,
+        "parsed_chars": 175
+      },
+      "beta": {
+        "dataset_id": "5bb413e7-898b-458f-86d0-6465f54d295b",
+        "document_id": "0acf3b37-d93e-48a4-b78b-a72eb3217935",
+        "status": "completed",
+        "chunk_count": 1,
+        "parsed_chars": 178
+      }
+    },
+    "inventory_checks": [
+      {
+        "name": "dataset_alpha_inventory",
+        "status_code": 200,
+        "ok": true,
+        "expected_document_ids": [
+          "cae9b5c0-6959-402d-b181-f7013c3c0aa8"
+        ],
+        "actual_document_ids": [
+          "cae9b5c0-6959-402d-b181-f7013c3c0aa8"
+        ]
+      },
+      {
+        "name": "dataset_beta_inventory",
+        "status_code": 200,
+        "ok": true,
+        "expected_document_ids": [
+          "0acf3b37-d93e-48a4-b78b-a72eb3217935"
+        ],
+        "actual_document_ids": [
+          "0acf3b37-d93e-48a4-b78b-a72eb3217935"
+        ]
+      }
+    ],
+    "retrieve_checks": [
+      {
+        "name": "dataset_alpha_positive",
+        "status_code": 200,
+        "ok": true,
+        "citation_document_ids": [
+          "cae9b5c0-6959-402d-b181-f7013c3c0aa8"
+        ],
+        "citation_count": 1,
+        "response_preview": "...Token ALOE-COMET belongs only to Dataset Alpha....",
+        "failures": []
+      },
+      {
+        "name": "dataset_alpha_negative_beta_query",
+        "status_code": 200,
+        "ok": true,
+        "citation_document_ids": [
+          "cae9b5c0-6959-402d-b181-f7013c3c0aa8"
+        ],
+        "citation_count": 1,
+        "response_preview": "...Token ALOE-COMET belongs only to Dataset Alpha....",
+        "failures": []
+      },
+      {
+        "name": "dataset_beta_positive",
+        "status_code": 200,
+        "ok": true,
+        "citation_document_ids": [
+          "0acf3b37-d93e-48a4-b78b-a72eb3217935"
+        ],
+        "citation_count": 1,
+        "response_preview": "...Token BETA-QUARTZ belongs only to Dataset Beta....",
+        "failures": []
+      },
+      {
+        "name": "cross_dataset_beta_positive",
+        "status_code": 200,
+        "ok": true,
+        "citation_document_ids": [
+          "0acf3b37-d93e-48a4-b78b-a72eb3217935",
+          "cae9b5c0-6959-402d-b181-f7013c3c0aa8"
+        ],
+        "citation_count": 2,
+        "response_preview": "...Token BETA-QUARTZ belongs only to Dataset Beta....\n...Token ALOE-COMET belongs only to Dataset Alpha....",
+        "failures": []
+      }
+    ],
+    "chat_checks": [
+      {
+        "name": "dataset_alpha_chat_positive",
+        "status_code": 200,
+        "ok": true,
+        "citation_document_ids": [
+          "cae9b5c0-6959-402d-b181-f7013c3c0aa8"
+        ],
+        "citation_count": 1,
+        "answer_preview": "以下为基于已检索引用生成的抽取式可审计摘要。\n\n问题：Who owns token ALOE-COMET?\n\n检索证据要点：\n1. cae9b5c0-6959-402d-b181-f7013c3c0aa8.md: Token ALOE-COMET belongs only to Dataset Alpha.\n2. cae9b5c0-6959-402d-b181-f7013c3c0aa8.md: ...Token ALOE-COMET belongs only to Dataset Alpha....\n\n说明：该回答按抽取式模式生成，未调用外部大模型；请以引用内容作为最终核验依据。\n...Tok",
+        "failures": []
+      },
+      {
+        "name": "cross_dataset_beta_chat_positive",
+        "status_code": 200,
+        "ok": true,
+        "citation_document_ids": [
+          "0acf3b37-d93e-48a4-b78b-a72eb3217935",
+          "cae9b5c0-6959-402d-b181-f7013c3c0aa8"
+        ],
+        "citation_count": 2,
+        "answer_preview": "以下为基于已检索引用生成的抽取式可审计摘要。\n\n问题：Who owns token BETA-QUARTZ?\n\n检索证据要点：\n1. 0acf3b37-d93e-48a4-b78b-a72eb3217935.md: Token BETA-QUARTZ belongs only to Dataset Beta.\n2. cae9b5c0-6959-402d-b181-f7013c3c0aa8.md: Token ALOE-COMET belongs only to Dataset Alpha.\n3. 0acf3b37-d93e-48a4-b78b-a72eb3217935.md: ...Token",
+        "failures": []
+      }
+    ],
+    "cleanup": {
+      "alpha": {
+        "dataset_id": "e5f8abd3-3c25-4cbd-8a5d-a41e5de20015",
+        "purge_deleted": 1,
+        "delete_dataset_status": 204
+      },
+      "beta": {
+        "dataset_id": "5bb413e7-898b-458f-86d0-6465f54d295b",
+        "purge_deleted": 1,
+        "delete_dataset_status": 204
+      }
+    }
+  },
+  "steps": [
+    {
+      "name": "health",
+      "status_code": 200,
+      "elapsed_sec": 0.05,
+      "ok": true
+    },
+    {
+      "name": "create_dataset:alpha",
+      "status_code": 201,
+      "elapsed_sec": 0.086,
+      "ok": true
+    },
+    {
+      "name": "upload:alpha",
+      "status_code": 201,
+      "elapsed_sec": 0.073,
+      "ok": true
+    },
+    {
+      "name": "poll:alpha",
+      "status_code": 200,
+      "elapsed_sec": 0.059,
+      "ok": true,
+      "doc_status": "pending"
+    },
+    {
+      "name": "poll:alpha",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "completed"
+    },
+    {
+      "name": "chunks:alpha",
+      "status_code": 200,
+      "elapsed_sec": 0.025,
+      "ok": true,
+      "chunk_count": 1
+    },
+    {
+      "name": "parsed:alpha",
+      "status_code": 200,
+      "elapsed_sec": 0.103,
+      "ok": true,
+      "parsed_chars": 175
+    },
+    {
+      "name": "create_dataset:beta",
+      "status_code": 201,
+      "elapsed_sec": 0.032,
+      "ok": true
+    },
+    {
+      "name": "upload:beta",
+      "status_code": 201,
+      "elapsed_sec": 1.367,
+      "ok": true
+    },
+    {
+      "name": "poll:beta",
+      "status_code": 200,
+      "elapsed_sec": 0.884,
+      "ok": true,
+      "doc_status": "completed"
+    },
+    {
+      "name": "chunks:beta",
+      "status_code": 200,
+      "elapsed_sec": 0.025,
+      "ok": true,
+      "chunk_count": 1
+    },
+    {
+      "name": "parsed:beta",
+      "status_code": 200,
+      "elapsed_sec": 0.102,
+      "ok": true,
+      "parsed_chars": 178
+    },
+    {
+      "name": "inventory_export:alpha",
+      "status_code": 200,
+      "elapsed_sec": 0.059,
+      "ok": true,
+      "document_ids": [
+        "cae9b5c0-6959-402d-b181-f7013c3c0aa8"
+      ]
+    },
+    {
+      "name": "inventory_export:beta",
+      "status_code": 200,
+      "elapsed_sec": 0.017,
+      "ok": true,
+      "document_ids": [
+        "0acf3b37-d93e-48a4-b78b-a72eb3217935"
+      ]
+    },
+    {
+      "name": "retrieve:dataset_alpha_positive",
+      "status_code": 200,
+      "elapsed_sec": 0.181,
+      "ok": true,
+      "citation_count": 1
+    },
+    {
+      "name": "retrieve:dataset_alpha_negative_beta_query",
+      "status_code": 200,
+      "elapsed_sec": 0.151,
+      "ok": true,
+      "citation_count": 1
+    },
+    {
+      "name": "retrieve:dataset_beta_positive",
+      "status_code": 200,
+      "elapsed_sec": 0.151,
+      "ok": true,
+      "citation_count": 1
+    },
+    {
+      "name": "retrieve:cross_dataset_beta_positive",
+      "status_code": 200,
+      "elapsed_sec": 0.147,
+      "ok": true,
+      "citation_count": 2
+    },
+    {
+      "name": "chat:dataset_alpha_chat_positive",
+      "status_code": 200,
+      "elapsed_sec": 0.202,
+      "ok": true,
+      "citation_count": 1
+    },
+    {
+      "name": "chat:cross_dataset_beta_chat_positive",
+      "status_code": 200,
+      "elapsed_sec": 0.18,
+      "ok": true,
+      "citation_count": 2
+    },
+    {
+      "name": "cleanup:purge:e5f8abd3-3c25-4cbd-8a5d-a41e5de20015",
+      "status_code": 200,
+      "elapsed_sec": 4.463,
+      "ok": true
+    },
+    {
+      "name": "cleanup:export:e5f8abd3-3c25-4cbd-8a5d-a41e5de20015",
+      "status_code": 200,
+      "elapsed_sec": 0.1,
+      "ok": true,
+      "remaining_document_ids": []
+    },
+    {
+      "name": "cleanup:delete_dataset:e5f8abd3-3c25-4cbd-8a5d-a41e5de20015",
+      "status_code": 204,
+      "elapsed_sec": 0.098,
+      "ok": true
+    },
+    {
+      "name": "cleanup:purge:5bb413e7-898b-458f-86d0-6465f54d295b",
+      "status_code": 200,
+      "elapsed_sec": 1.368,
+      "ok": true
+    },
+    {
+      "name": "cleanup:export:5bb413e7-898b-458f-86d0-6465f54d295b",
+      "status_code": 200,
+      "elapsed_sec": 0.101,
+      "ok": true,
+      "remaining_document_ids": []
+    },
+    {
+      "name": "cleanup:delete_dataset:5bb413e7-898b-458f-86d0-6465f54d295b",
+      "status_code": 204,
+      "elapsed_sec": 0.07,
+      "ok": true
+    }
+  ]
+}
