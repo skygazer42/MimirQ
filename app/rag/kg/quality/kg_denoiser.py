@@ -6,6 +6,16 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 
+def _missing_relation_references_expr(column):  # noqa: ANN001
+    from sqlalchemy import cast, literal, or_  # noqa: WPS433
+    from sqlalchemy.dialects.postgresql import JSONB  # noqa: WPS433
+
+    return or_(
+        column.is_(None),
+        cast(column, JSONB) == cast(literal({}), JSONB),
+    )
+
+
 def summarize_relation_noise(
     db: Session,
     *,
@@ -29,7 +39,7 @@ def summarize_relation_noise(
             "missing_chunk_relations": 0,
         }
 
-    from sqlalchemy import and_, func, or_  # noqa: WPS433
+    from sqlalchemy import and_, func  # noqa: WPS433
 
     from app.models.document import Document as DBDocument  # noqa: WPS433
     from app.rag.kg.models import KgRelation  # noqa: WPS433
@@ -66,7 +76,7 @@ def summarize_relation_noise(
     )
     missing_refs = (
         base.with_entities(func.count(KgRelation.id))
-        .filter(or_(KgRelation.references.is_(None), KgRelation.references == {}))
+        .filter(_missing_relation_references_expr(KgRelation.references))
         .scalar()
         or 0
     )
@@ -87,4 +97,3 @@ def summarize_relation_noise(
 
 
 __all__ = ["summarize_relation_noise"]
-
