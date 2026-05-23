@@ -182,8 +182,10 @@ This task also tracks the next quality pass across the product surface. Do not s
   summary/item metadata both recorded the expected judge template key). The same
   run also deleted both generated regression cases, purged the dataset documents,
   reset KG stats to zero, and deleted the dataset.
-- KG usefulness now has one targeted server proof for graph-helpful question types:
-  `artifacts/kg-usefulness-matrix/remote-20260523-044912/report.json`
+- KG usefulness now has one targeted server proof for graph-helpful question
+  types, plus one broader synthetic proof that adds summary-ish prompts on the
+  same 3-document corpus. The targeted proof
+  (`artifacts/kg-usefulness-matrix/remote-20260523-044912/report.json`)
   created dataset `7c07e419-54a1-48a3-8a6e-d32bdfb4c0ba`, ingested three linked
   documents (`Atlas acquisition` -> `integration lead` -> `Orion migration`),
   and created two grounded regression cases. `/api/v1/kg/search` returned
@@ -192,13 +194,20 @@ This task also tracks the next quality pass across the product surface. Do not s
   then completed run `4aa0ef5e-0a3d-4729-9e3d-93e111ebe3eb` with
   `baseline_hit_rate=1.0`, `baseline_recall=1.0`, and no failure breakdown.
   A later rerun after improving extractive fallback wording strengthened the same
-  proof under
-  `artifacts/kg-usefulness-matrix/remote-20260523-052501/report.json`:
+  proof under `artifacts/kg-usefulness-matrix/remote-20260523-052501/report.json`:
   both baseline and graph chat now restate the expected answers explicitly for
   both multi-hop questions (`Mira Chen` and `Orion billing service`) while
   keeping `kg_search_clues=11/6` and `baseline_hit_rate=1.0`, `baseline_recall=1.0`.
-  Cleanup deleted both generated regression cases, purged `3` documents, reset
-  KG stats to zero, and deleted the dataset.
+  The newer broadened run under
+  `artifacts/kg-usefulness-matrix/remote-broader-20260523/report.json`
+  keeps diagnostics at `baseline_hit_rate=1.0`, `baseline_recall=1.0` while
+  expanding coverage to `5` total questions by adding `What happened after
+  Project Atlas acquired Blue Harbor?`, `Summarize this corpus in one sentence.`,
+  and `What is the overall story across these documents?`. In that broader run,
+  all `5` questions returned non-zero clues (`11`, `6`, `11`, `4`, `3`), and
+  both baseline and graph chat passed their citation/expectation gates. Cleanup
+  deleted generated regression cases, purged `3` documents, reset KG stats to
+  zero, and deleted the dataset.
 - Browser/UI click-through now has two live proofs. The first,
   `artifacts/ui-clickthrough/backend-business-surfaces-live-20260523-remote-backend.json`,
   passed `1/1` Playwright business-surface smoke in `58.336s` using a local
@@ -451,6 +460,7 @@ This task also tracks the next quality pass across the product surface. Do not s
 - 2026-05-23 11:49: Added `scripts/remote_prompt_matrix.py`, wired builtin prompt selectors into document test generation and regression LLM judge, and verified a full live prompt matrix on `main@312e6cc`. The server proof covered builtin sync, answer prompt preview, answer prompt chat, KG extract prompt selection, builtin testset generation, builtin judge prompt selection, generated-case cleanup, dataset purge, and dataset delete.
 - 2026-05-23 12:49: Added `scripts/remote_kg_usefulness_matrix.py` and verified one targeted KG usefulness run on `main@fb5d02c`. The server proof showed stable KG clues and diagnostics hits on two handcrafted multi-hop questions, but also showed that the extractive chat surface still did not restate `Mira Chen` verbatim for the acquisition->leader question, so chat-surface answer lift remains only partially proven.
 - 2026-05-23 13:25: Improved extractive fallback answer selection on `main@ea55803` and re-ran the KG usefulness matrix. The follow-up server proof (`remote-20260523-052501`) kept the same strong KG clue/diagnostics signal and also made both extractive chat paths restate the expected answers explicitly for the two multi-hop questions.
+- 2026-05-23 23:32: Expanded `scripts/remote_kg_usefulness_matrix.py` with three summary-ish prompts on the same synthetic 3-document corpus and re-ran it as `artifacts/kg-usefulness-matrix/remote-broader-20260523/report.json`. The broadened proof now covers `5` questions total: the original two targeted multi-hop questions plus `What happened after Project Atlas acquired Blue Harbor?`, `Summarize this corpus in one sentence.`, and `What is the overall story across these documents?`. All `5` questions returned non-zero clues (`11`, `6`, `11`, `4`, `3`), both baseline and graph chat passed their citation/expectation gates, and diagnostics still held at `baseline_hit_rate=1.0`, `baseline_recall=1.0`.
 - 2026-05-23 14:00: Re-ran a Playwright live business-surface smoke against the remote backend via localhost SSH tunnel and updated the spec to current UI labels (`行业规则`, `预览`). The passing run (`backend-business-surfaces-live-20260523-remote-backend.json`) proved `/settings`, `/graph`, `/datasets/{id}/profile`, and `/history` page clicks on the current product surface.
 - 2026-05-23 14:30: Added a dedicated `web/playwright.remote-web.config.ts` lane so the same business-surface smoke can target the remote `web` container page host directly. The first remote-web reruns still fail with React hydration error `#418` on the history page, even after adding hydration guards for sidebar relative times, message-group labels, selected-conversation created-at chips, sidebar group labels, and minimal assistant timestamps. The remaining UI gap is now precisely scoped to a deployment-specific hydration mismatch, not a missing smoke path.
 - 2026-05-23 14:54: Rebuilt the remote `web` container from clean worktree `/tmp/MimirQ-main-webfix` at `main@059028d9` and re-ran `pnpm e2e:live:remote-web` through SSH tunnels to the deployed page host and API. The remote-web lane passed (`backend-business-surfaces-live-20260523-remote-web.json`, `1/1` in `12.246s`), closing the last deployment-specific UI walkthrough caveat.

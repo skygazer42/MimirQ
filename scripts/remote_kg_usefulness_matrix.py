@@ -77,6 +77,45 @@ QUESTIONS: list[dict[str, Any]] = [
     },
 ]
 
+SUMMARY_QUESTIONS: list[dict[str, Any]] = [
+    {
+        "question": "What happened after Project Atlas acquired Blue Harbor?",
+        "expected_answer": (
+            "After Project Atlas acquired Blue Harbor, Mira Chen led the integration program "
+            "that migrated the Orion billing service."
+        ),
+        "expected_terms": ["Project Atlas", "Blue Harbor", "Mira Chen", "Orion billing service"],
+        "min_expected_terms": 3,
+        "require_expected_match": False,
+        "min_citations": 3,
+        "evidence_filenames": ["atlas-acquisition.md", "integration-lead.md", "orion-migration.md"],
+    },
+    {
+        "question": "Summarize this corpus in one sentence.",
+        "expected_answer": (
+            "Project Atlas acquired Blue Harbor, Mira Chen led the integration program, "
+            "and that program migrated the Orion billing service."
+        ),
+        "expected_terms": ["Project Atlas", "Blue Harbor", "Mira Chen", "Orion billing service"],
+        "min_expected_terms": 3,
+        "require_expected_match": False,
+        "min_citations": 3,
+        "evidence_filenames": ["atlas-acquisition.md", "integration-lead.md", "orion-migration.md"],
+    },
+    {
+        "question": "What is the overall story across these documents?",
+        "expected_answer": (
+            "The documents describe Project Atlas acquiring Blue Harbor, Mira Chen leading "
+            "integration, and the Orion billing service migration."
+        ),
+        "expected_terms": ["Project Atlas", "Blue Harbor", "Mira Chen", "Orion billing service"],
+        "min_expected_terms": 3,
+        "require_expected_match": False,
+        "min_citations": 3,
+        "evidence_filenames": ["atlas-acquisition.md", "integration-lead.md", "orion-migration.md"],
+    },
+]
+
 
 def write_fixture(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -89,6 +128,41 @@ def normalize_text(value: str) -> str:
 
 def contains_expected_text(text: str, expected: str) -> bool:
     return normalize_text(expected) in normalize_text(text)
+
+
+def answer_match_summary(item: dict[str, Any], answer: str) -> dict[str, Any]:
+    expected_terms = [str(term) for term in (item.get("expected_terms") or []) if str(term).strip()]
+    matched_terms = [term for term in expected_terms if contains_expected_text(answer, term)]
+    min_expected_terms = int(item.get("min_expected_terms") or (len(expected_terms) if expected_terms else 0))
+
+    if expected_terms:
+        matches = len(matched_terms) >= max(1, min_expected_terms)
+    else:
+        matches = contains_expected_text(answer, str(item.get("expected_answer") or ""))
+
+    return {
+        "matches_expectation": matches,
+        "expected_terms": expected_terms,
+        "matched_terms": matched_terms,
+        "matched_term_count": len(matched_terms),
+        "min_expected_terms": min_expected_terms,
+    }
+
+
+def chat_expectation_summary(item: dict[str, Any], answer: str, *, citation_count: int) -> dict[str, Any]:
+    match = answer_match_summary(item, answer)
+    min_citations = int(item.get("min_citations") or 1)
+    require_expected_match = bool(item.get("require_expected_match", True))
+    passes_gate = int(citation_count) >= max(1, min_citations) and (
+        not require_expected_match or bool(match["matches_expectation"])
+    )
+    return {
+        **match,
+        "citation_count": int(citation_count),
+        "min_citations": min_citations,
+        "require_expected_match": require_expected_match,
+        "passes_gate": passes_gate,
+    }
 
 
 def kg_search_clue_count(body: Any) -> int:
@@ -329,7 +403,8 @@ def main() -> int:
 
         # Direct KG search + baseline/graph chat for each question.
         question_results: list[dict[str, Any]] = []
-        for item in QUESTIONS:
+        all_questions = list(QUESTIONS) + list(SUMMARY_QUESTIONS)
+        for item in all_questions:
             question = item["question"]
             expected_answer = item["expected_answer"]
 
@@ -376,18 +451,30 @@ def main() -> int:
                 record_step(steps, label, status, body, elapsed, question=question, citation_count=citation_count, answer_preview=answer[:200])
                 if not ok_status(status):
                     raise RuntimeError(f"{label} failed: {snippet(body)}")
-                matches_expected = contains_expected_text(answer, expected_answer)
+                chat_expectation = chat_expectation_summary(item, answer, citation_count=citation_count)
                 chat_rows[label] = {
                     "answer_preview": answer[:200],
                     "citation_count": citation_count,
-                    "matches_expected": matches_expected,
+                    "matches_expected": bool(chat_expectation["matches_expectation"]),
+                    "matched_terms": list(chat_expectation["matched_terms"]),
+                    "matched_term_count": int(chat_expectation["matched_term_count"]),
+                    "expected_terms": list(chat_expectation["expected_terms"]),
+                    "min_expected_terms": int(chat_expectation["min_expected_terms"]),
+                    "min_citations": int(chat_expectation["min_citations"]),
+                    "require_expected_match": bool(chat_expectation["require_expected_match"]),
+                    "passes_gate": bool(chat_expectation["passes_gate"]),
                     "elapsed_sec": round(elapsed, 3),
                 }
+                if not bool(chat_expectation["passes_gate"]):
+                    raise RuntimeError(
+                        f"{label} answer did not satisfy expectation for question: {question} :: {answer[:300]}"
+                    )
 
             question_results.append(
                 {
                     "question": question,
                     "expected_answer": expected_answer,
+                    "expected_terms": list(item.get("expected_terms") or []),
                     "kg_search_clues": clue_count,
                     "kg_search_events": event_count,
                     **chat_rows,
