@@ -80,12 +80,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 8853,
+                      "duration": 9358,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-05-23T13:15:56.452Z",
+                      "startTime": "2026-05-23T13:23:11.911Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -97,6 +97,40 @@
               "file": "reports.live.spec.ts",
               "line": 171,
               "column": 7
+            },
+            {
+              "title": "exports a real dataset report JSON from the deployed reports page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 9936,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-23T13:23:21.347Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c512833486e1fd11a20c-4ac60a3f4d205e3211ed",
+              "file": "reports.live.spec.ts",
+              "line": 237,
+              "column": 7
             }
           ]
         }
@@ -105,9 +139,9 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-05-23T13:15:55.858Z",
-    "duration": 9569.552,
-    "expected": 1,
+    "startTime": "2026-05-23T13:23:11.322Z",
+    "duration": 20012.857,
+    "expected": 2,
     "skipped": 0,
     "unexpected": 0,
     "flaky": 0
