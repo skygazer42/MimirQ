@@ -127,6 +127,23 @@ This task also tracks the next quality pass across the product surface. Do not s
   The rerun completed 12/12 documents and 12/12 KG extracts; average extraction was 8.329s, P95 14.868s, max 14.928s. KG stats returned 12 events, 39 entities, 156 links in 0.153s; KG search returned 200 in 0.408s.
 - Large-PDF parser verification added an important parser-design follow-up:
   MagicPDF should move to a standalone service like Marker/Paddle-VL/OLMOCR because the API-container local CLI mode is fragile in Docker deployment. Serviceization details are tracked in `plans/magicpdf-serviceization-plan-2026-05-23.md`.
+- Remote MagicPDF serviceization is now validated on the server for real PDFs:
+  `artifacts/parser-service-matrix/magicpdf-service-final-20260523-000212/report.json`
+  proved `parse-preview` resolved `backend=magicpdf` on a 2-page fixture, and
+  `artifacts/pdf-performance/magicpdf-service-20260523-000543/report.json`
+  proved the 144-page arXiv PDF (`2303.18223`) also resolved `backend=magicpdf`
+  in 163.729s with 810,438 markdown chars.
+- Real parsed-output chunking on the same 144-page PDF exposed large strategy spread:
+  `langchain_recursive=1151` chunks in `174.793s`,
+  `parent_child=3702` chunks in `1.900s`,
+  `semantic_sentence=1272` chunks in `2.233s`,
+  `markdown_hierarchy=6203` chunks in `1.880s`.
+- Real long-document KG density/latency on the same 144-page PDF still needs a bounded policy:
+  an exploratory default LLM KG extraction run created dataset `cd232ae7-609d-415f-a43a-cca768aee664`
+  and document `f20f6207-f808-4bd9-a8ae-8c2d92455793` (670 persisted chunks, ~816k chars),
+  but the synchronous KG extract was still running after `250+` extraction batches and did not
+  finish within the probe window. During the run, `/api/v1/kg/stats` still reported zero committed
+  events/entities/links because extraction had not completed.
 - `scripts/production_readiness_chain.py` is not portable on the remote host/container as-is: the host lacks `python-docx`, and the API container lacks `requests`.
   The live service passed through `scripts/remote_api_chain_smoke.py`, which uses only the standard library.
 
@@ -139,3 +156,6 @@ This task also tracks the next quality pass across the product surface. Do not s
 - 2026-05-22 14:30: Remote chunk/governance matrix passed: 15/15 chunk strategies and 6/6 governance preview cases.
 - 2026-05-22 15:30: Remote KG scale guard passed after API/worker image rebuild: 12 documents completed, 12 KG extracts succeeded, stats/search endpoints returned 200.
 - 2026-05-23 03:10: Added product quality backlog to keep parser serviceization, KG density, chunking, prompts, knowledge-base lifecycle, governance, and admin/permission checks under this same server verification task.
+- 2026-05-23 08:18: Remote MagicPDF serviceization completed on `10.168.2.253`; 2-page and 144-page real PDF both resolved `backend=magicpdf` through the standalone service.
+- 2026-05-23 08:34: Real parsed-output chunking on the 144-page PDF showed major strategy spread (`1151` to `6203` chunks depending on strategy).
+- 2026-05-23 08:52: Default LLM KG extraction on the same 144-page PDF remained too slow for product defaults, continuing past `250+` extraction batches without completing inside the probe window.
