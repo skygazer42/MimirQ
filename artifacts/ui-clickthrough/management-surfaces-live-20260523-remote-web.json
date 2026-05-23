@@ -61,7 +61,7 @@
         {
           "title": "live management surfaces",
           "file": "management-surfaces.live.spec.ts",
-          "line": 25,
+          "line": 71,
           "column": 6,
           "specs": [
             {
@@ -80,12 +80,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 9427,
+                      "duration": 14339,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-05-23T09:38:59.624Z",
+                      "startTime": "2026-05-23T09:55:35.338Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -95,7 +95,7 @@
               ],
               "id": "b8ce53ce35715921c1b1-7dba596afa8415ceb53d",
               "file": "management-surfaces.live.spec.ts",
-              "line": 31,
+              "line": 77,
               "column": 7
             }
           ]
@@ -105,8 +105,8 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-05-23T09:38:59.060Z",
-    "duration": 10123.596,
+    "startTime": "2026-05-23T09:55:34.757Z",
+    "duration": 15042.318,
     "expected": 1,
     "skipped": 0,
     "unexpected": 0,

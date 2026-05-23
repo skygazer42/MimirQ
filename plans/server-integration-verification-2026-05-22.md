@@ -222,11 +222,13 @@ This task also tracks the next quality pass across the product surface. Do not s
   smoke's `enterprise-telemetry-sample.md` parsing documents were deleted.
 - Management/admin UI breadth is now also proven on the deployed page host:
   `artifacts/ui-clickthrough/management-surfaces-live-20260523-remote-web.json`
-  passed `1/1` in `10.124s` and exercised real admin page loads for `/prompts`,
-  `/reports`, `/evaluations`, `/usage`, `/audit`, plus the `/access-review`
-  redirect into `/audit`. This run hit live backend-admin surfaces such as prompt
-  templates, dataset reports, evaluation runs, usage summaries, and audit logs
-  while the API remained healthy.
+  passed `1/1` in `15.042s` and exercised real admin page loads for `/prompts`,
+  `/reports`, `/evaluations`, `/usage`, `/audit`, `/settings/rbac`,
+  `/settings/groups`, one live `/settings/groups/{id}` detail page backed by a
+  temporary group, plus the `/access-review` redirect into `/audit`. This run
+  hit live backend-admin surfaces such as prompt templates, dataset reports,
+  evaluation runs, usage summaries, audit logs, tenant-member listings, and
+  group CRUD/membership APIs while the API remained healthy.
 - Knowledge-base dataset boundaries now have one dedicated server proof:
   `artifacts/kb-boundary-matrix/remote-20260523/report.json`
   created two disposable datasets (`alpha`, `beta`) with mutually exclusive
@@ -360,5 +362,6 @@ This task also tracks the next quality pass across the product surface. Do not s
 - 2026-05-23 17:08: Added `scripts/remote_parser_mixed_contention_probe.py` and verified one bounded mixed-backend contention run through the live API. The proof (`artifacts/parser-contention/remote-20260523/report.json`) ran `magicpdf` and `marker` together for `2` rounds on the same 2-page fixture, confirming all `4` requests returned `200` while showing materially higher p50/p95 latency on the MagicPDF lane than on the Marker lane under shared load.
 - 2026-05-23 17:16: Extended `scripts/remote_parser_mixed_contention_probe.py` with a per-task timeout so slow backend combinations cannot hang the whole contention lane indefinitely. A bounded `magicpdf + olmocr` rerun (`artifacts/parser-contention/remote-olmocr-20260523/report.json`) showed `magicpdf` succeeding in `19.183s` while `olmocr` ran for `498.099s` and resolved `backend=basic`, making that pair unsuitable for the current small-doc contention matrix even though API health remained green.
 - 2026-05-23 17:24: Reused the same bounded contention probe for `magicpdf + mineru`. The resulting artifact (`artifacts/parser-contention/remote-mineru-20260523/report.json`) showed all `4` requests returned `200` over `2` rounds and that this pair currently outperforms the `magicpdf + marker` lane on both total wall time and MagicPDF-side tail latency.
-- 2026-05-23 17:38: Added `web/e2e/management-surfaces.live.spec.ts` plus a dedicated remote-management Playwright config and verified one live management-surface smoke against the deployed `web` + `api` stack. The resulting artifact (`artifacts/ui-clickthrough/management-surfaces-live-20260523-remote-web.json`) proved `/prompts`, `/reports`, `/evaluations`, `/usage`, `/audit`, and `/access-review -> /audit` on real backend-admin surfaces.
+- 2026-05-23 17:38: Added `web/e2e/management-surfaces.live.spec.ts` plus a dedicated remote-management Playwright config and verified one live management-surface smoke against the deployed `web` + `api` stack. The resulting artifact (`artifacts/ui-clickthrough/management-surfaces-live-20260523-remote-web.json`) first proved `/prompts`, `/reports`, `/evaluations`, `/usage`, `/audit`, and `/access-review -> /audit` on real backend-admin surfaces.
+- 2026-05-23 17:55: Extended the same remote-management lane to include `/settings/rbac`, `/settings/groups`, and a temporary live `/settings/groups/{id}` detail page. The rerun still passed and broadened the proven admin UI shell to include RBAC and group-management surfaces on the deployed frontend page host.
 - 2026-05-23 16:10: Added `scripts/remote_kb_format_matrix.py` and verified one mixed-format KB breadth run through the live API. The proof (`artifacts/kb-format-matrix/remote-20260523/report.json`) ingested `md`, `html`, `csv`, `json`, `docx`, and `xlsx` into one disposable dataset, then proved dataset-scoped retrieve + extractive chat on all six formats before purging the dataset.
