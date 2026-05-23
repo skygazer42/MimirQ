@@ -229,6 +229,13 @@ This task also tracks the next quality pass across the product surface. Do not s
   scope could surface the beta document while staying inside the allowed
   two-document scope. Cleanup purged and deleted both proof datasets, and the
   earlier failed-iteration leftovers were also swept from the server.
+- Knowledge-base file-type breadth now has one dedicated server proof:
+  `artifacts/kb-format-matrix/remote-20260523/report.json`
+  created one disposable mixed-format dataset and ingested `md`, `html`, `csv`,
+  `json`, `docx`, and `xlsx` together. All six files completed with non-empty
+  parsed content and at least one chunk, and dataset-scoped retrieve + extractive
+  chat both returned `200` with the expected document present in citations for
+  every format. Cleanup purged all six documents and deleted the dataset.
 - Knowledge-base permissions now also have one dedicated outsider/viewer proof:
   `artifacts/kb-permission-boundary/remote-20260523/report.json`
   normalized `outsider` to `viewer` and covered three read-scope layers on the
@@ -292,3 +299,4 @@ This task also tracks the next quality pass across the product surface. Do not s
 - 2026-05-23 15:36: Added `scripts/remote_kb_permission_boundary.py` and verified one dedicated outsider/viewer knowledge-base permission run through the live API. The proof (`artifacts/kb-permission-boundary/remote-20260523/report.json`) normalized `outsider` to `viewer`, proved shared-vs-private dataset read behavior (`200` vs `403`), and confirmed mixed `document_ids` scope filters out the unreadable private document in both retrieval and extractive chat before purging/deleting both proof datasets.
 - 2026-05-23 15:42: Extended `scripts/remote_kb_permission_boundary.py` to cover group-based dataset sharing. The rerun created a disposable group, added `outsider`, shared one dataset via `partial_group_list`, and proved outsider inventory/retrieve/chat on that dataset while mixed `document_ids` scope still filtered out the unreadable private document. Cleanup deleted all proof datasets and the temporary group.
 - 2026-05-23 16:02: Fixed `app/api/v1/document_listing.py` so document inventory respects `DocumentGroupPermission` in addition to direct `DocumentPermission`. After rebuilding the remote `api`, the KB permission proof was rerun successfully and now also covers document-level ACL overrides inside a readable dataset (`partial_member_list` owner-only doc plus `partial_group_list` group-only doc).
+- 2026-05-23 16:10: Added `scripts/remote_kb_format_matrix.py` and verified one mixed-format KB breadth run through the live API. The proof (`artifacts/kb-format-matrix/remote-20260523/report.json`) ingested `md`, `html`, `csv`, `json`, `docx`, and `xlsx` into one disposable dataset, then proved dataset-scoped retrieve + extractive chat on all six formats before purging the dataset.
