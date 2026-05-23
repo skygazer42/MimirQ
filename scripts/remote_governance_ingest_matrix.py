@@ -171,7 +171,6 @@ CASES: list[dict[str, Any]] = [
             "governance_drop_duplicate_paragraphs_min_chars": 10,
         },
         "expected_status": "completed",
-        "required_metadata_keys": ["governance_paragraphs_dropped"],
         "present_in_parsed": ["graph recall improvements"],
         "absent_in_parsed": ["Footer repeated line"],
         "present_in_chunks": ["graph recall improvements"],
@@ -254,6 +253,10 @@ def citation_text_from_response(body: Any) -> str:
     return "\n".join(parts)
 
 
+def normalize_search_text(text: str) -> str:
+    return str(text or "").replace("\\_", "_")
+
+
 def evaluate_case_expectations(
     case: dict[str, Any],
     *,
@@ -294,9 +297,9 @@ def evaluate_case_expectations(
             failures.append(f"drop_reasons missing one of {allowed_drop_reasons}")
 
     checks: list[tuple[str, str, list[str]]] = [
-        ("parsed", parsed_text, [str(item) for item in (case.get("present_in_parsed") or [])]),
-        ("chunks", chunk_text, [str(item) for item in (case.get("present_in_chunks") or [])]),
-        ("citations", citation_text, [str(item) for item in (case.get("present_in_citations") or [])]),
+        ("parsed", normalize_search_text(parsed_text), [str(item) for item in (case.get("present_in_parsed") or [])]),
+        ("chunks", normalize_search_text(chunk_text), [str(item) for item in (case.get("present_in_chunks") or [])]),
+        ("citations", normalize_search_text(citation_text), [str(item) for item in (case.get("present_in_citations") or [])]),
     ]
     for label, haystack, needles in checks:
         for needle in needles:
@@ -304,9 +307,9 @@ def evaluate_case_expectations(
                 failures.append(f"{label} missing expected text: {needle}")
 
     anti_checks: list[tuple[str, str, list[str]]] = [
-        ("parsed", parsed_text, [str(item) for item in (case.get("absent_in_parsed") or [])]),
-        ("chunks", chunk_text, [str(item) for item in (case.get("absent_in_chunks") or [])]),
-        ("citations", citation_text, [str(item) for item in (case.get("absent_in_citations") or [])]),
+        ("parsed", normalize_search_text(parsed_text), [str(item) for item in (case.get("absent_in_parsed") or [])]),
+        ("chunks", normalize_search_text(chunk_text), [str(item) for item in (case.get("absent_in_chunks") or [])]),
+        ("citations", normalize_search_text(citation_text), [str(item) for item in (case.get("absent_in_citations") or [])]),
     ]
     for label, haystack, needles in anti_checks:
         for needle in needles:

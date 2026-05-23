@@ -77,6 +77,28 @@ def test_remote_governance_ingest_matrix_evaluate_case_expectations_accepts_sani
     assert failures == []
 
 
+def test_remote_governance_ingest_matrix_evaluate_case_expectations_normalizes_markdown_escapes() -> None:
+    case = {
+        "name": "html_rule_packs",
+        "expected_status": "completed",
+        "present_in_parsed": ["retrieval_mrr"],
+        "present_in_chunks": ["retrieval_mrr"],
+        "present_in_citations": ["retrieval_mrr"],
+    }
+
+    failures = evaluate_case_expectations(
+        case,
+        document_status="completed",
+        metadata={"governance_enabled": True},
+        parsed_text="| retrieval\\_mrr | 0.74 |",
+        chunk_text="| retrieval\\_mrr | 0.74 |",
+        citation_text="| retrieval\\_mrr | 0.74 |",
+        citation_count=1,
+    )
+
+    assert failures == []
+
+
 def test_remote_governance_ingest_matrix_evaluate_case_expectations_flags_quarantine_mismatches() -> None:
     case = {
         "name": "quality_gate_quarantine",
