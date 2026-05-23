@@ -157,6 +157,31 @@ This task also tracks the next quality pass across the product surface. Do not s
   and document ACL management; the same run proved outsider `403` on those
   admin-only routes plus `GET /api/v1/documents/{id}/access` and
   `PUT /api/v1/documents/{id}/access`, and then cleaned up its disposable dataset.
+- Governance on real ingestion paths is now scriptable and has one server proof:
+  `artifacts/governance-ingest-matrix/remote-20260523-031333/report.json`
+  created dataset `af331df5-9b5c-474b-98ff-1f638ccd23eb` and proved five live cases:
+  PII masking (`governance_pii_hits.email=1`, `phone=1`), secrets masking
+  (`governance_secrets_hits.openai_key=1`), HTML rule-pack cleanup plus table
+  normalization (`governance_rule_packs=[web_navigation, web_cookie_banners]`,
+  `governance_tables_normalized=1`), duplicate-paragraph cleanup with the noisy
+  footer removed from parsed content and retrieval citations, and an outline-only
+  document quarantined with `governance_drop_reasons.outline_only=1`. The same
+  run also proved retrieval remained available for the four completed cases and
+  cleanup deleted all `5` documents, cleared KG stats to zero, and deleted the dataset.
+- Prompt workflows are now scriptable and have one server proof:
+  `artifacts/prompt-matrix/remote-20260523-034943/report.json`
+  created dataset `11aa37b3-9884-4deb-baff-4b7d6efd6edd` and proved all four
+  builtin prompt selectors on live product paths: `rag_answer_claude_xml_zh`
+  on `/api/v1/rag/prompt-preview` (`2` citations, `1085` prompt chars) and
+  `/api/v1/chat` (`2` citations, correct answer about the blue flag),
+  `kg_extract_graphrag_zh` on KG extraction (`event_id=1db31a17-b299-47b4-b878-b039c3ae26e6`,
+  `kg_prompt_template_key=kg_extract_graphrag_zh`), `testset_generation_ragas_zh`
+  on document test generation (`2` generated questions, `2` saved regression cases),
+  and `judge_faithfulness_ragas_zh` on the regression LLM judge
+  (`run_id=326a5f12-c49b-4f05-8cdd-ca669afe0c7b`, `llm_judge_items=2`,
+  summary/item metadata both recorded the expected judge template key). The same
+  run also deleted both generated regression cases, purged the dataset documents,
+  reset KG stats to zero, and deleted the dataset.
 - Real parsed-output chunking on the same 144-page PDF exposed large strategy spread:
   `langchain_recursive=1151` chunks in `174.793s`,
   `parent_child=3702` chunks in `1.900s`,
@@ -190,3 +215,5 @@ This task also tracks the next quality pass across the product surface. Do not s
 - 2026-05-23 10:26: Re-ran the full real-PDF chain using the scripted cleanup mode (`remote_real_pdf_chain.py --cleanup-mode purge_dataset --delete-dataset-after`) and confirmed the automated lifecycle path matches the manual cleanup proof.
 - 2026-05-23 10:44: Added `scripts/remote_permission_matrix.py` and verified one server-side permission matrix run. Because this host still auto-bootstraps unknown accounts as `owner`, the script now first downgrades the disposable outsider account to `viewer` through local Postgres before running the deny checks.
 - 2026-05-23 10:55: Re-ran the permission matrix on `main@d3bb639f` from a clean remote worktree and extended the proof to `GET /api/v1/audit/access-graph/summary` plus `GET /api/v1/audit/access-graph/export?export_format=json&limit=10`; admin returned `200`, outsider returned `403`, and scripted dataset cleanup still passed.
+- 2026-05-23 11:13: Added `scripts/remote_governance_ingest_matrix.py` and verified a full live governance ingest matrix on `main@f71242f`. The server proof covered masked PII, masked secrets, HTML rule-pack cleanup with table normalization, duplicate cleanup visible in persisted content/citations, outline-only quarantine, and scripted dataset purge/delete cleanup.
+- 2026-05-23 11:49: Added `scripts/remote_prompt_matrix.py`, wired builtin prompt selectors into document test generation and regression LLM judge, and verified a full live prompt matrix on `main@312e6cc`. The server proof covered builtin sync, answer prompt preview, answer prompt chat, KG extract prompt selection, builtin testset generation, builtin judge prompt selection, generated-case cleanup, dataset purge, and dataset delete.
