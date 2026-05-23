@@ -233,13 +233,13 @@ This task also tracks the next quality pass across the product surface. Do not s
   while the API remains healthy.
 - Governance/quarantine UI now also has one dedicated deployed-page-host proof:
   `artifacts/ui-clickthrough/quarantine-surfaces-live-20260523-remote-web.json`
-  passed `1/1` in `6.994s`. The test created a real dataset plus a real
-  outline-only quarantined document through the live API, opened
-  `/knowledge/quarantine?datasetId=...` on the deployed page host, entered the
-  review drawer for that document, clicked `标记为已解决`, and then verified the
-  backend wrote `metadata.user.quarantine_reviewed=true` while the drawer
-  status flipped to `已解决`. Cleanup purged the disposable dataset documents
-  and deleted the dataset (`204`).
+  now passes `2/2` in `13.767s`. The lane creates real outline-only
+  quarantined documents through the live API and proves two review actions on
+  the deployed page host: `标记为已解决`, which writes
+  `metadata.user.quarantine_reviewed=true`, and `物理删除`, which removes the
+  document and is verified by backend `404` plus the row disappearing from the
+  filtered list. Cleanup purges the disposable dataset documents and deletes
+  both datasets (`204`).
 - Knowledge-base dataset boundaries now have one dedicated server proof:
   `artifacts/kb-boundary-matrix/remote-20260523/report.json`
   created two disposable datasets (`alpha`, `beta`) with mutually exclusive
@@ -429,5 +429,6 @@ This task also tracks the next quality pass across the product surface. Do not s
 - 2026-05-23 18:57: Reused the bounded mixed-backend contention probe for one more viable heavy backend pairing, `magicpdf + deepdoc`. The resulting artifact (`artifacts/parser-contention/remote-deepdoc-20260523/report.json`) passed `4/4` over `2` rounds with overall wall `35.753s`, throughput `0.112 rps`, `magicpdf` p50/p95 `27.325s / 34.848s`, and `deepdoc` p50/p95 `21.029s / 21.033s`.
 - 2026-05-23 19:05: Extended parser contention beyond MagicPDF-led pairings. `artifacts/parser-contention/remote-deepdoc-mineru-20260523/report.json` passed `4/4` with overall wall `17.592s` and throughput `0.227 rps`, making `deepdoc + mineru` the fastest passing contention lane so far. `artifacts/parser-contention/remote-marker-deepdoc-20260523/report.json` also passed `4/4` with overall wall `32.395s` and throughput `0.123 rps`, giving a second non-MagicPDF contention baseline.
 - 2026-05-23 19:12: Added per-backend fixture override support to `scripts/remote_parser_mixed_contention_probe.py` and used it for the first mixed-size 3-lane contention proof. `artifacts/parser-contention/remote-mixedsize-20260523/report.json` ran `magicpdf` on RFC-scale `rfc9000-quic.pdf` while `deepdoc` and `mineru` parsed the default 2-page fixture; all `3` requests returned `200`, with wall `116.604s` and backend latencies `magicpdf=116.528s`, `deepdoc=14.856s`, `mineru=12.822s`.
-- 2026-05-23 19:19: Added `web/e2e/quarantine-surfaces.live.spec.ts` plus a dedicated remote-governance Playwright config and verified one live quarantine-review workflow against the deployed `web` + `api` stack. The artifact (`artifacts/ui-clickthrough/quarantine-surfaces-live-20260523-remote-web.json`) created a real quarantined document, opened `/knowledge/quarantine?datasetId=...`, marked that document as solved from the review drawer, verified `metadata.user.quarantine_reviewed=true`, and cleaned up the disposable dataset.
+- 2026-05-23 19:19: Added `web/e2e/quarantine-surfaces.live.spec.ts` plus a dedicated remote-governance Playwright config and verified one live quarantine-review workflow against the deployed `web` + `api` stack. The first artifact created a real quarantined document, opened `/knowledge/quarantine?datasetId=...`, marked that document as solved from the review drawer, verified `metadata.user.quarantine_reviewed=true`, and cleaned up the disposable dataset.
+- 2026-05-23 19:31: Extended the same live governance lane with a real `物理删除` flow. The rerun passed `2/2`; after opening the quarantine review drawer, the test confirmed delete through the UI, then verified backend `404` on the document id and that the row disappeared from the filtered queue.
 - 2026-05-23 16:10: Added `scripts/remote_kb_format_matrix.py` and verified one mixed-format KB breadth run through the live API. The proof (`artifacts/kb-format-matrix/remote-20260523/report.json`) ingested `md`, `html`, `csv`, `json`, `docx`, and `xlsx` into one disposable dataset, then proved dataset-scoped retrieve + extractive chat on all six formats before purging the dataset.

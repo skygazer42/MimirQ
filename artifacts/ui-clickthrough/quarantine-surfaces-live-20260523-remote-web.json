@@ -61,7 +61,7 @@
         {
           "title": "live quarantine surfaces",
           "file": "quarantine-surfaces.live.spec.ts",
-          "line": 188,
+          "line": 199,
           "column": 6,
           "specs": [
             {
@@ -80,12 +80,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 6284,
+                      "duration": 6028,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-05-23T11:19:45.851Z",
+                      "startTime": "2026-05-23T11:31:26.864Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -95,7 +95,41 @@
               ],
               "id": "847144d1b9ad698e26b4-ff493518770afdc5f7a6",
               "file": "quarantine-surfaces.live.spec.ts",
-              "line": 194,
+              "line": 205,
+              "column": 7
+            },
+            {
+              "title": "deletes a real quarantined document through the quarantine center UI",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6986,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-23T11:31:32.965Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "847144d1b9ad698e26b4-630fe22a346226ed1448",
+              "file": "quarantine-surfaces.live.spec.ts",
+              "line": 280,
               "column": 7
             }
           ]
@@ -105,9 +139,9 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-05-23T11:19:45.261Z",
-    "duration": 6994.43,
-    "expected": 1,
+    "startTime": "2026-05-23T11:31:26.257Z",
+    "duration": 13767.11,
+    "expected": 2,
     "skipped": 0,
     "unexpected": 0,
     "flaky": 0
