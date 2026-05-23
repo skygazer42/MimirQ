@@ -236,6 +236,18 @@ This task also tracks the next quality pass across the product surface. Do not s
   parsed content and at least one chunk, and dataset-scoped retrieve + extractive
   chat both returned `200` with the expected document present in citations for
   every format. Cleanup purged all six documents and deleted the dataset.
+- Parser batch/concurrency now has one dedicated server proof for the current
+  production MagicPDF path:
+  `artifacts/parser-concurrency/remote-20260523/report.json`
+  ran `magicpdf` `parse-preview` on 4 stable small PDFs under concurrency
+  `1/2/4`. All `12` requests returned `200` with `backend=magicpdf` and output
+  above the markdown threshold. Aggregate results were:
+  concurrency `1` -> wall `70.773s`, throughput `0.057 rps`, p95 `18.419s`;
+  concurrency `2` -> wall `64.868s`, throughput `0.062 rps`, p95 `33.027s`;
+  concurrency `4` -> wall `64.124s`, throughput `0.062 rps`, p95 `61.638s`.
+  This is enough to show the standalone MagicPDF service sustains concurrent
+  small-PDF traffic without health regressions, but not enough yet to sign off
+  on larger PDFs or other heavy backends.
 - Knowledge-base permissions now also have one dedicated outsider/viewer proof:
   `artifacts/kb-permission-boundary/remote-20260523/report.json`
   normalized `outsider` to `viewer` and covered three read-scope layers on the
@@ -299,4 +311,6 @@ This task also tracks the next quality pass across the product surface. Do not s
 - 2026-05-23 15:36: Added `scripts/remote_kb_permission_boundary.py` and verified one dedicated outsider/viewer knowledge-base permission run through the live API. The proof (`artifacts/kb-permission-boundary/remote-20260523/report.json`) normalized `outsider` to `viewer`, proved shared-vs-private dataset read behavior (`200` vs `403`), and confirmed mixed `document_ids` scope filters out the unreadable private document in both retrieval and extractive chat before purging/deleting both proof datasets.
 - 2026-05-23 15:42: Extended `scripts/remote_kb_permission_boundary.py` to cover group-based dataset sharing. The rerun created a disposable group, added `outsider`, shared one dataset via `partial_group_list`, and proved outsider inventory/retrieve/chat on that dataset while mixed `document_ids` scope still filtered out the unreadable private document. Cleanup deleted all proof datasets and the temporary group.
 - 2026-05-23 16:02: Fixed `app/api/v1/document_listing.py` so document inventory respects `DocumentGroupPermission` in addition to direct `DocumentPermission`. After rebuilding the remote `api`, the KB permission proof was rerun successfully and now also covers document-level ACL overrides inside a readable dataset (`partial_member_list` owner-only doc plus `partial_group_list` group-only doc).
+- 2026-05-23 16:10: Added `scripts/remote_kb_format_matrix.py` and verified one mixed-format KB breadth run through the live API. The proof (`artifacts/kb-format-matrix/remote-20260523/report.json`) ingested `md`, `html`, `csv`, `json`, `docx`, and `xlsx` into one disposable dataset, then proved dataset-scoped retrieve + extractive chat on all six formats before purging the dataset.
+- 2026-05-23 16:20: Added `scripts/remote_parser_concurrency_probe.py` and verified one controlled MagicPDF concurrency run through the live API. The proof (`artifacts/parser-concurrency/remote-20260523/report.json`) used 4 stable small PDFs and measured the current standalone MagicPDF path at concurrency `1/2/4`, confirming all `12` requests returned `200` with resolved backend `magicpdf` while showing latency/throughput tradeoffs rather than health failures.
 - 2026-05-23 16:10: Added `scripts/remote_kb_format_matrix.py` and verified one mixed-format KB breadth run through the live API. The proof (`artifacts/kb-format-matrix/remote-20260523/report.json`) ingested `md`, `html`, `csv`, `json`, `docx`, and `xlsx` into one disposable dataset, then proved dataset-scoped retrieve + extractive chat on all six formats before purging the dataset.
