@@ -7,6 +7,7 @@ import hashlib
 import time
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 from app.core.config import settings
 from app.core.database import SessionLocal
@@ -22,6 +23,7 @@ from app.rag.kg.extraction.backend_router import resolve_extraction_backend
 from app.rag.kg.extraction.config import ExtractConfig
 from app.rag.kg.extraction.entity_verifier import EntityCandidate, EntityVerifier
 from app.rag.kg.extraction.evidence import coerce_evidence, surface_mentioned
+from app.rag.kg.extraction.heuristic_extractor import HeuristicExtractor
 from app.rag.kg.extraction.parser import EntityValueParser
 from app.rag.kg.extraction.processor import EventProcessor
 from app.rag.kg.extraction.relation_processor import CandidateEntity, RelationProcessor
@@ -402,14 +404,33 @@ class EventExtractor:
                         session.rollback()
                         logger.warning("Failed to update kg extract prompt usage_count for template %s", chosen_template_id)
 
-            llm_client = await create_llm_client(scenario="extract", model_config=self.model_config)
-            llm_processor = EventProcessor(llm_client=llm_client, prompt_template=prompt_template_content)
-            backend_selection = resolve_extraction_backend(
-                llm_processor=llm_processor,
-                requested_backend=getattr(config, "extraction_backend", None),
-            )
+            requested_backend = str(getattr(config, "extraction_backend", "") or "").strip().lower() or None
+            auto_backend_reason: str | None = None
+            if requested_backend is None:
+                long_doc_backend = str(getattr(settings, "KG_EXTRACT_LONG_DOC_BACKEND", "") or "").strip().lower() or None
+                long_doc_min_chunks = max(0, int(getattr(settings, "KG_EXTRACT_LONG_DOC_MIN_CHUNKS", 0) or 0))
+                if long_doc_backend and long_doc_min_chunks > 0 and len(resolved_chunks) >= long_doc_min_chunks:
+                    requested_backend = long_doc_backend
+                    auto_backend_reason = f"long_doc_chunk_threshold:{len(resolved_chunks)}"
+
+            if requested_backend == "heuristic":
+                backend_selection = SimpleNamespace(
+                    backend="heuristic",
+                    processor=HeuristicExtractor(),
+                    fallback_reason=auto_backend_reason,
+                )
+            else:
+                llm_client = await create_llm_client(scenario="extract", model_config=self.model_config)
+                llm_processor = EventProcessor(llm_client=llm_client, prompt_template=prompt_template_content)
+                backend_selection = resolve_extraction_backend(
+                    llm_processor=llm_processor,
+                    requested_backend=requested_backend,
+                )
+                if auto_backend_reason and not getattr(backend_selection, "fallback_reason", None):
+                    backend_selection.fallback_reason = auto_backend_reason
             processor = backend_selection.processor
             embedder = DocumentProcessor()
+            backend_reason = getattr(backend_selection, "fallback_reason", None)
 
             max_concurrency = max(
                 1,
@@ -1148,6 +1169,8 @@ class EventExtractor:
                         "retry_chunks": int(len(retry_chunk_ids)),
                         "retry_attempts": int(retry_attempts_total),
                         "llm_called_chunks": int(len(llm_called_chunk_ids)),
+                        "backend": str(getattr(backend_selection, "backend", "") or ""),
+                        "backend_reason": str(backend_reason or ""),
                         "chunk_budget_strategy": chunk_budget_strategy,
                         "chunk_budget_max_per_document": int(max_chunks_per_document),
                         "event_new": 0,
@@ -2586,6 +2609,8 @@ class EventExtractor:
                     "retry_chunks": int(len(retry_chunk_ids)),
                     "retry_attempts": int(retry_attempts_total),
                     "llm_called_chunks": int(len(llm_called_chunk_ids)),
+                    "backend": str(getattr(backend_selection, "backend", "") or ""),
+                    "backend_reason": str(backend_reason or ""),
                     "chunk_budget_strategy": chunk_budget_strategy,
                     "chunk_budget_max_per_document": int(max_chunks_per_document),
                     "event_new": int(len(new_events)),
