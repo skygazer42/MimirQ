@@ -238,6 +238,12 @@ This task also tracks the next quality pass across the product surface. Do not s
   the readable shared document in both retrieval and extractive chat. Cleanup
   purged/deleted both proof datasets, and the first failed-run leftovers were
   also swept from the server.
+- The same permission-sensitive KB proof now also covers group-based sharing:
+  it created a disposable tenant group, added `outsider`, shared one dataset via
+  `partial_group_list`, and verified outsider inventory/retrieve/chat returned
+  `200` on the group-shared dataset while mixed `document_ids` scope filtered
+  out the unreadable private document. Cleanup purged/deleted the shared,
+  group-shared, and private datasets and then deleted the disposable group.
 - Real parsed-output chunking on the same 144-page PDF exposed large strategy spread:
   `langchain_recursive=1151` chunks in `174.793s`,
   `parent_child=3702` chunks in `1.900s`,
@@ -282,3 +288,4 @@ This task also tracks the next quality pass across the product surface. Do not s
 - 2026-05-23 15:12: Rebuilt the remote `api` container from `main@ca40dd49` and re-ran the deeper live-stack smoke against the deployed `web` + `api` stack. The run passed (`live-stack-remote-web-20260523.json`, `1/1` in `27.282s`), proving upload -> parse -> viewer -> real chat -> command-menu handoff on the deployed page host without sacrificing API health during the cross-encoder cold start.
 - 2026-05-23 15:27: Added `scripts/remote_kb_boundary_matrix.py` and verified one dedicated knowledge-base boundary run through the live API. The proof (`artifacts/kb-boundary-matrix/remote-20260523/report.json`) created two disposable datasets, checked dataset-scoped inventory export, dataset-scoped retrieve/chat non-leakage, and explicit cross-dataset `document_ids` scope, then purged/deleted both datasets and swept the earlier failed-run leftovers.
 - 2026-05-23 15:36: Added `scripts/remote_kb_permission_boundary.py` and verified one dedicated outsider/viewer knowledge-base permission run through the live API. The proof (`artifacts/kb-permission-boundary/remote-20260523/report.json`) normalized `outsider` to `viewer`, proved shared-vs-private dataset read behavior (`200` vs `403`), and confirmed mixed `document_ids` scope filters out the unreadable private document in both retrieval and extractive chat before purging/deleting both proof datasets.
+- 2026-05-23 15:42: Extended `scripts/remote_kb_permission_boundary.py` to cover group-based dataset sharing. The rerun created a disposable group, added `outsider`, shared one dataset via `partial_group_list`, and proved outsider inventory/retrieve/chat on that dataset while mixed `document_ids` scope still filtered out the unreadable private document. Cleanup deleted all proof datasets and the temporary group.

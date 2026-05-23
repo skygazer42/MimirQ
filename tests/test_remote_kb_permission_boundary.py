@@ -3,6 +3,8 @@ from __future__ import annotations
 from scripts.remote_kb_permission_boundary import (
     evaluate_http_expectation,
     evaluate_permission_scope_case,
+    group_id_from_body,
+    group_member_ids_from_body,
 )
 
 
@@ -30,3 +32,11 @@ def test_remote_kb_permission_boundary_evaluate_permission_scope_case_accepts_fi
     )
 
     assert failures == []
+
+
+def test_remote_kb_permission_boundary_group_helpers_read_common_shapes() -> None:
+    group_body = {"id": "group-123", "name": "kb-shared"}
+    members_body = {"items": [{"user_id": "outsider"}, {"user_id": "demo"}]}
+
+    assert group_id_from_body(group_body) == "group-123"
+    assert group_member_ids_from_body(members_body) == ["outsider", "demo"]
