@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.rag.evaluation.test_generator import _build_testgen_prompt_inputs
+from app.rag.evaluation.test_generator import _build_testgen_prompt_inputs, _normalize_testgen_result_rows
 
 
 def test_build_testgen_prompt_inputs_supports_builtin_testset_variables() -> None:
@@ -33,3 +33,30 @@ def test_build_testgen_prompt_inputs_preserves_legacy_prompt_shape() -> None:
         "num_questions": 2,
         "question_types": "comparison, conditional",
     }
+
+
+def test_normalize_testgen_result_rows_accepts_builtin_qa_pairs_shape() -> None:
+    rows = _normalize_testgen_result_rows(
+        {
+            "qa_pairs": [
+                {
+                    "question": "What color is the flag?",
+                    "ground_truth": "The flag is blue.",
+                    "difficulty": "reasoning",
+                    "evidence_quotes": ["blue flag"],
+                    "expected_chunks": ["alpha"],
+                }
+            ]
+        }
+    )
+
+    assert rows == [
+        {
+            "question": "What color is the flag?",
+            "expected_answer": "The flag is blue.",
+            "question_type": "reasoning",
+            "expected_refusal": False,
+            "evidence_quotes": ["blue flag"],
+            "expected_chunks": ["alpha"],
+        }
+    ]
