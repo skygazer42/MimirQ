@@ -84,6 +84,9 @@ class TestGenFromDocsRequest(BaseModel):
         ),
     )
     auto_save_as_cases: bool = Field(default=True, description="Auto-save as regression test cases")
+    prompt_template_id: UUID | None = Field(default=None, description="Optional prompt template id for document test generation")
+    prompt_template_key: str | None = Field(default=None, description="Optional prompt template key for latest active version")
+    prompt_ab_experiment_key: str | None = Field(default=None, description="Optional A/B experiment key for prompt selection")
 
 
 class TestGenFromConversationsRequest(BaseModel):

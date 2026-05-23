@@ -250,6 +250,9 @@ class RagasRegressionRunCreateRequest(BaseModel):
     prompt_template_id: UUID | None = None
     prompt_template_key: str | None = None
     prompt_ab_experiment_key: str | None = None
+    judge_prompt_template_id: UUID | None = None
+    judge_prompt_template_key: str | None = None
+    judge_prompt_ab_experiment_key: str | None = None
 
     @field_validator("retrieval_mode", mode="before")
     @classmethod
