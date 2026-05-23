@@ -269,6 +269,15 @@ This task also tracks the next quality pass across the product surface. Do not s
   real index audit, and verified retrieval-panel signals including `索引审计`,
   `正常运行`, `向量总数`, `文档总数`, and `分片总数`. Cleanup purged the
   disposable dataset documents and deleted the dataset (`204`).
+- Graph/workbench UI now also has one dedicated deployed-page-host proof:
+  `artifacts/ui-clickthrough/graph-live-20260523-remote-web.json`
+  passed `1/1` in `28.607s`. The lane created a real dataset plus two
+  completed Markdown documents through the live API, ran heuristic KG
+  extraction for both documents, opened `/graph?dataset_id=...`, and verified
+  live graph signals including the `E:N:L` header stats, the `语义索引` panel,
+  the `节点` section, and at least one real semantic node button
+  (`聚焦节点：...`). Cleanup purged the disposable dataset documents and deleted
+  the dataset (`204`).
 - Knowledge-base dataset boundaries now have one dedicated server proof:
   `artifacts/kb-boundary-matrix/remote-20260523/report.json`
   created two disposable datasets (`alpha`, `beta`) with mutually exclusive
@@ -465,4 +474,5 @@ This task also tracks the next quality pass across the product surface. Do not s
 - 2026-05-23 19:54: Added `web/e2e/chunk-preview.live.spec.ts` plus a dedicated remote-chunk-preview Playwright config and verified the first live `/chunk-preview` workflow against the deployed `web` + `api` stack. The initial artifact created a real dataset and completed Markdown document, opened the dataset-scoped chunk-preview route, let the real backend auto-preview run, and verified visible chunk and coverage statistics on the deployed page host.
 - 2026-05-23 20:01: Extended the same chunk-preview lane with a real `确认入库` flow. The rerun passed `2/2`; after the dataset-scoped auto-preview completed, the test confirmed ingest through the UI, then verified the button changed to `已完成` and backend document count for the dataset increased from `1` to at least `2`.
 - 2026-05-23 20:34: Added `web/e2e/knowledge.live.spec.ts` plus a dedicated remote-knowledge Playwright config and verified one live `/knowledge` workflow against the deployed `web` + `api` stack. The artifact (`artifacts/ui-clickthrough/knowledge-live-20260523-remote-web.json`) created a real dataset and completed Markdown document, opened `/knowledge?dataset=...`, verified the dataset-scoped document list, switched to `检索测试`, ran a real index audit, and confirmed retrieval-panel metrics on the deployed page host.
+- 2026-05-23 20:55: Added `web/e2e/graph.live.spec.ts` plus a dedicated remote-graph Playwright config and verified one live `/graph` workflow against the deployed `web` + `api` stack. The artifact (`artifacts/ui-clickthrough/graph-live-20260523-remote-web.json`) created a real dataset and two completed Markdown documents, ran heuristic KG extraction for both, opened `/graph?dataset_id=...`, and confirmed live graph header stats plus semantic-node list rendering on the deployed page host.
 - 2026-05-23 16:10: Added `scripts/remote_kb_format_matrix.py` and verified one mixed-format KB breadth run through the live API. The proof (`artifacts/kb-format-matrix/remote-20260523/report.json`) ingested `md`, `html`, `csv`, `json`, `docx`, and `xlsx` into one disposable dataset, then proved dataset-scoped retrieve + extractive chat on all six formats before purging the dataset.
