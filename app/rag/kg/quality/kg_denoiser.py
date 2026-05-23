@@ -7,12 +7,12 @@ from sqlalchemy.orm import Session
 
 
 def _missing_relation_references_expr(column):  # noqa: ANN001
-    from sqlalchemy import cast, literal, or_  # noqa: WPS433
+    from sqlalchemy import cast, or_, text  # noqa: WPS433
     from sqlalchemy.dialects.postgresql import JSONB  # noqa: WPS433
 
     return or_(
         column.is_(None),
-        cast(column, JSONB) == cast(literal({}), JSONB),
+        cast(column, JSONB) == cast(text("'{}'"), JSONB),
     )
 
 
