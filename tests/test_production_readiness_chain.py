@@ -1,6 +1,30 @@
 from __future__ import annotations
 
 
+def test_api_stdlib_fallback_works_without_requests(monkeypatch) -> None:  # noqa: ANN001
+    import scripts.production_readiness_chain as mod
+
+    class _Response:
+        status = 200
+        headers = {"Content-Type": "application/json"}
+
+        def __enter__(self):  # noqa: ANN202
+            return self
+
+        def __exit__(self, exc_type, exc, tb):  # noqa: ANN001, ANN202
+            return False
+
+        def read(self):  # noqa: ANN202
+            return b'{"ok": true}'
+
+    monkeypatch.setattr(mod, "requests", None, raising=False)
+    monkeypatch.setattr(mod, "urlopen", lambda req, timeout=0: _Response(), raising=True)
+
+    data, _elapsed = mod.Api("http://localhost:8000", "tenant", "user", 5.0).json("GET", "/probe")
+
+    assert data == {"ok": True}
+
+
 def test_api_retries_backend_rate_limit(monkeypatch) -> None:  # noqa: ANN001
     import json
     import time
@@ -389,3 +413,34 @@ def test_create_dataset_disables_background_kg_until_explicit_heuristic_extract(
     assert pipeline["kg_enabled"] is False
     assert pipeline["event_vector_enabled"] is False
     assert pipeline["entity_vector_enabled"] is False
+
+
+def test_generate_office_files_falls_back_to_checked_in_samples_when_office_libs_missing(tmp_path, monkeypatch) -> None:  # noqa: ANN001
+    import builtins
+
+    import scripts.production_readiness_chain as mod
+    from scripts.production_readiness_chain import Evidence
+
+    real_import = builtins.__import__
+
+    def _fake_import(name, globals=None, locals=None, fromlist=(), level=0):  # noqa: ANN001, ANN202
+        if name in {"docx", "openpyxl"}:
+            raise ModuleNotFoundError(name)
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", _fake_import, raising=True)
+
+    evidence = Evidence(
+        started_at="2026-01-01T00:00:00Z",
+        base_url="http://localhost:8000",
+        tenant_id="tenant",
+        user_id="user",
+        corpus_dir=str(tmp_path),
+        output_dir="/tmp/out",
+    )
+
+    files = mod.generate_office_files(tmp_path, evidence)
+
+    assert [path.name for path in files] == ["mixed-rag-operations-brief.docx", "iris-quality-sample.xlsx"]
+    assert all(path.exists() for path in files)
+    assert {row.get("fallback_source") for row in evidence.generated_files} == {"checked_in_sample"}
