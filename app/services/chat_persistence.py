@@ -6,11 +6,68 @@ from uuid import UUID
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.services.chat_response_cache import resolve_inflight_chat_response
 from app.services.chat_runtime import store_chat_response_cache_if_needed
 from app.services.chat_turn_persistence import (
     persist_chat_turn_sync,
 )
+from app.services.metrics_logger import log_metrics
+
+
+def _log_extractive_fallback_rag_trace(
+    *,
+    tenant_id: UUID,
+    conversation_id: UUID,
+    request_id: str,
+    question: str,
+    citations: list,
+    metrics: dict[str, Any],
+    retrieval_mode_default: str | None,
+) -> None:
+    if str(metrics.get("generation_fallback_kind") or "").strip() != "extractive_retrieval_summary":
+        return
+
+    retrieval_mode_used = str(
+        metrics.get("retrieval_mode") or retrieval_mode_default or ""
+    ).strip()
+    retrieval_elapsed_raw = (
+        metrics.get("retrieval_elapsed_sec")
+        if metrics.get("retrieval_elapsed_sec") is not None
+        else metrics.get("elapsed_sec")
+    )
+    retrieval_elapsed_sec: float | None = None
+    try:
+        if retrieval_elapsed_raw is not None:
+            candidate = float(retrieval_elapsed_raw)
+            if candidate >= 0:
+                retrieval_elapsed_sec = candidate
+    except Exception:
+        retrieval_elapsed_sec = None
+
+    errors_raw = metrics.get("retrieval_errors") or metrics.get("errors") or []
+    errors = [str(item)[:200] for item in errors_raw if str(item or "").strip()]
+
+    payload: dict[str, Any] = {
+        "event": "rag_trace",
+        "conversation_id": str(conversation_id),
+        "tenant_id": str(tenant_id),
+        "request_id": str(request_id),
+        "question": str(question or ""),
+        "query_for_retrieval": str(metrics.get("query_for_retrieval") or question or ""),
+        "citations_count": int(len(citations or [])),
+        "citations": list(citations or []),
+        "retrieval": {
+            "mode": retrieval_mode_used or None,
+            "elapsed_sec": retrieval_elapsed_sec,
+            "errors": errors,
+        },
+        "route": "extractive_fallback",
+        "vector_backend": metrics.get("vector_backend") or settings.VECTOR_BACKEND,
+        "generation_fallback_kind": metrics.get("generation_fallback_kind"),
+        "generation_fallback_reason": metrics.get("generation_fallback_reason"),
+    }
+    log_metrics(payload)
 
 
 def finalize_chat_response_sync(
@@ -40,6 +97,16 @@ def finalize_chat_response_sync(
     retrieval_mode_default: str | None,
 ) -> dict[str, Any]:
     metrics_out = dict(metrics or {})
+
+    _log_extractive_fallback_rag_trace(
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        request_id=request_id,
+        question=question,
+        citations=citations,
+        metrics=metrics_out,
+        retrieval_mode_default=retrieval_mode_default,
+    )
 
     if enable_online_eval:
         try:
