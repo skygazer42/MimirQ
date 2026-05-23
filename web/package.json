@@ -34,6 +34,7 @@
     "e2e:live:remote-knowledge": "pnpm exec playwright test e2e/knowledge.live.spec.ts --config playwright.remote-knowledge.config.ts",
     "e2e:live:remote-graph": "pnpm exec playwright test e2e/graph.live.spec.ts --config playwright.remote-graph.config.ts",
     "e2e:live:remote-graph-snapshots": "pnpm exec playwright test e2e/graph-snapshots.live.spec.ts --config playwright.remote-graph-snapshots.config.ts",
+    "e2e:live:remote-diagnostics": "pnpm exec playwright test e2e/diagnostics.live.spec.ts --config playwright.remote-diagnostics.config.ts",
     "e2e:live:remote-reports": "pnpm exec playwright test e2e/reports.live.spec.ts --config playwright.remote-reports.config.ts",
     "e2e:live:remote-feedback": "pnpm exec playwright test e2e/feedback-workbench.live.spec.ts --config playwright.remote-feedback.config.ts",
     "e2e:live:remote-evidence": "pnpm exec playwright test e2e/evidence-workbench.live.spec.ts --config playwright.remote-evidence.config.ts",
