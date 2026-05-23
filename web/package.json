@@ -27,6 +27,7 @@
     "e2e:list": "playwright test --list",
     "e2e:live": "node scripts/run-live-playwright.mjs",
     "e2e:live:remote-web": "pnpm exec playwright test e2e/backend-business-surfaces.live.spec.ts --config playwright.remote-web.config.ts",
+    "e2e:live:remote-management": "pnpm exec playwright test e2e/management-surfaces.live.spec.ts --config playwright.remote-management.config.ts",
     "assets:optimize": "svgo -r public --config=.svgo.config.mjs",
     "verify": "pnpm run lint && pnpm run ui-check && pnpm run typecheck && pnpm run test && pnpm run api-check",
     "ui-check": "node scripts/check-design-tokens.mjs && node scripts/check-native-dialogs.mjs && node scripts/check-theme-contrast.mjs",
