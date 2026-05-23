@@ -645,7 +645,12 @@ export default function FeedbackTriagePage() {
   const [creatingCase, setCreatingCase] = useState(false)
   const [createdCaseId, setCreatedCaseId] = useState<string | null>(null)
   const [archivingId, setArchivingId] = useState<string | null>(null)
+  const [timeReady, setTimeReady] = useState(false)
   const [page, setPage] = useState(1)
+
+  useEffect(() => {
+    setTimeReady(true)
+  }, [])
 
   const params = useMemo(() => {
     const p: any = {}
@@ -1393,7 +1398,7 @@ export default function FeedbackTriagePage() {
                               </div>
 
                               <div className="flex shrink-0 flex-col items-start gap-0.5 text-[10px] text-muted-foreground xl:items-end">
-                                <div>{formatDate(item.created_at)}</div>
+                                <div>{timeReady ? formatDate(item.created_at) : '—'}</div>
                                 <div className="inline-flex items-center gap-1.5">
                                   <UserRound className="size-3" />
                                   <span>{item.account_id || 'unknown'}</span>
@@ -1870,7 +1875,7 @@ export default function FeedbackTriagePage() {
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-mono text-indigo dark:text-indigo bg-indigo/[0.08] dark:bg-indigo/10 px-3 py-1.5 rounded-full border border-indigo/20 dark:border-indigo/20 font-medium">
-                    {formatDate(detail.updated_at)}
+                    {timeReady ? formatDate(detail.updated_at) : '—'}
                   </span>
                 </div>
               </div>
