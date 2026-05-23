@@ -67,9 +67,9 @@ test.describe('live backend business surfaces', () => {
     await installLiveAuth(page)
 
     await page.goto('/settings', { waitUntil: 'networkidle' })
-    await expect(page.getByText('行业规则与查询改写')).toBeVisible({ timeout: LIVE_EXPECT_TIMEOUT_MS })
+    await expect(page.getByRole('heading', { name: '行业规则' })).toBeVisible({ timeout: LIVE_EXPECT_TIMEOUT_MS })
     await expect(page.getByText('个人数据删除闭环（RTBF）')).toBeVisible({ timeout: LIVE_EXPECT_TIMEOUT_MS })
-    await page.getByRole('button', { name: '改写预览' }).click()
+    await page.getByRole('button', { name: '预览' }).click()
     await revealRawResponse(page)
     await expect(page.getByText('mimirq.industry_rules_preview.v1')).toBeVisible({ timeout: 30_000 })
 
