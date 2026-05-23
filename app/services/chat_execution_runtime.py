@@ -277,6 +277,61 @@ def build_extractive_fallback_answer(
     )
 
 
+def _answer_evidence_from_retrieval(
+    *,
+    docs: list[Any] | None,
+    citations: list[dict[str, Any]] | None,
+    max_items: int,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+
+    for doc in docs or []:
+        meta = getattr(doc, "metadata", None) or {}
+        doc_name = (
+            meta.get("document_name")
+            or meta.get("filename")
+            or meta.get("source")
+            or "文档"
+        )
+        content = getattr(doc, "page_content", None) or ""
+        key = (str(doc_name), str(content))
+        if key in seen or not str(content).strip():
+            continue
+        seen.add(key)
+        rows.append({"document_name": doc_name, "chunk_content": content})
+        if len(rows) >= max_items:
+            return rows
+
+    for citation in citations or []:
+        if not isinstance(citation, dict):
+            continue
+        doc_name = (
+            citation.get("document_name")
+            or citation.get("filename")
+            or citation.get("source")
+            or citation.get("metadata", {}).get("document_name")
+            or citation.get("metadata", {}).get("source")
+            or "引用"
+        )
+        content = (
+            citation.get("chunk_content")
+            or citation.get("content")
+            or citation.get("text")
+            or citation.get("metadata", {}).get("chunk_content")
+            or ""
+        )
+        key = (str(doc_name), str(content))
+        if key in seen or not str(content).strip():
+            continue
+        seen.add(key)
+        rows.append(dict(citation))
+        if len(rows) >= max_items:
+            break
+
+    return rows
+
+
 def execute_extractive_fallback_once(
     *,
     db: Session,
@@ -327,6 +382,7 @@ def execute_extractive_fallback_once(
     )
     result = run_retrieval(state) or {}
     citations = list(result.get("citations") or [])
+    docs = list(result.get("docs") or [])
     metrics = dict(result.get("metrics") or {})
     metrics.update(
         {
@@ -339,7 +395,11 @@ def execute_extractive_fallback_once(
     )
     if original_error is not None:
         metrics["generation_fallback_error"] = str(original_error)[:400]
-    answer = build_extractive_fallback_answer(question=request.message, citations=citations, reason=reason)
+    answer = build_extractive_fallback_answer(
+        question=request.message,
+        citations=_answer_evidence_from_retrieval(docs=docs, citations=citations, max_items=4),
+        reason=reason,
+    )
     return ExecutedGraphChatOnceResult(
         content=answer,
         citations=citations,
