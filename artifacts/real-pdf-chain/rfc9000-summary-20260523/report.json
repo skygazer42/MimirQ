@@ -1,0 +1,224 @@
+{
+  "ok": true,
+  "dataset_id": "dbfb78f6-0f81-4171-be54-b0bcf9a98a70",
+  "document_id": "06e0b75e-5860-48a6-a01b-91d2582d1317",
+  "artifact_dir": "/tmp/MimirQ-main-webfix/artifacts/real-pdf-chain/rfc9000-summary-20260523",
+  "kg_extract_status": 200,
+  "kg_extract_elapsed_sec": 25.742,
+  "kg_stats": {
+    "events": 119,
+    "entities": 760,
+    "links": 1815,
+    "entity_types": [
+      {
+        "type": "concept",
+        "count": 708
+      },
+      {
+        "type": "Standard",
+        "count": 46
+      },
+      {
+        "type": "protocol",
+        "count": 5
+      },
+      {
+        "type": "Organization",
+        "count": 1
+      }
+    ],
+    "updated_at": "2026-05-23T15:42:25.822306"
+  },
+  "kg_search_results": [
+    {
+      "question": "What is this document about?",
+      "status_code": 200,
+      "elapsed_sec": 2.176,
+      "clue_count": 90,
+      "event_count": 10
+    },
+    {
+      "question": "Summarize this document in one sentence.",
+      "status_code": 200,
+      "elapsed_sec": 1.204,
+      "clue_count": 90,
+      "event_count": 10
+    },
+    {
+      "question": "What are the main themes discussed in this document?",
+      "status_code": 200,
+      "elapsed_sec": 1.247,
+      "clue_count": 90,
+      "event_count": 10
+    }
+  ],
+  "chat_results": [
+    {
+      "question": "What is this document about?",
+      "mode": "baseline",
+      "status_code": 200,
+      "elapsed_sec": 0.033,
+      "citation_count": 50,
+      "answer_preview": "以下为基于已检索引用生成的抽取式可审计摘要。\n\n问题：What is this document about?\n\n检索证据要点：\n1. 06e0b75e-5860-48a6-a01b-91d2582d1317.pdf: 1.1. Document Structure 1.2. Terms and Definitions 1.3. Notational Conventions\n2. 06e0b75e-5860-48a6-a01b-91d2582d1317.pdf: Information about the current status of this document, any errata, and how to provide feedback on it may be obtained at https://www.rfc-editor.org/info/rfc9000.\n3. 06e0b75e-5860-48a6-a01b-91d2582d1317.pdf: Commonly used terms in this document are described below.\n4."
+    },
+    {
+      "question": "What is this document about?",
+      "mode": "graph",
+      "status_code": 200,
+      "elapsed_sec": 0.027,
+      "citation_count": 50,
+      "answer_preview": "以下为基于已检索引用生成的抽取式可审计摘要。\n\n问题：What is this document about?\n\n检索证据要点：\n1. 06e0b75e-5860-48a6-a01b-91d2582d1317.pdf: 1.1. Document Structure 1.2. Terms and Definitions 1.3. Notational Conventions\n2. 06e0b75e-5860-48a6-a01b-91d2582d1317.pdf: Information about the current status of this document, any errata, and how to provide feedback on it may be obtained at https://www.rfc-editor.org/info/rfc9000.\n3. 06e0b75e-5860-48a6-a01b-91d2582d1317.pdf: Commonly used terms in this document are described below.\n4."
+    },
+    {
+      "question": "Summarize this document in one sentence.",
+      "mode": "baseline",
+      "status_code": 200,
+      "elapsed_sec": 0.031,
+      "citation_count": 6,
+      "answer_preview": "以下为基于已检索引用生成的抽取式可审计摘要。\n\n问题：Summarize this document in one sentence.\n\n检索证据要点：\n1. 06e0b75e-5860-48a6-a01b-91d2582d1317.pdf: Packet and frame diagrams in this document use a custom format. The purpose of this format is to summarize, not define, protocol elements. Prose defines the complete semantics and details of structures.\n2. 06e0b75e-5860-48a6-a01b-91d2582d1317.pdf: Commonly used terms in this document are described below.\n3. 06e0b75e-5860-48a6-a01b-91d2582d1317.pdf: 1.1. Document Structure 1.2"
+    },
+    {
+      "question": "Summarize this document in one sentence.",
+      "mode": "graph",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "citation_count": 6,
+      "answer_preview": "以下为基于已检索引用生成的抽取式可审计摘要。\n\n问题：Summarize this document in one sentence.\n\n检索证据要点：\n1. 06e0b75e-5860-48a6-a01b-91d2582d1317.pdf: Packet and frame diagrams in this document use a custom format. The purpose of this format is to summarize, not define, protocol elements. Prose defines the complete semantics and details of structures.\n2. 06e0b75e-5860-48a6-a01b-91d2582d1317.pdf: Commonly used terms in this document are described below.\n3. 06e0b75e-5860-48a6-a01b-91d2582d1317.pdf: 1.1. Document Structure 1.2"
+    },
+    {
+      "question": "What are the main themes discussed in this document?",
+      "mode": "baseline",
+      "status_code": 200,
+      "elapsed_sec": 0.031,
+      "citation_count": 6,
+      "answer_preview": "以下为基于已检索引用生成的抽取式可审计摘要。\n\n问题：What are the main themes discussed in this document?\n\n检索证据要点：\n1. 06e0b75e-5860-48a6-a01b-91d2582d1317.pdf: with respect to this document. Code Components extracted from this document must include Simplified BSD License text as described in Section 4.e of the Trust Legal Provisions and are provided without warranty as described in the Simplified BSD License.\n2. 06e0b75e-5860-48a6-a01b-91d2582d1317.pdf: This is an Internet Standards Track document.\n3. 06e0b75e-5860-48a6-"
+    },
+    {
+      "question": "What are the main themes discussed in this document?",
+      "mode": "graph",
+      "status_code": 200,
+      "elapsed_sec": 0.027,
+      "citation_count": 6,
+      "answer_preview": "以下为基于已检索引用生成的抽取式可审计摘要。\n\n问题：What are the main themes discussed in this document?\n\n检索证据要点：\n1. 06e0b75e-5860-48a6-a01b-91d2582d1317.pdf: with respect to this document. Code Components extracted from this document must include Simplified BSD License text as described in Section 4.e of the Trust Legal Provisions and are provided without warranty as described in the Simplified BSD License.\n2. 06e0b75e-5860-48a6-a01b-91d2582d1317.pdf: This is an Internet Standards Track document.\n3. 06e0b75e-5860-48a6-"
+    }
+  ],
+  "cleanup": {
+    "mode": "purge_dataset",
+    "purge_status": 200,
+    "purge_deleted": 1,
+    "post_cleanup_document_count": 0,
+    "post_cleanup_kg_stats": {
+      "events": 0,
+      "entities": 0,
+      "links": 0,
+      "entity_types": [],
+      "updated_at": null
+    },
+    "delete_dataset_status": 204
+  },
+  "steps": [
+    {
+      "name": "kg_extract",
+      "status_code": 200,
+      "elapsed_sec": 25.742
+    },
+    {
+      "name": "kg_stats",
+      "status_code": 200,
+      "elapsed_sec": 0.107
+    },
+    {
+      "name": "kg_search",
+      "status_code": 200,
+      "elapsed_sec": 2.176,
+      "question": "What is this document about?",
+      "clue_count": 90,
+      "event_count": 10
+    },
+    {
+      "name": "chat_baseline",
+      "status_code": 200,
+      "elapsed_sec": 0.033,
+      "question": "What is this document about?",
+      "citation_count": 50,
+      "answer_preview": "以下为基于已检索引用生成的抽取式可审计摘要。\n\n问题：What is this document about?\n\n检索证据要点：\n1. 06e0b75e-5860-48a6-a01b-91d2582d1317.pdf: 1.1. Document Structure 1.2. Terms and Definitions 1.3. Notational Conventions\n2. 06e0b75e-5860-48a6-a01b-91d2582d1317.pdf: Information about the current status of this document, any errata,"
+    },
+    {
+      "name": "chat_graph",
+      "status_code": 200,
+      "elapsed_sec": 0.027,
+      "question": "What is this document about?",
+      "citation_count": 50,
+      "answer_preview": "以下为基于已检索引用生成的抽取式可审计摘要。\n\n问题：What is this document about?\n\n检索证据要点：\n1. 06e0b75e-5860-48a6-a01b-91d2582d1317.pdf: 1.1. Document Structure 1.2. Terms and Definitions 1.3. Notational Conventions\n2. 06e0b75e-5860-48a6-a01b-91d2582d1317.pdf: Information about the current status of this document, any errata,"
+    },
+    {
+      "name": "kg_search",
+      "status_code": 200,
+      "elapsed_sec": 1.204,
+      "question": "Summarize this document in one sentence.",
+      "clue_count": 90,
+      "event_count": 10
+    },
+    {
+      "name": "chat_baseline",
+      "status_code": 200,
+      "elapsed_sec": 0.031,
+      "question": "Summarize this document in one sentence.",
+      "citation_count": 6,
+      "answer_preview": "以下为基于已检索引用生成的抽取式可审计摘要。\n\n问题：Summarize this document in one sentence.\n\n检索证据要点：\n1. 06e0b75e-5860-48a6-a01b-91d2582d1317.pdf: Packet and frame diagrams in this document use a custom format. The purpose of this format is to summarize, not define, protocol elements. Prose defines the complete semantics an"
+    },
+    {
+      "name": "chat_graph",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "question": "Summarize this document in one sentence.",
+      "citation_count": 6,
+      "answer_preview": "以下为基于已检索引用生成的抽取式可审计摘要。\n\n问题：Summarize this document in one sentence.\n\n检索证据要点：\n1. 06e0b75e-5860-48a6-a01b-91d2582d1317.pdf: Packet and frame diagrams in this document use a custom format. The purpose of this format is to summarize, not define, protocol elements. Prose defines the complete semantics an"
+    },
+    {
+      "name": "kg_search",
+      "status_code": 200,
+      "elapsed_sec": 1.247,
+      "question": "What are the main themes discussed in this document?",
+      "clue_count": 90,
+      "event_count": 10
+    },
+    {
+      "name": "chat_baseline",
+      "status_code": 200,
+      "elapsed_sec": 0.031,
+      "question": "What are the main themes discussed in this document?",
+      "citation_count": 6,
+      "answer_preview": "以下为基于已检索引用生成的抽取式可审计摘要。\n\n问题：What are the main themes discussed in this document?\n\n检索证据要点：\n1. 06e0b75e-5860-48a6-a01b-91d2582d1317.pdf: with respect to this document. Code Components extracted from this document must include Simplified BSD License text as described in Section 4.e of the Trust Legal Pr"
+    },
+    {
+      "name": "chat_graph",
+      "status_code": 200,
+      "elapsed_sec": 0.027,
+      "question": "What are the main themes discussed in this document?",
+      "citation_count": 6,
+      "answer_preview": "以下为基于已检索引用生成的抽取式可审计摘要。\n\n问题：What are the main themes discussed in this document?\n\n检索证据要点：\n1. 06e0b75e-5860-48a6-a01b-91d2582d1317.pdf: with respect to this document. Code Components extracted from this document must include Simplified BSD License text as described in Section 4.e of the Trust Legal Pr"
+    },
+    {
+      "name": "cleanup:purge_dataset",
+      "status_code": 200,
+      "elapsed_sec": 1.186
+    },
+    {
+      "name": "cleanup:dataset_documents_export",
+      "status_code": 200,
+      "elapsed_sec": 0.019,
+      "remaining_documents": 0
+    },
+    {
+      "name": "cleanup:kg_stats",
+      "status_code": 200,
+      "elapsed_sec": 0.014
+    },
+    {
+      "name": "cleanup:delete_dataset",
+      "status_code": 204,
+      "elapsed_sec": 0.036
+    }
+  ]
+}
