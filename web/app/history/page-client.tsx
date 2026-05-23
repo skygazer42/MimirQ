@@ -468,7 +468,7 @@ function HistoryPageContent({
                             <div className="flex items-center gap-2">
                               <div className={cn("h-px flex-1", groupTone.lineClass)} />
                               <div className={cn("inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] shadow-sm", groupTone.chipClass)}>
-                                <span>{group}</span>
+                                <span suppressHydrationWarning>{group}</span>
                                 <span className={cn("rounded-full px-1.5 py-0.5 text-[11px] font-semibold", groupTone.countClass)}>
                                   {convs.length}
                                 </span>
@@ -552,7 +552,7 @@ function HistoryPageContent({
                                 {t("messageCount", { count: selectedConversation.message_count })}
                               </span>
                               <span className="text-muted-foreground/20 text-[11px] leading-none px-0.5">•</span>
-                              <span className="inline-flex items-center gap-1 rounded-md bg-muted/30 px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground/50 border border-border/10">
+                              <span suppressHydrationWarning className="inline-flex items-center gap-1 rounded-md bg-muted/30 px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground/50 border border-border/10">
                                 {formatDate(selectedConversation.created_at, locale)}
                               </span>
                             </div>
@@ -644,7 +644,7 @@ function HistoryPageContent({
                           {groupedMessages.map((group) => (<div key={group.key} className="space-y-6">
                               <div className="flex items-center gap-6 py-1">
                                 <div className="h-px flex-1 bg-border/30" />
-                                <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground/28 whitespace-nowrap">
+                                <div suppressHydrationWarning className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground/28 whitespace-nowrap">
                                   {group.label}
                                 </div>
                                 <div className="h-px flex-1 bg-border/30" />
