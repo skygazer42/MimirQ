@@ -96,9 +96,39 @@
 
 尚未完成：
 
-- 未在远程 GPU 服务器上构建并启动 `mimirq-magicpdf` 镜像。
-- 未用真实 PDF 对新服务执行端到端解析测速。
 - 图片产物跨容器共享仍按“服务返回 markdown 优先”处理，复杂图片引用场景需要远程实测后决定是否增加共享 artifact volume。
+
+### 2026-05-23 远程 GPU 验证结果
+
+在 `192.0.2.253:/tmp/MimirQ-main` 干净 checkout 上，基于根目录 `/data/MimirQ/.env`
+和 Compose project `docker` 完成了远程服务化验证：
+
+- `mimirq-magicpdf` 镜像已成功构建并启动。
+- `GET /health` 返回：
+  - `ok=true`
+  - `cli=/opt/conda/bin/magic-pdf`
+  - `models_ok=true`
+  - `default_device_mode=cuda`
+  - `cuda_available=true`
+- `GET /api/v1/settings/status` 已显示 `magicpdf.message = configured (service)`。
+- 2 页 `parse-preview` fixture：
+  - `backend_requested=magicpdf`
+  - `backend=magicpdf`
+  - `failure_class=ok`
+  - `elapsed_sec=19.678`
+- 144 页 arXiv PDF（`2303.18223`，5.85 MB）：
+  - `backend_requested=magicpdf`
+  - `backend=magicpdf`
+  - `failure_class=ok`
+  - `elapsed_sec=163.729`
+  - `markdown_chars=810438`
+  - `markdown_lines=2950`
+  - `pdf_page_count=144`
+
+远程补充修正：
+
+- 服务镜像从 `magic-pdf` core 安装切到 `magic-pdf[full]==1.3.12`，补齐 `cv2` / `doclayout_yolo` 运行依赖。
+- 共享 `PDF-Extract-Kit` cache 只有 `ch_PP-OCRv5_rec_infer.pth` 时，服务会自动把 MagicPDF 内部 `lang.ch` 资源映射改写到现有 `v5` 识别模型；否则 CLI 会因为缺少 `ch_PP-OCRv4_rec_server_doc_infer.pth` 而直接 500。
 
 ## 目标架构
 
