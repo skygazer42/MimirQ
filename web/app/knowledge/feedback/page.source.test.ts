@@ -12,4 +12,16 @@ describe('feedback page source', () => {
     expect(src).toContain('HardNeg')
     expect(src).toContain('规则候选')
   })
+
+  it('defers relative timestamp chips until after mount and buckets trend stats by UTC day keys', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'page.tsx'), 'utf8')
+
+    expect(src).toContain("const [timeReady, setTimeReady] = useState(false)")
+    expect(src).toContain("useEffect(() => {\n    setTimeReady(true)\n  }, [])")
+    expect(src).toContain("timeReady ? formatDate(item.created_at) : '—'")
+    expect(src).toContain("timeReady ? formatDate(detail.updated_at) : '—'")
+    expect(src).toContain('function utcDayKey(value: string | Date): string')
+    expect(src).toContain('const dayKey = utcDayKey(day)')
+    expect(src).toContain('const itemKey = utcDayKey(item.created_at)')
+  })
 })
