@@ -73,6 +73,28 @@ def evaluate_permission_scope_case(
     )
 
 
+def group_id_from_body(body: Any) -> str:
+    if not isinstance(body, dict):
+        return ""
+    return str(body.get("id") or body.get("group_id") or "").strip()
+
+
+def group_member_ids_from_body(body: Any) -> list[str]:
+    if not isinstance(body, dict):
+        return []
+    rows = body.get("items")
+    if not isinstance(rows, list):
+        return []
+    out: list[str] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        text = str(row.get("user_id") or "").strip()
+        if text:
+            out.append(text)
+    return out
+
+
 def create_dataset(
     api: LiveApi,
     *,
@@ -202,6 +224,7 @@ def main() -> int:
         "artifact_dir": str(artifact_dir),
         "base_url": args.base_url,
         "normalization": {},
+        "group": {},
         "datasets": {},
         "http_checks": [],
         "retrieve_checks": [],
@@ -209,6 +232,7 @@ def main() -> int:
     }
 
     dataset_ids: list[str] = []
+    group_id = ""
 
     try:
         resp = admin_api.json("GET", "/api/v1/health")
@@ -229,6 +253,33 @@ def main() -> int:
         if not forced_ok:
             raise RuntimeError(f"failed to normalize outsider role: {forced_output}")
 
+        resp = admin_api.json(
+            "POST",
+            "/api/v1/groups/",
+            payload={"name": f"kb-boundary-viewers-{run_id}"},
+        )
+        record_step(steps, "create_group", resp)
+        ensure_success("create_group", resp)
+        group_id = group_id_from_body(resp.body)
+        if not group_id:
+            raise RuntimeError("create_group missing group id")
+
+        resp = admin_api.json(
+            "POST",
+            f"/api/v1/groups/{group_id}/members",
+            payload={"member_ids": [str(args.outsider_account_id)]},
+        )
+        record_step(steps, "add_group_member", resp)
+        ensure_success("add_group_member", resp)
+
+        resp = admin_api.json("GET", f"/api/v1/groups/{group_id}/members?limit=50")
+        record_step(steps, "list_group_members", resp)
+        ensure_success("list_group_members", resp)
+        group_member_ids = group_member_ids_from_body(resp.body)
+        if str(args.outsider_account_id) not in group_member_ids:
+            raise RuntimeError(f"outsider missing from group membership: {group_member_ids}")
+        summary["group"] = {"group_id": group_id, "member_ids": group_member_ids}
+
         shared_dataset_id = create_dataset(
             admin_api,
             steps=steps,
@@ -236,13 +287,32 @@ def main() -> int:
             permission="partial_members",
             partial_member_list=[str(args.admin_account_id), str(args.outsider_account_id)],
         )
+        group_dataset_id = create_dataset(
+            admin_api,
+            steps=steps,
+            name=f"KB Perm Group {run_id}",
+            permission="partial_members",
+            partial_member_list=[str(args.admin_account_id)],
+        )
         private_dataset_id = create_dataset(
             admin_api,
             steps=steps,
             name=f"KB Perm Private {run_id}",
             permission="only_me",
         )
-        dataset_ids.extend([shared_dataset_id, private_dataset_id])
+        dataset_ids.extend([shared_dataset_id, group_dataset_id, private_dataset_id])
+
+        resp = admin_api.json(
+            "PATCH",
+            f"/api/v1/datasets/{group_dataset_id}",
+            payload={
+                "permission": "partial_members",
+                "partial_member_list": [str(args.admin_account_id)],
+                "partial_group_list": [group_id],
+            },
+        )
+        record_step(steps, "update_group_dataset_acl", resp)
+        ensure_success("update_group_dataset_acl", resp)
 
         shared_doc = upload_fixture(
             admin_api,
@@ -260,8 +330,24 @@ def main() -> int:
             file_path=fixtures["beta-runbook.md"],
             poll_timeout=args.poll_timeout,
         )
+        group_fixture = artifact_dir / "fixtures" / "group-handbook.md"
+        group_fixture.write_text(
+            "# Group Shared Handbook\n\n"
+            "Token GROUP-LANTERN belongs only to the group-shared dataset.\n\n"
+            "Owner: Gina Harbor.\n",
+            encoding="utf-8",
+        )
+        group_doc = upload_fixture(
+            admin_api,
+            steps=steps,
+            dataset_id=group_dataset_id,
+            label="group_shared",
+            file_path=group_fixture,
+            poll_timeout=args.poll_timeout,
+        )
         summary["datasets"] = {
             "shared": {"dataset_id": shared_dataset_id, **shared_doc},
+            "group_shared": {"dataset_id": group_dataset_id, **group_doc},
             "private": {"dataset_id": private_dataset_id, **private_doc},
         }
 
@@ -282,6 +368,16 @@ def main() -> int:
         summary["http_checks"].append({"name": "outsider_private_inventory", "status_code": resp.status, "ok": not failures, "failures": failures})
         if failures:
             raise RuntimeError(f"outsider_private_inventory failed: {failures}")
+
+        resp = outsider_api.json("GET", f"/api/v1/documents/?dataset_id={group_dataset_id}&limit=20")
+        record_step(steps, "outsider_group_inventory", resp)
+        failures = evaluate_http_expectation("outsider_group_inventory", resp.status, [200])
+        export_ids = exported_document_ids(resp.body)
+        if export_ids != [group_doc["document_id"]]:
+            failures.append(f"outsider_group_inventory: actual_document_ids={export_ids}")
+        summary["http_checks"].append({"name": "outsider_group_inventory", "status_code": resp.status, "ok": not failures, "failures": failures})
+        if failures:
+            raise RuntimeError(f"outsider_group_inventory failed: {failures}")
 
         rag_config = {
             "top_k": 4,
@@ -349,6 +445,32 @@ def main() -> int:
         resp = outsider_api.json(
             "POST",
             "/api/v1/rag/retrieve-preview",
+            payload={"query": "Who owns token GROUP-LANTERN?", "dataset_id": group_dataset_id, "rag_config": rag_config},
+        )
+        record_step(steps, "outsider_group_retrieve", resp)
+        failures = evaluate_http_expectation("outsider_group_retrieve", resp.status, [200])
+        failures.extend(
+            evaluate_permission_scope_case(
+                {
+                    "name": "outsider_group_retrieve",
+                    "allowed_document_ids": [group_doc["document_id"]],
+                    "expected_document_ids": [group_doc["document_id"]],
+                    "expected_terms": ["GROUP-LANTERN"],
+                    "forbidden_terms": ["BETA-QUARTZ", "ALOE-COMET"],
+                    "min_citations": 1,
+                },
+                citation_doc_ids=citation_document_ids(resp.body),
+                citation_count=len((resp.body or {}).get("citations") or []) if isinstance(resp.body, dict) else 0,
+                response_text=response_text_from_body(resp.body),
+            )
+        )
+        summary["retrieve_checks"].append({"name": "outsider_group_retrieve", "status_code": resp.status, "ok": not failures, "failures": failures})
+        if failures:
+            raise RuntimeError(f"outsider_group_retrieve failed: {failures}")
+
+        resp = outsider_api.json(
+            "POST",
+            "/api/v1/rag/retrieve-preview",
             payload={"query": "Who owns token BETA-QUARTZ?", "dataset_id": private_dataset_id, "rag_config": rag_config},
         )
         record_step(steps, "outsider_private_retrieve", resp)
@@ -384,6 +506,36 @@ def main() -> int:
         if failures:
             raise RuntimeError(f"outsider_mixed_scope_retrieve failed: {failures}")
 
+        resp = outsider_api.json(
+            "POST",
+            "/api/v1/rag/retrieve-preview",
+            payload={
+                "query": "Who owns token GROUP-LANTERN?",
+                "document_ids": [group_doc["document_id"], private_doc["document_id"]],
+                "rag_config": rag_config,
+            },
+        )
+        record_step(steps, "outsider_group_mixed_scope_retrieve", resp)
+        failures = evaluate_http_expectation("outsider_group_mixed_scope_retrieve", resp.status, [200])
+        failures.extend(
+            evaluate_permission_scope_case(
+                {
+                    "name": "outsider_group_mixed_scope_retrieve",
+                    "allowed_document_ids": [group_doc["document_id"]],
+                    "expected_document_ids": [group_doc["document_id"]],
+                    "expected_terms": ["GROUP-LANTERN"],
+                    "forbidden_terms": ["BETA-QUARTZ", "ALOE-COMET"],
+                    "min_citations": 1,
+                },
+                citation_doc_ids=citation_document_ids(resp.body),
+                citation_count=len((resp.body or {}).get("citations") or []) if isinstance(resp.body, dict) else 0,
+                response_text=response_text_from_body(resp.body),
+            )
+        )
+        summary["retrieve_checks"].append({"name": "outsider_group_mixed_scope_retrieve", "status_code": resp.status, "ok": not failures, "failures": failures})
+        if failures:
+            raise RuntimeError(f"outsider_group_mixed_scope_retrieve failed: {failures}")
+
         shared_chat_payload = {
             "message": "Who owns token ALOE-COMET?",
             "dataset_id": shared_dataset_id,
@@ -411,6 +563,37 @@ def main() -> int:
         summary["chat_checks"].append({"name": "outsider_shared_chat", "status_code": resp.status, "ok": not failures, "failures": failures})
         if failures:
             raise RuntimeError(f"outsider_shared_chat failed: {failures}")
+
+        resp = outsider_api.json(
+            "POST",
+            "/api/v1/chat",
+            payload={
+                "message": "Who owns token GROUP-LANTERN?",
+                "dataset_id": group_dataset_id,
+                "stream": False,
+                "rag_config": {**rag_config, "answer_mode": "extractive", "max_tokens": 300},
+            },
+        )
+        record_step(steps, "outsider_group_chat", resp)
+        failures = evaluate_http_expectation("outsider_group_chat", resp.status, [200])
+        failures.extend(
+            evaluate_permission_scope_case(
+                {
+                    "name": "outsider_group_chat",
+                    "allowed_document_ids": [group_doc["document_id"]],
+                    "expected_document_ids": [group_doc["document_id"]],
+                    "expected_terms": ["GROUP-LANTERN"],
+                    "forbidden_terms": ["BETA-QUARTZ", "ALOE-COMET"],
+                    "min_citations": 1,
+                },
+                citation_doc_ids=citation_document_ids(resp.body),
+                citation_count=len((resp.body or {}).get("citations") or []) if isinstance(resp.body, dict) else 0,
+                response_text=response_text_from_body(resp.body),
+            )
+        )
+        summary["chat_checks"].append({"name": "outsider_group_chat", "status_code": resp.status, "ok": not failures, "failures": failures})
+        if failures:
+            raise RuntimeError(f"outsider_group_chat failed: {failures}")
 
         resp = outsider_api.json(
             "POST",
@@ -459,10 +642,46 @@ def main() -> int:
         if failures:
             raise RuntimeError(f"outsider_mixed_scope_chat failed: {failures}")
 
+        resp = outsider_api.json(
+            "POST",
+            "/api/v1/chat",
+            payload={
+                "message": "Who owns token GROUP-LANTERN?",
+                "document_ids": [group_doc["document_id"], private_doc["document_id"]],
+                "stream": False,
+                "rag_config": {**rag_config, "answer_mode": "extractive", "max_tokens": 300},
+            },
+        )
+        record_step(steps, "outsider_group_mixed_scope_chat", resp)
+        failures = evaluate_http_expectation("outsider_group_mixed_scope_chat", resp.status, [200])
+        failures.extend(
+            evaluate_permission_scope_case(
+                {
+                    "name": "outsider_group_mixed_scope_chat",
+                    "allowed_document_ids": [group_doc["document_id"]],
+                    "expected_document_ids": [group_doc["document_id"]],
+                    "expected_terms": ["GROUP-LANTERN"],
+                    "forbidden_terms": ["BETA-QUARTZ", "ALOE-COMET"],
+                    "min_citations": 1,
+                },
+                citation_doc_ids=citation_document_ids(resp.body),
+                citation_count=len((resp.body or {}).get("citations") or []) if isinstance(resp.body, dict) else 0,
+                response_text=response_text_from_body(resp.body),
+            )
+        )
+        summary["chat_checks"].append({"name": "outsider_group_mixed_scope_chat", "status_code": resp.status, "ok": not failures, "failures": failures})
+        if failures:
+            raise RuntimeError(f"outsider_group_mixed_scope_chat failed: {failures}")
+
         cleanup = {
             "shared": cleanup_dataset(admin_api, steps=steps, dataset_id=shared_dataset_id),
+            "group_shared": cleanup_dataset(admin_api, steps=steps, dataset_id=group_dataset_id),
             "private": cleanup_dataset(admin_api, steps=steps, dataset_id=private_dataset_id),
         }
+        if group_id:
+            resp = admin_api.json("DELETE", f"/api/v1/groups/{group_id}")
+            record_step(steps, "cleanup:delete_group", resp)
+            cleanup["group"] = {"group_id": group_id, "delete_group_status": int(resp.status)}
         summary["cleanup"] = cleanup
         summary["ok"] = True
         return_code = 0
