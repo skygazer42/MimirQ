@@ -1,0 +1,169 @@
+{
+  "ok": true,
+  "artifact_dir": "/data/temp34/MimirQ/artifacts/parser-contention/remote-deepdoc-mineru-20260523",
+  "base_url": "http://127.0.0.1:8000",
+  "fixture": {
+    "path": "/data/temp34/MimirQ/artifacts/parser-contention/remote-deepdoc-mineru-20260523/parser-contention-fixture.pdf",
+    "bytes": 1787,
+    "pages": 2
+  },
+  "backends": [
+    "deepdoc",
+    "mineru"
+  ],
+  "rounds": 2,
+  "elapsed_sec": 17.592,
+  "throughput_rps": 0.227,
+  "results": [
+    {
+      "backend_requested": "deepdoc",
+      "round": 1,
+      "status_code": 200,
+      "elapsed_sec": 16.716,
+      "ok": true,
+      "failure_class": "ok",
+      "backend": "deepdoc",
+      "markdown_chars": 864,
+      "markdown_lines": 3,
+      "images": 0,
+      "pdf_page_count": 2.0,
+      "pdf_score": 0.726,
+      "is_scanned": false,
+      "text_sample": "MimirQ parser matrix page 1 This fixture verifies non MinerU parser services. It includes retrieval, knowledge graph, OCR, tables, and governance keywords. Latency target fields: parser backend, dataset id, document id, request id. Simple table: Metric |Value |Owner. parser_success_rate |0.99 |ingestion. kg_event_budget |120 |graph. Contact demo@example.com is included for governance redaction che"
+    },
+    {
+      "backend_requested": "deepdoc",
+      "round": 2,
+      "status_code": 200,
+      "elapsed_sec": 17.52,
+      "ok": true,
+      "failure_class": "ok",
+      "backend": "deepdoc",
+      "markdown_chars": 864,
+      "markdown_lines": 3,
+      "images": 0,
+      "pdf_page_count": 2.0,
+      "pdf_score": 0.726,
+      "is_scanned": false,
+      "text_sample": "MimirQ parser matrix page 1 This fixture verifies non MinerU parser services. It includes retrieval, knowledge graph, OCR, tables, and governance keywords. Latency target fields: parser backend, dataset id, document id, request id. Simple table: Metric |Value |Owner. parser_success_rate |0.99 |ingestion. kg_event_budget |120 |graph. Contact demo@example.com is included for governance redaction che"
+    },
+    {
+      "backend_requested": "mineru",
+      "round": 1,
+      "status_code": 200,
+      "elapsed_sec": 13.077,
+      "ok": true,
+      "failure_class": "ok",
+      "backend": "mineru",
+      "markdown_chars": 842,
+      "markdown_lines": 31,
+      "images": 0,
+      "pdf_page_count": 2.0,
+      "pdf_score": 0.726,
+      "is_scanned": false,
+      "text_sample": "MimirQ parser matrix page 1\n\nThis fixture verifies non MinerU parser services.\n\nIt includes retrieval, knowledge graph, OCR, tables, and governance keywords.\n\nLatency target fields: parser backend, dataset id, document id, request id.\n\nSimple table: Metric | Value | Owner.\n\nparser\\_success\\_rate | 0.99 | ingestion.\n\nkg\\_event-budget | 120 | graph.\n\nContact demo@example.com is included for governan"
+    },
+    {
+      "backend_requested": "mineru",
+      "round": 2,
+      "status_code": 200,
+      "elapsed_sec": 16.313,
+      "ok": true,
+      "failure_class": "ok",
+      "backend": "mineru",
+      "markdown_chars": 842,
+      "markdown_lines": 31,
+      "images": 0,
+      "pdf_page_count": 2.0,
+      "pdf_score": 0.726,
+      "is_scanned": false,
+      "text_sample": "MimirQ parser matrix page 1\n\nThis fixture verifies non MinerU parser services.\n\nIt includes retrieval, knowledge graph, OCR, tables, and governance keywords.\n\nLatency target fields: parser backend, dataset id, document id, request id.\n\nSimple table: Metric | Value | Owner.\n\nparser\\_success\\_rate | 0.99 | ingestion.\n\nkg\\_event-budget | 120 | graph.\n\nContact demo@example.com is included for governan"
+    }
+  ],
+  "per_backend": [
+    {
+      "backend": "deepdoc",
+      "request_count": 2,
+      "success_count": 2,
+      "failure_count": 0,
+      "latency_p50_sec": 17.118,
+      "latency_p95_sec": 17.48,
+      "results": [
+        {
+          "backend_requested": "deepdoc",
+          "round": 1,
+          "status_code": 200,
+          "elapsed_sec": 16.716,
+          "ok": true,
+          "failure_class": "ok",
+          "backend": "deepdoc",
+          "markdown_chars": 864,
+          "markdown_lines": 3,
+          "images": 0,
+          "pdf_page_count": 2.0,
+          "pdf_score": 0.726,
+          "is_scanned": false,
+          "text_sample": "MimirQ parser matrix page 1 This fixture verifies non MinerU parser services. It includes retrieval, knowledge graph, OCR, tables, and governance keywords. Latency target fields: parser backend, dataset id, document id, request id. Simple table: Metric |Value |Owner. parser_success_rate |0.99 |ingestion. kg_event_budget |120 |graph. Contact demo@example.com is included for governance redaction che"
+        },
+        {
+          "backend_requested": "deepdoc",
+          "round": 2,
+          "status_code": 200,
+          "elapsed_sec": 17.52,
+          "ok": true,
+          "failure_class": "ok",
+          "backend": "deepdoc",
+          "markdown_chars": 864,
+          "markdown_lines": 3,
+          "images": 0,
+          "pdf_page_count": 2.0,
+          "pdf_score": 0.726,
+          "is_scanned": false,
+          "text_sample": "MimirQ parser matrix page 1 This fixture verifies non MinerU parser services. It includes retrieval, knowledge graph, OCR, tables, and governance keywords. Latency target fields: parser backend, dataset id, document id, request id. Simple table: Metric |Value |Owner. parser_success_rate |0.99 |ingestion. kg_event_budget |120 |graph. Contact demo@example.com is included for governance redaction che"
+        }
+      ]
+    },
+    {
+      "backend": "mineru",
+      "request_count": 2,
+      "success_count": 2,
+      "failure_count": 0,
+      "latency_p50_sec": 14.695,
+      "latency_p95_sec": 16.151,
+      "results": [
+        {
+          "backend_requested": "mineru",
+          "round": 1,
+          "status_code": 200,
+          "elapsed_sec": 13.077,
+          "ok": true,
+          "failure_class": "ok",
+          "backend": "mineru",
+          "markdown_chars": 842,
+          "markdown_lines": 31,
+          "images": 0,
+          "pdf_page_count": 2.0,
+          "pdf_score": 0.726,
+          "is_scanned": false,
+          "text_sample": "MimirQ parser matrix page 1\n\nThis fixture verifies non MinerU parser services.\n\nIt includes retrieval, knowledge graph, OCR, tables, and governance keywords.\n\nLatency target fields: parser backend, dataset id, document id, request id.\n\nSimple table: Metric | Value | Owner.\n\nparser\\_success\\_rate | 0.99 | ingestion.\n\nkg\\_event-budget | 120 | graph.\n\nContact demo@example.com is included for governan"
+        },
+        {
+          "backend_requested": "mineru",
+          "round": 2,
+          "status_code": 200,
+          "elapsed_sec": 16.313,
+          "ok": true,
+          "failure_class": "ok",
+          "backend": "mineru",
+          "markdown_chars": 842,
+          "markdown_lines": 31,
+          "images": 0,
+          "pdf_page_count": 2.0,
+          "pdf_score": 0.726,
+          "is_scanned": false,
+          "text_sample": "MimirQ parser matrix page 1\n\nThis fixture verifies non MinerU parser services.\n\nIt includes retrieval, knowledge graph, OCR, tables, and governance keywords.\n\nLatency target fields: parser backend, dataset id, document id, request id.\n\nSimple table: Metric | Value | Owner.\n\nparser\\_success\\_rate | 0.99 | ingestion.\n\nkg\\_event-budget | 120 | graph.\n\nContact demo@example.com is included for governan"
+        }
+      ]
+    }
+  ]
+}
