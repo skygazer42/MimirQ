@@ -974,6 +974,20 @@ function getConversationGroupTone(
   }
 }
 
+function utcDayKey(dateLike: Date | string) {
+  const date = typeof dateLike === 'string' ? new Date(dateLike) : dateLike
+  return [
+    date.getUTCFullYear(),
+    String(date.getUTCMonth() + 1).padStart(2, '0'),
+    String(date.getUTCDate()).padStart(2, '0'),
+  ].join('-')
+}
+
+function utcDayStartMs(dateLike: Date | string) {
+  const date = typeof dateLike === 'string' ? new Date(dateLike) : dateLike
+  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())
+}
+
 // 辅助函数：按日期分组
 function groupConversationsByDate(
   conversations: Conversation[],
@@ -987,23 +1001,22 @@ function groupConversationsByDate(
 ) {
   const groups: Record<string, Conversation[]> = {}
   const now = new Date()
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const today = utcDayStartMs(now)
   const lastWeek = new Date(today)
-  lastWeek.setDate(lastWeek.getDate() - 7)
+  lastWeek.setUTCDate(lastWeek.getUTCDate() - 7)
   const lastMonth = new Date(today)
-  lastMonth.setDate(lastMonth.getDate() - 30)
+  lastMonth.setUTCDate(lastMonth.getUTCDate() - 30)
 
   conversations.forEach((conv) => {
     const activityDate = conv.last_message_at || conv.created_at || conv.updated_at
-    const date = new Date(activityDate)
-    const convDate = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+    const convDate = utcDayStartMs(activityDate)
 
     let group: string
-    if (convDate.getTime() === today.getTime()) {
+    if (convDate === today) {
       group = labels.today
-    } else if (convDate.getTime() >= lastWeek.getTime()) {
+    } else if (convDate >= lastWeek.getTime()) {
       group = labels.last7Days
-    } else if (convDate.getTime() >= lastMonth.getTime()) {
+    } else if (convDate >= lastMonth.getTime()) {
       group = labels.last30Days
     } else {
       group = labels.earlier
@@ -1030,11 +1043,7 @@ function groupMessagesByDay(
 
   messages.forEach((message) => {
     const date = new Date(message.created_at)
-    const key = [
-      date.getFullYear(),
-      String(date.getMonth() + 1).padStart(2, '0'),
-      String(date.getDate()).padStart(2, '0'),
-    ].join('-')
+    const key = utcDayKey(date)
 
     if (!groups.has(key)) {
       groups.set(key, {
@@ -1079,16 +1088,17 @@ function formatMessageGroupLabel(
   }>
 ) {
   const now = new Date()
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const yesterday = new Date(today)
-  yesterday.setDate(yesterday.getDate() - 1)
-  const target = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+  const today = utcDayKey(now)
+  const yesterdayDate = new Date(utcDayStartMs(now))
+  yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1)
+  const yesterday = utcDayKey(yesterdayDate)
+  const target = utcDayKey(date)
 
-  if (target.getTime() === today.getTime()) return labels.today
-  if (target.getTime() === yesterday.getTime()) return labels.yesterday
+  if (target === today) return labels.today
+  if (target === yesterday) return labels.yesterday
 
   return new Intl.DateTimeFormat(locale, {
-    year: target.getFullYear() === today.getFullYear() ? undefined : 'numeric',
+    year: date.getUTCFullYear() === now.getUTCFullYear() ? undefined : 'numeric',
     month: 'long',
     day: 'numeric',
     weekday: 'short',
