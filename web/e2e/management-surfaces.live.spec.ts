@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 
 const LIVE_BACKEND_ENABLED = process.env.PLAYWRIGHT_LIVE_BACKEND === '1'
 const DEFAULT_TENANT_ID = '00000000-0000-0000-0000-000000000000'
@@ -6,20 +6,66 @@ const DEFAULT_USER_ID = 'demo'
 const LIVE_EXPECT_TIMEOUT_MS = 60_000
 const LIVE_TEST_TIMEOUT_MS = 240_000
 
+function apiBaseUrl(): string {
+  return String(
+    process.env.PLAYWRIGHT_LIVE_API_URL ||
+      process.env.NEXT_PUBLIC_API_URL ||
+      'http://127.0.0.1:8000'
+  ).replace(/\/+$/, '')
+}
+
+function liveHeaders(): Record<string, string> {
+  return {
+    'X-Tenant-ID':
+      process.env.PLAYWRIGHT_LIVE_TENANT_ID ||
+      process.env.NEXT_PUBLIC_TENANT_ID ||
+      DEFAULT_TENANT_ID,
+    'X-Account-ID':
+      process.env.PLAYWRIGHT_LIVE_USER_ID ||
+      process.env.NEXT_PUBLIC_USER_ID ||
+      DEFAULT_USER_ID,
+    'X-User-ID':
+      process.env.PLAYWRIGHT_LIVE_USER_ID ||
+      process.env.NEXT_PUBLIC_USER_ID ||
+      DEFAULT_USER_ID,
+  }
+}
+
 async function installLiveAuth(page: Page) {
-  const tenantId =
-    process.env.PLAYWRIGHT_LIVE_TENANT_ID ||
-    process.env.NEXT_PUBLIC_TENANT_ID ||
-    DEFAULT_TENANT_ID
-  const userId =
-    process.env.PLAYWRIGHT_LIVE_USER_ID ||
-    process.env.NEXT_PUBLIC_USER_ID ||
-    DEFAULT_USER_ID
+  const headers = liveHeaders()
 
   await page.addInitScript(({ tenantId, userId }) => {
     window.localStorage.setItem('mimirq_tenant_id', tenantId)
     window.localStorage.setItem('mimirq_user_id', userId)
-  }, { tenantId, userId })
+  }, {
+    tenantId: headers['X-Tenant-ID'],
+    userId: headers['X-User-ID'],
+  })
+}
+
+async function createLiveGroup(
+  request: APIRequestContext,
+  name: string
+): Promise<string> {
+  const response = await request.post(`${apiBaseUrl()}/api/v1/groups/`, {
+    headers: liveHeaders(),
+    data: { name },
+  })
+  expect(response.ok()).toBe(true)
+  const body = (await response.json()) as { id?: string }
+  expect(String(body.id || '')).toMatch(/\S/)
+  return String(body.id)
+}
+
+async function deleteLiveGroup(
+  request: APIRequestContext,
+  groupId: string
+): Promise<void> {
+  const response = await request.delete(
+    `${apiBaseUrl()}/api/v1/groups/${groupId}`,
+    { headers: liveHeaders() }
+  )
+  expect([200, 204]).toContain(response.status())
 }
 
 test.describe('live management surfaces', () => {
@@ -30,63 +76,122 @@ test.describe('live management surfaces', () => {
 
   test('loads management pages that depend on real backend-admin surfaces', async ({
     page,
+    request,
   }) => {
     test.setTimeout(LIVE_TEST_TIMEOUT_MS)
     const pageErrors: string[] = []
     page.on('pageerror', (error) => pageErrors.push(error.message))
     await installLiveAuth(page)
+    let tempGroupId = ''
 
-    await page.goto('/prompts', { waitUntil: 'networkidle' })
-    await expect(page.getByText('提示词模板')).toBeVisible({
-      timeout: LIVE_EXPECT_TIMEOUT_MS,
-    })
-    await expect(page.getByText('模板管理')).toBeVisible({
-      timeout: LIVE_EXPECT_TIMEOUT_MS,
-    })
+    try {
+      tempGroupId = await createLiveGroup(
+        request,
+        `playwright-mgmt-${Date.now()}`
+      )
 
-    await page.goto('/reports', { waitUntil: 'networkidle' })
-    await expect(page.getByText('数据报告与审计概览')).toBeVisible({
-      timeout: LIVE_EXPECT_TIMEOUT_MS,
-    })
-    await expect(page.getByText('报告状态')).toBeVisible({
-      timeout: LIVE_EXPECT_TIMEOUT_MS,
-    })
+      await page.goto('/prompts', { waitUntil: 'networkidle' })
+      await expect(page.getByText('提示词模板')).toBeVisible({
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+      await expect(page.getByText('模板管理')).toBeVisible({
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
 
-    await page.goto('/evaluations', { waitUntil: 'networkidle' })
-    await expect(page.getByText('评测中心')).toBeVisible({
-      timeout: LIVE_EXPECT_TIMEOUT_MS,
-    })
-    await expect(page.getByRole('button', { name: '对话评测' })).toBeVisible({
-      timeout: LIVE_EXPECT_TIMEOUT_MS,
-    })
-    await expect(
-      page.getByRole('button', { name: 'Golden 评测集' })
-    ).toBeVisible({
-      timeout: LIVE_EXPECT_TIMEOUT_MS,
-    })
+      await page.goto('/reports', { waitUntil: 'networkidle' })
+      await expect(page.getByText('数据报告与审计概览')).toBeVisible({
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+      await expect(page.getByText('报告状态')).toBeVisible({
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
 
-    await page.goto('/usage', { waitUntil: 'networkidle' })
-    await expect(page.getByRole('heading', { name: '用量/配额' })).toBeVisible({
-      timeout: LIVE_EXPECT_TIMEOUT_MS,
-    })
-    await expect(page.getByRole('heading', { name: '租户级配额状态' })).toBeVisible({
-      timeout: LIVE_EXPECT_TIMEOUT_MS,
-    })
+      await page.goto('/evaluations', { waitUntil: 'networkidle' })
+      await expect(page.getByText('评测中心')).toBeVisible({
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+      await expect(
+        page.getByRole('button', { name: '对话评测' })
+      ).toBeVisible({
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+      await expect(
+        page.getByRole('button', { name: 'Golden 评测集' })
+      ).toBeVisible({
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
 
-    await page.goto('/audit', { waitUntil: 'networkidle' })
-    await expect(page.getByRole('heading', { name: '审计日志' })).toBeVisible({
-      timeout: LIVE_EXPECT_TIMEOUT_MS,
-    })
-    await expect(page.getByText('按后端审计日志展示时间、操作者、事件名称、资源/租户与操作明细。')).toBeVisible({
-      timeout: LIVE_EXPECT_TIMEOUT_MS,
-    })
+      await page.goto('/usage', { waitUntil: 'networkidle' })
+      await expect(
+        page.getByRole('heading', { name: '用量/配额' })
+      ).toBeVisible({
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+      await expect(
+        page.getByRole('heading', { name: '租户级配额状态' })
+      ).toBeVisible({
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
 
-    await page.goto('/access-review', { waitUntil: 'networkidle' })
-    await expect(page).toHaveURL(/\/audit/)
-    await expect(page.getByRole('heading', { name: '审计日志' })).toBeVisible({
-      timeout: LIVE_EXPECT_TIMEOUT_MS,
-    })
+      await page.goto('/audit', { waitUntil: 'networkidle' })
+      await expect(
+        page.getByRole('heading', { name: '审计日志' })
+      ).toBeVisible({
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+      await expect(
+        page.getByText(
+          '按后端审计日志展示时间、操作者、事件名称、资源/租户与操作明细。'
+        )
+      ).toBeVisible({
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
 
-    expect(pageErrors).toEqual([])
+      await page.goto('/settings/rbac', { waitUntil: 'networkidle' })
+      await expect(
+        page.getByRole('heading', { name: '成员权限' })
+      ).toBeVisible({
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+      await expect(
+        page.getByRole('heading', { name: '成员管理' })
+      ).toBeVisible({
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+
+      await page.goto('/settings/groups', { waitUntil: 'networkidle' })
+      await expect(
+        page.getByRole('heading', { name: '组管理' })
+      ).toBeVisible({
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+      await expect(page.getByText('新建组')).toBeVisible({
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+
+      await page.goto(`/settings/groups/${encodeURIComponent(tempGroupId)}`, {
+        waitUntil: 'networkidle',
+      })
+      await expect(page.getByRole('heading', { name: '基本信息' })).toBeVisible({
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+      await expect(page.getByRole('heading', { name: '成员' })).toBeVisible({
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+
+      await page.goto('/access-review', { waitUntil: 'networkidle' })
+      await expect(page).toHaveURL(/\/audit/)
+      await expect(
+        page.getByRole('heading', { name: '审计日志' })
+      ).toBeVisible({
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+
+      expect(pageErrors).toEqual([])
+    } finally {
+      if (tempGroupId) {
+        await deleteLiveGroup(request, tempGroupId)
+      }
+    }
   })
 })
