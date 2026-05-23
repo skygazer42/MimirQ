@@ -248,6 +248,17 @@ This task also tracks the next quality pass across the product surface. Do not s
   This is enough to show the standalone MagicPDF service sustains concurrent
   small-PDF traffic without health regressions, but not enough yet to sign off
   on larger PDFs or other heavy backends.
+- Parser batch/concurrency now also has one dedicated large-PDF server proof:
+  `artifacts/parser-concurrency/remote-large-20260523/report.json`
+  ran the same standalone MagicPDF path on two RFC-scale PDFs
+  (`rfc9000-quic.pdf`, `rfc9110-http-semantics.pdf`) at concurrency `1` and
+  `2`. Both requests succeeded in both lanes with resolved backend `magicpdf`
+  and large markdown outputs (`355,649` and `442,373` chars). Aggregate
+  results: concurrency `1` -> wall `250.554s`, throughput `0.008 rps`, p95
+  `144.491s`; concurrency `2` -> wall `251.003s`, throughput `0.008 rps`, p95
+  `243.787s`. This is evidence that the service stays healthy under large
+  concurrent load, but also that large-document throughput does not improve at
+  concurrency `2` for this pair and tail latency gets worse.
 - Knowledge-base permissions now also have one dedicated outsider/viewer proof:
   `artifacts/kb-permission-boundary/remote-20260523/report.json`
   normalized `outsider` to `viewer` and covered three read-scope layers on the
@@ -313,4 +324,5 @@ This task also tracks the next quality pass across the product surface. Do not s
 - 2026-05-23 16:02: Fixed `app/api/v1/document_listing.py` so document inventory respects `DocumentGroupPermission` in addition to direct `DocumentPermission`. After rebuilding the remote `api`, the KB permission proof was rerun successfully and now also covers document-level ACL overrides inside a readable dataset (`partial_member_list` owner-only doc plus `partial_group_list` group-only doc).
 - 2026-05-23 16:10: Added `scripts/remote_kb_format_matrix.py` and verified one mixed-format KB breadth run through the live API. The proof (`artifacts/kb-format-matrix/remote-20260523/report.json`) ingested `md`, `html`, `csv`, `json`, `docx`, and `xlsx` into one disposable dataset, then proved dataset-scoped retrieve + extractive chat on all six formats before purging the dataset.
 - 2026-05-23 16:20: Added `scripts/remote_parser_concurrency_probe.py` and verified one controlled MagicPDF concurrency run through the live API. The proof (`artifacts/parser-concurrency/remote-20260523/report.json`) used 4 stable small PDFs and measured the current standalone MagicPDF path at concurrency `1/2/4`, confirming all `12` requests returned `200` with resolved backend `magicpdf` while showing latency/throughput tradeoffs rather than health failures.
+- 2026-05-23 16:34: Extended `scripts/remote_parser_concurrency_probe.py` to accept explicit fixture paths and re-ran it on two RFC-scale PDFs (`rfc9000-quic.pdf`, `rfc9110-http-semantics.pdf`) at concurrency `1/2`. The resulting artifact (`artifacts/parser-concurrency/remote-large-20260523/report.json`) showed both large requests succeeded with resolved backend `magicpdf` while API health stayed green, but throughput did not improve at concurrency `2` and p95 latency worsened materially.
 - 2026-05-23 16:10: Added `scripts/remote_kb_format_matrix.py` and verified one mixed-format KB breadth run through the live API. The proof (`artifacts/kb-format-matrix/remote-20260523/report.json`) ingested `md`, `html`, `csv`, `json`, `docx`, and `xlsx` into one disposable dataset, then proved dataset-scoped retrieve + extractive chat on all six formats before purging the dataset.
