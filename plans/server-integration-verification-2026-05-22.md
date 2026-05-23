@@ -143,6 +143,11 @@ This task also tracks the next quality pass across the product surface. Do not s
   dataset `f833c04d-e64e-46ac-8773-bc77a81d6ab9` was purged with `POST /api/v1/datasets/{id}/purge?dry_run=false`,
   which deleted `1` document in `1.646s`; a follow-up export returned `0` documents, `/api/v1/kg/stats` returned
   `0 events / 0 entities / 0 links`, and `DELETE /api/v1/datasets/{id}` then returned `204`.
+- `remote_real_pdf_chain.py` now proves the same lifecycle automatically:
+  `artifacts/real-pdf-chain/cleanup-20260523-022146/report.json`
+  completed the 144-page PDF chain end to end and then ran scripted cleanup:
+  purge deleted `1` document in `1.327s`, dataset export returned `0` documents,
+  KG stats returned zero graph assets, and dataset delete returned `204`.
 - Real parsed-output chunking on the same 144-page PDF exposed large strategy spread:
   `langchain_recursive=1151` chunks in `174.793s`,
   `parent_child=3702` chunks in `1.900s`,
@@ -173,3 +178,4 @@ This task also tracks the next quality pass across the product surface. Do not s
 - 2026-05-23 09:34: Deployed `main@57f7c75` with automatic long-document backend routing (`KG_EXTRACT_LONG_DOC_BACKEND=heuristic`, threshold `300` chunks). The same 144-page PDF then completed default KG extraction in `13.411s` with `event_count=120`; final `/api/v1/kg/stats` for dataset `cd232ae7-609d-415f-a43a-cca768aee664` reported `120 events / 1148 entities / 1887 links`.
 - 2026-05-23 09:48: Added `scripts/remote_real_pdf_chain.py` and ran the first full real-PDF server chain. The 144-page PDF completed end-to-end through parse, stored chunks, default heuristic KG extraction, and baseline/graph chat under artifact `artifacts/real-pdf-chain/final-20260523-014839/`.
 - 2026-05-23 10:17: Verified knowledge-base lifecycle cleanup on a real-PDF dataset: purge deleted the only document, dataset export returned empty, KG stats reset to zero, and dataset delete returned `204`.
+- 2026-05-23 10:26: Re-ran the full real-PDF chain using the scripted cleanup mode (`remote_real_pdf_chain.py --cleanup-mode purge_dataset --delete-dataset-after`) and confirmed the automated lifecycle path matches the manual cleanup proof.
