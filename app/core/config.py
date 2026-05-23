@@ -1800,6 +1800,10 @@ class Settings(BaseSettings):
     # - gliner: lightweight entity-first extraction (optional dependency)
     # - hybrid: GLiNER pre-extract + LLM fallback
     KG_EXTRACTION_BACKEND: str = "llm"
+    # Optional: override the default backend for very large documents when no
+    # explicit extraction_backend is requested.
+    KG_EXTRACT_LONG_DOC_BACKEND: str = "heuristic"
+    KG_EXTRACT_LONG_DOC_MIN_CHUNKS: int = 300
     # Safe default-off switch for GLiNER/hybrid routing.
     KG_GLINER_ENABLED: bool = False
     KG_GLINER_MODEL_NAME: str = "urchade/gliner_multi_pii-v1"
@@ -2592,6 +2596,8 @@ class Settings(BaseSettings):
             raise ValueError("KG_EXTRACT_MAX_CHUNKS_PER_DOCUMENT must be >= 0")
         if str(getattr(self, "KG_EXTRACT_MAX_CHUNKS_PER_DOCUMENT_STRATEGY", "uniform") or "uniform").strip().lower() not in {"head", "uniform"}:
             raise ValueError("KG_EXTRACT_MAX_CHUNKS_PER_DOCUMENT_STRATEGY must be one of: head, uniform")
+        if int(getattr(self, "KG_EXTRACT_LONG_DOC_MIN_CHUNKS", 0) or 0) < 0:
+            raise ValueError("KG_EXTRACT_LONG_DOC_MIN_CHUNKS must be >= 0")
         kg_serving_min_score = float(getattr(self, "KG_SEARCH_SERVING_MIN_SCORE", 0.0) or 0.0)
         if not (0.0 <= kg_serving_min_score <= 1.0):
             raise ValueError("KG_SEARCH_SERVING_MIN_SCORE must be between 0 and 1")
