@@ -6,9 +6,9 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import multiprocessing
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
@@ -61,6 +61,27 @@ def summarize_backend_stats(*, backend: str, results: list[dict[str, Any]]) -> d
     }
 
 
+def build_timeout_result(*, backend: str, round_index: int, timeout_sec: float) -> dict[str, Any]:
+    return {
+        "backend_requested": str(backend),
+        "round": int(round_index),
+        "status_code": 0,
+        "elapsed_sec": round(float(timeout_sec), 3),
+        "ok": False,
+        "failure_class": "timeout",
+        "timeout_sec": round(float(timeout_sec), 3),
+        "backend": None,
+        "resolved_backend": None,
+        "markdown_chars": 0,
+        "markdown_lines": 0,
+        "images": 0,
+        "pdf_page_count": None,
+        "pdf_score": None,
+        "is_scanned": None,
+        "text_sample": "",
+    }
+
+
 def run_case(api: Api, *, pdf_path: Path, backend: str, min_markdown_chars: int, round_index: int) -> dict[str, Any]:
     status, body, elapsed = api.parse_preview(pdf_path, backend)
     summary = summarize_body(body)
@@ -76,6 +97,31 @@ def run_case(api: Api, *, pdf_path: Path, backend: str, min_markdown_chars: int,
     }
 
 
+def _child_run(
+    queue: multiprocessing.queues.Queue,
+    *,
+    base_url: str,
+    tenant_id: str,
+    account_id: str,
+    user_id: str,
+    timeout: int,
+    pdf_path: str,
+    backend: str,
+    min_markdown_chars: int,
+    round_index: int,
+) -> None:
+    api = Api(base_url, tenant_id, account_id, user_id, timeout)
+    queue.put(
+        run_case(
+            api,
+            pdf_path=Path(pdf_path),
+            backend=backend,
+            min_markdown_chars=min_markdown_chars,
+            round_index=round_index,
+        )
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run a mixed-backend parser contention probe against a live API.")
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
@@ -86,6 +132,7 @@ def main() -> int:
     parser.add_argument("--backends", default="magicpdf,marker")
     parser.add_argument("--rounds", type=int, default=2)
     parser.add_argument("--timeout", type=int, default=1200)
+    parser.add_argument("--task-timeout", type=float, default=0.0)
     parser.add_argument("--min-markdown-chars", type=int, default=80)
     parser.add_argument("--pages", type=int, default=2)
     args = parser.parse_args()
@@ -95,26 +142,67 @@ def main() -> int:
     fixture_path = artifact_dir / "parser-contention-fixture.pdf"
     write_fixture_pdf(fixture_path, pages=max(1, int(args.pages or 1)))
 
-    api = Api(args.base_url, args.tenant_id, args.account_id, args.user_id, args.timeout)
     backends = [item.strip() for item in str(args.backends or "").split(",") if item.strip()]
     tasks = [(backend, round_idx) for round_idx in range(1, max(1, int(args.rounds or 1)) + 1) for backend in backends]
+    task_timeout_sec = float(args.task_timeout or 0.0)
 
     started = time.perf_counter()
     results: list[dict[str, Any]] = []
-    with ThreadPoolExecutor(max_workers=max(1, len(backends))) as pool:
-        futures = [
-            pool.submit(
-                run_case,
-                api,
-                pdf_path=fixture_path,
-                backend=backend,
-                min_markdown_chars=int(args.min_markdown_chars),
-                round_index=round_idx,
-            )
-            for backend, round_idx in tasks
-        ]
-        for future in as_completed(futures):
-            results.append(future.result())
+    ctx = multiprocessing.get_context("spawn")
+    workers: list[tuple[tuple[str, int], multiprocessing.Process, multiprocessing.queues.Queue, float]] = []
+    for backend, round_idx in tasks:
+        queue: multiprocessing.queues.Queue = ctx.Queue()
+        proc = ctx.Process(
+            target=_child_run,
+            kwargs={
+                "queue": queue,
+                "base_url": str(args.base_url),
+                "tenant_id": str(args.tenant_id),
+                "account_id": str(args.account_id),
+                "user_id": str(args.user_id),
+                "timeout": int(args.timeout),
+                "pdf_path": str(fixture_path),
+                "backend": backend,
+                "min_markdown_chars": int(args.min_markdown_chars),
+                "round_index": int(round_idx),
+            },
+        )
+        proc.start()
+        workers.append(((backend, round_idx), proc, queue, time.monotonic()))
+
+    for (backend, round_idx), proc, queue, task_started in workers:
+        remaining = None
+        if task_timeout_sec > 0.0:
+            deadline = task_started + task_timeout_sec
+            remaining = max(0.0, deadline - time.monotonic())
+        proc.join(timeout=remaining)
+        if proc.is_alive():
+            proc.terminate()
+            proc.join(timeout=5)
+            results.append(build_timeout_result(backend=backend, round_index=round_idx, timeout_sec=task_timeout_sec))
+            continue
+        if not queue.empty():
+            results.append(queue.get())
+            continue
+        results.append(
+            {
+                "backend_requested": str(backend),
+                "round": int(round_idx),
+                "status_code": 0,
+                "elapsed_sec": round(max(0.0, time.monotonic() - task_started), 3),
+                "ok": False,
+                "failure_class": f"process_exit:{proc.exitcode}",
+                "backend": None,
+                "resolved_backend": None,
+                "markdown_chars": 0,
+                "markdown_lines": 0,
+                "images": 0,
+                "pdf_page_count": None,
+                "pdf_score": None,
+                "is_scanned": None,
+                "text_sample": "",
+            }
+        )
     elapsed = time.perf_counter() - started
 
     per_backend = []
