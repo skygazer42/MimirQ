@@ -1630,6 +1630,10 @@ class Settings(BaseSettings):
     RERANKER_TOP_N: int = 20  # Rerank candidate count (higher = slower).
     RERANKER_MAX_CHARS: int = 800  # Max chars per candidate.
     RERANKER_TEMPERATURE: float = 0.0
+    # Local model-backed rerankers (for example cross-encoder) should not block
+    # user traffic on first-use remote downloads. Allow a short bounded wait, then
+    # degrade to base retrieval order while the background load can continue.
+    RERANKER_LOCAL_LOAD_TIMEOUT_SEC: float = 2.0
     # API Reranker engineering knobs (batch/concurrency/rate-limit/circuit/cache)
     RERANKER_API_TIMEOUT_SEC: float = 30.0
     RERANKER_API_BATCH_SIZE: int = 32

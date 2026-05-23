@@ -8,6 +8,7 @@ Design constraints:
 
 from __future__ import annotations
 
+import threading
 import time
 from collections.abc import Sequence
 from typing import Any
@@ -45,15 +46,21 @@ class CrossEncoderReranker(BaseReranker):
         *,
         device: str | None = None,
         model: Any | None = None,
+        load_timeout_sec: float | None = None,
     ) -> None:
         self.model_name = (model_name or settings.RERANKER_MODEL or "BAAI/bge-reranker-v2-m3").strip()
         self.device = (str(device).strip() if device is not None else None) or None
         self._model = model
+        self.load_timeout_sec = (
+            float(load_timeout_sec)
+            if load_timeout_sec is not None
+            else float(getattr(settings, "RERANKER_LOCAL_LOAD_TIMEOUT_SEC", 2.0) or 0.0)
+        )
+        self._load_lock = threading.Lock()
+        self._load_thread: threading.Thread | None = None
+        self._load_exception: BaseException | None = None
 
-    def _load_model(self) -> Any:
-        if self._model is not None:
-            return self._model
-
+    def _construct_model(self) -> Any:
         try:
             from sentence_transformers import CrossEncoder  # type: ignore
         except Exception as exc:  # noqa: BLE001
@@ -65,11 +72,59 @@ class CrossEncoderReranker(BaseReranker):
         try:
             # Avoid surprises: keep construction simple and let sentence-transformers
             # handle device selection when device is None.
-            self._model = CrossEncoder(self.model_name, device=self.device)  # type: ignore[call-arg]
+            return CrossEncoder(self.model_name, device=self.device)  # type: ignore[call-arg]
         except Exception as exc:  # noqa: BLE001
             logger.warning("Failed to load cross-encoder model (%s): %s", self.model_name, str(exc)[:200])
             raise
-        return self._model
+
+    def _start_background_load(self) -> threading.Thread:
+        def _target() -> None:
+            try:
+                model = self._construct_model()
+                self._model = model
+                self._load_exception = None
+            except BaseException as exc:  # noqa: BLE001
+                self._load_exception = exc
+
+        thread = threading.Thread(
+            target=_target,
+            name=f"cross-encoder-load:{self.model_name}",
+            daemon=True,
+        )
+        self._load_thread = thread
+        thread.start()
+        return thread
+
+    def _load_model(self) -> Any:
+        if self._model is not None:
+            return self._model
+
+        with self._load_lock:
+            if self._model is not None:
+                return self._model
+            thread = self._load_thread
+            if thread is None or not thread.is_alive():
+                self._load_exception = None
+                thread = self._start_background_load()
+
+        timeout_sec = max(0.0, float(self.load_timeout_sec or 0.0))
+        if timeout_sec > 0.0:
+            thread.join(timeout=timeout_sec)
+        else:
+            thread.join()
+
+        if self._model is not None:
+            return self._model
+        if thread.is_alive():
+            logger.warning(
+                "Cross-encoder model load timed out after %.3fs (%s); falling back to base retrieval order",
+                timeout_sec,
+                self.model_name,
+            )
+            raise TimeoutError(f"cross_encoder_load_timeout:{self.model_name}")
+        if self._load_exception is not None:
+            raise self._load_exception
+        raise RuntimeError(f"cross_encoder_load_failed:{self.model_name}")
 
     def rerank(
         self,
@@ -183,4 +238,3 @@ class CrossEncoderReranker(BaseReranker):
             provider=provider,
             stats=stats,
         )
-
