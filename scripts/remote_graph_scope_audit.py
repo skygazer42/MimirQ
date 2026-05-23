@@ -5,18 +5,38 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 import time
 from pathlib import Path
 from typing import Any
 
-from scripts.remote_real_pdf_chain import (
-    DEFAULT_TENANT_ID,
-    LiveApi,
-    ok_status,
-    perform_cleanup,
-    record_step,
-    snippet,
-)
+
+def ensure_repo_root_on_sys_path(script_path: str | Path) -> str:
+    repo_root = str(Path(script_path).resolve().parents[1])
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+    return repo_root
+
+
+try:
+    from scripts.remote_real_pdf_chain import (
+        DEFAULT_TENANT_ID,
+        LiveApi,
+        ok_status,
+        perform_cleanup,
+        record_step,
+        snippet,
+    )
+except ModuleNotFoundError:
+    ensure_repo_root_on_sys_path(__file__)
+    from scripts.remote_real_pdf_chain import (
+        DEFAULT_TENANT_ID,
+        LiveApi,
+        ok_status,
+        perform_cleanup,
+        record_step,
+        snippet,
+    )
 
 
 def build_repeated_query(key: str, values: list[str]) -> str:
