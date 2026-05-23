@@ -199,6 +199,15 @@ This task also tracks the next quality pass across the product surface. Do not s
   keeping `kg_search_clues=11/6` and `baseline_hit_rate=1.0`, `baseline_recall=1.0`.
   Cleanup deleted both generated regression cases, purged `3` documents, reset
   KG stats to zero, and deleted the dataset.
+- Browser/UI click-through now has one live proof against the remote backend:
+  `artifacts/ui-clickthrough/backend-business-surfaces-live-20260523-remote-backend.json`
+  passed `1/1` Playwright business-surface smoke in `58.336s` using a local
+  frontend dev server plus SSH-tunneled remote API. The run proved real page
+  visits and interactions for `/settings` (industry-rules preview + RTBF section
+  visibility), `/graph`, `/datasets/{id}/profile`, and `/history?id=...`.
+  This closes the pure “no UI smoke at all” gap, while still leaving one narrower
+  deployment-specific caveat: the remote `web` container itself was not the page
+  host for this successful run.
 - Real parsed-output chunking on the same 144-page PDF exposed large strategy spread:
   `langchain_recursive=1151` chunks in `174.793s`,
   `parent_child=3702` chunks in `1.900s`,
@@ -236,3 +245,4 @@ This task also tracks the next quality pass across the product surface. Do not s
 - 2026-05-23 11:49: Added `scripts/remote_prompt_matrix.py`, wired builtin prompt selectors into document test generation and regression LLM judge, and verified a full live prompt matrix on `main@312e6cc`. The server proof covered builtin sync, answer prompt preview, answer prompt chat, KG extract prompt selection, builtin testset generation, builtin judge prompt selection, generated-case cleanup, dataset purge, and dataset delete.
 - 2026-05-23 12:49: Added `scripts/remote_kg_usefulness_matrix.py` and verified one targeted KG usefulness run on `main@fb5d02c`. The server proof showed stable KG clues and diagnostics hits on two handcrafted multi-hop questions, but also showed that the extractive chat surface still did not restate `Mira Chen` verbatim for the acquisition->leader question, so chat-surface answer lift remains only partially proven.
 - 2026-05-23 13:25: Improved extractive fallback answer selection on `main@ea55803` and re-ran the KG usefulness matrix. The follow-up server proof (`remote-20260523-052501`) kept the same strong KG clue/diagnostics signal and also made both extractive chat paths restate the expected answers explicitly for the two multi-hop questions.
+- 2026-05-23 14:00: Re-ran a Playwright live business-surface smoke against the remote backend via localhost SSH tunnel and updated the spec to current UI labels (`行业规则`, `预览`). The passing run (`backend-business-surfaces-live-20260523-remote-backend.json`) proved `/settings`, `/graph`, `/datasets/{id}/profile`, and `/history` page clicks on the current product surface.
