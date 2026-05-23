@@ -6,8 +6,8 @@ from scripts.remote_prompt_matrix import extract_first_event_id, first_generated
 def test_remote_prompt_matrix_extract_first_event_id_from_graph_nodes() -> None:
     body = {
         "nodes": [
-            {"id": "entity:11111111-1111-1111-1111-111111111111"},
-            {"id": "event:22222222-2222-2222-2222-222222222222"},
+            {"id": "entity:11111111-1111-1111-1111-111111111111", "meta": {"kind": "entity"}},
+            {"id": "22222222-2222-2222-2222-222222222222", "meta": {"kind": "event"}},
         ]
     }
 
