@@ -250,6 +250,15 @@ This task also tracks the next quality pass across the product surface. Do not s
   including `清洗信息`, `清洗统计：`, and the `Impact Summary` diff panel.
   Cleanup purged the disposable dataset documents and deleted the dataset
   (`204`).
+- Chunk-preview UI now also has one dedicated deployed-page-host proof:
+  `artifacts/ui-clickthrough/chunk-preview-live-20260523-remote-web.json`
+  passed `1/1` in `8.660s`. The lane created a real dataset plus a real
+  completed Markdown document through the live API, opened
+  `/chunk-preview?dataset_id=...` on the deployed page host, waited for the
+  dataset-scoped document to sync into the sidebar, and then verified the real
+  backend auto-preview path via visible chunk-preview signals including
+  `个切块`, `预览统计`, `切片数`, `覆盖率`, and `重叠浪费`. Cleanup purged the
+  disposable dataset documents and deleted the dataset (`204`).
 - Knowledge-base dataset boundaries now have one dedicated server proof:
   `artifacts/kb-boundary-matrix/remote-20260523/report.json`
   created two disposable datasets (`alpha`, `beta`) with mutually exclusive
@@ -442,4 +451,5 @@ This task also tracks the next quality pass across the product surface. Do not s
 - 2026-05-23 19:19: Added `web/e2e/quarantine-surfaces.live.spec.ts` plus a dedicated remote-governance Playwright config and verified one live quarantine-review workflow against the deployed `web` + `api` stack. The first artifact created a real quarantined document, opened `/knowledge/quarantine?datasetId=...`, marked that document as solved from the review drawer, verified `metadata.user.quarantine_reviewed=true`, and cleaned up the disposable dataset.
 - 2026-05-23 19:31: Extended the same live governance lane with a real `物理删除` flow. The rerun passed `2/2`; after opening the quarantine review drawer, the test confirmed delete through the UI, then verified backend `404` on the document id and that the row disappeared from the filtered queue.
 - 2026-05-23 19:46: Added `web/e2e/governance-workbench.live.spec.ts` plus a dedicated remote-governance-workbench Playwright config and verified one live `/data-governance` workflow against the deployed `web` + `api` stack. The artifact (`artifacts/ui-clickthrough/governance-workbench-live-20260523-remote-web.json`) created a real dataset and completed Markdown document, opened the workbench on the dataset-scoped route, ran `智能清洗`, and verified the backend-derived cleaning info and diff summary on the deployed page host.
+- 2026-05-23 19:54: Added `web/e2e/chunk-preview.live.spec.ts` plus a dedicated remote-chunk-preview Playwright config and verified one live `/chunk-preview` workflow against the deployed `web` + `api` stack. The artifact (`artifacts/ui-clickthrough/chunk-preview-live-20260523-remote-web.json`) created a real dataset and completed Markdown document, opened the dataset-scoped chunk-preview route, let the real backend auto-preview run, and verified visible chunk and coverage statistics on the deployed page host.
 - 2026-05-23 16:10: Added `scripts/remote_kb_format_matrix.py` and verified one mixed-format KB breadth run through the live API. The proof (`artifacts/kb-format-matrix/remote-20260523/report.json`) ingested `md`, `html`, `csv`, `json`, `docx`, and `xlsx` into one disposable dataset, then proved dataset-scoped retrieve + extractive chat on all six formats before purging the dataset.
