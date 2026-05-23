@@ -30,6 +30,7 @@
     "e2e:live:remote-management": "pnpm exec playwright test e2e/management-surfaces.live.spec.ts --config playwright.remote-management.config.ts",
     "e2e:live:remote-governance": "pnpm exec playwright test e2e/quarantine-surfaces.live.spec.ts --config playwright.remote-governance.config.ts",
     "e2e:live:remote-governance-workbench": "pnpm exec playwright test e2e/governance-workbench.live.spec.ts --config playwright.remote-governance-workbench.config.ts",
+    "e2e:live:remote-chunk-preview": "pnpm exec playwright test e2e/chunk-preview.live.spec.ts --config playwright.remote-chunk-preview.config.ts",
     "assets:optimize": "svgo -r public --config=.svgo.config.mjs",
     "verify": "pnpm run lint && pnpm run ui-check && pnpm run typecheck && pnpm run test && pnpm run api-check",
     "ui-check": "node scripts/check-design-tokens.mjs && node scripts/check-native-dialogs.mjs && node scripts/check-theme-contrast.mjs",
