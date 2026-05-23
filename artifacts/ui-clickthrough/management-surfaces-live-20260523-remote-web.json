@@ -61,7 +61,7 @@
         {
           "title": "live management surfaces",
           "file": "management-surfaces.live.spec.ts",
-          "line": 119,
+          "line": 150,
           "column": 6,
           "specs": [
             {
@@ -80,12 +80,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 14559,
+                      "duration": 14795,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-05-23T10:10:02.924Z",
+                      "startTime": "2026-05-23T10:19:20.191Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -95,7 +95,7 @@
               ],
               "id": "b8ce53ce35715921c1b1-7dba596afa8415ceb53d",
               "file": "management-surfaces.live.spec.ts",
-              "line": 125,
+              "line": 156,
               "column": 7
             },
             {
@@ -114,12 +114,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 4157,
+                      "duration": 4056,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-05-23T10:10:17.561Z",
+                      "startTime": "2026-05-23T10:19:35.061Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -129,7 +129,7 @@
               ],
               "id": "b8ce53ce35715921c1b1-a9fb6aefec489b698d45",
               "file": "management-surfaces.live.spec.ts",
-              "line": 246,
+              "line": 277,
               "column": 7
             },
             {
@@ -148,12 +148,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2670,
+                      "duration": 2649,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-05-23T10:10:21.734Z",
+                      "startTime": "2026-05-23T10:19:39.128Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -163,7 +163,41 @@
               ],
               "id": "b8ce53ce35715921c1b1-6279fec2c168ce0f4a4e",
               "file": "management-surfaces.live.spec.ts",
-              "line": 297,
+              "line": 328,
+              "column": 7
+            },
+            {
+              "title": "creates and deletes a prompt template through the management UI",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 240000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 3229,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-23T10:19:41.788Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "b8ce53ce35715921c1b1-83b7f8aa8e8451fbec68",
+              "file": "management-surfaces.live.spec.ts",
+              "line": 380,
               "column": 7
             }
           ]
@@ -173,9 +207,9 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-05-23T10:10:02.307Z",
-    "duration": 22170.889000000003,
-    "expected": 3,
+    "startTime": "2026-05-23T10:19:19.558Z",
+    "duration": 25519.304,
+    "expected": 4,
     "skipped": 0,
     "unexpected": 0,
     "flaky": 0

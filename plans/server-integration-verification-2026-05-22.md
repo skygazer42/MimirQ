@@ -222,13 +222,15 @@ This task also tracks the next quality pass across the product surface. Do not s
   smoke's `enterprise-telemetry-sample.md` parsing documents were deleted.
 - Management/admin UI breadth is now also proven on the deployed page host:
   `artifacts/ui-clickthrough/management-surfaces-live-20260523-remote-web.json`
-  passed `1/1` in `15.042s` and exercised real admin page loads for `/prompts`,
-  `/reports`, `/evaluations`, `/usage`, `/audit`, `/settings/rbac`,
-  `/settings/groups`, one live `/settings/groups/{id}` detail page backed by a
-  temporary group, plus the `/access-review` redirect into `/audit`. This run
-  hit live backend-admin surfaces such as prompt templates, dataset reports,
-  evaluation runs, usage summaries, audit logs, tenant-member listings, and
-  group CRUD/membership APIs while the API remained healthy.
+  now passes `4/4` in `25.519s` and exercises both real admin page loads and
+  real mutations on the deployed page host: `/prompts`, `/reports`,
+  `/evaluations`, `/usage`, `/audit`, `/settings/rbac`, `/settings/groups`,
+  one live `/settings/groups/{id}` detail page, and the `/access-review`
+  redirect into `/audit`, plus group create + member add, RBAC role change +
+  revert, and prompt-template create + delete. This run hits live backend-admin
+  surfaces such as prompt templates, dataset reports, evaluation runs, usage
+  summaries, audit logs, tenant-member listings, and group CRUD/membership APIs
+  while the API remains healthy.
 - Knowledge-base dataset boundaries now have one dedicated server proof:
   `artifacts/kb-boundary-matrix/remote-20260523/report.json`
   created two disposable datasets (`alpha`, `beta`) with mutually exclusive
@@ -364,4 +366,5 @@ This task also tracks the next quality pass across the product surface. Do not s
 - 2026-05-23 17:24: Reused the same bounded contention probe for `magicpdf + mineru`. The resulting artifact (`artifacts/parser-contention/remote-mineru-20260523/report.json`) showed all `4` requests returned `200` over `2` rounds and that this pair currently outperforms the `magicpdf + marker` lane on both total wall time and MagicPDF-side tail latency.
 - 2026-05-23 17:38: Added `web/e2e/management-surfaces.live.spec.ts` plus a dedicated remote-management Playwright config and verified one live management-surface smoke against the deployed `web` + `api` stack. The resulting artifact (`artifacts/ui-clickthrough/management-surfaces-live-20260523-remote-web.json`) first proved `/prompts`, `/reports`, `/evaluations`, `/usage`, `/audit`, and `/access-review -> /audit` on real backend-admin surfaces.
 - 2026-05-23 17:55: Extended the same remote-management lane to include `/settings/rbac`, `/settings/groups`, and a temporary live `/settings/groups/{id}` detail page. The rerun still passed and broadened the proven admin UI shell to include RBAC and group-management surfaces on the deployed frontend page host.
+- 2026-05-23 18:19: Extended the same remote-management lane to add a real prompt-template create/delete interaction on `/prompts`. The rerun passed `4/4` in `25.519s`, so the deployed page host now has live proof not just for admin shell pages, but also for group membership mutation, RBAC role mutation, and prompt-template lifecycle mutation.
 - 2026-05-23 16:10: Added `scripts/remote_kb_format_matrix.py` and verified one mixed-format KB breadth run through the live API. The proof (`artifacts/kb-format-matrix/remote-20260523/report.json`) ingested `md`, `html`, `csv`, `json`, `docx`, and `xlsx` into one disposable dataset, then proved dataset-scoped retrieve + extractive chat on all six formats before purging the dataset.
