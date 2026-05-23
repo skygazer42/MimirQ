@@ -1,0 +1,138 @@
+{
+  "schema": "mimirq.kg_quality_report_probe.v1",
+  "ok": true,
+  "artifact_dir": "/tmp/MimirQ-commit/artifacts/kg-quality-report/remote-20260524",
+  "base_url": "http://127.0.0.1:8000",
+  "dataset_id": "e176c21d-585f-4f3a-a56b-ce067813135c",
+  "document_id": "b1310c43-7e39-447f-b2d7-2a857780b5d4",
+  "document_status": "completed",
+  "chunk_count": 1,
+  "report": {
+    "summary": {
+      "documents": 1,
+      "events": 1,
+      "entities": 2,
+      "relations": 0,
+      "event_entity_links": 2,
+      "avg_relations_per_entity": 0.0,
+      "isolated_entities": 2,
+      "isolated_entity_ratio": 1.0
+    },
+    "components": {
+      "nodes": 0,
+      "edges": 0,
+      "components": 0,
+      "largest_component_size": 0,
+      "largest_component_ratio": 0.0,
+      "components_top_sizes": []
+    },
+    "noise": {
+      "relations_total": 0,
+      "low_confidence_threshold": 0.3,
+      "low_confidence_relations": 0,
+      "missing_references_relations": 0,
+      "missing_chunk_relations": 0
+    },
+    "truncation": {
+      "relation_edges_truncated": false,
+      "relation_edges_limit": 50000
+    },
+    "scope": {
+      "dataset_id": "e176c21d-585f-4f3a-a56b-ce067813135c",
+      "documents_sampled": 1,
+      "documents_allowed": 1
+    }
+  },
+  "failures": [],
+  "cleanup": {
+    "dataset_id": "e176c21d-585f-4f3a-a56b-ce067813135c",
+    "purge_deleted": 1,
+    "delete_dataset_status": 204
+  },
+  "steps": [
+    {
+      "name": "health",
+      "status_code": 200,
+      "elapsed_sec": 0.049,
+      "ok": true
+    },
+    {
+      "name": "dataset:create",
+      "status_code": 201,
+      "elapsed_sec": 0.073,
+      "ok": true
+    },
+    {
+      "name": "document:upload",
+      "status_code": 201,
+      "elapsed_sec": 0.073,
+      "ok": true
+    },
+    {
+      "name": "poll:kg-quality-20260524-050849.md",
+      "status_code": 200,
+      "elapsed_sec": 0.061,
+      "ok": true,
+      "doc_status": "pending"
+    },
+    {
+      "name": "poll:kg-quality-20260524-050849.md",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:kg-quality-20260524-050849.md",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:kg-quality-20260524-050849.md",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:kg-quality-20260524-050849.md",
+      "status_code": 200,
+      "elapsed_sec": 0.024,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:kg-quality-20260524-050849.md",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "completed"
+    },
+    {
+      "name": "kg:extract",
+      "status_code": 200,
+      "elapsed_sec": 6.713,
+      "ok": true
+    },
+    {
+      "name": "kg:quality_report",
+      "status_code": 200,
+      "elapsed_sec": 0.104,
+      "ok": true
+    },
+    {
+      "name": "cleanup:purge:e176c21d-585f-4f3a-a56b-ce067813135c",
+      "status_code": 200,
+      "elapsed_sec": 4.066,
+      "ok": true
+    },
+    {
+      "name": "cleanup:delete_dataset:e176c21d-585f-4f3a-a56b-ce067813135c",
+      "status_code": 204,
+      "elapsed_sec": 0.077,
+      "ok": true
+    }
+  ]
+}
