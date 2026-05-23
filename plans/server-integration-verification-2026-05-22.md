@@ -182,6 +182,21 @@ This task also tracks the next quality pass across the product surface. Do not s
   summary/item metadata both recorded the expected judge template key). The same
   run also deleted both generated regression cases, purged the dataset documents,
   reset KG stats to zero, and deleted the dataset.
+- KG usefulness now has one targeted server proof for graph-helpful question types:
+  `artifacts/kg-usefulness-matrix/remote-20260523-044912/report.json`
+  created dataset `7c07e419-54a1-48a3-8a6e-d32bdfb4c0ba`, ingested three linked
+  documents (`Atlas acquisition` -> `integration lead` -> `Orion migration`),
+  and created two grounded regression cases. `/api/v1/kg/search` returned
+  `11` clues / `3` events for the acquisition->leader question and `6` clues /
+  `2` events for the leader->service question. `/api/v1/evaluations/kg/search/diagnostics`
+  then completed run `4aa0ef5e-0a3d-4729-9e3d-93e111ebe3eb` with
+  `baseline_hit_rate=1.0`, `baseline_recall=1.0`, and no failure breakdown.
+  Both baseline and graph chat returned citation-backed extractive summaries, but
+  the first question still did not restate `Mira Chen` verbatim in either path,
+  so this proves graph clue availability on targeted multi-hop queries rather
+  than a finished answer-quality lift in the final chat surface. Cleanup deleted
+  both generated regression cases, purged `3` documents, reset KG stats to zero,
+  and deleted the dataset.
 - Real parsed-output chunking on the same 144-page PDF exposed large strategy spread:
   `langchain_recursive=1151` chunks in `174.793s`,
   `parent_child=3702` chunks in `1.900s`,
@@ -217,3 +232,4 @@ This task also tracks the next quality pass across the product surface. Do not s
 - 2026-05-23 10:55: Re-ran the permission matrix on `main@d3bb639f` from a clean remote worktree and extended the proof to `GET /api/v1/audit/access-graph/summary` plus `GET /api/v1/audit/access-graph/export?export_format=json&limit=10`; admin returned `200`, outsider returned `403`, and scripted dataset cleanup still passed.
 - 2026-05-23 11:13: Added `scripts/remote_governance_ingest_matrix.py` and verified a full live governance ingest matrix on `main@f71242f`. The server proof covered masked PII, masked secrets, HTML rule-pack cleanup with table normalization, duplicate cleanup visible in persisted content/citations, outline-only quarantine, and scripted dataset purge/delete cleanup.
 - 2026-05-23 11:49: Added `scripts/remote_prompt_matrix.py`, wired builtin prompt selectors into document test generation and regression LLM judge, and verified a full live prompt matrix on `main@312e6cc`. The server proof covered builtin sync, answer prompt preview, answer prompt chat, KG extract prompt selection, builtin testset generation, builtin judge prompt selection, generated-case cleanup, dataset purge, and dataset delete.
+- 2026-05-23 12:49: Added `scripts/remote_kg_usefulness_matrix.py` and verified one targeted KG usefulness run on `main@fb5d02c`. The server proof showed stable KG clues and diagnostics hits on two handcrafted multi-hop questions, but also showed that the extractive chat surface still did not restate `Mira Chen` verbatim for the acquisition->leader question, so chat-surface answer lift remains only partially proven.
