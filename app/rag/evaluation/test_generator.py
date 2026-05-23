@@ -24,6 +24,7 @@ from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
 from app.rag.core.logging import get_logger
 from app.services.document_access import filter_allowed_document_ids
+from app.services.prompt_resolver import resolve_prompt_template
 
 logger = get_logger("rag.evaluation.test_generator")
 
@@ -93,6 +94,32 @@ Please return in JSON format as follows:
   ]
 }}
 """
+
+
+def _build_testgen_prompt_inputs(
+    *,
+    chunk_text: str,
+    num_questions: int,
+    normalized_types: list[str],
+    existing_questions: list[str],
+    prompt_variables: list[str] | None,
+) -> dict[str, Any]:
+    supported = {str(item).strip() for item in (prompt_variables or []) if str(item).strip()}
+    text = str(chunk_text or "")[:2000]
+    payload: dict[str, Any] = {}
+    if "document_chunk" in supported:
+        payload["document_chunk"] = text
+    if "text" in supported:
+        payload["text"] = text
+    if "n" in supported:
+        payload["n"] = int(num_questions)
+    if "num_questions" in supported:
+        payload["num_questions"] = int(num_questions)
+    if "existing_questions" in supported:
+        payload["existing_questions"] = "\n".join(str(item) for item in (existing_questions or []) if str(item).strip())
+    if "question_types" in supported:
+        payload["question_types"] = ", ".join(str(item) for item in (normalized_types or []) if str(item).strip())
+    return payload
 
 
 def _calculate_text_diversity_scores(texts: list[str]) -> list[float]:
@@ -194,6 +221,9 @@ def generate_questions_from_documents(
     document_ids: list[UUID] | None = None,
     num_questions: int = 10,
     question_types: list[str] | None = None,
+    prompt_template_id: UUID | None = None,
+    prompt_template_key: str | None = None,
+    prompt_ab_experiment_key: str | None = None,
 ) -> list[GeneratedQuestion]:
     """
     Generate test questions from documents.
@@ -275,9 +305,41 @@ def generate_questions_from_documents(
         )
 
         parser = JsonOutputParser()
+        selected_template = None
+        selected_prompt_template_id: str | None = None
+        selected_prompt_template_key: str | None = None
+        selected_prompt_ab_experiment_key: str | None = None
+        selected_prompt_ab_variant: str | None = None
+        if prompt_template_id or (prompt_template_key or "").strip() or (prompt_ab_experiment_key or "").strip():
+            try:
+                selected_template = resolve_prompt_template(
+                    db=db,
+                    tenant_id=tenant_id,
+                    prompt_template_id=prompt_template_id,
+                    template_key=prompt_template_key,
+                    ab_experiment_key=prompt_ab_experiment_key,
+                    ab_user_key=account_id,
+                )
+            except Exception as exc:
+                logger.warning("Failed to resolve test generator prompt template: %s", exc)
+                selected_template = None
+        prompt_template_text = (
+            str(getattr(selected_template, "content", "") or "").strip()
+            if selected_template is not None
+            else GENERATE_QUESTIONS_FROM_TEXT_PROMPT
+        )
+        prompt_variables = list(getattr(selected_template, "variables", None) or [])
+        if not prompt_variables:
+            prompt_variables = ["text", "num_questions", "question_types"]
+        if selected_template is not None:
+            selected_prompt_template_id = str(getattr(selected_template, "id", "") or "") or None
+            selected_prompt_template_key = str(getattr(selected_template, "template_key", "") or "").strip() or None
+            selected_prompt_ab_experiment_key = str(getattr(selected_template, "ab_experiment_key", "") or "").strip() or None
+            selected_prompt_ab_variant = str(getattr(selected_template, "ab_variant", "") or "").strip() or None
+
         prompt = PromptTemplate(
-            template=GENERATE_QUESTIONS_FROM_TEXT_PROMPT,
-            input_variables=["text", "num_questions", "question_types"],
+            template=prompt_template_text,
+            input_variables=prompt_variables,
         )
         chain = prompt | llm | parser
 
@@ -285,12 +347,15 @@ def generate_questions_from_documents(
         questions_per_chunk = max(1, num_questions // len(sampled_chunks))
         for chunk in sampled_chunks:
             try:
+                prompt_inputs = _build_testgen_prompt_inputs(
+                    chunk_text=chunk.content,
+                    num_questions=questions_per_chunk,
+                    normalized_types=normalized_types,
+                    existing_questions=[item.question for item in all_questions if str(item.question or "").strip()],
+                    prompt_variables=prompt_variables,
+                )
                 result = chain.invoke(
-                    {
-                        "text": chunk.content[:2000],
-                        "num_questions": questions_per_chunk,
-                        "question_types": ", ".join(normalized_types),
-                    }
+                    prompt_inputs
                 )
                 if isinstance(result, dict) and "questions" in result:
                     for q in result["questions"]:
@@ -312,6 +377,10 @@ def generate_questions_from_documents(
                                     "question_type": q_type,
                                     "expected_refusal": expected_refusal,
                                     "reference_chunk_ids": [str(chunk.id)],
+                                    "prompt_template_id": selected_prompt_template_id,
+                                    "prompt_template_key": selected_prompt_template_key,
+                                    "prompt_ab_experiment_key": selected_prompt_ab_experiment_key,
+                                    "prompt_ab_variant": selected_prompt_ab_variant,
                                 },
                             )
                         )

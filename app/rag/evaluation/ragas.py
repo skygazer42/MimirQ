@@ -14,6 +14,7 @@ from uuid import UUID
 
 import httpx
 from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_core.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
 from app.core.config import settings
@@ -40,6 +41,7 @@ from app.rag.evaluation.multimodal_slices import (
 from app.rag.evaluation.regression_sample_builder import build_regression_item_meta, build_regression_sample
 from app.services.dataset_service import DatasetService
 from app.services.document_access import filter_allowed_document_ids, get_allowed_document_id_sets
+from app.services.prompt_resolver import resolve_prompt_template
 
 logger = get_logger(__name__)
 RAGAS_REGRESSION_METRICS = frozenset(
@@ -598,7 +600,7 @@ def _clip_contexts_for_judge(contexts: list[Any] | None, *, max_contexts: int = 
     return out
 
 
-def _llm_judge_prompt(*, kind: str, question: str, answer: str, contexts: list[str]) -> str:
+def _default_llm_judge_prompt(*, kind: str, question: str, answer: str, contexts: list[str]) -> str:
     """
     Create a compact LLM-as-judge prompt that returns strict JSON.
 
@@ -656,6 +658,33 @@ def _llm_judge_prompt(*, kind: str, question: str, answer: str, contexts: list[s
     )
 
 
+def _render_llm_judge_prompt(
+    *,
+    kind: str,
+    question: str,
+    answer: str,
+    contexts: list[str],
+    prompt_content: str | None = None,
+    prompt_variables: list[str] | None = None,
+) -> str:
+    if kind != "generation" or not str(prompt_content or "").strip():
+        return _default_llm_judge_prompt(kind=kind, question=question, answer=answer, contexts=contexts)
+
+    variable_names = [str(item).strip() for item in (prompt_variables or []) if str(item).strip()]
+    if not variable_names:
+        variable_names = ["question", "answer", "contexts"]
+    contexts_text = "\n".join([f"[C{i+1}] {c}" for i, c in enumerate(contexts or [])]).strip()
+    payload: dict[str, Any] = {}
+    if "question" in variable_names:
+        payload["question"] = str(question or "")
+    if "answer" in variable_names:
+        payload["answer"] = str(answer or "")
+    if "contexts" in variable_names:
+        payload["contexts"] = contexts_text
+    prompt = PromptTemplate(template=str(prompt_content), input_variables=variable_names)
+    return str(prompt.format(**payload))
+
+
 def _coerce_llm_judge_payload(raw: Any) -> dict[str, Any]:
     obj = raw if isinstance(raw, dict) else {}
     score_raw = obj.get("score")
@@ -694,8 +723,18 @@ def _run_llm_judge(
     question: str,
     answer: str,
     contexts: list[str],
+    prompt_content: str | None = None,
+    prompt_variables: list[str] | None = None,
+    prompt_meta: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    prompt = _llm_judge_prompt(kind=kind, question=question, answer=answer, contexts=contexts)
+    prompt = _render_llm_judge_prompt(
+        kind=kind,
+        question=question,
+        answer=answer,
+        contexts=contexts,
+        prompt_content=prompt_content,
+        prompt_variables=prompt_variables,
+    )
     content = ""
     err: str | None = None
     try:
@@ -710,14 +749,58 @@ def _run_llm_judge(
     out["ok"] = bool(meta.get("ok"))
     out["method"] = meta.get("method")
     out["error"] = err or meta.get("error")
+    if isinstance(prompt_meta, dict) and prompt_meta:
+        out.update(prompt_meta)
     return out
 
 
-def _attach_llm_judge_to_eval_items(*, eval_items: list[dict[str, Any]], llm: Any) -> dict[str, Any]:
+def _attach_llm_judge_to_eval_items(
+    *,
+    eval_items: list[dict[str, Any]],
+    llm: Any,
+    db: Any | None = None,
+    tenant_id: UUID | None = None,
+    judge_prompt_template_id: UUID | None = None,
+    judge_prompt_template_key: str | None = None,
+    judge_prompt_ab_experiment_key: str | None = None,
+    judge_ab_user_key: str | None = None,
+) -> dict[str, Any]:
     model_used = getattr(llm, "model_name", None) or getattr(llm, "model", None)
     gen_scores: list[float] = []
     ret_scores: list[float] = []
     overall_scores: list[float] = []
+    selected_generation_template = None
+    generation_prompt_content: str | None = None
+    generation_prompt_variables: list[str] | None = None
+    generation_prompt_meta: dict[str, Any] = {}
+
+    if db is not None and tenant_id is not None and (
+        judge_prompt_template_id
+        or (judge_prompt_template_key or "").strip()
+        or (judge_prompt_ab_experiment_key or "").strip()
+    ):
+        try:
+            selected_generation_template = resolve_prompt_template(
+                db=db,
+                tenant_id=tenant_id,
+                prompt_template_id=judge_prompt_template_id,
+                template_key=judge_prompt_template_key,
+                ab_experiment_key=judge_prompt_ab_experiment_key,
+                ab_user_key=judge_ab_user_key,
+            )
+        except Exception as exc:
+            logger.warning("Failed to resolve llm judge prompt template: %s", exc)
+            selected_generation_template = None
+
+    if selected_generation_template is not None:
+        generation_prompt_content = str(getattr(selected_generation_template, "content", "") or "").strip() or None
+        generation_prompt_variables = list(getattr(selected_generation_template, "variables", None) or [])
+        generation_prompt_meta = {
+            "prompt_template_id": str(getattr(selected_generation_template, "id", "") or "") or None,
+            "prompt_template_key": str(getattr(selected_generation_template, "template_key", "") or "").strip() or None,
+            "prompt_ab_experiment_key": str(getattr(selected_generation_template, "ab_experiment_key", "") or "").strip() or None,
+            "prompt_ab_variant": str(getattr(selected_generation_template, "ab_variant", "") or "").strip() or None,
+        }
 
     def _run() -> None:
         for item in eval_items:
@@ -730,7 +813,16 @@ def _attach_llm_judge_to_eval_items(*, eval_items: list[dict[str, Any]], llm: An
                 continue
 
             retrieval = _run_llm_judge(llm=llm, kind="retrieval", question=q, answer="", contexts=ctx)
-            generation = _run_llm_judge(llm=llm, kind="generation", question=q, answer=a, contexts=ctx)
+            generation = _run_llm_judge(
+                llm=llm,
+                kind="generation",
+                question=q,
+                answer=a,
+                contexts=ctx,
+                prompt_content=generation_prompt_content,
+                prompt_variables=generation_prompt_variables,
+                prompt_meta=generation_prompt_meta,
+            )
 
             scores_for_overall: list[float] = []
             r_score = retrieval.get("score")
@@ -782,6 +874,10 @@ def _attach_llm_judge_to_eval_items(*, eval_items: list[dict[str, Any]], llm: An
         "llm_judge_retrieval_avg": _mean(ret_scores),
         "llm_judge_generation_avg": _mean(gen_scores),
         "llm_judge_overall_avg": _mean(overall_scores),
+        "llm_judge_prompt_template_id": generation_prompt_meta.get("prompt_template_id"),
+        "llm_judge_prompt_template_key": generation_prompt_meta.get("prompt_template_key"),
+        "llm_judge_prompt_ab_experiment_key": generation_prompt_meta.get("prompt_ab_experiment_key"),
+        "llm_judge_prompt_ab_variant": generation_prompt_meta.get("prompt_ab_variant"),
         # Gap8 (P2): cost tracking for judge calls (best-effort).
         "llm_judge_tokens_input": prompt_tokens,
         "llm_judge_tokens_output": completion_tokens,
@@ -1623,7 +1719,16 @@ def run_regression_ragas_evaluation(
             # LLM-as-judge is optional and should never fail the whole regression run.
             try:
                 shared_llm, shared_embeddings = _build_llm_and_embeddings()
-                llm_judge_summary = _attach_llm_judge_to_eval_items(eval_items=eval_items, llm=shared_llm)
+                llm_judge_summary = _attach_llm_judge_to_eval_items(
+                    eval_items=eval_items,
+                    llm=shared_llm,
+                    db=db,
+                    tenant_id=tenant_id,
+                    judge_prompt_template_id=rag_params.get("judge_prompt_template_id"),
+                    judge_prompt_template_key=rag_params.get("judge_prompt_template_key"),
+                    judge_prompt_ab_experiment_key=rag_params.get("judge_prompt_ab_experiment_key"),
+                    judge_ab_user_key=account_id,
+                )
             except Exception as exc:  # noqa: BLE001
                 llm_judge_summary = {
                     "llm_judge_items": 0,

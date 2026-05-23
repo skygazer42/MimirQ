@@ -1580,6 +1580,9 @@ async def generate_test_cases_from_documents(
             document_ids=request.document_ids or None,
             num_questions=request.num_questions,
             question_types=request.question_types,
+            prompt_template_id=request.prompt_template_id,
+            prompt_template_key=request.prompt_template_key,
+            prompt_ab_experiment_key=request.prompt_ab_experiment_key,
         )
 
         # Auto-save as regression cases when requested.
