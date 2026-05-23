@@ -235,6 +235,26 @@ def main() -> int:
         if not status_matches_expected(status, [401, 403]):
             raise RuntimeError(f"outsider groups unexpectedly allowed: {snippet(body)}")
 
+        status, body, elapsed = admin_api.json("GET", "/api/v1/audit/access-graph/summary")
+        steps.append(build_case_result("access_graph_summary_admin", status=status, body=body, elapsed=elapsed, expected_statuses=[200]))
+        if not status_matches_expected(status, [200]):
+            raise RuntimeError(f"admin access-graph summary failed: {snippet(body)}")
+
+        status, body, elapsed = outsider_api.json("GET", "/api/v1/audit/access-graph/summary")
+        steps.append(build_case_result("access_graph_summary_outsider", status=status, body=body, elapsed=elapsed, expected_statuses=[401, 403]))
+        if not status_matches_expected(status, [401, 403]):
+            raise RuntimeError(f"outsider access-graph summary unexpectedly allowed: {snippet(body)}")
+
+        status, body, elapsed = admin_api.json("GET", "/api/v1/audit/access-graph/export?export_format=json&limit=10")
+        steps.append(build_case_result("access_graph_export_admin", status=status, body=body, elapsed=elapsed, expected_statuses=[200]))
+        if not status_matches_expected(status, [200]):
+            raise RuntimeError(f"admin access-graph export failed: {snippet(body)}")
+
+        status, body, elapsed = outsider_api.json("GET", "/api/v1/audit/access-graph/export?export_format=json&limit=10")
+        steps.append(build_case_result("access_graph_export_outsider", status=status, body=body, elapsed=elapsed, expected_statuses=[401, 403]))
+        if not status_matches_expected(status, [401, 403]):
+            raise RuntimeError(f"outsider access-graph export unexpectedly allowed: {snippet(body)}")
+
         status, body, elapsed = admin_api.json(
             "POST",
             "/api/v1/datasets/",
