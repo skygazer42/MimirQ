@@ -376,11 +376,13 @@ def main() -> int:
                 record_step(steps, label, status, body, elapsed, question=question, citation_count=citation_count, answer_preview=answer[:200])
                 if not ok_status(status):
                     raise RuntimeError(f"{label} failed: {snippet(body)}")
-                if not contains_expected_text(answer, expected_answer):
+                matches_expected = contains_expected_text(answer, expected_answer)
+                if use_graph and not matches_expected:
                     raise RuntimeError(f"{label} answer missing expected text for question: {question}")
                 chat_rows[label] = {
                     "answer_preview": answer[:200],
                     "citation_count": citation_count,
+                    "matches_expected": matches_expected,
                     "elapsed_sec": round(elapsed, 3),
                 }
 
