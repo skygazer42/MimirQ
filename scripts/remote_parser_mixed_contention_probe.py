@@ -61,6 +61,31 @@ def summarize_backend_stats(*, backend: str, results: list[dict[str, Any]]) -> d
     }
 
 
+def parse_backend_fixture_overrides(values: list[str], *, cwd: Path | None = None) -> dict[str, Path]:
+    base_dir = (cwd or Path.cwd()).resolve()
+    overrides: dict[str, Path] = {}
+    for raw in values or []:
+        item = str(raw or "").strip()
+        if not item:
+            continue
+        if "=" not in item:
+            raise ValueError(f"backend fixture override must look like backend=path, got: {item}")
+        backend, path_text = item.split("=", 1)
+        backend_key = str(backend or "").strip()
+        if not backend_key:
+            raise ValueError(f"backend fixture override missing backend name: {item}")
+        path_value = str(path_text or "").strip()
+        if not path_value:
+            raise ValueError(f"backend fixture override missing path: {item}")
+        path = Path(path_value)
+        if not path.is_absolute():
+            path = (base_dir / path).resolve()
+        if not path.exists():
+            raise FileNotFoundError(str(path))
+        overrides[backend_key] = path
+    return overrides
+
+
 def build_timeout_result(*, backend: str, round_index: int, timeout_sec: float) -> dict[str, Any]:
     return {
         "backend_requested": str(backend),
@@ -79,6 +104,7 @@ def build_timeout_result(*, backend: str, round_index: int, timeout_sec: float) 
         "pdf_score": None,
         "is_scanned": None,
         "text_sample": "",
+        "fixture_path": None,
     }
 
 
@@ -93,6 +119,7 @@ def run_case(api: Api, *, pdf_path: Path, backend: str, min_markdown_chars: int,
         "elapsed_sec": round(float(elapsed), 3),
         "ok": failure_class == "ok",
         "failure_class": failure_class,
+        "fixture_path": str(pdf_path),
         **summary,
     }
 
@@ -135,14 +162,29 @@ def main() -> int:
     parser.add_argument("--task-timeout", type=float, default=0.0)
     parser.add_argument("--min-markdown-chars", type=int, default=80)
     parser.add_argument("--pages", type=int, default=2)
+    parser.add_argument("--fixture-path", default="")
+    parser.add_argument(
+        "--backend-fixture",
+        action="append",
+        default=[],
+        help="Per-backend fixture override in backend=/path/to/file.pdf form. Repeatable.",
+    )
     args = parser.parse_args()
 
     artifact_dir = Path(args.artifact_dir or f"artifacts/parser-contention/{time.strftime('%Y%m%d-%H%M%S')}").resolve()
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    fixture_path = artifact_dir / "parser-contention-fixture.pdf"
-    write_fixture_pdf(fixture_path, pages=max(1, int(args.pages or 1)))
+    generated_fixture_path = artifact_dir / "parser-contention-fixture.pdf"
+    default_fixture_path: Path
+    if str(args.fixture_path or "").strip():
+        default_fixture_path = Path(str(args.fixture_path)).resolve()
+        if not default_fixture_path.exists():
+            raise FileNotFoundError(str(default_fixture_path))
+    else:
+        write_fixture_pdf(generated_fixture_path, pages=max(1, int(args.pages or 1)))
+        default_fixture_path = generated_fixture_path
 
     backends = [item.strip() for item in str(args.backends or "").split(",") if item.strip()]
+    backend_fixture_overrides = parse_backend_fixture_overrides(list(args.backend_fixture or []), cwd=Path.cwd())
     tasks = [(backend, round_idx) for round_idx in range(1, max(1, int(args.rounds or 1)) + 1) for backend in backends]
     task_timeout_sec = float(args.task_timeout or 0.0)
 
@@ -151,6 +193,7 @@ def main() -> int:
     ctx = multiprocessing.get_context("spawn")
     workers: list[tuple[tuple[str, int], multiprocessing.Process, multiprocessing.queues.Queue, float]] = []
     for backend, round_idx in tasks:
+        fixture_path = backend_fixture_overrides.get(backend, default_fixture_path)
         queue: multiprocessing.queues.Queue = ctx.Queue()
         proc = ctx.Process(
             target=_child_run,
@@ -214,7 +257,13 @@ def main() -> int:
         "ok": all(bool(item.get("ok")) for item in results),
         "artifact_dir": str(artifact_dir),
         "base_url": args.base_url,
-        "fixture": {"path": str(fixture_path), "bytes": fixture_path.stat().st_size, "pages": int(args.pages)},
+        "fixture": {
+            "path": str(default_fixture_path),
+            "bytes": default_fixture_path.stat().st_size,
+            "pages": int(args.pages),
+            "generated": default_fixture_path == generated_fixture_path,
+        },
+        "backend_fixtures": {backend: str(path) for backend, path in sorted(backend_fixture_overrides.items())},
         "backends": backends,
         "rounds": int(args.rounds),
         "elapsed_sec": round(float(elapsed), 3),

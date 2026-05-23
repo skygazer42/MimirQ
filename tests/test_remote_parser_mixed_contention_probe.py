@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from scripts.remote_parser_mixed_contention_probe import build_timeout_result, summarize_backend_stats
+from scripts.remote_parser_mixed_contention_probe import (
+    build_timeout_result,
+    parse_backend_fixture_overrides,
+    summarize_backend_stats,
+)
 
 
 def test_remote_parser_mixed_contention_probe_summarize_backend_stats() -> None:
@@ -29,3 +33,17 @@ def test_remote_parser_mixed_contention_probe_build_timeout_result_marks_failure
     assert result["ok"] is False
     assert result["failure_class"] == "timeout"
     assert result["timeout_sec"] == 180.0
+    assert result["fixture_path"] is None
+
+
+def test_remote_parser_mixed_contention_probe_parses_backend_fixture_overrides(tmp_path) -> None:
+    fixture = tmp_path / "rfc9000.pdf"
+    fixture.write_bytes(b"%PDF-1.4\n")
+
+    overrides = parse_backend_fixture_overrides(
+        [f"magicpdf={fixture}", f"deepdoc={fixture.name}"],
+        cwd=tmp_path,
+    )
+
+    assert overrides["magicpdf"] == fixture.resolve()
+    assert overrides["deepdoc"] == fixture.resolve()
