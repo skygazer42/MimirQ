@@ -139,6 +139,10 @@ This task also tracks the next quality pass across the product surface. Do not s
   `magicpdf`, persisted document `d7359385-2767-4c09-b18f-c7c4a9ccbb86`, confirmed `670` stored chunks,
   completed default KG extraction in `13.616s`, and returned both baseline chat (`8.09s`) and graph-enabled
   chat (`0.217s`) responses through the live API.
+- Dataset/document lifecycle cleanup is now also validated on a real-PDF dataset:
+  dataset `f833c04d-e64e-46ac-8773-bc77a81d6ab9` was purged with `POST /api/v1/datasets/{id}/purge?dry_run=false`,
+  which deleted `1` document in `1.646s`; a follow-up export returned `0` documents, `/api/v1/kg/stats` returned
+  `0 events / 0 entities / 0 links`, and `DELETE /api/v1/datasets/{id}` then returned `204`.
 - Real parsed-output chunking on the same 144-page PDF exposed large strategy spread:
   `langchain_recursive=1151` chunks in `174.793s`,
   `parent_child=3702` chunks in `1.900s`,
@@ -168,3 +172,4 @@ This task also tracks the next quality pass across the product surface. Do not s
 - 2026-05-23 09:20: Deployed `main@154af84` with document-level KG chunk budget (`120`, `uniform`) and re-ran KG extraction on the same 144-page PDF. Server logs showed the rerun restarted at batch `1` and progressed through about batch `98` before entering embedding/indexing work, rather than continuing unbounded past `250+` extraction batches. This confirms the chunk budget is taking effect, but the default low-cost LLM path is still too slow to treat as a comfortable long-document default.
 - 2026-05-23 09:34: Deployed `main@57f7c75` with automatic long-document backend routing (`KG_EXTRACT_LONG_DOC_BACKEND=heuristic`, threshold `300` chunks). The same 144-page PDF then completed default KG extraction in `13.411s` with `event_count=120`; final `/api/v1/kg/stats` for dataset `cd232ae7-609d-415f-a43a-cca768aee664` reported `120 events / 1148 entities / 1887 links`.
 - 2026-05-23 09:48: Added `scripts/remote_real_pdf_chain.py` and ran the first full real-PDF server chain. The 144-page PDF completed end-to-end through parse, stored chunks, default heuristic KG extraction, and baseline/graph chat under artifact `artifacts/real-pdf-chain/final-20260523-014839/`.
+- 2026-05-23 10:17: Verified knowledge-base lifecycle cleanup on a real-PDF dataset: purge deleted the only document, dataset export returned empty, KG stats reset to zero, and dataset delete returned `204`.
