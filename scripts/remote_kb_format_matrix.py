@@ -46,6 +46,7 @@ DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000000"
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WORD_FIXTURE = REPO_ROOT / "tests/fixtures/parsing_golden_broader/word_project_brief_docx/input/sample.docx"
 XLSX_FIXTURE = REPO_ROOT / "tests/fixtures/parsing_golden_broader/excel_budget_sheet_xlsx/input/sample.xlsx"
+TEXT_FAMILY_CASE_NAMES = {"text_note_txt", "ini_config", "sql_query"}
 
 
 def evaluate_format_case(
@@ -84,6 +85,29 @@ def evaluate_format_case(
 
 def prepare_fixture_files(fixtures_dir: Path) -> list[dict[str, Any]]:
     fixtures_dir.mkdir(parents=True, exist_ok=True)
+
+    txt_path = fixtures_dir / "kb-note.txt"
+    txt_path.write_text(
+        "Token TXT-BEACON belongs only to this text note.\n"
+        "Owner: Talia Beacon.\n",
+        encoding="utf-8",
+    )
+
+    ini_path = fixtures_dir / "kb-service.ini"
+    ini_path.write_text(
+        "[service]\n"
+        "token=INI-HARBOR\n"
+        "owner=Inez Harbor\n"
+        "status=ready\n",
+        encoding="utf-8",
+    )
+
+    sql_path = fixtures_dir / "kb-owner.sql"
+    sql_path.write_text(
+        "-- owner lookup\n"
+        'SELECT "SQL-LANTERN" AS token, "Soren Lantern" AS owner;\n',
+        encoding="utf-8",
+    )
 
     markdown_path = fixtures_dir / "kb-note.md"
     markdown_path.write_text(
@@ -147,6 +171,30 @@ def prepare_fixture_files(fixtures_dir: Path) -> list[dict[str, Any]]:
 
     return [
         {
+            "name": "text_note_txt",
+            "path": txt_path,
+            "query": "Which token belongs only to this text note?",
+            "expected_terms": ["TXT-BEACON", "Talia Beacon"],
+            "parser_backend": "basic",
+            "family_group": "text_family",
+        },
+        {
+            "name": "ini_config",
+            "path": ini_path,
+            "query": "Who owns token INI-HARBOR?",
+            "expected_terms": ["INI-HARBOR", "Inez Harbor"],
+            "parser_backend": "basic",
+            "family_group": "text_family",
+        },
+        {
+            "name": "sql_query",
+            "path": sql_path,
+            "query": "Who owns token SQL-LANTERN?",
+            "expected_terms": ["SQL-LANTERN", "Soren Lantern"],
+            "parser_backend": "basic",
+            "family_group": "text_family",
+        },
+        {
             "name": "markdown_note",
             "path": markdown_path,
             "query": "Which token belongs only to the markdown note?",
@@ -197,6 +245,21 @@ def prepare_fixture_files(fixtures_dir: Path) -> list[dict[str, Any]]:
     ]
 
 
+def select_fixture_cases(
+    fixture_cases: list[dict[str, Any]],
+    *,
+    case_names: list[str],
+    include_text_families: bool,
+) -> list[dict[str, Any]]:
+    requested_names = [str(name).strip() for name in case_names if str(name).strip()]
+    if requested_names:
+        requested_set = set(requested_names)
+        return [case for case in fixture_cases if str(case.get("name") or "") in requested_set]
+    if include_text_families:
+        return fixture_cases
+    return [case for case in fixture_cases if str(case.get("family_group") or "") != "text_family"]
+
+
 def cleanup_dataset(api: LiveApi, *, steps: list[dict[str, Any]], dataset_id: str) -> dict[str, Any]:
     summary: dict[str, Any] = {"dataset_id": dataset_id}
     resp = api.json("POST", f"/api/v1/datasets/{dataset_id}/purge?dry_run=false&max_delete=1000", payload={})
@@ -218,12 +281,18 @@ def main() -> int:
     parser.add_argument("--artifact-dir", default="")
     parser.add_argument("--timeout", type=int, default=180)
     parser.add_argument("--poll-timeout", type=int, default=300)
+    parser.add_argument("--include-text-families", action="store_true")
+    parser.add_argument("--case-name", action="append", default=[])
     args = parser.parse_args()
 
     run_id = time.strftime("%Y%m%d-%H%M%S")
     artifact_dir = Path(args.artifact_dir or f"artifacts/kb-format-matrix/{run_id}").resolve()
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    fixture_cases = prepare_fixture_files(artifact_dir / "fixtures")
+    fixture_cases = select_fixture_cases(
+        prepare_fixture_files(artifact_dir / "fixtures"),
+        case_names=list(args.case_name or []),
+        include_text_families=bool(args.include_text_families),
+    )
     api = LiveApi(args.base_url, args.tenant_id, args.account_id, args.user_id, args.timeout)
 
     steps: list[dict[str, Any]] = []
@@ -283,12 +352,13 @@ def main() -> int:
         }
 
         for case in fixture_cases:
+            parser_backend = str(case.get("parser_backend") or "auto")
             resp = api.multipart(
                 "POST",
                 "/api/v1/documents/upload",
                 fields={
                     "dataset_id": dataset_id,
-                    "parser_backend": "auto",
+                    "parser_backend": parser_backend,
                     "chunk_strategy": "langchain_recursive",
                     "governance_enabled": "true",
                     "chunk_vector_enabled": "true",

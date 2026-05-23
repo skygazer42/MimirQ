@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from scripts.remote_kb_format_matrix import evaluate_format_case
+from scripts.remote_kb_format_matrix import evaluate_format_case, prepare_fixture_files, select_fixture_cases
 
 
 def test_remote_kb_format_matrix_case_accepts_expected_doc_and_terms() -> None:
@@ -74,3 +74,32 @@ def test_remote_kb_format_matrix_accepts_multi_term_yaml_or_xml_hits() -> None:
     )
 
     assert failures == []
+
+
+def test_remote_kb_format_matrix_prepares_text_family_cases_with_basic_parser(tmp_path) -> None:
+    cases = prepare_fixture_files(tmp_path)
+    by_name = {str(case.get("name")): case for case in cases}
+
+    assert by_name["text_note_txt"]["parser_backend"] == "basic"
+    assert by_name["ini_config"]["parser_backend"] == "basic"
+    assert by_name["sql_query"]["parser_backend"] == "basic"
+
+
+def test_remote_kb_format_matrix_select_cases_defaults_to_non_text_families(tmp_path) -> None:
+    cases = prepare_fixture_files(tmp_path)
+
+    selected = select_fixture_cases(cases, case_names=[], include_text_families=False)
+
+    selected_names = {str(case.get("name")) for case in selected}
+    assert "text_note_txt" not in selected_names
+    assert "ini_config" not in selected_names
+    assert "sql_query" not in selected_names
+    assert "markdown_note" in selected_names
+
+
+def test_remote_kb_format_matrix_select_cases_allows_explicit_case_names(tmp_path) -> None:
+    cases = prepare_fixture_files(tmp_path)
+
+    selected = select_fixture_cases(cases, case_names=["text_note_txt", "sql_query"], include_text_families=False)
+
+    assert [str(case.get("name")) for case in selected] == ["text_note_txt", "sql_query"]
