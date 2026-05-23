@@ -80,6 +80,11 @@ def extract_first_event_id(body: Any) -> str:
         if not isinstance(item, dict):
             continue
         node_id = str(item.get("id") or "").strip()
+        meta = item.get("meta") if isinstance(item.get("meta"), dict) else {}
+        if str(meta.get("kind") or "").strip().lower() == "event" and node_id:
+            if node_id.startswith("event:"):
+                return node_id.split(":", 1)[1].strip()
+            return node_id
         if node_id.startswith("event:"):
             return node_id.split(":", 1)[1].strip()
     return ""
@@ -461,6 +466,33 @@ def main() -> int:
         summary["ok"] = False
         summary["error"] = str(exc)
     finally:
+        if dataset_id and document_ids and not summary.get("cleanup"):
+            cleanup: dict[str, Any] = {}
+            try:
+                if regression_case_ids:
+                    cleanup.update(
+                        delete_regression_cases(
+                            api,
+                            case_ids=regression_case_ids,
+                            steps=steps,
+                            timeout=args.timeout,
+                        )
+                    )
+                cleanup.update(
+                    perform_cleanup(
+                        api=api,
+                        steps=steps,
+                        dataset_id=dataset_id,
+                        document_id=document_ids[0],
+                        cleanup_mode="purge_dataset",
+                        delete_dataset_after=bool(args.delete_dataset_after),
+                        timeout=args.timeout,
+                    )
+                )
+            except Exception as cleanup_exc:  # noqa: BLE001
+                cleanup["error"] = str(cleanup_exc)
+            if cleanup:
+                summary["cleanup"] = cleanup
         summary["steps"] = steps
         report_path = artifact_dir / "report.json"
         report_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
