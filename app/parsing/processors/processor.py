@@ -488,6 +488,24 @@ def _ensure_ingest_page_indices(documents: list[Document]) -> None:
         doc.metadata = meta
 
 
+def _joined_text_total_characters(
+    documents: list[Document],
+    *,
+    join_separator: str = "\n\n",
+) -> int:
+    """Return the joined-text length used for persisted parsed content offsets."""
+    if not documents:
+        return 0
+    sep_len = len(join_separator or "")
+    total = 0
+    last_index = len(documents) - 1
+    for idx, doc in enumerate(documents):
+        total += len(doc.page_content or "")
+        if idx < last_index:
+            total += sep_len
+    return int(total)
+
+
 def _rebase_chunk_offsets_by_page_index(
     *,
     documents: list[Document],
@@ -3715,6 +3733,7 @@ class DocumentProcessorService:
                     tenant_id=tenant_id,
                     document_id=document_id,
                     chunks=chunks,
+                    total_characters=_joined_text_total_characters(parsed_documents, join_separator="\n\n"),
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Failed to record chunking stats: %s", str(exc)[:200])
@@ -5079,6 +5098,7 @@ class DocumentProcessorService:
         document_id: UUID,
         chunks: list[Document],
         short_threshold: int = 120,
+        total_characters: int | None = None,
     ) -> None:
         """Persist basic chunking stats (length distribution, duplicates) on the document metadata.
 
@@ -5131,11 +5151,12 @@ class DocumentProcessorService:
                 continue
             ranges.append((s, e))
 
+        total_chars = int(total_characters or 0) or int(getattr(db_doc, "total_characters", 0) or 0)
         coverage: dict[str, float | int] | None = None
-        if ranges and int(getattr(db_doc, "total_characters", 0) or 0) > 0:
+        if ranges and total_chars > 0:
             coverage = compute_chunk_coverage_metrics_from_ranges(
                 ranges,
-                total_characters=int(getattr(db_doc, "total_characters", 0) or 0),
+                total_characters=total_chars,
             )
 
         metadata = dict(db_doc.doc_metadata or {})
@@ -5158,7 +5179,7 @@ class DocumentProcessorService:
                     "gap_count": int((coverage or {}).get("gap_count") or 0) if isinstance(coverage, dict) else 0,
                 },
                 total_chunks=int(len(chunks)),
-                total_characters=int(getattr(db_doc, "total_characters", 0) or 0),
+                total_characters=total_chars,
                 chunk_size=chunk_size,
                 chunk_overlap=chunk_overlap,
                 original_text_included=False,
