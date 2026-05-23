@@ -162,6 +162,17 @@ async function fetchLiveDocument(
   return (await response.json()) as LiveDocument
 }
 
+async function fetchLiveDocumentStatusCode(
+  request: APIRequestContext,
+  documentId: string
+): Promise<number> {
+  const response = await request.get(
+    `${apiBaseUrl()}/api/v1/documents/${documentId}`,
+    { headers: liveHeaders() }
+  )
+  return response.status()
+}
+
 async function waitForLiveDocumentStatus(
   request: APIRequestContext,
   documentId: string,
@@ -258,6 +269,70 @@ test.describe('live quarantine surfaces', () => {
         timeout: LIVE_EXPECT_TIMEOUT_MS,
       })
       await expect(reviewButton).toBeDisabled()
+      expect(pageErrors).toEqual([])
+    } finally {
+      if (datasetId) {
+        await deleteLiveDataset(request, datasetId)
+      }
+    }
+  })
+
+  test('deletes a real quarantined document through the quarantine center UI', async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(LIVE_TEST_TIMEOUT_MS)
+    const pageErrors: string[] = []
+    page.on('pageerror', (error) => pageErrors.push(error.message))
+    await installLiveAuth(page)
+
+    const datasetName = `playwright-quarantine-delete-${Date.now()}`
+    const filename = `outline-delete-${Date.now()}.md`
+    const content = '# Executive Summary\n\n## Agenda\n\n## Risks\n\n## Next Steps\n'
+
+    let datasetId = ''
+    let documentId = ''
+
+    try {
+      datasetId = await createLiveDataset(request, datasetName)
+      documentId = await uploadQuarantinedDocument(request, {
+        datasetId,
+        filename,
+        content,
+      })
+
+      await waitForLiveDocumentStatus(request, documentId, 'quarantined')
+
+      await page.goto(
+        `/knowledge/quarantine?datasetId=${encodeURIComponent(datasetId)}`,
+        { waitUntil: 'networkidle' }
+      )
+      const fileButton = page.getByRole('button', { name: new RegExp(filename) })
+      await expect(fileButton).toBeVisible({ timeout: LIVE_EXPECT_TIMEOUT_MS })
+      await fileButton.click()
+
+      const dialog = page.getByRole('dialog')
+      await expect(
+        dialog.getByRole('heading', { name: filename })
+      ).toBeVisible({ timeout: LIVE_EXPECT_TIMEOUT_MS })
+
+      const footer = dialog.locator('div.border-t').last()
+      await footer.locator('button').last().click()
+
+      const confirm = page.getByRole('alertdialog')
+      await expect(
+        confirm.getByText('确定物理删除？')
+      ).toBeVisible({ timeout: LIVE_EXPECT_TIMEOUT_MS })
+      await confirm.getByRole('button', { name: '物理删除' }).click()
+
+      await expect
+        .poll(async () => fetchLiveDocumentStatusCode(request, documentId), {
+          timeout: LIVE_EXPECT_TIMEOUT_MS,
+        })
+        .toBe(404)
+
+      await expect(fileButton).toHaveCount(0)
+      documentId = ''
       expect(pageErrors).toEqual([])
     } finally {
       if (datasetId) {
