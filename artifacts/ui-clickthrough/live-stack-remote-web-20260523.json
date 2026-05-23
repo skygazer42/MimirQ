@@ -1,0 +1,133 @@
+{
+  "config": {
+    "configFile": "/data/temp34/MimirQ/web/playwright.live.config.ts",
+    "rootDir": "/data/temp34/MimirQ/web/e2e",
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/data/temp34/MimirQ/web/test-results/playwright-live",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "/data/temp34/MimirQ/web/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "/live-stack\\.smoke\\.spec\\.ts/"
+        ],
+        "timeout": 240000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "json"
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.59.1",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "live-stack.smoke.spec.ts",
+      "file": "live-stack.smoke.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "live stack smoke",
+          "file": "live-stack.smoke.spec.ts",
+          "line": 250,
+          "column": 6,
+          "specs": [
+            {
+              "title": "uploads, parses, opens the viewer, chats, and runs a command-menu handoff against the live stack",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 420000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 26605,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "steps": [
+                        {
+                          "title": "upload and parse a real document",
+                          "duration": 6202
+                        },
+                        {
+                          "title": "open the real document viewer and keep state across reload",
+                          "duration": 3216
+                        },
+                        {
+                          "title": "send a real chat request for a searchable document scope",
+                          "duration": 10816
+                        },
+                        {
+                          "title": "run a command-menu handoff into the real chat surface",
+                          "duration": 5635
+                        }
+                      ],
+                      "startTime": "2026-05-23T07:11:49.913Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "82dbaa073620ad5c6ab4-c3396f7e27fc0cc59091",
+              "file": "live-stack.smoke.spec.ts",
+              "line": 253,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-05-23T07:11:49.381Z",
+    "duration": 27282.17,
+    "expected": 1,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

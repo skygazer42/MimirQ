@@ -211,6 +211,15 @@ This task also tracks the next quality pass across the product surface. Do not s
   `/datasets/{id}/profile`, and `/history?id=...` against both the live backend
   and the deployed frontend page host itself. This closes the remaining
   deployment-specific UI walkthrough gap.
+- A deeper UI workflow is now also proven on the deployed page host itself:
+  `artifacts/ui-clickthrough/live-stack-remote-web-20260523.json`
+  passed `1/1` in `27.282s` and exercised upload -> parse -> viewer -> real
+  chat -> command-menu handoff against the remote `web` + `api` stack. This
+  run exposed and then verified a real runtime fix: `main@ca40dd49` bounds
+  cross-encoder cold-start waits to `2.0s`, so the first
+  `BAAI/bge-reranker-v2-m3` download now degrades to base retrieval order
+  instead of stalling assistant replies and health checks. After the proof, the
+  smoke's `enterprise-telemetry-sample.md` parsing documents were deleted.
 - Real parsed-output chunking on the same 144-page PDF exposed large strategy spread:
   `langchain_recursive=1151` chunks in `174.793s`,
   `parent_child=3702` chunks in `1.900s`,
@@ -251,3 +260,5 @@ This task also tracks the next quality pass across the product surface. Do not s
 - 2026-05-23 14:00: Re-ran a Playwright live business-surface smoke against the remote backend via localhost SSH tunnel and updated the spec to current UI labels (`行业规则`, `预览`). The passing run (`backend-business-surfaces-live-20260523-remote-backend.json`) proved `/settings`, `/graph`, `/datasets/{id}/profile`, and `/history` page clicks on the current product surface.
 - 2026-05-23 14:30: Added a dedicated `web/playwright.remote-web.config.ts` lane so the same business-surface smoke can target the remote `web` container page host directly. The first remote-web reruns still fail with React hydration error `#418` on the history page, even after adding hydration guards for sidebar relative times, message-group labels, selected-conversation created-at chips, sidebar group labels, and minimal assistant timestamps. The remaining UI gap is now precisely scoped to a deployment-specific hydration mismatch, not a missing smoke path.
 - 2026-05-23 14:54: Rebuilt the remote `web` container from clean worktree `/tmp/MimirQ-main-webfix` at `main@059028d9` and re-ran `pnpm e2e:live:remote-web` through SSH tunnels to the deployed page host and API. The remote-web lane passed (`backend-business-surfaces-live-20260523-remote-web.json`, `1/1` in `12.246s`), closing the last deployment-specific UI walkthrough caveat.
+- 2026-05-23 15:11: A deeper deployed-frontend live-stack smoke initially failed because the first real chat request synchronously triggered a HuggingFace cross-encoder download, which stalled assistant replies and even `/api/v1/health/ready`. `main@ca40dd49` fixed that by bounding local cross-encoder load waits to `2.0s` and degrading to base retrieval order while the model keeps warming in the background.
+- 2026-05-23 15:12: Rebuilt the remote `api` container from `main@ca40dd49` and re-ran the deeper live-stack smoke against the deployed `web` + `api` stack. The run passed (`live-stack-remote-web-20260523.json`, `1/1` in `27.282s`), proving upload -> parse -> viewer -> real chat -> command-menu handoff on the deployed page host without sacrificing API health during the cross-encoder cold start.
