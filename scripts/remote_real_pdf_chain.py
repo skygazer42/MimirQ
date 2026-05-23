@@ -19,6 +19,7 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000000"
+DOCUMENT_CHUNK_LIST_LIMIT = 2000
 
 
 class LiveApi:
@@ -261,7 +262,11 @@ def main() -> int:
         if final_status != "completed":
             raise RuntimeError(f"document did not complete: {snippet(last_body)}")
 
-        status, body, elapsed = api.json("GET", f"/api/v1/documents/{document_id}/chunks?limit=5000", timeout=args.timeout)
+        status, body, elapsed = api.json(
+            "GET",
+            f"/api/v1/documents/{document_id}/chunks?limit={DOCUMENT_CHUNK_LIST_LIMIT}",
+            timeout=args.timeout,
+        )
         record_step(steps, "chunks", status, body, elapsed, chunk_count=list_count(body))
         if not ok_status(status):
             raise RuntimeError(f"chunks failed: {snippet(body)}")
