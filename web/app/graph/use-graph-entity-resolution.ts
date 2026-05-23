@@ -17,6 +17,7 @@ import type { GraphNodeLike } from './graph-page-utils'
 
 type GraphScopeParams = Readonly<{
   document_ids?: string[]
+  dataset_id?: string
   pipeline_hash?: string
 }> | null
 

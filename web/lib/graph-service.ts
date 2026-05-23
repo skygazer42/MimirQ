@@ -31,6 +31,7 @@ export class GraphService {
       minSharedEvents?: number
       maxEntityLinks?: number
       documentIds?: string[]
+      datasetId?: string
       pipelineHash?: string
     } = {}
   ): Promise<GraphData> {
@@ -43,6 +44,7 @@ export class GraphService {
     try {
       const data = await kgApi.getGraph({
         document_ids: options.documentIds,
+        dataset_id: options.datasetId,
         pipeline_hash: options.pipelineHash,
         include_entity_links: options.includeEntityLinks,
         include_relation_links: options.includeRelationLinks,
@@ -73,6 +75,7 @@ export class GraphService {
       minSharedEvents?: number
       maxEntityLinks?: number
       documentIds?: string[]
+      datasetId?: string
       pipelineHash?: string
     }
   ): Promise<GraphData> {
@@ -86,6 +89,7 @@ export class GraphService {
         const data = await kgApi.expandGraph({
           node_id: nodeId,
           document_ids: options?.documentIds,
+          dataset_id: options?.datasetId,
           pipeline_hash: options?.pipelineHash,
           max_events: 50,
           max_entities: 400,
