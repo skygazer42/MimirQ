@@ -1,0 +1,272 @@
+{
+  "summary": {
+    "ok": true,
+    "artifact_dir": "/data/temp34/MimirQ/artifacts/kb-permission-boundary/remote-20260523",
+    "base_url": "http://127.0.0.1:8000",
+    "normalization": {
+      "viewer_role_forced": true,
+      "detail": "UPDATE 0"
+    },
+    "datasets": {
+      "shared": {
+        "dataset_id": "aa90f2b9-797b-42e8-a18d-f9ee9fad473c",
+        "document_id": "77e6576e-ceda-45a4-872b-39cab39057a7",
+        "status": "completed",
+        "chunk_count": 1,
+        "parsed_chars": 175
+      },
+      "private": {
+        "dataset_id": "ba36034f-f996-49d4-892a-d2db90ec13fa",
+        "document_id": "913a7325-16fa-452f-84d6-55305e4ca4cf",
+        "status": "completed",
+        "chunk_count": 1,
+        "parsed_chars": 178
+      }
+    },
+    "http_checks": [
+      {
+        "name": "outsider_shared_inventory",
+        "status_code": 200,
+        "ok": true,
+        "failures": []
+      },
+      {
+        "name": "outsider_private_inventory",
+        "status_code": 403,
+        "ok": true,
+        "failures": []
+      },
+      {
+        "name": "admin_private_retrieve",
+        "status_code": 200,
+        "ok": true,
+        "failures": []
+      }
+    ],
+    "retrieve_checks": [
+      {
+        "name": "outsider_shared_retrieve",
+        "status_code": 200,
+        "ok": true,
+        "failures": []
+      },
+      {
+        "name": "outsider_private_retrieve",
+        "status_code": 403,
+        "ok": true,
+        "failures": []
+      },
+      {
+        "name": "outsider_mixed_scope_retrieve",
+        "status_code": 200,
+        "ok": true,
+        "failures": []
+      }
+    ],
+    "chat_checks": [
+      {
+        "name": "outsider_shared_chat",
+        "status_code": 200,
+        "ok": true,
+        "failures": []
+      },
+      {
+        "name": "outsider_private_chat",
+        "status_code": 403,
+        "ok": true,
+        "failures": []
+      },
+      {
+        "name": "outsider_mixed_scope_chat",
+        "status_code": 200,
+        "ok": true,
+        "failures": []
+      }
+    ],
+    "cleanup": {
+      "shared": {
+        "dataset_id": "aa90f2b9-797b-42e8-a18d-f9ee9fad473c",
+        "purge_deleted": 1,
+        "delete_dataset_status": 204
+      },
+      "private": {
+        "dataset_id": "ba36034f-f996-49d4-892a-d2db90ec13fa",
+        "purge_deleted": 1,
+        "delete_dataset_status": 204
+      }
+    }
+  },
+  "steps": [
+    {
+      "name": "health",
+      "status_code": 200,
+      "elapsed_sec": 0.049,
+      "ok": true
+    },
+    {
+      "name": "outsider_bootstrap",
+      "status_code": 200,
+      "elapsed_sec": 0.073,
+      "ok": true
+    },
+    {
+      "name": "create_dataset:KB Perm Shared 20260523-153832",
+      "status_code": 201,
+      "elapsed_sec": 0.044,
+      "ok": true
+    },
+    {
+      "name": "create_dataset:KB Perm Private 20260523-153832",
+      "status_code": 201,
+      "elapsed_sec": 0.07,
+      "ok": true
+    },
+    {
+      "name": "upload:shared_alpha",
+      "status_code": 201,
+      "elapsed_sec": 0.068,
+      "ok": true
+    },
+    {
+      "name": "poll:shared_alpha",
+      "status_code": 200,
+      "elapsed_sec": 0.059,
+      "ok": true,
+      "doc_status": "pending"
+    },
+    {
+      "name": "poll:shared_alpha",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "completed"
+    },
+    {
+      "name": "chunks:shared_alpha",
+      "status_code": 200,
+      "elapsed_sec": 0.024,
+      "ok": true
+    },
+    {
+      "name": "parsed:shared_alpha",
+      "status_code": 200,
+      "elapsed_sec": 0.103,
+      "ok": true,
+      "parsed_chars": 175
+    },
+    {
+      "name": "upload:private_beta",
+      "status_code": 201,
+      "elapsed_sec": 0.128,
+      "ok": true
+    },
+    {
+      "name": "poll:private_beta",
+      "status_code": 200,
+      "elapsed_sec": 0.06,
+      "ok": true,
+      "doc_status": "pending"
+    },
+    {
+      "name": "poll:private_beta",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "completed"
+    },
+    {
+      "name": "chunks:private_beta",
+      "status_code": 200,
+      "elapsed_sec": 0.026,
+      "ok": true
+    },
+    {
+      "name": "parsed:private_beta",
+      "status_code": 200,
+      "elapsed_sec": 0.102,
+      "ok": true,
+      "parsed_chars": 178
+    },
+    {
+      "name": "outsider_shared_inventory",
+      "status_code": 200,
+      "elapsed_sec": 0.092,
+      "ok": true
+    },
+    {
+      "name": "outsider_private_inventory",
+      "status_code": 403,
+      "elapsed_sec": 0.1,
+      "ok": false,
+      "response": "{\"error\": \"AUTHORIZATION_ERROR\", \"message\": \"No dataset access\", \"request_id\": \"7230f592480842fdb24814903bac2ede\"}"
+    },
+    {
+      "name": "admin_private_retrieve",
+      "status_code": 200,
+      "elapsed_sec": 0.177,
+      "ok": true
+    },
+    {
+      "name": "outsider_shared_retrieve",
+      "status_code": 200,
+      "elapsed_sec": 0.168,
+      "ok": true
+    },
+    {
+      "name": "outsider_private_retrieve",
+      "status_code": 403,
+      "elapsed_sec": 0.061,
+      "ok": false,
+      "response": "{\"error\": \"AUTHORIZATION_ERROR\", \"message\": \"No dataset access\", \"request_id\": \"789ca86ebfa04e11ba32bdb9001ac4cb\"}"
+    },
+    {
+      "name": "outsider_mixed_scope_retrieve",
+      "status_code": 200,
+      "elapsed_sec": 0.194,
+      "ok": true
+    },
+    {
+      "name": "outsider_shared_chat",
+      "status_code": 200,
+      "elapsed_sec": 0.183,
+      "ok": true
+    },
+    {
+      "name": "outsider_private_chat",
+      "status_code": 403,
+      "elapsed_sec": 0.059,
+      "ok": false,
+      "response": "{\"error\": \"AUTHORIZATION_ERROR\", \"message\": \"No dataset access\", \"request_id\": \"db5c0284835e4032ae708f508324f07f\"}"
+    },
+    {
+      "name": "outsider_mixed_scope_chat",
+      "status_code": 200,
+      "elapsed_sec": 0.251,
+      "ok": true
+    },
+    {
+      "name": "cleanup:purge:aa90f2b9-797b-42e8-a18d-f9ee9fad473c",
+      "status_code": 200,
+      "elapsed_sec": 4.034,
+      "ok": true
+    },
+    {
+      "name": "cleanup:delete_dataset:aa90f2b9-797b-42e8-a18d-f9ee9fad473c",
+      "status_code": 204,
+      "elapsed_sec": 0.078,
+      "ok": true
+    },
+    {
+      "name": "cleanup:purge:ba36034f-f996-49d4-892a-d2db90ec13fa",
+      "status_code": 200,
+      "elapsed_sec": 1.4,
+      "ok": true
+    },
+    {
+      "name": "cleanup:delete_dataset:ba36034f-f996-49d4-892a-d2db90ec13fa",
+      "status_code": 204,
+      "elapsed_sec": 0.028,
+      "ok": true
+    }
+  ]
+}

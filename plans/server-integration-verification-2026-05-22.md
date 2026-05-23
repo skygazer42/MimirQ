@@ -229,6 +229,15 @@ This task also tracks the next quality pass across the product surface. Do not s
   scope could surface the beta document while staying inside the allowed
   two-document scope. Cleanup purged and deleted both proof datasets, and the
   earlier failed-iteration leftovers were also swept from the server.
+- Knowledge-base permissions now also have one dedicated outsider/viewer proof:
+  `artifacts/kb-permission-boundary/remote-20260523/report.json`
+  normalized `outsider` to `viewer`, created one shared partial-members dataset
+  plus one private owner-only dataset, and verified outsider behavior across
+  inventory, retrieve, chat, and mixed `document_ids` scope. Shared read paths
+  returned `200`; private read paths returned `403`; and mixed scope kept only
+  the readable shared document in both retrieval and extractive chat. Cleanup
+  purged/deleted both proof datasets, and the first failed-run leftovers were
+  also swept from the server.
 - Real parsed-output chunking on the same 144-page PDF exposed large strategy spread:
   `langchain_recursive=1151` chunks in `174.793s`,
   `parent_child=3702` chunks in `1.900s`,
@@ -272,3 +281,4 @@ This task also tracks the next quality pass across the product surface. Do not s
 - 2026-05-23 15:11: A deeper deployed-frontend live-stack smoke initially failed because the first real chat request synchronously triggered a HuggingFace cross-encoder download, which stalled assistant replies and even `/api/v1/health/ready`. `main@ca40dd49` fixed that by bounding local cross-encoder load waits to `2.0s` and degrading to base retrieval order while the model keeps warming in the background.
 - 2026-05-23 15:12: Rebuilt the remote `api` container from `main@ca40dd49` and re-ran the deeper live-stack smoke against the deployed `web` + `api` stack. The run passed (`live-stack-remote-web-20260523.json`, `1/1` in `27.282s`), proving upload -> parse -> viewer -> real chat -> command-menu handoff on the deployed page host without sacrificing API health during the cross-encoder cold start.
 - 2026-05-23 15:27: Added `scripts/remote_kb_boundary_matrix.py` and verified one dedicated knowledge-base boundary run through the live API. The proof (`artifacts/kb-boundary-matrix/remote-20260523/report.json`) created two disposable datasets, checked dataset-scoped inventory export, dataset-scoped retrieve/chat non-leakage, and explicit cross-dataset `document_ids` scope, then purged/deleted both datasets and swept the earlier failed-run leftovers.
+- 2026-05-23 15:36: Added `scripts/remote_kb_permission_boundary.py` and verified one dedicated outsider/viewer knowledge-base permission run through the live API. The proof (`artifacts/kb-permission-boundary/remote-20260523/report.json`) normalized `outsider` to `viewer`, proved shared-vs-private dataset read behavior (`200` vs `403`), and confirmed mixed `document_ids` scope filters out the unreadable private document in both retrieval and extractive chat before purging/deleting both proof datasets.
