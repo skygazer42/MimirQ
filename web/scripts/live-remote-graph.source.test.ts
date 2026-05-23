@@ -20,4 +20,16 @@ describe('remote graph live playwright wiring', () => {
       )
     ).toBe(true)
   })
+
+  it('asserts exact scoped KG counts instead of a loose header regex', () => {
+    const spec = fs.readFileSync(
+      path.resolve(__dirname, '..', 'e2e', 'graph.live.spec.ts'),
+      'utf8'
+    )
+
+    expect(spec).toContain(
+      "const expectedStatsLabel = `E:${expectedStats.events} N:${expectedStats.entities} L:${expectedStats.links}`"
+    )
+    expect(spec).not.toContain("page.getByText(/E:\\d+ N:\\d+ L:\\d+/)")
+  })
 })

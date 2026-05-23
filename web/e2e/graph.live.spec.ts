@@ -11,6 +11,12 @@ type LiveDocument = {
   status?: string
 }
 
+type LiveKgStats = {
+  events: number
+  entities: number
+  links: number
+}
+
 function apiBaseUrl(): string {
   return String(
     process.env.PLAYWRIGHT_LIVE_API_URL ||
@@ -173,13 +179,43 @@ async function extractLiveKg(
   expect(response.ok()).toBe(true)
 }
 
+async function fetchLiveKgStats(
+  request: APIRequestContext,
+  query: string
+): Promise<LiveKgStats> {
+  const separator = query.startsWith('?') ? '' : '?'
+  const response = await request.get(
+    `${apiBaseUrl()}/api/v1/kg/stats${separator}${query}`,
+    { headers: liveHeaders() }
+  )
+  expect(response.ok()).toBe(true)
+  const body = (await response.json()) as {
+    events?: number
+    entities?: number
+    links?: number
+  }
+  return {
+    events: Number(body.events || 0),
+    entities: Number(body.entities || 0),
+    links: Number(body.links || 0),
+  }
+}
+
+function buildRepeatedQuery(key: string, values: string[]): string {
+  return values
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .map((value) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+    .join('&')
+}
+
 test.describe('live graph workbench', () => {
   test.skip(
     !LIVE_BACKEND_ENABLED,
     'Requires PLAYWRIGHT_LIVE_BACKEND=1 and a running backend'
   )
 
-  test('loads a real dataset-scoped graph and opens node KG detail on the deployed page host', async ({
+  test('loads a real dataset-scoped graph with exact scoped KG counts on the deployed page host', async ({
     page,
     request,
   }) => {
@@ -221,13 +257,25 @@ test.describe('live graph workbench', () => {
         await extractLiveKg(request, documentId)
       }
 
+      const datasetStats = await fetchLiveKgStats(
+        request,
+        `dataset_id=${encodeURIComponent(datasetId)}`
+      )
+      const documentStats = await fetchLiveKgStats(
+        request,
+        buildRepeatedQuery('document_ids', documentIds)
+      )
+      expect(datasetStats).toEqual(documentStats)
+      const expectedStats = datasetStats
+      const expectedStatsLabel = `E:${expectedStats.events} N:${expectedStats.entities} L:${expectedStats.links}`
+
       await page.goto(`/graph?dataset_id=${encodeURIComponent(datasetId)}`, {
         waitUntil: 'networkidle',
       })
       await expect(
         page.getByRole('heading', { name: '知识图谱' })
       ).toBeVisible({ timeout: LIVE_EXPECT_TIMEOUT_MS })
-      await expect(page.getByText(/E:\d+ N:\d+ L:\d+/)).toBeVisible({
+      await expect(page.getByText(expectedStatsLabel)).toBeVisible({
         timeout: LIVE_EXPECT_TIMEOUT_MS,
       })
       await expect(page.getByText('语义索引')).toBeVisible({
