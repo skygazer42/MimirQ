@@ -80,12 +80,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 24343,
+                      "duration": 24847,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-05-23T19:47:01.568Z",
+                      "startTime": "2026-05-23T20:41:10.920Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -97,6 +97,40 @@
               "file": "graph-diagnostics.live.spec.ts",
               "line": 275,
               "column": 7
+            },
+            {
+              "title": "loads a real KG quality report on the deployed diagnostics page",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 23254,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-23T20:41:35.844Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "68e57657f554dcc1baa6-6d5512c928cf4f331727",
+              "file": "graph-diagnostics.live.spec.ts",
+              "line": 386,
+              "column": 7
             }
           ]
         }
@@ -105,9 +139,9 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-05-23T19:47:01.066Z",
-    "duration": 24965.983,
-    "expected": 1,
+    "startTime": "2026-05-23T20:41:10.429Z",
+    "duration": 48726.55,
+    "expected": 2,
     "skipped": 0,
     "unexpected": 0,
     "flaky": 0

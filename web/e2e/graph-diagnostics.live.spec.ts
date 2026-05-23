@@ -382,4 +382,77 @@ test.describe('live graph diagnostics page', () => {
       }
     }
   })
+
+  test('loads a real KG quality report on the deployed diagnostics page', async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(LIVE_TEST_TIMEOUT_MS)
+    const pageErrors: string[] = []
+    page.on('pageerror', (error) => pageErrors.push(error.message))
+    await installLiveAuth(page)
+
+    const datasetName = `playwright-graph-quality-${Date.now()}`
+    const filename = `graph-quality-${Date.now()}.md`
+    const markdown = [
+      '# Atlas Acquisition',
+      '',
+      'Atlas Systems acquired Beacon Labs.',
+      'Mira Chen led the integration workstream.',
+      '',
+      'The integration workstream was tracked as a named post-acquisition effort.',
+      '',
+    ].join('\n')
+
+    let datasetId = ''
+
+    try {
+      datasetId = await createLiveDataset(request, datasetName)
+      const documentId = await uploadCompletedDocument(request, {
+        datasetId,
+        filename,
+        content: markdown,
+      })
+      await waitForLiveDocumentStatus(request, documentId, 'completed')
+      await extractLiveKg(request, documentId)
+
+      await page.goto('/graph/diagnostics', { waitUntil: 'networkidle' })
+      await expect(
+        page.getByRole('heading', { name: '图谱检索评测' })
+      ).toBeVisible({ timeout: LIVE_EXPECT_TIMEOUT_MS })
+
+      await page.getByLabel('数据集').click()
+      await page.getByRole('option', { name: datasetName }).click()
+
+      await page.getByRole('tab', { name: '抽取数据' }).click()
+      await page.getByRole('button', { name: '拉取质量报告' }).click()
+      await expect(page.getByText('已拉取质量报告')).toBeVisible({
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+      await expect(page.getByText('聚合指标')).toBeVisible({
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+      await expect(page.getByText('报告字段数')).toBeVisible({
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+      const rawExpand = page.getByText('展开原始数据', { exact: true }).last()
+      await rawExpand.click()
+      const rawTextarea = page.locator('textarea').last()
+      await expect(rawTextarea).toContainText('"summary"', {
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+      await expect(rawTextarea).toContainText('"events"', {
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+      await expect(rawTextarea).toContainText('"scope"', {
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+
+      expect(pageErrors).toEqual([])
+    } finally {
+      if (datasetId) {
+        await deleteLiveDataset(request, datasetId)
+      }
+    }
+  })
 })

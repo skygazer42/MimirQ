@@ -12,3 +12,4 @@ def test_missing_relation_references_expr_avoids_json_equality_operator() -> Non
 
     assert 'kg_relations."references" IS NULL' in compiled
     assert '::JSON' not in compiled
+    assert '%(param_1)s' not in compiled
