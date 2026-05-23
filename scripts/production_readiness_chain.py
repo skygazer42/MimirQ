@@ -1100,6 +1100,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--timeout", type=float, default=180.0)
     parser.add_argument("--processing-timeout", type=float, default=1800.0)
     parser.add_argument(
+        "--per-upload-timeout",
+        type=float,
+        default=None,
+        help="Optional per-upload terminal wait. Defaults to processing-timeout; set 0 to defer waiting until the bulk wait phase.",
+    )
+    parser.add_argument(
         "--llm-probe-timeout",
         type=float,
         default=15.0,
@@ -1133,12 +1139,17 @@ def main() -> int:
         ensure_runtime_settings(api, evidence)
         probe_llm_provider(api, evidence, timeout_sec=float(args.llm_probe_timeout))
         dataset_id = create_dataset(api, evidence)
+        per_upload_timeout = (
+            float(args.processing_timeout)
+            if args.per_upload_timeout is None
+            else float(args.per_upload_timeout)
+        )
         doc_ids = upload_documents(
             api,
             dataset_id,
             files,
             evidence,
-            per_upload_timeout_sec=float(args.processing_timeout),
+            per_upload_timeout_sec=per_upload_timeout,
         )
         wait_for_documents(api, doc_ids, evidence, timeout_sec=float(args.processing_timeout))
         run_chunk_previews(api, dataset_id, files, evidence)
