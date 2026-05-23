@@ -233,4 +233,62 @@ test.describe('live reports center', () => {
       }
     }
   })
+
+  test('exports a real dataset report JSON from the deployed reports page', async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(LIVE_TEST_TIMEOUT_MS)
+    const pageErrors: string[] = []
+    page.on('pageerror', (error) => pageErrors.push(error.message))
+    await installLiveAuth(page)
+
+    const datasetName = `playwright-reports-export-${Date.now()}`
+    const filename = `reports-export-${Date.now()}.md`
+    const markdown = [
+      '# Reports Export',
+      '',
+      'This document exists to validate report export on a real dataset.',
+      '',
+      'Paragraph one keeps the report payload non-empty.',
+      '',
+      'Paragraph two gives enough content for profile and governance summaries.',
+      '',
+    ].join('\n')
+
+    let datasetId = ''
+
+    try {
+      datasetId = await createLiveDataset(request, datasetName)
+      const documentId = await uploadCompletedDocument(request, {
+        datasetId,
+        filename,
+        content: markdown,
+      })
+      await waitForLiveDocumentStatus(request, documentId, 'completed')
+
+      await page.goto('/reports', { waitUntil: 'networkidle' })
+      await page.getByRole('combobox', { name: '数据集' }).click()
+      await page.getByRole('option', { name: datasetName }).click()
+
+      await expect(
+        page.getByRole('combobox', { name: '数据集' })
+      ).toContainText(datasetName, {
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+
+      const downloadPromise = page.waitForEvent('download', {
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+      await page.getByRole('button', { name: '导出 JSON' }).click()
+      const download = await downloadPromise
+
+      expect(download.suggestedFilename()).toBe(`${datasetName}.report.json`)
+      expect(pageErrors).toEqual([])
+    } finally {
+      if (datasetId) {
+        await deleteLiveDataset(request, datasetId)
+      }
+    }
+  })
 })
