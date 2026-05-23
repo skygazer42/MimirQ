@@ -283,6 +283,14 @@ This task also tracks the next quality pass across the product surface. Do not s
   `backend=basic`, so the run failed the requested-backend check even though
   API health stayed green. This is useful evidence that `olmocr` is currently
   not a viable peer lane for the bounded small-doc contention matrix.
+- Parser contention now also has one dedicated `magicpdf + mineru` server proof:
+  `artifacts/parser-contention/remote-mineru-20260523/report.json`
+  ran the same 2-page fixture for `2` rounds (`4` total requests). All requests
+  returned `200` with the requested backend and sufficient markdown. Overall
+  wall time was `33.496s` at `0.119 rps`. Per-backend latencies were lower than
+  the `magicpdf + marker` lane: `magicpdf` p50/p95 = `25.655s / 32.649s`,
+  `mineru` p50/p95 = `13.228s / 14.314s`. This is currently the strongest
+  passing mixed-backend contention baseline on the server.
 - Knowledge-base permissions now also have one dedicated outsider/viewer proof:
   `artifacts/kb-permission-boundary/remote-20260523/report.json`
   normalized `outsider` to `viewer` and covered three read-scope layers on the
@@ -351,5 +359,6 @@ This task also tracks the next quality pass across the product surface. Do not s
 - 2026-05-23 16:34: Extended `scripts/remote_parser_concurrency_probe.py` to accept explicit fixture paths and re-ran it on two RFC-scale PDFs (`rfc9000-quic.pdf`, `rfc9110-http-semantics.pdf`) at concurrency `1/2`. The resulting artifact (`artifacts/parser-concurrency/remote-large-20260523/report.json`) showed both large requests succeeded with resolved backend `magicpdf` while API health stayed green, but throughput did not improve at concurrency `2` and p95 latency worsened materially.
 - 2026-05-23 17:08: Added `scripts/remote_parser_mixed_contention_probe.py` and verified one bounded mixed-backend contention run through the live API. The proof (`artifacts/parser-contention/remote-20260523/report.json`) ran `magicpdf` and `marker` together for `2` rounds on the same 2-page fixture, confirming all `4` requests returned `200` while showing materially higher p50/p95 latency on the MagicPDF lane than on the Marker lane under shared load.
 - 2026-05-23 17:16: Extended `scripts/remote_parser_mixed_contention_probe.py` with a per-task timeout so slow backend combinations cannot hang the whole contention lane indefinitely. A bounded `magicpdf + olmocr` rerun (`artifacts/parser-contention/remote-olmocr-20260523/report.json`) showed `magicpdf` succeeding in `19.183s` while `olmocr` ran for `498.099s` and resolved `backend=basic`, making that pair unsuitable for the current small-doc contention matrix even though API health remained green.
+- 2026-05-23 17:24: Reused the same bounded contention probe for `magicpdf + mineru`. The resulting artifact (`artifacts/parser-contention/remote-mineru-20260523/report.json`) showed all `4` requests returned `200` over `2` rounds and that this pair currently outperforms the `magicpdf + marker` lane on both total wall time and MagicPDF-side tail latency.
 - 2026-05-23 17:38: Added `web/e2e/management-surfaces.live.spec.ts` plus a dedicated remote-management Playwright config and verified one live management-surface smoke against the deployed `web` + `api` stack. The resulting artifact (`artifacts/ui-clickthrough/management-surfaces-live-20260523-remote-web.json`) proved `/prompts`, `/reports`, `/evaluations`, `/usage`, `/audit`, and `/access-review -> /audit` on real backend-admin surfaces.
 - 2026-05-23 16:10: Added `scripts/remote_kb_format_matrix.py` and verified one mixed-format KB breadth run through the live API. The proof (`artifacts/kb-format-matrix/remote-20260523/report.json`) ingested `md`, `html`, `csv`, `json`, `docx`, and `xlsx` into one disposable dataset, then proved dataset-scoped retrieve + extractive chat on all six formats before purging the dataset.
