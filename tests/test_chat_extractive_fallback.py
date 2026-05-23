@@ -196,6 +196,74 @@ def test_extractive_fallback_retrieval_uses_lightweight_config(monkeypatch) -> N
     assert "FastAPI automatically generates" in result.content
 
 
+def test_extractive_fallback_can_use_full_docs_when_citations_are_truncated(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    import app.rag.pipelines.langgraph as langgraph_mod
+    import app.rag.retrieval.orchestrator as orchestrator_mod
+    from app.services.chat_execution_runtime import execute_extractive_fallback_once
+
+    def _fake_build_rag_state(**kwargs):  # noqa: ANN003, ANN202
+        return {"question": kwargs["question"]}
+
+    def _fake_run_retrieval(_state):  # noqa: ANN001, ANN202
+        return {
+            "docs": [
+                SimpleNamespace(
+                    page_content=(
+                        "# Integration Lead\n\n"
+                        + ("intro " * 120)
+                        + "\n\nAfter the acquisition, Mira Chen led the Blue Harbor integration program."
+                    ),
+                    metadata={"document_name": "integration-lead.md"},
+                )
+            ],
+            "citations": [
+                {
+                    "document_name": "integration-lead.md",
+                    "chunk_content": "# Integration Lead ...",
+                }
+            ],
+            "metrics": {"retrieval_mode": "hybrid"},
+        }
+
+    monkeypatch.setattr(langgraph_mod, "build_rag_state", _fake_build_rag_state, raising=True)
+    monkeypatch.setattr(orchestrator_mod, "run_retrieval", _fake_run_retrieval, raising=True)
+
+    result = execute_extractive_fallback_once(
+        db=object(),
+        tenant_id=UUID(int=1),
+        account_id="demo",
+        request=SimpleNamespace(
+            message="Who led the integration program that followed Project Atlas's acquisition of Blue Harbor?"
+        ),
+        doc_ids_to_use=[UUID(int=2)],
+        history_for_llm=[],
+        scope_dataset_id=UUID(int=3),
+        dataset_id_used=None,
+        effective_rag_config=SimpleNamespace(
+            top_k=6,
+            score_threshold=0.0,
+            retrieval_mode="hybrid",
+            alpha=None,
+            fusion_strategy=None,
+            fusion_budgets=None,
+            fusion_min_scores=None,
+            fusion_weights=None,
+            enable_weight_rerank=None,
+            vector_weight=None,
+            keyword_weight=None,
+            mmr_lambda=None,
+            visible_evidence_only=None,
+            metadata_filter=None,
+        ),
+        original_error=RuntimeError("Arrearage"),
+        reason="explicit_extractive_answer_mode",
+    )
+
+    assert "Mira Chen led the Blue Harbor integration program" in result.content
+
+
 def test_chat_rag_config_accepts_explicit_extractive_answer_mode() -> None:
     from app.api.schemas.chat import ChatRAGConfig
 
