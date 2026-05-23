@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+import sys
+import time
+import types
+
+import pytest
+
 from app.rag.reranker.factory import get_reranker
 from app.rag.reranker.types import RerankCandidate
 
@@ -45,6 +51,25 @@ def test_cross_encoder_reranker_orders_by_score_and_is_stable() -> None:
 def test_factory_resolves_cross_encoder_provider() -> None:
     inst = get_reranker("cross_encoder")
     assert inst.__class__.__name__.lower().startswith("crossencoder")
+
+
+def test_cross_encoder_reranker_times_out_slow_model_load(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.rag.reranker.cross_encoder import CrossEncoderReranker
+
+    class _SlowCrossEncoder:
+        def __init__(self, *_args, **_kwargs) -> None:
+            time.sleep(0.2)
+
+        def predict(self, pairs):  # noqa: ANN001
+            return [0.0 for _ in pairs]
+
+    monkeypatch.setitem(sys.modules, "sentence_transformers", types.SimpleNamespace(CrossEncoder=_SlowCrossEncoder))
+    reranker = CrossEncoderReranker(model_name="fake", load_timeout_sec=0.05)
+
+    started = time.monotonic()
+    with pytest.raises(TimeoutError, match="cross_encoder_load_timeout"):
+        reranker.rerank("kubernetes", [RerankCandidate(id="a", text="kubernetes foo")])
+    assert time.monotonic() - started < 0.15
 
 
 def test_describe_reranker_provider_classifies_tiers() -> None:
