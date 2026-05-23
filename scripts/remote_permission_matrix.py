@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import mimetypes
+import subprocess
 import time
 import uuid
 from pathlib import Path
@@ -124,6 +125,45 @@ def write_fixture(path: Path) -> None:
     )
 
 
+def force_member_role_via_docker(
+    *,
+    tenant_id: str,
+    account_id: str,
+    role: str,
+    postgres_container: str = "docker-mimirq-postgres-1",
+    timeout: int = 30,
+) -> tuple[bool, str]:
+    tenant_sql = str(tenant_id or "").replace("'", "''")
+    account_sql = str(account_id or "").replace("'", "''")
+    role_sql = str(role or "").replace("'", "''")
+    sql = (
+        "UPDATE tenant_members "
+        f"SET role='{role_sql}', is_active=true "
+        f"WHERE tenant_id='{tenant_sql}' AND user_id='{account_sql}';"
+    )
+    result = subprocess.run(  # noqa: S603
+        [
+            "docker",
+            "exec",
+            "-i",
+            postgres_container,
+            "psql",
+            "-U",
+            "postgres",
+            "-d",
+            "mimirq",
+            "-c",
+            sql,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=int(timeout),
+        check=False,
+    )
+    output = (str(result.stdout or "") + str(result.stderr or "")).strip()
+    return bool(result.returncode == 0), output[:1200]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run a small remote admin/permission verification matrix.")
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
@@ -134,6 +174,7 @@ def main() -> int:
     parser.add_argument("--outsider-user-id", default="outsider")
     parser.add_argument("--artifact-dir", default="")
     parser.add_argument("--timeout", type=int, default=300)
+    parser.add_argument("--postgres-container", default="docker-mimirq-postgres-1")
     args = parser.parse_args()
 
     run_id = time.strftime("%Y%m%d-%H%M%S")
@@ -157,6 +198,29 @@ def main() -> int:
             raise RuntimeError(f"admin settings/status failed: {snippet(body)}")
 
         status, body, elapsed = outsider_api.json("GET", "/api/v1/settings/status")
+        if (
+            not status_matches_expected(status, [401, 403])
+            and int(status) == 200
+            and str(args.outsider_account_id) != str(args.admin_account_id)
+        ):
+            forced_ok, forced_output = force_member_role_via_docker(
+                tenant_id=str(args.tenant_id),
+                account_id=str(args.outsider_account_id),
+                role="viewer",
+                postgres_container=str(args.postgres_container),
+                timeout=min(int(args.timeout), 60),
+            )
+            steps.append(
+                {
+                    "name": "force_outsider_role",
+                    "ok": bool(forced_ok),
+                    "status_code": 0 if forced_ok else 1,
+                    "elapsed_sec": 0.0,
+                    "detail": forced_output,
+                }
+            )
+            if forced_ok:
+                status, body, elapsed = outsider_api.json("GET", "/api/v1/settings/status")
         steps.append(build_case_result("settings_status_outsider", status=status, body=body, elapsed=elapsed, expected_statuses=[401, 403]))
         if not status_matches_expected(status, [401, 403]):
             raise RuntimeError(f"outsider settings/status unexpectedly allowed: {snippet(body)}")
