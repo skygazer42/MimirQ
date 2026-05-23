@@ -383,6 +383,63 @@ def test_upload_documents_waits_for_each_document_when_throttled(tmp_path, monke
     assert sleeps == []
 
 
+def test_upload_documents_can_skip_per_upload_terminal_wait(tmp_path, monkeypatch) -> None:  # noqa: ANN001
+    from scripts.production_readiness_chain import Evidence, upload_documents
+
+    first = tmp_path / "a.md"
+    second = tmp_path / "b.md"
+    first.write_text("# A", encoding="utf-8")
+    second.write_text("# B", encoding="utf-8")
+
+    class _Response:
+        status_code = 201
+
+        def __init__(self, doc_id: str) -> None:
+            self._doc_id = doc_id
+            self.text = "{}"
+
+        def json(self):  # noqa: ANN202
+            return {
+                "id": self._doc_id,
+                "status": "pending",
+                "file_type": "md",
+                "file_size": 3,
+                "metadata": {},
+            }
+
+    class _FakeApi:
+        def __init__(self) -> None:
+            self.detail_calls: dict[str, int] = {}
+            self.upload_count = 0
+
+        def request(self, method, path, **kwargs):  # noqa: ANN001, ANN202
+            assert method == "POST"
+            assert path == "/api/v1/documents/upload"
+            self.upload_count += 1
+            doc_id = f"doc-{self.upload_count}"
+            return (_Response(doc_id), 10.0)
+
+        def json(self, method, path):  # noqa: ANN001, ANN202
+            self.detail_calls[path] = self.detail_calls.get(path, 0) + 1
+            return ({"id": "unused", "status": "completed"}, 5.0)
+
+    evidence = Evidence(
+        started_at="2026-01-01T00:00:00Z",
+        base_url="http://localhost:8000",
+        tenant_id="tenant",
+        user_id="user",
+        corpus_dir="/tmp/corpus",
+        output_dir="/tmp/out",
+    )
+
+    api = _FakeApi()
+    doc_ids = upload_documents(api, "dataset-1", [first, second], evidence, per_upload_timeout_sec=0.0)  # type: ignore[arg-type]
+
+    assert doc_ids == ["doc-1", "doc-2"]
+    assert api.detail_calls == {}
+    assert all("terminal_status" not in row for row in evidence.uploads)
+
+
 def test_create_dataset_disables_background_kg_until_explicit_heuristic_extract() -> None:
     from scripts.production_readiness_chain import Evidence, create_dataset
 
