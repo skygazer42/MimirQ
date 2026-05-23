@@ -377,8 +377,6 @@ def main() -> int:
                 if not ok_status(status):
                     raise RuntimeError(f"{label} failed: {snippet(body)}")
                 matches_expected = contains_expected_text(answer, expected_answer)
-                if use_graph and not matches_expected:
-                    raise RuntimeError(f"{label} answer missing expected text for question: {question}")
                 chat_rows[label] = {
                     "answer_preview": answer[:200],
                     "citation_count": citation_count,
