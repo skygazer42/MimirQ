@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from scripts.remote_parser_concurrency_probe import percentile, summarize_level
+from pathlib import Path
+
+from scripts.remote_parser_concurrency_probe import percentile, resolve_fixture_paths, summarize_level
 
 
 def test_remote_parser_concurrency_probe_percentile_handles_small_lists() -> None:
@@ -27,3 +29,14 @@ def test_remote_parser_concurrency_probe_summarize_level_counts_success_and_thro
     assert summary["throughput_rps"] == 0.75
     assert summary["latency_p50_sec"] > 0
     assert summary["latency_p95_sec"] >= summary["latency_p50_sec"]
+
+
+def test_remote_parser_concurrency_probe_resolve_fixture_paths_prefers_explicit_csv(tmp_path: Path) -> None:
+    a = tmp_path / "a.pdf"
+    b = tmp_path / "b.pdf"
+    a.write_bytes(b"a")
+    b.write_bytes(b"b")
+
+    resolved = resolve_fixture_paths(default_fixtures=[tmp_path / "missing.pdf"], explicit_csv=f"{a},{b}", fixture_limit=4)
+
+    assert resolved == [a.resolve(), b.resolve()]
