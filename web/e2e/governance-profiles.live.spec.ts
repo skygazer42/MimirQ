@@ -13,6 +13,12 @@ type GovernanceProfileSummary = {
   is_system?: boolean
 }
 
+type GovernanceProfileOut = {
+  id?: string
+  key?: string
+  name?: string
+}
+
 function apiBaseUrl(): string {
   return String(
     process.env.PLAYWRIGHT_LIVE_API_URL ||
@@ -63,6 +69,49 @@ async function listProfilesByQuery(
   expect(response.ok()).toBe(true)
   const body = (await response.json()) as { items?: GovernanceProfileSummary[] }
   return Array.isArray(body.items) ? body.items : []
+}
+
+async function createProfile(
+  request: APIRequestContext,
+  {
+    name,
+    key,
+    description,
+  }: {
+    name: string
+    key: string
+    description: string
+  }
+): Promise<GovernanceProfileOut> {
+  const response = await request.post(
+    `${apiBaseUrl()}/api/v1/pipeline/governance-profiles`,
+    {
+      headers: {
+        ...liveHeaders(),
+        'Content-Type': 'application/json',
+      },
+      data: {
+        name,
+        key,
+        description,
+        payload: {
+          version: '1',
+          input_formats: ['markdown'],
+          pipeline_patch: {
+            governance_enabled: true,
+            governance_remove_toc_lines: true,
+            governance_remove_noise_lines: true,
+            governance_unwrap_lines: true,
+            governance_remove_common_lines: true,
+            governance_max_blank_lines: 1,
+          },
+          regex_rules: [],
+        },
+      },
+    }
+  )
+  expect(response.status()).toBe(201)
+  return (await response.json()) as GovernanceProfileOut
 }
 
 async function deleteProfileByRef(
@@ -175,6 +224,86 @@ test.describe('live governance profiles page', () => {
 
       createdProfileRef = ''
       await expect(card).toHaveCount(0)
+      expect(pageErrors).toEqual([])
+    } finally {
+      if (createdProfileRef) {
+        await deleteProfileByRef(request, createdProfileRef)
+      }
+    }
+  })
+
+  test('runs a real clean-preview sandbox inside the governance profile drawer', async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(LIVE_TEST_TIMEOUT_MS)
+    const pageErrors: string[] = []
+    page.on('pageerror', (error) => pageErrors.push(error.message))
+    await installLiveAuth(page)
+
+    const uniqueSuffix = `${Date.now()}`
+    const profileName = `Playwright Governance Sandbox ${uniqueSuffix}`
+    const profileKey = `playwright-governance-sandbox-${uniqueSuffix}`
+    const profileDescription = 'Disposable governance profile for sandbox clean-preview.'
+    const sample = '1. 目录 ...... 12\n\n正文第一行\n\n页眉标题\n\n页眉标题\n\n---\n'
+
+    let createdProfileRef = ''
+
+    try {
+      const created = await createProfile(request, {
+        name: profileName,
+        key: profileKey,
+        description: profileDescription,
+      })
+      createdProfileRef =
+        String(created.id || '').trim() || String(created.key || '').trim()
+      expect(createdProfileRef).toMatch(/\S/)
+
+      await page.goto('/data-governance/profiles', { waitUntil: 'networkidle' })
+      await expect(
+        page.getByRole('heading', { name: '治理配置' })
+      ).toBeVisible({ timeout: LIVE_EXPECT_TIMEOUT_MS })
+
+      const searchInput = page.getByPlaceholder('搜索名称、说明或 key')
+      await searchInput.fill(profileKey)
+
+      const card = page
+        .locator('div')
+        .filter({ hasText: profileName })
+        .filter({ hasText: profileKey })
+        .first()
+      await expect(card).toBeVisible({ timeout: LIVE_EXPECT_TIMEOUT_MS })
+
+      await card.getByRole('button', { name: '编辑' }).click()
+
+      const dialog = page.getByRole('dialog')
+      await expect(
+        dialog.getByRole('heading', { name: '编辑治理模板' })
+      ).toBeVisible({ timeout: LIVE_EXPECT_TIMEOUT_MS })
+
+      await dialog.getByRole('tab', { name: '沙盒测试' }).click()
+      const visibleTextareas = dialog.locator('textarea:visible')
+      await expect(visibleTextareas).toHaveCount(1, {
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+      await visibleTextareas.nth(0).fill(sample)
+      await dialog.getByRole('button', { name: '运行' }).click()
+      await expect(page.getByText('清洗预览完成')).toBeVisible({
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+      await expect(dialog.getByText('清洗结果（Markdown）')).toBeVisible({
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+      const textareasAfter = dialog.locator('textarea:visible')
+      await expect(textareasAfter).toHaveCount(3, {
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+      const cleaned = await textareasAfter.nth(1).inputValue()
+      const diff = await textareasAfter.nth(2).inputValue()
+      expect(cleaned).toContain('正文第一行')
+      expect(cleaned).not.toContain('目录')
+      expect(diff).toContain('-1. 目录 ...... 12')
+
       expect(pageErrors).toEqual([])
     } finally {
       if (createdProfileRef) {
