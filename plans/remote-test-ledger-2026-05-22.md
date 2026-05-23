@@ -40,7 +40,7 @@ This ledger records what has already been tested remotely so future runs do not 
 | --- | --- | --- |
 | P0 | Product quality backlog | Track the next pass under `plans/server-integration-verification-2026-05-22.md`: parsing serviceization, KG density, chunking on real parsed outputs, prompt quality, knowledge-base lifecycle, governance, and admin/permission boundaries. |
 | P2 | Parser batch/concurrency performance | Single large PDF latency is measured; still need controlled batch/concurrency runs before changing production defaults. |
-| P2 | Remote web deployment walkthrough | Frontend click-through is now proven against the live backend, but the remote `web` container itself has not been the page host for a passing smoke yet. |
+| P1 | Remote web deployment walkthrough | Frontend click-through is proven against the live backend, but the remote `web` container page-host lane still fails with React hydration error `#418` on `/history`. |
 
 ## Known Gaps
 
@@ -49,6 +49,7 @@ This ledger records what has already been tested remotely so future runs do not 
 - Prompt workflows no longer rely only on local builtin-library tests. There is now one live server proof covering answer prompt selection, KG extract prompt selection, document testset generation, and regression LLM judge prompt selection. Remaining prompt work should focus on breadth and prompt quality, not baseline wiring.
 - KG usefulness now has one targeted server proof that covers both graph search/diagnostics quality and explicit extractive chat answers on multi-hop questions. Remaining KG work should shift from “does graph help at all?” to broader question coverage and product presentation.
 - Browser UI is no longer totally unproven: there is now one passing Playwright business-surface smoke against the live backend. The remaining UI gap is narrower and deployment-specific: confirm the remote `web` container serves the same paths/actions successfully without relying on a local frontend dev server.
+- A dedicated `remote-web` Playwright lane now exists (`web/playwright.remote-web.config.ts` + `pnpm e2e:live:remote-web`). Current status: it reaches the real remote `web` container, but still fails on a hydration mismatch in the history page (`Minified React error #418`). The failure is no longer about reachability or stale test labels.
 - `scripts/production_readiness_chain.py` is not portable on the remote host/container as-is: host lacks `python-docx`, API container lacks `requests`.
 - Use `scripts/remote_api_chain_smoke.py` for dependency-light server checks until the full readiness script is made portable.
 - KG scale is functionally passing for 12 synthetic documents. Next optimization is extraction density/latency tuning on larger real PDFs, not another small-doc smoke rerun.

@@ -55,4 +55,12 @@ describe('history route source', () => {
 
     expect(client).toContain('<span suppressHydrationWarning>{group}</span>')
   })
+
+  it('uses UTC day bucketing for sidebar and message grouping to avoid timezone-driven hydration drift', () => {
+    const client = fs.readFileSync(path.resolve(__dirname, 'page-client.tsx'), 'utf8')
+
+    expect(client).toContain('getUTCFullYear')
+    expect(client).toContain('getUTCMonth')
+    expect(client).toContain('getUTCDate')
+  })
 })
