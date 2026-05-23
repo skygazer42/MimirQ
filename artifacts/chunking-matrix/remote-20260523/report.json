@@ -1,0 +1,2572 @@
+{
+  "ok": true,
+  "artifact_dir": "/data/temp34/MimirQ/artifacts/chunking-matrix/remote-20260523",
+  "base_url": "http://127.0.0.1:8000",
+  "dataset_id": "e14c493f-06af-4104-bc04-64b71d6f84e0",
+  "persisted_cases": [
+    {
+      "name": "markdown_handbook",
+      "file_type": "md",
+      "document_id": "a430be67-dacc-44a7-ae9d-2fbd736e1d3e",
+      "status": "completed",
+      "chunk_count": 1,
+      "parsed_chars": 249,
+      "empty_persisted_chunks": 0,
+      "chunking_stats": {
+        "avg": 249,
+        "max": 249,
+        "min": 249,
+        "p10": 249,
+        "p90": 249,
+        "unit": "chars",
+        "count": 1,
+        "total": 249,
+        "median": 249,
+        "histogram": [
+          {
+            "max": 200,
+            "min": 0,
+            "count": 0,
+            "label": "0-200"
+          },
+          {
+            "max": 500,
+            "min": 200,
+            "count": 1,
+            "label": "200-500"
+          },
+          {
+            "max": 800,
+            "min": 500,
+            "count": 0,
+            "label": "500-800"
+          },
+          {
+            "max": 1200,
+            "min": 800,
+            "count": 0,
+            "label": "800-1.2k"
+          },
+          {
+            "max": 2000,
+            "min": 1200,
+            "count": 0,
+            "label": "1.2k-2k"
+          },
+          {
+            "max": null,
+            "min": 2000,
+            "count": 0,
+            "label": "2k+"
+          }
+        ],
+        "short_count": 0,
+        "duplicate_count": 0,
+        "short_threshold": 120
+      },
+      "chunk_coverage": {
+        "gap_count": 0,
+        "largest_gap": 0,
+        "ranges_used": 1,
+        "covered_chars": 249,
+        "coverage_ratio": 1.0,
+        "sum_chunk_chars": 249,
+        "overlap_waste_ratio": 0.0
+      },
+      "first_chunk_metadata": {
+        "source": "a430be67-dacc-44a7-ae9d-2fbd736e1d3e.md",
+        "chunk_id": "d332762c-1403-48d1-a58b-ed241233f7d5",
+        "encoding": "utf-8",
+        "end_char": 249,
+        "filename": "a430be67-dacc-44a7-ae9d-2fbd736e1d3e.md",
+        "chunk_key": "a430be67-dacc-44a7-ae9d-2fbd736e1d3e:0",
+        "file_type": "md",
+        "simhash64": "1ed8c551a50cc2f9",
+        "tenant_id": "00000000-0000-0000-0000-000000000000",
+        "chunk_type": "text",
+        "dataset_id": "e14c493f-06af-4104-bc04-64b71d6f84e0",
+        "index_kind": "chunk",
+        "page_index": 1,
+        "start_char": 0,
+        "chunk_index": 0,
+        "content_len": 249,
+        "document_id": "a430be67-dacc-44a7-ae9d-2fbd736e1d3e",
+        "content_hash": "767ddd86e8223060e53185d36f7b6e83ecab10734cb986efff7f6d4008ddea0a",
+        "simhash_algo": "simhash64_sha1",
+        "chunk_quality": {
+          "grade": "good",
+          "score": 1.0,
+          "labels": [],
+          "schema": "mimirq.chunk_quality.v1",
+          "signals": {
+            "chars": 249,
+            "lines": 11,
+            "alpha_ratio": 0.803,
+            "digit_ratio": 0.0,
+            "symbol_ratio": 0.04,
+            "unique_line_ratio": 1.0
+          }
+        },
+        "pipeline_hash": "f28093e8268aaf85",
+        "chunk_strategy": "langchain_recursive",
+        "document_title": "Rollout Handbook",
+        "end_char_local": 249,
+        "next_chunk_key": null,
+        "parser_backend": "markdown",
+        "prev_chunk_key": null,
+        "hierarchy_basis": "chunk_sequence",
+        "hierarchy_level": "chunk",
+        "offsets_rebased": true,
+        "start_char_base": 0,
+        "text_normalized": true,
+        "doc_pipeline_key": "a430be67-dacc-44a7-ae9d-2fbd736e1d3e:f28093e8268aaf85",
+        "encoding_had_bom": false,
+        "next_chunk_index": null,
+        "prev_chunk_index": null,
+        "start_char_local": 0,
+        "content_hash_algo": "sha256",
+        "governance_applied": true,
+        "governance_changed": false,
+        "governance_version": "1",
+        "hierarchy_node_key": "a430be67-dacc-44a7-ae9d-2fbd736e1d3e:0",
+        "chunk_semantic_role": "unknown",
+        "encoding_confidence": 1.0,
+        "embedding_space_hash": "b26de8151d20e39c",
+        "hierarchy_family_key": "a430be67-dacc-44a7-ae9d-2fbd736e1d3e:0",
+        "hierarchy_parent_key": null,
+        "markdown_canonicalized": true,
+        "hierarchy_sibling_index": 0,
+        "text_normalized_changed": false,
+        "governance_rules_applied": 0,
+        "markdown_canonical_stats": {
+          "tables": 0,
+          "headings_changed": 0,
+          "table_rows_changed": 0,
+          "code_fences_changed": 0,
+          "list_markers_changed": 0,
+          "ordered_list_markers_changed": 0
+        },
+        "hierarchy_next_sibling_key": null,
+        "hierarchy_prev_sibling_key": null,
+        "markdown_canonical_changed": true
+      },
+      "failures": []
+    },
+    {
+      "name": "html_portal",
+      "file_type": "html",
+      "document_id": "1f169586-d311-4a7f-8bba-42cef2a4507c",
+      "status": "completed",
+      "chunk_count": 1,
+      "parsed_chars": 171,
+      "empty_persisted_chunks": 0,
+      "chunking_stats": {
+        "avg": 171,
+        "max": 171,
+        "min": 171,
+        "p10": 171,
+        "p90": 171,
+        "unit": "chars",
+        "count": 1,
+        "total": 171,
+        "median": 171,
+        "histogram": [
+          {
+            "max": 200,
+            "min": 0,
+            "count": 1,
+            "label": "0-200"
+          },
+          {
+            "max": 500,
+            "min": 200,
+            "count": 0,
+            "label": "200-500"
+          },
+          {
+            "max": 800,
+            "min": 500,
+            "count": 0,
+            "label": "500-800"
+          },
+          {
+            "max": 1200,
+            "min": 800,
+            "count": 0,
+            "label": "800-1.2k"
+          },
+          {
+            "max": 2000,
+            "min": 1200,
+            "count": 0,
+            "label": "1.2k-2k"
+          },
+          {
+            "max": null,
+            "min": 2000,
+            "count": 0,
+            "label": "2k+"
+          }
+        ],
+        "short_count": 0,
+        "duplicate_count": 0,
+        "short_threshold": 120
+      },
+      "chunk_coverage": {
+        "gap_count": 0,
+        "largest_gap": 0,
+        "ranges_used": 1,
+        "covered_chars": 171,
+        "coverage_ratio": 1.0,
+        "sum_chunk_chars": 171,
+        "overlap_waste_ratio": 0.0
+      },
+      "first_chunk_metadata": {
+        "title": "[no-title]",
+        "source": "1f169586-d311-4a7f-8bba-42cef2a4507c.html",
+        "chunk_id": "62fc8cd9-e133-402a-afe9-30c392956b28",
+        "encoding": "utf-8",
+        "end_char": 171,
+        "filename": "1f169586-d311-4a7f-8bba-42cef2a4507c.html",
+        "chunk_key": "1f169586-d311-4a7f-8bba-42cef2a4507c:0",
+        "file_type": "html",
+        "simhash64": "6c5fed44c1bb4e67",
+        "tenant_id": "00000000-0000-0000-0000-000000000000",
+        "chunk_type": "text",
+        "dataset_id": "e14c493f-06af-4104-bc04-64b71d6f84e0",
+        "index_kind": "chunk",
+        "page_index": 1,
+        "start_char": 0,
+        "chunk_index": 0,
+        "content_len": 171,
+        "document_id": "1f169586-d311-4a7f-8bba-42cef2a4507c",
+        "content_hash": "ccb1052b195a0c0d715689aee77326b164a7be50d4065024faf5bbd55a38b721",
+        "simhash_algo": "simhash64_sha1",
+        "chunk_quality": {
+          "grade": "good",
+          "score": 1.0,
+          "labels": [],
+          "schema": "mimirq.chunk_quality.v1",
+          "signals": {
+            "chars": 171,
+            "lines": 9,
+            "alpha_ratio": 0.789,
+            "digit_ratio": 0.0,
+            "symbol_ratio": 0.058,
+            "unique_line_ratio": 1.0
+          }
+        },
+        "pipeline_hash": "18bdf7633cc6a621",
+        "asset_base_dir": "/data/uploads/00000000-0000-0000-0000-000000000000",
+        "chunk_strategy": "langchain_recursive",
+        "document_title": "Operations Portal",
+        "end_char_local": 171,
+        "next_chunk_key": null,
+        "parser_backend": "pandoc",
+        "prev_chunk_key": null,
+        "hierarchy_basis": "chunk_sequence",
+        "hierarchy_level": "chunk",
+        "offsets_rebased": true,
+        "start_char_base": 0,
+        "text_normalized": true,
+        "doc_pipeline_key": "1f169586-d311-4a7f-8bba-42cef2a4507c:18bdf7633cc6a621",
+        "encoding_had_bom": false,
+        "next_chunk_index": null,
+        "prev_chunk_index": null,
+        "start_char_local": 0,
+        "content_hash_algo": "sha256",
+        "governance_applied": true,
+        "governance_changed": false,
+        "governance_version": "1",
+        "hierarchy_node_key": "1f169586-d311-4a7f-8bba-42cef2a4507c:0",
+        "chunk_semantic_role": "unknown",
+        "encoding_confidence": 1.0,
+        "embedding_space_hash": "b26de8151d20e39c",
+        "hierarchy_family_key": "1f169586-d311-4a7f-8bba-42cef2a4507c:0",
+        "hierarchy_parent_key": null,
+        "markdown_canonicalized": true,
+        "hierarchy_sibling_index": 0,
+        "text_normalized_changed": false,
+        "governance_rules_applied": 0,
+        "markdown_canonical_stats": {
+          "tables": 0,
+          "headings_changed": 0,
+          "table_rows_changed": 0,
+          "code_fences_changed": 0,
+          "list_markers_changed": 0,
+          "ordered_list_markers_changed": 0
+        },
+        "hierarchy_next_sibling_key": null,
+        "hierarchy_prev_sibling_key": null,
+        "markdown_canonical_changed": true
+      },
+      "failures": []
+    },
+    {
+      "name": "csv_metrics",
+      "file_type": "csv",
+      "document_id": "cb92d503-bfef-4f6e-bb98-3638df30b5aa",
+      "status": "completed",
+      "chunk_count": 1,
+      "parsed_chars": 140,
+      "empty_persisted_chunks": 0,
+      "chunking_stats": {
+        "avg": 140,
+        "max": 140,
+        "min": 140,
+        "p10": 140,
+        "p90": 140,
+        "unit": "chars",
+        "count": 1,
+        "total": 140,
+        "median": 140,
+        "histogram": [
+          {
+            "max": 200,
+            "min": 0,
+            "count": 1,
+            "label": "0-200"
+          },
+          {
+            "max": 500,
+            "min": 200,
+            "count": 0,
+            "label": "200-500"
+          },
+          {
+            "max": 800,
+            "min": 500,
+            "count": 0,
+            "label": "500-800"
+          },
+          {
+            "max": 1200,
+            "min": 800,
+            "count": 0,
+            "label": "800-1.2k"
+          },
+          {
+            "max": 2000,
+            "min": 1200,
+            "count": 0,
+            "label": "1.2k-2k"
+          },
+          {
+            "max": null,
+            "min": 2000,
+            "count": 0,
+            "label": "2k+"
+          }
+        ],
+        "short_count": 0,
+        "duplicate_count": 0,
+        "short_threshold": 120
+      },
+      "chunk_coverage": {
+        "gap_count": 0,
+        "largest_gap": 0,
+        "ranges_used": 1,
+        "covered_chars": 140,
+        "coverage_ratio": 1.0,
+        "sum_chunk_chars": 140,
+        "overlap_waste_ratio": 0.0
+      },
+      "first_chunk_metadata": {
+        "source": "cb92d503-bfef-4f6e-bb98-3638df30b5aa.csv",
+        "chunk_id": "cf48dbe0-9729-43c2-b96f-4c3caa8cdb1a",
+        "end_char": 140,
+        "filename": "cb92d503-bfef-4f6e-bb98-3638df30b5aa.csv",
+        "chunk_key": "cb92d503-bfef-4f6e-bb98-3638df30b5aa:0",
+        "file_type": "csv",
+        "simhash64": "bd376cf205130eee",
+        "tenant_id": "00000000-0000-0000-0000-000000000000",
+        "chunk_type": "table",
+        "dataset_id": "e14c493f-06af-4104-bc04-64b71d6f84e0",
+        "index_kind": "chunk",
+        "page_index": 1,
+        "start_char": 0,
+        "chunk_index": 0,
+        "content_len": 140,
+        "document_id": "cb92d503-bfef-4f6e-bb98-3638df30b5aa",
+        "content_hash": "87f6ba2b95b41e18fbccabea6d210b94aa13c8b611be8f336cfb70a229161edc",
+        "simhash_algo": "simhash64_sha1",
+        "chunk_quality": {
+          "grade": "good",
+          "score": 1.0,
+          "labels": [],
+          "schema": "mimirq.chunk_quality.v1",
+          "signals": {
+            "chars": 140,
+            "lines": 4,
+            "alpha_ratio": 0.493,
+            "digit_ratio": 0.0,
+            "symbol_ratio": 0.243
+          }
+        },
+        "pipeline_hash": "12d17e7262b72ab6",
+        "chunk_strategy": "langchain_recursive",
+        "end_char_local": 140,
+        "next_chunk_key": null,
+        "parser_backend": "markitdown",
+        "prev_chunk_key": null,
+        "hierarchy_basis": "chunk_sequence",
+        "hierarchy_level": "chunk",
+        "offsets_rebased": true,
+        "start_char_base": 0,
+        "text_normalized": true,
+        "doc_pipeline_key": "cb92d503-bfef-4f6e-bb98-3638df30b5aa:12d17e7262b72ab6",
+        "next_chunk_index": null,
+        "prev_chunk_index": null,
+        "start_char_local": 0,
+        "content_hash_algo": "sha256",
+        "governance_applied": true,
+        "governance_changed": false,
+        "governance_version": "1",
+        "hierarchy_node_key": "cb92d503-bfef-4f6e-bb98-3638df30b5aa:0",
+        "chunk_semantic_role": "table",
+        "embedding_space_hash": "b26de8151d20e39c",
+        "hierarchy_family_key": "cb92d503-bfef-4f6e-bb98-3638df30b5aa:0",
+        "hierarchy_parent_key": null,
+        "markdown_canonicalized": true,
+        "hierarchy_sibling_index": 0,
+        "text_normalized_changed": false,
+        "governance_rules_applied": 0,
+        "markdown_canonical_stats": {
+          "tables": 1,
+          "headings_changed": 0,
+          "table_rows_changed": 0,
+          "code_fences_changed": 0,
+          "list_markers_changed": 0,
+          "ordered_list_markers_changed": 0
+        },
+        "hierarchy_next_sibling_key": null,
+        "hierarchy_prev_sibling_key": null,
+        "markdown_canonical_changed": true
+      },
+      "failures": []
+    },
+    {
+      "name": "word_project_brief_docx",
+      "file_type": "docx",
+      "document_id": "497a576d-5723-4a07-8cda-f74cb2a8e0d9",
+      "status": "completed",
+      "chunk_count": 1,
+      "parsed_chars": 136,
+      "empty_persisted_chunks": 0,
+      "chunking_stats": {
+        "avg": 136,
+        "max": 136,
+        "min": 136,
+        "p10": 136,
+        "p90": 136,
+        "unit": "chars",
+        "count": 1,
+        "total": 136,
+        "median": 136,
+        "histogram": [
+          {
+            "max": 200,
+            "min": 0,
+            "count": 1,
+            "label": "0-200"
+          },
+          {
+            "max": 500,
+            "min": 200,
+            "count": 0,
+            "label": "200-500"
+          },
+          {
+            "max": 800,
+            "min": 500,
+            "count": 0,
+            "label": "500-800"
+          },
+          {
+            "max": 1200,
+            "min": 800,
+            "count": 0,
+            "label": "800-1.2k"
+          },
+          {
+            "max": 2000,
+            "min": 1200,
+            "count": 0,
+            "label": "1.2k-2k"
+          },
+          {
+            "max": null,
+            "min": 2000,
+            "count": 0,
+            "label": "2k+"
+          }
+        ],
+        "short_count": 0,
+        "duplicate_count": 0,
+        "short_threshold": 120
+      },
+      "chunk_coverage": {
+        "gap_count": 0,
+        "largest_gap": 0,
+        "ranges_used": 1,
+        "covered_chars": 136,
+        "coverage_ratio": 1.0,
+        "sum_chunk_chars": 136,
+        "overlap_waste_ratio": 0.0
+      },
+      "first_chunk_metadata": {
+        "source": "497a576d-5723-4a07-8cda-f74cb2a8e0d9.docx",
+        "chunk_id": "91655ac6-3da2-46a8-b473-cbd68aa8df55",
+        "end_char": 136,
+        "filename": "497a576d-5723-4a07-8cda-f74cb2a8e0d9.docx",
+        "chunk_key": "497a576d-5723-4a07-8cda-f74cb2a8e0d9:0",
+        "file_type": "docx",
+        "simhash64": "58deef7cd0873f26",
+        "structure": {
+          "list": {
+            "max_level": 0,
+            "min_level": 0,
+            "item_count": 2
+          }
+        },
+        "tenant_id": "00000000-0000-0000-0000-000000000000",
+        "chunk_type": "text",
+        "dataset_id": "e14c493f-06af-4104-bc04-64b71d6f84e0",
+        "index_kind": "chunk",
+        "page_index": 1,
+        "start_char": 0,
+        "chunk_index": 0,
+        "content_len": 136,
+        "document_id": "497a576d-5723-4a07-8cda-f74cb2a8e0d9",
+        "artifact_dir": "/data/uploads/00000000-0000-0000-0000-000000000000/.pandoc/497a576d-5723-4a07-8cda-f74cb2a8e0d9",
+        "content_hash": "de5adaddcc4749d85e01713149da089c35949f6b912552b2f4be9ba7a63a8fac",
+        "pandoc_input": "497a576d-5723-4a07-8cda-f74cb2a8e0d9.docx",
+        "simhash_algo": "simhash64_sha1",
+        "chunk_quality": {
+          "grade": "good",
+          "score": 1.0,
+          "labels": [],
+          "schema": "mimirq.chunk_quality.v1",
+          "signals": {
+            "chars": 136,
+            "lines": 9,
+            "alpha_ratio": 0.765,
+            "digit_ratio": 0.0,
+            "symbol_ratio": 0.051,
+            "unique_line_ratio": 1.0
+          }
+        },
+        "pipeline_hash": "18bdf7633cc6a621",
+        "asset_base_dir": "/data/uploads/00000000-0000-0000-0000-000000000000/.pandoc/497a576d-5723-4a07-8cda-f74cb2a8e0d9",
+        "chunk_strategy": "langchain_recursive",
+        "document_title": "Word Project Brief",
+        "end_char_local": 136,
+        "next_chunk_key": null,
+        "parser_backend": "pandoc",
+        "prev_chunk_key": null,
+        "hierarchy_basis": "chunk_sequence",
+        "hierarchy_level": "chunk",
+        "offsets_rebased": true,
+        "start_char_base": 0,
+        "text_normalized": true,
+        "doc_pipeline_key": "497a576d-5723-4a07-8cda-f74cb2a8e0d9:18bdf7633cc6a621",
+        "next_chunk_index": null,
+        "prev_chunk_index": null,
+        "start_char_local": 0,
+        "content_hash_algo": "sha256",
+        "governance_applied": true,
+        "governance_changed": false,
+        "governance_version": "1",
+        "hierarchy_node_key": "497a576d-5723-4a07-8cda-f74cb2a8e0d9:0",
+        "chunk_semantic_role": "unknown",
+        "embedding_space_hash": "b26de8151d20e39c",
+        "hierarchy_family_key": "497a576d-5723-4a07-8cda-f74cb2a8e0d9:0",
+        "hierarchy_parent_key": null,
+        "markdown_canonicalized": true,
+        "hierarchy_sibling_index": 0,
+        "text_normalized_changed": false,
+        "governance_rules_applied": 0,
+        "markdown_canonical_stats": {
+          "tables": 0,
+          "headings_changed": 0,
+          "table_rows_changed": 0,
+          "code_fences_changed": 0,
+          "list_markers_changed": 0,
+          "ordered_list_markers_changed": 0
+        },
+        "hierarchy_next_sibling_key": null,
+        "hierarchy_prev_sibling_key": null,
+        "markdown_canonical_changed": true
+      },
+      "failures": []
+    },
+    {
+      "name": "excel_budget_sheet_xlsx",
+      "file_type": "xlsx",
+      "document_id": "a353f338-5dc4-41bc-a4e6-dd2e43d13e31",
+      "status": "completed",
+      "chunk_count": 1,
+      "parsed_chars": 180,
+      "empty_persisted_chunks": 0,
+      "chunking_stats": {
+        "avg": 180,
+        "max": 180,
+        "min": 180,
+        "p10": 180,
+        "p90": 180,
+        "unit": "chars",
+        "count": 1,
+        "total": 180,
+        "median": 180,
+        "histogram": [
+          {
+            "max": 200,
+            "min": 0,
+            "count": 1,
+            "label": "0-200"
+          },
+          {
+            "max": 500,
+            "min": 200,
+            "count": 0,
+            "label": "200-500"
+          },
+          {
+            "max": 800,
+            "min": 500,
+            "count": 0,
+            "label": "500-800"
+          },
+          {
+            "max": 1200,
+            "min": 800,
+            "count": 0,
+            "label": "800-1.2k"
+          },
+          {
+            "max": 2000,
+            "min": 1200,
+            "count": 0,
+            "label": "1.2k-2k"
+          },
+          {
+            "max": null,
+            "min": 2000,
+            "count": 0,
+            "label": "2k+"
+          }
+        ],
+        "short_count": 0,
+        "duplicate_count": 0,
+        "short_threshold": 120
+      },
+      "chunk_coverage": {
+        "gap_count": 0,
+        "largest_gap": 0,
+        "ranges_used": 1,
+        "covered_chars": 180,
+        "coverage_ratio": 1.0,
+        "sum_chunk_chars": 180,
+        "overlap_waste_ratio": 0.0
+      },
+      "first_chunk_metadata": {
+        "source": "a353f338-5dc4-41bc-a4e6-dd2e43d13e31.xlsx",
+        "chunk_id": "32f55a2d-e97f-4bc7-9356-124470c5efb9",
+        "end_char": 180,
+        "filename": "a353f338-5dc4-41bc-a4e6-dd2e43d13e31.xlsx",
+        "chunk_key": "a353f338-5dc4-41bc-a4e6-dd2e43d13e31:0",
+        "file_type": "xlsx",
+        "simhash64": "1bba0d9604369fd2",
+        "tenant_id": "00000000-0000-0000-0000-000000000000",
+        "chunk_type": "table",
+        "dataset_id": "e14c493f-06af-4104-bc04-64b71d6f84e0",
+        "index_kind": "chunk",
+        "page_index": 1,
+        "start_char": 0,
+        "chunk_index": 0,
+        "content_len": 180,
+        "document_id": "a353f338-5dc4-41bc-a4e6-dd2e43d13e31",
+        "content_hash": "bfda01ce16d7895b16d8e9c8bc790aa3a7e820ff4c9878d42ff74a1753ad1324",
+        "excel_sheets": [
+          "Budget"
+        ],
+        "simhash_algo": "simhash64_sha1",
+        "chunk_quality": {
+          "grade": "good",
+          "score": 1.0,
+          "labels": [],
+          "schema": "mimirq.chunk_quality.v1",
+          "signals": {
+            "chars": 180,
+            "lines": 8,
+            "alpha_ratio": 0.467,
+            "digit_ratio": 0.139,
+            "symbol_ratio": 0.194,
+            "unique_line_ratio": 1.0
+          }
+        },
+        "pipeline_hash": "ff2e18c660aa49b4",
+        "chunk_strategy": "langchain_recursive",
+        "end_char_local": 180,
+        "next_chunk_key": null,
+        "parser_backend": "excel",
+        "prev_chunk_key": null,
+        "hierarchy_basis": "chunk_sequence",
+        "hierarchy_level": "chunk",
+        "offsets_rebased": true,
+        "start_char_base": 0,
+        "text_normalized": true,
+        "doc_pipeline_key": "a353f338-5dc4-41bc-a4e6-dd2e43d13e31:ff2e18c660aa49b4",
+        "next_chunk_index": null,
+        "prev_chunk_index": null,
+        "start_char_local": 0,
+        "content_hash_algo": "sha256",
+        "excel_rows_emitted": 3,
+        "governance_applied": true,
+        "governance_changed": true,
+        "governance_version": "1",
+        "hierarchy_node_key": "a353f338-5dc4-41bc-a4e6-dd2e43d13e31:0",
+        "chunk_semantic_role": "table",
+        "embedding_space_hash": "b26de8151d20e39c",
+        "hierarchy_family_key": "a353f338-5dc4-41bc-a4e6-dd2e43d13e31:0",
+        "hierarchy_parent_key": null,
+        "markdown_canonicalized": true,
+        "hierarchy_sibling_index": 0,
+        "text_normalized_changed": false,
+        "governance_rules_applied": 0,
+        "markdown_canonical_stats": {
+          "tables": 1,
+          "headings_changed": 0,
+          "table_rows_changed": 0,
+          "code_fences_changed": 0,
+          "list_markers_changed": 0,
+          "ordered_list_markers_changed": 0
+        },
+        "hierarchy_next_sibling_key": null,
+        "hierarchy_prev_sibling_key": null,
+        "markdown_canonical_changed": true
+      },
+      "failures": []
+    },
+    {
+      "name": "mixed_layout_pdf",
+      "file_type": "pdf",
+      "document_id": "4af8d2f1-1d45-47b1-bb56-e75cc1fc8cd5",
+      "status": "completed",
+      "chunk_count": 1,
+      "parsed_chars": 371,
+      "empty_persisted_chunks": 0,
+      "chunking_stats": {
+        "avg": 371,
+        "max": 371,
+        "min": 371,
+        "p10": 371,
+        "p90": 371,
+        "unit": "chars",
+        "count": 1,
+        "total": 371,
+        "median": 371,
+        "histogram": [
+          {
+            "max": 200,
+            "min": 0,
+            "count": 0,
+            "label": "0-200"
+          },
+          {
+            "max": 500,
+            "min": 200,
+            "count": 1,
+            "label": "200-500"
+          },
+          {
+            "max": 800,
+            "min": 500,
+            "count": 0,
+            "label": "500-800"
+          },
+          {
+            "max": 1200,
+            "min": 800,
+            "count": 0,
+            "label": "800-1.2k"
+          },
+          {
+            "max": 2000,
+            "min": 1200,
+            "count": 0,
+            "label": "1.2k-2k"
+          },
+          {
+            "max": null,
+            "min": 2000,
+            "count": 0,
+            "label": "2k+"
+          }
+        ],
+        "short_count": 0,
+        "duplicate_count": 0,
+        "short_threshold": 120
+      },
+      "chunk_coverage": {
+        "gap_count": 0,
+        "largest_gap": 0,
+        "ranges_used": 1,
+        "covered_chars": 371,
+        "coverage_ratio": 1.0,
+        "sum_chunk_chars": 371,
+        "overlap_waste_ratio": 0.0
+      },
+      "first_chunk_metadata": {
+        "source": "4af8d2f1-1d45-47b1-bb56-e75cc1fc8cd5.pdf",
+        "chunk_id": "f23b2cbb-f8ff-4c3e-b115-bf08097b9ba0",
+        "end_char": 371,
+        "filename": "4af8d2f1-1d45-47b1-bb56-e75cc1fc8cd5.pdf",
+        "chunk_key": "4af8d2f1-1d45-47b1-bb56-e75cc1fc8cd5:0",
+        "file_type": "pdf",
+        "simhash64": "77da296c75ff3a23",
+        "tenant_id": "00000000-0000-0000-0000-000000000000",
+        "chunk_type": "text",
+        "dataset_id": "e14c493f-06af-4104-bc04-64b71d6f84e0",
+        "index_kind": "chunk",
+        "page_index": 1,
+        "start_char": 0,
+        "chunk_index": 0,
+        "content_len": 371,
+        "document_id": "4af8d2f1-1d45-47b1-bb56-e75cc1fc8cd5",
+        "content_hash": "c0821783c074dedeac9cfd51edf671a7967f0aa8d7b9793bcccf164d86b5c0d5",
+        "simhash_algo": "simhash64_sha1",
+        "chunk_quality": {
+          "grade": "good",
+          "score": 1.0,
+          "labels": [],
+          "schema": "mimirq.chunk_quality.v1",
+          "signals": {
+            "chars": 371,
+            "lines": 11,
+            "alpha_ratio": 0.819,
+            "digit_ratio": 0.003,
+            "symbol_ratio": 0.019,
+            "unique_line_ratio": 1.0
+          }
+        },
+        "magicpdf_mode": "service",
+        "pipeline_hash": "6641c56579a13a7a",
+        "chunk_strategy": "langchain_recursive",
+        "end_char_local": 371,
+        "next_chunk_key": null,
+        "parser_backend": "magicpdf",
+        "prev_chunk_key": null,
+        "hierarchy_basis": "chunk_sequence",
+        "hierarchy_level": "chunk",
+        "magicpdf_method": "auto",
+        "offsets_rebased": true,
+        "start_char_base": 0,
+        "text_normalized": true,
+        "doc_pipeline_key": "4af8d2f1-1d45-47b1-bb56-e75cc1fc8cd5:6641c56579a13a7a",
+        "next_chunk_index": null,
+        "prev_chunk_index": null,
+        "start_char_local": 0,
+        "content_hash_algo": "sha256",
+        "governance_applied": true,
+        "governance_changed": false,
+        "governance_version": "1",
+        "hierarchy_node_key": "4af8d2f1-1d45-47b1-bb56-e75cc1fc8cd5:0",
+        "chunk_semantic_role": "unknown",
+        "embedding_space_hash": "b26de8151d20e39c",
+        "hierarchy_family_key": "4af8d2f1-1d45-47b1-bb56-e75cc1fc8cd5:0",
+        "hierarchy_parent_key": null,
+        "magicpdf_elapsed_sec": 15.352,
+        "markdown_canonicalized": true,
+        "hierarchy_sibling_index": 0,
+        "text_normalized_changed": false,
+        "governance_rules_applied": 0,
+        "markdown_canonical_stats": {
+          "tables": 0,
+          "headings_changed": 0,
+          "table_rows_changed": 0,
+          "code_fences_changed": 0,
+          "list_markers_changed": 0,
+          "ordered_list_markers_changed": 0
+        },
+        "hierarchy_next_sibling_key": null,
+        "hierarchy_prev_sibling_key": null,
+        "markdown_canonical_changed": true
+      },
+      "failures": []
+    },
+    {
+      "name": "rfc9000_long_pdf",
+      "file_type": "pdf",
+      "document_id": "a8c1bfe2-0850-40a5-9f74-6b61bd4e6fbc",
+      "status": "completed",
+      "chunk_count": 360,
+      "parsed_chars": 360704,
+      "empty_persisted_chunks": 0,
+      "chunking_stats": {
+        "avg": 1002,
+        "max": 1195,
+        "min": 87,
+        "p10": 791,
+        "p90": 1173,
+        "unit": "chars",
+        "count": 360,
+        "total": 360704,
+        "median": 1038,
+        "histogram": [
+          {
+            "max": 200,
+            "min": 0,
+            "count": 4,
+            "label": "0-200"
+          },
+          {
+            "max": 500,
+            "min": 200,
+            "count": 4,
+            "label": "200-500"
+          },
+          {
+            "max": 800,
+            "min": 500,
+            "count": 31,
+            "label": "500-800"
+          },
+          {
+            "max": 1200,
+            "min": 800,
+            "count": 321,
+            "label": "800-1.2k"
+          },
+          {
+            "max": 2000,
+            "min": 1200,
+            "count": 0,
+            "label": "1.2k-2k"
+          },
+          {
+            "max": null,
+            "min": 2000,
+            "count": 0,
+            "label": "2k+"
+          }
+        ],
+        "short_count": 1,
+        "duplicate_count": 0,
+        "short_threshold": 120
+      },
+      "chunk_coverage": {
+        "gap_count": 247,
+        "largest_gap": 2,
+        "ranges_used": 360,
+        "covered_chars": 354297,
+        "coverage_ratio": 0.9986273338143772,
+        "sum_chunk_chars": 360704,
+        "overlap_waste_ratio": 0.01776248669268985
+      },
+      "first_chunk_metadata": {
+        "source": "a8c1bfe2-0850-40a5-9f74-6b61bd4e6fbc.pdf",
+        "chunk_id": "5fc9e0fc-4eba-4971-8fd4-e85537bf3eff",
+        "end_char": 1129,
+        "filename": "a8c1bfe2-0850-40a5-9f74-6b61bd4e6fbc.pdf",
+        "chunk_key": "a8c1bfe2-0850-40a5-9f74-6b61bd4e6fbc:0",
+        "file_type": "pdf",
+        "simhash64": "3ef883fe9526c68b",
+        "tenant_id": "00000000-0000-0000-0000-000000000000",
+        "chunk_type": "text",
+        "dataset_id": "e14c493f-06af-4104-bc04-64b71d6f84e0",
+        "index_kind": "chunk",
+        "page_index": 1,
+        "start_char": 0,
+        "chunk_index": 0,
+        "content_len": 1129,
+        "document_id": "a8c1bfe2-0850-40a5-9f74-6b61bd4e6fbc",
+        "content_hash": "515cbafff1eebe37ee10e2e694e1cb33c71c2446d4b0353f1a0b9b11b49d5c68",
+        "simhash_algo": "simhash64_sha1",
+        "chunk_quality": {
+          "grade": "good",
+          "score": 1.0,
+          "labels": [],
+          "schema": "mimirq.chunk_quality.v1",
+          "signals": {
+            "chars": 1129,
+            "lines": 13,
+            "alpha_ratio": 0.795,
+            "digit_ratio": 0.022,
+            "symbol_ratio": 0.036,
+            "unique_line_ratio": 1.0
+          }
+        },
+        "magicpdf_mode": "service",
+        "pipeline_hash": "6641c56579a13a7a",
+        "chunk_strategy": "langchain_recursive",
+        "document_title": "RFC 9000 QUIC: A UDP-Based Multiplexed and Secure Transport",
+        "end_char_local": 1129,
+        "next_chunk_key": "a8c1bfe2-0850-40a5-9f74-6b61bd4e6fbc:1",
+        "parser_backend": "magicpdf",
+        "prev_chunk_key": null,
+        "hierarchy_basis": "chunk_sequence",
+        "hierarchy_level": "chunk",
+        "magicpdf_method": "auto",
+        "offsets_rebased": true,
+        "start_char_base": 0,
+        "text_normalized": true,
+        "doc_pipeline_key": "a8c1bfe2-0850-40a5-9f74-6b61bd4e6fbc:6641c56579a13a7a",
+        "next_chunk_index": 1,
+        "prev_chunk_index": null,
+        "start_char_local": 0,
+        "content_hash_algo": "sha256",
+        "governance_applied": true,
+        "governance_changed": true,
+        "governance_version": "1",
+        "hierarchy_node_key": "a8c1bfe2-0850-40a5-9f74-6b61bd4e6fbc:0",
+        "chunk_semantic_role": "unknown",
+        "embedding_space_hash": "b26de8151d20e39c",
+        "hierarchy_family_key": "a8c1bfe2-0850-40a5-9f74-6b61bd4e6fbc:0",
+        "hierarchy_parent_key": null,
+        "magicpdf_elapsed_sec": 102.119,
+        "markdown_canonicalized": true,
+        "hierarchy_sibling_index": 0,
+        "text_normalized_changed": true,
+        "governance_rules_applied": 0,
+        "markdown_canonical_stats": {
+          "tables": 0,
+          "headings_changed": 0,
+          "table_rows_changed": 0,
+          "code_fences_changed": 0,
+          "list_markers_changed": 0,
+          "ordered_list_markers_changed": 1
+        },
+        "hierarchy_next_sibling_key": "a8c1bfe2-0850-40a5-9f74-6b61bd4e6fbc:1",
+        "hierarchy_prev_sibling_key": null,
+        "markdown_canonical_changed": true
+      },
+      "failures": []
+    }
+  ],
+  "preview_checks": [
+    {
+      "case": "markdown_handbook",
+      "strategy": "langchain_recursive",
+      "parser_backend": "auto",
+      "total_chunks": 1,
+      "total_chunks_full": 1,
+      "avg_chunk_length": 249,
+      "coverage_ratio": 0.996,
+      "overlap_waste_ratio": 0.0,
+      "short_count": 0,
+      "duplicate_count": 0,
+      "gap_count": 1,
+      "histogram_bins": 5,
+      "empty_chunks": 0,
+      "quality_grade": "warn",
+      "chunks_truncated": false,
+      "parse_cache_hit": false,
+      "elapsed_sec": 0.145,
+      "failures": []
+    },
+    {
+      "case": "markdown_handbook",
+      "strategy": "markdown_hierarchy",
+      "parser_backend": "auto",
+      "total_chunks": 6,
+      "total_chunks_full": 6,
+      "avg_chunk_length": 64,
+      "coverage_ratio": 0.78,
+      "overlap_waste_ratio": 0.49612403100775193,
+      "short_count": 6,
+      "duplicate_count": 3,
+      "gap_count": 3,
+      "histogram_bins": 2,
+      "empty_chunks": 0,
+      "quality_grade": "fail",
+      "chunks_truncated": false,
+      "parse_cache_hit": true,
+      "elapsed_sec": 0.019,
+      "failures": []
+    },
+    {
+      "case": "markdown_handbook",
+      "strategy": "semantic_sentence",
+      "parser_backend": "auto",
+      "total_chunks": 1,
+      "total_chunks_full": 1,
+      "avg_chunk_length": 242,
+      "coverage_ratio": 0.996,
+      "overlap_waste_ratio": 0.0,
+      "short_count": 0,
+      "duplicate_count": 0,
+      "gap_count": 1,
+      "histogram_bins": 5,
+      "empty_chunks": 0,
+      "quality_grade": "warn",
+      "chunks_truncated": false,
+      "parse_cache_hit": true,
+      "elapsed_sec": 0.016,
+      "failures": []
+    },
+    {
+      "case": "markdown_handbook",
+      "strategy": "parent_child",
+      "parser_backend": "auto",
+      "total_chunks": 2,
+      "total_chunks_full": 2,
+      "avg_chunk_length": 249,
+      "coverage_ratio": 0.996,
+      "overlap_waste_ratio": 0.5,
+      "short_count": 0,
+      "duplicate_count": 1,
+      "gap_count": 1,
+      "histogram_bins": 5,
+      "empty_chunks": 0,
+      "quality_grade": "fail",
+      "chunks_truncated": false,
+      "parse_cache_hit": true,
+      "elapsed_sec": 0.064,
+      "failures": []
+    },
+    {
+      "case": "markdown_handbook",
+      "strategy": "separator",
+      "parser_backend": "auto",
+      "total_chunks": 3,
+      "total_chunks_full": 3,
+      "avg_chunk_length": 66,
+      "coverage_ratio": 0.788,
+      "overlap_waste_ratio": 0.0,
+      "short_count": 3,
+      "duplicate_count": 0,
+      "gap_count": 3,
+      "histogram_bins": 2,
+      "empty_chunks": 0,
+      "quality_grade": "fail",
+      "chunks_truncated": false,
+      "parse_cache_hit": true,
+      "elapsed_sec": 0.023,
+      "failures": []
+    },
+    {
+      "case": "html_portal",
+      "strategy": "langchain_recursive",
+      "parser_backend": "auto",
+      "total_chunks": 1,
+      "total_chunks_full": 1,
+      "avg_chunk_length": 171,
+      "coverage_ratio": 0.9941860465116279,
+      "overlap_waste_ratio": 0.0,
+      "short_count": 0,
+      "duplicate_count": 0,
+      "gap_count": 1,
+      "histogram_bins": 4,
+      "empty_chunks": 0,
+      "quality_grade": "warn",
+      "chunks_truncated": false,
+      "parse_cache_hit": false,
+      "elapsed_sec": 13.018,
+      "failures": []
+    },
+    {
+      "case": "html_portal",
+      "strategy": "markdown_hierarchy",
+      "parser_backend": "auto",
+      "total_chunks": 4,
+      "total_chunks_full": 4,
+      "avg_chunk_length": 67,
+      "coverage_ratio": 0.7848837209302325,
+      "overlap_waste_ratio": 0.4962686567164179,
+      "short_count": 4,
+      "duplicate_count": 2,
+      "gap_count": 3,
+      "histogram_bins": 2,
+      "empty_chunks": 0,
+      "quality_grade": "fail",
+      "chunks_truncated": false,
+      "parse_cache_hit": true,
+      "elapsed_sec": 0.066,
+      "failures": []
+    },
+    {
+      "case": "html_portal",
+      "strategy": "semantic_sentence",
+      "parser_backend": "auto",
+      "total_chunks": 1,
+      "total_chunks_full": 1,
+      "avg_chunk_length": 166,
+      "coverage_ratio": 1.0,
+      "overlap_waste_ratio": 0.0,
+      "short_count": 0,
+      "duplicate_count": 0,
+      "gap_count": 0,
+      "histogram_bins": 4,
+      "empty_chunks": 0,
+      "quality_grade": "pass",
+      "chunks_truncated": false,
+      "parse_cache_hit": true,
+      "elapsed_sec": 0.024,
+      "failures": []
+    },
+    {
+      "case": "html_portal",
+      "strategy": "parent_child",
+      "parser_backend": "auto",
+      "total_chunks": 2,
+      "total_chunks_full": 2,
+      "avg_chunk_length": 171,
+      "coverage_ratio": 0.9941860465116279,
+      "overlap_waste_ratio": 0.5,
+      "short_count": 0,
+      "duplicate_count": 1,
+      "gap_count": 1,
+      "histogram_bins": 4,
+      "empty_chunks": 0,
+      "quality_grade": "fail",
+      "chunks_truncated": false,
+      "parse_cache_hit": true,
+      "elapsed_sec": 0.023,
+      "failures": []
+    },
+    {
+      "case": "csv_metrics",
+      "strategy": "langchain_recursive",
+      "parser_backend": "auto",
+      "total_chunks": 1,
+      "total_chunks_full": 1,
+      "avg_chunk_length": 140,
+      "coverage_ratio": 1.0,
+      "overlap_waste_ratio": 0.0,
+      "short_count": 0,
+      "duplicate_count": 0,
+      "gap_count": 0,
+      "histogram_bins": 3,
+      "empty_chunks": 0,
+      "quality_grade": "pass",
+      "chunks_truncated": false,
+      "parse_cache_hit": false,
+      "elapsed_sec": 13.465,
+      "failures": []
+    },
+    {
+      "case": "csv_metrics",
+      "strategy": "csv_rows",
+      "parser_backend": "auto",
+      "total_chunks": 1,
+      "total_chunks_full": 1,
+      "avg_chunk_length": 140,
+      "coverage_ratio": 1.0,
+      "overlap_waste_ratio": 0.0,
+      "short_count": 0,
+      "duplicate_count": 0,
+      "gap_count": 0,
+      "histogram_bins": 3,
+      "empty_chunks": 0,
+      "quality_grade": "pass",
+      "chunks_truncated": false,
+      "parse_cache_hit": true,
+      "elapsed_sec": 0.019,
+      "failures": []
+    },
+    {
+      "case": "csv_metrics",
+      "strategy": "markdown_table",
+      "parser_backend": "auto",
+      "total_chunks": 2,
+      "total_chunks_full": 2,
+      "avg_chunk_length": 88,
+      "coverage_ratio": 1.0,
+      "overlap_waste_ratio": 0.20903954802259886,
+      "short_count": 1,
+      "duplicate_count": 0,
+      "gap_count": 0,
+      "histogram_bins": 3,
+      "empty_chunks": 0,
+      "quality_grade": "warn",
+      "chunks_truncated": false,
+      "parse_cache_hit": true,
+      "elapsed_sec": 0.015,
+      "failures": []
+    },
+    {
+      "case": "word_project_brief_docx",
+      "strategy": "langchain_recursive",
+      "parser_backend": "auto",
+      "total_chunks": 1,
+      "total_chunks_full": 1,
+      "avg_chunk_length": 136,
+      "coverage_ratio": 0.9927007299270073,
+      "overlap_waste_ratio": 0.0,
+      "short_count": 0,
+      "duplicate_count": 0,
+      "gap_count": 1,
+      "histogram_bins": 3,
+      "empty_chunks": 0,
+      "quality_grade": "warn",
+      "chunks_truncated": false,
+      "parse_cache_hit": false,
+      "elapsed_sec": 13.24,
+      "failures": []
+    },
+    {
+      "case": "word_project_brief_docx",
+      "strategy": "semantic_sentence",
+      "parser_backend": "auto",
+      "total_chunks": 1,
+      "total_chunks_full": 1,
+      "avg_chunk_length": 132,
+      "coverage_ratio": 1.0,
+      "overlap_waste_ratio": 0.0,
+      "short_count": 0,
+      "duplicate_count": 0,
+      "gap_count": 0,
+      "histogram_bins": 3,
+      "empty_chunks": 0,
+      "quality_grade": "pass",
+      "chunks_truncated": false,
+      "parse_cache_hit": true,
+      "elapsed_sec": 0.033,
+      "failures": []
+    },
+    {
+      "case": "word_project_brief_docx",
+      "strategy": "parent_child",
+      "parser_backend": "auto",
+      "total_chunks": 2,
+      "total_chunks_full": 2,
+      "avg_chunk_length": 136,
+      "coverage_ratio": 0.9927007299270073,
+      "overlap_waste_ratio": 0.5,
+      "short_count": 0,
+      "duplicate_count": 1,
+      "gap_count": 1,
+      "histogram_bins": 3,
+      "empty_chunks": 0,
+      "quality_grade": "fail",
+      "chunks_truncated": false,
+      "parse_cache_hit": true,
+      "elapsed_sec": 0.029,
+      "failures": []
+    },
+    {
+      "case": "excel_budget_sheet_xlsx",
+      "strategy": "langchain_recursive",
+      "parser_backend": "auto",
+      "total_chunks": 1,
+      "total_chunks_full": 1,
+      "avg_chunk_length": 149,
+      "coverage_ratio": 0.9933333333333333,
+      "overlap_waste_ratio": 0.0,
+      "short_count": 0,
+      "duplicate_count": 0,
+      "gap_count": 1,
+      "histogram_bins": 3,
+      "empty_chunks": 0,
+      "quality_grade": "warn",
+      "chunks_truncated": false,
+      "parse_cache_hit": false,
+      "elapsed_sec": 13.429,
+      "failures": []
+    },
+    {
+      "case": "excel_budget_sheet_xlsx",
+      "strategy": "csv_rows",
+      "parser_backend": "auto",
+      "total_chunks": 1,
+      "total_chunks_full": 1,
+      "avg_chunk_length": 149,
+      "coverage_ratio": 0.9933333333333333,
+      "overlap_waste_ratio": 0.0,
+      "short_count": 0,
+      "duplicate_count": 0,
+      "gap_count": 1,
+      "histogram_bins": 3,
+      "empty_chunks": 0,
+      "quality_grade": "warn",
+      "chunks_truncated": false,
+      "parse_cache_hit": true,
+      "elapsed_sec": 0.034,
+      "failures": []
+    },
+    {
+      "case": "excel_budget_sheet_xlsx",
+      "strategy": "markdown_table",
+      "parser_backend": "auto",
+      "total_chunks": 2,
+      "total_chunks_full": 2,
+      "avg_chunk_length": 74,
+      "coverage_ratio": 0.9866666666666667,
+      "overlap_waste_ratio": 0.0,
+      "short_count": 2,
+      "duplicate_count": 0,
+      "gap_count": 1,
+      "histogram_bins": 2,
+      "empty_chunks": 0,
+      "quality_grade": "fail",
+      "chunks_truncated": false,
+      "parse_cache_hit": true,
+      "elapsed_sec": 0.026,
+      "failures": []
+    },
+    {
+      "case": "mixed_layout_pdf",
+      "strategy": "langchain_recursive",
+      "parser_backend": "magicpdf",
+      "total_chunks": 1,
+      "total_chunks_full": 1,
+      "avg_chunk_length": 371,
+      "coverage_ratio": 1.0,
+      "overlap_waste_ratio": 0.0,
+      "short_count": 0,
+      "duplicate_count": 0,
+      "gap_count": 0,
+      "histogram_bins": 8,
+      "empty_chunks": 0,
+      "quality_grade": "pass",
+      "chunks_truncated": false,
+      "parse_cache_hit": false,
+      "elapsed_sec": 27.984,
+      "failures": []
+    },
+    {
+      "case": "mixed_layout_pdf",
+      "strategy": "markdown_hierarchy",
+      "parser_backend": "magicpdf",
+      "total_chunks": 12,
+      "total_chunks_full": 12,
+      "avg_chunk_length": 61,
+      "coverage_ratio": 0.9865229110512129,
+      "overlap_waste_ratio": 0.4965612104539202,
+      "short_count": 12,
+      "duplicate_count": 6,
+      "gap_count": 5,
+      "histogram_bins": 3,
+      "empty_chunks": 0,
+      "quality_grade": "fail",
+      "chunks_truncated": false,
+      "parse_cache_hit": true,
+      "elapsed_sec": 0.038,
+      "failures": []
+    },
+    {
+      "case": "mixed_layout_pdf",
+      "strategy": "semantic_sentence",
+      "parser_backend": "magicpdf",
+      "total_chunks": 1,
+      "total_chunks_full": 1,
+      "avg_chunk_length": 361,
+      "coverage_ratio": 1.0,
+      "overlap_waste_ratio": 0.0,
+      "short_count": 0,
+      "duplicate_count": 0,
+      "gap_count": 0,
+      "histogram_bins": 8,
+      "empty_chunks": 0,
+      "quality_grade": "pass",
+      "chunks_truncated": false,
+      "parse_cache_hit": true,
+      "elapsed_sec": 0.026,
+      "failures": []
+    },
+    {
+      "case": "mixed_layout_pdf",
+      "strategy": "parent_child",
+      "parser_backend": "magicpdf",
+      "total_chunks": 2,
+      "total_chunks_full": 2,
+      "avg_chunk_length": 371,
+      "coverage_ratio": 1.0,
+      "overlap_waste_ratio": 0.5,
+      "short_count": 0,
+      "duplicate_count": 1,
+      "gap_count": 0,
+      "histogram_bins": 8,
+      "empty_chunks": 0,
+      "quality_grade": "fail",
+      "chunks_truncated": false,
+      "parse_cache_hit": true,
+      "elapsed_sec": 0.025,
+      "failures": []
+    },
+    {
+      "case": "rfc9000_long_pdf",
+      "strategy": "langchain_recursive",
+      "parser_backend": "magicpdf",
+      "total_chunks": 457,
+      "total_chunks_full": 457,
+      "avg_chunk_length": 821,
+      "coverage_ratio": 0.9985427753224497,
+      "overlap_waste_ratio": 0.05569342229069653,
+      "short_count": 1,
+      "duplicate_count": 0,
+      "gap_count": 261,
+      "histogram_bins": 7,
+      "empty_chunks": 0,
+      "quality_grade": "warn",
+      "chunks_truncated": false,
+      "parse_cache_hit": false,
+      "elapsed_sec": 117.899,
+      "failures": []
+    },
+    {
+      "case": "rfc9000_long_pdf",
+      "strategy": "markdown_hierarchy",
+      "parser_backend": "magicpdf",
+      "total_chunks": 4423,
+      "total_chunks_full": 4423,
+      "avg_chunk_length": 155,
+      "coverage_ratio": 0.9847259177414991,
+      "overlap_waste_ratio": 0.49002872707526846,
+      "short_count": 2194,
+      "duplicate_count": 445,
+      "gap_count": 1410,
+      "histogram_bins": 8,
+      "empty_chunks": 0,
+      "quality_grade": "warn",
+      "chunks_truncated": false,
+      "parse_cache_hit": true,
+      "elapsed_sec": 1.569,
+      "failures": []
+    },
+    {
+      "case": "rfc9000_long_pdf",
+      "strategy": "semantic_sentence",
+      "parser_backend": "magicpdf",
+      "total_chunks": 543,
+      "total_chunks_full": 543,
+      "avg_chunk_length": 925,
+      "coverage_ratio": 1.0,
+      "overlap_waste_ratio": 0.29812872045152855,
+      "short_count": 0,
+      "duplicate_count": 0,
+      "gap_count": 0,
+      "histogram_bins": 8,
+      "empty_chunks": 0,
+      "quality_grade": "pass",
+      "chunks_truncated": false,
+      "parse_cache_hit": true,
+      "elapsed_sec": 1.207,
+      "failures": []
+    },
+    {
+      "case": "rfc9000_long_pdf",
+      "strategy": "parent_child",
+      "parser_backend": "magicpdf",
+      "total_chunks": 1593,
+      "total_chunks_full": 1593,
+      "avg_chunk_length": 475,
+      "coverage_ratio": 0.9989712050148823,
+      "overlap_waste_ratio": 0.5314979365335349,
+      "short_count": 60,
+      "duplicate_count": 50,
+      "gap_count": 184,
+      "histogram_bins": 7,
+      "empty_chunks": 0,
+      "quality_grade": "warn",
+      "chunks_truncated": false,
+      "parse_cache_hit": true,
+      "elapsed_sec": 1.18,
+      "failures": []
+    }
+  ],
+  "profile_summary": {
+    "total_documents": 7,
+    "chunk_count_histogram_bins": 6,
+    "avg_chunk_chars_histogram_bins": 6,
+    "chunk_length_histogram_bins": 6,
+    "chunk_coverage_histogram_bins": 5,
+    "chunk_overlap_waste_histogram_bins": 5,
+    "by_file_type": {
+      "csv": 1,
+      "docx": 1,
+      "xlsx": 1,
+      "pdf": 2,
+      "md": 1,
+      "html": 1
+    },
+    "failures": []
+  },
+  "cleanup": {
+    "dataset_id": "e14c493f-06af-4104-bc04-64b71d6f84e0",
+    "purge_deleted": 7,
+    "delete_dataset_status": 204
+  },
+  "failures": [],
+  "steps": [
+    {
+      "name": "health",
+      "status_code": 200,
+      "elapsed_sec": 0.049,
+      "ok": true
+    },
+    {
+      "name": "create_dataset",
+      "status_code": 201,
+      "elapsed_sec": 0.025,
+      "ok": true
+    },
+    {
+      "name": "upload:markdown_handbook",
+      "status_code": 201,
+      "elapsed_sec": 0.062,
+      "ok": true
+    },
+    {
+      "name": "poll:markdown_handbook",
+      "status_code": 200,
+      "elapsed_sec": 0.076,
+      "ok": true,
+      "doc_status": "pending"
+    },
+    {
+      "name": "poll:markdown_handbook",
+      "status_code": 200,
+      "elapsed_sec": 0.023,
+      "ok": true,
+      "doc_status": "completed"
+    },
+    {
+      "name": "detail:markdown_handbook",
+      "status_code": 200,
+      "elapsed_sec": 0.018,
+      "ok": true
+    },
+    {
+      "name": "chunks:markdown_handbook",
+      "status_code": 200,
+      "elapsed_sec": 0.04,
+      "ok": true,
+      "chunk_count": 1
+    },
+    {
+      "name": "parsed:markdown_handbook",
+      "status_code": 200,
+      "elapsed_sec": 0.109,
+      "ok": true,
+      "parsed_chars": 249
+    },
+    {
+      "name": "preview:markdown_handbook:langchain_recursive",
+      "status_code": 200,
+      "elapsed_sec": 0.145,
+      "ok": true,
+      "total_chunks": 1,
+      "avg_chunk_length": 249,
+      "parse_cache_hit": false
+    },
+    {
+      "name": "preview:markdown_handbook:markdown_hierarchy",
+      "status_code": 200,
+      "elapsed_sec": 0.019,
+      "ok": true,
+      "total_chunks": 6,
+      "avg_chunk_length": 64,
+      "parse_cache_hit": true
+    },
+    {
+      "name": "preview:markdown_handbook:semantic_sentence",
+      "status_code": 200,
+      "elapsed_sec": 0.016,
+      "ok": true,
+      "total_chunks": 1,
+      "avg_chunk_length": 242,
+      "parse_cache_hit": true
+    },
+    {
+      "name": "preview:markdown_handbook:parent_child",
+      "status_code": 200,
+      "elapsed_sec": 0.064,
+      "ok": true,
+      "total_chunks": 2,
+      "avg_chunk_length": 249,
+      "parse_cache_hit": true
+    },
+    {
+      "name": "preview:markdown_handbook:separator",
+      "status_code": 200,
+      "elapsed_sec": 0.023,
+      "ok": true,
+      "total_chunks": 3,
+      "avg_chunk_length": 66,
+      "parse_cache_hit": true
+    },
+    {
+      "name": "upload:html_portal",
+      "status_code": 201,
+      "elapsed_sec": 0.053,
+      "ok": true
+    },
+    {
+      "name": "poll:html_portal",
+      "status_code": 200,
+      "elapsed_sec": 0.058,
+      "ok": true,
+      "doc_status": "pending"
+    },
+    {
+      "name": "poll:html_portal",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "completed"
+    },
+    {
+      "name": "detail:html_portal",
+      "status_code": 200,
+      "elapsed_sec": 0.018,
+      "ok": true
+    },
+    {
+      "name": "chunks:html_portal",
+      "status_code": 200,
+      "elapsed_sec": 0.024,
+      "ok": true,
+      "chunk_count": 1
+    },
+    {
+      "name": "parsed:html_portal",
+      "status_code": 200,
+      "elapsed_sec": 0.101,
+      "ok": true,
+      "parsed_chars": 171
+    },
+    {
+      "name": "preview:html_portal:langchain_recursive",
+      "status_code": 200,
+      "elapsed_sec": 13.018,
+      "ok": true,
+      "total_chunks": 1,
+      "avg_chunk_length": 171,
+      "parse_cache_hit": false
+    },
+    {
+      "name": "preview:html_portal:markdown_hierarchy",
+      "status_code": 200,
+      "elapsed_sec": 0.066,
+      "ok": true,
+      "total_chunks": 4,
+      "avg_chunk_length": 67,
+      "parse_cache_hit": true
+    },
+    {
+      "name": "preview:html_portal:semantic_sentence",
+      "status_code": 200,
+      "elapsed_sec": 0.024,
+      "ok": true,
+      "total_chunks": 1,
+      "avg_chunk_length": 166,
+      "parse_cache_hit": true
+    },
+    {
+      "name": "preview:html_portal:parent_child",
+      "status_code": 200,
+      "elapsed_sec": 0.023,
+      "ok": true,
+      "total_chunks": 2,
+      "avg_chunk_length": 171,
+      "parse_cache_hit": true
+    },
+    {
+      "name": "upload:csv_metrics",
+      "status_code": 201,
+      "elapsed_sec": 0.079,
+      "ok": true
+    },
+    {
+      "name": "poll:csv_metrics",
+      "status_code": 200,
+      "elapsed_sec": 0.059,
+      "ok": true,
+      "doc_status": "pending"
+    },
+    {
+      "name": "poll:csv_metrics",
+      "status_code": 200,
+      "elapsed_sec": 0.012,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:csv_metrics",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "completed"
+    },
+    {
+      "name": "detail:csv_metrics",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true
+    },
+    {
+      "name": "chunks:csv_metrics",
+      "status_code": 200,
+      "elapsed_sec": 0.025,
+      "ok": true,
+      "chunk_count": 1
+    },
+    {
+      "name": "parsed:csv_metrics",
+      "status_code": 200,
+      "elapsed_sec": 0.102,
+      "ok": true,
+      "parsed_chars": 140
+    },
+    {
+      "name": "preview:csv_metrics:langchain_recursive",
+      "status_code": 200,
+      "elapsed_sec": 13.465,
+      "ok": true,
+      "total_chunks": 1,
+      "avg_chunk_length": 140,
+      "parse_cache_hit": false
+    },
+    {
+      "name": "preview:csv_metrics:csv_rows",
+      "status_code": 200,
+      "elapsed_sec": 0.019,
+      "ok": true,
+      "total_chunks": 1,
+      "avg_chunk_length": 140,
+      "parse_cache_hit": true
+    },
+    {
+      "name": "preview:csv_metrics:markdown_table",
+      "status_code": 200,
+      "elapsed_sec": 0.015,
+      "ok": true,
+      "total_chunks": 2,
+      "avg_chunk_length": 88,
+      "parse_cache_hit": true
+    },
+    {
+      "name": "upload:word_project_brief_docx",
+      "status_code": 201,
+      "elapsed_sec": 0.051,
+      "ok": true
+    },
+    {
+      "name": "poll:word_project_brief_docx",
+      "status_code": 200,
+      "elapsed_sec": 0.056,
+      "ok": true,
+      "doc_status": "pending"
+    },
+    {
+      "name": "poll:word_project_brief_docx",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "completed"
+    },
+    {
+      "name": "detail:word_project_brief_docx",
+      "status_code": 200,
+      "elapsed_sec": 0.018,
+      "ok": true
+    },
+    {
+      "name": "chunks:word_project_brief_docx",
+      "status_code": 200,
+      "elapsed_sec": 0.065,
+      "ok": true,
+      "chunk_count": 1
+    },
+    {
+      "name": "parsed:word_project_brief_docx",
+      "status_code": 200,
+      "elapsed_sec": 0.101,
+      "ok": true,
+      "parsed_chars": 136
+    },
+    {
+      "name": "preview:word_project_brief_docx:langchain_recursive",
+      "status_code": 200,
+      "elapsed_sec": 13.24,
+      "ok": true,
+      "total_chunks": 1,
+      "avg_chunk_length": 136,
+      "parse_cache_hit": false
+    },
+    {
+      "name": "preview:word_project_brief_docx:semantic_sentence",
+      "status_code": 200,
+      "elapsed_sec": 0.033,
+      "ok": true,
+      "total_chunks": 1,
+      "avg_chunk_length": 132,
+      "parse_cache_hit": true
+    },
+    {
+      "name": "preview:word_project_brief_docx:parent_child",
+      "status_code": 200,
+      "elapsed_sec": 0.029,
+      "ok": true,
+      "total_chunks": 2,
+      "avg_chunk_length": 136,
+      "parse_cache_hit": true
+    },
+    {
+      "name": "upload:excel_budget_sheet_xlsx",
+      "status_code": 201,
+      "elapsed_sec": 0.066,
+      "ok": true
+    },
+    {
+      "name": "poll:excel_budget_sheet_xlsx",
+      "status_code": 200,
+      "elapsed_sec": 0.058,
+      "ok": true,
+      "doc_status": "pending"
+    },
+    {
+      "name": "poll:excel_budget_sheet_xlsx",
+      "status_code": 200,
+      "elapsed_sec": 0.019,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:excel_budget_sheet_xlsx",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "completed"
+    },
+    {
+      "name": "detail:excel_budget_sheet_xlsx",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true
+    },
+    {
+      "name": "chunks:excel_budget_sheet_xlsx",
+      "status_code": 200,
+      "elapsed_sec": 0.027,
+      "ok": true,
+      "chunk_count": 1
+    },
+    {
+      "name": "parsed:excel_budget_sheet_xlsx",
+      "status_code": 200,
+      "elapsed_sec": 0.101,
+      "ok": true,
+      "parsed_chars": 180
+    },
+    {
+      "name": "preview:excel_budget_sheet_xlsx:langchain_recursive",
+      "status_code": 200,
+      "elapsed_sec": 13.429,
+      "ok": true,
+      "total_chunks": 1,
+      "avg_chunk_length": 149,
+      "parse_cache_hit": false
+    },
+    {
+      "name": "preview:excel_budget_sheet_xlsx:csv_rows",
+      "status_code": 200,
+      "elapsed_sec": 0.034,
+      "ok": true,
+      "total_chunks": 1,
+      "avg_chunk_length": 149,
+      "parse_cache_hit": true
+    },
+    {
+      "name": "preview:excel_budget_sheet_xlsx:markdown_table",
+      "status_code": 200,
+      "elapsed_sec": 0.026,
+      "ok": true,
+      "total_chunks": 2,
+      "avg_chunk_length": 74,
+      "parse_cache_hit": true
+    },
+    {
+      "name": "upload:mixed_layout_pdf",
+      "status_code": 201,
+      "elapsed_sec": 0.067,
+      "ok": true
+    },
+    {
+      "name": "poll:mixed_layout_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.146,
+      "ok": true,
+      "doc_status": "pending"
+    },
+    {
+      "name": "poll:mixed_layout_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.016,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:mixed_layout_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:mixed_layout_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.026,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:mixed_layout_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:mixed_layout_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:mixed_layout_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:mixed_layout_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:mixed_layout_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:mixed_layout_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.023,
+      "ok": true,
+      "doc_status": "completed"
+    },
+    {
+      "name": "detail:mixed_layout_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.06,
+      "ok": true
+    },
+    {
+      "name": "chunks:mixed_layout_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.024,
+      "ok": true,
+      "chunk_count": 1
+    },
+    {
+      "name": "parsed:mixed_layout_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.102,
+      "ok": true,
+      "parsed_chars": 371
+    },
+    {
+      "name": "preview:mixed_layout_pdf:langchain_recursive",
+      "status_code": 200,
+      "elapsed_sec": 27.984,
+      "ok": true,
+      "total_chunks": 1,
+      "avg_chunk_length": 371,
+      "parse_cache_hit": false
+    },
+    {
+      "name": "preview:mixed_layout_pdf:markdown_hierarchy",
+      "status_code": 200,
+      "elapsed_sec": 0.038,
+      "ok": true,
+      "total_chunks": 12,
+      "avg_chunk_length": 61,
+      "parse_cache_hit": true
+    },
+    {
+      "name": "preview:mixed_layout_pdf:semantic_sentence",
+      "status_code": 200,
+      "elapsed_sec": 0.026,
+      "ok": true,
+      "total_chunks": 1,
+      "avg_chunk_length": 361,
+      "parse_cache_hit": true
+    },
+    {
+      "name": "preview:mixed_layout_pdf:parent_child",
+      "status_code": 200,
+      "elapsed_sec": 0.025,
+      "ok": true,
+      "total_chunks": 2,
+      "avg_chunk_length": 371,
+      "parse_cache_hit": true
+    },
+    {
+      "name": "upload:rfc9000_long_pdf",
+      "status_code": 201,
+      "elapsed_sec": 0.204,
+      "ok": true
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.089,
+      "ok": true,
+      "doc_status": "pending"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.133,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.134,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.104,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.135,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.129,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.137,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.137,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.136,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.135,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.135,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.137,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.134,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.135,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.135,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.136,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.134,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 1.058,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.101,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.137,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.134,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.133,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.133,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.135,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.137,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.135,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.135,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.134,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.138,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.138,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.137,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.137,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.129,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.1,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.13,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.134,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.134,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.135,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.134,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.133,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.134,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.141,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.134,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.135,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.136,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.104,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.134,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.135,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.134,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.12,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.138,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 1.001,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.136,
+      "ok": true,
+      "doc_status": "completed"
+    },
+    {
+      "name": "detail:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.09,
+      "ok": true
+    },
+    {
+      "name": "chunks:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.213,
+      "ok": true,
+      "chunk_count": 360
+    },
+    {
+      "name": "parsed:rfc9000_long_pdf",
+      "status_code": 200,
+      "elapsed_sec": 0.037,
+      "ok": true,
+      "parsed_chars": 360704
+    },
+    {
+      "name": "preview:rfc9000_long_pdf:langchain_recursive",
+      "status_code": 200,
+      "elapsed_sec": 117.899,
+      "ok": true,
+      "total_chunks": 457,
+      "avg_chunk_length": 821,
+      "parse_cache_hit": false
+    },
+    {
+      "name": "preview:rfc9000_long_pdf:markdown_hierarchy",
+      "status_code": 200,
+      "elapsed_sec": 1.569,
+      "ok": true,
+      "total_chunks": 4423,
+      "avg_chunk_length": 155,
+      "parse_cache_hit": true
+    },
+    {
+      "name": "preview:rfc9000_long_pdf:semantic_sentence",
+      "status_code": 200,
+      "elapsed_sec": 1.207,
+      "ok": true,
+      "total_chunks": 543,
+      "avg_chunk_length": 925,
+      "parse_cache_hit": true
+    },
+    {
+      "name": "preview:rfc9000_long_pdf:parent_child",
+      "status_code": 200,
+      "elapsed_sec": 1.18,
+      "ok": true,
+      "total_chunks": 1593,
+      "avg_chunk_length": 475,
+      "parse_cache_hit": true
+    },
+    {
+      "name": "profile:summary",
+      "status_code": 200,
+      "elapsed_sec": 0.074,
+      "ok": true
+    },
+    {
+      "name": "cleanup:purge:e14c493f-06af-4104-bc04-64b71d6f84e0",
+      "status_code": 200,
+      "elapsed_sec": 11.765,
+      "ok": true
+    },
+    {
+      "name": "cleanup:export:e14c493f-06af-4104-bc04-64b71d6f84e0",
+      "status_code": 200,
+      "elapsed_sec": 0.131,
+      "ok": true,
+      "remaining": 0
+    },
+    {
+      "name": "cleanup:delete_dataset:e14c493f-06af-4104-bc04-64b71d6f84e0",
+      "status_code": 204,
+      "elapsed_sec": 0.077,
+      "ok": true
+    }
+  ]
+}
