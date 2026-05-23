@@ -68,6 +68,15 @@ def summarize_level(*, concurrency: int, elapsed_sec: float, results: list[dict[
     }
 
 
+def resolve_fixture_paths(*, default_fixtures: list[Path], explicit_csv: str, fixture_limit: int) -> list[Path]:
+    explicit_items = [item.strip() for item in str(explicit_csv or "").split(",") if item.strip()]
+    if explicit_items:
+        out = [Path(item).expanduser().resolve() for item in explicit_items]
+    else:
+        out = [path.resolve() for path in default_fixtures if Path(path).exists()]
+    return out[: max(1, int(fixture_limit or 1))]
+
+
 def run_case(api: Api, *, pdf_path: Path, backend: str, min_markdown_chars: int) -> dict[str, Any]:
     status, body, elapsed = api.parse_preview(pdf_path, backend)
     summary = summarize_body(body)
@@ -92,6 +101,7 @@ def main() -> int:
     parser.add_argument("--artifact-dir", default="")
     parser.add_argument("--backend", default="magicpdf")
     parser.add_argument("--concurrency-levels", default="1,2,4")
+    parser.add_argument("--fixtures", default="")
     parser.add_argument("--timeout", type=int, default=900)
     parser.add_argument("--min-markdown-chars", type=int, default=80)
     parser.add_argument("--fixture-limit", type=int, default=4)
@@ -100,7 +110,11 @@ def main() -> int:
     artifact_dir = Path(args.artifact_dir or f"artifacts/parser-concurrency/{time.strftime('%Y%m%d-%H%M%S')}").resolve()
     artifact_dir.mkdir(parents=True, exist_ok=True)
 
-    fixture_paths = [path for path in DEFAULT_FIXTURES if path.exists()][: max(1, int(args.fixture_limit or 1))]
+    fixture_paths = resolve_fixture_paths(
+        default_fixtures=DEFAULT_FIXTURES,
+        explicit_csv=str(args.fixtures or ""),
+        fixture_limit=int(args.fixture_limit or 1),
+    )
     if not fixture_paths:
         raise FileNotFoundError("no parser concurrency fixtures found")
 
