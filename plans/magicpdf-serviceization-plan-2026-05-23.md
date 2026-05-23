@@ -78,6 +78,7 @@
 - 服务镜像切到 CUDA PyTorch 运行时；GPU 服务器默认应使用 `MAGIC_PDF_DEVICE_MODE=cuda`，避免服务化后仍落到 CPU。
 - 服务镜像进一步固定到 `torch 2.6.0 + CUDA 12.4`，因为 MagicPDF 1.3.x 官方兼容 `torch 2.2~2.6` 且排除 `2.5`；这也避免了构建时被 `pip` 拉起另一套 `cu13` torch 依赖。
 - 服务镜像安装改为 `magic-pdf[full]==1.3.12`，避免只装 core 包时缺少 `cv2` / `doclayout_yolo` 相关运行依赖。
+- 服务运行时会在共享 cache 只有 `ch_PP-OCRv5_rec_infer.pth` 时，把 MagicPDF 内部 `lang.ch` 资源映射改写到现有 `v5` 识别模型，避免缺失 `ch_PP-OCRv4_rec_server_doc_infer.pth` 时直接 500。
 - `/health` 在 `cuda` 模式下检查 `torch.cuda.is_available()`，防止容器 healthy 但实际不可用 GPU。
 - 新增配置项：`MAGIC_PDF_API_URL`、`MAGIC_PDF_REQUEST_TIMEOUT_SEC`、`MAGIC_PDF_MAX_CONCURRENT_JOBS`。
 - 后端 `MagicPDFParser` 优先走 HTTP 服务模式；未配置服务 URL 时继续回退本地 CLI 模式。

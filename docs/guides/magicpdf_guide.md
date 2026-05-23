@@ -35,6 +35,9 @@ MAGIC_PDF_KEEP_ARTIFACTS=false
 `torch 2.2~2.6`，并明确排除了 `2.5`。
 镜像安装的是 `magic-pdf[full]`，不是最小 core 包；否则 `doclayout_yolo` 路径会缺少
 `cv2` 等运行依赖。
+如果共享的 PDF-Extract-Kit cache 只有 `ch_PP-OCRv5_rec_infer.pth` 而没有
+`ch_PP-OCRv4_rec_server_doc_infer.pth`，服务会在启动/执行时把 MagicPDF 的
+`lang.ch` 资源映射自动切到现有 `v5` 识别模型。
 
 3. 重启 API/worker，让它们读取新的服务 URL：
 
