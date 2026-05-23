@@ -78,6 +78,14 @@ describe('data governance panel source', () => {
     expectSourceToContain(src, 'actions.submitSelectedToChunkPreview')
     expectSourceToContain(src, "t('sidebar.chunkReady')")
     expectSourceToContain(src, "t('sidebar.chunkSubmitted')")
-    expectSourceToContain(storeSrc, "chunkStatus?: 'draft' | 'ready' | 'submitted'")
+    expectSourceToContain(src, "params.set('dataset_id', selectedDatasetId)")
+    expectSourceToContain(
+      src,
+      "router.push(query ? `/chunk-preview?${query}` : '/chunk-preview')"
+    )
+    expectSourceToContain(
+      storeSrc,
+      "chunkStatus?: 'draft' | 'ready' | 'submitted'"
+    )
   })
 })

@@ -1224,8 +1224,11 @@ export function DataGovernancePanel() {
         count: selectedReadyChunkFiles.length,
       })
     )
-    router.push('/chunk-preview')
-  }, [persistGovernanceEdits, router, selectedReadyChunkFiles, t])
+    const params = new URLSearchParams()
+    if (selectedDatasetId) params.set('dataset_id', selectedDatasetId)
+    const query = params.toString()
+    router.push(query ? `/chunk-preview?${query}` : '/chunk-preview')
+  }, [persistGovernanceEdits, router, selectedDatasetId, selectedReadyChunkFiles, t])
 
   const handlePushToChunkPreview = useCallback(() => {
     if (selectedReadyChunkFiles.length > 0) {
@@ -1239,11 +1242,15 @@ export function DataGovernancePanel() {
     } else {
       persistGovernanceEdits()
     }
-    router.push('/chunk-preview')
+    const params = new URLSearchParams()
+    if (selectedDatasetId) params.set('dataset_id', selectedDatasetId)
+    const query = params.toString()
+    router.push(query ? `/chunk-preview?${query}` : '/chunk-preview')
   }, [
     handleSubmitSelectedToChunkPreview,
     persistGovernanceEdits,
     router,
+    selectedDatasetId,
     selectedFileId,
     selectedReadyChunkFiles.length,
   ])
