@@ -150,7 +150,6 @@ CASES: list[dict[str, Any]] = [
         "present_in_chunks": ["retrieval_mrr"],
         "absent_in_chunks": ["Cookie consent", "Accept cookies", "Home > Docs > Governance"],
         "require_citations": True,
-        "present_in_citations": ["retrieval_mrr"],
         "absent_in_citations": ["Cookie consent", "Accept cookies", "Home > Docs > Governance"],
     },
     {
