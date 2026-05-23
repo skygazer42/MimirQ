@@ -155,6 +155,73 @@ def record_step(steps: list[dict[str, Any]], name: str, status: int, body: Any, 
     steps.append(item)
 
 
+def perform_cleanup(
+    *,
+    api: LiveApi,
+    steps: list[dict[str, Any]],
+    dataset_id: str,
+    document_id: str,
+    cleanup_mode: str,
+    delete_dataset_after: bool,
+    timeout: int,
+) -> dict[str, Any]:
+    mode = (cleanup_mode or "none").strip().lower() or "none"
+    if mode not in {"none", "delete_document", "purge_dataset"}:
+        mode = "none"
+    summary: dict[str, Any] = {"mode": mode}
+    if mode == "none":
+        return summary
+
+    if mode == "delete_document":
+        status, body, elapsed = api.json("DELETE", f"/api/v1/documents/{document_id}", timeout=timeout)
+        record_step(steps, "cleanup:delete_document", status, body, elapsed)
+        summary["delete_document_status"] = int(status)
+        if not ok_status(status) and int(status) != 204:
+            raise RuntimeError(f"delete document failed: {snippet(body)}")
+    elif mode == "purge_dataset":
+        status, body, elapsed = api.json(
+            "POST",
+            f"/api/v1/datasets/{dataset_id}/purge?dry_run=false&max_delete=1000",
+            payload={},
+            timeout=timeout,
+        )
+        record_step(steps, "cleanup:purge_dataset", status, body, elapsed)
+        summary["purge_status"] = int(status)
+        summary["purge_deleted"] = int((body or {}).get("deleted") or 0) if isinstance(body, dict) else 0
+        if not ok_status(status):
+            raise RuntimeError(f"purge dataset failed: {snippet(body)}")
+
+    status, body, elapsed = api.json(
+        "GET",
+        f"/api/v1/datasets/{dataset_id}/documents/export?export_format=json&limit=10",
+        timeout=min(int(timeout), 120),
+    )
+    remaining = list_count(body)
+    record_step(steps, "cleanup:dataset_documents_export", status, body, elapsed, remaining_documents=remaining)
+    summary["post_cleanup_document_count"] = int(remaining)
+    if not ok_status(status):
+        raise RuntimeError(f"dataset documents export failed: {snippet(body)}")
+    if remaining > 0:
+        raise RuntimeError(f"documents remain after cleanup: {remaining}")
+
+    status, body, elapsed = api.json("GET", f"/api/v1/kg/stats?dataset_id={dataset_id}", timeout=min(int(timeout), 120))
+    record_step(steps, "cleanup:kg_stats", status, body, elapsed)
+    summary["post_cleanup_kg_stats"] = body
+    if not ok_status(status):
+        raise RuntimeError(f"kg stats after cleanup failed: {snippet(body)}")
+    if isinstance(body, dict) and any(int(body.get(key) or 0) > 0 for key in ("events", "entities", "links")):
+        raise RuntimeError(f"kg artifacts remain after cleanup: {snippet(body)}")
+
+    if bool(delete_dataset_after):
+        status, body, elapsed = api.json("DELETE", f"/api/v1/datasets/{dataset_id}", timeout=timeout)
+        record_step(steps, "cleanup:delete_dataset", status, body, elapsed)
+        summary["delete_dataset_status"] = int(status)
+        if not ok_status(status) and int(status) != 204:
+            raise RuntimeError(f"delete dataset failed: {snippet(body)}")
+
+    return summary
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run a real-PDF parse -> chunk -> KG -> chat chain against a live MimirQ API.")
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
@@ -173,6 +240,8 @@ def main() -> int:
     parser.add_argument("--poll-timeout", type=int, default=7200)
     parser.add_argument("--skip-kg", action="store_true")
     parser.add_argument("--skip-chat", action="store_true")
+    parser.add_argument("--cleanup-mode", default="none")
+    parser.add_argument("--delete-dataset-after", action="store_true")
     args = parser.parse_args()
 
     run_id = time.strftime("%Y%m%d-%H%M%S")
@@ -350,6 +419,18 @@ def main() -> int:
                     "elapsed_sec": round(elapsed, 3),
                     "answer_preview": answer[:500],
                 }
+
+        cleanup_summary = perform_cleanup(
+            api=api,
+            steps=steps,
+            dataset_id=dataset_id,
+            document_id=document_id,
+            cleanup_mode=str(args.cleanup_mode or "none"),
+            delete_dataset_after=bool(args.delete_dataset_after),
+            timeout=int(args.timeout),
+        )
+        if cleanup_summary:
+            summary["cleanup"] = cleanup_summary
 
         summary["ok"] = True
     except Exception as exc:  # noqa: BLE001
