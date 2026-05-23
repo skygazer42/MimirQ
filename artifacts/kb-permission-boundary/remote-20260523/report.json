@@ -8,29 +8,35 @@
       "detail": "UPDATE 0"
     },
     "group": {
-      "group_id": "85a91880-70f7-4dbf-aeab-385ed9fee751",
+      "group_id": "1d5bb64f-bfe0-4bcf-ad30-8e0639227b5f",
       "member_ids": [
         "outsider"
       ]
     },
     "datasets": {
       "shared": {
-        "dataset_id": "ffe1e076-ce86-4896-87e6-9f14af6fd886",
-        "document_id": "4d30ad8d-77c8-4b13-8d10-70f6bc394973",
+        "dataset_id": "2e1e5b62-4fe1-4561-b518-6736747360db",
+        "document_id": "87b76764-ab8f-4aba-bf56-e8b41ea257d7",
         "status": "completed",
         "chunk_count": 1,
         "parsed_chars": 175
       },
       "group_shared": {
-        "dataset_id": "1495c896-304d-43a2-b986-8b289f3d78f4",
-        "document_id": "66243696-ad37-45da-99ab-e48547299c26",
+        "dataset_id": "7fe2fc5e-caed-4bb9-9f1f-c5d7a15533e2",
+        "document_id": "8e3ed5de-1ed6-4e95-99e4-741cd794fad0",
         "status": "completed",
         "chunk_count": 1,
         "parsed_chars": 107
       },
+      "doc_acl": {
+        "dataset_id": "4534e758-4136-4fab-9a69-0d48a8a2a03a",
+        "visible_document_id": "7f20572f-bf85-49d4-988b-625c14f09983",
+        "private_document_id": "001430d2-3d87-4d47-8ebb-ac67a5dc5b7f",
+        "group_document_id": "4a35e2c4-c2a5-4477-8819-b271405f6700"
+      },
       "private": {
-        "dataset_id": "b4815707-5455-4fae-bd79-003031a396f1",
-        "document_id": "bd14073b-063d-48f7-8e44-7f2c0981d4f1",
+        "dataset_id": "2e397006-0550-4558-875e-15965c9a315a",
+        "document_id": "06317b45-66d6-4532-b225-94ece32840e1",
         "status": "completed",
         "chunk_count": 1,
         "parsed_chars": 178
@@ -51,6 +57,12 @@
       },
       {
         "name": "outsider_group_inventory",
+        "status_code": 200,
+        "ok": true,
+        "failures": []
+      },
+      {
+        "name": "outsider_doc_acl_inventory",
         "status_code": 200,
         "ok": true,
         "failures": []
@@ -92,6 +104,42 @@
         "status_code": 200,
         "ok": true,
         "failures": []
+      },
+      {
+        "name": "outsider_doc_acl_visible_retrieve",
+        "status_code": 200,
+        "ok": true,
+        "failures": []
+      },
+      {
+        "name": "outsider_doc_acl_group_retrieve",
+        "status_code": 200,
+        "ok": true,
+        "failures": []
+      },
+      {
+        "name": "outsider_doc_acl_private_retrieve",
+        "status_code": 200,
+        "ok": true,
+        "failures": []
+      },
+      {
+        "name": "outsider_doc_acl_visible_mixed_scope_retrieve",
+        "status_code": 200,
+        "ok": true,
+        "failures": []
+      },
+      {
+        "name": "outsider_doc_acl_group_mixed_scope_retrieve",
+        "status_code": 200,
+        "ok": true,
+        "failures": []
+      },
+      {
+        "name": "outsider_doc_acl_private_direct_retrieve",
+        "status_code": 403,
+        "ok": true,
+        "failures": []
       }
     ],
     "chat_checks": [
@@ -124,26 +172,67 @@
         "status_code": 200,
         "ok": true,
         "failures": []
+      },
+      {
+        "name": "outsider_doc_acl_visible_chat",
+        "status_code": 200,
+        "ok": true,
+        "failures": []
+      },
+      {
+        "name": "outsider_doc_acl_group_chat",
+        "status_code": 200,
+        "ok": true,
+        "failures": []
+      },
+      {
+        "name": "outsider_doc_acl_private_chat",
+        "status_code": 200,
+        "ok": true,
+        "failures": []
+      },
+      {
+        "name": "outsider_doc_acl_visible_mixed_scope_chat",
+        "status_code": 200,
+        "ok": true,
+        "failures": []
+      },
+      {
+        "name": "outsider_doc_acl_group_mixed_scope_chat",
+        "status_code": 200,
+        "ok": true,
+        "failures": []
+      },
+      {
+        "name": "outsider_doc_acl_private_direct_chat",
+        "status_code": 403,
+        "ok": true,
+        "failures": []
       }
     ],
     "cleanup": {
       "shared": {
-        "dataset_id": "ffe1e076-ce86-4896-87e6-9f14af6fd886",
+        "dataset_id": "2e1e5b62-4fe1-4561-b518-6736747360db",
         "purge_deleted": 1,
         "delete_dataset_status": 204
       },
       "group_shared": {
-        "dataset_id": "1495c896-304d-43a2-b986-8b289f3d78f4",
+        "dataset_id": "7fe2fc5e-caed-4bb9-9f1f-c5d7a15533e2",
         "purge_deleted": 1,
         "delete_dataset_status": 204
       },
+      "doc_acl": {
+        "dataset_id": "4534e758-4136-4fab-9a69-0d48a8a2a03a",
+        "purge_deleted": 3,
+        "delete_dataset_status": 204
+      },
       "private": {
-        "dataset_id": "b4815707-5455-4fae-bd79-003031a396f1",
+        "dataset_id": "2e397006-0550-4558-875e-15965c9a315a",
         "purge_deleted": 1,
         "delete_dataset_status": 204
       },
       "group": {
-        "group_id": "85a91880-70f7-4dbf-aeab-385ed9fee751",
+        "group_id": "1d5bb64f-bfe0-4bcf-ad30-8e0639227b5f",
         "delete_group_status": 204
       }
     }
@@ -152,100 +241,106 @@
     {
       "name": "health",
       "status_code": 200,
-      "elapsed_sec": 0.05,
+      "elapsed_sec": 0.051,
       "ok": true
     },
     {
       "name": "outsider_bootstrap",
       "status_code": 200,
-      "elapsed_sec": 0.121,
+      "elapsed_sec": 0.241,
       "ok": true
     },
     {
       "name": "create_group",
       "status_code": 201,
-      "elapsed_sec": 0.097,
+      "elapsed_sec": 0.086,
       "ok": true
     },
     {
       "name": "add_group_member",
       "status_code": 200,
-      "elapsed_sec": 0.13,
+      "elapsed_sec": 0.117,
       "ok": true
     },
     {
       "name": "list_group_members",
       "status_code": 200,
-      "elapsed_sec": 0.11,
+      "elapsed_sec": 0.108,
       "ok": true
     },
     {
-      "name": "create_dataset:KB Perm Shared 20260523-154652",
+      "name": "create_dataset:KB Perm Shared 20260523-160150",
       "status_code": 201,
-      "elapsed_sec": 0.101,
+      "elapsed_sec": 0.108,
       "ok": true
     },
     {
-      "name": "create_dataset:KB Perm Group 20260523-154652",
+      "name": "create_dataset:KB Perm Group 20260523-160150",
       "status_code": 201,
-      "elapsed_sec": 0.089,
+      "elapsed_sec": 0.08,
       "ok": true
     },
     {
-      "name": "create_dataset:KB Perm Private 20260523-154652",
+      "name": "create_dataset:KB Perm Doc ACL 20260523-160150",
       "status_code": 201,
-      "elapsed_sec": 0.073,
+      "elapsed_sec": 0.083,
+      "ok": true
+    },
+    {
+      "name": "create_dataset:KB Perm Private 20260523-160150",
+      "status_code": 201,
+      "elapsed_sec": 0.07,
       "ok": true
     },
     {
       "name": "update_group_dataset_acl",
       "status_code": 200,
-      "elapsed_sec": 0.099,
+      "elapsed_sec": 0.097,
       "ok": true
     },
     {
       "name": "upload:shared_alpha",
       "status_code": 201,
-      "elapsed_sec": 0.085,
+      "elapsed_sec": 0.13,
       "ok": true
     },
     {
       "name": "poll:shared_alpha",
       "status_code": 200,
-      "elapsed_sec": 0.061,
+      "elapsed_sec": 0.064,
       "ok": true,
-      "doc_status": "pending"
+      "doc_status": "processing"
     },
     {
       "name": "poll:shared_alpha",
       "status_code": 200,
-      "elapsed_sec": 0.021,
+      "elapsed_sec": 0.016,
       "ok": true,
       "doc_status": "completed"
     },
     {
       "name": "chunks:shared_alpha",
       "status_code": 200,
-      "elapsed_sec": 0.027,
+      "elapsed_sec": 0.029,
       "ok": true
     },
     {
       "name": "parsed:shared_alpha",
       "status_code": 200,
-      "elapsed_sec": 0.103,
+      "elapsed_sec": 0.102,
       "ok": true,
       "parsed_chars": 175
     },
     {
       "name": "upload:private_beta",
       "status_code": 201,
-      "elapsed_sec": 0.061,
+      "elapsed_sec": 0.063,
       "ok": true
     },
     {
       "name": "poll:private_beta",
       "status_code": 200,
-      "elapsed_sec": 0.06,
+      "elapsed_sec": 0.059,
       "ok": true,
       "doc_status": "pending"
     },
@@ -259,26 +354,26 @@
     {
       "name": "chunks:private_beta",
       "status_code": 200,
-      "elapsed_sec": 0.024,
+      "elapsed_sec": 0.021,
       "ok": true
     },
     {
       "name": "parsed:private_beta",
       "status_code": 200,
-      "elapsed_sec": 0.114,
+      "elapsed_sec": 0.1,
       "ok": true,
       "parsed_chars": 178
     },
     {
       "name": "upload:group_shared",
       "status_code": 201,
-      "elapsed_sec": 0.071,
+      "elapsed_sec": 0.065,
       "ok": true
     },
     {
       "name": "poll:group_shared",
       "status_code": 200,
-      "elapsed_sec": 0.059,
+      "elapsed_sec": 0.06,
       "ok": true,
       "doc_status": "pending"
     },
@@ -292,20 +387,131 @@
     {
       "name": "chunks:group_shared",
       "status_code": 200,
-      "elapsed_sec": 0.067,
+      "elapsed_sec": 0.024,
       "ok": true
     },
     {
       "name": "parsed:group_shared",
       "status_code": 200,
-      "elapsed_sec": 0.102,
+      "elapsed_sec": 0.101,
       "ok": true,
       "parsed_chars": 107
     },
     {
+      "name": "upload:doc_acl_visible",
+      "status_code": 201,
+      "elapsed_sec": 0.061,
+      "ok": true
+    },
+    {
+      "name": "poll:doc_acl_visible",
+      "status_code": 200,
+      "elapsed_sec": 0.059,
+      "ok": true,
+      "doc_status": "pending"
+    },
+    {
+      "name": "poll:doc_acl_visible",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "completed"
+    },
+    {
+      "name": "chunks:doc_acl_visible",
+      "status_code": 200,
+      "elapsed_sec": 0.065,
+      "ok": true
+    },
+    {
+      "name": "parsed:doc_acl_visible",
+      "status_code": 200,
+      "elapsed_sec": 0.1,
+      "ok": true,
+      "parsed_chars": 83
+    },
+    {
+      "name": "upload:doc_acl_private",
+      "status_code": 201,
+      "elapsed_sec": 0.063,
+      "ok": true
+    },
+    {
+      "name": "poll:doc_acl_private",
+      "status_code": 200,
+      "elapsed_sec": 0.018,
+      "ok": true,
+      "doc_status": "pending"
+    },
+    {
+      "name": "poll:doc_acl_private",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "completed"
+    },
+    {
+      "name": "chunks:doc_acl_private",
+      "status_code": 200,
+      "elapsed_sec": 0.037,
+      "ok": true
+    },
+    {
+      "name": "parsed:doc_acl_private",
+      "status_code": 200,
+      "elapsed_sec": 0.103,
+      "ok": true,
+      "parsed_chars": 80
+    },
+    {
+      "name": "upload:doc_acl_group",
+      "status_code": 201,
+      "elapsed_sec": 0.102,
+      "ok": true
+    },
+    {
+      "name": "poll:doc_acl_group",
+      "status_code": 200,
+      "elapsed_sec": 0.057,
+      "ok": true,
+      "doc_status": "pending"
+    },
+    {
+      "name": "poll:doc_acl_group",
+      "status_code": 200,
+      "elapsed_sec": 0.024,
+      "ok": true,
+      "doc_status": "completed"
+    },
+    {
+      "name": "chunks:doc_acl_group",
+      "status_code": 200,
+      "elapsed_sec": 0.023,
+      "ok": true
+    },
+    {
+      "name": "parsed:doc_acl_group",
+      "status_code": 200,
+      "elapsed_sec": 0.1,
+      "ok": true,
+      "parsed_chars": 85
+    },
+    {
+      "name": "doc_acl_private_set_access",
+      "status_code": 200,
+      "elapsed_sec": 0.101,
+      "ok": true
+    },
+    {
+      "name": "doc_acl_group_set_access",
+      "status_code": 200,
+      "elapsed_sec": 0.12,
+      "ok": true
+    },
+    {
       "name": "outsider_shared_inventory",
       "status_code": 200,
-      "elapsed_sec": 0.083,
+      "elapsed_sec": 0.107,
       "ok": true
     },
     {
@@ -313,122 +519,214 @@
       "status_code": 403,
       "elapsed_sec": 0.059,
       "ok": false,
-      "response": "{\"error\": \"AUTHORIZATION_ERROR\", \"message\": \"No dataset access\", \"request_id\": \"b85d41fb694445998ca6e3d3c6222433\"}"
+      "response": "{\"error\": \"AUTHORIZATION_ERROR\", \"message\": \"No dataset access\", \"request_id\": \"d620f18183564d838339594527632d33\"}"
     },
     {
       "name": "outsider_group_inventory",
       "status_code": 200,
-      "elapsed_sec": 0.078,
+      "elapsed_sec": 0.083,
+      "ok": true
+    },
+    {
+      "name": "outsider_doc_acl_inventory",
+      "status_code": 200,
+      "elapsed_sec": 0.034,
       "ok": true
     },
     {
       "name": "admin_private_retrieve",
       "status_code": 200,
-      "elapsed_sec": 0.18,
+      "elapsed_sec": 1.519,
       "ok": true
     },
     {
       "name": "outsider_shared_retrieve",
       "status_code": 200,
-      "elapsed_sec": 0.18,
+      "elapsed_sec": 0.146,
       "ok": true
     },
     {
       "name": "outsider_group_retrieve",
       "status_code": 200,
-      "elapsed_sec": 0.366,
+      "elapsed_sec": 0.168,
       "ok": true
     },
     {
       "name": "outsider_private_retrieve",
       "status_code": 403,
-      "elapsed_sec": 0.06,
+      "elapsed_sec": 0.061,
       "ok": false,
-      "response": "{\"error\": \"AUTHORIZATION_ERROR\", \"message\": \"No dataset access\", \"request_id\": \"bbd138880bb94adabe8059c5de126a14\"}"
+      "response": "{\"error\": \"AUTHORIZATION_ERROR\", \"message\": \"No dataset access\", \"request_id\": \"2f1850fa0b0941e5b843b011bba13801\"}"
     },
     {
       "name": "outsider_mixed_scope_retrieve",
       "status_code": 200,
-      "elapsed_sec": 0.188,
+      "elapsed_sec": 0.208,
       "ok": true
     },
     {
       "name": "outsider_group_mixed_scope_retrieve",
       "status_code": 200,
-      "elapsed_sec": 0.151,
+      "elapsed_sec": 0.165,
       "ok": true
+    },
+    {
+      "name": "outsider_doc_acl_visible_retrieve",
+      "status_code": 200,
+      "elapsed_sec": 0.153,
+      "ok": true
+    },
+    {
+      "name": "outsider_doc_acl_group_retrieve",
+      "status_code": 200,
+      "elapsed_sec": 0.161,
+      "ok": true
+    },
+    {
+      "name": "outsider_doc_acl_private_retrieve",
+      "status_code": 200,
+      "elapsed_sec": 0.14,
+      "ok": true
+    },
+    {
+      "name": "outsider_doc_acl_visible_mixed_scope_retrieve",
+      "status_code": 200,
+      "elapsed_sec": 0.142,
+      "ok": true
+    },
+    {
+      "name": "outsider_doc_acl_group_mixed_scope_retrieve",
+      "status_code": 200,
+      "elapsed_sec": 0.145,
+      "ok": true
+    },
+    {
+      "name": "outsider_doc_acl_private_direct_retrieve",
+      "status_code": 403,
+      "elapsed_sec": 0.071,
+      "ok": false,
+      "response": "{\"error\": \"AUTHORIZATION_ERROR\", \"message\": \"No accessible documents for this request\", \"request_id\": \"938bf63613f743978799fe99eae42161\"}"
     },
     {
       "name": "outsider_shared_chat",
       "status_code": 200,
-      "elapsed_sec": 0.198,
+      "elapsed_sec": 4.558,
       "ok": true
     },
     {
       "name": "outsider_group_chat",
       "status_code": 200,
-      "elapsed_sec": 0.195,
+      "elapsed_sec": 0.182,
       "ok": true
     },
     {
       "name": "outsider_private_chat",
       "status_code": 403,
-      "elapsed_sec": 0.06,
+      "elapsed_sec": 0.059,
       "ok": false,
-      "response": "{\"error\": \"AUTHORIZATION_ERROR\", \"message\": \"No dataset access\", \"request_id\": \"676a079e3d5a4446969fdb8e1cd835fb\"}"
+      "response": "{\"error\": \"AUTHORIZATION_ERROR\", \"message\": \"No dataset access\", \"request_id\": \"064d10f65f25457e8f71bc0b00d137b1\"}"
     },
     {
       "name": "outsider_mixed_scope_chat",
       "status_code": 200,
-      "elapsed_sec": 0.246,
+      "elapsed_sec": 0.271,
       "ok": true
     },
     {
       "name": "outsider_group_mixed_scope_chat",
       "status_code": 200,
-      "elapsed_sec": 0.194,
+      "elapsed_sec": 0.187,
       "ok": true
     },
     {
-      "name": "cleanup:purge:ffe1e076-ce86-4896-87e6-9f14af6fd886",
+      "name": "outsider_doc_acl_visible_chat",
       "status_code": 200,
-      "elapsed_sec": 3.989,
+      "elapsed_sec": 0.176,
       "ok": true
     },
     {
-      "name": "cleanup:delete_dataset:ffe1e076-ce86-4896-87e6-9f14af6fd886",
-      "status_code": 204,
-      "elapsed_sec": 0.043,
-      "ok": true
-    },
-    {
-      "name": "cleanup:purge:1495c896-304d-43a2-b986-8b289f3d78f4",
+      "name": "outsider_doc_acl_group_chat",
       "status_code": 200,
-      "elapsed_sec": 1.448,
+      "elapsed_sec": 0.172,
       "ok": true
     },
     {
-      "name": "cleanup:delete_dataset:1495c896-304d-43a2-b986-8b289f3d78f4",
-      "status_code": 204,
-      "elapsed_sec": 0.088,
-      "ok": true
-    },
-    {
-      "name": "cleanup:purge:b4815707-5455-4fae-bd79-003031a396f1",
+      "name": "outsider_doc_acl_private_chat",
       "status_code": 200,
-      "elapsed_sec": 1.495,
+      "elapsed_sec": 0.149,
       "ok": true
     },
     {
-      "name": "cleanup:delete_dataset:b4815707-5455-4fae-bd79-003031a396f1",
+      "name": "outsider_doc_acl_visible_mixed_scope_chat",
+      "status_code": 200,
+      "elapsed_sec": 0.186,
+      "ok": true
+    },
+    {
+      "name": "outsider_doc_acl_group_mixed_scope_chat",
+      "status_code": 200,
+      "elapsed_sec": 0.191,
+      "ok": true
+    },
+    {
+      "name": "outsider_doc_acl_private_direct_chat",
+      "status_code": 403,
+      "elapsed_sec": 0.07,
+      "ok": false,
+      "response": "{\"error\": \"AUTHORIZATION_ERROR\", \"message\": \"No accessible documents for this request\", \"request_id\": \"0836945c36eb4a04876dfe2c139f8a19\"}"
+    },
+    {
+      "name": "cleanup:purge:2e1e5b62-4fe1-4561-b518-6736747360db",
+      "status_code": 200,
+      "elapsed_sec": 3.508,
+      "ok": true
+    },
+    {
+      "name": "cleanup:delete_dataset:2e1e5b62-4fe1-4561-b518-6736747360db",
       "status_code": 204,
-      "elapsed_sec": 0.069,
+      "elapsed_sec": 0.101,
+      "ok": true
+    },
+    {
+      "name": "cleanup:purge:7fe2fc5e-caed-4bb9-9f1f-c5d7a15533e2",
+      "status_code": 200,
+      "elapsed_sec": 1.457,
+      "ok": true
+    },
+    {
+      "name": "cleanup:delete_dataset:7fe2fc5e-caed-4bb9-9f1f-c5d7a15533e2",
+      "status_code": 204,
+      "elapsed_sec": 0.073,
+      "ok": true
+    },
+    {
+      "name": "cleanup:purge:4534e758-4136-4fab-9a69-0d48a8a2a03a",
+      "status_code": 200,
+      "elapsed_sec": 4.321,
+      "ok": true
+    },
+    {
+      "name": "cleanup:delete_dataset:4534e758-4136-4fab-9a69-0d48a8a2a03a",
+      "status_code": 204,
+      "elapsed_sec": 0.033,
+      "ok": true
+    },
+    {
+      "name": "cleanup:purge:2e397006-0550-4558-875e-15965c9a315a",
+      "status_code": 200,
+      "elapsed_sec": 1.564,
+      "ok": true
+    },
+    {
+      "name": "cleanup:delete_dataset:2e397006-0550-4558-875e-15965c9a315a",
+      "status_code": 204,
+      "elapsed_sec": 0.07,
       "ok": true
     },
     {
       "name": "cleanup:delete_group",
       "status_code": 204,
-      "elapsed_sec": 0.074,
+      "elapsed_sec": 0.076,
       "ok": true
     }
   ]
