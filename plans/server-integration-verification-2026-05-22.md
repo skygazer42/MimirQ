@@ -247,6 +247,21 @@ This task also tracks the next quality pass across the product surface. Do not s
   parsed content and at least one chunk, and dataset-scoped retrieve + extractive
   chat both returned `200` with the expected document present in citations for
   every format. Cleanup purged all six documents and deleted the dataset.
+- Chunking on real parsed outputs now also has one dedicated server proof:
+  `artifacts/chunking-matrix/remote-20260523/report.json`
+  created one disposable dataset, ingested `md`, `html`, `csv`, `docx`,
+  `xlsx`, one small PDF, and one RFC-scale long PDF, and then verified both
+  persisted metadata and live chunk-preview strategy spread. All `7` documents
+  completed with non-empty parsed content and zero empty persisted chunks. The
+  run also proved the ingestion-time chunk audit now persists both
+  `chunking_stats` and `chunk_coverage` into `DocumentDetail.metadata`; the
+  dataset profile summary returned non-empty chunk-count / avg-chars /
+  chunk-length / chunk-coverage / overlap-waste histograms across all file
+  types. Live preview covered `26` strategy checks, including the long-PDF
+  spread: `langchain_recursive=457`, `markdown_hierarchy=4423`,
+  `semantic_sentence=543`, `parent_child=1593` chunks on `rfc9000`, with
+  coverage staying `0.985-1.000`. Cleanup purged `7` documents and deleted the
+  dataset.
 - Parser batch/concurrency now has one dedicated server proof for the current
   production MagicPDF path:
   `artifacts/parser-concurrency/remote-20260523/report.json`
@@ -312,11 +327,16 @@ This task also tracks the next quality pass across the product surface. Do not s
   private-doc direct scope returned `403`, and retrieve/chat never leaked the
   owner-only token. Cleanup purged/deleted all proof datasets, deleted the
   disposable group, and swept the first failed-run leftovers from the server.
-- Real parsed-output chunking on the same 144-page PDF exposed large strategy spread:
-  `langchain_recursive=1151` chunks in `174.793s`,
-  `parent_child=3702` chunks in `1.900s`,
-  `semantic_sentence=1272` chunks in `2.233s`,
-  `markdown_hierarchy=6203` chunks in `1.880s`.
+- Real parsed-output chunking no longer relies only on one-off PDF spot checks.
+  There is now one dedicated mixed-format server proof
+  (`artifacts/chunking-matrix/remote-20260523/report.json`) that covers
+  persisted metadata plus live preview strategy spread across `md`, `html`,
+  `csv`, `docx`, `xlsx`, small PDF, and RFC-scale long PDF. The older 144-page
+  MagicPDF spot check is still useful for product tuning context because it
+  showed major strategy spread (`langchain_recursive=1151`,
+  `parent_child=3702`, `semantic_sentence=1272`, `markdown_hierarchy=6203`),
+  but baseline chunking wiring and coverage persistence are no longer open
+  questions after `main@2b8f30aa`.
 - Real long-document KG density/latency on the same 144-page PDF still needs a bounded policy:
   an exploratory default LLM KG extraction run created dataset `cd232ae7-609d-415f-a43a-cca768aee664`
   and document `f20f6207-f808-4bd9-a8ae-8c2d92455793` (670 persisted chunks, ~816k chars),
@@ -367,4 +387,6 @@ This task also tracks the next quality pass across the product surface. Do not s
 - 2026-05-23 17:38: Added `web/e2e/management-surfaces.live.spec.ts` plus a dedicated remote-management Playwright config and verified one live management-surface smoke against the deployed `web` + `api` stack. The resulting artifact (`artifacts/ui-clickthrough/management-surfaces-live-20260523-remote-web.json`) first proved `/prompts`, `/reports`, `/evaluations`, `/usage`, `/audit`, and `/access-review -> /audit` on real backend-admin surfaces.
 - 2026-05-23 17:55: Extended the same remote-management lane to include `/settings/rbac`, `/settings/groups`, and a temporary live `/settings/groups/{id}` detail page. The rerun still passed and broadened the proven admin UI shell to include RBAC and group-management surfaces on the deployed frontend page host.
 - 2026-05-23 18:19: Extended the same remote-management lane to add a real prompt-template create/delete interaction on `/prompts`. The rerun passed `4/4` in `25.519s`, so the deployed page host now has live proof not just for admin shell pages, but also for group membership mutation, RBAC role mutation, and prompt-template lifecycle mutation.
+- 2026-05-23 18:43: Fixed ingestion-time chunk coverage persistence in `main@2b8f30aa` by computing joined parsed-text length before indexing completes instead of relying on stale `db_document.total_characters`. A live spot-check against the rebuilt remote API then confirmed `DocumentDetail.metadata` now contains both `chunking_stats` and `chunk_coverage`.
+- 2026-05-23 18:49: Rebuilt the remote `api` and `worker` containers from clean worktree `/tmp/MimirQ-main-webfix` at `main@2b8f30aa` and re-ran the new chunking matrix proof. The resulting artifact (`artifacts/chunking-matrix/remote-20260523/report.json`) passed on `7` persisted documents and `26` live preview strategy checks, and the dataset profile summary returned non-empty chunk-count / avg-chars / chunk-length / chunk-coverage / overlap-waste histograms across all tested file types.
 - 2026-05-23 16:10: Added `scripts/remote_kb_format_matrix.py` and verified one mixed-format KB breadth run through the live API. The proof (`artifacts/kb-format-matrix/remote-20260523/report.json`) ingested `md`, `html`, `csv`, `json`, `docx`, and `xlsx` into one disposable dataset, then proved dataset-scoped retrieve + extractive chat on all six formats before purging the dataset.
