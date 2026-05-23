@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import subprocess
+import sys
+from pathlib import Path
+
 from scripts.remote_graph_scope_audit import (
     build_repeated_query,
     compare_scope_counts,
@@ -40,3 +44,16 @@ def test_remote_graph_scope_audit_compares_dataset_and_document_scope_counts() -
     assert comparison["stats_match"] is True
     assert comparison["graph_match"] is True
     assert comparison["dataset_stats"] == {"events": 2, "entities": 5, "links": 5}
+
+
+def test_remote_graph_scope_audit_cli_help_runs_without_repo_pythonpath() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        [sys.executable, "scripts/remote_graph_scope_audit.py", "--help"],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
