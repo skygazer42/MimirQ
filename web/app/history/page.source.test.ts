@@ -35,4 +35,24 @@ describe('history route source', () => {
     expect(client).toContain('dateTime={conversation.last_message_at || conversation.updated_at || conversation.created_at}')
     expect(client).toContain("formatRelativeTime(conversation.last_message_at || conversation.updated_at, locale, t('justNow'))")
   })
+
+  it('suppresses hydration drift for message-group date labels in the active conversation pane', () => {
+    const client = fs.readFileSync(path.resolve(__dirname, 'page-client.tsx'), 'utf8')
+
+    expect(client).toContain('<div suppressHydrationWarning className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground/28 whitespace-nowrap">')
+    expect(client).toContain('{group.label}')
+  })
+
+  it('suppresses hydration drift for selected-conversation created-at chips', () => {
+    const client = fs.readFileSync(path.resolve(__dirname, 'page-client.tsx'), 'utf8')
+
+    expect(client).toContain('<span suppressHydrationWarning className="inline-flex items-center gap-1 rounded-md bg-muted/30 px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground/50 border border-border/10">')
+    expect(client).toContain('{formatDate(selectedConversation.created_at, locale)}')
+  })
+
+  it('suppresses hydration drift for sidebar conversation-group labels', () => {
+    const client = fs.readFileSync(path.resolve(__dirname, 'page-client.tsx'), 'utf8')
+
+    expect(client).toContain('<span suppressHydrationWarning>{group}</span>')
+  })
 })

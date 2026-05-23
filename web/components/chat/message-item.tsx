@@ -597,7 +597,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
           {!isUser && variant === 'minimal' && (
             <div className="flex items-center gap-2 mb-2.5">
               <span className="text-[11px] font-bold text-foreground/80 uppercase ">MimirQ</span>
-              <span className="text-[9px] font-medium text-muted-foreground/40 tabular-nums">
+              <span suppressHydrationWarning className="text-[9px] font-medium text-muted-foreground/40 tabular-nums">
                 {new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit' }).format(new Date(message.created_at))}
               </span>
             </div>
