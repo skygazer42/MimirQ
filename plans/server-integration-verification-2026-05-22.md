@@ -329,6 +329,15 @@ This task also tracks the next quality pass across the product surface. Do not s
   passed all `4` calls with overall wall `32.395s` at `0.123 rps`; per-backend
   latencies were `marker` p50/p95 = `23.438s / 31.432s` and `deepdoc`
   p50/p95 = `29.610s / 30.454s`.
+- Parser contention now also has one dedicated mixed-size 3-lane server proof:
+  `artifacts/parser-contention/remote-mixedsize-20260523/report.json`
+  used the new per-backend fixture override support in
+  `scripts/remote_parser_mixed_contention_probe.py` so that `magicpdf`
+  processed the RFC-scale `rfc9000-quic.pdf` while `deepdoc` and `mineru`
+  simultaneously processed the default 2-page fixture. All `3` requests
+  returned `200` with the requested backend preserved. Overall wall time was
+  `116.604s` at `0.026 rps`; per-backend latencies were
+  `magicpdf=116.528s`, `deepdoc=14.856s`, `mineru=12.822s`.
 - Knowledge-base permissions now also have one dedicated outsider/viewer proof:
   `artifacts/kb-permission-boundary/remote-20260523/report.json`
   normalized `outsider` to `viewer` and covered three read-scope layers on the
@@ -410,4 +419,5 @@ This task also tracks the next quality pass across the product surface. Do not s
 - 2026-05-23 18:49: Rebuilt the remote `api` and `worker` containers from clean worktree `/tmp/MimirQ-main-webfix` at `main@2b8f30aa` and re-ran the new chunking matrix proof. The resulting artifact (`artifacts/chunking-matrix/remote-20260523/report.json`) passed on `7` persisted documents and `26` live preview strategy checks, and the dataset profile summary returned non-empty chunk-count / avg-chars / chunk-length / chunk-coverage / overlap-waste histograms across all tested file types.
 - 2026-05-23 18:57: Reused the bounded mixed-backend contention probe for one more viable heavy backend pairing, `magicpdf + deepdoc`. The resulting artifact (`artifacts/parser-contention/remote-deepdoc-20260523/report.json`) passed `4/4` over `2` rounds with overall wall `35.753s`, throughput `0.112 rps`, `magicpdf` p50/p95 `27.325s / 34.848s`, and `deepdoc` p50/p95 `21.029s / 21.033s`.
 - 2026-05-23 19:05: Extended parser contention beyond MagicPDF-led pairings. `artifacts/parser-contention/remote-deepdoc-mineru-20260523/report.json` passed `4/4` with overall wall `17.592s` and throughput `0.227 rps`, making `deepdoc + mineru` the fastest passing contention lane so far. `artifacts/parser-contention/remote-marker-deepdoc-20260523/report.json` also passed `4/4` with overall wall `32.395s` and throughput `0.123 rps`, giving a second non-MagicPDF contention baseline.
+- 2026-05-23 19:12: Added per-backend fixture override support to `scripts/remote_parser_mixed_contention_probe.py` and used it for the first mixed-size 3-lane contention proof. `artifacts/parser-contention/remote-mixedsize-20260523/report.json` ran `magicpdf` on RFC-scale `rfc9000-quic.pdf` while `deepdoc` and `mineru` parsed the default 2-page fixture; all `3` requests returned `200`, with wall `116.604s` and backend latencies `magicpdf=116.528s`, `deepdoc=14.856s`, `mineru=12.822s`.
 - 2026-05-23 16:10: Added `scripts/remote_kb_format_matrix.py` and verified one mixed-format KB breadth run through the live API. The proof (`artifacts/kb-format-matrix/remote-20260523/report.json`) ingested `md`, `html`, `csv`, `json`, `docx`, and `xlsx` into one disposable dataset, then proved dataset-scoped retrieve + extractive chat on all six formats before purging the dataset.
