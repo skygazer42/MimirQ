@@ -23,6 +23,7 @@ type DeleteNodeTarget = {
 
 type GraphScopeParams = Readonly<{
   document_ids?: string[]
+  dataset_id?: string
   pipeline_hash?: string
 }> | null
 
@@ -131,6 +132,7 @@ export function useGraphNodeOperations({
           maxEntityLinks,
           documentIds:
             dataSource === 'live' && scopedDocumentIds && scopedDocumentIds.length ? scopedDocumentIds : undefined,
+          datasetId: dataSource === 'live' ? (scopeParams?.dataset_id || undefined) : undefined,
           pipelineHash: dataSource === 'live' ? (pipelineHash || undefined) : undefined,
         })
 
@@ -163,6 +165,7 @@ export function useGraphNodeOperations({
       maxEntityLinks,
       minSharedEvents,
       pipelineHash,
+      scopeParams,
       scopedDocumentIds,
       setGraphData,
       setIsLoading,

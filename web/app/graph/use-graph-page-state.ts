@@ -37,6 +37,7 @@ type GraphScope = Readonly<{
 
 type GraphScopeParams = Readonly<{
   document_ids?: string[]
+  dataset_id?: string
   pipeline_hash?: string
 }> | null
 
@@ -116,10 +117,11 @@ export function useGraphPageState() {
 
   const scopeParams = useMemo<GraphScopeParams>(() => {
     const document_ids = scopedDocumentIds && scopedDocumentIds.length > 0 ? scopedDocumentIds : undefined
+    const dataset_id = scope.datasetId || undefined
     const pipeline_hash = scope.pipelineHash || undefined
-    if (!document_ids && !pipeline_hash) return null
-    return { document_ids, pipeline_hash }
-  }, [scopedDocumentIds, scope.pipelineHash])
+    if (!document_ids && !dataset_id && !pipeline_hash) return null
+    return { document_ids, dataset_id, pipeline_hash }
+  }, [scopedDocumentIds, scope.datasetId, scope.pipelineHash])
 
   useEffect(() => {
     let cancelled = false

@@ -27,6 +27,7 @@ type GraphViewportApi = {
 
 type GraphScopeParams = Readonly<{
   document_ids?: string[]
+  dataset_id?: string
   pipeline_hash?: string
 }> | null
 
@@ -363,6 +364,7 @@ export function useGraphPageActions({
     try {
       const xml = await kgApi.exportGraphML({
         document_ids: scopeParams?.document_ids,
+        dataset_id: scopeParams?.dataset_id,
         pipeline_hash: scopeParams?.pipeline_hash,
         include_entity_links: includeEntityLinks,
         include_relation_links: includeRelationLinks,

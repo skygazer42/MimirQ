@@ -27,6 +27,13 @@ describe('graph data loading source', () => {
     expect(src).toContain('setKgStats(null)')
   })
 
+  it('passes dataset scope through to live graph loading so empty client-side doc lists cannot fall back to the tenant-global graph', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'use-graph-data-loading.ts'), 'utf8')
+
+    expect(src).toContain('datasetId: scope.datasetId || undefined')
+    expect(src).toContain('const stats = await kgApi.getStats(scopeParams || undefined)')
+  })
+
   it('moves GraphML file parsing into a worker-backed pipeline with explicit main-thread fallback', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'use-graph-data-loading.ts'), 'utf8')
 

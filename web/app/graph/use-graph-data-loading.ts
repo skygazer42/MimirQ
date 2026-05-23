@@ -35,6 +35,7 @@ type GraphScope = Readonly<{
 
 type GraphScopeParams = Readonly<{
   document_ids?: string[]
+  dataset_id?: string
   pipeline_hash?: string
 }> | null
 
@@ -143,6 +144,7 @@ export function useGraphDataLoading({
           minSharedEvents: sharedThreshold,
           maxEntityLinks,
           documentIds: scopedDocumentIds && scopedDocumentIds.length ? scopedDocumentIds : undefined,
+          datasetId: scope.datasetId || undefined,
           pipelineHash: scope.pipelineHash || undefined,
         })
 
