@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from scripts.remote_real_pdf_chain import list_count, parsed_text_from_response
+from scripts.remote_real_pdf_chain import DOCUMENT_CHUNK_LIST_LIMIT, list_count, parsed_text_from_response
 
 
 def test_remote_real_pdf_chain_list_count_handles_common_shapes() -> None:
@@ -20,3 +20,7 @@ def test_remote_real_pdf_chain_parsed_text_prefers_markdown_fields() -> None:
     assert parsed_text_from_response({"original_markdown_content": "orig"}) == "orig"
     assert parsed_text_from_response("raw") == "raw"
     assert parsed_text_from_response({"foo": "bar"}) == ""
+
+
+def test_remote_real_pdf_chain_uses_document_chunk_api_limit() -> None:
+    assert DOCUMENT_CHUNK_LIST_LIMIT == 2000

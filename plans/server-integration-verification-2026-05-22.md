@@ -133,6 +133,12 @@ This task also tracks the next quality pass across the product surface. Do not s
   `artifacts/pdf-performance/magicpdf-service-20260523-000543/report.json`
   proved the 144-page arXiv PDF (`2303.18223`) also resolved `backend=magicpdf`
   in 163.729s with 810,438 markdown chars.
+- Full real-PDF chain is now scriptable and has one successful server proof:
+  `artifacts/real-pdf-chain/final-20260523-014839/report.json`
+  created dataset `fa2c3946-56d2-4853-9d81-97b5a1634501`, uploaded the same 144-page PDF through
+  `magicpdf`, persisted document `d7359385-2767-4c09-b18f-c7c4a9ccbb86`, confirmed `670` stored chunks,
+  completed default KG extraction in `13.616s`, and returned both baseline chat (`8.09s`) and graph-enabled
+  chat (`0.217s`) responses through the live API.
 - Real parsed-output chunking on the same 144-page PDF exposed large strategy spread:
   `langchain_recursive=1151` chunks in `174.793s`,
   `parent_child=3702` chunks in `1.900s`,
@@ -161,3 +167,4 @@ This task also tracks the next quality pass across the product surface. Do not s
 - 2026-05-23 08:52: Default LLM KG extraction on the same 144-page PDF remained too slow for product defaults, continuing past `250+` extraction batches without completing inside the probe window.
 - 2026-05-23 09:20: Deployed `main@154af84` with document-level KG chunk budget (`120`, `uniform`) and re-ran KG extraction on the same 144-page PDF. Server logs showed the rerun restarted at batch `1` and progressed through about batch `98` before entering embedding/indexing work, rather than continuing unbounded past `250+` extraction batches. This confirms the chunk budget is taking effect, but the default low-cost LLM path is still too slow to treat as a comfortable long-document default.
 - 2026-05-23 09:34: Deployed `main@57f7c75` with automatic long-document backend routing (`KG_EXTRACT_LONG_DOC_BACKEND=heuristic`, threshold `300` chunks). The same 144-page PDF then completed default KG extraction in `13.411s` with `event_count=120`; final `/api/v1/kg/stats` for dataset `cd232ae7-609d-415f-a43a-cca768aee664` reported `120 events / 1148 entities / 1887 links`.
+- 2026-05-23 09:48: Added `scripts/remote_real_pdf_chain.py` and ran the first full real-PDF server chain. The 144-page PDF completed end-to-end through parse, stored chunks, default heuristic KG extraction, and baseline/graph chat under artifact `artifacts/real-pdf-chain/final-20260523-014839/`.
