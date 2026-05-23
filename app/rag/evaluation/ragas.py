@@ -1515,9 +1515,6 @@ def run_regression_ragas_evaluation(
 
                     doc_ids_for_tag = list(scope_doc_ids or [])
                     if not doc_ids_for_tag and scope_dataset_id is not None:
-                        from app.models.document import Document as DBDocument
-                        from app.services.document_access import filter_allowed_document_ids
-
                         max_doc_ids = int(getattr(settings, "CHAT_TAG_MAX_DOC_IDS", 1000) or 1000)
                         cand_rows = (
                             db.query(DBDocument.id)
@@ -1553,7 +1550,6 @@ def run_regression_ragas_evaluation(
             # Image injection: CLIP index is dataset-scoped; best-effort infer dataset_id for doc-scoped cases.
             try:
                 if modality == "image":
-                    from app.models.document import Document as DBDocument
                     from app.services.chat_image_service import build_chat_image_context_docs
 
                     ds_for_images = scope_dataset_id
