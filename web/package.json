@@ -38,6 +38,7 @@
     "e2e:live:remote-governance-profiles": "pnpm exec playwright test e2e/governance-profiles.live.spec.ts --config playwright.remote-governance-profiles.config.ts",
     "e2e:live:remote-industry-rules": "pnpm exec playwright test e2e/industry-rules.live.spec.ts --config playwright.remote-industry-rules.config.ts",
     "e2e:live:remote-observability": "pnpm exec playwright test e2e/observability.live.spec.ts --config playwright.remote-observability.config.ts",
+    "e2e:live:remote-graph-diagnostics": "pnpm exec playwright test e2e/graph-diagnostics.live.spec.ts --config playwright.remote-graph-diagnostics.config.ts",
     "e2e:live:remote-reports": "pnpm exec playwright test e2e/reports.live.spec.ts --config playwright.remote-reports.config.ts",
     "e2e:live:remote-feedback": "pnpm exec playwright test e2e/feedback-workbench.live.spec.ts --config playwright.remote-feedback.config.ts",
     "e2e:live:remote-evidence": "pnpm exec playwright test e2e/evidence-workbench.live.spec.ts --config playwright.remote-evidence.config.ts",
