@@ -148,6 +148,12 @@ This task also tracks the next quality pass across the product surface. Do not s
   completed the 144-page PDF chain end to end and then ran scripted cleanup:
   purge deleted `1` document in `1.327s`, dataset export returned `0` documents,
   KG stats returned zero graph assets, and dataset delete returned `204`.
+- Admin/permission verification is now scriptable and has one server proof:
+  `artifacts/permission-matrix/recheck-20260523-024432/report.json`
+  proved admin allow for `GET /api/v1/settings/status`, `GET /api/v1/groups/`,
+  and document ACL management; after forcing the disposable outsider account to
+  `viewer`, the same run proved outsider `403` on `settings/status`, `groups`,
+  `GET /api/v1/documents/{id}/access`, and `PUT /api/v1/documents/{id}/access`.
 - Real parsed-output chunking on the same 144-page PDF exposed large strategy spread:
   `langchain_recursive=1151` chunks in `174.793s`,
   `parent_child=3702` chunks in `1.900s`,
@@ -179,3 +185,4 @@ This task also tracks the next quality pass across the product surface. Do not s
 - 2026-05-23 09:48: Added `scripts/remote_real_pdf_chain.py` and ran the first full real-PDF server chain. The 144-page PDF completed end-to-end through parse, stored chunks, default heuristic KG extraction, and baseline/graph chat under artifact `artifacts/real-pdf-chain/final-20260523-014839/`.
 - 2026-05-23 10:17: Verified knowledge-base lifecycle cleanup on a real-PDF dataset: purge deleted the only document, dataset export returned empty, KG stats reset to zero, and dataset delete returned `204`.
 - 2026-05-23 10:26: Re-ran the full real-PDF chain using the scripted cleanup mode (`remote_real_pdf_chain.py --cleanup-mode purge_dataset --delete-dataset-after`) and confirmed the automated lifecycle path matches the manual cleanup proof.
+- 2026-05-23 10:44: Added `scripts/remote_permission_matrix.py` and verified one server-side permission matrix run. Because this host still auto-bootstraps unknown accounts as `owner`, the script now first downgrades the disposable outsider account to `viewer` through local Postgres before running the deny checks.
