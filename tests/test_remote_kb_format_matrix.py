@@ -51,3 +51,26 @@ def test_remote_kb_format_matrix_case_flags_missing_terms_and_wrong_doc() -> Non
     assert any("min_parsed_chars" in item for item in failures)
     assert any("min_citations" in item for item in failures)
     assert any("expected_terms" in item for item in failures)
+
+
+def test_remote_kb_format_matrix_accepts_multi_term_yaml_or_xml_hits() -> None:
+    case = {
+        "name": "xml_catalog",
+        "expected_document_id": "doc-xml",
+        "expected_terms": ["XML-DELTA", "Xenia Delta"],
+        "min_chunks": 1,
+        "min_parsed_chars": 20,
+        "min_citations": 1,
+    }
+
+    failures = evaluate_format_case(
+        case,
+        document_id="doc-xml",
+        chunk_count=1,
+        parsed_chars=88,
+        citation_doc_ids=["doc-xml"],
+        citation_count=1,
+        response_text="XML-DELTA belongs to Xenia Delta in the XML catalog entry.",
+    )
+
+    assert failures == []
