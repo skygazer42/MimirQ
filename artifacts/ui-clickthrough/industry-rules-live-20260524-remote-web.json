@@ -61,7 +61,7 @@
         {
           "title": "live industry rules workbench",
           "file": "industry-rules.live.spec.ts",
-          "line": 100,
+          "line": 338,
           "column": 6,
           "specs": [
             {
@@ -80,12 +80,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 3104,
+                      "duration": 3049,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-05-23T18:31:21.990Z",
+                      "startTime": "2026-05-23T20:12:40.637Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -95,7 +95,41 @@
               ],
               "id": "add99199a0c70c95fc41-432f0d775071fb2f5140",
               "file": "industry-rules.live.spec.ts",
-              "line": 106,
+              "line": 344,
+              "column": 7
+            },
+            {
+              "title": "refreshes real dataset-scoped glossary suggestions on the deployed page host",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 18285,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-23T20:12:43.766Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "add99199a0c70c95fc41-1b81f45bad6b355b22cb",
+              "file": "industry-rules.live.spec.ts",
+              "line": 393,
               "column": 7
             }
           ]
@@ -105,9 +139,9 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-05-23T18:31:21.512Z",
-    "duration": 3703.1650000000004,
-    "expected": 1,
+    "startTime": "2026-05-23T20:12:40.143Z",
+    "duration": 21969.23,
+    "expected": 2,
     "skipped": 0,
     "unexpected": 0,
     "flaky": 0
