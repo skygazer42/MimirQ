@@ -75,6 +75,97 @@ _DEFAULT_RELATION_PREDICATES: tuple[str, ...] = (
 )
 
 
+def _uniform_sample_indices(indices: list[int], k: int) -> list[int]:
+    if k <= 0:
+        return []
+    if k >= len(indices):
+        return list(indices)
+    if len(indices) == 1:
+        return [indices[0]]
+    if k == 1:
+        return [indices[len(indices) // 2]]
+
+    n = len(indices)
+    picked: list[int] = []
+    seen: set[int] = set()
+    for i in range(k):
+        pos = round(i * (n - 1) / (k - 1))
+        pos = max(0, min(n - 1, int(pos)))
+        idx = indices[pos]
+        if idx in seen:
+            continue
+        seen.add(idx)
+        picked.append(idx)
+
+    if len(picked) < k:
+        for idx in indices:
+            if idx in seen:
+                continue
+            seen.add(idx)
+            picked.append(idx)
+            if len(picked) >= k:
+                break
+
+    return picked[:k]
+
+
+def _apply_document_chunk_budget(
+    chunks: list[DocumentChunk],
+    *,
+    max_chunks_per_document: int,
+    strategy: str,
+) -> tuple[list[DocumentChunk], dict[object, dict[str, int | str]]]:
+    if max_chunks_per_document <= 0 or not chunks:
+        return chunks, {}
+
+    strategy_norm = (strategy or "uniform").strip().lower() or "uniform"
+    if strategy_norm not in {"head", "uniform"}:
+        strategy_norm = "uniform"
+
+    grouped: dict[object, list[DocumentChunk]] = {}
+    doc_order: list[object] = []
+    for chunk in chunks:
+        doc_id = getattr(chunk, "document_id", None)
+        if doc_id not in grouped:
+            grouped[doc_id] = []
+            doc_order.append(doc_id)
+        grouped[doc_id].append(chunk)
+
+    keep_ids: set[object] = set()
+    budget_stats: dict[object, dict[str, int | str]] = {}
+    for doc_id in doc_order:
+        doc_chunks = grouped.get(doc_id) or []
+        total = len(doc_chunks)
+        if total <= max_chunks_per_document:
+            for chunk in doc_chunks:
+                keep_ids.add(getattr(chunk, "id", None))
+            budget_stats[doc_id] = {
+                "strategy": strategy_norm,
+                "total": int(total),
+                "kept": int(total),
+                "skipped": 0,
+            }
+            continue
+
+        if strategy_norm == "head":
+            selected = doc_chunks[:max_chunks_per_document]
+        else:
+            sampled_positions = set(_uniform_sample_indices(list(range(total)), max_chunks_per_document))
+            selected = [chunk for idx, chunk in enumerate(doc_chunks) if idx in sampled_positions]
+
+        for chunk in selected:
+            keep_ids.add(getattr(chunk, "id", None))
+        budget_stats[doc_id] = {
+            "strategy": strategy_norm,
+            "total": int(total),
+            "kept": int(len(selected)),
+            "skipped": int(total - len(selected)),
+        }
+
+    kept_chunks = [chunk for chunk in chunks if getattr(chunk, "id", None) in keep_ids]
+    return kept_chunks, budget_stats
+
+
 def _release_idle_transaction(session) -> None:  # noqa: ANN001
     """Release read-only DB transactions before long LLM/vector work."""
     try:
@@ -326,6 +417,10 @@ class EventExtractor:
             )
             max_events_per_chunk = max(1, int(getattr(settings, "KG_EXTRACT_MAX_EVENTS_PER_CHUNK", 6) or 6))
             max_entities_per_event = max(1, int(getattr(settings, "KG_EXTRACT_MAX_ENTITIES_PER_EVENT", 30) or 30))
+            max_chunks_per_document = max(0, int(getattr(settings, "KG_EXTRACT_MAX_CHUNKS_PER_DOCUMENT", 0) or 0))
+            chunk_budget_strategy = str(
+                getattr(settings, "KG_EXTRACT_MAX_CHUNKS_PER_DOCUMENT_STRATEGY", "uniform") or "uniform"
+            ).strip().lower() or "uniform"
             embed_batch_size = max(1, int(getattr(settings, "KG_EXTRACT_EMBED_BATCH_SIZE", 128) or 128))
 
             sem = asyncio.Semaphore(max_concurrency)
@@ -364,6 +459,7 @@ class EventExtractor:
             failed_chunk_ids: set[object] = set()
             succeeded_chunk_ids: set[object] = set()
             skipped_chunk_ids: set[object] = set()
+            budget_skipped_chunk_ids: set[object] = set()
             skipped_short_chunk_ids: set[object] = set()
             retry_chunk_ids: set[object] = set()
             retry_attempts_total = 0
@@ -375,6 +471,21 @@ class EventExtractor:
                 "kg_prompt_template_key": _normalize_prompt_selector_value(config.prompt_template_key),
                 "kg_prompt_ab_experiment_key": _normalize_prompt_selector_value(config.prompt_ab_experiment_key),
             }
+
+            budgeted_chunks = resolved_chunks
+            budget_stats_by_doc: dict[object, dict[str, int | str]] = {}
+            if max_chunks_per_document > 0:
+                budgeted_chunks, budget_stats_by_doc = _apply_document_chunk_budget(
+                    resolved_chunks,
+                    max_chunks_per_document=max_chunks_per_document,
+                    strategy=chunk_budget_strategy,
+                )
+                kept_budget_ids = {getattr(chunk, "id", None) for chunk in budgeted_chunks}
+                budget_skipped_chunk_ids = {
+                    getattr(chunk, "id", None)
+                    for chunk in resolved_chunks
+                    if getattr(chunk, "id", None) not in kept_budget_ids
+                }
 
             # Ensure chunk hashes/keys exist even if upstream parsing didn't inject them.
             chunk_hash_by_id: dict[object, str] = {}
@@ -427,7 +538,7 @@ class EventExtractor:
                         continue
                     existing_events_by_chunk.setdefault(ev.chunk_id, []).append(ev)
 
-                for ch in resolved_chunks:
+                for ch in budgeted_chunks:
                     prior = existing_events_by_chunk.get(ch.id) or []
                     if not prior:
                         continue
@@ -439,8 +550,8 @@ class EventExtractor:
                         skipped_chunk_ids.add(ch.id)
                         kept_events.extend(prior)
 
-            chunks_to_process: list[DocumentChunk] = [c for c in resolved_chunks if c.id not in skipped_chunk_ids]
-            chunk_id_to_pos = {c.id: i for i, c in enumerate(resolved_chunks)}
+            chunks_to_process: list[DocumentChunk] = [c for c in budgeted_chunks if c.id not in skipped_chunk_ids]
+            chunk_id_to_pos = {c.id: i for i, c in enumerate(chunks_to_process)}
             _release_idle_transaction(session)
 
             def _build_sections(target: DocumentChunk) -> list[DocumentChunk]:
@@ -454,9 +565,9 @@ class EventExtractor:
                 # Include nearest neighbors first (prev1, next1, prev2, next2, ...)
                 for step in range(1, context_window + 1):
                     if pos - step >= 0:
-                        sections.append(resolved_chunks[pos - step])
-                    if pos + step < len(resolved_chunks):
-                        sections.append(resolved_chunks[pos + step])
+                        sections.append(chunks_to_process[pos - step])
+                    if pos + step < len(chunks_to_process):
+                        sections.append(chunks_to_process[pos + step])
                 return sections
 
             async def _extract_one(chunk: DocumentChunk, *, batch_index: int) -> tuple[DocumentChunk, list[dict]]:
@@ -998,20 +1109,23 @@ class EventExtractor:
                             if getattr(ev, "chunk_id", None) in failed_chunk_ids:
                                 kept_on_failure.append(ev)
 
-                cleanup_chunk_ids = [cid for cid in succeeded_chunk_ids if cid not in skipped_chunk_ids]
-                if replace_existing and cleanup_chunk_ids:
+                processed_cleanup_chunk_ids = [cid for cid in succeeded_chunk_ids if cid not in skipped_chunk_ids]
+                replace_cleanup_chunk_ids = list(
+                    dict.fromkeys(list(processed_cleanup_chunk_ids) + (list(budget_skipped_chunk_ids) if replace_existing else []))
+                )
+                if replace_existing and replace_cleanup_chunk_ids:
                     try:
                         # Keep relation data consistent with events: if we replace extraction for a chunk,
                         # remove any prior relations derived from that chunk before pruning entities.
                         if extract_relations_enabled:
                             RelationRepository(session).delete_relations_for_chunks(
-                                cleanup_chunk_ids,
+                                replace_cleanup_chunk_ids,
                                 tenant_id=tenant_id,
                                 commit=False,
                             )
                         Indexer(session).delete_event_indexes_for_chunks(
                             tenant_id=tenant_id,
-                            chunk_ids=list(cleanup_chunk_ids),
+                            chunk_ids=list(replace_cleanup_chunk_ids),
                             exclude_event_ids=[],
                             prune_orphan_entities=bool(getattr(config, "prune_orphan_entities", False)),
                         )
@@ -1026,6 +1140,7 @@ class EventExtractor:
                         "chunk_count": len(resolved_chunks),
                         "chunk_processed": int(len(chunks_to_process)),
                         "chunk_skipped": int(len(skipped_chunk_ids)),
+                        "chunk_budget_skipped": int(len(budget_skipped_chunk_ids)),
                         "chunk_skipped_short": int(len(skipped_short_chunk_ids)),
                         "chunk_failed": int(failed_chunks),
                         "chunk_timeout": int(len(timeout_chunk_ids)),
@@ -1033,6 +1148,8 @@ class EventExtractor:
                         "retry_chunks": int(len(retry_chunk_ids)),
                         "retry_attempts": int(retry_attempts_total),
                         "llm_called_chunks": int(len(llm_called_chunk_ids)),
+                        "chunk_budget_strategy": chunk_budget_strategy,
+                        "chunk_budget_max_per_document": int(max_chunks_per_document),
                         "event_new": 0,
                         "event_kept": int(len(events)),
                         "event_total": int(len(events)),
@@ -1048,9 +1165,11 @@ class EventExtractor:
                     chunks=resolved_chunks,
                     kept_events=events,
                     skipped_chunk_ids=skipped_chunk_ids,
+                    budget_skipped_chunk_ids=budget_skipped_chunk_ids,
                     skipped_short_chunk_ids=skipped_short_chunk_ids,
                     failed_chunk_ids=failed_chunk_ids,
                     retry_chunk_ids=retry_chunk_ids,
+                    budget_stats_by_doc=budget_stats_by_doc,
                     alias_stats_by_doc=alias_stats_by_doc,
                 )
                 return events
@@ -1760,9 +1879,12 @@ class EventExtractor:
                             )
 
                     # 4) Persist: replace relations only for chunks that succeeded relation extraction.
-                    if replace_existing and succeeded_rel_chunk_ids:
+                    rel_cleanup_chunk_ids = list(
+                        dict.fromkeys(list(succeeded_rel_chunk_ids) + (list(budget_skipped_chunk_ids) if replace_existing else []))
+                    )
+                    if replace_existing and rel_cleanup_chunk_ids:
                         RelationRepository(session).delete_relations_for_chunks(
-                            succeeded_rel_chunk_ids,
+                            rel_cleanup_chunk_ids,
                             tenant_id=tenant_id,
                             commit=False,
                         )
@@ -2415,11 +2537,14 @@ class EventExtractor:
                         logger.debug("Ignoring non-critical KG extractor fallback failure: %s", exc)
                     logger.warning("KG skill pass failed; continuing without skills: %s", str(exc)[:200])
 
-            if replace_existing and cleanup_chunk_ids:
+            replace_cleanup_chunk_ids = list(
+                dict.fromkeys(list(cleanup_chunk_ids) + (list(budget_skipped_chunk_ids) if replace_existing else []))
+            )
+            if replace_existing and replace_cleanup_chunk_ids:
                 try:
                     indexer.delete_event_indexes_for_chunks(
                         tenant_id=tenant_id,
-                        chunk_ids=list(cleanup_chunk_ids),
+                        chunk_ids=list(replace_cleanup_chunk_ids),
                         exclude_event_ids=[ev.id for ev in new_events],
                         prune_orphan_entities=bool(getattr(config, "prune_orphan_entities", False)),
                     )
@@ -2453,6 +2578,7 @@ class EventExtractor:
                     "chunk_count": len(resolved_chunks),
                     "chunk_processed": int(len(chunks_to_process)),
                     "chunk_skipped": int(len(skipped_chunk_ids)),
+                    "chunk_budget_skipped": int(len(budget_skipped_chunk_ids)),
                     "chunk_skipped_short": int(len(skipped_short_chunk_ids)),
                     "chunk_failed": int(failed_chunks),
                     "chunk_timeout": int(len(timeout_chunk_ids)),
@@ -2460,6 +2586,8 @@ class EventExtractor:
                     "retry_chunks": int(len(retry_chunk_ids)),
                     "retry_attempts": int(retry_attempts_total),
                     "llm_called_chunks": int(len(llm_called_chunk_ids)),
+                    "chunk_budget_strategy": chunk_budget_strategy,
+                    "chunk_budget_max_per_document": int(max_chunks_per_document),
                     "event_new": int(len(new_events)),
                     "event_kept": int(len(kept_events) + len(kept_on_failure)),
                     "event_total": int(len(events)),
@@ -2479,9 +2607,11 @@ class EventExtractor:
                 chunks=resolved_chunks,
                 kept_events=events,
                 skipped_chunk_ids=skipped_chunk_ids,
+                budget_skipped_chunk_ids=budget_skipped_chunk_ids,
                 skipped_short_chunk_ids=skipped_short_chunk_ids,
                 failed_chunk_ids=failed_chunk_ids,
                 retry_chunk_ids=retry_chunk_ids,
+                budget_stats_by_doc=budget_stats_by_doc,
                 alias_stats_by_doc=alias_stats_by_doc,
             )
             return events
@@ -2499,9 +2629,11 @@ class EventExtractor:
         chunks: Sequence[DocumentChunk],
         kept_events: Sequence[KgSourceEvent],
         skipped_chunk_ids: set[object],
+        budget_skipped_chunk_ids: set[object],
         skipped_short_chunk_ids: set[object],
         failed_chunk_ids: set[object],
         retry_chunk_ids: set[object],
+        budget_stats_by_doc: dict[object, dict[str, int | str]] | None = None,
         alias_stats_by_doc: dict[object, dict[str, int]] | None = None,
     ) -> None:
         try:
@@ -2529,6 +2661,7 @@ class EventExtractor:
                     event_count_by_doc[doc_id] += 1
 
             skipped_count_by_doc: dict[object, int] = dict.fromkeys(doc_ids, 0)
+            budget_skipped_count_by_doc: dict[object, int] = dict.fromkeys(doc_ids, 0)
             failed_count_by_doc: dict[object, int] = dict.fromkeys(doc_ids, 0)
             short_skipped_count_by_doc: dict[object, int] = dict.fromkeys(doc_ids, 0)
             retry_count_by_doc: dict[object, int] = dict.fromkeys(doc_ids, 0)
@@ -2536,6 +2669,10 @@ class EventExtractor:
                 doc_id = chunk_id_to_doc_id.get(cid)
                 if doc_id in skipped_count_by_doc:
                     skipped_count_by_doc[doc_id] += 1
+            for cid in budget_skipped_chunk_ids:
+                doc_id = chunk_id_to_doc_id.get(cid)
+                if doc_id in budget_skipped_count_by_doc:
+                    budget_skipped_count_by_doc[doc_id] += 1
             for cid in skipped_short_chunk_ids:
                 doc_id = chunk_id_to_doc_id.get(cid)
                 if doc_id in short_skipped_count_by_doc:
@@ -2561,10 +2698,19 @@ class EventExtractor:
                 meta = dict(getattr(doc, "doc_metadata", None) or {})
                 meta["kg_event_count"] = int(event_count_by_doc.get(doc.id, 0))
                 meta["kg_skipped_chunks"] = int(skipped_count_by_doc.get(doc.id, 0))
+                meta["kg_budget_skipped_chunks"] = int(budget_skipped_count_by_doc.get(doc.id, 0))
                 meta["kg_skipped_short_chunks"] = int(short_skipped_count_by_doc.get(doc.id, 0))
                 meta["kg_failed_chunks"] = int(failed_count_by_doc.get(doc.id, 0))
                 meta["kg_retry_chunks"] = int(retry_count_by_doc.get(doc.id, 0))
                 meta["kg_extracted_at"] = extracted_at
+                budget_stats = budget_stats_by_doc.get(doc.id, {}) if isinstance(budget_stats_by_doc, dict) else {}
+                if budget_stats:
+                    meta["kg_chunk_budget"] = {
+                        "strategy": str(budget_stats.get("strategy") or ""),
+                        "total": int(budget_stats.get("total") or 0),
+                        "kept": int(budget_stats.get("kept") or 0),
+                        "skipped": int(budget_stats.get("skipped") or 0),
+                    }
                 alias_stats = alias_stats_by_doc.get(doc.id, {}) if isinstance(alias_stats_by_doc, dict) else {}
                 for key, val in (alias_stats.items() if isinstance(alias_stats, dict) else []):
                     if not key:

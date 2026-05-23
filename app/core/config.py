@@ -1833,6 +1833,13 @@ class Settings(BaseSettings):
     KG_EXTRACT_EMBED_BATCH_SIZE: int = 8
     KG_EXTRACT_MAX_EVENTS_PER_CHUNK: int = 6
     KG_EXTRACT_MAX_ENTITIES_PER_EVENT: int = 30
+    # Document-level guardrail for long-document KG extraction (0 disables).
+    # When enabled, only a bounded subset of chunks is extracted per document.
+    KG_EXTRACT_MAX_CHUNKS_PER_DOCUMENT: int = 120
+    # Strategy when KG_EXTRACT_MAX_CHUNKS_PER_DOCUMENT is enabled:
+    # - head: keep the first N chunks
+    # - uniform: deterministically sample chunks across the whole document span
+    KG_EXTRACT_MAX_CHUNKS_PER_DOCUMENT_STRATEGY: str = "uniform"
     # Skip low-signal chunks (0 disables).
     KG_EXTRACT_MIN_CHARS: int = 0
     KG_EXTRACT_CONTEXT_MAX_CHARS: int = 8000
@@ -2581,6 +2588,10 @@ class Settings(BaseSettings):
             raise ValueError("KG_SEARCH_SERVING_MAX_EVENTS_PER_CHUNK must be >= 0")
         if int(getattr(self, "KG_SEARCH_SERVING_MAX_EVENTS_PER_DOCUMENT", 0) or 0) < 0:
             raise ValueError("KG_SEARCH_SERVING_MAX_EVENTS_PER_DOCUMENT must be >= 0")
+        if int(getattr(self, "KG_EXTRACT_MAX_CHUNKS_PER_DOCUMENT", 0) or 0) < 0:
+            raise ValueError("KG_EXTRACT_MAX_CHUNKS_PER_DOCUMENT must be >= 0")
+        if str(getattr(self, "KG_EXTRACT_MAX_CHUNKS_PER_DOCUMENT_STRATEGY", "uniform") or "uniform").strip().lower() not in {"head", "uniform"}:
+            raise ValueError("KG_EXTRACT_MAX_CHUNKS_PER_DOCUMENT_STRATEGY must be one of: head, uniform")
         kg_serving_min_score = float(getattr(self, "KG_SEARCH_SERVING_MIN_SCORE", 0.0) or 0.0)
         if not (0.0 <= kg_serving_min_score <= 1.0):
             raise ValueError("KG_SEARCH_SERVING_MIN_SCORE must be between 0 and 1")
