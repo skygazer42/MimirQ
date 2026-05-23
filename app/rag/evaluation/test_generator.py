@@ -122,6 +122,32 @@ def _build_testgen_prompt_inputs(
     return payload
 
 
+def _normalize_testgen_result_rows(result: Any) -> list[dict[str, Any]]:
+    if not isinstance(result, dict):
+        return []
+    rows = result.get("questions")
+    if not isinstance(rows, list):
+        rows = result.get("qa_pairs")
+    if not isinstance(rows, list):
+        return []
+
+    normalized: list[dict[str, Any]] = []
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        normalized.append(
+            {
+                "question": item.get("question", ""),
+                "expected_answer": item.get("expected_answer") if "expected_answer" in item else item.get("ground_truth"),
+                "question_type": item.get("question_type") if "question_type" in item else item.get("difficulty"),
+                "expected_refusal": bool(item.get("expected_refusal")),
+                "evidence_quotes": list(item.get("evidence_quotes") or []) if isinstance(item.get("evidence_quotes"), list) else [],
+                "expected_chunks": list(item.get("expected_chunks") or []) if isinstance(item.get("expected_chunks"), list) else [],
+            }
+        )
+    return normalized
+
+
 def _calculate_text_diversity_scores(texts: list[str]) -> list[float]:
     """
     Calculate text diversity scores (simplified TF-IDF).
@@ -357,8 +383,7 @@ def generate_questions_from_documents(
                 result = chain.invoke(
                     prompt_inputs
                 )
-                if isinstance(result, dict) and "questions" in result:
-                    for q in result["questions"]:
+                for q in _normalize_testgen_result_rows(result):
                         q_type = str(q.get("question_type") or "factual").strip().lower() or "factual"
                         if q_type == "reasoning":
                             q_type = "multi_hop"
@@ -377,6 +402,8 @@ def generate_questions_from_documents(
                                     "question_type": q_type,
                                     "expected_refusal": expected_refusal,
                                     "reference_chunk_ids": [str(chunk.id)],
+                                    "evidence_quotes": list(q.get("evidence_quotes") or []),
+                                    "expected_chunks": list(q.get("expected_chunks") or []),
                                     "prompt_template_id": selected_prompt_template_id,
                                     "prompt_template_key": selected_prompt_template_key,
                                     "prompt_ab_experiment_key": selected_prompt_ab_experiment_key,
