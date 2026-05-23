@@ -35,6 +35,7 @@
     "e2e:live:remote-graph": "pnpm exec playwright test e2e/graph.live.spec.ts --config playwright.remote-graph.config.ts",
     "e2e:live:remote-reports": "pnpm exec playwright test e2e/reports.live.spec.ts --config playwright.remote-reports.config.ts",
     "e2e:live:remote-feedback": "pnpm exec playwright test e2e/feedback-workbench.live.spec.ts --config playwright.remote-feedback.config.ts",
+    "e2e:live:remote-evidence": "pnpm exec playwright test e2e/evidence-workbench.live.spec.ts --config playwright.remote-evidence.config.ts",
     "assets:optimize": "svgo -r public --config=.svgo.config.mjs",
     "verify": "pnpm run lint && pnpm run ui-check && pnpm run typecheck && pnpm run test && pnpm run api-check",
     "ui-check": "node scripts/check-design-tokens.mjs && node scripts/check-native-dialogs.mjs && node scripts/check-theme-contrast.mjs",
