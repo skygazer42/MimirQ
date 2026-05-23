@@ -10,6 +10,7 @@ import time
 import uuid
 from pathlib import Path
 
+import yaml
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 
 app = FastAPI(title="mimirq-magicpdf", version="0.1.0")
@@ -48,6 +49,9 @@ _REQUIRED_MODEL_FILES = (
     "OCR/paddleocr_torch/ch_PP-OCRv3_det_infer.pth",
     "OCR/paddleocr_torch/ch_PP-OCRv5_rec_infer.pth",
 )
+_CH_DOC_REC_MODEL = "ch_PP-OCRv4_rec_server_doc_infer.pth"
+_CH_COMPAT_REC_MODEL = "ch_PP-OCRv5_rec_infer.pth"
+_CH_COMPAT_DICT = "ppocrv5_dict.txt"
 
 
 def _sanitize_run_id(value: str) -> str:
@@ -108,9 +112,41 @@ def _resolve_models_dir(configured: str) -> Path:
     raise RuntimeError(f"MagicPDF models not found under {configured}. Expected files: {expected}")
 
 
+def _models_config_path() -> Path:
+    from magic_pdf.model.sub_modules.ocr.paddleocr2pytorch import pytorch_paddle
+
+    return Path(pytorch_paddle.root_dir) / "pytorchocr" / "utils" / "resources" / "models_config.yml"
+
+
+def _ensure_ch_doc_model_compat(models_dir: Path) -> None:
+    ocr_dir = models_dir / "OCR" / "paddleocr_torch"
+    expected_rec = ocr_dir / _CH_DOC_REC_MODEL
+    compat_rec = ocr_dir / _CH_COMPAT_REC_MODEL
+    if expected_rec.exists() or not compat_rec.exists():
+        return
+
+    cfg_path = _models_config_path()
+    data = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+    lang_cfg = data.get("lang")
+    ch_cfg = lang_cfg.get("ch") if isinstance(lang_cfg, dict) else None
+    if not isinstance(ch_cfg, dict):
+        return
+
+    changed = False
+    if ch_cfg.get("rec") != _CH_COMPAT_REC_MODEL:
+        ch_cfg["rec"] = _CH_COMPAT_REC_MODEL
+        changed = True
+    if ch_cfg.get("dict") != _CH_COMPAT_DICT:
+        ch_cfg["dict"] = _CH_COMPAT_DICT
+        changed = True
+    if changed:
+        cfg_path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+
 def _tools_config(run_root: Path, *, device_mode: str) -> Path:
     cfg_path = run_root / "magic-pdf.json"
     model_dir = _resolve_models_dir(_MODELS_DIR)
+    _ensure_ch_doc_model_compat(model_dir)
     cfg = {
         "bucket_info": {"[default]": ["", "", ""]},
         "latex-delimiter-config": {
