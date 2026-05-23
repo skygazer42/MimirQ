@@ -159,6 +159,18 @@ function isWithinRange(
   return now - ts <= days * 24 * 60 * 60 * 1000
 }
 
+function utcDayKey(value: string | Date): string {
+  const date = value instanceof Date ? value : new Date(String(value || ''))
+  if (!Number.isFinite(date.getTime())) return ''
+  return date.toISOString().slice(0, 10)
+}
+
+function utcShortLabel(isoDayKey: string): string {
+  const [year, month, day] = String(isoDayKey || '').split('-')
+  if (!year || !month || !day) return ''
+  return `${month}-${day}`
+}
+
 function buildConicGradient(values: number[], colors: string[]): string {
   const total = values.reduce((sum, value) => sum + value, 0)
   if (!total) return 'conic-gradient(rgba(148,163,184,0.18) 0deg 360deg)'
@@ -776,18 +788,15 @@ export default function FeedbackTriagePage() {
     const up: number[] = []
     const down: number[] = []
     const neutral: number[] = []
-    const now = new Date()
+    const todayKey = utcDayKey(new Date())
     for (let index = 6; index >= 0; index -= 1) {
-      const day = new Date(now)
-      day.setDate(now.getDate() - index)
-      const key =
-        `${day.getMonth() + 1}`.padStart(2, '0') +
-        '-' +
-        `${day.getDate()}`.padStart(2, '0')
-      labels.push(key)
+      const day = new Date(`${todayKey}T00:00:00.000Z`)
+      day.setUTCDate(day.getUTCDate() - index)
+      const dayKey = utcDayKey(day)
+      labels.push(utcShortLabel(dayKey))
       const dayItems = items.filter((item) => {
-        const itemDate = new Date(item.created_at)
-        return itemDate.toDateString() === day.toDateString()
+        const itemKey = utcDayKey(item.created_at)
+        return itemKey === dayKey
       })
       up.push(
         dayItems.filter((item) => classifyFeedback(item.rating) === 'thumbs_up')
