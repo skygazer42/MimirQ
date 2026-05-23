@@ -61,11 +61,11 @@
         {
           "title": "live graph workbench",
           "file": "graph.live.spec.ts",
-          "line": 176,
+          "line": 212,
           "column": 6,
           "specs": [
             {
-              "title": "loads a real dataset-scoped graph and opens node KG detail on the deployed page host",
+              "title": "loads a real dataset-scoped graph with exact scoped KG counts on the deployed page host",
               "ok": true,
               "tags": [],
               "tests": [
@@ -80,12 +80,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 27845,
+                      "duration": 24808,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-05-23T12:54:58.434Z",
+                      "startTime": "2026-05-23T14:14:39.057Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -93,9 +93,9 @@
                   "status": "expected"
                 }
               ],
-              "id": "26000504e914f0650fa0-b49520b702122d2e5433",
+              "id": "26000504e914f0650fa0-085e4fbbfa2cd4887cb7",
               "file": "graph.live.spec.ts",
-              "line": 182,
+              "line": 218,
               "column": 7
             }
           ]
@@ -105,8 +105,8 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-05-23T12:54:57.798Z",
-    "duration": 28606.542,
+    "startTime": "2026-05-23T14:14:38.556Z",
+    "duration": 25439.742000000002,
     "expected": 1,
     "skipped": 0,
     "unexpected": 0,
