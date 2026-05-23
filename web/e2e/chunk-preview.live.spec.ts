@@ -9,6 +9,7 @@ const LIVE_TEST_TIMEOUT_MS = 300_000
 type LiveDocument = {
   id?: string
   status?: string
+  filename?: string
 }
 
 function apiBaseUrl(): string {
@@ -162,6 +163,19 @@ async function waitForLiveDocumentStatus(
     .toBe(expectedStatus)
 }
 
+async function listDatasetDocuments(
+  request: APIRequestContext,
+  datasetId: string
+): Promise<LiveDocument[]> {
+  const response = await request.get(
+    `${apiBaseUrl()}/api/v1/documents/?limit=50&dataset_id=${encodeURIComponent(datasetId)}`,
+    { headers: liveHeaders() }
+  )
+  expect(response.ok()).toBe(true)
+  const body = (await response.json()) as { items?: LiveDocument[] }
+  return body.items || []
+}
+
 test.describe('live chunk preview workbench', () => {
   test.skip(
     !LIVE_BACKEND_ENABLED,
@@ -233,6 +247,80 @@ test.describe('live chunk preview workbench', () => {
       await expect(page.getByText('重叠浪费')).toBeVisible({
         timeout: LIVE_EXPECT_TIMEOUT_MS,
       })
+      expect(pageErrors).toEqual([])
+    } finally {
+      if (datasetId) {
+        await deleteLiveDataset(request, datasetId)
+      }
+    }
+  })
+
+  test('submits a live chunk preview into the dataset through the deployed workbench', async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(LIVE_TEST_TIMEOUT_MS)
+    const pageErrors: string[] = []
+    page.on('pageerror', (error) => pageErrors.push(error.message))
+    await installLiveAuth(page)
+
+    const datasetName = `playwright-chunk-ingest-${Date.now()}`
+    const filename = `chunk-ingest-${Date.now()}.md`
+    const markdown = [
+      '# Chunk Preview Submit',
+      '',
+      'This document exists to validate the confirm-ingest path from the chunk preview workbench.',
+      '',
+      'Paragraph one gives enough content for multiple chunk calculations when repeated.',
+      '',
+      'Paragraph two keeps the backend preview non-trivial and citation-friendly.',
+      '',
+    ]
+      .join('\n')
+      .repeat(10)
+
+    let datasetId = ''
+
+    try {
+      datasetId = await createLiveDataset(request, datasetName)
+      const documentId = await uploadCompletedDocument(request, {
+        datasetId,
+        filename,
+        content: markdown,
+      })
+      await waitForLiveDocumentStatus(request, documentId, 'completed')
+
+      const beforeDocs = await listDatasetDocuments(request, datasetId)
+      expect(beforeDocs.length).toBe(1)
+
+      await page.goto(
+        `/chunk-preview?dataset_id=${encodeURIComponent(datasetId)}`,
+        { waitUntil: 'networkidle' }
+      )
+      await expect(
+        page.getByRole('heading', { name: '切片预览' })
+      ).toBeVisible({ timeout: LIVE_EXPECT_TIMEOUT_MS })
+
+      await expect(page.getByText(/个切块/)).toBeVisible({
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+
+      const submitButton = page.getByRole('button', { name: '确认入库' })
+      await expect(submitButton).toBeVisible({
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+      await submitButton.click()
+
+      await expect(
+        page.getByRole('button', { name: '已完成' })
+      ).toBeVisible({ timeout: LIVE_EXPECT_TIMEOUT_MS })
+
+      await expect
+        .poll(async () => (await listDatasetDocuments(request, datasetId)).length, {
+          timeout: LIVE_EXPECT_TIMEOUT_MS,
+        })
+        .toBeGreaterThanOrEqual(2)
+
       expect(pageErrors).toEqual([])
     } finally {
       if (datasetId) {
