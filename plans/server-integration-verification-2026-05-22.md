@@ -191,12 +191,14 @@ This task also tracks the next quality pass across the product surface. Do not s
   `2` events for the leader->service question. `/api/v1/evaluations/kg/search/diagnostics`
   then completed run `4aa0ef5e-0a3d-4729-9e3d-93e111ebe3eb` with
   `baseline_hit_rate=1.0`, `baseline_recall=1.0`, and no failure breakdown.
-  Both baseline and graph chat returned citation-backed extractive summaries, but
-  the first question still did not restate `Mira Chen` verbatim in either path,
-  so this proves graph clue availability on targeted multi-hop queries rather
-  than a finished answer-quality lift in the final chat surface. Cleanup deleted
-  both generated regression cases, purged `3` documents, reset KG stats to zero,
-  and deleted the dataset.
+  A later rerun after improving extractive fallback wording strengthened the same
+  proof under
+  `artifacts/kg-usefulness-matrix/remote-20260523-052501/report.json`:
+  both baseline and graph chat now restate the expected answers explicitly for
+  both multi-hop questions (`Mira Chen` and `Orion billing service`) while
+  keeping `kg_search_clues=11/6` and `baseline_hit_rate=1.0`, `baseline_recall=1.0`.
+  Cleanup deleted both generated regression cases, purged `3` documents, reset
+  KG stats to zero, and deleted the dataset.
 - Real parsed-output chunking on the same 144-page PDF exposed large strategy spread:
   `langchain_recursive=1151` chunks in `174.793s`,
   `parent_child=3702` chunks in `1.900s`,
@@ -233,3 +235,4 @@ This task also tracks the next quality pass across the product surface. Do not s
 - 2026-05-23 11:13: Added `scripts/remote_governance_ingest_matrix.py` and verified a full live governance ingest matrix on `main@f71242f`. The server proof covered masked PII, masked secrets, HTML rule-pack cleanup with table normalization, duplicate cleanup visible in persisted content/citations, outline-only quarantine, and scripted dataset purge/delete cleanup.
 - 2026-05-23 11:49: Added `scripts/remote_prompt_matrix.py`, wired builtin prompt selectors into document test generation and regression LLM judge, and verified a full live prompt matrix on `main@312e6cc`. The server proof covered builtin sync, answer prompt preview, answer prompt chat, KG extract prompt selection, builtin testset generation, builtin judge prompt selection, generated-case cleanup, dataset purge, and dataset delete.
 - 2026-05-23 12:49: Added `scripts/remote_kg_usefulness_matrix.py` and verified one targeted KG usefulness run on `main@fb5d02c`. The server proof showed stable KG clues and diagnostics hits on two handcrafted multi-hop questions, but also showed that the extractive chat surface still did not restate `Mira Chen` verbatim for the acquisition->leader question, so chat-surface answer lift remains only partially proven.
+- 2026-05-23 13:25: Improved extractive fallback answer selection on `main@ea55803` and re-ran the KG usefulness matrix. The follow-up server proof (`remote-20260523-052501`) kept the same strong KG clue/diagnostics signal and also made both extractive chat paths restate the expected answers explicitly for the two multi-hop questions.
