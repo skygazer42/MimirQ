@@ -116,6 +116,37 @@ async function findLiveGroupIdByName(
   return String(match?.id || '')
 }
 
+async function findLivePromptTemplateIdByName(
+  request: APIRequestContext,
+  templateName: string
+): Promise<string> {
+  const response = await request.get(
+    `${apiBaseUrl()}/api/v1/prompt-templates?limit=100`,
+    {
+      headers: liveHeaders(),
+    }
+  )
+  expect(response.ok()).toBe(true)
+  const body = (await response.json()) as {
+    items?: Array<{ id?: string; name?: string }>
+  }
+  const match = (body.items || []).find(
+    (item) => String(item.name || '') === templateName
+  )
+  return String(match?.id || '')
+}
+
+async function deleteLivePromptTemplate(
+  request: APIRequestContext,
+  templateId: string
+): Promise<void> {
+  const response = await request.delete(
+    `${apiBaseUrl()}/api/v1/prompt-templates/${templateId}`,
+    { headers: liveHeaders() }
+  )
+  expect([200, 204]).toContain(response.status())
+}
+
 test.describe('live management surfaces', () => {
   test.skip(
     !LIVE_BACKEND_ENABLED,
@@ -343,6 +374,72 @@ test.describe('live management surfaces', () => {
       expect(pageErrors).toEqual([])
     } finally {
       await patchLiveMemberRole(request, 'outsider', 'viewer')
+    }
+  })
+
+  test('creates and deletes a prompt template through the management UI', async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(LIVE_TEST_TIMEOUT_MS)
+    const pageErrors: string[] = []
+    page.on('pageerror', (error) => pageErrors.push(error.message))
+    await installLiveAuth(page)
+
+    const templateName = `playwright-prompt-${Date.now()}`
+    let templateId = ''
+
+    try {
+      await page.goto('/prompts', { waitUntil: 'networkidle' })
+      await expect(page.getByText('提示词模板')).toBeVisible({
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+
+      await page.getByRole('button', { name: '创建模板' }).click()
+      await page.getByRole('dialog').waitFor({
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+
+      await page.locator('#name').fill(templateName)
+      await page.locator('#description').fill('Playwright live prompt template')
+      await page.locator('#category').fill('playwright')
+      await page
+        .locator('#content')
+        .fill('请根据 {question} 和 {context} 生成一句简短回答。')
+      await page.getByRole('button', { name: '保存' }).click()
+
+      const rowNameButton = page.getByRole('button', { name: templateName })
+      await expect(rowNameButton).toBeVisible({
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+
+      templateId = await findLivePromptTemplateIdByName(request, templateName)
+      expect(templateId).toMatch(/\S/)
+
+      const row = page
+        .locator('div.grid')
+        .filter({ has: rowNameButton })
+        .first()
+      await row.getByRole('button', { name: '删除' }).click()
+
+      const deleteDialog = page.getByRole('alertdialog')
+      await expect(deleteDialog).toBeVisible({
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+      await deleteDialog.getByRole('button', { name: '删除' }).click()
+
+      await expect
+        .poll(() => findLivePromptTemplateIdByName(request, templateName), {
+          timeout: LIVE_EXPECT_TIMEOUT_MS,
+        })
+        .toBe('')
+
+      templateId = ''
+      expect(pageErrors).toEqual([])
+    } finally {
+      if (templateId) {
+        await deleteLivePromptTemplate(request, templateId)
+      }
     }
   })
 })
