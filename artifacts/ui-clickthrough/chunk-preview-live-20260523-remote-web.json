@@ -61,7 +61,7 @@
         {
           "title": "live chunk preview workbench",
           "file": "chunk-preview.live.spec.ts",
-          "line": 165,
+          "line": 179,
           "column": 6,
           "specs": [
             {
@@ -80,12 +80,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 7938,
+                      "duration": 8135,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-05-23T11:54:03.930Z",
+                      "startTime": "2026-05-23T12:00:42.334Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -95,7 +95,41 @@
               ],
               "id": "e51fc4465ab1a71c1ef5-c298a1ea963d57b533f7",
               "file": "chunk-preview.live.spec.ts",
-              "line": 171,
+              "line": 185,
+              "column": 7
+            },
+            {
+              "title": "submits a live chunk preview into the dataset through the deployed workbench",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 10944,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-23T12:00:50.546Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "e51fc4465ab1a71c1ef5-027000dc9a44748bbda1",
+              "file": "chunk-preview.live.spec.ts",
+              "line": 258,
               "column": 7
             }
           ]
@@ -105,9 +139,9 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-05-23T11:54:03.329Z",
-    "duration": 8660.381000000001,
-    "expected": 1,
+    "startTime": "2026-05-23T12:00:41.728Z",
+    "duration": 19823.190000000002,
+    "expected": 2,
     "skipped": 0,
     "unexpected": 0,
     "flaky": 0
