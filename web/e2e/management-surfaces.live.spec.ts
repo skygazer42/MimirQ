@@ -68,6 +68,19 @@ async function deleteLiveGroup(
   expect([200, 204]).toContain(response.status())
 }
 
+async function findLiveGroupIdByName(
+  request: APIRequestContext,
+  groupName: string
+): Promise<string> {
+  const response = await request.get(`${apiBaseUrl()}/api/v1/groups/?limit=500`, {
+    headers: liveHeaders(),
+  })
+  expect(response.ok()).toBe(true)
+  const body = (await response.json()) as { items?: Array<{ id?: string; name?: string }> }
+  const match = (body.items || []).find((item) => String(item.name || '') === groupName)
+  return String(match?.id || '')
+}
+
 test.describe('live management surfaces', () => {
   test.skip(
     !LIVE_BACKEND_ENABLED,
@@ -191,6 +204,57 @@ test.describe('live management surfaces', () => {
     } finally {
       if (tempGroupId) {
         await deleteLiveGroup(request, tempGroupId)
+      }
+    }
+  })
+
+  test('creates a real group and adds a member through the management UI', async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(LIVE_TEST_TIMEOUT_MS)
+    const pageErrors: string[] = []
+    page.on('pageerror', (error) => pageErrors.push(error.message))
+    await installLiveAuth(page)
+
+    const groupName = `playwright-ui-group-${Date.now()}`
+    let groupId = ''
+
+    try {
+      await page.goto('/settings/groups', { waitUntil: 'networkidle' })
+      await expect(page.getByRole('heading', { name: '组管理' })).toBeVisible({
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+
+      await page.getByRole('button', { name: '新建组' }).click()
+      await page.getByRole('dialog').waitFor({ timeout: LIVE_EXPECT_TIMEOUT_MS })
+      await page.locator('#group-name').fill(groupName)
+      await page.locator('#group-external-id').fill(`ext-${Date.now()}`)
+      await page.getByRole('button', { name: '创建' }).click()
+
+      const groupButton = page.getByRole('button', { name: groupName })
+      await expect(groupButton).toBeVisible({
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+      await groupButton.click()
+
+      await expect(page.getByText(`组：${groupName}`)).toBeVisible({
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+      await page.getByRole('button', { name: '添加成员' }).click()
+      await page.locator('#group-members').fill('outsider')
+      await page.getByRole('button', { name: '添加' }).click()
+
+      await expect(page.getByText('outsider')).toBeVisible({
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+
+      groupId = await findLiveGroupIdByName(request, groupName)
+      expect(groupId).toMatch(/\S/)
+      expect(pageErrors).toEqual([])
+    } finally {
+      if (groupId) {
+        await deleteLiveGroup(request, groupId)
       }
     }
   })
