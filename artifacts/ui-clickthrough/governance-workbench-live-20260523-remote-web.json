@@ -80,12 +80,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 10741,
+                      "duration": 10308,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-05-23T11:45:46.710Z",
+                      "startTime": "2026-05-23T12:24:59.559Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -97,6 +97,40 @@
               "file": "governance-workbench.live.spec.ts",
               "line": 171,
               "column": 7
+            },
+            {
+              "title": "hands off a cleaned dataset-scoped document into chunk preview from the governance workbench",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 19337,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-23T12:25:09.939Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "143125fab02426f381cd-5d526e154f589aeaf9b0",
+              "file": "governance-workbench.live.spec.ts",
+              "line": 246,
+              "column": 7
             }
           ]
         }
@@ -105,9 +139,9 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-05-23T11:45:46.099Z",
-    "duration": 11466.039,
-    "expected": 1,
+    "startTime": "2026-05-23T12:24:59.071Z",
+    "duration": 30263.656,
+    "expected": 2,
     "skipped": 0,
     "unexpected": 0,
     "flaky": 0
