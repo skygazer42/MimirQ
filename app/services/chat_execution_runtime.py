@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
 import re
 import time
+from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
@@ -146,6 +146,81 @@ def _clean_snippet(value: Any, *, max_chars: int = 320) -> str:
     return text[: max(0, max_chars - 1)].rstrip() + "..."
 
 
+_EXTRACTIVE_STOPWORDS = {
+    "the",
+    "a",
+    "an",
+    "and",
+    "or",
+    "to",
+    "of",
+    "in",
+    "on",
+    "for",
+    "what",
+    "which",
+    "who",
+    "when",
+    "where",
+    "why",
+    "how",
+    "is",
+    "was",
+    "were",
+    "did",
+    "does",
+    "do",
+    "that",
+    "this",
+    "these",
+    "those",
+    "followed",
+    "program",
+    "service",
+}
+
+
+def _question_terms(question: str) -> set[str]:
+    terms = {
+        token
+        for token in re.findall(r"[A-Za-z0-9][A-Za-z0-9_-]{1,}", str(question or "").lower())
+        if token not in _EXTRACTIVE_STOPWORDS and len(token) >= 3
+    }
+    return terms
+
+
+def _select_relevant_snippet(*, question: str, content: Any, max_chars: int = 320) -> str:
+    raw = str(content or "")
+    if not raw.strip():
+        return ""
+
+    terms = _question_terms(question)
+    candidates = [seg.strip() for seg in re.split(r"(?:\n{2,}|(?<=[。！？!?])\s+)", raw) if seg and seg.strip()]
+    if not candidates:
+        return _clean_snippet(raw, max_chars=max_chars)
+
+    best_segment = ""
+    best_score = -1
+    for segment in candidates:
+        cleaned = _clean_snippet(segment, max_chars=max_chars)
+        if not cleaned:
+            continue
+        if not terms:
+            if best_score < 0:
+                best_segment = cleaned
+                best_score = 0
+            continue
+        seg_terms = set(re.findall(r"[A-Za-z0-9][A-Za-z0-9_-]{1,}", cleaned.lower()))
+        score = len(seg_terms & terms)
+        if score > best_score or (score == best_score and len(cleaned) < len(best_segment or cleaned + "x")):
+            best_segment = cleaned
+            best_score = score
+
+    if best_segment:
+        return best_segment
+    return _clean_snippet(raw, max_chars=max_chars)
+
+
 def build_extractive_fallback_answer(
     *,
     question: str,
@@ -172,7 +247,7 @@ def build_extractive_fallback_answer(
             or citation.get("text")
             or citation.get("metadata", {}).get("chunk_content")
         )
-        snippet = _clean_snippet(content)
+        snippet = _select_relevant_snippet(question=question, content=content)
         if not snippet:
             continue
         usable.append(f"{idx}. {doc_name}: {snippet}")

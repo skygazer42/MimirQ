@@ -91,10 +91,53 @@ def test_extractive_fallback_answer_uses_retrieved_evidence() -> None:
     assert "QUIC provides secure transport" in answer
 
 
+def test_extractive_fallback_answer_surfaces_direct_multi_hop_evidence() -> None:
+    from app.services.chat_execution_runtime import build_extractive_fallback_answer
+
+    answer = build_extractive_fallback_answer(
+        question="Who led the integration program that followed Project Atlas's acquisition of Blue Harbor?",
+        citations=[
+            {
+                "document_name": "integration-lead.md",
+                "chunk_content": (
+                    "# Integration Lead\n\n"
+                    "After the acquisition, Mira Chen led the Blue Harbor integration program."
+                ),
+            },
+            {
+                "document_name": "atlas-acquisition.md",
+                "chunk_content": "# Atlas Acquisition\n\nProject Atlas acquired Blue Harbor on 2026-01-10.",
+            },
+        ],
+        reason="explicit_extractive_answer_mode",
+    )
+
+    assert "Mira Chen led the Blue Harbor integration program" in answer
+
+
+def test_extractive_fallback_answer_can_pull_relevant_sentence_from_late_chunk_content() -> None:
+    from app.services.chat_execution_runtime import build_extractive_fallback_answer
+
+    long_prefix = "intro " * 120
+    answer_sentence = "After the acquisition, Mira Chen led the Blue Harbor integration program."
+    answer = build_extractive_fallback_answer(
+        question="Who led the integration program that followed Project Atlas's acquisition of Blue Harbor?",
+        citations=[
+            {
+                "document_name": "integration-lead.md",
+                "chunk_content": f"# Integration Lead\n\n{long_prefix}\n\n{answer_sentence}",
+            }
+        ],
+        reason="explicit_extractive_answer_mode",
+    )
+
+    assert answer_sentence in answer
+
+
 def test_extractive_fallback_retrieval_uses_lightweight_config(monkeypatch) -> None:
-    from app.services.chat_execution_runtime import execute_extractive_fallback_once
     import app.rag.pipelines.langgraph as langgraph_mod
     import app.rag.retrieval.orchestrator as orchestrator_mod
+    from app.services.chat_execution_runtime import execute_extractive_fallback_once
 
     captured: dict = {}
 
@@ -165,9 +208,9 @@ def test_graph_chat_passes_generation_max_tokens_to_rag_state(monkeypatch) -> No
     from types import SimpleNamespace
     from uuid import UUID
 
+    import app.rag.pipelines.langgraph as langgraph_mod
     from app.api.schemas.chat import ChatRAGConfig
     from app.services.chat_execution_runtime import execute_graph_chat_once
-    import app.rag.pipelines.langgraph as langgraph_mod
 
     captured: dict = {}
 
@@ -232,8 +275,8 @@ def test_rag_engine_rebuilds_when_llm_settings_change(monkeypatch) -> None:
 
 
 def test_dynamic_route_skips_stale_provider_alias(monkeypatch) -> None:
-    from app.rag.engine import RAGEngine
     import app.rag.engine as engine_mod
+    from app.rag.engine import RAGEngine
 
     monkeypatch.setattr(engine_mod.settings, "LLM_API_BASE", "https://api.siliconflow.cn/v1", raising=False)
 
@@ -296,7 +339,6 @@ async def test_stream_chat_uses_extractive_fallback_when_provider_circuit_open(m
     import app.services.chat_stream_common as common_mod
     import app.services.chat_stream_orchestrator as orchestrator_mod
     from app.services.chat_execution_runtime import ExecutedGraphChatOnceResult
-    from app.services.chat_runtime import ChatStreamPersistInput
 
     tenant_id = UUID(int=1)
     conversation_id = UUID(int=2)
