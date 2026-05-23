@@ -13,6 +13,8 @@ from app.core.database import get_db
 from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentPermission
+from app.models.group_permissions import DocumentGroupPermission
+from app.models.tenant_group import TenantGroupMember
 from app.services.dataset_service import DatasetService
 from app.services.document_runtime_metadata import attach_runtime_document_metadata
 
@@ -128,6 +130,15 @@ async def list_documents(
         DocumentPermission.tenant_id == tenant_id,
         DocumentPermission.account_id == account_id,
     )
+    doc_group_perm_subq = select(DocumentGroupPermission.document_id).where(
+        DocumentGroupPermission.tenant_id == tenant_id,
+        DocumentGroupPermission.group_id.in_(
+            select(TenantGroupMember.group_id).where(
+                TenantGroupMember.tenant_id == tenant_id,
+                TenantGroupMember.user_id == account_id,
+            )
+        ),
+    )
     owner_dataset_ids_subq = select(Dataset.id).where(
         Dataset.tenant_id == tenant_id,
         Dataset.owner_id == account_id,
@@ -140,7 +151,10 @@ async def list_documents(
             DBDocument.owner_id == account_id,
             and_(
                 DBDocument.access_mode == "partial_members",
-                DBDocument.id.in_(doc_perm_subq),
+                or_(
+                    DBDocument.id.in_(doc_perm_subq),
+                    DBDocument.id.in_(doc_group_perm_subq),
+                ),
             ),
         )
     )

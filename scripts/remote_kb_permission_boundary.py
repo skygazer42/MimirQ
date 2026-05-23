@@ -95,6 +95,21 @@ def group_member_ids_from_body(body: Any) -> list[str]:
     return out
 
 
+def document_access_summary(body: Any) -> dict[str, Any]:
+    if not isinstance(body, dict):
+        return {"mode": "", "owner_id": None, "partial_member_list": [], "partial_group_list": []}
+    mode = str(body.get("mode") or "").strip().lower()
+    owner_id = str(body.get("owner_id") or "").strip() or None
+    members = [str(item).strip() for item in (body.get("partial_member_list") or []) if str(item).strip()]
+    groups = [str(item).strip() for item in (body.get("partial_group_list") or []) if str(item).strip()]
+    return {
+        "mode": mode,
+        "owner_id": owner_id,
+        "partial_member_list": members,
+        "partial_group_list": groups,
+    }
+
+
 def create_dataset(
     api: LiveApi,
     *,
@@ -294,13 +309,20 @@ def main() -> int:
             permission="partial_members",
             partial_member_list=[str(args.admin_account_id)],
         )
+        doc_acl_dataset_id = create_dataset(
+            admin_api,
+            steps=steps,
+            name=f"KB Perm Doc ACL {run_id}",
+            permission="partial_members",
+            partial_member_list=[str(args.admin_account_id), str(args.outsider_account_id)],
+        )
         private_dataset_id = create_dataset(
             admin_api,
             steps=steps,
             name=f"KB Perm Private {run_id}",
             permission="only_me",
         )
-        dataset_ids.extend([shared_dataset_id, group_dataset_id, private_dataset_id])
+        dataset_ids.extend([shared_dataset_id, group_dataset_id, doc_acl_dataset_id, private_dataset_id])
 
         resp = admin_api.json(
             "PATCH",
@@ -345,9 +367,80 @@ def main() -> int:
             file_path=group_fixture,
             poll_timeout=args.poll_timeout,
         )
+        doc_visible_fixture = artifact_dir / "fixtures" / "doc-visible.md"
+        doc_visible_fixture.write_text(
+            "# Visible Document\n\n"
+            "Token DOC-VISIBLE-SPARROW belongs only to the visible document.\n",
+            encoding="utf-8",
+        )
+        doc_private_fixture = artifact_dir / "fixtures" / "doc-private.md"
+        doc_private_fixture.write_text(
+            "# Private Document\n\n"
+            "Token DOC-SECRET-KOALA belongs only to the private document.\n",
+            encoding="utf-8",
+        )
+        doc_group_fixture = artifact_dir / "fixtures" / "doc-group.md"
+        doc_group_fixture.write_text(
+            "# Group Document\n\n"
+            "Token DOC-GROUP-LANTERN belongs only to the group-guarded document.\n",
+            encoding="utf-8",
+        )
+        doc_visible = upload_fixture(
+            admin_api,
+            steps=steps,
+            dataset_id=doc_acl_dataset_id,
+            label="doc_acl_visible",
+            file_path=doc_visible_fixture,
+            poll_timeout=args.poll_timeout,
+        )
+        doc_private = upload_fixture(
+            admin_api,
+            steps=steps,
+            dataset_id=doc_acl_dataset_id,
+            label="doc_acl_private",
+            file_path=doc_private_fixture,
+            poll_timeout=args.poll_timeout,
+        )
+        doc_group = upload_fixture(
+            admin_api,
+            steps=steps,
+            dataset_id=doc_acl_dataset_id,
+            label="doc_acl_group",
+            file_path=doc_group_fixture,
+            poll_timeout=args.poll_timeout,
+        )
+
+        resp = admin_api.json(
+            "PUT",
+            f"/api/v1/documents/{doc_private['document_id']}/access",
+            payload={"mode": "partial_members", "partial_member_list": [str(args.admin_account_id)]},
+        )
+        record_step(steps, "doc_acl_private_set_access", resp)
+        ensure_success("doc_acl_private_set_access", resp)
+        private_access = document_access_summary(resp.body)
+        if private_access["mode"] != "partial_members" or private_access["partial_member_list"] != [str(args.admin_account_id)]:
+            raise RuntimeError(f"doc private access mismatch: {private_access}")
+
+        resp = admin_api.json(
+            "PUT",
+            f"/api/v1/documents/{doc_group['document_id']}/access",
+            payload={"mode": "partial_members", "partial_group_list": [group_id]},
+        )
+        record_step(steps, "doc_acl_group_set_access", resp)
+        ensure_success("doc_acl_group_set_access", resp)
+        group_access = document_access_summary(resp.body)
+        if group_access["mode"] != "partial_members" or group_access["partial_group_list"] != [group_id]:
+            raise RuntimeError(f"doc group access mismatch: {group_access}")
+
         summary["datasets"] = {
             "shared": {"dataset_id": shared_dataset_id, **shared_doc},
             "group_shared": {"dataset_id": group_dataset_id, **group_doc},
+            "doc_acl": {
+                "dataset_id": doc_acl_dataset_id,
+                "visible_document_id": doc_visible["document_id"],
+                "private_document_id": doc_private["document_id"],
+                "group_document_id": doc_group["document_id"],
+            },
             "private": {"dataset_id": private_dataset_id, **private_doc},
         }
 
@@ -378,6 +471,17 @@ def main() -> int:
         summary["http_checks"].append({"name": "outsider_group_inventory", "status_code": resp.status, "ok": not failures, "failures": failures})
         if failures:
             raise RuntimeError(f"outsider_group_inventory failed: {failures}")
+
+        resp = outsider_api.json("GET", f"/api/v1/documents/?dataset_id={doc_acl_dataset_id}&limit=20")
+        record_step(steps, "outsider_doc_acl_inventory", resp)
+        failures = evaluate_http_expectation("outsider_doc_acl_inventory", resp.status, [200])
+        export_ids = sorted(exported_document_ids(resp.body))
+        expected_ids = sorted([doc_visible["document_id"], doc_group["document_id"]])
+        if export_ids != expected_ids:
+            failures.append(f"outsider_doc_acl_inventory: actual_document_ids={export_ids} expected={expected_ids}")
+        summary["http_checks"].append({"name": "outsider_doc_acl_inventory", "status_code": resp.status, "ok": not failures, "failures": failures})
+        if failures:
+            raise RuntimeError(f"outsider_doc_acl_inventory failed: {failures}")
 
         rag_config = {
             "top_k": 4,
@@ -536,6 +640,156 @@ def main() -> int:
         if failures:
             raise RuntimeError(f"outsider_group_mixed_scope_retrieve failed: {failures}")
 
+        resp = outsider_api.json(
+            "POST",
+            "/api/v1/rag/retrieve-preview",
+            payload={"query": "Who owns token DOC-VISIBLE-SPARROW?", "dataset_id": doc_acl_dataset_id, "rag_config": rag_config},
+        )
+        record_step(steps, "outsider_doc_acl_visible_retrieve", resp)
+        failures = evaluate_http_expectation("outsider_doc_acl_visible_retrieve", resp.status, [200])
+        failures.extend(
+            evaluate_permission_scope_case(
+                {
+                    "name": "outsider_doc_acl_visible_retrieve",
+                    "allowed_document_ids": [doc_visible["document_id"], doc_group["document_id"]],
+                    "required_document_ids": [doc_visible["document_id"]],
+                    "expected_terms": ["DOC-VISIBLE-SPARROW"],
+                    "forbidden_terms": ["DOC-SECRET-KOALA"],
+                    "min_citations": 1,
+                },
+                citation_doc_ids=citation_document_ids(resp.body),
+                citation_count=len((resp.body or {}).get("citations") or []) if isinstance(resp.body, dict) else 0,
+                response_text=response_text_from_body(resp.body),
+            )
+        )
+        summary["retrieve_checks"].append({"name": "outsider_doc_acl_visible_retrieve", "status_code": resp.status, "ok": not failures, "failures": failures})
+        if failures:
+            raise RuntimeError(f"outsider_doc_acl_visible_retrieve failed: {failures}")
+
+        resp = outsider_api.json(
+            "POST",
+            "/api/v1/rag/retrieve-preview",
+            payload={"query": "Who owns token DOC-GROUP-LANTERN?", "dataset_id": doc_acl_dataset_id, "rag_config": rag_config},
+        )
+        record_step(steps, "outsider_doc_acl_group_retrieve", resp)
+        failures = evaluate_http_expectation("outsider_doc_acl_group_retrieve", resp.status, [200])
+        failures.extend(
+            evaluate_permission_scope_case(
+                {
+                    "name": "outsider_doc_acl_group_retrieve",
+                    "allowed_document_ids": [doc_visible["document_id"], doc_group["document_id"]],
+                    "required_document_ids": [doc_group["document_id"]],
+                    "expected_terms": ["DOC-GROUP-LANTERN"],
+                    "forbidden_terms": ["DOC-SECRET-KOALA"],
+                    "min_citations": 1,
+                },
+                citation_doc_ids=citation_document_ids(resp.body),
+                citation_count=len((resp.body or {}).get("citations") or []) if isinstance(resp.body, dict) else 0,
+                response_text=response_text_from_body(resp.body),
+            )
+        )
+        summary["retrieve_checks"].append({"name": "outsider_doc_acl_group_retrieve", "status_code": resp.status, "ok": not failures, "failures": failures})
+        if failures:
+            raise RuntimeError(f"outsider_doc_acl_group_retrieve failed: {failures}")
+
+        resp = outsider_api.json(
+            "POST",
+            "/api/v1/rag/retrieve-preview",
+            payload={"query": "Who owns token DOC-SECRET-KOALA?", "dataset_id": doc_acl_dataset_id, "rag_config": rag_config},
+        )
+        record_step(steps, "outsider_doc_acl_private_retrieve", resp)
+        failures = evaluate_http_expectation("outsider_doc_acl_private_retrieve", resp.status, [200])
+        failures.extend(
+            evaluate_permission_scope_case(
+                {
+                    "name": "outsider_doc_acl_private_retrieve",
+                    "allowed_document_ids": [doc_visible["document_id"], doc_group["document_id"]],
+                    "forbidden_terms": ["DOC-SECRET-KOALA"],
+                },
+                citation_doc_ids=citation_document_ids(resp.body),
+                citation_count=len((resp.body or {}).get("citations") or []) if isinstance(resp.body, dict) else 0,
+                response_text=response_text_from_body(resp.body),
+            )
+        )
+        summary["retrieve_checks"].append({"name": "outsider_doc_acl_private_retrieve", "status_code": resp.status, "ok": not failures, "failures": failures})
+        if failures:
+            raise RuntimeError(f"outsider_doc_acl_private_retrieve failed: {failures}")
+
+        resp = outsider_api.json(
+            "POST",
+            "/api/v1/rag/retrieve-preview",
+            payload={
+                "query": "Who owns token DOC-VISIBLE-SPARROW?",
+                "document_ids": [doc_visible["document_id"], doc_private["document_id"]],
+                "rag_config": rag_config,
+            },
+        )
+        record_step(steps, "outsider_doc_acl_visible_mixed_scope_retrieve", resp)
+        failures = evaluate_http_expectation("outsider_doc_acl_visible_mixed_scope_retrieve", resp.status, [200])
+        failures.extend(
+            evaluate_permission_scope_case(
+                {
+                    "name": "outsider_doc_acl_visible_mixed_scope_retrieve",
+                    "allowed_document_ids": [doc_visible["document_id"]],
+                    "expected_document_ids": [doc_visible["document_id"]],
+                    "expected_terms": ["DOC-VISIBLE-SPARROW"],
+                    "forbidden_terms": ["DOC-SECRET-KOALA"],
+                    "min_citations": 1,
+                },
+                citation_doc_ids=citation_document_ids(resp.body),
+                citation_count=len((resp.body or {}).get("citations") or []) if isinstance(resp.body, dict) else 0,
+                response_text=response_text_from_body(resp.body),
+            )
+        )
+        summary["retrieve_checks"].append({"name": "outsider_doc_acl_visible_mixed_scope_retrieve", "status_code": resp.status, "ok": not failures, "failures": failures})
+        if failures:
+            raise RuntimeError(f"outsider_doc_acl_visible_mixed_scope_retrieve failed: {failures}")
+
+        resp = outsider_api.json(
+            "POST",
+            "/api/v1/rag/retrieve-preview",
+            payload={
+                "query": "Who owns token DOC-GROUP-LANTERN?",
+                "document_ids": [doc_group["document_id"], doc_private["document_id"]],
+                "rag_config": rag_config,
+            },
+        )
+        record_step(steps, "outsider_doc_acl_group_mixed_scope_retrieve", resp)
+        failures = evaluate_http_expectation("outsider_doc_acl_group_mixed_scope_retrieve", resp.status, [200])
+        failures.extend(
+            evaluate_permission_scope_case(
+                {
+                    "name": "outsider_doc_acl_group_mixed_scope_retrieve",
+                    "allowed_document_ids": [doc_group["document_id"]],
+                    "expected_document_ids": [doc_group["document_id"]],
+                    "expected_terms": ["DOC-GROUP-LANTERN"],
+                    "forbidden_terms": ["DOC-SECRET-KOALA"],
+                    "min_citations": 1,
+                },
+                citation_doc_ids=citation_document_ids(resp.body),
+                citation_count=len((resp.body or {}).get("citations") or []) if isinstance(resp.body, dict) else 0,
+                response_text=response_text_from_body(resp.body),
+            )
+        )
+        summary["retrieve_checks"].append({"name": "outsider_doc_acl_group_mixed_scope_retrieve", "status_code": resp.status, "ok": not failures, "failures": failures})
+        if failures:
+            raise RuntimeError(f"outsider_doc_acl_group_mixed_scope_retrieve failed: {failures}")
+
+        resp = outsider_api.json(
+            "POST",
+            "/api/v1/rag/retrieve-preview",
+            payload={
+                "query": "Who owns token DOC-SECRET-KOALA?",
+                "document_ids": [doc_private["document_id"]],
+                "rag_config": rag_config,
+            },
+        )
+        record_step(steps, "outsider_doc_acl_private_direct_retrieve", resp)
+        failures = evaluate_http_expectation("outsider_doc_acl_private_direct_retrieve", resp.status, [403])
+        summary["retrieve_checks"].append({"name": "outsider_doc_acl_private_direct_retrieve", "status_code": resp.status, "ok": not failures, "failures": failures})
+        if failures:
+            raise RuntimeError(f"outsider_doc_acl_private_direct_retrieve failed: {failures}")
+
         shared_chat_payload = {
             "message": "Who owns token ALOE-COMET?",
             "dataset_id": shared_dataset_id,
@@ -673,9 +927,178 @@ def main() -> int:
         if failures:
             raise RuntimeError(f"outsider_group_mixed_scope_chat failed: {failures}")
 
+        resp = outsider_api.json(
+            "POST",
+            "/api/v1/chat",
+            payload={
+                "message": "Who owns token DOC-VISIBLE-SPARROW?",
+                "dataset_id": doc_acl_dataset_id,
+                "stream": False,
+                "rag_config": {**rag_config, "answer_mode": "extractive", "max_tokens": 300},
+            },
+        )
+        record_step(steps, "outsider_doc_acl_visible_chat", resp)
+        failures = evaluate_http_expectation("outsider_doc_acl_visible_chat", resp.status, [200])
+        failures.extend(
+            evaluate_permission_scope_case(
+                {
+                    "name": "outsider_doc_acl_visible_chat",
+                    "allowed_document_ids": [doc_visible["document_id"], doc_group["document_id"]],
+                    "required_document_ids": [doc_visible["document_id"]],
+                    "expected_terms": ["DOC-VISIBLE-SPARROW"],
+                    "forbidden_terms": ["DOC-SECRET-KOALA"],
+                    "min_citations": 1,
+                },
+                citation_doc_ids=citation_document_ids(resp.body),
+                citation_count=len((resp.body or {}).get("citations") or []) if isinstance(resp.body, dict) else 0,
+                response_text=response_text_from_body(resp.body),
+            )
+        )
+        summary["chat_checks"].append({"name": "outsider_doc_acl_visible_chat", "status_code": resp.status, "ok": not failures, "failures": failures})
+        if failures:
+            raise RuntimeError(f"outsider_doc_acl_visible_chat failed: {failures}")
+
+        resp = outsider_api.json(
+            "POST",
+            "/api/v1/chat",
+            payload={
+                "message": "Who owns token DOC-GROUP-LANTERN?",
+                "dataset_id": doc_acl_dataset_id,
+                "stream": False,
+                "rag_config": {**rag_config, "answer_mode": "extractive", "max_tokens": 300},
+            },
+        )
+        record_step(steps, "outsider_doc_acl_group_chat", resp)
+        failures = evaluate_http_expectation("outsider_doc_acl_group_chat", resp.status, [200])
+        failures.extend(
+            evaluate_permission_scope_case(
+                {
+                    "name": "outsider_doc_acl_group_chat",
+                    "allowed_document_ids": [doc_visible["document_id"], doc_group["document_id"]],
+                    "required_document_ids": [doc_group["document_id"]],
+                    "expected_terms": ["DOC-GROUP-LANTERN"],
+                    "forbidden_terms": ["DOC-SECRET-KOALA"],
+                    "min_citations": 1,
+                },
+                citation_doc_ids=citation_document_ids(resp.body),
+                citation_count=len((resp.body or {}).get("citations") or []) if isinstance(resp.body, dict) else 0,
+                response_text=response_text_from_body(resp.body),
+            )
+        )
+        summary["chat_checks"].append({"name": "outsider_doc_acl_group_chat", "status_code": resp.status, "ok": not failures, "failures": failures})
+        if failures:
+            raise RuntimeError(f"outsider_doc_acl_group_chat failed: {failures}")
+
+        resp = outsider_api.json(
+            "POST",
+            "/api/v1/chat",
+            payload={
+                "message": "Who owns token DOC-SECRET-KOALA?",
+                "dataset_id": doc_acl_dataset_id,
+                "stream": False,
+                "rag_config": {**rag_config, "answer_mode": "extractive", "max_tokens": 300},
+            },
+        )
+        record_step(steps, "outsider_doc_acl_private_chat", resp)
+        failures = evaluate_http_expectation("outsider_doc_acl_private_chat", resp.status, [200])
+        failures.extend(
+            evaluate_permission_scope_case(
+                {
+                    "name": "outsider_doc_acl_private_chat",
+                    "allowed_document_ids": [doc_visible["document_id"], doc_group["document_id"]],
+                    "forbidden_terms": ["DOC-SECRET-KOALA"],
+                },
+                citation_doc_ids=citation_document_ids(resp.body),
+                citation_count=len((resp.body or {}).get("citations") or []) if isinstance(resp.body, dict) else 0,
+                response_text=response_text_from_body(resp.body),
+            )
+        )
+        summary["chat_checks"].append({"name": "outsider_doc_acl_private_chat", "status_code": resp.status, "ok": not failures, "failures": failures})
+        if failures:
+            raise RuntimeError(f"outsider_doc_acl_private_chat failed: {failures}")
+
+        resp = outsider_api.json(
+            "POST",
+            "/api/v1/chat",
+            payload={
+                "message": "Who owns token DOC-VISIBLE-SPARROW?",
+                "document_ids": [doc_visible["document_id"], doc_private["document_id"]],
+                "stream": False,
+                "rag_config": {**rag_config, "answer_mode": "extractive", "max_tokens": 300},
+            },
+        )
+        record_step(steps, "outsider_doc_acl_visible_mixed_scope_chat", resp)
+        failures = evaluate_http_expectation("outsider_doc_acl_visible_mixed_scope_chat", resp.status, [200])
+        failures.extend(
+            evaluate_permission_scope_case(
+                {
+                    "name": "outsider_doc_acl_visible_mixed_scope_chat",
+                    "allowed_document_ids": [doc_visible["document_id"]],
+                    "expected_document_ids": [doc_visible["document_id"]],
+                    "expected_terms": ["DOC-VISIBLE-SPARROW"],
+                    "forbidden_terms": ["DOC-SECRET-KOALA"],
+                    "min_citations": 1,
+                },
+                citation_doc_ids=citation_document_ids(resp.body),
+                citation_count=len((resp.body or {}).get("citations") or []) if isinstance(resp.body, dict) else 0,
+                response_text=response_text_from_body(resp.body),
+            )
+        )
+        summary["chat_checks"].append({"name": "outsider_doc_acl_visible_mixed_scope_chat", "status_code": resp.status, "ok": not failures, "failures": failures})
+        if failures:
+            raise RuntimeError(f"outsider_doc_acl_visible_mixed_scope_chat failed: {failures}")
+
+        resp = outsider_api.json(
+            "POST",
+            "/api/v1/chat",
+            payload={
+                "message": "Who owns token DOC-GROUP-LANTERN?",
+                "document_ids": [doc_group["document_id"], doc_private["document_id"]],
+                "stream": False,
+                "rag_config": {**rag_config, "answer_mode": "extractive", "max_tokens": 300},
+            },
+        )
+        record_step(steps, "outsider_doc_acl_group_mixed_scope_chat", resp)
+        failures = evaluate_http_expectation("outsider_doc_acl_group_mixed_scope_chat", resp.status, [200])
+        failures.extend(
+            evaluate_permission_scope_case(
+                {
+                    "name": "outsider_doc_acl_group_mixed_scope_chat",
+                    "allowed_document_ids": [doc_group["document_id"]],
+                    "expected_document_ids": [doc_group["document_id"]],
+                    "expected_terms": ["DOC-GROUP-LANTERN"],
+                    "forbidden_terms": ["DOC-SECRET-KOALA"],
+                    "min_citations": 1,
+                },
+                citation_doc_ids=citation_document_ids(resp.body),
+                citation_count=len((resp.body or {}).get("citations") or []) if isinstance(resp.body, dict) else 0,
+                response_text=response_text_from_body(resp.body),
+            )
+        )
+        summary["chat_checks"].append({"name": "outsider_doc_acl_group_mixed_scope_chat", "status_code": resp.status, "ok": not failures, "failures": failures})
+        if failures:
+            raise RuntimeError(f"outsider_doc_acl_group_mixed_scope_chat failed: {failures}")
+
+        resp = outsider_api.json(
+            "POST",
+            "/api/v1/chat",
+            payload={
+                "message": "Who owns token DOC-SECRET-KOALA?",
+                "document_ids": [doc_private["document_id"]],
+                "stream": False,
+                "rag_config": {**rag_config, "answer_mode": "extractive", "max_tokens": 300},
+            },
+        )
+        record_step(steps, "outsider_doc_acl_private_direct_chat", resp)
+        failures = evaluate_http_expectation("outsider_doc_acl_private_direct_chat", resp.status, [403])
+        summary["chat_checks"].append({"name": "outsider_doc_acl_private_direct_chat", "status_code": resp.status, "ok": not failures, "failures": failures})
+        if failures:
+            raise RuntimeError(f"outsider_doc_acl_private_direct_chat failed: {failures}")
+
         cleanup = {
             "shared": cleanup_dataset(admin_api, steps=steps, dataset_id=shared_dataset_id),
             "group_shared": cleanup_dataset(admin_api, steps=steps, dataset_id=group_dataset_id),
+            "doc_acl": cleanup_dataset(admin_api, steps=steps, dataset_id=doc_acl_dataset_id),
             "private": cleanup_dataset(admin_api, steps=steps, dataset_id=private_dataset_id),
         }
         if group_id:

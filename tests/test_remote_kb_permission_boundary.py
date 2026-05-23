@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from scripts.remote_kb_permission_boundary import (
+    document_access_summary,
     evaluate_http_expectation,
     evaluate_permission_scope_case,
     group_id_from_body,
@@ -40,3 +41,19 @@ def test_remote_kb_permission_boundary_group_helpers_read_common_shapes() -> Non
 
     assert group_id_from_body(group_body) == "group-123"
     assert group_member_ids_from_body(members_body) == ["outsider", "demo"]
+
+
+def test_remote_kb_permission_boundary_document_access_summary_normalizes_acl_body() -> None:
+    body = {
+        "mode": "partial_members",
+        "owner_id": "demo",
+        "partial_member_list": ["demo"],
+        "partial_group_list": ["11111111-1111-1111-1111-111111111111"],
+    }
+
+    summary = document_access_summary(body)
+
+    assert summary["mode"] == "partial_members"
+    assert summary["owner_id"] == "demo"
+    assert summary["partial_member_list"] == ["demo"]
+    assert summary["partial_group_list"] == ["11111111-1111-1111-1111-111111111111"]
