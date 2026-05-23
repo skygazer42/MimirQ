@@ -242,4 +242,81 @@ test.describe('live governance workbench', () => {
       }
     }
   })
+
+  test('hands off a cleaned dataset-scoped document into chunk preview from the governance workbench', async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(LIVE_TEST_TIMEOUT_MS)
+    const pageErrors: string[] = []
+    page.on('pageerror', (error) => pageErrors.push(error.message))
+    await installLiveAuth(page)
+
+    const datasetName = `playwright-governance-handoff-${Date.now()}`
+    const filename = `governance-handoff-${Date.now()}.md`
+    const markdown = [
+      '# Governance Handoff',
+      '',
+      'Contact alice@example.com for rollout coordination.',
+      '',
+      'Footer repeated line',
+      '',
+      'Useful paragraph about graph recall improvements.',
+      '',
+      'Footer repeated line',
+      '',
+      'Footer repeated line',
+      '',
+    ].join('\n')
+
+    let datasetId = ''
+
+    try {
+      datasetId = await createLiveDataset(request, datasetName)
+      const documentId = await uploadCompletedDocument(request, {
+        datasetId,
+        filename,
+        content: markdown,
+      })
+      await waitForLiveDocumentStatus(request, documentId, 'completed')
+
+      await page.goto(
+        `/data-governance?dataset_id=${encodeURIComponent(datasetId)}`,
+        { waitUntil: 'networkidle' }
+      )
+      const fileButton = page.getByRole('button', { name: new RegExp(filename) })
+      await expect(fileButton).toBeVisible({ timeout: LIVE_EXPECT_TIMEOUT_MS })
+      await fileButton.click()
+
+      await page.getByRole('button', { name: '智能清洗' }).click()
+      await expect(page.getByText('智能清洗配置')).toBeVisible({
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+      await page.getByRole('button', { name: '执行智能清洗' }).click()
+      await expect(page.getByText('清洗信息')).toBeVisible({
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+
+      await page.getByRole('button', { name: '保存' }).click()
+      await page.getByRole('button', { name: '推送到切块预览' }).click()
+
+      await expect(page).toHaveURL(new RegExp(`/chunk-preview\\?dataset_id=${datasetId}`), {
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+      await expect(
+        page.getByRole('heading', { name: '切片预览' })
+      ).toBeVisible({ timeout: LIVE_EXPECT_TIMEOUT_MS })
+      await expect(
+        page.getByRole('button', { name: `选择文件：${filename}` })
+      ).toBeVisible({ timeout: LIVE_EXPECT_TIMEOUT_MS })
+      await expect(page.getByText(/个切块/)).toBeVisible({
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+      expect(pageErrors).toEqual([])
+    } finally {
+      if (datasetId) {
+        await deleteLiveDataset(request, datasetId)
+      }
+    }
+  })
 })
