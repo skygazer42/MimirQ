@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from scripts.remote_governance_ingest_matrix import (
     citation_text_from_response,
+    ensure_repo_root_on_sys_path,
     evaluate_case_expectations,
     metadata_has_nonempty_value,
 )
@@ -33,6 +34,15 @@ def test_remote_governance_ingest_matrix_citation_text_from_response_joins_commo
     assert "second body" in text
     assert "third text" in text
     assert "fourth snippet" in text
+
+
+def test_remote_governance_ingest_matrix_ensure_repo_root_on_sys_path(monkeypatch) -> None:  # noqa: ANN001
+    fake_sys_path = ["/tmp/elsewhere"]
+    monkeypatch.setattr("scripts.remote_governance_ingest_matrix.sys.path", fake_sys_path)
+
+    ensure_repo_root_on_sys_path("/tmp/project/scripts/remote_governance_ingest_matrix.py")
+
+    assert fake_sys_path[0] == "/tmp/project"
 
 
 def test_remote_governance_ingest_matrix_evaluate_case_expectations_accepts_sanitized_document() -> None:
