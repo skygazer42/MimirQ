@@ -61,7 +61,7 @@
         {
           "title": "live management surfaces",
           "file": "management-surfaces.live.spec.ts",
-          "line": 84,
+          "line": 119,
           "column": 6,
           "specs": [
             {
@@ -80,12 +80,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 14714,
+                      "duration": 14559,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-05-23T10:01:38.942Z",
+                      "startTime": "2026-05-23T10:10:02.924Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -95,7 +95,7 @@
               ],
               "id": "b8ce53ce35715921c1b1-7dba596afa8415ceb53d",
               "file": "management-surfaces.live.spec.ts",
-              "line": 90,
+              "line": 125,
               "column": 7
             },
             {
@@ -114,12 +114,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 4180,
+                      "duration": 4157,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-05-23T10:01:53.733Z",
+                      "startTime": "2026-05-23T10:10:17.561Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -129,7 +129,41 @@
               ],
               "id": "b8ce53ce35715921c1b1-a9fb6aefec489b698d45",
               "file": "management-surfaces.live.spec.ts",
-              "line": 211,
+              "line": 246,
+              "column": 7
+            },
+            {
+              "title": "updates a real tenant member role through the RBAC UI and reverts it",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 240000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2670,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-05-23T10:10:21.734Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "b8ce53ce35715921c1b1-6279fec2c168ce0f4a4e",
+              "file": "management-surfaces.live.spec.ts",
+              "line": 297,
               "column": 7
             }
           ]
@@ -139,9 +173,9 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-05-23T10:01:38.343Z",
-    "duration": 19633.289999999997,
-    "expected": 2,
+    "startTime": "2026-05-23T10:10:02.307Z",
+    "duration": 22170.889000000003,
+    "expected": 3,
     "skipped": 0,
     "unexpected": 0,
     "flaky": 0

@@ -68,6 +68,41 @@ async function deleteLiveGroup(
   expect([200, 204]).toContain(response.status())
 }
 
+async function patchLiveMemberRole(
+  request: APIRequestContext,
+  userId: string,
+  role: string
+): Promise<void> {
+  const response = await request.patch(
+    `${apiBaseUrl()}/api/v1/rbac/members/${encodeURIComponent(userId)}`,
+    {
+      headers: liveHeaders(),
+      data: { role },
+    }
+  )
+  expect(response.ok()).toBe(true)
+}
+
+async function fetchLiveMemberRole(
+  request: APIRequestContext,
+  userId: string
+): Promise<string> {
+  const response = await request.get(
+    `${apiBaseUrl()}/api/v1/rbac/members?limit=500`,
+    {
+      headers: liveHeaders(),
+    }
+  )
+  expect(response.ok()).toBe(true)
+  const body = (await response.json()) as {
+    items?: Array<{ user_id?: string; role?: string }>
+  }
+  const match = (body.items || []).find(
+    (item) => String(item.user_id || '') === userId
+  )
+  return String(match?.role || '')
+}
+
 async function findLiveGroupIdByName(
   request: APIRequestContext,
   groupName: string
@@ -256,6 +291,58 @@ test.describe('live management surfaces', () => {
       if (groupId) {
         await deleteLiveGroup(request, groupId)
       }
+    }
+  })
+
+  test('updates a real tenant member role through the RBAC UI and reverts it', async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(LIVE_TEST_TIMEOUT_MS)
+    const pageErrors: string[] = []
+    page.on('pageerror', (error) => pageErrors.push(error.message))
+    await installLiveAuth(page)
+
+    try {
+      await patchLiveMemberRole(request, 'outsider', 'viewer')
+
+      await page.goto('/settings/rbac', { waitUntil: 'networkidle' })
+      await expect(
+        page.getByRole('heading', { name: '成员权限' })
+      ).toBeVisible({
+        timeout: LIVE_EXPECT_TIMEOUT_MS,
+      })
+
+      await page
+        .getByPlaceholder('搜索成员（名称 / 邮箱 / ID）')
+        .fill('outsider')
+
+      const row = page.locator('tbody tr').filter({ hasText: 'outsider' }).first()
+      await expect(row).toBeVisible({ timeout: LIVE_EXPECT_TIMEOUT_MS })
+
+      await row.getByRole('combobox').click()
+      await page.getByRole('option', { name: '审计员' }).click()
+      await row.getByRole('button', { name: '保存' }).click()
+
+      await expect
+        .poll(() => fetchLiveMemberRole(request, 'outsider'), {
+          timeout: LIVE_EXPECT_TIMEOUT_MS,
+        })
+        .toBe('auditor')
+
+      await row.getByRole('combobox').click()
+      await page.getByRole('option', { name: '查看者' }).click()
+      await row.getByRole('button', { name: '保存' }).click()
+
+      await expect
+        .poll(() => fetchLiveMemberRole(request, 'outsider'), {
+          timeout: LIVE_EXPECT_TIMEOUT_MS,
+        })
+        .toBe('viewer')
+
+      expect(pageErrors).toEqual([])
+    } finally {
+      await patchLiveMemberRole(request, 'outsider', 'viewer')
     }
   })
 })
