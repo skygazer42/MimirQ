@@ -120,6 +120,26 @@ def prepare_fixture_files(fixtures_dir: Path) -> list[dict[str, Any]]:
         encoding="utf-8",
     )
 
+    yaml_path = fixtures_dir / "kb-config.yaml"
+    yaml_path.write_text(
+        "token: YAML-CINDER\n"
+        "owner: Yara Cinder\n"
+        "status: approved\n",
+        encoding="utf-8",
+    )
+
+    xml_path = fixtures_dir / "kb-catalog.xml"
+    xml_path.write_text(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+        "<catalog>\n"
+        "  <entry token=\"XML-DELTA\">\n"
+        "    <owner>Xenia Delta</owner>\n"
+        "    <status>verified</status>\n"
+        "  </entry>\n"
+        "</catalog>\n",
+        encoding="utf-8",
+    )
+
     word_target = fixtures_dir / "word-project-brief.docx"
     xlsx_target = fixtures_dir / "excel-budget-sheet.xlsx"
     shutil.copy2(WORD_FIXTURE, word_target)
@@ -149,6 +169,18 @@ def prepare_fixture_files(fixtures_dir: Path) -> list[dict[str, Any]]:
             "path": json_path,
             "query": "Which token belongs only to the JSON fixture?",
             "expected_terms": ["JSON-QUASAR"],
+        },
+        {
+            "name": "yaml_config",
+            "path": yaml_path,
+            "query": "Who owns token YAML-CINDER?",
+            "expected_terms": ["YAML-CINDER", "Yara Cinder"],
+        },
+        {
+            "name": "xml_catalog",
+            "path": xml_path,
+            "query": "Who owns token XML-DELTA in the XML catalog entry?",
+            "expected_terms": ["XML-DELTA", "Xenia Delta"],
         },
         {
             "name": "word_project_brief_docx",
