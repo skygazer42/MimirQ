@@ -15,6 +15,7 @@ from langchain_core.documents import Document
 
 from app.core.config import settings
 from app.core.optional_deps import optional_import
+from app.parsing.backends import normalize_parser_backend
 from app.parsing.factory import parser_factory
 from app.parsing.routing import route_pdf_backend
 
@@ -251,6 +252,8 @@ class DocumentParserService:
         file_ext = file_path.suffix.lower()
         is_pdf = file_ext == ".pdf"
         pdf_quality = None
+        requested_backend = normalize_parser_backend(parser_backend)
+        explicit_pdf_backend = bool(is_pdf and requested_backend and requested_backend != "auto")
 
         # Score PDF and choose parser.
         if is_pdf:
@@ -269,6 +272,7 @@ class DocumentParserService:
             parser_backend=parser_backend,
             tenant_id=str(tenant_id),
             pdf_quality=pdf_quality,
+            allow_fallback=not explicit_pdf_backend,
         )
         local_images = self._materialize_local_images_for_preview(documents, tenant_id)
         markdown_text = self._merge_documents(documents)

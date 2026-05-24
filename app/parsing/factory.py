@@ -515,6 +515,7 @@ class ParserFactory:
         tenant_id: str | None = None,
         pdf_quality: dict[str, Any] | None = None,
         html_xpath: str | None = None,
+        allow_fallback: bool = True,
     ) -> tuple[list[Document], str]:
         """
         Automatically select parser based on file type and return Document list and actual parser name
@@ -594,6 +595,8 @@ class ParserFactory:
                 else:
                     documents = parser.parse(file_path)
         except Exception as exc:
+            if not bool(allow_fallback):
+                raise
             fallback_docs, fallback_backend = self._fallback_parse(
                 file_path=file_path,
                 file_ext=file_ext,
