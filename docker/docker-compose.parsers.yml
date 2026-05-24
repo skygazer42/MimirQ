@@ -68,11 +68,13 @@ services:
       PADDLEOCR_PIPELINE_VERSION: ${PADDLEOCR_PIPELINE_VERSION:-v1.5}
       PADDLEOCR_DEVICE: ${PADDLEOCR_DEVICE:-gpu:0}
       PADDLEOCR_PIPELINE_TIMEOUT_SEC: ${PADDLEOCR_PIPELINE_TIMEOUT_SEC:-540}
+      PADDLE_PDX_MODEL_SOURCE: ${PADDLE_PDX_MODEL_SOURCE:-aistudio}
+      PADDLE_PDX_CACHE_HOME: ${PADDLE_PDX_CACHE_HOME:-/home/paddleocr/.paddlex}
       # Skip startup connectivity probes against upstream model mirrors; the
       # runtime convert endpoint will still surface real download/model errors.
       PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: ${PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK:-True}
     volumes:
-      - paddlevl_cache:/root/.paddleocr
+      - paddlevl_cache:/home/paddleocr/.paddlex
     networks:
       default:
         aliases:
