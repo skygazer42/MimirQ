@@ -170,6 +170,79 @@ def test_keyword_mode_falls_back_to_bm25_when_lexical_primary_returns_empty(monk
     assert channels["counts"]["vector_candidates"] == 0
 
 
+def test_keyword_mode_prefers_excel_bm25_hit_over_vector_distractors_when_lexical_misses(monkeypatch) -> None:  # noqa: ANN001
+    monkeypatch.setattr(settings, "LEXICAL_DB_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "BM25_INDEX_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "RETRIEVAL_KEYWORD_BM25_SECONDARY_ENABLED", False, raising=False)
+
+    retriever = HybridRetriever(tenant_id=uuid4(), account_id="acct")
+    calls: list[str] = []
+
+    class _StubVectorStore:
+        def search(self, **_kwargs):  # noqa: ANN003
+            calls.append("vector")
+            return [
+                {
+                    "document_id": "doc-docx",
+                    "chunk_id": "doc-docx:0",
+                    "content": "Owner: Lina Chen",
+                    "score": 0.9,
+                    "metadata": {"document_id": "doc-docx", "chunk_id": "doc-docx:0", "chunk_index": 0},
+                    "vector_score": 0.9,
+                },
+                {
+                    "document_id": "doc-yaml",
+                    "chunk_id": "doc-yaml:0",
+                    "content": "token: YAML-CINDER owner: Yara Cinder status: approved",
+                    "score": 0.8,
+                    "metadata": {"document_id": "doc-yaml", "chunk_id": "doc-yaml:0", "chunk_index": 0},
+                    "vector_score": 0.8,
+                },
+            ]
+
+    monkeypatch.setattr("app.rag.retriever.get_vector_store", lambda: _StubVectorStore(), raising=True)
+    monkeypatch.setattr(
+        retriever,
+        "_search_lexical_db",
+        lambda **_kwargs: calls.append("lexical") or [],
+        raising=True,
+    )
+    monkeypatch.setattr(
+        retriever,
+        "_search_bm25",
+        lambda **_kwargs: calls.append("bm25")
+        or [
+            {
+                "document_id": "doc-xlsx",
+                "chunk_id": "doc-xlsx:0",
+                "content": "Excel: sample.xlsx\n\n## Sheet: Budget\n\n| Region | Budget | Status |\n| APAC | 138 | Review |",
+                "score": 9.0,
+                "metadata": {"document_id": "doc-xlsx", "chunk_id": "doc-xlsx:0", "chunk_index": 0},
+                "bm25_score": 9.0,
+            },
+            _bm25_hit("doc-csv", score=1.0),
+        ],
+        raising=True,
+    )
+
+    results = retriever._hybrid_search(
+        query="In the Excel budget sheet, what status belongs to APAC?",
+        top_k=4,
+        score_threshold=0.0,
+        tenant_id=retriever.tenant_id,
+        retrieval_mode="keyword",
+    )
+
+    assert calls == ["lexical", "bm25"]
+    assert [item["document_id"] for item in results] == ["doc-xlsx", "doc-csv"]
+
+    channels = retriever._last_channel_metrics
+    assert channels["keyword_strategy"]["bm25_used"] is True
+    assert channels["keyword_strategy"]["lexical_db_used"] is False
+    assert channels["counts"]["vector_candidates"] == 0
+    assert channels["counts"]["bm25_candidates"] == 2
+
+
 def test_hybrid_mode_skips_lexical_db_when_primary_channels_are_sufficient(monkeypatch) -> None:  # noqa: ANN001
     monkeypatch.setattr(settings, "LEXICAL_DB_ENABLED", True, raising=False)
     monkeypatch.setattr(settings, "LEXICAL_DB_HYBRID_FALLBACK_ONLY", True, raising=False)
