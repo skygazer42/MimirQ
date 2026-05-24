@@ -1,0 +1,632 @@
+{
+  "summary": {
+    "ok": true,
+    "artifact_dir": "/tmp/MimirQ-commit/artifacts/kb-format-matrix/remote-pptx-20260524",
+    "base_url": "http://127.0.0.1:8000",
+    "dataset_id": "7b442c3e-057c-4b00-a047-4ac50e9adcf6",
+    "cases": [
+      {
+        "name": "pptx_deck",
+        "file_path": "/tmp/MimirQ-commit/artifacts/kb-format-matrix/remote-pptx-20260524/fixtures/kb-briefing.pptx",
+        "document_id": "b335e1b7-d641-43f1-8876-d5f650191046",
+        "status": "completed",
+        "chunk_count": 1,
+        "parsed_chars": 103,
+        "retrieve_status": 200,
+        "retrieve_citation_document_ids": [
+          "b335e1b7-d641-43f1-8876-d5f650191046"
+        ],
+        "chat_status": 200,
+        "ok": true,
+        "failures": []
+      }
+    ],
+    "cleanup": {
+      "dataset_id": "7b442c3e-057c-4b00-a047-4ac50e9adcf6",
+      "purge_deleted": 1,
+      "delete_dataset_status": 204
+    }
+  },
+  "steps": [
+    {
+      "name": "health",
+      "status_code": 200,
+      "elapsed_sec": 0.049,
+      "ok": true
+    },
+    {
+      "name": "create_dataset",
+      "status_code": 201,
+      "elapsed_sec": 0.076,
+      "ok": true
+    },
+    {
+      "name": "upload:pptx_deck",
+      "status_code": 201,
+      "elapsed_sec": 0.077,
+      "ok": true
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "pending"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.019,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.024,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.019,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.019,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.018,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.023,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.017,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.023,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.024,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.018,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.031,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.018,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.019,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.015,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.019,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.019,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.026,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.023,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.019,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "completed"
+    },
+    {
+      "name": "chunks:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.028,
+      "ok": true
+    },
+    {
+      "name": "parsed:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.106,
+      "ok": true
+    },
+    {
+      "name": "retrieve:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.209,
+      "ok": true
+    },
+    {
+      "name": "chat:pptx_deck",
+      "status_code": 200,
+      "elapsed_sec": 0.177,
+      "ok": true
+    },
+    {
+      "name": "cleanup:purge:7b442c3e-057c-4b00-a047-4ac50e9adcf6",
+      "status_code": 200,
+      "elapsed_sec": 0.839,
+      "ok": true
+    },
+    {
+      "name": "cleanup:delete_dataset:7b442c3e-057c-4b00-a047-4ac50e9adcf6",
+      "status_code": 204,
+      "elapsed_sec": 0.078,
+      "ok": true
+    }
+  ]
+}

@@ -11,6 +11,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from pptx import Presentation
+
 
 def ensure_repo_root_on_sys_path(script_path: str | Path) -> str:
     repo_root = str(Path(script_path).resolve().parents[1])
@@ -183,6 +185,13 @@ def prepare_fixture_files(fixtures_dir: Path) -> list[dict[str, Any]]:
         encoding="utf-8",
     )
 
+    pptx_path = fixtures_dir / "kb-briefing.pptx"
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[0])
+    slide.shapes.title.text = "PPTX-ANCHOR"
+    slide.placeholders[1].text = "Owner: Paula Anchor\nToken PPTX-ANCHOR belongs only to this deck."
+    prs.save(pptx_path)
+
     markdown_path = fixtures_dir / "kb-note.md"
     markdown_path.write_text(
         "# KB Markdown Note\n\n"
@@ -347,6 +356,14 @@ def prepare_fixture_files(fixtures_dir: Path) -> list[dict[str, Any]]:
             "expected_terms": ["PATCH-NOVA", "Nia Nova"],
             "parser_backend": "basic",
             "family_group": "text_family",
+        },
+        {
+            "name": "pptx_deck",
+            "path": pptx_path,
+            "query": "Which token belongs only to this deck?",
+            "expected_terms": ["PPTX-ANCHOR", "Paula Anchor"],
+            "parser_backend": "auto",
+            "family_group": "office_like_family",
         },
         {
             "name": "markdown_note",
