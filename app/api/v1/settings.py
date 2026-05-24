@@ -1659,6 +1659,10 @@ async def get_system_status(
             return missing_message
         return "disabled"
 
+    def _health_not_ok_message(data: dict[str, Any]) -> str:
+        reason = data.get("reason") or data.get("error") or data.get("message") or "health_not_ok"
+        return f"configured (health_not_ok: {str(reason)[:120]})"
+
     parsers: dict[str, dict] = {
         "basic": {"enabled": True, "available": True, "message": "built-in"},
     }
@@ -1716,13 +1720,18 @@ async def get_system_status(
         data, err = await _probe_http_json(health_url, timeout_sec=0.6)
         if data is not None:
             qianfan_entry["health"] = data
-            model_name = data.get("model")
-            mode = data.get("mode")
-            parts = [p for p in [model_name, mode] if isinstance(p, str) and p.strip()]
-            if parts:
-                qianfan_entry["message"] = f"configured ({', '.join(parts[:2])})"
+            if data.get("ok") is False:
+                qianfan_entry["available"] = False
+                qianfan_entry["message"] = _health_not_ok_message(data)
+            else:
+                model_name = data.get("model")
+                mode = data.get("mode")
+                parts = [p for p in [model_name, mode] if isinstance(p, str) and p.strip()]
+                if parts:
+                    qianfan_entry["message"] = f"configured ({', '.join(parts[:2])})"
         else:
             qianfan_entry["health"] = {"ok": False, "error": err}
+            qianfan_entry["available"] = False
             qianfan_entry["message"] = _CONFIGURED_HEALTH_UNREACHABLE_MESSAGE
     parsers["qianfan_ocr"] = qianfan_entry
 
@@ -1755,13 +1764,18 @@ async def get_system_status(
         data, err = await _probe_http_json(health_url, timeout_sec=0.6)
         if data is not None:
             paddlevl_entry["health"] = data
-            pv = data.get("pipeline_version") or data.get("version")
-            mode = data.get("mode")
-            parts = [p for p in [pv, mode] if isinstance(p, str) and p.strip()]
-            if parts:
-                paddlevl_entry["message"] = f"configured ({', '.join(parts[:2])})"
+            if data.get("ok") is False:
+                paddlevl_entry["available"] = False
+                paddlevl_entry["message"] = _health_not_ok_message(data)
+            else:
+                pv = data.get("pipeline_version") or data.get("version")
+                mode = data.get("mode")
+                parts = [p for p in [pv, mode] if isinstance(p, str) and p.strip()]
+                if parts:
+                    paddlevl_entry["message"] = f"configured ({', '.join(parts[:2])})"
         else:
             paddlevl_entry["health"] = {"ok": False, "error": err}
+            paddlevl_entry["available"] = False
             paddlevl_entry["message"] = _CONFIGURED_HEALTH_UNREACHABLE_MESSAGE
 
     parsers["paddle_vl"] = paddlevl_entry
@@ -1800,8 +1814,12 @@ async def get_system_status(
         data, err = await _probe_http_json(health_url, timeout_sec=0.6)
         if data is not None:
             olmocr_entry["health"] = data
+            if data.get("ok") is False:
+                olmocr_entry["available"] = False
+                olmocr_entry["message"] = _health_not_ok_message(data)
         else:
             olmocr_entry["health"] = {"ok": False, "error": err}
+            olmocr_entry["available"] = False
             olmocr_entry["message"] = _CONFIGURED_HEALTH_UNREACHABLE_MESSAGE
     parsers["olmocr"] = olmocr_entry
 

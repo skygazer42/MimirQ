@@ -488,3 +488,50 @@ def test_settings_status_awaits_async_health_probe(monkeypatch):  # noqa: ANN001
 
     paddle = (body.get("parsers") or {}).get("paddle_vl") or {}
     assert paddle.get("message") == "configured (v1.6, doc_parser)"
+
+
+def test_settings_status_marks_olmocr_unavailable_when_health_reports_not_ok(monkeypatch):  # noqa: ANN001
+    import app.api.v1.settings as settings_module
+    from app.api.v1.settings import get_system_status
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings_module, "_ensure_settings_readable", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(settings, "OLMOCR_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "OLMOCR_API_URL", "http://mimirq-olmocr:2085/convert", raising=False)
+
+    async def _async_probe(*_args, **_kwargs):  # noqa: ANN001
+        return ({"ok": False, "reason": "insufficient_gpu_memory"}, None)
+
+    monkeypatch.setattr(settings_module, "_probe_http_json", _async_probe, raising=False)
+
+    import app.core.database as db_module
+
+    class _DummySession:  # noqa: D401
+        def execute(self, *_args, **_kwargs):  # noqa: ANN001
+            return None
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(db_module, "SessionLocal", lambda: _DummySession(), raising=True)
+
+    import pymilvus
+
+    monkeypatch.setattr(pymilvus.connections, "connect", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(pymilvus.connections, "disconnect", lambda *_args, **_kwargs: None, raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_tenant_id] = _override_get_tenant_id
+    app.dependency_overrides[get_current_account_id] = _override_get_current_account_id
+    app.get("/api/v1/settings/status")(get_system_status)
+    client = TestClient(app)
+
+    res = client.get("/api/v1/settings/status")
+    assert res.status_code == 200, res.text
+    olmocr = (res.json().get("parsers") or {}).get("olmocr") or {}
+
+    assert olmocr.get("enabled") is True
+    assert olmocr.get("available") is False
+    assert (olmocr.get("health") or {}).get("reason") == "insufficient_gpu_memory"
+    assert "insufficient_gpu_memory" in str(olmocr.get("message") or "")
