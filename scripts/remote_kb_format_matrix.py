@@ -192,6 +192,42 @@ def prepare_fixture_files(fixtures_dir: Path) -> list[dict[str, Any]]:
     slide.placeholders[1].text = "Owner: Paula Anchor\nToken PPTX-ANCHOR belongs only to this deck."
     prs.save(pptx_path)
 
+    ndjson_path = fixtures_dir / "kb-events.ndjson"
+    ndjson_path.write_text(
+        '{"token":"NDJSON-PEAK","owner":"Nadia Peak","status":"ready"}\n',
+        encoding="utf-8",
+    )
+
+    hcl_path = fixtures_dir / "kb-service.hcl"
+    hcl_path.write_text(
+        'token = "HCL-VALE"\n'
+        'owner = "Hector Vale"\n'
+        'status = "steady"\n',
+        encoding="utf-8",
+    )
+
+    adoc_path = fixtures_dir / "kb-guide.adoc"
+    adoc_path.write_text(
+        "= ADOC Guide\n\n"
+        "Token ADOC-EMBER belongs only to this adoc note.\n\n"
+        "Owner: Ada Ember.\n",
+        encoding="utf-8",
+    )
+
+    diff_path = fixtures_dir / "kb-change.diff"
+    diff_path.write_text(
+        "--- a\n"
+        "+++ b\n"
+        "+token DIFF-SHIFT owner Dario Shift\n",
+        encoding="utf-8",
+    )
+
+    atom_path = fixtures_dir / "kb-feed.atom"
+    atom_path.write_text(
+        '<?xml version="1.0" encoding="utf-8"?><feed><entry><title>ATOM-NOVA</title><author><name>Anya Nova</name></author></entry></feed>',
+        encoding="utf-8",
+    )
+
     markdown_path = fixtures_dir / "kb-note.md"
     markdown_path.write_text(
         "# KB Markdown Note\n\n"
@@ -364,6 +400,46 @@ def prepare_fixture_files(fixtures_dir: Path) -> list[dict[str, Any]]:
             "expected_terms": ["PPTX-ANCHOR", "Paula Anchor"],
             "parser_backend": "auto",
             "family_group": "office_like_family",
+        },
+        {
+            "name": "ndjson_feed",
+            "path": ndjson_path,
+            "query": "Who owns token NDJSON-PEAK?",
+            "expected_terms": ["NDJSON-PEAK", "Nadia Peak"],
+            "parser_backend": "basic",
+            "family_group": "text_family",
+        },
+        {
+            "name": "hcl_config",
+            "path": hcl_path,
+            "query": "Who owns token HCL-VALE?",
+            "expected_terms": ["HCL-VALE", "Hector Vale"],
+            "parser_backend": "basic",
+            "family_group": "text_family",
+        },
+        {
+            "name": "asciidoc_note",
+            "path": adoc_path,
+            "query": "Which token belongs only to this adoc note?",
+            "expected_terms": ["ADOC-EMBER", "Ada Ember"],
+            "parser_backend": "basic",
+            "family_group": "text_family",
+        },
+        {
+            "name": "diff_file",
+            "path": diff_path,
+            "query": "Who owns token DIFF-SHIFT?",
+            "expected_terms": ["DIFF-SHIFT", "Dario Shift"],
+            "parser_backend": "basic",
+            "family_group": "text_family",
+        },
+        {
+            "name": "atom_feed",
+            "path": atom_path,
+            "query": "Who owns token ATOM-NOVA in the Atom feed entry?",
+            "expected_terms": ["ATOM-NOVA", "Anya Nova"],
+            "parser_backend": "basic",
+            "family_group": "text_family",
         },
         {
             "name": "markdown_note",

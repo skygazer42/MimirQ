@@ -94,6 +94,11 @@ def test_remote_kb_format_matrix_prepares_text_family_cases_with_basic_parser(tm
     assert by_name["terraform_file"]["parser_backend"] == "basic"
     assert by_name["patch_file"]["parser_backend"] == "basic"
     assert by_name["pptx_deck"]["parser_backend"] == "auto"
+    assert by_name["ndjson_feed"]["parser_backend"] == "basic"
+    assert by_name["hcl_config"]["parser_backend"] == "basic"
+    assert by_name["asciidoc_note"]["parser_backend"] == "basic"
+    assert by_name["diff_file"]["parser_backend"] == "basic"
+    assert by_name["atom_feed"]["parser_backend"] == "basic"
 
 
 def test_remote_kb_format_matrix_select_cases_defaults_to_non_text_families(tmp_path) -> None:
@@ -115,6 +120,11 @@ def test_remote_kb_format_matrix_select_cases_defaults_to_non_text_families(tmp_
     assert "graphql_doc" not in selected_names
     assert "terraform_file" not in selected_names
     assert "patch_file" not in selected_names
+    assert "ndjson_feed" not in selected_names
+    assert "hcl_config" not in selected_names
+    assert "asciidoc_note" not in selected_names
+    assert "diff_file" not in selected_names
+    assert "atom_feed" not in selected_names
     assert "markdown_note" in selected_names
 
 
