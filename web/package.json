@@ -60,6 +60,7 @@
     "e2e:live:remote-dataset-kg": "pnpm exec playwright test e2e/dataset-kg-workbench.live.spec.ts --config playwright.remote-dataset-kg.config.ts",
     "e2e:live:remote-dataset-evidence": "pnpm exec playwright test e2e/dataset-evidence-workbench.live.spec.ts --config playwright.remote-dataset-evidence.config.ts",
     "e2e:live:remote-dataset-tables": "pnpm exec playwright test e2e/dataset-tables.live.spec.ts --config playwright.remote-dataset-tables.config.ts",
+    "e2e:live:remote-document-health": "pnpm exec playwright test e2e/document-health.live.spec.ts --config playwright.remote-document-health.config.ts",
     "assets:optimize": "svgo -r public --config=.svgo.config.mjs",
     "verify": "pnpm run lint && pnpm run ui-check && pnpm run typecheck && pnpm run test && pnpm run api-check",
     "ui-check": "node scripts/check-design-tokens.mjs && node scripts/check-native-dialogs.mjs && node scripts/check-theme-contrast.mjs",
