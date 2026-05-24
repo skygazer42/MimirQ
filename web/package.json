@@ -53,6 +53,7 @@
     "e2e:live:remote-datasets": "pnpm exec playwright test e2e/datasets-workbench.live.spec.ts --config playwright.remote-datasets.config.ts",
     "e2e:live:remote-parsing": "pnpm exec playwright test e2e/parsing-workbench.live.spec.ts --config playwright.remote-parsing.config.ts",
     "e2e:live:remote-dataset-precheck": "pnpm exec playwright test e2e/dataset-precheck.live.spec.ts --config playwright.remote-dataset-precheck.config.ts",
+    "e2e:live:remote-dataset-profile": "pnpm exec playwright test e2e/dataset-profile.live.spec.ts --config playwright.remote-dataset-profile.config.ts",
     "assets:optimize": "svgo -r public --config=.svgo.config.mjs",
     "verify": "pnpm run lint && pnpm run ui-check && pnpm run typecheck && pnpm run test && pnpm run api-check",
     "ui-check": "node scripts/check-design-tokens.mjs && node scripts/check-native-dialogs.mjs && node scripts/check-theme-contrast.mjs",
