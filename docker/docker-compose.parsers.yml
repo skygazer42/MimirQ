@@ -182,7 +182,18 @@ services:
       NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}
       # Server-side concurrency guard (1 = recommended for a single GPU).
       OLMOCR_MAX_CONCURRENT_JOBS: ${OLMOCR_MAX_CONCURRENT_JOBS:-1}
+      OLMOCR_PIPELINE_WORKERS: ${OLMOCR_PIPELINE_WORKERS:-1}
+      OLMOCR_PIPELINE_MAX_CONCURRENT_REQUESTS: ${OLMOCR_PIPELINE_MAX_CONCURRENT_REQUESTS:-32}
       OLMOCR_PIPELINE_TIMEOUT_SEC: ${OLMOCR_PIPELINE_TIMEOUT_SEC:-1800}
+      # Local vLLM tuning. Leave blank for olmOCR defaults.
+      OLMOCR_GPU_MEMORY_UTILIZATION: ${OLMOCR_GPU_MEMORY_UTILIZATION:-}
+      OLMOCR_MAX_MODEL_LEN: ${OLMOCR_MAX_MODEL_LEN:-}
+      OLMOCR_MAX_SERVER_READY_TIMEOUT: ${OLMOCR_MAX_SERVER_READY_TIMEOUT:-}
+      OLMOCR_TENSOR_PARALLEL_SIZE: ${OLMOCR_TENSOR_PARALLEL_SIZE:-}
+      OLMOCR_DATA_PARALLEL_SIZE: ${OLMOCR_DATA_PARALLEL_SIZE:-}
+      OLMOCR_VLLM_PORT: ${OLMOCR_VLLM_PORT:-}
+      OLMOCR_EXTRA_ARGS: ${OLMOCR_EXTRA_ARGS:-}
+      OLMOCR_MIN_FREE_GPU_GIB: ${OLMOCR_MIN_FREE_GPU_GIB:-10}
       # Optional: external OpenAI-compatible server mode (vLLM on another host).
       OLMOCR_SERVER_URL: ${OLMOCR_SERVER_URL:-}
       OLMOCR_API_KEY: ${OLMOCR_API_KEY:-}
@@ -199,7 +210,7 @@ services:
           "CMD",
           "python",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://localhost:2085/health').read()",
+          "import json, urllib.request; data=json.load(urllib.request.urlopen('http://localhost:2085/health', timeout=5)); raise SystemExit(0 if data.get(\"ok\") else 1)",
         ]
       interval: 30s
       timeout: 20s

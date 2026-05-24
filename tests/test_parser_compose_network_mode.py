@@ -43,3 +43,18 @@ def test_magicpdf_service_is_gpu_first_and_uses_shared_model_cache() -> None:
     assert env.get('MAGIC_PDF_DEVICE_MODE') == '${MAGIC_PDF_DEVICE_MODE:-cuda}'
     assert env.get('MAGIC_PDF_MODELS_DIR') == '${MAGIC_PDF_MODELS_DIR:-/opt/mimirq-model-cache}'
     assert 'mineru_cache:/opt/mimirq-model-cache:ro' in volumes
+
+
+def test_olmocr_service_exposes_vllm_limits_and_checks_health_payload() -> None:
+    services = (_load_doc('docker/docker-compose.parsers.yml').get('services') or {})
+    olmocr = services['mimirq-olmocr']
+
+    env = olmocr.get('environment') or {}
+    healthcheck = olmocr.get('healthcheck') or {}
+    health_cmd = ' '.join(str(part) for part in (healthcheck.get('test') or []))
+
+    assert env.get('OLMOCR_GPU_MEMORY_UTILIZATION') == '${OLMOCR_GPU_MEMORY_UTILIZATION:-}'
+    assert env.get('OLMOCR_MAX_MODEL_LEN') == '${OLMOCR_MAX_MODEL_LEN:-}'
+    assert env.get('OLMOCR_MAX_SERVER_READY_TIMEOUT') == '${OLMOCR_MAX_SERVER_READY_TIMEOUT:-}'
+    assert env.get('OLMOCR_MIN_FREE_GPU_GIB') == '${OLMOCR_MIN_FREE_GPU_GIB:-10}'
+    assert 'data.get("ok")' in health_cmd
