@@ -148,6 +148,41 @@ def prepare_fixture_files(fixtures_dir: Path) -> list[dict[str, Any]]:
         encoding="utf-8",
     )
 
+    jsonl_path = fixtures_dir / "kb-events.jsonl"
+    jsonl_path.write_text(
+        '{"token":"JSONL-COMET","owner":"Jill Comet","status":"queued"}\n',
+        encoding="utf-8",
+    )
+
+    proto_path = fixtures_dir / "kb-service.proto"
+    proto_path.write_text(
+        'syntax = "proto3";\n'
+        "// token PROTO-RIDGE owner Priya Ridge\n"
+        "message Probe {}\n",
+        encoding="utf-8",
+    )
+
+    graphql_path = fixtures_dir / "kb-query.graphql"
+    graphql_path.write_text(
+        "# token GQL-ORBIT owner Gina Orbit\n"
+        "query Probe { viewer { id } }\n",
+        encoding="utf-8",
+    )
+
+    tf_path = fixtures_dir / "kb-main.tf"
+    tf_path.write_text(
+        'locals { token = "TF-LANTERN" owner = "Tariq Lantern" }\n',
+        encoding="utf-8",
+    )
+
+    patch_path = fixtures_dir / "kb-change.patch"
+    patch_path.write_text(
+        "+++ token PATCH-NOVA owner Nia Nova\n"
+        "@@\n"
+        "+status=applied\n",
+        encoding="utf-8",
+    )
+
     markdown_path = fixtures_dir / "kb-note.md"
     markdown_path.write_text(
         "# KB Markdown Note\n\n"
@@ -270,6 +305,46 @@ def prepare_fixture_files(fixtures_dir: Path) -> list[dict[str, Any]]:
             "path": log_path,
             "query": "Who owns token LOG-BEACON?",
             "expected_terms": ["LOG-BEACON", "Logan Beacon"],
+            "parser_backend": "basic",
+            "family_group": "text_family",
+        },
+        {
+            "name": "jsonl_feed",
+            "path": jsonl_path,
+            "query": "Who owns token JSONL-COMET?",
+            "expected_terms": ["JSONL-COMET", "Jill Comet"],
+            "parser_backend": "basic",
+            "family_group": "text_family",
+        },
+        {
+            "name": "proto_schema",
+            "path": proto_path,
+            "query": "Who owns token PROTO-RIDGE?",
+            "expected_terms": ["PROTO-RIDGE", "Priya Ridge"],
+            "parser_backend": "basic",
+            "family_group": "text_family",
+        },
+        {
+            "name": "graphql_doc",
+            "path": graphql_path,
+            "query": "Who owns token GQL-ORBIT?",
+            "expected_terms": ["GQL-ORBIT", "Gina Orbit"],
+            "parser_backend": "basic",
+            "family_group": "text_family",
+        },
+        {
+            "name": "terraform_file",
+            "path": tf_path,
+            "query": "Who owns token TF-LANTERN?",
+            "expected_terms": ["TF-LANTERN", "Tariq Lantern"],
+            "parser_backend": "basic",
+            "family_group": "text_family",
+        },
+        {
+            "name": "patch_file",
+            "path": patch_path,
+            "query": "Who owns token PATCH-NOVA?",
+            "expected_terms": ["PATCH-NOVA", "Nia Nova"],
             "parser_backend": "basic",
             "family_group": "text_family",
         },
