@@ -80,6 +80,7 @@ services:
       - ../.env
     environment:
       <<: *backend_env
+      TABLE_STORE_DIR: /data/uploads/table_store
     volumes:
       - upload_data:/data/uploads
       - vector_data:/data/vector_chroma

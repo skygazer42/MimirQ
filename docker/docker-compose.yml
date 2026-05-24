@@ -175,6 +175,7 @@ services:
       - ../.env
     environment:
       <<: *backend_env
+      TABLE_STORE_DIR: /data/uploads/table_store
     volumes:
       - upload_data:/data/uploads
       # Reuse the MinerU/PDF-Extract-Kit cache for MagicPDF local parsing.
@@ -201,6 +202,7 @@ services:
       - ../.env
     environment:
       <<: *backend_env
+      TABLE_STORE_DIR: /data/uploads/table_store
     volumes:
       - upload_data:/data/uploads
       # Worker runs persisted ingestion; it needs the same local MagicPDF models.
