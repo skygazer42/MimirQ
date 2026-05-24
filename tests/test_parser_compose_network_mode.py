@@ -29,7 +29,16 @@ def test_paddlevl_service_exposes_pipeline_timeout() -> None:
     paddlevl = services['mimirq-paddlevl']
 
     env = paddlevl.get('environment') or {}
-    assert 'PADDLEOCR_PIPELINE_TIMEOUT_SEC' in env
+    assert env.get('PADDLEOCR_PIPELINE_TIMEOUT_SEC') == '${PADDLEOCR_PIPELINE_TIMEOUT_SEC:-540}'
+
+
+def test_mineru_vlm_service_uses_single_gpu_shared_defaults() -> None:
+    services = (_load_doc('docker/docker-compose.parsers.yml').get('services') or {})
+    mineru_vlm = services['mimirq-mineru-vlm']
+
+    env = mineru_vlm.get('environment') or {}
+    assert env.get('MINERU_MODEL_SOURCE') == '${MINERU_MODEL_SOURCE:-local}'
+    assert env.get('MINERU_VLM_GPU_MEMORY_UTILIZATION') == '${MINERU_VLM_GPU_MEMORY_UTILIZATION:-0.45}'
 
 
 def test_magicpdf_service_is_gpu_first_and_uses_shared_model_cache() -> None:
@@ -53,8 +62,9 @@ def test_olmocr_service_exposes_vllm_limits_and_checks_health_payload() -> None:
     healthcheck = olmocr.get('healthcheck') or {}
     health_cmd = ' '.join(str(part) for part in (healthcheck.get('test') or []))
 
-    assert env.get('OLMOCR_GPU_MEMORY_UTILIZATION') == '${OLMOCR_GPU_MEMORY_UTILIZATION:-}'
-    assert env.get('OLMOCR_MAX_MODEL_LEN') == '${OLMOCR_MAX_MODEL_LEN:-}'
+    assert env.get('OLMOCR_PIPELINE_MAX_CONCURRENT_REQUESTS') == '${OLMOCR_PIPELINE_MAX_CONCURRENT_REQUESTS:-1}'
+    assert env.get('OLMOCR_GPU_MEMORY_UTILIZATION') == '${OLMOCR_GPU_MEMORY_UTILIZATION:-0.35}'
+    assert env.get('OLMOCR_MAX_MODEL_LEN') == '${OLMOCR_MAX_MODEL_LEN:-8192}'
     assert env.get('OLMOCR_MAX_SERVER_READY_TIMEOUT') == '${OLMOCR_MAX_SERVER_READY_TIMEOUT:-}'
-    assert env.get('OLMOCR_MIN_FREE_GPU_GIB') == '${OLMOCR_MIN_FREE_GPU_GIB:-10}'
+    assert env.get('OLMOCR_MIN_FREE_GPU_GIB') == '${OLMOCR_MIN_FREE_GPU_GIB:-8}'
     assert 'data.get("ok")' in health_cmd

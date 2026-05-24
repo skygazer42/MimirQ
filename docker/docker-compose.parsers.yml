@@ -67,7 +67,7 @@ services:
       # Service-side options (PaddleOCR doc_parser / PaddleOCR-VL pipeline).
       PADDLEOCR_PIPELINE_VERSION: ${PADDLEOCR_PIPELINE_VERSION:-v1.5}
       PADDLEOCR_DEVICE: ${PADDLEOCR_DEVICE:-gpu:0}
-      PADDLEOCR_PIPELINE_TIMEOUT_SEC: ${PADDLEOCR_PIPELINE_TIMEOUT_SEC:-1800}
+      PADDLEOCR_PIPELINE_TIMEOUT_SEC: ${PADDLEOCR_PIPELINE_TIMEOUT_SEC:-540}
       # Skip startup connectivity probes against upstream model mirrors; the
       # runtime convert endpoint will still surface real download/model errors.
       PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: ${PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK:-True}
@@ -105,8 +105,8 @@ services:
       TZ: Asia/Shanghai
       NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
       NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}
-      # Model source: "huggingface" (default) or "modelscope" (China-friendly mirror).
-      MINERU_MODEL_SOURCE: ${MINERU_MODEL_SOURCE:-huggingface}
+      # Model source: "local" reuses the shared cache; "huggingface"/"modelscope" download upstream.
+      MINERU_MODEL_SOURCE: ${MINERU_MODEL_SOURCE:-local}
       # Keep FastAPI docs enabled by default (so /docs and /openapi.json work).
       MINERU_API_ENABLE_FASTAPI_DOCS: ${MINERU_API_ENABLE_FASTAPI_DOCS:-1}
       # Optional: limit concurrent requests at MinerU side (503 when saturated).
@@ -145,8 +145,9 @@ services:
       TZ: Asia/Shanghai
       NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
       NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}
-      MINERU_MODEL_SOURCE: ${MINERU_MODEL_SOURCE:-huggingface}
-      MINERU_VLM_GPU_MEMORY_UTILIZATION: ${MINERU_VLM_GPU_MEMORY_UTILIZATION:-0.8}
+      # Model source: "local" reuses the shared cache; "huggingface"/"modelscope" download upstream.
+      MINERU_MODEL_SOURCE: ${MINERU_MODEL_SOURCE:-local}
+      MINERU_VLM_GPU_MEMORY_UTILIZATION: ${MINERU_VLM_GPU_MEMORY_UTILIZATION:-0.45}
       VLLM_WORKER_MULTIPROC_METHOD: ${VLLM_WORKER_MULTIPROC_METHOD:-spawn}
     volumes:
       - mineru_cache:/root/.cache
@@ -183,17 +184,17 @@ services:
       # Server-side concurrency guard (1 = recommended for a single GPU).
       OLMOCR_MAX_CONCURRENT_JOBS: ${OLMOCR_MAX_CONCURRENT_JOBS:-1}
       OLMOCR_PIPELINE_WORKERS: ${OLMOCR_PIPELINE_WORKERS:-1}
-      OLMOCR_PIPELINE_MAX_CONCURRENT_REQUESTS: ${OLMOCR_PIPELINE_MAX_CONCURRENT_REQUESTS:-32}
+      OLMOCR_PIPELINE_MAX_CONCURRENT_REQUESTS: ${OLMOCR_PIPELINE_MAX_CONCURRENT_REQUESTS:-1}
       OLMOCR_PIPELINE_TIMEOUT_SEC: ${OLMOCR_PIPELINE_TIMEOUT_SEC:-1800}
-      # Local vLLM tuning. Leave blank for olmOCR defaults.
-      OLMOCR_GPU_MEMORY_UTILIZATION: ${OLMOCR_GPU_MEMORY_UTILIZATION:-}
-      OLMOCR_MAX_MODEL_LEN: ${OLMOCR_MAX_MODEL_LEN:-}
+      # Local vLLM tuning. Defaults are sized for a single 48GB GPU shared with MinerU/PaddleVL.
+      OLMOCR_GPU_MEMORY_UTILIZATION: ${OLMOCR_GPU_MEMORY_UTILIZATION:-0.35}
+      OLMOCR_MAX_MODEL_LEN: ${OLMOCR_MAX_MODEL_LEN:-8192}
       OLMOCR_MAX_SERVER_READY_TIMEOUT: ${OLMOCR_MAX_SERVER_READY_TIMEOUT:-}
       OLMOCR_TENSOR_PARALLEL_SIZE: ${OLMOCR_TENSOR_PARALLEL_SIZE:-}
       OLMOCR_DATA_PARALLEL_SIZE: ${OLMOCR_DATA_PARALLEL_SIZE:-}
       OLMOCR_VLLM_PORT: ${OLMOCR_VLLM_PORT:-}
       OLMOCR_EXTRA_ARGS: ${OLMOCR_EXTRA_ARGS:-}
-      OLMOCR_MIN_FREE_GPU_GIB: ${OLMOCR_MIN_FREE_GPU_GIB:-10}
+      OLMOCR_MIN_FREE_GPU_GIB: ${OLMOCR_MIN_FREE_GPU_GIB:-8}
       # Optional: external OpenAI-compatible server mode (vLLM on another host).
       OLMOCR_SERVER_URL: ${OLMOCR_SERVER_URL:-}
       OLMOCR_API_KEY: ${OLMOCR_API_KEY:-}

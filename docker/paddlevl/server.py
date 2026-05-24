@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import os
+import signal
 import subprocess
 import tempfile
 import zipfile
@@ -22,6 +23,44 @@ def _make_zip(root: Path) -> bytes:
             if path.is_file():
                 zf.write(path, arcname=str(path.relative_to(root)))
     return buffer.getvalue()
+
+
+def _terminate_process_group(proc: subprocess.Popen[str], *, grace_sec: float = 3.0) -> None:
+    if proc.poll() is not None:
+        return
+
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    except Exception:
+        try:
+            proc.terminate()
+        except Exception:
+            return
+
+    try:
+        proc.wait(timeout=grace_sec)
+        return
+    except subprocess.TimeoutExpired:
+        pass
+    except Exception:
+        return
+
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    except ProcessLookupError:
+        return
+    except Exception:
+        try:
+            proc.kill()
+        except Exception:
+            return
+
+    try:
+        proc.wait(timeout=grace_sec)
+    except Exception:
+        return
 
 
 def _run_doc_parser(
@@ -54,23 +93,29 @@ def _run_doc_parser(
     # Keep logs readable and avoid broken unicode in some terminals.
     env.setdefault("PYTHONIOENCODING", "utf-8")
 
+    proc = subprocess.Popen(  # noqa: S603
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        env=env,
+        start_new_session=True,
+    )
+
     try:
-        proc = subprocess.run(  # noqa: S603
-            cmd,
-            check=False,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            env=env,
-            timeout=max(30, int(timeout_sec or 0)),
-        )
+        stdout, _ = proc.communicate(timeout=max(30, int(timeout_sec or 0)))
     except subprocess.TimeoutExpired as exc:
+        _terminate_process_group(proc)
         out = (exc.stdout or "")
         if isinstance(out, bytes):
             out = out.decode("utf-8", errors="ignore")
         raise TimeoutError(f"doc_parser timed out after {timeout_sec}s: {str(out)[-2000:]}") from exc
+    except Exception:
+        _terminate_process_group(proc)
+        raise
+
     if proc.returncode != 0:
-        out = (proc.stdout or "").strip()
+        out = (stdout or "").strip()
         raise RuntimeError(f"doc_parser failed (exit={proc.returncode}): {out[-2000:]}")
 
 

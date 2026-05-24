@@ -15,3 +15,13 @@ def test_paddlevl_server_runs_doc_parser_off_event_loop_with_timeout() -> None:
     assert "run_in_threadpool" in source
     assert "PADDLEOCR_PIPELINE_TIMEOUT_SEC" in source
     assert "subprocess.TimeoutExpired" in source
+
+
+def test_paddlevl_server_kills_doc_parser_process_group_on_timeout() -> None:
+    source = Path("docker/paddlevl/server.py").read_text(encoding="utf-8")
+
+    assert "subprocess.Popen" in source
+    assert "start_new_session=True" in source
+    assert "os.killpg" in source
+    assert "signal.SIGTERM" in source
+    assert "signal.SIGKILL" in source
