@@ -3253,6 +3253,18 @@ class HybridRetriever(BaseRetriever):
                     )
                 finally:
                     bm25_elapsed_ms += (time.perf_counter() - t0) * 1000
+            elif not lexical_results and bm25_index_enabled:
+                t0 = time.perf_counter()
+                try:
+                    bm25_results = self._search_bm25(
+                        query=query,
+                        top_k=fetch_k,
+                        document_ids=document_ids,
+                        tenant_id=tenant_id,
+                        metadata_filter=bm25_filter,
+                    )
+                finally:
+                    bm25_elapsed_ms += (time.perf_counter() - t0) * 1000
         else:
             # 2) BM25 retrieval
             if want_bm25:
