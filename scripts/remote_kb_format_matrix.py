@@ -109,6 +109,45 @@ def prepare_fixture_files(fixtures_dir: Path) -> list[dict[str, Any]]:
         encoding="utf-8",
     )
 
+    toml_path = fixtures_dir / "kb-service.toml"
+    toml_path.write_text(
+        'token = "TOML-EMBER"\n'
+        'owner = "Toma Ember"\n'
+        'status = "armed"\n',
+        encoding="utf-8",
+    )
+
+    properties_path = fixtures_dir / "kb-service.properties"
+    properties_path.write_text(
+        "token=PROP-LATTICE\n"
+        "owner=Priya Lattice\n"
+        "status=warm\n",
+        encoding="utf-8",
+    )
+
+    env_path = fixtures_dir / "kb-service.env"
+    env_path.write_text(
+        "TOKEN=ENV-SIGNAL\n"
+        "OWNER=Evan Signal\n"
+        "STATUS=green\n",
+        encoding="utf-8",
+    )
+
+    rst_path = fixtures_dir / "kb-guide.rst"
+    rst_path.write_text(
+        "RST Guide\n"
+        "=========\n\n"
+        "Token RST-FLARE belongs only to this rst note.\n\n"
+        "Owner: Rhea Flare.\n",
+        encoding="utf-8",
+    )
+
+    log_path = fixtures_dir / "kb-service.log"
+    log_path.write_text(
+        "2026-05-24T08:00:00Z token=LOG-BEACON owner=Logan Beacon status=hot\n",
+        encoding="utf-8",
+    )
+
     markdown_path = fixtures_dir / "kb-note.md"
     markdown_path.write_text(
         "# KB Markdown Note\n\n"
@@ -191,6 +230,46 @@ def prepare_fixture_files(fixtures_dir: Path) -> list[dict[str, Any]]:
             "path": sql_path,
             "query": "Who owns token SQL-LANTERN?",
             "expected_terms": ["SQL-LANTERN", "Soren Lantern"],
+            "parser_backend": "basic",
+            "family_group": "text_family",
+        },
+        {
+            "name": "toml_config",
+            "path": toml_path,
+            "query": "Who owns token TOML-EMBER?",
+            "expected_terms": ["TOML-EMBER", "Toma Ember"],
+            "parser_backend": "basic",
+            "family_group": "text_family",
+        },
+        {
+            "name": "properties_file",
+            "path": properties_path,
+            "query": "Who owns token PROP-LATTICE?",
+            "expected_terms": ["PROP-LATTICE", "Priya Lattice"],
+            "parser_backend": "basic",
+            "family_group": "text_family",
+        },
+        {
+            "name": "env_file",
+            "path": env_path,
+            "query": "Who owns token ENV-SIGNAL?",
+            "expected_terms": ["ENV-SIGNAL", "Evan Signal"],
+            "parser_backend": "basic",
+            "family_group": "text_family",
+        },
+        {
+            "name": "rst_note",
+            "path": rst_path,
+            "query": "Which token belongs only to this rst note?",
+            "expected_terms": ["RST-FLARE", "Rhea Flare"],
+            "parser_backend": "basic",
+            "family_group": "text_family",
+        },
+        {
+            "name": "log_file",
+            "path": log_path,
+            "query": "Who owns token LOG-BEACON?",
+            "expected_terms": ["LOG-BEACON", "Logan Beacon"],
             "parser_backend": "basic",
             "family_group": "text_family",
         },
