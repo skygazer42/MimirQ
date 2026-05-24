@@ -1,0 +1,2961 @@
+{
+  "summary": {
+    "ok": true,
+    "artifact_dir": "/tmp/MimirQ-commit/artifacts/kb-format-matrix/remote-rare-text-20260524",
+    "base_url": "http://127.0.0.1:8000",
+    "dataset_id": "dafecdf0-4ed9-4219-94f9-15ac932f6669",
+    "cases": [
+      {
+        "name": "toml_config",
+        "file_path": "/tmp/MimirQ-commit/artifacts/kb-format-matrix/remote-rare-text-20260524/fixtures/kb-service.toml",
+        "document_id": "6b636ca1-1dcc-4136-b0ac-2ca270158d94",
+        "status": "completed",
+        "chunk_count": 1,
+        "parsed_chars": 58,
+        "retrieve_status": 200,
+        "retrieve_citation_document_ids": [
+          "6b636ca1-1dcc-4136-b0ac-2ca270158d94"
+        ],
+        "chat_status": 200,
+        "ok": true,
+        "failures": []
+      },
+      {
+        "name": "properties_file",
+        "file_path": "/tmp/MimirQ-commit/artifacts/kb-format-matrix/remote-rare-text-20260524/fixtures/kb-service.properties",
+        "document_id": "a0220a4c-3b63-41d6-afcd-dec0df9520d3",
+        "status": "completed",
+        "chunk_count": 1,
+        "parsed_chars": 50,
+        "retrieve_status": 200,
+        "retrieve_citation_document_ids": [
+          "a0220a4c-3b63-41d6-afcd-dec0df9520d3"
+        ],
+        "chat_status": 200,
+        "ok": true,
+        "failures": []
+      },
+      {
+        "name": "env_file",
+        "file_path": "/tmp/MimirQ-commit/artifacts/kb-format-matrix/remote-rare-text-20260524/fixtures/kb-service.env",
+        "document_id": "6fbd2609-3b7c-4137-b9ea-4e67a137ccbb",
+        "status": "completed",
+        "chunk_count": 1,
+        "parsed_chars": 47,
+        "retrieve_status": 200,
+        "retrieve_citation_document_ids": [
+          "6fbd2609-3b7c-4137-b9ea-4e67a137ccbb"
+        ],
+        "chat_status": 200,
+        "ok": true,
+        "failures": []
+      },
+      {
+        "name": "rst_note",
+        "file_path": "/tmp/MimirQ-commit/artifacts/kb-format-matrix/remote-rare-text-20260524/fixtures/kb-guide.rst",
+        "document_id": "923da5f1-720a-45f9-b819-5dac3e059812",
+        "status": "completed",
+        "chunk_count": 1,
+        "parsed_chars": 77,
+        "retrieve_status": 200,
+        "retrieve_citation_document_ids": [
+          "923da5f1-720a-45f9-b819-5dac3e059812"
+        ],
+        "chat_status": 200,
+        "ok": true,
+        "failures": []
+      },
+      {
+        "name": "log_file",
+        "file_path": "/tmp/MimirQ-commit/artifacts/kb-format-matrix/remote-rare-text-20260524/fixtures/kb-service.log",
+        "document_id": "2a2f0bf3-70ff-4a19-8635-00437c8c96e5",
+        "status": "completed",
+        "chunk_count": 1,
+        "parsed_chars": 67,
+        "retrieve_status": 200,
+        "retrieve_citation_document_ids": [
+          "2a2f0bf3-70ff-4a19-8635-00437c8c96e5"
+        ],
+        "chat_status": 200,
+        "ok": true,
+        "failures": []
+      }
+    ],
+    "cleanup": {
+      "dataset_id": "dafecdf0-4ed9-4219-94f9-15ac932f6669",
+      "purge_deleted": 5,
+      "delete_dataset_status": 204
+    }
+  },
+  "steps": [
+    {
+      "name": "health",
+      "status_code": 200,
+      "elapsed_sec": 0.051,
+      "ok": true
+    },
+    {
+      "name": "create_dataset",
+      "status_code": 201,
+      "elapsed_sec": 0.076,
+      "ok": true
+    },
+    {
+      "name": "upload:toml_config",
+      "status_code": 201,
+      "elapsed_sec": 0.069,
+      "ok": true
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.06,
+      "ok": true,
+      "doc_status": "pending"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.023,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.03,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.023,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.028,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.023,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.017,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.019,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.023,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.024,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.055,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.019,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.025,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.023,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.028,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.024,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.025,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.016,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.031,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.013,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.023,
+      "ok": true,
+      "doc_status": "completed"
+    },
+    {
+      "name": "chunks:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.059,
+      "ok": true
+    },
+    {
+      "name": "parsed:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.104,
+      "ok": true
+    },
+    {
+      "name": "retrieve:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.205,
+      "ok": true
+    },
+    {
+      "name": "chat:toml_config",
+      "status_code": 200,
+      "elapsed_sec": 0.173,
+      "ok": true
+    },
+    {
+      "name": "upload:properties_file",
+      "status_code": 201,
+      "elapsed_sec": 0.074,
+      "ok": true
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.053,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.018,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.017,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.018,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.025,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.023,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.025,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.019,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.017,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.017,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.03,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.019,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.016,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.024,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.025,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "completed"
+    },
+    {
+      "name": "chunks:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.027,
+      "ok": true
+    },
+    {
+      "name": "parsed:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.101,
+      "ok": true
+    },
+    {
+      "name": "retrieve:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.201,
+      "ok": true
+    },
+    {
+      "name": "chat:properties_file",
+      "status_code": 200,
+      "elapsed_sec": 0.167,
+      "ok": true
+    },
+    {
+      "name": "upload:env_file",
+      "status_code": 201,
+      "elapsed_sec": 0.069,
+      "ok": true
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.059,
+      "ok": true,
+      "doc_status": "pending"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.017,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.017,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.024,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.024,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.025,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.023,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.023,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.025,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.026,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.019,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.018,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.023,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.035,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.017,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.023,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.024,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.024,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.024,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.019,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.018,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "completed"
+    },
+    {
+      "name": "chunks:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.067,
+      "ok": true
+    },
+    {
+      "name": "parsed:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.103,
+      "ok": true
+    },
+    {
+      "name": "retrieve:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.176,
+      "ok": true
+    },
+    {
+      "name": "chat:env_file",
+      "status_code": 200,
+      "elapsed_sec": 0.174,
+      "ok": true
+    },
+    {
+      "name": "upload:rst_note",
+      "status_code": 201,
+      "elapsed_sec": 0.066,
+      "ok": true
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.058,
+      "ok": true,
+      "doc_status": "pending"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.024,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.023,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.023,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.024,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.023,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.031,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.016,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.013,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.023,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.016,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.019,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.017,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.015,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.023,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.023,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.023,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.969,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.029,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.017,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.023,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.023,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.016,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "completed"
+    },
+    {
+      "name": "chunks:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.024,
+      "ok": true
+    },
+    {
+      "name": "parsed:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.061,
+      "ok": true
+    },
+    {
+      "name": "retrieve:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.17,
+      "ok": true
+    },
+    {
+      "name": "chat:rst_note",
+      "status_code": 200,
+      "elapsed_sec": 0.167,
+      "ok": true
+    },
+    {
+      "name": "upload:log_file",
+      "status_code": 201,
+      "elapsed_sec": 0.065,
+      "ok": true
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.065,
+      "ok": true,
+      "doc_status": "pending"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.023,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.023,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.016,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.019,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.015,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.019,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.031,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.023,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.022,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.025,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.023,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.019,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.019,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.02,
+      "ok": true,
+      "doc_status": "processing"
+    },
+    {
+      "name": "poll:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.021,
+      "ok": true,
+      "doc_status": "completed"
+    },
+    {
+      "name": "chunks:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.025,
+      "ok": true
+    },
+    {
+      "name": "parsed:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.101,
+      "ok": true
+    },
+    {
+      "name": "retrieve:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.196,
+      "ok": true
+    },
+    {
+      "name": "chat:log_file",
+      "status_code": 200,
+      "elapsed_sec": 0.164,
+      "ok": true
+    },
+    {
+      "name": "cleanup:purge:dafecdf0-4ed9-4219-94f9-15ac932f6669",
+      "status_code": 200,
+      "elapsed_sec": 4.201,
+      "ok": true
+    },
+    {
+      "name": "cleanup:delete_dataset:dafecdf0-4ed9-4219-94f9-15ac932f6669",
+      "status_code": 204,
+      "elapsed_sec": 0.079,
+      "ok": true
+    }
+  ]
+}

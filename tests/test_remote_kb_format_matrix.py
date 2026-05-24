@@ -83,6 +83,11 @@ def test_remote_kb_format_matrix_prepares_text_family_cases_with_basic_parser(tm
     assert by_name["text_note_txt"]["parser_backend"] == "basic"
     assert by_name["ini_config"]["parser_backend"] == "basic"
     assert by_name["sql_query"]["parser_backend"] == "basic"
+    assert by_name["toml_config"]["parser_backend"] == "basic"
+    assert by_name["properties_file"]["parser_backend"] == "basic"
+    assert by_name["env_file"]["parser_backend"] == "basic"
+    assert by_name["rst_note"]["parser_backend"] == "basic"
+    assert by_name["log_file"]["parser_backend"] == "basic"
 
 
 def test_remote_kb_format_matrix_select_cases_defaults_to_non_text_families(tmp_path) -> None:
@@ -94,6 +99,11 @@ def test_remote_kb_format_matrix_select_cases_defaults_to_non_text_families(tmp_
     assert "text_note_txt" not in selected_names
     assert "ini_config" not in selected_names
     assert "sql_query" not in selected_names
+    assert "toml_config" not in selected_names
+    assert "properties_file" not in selected_names
+    assert "env_file" not in selected_names
+    assert "rst_note" not in selected_names
+    assert "log_file" not in selected_names
     assert "markdown_note" in selected_names
 
 
