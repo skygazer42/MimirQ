@@ -49,6 +49,7 @@
     "e2e:live:remote-regression": "pnpm exec playwright test e2e/regression-workbench.live.spec.ts --config playwright.remote-regression.config.ts",
     "e2e:live:remote-ablations": "pnpm exec playwright test e2e/retrieval-ablations.live.spec.ts --config playwright.remote-ablations.config.ts",
     "e2e:live:remote-conversation-eval": "pnpm exec playwright test e2e/conversation-evaluation.live.spec.ts --config playwright.remote-conversation-eval.config.ts",
+    "e2e:live:remote-common-lines": "pnpm exec playwright test e2e/common-lines-workbench.live.spec.ts --config playwright.remote-common-lines.config.ts",
     "assets:optimize": "svgo -r public --config=.svgo.config.mjs",
     "verify": "pnpm run lint && pnpm run ui-check && pnpm run typecheck && pnpm run test && pnpm run api-check",
     "ui-check": "node scripts/check-design-tokens.mjs && node scripts/check-native-dialogs.mjs && node scripts/check-theme-contrast.mjs",
