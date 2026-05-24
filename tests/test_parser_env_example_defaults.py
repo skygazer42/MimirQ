@@ -31,6 +31,8 @@ def test_root_env_example_documents_single_gpu_parser_sharing_defaults() -> None
 
     assert values["MINERU_MODEL_SOURCE"] == "local"
     assert values["MINERU_VLM_GPU_MEMORY_UTILIZATION"] == "0.45"
+    assert values["PADDLE_PDX_MODEL_SOURCE"] == "aistudio"
+    assert values["PADDLE_PDX_CACHE_HOME"] == "/home/paddleocr/.paddlex"
     assert values["PADDLEOCR_PIPELINE_TIMEOUT_SEC"] == "540"
     assert values["PADDLE_VL_TIMEOUT_SEC"] == "600"
     assert values["OLMOCR_GPU_MEMORY_UTILIZATION"] == "0.35"

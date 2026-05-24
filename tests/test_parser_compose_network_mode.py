@@ -29,7 +29,11 @@ def test_paddlevl_service_exposes_pipeline_timeout() -> None:
     paddlevl = services['mimirq-paddlevl']
 
     env = paddlevl.get('environment') or {}
+    volumes = paddlevl.get('volumes') or []
     assert env.get('PADDLEOCR_PIPELINE_TIMEOUT_SEC') == '${PADDLEOCR_PIPELINE_TIMEOUT_SEC:-540}'
+    assert env.get('PADDLE_PDX_MODEL_SOURCE') == '${PADDLE_PDX_MODEL_SOURCE:-aistudio}'
+    assert env.get('PADDLE_PDX_CACHE_HOME') == '${PADDLE_PDX_CACHE_HOME:-/home/paddleocr/.paddlex}'
+    assert 'paddlevl_cache:/home/paddleocr/.paddlex' in volumes
 
 
 def test_mineru_vlm_service_uses_single_gpu_shared_defaults() -> None:
