@@ -56,6 +56,7 @@
     "e2e:live:remote-dataset-profile": "pnpm exec playwright test e2e/dataset-profile.live.spec.ts --config playwright.remote-dataset-profile.config.ts",
     "e2e:live:remote-dataset-health": "pnpm exec playwright test e2e/dataset-health.live.spec.ts --config playwright.remote-dataset-health.config.ts",
     "e2e:live:remote-dataset-workflow": "pnpm exec playwright test e2e/dataset-workflow.live.spec.ts --config playwright.remote-dataset-workflow.config.ts",
+    "e2e:live:remote-dataset-ingestion-policy": "pnpm exec playwright test e2e/dataset-ingestion-policy.live.spec.ts --config playwright.remote-dataset-ingestion-policy.config.ts",
     "assets:optimize": "svgo -r public --config=.svgo.config.mjs",
     "verify": "pnpm run lint && pnpm run ui-check && pnpm run typecheck && pnpm run test && pnpm run api-check",
     "ui-check": "node scripts/check-design-tokens.mjs && node scripts/check-native-dialogs.mjs && node scripts/check-theme-contrast.mjs",
