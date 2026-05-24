@@ -93,6 +93,7 @@ def test_remote_kb_format_matrix_prepares_text_family_cases_with_basic_parser(tm
     assert by_name["graphql_doc"]["parser_backend"] == "basic"
     assert by_name["terraform_file"]["parser_backend"] == "basic"
     assert by_name["patch_file"]["parser_backend"] == "basic"
+    assert by_name["pptx_deck"]["parser_backend"] == "auto"
 
 
 def test_remote_kb_format_matrix_select_cases_defaults_to_non_text_families(tmp_path) -> None:
