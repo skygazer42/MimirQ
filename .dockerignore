@@ -3,6 +3,7 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 venv/
+.venv/
 env/
 ENV/
 build/
@@ -29,6 +30,7 @@ dist/
 
 .env
 uploads/
+artifacts/
 logs/
 runs/
 chroma_db/
