@@ -41,6 +41,90 @@ def test_builtin_prompt_library_exposes_core_operational_templates() -> None:
     assert "qa_pairs" in by_key["testset_generation_ragas_zh"].content
 
 
+def test_builtin_prompt_templates_inherit_formal_plan_rules() -> None:
+    from app.rag.llm.prompts.builtin_library import list_builtin_prompt_templates
+
+    by_key = {template.template_key: template for template in list_builtin_prompt_templates()}
+
+    for template in by_key.values():
+        haystack = " ".join(
+            [
+                template.name,
+                template.description,
+                template.content,
+                " ".join(template.tags),
+            ]
+        ).casefold()
+        assert "smoke" not in haystack
+        assert template.version >= 2
+        assert {"formal", "prompt-as-code", "plans-derived"}.issubset(set(template.tags))
+
+    answer = by_key["rag_answer_claude_xml_zh"].content
+    assert "<instructions>" in answer
+    assert "<documents>" in answer
+    assert "<citation_policy>" in answer
+    assert "<refusal_policy>" in answer
+    assert "<conflict_policy>" in answer
+    assert '<source idx="' in answer
+
+    kg = by_key["kg_extract_graphrag_zh"].content
+    assert "Few-shot" in kg
+    assert "gleaning" in kg.lower()
+    assert "evidence_quote" in kg
+    assert '"required"' in kg
+
+    judge = by_key["judge_faithfulness_ragas_zh"].content
+    assert "atomic_facts" in judge
+    assert "supported | contradicted | not_found" in judge
+    assert "仅输出 JSON" in judge
+
+    testgen = by_key["testset_generation_ragas_zh"].content
+    assert "时态陷阱" in testgen
+    assert "术语变体" in testgen
+    assert "refusal" in testgen
+
+
+def test_builtin_prompt_templates_compile_with_langchain_f_string_format() -> None:
+    from langchain_core.prompts import PromptTemplate
+
+    from app.rag.llm.prompts.builtin_library import list_builtin_prompt_templates
+
+    placeholders = {
+        "context": "Alpha rollout uses the blue flag.",
+        "history": "",
+        "question": "What flag does Alpha use?",
+        "format_instructions": "Answer in text.",
+        "max_events": 3,
+        "max_entities": 5,
+        "contexts": "[C1] Alpha rollout uses the blue flag.",
+        "answer": "Alpha uses the blue flag.",
+        "document_chunk": "Alpha rollout uses the blue flag.",
+        "n": 2,
+        "existing_questions": "",
+    }
+
+    for template in list_builtin_prompt_templates():
+        prompt = PromptTemplate(template=template.content, input_variables=template.variables)
+        rendered = prompt.format(**{name: placeholders[name] for name in template.variables})
+        assert "Invalid format specifier" not in rendered
+        assert "<prompt_provenance>" in rendered
+
+    testset_prompt = next(
+        item
+        for item in list_builtin_prompt_templates()
+        if item.template_key == "testset_generation_ragas_zh"
+    )
+    rendered_testset = PromptTemplate(
+        template=testset_prompt.content,
+        input_variables=testset_prompt.variables,
+    ).format(
+        document_chunk=placeholders["document_chunk"],
+        n=placeholders["n"],
+        existing_questions=placeholders["existing_questions"],
+    )
+    assert '"qa_pairs": {' in rendered_testset
+
+
 def test_builtin_prompt_sync_endpoint_creates_and_updates_system_templates(monkeypatch: pytest.MonkeyPatch) -> None:
     from tests.test_prompt_templates_endpoints import _build_client
 
