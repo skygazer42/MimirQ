@@ -8,7 +8,7 @@ from typing import Any
 from app.core.config import settings
 from app.rag.kg.community import build_community_reports, lazy_summarize
 from app.rag.kg.search.cache import build_kg_community_summary_cache_key, kg_community_summary_cache
-from app.rag.kg.search.config import ReturnType, SearchConfig
+from app.rag.kg.search.config import RerankStrategy, ReturnType, SearchConfig
 from app.rag.kg.search.expand import ExpandResult, ExpandSearcher
 from app.rag.kg.search.path_verbalizer import attach_path_renderings
 from app.rag.kg.search.recall import RecallSearcher
@@ -58,6 +58,14 @@ class KGSearcher:
         intent, those searches should behave like factoid KG recall and avoid a
         multi-hop expansion fan-out.
         """
+        reasons = {str(x).strip() for x in (getattr(config, "query_mode_reason_codes", []) or []) if str(x).strip()}
+        if (
+            str(query_mode or "").strip().lower() == "local"
+            and "dataset_factoid_scope" in reasons
+            and int(recalled_event_count or 0) > 0
+        ):
+            return True, "local_factoid_precision"
+
         if str(query_mode or "").strip().lower() != "global":
             return False, ""
         if bool(getattr(config.expand, "enabled", True)) is False:
@@ -68,10 +76,15 @@ class KGSearcher:
             return False, ""
 
         confidence = str(getattr(config, "query_mode_confidence", "") or "").strip().lower()
-        reasons = {str(x).strip() for x in (getattr(config, "query_mode_reason_codes", []) or []) if str(x).strip()}
         if confidence == "low" and "global_pattern" not in reasons and "drift_pattern" not in reasons:
             return True, "low_confidence_global_budget"
         return False, ""
+
+    def _effective_rerank_strategy(self, *, config: SearchConfig, query_mode: str) -> RerankStrategy:
+        reasons = {str(x).strip() for x in (getattr(config, "query_mode_reason_codes", []) or []) if str(x).strip()}
+        if str(query_mode or "").strip().lower() == "local" and "dataset_factoid_scope" in reasons:
+            return RerankStrategy.RRF
+        return config.rerank.strategy
 
     async def _apply_lazy_community_summaries(
         self,
@@ -239,7 +252,8 @@ class KGSearcher:
         t0 = time.perf_counter()
         event_ids_total = list(expand_result.event_ids or [])
         candidates = [RerankCandidate(id=str(eid), text="") for eid in event_ids_total]
-        reranker = get_kg_reranker(config.rerank.strategy)
+        rerank_strategy = self._effective_rerank_strategy(config=config, query_mode=query_mode)
+        reranker = get_kg_reranker(rerank_strategy)
         rerank_result = await reranker.arerank_kg(
             query=config.query,
             candidates=candidates,
@@ -256,6 +270,7 @@ class KGSearcher:
         stats.setdefault("candidates", int(len(event_ids_total)))
         stats.setdefault("clues_returned", int(len(combined_clues)))
         stats.setdefault("query_mode", str(query_mode))
+        stats.setdefault("rerank_strategy_effective", str(rerank_strategy))
         stats.setdefault(
             "query_mode_reason_codes",
             [str(x) for x in (getattr(config, "query_mode_reason_codes", []) or []) if str(x).strip()][:8],
@@ -287,7 +302,7 @@ class KGSearcher:
                     "tenant_id": str(config.tenant_id) if config.tenant_id else None,
                     "doc_count": int(doc_count),
                     "query_mode": str(query_mode),
-                    "strategy": str(config.rerank.strategy),
+                    "strategy": str(rerank_strategy),
                     "candidates_total": int(len(event_ids_total)),
                     "returned": int(len(rerank_result.items or [])),
                     "clues": int(len(combined_clues)),
@@ -301,7 +316,7 @@ class KGSearcher:
                     "doc_count": int(doc_count),
                     "query_chars": int(query_chars),
                     "query_mode": str(query_mode),
-                    "strategy": str(config.rerank.strategy),
+                    "strategy": str(rerank_strategy),
                     "returned": int(len(rerank_result.items or [])),
                     "elapsed_sec": round(float(total_elapsed), 3),
                 }

@@ -23,6 +23,19 @@ def test_classify_kg_query_mode_detects_local_row_focus() -> None:
     assert out["mode"] == "local"
 
 
+def test_classify_kg_query_mode_treats_dataset_factoid_as_local() -> None:
+    from app.rag.kg.search.query_mode import classify_kg_query_mode
+
+    out = classify_kg_query_mode(
+        query="Which survey reviews graph neural networks including graph convolution and graph attention networks?",
+        dataset_id=uuid.uuid4(),
+    )
+
+    assert out["mode"] == "local"
+    assert out["confidence"] == "medium"
+    assert "dataset_factoid_scope" in list(out.get("reason_codes") or [])
+
+
 def test_build_mode_aware_recall_overrides_shapes_local_budget(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.core.config import settings
     from app.rag.kg.search.query_mode import build_mode_aware_recall_overrides

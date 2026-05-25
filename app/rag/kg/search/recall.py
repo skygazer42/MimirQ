@@ -167,9 +167,15 @@ class RecallSearcher:
             )
             max_events = int(mode_overrides.get("max_events") or config.recall.max_events)
             mode_reason_codes = [str(x) for x in (mode_overrides.get("reason_codes") or []) if str(x).strip()]
-            prefer_lexical_first = (
+            query_reason_codes = {
+                str(x).strip() for x in (getattr(config, "query_mode_reason_codes", []) or []) if str(x).strip()
+            }
+            prefer_lexical_first = (config.dataset_id is not None or config.document_ids is not None) and (
                 "low_confidence_global_budget" in set(mode_reason_codes)
-                and (config.dataset_id is not None or config.document_ids is not None)
+                or (
+                    str(mode_norm) == "local"
+                    and bool({"dataset_factoid_scope", "quoted_term"} & query_reason_codes)
+                )
             )
             max_candidates = max(0, int(getattr(settings, "KG_SEARCH_MAX_RERANK_CANDIDATES", 0) or 0))
             if max_candidates > 0:
@@ -815,6 +821,11 @@ class RecallSearcher:
                 if item.get("similarity", 0.0) >= config.recall.event_similarity_threshold
             ]
             event_query_related = event_query_related[: config.rerank.max_query_recall_results]
+            direct_event_scores = {
+                str(item.get("event_id")): float(item.get("similarity", 0.0) or 0.0)
+                for item in event_query_related
+                if item.get("event_id") is not None
+            }
 
             for ev in event_query_related:
                 tracker.add_clue(
@@ -876,7 +887,11 @@ class RecallSearcher:
                 for link in assoc_map.get(ev_id, []):
                     boost += key_weights.get(str(link.entity_id), 0.0)
                 # combine
-                event_scores[ev_id] = sim * 0.6 + boost * 0.4
+                combined_score = sim * 0.6 + boost * 0.4
+                # Direct query->event recall is often the highest-precision signal
+                # for dataset-scoped factoid KG search. Preserve it instead of
+                # recomputing to zero when vector recall is intentionally skipped.
+                event_scores[ev_id] = max(combined_score, float(direct_event_scores.get(ev_id, 0.0) or 0.0))
 
             # sort events by score and trim
             merged_event_ids.sort(key=lambda eid: event_scores.get(str(eid), 0.0), reverse=True)

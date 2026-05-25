@@ -9,7 +9,7 @@ import unicodedata
 from collections.abc import Iterable
 from uuid import UUID
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
@@ -21,6 +21,7 @@ from app.rag.kg.models import (
     KgRelation,
     KgSourceEvent,
 )
+from app.rag.retrieval.query_phrase_match import extract_informative_query_phrases
 from app.storage.vector.milvus import get_milvus_adapter, resolve_collection_name
 
 _ALIAS_TOKEN_RE = re.compile(
@@ -122,21 +123,17 @@ def _extract_alias_candidates(query: str, *, max_tokens: int = 32, max_ngrams: i
         seen_s.add(sig)
         surfaces.append(s)
 
+    # Prefer informative multi-token phrases before generic unigrams so scoped
+    # lexical KG recall does not burn its SQL budget on broad terms like "neural".
+    for phrase in extract_informative_query_phrases(text, max_phrases=max_ngrams, include_unigrams=False):
+        _add_surface(phrase)
+
     # Whole query if short (helps for exact-term queries).
     if len(text) <= 80:
         _add_surface(text)
 
     for tok in tokens:
         _add_surface(tok)
-
-    # ASCII ngrams only (space-joined), up to 4 tokens.
-    for i in range(len(tokens)):
-        if not tokens[i].isascii():
-            continue
-        for j in range(i + 2, min(len(tokens), i + 4) + 1):
-            phrase = " ".join(tokens[i:j])
-            if phrase.isascii():
-                _add_surface(phrase)
 
     # Normalize via the shared KG name normalizer so stored and query forms align.
     from app.rag.kg.extraction.parser import EntityValueParser  # noqa: WPS433
@@ -822,8 +819,11 @@ class EventRepository:
 
         stmt = select(KgSourceEvent).where(KgSourceEvent.tenant_id == tenant_id)
         clauses = []
+        rank_expr = None
         for term in terms[:24]:
             pattern = f"%{_escape_like(term)}%"
+            token_count = max(1, len(str(term).split()))
+            weight = float(min(4, token_count))
             clauses.extend(
                 [
                     KgSourceEvent.title.ilike(pattern, escape="\\"),
@@ -831,6 +831,12 @@ class EventRepository:
                     KgSourceEvent.content.ilike(pattern, escape="\\"),
                 ]
             )
+            term_rank = (
+                case((KgSourceEvent.title.ilike(pattern, escape="\\"), weight * 1.0), else_=0.0)
+                + case((KgSourceEvent.summary.ilike(pattern, escape="\\"), weight * 0.8), else_=0.0)
+                + case((KgSourceEvent.content.ilike(pattern, escape="\\"), weight * 0.6), else_=0.0)
+            )
+            rank_expr = term_rank if rank_expr is None else rank_expr + term_rank
         stmt = stmt.where(or_(*clauses))
 
         if document_ids is not None or dataset_id is not None:
@@ -855,7 +861,11 @@ class EventRepository:
 
         rows = (
             self.session.execute(
-                stmt.order_by(KgSourceEvent.updated_at.desc(), KgSourceEvent.id.asc()).limit(max(1, int(k)) * 5)
+                stmt.order_by(
+                    (rank_expr.desc() if rank_expr is not None else KgSourceEvent.updated_at.desc()),
+                    KgSourceEvent.updated_at.desc(),
+                    KgSourceEvent.id.asc(),
+                ).limit(max(1, int(k)) * 10)
             )
             .scalars()
             .all()

@@ -40,6 +40,7 @@ from app.rag.preprocessing.tokenization import tokenize_for_bm25
 from app.rag.reranker.factory import get_reranker
 from app.rag.reranker.types import RerankCandidate
 from app.rag.retrieval.context_expansion import expand_ranked_chunk_results
+from app.rag.retrieval.query_phrase_match import query_phrase_match
 from app.rag.retrieval.sibling_expand import select_document_expansion_mode
 from app.rag.retrieval.sparse import SparseVector
 from app.rag.retrieval_candidate_cache import (
@@ -6454,11 +6455,19 @@ class HybridRetriever(BaseRetriever):
         keyword_scores = [cosine(query_vec, v) for v in doc_vecs]
 
         reranked: list[dict[str, Any]] = []
+        phrase_boost_weight = max(0.0, float(getattr(settings, "RETRIEVAL_EXACT_PHRASE_RERANK_BOOST", 0.35) or 0.0))
         for doc, kw_score in zip(documents, keyword_scores, strict=False):
             vec_score = doc.get("vector_score", doc.get("score", 0.0))
-            final_score = vector_weight * float(vec_score) + keyword_weight * float(kw_score)
+            phrase = query_phrase_match(query, str(doc.get("content", "") or ""))
+            phrase_score = float(phrase.get("score", 0.0) or 0.0)
+            phrase_boost = phrase_score * phrase_boost_weight
+            final_score = vector_weight * float(vec_score) + keyword_weight * float(kw_score) + phrase_boost
             new_doc = dict(doc)
             new_doc["keyword_score"] = float(kw_score)
+            new_doc["exact_phrase_score"] = float(phrase_score)
+            new_doc["exact_phrase_boost"] = float(phrase_boost)
+            if phrase.get("matched_phrases"):
+                new_doc["exact_phrase_matches"] = list(phrase.get("matched_phrases") or [])[:4]
             new_doc["score"] = float(final_score)
             reranked.append(new_doc)
 

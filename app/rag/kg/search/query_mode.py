@@ -21,6 +21,14 @@ _LOCAL_RE = re.compile(
     r"(?i)\b(this row|that row|which row|exact|id\s*=|primary key|pk\b)\b"
     r"|哪一行|具体|主键|这一条|这条记录"
 )
+_DATASET_FACTOID_RE = re.compile(
+    r"(?i)\b(which|what|who|where|when|identify|find|name)\b"
+    r"|哪篇|哪一个|哪个|哪些|什么"
+)
+_DATASET_FACTOID_DOMAIN_RE = re.compile(
+    r"(?i)\b(paper|article|survey|review|work|method|model|approach|introduc(?:e|ed|es)|propos(?:e|ed|es))\b"
+    r"|论文|文章|综述|方法|模型|提出|介绍"
+)
 _QUOTED_RE = re.compile(rf"[{_QUOTE_CLASS}][^{_QUOTE_CLASS}]{{2,160}}[{_QUOTE_CLASS}]")
 
 
@@ -74,6 +82,12 @@ def classify_kg_query_mode(
         return {"mode": "local", "confidence": "high", "reason_codes": reasons}
 
     if has_local:
+        return {"mode": "local", "confidence": "medium", "reason_codes": reasons}
+
+    if dataset_id is not None and doc_count == 0 and _DATASET_FACTOID_RE.search(q):
+        reasons.append("dataset_factoid_scope")
+        if _DATASET_FACTOID_DOMAIN_RE.search(q):
+            reasons.append("dataset_factoid_domain")
         return {"mode": "local", "confidence": "medium", "reason_codes": reasons}
 
     if dataset_id is not None and doc_count == 0:

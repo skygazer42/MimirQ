@@ -4,11 +4,13 @@ PageRank-style rerank combining query similarity and entity co-occurrence graph.
 import math
 from typing import Any
 
+from app.core.config import settings
 from app.rag.kg.loading.processor import DocumentProcessor
 from app.rag.kg.provenance import build_kg_path_provenance
 from app.rag.kg.repository import EventRepository, get_session
 from app.rag.kg.search.config import SearchConfig
 from app.rag.kg.search.utils import cosine_similarity, format_events
+from app.rag.retrieval.query_phrase_match import query_phrase_match
 
 
 class RerankPageRankSearcher:
@@ -46,13 +48,19 @@ class RerankPageRankSearcher:
             assoc_map = repo.get_entities_for_events(event_ids, tenant_id=config.tenant_id)
 
             base_scores: dict[str, float] = {**event_scores}
+            phrase_boost_weight = max(0.0, float(getattr(settings, "KG_SEARCH_EXACT_PHRASE_RERANK_BOOST", 0.25) or 0.0))
             for ev in events:
                 sim = cosine_similarity(query_vec, ev.content_vector or [])
                 ents = assoc_map.get(str(ev.id), [])
                 boost = sum(key_weight_map.get(str(e.id), 0.0) for e in ents)
+                phrase = query_phrase_match(
+                    config.query,
+                    f"{getattr(ev, 'title', '') or ''} {getattr(ev, 'summary', '') or ''} {getattr(ev, 'content', '') or ''}",
+                )
+                phrase_boost = float(phrase.get("score", 0.0) or 0.0) * phrase_boost_weight
                 # merge recall score if present
                 recall_score = event_scores.get(str(ev.id), 0.0)
-                base_scores[str(ev.id)] = 0.5 * recall_score + 0.3 * sim + 0.2 * boost
+                base_scores[str(ev.id)] = 0.5 * recall_score + 0.3 * sim + 0.2 * boost + phrase_boost
 
             graph: dict[str, dict[str, float]] = {str(ev.id): {} for ev in events}
 
@@ -117,6 +125,13 @@ class RerankPageRankSearcher:
                     "kg_shared_events": int(shared),
                     "kg_evidence_anchored": bool(getattr(ev, "chunk_id", None)),
                 }
+                phrase = query_phrase_match(
+                    config.query,
+                    f"{getattr(ev, 'title', '') or ''} {getattr(ev, 'summary', '') or ''} {getattr(ev, 'content', '') or ''}",
+                )
+                if float(phrase.get("score", 0.0) or 0.0) > 0.0:
+                    extras[ev_id]["kg_exact_phrase_score"] = float(phrase.get("score", 0.0) or 0.0)
+                    extras[ev_id]["kg_exact_phrase_matches"] = list(phrase.get("matched_phrases") or [])[:4]
                 path = build_kg_path_provenance(entities=ents, key_entity_ids=key_entity_ids, max_entities=4)
                 if path:
                     extras[ev_id]["kg_path"] = path
