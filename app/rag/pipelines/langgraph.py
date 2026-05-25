@@ -57,6 +57,7 @@ from app.rag.llm.structured_output import (
     build_structured_output_instructions,
     parse_and_repair_structured_output,
 )
+from app.rag.retrieval.source_labels import maybe_build_source_identification_answer
 from app.rag.store.factory import get_langgraph_store
 from app.services.prompt_resolver import resolve_prompt_template
 
@@ -290,7 +291,9 @@ def _build_context(docs: list[Document], *, query: str | None = None) -> str:
     total_tokens = 0
     for idx, doc in enumerate(usable_docs, 1):
         meta = doc.metadata or {}
-        source = meta.get("source", "Unknown")
+        source = str(meta.get("source") or meta.get("filename") or "Unknown")
+        filename = str(meta.get("filename") or "").strip()
+        document_title = str(meta.get("document_title") or meta.get("doc_title") or meta.get("title") or "").strip()
         page_info = None
         page_raw = meta.get("page")
         try:
@@ -320,7 +323,13 @@ def _build_context(docs: list[Document], *, query: str | None = None) -> str:
             content = truncate(content, max_per_chunk_tokens)
         elif max_per_chunk_chars and len(content) > max_per_chunk_chars:
             content = content[:max_per_chunk_chars] + "..."
-        info_parts = [str(source)]
+        info_parts = []
+        if document_title:
+            info_parts.append(f"Title: {document_title}")
+        if filename:
+            info_parts.append(f"File: {filename}")
+        elif source:
+            info_parts.append(str(source))
         if page_info:
             info_parts.append(page_info)
         if header:
@@ -543,6 +552,16 @@ def _generate_node(state: RAGState) -> RAGState:
 
     if pii_on:
         answer = redact_text(str(answer))
+
+    source_identification_answer_used = False
+    if not bool(state.get("structured_output")):
+        deterministic_source_answer = maybe_build_source_identification_answer(
+            question=state["question"],
+            docs=list(state.get("docs") or []),
+        )
+        if deterministic_source_answer:
+            answer = redact_text(deterministic_source_answer) if pii_on else deterministic_source_answer
+            source_identification_answer_used = True
 
     followup_questions: list[str] = []
     if (
@@ -860,6 +879,7 @@ def _generate_node(state: RAGState) -> RAGState:
     metrics["prompt_template_key"] = state.get("prompt_template_key")
     metrics["prompt_ab_experiment_key"] = state.get("prompt_ab_experiment_key")
     metrics["prompt_ab_variant"] = state.get("prompt_ab_variant")
+    metrics["source_identification_answer_used"] = bool(source_identification_answer_used)
     return {
         **state,
             "answer": answer,

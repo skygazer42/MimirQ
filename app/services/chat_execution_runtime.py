@@ -8,11 +8,13 @@ from typing import Any
 from uuid import UUID
 
 import httpx
+from langchain_core.documents import Document
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.openai_compat import normalize_openai_compatible_base_url
 from app.rag.core.http import httpx_trust_env
+from app.rag.retrieval.source_labels import derive_document_title, maybe_build_source_identification_answer
 
 
 @dataclass(frozen=True)
@@ -332,6 +334,77 @@ def _answer_evidence_from_retrieval(
     return rows
 
 
+def _source_identification_answer_from_citations(
+    *,
+    db: Session,
+    tenant_id: UUID | None,
+    question: str,
+    citations: list[dict[str, Any]],
+) -> str | None:
+    if not citations:
+        return None
+    if maybe_build_source_identification_answer(
+        question=question,
+        docs=[Document(page_content="", metadata={"document_title": "__probe__"})],
+    ) is None:
+        return None
+
+    first = citations[0]
+    if not isinstance(first, dict):
+        return None
+    raw_doc_id = first.get("document_id") or first.get("doc_id")
+    if raw_doc_id is None:
+        meta = first.get("metadata")
+        if isinstance(meta, dict):
+            raw_doc_id = meta.get("document_id") or meta.get("doc_id")
+    if raw_doc_id is None:
+        return None
+
+    try:
+        doc_id = UUID(str(raw_doc_id))
+    except Exception:
+        return None
+
+    try:
+        from app.models.document import Document as DBDocument
+        from app.models.document import DocumentChunk
+
+        q = db.query(DBDocument).filter(DBDocument.id == doc_id)
+        if tenant_id is not None:
+            q = q.filter(DBDocument.tenant_id == tenant_id)
+        document = q.first()
+        if document is None:
+            return None
+
+        cq = db.query(DocumentChunk.content).filter(
+            DocumentChunk.document_id == doc_id,
+            DocumentChunk.chunk_index == 0,
+        )
+        if tenant_id is not None:
+            cq = cq.filter(DocumentChunk.tenant_id == tenant_id)
+        first_chunk_content = cq.scalar()
+
+        filename = str(getattr(document, "filename", "") or "").strip()
+        doc_meta = getattr(document, "doc_metadata", None)
+        doc_meta = doc_meta if isinstance(doc_meta, dict) else {}
+        title = derive_document_title(
+            filename=filename,
+            doc_metadata=doc_meta,
+            first_chunk_content=first_chunk_content,
+        )
+        source_doc = Document(
+            page_content="",
+            metadata={
+                "document_title": title,
+                "filename": filename,
+                "source": filename or str(first.get("document_name") or ""),
+            },
+        )
+        return maybe_build_source_identification_answer(question=question, docs=[source_doc])
+    except Exception:
+        return None
+
+
 def execute_extractive_fallback_once(
     *,
     db: Session,
@@ -570,6 +643,17 @@ def execute_graph_chat_once(
     citations_data = graph_result.get("citations") or []
     full_response = graph_result.get("answer") or ""
     metrics_data = dict(graph_result.get("metrics") or {})
+    source_answer = _source_identification_answer_from_citations(
+        db=db,
+        tenant_id=tenant_id,
+        question=str(request.message or ""),
+        citations=[c for c in citations_data if isinstance(c, dict)],
+    )
+    if source_answer:
+        full_response = source_answer
+        metrics_data["source_identification_answer_used"] = True
+    else:
+        metrics_data.setdefault("source_identification_answer_used", False)
     metrics_data.setdefault("multimodal_router", multimodal_meta)
     metrics_data.setdefault("tag", tag_meta)
     metrics_data.setdefault("image", image_meta)
@@ -688,6 +772,17 @@ async def execute_langchain_chat_once(
 
     full_response = "".join(full_response_parts) if full_response_parts else ""
     metrics_data = dict(done_data.get("metrics") or {}) if isinstance(done_data, dict) else {}
+    source_answer = _source_identification_answer_from_citations(
+        db=db,
+        tenant_id=tenant_id,
+        question=str(request.message or ""),
+        citations=[c for c in citations_data if isinstance(c, dict)],
+    )
+    if source_answer:
+        full_response = source_answer
+        metrics_data["source_identification_answer_used"] = True
+    else:
+        metrics_data.setdefault("source_identification_answer_used", False)
     structured_data = done_data.get("structured_data") if isinstance(done_data, dict) else None
 
     return ExecutedGraphChatOnceResult(
