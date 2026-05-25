@@ -277,15 +277,18 @@ async function compareLiveSnapshots(
 }
 
 function diffMagnitude(diff: LiveSnapshotDiff): number {
-  const counts = [
-    diff.node_diff?.added_count,
-    diff.node_diff?.removed_count,
-    diff.node_diff?.changed_count,
-    diff.edge_diff?.added_count,
-    diff.edge_diff?.removed_count,
-    diff.edge_diff?.changed_count,
+  const counts: number[] = [
+    diff.node_diff?.added_count ?? 0,
+    diff.node_diff?.removed_count ?? 0,
+    diff.node_diff?.changed_count ?? 0,
+    diff.edge_diff?.added_count ?? 0,
+    diff.edge_diff?.removed_count ?? 0,
+    diff.edge_diff?.changed_count ?? 0,
   ]
-  return counts.reduce((sum, value) => sum + Math.max(0, Number(value || 0)), 0)
+  return counts.reduce(
+    (sum, value) => sum + Math.max(0, value),
+    0
+  )
 }
 
 test.describe('live graph snapshots workbench', () => {

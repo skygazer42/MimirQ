@@ -62,6 +62,9 @@ def apply_chat_runtime_metrics_context(
     metrics: dict[str, Any] | None,
     *,
     dataset_id_used: UUID | None,
+    effective_prompt_template_id: UUID | None = None,
+    effective_prompt_template_key: str | None = None,
+    effective_prompt_ab_experiment_key: str | None = None,
     dataset_rag_defaults_applied_fields: list[str] | None = None,
     dataset_rag_config_template_defaults_applied_fields: list[str] | None = None,
     rag_config_template_meta: dict[str, Any] | None = None,
@@ -72,6 +75,12 @@ def apply_chat_runtime_metrics_context(
     out = dict(metrics or {})
     if dataset_id_used is not None:
         out.setdefault("dataset_id", str(dataset_id_used))
+    if effective_prompt_template_id is not None:
+        out.setdefault("prompt_template_id", str(effective_prompt_template_id))
+    if effective_prompt_template_key:
+        out.setdefault("prompt_template_key", effective_prompt_template_key)
+    if effective_prompt_ab_experiment_key:
+        out.setdefault("prompt_ab_experiment_key", effective_prompt_ab_experiment_key)
     if dataset_rag_defaults_applied_fields:
         out.setdefault("dataset_rag_defaults_applied", True)
         out.setdefault("dataset_rag_defaults_fields", dataset_rag_defaults_applied_fields)
