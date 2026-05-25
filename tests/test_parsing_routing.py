@@ -71,6 +71,26 @@ def test_choose_pdf_backend_scanned_prefers_mineru_when_configured(monkeypatch: 
     assert choose_pdf_backend(quality, None) == "mineru"
 
 
+def test_choose_pdf_backend_scanned_but_text_extractable_prefers_basic(monkeypatch: pytest.MonkeyPatch):
+    _set_flags(
+        monkeypatch,
+        MARKITDOWN_ENABLED=True,
+        MINERU_ENABLED=True,
+        MINERU_API_TOKEN="token",
+        MINERU_LOCAL_SERVER_URL="",
+        DEEPDOC_ENABLED=True,
+        DEEPSEEK_OCR_ENABLED=True,
+        SILICONFLOW_API_KEY="k",
+    )
+    quality = {
+        "score": 0.599,
+        "text_quality_score": 0.162,
+        "is_scanned": True,
+        "page_count": 2,
+    }
+    assert choose_pdf_backend(quality, None) == "basic"
+
+
 def test_choose_pdf_backend_scanned_falls_back_to_deepdoc(monkeypatch: pytest.MonkeyPatch):
     _set_flags(
         monkeypatch,
@@ -95,6 +115,27 @@ def test_choose_pdf_backend_mid_prefers_deepdoc(monkeypatch: pytest.MonkeyPatch)
     )
     quality = {"score": 0.65, "is_scanned": False}
     assert choose_pdf_backend(quality, None) == "deepdoc"
+
+
+def test_choose_pdf_backend_mid_text_extractable_small_pdf_prefers_basic(monkeypatch: pytest.MonkeyPatch):
+    _set_flags(
+        monkeypatch,
+        DEEPDOC_ENABLED=True,
+        DOCLING_ENABLED=True,
+        MINERU_ENABLED=True,
+        MINERU_API_TOKEN="token",
+        MINERU_LOCAL_SERVER_URL="",
+        MARKITDOWN_ENABLED=True,
+    )
+    quality = {
+        "score": 0.601,
+        "text_quality_score": 0.378,
+        "format_consistency_score": 0.4,
+        "table_quality_score": 1.0,
+        "is_scanned": False,
+        "page_count": 1,
+    }
+    assert choose_pdf_backend(quality, None) == "basic"
 
 
 def test_choose_pdf_backend_honors_magicpdf_alias(monkeypatch: pytest.MonkeyPatch):
