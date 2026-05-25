@@ -118,3 +118,54 @@ async def test_openai_embedding_aencode_uses_external_pool_not_new_asyncclient(m
     _url, headers = dummy_async.calls[-1]
     assert_no_internal_context_headers(headers)
     assert vecs == [[0.1, 0.2]]
+
+
+def test_dashscope_embedding_encode_caps_openai_compatible_batches(monkeypatch):
+    import app.rag.embedding.providers.openai as provider
+
+    monkeypatch.setattr(provider.settings, "EMBEDDING_API_BATCH_SIZE", 64, raising=False)
+
+    model = provider.OpenAICompatibleEmbedding(
+        model="text-embedding-v3",
+        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings",
+        api_key="no_api_key",
+    )
+
+    batch_lengths: list[int] = []
+
+    def _capture_batch(texts: list[str]) -> list[list[float]]:
+        batch_lengths.append(len(texts))
+        return [[0.1, 0.2] for _ in texts]
+
+    monkeypatch.setattr(model, "_encode_one_batch", _capture_batch)
+
+    vecs = model.encode([f"text {idx}" for idx in range(25)])
+
+    assert batch_lengths == [10, 10, 5]
+    assert len(vecs) == 25
+
+
+@pytest.mark.asyncio
+async def test_dashscope_embedding_aencode_caps_openai_compatible_batches(monkeypatch):
+    import app.rag.embedding.providers.openai as provider
+
+    monkeypatch.setattr(provider.settings, "EMBEDDING_API_BATCH_SIZE", 64, raising=False)
+
+    model = provider.OpenAICompatibleEmbedding(
+        model="text-embedding-v3",
+        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings",
+        api_key="no_api_key",
+    )
+
+    batch_lengths: list[int] = []
+
+    async def _capture_batch(texts: list[str]) -> list[list[float]]:
+        batch_lengths.append(len(texts))
+        return [[0.1, 0.2] for _ in texts]
+
+    monkeypatch.setattr(model, "_aencode_one_batch", _capture_batch)
+
+    vecs = await model.aencode([f"text {idx}" for idx in range(25)])
+
+    assert batch_lengths == [10, 10, 5]
+    assert len(vecs) == 25
