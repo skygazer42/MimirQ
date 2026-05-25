@@ -62,6 +62,8 @@ def choose_pdf_backend(quality: dict | None, requested: str | None) -> str:
     """
     quality = quality or {}
     score = float(quality.get("score", 0.0) or 0.0)
+    text_quality_score = float(quality.get("text_quality_score", 0.0) or 0.0)
+    page_count = float(quality.get("page_count", 0.0) or 0.0)
     is_scanned = bool(quality.get("is_scanned", False))
 
     def _magicpdf_available() -> bool:
@@ -98,6 +100,17 @@ def choose_pdf_backend(quality: dict | None, requested: str | None) -> str:
             return "markitdown"
         if settings.DEEPDOC_ENABLED:
             return "deepdoc"
+        return "basic"
+
+    if is_scanned and score > 0.5 and text_quality_score >= 0.1:
+        # Some table-heavy PDFs are flagged as scanned because text density is
+        # low, but PyMuPDF can still extract useful text quickly. Avoid sending
+        # those to heavyweight OCR services first.
+        return "basic"
+
+    if not is_scanned and 0.5 < score < 0.8 and text_quality_score >= 0.3 and 0 < page_count <= 5:
+        # For small, text-extractable PDFs, basic preview is usually sufficient
+        # and avoids slow structure parsers on interactive preview paths.
         return "basic"
 
     if is_scanned or score <= 0.5:
