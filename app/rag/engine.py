@@ -262,6 +262,7 @@ class RAGEngine:
 4. Answers should be accurate, concise, and professional
 5. When citing materials, you may mention the source file name
 6. If a specific output format is specified, please strictly follow it
+7. When the user asks which paper, document, source, or file answers the question, answer with the source Title when it is shown in the source header; use File only when no Title is available
 
 [Output Format Instructions]
 {format_instructions}

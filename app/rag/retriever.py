@@ -42,6 +42,7 @@ from app.rag.reranker.types import RerankCandidate
 from app.rag.retrieval.context_expansion import expand_ranked_chunk_results
 from app.rag.retrieval.query_phrase_match import query_phrase_match
 from app.rag.retrieval.sibling_expand import select_document_expansion_mode
+from app.rag.retrieval.source_labels import derive_document_title, should_replace_source_label
 from app.rag.retrieval.sparse import SparseVector
 from app.rag.retrieval_candidate_cache import (
     build_retrieval_candidate_cache_key,
@@ -3958,6 +3959,9 @@ class HybridRetriever(BaseRetriever):
             doc_ready_by_id: dict[str, bool] = {}
             doc_active_pipeline_key_by_id: dict[str, str] = {}
             doc_parse_quality_by_id: dict[str, float] = {}
+            doc_filename_by_id: dict[str, str] = {}
+            doc_metadata_by_id: dict[str, dict[str, Any]] = {}
+            doc_title_by_id: dict[str, str] = {}
             try:
                 doc_ids: set[UUID] = set()
                 for ck in list(chunks_by_id.values()) + list(chunks_by_pair.values()):
@@ -3966,6 +3970,7 @@ class HybridRetriever(BaseRetriever):
                 if doc_ids:
                     dq = db.query(
                         DBDocument.id,
+                        DBDocument.filename,
                         DBDocument.dataset_id,
                         DBDocument.status,
                         DBDocument.doc_metadata,
@@ -3975,8 +3980,11 @@ class HybridRetriever(BaseRetriever):
                     ).filter(DBDocument.id.in_(sorted(doc_ids)))
                     if tenant_filter:
                         dq = dq.filter(DBDocument.tenant_id == tenant_filter)
-                    for doc_id, ds_id, status, doc_meta, archived_at, disabled_at, publication_status in dq.all():
+                    for doc_id, filename, ds_id, status, doc_meta, archived_at, disabled_at, publication_status in dq.all():
                         meta0 = doc_meta if isinstance(doc_meta, dict) else {}
+                        doc_metadata_by_id[str(doc_id)] = dict(meta0)
+                        if filename:
+                            doc_filename_by_id[str(doc_id)] = str(filename)
                         user0 = meta0.get("user") if isinstance(meta0.get("user"), dict) else {}
                         if user0:
                             doc_user_by_id[str(doc_id)] = dict(user0)
@@ -4018,6 +4026,29 @@ class HybridRetriever(BaseRetriever):
                                 active_key = f"{doc_id}:{active_hash}"
                         if ready and active_key:
                             doc_active_pipeline_key_by_id[str(doc_id)] = active_key
+
+                    first_chunk_by_doc_id: dict[str, str] = {}
+                    try:
+                        fq = db.query(DocumentChunk.document_id, DocumentChunk.content).filter(
+                            DocumentChunk.document_id.in_(sorted(doc_ids)),
+                            DocumentChunk.chunk_index == 0,
+                        )
+                        if tenant_filter:
+                            fq = fq.filter(DocumentChunk.tenant_id == tenant_filter)
+                        for doc_id, content in fq.all():
+                            first_chunk_by_doc_id[str(doc_id)] = str(content or "")
+                    except Exception as exc:
+                        logger.debug("Ignoring non-critical retriever fallback failure: %s", exc)
+
+                    for doc_id in doc_ids:
+                        doc_id_s = str(doc_id)
+                        title = derive_document_title(
+                            filename=doc_filename_by_id.get(doc_id_s),
+                            doc_metadata=doc_metadata_by_id.get(doc_id_s),
+                            first_chunk_content=first_chunk_by_doc_id.get(doc_id_s),
+                        )
+                        if title:
+                            doc_title_by_id[doc_id_s] = title
             except Exception as exc:
                 _log_retriever_fallback('_enrich_results_with_db_metadata', exc)
                 doc_user_by_id = {}
@@ -4025,6 +4056,9 @@ class HybridRetriever(BaseRetriever):
                 doc_ready_by_id = {}
                 doc_active_pipeline_key_by_id = {}
                 doc_parse_quality_by_id = {}
+                doc_filename_by_id = {}
+                doc_metadata_by_id = {}
+                doc_title_by_id = {}
 
             # Candidate-level ACL trimming (security trimming) and dataset scoping.
             # This enables "open scope" retrieval (no precomputed allowed_doc_ids list) without leaking data.
@@ -4151,6 +4185,16 @@ class HybridRetriever(BaseRetriever):
                         meta["img_id"] = stored_meta.get("img_id")
                     if stored_meta.get("source") and not meta.get("source"):
                         meta["source"] = stored_meta.get("source")
+                    doc_filename = doc_filename_by_id.get(doc_id_str)
+                    if doc_filename and (
+                        not meta.get("filename") or should_replace_source_label(meta.get("filename"), document_id=doc_id_str)
+                    ):
+                        meta["filename"] = doc_filename
+                    if doc_filename and should_replace_source_label(meta.get("source"), document_id=doc_id_str):
+                        meta["source"] = doc_filename
+                    doc_title = doc_title_by_id.get(doc_id_str)
+                    if doc_title and not meta.get("document_title"):
+                        meta["document_title"] = doc_title
                     if (ck.page_number is not None) and not meta.get("page"):
                         meta["page"] = ck.page_number
                     if (ck.page_number is not None) and not meta.get("page_number"):
