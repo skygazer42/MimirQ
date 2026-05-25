@@ -184,10 +184,42 @@ async def test_heuristic_kg_extractor_builds_entity_event_from_real_text():
     events = await HeuristicExtractor().extract_from_sections([chunk], 1, max_events=2, max_entities_per_event=8)
 
     assert events
-    names = {entity["normalized_name"] for entity in events[0]["entities"]}
+    names = {entity["normalized_name"] for event in events for entity in event["entities"]}
     assert "quic" in names
     assert "rfc 9000" in names
     assert "fastapi" in names
+
+
+@pytest.mark.asyncio
+async def test_heuristic_kg_extractor_splits_multiple_facts_into_events():
+    from app.rag.kg.extraction.heuristic_extractor import HeuristicExtractor
+
+    tenant_id = UUID(int=1)
+    doc_id = UUID(int=2)
+    chunk_id = UUID(int=3)
+    chunk = _Chunk(
+        tenant_id=tenant_id,
+        document_id=doc_id,
+        chunk_id=chunk_id,
+        content=(
+            "# Atlas Program Brief\n"
+            "Project Atlas acquired Blue Harbor on 2026-01-10.\n"
+            "Mira Chen led the Blue Harbor integration program.\n"
+            "The Blue Harbor integration program migrated the Orion Billing Service.\n"
+        ),
+    )
+
+    events = await HeuristicExtractor().extract_from_sections([chunk], 1, max_events=3, max_entities_per_event=5)
+
+    assert len(events) == 3
+    summaries = " ".join(event["summary"] for event in events)
+    assert "acquired Blue Harbor" in summaries
+    assert "Mira Chen led" in summaries
+    assert "migrated the Orion Billing Service" in summaries
+    per_event_entities = [{entity["normalized_name"] for entity in event["entities"]} for event in events]
+    assert any({"project atlas", "blue harbor"}.issubset(names) for names in per_event_entities)
+    assert any({"mira chen", "blue harbor"}.issubset(names) for names in per_event_entities)
+    assert any({"blue harbor", "orion billing service"}.issubset(names) for names in per_event_entities)
 
 
 @pytest.mark.asyncio
