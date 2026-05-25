@@ -24,6 +24,7 @@ from app.rag.embedding.base import BaseEmbeddingModel
 from app.rag.embedding.utils import logger
 
 _RETRYABLE_HTTP_CODES = frozenset({408, 429, 500, 502, 503, 504})
+_DASHSCOPE_OPENAI_COMPAT_BATCH_CAP = 10
 
 _sync_sem: threading.BoundedSemaphore | None = None
 _sync_sem_cap: int | None = None
@@ -128,6 +129,13 @@ class OpenAICompatibleEmbedding(BaseEmbeddingModel):
         """Build API request payload."""
         return {"model": self.model, "input": message}
 
+    def _effective_batch_size(self) -> int:
+        configured = max(1, int(getattr(settings, "EMBEDDING_API_BATCH_SIZE", 64) or 64))
+        base_url = str(self.base_url or "").lower()
+        if "dashscope.aliyuncs.com" in base_url:
+            return min(configured, _DASHSCOPE_OPENAI_COMPAT_BATCH_CAP)
+        return configured
+
     def _encode_one_batch(self, texts: list[str]) -> list[list[float]]:
         payload = self._build_payload(texts)
         timeout_sec = float(getattr(settings, "EMBEDDING_API_TIMEOUT_SEC", 60.0) or 60.0)
@@ -212,7 +220,7 @@ class OpenAICompatibleEmbedding(BaseEmbeddingModel):
         if not texts:
             return []
 
-        batch_size = max(1, int(getattr(settings, "EMBEDDING_API_BATCH_SIZE", 64) or 64))
+        batch_size = self._effective_batch_size()
         out: list[list[float]] = []
         for start in range(0, len(texts), batch_size):
             out.extend(self._encode_one_batch(texts[start : start + batch_size]))
@@ -301,7 +309,7 @@ class OpenAICompatibleEmbedding(BaseEmbeddingModel):
         if not texts:
             return []
 
-        batch_size = max(1, int(getattr(settings, "EMBEDDING_API_BATCH_SIZE", 64) or 64))
+        batch_size = self._effective_batch_size()
         out: list[list[float]] = []
         for start in range(0, len(texts), batch_size):
             out.extend(await self._aencode_one_batch(texts[start : start + batch_size]))
