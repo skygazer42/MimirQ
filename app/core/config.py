@@ -920,6 +920,7 @@ class Settings(BaseSettings):
     RETRIEVAL_FIELD_AWARE_TITLE_BOOST: float = 0.08
     RETRIEVAL_FIELD_AWARE_HEADING_BOOST: float = 0.05
     RETRIEVAL_FIELD_AWARE_MAX_BOOST: float = 0.10
+    RETRIEVAL_EXACT_PHRASE_RERANK_BOOST: float = 0.35
     # Optional chunk-type-aware recall signal (disabled by default).
     # When enabled, candidates whose standardized chunk_type matches the query intent
     # receive a small bounded additive score during channel fusion.
@@ -1929,6 +1930,7 @@ class Settings(BaseSettings):
     KG_SEARCH_QUERY_MODE_LOW_CONFIDENCE_GLOBAL_MAX_EVENTS: int = 40
     KG_SEARCH_QUERY_MODE_DRIFT_MIN_EVENTS: int = 140
     KG_SEARCH_QUERY_MODE_LOCAL_ENTITY_WEIGHT_BONUS: float = 0.05
+    KG_SEARCH_EXACT_PHRASE_RERANK_BOOST: float = 0.25
     # KG serving-layer budget: full KG remains stored, but normal online RAG only
     # sends a high-value subset into expand/rerank.
     KG_SEARCH_SERVING_LAYER_ENABLED: bool = True
