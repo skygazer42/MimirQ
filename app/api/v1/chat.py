@@ -450,6 +450,9 @@ async def chat(
         metrics_data = _apply_chat_runtime_metrics_context(
             metrics_data,
             dataset_id_used=dataset_id_used,
+            effective_prompt_template_id=effective_prompt_template_id,
+            effective_prompt_template_key=effective_prompt_template_key,
+            effective_prompt_ab_experiment_key=effective_prompt_ab_experiment_key,
             dataset_rag_defaults_applied_fields=dataset_rag_defaults_applied_fields,
             dataset_rag_config_template_defaults_applied_fields=dataset_rag_config_template_defaults_applied_fields,
             rag_config_template_meta=rag_config_template_meta,
