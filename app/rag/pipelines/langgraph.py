@@ -110,6 +110,12 @@ class RAGState(TypedDict, total=False):
     hierarchy_parent_depth: int | None
     hierarchy_sibling_window: int | None
     hierarchy_overfetch_factor: int | None
+    enable_kg_query_expansion: bool | None
+    enable_kg_chunk_injection: bool | None
+    kg_chunk_injection_max_chunks: int | None
+    enable_kg_chunk_boost: bool | None
+    kg_chunk_boost_weight: float | None
+    kg_chunk_boost_max_promoted: int | None
     enable_query_rewrite: bool | None
     query_rewrite_strategy: str | None
     query_rewrite_temperature: float | None
@@ -217,6 +223,12 @@ def _retrieve_cache_key(state: dict[str, Any]) -> str:
         "multi_query_max_chars": state.get("multi_query_max_chars"),
         "enable_hyde": state.get("enable_hyde"),
         "enable_query_rewrite": state.get("enable_query_rewrite"),
+        "enable_kg_query_expansion": state.get("enable_kg_query_expansion"),
+        "enable_kg_chunk_injection": state.get("enable_kg_chunk_injection"),
+        "kg_chunk_injection_max_chunks": state.get("kg_chunk_injection_max_chunks"),
+        "enable_kg_chunk_boost": state.get("enable_kg_chunk_boost"),
+        "kg_chunk_boost_weight": state.get("kg_chunk_boost_weight"),
+        "kg_chunk_boost_max_promoted": state.get("kg_chunk_boost_max_promoted"),
         "query_rewrite_strategy": state.get("query_rewrite_strategy"),
         "query_rewrite_temperature": state.get("query_rewrite_temperature"),
         "query_rewrite_max_chars": state.get("query_rewrite_max_chars"),
@@ -1357,6 +1369,12 @@ class RagStateBuildOptions:
     hierarchy_parent_depth: int | None = None
     hierarchy_sibling_window: int | None = None
     hierarchy_overfetch_factor: int | None = None
+    enable_kg_query_expansion: bool | None = None
+    enable_kg_chunk_injection: bool | None = None
+    kg_chunk_injection_max_chunks: int | None = None
+    enable_kg_chunk_boost: bool | None = None
+    kg_chunk_boost_weight: float | None = None
+    kg_chunk_boost_max_promoted: int | None = None
     enable_query_rewrite: bool | None = None
     query_rewrite_strategy: str | None = None
     query_rewrite_temperature: float | None = None
@@ -1441,6 +1459,12 @@ def build_rag_state(
     hierarchy_parent_depth = resolved.hierarchy_parent_depth
     hierarchy_sibling_window = resolved.hierarchy_sibling_window
     hierarchy_overfetch_factor = resolved.hierarchy_overfetch_factor
+    enable_kg_query_expansion = resolved.enable_kg_query_expansion
+    enable_kg_chunk_injection = resolved.enable_kg_chunk_injection
+    kg_chunk_injection_max_chunks = resolved.kg_chunk_injection_max_chunks
+    enable_kg_chunk_boost = resolved.enable_kg_chunk_boost
+    kg_chunk_boost_weight = resolved.kg_chunk_boost_weight
+    kg_chunk_boost_max_promoted = resolved.kg_chunk_boost_max_promoted
     enable_query_rewrite = resolved.enable_query_rewrite
     query_rewrite_strategy = resolved.query_rewrite_strategy
     query_rewrite_temperature = resolved.query_rewrite_temperature
@@ -1607,6 +1631,12 @@ def build_rag_state(
         "hierarchy_parent_depth": hierarchy_parent_depth,
         "hierarchy_sibling_window": hierarchy_sibling_window,
         "hierarchy_overfetch_factor": hierarchy_overfetch_factor,
+        "enable_kg_query_expansion": enable_kg_query_expansion,
+        "enable_kg_chunk_injection": enable_kg_chunk_injection,
+        "kg_chunk_injection_max_chunks": kg_chunk_injection_max_chunks,
+        "enable_kg_chunk_boost": enable_kg_chunk_boost,
+        "kg_chunk_boost_weight": kg_chunk_boost_weight,
+        "kg_chunk_boost_max_promoted": kg_chunk_boost_max_promoted,
         "enable_query_rewrite": enable_query_rewrite,
         "query_rewrite_strategy": query_rewrite_strategy,
         "query_rewrite_temperature": query_rewrite_temperature,

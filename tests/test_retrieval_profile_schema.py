@@ -227,7 +227,47 @@ def test_expanded_profile_maps_to_default_expansion_preset() -> None:
     assert applied["hierarchy_parent_depth"] == 1
     assert applied["hierarchy_sibling_window"] == 1
     assert applied["hierarchy_overfetch_factor"] == 4
+    assert applied["context_neighbor_window"] == 2
+    assert applied["context_neighbor_max_added"] == 24
+    assert applied["context_neighbor_score_driven"] is True
+    assert applied["context_neighbor_high_span"] == 2
+    assert applied["context_neighbor_mid_span"] == 1
     assert is_recall_first_profile("expanded") is True
+
+
+def test_chat_rag_config_accepts_request_level_kg_boost_controls() -> None:
+    from app.api.schemas.chat import ChatRAGConfig
+    from app.rag.pipelines.langgraph import build_rag_state
+
+    cfg = ChatRAGConfig(
+        enable_kg_chunk_injection=True,
+        kg_chunk_injection_max_chunks=7,
+        enable_kg_chunk_boost=True,
+        kg_chunk_boost_weight=0.35,
+        kg_chunk_boost_max_promoted=2,
+        enable_kg_query_expansion=True,
+    )
+
+    state = build_rag_state(
+        question="q",
+        document_ids=[],
+        top_k=5,
+        score_threshold=0.0,
+        retrieval_mode="hybrid",
+        enable_kg_chunk_injection=cfg.enable_kg_chunk_injection,
+        kg_chunk_injection_max_chunks=cfg.kg_chunk_injection_max_chunks,
+        enable_kg_chunk_boost=cfg.enable_kg_chunk_boost,
+        kg_chunk_boost_weight=cfg.kg_chunk_boost_weight,
+        kg_chunk_boost_max_promoted=cfg.kg_chunk_boost_max_promoted,
+        enable_kg_query_expansion=cfg.enable_kg_query_expansion,
+    )
+
+    assert state["enable_kg_chunk_injection"] is True
+    assert state["kg_chunk_injection_max_chunks"] == 7
+    assert state["enable_kg_chunk_boost"] is True
+    assert state["kg_chunk_boost_weight"] == 0.35
+    assert state["kg_chunk_boost_max_promoted"] == 2
+    assert state["enable_kg_query_expansion"] is True
 
 
 def test_hierarchy_hybrid_ce_profile_keeps_hierarchy_overlay_without_reranker() -> None:

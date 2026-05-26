@@ -48,10 +48,10 @@ from app.services.chat_execution_runtime import (
     execute_langchain_chat_once as _execute_langchain_chat_once,
 )
 from app.services.chat_execution_runtime import (
-    is_model_provider_unavailable_error as _is_model_provider_unavailable_error,
+    is_model_provider_unavailable_circuit_open as _is_model_provider_unavailable_circuit_open,
 )
 from app.services.chat_execution_runtime import (
-    is_model_provider_unavailable_circuit_open as _is_model_provider_unavailable_circuit_open,
+    is_model_provider_unavailable_error as _is_model_provider_unavailable_error,
 )
 from app.services.chat_execution_runtime import (
     mark_model_provider_unavailable as _mark_model_provider_unavailable,
@@ -107,6 +107,7 @@ from app.services.chat_turn_persistence import (
 )
 from app.services.metrics_logger import set_metrics_context
 from app.services.quota_service import check_chat_assistant_token_quota
+from app.services.rag_runtime_limiter import run_blocking_retrieval_call
 
 logger = get_logger("api.chat")
 
@@ -319,7 +320,8 @@ async def chat(
     try:
         if not cache_hit and not singleflight_hit:
             if getattr(effective_rag_config, "answer_mode", "llm") == "extractive":
-                chat_result = _execute_extractive_fallback_once(
+                chat_result = await run_blocking_retrieval_call(
+                    _execute_extractive_fallback_once,
                     db=db,
                     tenant_id=tenant_id,
                     account_id=account_id,
@@ -332,7 +334,8 @@ async def chat(
                     reason="explicit_extractive_answer_mode",
                 )
             elif _is_model_provider_unavailable_circuit_open():
-                chat_result = _execute_extractive_fallback_once(
+                chat_result = await run_blocking_retrieval_call(
+                    _execute_extractive_fallback_once,
                     db=db,
                     tenant_id=tenant_id,
                     account_id=account_id,
@@ -347,7 +350,8 @@ async def chat(
             else:
                 provider_available, provider_error = await _preflight_model_provider_fast()
                 if not provider_available:
-                    chat_result = _execute_extractive_fallback_once(
+                    chat_result = await run_blocking_retrieval_call(
+                        _execute_extractive_fallback_once,
                         db=db,
                         tenant_id=tenant_id,
                         account_id=account_id,
@@ -371,7 +375,8 @@ async def chat(
                 else:
                     try:
                         if effective_rag_config.use_graph:
-                            chat_result = _execute_graph_chat_once(
+                            chat_result = await run_blocking_retrieval_call(
+                                _execute_graph_chat_once,
                                 db=db,
                                 tenant_id=tenant_id,
                                 account_id=account_id,
@@ -412,7 +417,8 @@ async def chat(
                         if not _is_model_provider_unavailable_error(exc):
                             raise
                         _mark_model_provider_unavailable()
-                        chat_result = _execute_extractive_fallback_once(
+                        chat_result = await run_blocking_retrieval_call(
+                            _execute_extractive_fallback_once,
                             db=db,
                             tenant_id=tenant_id,
                             account_id=account_id,

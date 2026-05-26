@@ -27,6 +27,7 @@ from app.services.rag_config_template_apply import apply_rag_config_patch
 from app.services.rag_config_template_defaults import merge_rag_config_template_defaults_with_dataset
 from app.services.rag_config_template_resolver import build_rag_config_patch_hash, resolve_rag_config_template
 from app.services.rag_defaults import merge_rag_config_with_dataset_defaults
+from app.services.rag_runtime_limiter import run_blocking_retrieval_call
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -519,6 +520,12 @@ async def retrieve_preview(
         hierarchy_parent_depth=effective_rag_config.hierarchy_parent_depth,
         hierarchy_sibling_window=effective_rag_config.hierarchy_sibling_window,
         hierarchy_overfetch_factor=effective_rag_config.hierarchy_overfetch_factor,
+        enable_kg_query_expansion=effective_rag_config.enable_kg_query_expansion,
+        enable_kg_chunk_injection=effective_rag_config.enable_kg_chunk_injection,
+        kg_chunk_injection_max_chunks=effective_rag_config.kg_chunk_injection_max_chunks,
+        enable_kg_chunk_boost=effective_rag_config.enable_kg_chunk_boost,
+        kg_chunk_boost_weight=effective_rag_config.kg_chunk_boost_weight,
+        kg_chunk_boost_max_promoted=effective_rag_config.kg_chunk_boost_max_promoted,
         alpha=effective_rag_config.alpha,
         fusion_strategy=effective_rag_config.fusion_strategy,
         fusion_budgets=effective_rag_config.fusion_budgets,
@@ -554,7 +561,7 @@ async def retrieve_preview(
     state["multimodal_router"] = multimodal_meta
     state["image_meta"] = image_meta
 
-    result = run_retrieval(state) or {}
+    result = await run_blocking_retrieval_call(run_retrieval, state) or {}
     citations = result.get("citations") or []
     metrics = result.get("metrics") or {}
     query_for_retrieval = (result.get("query_for_retrieval") or body.query or "").strip()
@@ -936,6 +943,12 @@ async def retrieve_evidence(
         hierarchy_parent_depth=effective_rag_config.hierarchy_parent_depth,
         hierarchy_sibling_window=effective_rag_config.hierarchy_sibling_window,
         hierarchy_overfetch_factor=effective_rag_config.hierarchy_overfetch_factor,
+        enable_kg_query_expansion=effective_rag_config.enable_kg_query_expansion,
+        enable_kg_chunk_injection=effective_rag_config.enable_kg_chunk_injection,
+        kg_chunk_injection_max_chunks=effective_rag_config.kg_chunk_injection_max_chunks,
+        enable_kg_chunk_boost=effective_rag_config.enable_kg_chunk_boost,
+        kg_chunk_boost_weight=effective_rag_config.kg_chunk_boost_weight,
+        kg_chunk_boost_max_promoted=effective_rag_config.kg_chunk_boost_max_promoted,
         alpha=effective_rag_config.alpha,
         fusion_strategy=effective_rag_config.fusion_strategy,
         fusion_budgets=effective_rag_config.fusion_budgets,
@@ -1373,6 +1386,12 @@ async def prompt_preview(
         hierarchy_parent_depth=effective_rag_config.hierarchy_parent_depth,
         hierarchy_sibling_window=effective_rag_config.hierarchy_sibling_window,
         hierarchy_overfetch_factor=effective_rag_config.hierarchy_overfetch_factor,
+        enable_kg_query_expansion=effective_rag_config.enable_kg_query_expansion,
+        enable_kg_chunk_injection=effective_rag_config.enable_kg_chunk_injection,
+        kg_chunk_injection_max_chunks=effective_rag_config.kg_chunk_injection_max_chunks,
+        enable_kg_chunk_boost=effective_rag_config.enable_kg_chunk_boost,
+        kg_chunk_boost_weight=effective_rag_config.kg_chunk_boost_weight,
+        kg_chunk_boost_max_promoted=effective_rag_config.kg_chunk_boost_max_promoted,
         alpha=effective_rag_config.alpha,
         fusion_strategy=effective_rag_config.fusion_strategy,
         fusion_budgets=effective_rag_config.fusion_budgets,

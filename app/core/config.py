@@ -1088,6 +1088,10 @@ class Settings(BaseSettings):
     # Optional: load fusion channel budget policy (generated from offline ablations).
     # When configured, orchestrator can auto-apply budgeted_rrf channel quotas.
     RAG_CHANNEL_BUDGET_POLICY_PATH: str = ""
+    # Async API endpoints offload blocking retrieval work to threads; cap concurrent
+    # heavy retrieval jobs so Milvus/embedding backends queue instead of saturating.
+    # Set 0 to disable the process-local gate.
+    RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY: int = 2
 
     # Prompt context guards (0 disables)
     RAG_CONTEXT_MAX_CHARS_PER_CHUNK: int = 1500
@@ -1100,6 +1104,10 @@ class Settings(BaseSettings):
     # Optional: inject KG-linked chunks (via KG event chunk_id) into RAG retrieval results.
     RAG_KG_CHUNK_INJECTION_ENABLED: bool = False
     RAG_KG_CHUNK_INJECTION_MAX_CHUNKS: int = 5
+    # Optional deterministic boost for KG-linked chunks after injection.
+    RAG_KG_CHUNK_BOOST_ENABLED: bool = False
+    RAG_KG_CHUNK_BOOST_WEIGHT: float = 0.15
+    RAG_KG_CHUNK_BOOST_MAX_PROMOTED: int = 2
     # Optional: KG-derived query expansion (entity names -> extra retrieval queries).
     RAG_KG_QUERY_EXPANSION_ENABLED: bool = False
     RAG_KG_QUERY_EXPANSION_MAX_ENTITIES: int = 5
@@ -1912,6 +1920,10 @@ class Settings(BaseSettings):
     KG_SEARCH_NODE_TEXT_MAX_CHARS: int = 400
     # - Global KG search timeout (seconds, 0 disables).
     KG_SEARCH_TIMEOUT_SEC: float = 0.0
+    # - Skip KG expand when recall alone consumes this budget (seconds, 0 disables).
+    KG_SEARCH_EXPAND_BUDGET_SEC: float = 0.0
+    # - Per-query KG latency SLO target for stats/metrics only (milliseconds, 0 disables).
+    KG_SEARCH_LATENCY_SLO_MS: int = 0
     KG_SEARCH_METRICS_ENABLED: bool = False
     # KG search cache (best-effort, per-process).
     # Disabled by default to preserve backward-compatible behavior.
@@ -2565,10 +2577,29 @@ class Settings(BaseSettings):
         if self.EVIDENCE_POST_RERANK_CACHE_PREFIX != post_rerank_cache_prefix:
             self.EVIDENCE_POST_RERANK_CACHE_PREFIX = post_rerank_cache_prefix
 
+        if int(getattr(self, "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY", 0) or 0) < 0:
+            raise ValueError("RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY must be >= 0")
+        if int(getattr(self, "RAG_KG_CHUNK_INJECTION_MAX_CHUNKS", 0) or 0) < 0:
+            raise ValueError("RAG_KG_CHUNK_INJECTION_MAX_CHUNKS must be >= 0")
+        kg_chunk_boost_weight = float(getattr(self, "RAG_KG_CHUNK_BOOST_WEIGHT", 0.15) or 0.0)
+        if kg_chunk_boost_weight < 0.0 or kg_chunk_boost_weight > 1.0:
+            raise ValueError("RAG_KG_CHUNK_BOOST_WEIGHT must be between 0 and 1")
+        if self.RAG_KG_CHUNK_BOOST_WEIGHT != kg_chunk_boost_weight:
+            self.RAG_KG_CHUNK_BOOST_WEIGHT = kg_chunk_boost_weight
+        if int(getattr(self, "RAG_KG_CHUNK_BOOST_MAX_PROMOTED", 0) or 0) < 0:
+            raise ValueError("RAG_KG_CHUNK_BOOST_MAX_PROMOTED must be >= 0")
+
         if int(getattr(self, "KG_SEARCH_CACHE_TTL_SEC", 0) or 0) < 0:
             raise ValueError("KG_SEARCH_CACHE_TTL_SEC must be >= 0")
         if int(getattr(self, "KG_SEARCH_CACHE_MAX_ENTRIES", 0) or 0) < 0:
             raise ValueError("KG_SEARCH_CACHE_MAX_ENTRIES must be >= 0")
+        kg_expand_budget_sec = float(getattr(self, "KG_SEARCH_EXPAND_BUDGET_SEC", 0.0) or 0.0)
+        if kg_expand_budget_sec < 0.0:
+            raise ValueError("KG_SEARCH_EXPAND_BUDGET_SEC must be >= 0")
+        if self.KG_SEARCH_EXPAND_BUDGET_SEC != kg_expand_budget_sec:
+            self.KG_SEARCH_EXPAND_BUDGET_SEC = kg_expand_budget_sec
+        if int(getattr(self, "KG_SEARCH_LATENCY_SLO_MS", 0) or 0) < 0:
+            raise ValueError("KG_SEARCH_LATENCY_SLO_MS must be >= 0")
         kg_quality_low = float(getattr(self, "KG_QUALITY_LOW_CONFIDENCE_THRESHOLD", 0.30) or 0.30)
         if not (0.0 <= kg_quality_low <= 1.0):
             raise ValueError("KG_QUALITY_LOW_CONFIDENCE_THRESHOLD must be between 0 and 1")

@@ -82,6 +82,10 @@ from app.rag.policy.query_expansion import build_clause_fastlane_queries
 from app.rag.query_expansion import generate_alias_queries
 from app.rag.reranker.factory import describe_reranker_provider
 from app.rag.retrieval.contract import resolve_retrieval_contract_policy
+from app.rag.retrieval.orchestrator import (
+    _apply_kg_chunk_boost,
+    _fetch_document_chunks_for_kg_injection,
+)
 from app.rag.retriever import hybrid_retriever
 from app.services.metrics_logger import log_metrics
 from app.services.prompt_resolver import resolve_prompt_template
@@ -837,6 +841,12 @@ Requirements:
         multi_query_max_chars = rag_config.multi_query_max_chars
         enable_hyde = rag_config.enable_hyde
         enable_query_decomposition = rag_config.enable_query_decomposition
+        enable_kg_query_expansion = getattr(rag_config, "enable_kg_query_expansion", None)
+        enable_kg_chunk_injection = getattr(rag_config, "enable_kg_chunk_injection", None)
+        kg_chunk_injection_max_chunks = getattr(rag_config, "kg_chunk_injection_max_chunks", None)
+        enable_kg_chunk_boost = getattr(rag_config, "enable_kg_chunk_boost", None)
+        kg_chunk_boost_weight = getattr(rag_config, "kg_chunk_boost_weight", None)
+        kg_chunk_boost_max_promoted = getattr(rag_config, "kg_chunk_boost_max_promoted", None)
         enable_hierarchy_recall = rag_config.enable_hierarchy_recall
         hierarchy_family_collapse = rag_config.hierarchy_family_collapse
         hierarchy_family_aggregation = rag_config.hierarchy_family_aggregation
@@ -1410,7 +1420,11 @@ Requirements:
             # Purpose: provide extra retrieval queries derived from KG entity recall
             # to reduce false negatives, with clear attribution ("kgq").
             kg_result_cached: dict[str, Any] | None = None
-            kg_query_expansion_enabled = bool(getattr(settings, "RAG_KG_QUERY_EXPANSION_ENABLED", False))
+            kg_query_expansion_enabled = (
+                bool(getattr(settings, "RAG_KG_QUERY_EXPANSION_ENABLED", False))
+                if enable_kg_query_expansion is None
+                else bool(enable_kg_query_expansion)
+            )
             kg_query_expansion_used = False
             kg_query_expansion_elapsed = 0.0
             kg_query_expansion_error: str | None = None
@@ -1756,6 +1770,13 @@ Requirements:
                 "metadata_filter": metadata_filter,
                 "retrieval_mode": mode_used,
                 "retrieval_profile": profile_norm or None,
+                "context_neighbor_window": profile_applied.get("context_neighbor_window"),
+                "context_neighbor_max_added": profile_applied.get("context_neighbor_max_added"),
+                "context_neighbor_score_driven": profile_applied.get("context_neighbor_score_driven"),
+                "context_neighbor_high_threshold": profile_applied.get("context_neighbor_high_threshold"),
+                "context_neighbor_mid_threshold": profile_applied.get("context_neighbor_mid_threshold"),
+                "context_neighbor_high_span": profile_applied.get("context_neighbor_high_span"),
+                "context_neighbor_mid_span": profile_applied.get("context_neighbor_mid_span"),
                 "enable_weight_rerank": weight_rerank,
                 "vector_weight": vec_w,
                 "keyword_weight": kw_w,
@@ -1982,23 +2003,40 @@ Requirements:
             #
             # This turns KG entity linking (query->events->chunk_id) into structured chunk candidates,
             # improving precision without replacing the main retriever.
+            kg_chunk_injection_enabled = (
+                bool(getattr(settings, "RAG_KG_CHUNK_INJECTION_ENABLED", False))
+                if enable_kg_chunk_injection is None
+                else bool(enable_kg_chunk_injection)
+            )
+            try:
+                kg_chunk_injection_max_chunks_i = (
+                    int(getattr(settings, "RAG_KG_CHUNK_INJECTION_MAX_CHUNKS", 5) or 5)
+                    if kg_chunk_injection_max_chunks is None
+                    else int(kg_chunk_injection_max_chunks or 0)
+                )
+            except Exception:
+                kg_chunk_injection_max_chunks_i = int(getattr(settings, "RAG_KG_CHUNK_INJECTION_MAX_CHUNKS", 5) or 5)
+            kg_chunk_injection_max_chunks_i = max(0, min(int(kg_chunk_injection_max_chunks_i or 0), 50))
+            kg_chunk_boost_meta: dict[str, Any] = {"enabled": False, "reason": "not_run"}
             kg_chunks_injected = 0
             try:
                 if (
-                    bool(getattr(settings, "RAG_KG_CHUNK_INJECTION_ENABLED", False))
+                    bool(kg_chunk_injection_enabled)
                     and bool(getattr(settings, "KG_ENABLED", False))
                     and bool(getattr(settings, "KG_CHAT_ENABLED", False))
                     and db is not None
                     and tenant_id is not None
-                    and document_ids
+                    and (document_ids or dataset_id is not None)
                 ):
                     kg_result_cached = kg_result_cached or await kg_search(
                         query=query_for_retrieval,
                         tenant_id=tenant_id,
-                        document_ids=document_ids,
+                        document_ids=(document_ids or None),
+                        dataset_id=(dataset_id if not document_ids else None),
+                        account_id=(account_id if not document_ids else None),
                     )
                     kg_events = (kg_result_cached or {}).get("events") or []
-                    max_chunks = max(0, int(getattr(settings, "RAG_KG_CHUNK_INJECTION_MAX_CHUNKS", 0) or 0)) or 5
+                    max_chunks = int(kg_chunk_injection_max_chunks_i or 0) or 5
 
                     score_by_chunk: dict[str, float] = {}
                     chunk_ids: list[UUID] = []
@@ -2025,16 +2063,13 @@ Requirements:
                             break
 
                     if chunk_ids:
-                        from app.models.document import DocumentChunk  # noqa: WPS433
-
-                        rows = (
-                            db.query(DocumentChunk)
-                            .filter(
-                                DocumentChunk.tenant_id == tenant_id,
-                                DocumentChunk.document_id.in_(list(document_ids)),
-                                DocumentChunk.id.in_(list(chunk_ids)),
-                            )
-                            .all()
+                        rows = _fetch_document_chunks_for_kg_injection(
+                            db=db,
+                            tenant_id=tenant_id,
+                            account_id=account_id,
+                            dataset_id=dataset_id,
+                            document_ids=list(document_ids or []),
+                            chunk_ids=chunk_ids,
                         )
                         chunk_by_id: dict[UUID, Any] = {
                             ch.id: ch
@@ -2088,6 +2123,31 @@ Requirements:
             except Exception:
                 kg_result_cached = None
                 kg_chunks_injected = 0
+
+            try:
+                kg_boost_enabled = (
+                    bool(getattr(settings, "RAG_KG_CHUNK_BOOST_ENABLED", False))
+                    if enable_kg_chunk_boost is None
+                    else bool(enable_kg_chunk_boost)
+                )
+                kg_boost_weight = (
+                    float(getattr(settings, "RAG_KG_CHUNK_BOOST_WEIGHT", 0.25) or 0.25)
+                    if kg_chunk_boost_weight is None
+                    else float(kg_chunk_boost_weight or 0.0)
+                )
+                kg_boost_max_promoted = (
+                    int(getattr(settings, "RAG_KG_CHUNK_BOOST_MAX_PROMOTED", 3) or 3)
+                    if kg_chunk_boost_max_promoted is None
+                    else int(kg_chunk_boost_max_promoted or 0)
+                )
+                docs, kg_chunk_boost_meta = _apply_kg_chunk_boost(
+                    [d for d in (docs or []) if isinstance(d, Document)],
+                    enabled=bool(kg_boost_enabled),
+                    weight=max(0.0, min(float(kg_boost_weight), 1.0)),
+                    max_promoted=max(0, min(int(kg_boost_max_promoted), 20)),
+                )
+            except Exception:
+                kg_chunk_boost_meta = {"enabled": False, "reason": "exception"}
 
             # Optional: Image bridge - inject bounded image/figure chunks (CLIP) as extra context.
             image_docs: list[Document] = []
@@ -3176,7 +3236,13 @@ Requirements:
                         "parent_child_auto_merge_enabled": bool(getattr(settings, "RAG_PARENT_CHILD_AUTO_MERGE_ENABLED", False)),
                         "parent_child_auto_merge_mode": str(getattr(settings, "RAG_PARENT_CHILD_AUTO_MERGE_MODE", "") or ""),
                         "kg_query_expansion_enabled": bool(kg_query_expansion_enabled),
-                        "kg_chunk_injection_enabled": bool(getattr(settings, "RAG_KG_CHUNK_INJECTION_ENABLED", False)),
+                        "kg_chunk_injection_enabled": bool(kg_chunk_injection_enabled),
+                        "kg_chunk_injection_max_chunks": int(kg_chunk_injection_max_chunks_i or 0),
+                        "kg_chunk_boost_enabled": bool(kg_chunk_boost_meta.get("enabled")),
+                        "kg_chunk_boost_weight": kg_chunk_boost_meta.get("weight"),
+                        "kg_chunk_boost_max_promoted": kg_chunk_boost_meta.get("max_promoted"),
+                        "kg_chunk_boost_promoted": int(kg_chunk_boost_meta.get("promoted", 0) or 0),
+                        "kg_chunk_boost_top_changed": bool(kg_chunk_boost_meta.get("top_changed")),
                         "evidence_post_rerank_enabled": bool(getattr(settings, "EVIDENCE_POST_RERANK_ENABLED", False)),
                         "evidence_post_rerank_provider": str(getattr(settings, "EVIDENCE_POST_RERANK_PROVIDER", "") or ""),
                         "evidence_post_rerank_top_n": int(getattr(settings, "EVIDENCE_POST_RERANK_TOP_N", 0) or 0),
@@ -3325,8 +3391,10 @@ Requirements:
                     "errors": retrieval_errors[:5],
                 },
                 "kg": {
-                    "chunk_injection_enabled": bool(getattr(settings, "RAG_KG_CHUNK_INJECTION_ENABLED", False)),
+                    "chunk_injection_enabled": bool(kg_chunk_injection_enabled),
+                    "chunk_injection_max_chunks": int(kg_chunk_injection_max_chunks_i or 0),
                     "chunks_injected": int(kg_chunks_injected or 0),
+                    "chunk_boost": dict(kg_chunk_boost_meta) if isinstance(kg_chunk_boost_meta, dict) else None,
                     "used_cached_result": bool(kg_result_cached),
                 },
                 "multimodal": {

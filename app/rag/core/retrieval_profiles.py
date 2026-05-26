@@ -55,6 +55,13 @@ def _apply_default_expansion_defaults(out: dict[str, Any]) -> dict[str, Any]:
     out = _apply_hierarchy_overlay_defaults(out)
     out["hierarchy_parent_depth"] = 1
     out["hierarchy_sibling_window"] = 1
+    out["context_neighbor_window"] = 2
+    out["context_neighbor_max_added"] = 24
+    out["context_neighbor_score_driven"] = True
+    out["context_neighbor_high_threshold"] = 0.7
+    out["context_neighbor_mid_threshold"] = 0.4
+    out["context_neighbor_high_span"] = 2
+    out["context_neighbor_mid_span"] = 1
     return out
 
 

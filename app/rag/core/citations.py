@@ -7,7 +7,6 @@ pipelines.
 """
 
 import json
-from app.rag.core.logging import get_logger
 import re
 import uuid
 from typing import Any
@@ -16,6 +15,7 @@ from langchain_core.documents import Document
 
 from app.core.config import settings
 from app.rag.core.hashing import stable_json_hash
+from app.rag.core.logging import get_logger
 
 _QUERY_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]+|[\u4e00-\u9fff]{2,}")
 _SENTENCE_BOUNDARIES = {"。", "！", "？", ".", "!", "?", "\n"}
@@ -630,6 +630,12 @@ def build_citations_from_docs(
             "kg_edge_conf_mid": round(float(meta.get("kg_edge_conf_mid", 0.0) or 0.0), 3),
             "kg_edge_conf_high": round(float(meta.get("kg_edge_conf_high", 0.0) or 0.0), 3),
             "kg_evidence_anchored": bool(meta.get("kg_evidence_anchored", False)),
+            "kg_boost_applied": bool(meta.get("kg_boost_applied", False)),
+            "kg_boost_score": (
+                round(float(meta.get("kg_boost_score")), 6)
+                if meta.get("kg_boost_score") is not None
+                else None
+            ),
             "rerank_score": round(float(rerank_score), 3) if rerank_score is not None else None,
             "retrieval_score": round(float(retrieval_score), 3) if retrieval_score is not None else None,
             "rerank_score_calibrated": (

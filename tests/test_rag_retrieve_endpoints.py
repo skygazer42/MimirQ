@@ -59,6 +59,27 @@ def test_retrieval_scope_rejects_empty_explicit_dataset_even_when_empty_docs_all
 
 
 @pytest.mark.asyncio
+async def test_blocking_retrieval_limiter_runs_work_in_thread(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.services.rag_runtime_limiter as limiter
+
+    captured: dict = {}
+
+    async def _to_thread(func, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+        captured["offloaded_func"] = func
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(limiter.asyncio, "to_thread", _to_thread, raising=True)
+
+    def _work(value: int) -> int:
+        return value + 1
+
+    out = await limiter.run_blocking_retrieval_call(_work, 41)
+
+    assert out == 42
+    assert captured.get("offloaded_func") is limiter._run_with_gate  # noqa: SLF001
+
+
+@pytest.mark.asyncio
 async def test_rag_retrieve_passes_must_recall_fields_into_rag_state(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.api.v1.rag as rag_api
     from app.api.schemas.chat import ChatRAGConfig
@@ -148,6 +169,46 @@ async def test_rag_retrieve_passes_hierarchy_recall_fields_into_rag_state(monkey
     assert captured.get("enable_hierarchy_recall") is True
     assert captured.get("hierarchy_family_collapse") is True
     assert captured.get("hierarchy_overfetch_factor") == 4
+
+
+@pytest.mark.asyncio
+async def test_retrieve_preview_offloads_blocking_retrieval(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.api.v1.rag as rag_api
+    from app.api.schemas.chat import ChatRAGConfig
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True, raising=False)
+    monkeypatch.setattr(settings, "CHAT_ALLOW_OPEN_SCOPE", True, raising=False)
+    monkeypatch.setattr(rag_api.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+
+    captured: dict = {}
+
+    def _build_rag_state(**kwargs):  # noqa: ANN003
+        return dict(kwargs)
+
+    def _run_retrieval(state):  # noqa: ANN001
+        return {"citations": [], "metrics": {}, "query_for_retrieval": state.get("question") or ""}
+
+    async def _run_blocking_retrieval_call(func, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+        captured["offloaded"] = True
+        captured["func"] = func
+        return func(*args, **kwargs)
+
+    import app.rag.pipelines.langgraph as lg_mod
+    import app.rag.retrieval.orchestrator as orch_mod
+
+    monkeypatch.setattr(lg_mod, "build_rag_state", _build_rag_state, raising=True)
+    monkeypatch.setattr(orch_mod, "run_retrieval", _run_retrieval, raising=True)
+    monkeypatch.setattr(rag_api, "run_blocking_retrieval_call", _run_blocking_retrieval_call, raising=True)
+
+    await rag_api.retrieve_preview(
+        body=rag_api.RetrievePreviewRequest(query="q", rag_config=ChatRAGConfig()),
+        tenant_id=uuid.uuid4(),
+        account_id="u",
+        db=None,
+    )
+
+    assert captured == {"offloaded": True, "func": _run_retrieval}
 
 
 @pytest.mark.asyncio
