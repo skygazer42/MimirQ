@@ -196,6 +196,101 @@ def test_extractive_fallback_retrieval_uses_lightweight_config(monkeypatch) -> N
     assert "FastAPI automatically generates" in result.content
 
 
+def test_explicit_extractive_retrieval_honors_recall_options(monkeypatch) -> None:
+    import app.rag.pipelines.langgraph as langgraph_mod
+    import app.rag.retrieval.orchestrator as orchestrator_mod
+    from app.services.chat_execution_runtime import execute_extractive_fallback_once
+
+    captured: dict = {}
+
+    def _fake_build_rag_state(**kwargs):  # noqa: ANN003, ANN202
+        captured.update(kwargs)
+        return {"question": kwargs["question"]}
+
+    def _fake_run_retrieval(_state):  # noqa: ANN001, ANN202
+        citations = [
+            {"document_name": "bert.pdf", "chunk_content": f"generic BERT evidence {idx}"}
+            for idx in range(1, 7)
+        ]
+        citations.append(
+            {
+                "document_name": "bert.pdf",
+                "chunk_content": "Task #1 is masked language modeling and Task #2 is next sentence prediction.",
+            }
+        )
+        return {"citations": citations, "metrics": {"retrieval_mode": "hybrid"}}
+
+    monkeypatch.setattr(langgraph_mod, "build_rag_state", _fake_build_rag_state, raising=True)
+    monkeypatch.setattr(orchestrator_mod, "run_retrieval", _fake_run_retrieval, raising=True)
+
+    result = execute_extractive_fallback_once(
+        db=object(),
+        tenant_id=UUID(int=1),
+        account_id="demo",
+        request=SimpleNamespace(message="What two pre-training tasks does BERT use?"),
+        doc_ids_to_use=[UUID(int=2)],
+        history_for_llm=[],
+        scope_dataset_id=UUID(int=3),
+        dataset_id_used=None,
+        effective_rag_config=SimpleNamespace(
+            top_k=12,
+            score_threshold=0.0,
+            retrieval_mode="hybrid",
+            retrieval_profile="recall20",
+            retrieval_contract_mode="deterministic_recall",
+            must_recall=True,
+            must_recall_expected_source_keys=["bert.pdf"],
+            must_recall_required_anchor_fields=["document_id", "chunk_id"],
+            intent_router=True,
+            intent_router_policy={"enabled": True},
+            enable_query_alias_expansion=True,
+            query_aliases={"NSP": ["next sentence prediction"]},
+            query_alias_max_queries=3,
+            enable_multi_query=True,
+            multi_query_count=3,
+            multi_query_temperature=0.0,
+            multi_query_max_chars=512,
+            enable_hyde=True,
+            enable_query_decomposition=True,
+            enable_hierarchy_recall=True,
+            hierarchy_family_collapse=True,
+            hierarchy_family_aggregation="combined",
+            hierarchy_tree_dedup=True,
+            hierarchy_parent_depth=1,
+            hierarchy_sibling_window=2,
+            hierarchy_overfetch_factor=4,
+            alpha=None,
+            fusion_strategy=None,
+            fusion_budgets=None,
+            fusion_min_scores=None,
+            fusion_weights=None,
+            enable_weight_rerank=None,
+            vector_weight=None,
+            keyword_weight=None,
+            mmr_lambda=None,
+            enable_reranker=True,
+            reranker_provider="pc",
+            reranker_top_n=20,
+            visible_evidence_only=True,
+            metadata_filter={"section": "pretraining"},
+        ),
+        reason="explicit_extractive_answer_mode",
+    )
+
+    assert captured["top_k"] == 12
+    assert captured["retrieval_profile"] == "recall20"
+    assert captured["enable_multi_query"] is True
+    assert captured["multi_query_count"] == 3
+    assert captured["enable_hyde"] is True
+    assert captured["enable_query_decomposition"] is True
+    assert captured["enable_reranker"] is True
+    assert captured["reranker_provider"] == "pc"
+    assert captured["visible_evidence_only"] is True
+    assert result.metrics["generation_fallback_top_k"] == 12
+    assert "masked language modeling" in result.content
+    assert "next sentence prediction" in result.content
+
+
 def test_extractive_fallback_can_use_full_docs_when_citations_are_truncated(monkeypatch) -> None:
     from types import SimpleNamespace
 

@@ -423,7 +423,10 @@ def execute_extractive_fallback_once(
     from app.rag.pipelines.langgraph import build_rag_state
     from app.rag.retrieval.orchestrator import run_retrieval
 
-    top_k = max(1, min(int(getattr(effective_rag_config, "top_k", 6) or 6), 6))
+    explicit_mode = reason == "explicit_extractive_answer_mode"
+    requested_top_k = max(1, min(int(getattr(effective_rag_config, "top_k", 6) or 6), 100))
+    top_k = requested_top_k if explicit_mode else max(1, min(requested_top_k, 6))
+    answer_evidence_max_items = max(4, min(top_k, 20)) if explicit_mode else 4
     retrieval_mode = str(getattr(effective_rag_config, "retrieval_mode", "hybrid") or "hybrid")
     state = build_rag_state(
         question=request.message,
@@ -435,11 +438,54 @@ def execute_extractive_fallback_once(
         top_k=top_k,
         score_threshold=getattr(effective_rag_config, "score_threshold", 0.0),
         retrieval_mode=retrieval_mode,
-        retrieval_profile=None,
-        enable_multi_query=False,
-        enable_hyde=False,
+        retrieval_profile=(getattr(effective_rag_config, "retrieval_profile", None) if explicit_mode else None),
+        retrieval_contract_mode=(
+            getattr(effective_rag_config, "retrieval_contract_mode", None) if explicit_mode else None
+        ),
+        must_recall=(getattr(effective_rag_config, "must_recall", None) if explicit_mode else None),
+        must_recall_expected_source_keys=(
+            getattr(effective_rag_config, "must_recall_expected_source_keys", None) if explicit_mode else None
+        ),
+        must_recall_required_anchor_fields=(
+            getattr(effective_rag_config, "must_recall_required_anchor_fields", None) if explicit_mode else None
+        ),
+        intent_router=(getattr(effective_rag_config, "intent_router", None) if explicit_mode else None),
+        intent_router_policy=(getattr(effective_rag_config, "intent_router_policy", None) if explicit_mode else None),
+        enable_query_alias_expansion=(
+            getattr(effective_rag_config, "enable_query_alias_expansion", None) if explicit_mode else None
+        ),
+        query_aliases=(getattr(effective_rag_config, "query_aliases", None) if explicit_mode else None),
+        query_alias_max_queries=(getattr(effective_rag_config, "query_alias_max_queries", None) if explicit_mode else None),
+        enable_multi_query=(getattr(effective_rag_config, "enable_multi_query", None) if explicit_mode else False),
+        multi_query_count=(getattr(effective_rag_config, "multi_query_count", None) if explicit_mode else None),
+        multi_query_temperature=(
+            getattr(effective_rag_config, "multi_query_temperature", None) if explicit_mode else None
+        ),
+        multi_query_max_chars=(getattr(effective_rag_config, "multi_query_max_chars", None) if explicit_mode else None),
+        enable_hyde=(getattr(effective_rag_config, "enable_hyde", None) if explicit_mode else False),
+        enable_query_decomposition=(
+            getattr(effective_rag_config, "enable_query_decomposition", None) if explicit_mode else None
+        ),
+        enable_hierarchy_recall=(
+            getattr(effective_rag_config, "enable_hierarchy_recall", None) if explicit_mode else None
+        ),
+        hierarchy_family_collapse=(
+            getattr(effective_rag_config, "hierarchy_family_collapse", None) if explicit_mode else None
+        ),
+        hierarchy_family_aggregation=(
+            getattr(effective_rag_config, "hierarchy_family_aggregation", None) if explicit_mode else None
+        ),
+        hierarchy_tree_dedup=(
+            getattr(effective_rag_config, "hierarchy_tree_dedup", None) if explicit_mode else None
+        ),
+        hierarchy_parent_depth=(getattr(effective_rag_config, "hierarchy_parent_depth", None) if explicit_mode else None),
+        hierarchy_sibling_window=(
+            getattr(effective_rag_config, "hierarchy_sibling_window", None) if explicit_mode else None
+        ),
+        hierarchy_overfetch_factor=(
+            getattr(effective_rag_config, "hierarchy_overfetch_factor", None) if explicit_mode else None
+        ),
         enable_query_rewrite=False,
-        enable_reranker=False,
         alpha=getattr(effective_rag_config, "alpha", None),
         fusion_strategy=getattr(effective_rag_config, "fusion_strategy", None),
         fusion_budgets=getattr(effective_rag_config, "fusion_budgets", None),
@@ -449,6 +495,9 @@ def execute_extractive_fallback_once(
         vector_weight=getattr(effective_rag_config, "vector_weight", None),
         keyword_weight=getattr(effective_rag_config, "keyword_weight", None),
         mmr_lambda=getattr(effective_rag_config, "mmr_lambda", None),
+        enable_reranker=(getattr(effective_rag_config, "enable_reranker", None) if explicit_mode else False),
+        reranker_provider=(getattr(effective_rag_config, "reranker_provider", None) if explicit_mode else None),
+        reranker_top_n=(getattr(effective_rag_config, "reranker_top_n", None) if explicit_mode else None),
         visible_evidence_only=getattr(effective_rag_config, "visible_evidence_only", None),
         metadata_filter=getattr(effective_rag_config, "metadata_filter", None),
         db=db,
@@ -470,7 +519,8 @@ def execute_extractive_fallback_once(
         metrics["generation_fallback_error"] = str(original_error)[:400]
     answer = build_extractive_fallback_answer(
         question=request.message,
-        citations=_answer_evidence_from_retrieval(docs=docs, citations=citations, max_items=4),
+        citations=_answer_evidence_from_retrieval(docs=docs, citations=citations, max_items=answer_evidence_max_items),
+        max_items=answer_evidence_max_items,
         reason=reason,
     )
     return ExecutedGraphChatOnceResult(
