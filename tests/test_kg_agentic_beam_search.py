@@ -33,3 +33,24 @@ def test_run_agentic_beam_search_returns_empty_paths_when_no_adjacency_exists() 
 
     assert out["paths"] == []
     assert out["reason_codes"] == ["no_expandable_paths"]
+
+
+def test_run_agentic_beam_search_respects_call_budget() -> None:
+    out = run_agentic_beam_search(
+        query="Trace why the watchdog alarm caused the 485 bus failure.",
+        topic_entities=["watchdog", "485 bus"],
+        adjacency={
+            "watchdog": ["alarm-log", "reset-sequence"],
+            "485 bus": ["alarm-log", "termination-resistor"],
+            "alarm-log": ["failure-event"],
+        },
+        beam_width=2,
+        max_depth=2,
+        max_llm_calls=2,
+    )
+
+    assert out["budget"]["max_llm_calls"] == 2
+    assert out["budget"]["llm_calls_used"] == 2
+    assert out["budget"]["exhausted"] is True
+    assert "llm_call_budget_exhausted" in out["reason_codes"]
+    assert len(out["paths"]) <= 1

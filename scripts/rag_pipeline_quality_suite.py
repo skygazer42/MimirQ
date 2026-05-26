@@ -260,6 +260,47 @@ def build_phases(args: argparse.Namespace) -> list[Phase]:
             )
         )
 
+    deepdoc_dataset_id = str(args.deepdoc_dataset_id or "").strip()
+    deepdoc_cases = Path(str(args.deepdoc_cases)) if str(args.deepdoc_cases or "").strip() else None
+    if deepdoc_dataset_id and deepdoc_cases:
+        phases.append(
+            Phase(
+                name="deepdoc_quality_gate",
+                purpose="DeepDoc 大文件 QA、检索、KG 与延迟矩阵门禁",
+                command=[
+                    py,
+                    "scripts/deepdoc_quality_gate.py",
+                    "--base-url",
+                    api_v1,
+                    "--tenant-id",
+                    tenant_id,
+                    "--user-id",
+                    user_id,
+                    "--dataset-id",
+                    deepdoc_dataset_id,
+                    "--cases",
+                    str(deepdoc_cases),
+                    "--modes",
+                    str(args.deepdoc_modes),
+                    "--concurrency",
+                    str(args.deepdoc_concurrency),
+                    "--out",
+                    str(out_dir / "deepdoc-quality-gate.json"),
+                    *(["--thresholds", str(args.deepdoc_thresholds)] if str(args.deepdoc_thresholds or "").strip() else []),
+                ],
+            )
+        )
+    else:
+        phases.append(
+            Phase(
+                name="deepdoc_quality_gate",
+                purpose="DeepDoc 大文件 QA、检索、KG 与延迟矩阵门禁",
+                command=[],
+                required=False,
+                skip_reason="未提供 --deepdoc-dataset-id 与 --deepdoc-cases，跳过 DeepDoc 质量矩阵",
+            )
+        )
+
     skipped = {item.strip() for item in str(args.skip or "").split(",") if item.strip()}
     if not skipped:
         return phases
@@ -347,6 +388,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--kg-thresholds", default="")
     parser.add_argument("--answer-input", default="")
     parser.add_argument("--answer-thresholds", default="")
+    parser.add_argument("--deepdoc-dataset-id", default="")
+    parser.add_argument("--deepdoc-cases", default="")
+    parser.add_argument("--deepdoc-modes", default="retrieve,chat,kg")
+    parser.add_argument("--deepdoc-thresholds", default="")
+    parser.add_argument("--deepdoc-concurrency", type=int, default=4)
     parser.add_argument("--skip", default="", help="Comma-separated phase names to skip.")
     return parser.parse_args(argv)
 

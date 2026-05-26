@@ -38,6 +38,11 @@ def expand_ranked_chunk_results(
     short_doc_ids: set[str] | None = None,
     neighbors_by_pair: dict[tuple[str, int], Any] | None = None,
     original_results_by_chunk_id: dict[str, dict[str, Any]] | None = None,
+    score_driven: bool = False,
+    high_threshold: float = 0.7,
+    mid_threshold: float = 0.4,
+    high_span: int = 3,
+    mid_span: int = 1,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     if not results:
         return results, {"enabled": False, "reason": "no_results"}
@@ -67,6 +72,7 @@ def expand_ranked_chunk_results(
     neighbor_added = 0
     sibling_added = 0
     strategies_used: set[str] = set()
+    pending_score_neighbors: list[dict[str, Any]] = []
 
     for result in results:
         if not isinstance(result, dict):
@@ -104,15 +110,33 @@ def expand_ranked_chunk_results(
             processed_short_docs.add(doc_key)
             continue
 
-        if doc_key and idx is not None and window_i > 0:
-            strategies_used.add("neighbor")
-            for gi in range(idx - window_i, idx + window_i + 1):
+        local_window = window_i
+        if score_driven:
+            try:
+                score = float(result.get("score") or 0.0)
+            except Exception:
+                score = 0.0
+            if score >= float(high_threshold):
+                local_window = min(window_i, max(0, int(high_span or 0)))
+            elif score >= float(mid_threshold):
+                local_window = min(window_i, max(0, int(mid_span or 0)))
+            else:
+                local_window = 0
+
+        if doc_key and idx is not None and local_window > 0:
+            strategies_used.add("neighbor_score" if score_driven else "neighbor")
+            if score_driven:
+                if anchor_cid and anchor_cid not in seen:
+                    seen.add(anchor_cid)
+                expanded.append(result)
+            for gi in range(idx - local_window, idx + local_window + 1):
                 if gi < 0:
                     continue
                 if gi == idx:
-                    if anchor_cid and anchor_cid not in seen:
-                        seen.add(anchor_cid)
-                    expanded.append(result)
+                    if not score_driven:
+                        if anchor_cid and anchor_cid not in seen:
+                            seen.add(anchor_cid)
+                        expanded.append(result)
                     continue
 
                 ck = neighbors_by_pair.get((doc_key, gi))
@@ -143,14 +167,16 @@ def expand_ranked_chunk_results(
 
                 anchor_score = float(result.get("score", 0.0) or 0.0)
                 neighbor_score = float(anchor_score * 0.85) if anchor_score else 0.0
-                expanded.append(
-                    {
-                        "chunk_id": ck_id,
-                        "content": str(getattr(ck, "content", "") or ""),
-                        "metadata": stored_meta,
-                        "score": neighbor_score,
-                    }
-                )
+                neighbor_item = {
+                    "chunk_id": ck_id,
+                    "content": str(getattr(ck, "content", "") or ""),
+                    "metadata": stored_meta,
+                    "score": neighbor_score,
+                }
+                if score_driven:
+                    pending_score_neighbors.append(neighbor_item)
+                else:
+                    expanded.append(neighbor_item)
                 seen.add(ck_id)
                 neighbor_added += 1
             continue
@@ -159,12 +185,20 @@ def expand_ranked_chunk_results(
             seen.add(anchor_cid)
         expanded.append(result)
 
+    if pending_score_neighbors:
+        expanded.extend(pending_score_neighbors)
+
     meta = {
         "enabled": True,
         "framework": "context_expansion",
         "strategy": "mixed" if len(strategies_used) > 1 else (next(iter(strategies_used)) if strategies_used else "none"),
         "strategies_used": sorted(strategies_used),
         "window": int(window_i),
+        "score_driven": bool(score_driven),
+        "high_threshold": float(high_threshold),
+        "mid_threshold": float(mid_threshold),
+        "high_span": int(high_span),
+        "mid_span": int(mid_span),
         "short_doc_count": int(len(short_doc_ids)),
         "neighbor_added": int(neighbor_added),
         "sibling_added": int(sibling_added),

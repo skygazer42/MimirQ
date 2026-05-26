@@ -153,6 +153,13 @@ class HybridRetriever(BaseRetriever):
     entity_candidates: list[str] | None = None
     metadata_filter_enabled: bool = getattr(settings, "RETRIEVAL_METADATA_FILTER_ENABLED", True)
     retrieval_profile: str | None = None
+    context_neighbor_window: int | None = None
+    context_neighbor_max_added: int | None = None
+    context_neighbor_score_driven: bool | None = None
+    context_neighbor_high_threshold: float | None = None
+    context_neighbor_mid_threshold: float | None = None
+    context_neighbor_high_span: int | None = None
+    context_neighbor_mid_span: int | None = None
     enable_hierarchy_recall: bool = False
     hierarchy_family_collapse: bool = False
     hierarchy_overfetch_factor: int = max(1, int(getattr(settings, "HIERARCHY_RECALL_OVERFETCH_FACTOR", 4) or 4))
@@ -4314,13 +4321,23 @@ class HybridRetriever(BaseRetriever):
         if not results:
             return results
 
-        window = max(0, int(getattr(settings, "RAG_CONTEXT_NEIGHBOR_WINDOW", 0) or 0))
+        window_raw = (
+            self.context_neighbor_window
+            if self.context_neighbor_window is not None
+            else getattr(settings, "RAG_CONTEXT_NEIGHBOR_WINDOW", 0)
+        )
+        window = max(0, int(window_raw or 0))
         sibling_enabled = bool(getattr(settings, "RAG_CONTEXT_SIBLING_EXPAND_ENABLED", False))
         short_doc_max_chunks = max(0, int(getattr(settings, "RAG_CONTEXT_SIBLING_SHORT_DOC_MAX_CHUNKS", 0) or 0))
         if window <= 0 and not (sibling_enabled and short_doc_max_chunks > 0):
             return results
 
-        max_added = max(0, int(getattr(settings, "RAG_CONTEXT_NEIGHBOR_MAX_ADDED", 0) or 0))
+        max_added_raw = (
+            self.context_neighbor_max_added
+            if self.context_neighbor_max_added is not None
+            else getattr(settings, "RAG_CONTEXT_NEIGHBOR_MAX_ADDED", 0)
+        )
+        max_added = max(0, int(max_added_raw or 0))
         sibling_max_added = max(
             0,
             int(getattr(settings, "RAG_CONTEXT_SIBLING_MAX_ADDED", max_added or 0) or (max_added or 0)),
@@ -4445,6 +4462,19 @@ class HybridRetriever(BaseRetriever):
             short_doc_ids=short_doc_ids,
             neighbors_by_pair=neighbors_by_pair,
             original_results_by_chunk_id=original_results_by_chunk_id,
+            score_driven=bool(self.context_neighbor_score_driven),
+            high_threshold=float(
+                self.context_neighbor_high_threshold
+                if self.context_neighbor_high_threshold is not None
+                else 0.7
+            ),
+            mid_threshold=float(
+                self.context_neighbor_mid_threshold
+                if self.context_neighbor_mid_threshold is not None
+                else 0.4
+            ),
+            high_span=max(0, int(self.context_neighbor_high_span if self.context_neighbor_high_span is not None else window)),
+            mid_span=max(0, int(self.context_neighbor_mid_span if self.context_neighbor_mid_span is not None else 1)),
         )
         return expanded
 

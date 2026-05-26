@@ -186,6 +186,12 @@ class KGSearcher:
         t0 = time.perf_counter()
         recall_result = await self.recall_searcher.search(config)
         recall_elapsed = time.perf_counter() - t0
+        expand_budget_sec = max(0.0, float(getattr(settings, "KG_SEARCH_EXPAND_BUDGET_SEC", 0.0) or 0.0))
+        budget_meta: dict[str, Any] = {
+            "expand_budget_sec": float(expand_budget_sec),
+            "recall_elapsed_sec": round(float(recall_elapsed), 3),
+            "expand_budget_exhausted": bool(expand_budget_sec > 0.0 and float(recall_elapsed) >= expand_budget_sec),
+        }
         if metrics_enabled:
             rel_dbg = getattr(recall_result, "relation_debug", None) or {}
             serving_dbg = getattr(recall_result, "serving_layer", None) or {}
@@ -217,6 +223,9 @@ class KGSearcher:
             query_mode=query_mode,
             recalled_event_count=len(recall_result.event_ids or []),
         )
+        if bool(budget_meta.get("expand_budget_exhausted")) and bool(getattr(config.expand, "enabled", True)):
+            skip_expand = True
+            expand_skipped_reason = "recall_budget_exhausted"
         if skip_expand:
             expand_result = ExpandResult(
                 key_final=list(recall_result.key_final or []),
@@ -293,6 +302,17 @@ class KGSearcher:
                 "total": round(float(time.perf_counter() - t_total), 3),
             },
         )
+        stats.setdefault("budget", budget_meta)
+        total_elapsed_ms_for_slo = float(time.perf_counter() - t_total) * 1000.0
+        latency_slo_ms = max(0, int(getattr(settings, "KG_SEARCH_LATENCY_SLO_MS", 0) or 0))
+        stats.setdefault(
+            "slo",
+            {
+                "latency_slo_ms": int(latency_slo_ms),
+                "elapsed_ms": round(float(total_elapsed_ms_for_slo), 1),
+                "exceeded": bool(latency_slo_ms > 0 and total_elapsed_ms_for_slo > float(latency_slo_ms)),
+            },
+        )
 
         if metrics_enabled:
             total_elapsed = time.perf_counter() - t_total
@@ -319,6 +339,9 @@ class KGSearcher:
                     "strategy": str(rerank_strategy),
                     "returned": int(len(rerank_result.items or [])),
                     "elapsed_sec": round(float(total_elapsed), 3),
+                    "latency_slo_ms": int(latency_slo_ms),
+                    "slo_exceeded": bool(latency_slo_ms > 0 and (total_elapsed * 1000.0) > float(latency_slo_ms)),
+                    "expand_budget_exhausted": bool(budget_meta.get("expand_budget_exhausted")),
                 }
             )
 

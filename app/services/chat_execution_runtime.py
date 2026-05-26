@@ -485,6 +485,24 @@ def execute_extractive_fallback_once(
         hierarchy_overfetch_factor=(
             getattr(effective_rag_config, "hierarchy_overfetch_factor", None) if explicit_mode else None
         ),
+        enable_kg_query_expansion=(
+            getattr(effective_rag_config, "enable_kg_query_expansion", None) if explicit_mode else None
+        ),
+        enable_kg_chunk_injection=(
+            getattr(effective_rag_config, "enable_kg_chunk_injection", None) if explicit_mode else None
+        ),
+        kg_chunk_injection_max_chunks=(
+            getattr(effective_rag_config, "kg_chunk_injection_max_chunks", None) if explicit_mode else None
+        ),
+        enable_kg_chunk_boost=(
+            getattr(effective_rag_config, "enable_kg_chunk_boost", None) if explicit_mode else None
+        ),
+        kg_chunk_boost_weight=(
+            getattr(effective_rag_config, "kg_chunk_boost_weight", None) if explicit_mode else None
+        ),
+        kg_chunk_boost_max_promoted=(
+            getattr(effective_rag_config, "kg_chunk_boost_max_promoted", None) if explicit_mode else None
+        ),
         enable_query_rewrite=False,
         alpha=getattr(effective_rag_config, "alpha", None),
         fusion_strategy=getattr(effective_rag_config, "fusion_strategy", None),
@@ -593,6 +611,12 @@ def execute_graph_chat_once(
         hierarchy_parent_depth=effective_rag_config.hierarchy_parent_depth,
         hierarchy_sibling_window=effective_rag_config.hierarchy_sibling_window,
         hierarchy_overfetch_factor=effective_rag_config.hierarchy_overfetch_factor,
+        enable_kg_query_expansion=effective_rag_config.enable_kg_query_expansion,
+        enable_kg_chunk_injection=effective_rag_config.enable_kg_chunk_injection,
+        kg_chunk_injection_max_chunks=effective_rag_config.kg_chunk_injection_max_chunks,
+        enable_kg_chunk_boost=effective_rag_config.enable_kg_chunk_boost,
+        kg_chunk_boost_weight=effective_rag_config.kg_chunk_boost_weight,
+        kg_chunk_boost_max_promoted=effective_rag_config.kg_chunk_boost_max_promoted,
         alpha=effective_rag_config.alpha,
         fusion_strategy=effective_rag_config.fusion_strategy,
         fusion_budgets=effective_rag_config.fusion_budgets,

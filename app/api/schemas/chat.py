@@ -188,6 +188,14 @@ class ChatRAGConfig(BaseModel):
     hierarchy_sibling_window: int | None = Field(default=None, ge=0, le=16)
     hierarchy_overfetch_factor: int | None = Field(default=None, ge=1, le=32)
 
+    # Optional KG-assisted retrieval controls. None means use server settings.
+    enable_kg_query_expansion: bool | None = None
+    enable_kg_chunk_injection: bool | None = None
+    kg_chunk_injection_max_chunks: int | None = Field(default=None, ge=0, le=50)
+    enable_kg_chunk_boost: bool | None = None
+    kg_chunk_boost_weight: float | None = Field(default=None, ge=0.0, le=1.0)
+    kg_chunk_boost_max_promoted: int | None = Field(default=None, ge=0, le=20)
+
     top_k: int = Field(default_factory=lambda: settings.RETRIEVAL_TOP_K, ge=1, le=100)
     score_threshold: float = Field(default_factory=lambda: settings.SIMILARITY_THRESHOLD, ge=0.0, le=1.0)
     max_tokens: int = Field(default=2000, ge=1, le=200_000)

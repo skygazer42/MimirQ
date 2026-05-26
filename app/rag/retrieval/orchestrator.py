@@ -1246,6 +1246,144 @@ def _fetch_document_chunks_for_kg_injection(
         return []
 
 
+def _coerce_optional_bool(value: Any, *, default: bool) -> bool:
+    if value is None:
+        return bool(default)
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "on"}:
+        return True
+    if text in {"0", "false", "no", "off"}:
+        return False
+    return bool(default)
+
+
+def _coerce_optional_int(value: Any, *, default: int, minimum: int = 0, maximum: int | None = None) -> int:
+    try:
+        out = int(value) if value is not None else int(default)
+    except (TypeError, ValueError, AttributeError):
+        out = int(default)
+    out = max(int(minimum), int(out))
+    if maximum is not None:
+        out = min(int(maximum), int(out))
+    return out
+
+
+def _coerce_optional_float(value: Any, *, default: float, minimum: float = 0.0, maximum: float | None = None) -> float:
+    try:
+        out = float(value) if value is not None else float(default)
+    except (TypeError, ValueError, AttributeError):
+        out = float(default)
+    out = max(float(minimum), float(out))
+    if maximum is not None:
+        out = min(float(maximum), float(out))
+    return out
+
+
+def _apply_kg_chunk_boost(
+    docs: list[Document],
+    *,
+    enabled: bool,
+    weight: float,
+    max_promoted: int,
+) -> tuple[list[Document], dict[str, Any]]:
+    meta: dict[str, Any] = {
+        "enabled": bool(enabled),
+        "weight": round(float(weight), 4),
+        "max_promoted": int(max_promoted),
+        "eligible": 0,
+        "promoted": 0,
+        "top_changed": False,
+    }
+    if not enabled or not docs or weight <= 0.0 or max_promoted <= 0:
+        if not enabled:
+            meta["reason"] = "disabled"
+        elif weight <= 0.0:
+            meta["reason"] = "zero_weight"
+        elif max_promoted <= 0:
+            meta["reason"] = "zero_max_promoted"
+        else:
+            meta["reason"] = "no_docs"
+        return docs, meta
+
+    rows: list[dict[str, Any]] = []
+    eligible_rows: list[dict[str, Any]] = []
+    for idx, doc in enumerate(docs):
+        if not isinstance(doc, Document):
+            continue
+        row_meta = dict(doc.metadata or {})
+        base_raw = row_meta.get("retrieval_score")
+        if base_raw is None:
+            base_raw = row_meta.get("score", 0.0)
+        base_score = _coerce_optional_float(base_raw, default=0.0, minimum=0.0)
+        role = str(row_meta.get("retrieval_role") or "").strip().lower()
+        kg_raw = row_meta.get("kg_pagerank")
+        if kg_raw is None and role == "kg":
+            kg_raw = row_meta.get("score", 0.0)
+        kg_score = _coerce_optional_float(kg_raw, default=0.0, minimum=0.0)
+        is_kg = bool(role == "kg" or kg_score > 0.0)
+        boosted_score = float(base_score) + (float(weight) * float(kg_score)) if is_kg else float(base_score)
+        row = {
+            "idx": int(idx),
+            "doc": doc,
+            "meta": row_meta,
+            "base_score": float(base_score),
+            "kg_score": float(kg_score),
+            "boosted_score": float(boosted_score),
+            "is_kg": bool(is_kg),
+        }
+        rows.append(row)
+        if is_kg and kg_score > 0.0:
+            eligible_rows.append(row)
+
+    if not rows or not eligible_rows:
+        meta["reason"] = "no_kg_candidates"
+        return docs, meta
+
+    eligible_rows.sort(
+        key=lambda r: (
+            -(float(r.get("boosted_score") or 0.0) - float(r.get("base_score") or 0.0)),
+            -float(r.get("kg_score") or 0.0),
+            int(r.get("idx") or 0),
+        )
+    )
+    promoted_indexes = {int(r["idx"]) for r in eligible_rows[:max_promoted]}
+    meta["eligible"] = int(len(eligible_rows))
+
+    ranked_rows = sorted(
+        rows,
+        key=lambda r: (
+            -(
+                float(r.get("boosted_score") or 0.0)
+                if int(r.get("idx") or 0) in promoted_indexes
+                else float(r.get("base_score") or 0.0)
+            ),
+            int(r.get("idx") or 0),
+        ),
+    )
+
+    out: list[Document] = []
+    promoted = 0
+    for new_idx, row in enumerate(ranked_rows):
+        doc = row.get("doc")
+        if not isinstance(doc, Document):
+            continue
+        doc_meta = dict(row.get("meta") or {})
+        original_idx = int(row.get("idx") or 0)
+        if original_idx in promoted_indexes:
+            doc_meta["kg_boost_applied"] = True
+            doc_meta["kg_boost_score"] = round(float(row.get("boosted_score") or 0.0), 6)
+            if new_idx < original_idx:
+                promoted += 1
+        out.append(Document(page_content=doc.page_content, metadata=doc_meta, id=getattr(doc, "id", None) or doc_meta.get("chunk_id")))
+
+    meta["promoted"] = int(promoted)
+    meta["top_changed"] = bool(out and docs and _doc_key(out[0]) != _doc_key(docs[0]))
+    meta["reason"] = "applied"
+    return out, meta
+
+
 def _resolve_post_rerank_corpus_cache_token(state: dict[str, Any]) -> str | None:
     db = state.get("db")
     tenant_id = state.get("tenant_id")
@@ -1889,6 +2027,13 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
         "score_threshold": float(profile_applied.get("score_threshold") or 0.0),
         "alpha": state.get("alpha", 0.6),
         "retrieval_profile": profile_norm or None,
+        "context_neighbor_window": profile_applied.get("context_neighbor_window"),
+        "context_neighbor_max_added": profile_applied.get("context_neighbor_max_added"),
+        "context_neighbor_score_driven": profile_applied.get("context_neighbor_score_driven"),
+        "context_neighbor_high_threshold": profile_applied.get("context_neighbor_high_threshold"),
+        "context_neighbor_mid_threshold": profile_applied.get("context_neighbor_mid_threshold"),
+        "context_neighbor_high_span": profile_applied.get("context_neighbor_high_span"),
+        "context_neighbor_mid_span": profile_applied.get("context_neighbor_mid_span"),
         # Optional: channel fusion override (used by Evidence API ablations / retrieval-only tuning).
         "fusion_strategy": state.get("fusion_strategy") or settings.RETRIEVAL_FUSION_STRATEGY,
         "fusion_budgets": state.get("fusion_budgets"),
@@ -2009,7 +2154,10 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
         dict_meta = {"enabled": False, "used": False, "error": str(exc)[:200]}
 
     # KG query expansion (entity names, optional).
-    kg_query_expansion_enabled = bool(getattr(settings, "RAG_KG_QUERY_EXPANSION_ENABLED", False))
+    kg_query_expansion_enabled = _coerce_optional_bool(
+        state.get("enable_kg_query_expansion"),
+        default=bool(getattr(settings, "RAG_KG_QUERY_EXPANSION_ENABLED", False)),
+    )
     kg_query_expansion_used = False
     kg_query_expansion_elapsed = 0.0
     kg_query_expansion_error: str | None = None
@@ -2619,11 +2767,21 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     docs = (docs or [])[: max(0, top_k)]
 
     # Optional: KG-assisted retrieval (inject KG-linked chunks as extra candidates).
+    kg_chunk_injection_enabled = _coerce_optional_bool(
+        state.get("enable_kg_chunk_injection"),
+        default=bool(getattr(settings, "RAG_KG_CHUNK_INJECTION_ENABLED", False)),
+    )
+    kg_chunk_injection_max_chunks = _coerce_optional_int(
+        state.get("kg_chunk_injection_max_chunks"),
+        default=int(getattr(settings, "RAG_KG_CHUNK_INJECTION_MAX_CHUNKS", 5) or 5),
+        minimum=0,
+        maximum=50,
+    )
     kg_chunks_injected = 0
     kg_chunk_injection_error: str | None = None
     try:
         if (
-            bool(getattr(settings, "RAG_KG_CHUNK_INJECTION_ENABLED", False))
+            bool(kg_chunk_injection_enabled)
             and bool(getattr(settings, "KG_ENABLED", False))
             and bool(getattr(settings, "KG_CHAT_ENABLED", False))
             and state.get("tenant_id") is not None
@@ -2658,7 +2816,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                     kg_result = asyncio.run(coro)
 
             kg_events = (kg_result or {}).get("events") or []
-            max_chunks = max(0, int(getattr(settings, "RAG_KG_CHUNK_INJECTION_MAX_CHUNKS", 0) or 0)) or 5
+            max_chunks = int(kg_chunk_injection_max_chunks or 0) or 5
 
             score_by_chunk: dict[str, float] = {}
             kg_features_by_chunk: dict[str, dict[str, Any]] = {}
@@ -2989,6 +3147,29 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             meta["kg_edge_conf_high"] = high
     except Exception as exc:
         logger.debug("Ignoring non-critical retrieval orchestrator fallback failure: %s", exc)
+
+    kg_chunk_boost_enabled = _coerce_optional_bool(
+        state.get("enable_kg_chunk_boost"),
+        default=bool(getattr(settings, "RAG_KG_CHUNK_BOOST_ENABLED", False)),
+    )
+    kg_chunk_boost_weight = _coerce_optional_float(
+        state.get("kg_chunk_boost_weight"),
+        default=float(getattr(settings, "RAG_KG_CHUNK_BOOST_WEIGHT", 0.25) or 0.25),
+        minimum=0.0,
+        maximum=1.0,
+    )
+    kg_chunk_boost_max_promoted = _coerce_optional_int(
+        state.get("kg_chunk_boost_max_promoted"),
+        default=int(getattr(settings, "RAG_KG_CHUNK_BOOST_MAX_PROMOTED", 3) or 3),
+        minimum=0,
+        maximum=20,
+    )
+    docs, kg_chunk_boost_meta = _apply_kg_chunk_boost(
+        [d for d in (docs or []) if isinstance(d, Document)],
+        enabled=bool(kg_chunk_boost_enabled),
+        weight=float(kg_chunk_boost_weight),
+        max_promoted=int(kg_chunk_boost_max_promoted),
+    )
 
     # Optional: post-fusion rerank (evidence-first) on the final candidate list.
     post_rerank_enabled = bool(getattr(settings, "EVIDENCE_POST_RERANK_ENABLED", False))
@@ -4365,9 +4546,17 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     metrics["kg_query_expansion_query_count"] = int(len(kg_query_expansion_queries))
     metrics["kg_query_expansion_elapsed_sec"] = round(float(kg_query_expansion_elapsed), 3)
     metrics["kg_query_expansion_error"] = kg_query_expansion_error
-    metrics["kg_chunk_injection_enabled"] = bool(getattr(settings, "RAG_KG_CHUNK_INJECTION_ENABLED", False))
+    metrics["kg_chunk_injection_enabled"] = bool(kg_chunk_injection_enabled)
+    metrics["kg_chunk_injection_max_chunks"] = int(kg_chunk_injection_max_chunks)
     metrics["kg_chunks_injected"] = int(kg_chunks_injected or 0)
     metrics["kg_chunk_injection_error"] = kg_chunk_injection_error
+    metrics["kg_chunk_boost_enabled"] = bool(kg_chunk_boost_meta.get("enabled"))
+    metrics["kg_chunk_boost_weight"] = float(kg_chunk_boost_meta.get("weight") or 0.0)
+    metrics["kg_chunk_boost_max_promoted"] = int(kg_chunk_boost_meta.get("max_promoted") or 0)
+    metrics["kg_chunk_boost_eligible"] = int(kg_chunk_boost_meta.get("eligible") or 0)
+    metrics["kg_chunk_boost_promoted"] = int(kg_chunk_boost_meta.get("promoted") or 0)
+    metrics["kg_chunk_boost_top_changed"] = bool(kg_chunk_boost_meta.get("top_changed"))
+    metrics["kg_chunk_boost_reason"] = str(kg_chunk_boost_meta.get("reason") or "")
 
     metrics["multi_query_enabled"] = bool(mq_enabled)
     metrics["multi_query_used"] = bool(multi_query_used)
@@ -5047,8 +5236,10 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             "overfetch_factor": int(hierarchy_overfetch_factor),
         },
         "kg_chunk_injection": {
-            "enabled": bool(getattr(settings, "RAG_KG_CHUNK_INJECTION_ENABLED", False)),
+            "enabled": bool(kg_chunk_injection_enabled),
+            "max_chunks": int(kg_chunk_injection_max_chunks),
             "chunks_injected": int(kg_chunks_injected or 0),
+            "boost": dict(kg_chunk_boost_meta or {}),
             "error": kg_chunk_injection_error,
         },
         "post_rerank": {
@@ -5153,8 +5344,9 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             "colbert_max_docs": int(getattr(settings, "COLBERT_RETRIEVAL_MAX_DOCS", 0) or 0),
             "parent_child_auto_merge_enabled": bool(getattr(settings, "RAG_PARENT_CHILD_AUTO_MERGE_ENABLED", False)),
             "parent_child_auto_merge_mode": str(getattr(settings, "RAG_PARENT_CHILD_AUTO_MERGE_MODE", "") or ""),
-            "kg_query_expansion_enabled": bool(getattr(settings, "RAG_KG_QUERY_EXPANSION_ENABLED", False)),
-            "kg_chunk_injection_enabled": bool(getattr(settings, "RAG_KG_CHUNK_INJECTION_ENABLED", False)),
+            "kg_query_expansion_enabled": bool(kg_query_expansion_enabled),
+            "kg_chunk_injection_enabled": bool(kg_chunk_injection_enabled),
+            "kg_chunk_boost_enabled": bool(kg_chunk_boost_meta.get("enabled")),
             "retrieval_contract_mode": retrieval_contract_mode or None,
             "retrieval_contract_policy": dict(retrieval_contract_policy or {}),
             "retrieval_contract_deterministic_recall": bool(contract_deterministic_recall),

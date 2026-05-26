@@ -219,6 +219,9 @@ async def kg_search(
                         "KG_SEARCH_MAX_RERANK_CANDIDATES": int(
                             getattr(settings, "KG_SEARCH_MAX_RERANK_CANDIDATES", 0) or 0
                         ),
+                        "KG_SEARCH_EXPAND_BUDGET_SEC": float(
+                            getattr(settings, "KG_SEARCH_EXPAND_BUDGET_SEC", 0.0) or 0.0
+                        ),
                         "KG_SEARCH_QUERY_MODE": str(resolved_mode),
                         "KG_SEARCH_QUERY_MODE_LOW_CONFIDENCE_GLOBAL_MAX_EVENTS": int(
                             getattr(settings, "KG_SEARCH_QUERY_MODE_LOW_CONFIDENCE_GLOBAL_MAX_EVENTS", 0) or 0

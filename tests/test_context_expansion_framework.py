@@ -109,6 +109,74 @@ def test_expand_ranked_chunk_results_unifies_sibling_and_neighbor_strategies() -
     assert set(meta["strategies_used"]) == {"neighbor", "sibling"}
 
 
+def test_expand_ranked_chunk_results_can_expand_neighbors_by_score_band() -> None:
+    from app.rag.retrieval.context_expansion import expand_ranked_chunk_results
+
+    tenant_id = uuid4()
+    doc_id = uuid4()
+    high_anchor_id = uuid4()
+    low_anchor_id = uuid4()
+    c8 = _FakeChunk(chunk_id=uuid4(), tenant_id=tenant_id, document_id=doc_id, chunk_index=8, content="c8")
+    c9 = _FakeChunk(chunk_id=uuid4(), tenant_id=tenant_id, document_id=doc_id, chunk_index=9, content="c9")
+    c11 = _FakeChunk(chunk_id=uuid4(), tenant_id=tenant_id, document_id=doc_id, chunk_index=11, content="c11")
+    c12 = _FakeChunk(chunk_id=uuid4(), tenant_id=tenant_id, document_id=doc_id, chunk_index=12, content="c12")
+    c19 = _FakeChunk(chunk_id=uuid4(), tenant_id=tenant_id, document_id=doc_id, chunk_index=19, content="c19")
+    c21 = _FakeChunk(chunk_id=uuid4(), tenant_id=tenant_id, document_id=doc_id, chunk_index=21, content="c21")
+
+    out, meta = expand_ranked_chunk_results(
+        results=[
+            {
+                "chunk_id": str(high_anchor_id),
+                "content": "c10",
+                "score": 0.91,
+                "metadata": {
+                    "tenant_id": str(tenant_id),
+                    "document_id": str(doc_id),
+                    "chunk_id": str(high_anchor_id),
+                    "chunk_index": 10,
+                    "header_path": "Section A",
+                },
+            },
+            {
+                "chunk_id": str(low_anchor_id),
+                "content": "c20",
+                "score": 0.2,
+                "metadata": {
+                    "tenant_id": str(tenant_id),
+                    "document_id": str(doc_id),
+                    "chunk_id": str(low_anchor_id),
+                    "chunk_index": 20,
+                    "header_path": "Section A",
+                },
+            },
+        ],
+        window=2,
+        max_added=10,
+        sibling_max_added=0,
+        neighbors_by_pair={
+            (str(doc_id), 8): c8,
+            (str(doc_id), 9): c9,
+            (str(doc_id), 11): c11,
+            (str(doc_id), 12): c12,
+            (str(doc_id), 19): c19,
+            (str(doc_id), 21): c21,
+        },
+        score_driven=True,
+        high_threshold=0.7,
+        mid_threshold=0.4,
+        high_span=2,
+        mid_span=1,
+    )
+
+    contents = [item.get("content") for item in out]
+    assert contents == ["c10", "c20", "c8", "c9", "c11", "c12"]
+    assert "c19" not in contents
+    assert "c21" not in contents
+    assert meta["strategy"] == "neighbor_score"
+    assert meta["score_driven"] is True
+    assert meta["neighbor_added"] == 4
+
+
 def test_expand_hierarchy_documents_flows_through_unified_framework() -> None:
     from app.rag.retrieval.context_expansion import expand_hierarchy_documents
 
