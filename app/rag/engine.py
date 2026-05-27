@@ -86,6 +86,7 @@ from app.rag.retrieval.orchestrator import (
     _apply_kg_chunk_boost,
     _fetch_document_chunks_for_kg_injection,
 )
+from app.rag.retrieval.source_labels import maybe_build_source_identification_answer
 from app.rag.retriever import hybrid_retriever
 from app.services.metrics_logger import log_metrics
 from app.services.prompt_resolver import resolve_prompt_template
@@ -3471,11 +3472,28 @@ Requirements:
             if generation_status is not None:
                 yield generation_status
 
+            source_identification_answer_used = False
+
+            async def _single_token_stream(text: str):  # noqa: ANN202
+                yield text
+
             # Optional: Vision-native generation path (direct VLM answer generation).
             token_stream = None
+            deterministic_source_answer = None
+            if not structured_output:
+                deterministic_source_answer = maybe_build_source_identification_answer(
+                    question=question,
+                    docs=docs,
+                )
+            if deterministic_source_answer:
+                source_identification_answer_used = True
+                source_answer_text = redact_text(str(deterministic_source_answer)) if pii_on else str(deterministic_source_answer)
+                token_stream = _single_token_stream(source_answer_text)
             try:
                 vision_gen_enabled = bool(getattr(settings, "VISION_RAG_GENERATION_ENABLED", False))
-                if not bool(vision_gen_enabled):
+                if source_identification_answer_used:
+                    vision_generation_meta.update({"enabled": False, "used": False, "reason": "source_identification_answer"})
+                elif not bool(vision_gen_enabled):
                     vision_generation_meta.update({"enabled": False, "used": False, "reason": "VISION_RAG_GENERATION_ENABLED=false"})
                 elif not bool(getattr(settings, "VISION_LLM_ENABLED", False)):
                     vision_generation_meta.update({"enabled": True, "used": False, "reason": "VISION_LLM_ENABLED=false"})
@@ -3773,6 +3791,14 @@ Requirements:
                     nli_model_name=str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_MODEL", "") or ""),
                     nli_timeout_sec=float(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC", 8) or 8),
                 )
+            if source_identification_answer_used:
+                faithfulness_meta = {
+                    "score": 1.0,
+                    "supported_claims": 1,
+                    "total_claims": 1,
+                    "unsupported_claims": [],
+                    "method": "deterministic_source_identification",
+                }
 
             sentence_citations_inline_enabled = bool(
                 getattr(settings, "SENTENCE_CITATIONS_INLINE_ENABLED", False)
@@ -4199,6 +4225,7 @@ Requirements:
                         "confidence_score": confidence_meta.get("score"),
                         "confidence_band": confidence_meta.get("band"),
                         "confidence_reasons": list(confidence_meta.get("reasons") or []),
+                        "source_identification_answer_used": bool(source_identification_answer_used),
                         "visible_evidence_only_enabled": bool(strict_visible),
                         "visible_evidence_only_requested": bool(visible_evidence_only),
                         "evidence_span_strict_enabled": bool(evidence_span_strict_enabled),
