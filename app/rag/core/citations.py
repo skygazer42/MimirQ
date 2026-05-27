@@ -18,6 +18,9 @@ from app.rag.core.hashing import stable_json_hash
 from app.rag.core.logging import get_logger
 
 _QUERY_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]+|[\u4e00-\u9fff]{2,}")
+_POSITION_TAG_RE = re.compile(
+    r"@@([0-9]+(?:-[0-9]+)?)\s+([-+]?[0-9]+(?:\.[0-9]+)?)\s+([-+]?[0-9]+(?:\.[0-9]+)?)\s+([-+]?[0-9]+(?:\.[0-9]+)?)\s+([-+]?[0-9]+(?:\.[0-9]+)?)##"
+)
 _SENTENCE_BOUNDARIES = {"。", "！", "？", ".", "!", "?", "\n"}
 logger = get_logger(__name__)
 
@@ -30,7 +33,7 @@ def _coerce_int(value: Any) -> int | None:
     try:
         if value is None:
             return None
-        return int(value)
+        return int(float(value))
     except Exception:
         return None
 
@@ -65,6 +68,122 @@ def _extract_citation_bbox(meta: dict[str, Any]) -> dict[str, int] | None:
             if bbox is not None:
                 return bbox
     return None
+
+
+def _parse_position_tag_pages(raw_pages: str) -> int | None:
+    first = str(raw_pages or "").split("-", 1)[0].strip()
+    page = _coerce_int(first)
+    return page if page is not None and page > 0 else None
+
+
+def _position_tag_bbox_from_match(match: re.Match[str]) -> tuple[dict[str, int], int] | None:
+    page = _parse_position_tag_pages(match.group(1))
+    bbox = _coerce_bbox(
+        {
+            "x0": match.group(2),
+            "x1": match.group(3),
+            "y0": match.group(4),
+            "y1": match.group(5),
+        }
+    )
+    if page is None or bbox is None:
+        return None
+    return bbox, page
+
+
+def _range_distance(start: int, end: int, target: int) -> int:
+    if target < start:
+        return start - target
+    if target > end:
+        return target - end
+    return 0
+
+
+def _extract_position_tag_bbox(
+    text: str,
+    *,
+    evidence_start: int | None = None,
+    evidence_end: int | None = None,
+) -> tuple[dict[str, int], int] | None:
+    raw = str(text or "")
+    if not raw:
+        return None
+
+    target_start = evidence_start if evidence_start is not None and evidence_start >= 0 else None
+    target_end = evidence_end if evidence_end is not None and evidence_end >= 0 else target_start
+    target_mid = None
+    if target_start is not None:
+        target_mid = int((target_start + max(target_start, target_end or target_start)) / 2)
+
+    best: tuple[int, dict[str, int], int] | None = None
+    last_tag_end = 0
+    for match in _POSITION_TAG_RE.finditer(raw):
+        parsed = _position_tag_bbox_from_match(match)
+        content_start = last_tag_end
+        content_end = match.start()
+        last_tag_end = match.end()
+        if parsed is None:
+            continue
+
+        bbox, page = parsed
+        if target_mid is None:
+            return bbox, page
+
+        distance = _range_distance(content_start, content_end, target_mid)
+        if best is None or distance < best[0]:
+            best = (distance, bbox, page)
+        if distance == 0:
+            return bbox, page
+
+    if best is None:
+        return None
+    return best[1], best[2]
+
+
+def _extract_citation_bbox_with_page(
+    meta: dict[str, Any],
+    text: str,
+    *,
+    page_number: int | None,
+    evidence_start: int | None,
+    evidence_end: int | None,
+) -> tuple[dict[str, int] | None, int | None, bool]:
+    bbox = _extract_citation_bbox(meta)
+    if bbox is not None:
+        return bbox, _extract_bbox_page_number(meta, page_number), False
+
+    found = _extract_position_tag_bbox(text, evidence_start=evidence_start, evidence_end=evidence_end)
+    if found is not None:
+        inline_bbox, inline_page = found
+        return inline_bbox, inline_page, True
+
+    for key in ("element_text", "position_tagged_markdown"):
+        value = meta.get(key)
+        if isinstance(value, str) and value.strip():
+            found = _extract_position_tag_bbox(value)
+            if found is not None:
+                inline_bbox, inline_page = found
+                return inline_bbox, inline_page, True
+
+    for key in ("attributes", "element_attributes"):
+        attrs = meta.get(key)
+        if not isinstance(attrs, dict):
+            continue
+        raw_tags = attrs.get("position_tags")
+        if isinstance(raw_tags, list):
+            for item in raw_tags:
+                found = _extract_position_tag_bbox(str(item or ""))
+                if found is not None:
+                    inline_bbox, inline_page = found
+                    return inline_bbox, inline_page, True
+        raw_tag = attrs.get("position_tag")
+        if isinstance(raw_tag, str) and raw_tag.strip():
+            found = _extract_position_tag_bbox(raw_tag)
+            if found is not None:
+                inline_bbox, inline_page = found
+                return inline_bbox, inline_page, True
+
+    return None, None, False
 
 
 def _extract_page_number(meta: dict[str, Any]) -> int | None:
@@ -619,8 +738,15 @@ def build_citations_from_docs(
             chunk_index = int(chunk_index) if chunk_index is not None else None
         except Exception:
             chunk_index = None
-        bbox = _extract_citation_bbox(meta)
-        bbox_page_number = _extract_bbox_page_number(meta, page_number) if bbox is not None else None
+        bbox, bbox_page_number, bbox_from_position_tag = _extract_citation_bbox_with_page(
+            meta,
+            effective_text,
+            page_number=page_number,
+            evidence_start=evidence_start_in_chunk,
+            evidence_end=evidence_end_in_chunk,
+        )
+        if bbox_from_position_tag and bbox_page_number is not None:
+            page_number = bbox_page_number
 
         hierarchy_basis = str(meta.get("hierarchy_basis") or "").strip() or None
         hierarchy_family_key = str(meta.get("hierarchy_family_key") or "").strip() or None
