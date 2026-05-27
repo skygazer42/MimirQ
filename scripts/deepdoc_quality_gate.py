@@ -275,13 +275,19 @@ def extract_runtime_metrics(payload: Any, *, elapsed_ms: float) -> dict[str, Any
 
     retrieval_sec = _as_float(metrics.get("retrieval_elapsed_sec"), 0.0)
     server_retrieval_ms = retrieval_sec * 1000.0 if retrieval_sec > 0.0 else 0.0
+    rag_offload_queue_ms = _as_float(metrics.get("rag_offload_queue_ms"), 0.0)
     api_overhead_ms = max(0.0, float(elapsed_ms or 0.0) - server_retrieval_ms) if server_retrieval_ms > 0.0 else 0.0
+    api_net_overhead_ms = max(0.0, api_overhead_ms - rag_offload_queue_ms)
 
     return {
         "server_retrieval_ms": round(server_retrieval_ms, 1),
         "api_overhead_ms": round(api_overhead_ms, 1),
+        "api_net_overhead_ms": round(api_net_overhead_ms, 1),
         "retrieval_query_count": _as_int(metrics.get("retrieval_query_count"), 0),
         "retrieval_query_parallelism": _as_int(metrics.get("retrieval_query_parallelism"), 0),
+        "rag_offload_limit": _as_int(metrics.get("rag_offload_limit"), 0),
+        "rag_offload_queue_ms": round(rag_offload_queue_ms, 1),
+        "rag_offload_exec_ms": round(_as_float(metrics.get("rag_offload_exec_ms"), 0.0), 1),
         "kg_chunks_injected": _as_int(metrics.get("kg_chunks_injected"), 0),
         "kg_chunk_boost_promoted": _as_int(metrics.get("kg_chunk_boost_promoted"), 0),
         "kg_query_expansion_used": bool(metrics.get("kg_query_expansion_used")),
@@ -491,6 +497,9 @@ def summarize_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
         latencies = [float(r.get("elapsed_ms") or 0.0) for r in vals]
         server_retrieval_latencies = [float(r.get("server_retrieval_ms") or 0.0) for r in vals if float(r.get("server_retrieval_ms") or 0.0) > 0.0]
         api_overhead_latencies = [float(r.get("api_overhead_ms") or 0.0) for r in vals if float(r.get("api_overhead_ms") or 0.0) > 0.0]
+        api_net_overhead_latencies = [float(r.get("api_net_overhead_ms") or 0.0) for r in vals if float(r.get("api_net_overhead_ms") or 0.0) > 0.0]
+        offload_queue_latencies = [float(r.get("rag_offload_queue_ms") or 0.0) for r in vals if float(r.get("rag_offload_queue_ms") or 0.0) > 0.0]
+        offload_exec_latencies = [float(r.get("rag_offload_exec_ms") or 0.0) for r in vals if float(r.get("rag_offload_exec_ms") or 0.0) > 0.0]
         kg_query_expansion_used = sum(1 for r in vals if bool(r.get("kg_query_expansion_used")))
         out[key] = {
             "requests": total,
@@ -514,6 +523,13 @@ def summarize_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
                 "server_retrieval_p95_ms": percentile(server_retrieval_latencies, 95),
                 "api_overhead_p50_ms": percentile(api_overhead_latencies, 50),
                 "api_overhead_p95_ms": percentile(api_overhead_latencies, 95),
+                "api_net_overhead_p50_ms": percentile(api_net_overhead_latencies, 50),
+                "api_net_overhead_p95_ms": percentile(api_net_overhead_latencies, 95),
+                "rag_offload_queue_p50_ms": percentile(offload_queue_latencies, 50),
+                "rag_offload_queue_p95_ms": percentile(offload_queue_latencies, 95),
+                "rag_offload_exec_p50_ms": percentile(offload_exec_latencies, 50),
+                "rag_offload_exec_p95_ms": percentile(offload_exec_latencies, 95),
+                "rag_offload_limit": max([int(r.get("rag_offload_limit") or 0) for r in vals] or [0]),
                 "max_retrieval_query_count": max([int(r.get("retrieval_query_count") or 0) for r in vals] or [0]),
                 "max_retrieval_query_parallelism": max([int(r.get("retrieval_query_parallelism") or 0) for r in vals] or [0]),
             },

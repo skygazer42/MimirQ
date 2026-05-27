@@ -561,13 +561,15 @@ async def retrieve_preview(
     state["multimodal_router"] = multimodal_meta
     state["image_meta"] = image_meta
 
-    result = await run_blocking_retrieval_call(run_retrieval, state) or {}
+    offload_metrics: dict[str, Any] = {}
+    result = await run_blocking_retrieval_call(run_retrieval, state, runtime_metrics=offload_metrics) or {}
     citations = result.get("citations") or []
     metrics = result.get("metrics") or {}
     query_for_retrieval = (result.get("query_for_retrieval") or body.query or "").strip()
 
     # Ensure minimum fields exist for UI debugging.
     metrics = dict(metrics)
+    metrics.update(offload_metrics)
     metrics.setdefault("vector_backend", settings.VECTOR_BACKEND)
     metrics.setdefault("requested_retrieval_mode", effective_rag_config.retrieval_mode)
     metrics.setdefault("tenant_qps_quota", tenant_qps_meta)

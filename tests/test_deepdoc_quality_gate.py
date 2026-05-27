@@ -95,6 +95,9 @@ def test_deepdoc_gate_extracts_runtime_metrics_from_response_body() -> None:
                 "kg_chunks_injected": 2,
                 "kg_chunk_boost_promoted": 1,
                 "kg_query_expansion_used": True,
+                "rag_offload_limit": 1,
+                "rag_offload_queue_ms": 123.4,
+                "rag_offload_exec_ms": 1250.0,
             }
         },
         elapsed_ms=1500.0,
@@ -107,6 +110,9 @@ def test_deepdoc_gate_extracts_runtime_metrics_from_response_body() -> None:
     assert metrics["kg_chunks_injected"] == 2
     assert metrics["kg_chunk_boost_promoted"] == 1
     assert metrics["kg_query_expansion_used"] is True
+    assert metrics["rag_offload_limit"] == 1
+    assert metrics["rag_offload_queue_ms"] == pytest.approx(123.4)
+    assert metrics["rag_offload_exec_ms"] == pytest.approx(1250.0)
 
 
 def test_deepdoc_gate_summary_includes_runtime_and_kg_usage() -> None:
@@ -125,6 +131,9 @@ def test_deepdoc_gate_summary_includes_runtime_and_kg_usage() -> None:
             "kg_chunks_injected": 1,
             "kg_chunk_boost_promoted": 1,
             "kg_query_expansion_used": False,
+            "rag_offload_queue_ms": 100.0,
+            "rag_offload_exec_ms": 700.0,
+            "rag_offload_limit": 1,
         },
         {
             "kind": "retrieve",
@@ -139,6 +148,9 @@ def test_deepdoc_gate_summary_includes_runtime_and_kg_usage() -> None:
             "kg_chunks_injected": 0,
             "kg_chunk_boost_promoted": 0,
             "kg_query_expansion_used": True,
+            "rag_offload_queue_ms": 200.0,
+            "rag_offload_exec_ms": 900.0,
+            "rag_offload_limit": 1,
         },
     ]
 
@@ -148,6 +160,9 @@ def test_deepdoc_gate_summary_includes_runtime_and_kg_usage() -> None:
 
     assert runtime["server_retrieval_p95_ms"] == pytest.approx(900.0)
     assert runtime["api_overhead_p95_ms"] == pytest.approx(300.0)
+    assert runtime["rag_offload_queue_p95_ms"] == pytest.approx(200.0)
+    assert runtime["rag_offload_exec_p95_ms"] == pytest.approx(900.0)
+    assert runtime["rag_offload_limit"] == 1
     assert kg["chunks_injected_total"] == 1
     assert kg["boost_promoted_total"] == 1
     assert kg["query_expansion_used_rate"] == pytest.approx(0.5)

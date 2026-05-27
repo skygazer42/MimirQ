@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
+import time
 from collections.abc import Callable
 from typing import Any, TypeVar
 
@@ -17,7 +18,7 @@ _gate: threading.BoundedSemaphore | None = None
 
 
 def _configured_limit() -> int:
-    return max(0, int(getattr(settings, "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY", 2) or 0))
+    return max(0, int(getattr(settings, "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY", 1) or 0))
 
 
 def _get_gate() -> threading.BoundedSemaphore | None:
@@ -40,11 +41,49 @@ def _run_with_gate(func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
         return func(*args, **kwargs)
 
 
-async def run_blocking_retrieval_call(func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
+def _run_with_gate_timed(
+    func: Callable[..., T],
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+) -> tuple[T, dict[str, Any]]:
+    limit = _configured_limit()
+    gate = _get_gate()
+    queued_at = time.perf_counter()
+    if gate is None:
+        acquired_at = queued_at
+        result = func(*args, **kwargs)
+        finished_at = time.perf_counter()
+    else:
+        gate.acquire()
+        try:
+            acquired_at = time.perf_counter()
+            result = func(*args, **kwargs)
+            finished_at = time.perf_counter()
+        finally:
+            gate.release()
+
+    queue_ms = max(0.0, (acquired_at - queued_at) * 1000.0)
+    exec_ms = max(0.0, (finished_at - acquired_at) * 1000.0)
+    return result, {
+        "rag_offload_limit": int(limit),
+        "rag_offload_queue_ms": round(queue_ms, 1),
+        "rag_offload_exec_ms": round(exec_ms, 1),
+    }
+
+
+async def run_blocking_retrieval_call(
+    func: Callable[..., T],
+    *args: Any,
+    runtime_metrics: dict[str, Any] | None = None,
+    **kwargs: Any,
+) -> T:
     """Run a blocking retrieval/chat fallback without blocking the event loop.
 
     The thread gate protects Milvus, embedding, and sync DB paths from being
     oversubscribed by async endpoints.
     """
 
-    return await asyncio.to_thread(_run_with_gate, func, *args, **kwargs)
+    result, metrics = await asyncio.to_thread(_run_with_gate_timed, func, args, kwargs)
+    if runtime_metrics is not None:
+        runtime_metrics.update(metrics)
+    return result

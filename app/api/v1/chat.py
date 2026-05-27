@@ -272,6 +272,7 @@ async def chat(
     history_for_llm = request_runtime.history_for_llm
 
     metrics_data: dict = {}
+    offload_metrics: dict[str, Any] = {}
     structured_data = None
 
     # Optional chat response cache (best-effort).
@@ -332,6 +333,7 @@ async def chat(
                     dataset_id_used=dataset_id_used,
                     effective_rag_config=effective_rag_config,
                     reason="explicit_extractive_answer_mode",
+                    runtime_metrics=offload_metrics,
                 )
             elif _is_model_provider_unavailable_circuit_open():
                 chat_result = await run_blocking_retrieval_call(
@@ -346,6 +348,7 @@ async def chat(
                     dataset_id_used=dataset_id_used,
                     effective_rag_config=effective_rag_config,
                     reason="model_provider_circuit_open",
+                    runtime_metrics=offload_metrics,
                 )
             else:
                 provider_available, provider_error = await _preflight_model_provider_fast()
@@ -362,6 +365,7 @@ async def chat(
                         dataset_id_used=dataset_id_used,
                         effective_rag_config=effective_rag_config,
                         reason="model_provider_preflight_failed",
+                        runtime_metrics=offload_metrics,
                     )
                     if provider_error:
                         metrics_data = dict(chat_result.metrics or {})
@@ -392,6 +396,7 @@ async def chat(
                                 effective_prompt_template_key=effective_prompt_template_key,
                                 effective_prompt_ab_experiment_key=effective_prompt_ab_experiment_key,
                                 rag_config_template_meta=rag_config_template_meta,
+                                runtime_metrics=offload_metrics,
                             )
                         else:
                             engine = get_rag_engine()
@@ -429,6 +434,7 @@ async def chat(
                             dataset_id_used=dataset_id_used,
                             effective_rag_config=effective_rag_config,
                             original_error=exc,
+                            runtime_metrics=offload_metrics,
                         )
                     citations_data = chat_result.citations
                     full_response = chat_result.content
@@ -440,6 +446,8 @@ async def chat(
                 metrics_data = dict(chat_result.metrics or {})
                 structured_data = chat_result.structured_data
 
+        if offload_metrics:
+            metrics_data = {**metrics_data, **offload_metrics}
         metrics_data = _annotate_chat_cache_metrics(
             metrics_data,
             enabled=cache_feature_enabled,

@@ -1091,7 +1091,7 @@ class Settings(BaseSettings):
     # Async API endpoints offload blocking retrieval work to threads; cap concurrent
     # heavy retrieval jobs so Milvus/embedding backends queue instead of saturating.
     # Set 0 to disable the process-local gate.
-    RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY: int = 2
+    RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY: int = 1
 
     # Prompt context guards (0 disables)
     RAG_CONTEXT_MAX_CHARS_PER_CHUNK: int = 1500
