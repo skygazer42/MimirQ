@@ -53,6 +53,35 @@ def test_build_citations_includes_bbox_from_chunk_metadata():  # noqa: ANN001
     assert out[0]["bbox_page_number"] == 4
 
 
+def test_build_citations_extracts_bbox_from_deepdoc_position_tags():  # noqa: ANN001
+    docs = [
+        Document(
+            page_content=(
+                "Deep Residual Learning for Image Recognition@@1\t152.3\t441.7\t105.7\t119.7##\n"
+                "The formulation of F(x) + x can be realized by feedforward neural networks with "
+                "shortcut connections@@2\t47.3\t287.7\t363.7\t495.0##"
+            ),
+            metadata={
+                "document_id": "doc-1",
+                "source": "deep-residual-learning_1512.03385.pdf",
+                "page_index": 1,
+                "chunk_index": 0,
+            },
+        )
+    ]
+
+    out = build_citations_from_docs(
+        docs,
+        retrieval_elapsed_sec=0.123,
+        retrieval_mode="vector",
+        query="shortcut connections",
+    )
+
+    assert len(out) == 1
+    assert out[0]["bbox"] == {"x0": 47, "y0": 363, "x1": 287, "y1": 495}
+    assert out[0]["bbox_page_number"] == 2
+
+
 def test_build_citations_includes_policy_fields():  # noqa: ANN001
     docs = [
         Document(

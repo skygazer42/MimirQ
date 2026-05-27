@@ -406,8 +406,11 @@ export function useDocumentViewerPanelState() {
   const resolvedPreviewAnchor = React.useMemo(
     () =>
       sanitizeDocumentPreviewAnchor({
+        ...previewAnchor,
         pageNumber: previewAnchor?.pageNumber ?? highlightChunk?.page_number ?? undefined,
         searchText: previewAnchor?.searchText,
+        bbox: previewAnchor?.bbox,
+        bboxPageNumber: previewAnchor?.bboxPageNumber,
       }),
     [highlightChunk, previewAnchor]
   )
