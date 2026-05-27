@@ -9,7 +9,10 @@ import { documentApi, ragApi } from "@/lib/api"
 import { formatApiError } from "@/lib/api-errors"
 import { getDocContentFromCache, saveDocContentToCache } from "@/lib/doc-content-cache"
 import { mapDocumentChunksToPreviewItems } from "@/lib/document-chunks"
-import { sanitizeDocumentPreviewAnchor } from "@/lib/document-preview-anchor"
+import {
+  recoverDocumentPreviewAnchorFromChunkPositions,
+  sanitizeDocumentPreviewAnchor,
+} from "@/lib/document-preview-anchor"
 import { getPrefetchedChunk, getPrefetchedDocument } from "@/lib/document-view-prefetch"
 import { API_V1_BASE_URL } from "@/lib/env"
 import { globalEventBus } from "@/lib/event-bus"
@@ -405,14 +408,18 @@ export function useDocumentViewerPanelState() {
 
   const resolvedPreviewAnchor = React.useMemo(
     () =>
-      sanitizeDocumentPreviewAnchor({
-        ...previewAnchor,
-        pageNumber: previewAnchor?.pageNumber ?? highlightChunk?.page_number ?? undefined,
-        searchText: previewAnchor?.searchText,
-        bbox: previewAnchor?.bbox,
-        bboxPageNumber: previewAnchor?.bboxPageNumber,
-      }),
-    [highlightChunk, previewAnchor]
+      recoverDocumentPreviewAnchorFromChunkPositions(
+        sanitizeDocumentPreviewAnchor({
+          ...previewAnchor,
+          pageNumber: previewAnchor?.pageNumber ?? highlightChunk?.page_number ?? undefined,
+          searchText: previewAnchor?.searchText,
+          bbox: previewAnchor?.bbox,
+          bboxPageNumber: previewAnchor?.bboxPageNumber,
+        }),
+        highlightChunk,
+        highlightRange
+      ),
+    [highlightChunk, highlightRange, previewAnchor]
   )
 
   React.useEffect(() => {
