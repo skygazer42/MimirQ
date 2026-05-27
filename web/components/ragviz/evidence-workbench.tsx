@@ -155,6 +155,7 @@ export function EvidenceWorkbench() {
           keyword_weight: 0.4,
           use_graph: false,
           visible_evidence_only: false,
+          answer_mode: 'llm',
         },
       })
 

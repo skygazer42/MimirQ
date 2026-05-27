@@ -172,7 +172,7 @@ describe('pdf viewer source', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'pdf-viewer.tsx'), 'utf8')
 
     expect(src).toContain('containerRef.current?.scrollTo({ top: 0 })')
-    expect(src).toContain('}, [file, reloadTick])')
+    expect(src).toContain('}, [file, fileUrl, reloadTick])')
   })
 
   it('bounds retained rasterized pages behind an explicit canvas pool budget', () => {
@@ -240,4 +240,12 @@ describe('pdf viewer source', () => {
     expect(src).toContain('delete win.__mimirqPdfViewerDebug')
   })
 
+  it('can load a remote/blob URL source for document-viewer citation overlays', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'pdf-viewer.tsx'), 'utf8')
+
+    expect(src).toContain('fileUrl?: string | null')
+    expect(src).toContain('const hasSource = Boolean(file || fileUrl)')
+    expect(src).toContain('fetch(fileUrl')
+    expect(src).toContain('}, [cancelRenderTasks, file, fileUrl, hasSource, reloadTick])')
+  })
 })

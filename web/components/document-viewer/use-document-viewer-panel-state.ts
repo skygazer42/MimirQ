@@ -650,7 +650,11 @@ export function useDocumentViewerPanelState() {
       setRetrieveLoading(true)
       setRetrieveError(null)
       try {
-        const res = await ragApi.retrievePreview({ query: normalized, document_ids: [documentId] })
+        const res = await ragApi.retrievePreview({
+          query: normalized,
+          document_ids: [documentId],
+          include_structure_trace: false,
+        })
         const raw = Array.isArray(res?.citations) ? res.citations : []
         const items = raw.map(toCitation).filter(Boolean) as Citation[]
         setRetrieveCitations(items.filter((citation) => citation.document_id === documentId))

@@ -26,6 +26,69 @@ def _collapse_ws(text: str) -> str:
     return re.sub(r"\s+", " ", (text or "").strip())
 
 
+def _coerce_int(value: Any) -> int | None:
+    try:
+        if value is None:
+            return None
+        return int(value)
+    except Exception:
+        return None
+
+
+def _coerce_bbox(value: Any) -> dict[str, int] | None:
+    if isinstance(value, dict):
+        x0 = _coerce_int(value.get("x0"))
+        y0 = _coerce_int(value.get("y0"))
+        x1 = _coerce_int(value.get("x1"))
+        y1 = _coerce_int(value.get("y1"))
+        if None not in {x0, y0, x1, y1} and int(x1) > int(x0) and int(y1) > int(y0):
+            return {"x0": int(x0), "y0": int(y0), "x1": int(x1), "y1": int(y1)}
+        return None
+    if isinstance(value, (list, tuple)) and len(value) == 4:
+        x0, y0, x1, y1 = (_coerce_int(part) for part in value)
+        if None not in {x0, y0, x1, y1} and int(x1) > int(x0) and int(y1) > int(y0):
+            return {"x0": int(x0), "y0": int(y0), "x1": int(x1), "y1": int(y1)}
+    return None
+
+
+def _extract_citation_bbox(meta: dict[str, Any]) -> dict[str, int] | None:
+    for key in ("element_bbox", "source_bbox", "bbox", "seal_bbox"):
+        bbox = _coerce_bbox(meta.get(key))
+        if bbox is not None:
+            return bbox
+    for key in ("bboxes", "seal_bbox_list"):
+        raw_list = meta.get(key)
+        if not isinstance(raw_list, list):
+            continue
+        for item in raw_list:
+            bbox = _coerce_bbox(item)
+            if bbox is not None:
+                return bbox
+    return None
+
+
+def _extract_page_number(meta: dict[str, Any]) -> int | None:
+    for key in ("page", "page_number", "element_page"):
+        value = _coerce_int(meta.get(key))
+        if value is not None and value > 0:
+            return int(value)
+    page_index = _coerce_int(meta.get("page_index"))
+    if page_index is not None and page_index >= 0:
+        return int(page_index) + 1
+    return None
+
+
+def _extract_bbox_page_number(meta: dict[str, Any], fallback: int | None) -> int | None:
+    for key in ("element_page", "page", "page_number"):
+        value = _coerce_int(meta.get(key))
+        if value is not None and value > 0:
+            return int(value)
+    page_index = _coerce_int(meta.get("page_index"))
+    if page_index is not None and page_index >= 0:
+        return int(page_index) + 1
+    return fallback
+
+
 def _extract_query_terms(query: str, *, max_terms: int = 8) -> list[str]:
     raw = (query or "").strip()
     if not raw:
@@ -429,14 +492,7 @@ def build_citations_from_docs(
         )
         tag_payload = _parse_json_object(doc.page_content or "") if is_tag else None
 
-        page_number = None
-        page_raw = meta.get("page")
-        try:
-            page_int = int(page_raw) if page_raw is not None else None
-            if page_int and page_int > 0:
-                page_number = page_int
-        except Exception:
-            page_number = None
+        page_number = _extract_page_number(meta)
 
         if is_tag:
             hit_type = "tag"
@@ -563,6 +619,8 @@ def build_citations_from_docs(
             chunk_index = int(chunk_index) if chunk_index is not None else None
         except Exception:
             chunk_index = None
+        bbox = _extract_citation_bbox(meta)
+        bbox_page_number = _extract_bbox_page_number(meta, page_number) if bbox is not None else None
 
         hierarchy_basis = str(meta.get("hierarchy_basis") or "").strip() or None
         hierarchy_family_key = str(meta.get("hierarchy_family_key") or "").strip() or None
@@ -651,6 +709,9 @@ def build_citations_from_docs(
             "retrieval_elapsed_sec": round(float(retrieval_elapsed_sec or 0.0), 3),
             "hit_type": hit_type,
         }
+        if bbox is not None:
+            citation["bbox"] = bbox
+            citation["bbox_page_number"] = bbox_page_number
 
         if is_tag:
             if tag_table_id:
@@ -863,6 +924,9 @@ def build_citations_from_docs(
             "row_source_sync_token": citation.get("row_source_sync_token"),
             "row_source_pk_hashes": citation.get("row_source_pk_hashes"),
         }
+        if citation.get("bbox") is not None:
+            anchor_payload["bbox"] = citation.get("bbox")
+            anchor_payload["bbox_page_number"] = citation.get("bbox_page_number")
         citation["evidence_anchor_hash"] = stable_json_hash(anchor_payload, length=16)
         citation["citation_hash"] = stable_json_hash(citation, length=16)
 

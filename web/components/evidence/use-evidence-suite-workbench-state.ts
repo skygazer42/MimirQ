@@ -393,6 +393,7 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
           keyword_weight: 0.4,
           use_graph: false,
           visible_evidence_only: false,
+          answer_mode: 'llm',
         },
       })
       const normalized = normalizeRetrieveResult(res)
@@ -754,6 +755,7 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
           keyword_weight: 0.4,
           use_graph: false,
           visible_evidence_only: false,
+          answer_mode: 'llm',
         },
       })
       const nextCitations = normalizeRetrieveResult(res)?.citations ?? EMPTY_CITATIONS

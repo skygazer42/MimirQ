@@ -32,6 +32,27 @@ def test_build_citations_includes_position_fields():  # noqa: ANN001
     assert c["pipeline_hash"] == "abcd"
 
 
+def test_build_citations_includes_bbox_from_chunk_metadata():  # noqa: ANN001
+    docs = [
+        Document(
+            page_content="layout citation block",
+            metadata={
+                "document_id": "doc-1",
+                "source": "Layout.pdf",
+                "element_page": 4,
+                "chunk_index": 8,
+                "element_bbox": {"x0": 10, "y0": 20, "x1": 160, "y1": 90},
+            },
+        )
+    ]
+
+    out = build_citations_from_docs(docs, retrieval_elapsed_sec=0.123, retrieval_mode="vector", query="layout")
+
+    assert len(out) == 1
+    assert out[0]["bbox"] == {"x0": 10, "y0": 20, "x1": 160, "y1": 90}
+    assert out[0]["bbox_page_number"] == 4
+
+
 def test_build_citations_includes_policy_fields():  # noqa: ANN001
     docs = [
         Document(

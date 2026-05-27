@@ -4374,6 +4374,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/prompt-templates/builtins/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync Builtin Prompt Templates
+         * @description Synchronize curated built-in prompt templates into the current tenant.
+         */
+        post: operations["sync_builtin_prompt_templates_api_v1_prompt_templates_builtins_sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/prompt-templates": {
         parameters: {
             query?: never;
@@ -5712,6 +5732,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/integrations/dify/retrieval": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retrieve External Knowledge */
+        post: operations["retrieve_external_knowledge_api_v1_integrations_dify_retrieval_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/rag/document-structure": {
         parameters: {
             query?: never;
@@ -6065,7 +6102,8 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        delete?: never;
+        /** Delete Tenant Member */
+        delete: operations["delete_tenant_member_api_v1_rbac_members__user_id__delete"];
         options?: never;
         head?: never;
         /** Patch Tenant Member Role */
@@ -7462,7 +7500,7 @@ export interface components {
             file: string;
             /**
              * Parser Backend
-             * @default auto
+             * @default deepdoc
              */
             parser_backend: string;
             /**
@@ -7519,7 +7557,7 @@ export interface components {
             file_size?: number | null;
             /**
              * Parser Backend
-             * @default auto
+             * @default deepdoc
              */
             parser_backend: string;
             /**
@@ -7570,7 +7608,7 @@ export interface components {
             file: string;
             /**
              * Parser Backend
-             * @default auto
+             * @default deepdoc
              */
             parser_backend: string;
             /**
@@ -7622,7 +7660,7 @@ export interface components {
             file: string;
             /**
              * Parser Backend
-             * @default auto
+             * @default deepdoc
              */
             parser_backend: string;
             /**
@@ -7677,7 +7715,7 @@ export interface components {
             files: string[];
             /**
              * Parser Backend
-             * @default auto
+             * @default deepdoc
              */
             parser_backend: string;
             /**
@@ -7766,6 +7804,27 @@ export interface components {
             sha?: string | null;
             /** Time */
             time?: string | null;
+        };
+        /**
+         * BuiltinPromptTemplateSyncResponse
+         * @description Result of synchronizing built-in prompt templates into the current tenant.
+         */
+        BuiltinPromptTemplateSyncResponse: {
+            /**
+             * Created
+             * @description Number of built-in templates created
+             */
+            created: number;
+            /**
+             * Updated
+             * @description Number of existing built-in templates updated
+             */
+            updated: number;
+            /**
+             * Template Keys
+             * @description Synchronized built-in template keys
+             */
+            template_keys: string[];
         };
         /**
          * CacheConfig
@@ -7907,6 +7966,8 @@ export interface components {
             multi_query_max_chars?: number | null;
             /** Enable Hyde */
             enable_hyde?: boolean | null;
+            /** Enable Query Decomposition */
+            enable_query_decomposition?: boolean | null;
             /** Enable Hierarchy Recall */
             enable_hierarchy_recall?: boolean | null;
             /** Hierarchy Family Collapse */
@@ -7921,6 +7982,18 @@ export interface components {
             hierarchy_sibling_window?: number | null;
             /** Hierarchy Overfetch Factor */
             hierarchy_overfetch_factor?: number | null;
+            /** Enable Kg Query Expansion */
+            enable_kg_query_expansion?: boolean | null;
+            /** Enable Kg Chunk Injection */
+            enable_kg_chunk_injection?: boolean | null;
+            /** Kg Chunk Injection Max Chunks */
+            kg_chunk_injection_max_chunks?: number | null;
+            /** Enable Kg Chunk Boost */
+            enable_kg_chunk_boost?: boolean | null;
+            /** Kg Chunk Boost Weight */
+            kg_chunk_boost_weight?: number | null;
+            /** Kg Chunk Boost Max Promoted */
+            kg_chunk_boost_max_promoted?: number | null;
             /** Top K */
             top_k?: number;
             /** Score Threshold */
@@ -7930,6 +8003,13 @@ export interface components {
              * @default 2000
              */
             max_tokens: number;
+            /**
+             * Answer Mode
+             * @description Answer generation mode. 'llm' uses the configured model provider; 'extractive' returns a citation-grounded retrieval summary without calling an LLM.
+             * @default llm
+             * @enum {string}
+             */
+            answer_mode: "llm" | "extractive";
             /**
              * Retrieval Mode
              * @default hybrid
@@ -8669,6 +8749,9 @@ export interface components {
             start_char?: number | null;
             /** End Char */
             end_char?: number | null;
+            bbox?: components["schemas"]["CitationBbox"] | null;
+            /** Bbox Page Number */
+            bbox_page_number?: number | null;
             /** Evidence Start Char */
             evidence_start_char?: number | null;
             /** Evidence End Char */
@@ -8745,6 +8828,20 @@ export interface components {
              * @description Optional URL for cleaned DOCX preview/download
              */
             clean_docx_url?: string | null;
+        };
+        /**
+         * CitationBbox
+         * @description PDF/page-space bounding box for precise citation highlighting.
+         */
+        CitationBbox: {
+            /** X0 */
+            x0: number;
+            /** Y0 */
+            y0: number;
+            /** X1 */
+            x1: number;
+            /** Y1 */
+            y1: number;
         };
         /** CleanPreviewRequest */
         CleanPreviewRequest: {
@@ -12275,6 +12372,90 @@ export interface components {
             milvus?: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * DifyExternalKnowledgeConfig
+         * @description Dify External Knowledge API adapter settings.
+         */
+        DifyExternalKnowledgeConfig: {
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /**
+             * Api Keys
+             * @default
+             */
+            api_keys: string;
+            /**
+             * Tenant Id
+             * @default
+             */
+            tenant_id: string;
+            /**
+             * Account Id
+             * @default system:dify
+             */
+            account_id: string;
+            /**
+             * Knowledge Map Json
+             * @default
+             */
+            knowledge_map_json: string;
+            /**
+             * Top K Max
+             * @default 50
+             */
+            top_k_max: number;
+            /**
+             * Endpoint Path
+             * @default /api/v1/integrations/dify/retrieval
+             */
+            endpoint_path: string;
+        };
+        /** DifyExternalKnowledgeRecord */
+        DifyExternalKnowledgeRecord: {
+            /** Content */
+            content: string;
+            /** Score */
+            score: number;
+            /** Title */
+            title: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+        };
+        /** DifyExternalKnowledgeRequest */
+        DifyExternalKnowledgeRequest: {
+            /** Knowledge Id */
+            knowledge_id: string;
+            /** Query */
+            query: string;
+            retrieval_setting?: components["schemas"]["DifyRetrievalSetting"];
+            /** Metadata Condition */
+            metadata_condition?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /** DifyExternalKnowledgeResponse */
+        DifyExternalKnowledgeResponse: {
+            /** Records */
+            records: components["schemas"]["DifyExternalKnowledgeRecord"][];
+        };
+        /** DifyRetrievalSetting */
+        DifyRetrievalSetting: {
+            /**
+             * Top K
+             * @default 5
+             */
+            top_k: number;
+            /**
+             * Score Threshold
+             * @default 0
+             */
+            score_threshold: number;
         };
         /**
          * DocumentAccessInfo
@@ -17426,6 +17607,21 @@ export interface components {
          */
         MagicPDFConfig: {
             /**
+             * Api Url
+             * @default
+             */
+            api_url: string;
+            /**
+             * Request Timeout Sec
+             * @default 600
+             */
+            request_timeout_sec: number;
+            /**
+             * Max Concurrent Jobs
+             * @default 1
+             */
+            max_concurrent_jobs: number;
+            /**
              * Cli
              * @default magic-pdf
              */
@@ -17450,6 +17646,16 @@ export interface components {
              * @default 600
              */
             timeout_sec: number;
+            /**
+             * Models Dir
+             * @default
+             */
+            models_dir: string;
+            /**
+             * Device Mode
+             * @default cpu
+             */
+            device_mode: string;
             /**
              * Keep Artifacts
              * @default false
@@ -17799,6 +18005,21 @@ export interface components {
              * @default vlm
              */
             model_version: string;
+            /**
+             * Backend
+             * @default pipeline
+             */
+            backend: string;
+            /**
+             * Local Server Url
+             * @default
+             */
+            local_server_url: string;
+            /**
+             * Vl Server
+             * @default
+             */
+            vl_server: string;
         };
         /** MinioStatus */
         MinioStatus: {
@@ -19895,6 +20116,12 @@ export interface components {
             prompt_template_key?: string | null;
             /** Prompt Ab Experiment Key */
             prompt_ab_experiment_key?: string | null;
+            /** Judge Prompt Template Id */
+            judge_prompt_template_id?: string | null;
+            /** Judge Prompt Template Key */
+            judge_prompt_template_key?: string | null;
+            /** Judge Prompt Ab Experiment Key */
+            judge_prompt_ab_experiment_key?: string | null;
             /**
              * Grid
              * @description Ablation parameter grid; values are cartesian-expanded into regression runs
@@ -20343,6 +20570,12 @@ export interface components {
             prompt_template_key?: string | null;
             /** Prompt Ab Experiment Key */
             prompt_ab_experiment_key?: string | null;
+            /** Judge Prompt Template Id */
+            judge_prompt_template_id?: string | null;
+            /** Judge Prompt Template Key */
+            judge_prompt_template_key?: string | null;
+            /** Judge Prompt Ab Experiment Key */
+            judge_prompt_ab_experiment_key?: string | null;
         };
         /** RagasRegressionRunDetail */
         RagasRegressionRunDetail: {
@@ -20925,6 +21158,12 @@ export interface components {
             /** Rag Config Ab Experiment Key */
             rag_config_ab_experiment_key?: string | null;
             rag_config?: components["schemas"]["ChatRAGConfig"];
+            /**
+             * Include Structure Trace
+             * @description Attach bounded document-structure trace for visual tree debugging. Disabled by default to keep retrieval preview latency predictable.
+             * @default false
+             */
+            include_structure_trace: boolean;
         };
         /** RetrievePreviewResponse */
         RetrievePreviewResponse: {
@@ -21292,6 +21531,7 @@ export interface components {
             chat: components["schemas"]["ChatConfig"];
             langgraph: components["schemas"]["LangGraphConfig"];
             navigation: components["schemas"]["NavigationConfig"];
+            dify_external_knowledge: components["schemas"]["DifyExternalKnowledgeConfig"];
         };
         /** TableAskRequest */
         TableAskRequest: {
@@ -21594,6 +21834,31 @@ export interface components {
             /** External Id */
             external_id?: string | null;
         };
+        /** TenantMemberDeleteResponse */
+        TenantMemberDeleteResponse: {
+            /** User Id */
+            user_id: string;
+            /**
+             * Removed
+             * @default true
+             */
+            removed: boolean;
+            /**
+             * Revoked Group Memberships
+             * @default 0
+             */
+            revoked_group_memberships: number;
+            /**
+             * Revoked Dataset Permissions
+             * @default 0
+             */
+            revoked_dataset_permissions: number;
+            /**
+             * Revoked Document Permissions
+             * @default 0
+             */
+            revoked_document_permissions: number;
+        };
         /** TenantMemberListResponse */
         TenantMemberListResponse: {
             /**
@@ -21741,6 +22006,21 @@ export interface components {
              * @default true
              */
             auto_save_as_cases: boolean;
+            /**
+             * Prompt Template Id
+             * @description Optional prompt template id for document test generation
+             */
+            prompt_template_id?: string | null;
+            /**
+             * Prompt Template Key
+             * @description Optional prompt template key for latest active version
+             */
+            prompt_template_key?: string | null;
+            /**
+             * Prompt Ab Experiment Key
+             * @description Optional A/B experiment key for prompt selection
+             */
+            prompt_ab_experiment_key?: string | null;
         };
         /**
          * TestGenResponse
@@ -21965,6 +22245,7 @@ export interface components {
             chat?: components["schemas"]["ChatConfig"] | null;
             langgraph?: components["schemas"]["LangGraphConfig"] | null;
             navigation?: components["schemas"]["NavigationConfig"] | null;
+            dify_external_knowledge?: components["schemas"]["DifyExternalKnowledgeConfig"] | null;
         };
         /**
          * UrlIngestConfig
@@ -22019,7 +22300,7 @@ export interface components {
             user_agent?: string | null;
             /**
              * Parser Backend
-             * @default auto
+             * @default deepdoc
              */
             parser_backend: string;
             /**
@@ -26971,6 +27252,8 @@ export interface operations {
             query?: {
                 parser_backend?: string | null;
                 image_caption_enabled?: boolean;
+                image_ocr_enabled?: boolean;
+                vlm_correction_enabled?: boolean | null;
             };
             header?: {
                 "x-tenant-id"?: string | null;
@@ -35468,6 +35751,8 @@ export interface operations {
                 extract_relations?: boolean | null;
                 /** @description Extract Skill/SOP entities (override settings) */
                 extract_skills?: boolean | null;
+                /** @description Extraction backend override: llm, gliner, hybrid, heuristic */
+                extraction_backend?: string | null;
                 prompt_template_id?: string | null;
                 prompt_template_key?: string | null;
                 prompt_ab_experiment_key?: string | null;
@@ -40212,6 +40497,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TestGenResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_builtin_prompt_templates_api_v1_prompt_templates_builtins_sync_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuiltinPromptTemplateSyncResponse"];
                 };
             };
             /** @description Bad Request */
@@ -45205,6 +45558,69 @@ export interface operations {
             };
         };
     };
+    retrieve_external_knowledge_api_v1_integrations_dify_retrieval_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                Authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DifyExternalKnowledgeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DifyExternalKnowledgeResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     document_structure_preview_api_v1_rag_document_structure_post: {
         parameters: {
             query?: never;
@@ -46719,6 +47135,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TenantMemberListResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_tenant_member_api_v1_rbac_members__user_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TenantMemberDeleteResponse"];
                 };
             };
             /** @description Bad Request */

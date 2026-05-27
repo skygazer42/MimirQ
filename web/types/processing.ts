@@ -47,6 +47,8 @@ export interface Citation {
   chunk_content: string
   matched_terms?: string[]
   page_number?: number
+  bbox?: { x0: number; y0: number; x1: number; y1: number }
+  bbox_page_number?: number
   chunk_index?: number
   start_char?: number
   end_char?: number
