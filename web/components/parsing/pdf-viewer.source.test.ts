@@ -245,7 +245,9 @@ describe('pdf viewer source', () => {
 
     expect(src).toContain('fileUrl?: string | null')
     expect(src).toContain('const hasSource = Boolean(file || fileUrl)')
-    expect(src).toContain('fetch(fileUrl')
+    expect(src).toContain("from '@/lib/auth-headers'")
+    expect(src).toContain('getPdfSourceHeaders(fileUrl)')
+    expect(src).toContain('fetch(fileUrl, {')
     expect(src).toContain('}, [cancelRenderTasks, file, fileUrl, hasSource, reloadTick])')
   })
 

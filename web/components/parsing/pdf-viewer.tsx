@@ -16,6 +16,8 @@ import {
  detectPdfBboxCoordinateSpace,
 } from '@/lib/pdf-bbox'
 import { toPrimitiveString } from '@/lib/primitive-text'
+import { getAuthHeaders } from '@/lib/auth-headers'
+import { API_BASE_URL } from '@/lib/env'
 import { Button } from '@/components/ui/button'
 import { BboxOverlay, type BboxOverlayItem } from '@/components/parsing/bbox-overlay'
 import {
@@ -147,13 +149,36 @@ function canUseOffscreenCanvasRender(): boolean {
  )
 }
 
+function getPdfSourceHeaders(fileUrl?: string | null): Record<string, string> | undefined {
+ const raw = String(fileUrl || '').trim()
+ if (!raw || /^blob:/i.test(raw) || /^data:/i.test(raw)) return undefined
+
+ try {
+ const parsedUrl = new URL(raw, globalThis.window?.location.origin || API_BASE_URL)
+ const apiUrl = new URL(API_BASE_URL)
+ const isBackendApiUrl = parsedUrl.origin === apiUrl.origin && parsedUrl.pathname.startsWith('/api/')
+ const isSameOriginApiUrl =
+ globalThis.window !== undefined &&
+ parsedUrl.origin === globalThis.window.location.origin &&
+ parsedUrl.pathname.startsWith('/api/')
+ if (!isBackendApiUrl && !isSameOriginApiUrl) return undefined
+ } catch {
+ return undefined
+ }
+
+ return getAuthHeaders()
+}
+
 async function readPdfSourceData(file?: File | null, fileUrl?: string | null): Promise<Uint8Array> {
  if (file) {
  return new Uint8Array(await file.arrayBuffer())
  }
 
  if (fileUrl) {
- const response = await fetch(fileUrl)
+ const response = await fetch(fileUrl, {
+ credentials: 'include',
+ headers: getPdfSourceHeaders(fileUrl),
+ })
  if (!response.ok) {
  throw new Error(`PDF 下载失败 (${response.status})`)
  }
