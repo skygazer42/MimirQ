@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { buildPdfPreviewSrc, getDocumentPreviewAnchorFromCitation } from './document-preview-anchor'
 
 describe('document preview anchor helpers', () => {
-  it('prefers matched terms and page numbers from citations', () => {
+  it('prefers citation snippets over broad matched terms for source positioning', () => {
     expect(
       getDocumentPreviewAnchorFromCitation({
         chunk_content: 'fallback snippet',
@@ -12,7 +12,7 @@ describe('document preview anchor helpers', () => {
       })
     ).toEqual({
       pageNumber: 7,
-      searchText: 'retention window',
+      searchText: 'fallback snippet',
     })
   })
 

@@ -44,7 +44,7 @@ export function getDocumentPreviewAnchorFromCitation<T extends CitationLikePrevi
 
   const matchedTerms = Array.isArray(citation.matched_terms) ? citation.matched_terms : []
   const searchText =
-    matchedTerms.map((term) => sanitizeSearchText(term)).find(Boolean) || sanitizeSearchText(citation.chunk_content)
+    sanitizeSearchText(citation.chunk_content) || matchedTerms.map((term) => sanitizeSearchText(term)).find(Boolean)
 
   return sanitizeDocumentPreviewAnchor({
     pageNumber: citation.page_number ?? undefined,
