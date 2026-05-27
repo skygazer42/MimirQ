@@ -25,6 +25,7 @@ type TextTabPanelProps = {
   textActiveChunkIndex: number | null
   initialScrollTop: number
   highlightRange: { start: number; end: number } | null
+  highlightParentRange: boolean
   onTextModeChange: (mode: "cleaned" | "original") => void
   onTextScrollTopChange: (scrollTop: number) => void
   onClearHighlight: () => void
@@ -56,6 +57,7 @@ export function TextTabPanel({
   textActiveChunkIndex,
   initialScrollTop,
   highlightRange,
+  highlightParentRange,
   onTextModeChange,
   onTextScrollTopChange,
   onClearHighlight,
@@ -200,6 +202,7 @@ export function TextTabPanel({
             chunks={textMode === "cleaned" ? textChunkItems : []}
             activeChunkIndex={textMode === "cleaned" ? textActiveChunkIndex : null}
             activeRange={textMode === "cleaned" ? highlightRange ?? null : null}
+            highlightParentRange={highlightParentRange}
             initialScrollTop={initialScrollTop}
             onScrollTopChange={onTextScrollTopChange}
             onSelectChunkIndex={onSelectChunkIndex}

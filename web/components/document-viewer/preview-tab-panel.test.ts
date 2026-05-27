@@ -24,6 +24,7 @@ describe('PreviewTabPanel', () => {
 
     expect(html).toContain('src="https://example.com/doc.pdf#toolbar=0&amp;page=4&amp;search=retention+period"')
     expect(html).toContain('PDF 已跳转到引用页')
+    expect(html).toContain('aria-label="收起引用定位"')
     expect(html).toContain('查看文本高亮')
     expect(html).toContain('查看切片')
   })
