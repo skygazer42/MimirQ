@@ -248,4 +248,14 @@ describe('pdf viewer source', () => {
     expect(src).toContain('fetch(fileUrl')
     expect(src).toContain('}, [cancelRenderTasks, file, fileUrl, hasSource, reloadTick])')
   })
+
+  it('can scroll to a citation page without relying on browser PDF iframe fragments', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'pdf-viewer.tsx'), 'utf8')
+
+    expect(src).toContain('scrollToPageIndex?: number | null')
+    expect(src).toContain('typeof scrollToPageIndex ===')
+    expect(src).toContain('Math.trunc(scrollToPageIndex)')
+    expect(src).toContain('el.offsetTop - 24')
+    expect(src).toContain('}, [pageCount, scrollToPageIndex])')
+  })
 })
