@@ -573,7 +573,7 @@ export function useDocumentViewerPanelState() {
     return url.toString()
   }, [documentId])
 
-  const fileUrl = useResolvedAuthAssetUrl(rawFileUrl)
+  const fileUrl = rawFileUrl
   const downloadUrl = useResolvedAuthAssetUrl(rawDownloadUrl)
 
   const buildChunkLink = React.useCallback(

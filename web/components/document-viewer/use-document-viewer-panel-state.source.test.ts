@@ -13,4 +13,12 @@ describe('useDocumentViewerPanelState source', () => {
     expect(src).toContain('recoverDocumentPreviewAnchorFromChunkPositions(')
     expect(src).toContain('highlightRange')
   })
+
+  it('passes backend PDF URLs directly to PdfViewer instead of blob-proxying document previews', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'use-document-viewer-panel-state.ts'), 'utf8')
+
+    expect(src).toContain('const fileUrl = rawFileUrl')
+    expect(src).not.toContain('const fileUrl = useResolvedAuthAssetUrl(rawFileUrl)')
+    expect(src).toContain('const downloadUrl = useResolvedAuthAssetUrl(rawDownloadUrl)')
+  })
 })
