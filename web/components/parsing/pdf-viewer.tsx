@@ -1173,9 +1173,15 @@ export function PdfViewer({
  globalThis.window !== undefined &&
  typeof globalThis.window.matchMedia === 'function' &&
  globalThis.window.matchMedia('(prefers-reduced-motion: reduce)').matches
+ const behavior = reduceMotion ? 'auto' : 'smooth'
+ const containerCanScroll = container.scrollHeight > container.clientHeight + 1
+ if (!containerCanScroll) {
+ el.scrollIntoView({ behavior, block: 'center' })
+ return
+ }
  container.scrollTo({
  top: Math.max(0, el.offsetTop - 24),
- behavior: reduceMotion ? 'auto' : 'smooth',
+ behavior,
  })
  }, [pageCount, scrollToPageIndex])
 
@@ -1208,6 +1214,11 @@ export function PdfViewer({
  pageBaseHeight: pageBaseSize?.height ?? null,
  coordinateSpace,
  })
+ const containerCanScroll = container.scrollHeight > container.clientHeight + 1
+ if (!containerCanScroll) {
+ el.scrollIntoView({ behavior, block: 'center' })
+ return
+ }
  const containerRect = container.getBoundingClientRect()
  const pageRect = el.getBoundingClientRect()
  container.scrollTo({
