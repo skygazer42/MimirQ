@@ -15,6 +15,8 @@ class Citation(TypedDict, total=False):
     document_name: str
     chunk_content: str
     page_number: Any
+    bbox: dict[str, int] | None
+    bbox_page_number: int | None
     hierarchy_basis: str | None
     hierarchy_family_key: str | None
     family_collapse_key: str | None

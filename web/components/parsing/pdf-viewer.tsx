@@ -32,6 +32,7 @@ type PageBaseSize = { width: number; height: number }
 
 interface PdfViewerProps {
  file?: File | null
+ fileUrl?: string | null
  blocks?: ParsingBlock[]
  boxesByPage?: Map<number, Box[]> | null
  blockIdToPageIndex?: Map<string, number> | null
@@ -145,8 +146,25 @@ function canUseOffscreenCanvasRender(): boolean {
  )
 }
 
+async function readPdfSourceData(file?: File | null, fileUrl?: string | null): Promise<Uint8Array> {
+ if (file) {
+ return new Uint8Array(await file.arrayBuffer())
+ }
+
+ if (fileUrl) {
+ const response = await fetch(fileUrl)
+ if (!response.ok) {
+ throw new Error(`PDF 下载失败 (${response.status})`)
+ }
+ return new Uint8Array(await response.arrayBuffer())
+ }
+
+ throw new Error('未选择 PDF')
+}
+
 export function PdfViewer({
  file,
+ fileUrl,
  blocks = [],
  boxesByPage,
  blockIdToPageIndex,
@@ -195,6 +213,7 @@ export function PdfViewer({
  const renderGenRef = useRef(0)
  const pageNumbers = useMemo(() => Array.from({ length: pageCount }, (_, pageNumber) => pageNumber + 1), [pageCount])
  const renderModeKey = `${reloadTick}-${offscreenRenderEnabled ? 'offscreen' : 'main'}`
+ const hasSource = Boolean(file || fileUrl)
 
  const retryLoad = useCallback(() => {
  setReloadTick((prev) => prev + 1)
@@ -241,7 +260,7 @@ export function PdfViewer({
  pageRenderRetryTimeoutsRef.current.clear()
  pageRenderRetryCountsRef.current.clear()
 
- if (!file) {
+ if (!hasSource) {
  setPdfDoc(null)
  setPageCount(0)
  setDefaultPageAspectRatio(null)
@@ -262,7 +281,7 @@ export function PdfViewer({
  setIsLoading(true)
  setLoadError(null)
  try {
- const data = new Uint8Array(await file.arrayBuffer())
+ const data = await readPdfSourceData(file, fileUrl)
  const pdfjsLib = await loadPdfJsModule()
  const offscreenCanvasSupported = Boolean(pdfjsLib.FeatureTest.isOffscreenCanvasSupported)
  const doc = await pdfjsLib.getDocument({
@@ -315,11 +334,11 @@ export function PdfViewer({
  return () => {
  cancelled = true
  }
- }, [cancelRenderTasks, file, reloadTick])
+ }, [cancelRenderTasks, file, fileUrl, hasSource, reloadTick])
 
  useEffect(() => {
  containerRef.current?.scrollTo({ top: 0 })
- }, [file, reloadTick])
+ }, [file, fileUrl, reloadTick])
 
  useEffect(() => {
  // Important: measure the actual content width (max-w-4xl) instead of the scroll container width,
@@ -377,7 +396,7 @@ export function PdfViewer({
  terminateOffscreenRenderWorker()
  setOffscreenRenderEnabled(false)
 
- if (!file || !pdfDoc) {
+ if (!hasSource || !pdfDoc) {
  return () => {
  cancelled = true
  }
@@ -401,7 +420,7 @@ export function PdfViewer({
  offscreenRenderWorkerRef.current = worker
  offscreenRenderApiRef.current = api
 
- const data = new Uint8Array(await file.arrayBuffer())
+  const data = await readPdfSourceData(file, fileUrl)
  await api.initializeDocument(transfer(data, [data.buffer]))
 
  if (cancelled) {
@@ -424,7 +443,7 @@ export function PdfViewer({
  terminateOffscreenRenderWorker()
  setOffscreenRenderEnabled(false)
  }
- }, [file, pdfDoc, terminateOffscreenRenderWorker])
+ }, [file, fileUrl, hasSource, pdfDoc, terminateOffscreenRenderWorker])
 
  const clearQueuedRenderFlush = useCallback(() => {
  const idleGlobal: IdleGlobal = globalThis
@@ -1187,7 +1206,7 @@ export function PdfViewer({
  }
  }, [failedPages, loadingPages, pageCount, pageRenderErrors, renderedPages, scale])
 
- if (!file) {
+ if (!hasSource) {
  return (
  <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
  未选择 PDF
@@ -1195,7 +1214,7 @@ export function PdfViewer({
  )
  }
 
- if (isLoading) {
+ if (isLoading || (!pdfDoc && !loadError)) {
  return (
  <div className="flex h-full items-center justify-center text-muted-foreground">
  <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />

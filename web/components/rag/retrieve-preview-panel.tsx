@@ -294,6 +294,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
         keyword_weight: Number((1 - alpha).toFixed(2)),
         use_graph: false,
         visible_evidence_only: false,
+        answer_mode: 'llm',
       }
 
       const response = await ragApi.retrieveEvidence({

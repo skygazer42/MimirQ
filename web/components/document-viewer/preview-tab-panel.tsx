@@ -1,12 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { FileText, Loader2 } from "lucide-react"
 
 import type { DocumentPreviewAnchor } from "@/lib/document-preview-anchor"
-import { buildPdfPreviewSrc } from "@/lib/document-preview-anchor"
+import { buildDocumentPreviewBboxOverlay, buildPdfPreviewSrc } from "@/lib/document-preview-anchor"
 import type { Document } from "@/types"
 import { Button } from "@/components/ui/button"
+import { PdfViewer } from "@/components/parsing/pdf-viewer"
 
 type PreviewTabPanelProps = {
   isLoading: boolean
@@ -36,6 +37,7 @@ export function PreviewTabPanel({
   onViewChunks,
 }: Readonly<PreviewTabPanelProps>) {
   const [anchorActionsCollapsed, setAnchorActionsCollapsed] = useState(false)
+  const bboxOverlay = useMemo(() => buildDocumentPreviewBboxOverlay(previewAnchor), [previewAnchor])
 
   if (isLoading && !doc) {
     return (
@@ -101,11 +103,23 @@ export function PreviewTabPanel({
             </div>
           )
         ) : null}
-        <iframe
-          src={buildPdfPreviewSrc(fileUrl, previewAnchor)}
-          className="h-full w-full border-none"
-          title="Document Preview"
-        />
+        {bboxOverlay ? (
+          <div data-citation-bbox-preview="true" className="h-full w-full bg-muted/20">
+            <PdfViewer
+              fileUrl={fileUrl}
+              boxesByPage={bboxOverlay.boxesByPage}
+              blockIdToPageIndex={bboxOverlay.blockIdToPageIndex}
+              activeBlockIds={bboxOverlay.activeBlockIds}
+              showAllBoxes={false}
+            />
+          </div>
+        ) : (
+          <iframe
+            src={buildPdfPreviewSrc(fileUrl, previewAnchor)}
+            className="h-full w-full border-none"
+            title="Document Preview"
+          />
+        )}
       </div>
     )
   }

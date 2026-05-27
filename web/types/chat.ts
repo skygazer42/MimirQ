@@ -55,6 +55,8 @@ export interface RagTraceCitation {
   chunk_id?: string | null
   chunk_index?: number | null
   page_number?: number | null
+  bbox?: { x0: number; y0: number; x1: number; y1: number } | null
+  bbox_page_number?: number | null
   start_char?: number | null
   end_char?: number | null
 

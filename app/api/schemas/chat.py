@@ -20,6 +20,14 @@ from .base import OrmModel
 HIERARCHY_FAMILY_AGGREGATION_VALUES = ("frequency", "score", "combined")
 
 
+class CitationBbox(BaseModel):
+    """PDF/page-space bounding box for precise citation highlighting."""
+    x0: int
+    y0: int
+    x1: int
+    y1: int
+
+
 class Citation(BaseModel):
     """Citation information."""
     document_id: UUID
@@ -31,6 +39,8 @@ class Citation(BaseModel):
     chunk_index: int | None = None
     start_char: int | None = None
     end_char: int | None = None
+    bbox: CitationBbox | None = None
+    bbox_page_number: int | None = None
     evidence_start_char: int | None = None
     evidence_end_char: int | None = None
     header_path: str | None = None
