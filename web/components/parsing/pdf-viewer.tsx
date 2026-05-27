@@ -33,6 +33,7 @@ type PageBaseSize = { width: number; height: number }
 interface PdfViewerProps {
  file?: File | null
  fileUrl?: string | null
+ scrollToPageIndex?: number | null
  blocks?: ParsingBlock[]
  boxesByPage?: Map<number, Box[]> | null
  blockIdToPageIndex?: Map<string, number> | null
@@ -165,6 +166,7 @@ async function readPdfSourceData(file?: File | null, fileUrl?: string | null): P
 export function PdfViewer({
  file,
  fileUrl,
+ scrollToPageIndex,
  blocks = [],
  boxesByPage,
  blockIdToPageIndex,
@@ -1132,6 +1134,25 @@ export function PdfViewer({
  },
  [onClickBlockId]
  )
+
+ useEffect(() => {
+ const pageIndex =
+ typeof scrollToPageIndex === 'number' && Number.isFinite(scrollToPageIndex)
+ ? Math.max(0, Math.min(pageCount - 1, Math.trunc(scrollToPageIndex)))
+ : null
+ if (pageIndex == null || pageCount <= 0) return
+ const el = pageRefs.current.get(pageIndex)
+ const container = containerRef.current
+ if (!el || !container) return
+ const reduceMotion =
+ globalThis.window !== undefined &&
+ typeof globalThis.window.matchMedia === 'function' &&
+ globalThis.window.matchMedia('(prefers-reduced-motion: reduce)').matches
+ container.scrollTo({
+ top: Math.max(0, el.offsetTop - 24),
+ behavior: reduceMotion ? 'auto' : 'smooth',
+ })
+ }, [pageCount, scrollToPageIndex])
 
  useEffect(() => {
  const firstActive = (activeBlockIds || [])[0]

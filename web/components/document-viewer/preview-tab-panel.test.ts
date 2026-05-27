@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { PreviewTabPanel } from './preview-tab-panel'
 
 describe('PreviewTabPanel', () => {
-  it('threads citation preview anchors into the PDF iframe and surfaces return actions', () => {
+  it('uses the pdf.js viewer for citation page anchors and surfaces return actions', () => {
     const html = renderToStaticMarkup(
       React.createElement(PreviewTabPanel, {
         isLoading: false,
@@ -22,7 +22,8 @@ describe('PreviewTabPanel', () => {
       })
     )
 
-    expect(html).toContain('src="https://example.com/doc.pdf#toolbar=0&amp;page=4&amp;search=retention+period"')
+    expect(html).toContain('data-pdfjs-document-preview="true"')
+    expect(html).not.toContain('<iframe')
     expect(html).toContain('PDF 已跳转到引用页')
     expect(html).toContain('aria-label="收起引用定位"')
     expect(html).toContain('查看文本高亮')
