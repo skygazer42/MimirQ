@@ -83,6 +83,7 @@ describe('document view store persistence', () => {
       textMode: 'original',
       chunksScrollTop: 128,
       textScrollTop: 512,
+      panelWidthPx: 860,
     })
     useDocumentView.getState().openDocument('doc-42')
 
@@ -91,6 +92,7 @@ describe('document view store persistence', () => {
     expect(raw).toContain('"activeTab":"chunks"')
     expect(raw).toContain('"isExpanded":true')
     expect(raw).toContain('"textScrollTop":512')
+    expect(raw).toContain('"panelWidthPx":860')
 
     ;({ useDocumentView } = await loadStore(localStorage))
 
@@ -103,7 +105,24 @@ describe('document view store persistence', () => {
       textMode: 'original',
       chunksScrollTop: 128,
       textScrollTop: 512,
+      panelWidthPx: 860,
     })
+  })
+
+  it('sanitizes persisted document viewer panel width', async () => {
+    const { useDocumentView } = await loadStore()
+
+    useDocumentView.getState().setDocumentLayout('doc-width', {
+      panelWidthPx: 600.8,
+    })
+    useDocumentView.getState().setDocumentLayout('doc-bad-width', {
+      panelWidthPx: 120,
+    })
+
+    expect(useDocumentView.getState().getDocumentLayout('doc-width')).toMatchObject({
+      panelWidthPx: 601,
+    })
+    expect(useDocumentView.getState().getDocumentLayout('doc-bad-width')).toBeNull()
   })
 
 

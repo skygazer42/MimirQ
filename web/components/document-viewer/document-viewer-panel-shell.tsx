@@ -1,5 +1,7 @@
 "use client"
 
+import { useCallback, useRef, useState, type CSSProperties, type PointerEvent } from "react"
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ChunkEditorDialog } from "@/components/document-viewer/chunk-editor-dialog"
 import { ChunksTabPanel } from "@/components/document-viewer/chunks-tab-panel"
@@ -65,6 +67,7 @@ export function DocumentViewerPanelShell({
   parsedContent,
   parsedContentError,
   parsedContentLoading,
+  panelWidthPx,
   previewAnchor,
   qaDialogOpen,
   qaLastResult,
@@ -90,6 +93,7 @@ export function DocumentViewerPanelShell({
   setChunkQuery,
   setHighlightChunk,
   setIsExpanded,
+  setPanelWidthPx,
   setLoadAllChunks,
   setQaMaxSourceChars,
   setQaNumPairs,
@@ -106,6 +110,52 @@ export function DocumentViewerPanelShell({
   textMode,
   textValue,
 }: Readonly<DocumentViewerPanelState>) {
+  const [isResizing, setIsResizing] = useState(false)
+  const resizeStartRef = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null)
+
+  const panelStyle = !isExpanded && panelWidthPx
+    ? ({ "--document-viewer-panel-width": `min(${panelWidthPx}px, calc(100vw - 48px))` } as CSSProperties)
+    : undefined
+
+  const clampPanelWidth = useCallback((width: number) => {
+    if (globalThis.window === undefined) return Math.max(360, Math.round(width))
+    const maxWidth = Math.max(420, Math.floor(globalThis.window.innerWidth * 0.86))
+    return Math.max(360, Math.min(maxWidth, Math.round(width)))
+  }, [])
+
+  const finishResize = useCallback((event: PointerEvent<HTMLButtonElement>) => {
+    const current = resizeStartRef.current
+    if (!current || current.pointerId !== event.pointerId) return
+    resizeStartRef.current = null
+    setIsResizing(false)
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    } catch {
+      // Pointer capture may already be released by the browser.
+    }
+  }, [])
+
+  const handleResizePointerDown = useCallback((event: PointerEvent<HTMLButtonElement>) => {
+    if (isExpanded || globalThis.window === undefined || globalThis.window.innerWidth < 768) return
+    event.preventDefault()
+    const panel = event.currentTarget.parentElement
+    const currentWidth = panelWidthPx ?? panel?.getBoundingClientRect().width ?? 500
+    resizeStartRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startWidth: currentWidth,
+    }
+    setIsResizing(true)
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }, [isExpanded, panelWidthPx])
+
+  const handleResizePointerMove = useCallback((event: PointerEvent<HTMLButtonElement>) => {
+    const current = resizeStartRef.current
+    if (!current || current.pointerId !== event.pointerId) return
+    event.preventDefault()
+    setPanelWidthPx(clampPanelWidth(current.startWidth + current.startX - event.clientX))
+  }, [clampPanelWidth, setPanelWidthPx])
+
   if (!isOpen) return null
 
   return (
@@ -147,11 +197,41 @@ export function DocumentViewerPanelShell({
         onSubmit={() => detachPromise(runQaGeneration())}
       />
       <div
+        style={panelStyle}
         className={cn(
           "fixed inset-y-0 right-0 z-50 flex flex-col border-l border-sidebar-border/70 bg-sidebar/90 backdrop-blur-xl shadow-strong",
-          isExpanded ? "w-full md:w-[80vw]" : "w-full md:w-[40vw] lg:w-[500px] xl:w-[40vw]"
+          isResizing ? "select-none" : "transition-[width] duration-150 ease-out motion-reduce:transition-none",
+          isExpanded
+            ? "w-full md:w-[80vw]"
+            : panelWidthPx
+              ? "w-full md:w-[var(--document-viewer-panel-width)]"
+              : "w-full md:w-[40vw] lg:w-[500px] xl:w-[40vw]"
         )}
       >
+        <button
+          type="button"
+          aria-label="拖动调整文档查看器宽度"
+          title="拖动调整文档查看器宽度"
+          data-document-viewer-resize-handle="true"
+          onPointerDown={handleResizePointerDown}
+          onPointerMove={handleResizePointerMove}
+          onPointerUp={finishResize}
+          onPointerCancel={finishResize}
+          className={cn(
+            "group absolute -left-2 top-0 z-20 hidden h-full w-4 cursor-col-resize items-center justify-center md:flex",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
+            isExpanded && "pointer-events-none opacity-0",
+            isResizing && "bg-primary/5"
+          )}
+        >
+          <span
+            aria-hidden="true"
+            className={cn(
+              "h-16 w-1 rounded-full border border-border/70 bg-background/80 shadow-sm transition-colors",
+              isResizing ? "border-primary/50 bg-primary/35" : "group-hover:bg-primary/25"
+            )}
+          />
+        </button>
         <DocumentViewerHeader
           filename={doc?.filename}
           chunkCount={doc?.chunk_count ?? chunks.length}
