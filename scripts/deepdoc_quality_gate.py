@@ -97,6 +97,42 @@ def _fact_groups(raw: Any) -> list[list[str]]:
     return out
 
 
+def _expected_doc_ids(raw: Any) -> list[str]:
+    values: list[Any]
+    if isinstance(raw, list):
+        values = raw
+    elif isinstance(raw, str) and raw.strip():
+        values = [raw]
+    else:
+        values = []
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        doc = str(value or "").strip()
+        if not doc or doc in seen:
+            continue
+        seen.add(doc)
+        out.append(doc)
+    return out
+
+
+def _source_flags(docs: list[str], case: dict[str, Any]) -> dict[str, Any]:
+    expected_docs = _expected_doc_ids(case.get("expected_document_ids"))
+    if not expected_docs:
+        expected_docs = _expected_doc_ids(case.get("expected_document_id"))
+    expected_set = set(expected_docs)
+    docs_set = set(str(doc or "").strip() for doc in docs if str(doc or "").strip())
+    top1 = str(docs[0]).strip() if docs else ""
+    return {
+        "expected_docs": expected_docs,
+        "expected_doc": expected_docs[0] if expected_docs else None,
+        "top1_doc": top1 or None,
+        "source_top1": bool(expected_set and top1 in expected_set),
+        "source_hit": bool(expected_set and expected_set.issubset(docs_set)),
+    }
+
+
 def load_cases(path: Path) -> list[dict[str, Any]]:
     payload = _load_json(path)
     if isinstance(payload, list):
@@ -128,20 +164,24 @@ def load_cases(path: Path) -> list[dict[str, Any]]:
         question = str(raw.get("question") or raw.get("q") or "").strip()
         if not question:
             continue
-        expected_doc = str(
-            raw.get("expected_document_id")
+        expected_docs = _expected_doc_ids(
+            raw.get("expected_document_ids")
+            or raw.get("expected_docs")
+            or raw.get("document_ids")
+            or raw.get("expected_document_id")
             or raw.get("expected_doc")
             or raw.get("document_id")
             or expected_by_case.get(cid)
             or ""
-        ).strip()
+        )
         cases.append(
             {
                 "id": cid,
                 "doc": str(raw.get("doc") or raw.get("document") or "").strip(),
                 "question": question,
                 "fact_groups": _fact_groups(raw.get("fact_groups") or raw.get("groups") or raw.get("expected_terms")),
-                "expected_document_id": expected_doc or None,
+                "expected_document_id": expected_docs[0] if expected_docs else None,
+                "expected_document_ids": expected_docs,
             }
         )
     return cases
@@ -211,6 +251,29 @@ def _text(item: dict[str, Any]) -> str:
         if isinstance(val, str) and val.strip():
             parts.append(val)
     return "\n".join(parts)
+
+
+def _direct_answer_text(payload: Any) -> str:
+    if not isinstance(payload, dict):
+        return ""
+    for key in ("content", "answer", "response", "text"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def _fact_text_for_kind(kind: str, payload: Any, extracted_text: str) -> str:
+    if kind == "chat":
+        return _direct_answer_text(payload) or str(extracted_text or "")
+    return str(extracted_text or "")
+
+
+def _excerpt(text: str, limit: int = 600) -> str:
+    clean = " ".join(str(text or "").split())
+    if len(clean) <= limit:
+        return clean
+    return f"{clean[: max(0, limit - 3)]}..."
 
 
 def _extract_sources_and_text(payload: Any) -> tuple[list[str], str]:
@@ -436,8 +499,9 @@ async def run_gate(
 
                 docs, text = _extract_sources_and_text(body)
                 runtime_metrics = extract_runtime_metrics(body, elapsed_ms=elapsed_ms)
-                expected = str(case.get("expected_document_id") or "").strip()
-                fact_ok, fact_hit_count, missed = _fact_hit(text, list(case.get("fact_groups") or []))
+                source_flags = _source_flags(docs, case)
+                fact_text = _fact_text_for_kind(kind, body, text)
+                fact_ok, fact_hit_count, missed = _fact_hit(fact_text, list(case.get("fact_groups") or []))
                 rows.append(
                     {
                         "kind": kind,
@@ -447,15 +511,19 @@ async def run_gate(
                         "ok": 200 <= int(status or 0) < 300,
                         "status": int(status or 0),
                         "elapsed_ms": round(float(elapsed_ms), 1),
-                        "expected_doc": expected or None,
-                        "top1_doc": docs[0] if docs else None,
-                        "source_top1": bool(expected and docs and docs[0] == expected),
-                        "source_hit": bool(expected and expected in docs),
+                        "expected_doc": source_flags["expected_doc"],
+                        "expected_docs": source_flags["expected_docs"],
+                        "top1_doc": source_flags["top1_doc"],
+                        "source_docs": docs[:50],
+                        "source_top1": source_flags["source_top1"],
+                        "source_hit": source_flags["source_hit"],
                         "source_count": int(len(docs)),
                         "fact_hit": bool(fact_ok),
                         "fact_hit_count": int(fact_hit_count),
                         "fact_group_count": int(len(case.get("fact_groups") or [])),
                         "missed_groups": missed,
+                        "answer_excerpt": _excerpt(_direct_answer_text(body)),
+                        "fact_text_excerpt": _excerpt(fact_text),
                         **runtime_metrics,
                     }
                 )
