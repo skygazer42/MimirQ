@@ -68,4 +68,12 @@ describe('document viewer panel source', () => {
     expect(headerSrc).toContain('<h2')
     expect(headerSrc).toContain('{filename || "加载中..."}')
   })
+
+  it('keeps document preview scrolling inside the viewer so citation jumps do not move the tab bar offscreen', () => {
+    const shellSrc = fs.readFileSync(path.resolve(__dirname, 'document-viewer/document-viewer-panel-shell.tsx'), 'utf8')
+
+    expect(shellSrc).toContain('className="flex min-h-0 flex-1 flex-col"')
+    expect(shellSrc).toContain('className="relative m-0 min-h-0 flex-1 overflow-hidden bg-muted/30 dark:bg-muted/20"')
+    expect(shellSrc).toContain('className="m-0 min-h-0 flex-1 overflow-hidden"')
+  })
 })

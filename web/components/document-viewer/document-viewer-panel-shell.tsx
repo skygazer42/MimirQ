@@ -162,8 +162,8 @@ export function DocumentViewerPanelShell({
           onClose={closeDocument}
         />
 
-        <div className="flex flex-1 flex-col overflow-hidden">
-          <Tabs value={activeTab} onValueChange={handleActiveTabChange} className="flex flex-1 flex-col">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <Tabs value={activeTab} onValueChange={handleActiveTabChange} className="flex min-h-0 flex-1 flex-col">
             <div className="border-b border-sidebar-border/70 bg-sidebar/75 px-4 backdrop-blur-xl">
               <TabsList className="h-10 w-full justify-start gap-6 bg-transparent p-0">
                 <TabsTrigger
@@ -187,7 +187,7 @@ export function DocumentViewerPanelShell({
               </TabsList>
             </div>
 
-            <TabsContent value="preview" className="relative m-0 h-full flex-1 bg-muted/30 dark:bg-muted/20">
+            <TabsContent value="preview" className="relative m-0 min-h-0 flex-1 overflow-hidden bg-muted/30 dark:bg-muted/20">
               <PreviewTabPanel
                 isLoading={isLoading}
                 doc={doc}
@@ -203,7 +203,7 @@ export function DocumentViewerPanelShell({
               />
             </TabsContent>
 
-            <TabsContent value="text" className="m-0 h-full flex-1 overflow-hidden">
+            <TabsContent value="text" className="m-0 min-h-0 flex-1 overflow-hidden">
               <TextTabPanel
                 textMode={textMode}
                 highlightChunkId={highlightChunkId}
@@ -243,7 +243,7 @@ export function DocumentViewerPanelShell({
               />
             </TabsContent>
 
-            <TabsContent value="chunks" className="m-0 h-full flex-1 overflow-hidden">
+            <TabsContent value="chunks" className="m-0 min-h-0 flex-1 overflow-hidden">
               <ChunksTabPanel
                 chunkSearchRef={chunkSearchRef}
                 chunksListRef={chunksListRef}

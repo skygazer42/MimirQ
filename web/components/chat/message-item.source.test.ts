@@ -23,4 +23,14 @@ describe('chat message item source', () => {
     expect(src).toMatch(/const handleOpenCitation = useCallback\([\s\S]*?activeTab: 'preview'/)
     expect(src).toMatch(/const handleClick = useCallback\([\s\S]*?activeTab: 'preview'/)
   })
+
+  it('labels citation scores as ranking scores instead of unstable similarity percentages', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'message-item.tsx'), 'utf8')
+
+    expect(src).toContain('buildCitationScoreTitle(citation)')
+    expect(src).toContain('getCitationSecondaryScore(citation)')
+    expect(src).toContain('综合分')
+    expect(src).toContain('关键词')
+    expect(src).not.toContain('相似度 {Math.round(citation.relevance_score * 100)}%')
+  })
 })
