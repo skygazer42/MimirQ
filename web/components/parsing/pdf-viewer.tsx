@@ -75,6 +75,76 @@ const PDFJS_ICCS_URL = '/pdfjs/iccs/'
 
 let pdfJsModulePromise: Promise<PdfJsModule> | null = null
 
+function findNearestScrollableAncestor(container: HTMLElement): HTMLElement | null {
+ if (globalThis.window === undefined) return null
+
+ let node = container.parentElement
+ while (node) {
+ if (node === globalThis.document.body || node === globalThis.document.documentElement) return null
+
+ const style = globalThis.window.getComputedStyle(node)
+ const canScrollY =
+ (style.overflowY === 'auto' || style.overflowY === 'scroll' || style.overflowY === 'overlay') &&
+ node.scrollHeight > node.clientHeight + 1
+ if (canScrollY) return node
+
+ node = node.parentElement
+ }
+
+ return null
+}
+
+function scrollPdfPageIntoElement({
+ behavior,
+ scrollElement,
+ targetElement,
+}: {
+ behavior: ScrollBehavior
+ scrollElement: HTMLElement
+ targetElement: HTMLElement
+}) {
+ const scrollRect = scrollElement.getBoundingClientRect()
+ const targetRect = targetElement.getBoundingClientRect()
+ const centeredTop =
+ scrollElement.scrollTop +
+ targetRect.top -
+ scrollRect.top -
+ Math.max(24, Math.floor((scrollElement.clientHeight - targetRect.height) / 2))
+
+ scrollElement.scrollTo({
+ behavior,
+ top: Math.max(0, centeredTop),
+ })
+}
+
+function scrollPdfOverlayIntoElement({
+ behavior,
+ overlayHeight,
+ overlayTop,
+ pageElement,
+ scrollElement,
+}: {
+ behavior: ScrollBehavior
+ overlayHeight: number
+ overlayTop: number
+ pageElement: HTMLElement
+ scrollElement: HTMLElement
+}) {
+ const scrollRect = scrollElement.getBoundingClientRect()
+ const pageRect = pageElement.getBoundingClientRect()
+ scrollElement.scrollTo({
+ behavior,
+ top: computePdfOverlayScrollTop({
+ containerHeight: scrollElement.clientHeight,
+ containerScrollTop: scrollElement.scrollTop,
+ containerTop: scrollRect.top,
+ overlayHeight,
+ overlayTop,
+ pageTop: pageRect.top,
+ }),
+ })
+}
+
 function installPdfJsCompatPolyfills() {
  const promiseCtor = Promise as typeof Promise & {
  withResolvers?: () => {
@@ -1176,7 +1246,9 @@ export function PdfViewer({
  const behavior = reduceMotion ? 'auto' : 'smooth'
  const containerCanScroll = container.scrollHeight > container.clientHeight + 1
  if (!containerCanScroll) {
- el.scrollIntoView({ behavior, block: 'center' })
+ const scrollElement = findNearestScrollableAncestor(container)
+ if (!scrollElement) return
+ scrollPdfPageIntoElement({ behavior, scrollElement, targetElement: el })
  return
  }
  container.scrollTo({
@@ -1216,7 +1288,15 @@ export function PdfViewer({
  })
  const containerCanScroll = container.scrollHeight > container.clientHeight + 1
  if (!containerCanScroll) {
- el.scrollIntoView({ behavior, block: 'center' })
+ const scrollElement = findNearestScrollableAncestor(container)
+ if (!scrollElement) return
+ scrollPdfOverlayIntoElement({
+ behavior,
+ overlayHeight: rect.height,
+ overlayTop: rect.top,
+ pageElement: el,
+ scrollElement,
+ })
  return
  }
  const containerRect = container.getBoundingClientRect()
@@ -1234,7 +1314,14 @@ export function PdfViewer({
  })
  return
  }
- el.scrollIntoView({ behavior, block: 'center' })
+ const containerCanScroll = container.scrollHeight > container.clientHeight + 1
+ if (!containerCanScroll) {
+ const scrollElement = findNearestScrollableAncestor(container)
+ if (!scrollElement) return
+ scrollPdfPageIntoElement({ behavior, scrollElement, targetElement: el })
+ return
+ }
+ scrollPdfPageIntoElement({ behavior, scrollElement: container, targetElement: el })
  }, [activeBlockIds, defaultPageBaseSize, pageBaseSizes, resolvedBlockIdToPageIndex, resolvedBoxesByPage, scale])
 
  useEffect(() => {

@@ -129,6 +129,51 @@ function formatMetricValue(value: unknown): string | null {
   return null
 }
 
+function toFiniteScore(value: unknown): number | null {
+  const score = Number(value)
+  return Number.isFinite(score) ? score : null
+}
+
+function formatCitationScore(value: unknown): string {
+  const score = toFiniteScore(value)
+  if (score == null) return '—'
+  if (score >= 0 && score <= 1) return `${Math.round(score * 100)}%`
+  return score.toFixed(3)
+}
+
+function isUsableScore(value: unknown): boolean {
+  const score = toFiniteScore(value)
+  return score != null && score > 0
+}
+
+function getCitationSecondaryScore(citation: Citation): { label: string; value: string } | null {
+  if (isUsableScore(citation.rerank_score)) {
+    return { label: '重排', value: formatCitationScore(citation.rerank_score) }
+  }
+  if (isUsableScore(citation.vector_score)) {
+    return { label: '向量', value: formatCitationScore(citation.vector_score) }
+  }
+  if (isUsableScore(citation.bm25_score)) {
+    return { label: '关键词', value: formatCitationScore(citation.bm25_score) }
+  }
+  if (isUsableScore(citation.retrieval_score)) {
+    return { label: '召回', value: formatCitationScore(citation.retrieval_score) }
+  }
+  return null
+}
+
+function buildCitationScoreTitle(citation: Citation): string {
+  const parts = [
+    `综合分 ${formatCitationScore(citation.relevance_score)}`,
+    isUsableScore(citation.rerank_score) ? `重排 ${formatCitationScore(citation.rerank_score)}` : null,
+    isUsableScore(citation.vector_score) ? `向量 ${formatCitationScore(citation.vector_score)}` : null,
+    isUsableScore(citation.bm25_score) ? `关键词 ${formatCitationScore(citation.bm25_score)}` : null,
+    isUsableScore(citation.retrieval_score) ? `召回 ${formatCitationScore(citation.retrieval_score)}` : null,
+    citation.hit_type ? `命中类型 ${citation.hit_type}` : null,
+  ]
+  return parts.filter(Boolean).join(' · ')
+}
+
 const markdownPlugins = [remarkGfm]
 const markdownBaseComponents = {
   p: ({ children }: { children?: ReactNode }) => <p className="mb-3 last:mb-0 leading-relaxed">{children}</p>,
@@ -1247,6 +1292,8 @@ const CitationCard = memo(function CitationCard({
 
   const canViewEvidence = Boolean((citation.has_image && imgUrl && !hideImage) || isTableEvidence)
   const sourceContext = buildChatCitationSourceContext(messageId, citation.document_id, citation.chunk_id)
+  const citationScoreTitle = buildCitationScoreTitle(citation)
+  const secondaryScore = getCitationSecondaryScore(citation)
 
   const handleClick = useCallback((e?: React.MouseEvent) => {
     e?.stopPropagation()
@@ -1302,10 +1349,21 @@ const CitationCard = memo(function CitationCard({
           </div>
         </button>
 
-        <div className="flex items-center gap-2 mt-2 pt-1">
-          <span className="bg-secondary/50 border border-border text-muted-foreground px-1.5 py-0.5 rounded text-[11px]">
-            相似度 {Math.round(citation.relevance_score * 100)}%
+        <div className="flex flex-wrap items-center gap-2 mt-2 pt-1">
+          <span
+            className="bg-secondary/50 border border-border text-muted-foreground px-1.5 py-0.5 rounded text-[11px]"
+            title={citationScoreTitle}
+          >
+            综合分 {formatCitationScore(citation.relevance_score)}
           </span>
+          {secondaryScore ? (
+            <span
+              className="bg-secondary/35 border border-border/70 text-muted-foreground px-1.5 py-0.5 rounded text-[11px]"
+              title={citationScoreTitle}
+            >
+              {secondaryScore.label} {secondaryScore.value}
+            </span>
+          ) : null}
           {canViewEvidence ? (
             <button
               type="button"
