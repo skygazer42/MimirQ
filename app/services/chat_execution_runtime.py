@@ -223,33 +223,93 @@ def _select_relevant_snippet(*, question: str, content: Any, max_chars: int = 32
     return _clean_snippet(raw, max_chars=max_chars)
 
 
+def _citation_metadata(citation: dict[str, Any]) -> dict[str, Any]:
+    meta = citation.get("metadata")
+    return meta if isinstance(meta, dict) else {}
+
+
+def _citation_document_name(citation: dict[str, Any], *, index: int) -> str:
+    meta = _citation_metadata(citation)
+    return str(
+        citation.get("document_name")
+        or citation.get("filename")
+        or citation.get("source")
+        or meta.get("document_name")
+        or meta.get("filename")
+        or meta.get("source")
+        or f"引用 {index}"
+    )
+
+
+def _citation_content(citation: dict[str, Any]) -> str:
+    meta = _citation_metadata(citation)
+    return str(
+        citation.get("chunk_content")
+        or citation.get("content")
+        or citation.get("text")
+        or meta.get("chunk_content")
+        or meta.get("content")
+        or meta.get("text")
+        or ""
+    )
+
+
+def _extractive_source_answer_from_citations(*, question: str, citations: list[dict[str, Any]]) -> str | None:
+    docs: list[Document] = []
+    for idx, citation in enumerate(citations, start=1):
+        if not isinstance(citation, dict):
+            continue
+        meta = _citation_metadata(citation)
+        doc_name = _citation_document_name(citation, index=idx)
+        content = _citation_content(citation)
+        title = derive_document_title(
+            filename=doc_name,
+            doc_metadata=meta,
+            first_chunk_content=content,
+        )
+        docs.append(
+            Document(
+                page_content="",
+                metadata={
+                    "document_title": title or doc_name,
+                    "filename": doc_name,
+                    "source": doc_name,
+                },
+            )
+        )
+
+    return maybe_build_source_identification_answer(question=question, docs=docs)
+
+
+def _extractive_direct_answer(*, question: str, citations: list[dict[str, Any]]) -> str:
+    source_answer = _extractive_source_answer_from_citations(question=question, citations=citations)
+    if source_answer:
+        return source_answer
+
+    for citation in citations:
+        if not isinstance(citation, dict):
+            continue
+        snippet = _select_relevant_snippet(question=question, content=_citation_content(citation), max_chars=360)
+        if snippet:
+            return f"根据最相关引用：{snippet}"
+    return ""
+
+
 def build_extractive_fallback_answer(
     *,
     question: str,
     citations: list[dict[str, Any]],
     max_items: int = 4,
     reason: str = "model_provider_unavailable",
+    direct_answer_override: str | None = None,
 ) -> str:
     """Build a deterministic answer from retrieved evidence when generation is unavailable."""
     usable: list[str] = []
     for idx, citation in enumerate(citations[: max(1, max_items)], start=1):
         if not isinstance(citation, dict):
             continue
-        doc_name = (
-            citation.get("document_name")
-            or citation.get("filename")
-            or citation.get("source")
-            or citation.get("metadata", {}).get("document_name")
-            or citation.get("metadata", {}).get("source")
-            or f"引用 {idx}"
-        )
-        content = (
-            citation.get("chunk_content")
-            or citation.get("content")
-            or citation.get("text")
-            or citation.get("metadata", {}).get("chunk_content")
-        )
-        snippet = _select_relevant_snippet(question=question, content=content)
+        doc_name = _citation_document_name(citation, index=idx)
+        snippet = _select_relevant_snippet(question=question, content=_citation_content(citation))
         if not snippet:
             continue
         usable.append(f"{idx}. {doc_name}: {snippet}")
@@ -268,10 +328,16 @@ def build_extractive_fallback_answer(
 
     question_text = _clean_snippet(question, max_chars=180)
     evidence_lines = "\n".join(usable)
+    direct_answer = str(direct_answer_override or "").strip() or _extractive_direct_answer(
+        question=question,
+        citations=citations[: max(1, max_items)],
+    )
+    direct_answer_section = f"\n\n结论：{direct_answer}" if direct_answer else ""
     prefix = "以下为基于已检索引用生成的抽取式可审计摘要。" if explicit_mode else "模型服务当前不可用，以下为基于已检索引用生成的可审计摘要。"
     suffix = "说明：该回答按抽取式模式生成，未调用外部大模型；请以引用内容作为最终核验依据。" if explicit_mode else "说明：该回答未调用外部大模型生成，仅基于返回引用做抽取式摘要；请以引用内容作为最终核验依据。"
     return (
-        f"{prefix}\n\n"
+        f"{prefix}"
+        f"{direct_answer_section}\n\n"
         f"问题：{question_text}\n\n"
         "检索证据要点：\n"
         f"{evidence_lines}\n\n"
@@ -540,6 +606,12 @@ def execute_extractive_fallback_once(
         citations=_answer_evidence_from_retrieval(docs=docs, citations=citations, max_items=answer_evidence_max_items),
         max_items=answer_evidence_max_items,
         reason=reason,
+        direct_answer_override=_source_identification_answer_from_citations(
+            db=db,
+            tenant_id=tenant_id,
+            question=request.message,
+            citations=citations,
+        ),
     )
     return ExecutedGraphChatOnceResult(
         content=answer,

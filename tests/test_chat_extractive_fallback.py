@@ -91,6 +91,49 @@ def test_extractive_fallback_answer_uses_retrieved_evidence() -> None:
     assert "QUIC provides secure transport" in answer
 
 
+def test_extractive_fallback_answer_surfaces_direct_conclusion_before_evidence() -> None:
+    from app.services.chat_execution_runtime import build_extractive_fallback_answer
+
+    answer = build_extractive_fallback_answer(
+        question="Which paper uses residual learning and shortcut connections to address degradation in very deep networks?",
+        citations=[
+            {
+                "document_name": "deep-residual-learning_1512.03385.pdf",
+                "chunk_content": (
+                    "Deep Residual Learning for Image Recognition@@1 152.3 441.7 105.7 119.7##\n"
+                    "Abstract@@1 145.0 192.3 223.3 235.7## "
+                    "Deeper neural networks are more difficult to train. "
+                    "We present a residual learning framework to ease the training of networks that are substantially deeper."
+                ),
+            }
+        ],
+        reason="explicit_extractive_answer_mode",
+    )
+
+    assert "结论：" in answer
+    assert "Deep Residual Learning for Image Recognition" in answer
+    assert answer.index("结论：") < answer.index("检索证据要点")
+
+
+def test_extractive_fallback_answer_prefers_runtime_direct_answer_override() -> None:
+    from app.services.chat_execution_runtime import build_extractive_fallback_answer
+
+    answer = build_extractive_fallback_answer(
+        question="Which paper uses residual learning?",
+        citations=[
+            {
+                "document_name": "deep-residual-learning_1512.03385.pdf",
+                "chunk_content": "This middle chunk discusses shortcut connections and degradation.",
+            }
+        ],
+        reason="explicit_extractive_answer_mode",
+        direct_answer_override='The paper is "Deep Residual Learning for Image Recognition".',
+    )
+
+    assert '结论：The paper is "Deep Residual Learning for Image Recognition".' in answer
+    assert answer.index("结论：") < answer.index("检索证据要点")
+
+
 def test_extractive_fallback_answer_surfaces_direct_multi_hop_evidence() -> None:
     from app.services.chat_execution_runtime import build_extractive_fallback_answer
 
