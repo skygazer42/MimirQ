@@ -23,7 +23,7 @@ export interface ParsingBlockWithRange extends ParsingBlock {
   rawEnd: number
 }
 
-const POSITION_TAG_RE = /@@([0-9-]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)##/g
+const POSITION_TAG_RE = /@@([0-9-]+)\s+([0-9.]+)\s+([0-9.]+)\s+([0-9.]+)\s+([0-9.]+)##/g
 
 function parsePages(value: string): number[] {
   const parts = value

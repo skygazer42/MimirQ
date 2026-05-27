@@ -10,5 +10,7 @@ describe('useDocumentViewerPanelState source', () => {
     expect(src).toContain('...previewAnchor')
     expect(src).toContain('bbox: previewAnchor?.bbox')
     expect(src).toContain('bboxPageNumber: previewAnchor?.bboxPageNumber')
+    expect(src).toContain('recoverDocumentPreviewAnchorFromChunkPositions(')
+    expect(src).toContain('highlightRange')
   })
 })
