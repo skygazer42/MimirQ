@@ -222,6 +222,7 @@ export function DocumentViewerPanelShell({
                 textActiveChunkIndex={textActiveChunkIndex}
                 initialScrollTop={textInitialScrollTop}
                 highlightRange={highlightRange}
+                highlightParentRange={sourceContext?.kind !== 'chat-citation'}
                 onTextModeChange={setTextMode}
                 onTextScrollTopChange={handleTextScrollTopChange}
                 onClearHighlight={() => setHighlightChunk(null)}

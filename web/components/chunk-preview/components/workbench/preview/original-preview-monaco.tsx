@@ -172,12 +172,23 @@ export function OriginalPreviewMonaco(props: Readonly<{
   chunks: ChunkPreviewItem[]
   activeChunkIndex: number | null
   activeRange?: { start: number; end: number } | null
+  highlightParentRange?: boolean
   initialScrollTop?: number
   chunkOverrides?: Record<number, { disabled?: boolean }>
   onScrollTopChange?: (scrollTop: number) => void
   onSelectChunkIndex?: (index: number) => void
 }>) {
-  const { text, chunks, activeChunkIndex, activeRange, initialScrollTop, chunkOverrides, onScrollTopChange, onSelectChunkIndex } = props
+  const {
+    text,
+    chunks,
+    activeChunkIndex,
+    activeRange,
+    highlightParentRange = true,
+    initialScrollTop,
+    chunkOverrides,
+    onScrollTopChange,
+    onSelectChunkIndex,
+  } = props
 
   const editorRef = useRef<MonacoEditorInstance | null>(null)
   const monacoRef = useRef<MonacoModule | null>(null)
@@ -270,7 +281,7 @@ export function OriginalPreviewMonaco(props: Readonly<{
     const activeStart = chunk ? clampOffset(Number(chunk.start_index) || 0, 0, textLen) : 0
     const activeEnd = chunk ? clampOffset(Math.max(activeStart, Number(chunk.end_index) || activeStart), 0, textLen) : 0
 
-    const parent = chunk ? resolveParentRange(chunk, chunks) : null
+    const parent = highlightParentRange && chunk ? resolveParentRange(chunk, chunks) : null
 
     const decos: MonacoDecoration[] = []
     if (parent) {
@@ -325,7 +336,7 @@ export function OriginalPreviewMonaco(props: Readonly<{
     } catch {
       // no-op
     }
-  }, [activeChunkIndex, activeRange, chunks, lineStarts, text.length])
+  }, [activeChunkIndex, activeRange, chunks, highlightParentRange, lineStarts, text.length])
 
   useEffect(() => {
     applyOverviewDecorations()
