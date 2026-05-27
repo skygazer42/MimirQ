@@ -76,4 +76,18 @@ describe('document viewer panel source', () => {
     expect(shellSrc).toContain('className="relative m-0 min-h-0 flex-1 overflow-hidden bg-muted/30 dark:bg-muted/20"')
     expect(shellSrc).toContain('className="m-0 min-h-0 flex-1 overflow-hidden"')
   })
+
+  it('supports dragging the viewer side rail to resize the document panel', () => {
+    const shellSrc = fs.readFileSync(path.resolve(__dirname, 'document-viewer/document-viewer-panel-shell.tsx'), 'utf8')
+    const hookSrc = fs.readFileSync(path.resolve(__dirname, 'document-viewer/use-document-viewer-panel-state.ts'), 'utf8')
+    const storeSrc = fs.readFileSync(path.resolve(__dirname, '../store/document-view.ts'), 'utf8')
+
+    expect(shellSrc).toContain('aria-label="拖动调整文档查看器宽度"')
+    expect(shellSrc).toContain('data-document-viewer-resize-handle="true"')
+    expect(shellSrc).toContain('onPointerDown={handleResizePointerDown}')
+    expect(shellSrc).toContain('style={panelStyle}')
+    expect(hookSrc).toContain('panelWidthPx')
+    expect(hookSrc).toContain('setPanelWidthPx')
+    expect(storeSrc).toContain('panelWidthPx?: number')
+  })
 })

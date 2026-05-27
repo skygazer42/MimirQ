@@ -72,6 +72,7 @@ export function useDocumentViewerPanelState() {
   const [retrieveError, setRetrieveError] = React.useState<string | null>(null)
   const [retrieveCitations, setRetrieveCitations] = React.useState<Citation[]>([])
   const [isExpanded, setIsExpanded] = React.useState(false)
+  const [panelWidthPx, setPanelWidthPxState] = React.useState<number | null>(null)
   const chunksListRef = React.useRef<HTMLDivElement>(null)
   const chunkSearchRef = React.useRef<HTMLInputElement>(null)
   const previousDocumentIdRef = React.useRef<string | null>(null)
@@ -189,6 +190,7 @@ export function useDocumentViewerPanelState() {
     setRetrieveError(null)
     setRetrieveCitations([])
     setIsExpanded(Boolean(documentLayout?.isExpanded))
+    setPanelWidthPxState(typeof documentLayout?.panelWidthPx === "number" ? documentLayout.panelWidthPx : null)
     setChunkQuery("")
     setMatchCursor(0)
     setServerMatchIds([])
@@ -426,6 +428,16 @@ export function useDocumentViewerPanelState() {
     if (!documentId) return
     persistDocumentLayout({ isExpanded }, true)
   }, [documentId, isExpanded, persistDocumentLayout])
+
+  const setPanelWidthPx = React.useCallback(
+    (nextWidthPx: number) => {
+      if (!Number.isFinite(nextWidthPx)) return
+      const width = Math.round(nextWidthPx)
+      setPanelWidthPxState(width)
+      persistDocumentLayout({ panelWidthPx: width }, true)
+    },
+    [persistDocumentLayout]
+  )
 
   React.useEffect(() => {
     if (!documentId) return
@@ -1084,6 +1096,7 @@ export function useDocumentViewerPanelState() {
     parsedContent,
     parsedContentError,
     parsedContentLoading,
+    panelWidthPx,
     previewAnchor: resolvedPreviewAnchor,
     qaDialogOpen,
     qaLastResult,
@@ -1109,6 +1122,7 @@ export function useDocumentViewerPanelState() {
     setChunkQuery,
     setHighlightChunk,
     setIsExpanded,
+    setPanelWidthPx,
     setLoadAllChunks,
     setQaMaxSourceChars,
     setQaNumPairs,

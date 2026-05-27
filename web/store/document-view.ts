@@ -25,6 +25,7 @@ export type DocumentViewResumeTarget = {
 export type DocumentViewLayout = {
   activeTab?: DocumentViewTab
   isExpanded?: boolean
+  panelWidthPx?: number
   textMode?: DocumentTextMode
   chunksScrollTop?: number
   textScrollTop?: number
@@ -79,6 +80,12 @@ function normalizeDocumentId(documentId: string | null | undefined): string | nu
 function sanitizeScrollTop(value: unknown): number | undefined {
   if (typeof value !== 'number' || !Number.isFinite(value)) return undefined
   return Math.max(0, value)
+}
+
+function sanitizePanelWidthPx(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined
+  const width = Math.round(value)
+  return width >= 360 && width <= 1800 ? width : undefined
 }
 
 function sanitizeHighlightRange(range: Partial<HighlightRange> | HighlightRange | null | undefined): HighlightRange | null {
@@ -160,6 +167,8 @@ function sanitizeDocumentLayoutPatch(patch: Partial<DocumentViewLayout>): Partia
 
   if (patch.activeTab && VALID_TABS.includes(patch.activeTab)) next.activeTab = patch.activeTab
   if (typeof patch.isExpanded === 'boolean') next.isExpanded = patch.isExpanded
+  const panelWidthPx = sanitizePanelWidthPx(patch.panelWidthPx)
+  if (panelWidthPx !== undefined) next.panelWidthPx = panelWidthPx
   if (patch.textMode && VALID_TEXT_MODES.includes(patch.textMode)) next.textMode = patch.textMode
 
   const chunksScrollTop = sanitizeScrollTop(patch.chunksScrollTop)
