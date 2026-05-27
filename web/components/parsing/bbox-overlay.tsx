@@ -57,12 +57,15 @@ export function BboxOverlay(props: Readonly<{
           <button
             key={item.id}
             type="button"
+            data-bbox-overlay-id={item.id}
+            data-bbox-overlay-active={isActive ? 'true' : undefined}
             title={layoutMeta.label}
             className={cn(
               'pointer-events-auto absolute rounded border transition-[box-shadow,transform,border-color,background-color] duration-150 ease-out',
               layoutMeta.overlayClassName,
               isHovered && 'z-10 ring-2 ring-primary/20',
-              isActive && 'z-20 ring-2 ring-primary/35 shadow-[0_0_0_1px_hsl(var(--background))]'
+              isActive &&
+                'z-20 border-primary bg-primary/15 ring-4 ring-primary/40 shadow-[0_0_0_2px_hsl(var(--background))]'
             )}
             style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height }}
             onMouseEnter={() => onHoverId?.(item.id)}

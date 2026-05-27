@@ -55,6 +55,16 @@ describe('pdf viewer source', () => {
     expect(src).toContain('const pageBoxes = resolvedBoxesByPage.get(index) || []')
   })
 
+  it('marks and emphasizes active PDF overlay boxes so citation highlights are visible', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'bbox-overlay.tsx'), 'utf8')
+
+    expect(src).toContain('data-bbox-overlay-id={item.id}')
+    expect(src).toContain('isActive &&')
+    expect(src).toContain('border-primary')
+    expect(src).toContain('bg-primary/15')
+    expect(src).toContain('ring-4 ring-primary/40')
+  })
+
   it('accepts optional precomputed block-to-page lookups for active scroll positioning', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'pdf-viewer.tsx'), 'utf8')
 
@@ -69,6 +79,8 @@ describe('pdf viewer source', () => {
 
     expect(src).toContain('computePdfOverlayScrollTop')
     expect(src).toContain('const targetBox = pageBoxes.find((box) => box.id === firstActive)')
+    expect(src).toContain('const containerCanScroll = container.scrollHeight > container.clientHeight + 1')
+    expect(src).toContain('if (!containerCanScroll) {')
     expect(src).toContain('container.scrollTo({')
     expect(src).toContain('top: computePdfOverlayScrollTop({')
     expect(src).toContain('overlayTop: rect.top')
