@@ -56,6 +56,62 @@ def test_deepdoc_gate_extracts_cases_from_prior_report_shape(tmp_path: Path) -> 
     assert cases[0]["fact_groups"][0] == ["bidirectional"]
 
 
+def test_deepdoc_gate_supports_multi_document_expectations(tmp_path: Path) -> None:
+    mod = _load_module()
+    report = tmp_path / "kg_cases.json"
+    report.write_text(
+        json.dumps(
+            {
+                "dataset_id": "ds-1",
+                "cases": [
+                    {
+                        "id": "cross_doc_attention",
+                        "question": "Which documents connect attention to both translation and transformers?",
+                        "expected_document_ids": ["doc-nmt", "doc-attention"],
+                        "fact_groups": [["attention"], ["translation"], ["transformer"]],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    cases = mod.load_cases(report)  # type: ignore[attr-defined]
+    flags = mod._source_flags(["doc-other", "doc-nmt", "doc-attention"], cases[0])  # type: ignore[attr-defined]
+
+    assert cases[0]["expected_document_ids"] == ["doc-nmt", "doc-attention"]
+    assert cases[0]["expected_document_id"] == "doc-nmt"
+    assert flags["expected_docs"] == ["doc-nmt", "doc-attention"]
+    assert flags["source_hit"] is True
+    assert flags["source_top1"] is False
+
+
+def test_deepdoc_gate_requires_all_expected_documents_for_source_hit() -> None:
+    mod = _load_module()
+
+    flags = mod._source_flags(  # type: ignore[attr-defined]
+        ["doc-a"],
+        {"expected_document_ids": ["doc-a", "doc-b"]},
+    )
+
+    assert flags["source_hit"] is False
+    assert flags["source_top1"] is True
+
+
+def test_deepdoc_gate_uses_chat_answer_text_for_fact_hits() -> None:
+    mod = _load_module()
+    payload = {
+        "content": "Final answer mentions only transformers.",
+        "citations": [{"document_id": "doc-a", "content": "citation contains dense passage retrieval"}],
+    }
+    _, extracted_text = mod._extract_sources_and_text(payload)  # type: ignore[attr-defined]
+
+    fact_text = mod._fact_text_for_kind("chat", payload, extracted_text)  # type: ignore[attr-defined]
+
+    assert "Final answer" in fact_text
+    assert "dense passage retrieval" not in fact_text
+
+
 def test_deepdoc_gate_summary_enforces_accuracy_and_latency_thresholds() -> None:
     mod = _load_module()
     rows = [
