@@ -68,7 +68,7 @@ const GROUP_PAGE_LIST_PARAMS = { limit: 500 } as const
 const OUTLINE_BUTTON =
   'h-9 rounded-xl border-slate-200 bg-card px-3.5 text-[12px] font-semibold text-slate-700 shadow-sm hover:bg-slate-50'
 const PRIMARY_BUTTON =
-  'h-9 rounded-xl bg-foreground px-3.5 text-[12px] font-semibold text-background shadow-[0_8px_20px_hsl(var(--foreground)/0.16)] hover:bg-foreground/90'
+  'h-9 rounded-xl bg-info px-3.5 text-[12px] font-semibold text-white shadow-[0_8px_20px_hsl(var(--info)/0.24)] hover:bg-info/90'
 const INPUT_CLASS =
   'h-10 rounded-xl border-slate-200 bg-card text-[13px] shadow-sm placeholder:text-slate-400 focus-visible:ring-blue-500/30'
 const CARD_CLASS =
