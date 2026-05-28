@@ -9,13 +9,13 @@ This module is intended for ops tooling and incident response:
 
 from __future__ import annotations
 
-from app.rag.core.logging import get_logger
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
 from app.core.config import settings
+from app.rag.core.logging import get_logger
 
 _SCHEMA_V1 = "mimirq.observability.deps.v1"
 logger = get_logger(__name__)

@@ -9,15 +9,12 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 import time
 import uuid
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
 from urllib.request import Request, urlopen
-
 
 DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000000"
 

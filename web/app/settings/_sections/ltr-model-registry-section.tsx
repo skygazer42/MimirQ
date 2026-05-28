@@ -99,7 +99,7 @@ export function LtrModelRegistrySection({
         <Panel padding="none" className={cn(systemWorkbenchTokens.panel, 'p-3.5')}>
           <div className="mb-3 flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <div className="inline-flex items-center gap-1.5 rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-600">
+              <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
                 <UploadCloud className="h-3 w-3" />
                 注册入口
               </div>
@@ -112,7 +112,7 @@ export function LtrModelRegistrySection({
           <div className="space-y-3">
             <div className="space-y-1.5">
               <div className="text-[11px] font-semibold text-foreground/80">模型文件</div>
-              <label className="flex h-8 cursor-pointer items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 transition-colors hover:border-blue-200 hover:bg-blue-50/45 hover:text-blue-600">
+              <label className="flex h-8 cursor-pointer items-center justify-center rounded-lg border border-border/60 bg-background px-3 text-[11px] font-semibold text-muted-foreground transition-colors hover:border-primary/25 hover:bg-primary/8 hover:text-primary">
                 选择模型 JSON
                 <Input
                   key={`ltr-model-${ltrUploadResetKey}`}
@@ -125,7 +125,7 @@ export function LtrModelRegistrySection({
             </div>
             <div className="space-y-1.5">
               <div className="text-[11px] font-semibold text-foreground/80">清单文件</div>
-              <label className="flex h-8 cursor-pointer items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 transition-colors hover:border-blue-200 hover:bg-blue-50/45 hover:text-blue-600">
+              <label className="flex h-8 cursor-pointer items-center justify-center rounded-lg border border-border/60 bg-background px-3 text-[11px] font-semibold text-muted-foreground transition-colors hover:border-primary/25 hover:bg-primary/8 hover:text-primary">
                 选择清单 JSON
                 <Input
                   key={`ltr-manifest-${ltrUploadResetKey}`}
@@ -203,9 +203,9 @@ export function LtrModelRegistrySection({
           </div>
 
           {ltrModels.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/55 p-5 text-center">
+            <div className="rounded-xl border border-dashed border-border/60 bg-muted/35 p-5 text-center">
               <div className="text-[13px] font-semibold text-foreground">暂无模型版本</div>
-              <div className="mt-0.5 text-[11px] font-medium text-slate-600">
+              <div className="mt-0.5 text-[11px] font-medium text-muted-foreground">
                 上传模型与清单后，可在这里激活或回滚
               </div>
             </div>
@@ -243,7 +243,7 @@ export function LtrModelRegistrySection({
                               已激活
                             </span>
                           ) : (
-                            <span className="inline-flex items-center rounded-full border border-border/70 bg-muted/45 px-1.5 py-0.5 text-[11px] font-medium text-slate-600">
+                            <span className="inline-flex items-center rounded-full border border-border/70 bg-muted/45 px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
                               待用
                             </span>
                           )}
@@ -254,7 +254,7 @@ export function LtrModelRegistrySection({
                         <td className="px-2.5 py-1.5 font-mono text-[11px] tabular-nums">
                           <span title={model.model_sha256}>{shortId(model.model_sha256, 12)}</span>
                         </td>
-                        <td className="px-2.5 py-1.5 text-[11px] font-medium text-slate-600">
+                        <td className="px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground">
                           <div className="tabular-nums">v{model.feature_spec_version}</div>
                           <div className="max-w-[15rem] truncate" title={model.feature_schema || ''}>
                             {model.feature_schema || '-'}

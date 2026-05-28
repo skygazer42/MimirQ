@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 
 describe('knowledge feedback real-data mode', () => {
   it('keeps demo feedback data behind explicit demoMode gating', () => {
-    const src = fs.readFileSync(path.resolve(__dirname, 'page.tsx'), 'utf8')
+    const src = fs.readFileSync(path.resolve(__dirname, 'page-client.tsx'), 'utf8')
 
     expect(src).toMatch(/demoMode\s*=\s*[\s\S]*pathname[\s\S]*demo/)
     expect(src).toContain("searchParams.get('demo') === '1'")

@@ -40,6 +40,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   promptTemplateApi,
   PromptTemplate,
@@ -72,6 +73,54 @@ import { queryKeys } from '@/lib/query-keys'
 import { EmptyState } from '@/components/ui/empty-state'
 import { PageSkeleton } from '@/components/ui/page-skeleton'
 
+// 场景化分类：每个 Tab 对应一组 category 字符串前缀/精确值。
+// 与 app/rag/llm/prompts/builtin_library.py 中的 category 字段保持一致。
+const SCENARIO_DEFINITIONS: Array<{
+  value: string
+  label: string
+  match: (category: string | null | undefined) => boolean
+}> = [
+  { value: 'all', label: '全部', match: () => true },
+  {
+    value: 'rag_answer',
+    label: '问答',
+    match: (c) => c === 'rag_answer',
+  },
+  {
+    value: 'rag_query_rewrite',
+    label: '查询改写',
+    match: (c) => c === 'rag_query_rewrite',
+  },
+  {
+    value: 'rag_post_retrieval',
+    label: '后处理',
+    match: (c) => c === 'rag_post_retrieval',
+  },
+  {
+    value: 'kg',
+    label: 'KG',
+    match: (c) =>
+      c === 'kg_extract' ||
+      c === 'kg_canonicalize' ||
+      c === 'kg_verbalize',
+  },
+  {
+    value: 'chunk_meta',
+    label: 'Chunk 元数据',
+    match: (c) => c === 'chunk_meta',
+  },
+  {
+    value: 'evaluation',
+    label: '评测',
+    match: (c) => c === 'llm_judge' || c === 'testset_generation',
+  },
+  {
+    value: 'vertical',
+    label: '行业',
+    match: (c) => typeof c === 'string' && c.startsWith('vertical_'),
+  },
+]
+
 export default function PromptsPage() {
   return (
     <NavigationVisibilityGate moduleKey="prompts" pageName="提示词">
@@ -100,6 +149,7 @@ function PromptsPageContent() {
   const [searchQuery, setSearchQuery] = useState('')
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
   const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [scenarioFilter, setScenarioFilter] = useState<string>('all')
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
   const [syncingBuiltins, setSyncingBuiltins] = useState(false)
@@ -158,6 +208,14 @@ function PromptsPageContent() {
         if (!matchesSearch) return false
       }
 
+      // Scenario filter (top-level Tabs)
+      if (scenarioFilter !== 'all') {
+        const def = SCENARIO_DEFINITIONS.find(
+          (d) => d.value === scenarioFilter
+        )
+        if (def && !def.match(template.category)) return false
+      }
+
       // Category filter
       if (categoryFilter !== 'all' && template.category !== categoryFilter) {
         return false
@@ -169,7 +227,18 @@ function PromptsPageContent() {
 
       return true
     })
-  }, [templates, searchQuery, categoryFilter, statusFilter])
+  }, [templates, searchQuery, scenarioFilter, categoryFilter, statusFilter])
+
+  // 每个场景 Tab 的模板数(只算同名空间内可见模板，用于 Badge 显示)
+  const scenarioCounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const def of SCENARIO_DEFINITIONS) {
+      counts[def.value] = templates.filter((t) =>
+        def.match(t.category)
+      ).length
+    }
+    return counts
+  }, [templates])
 
   const activeCount = useMemo(
     () => templates.filter((template) => template.is_active).length,
@@ -201,7 +270,7 @@ function PromptsPageContent() {
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [searchQuery, categoryFilter, statusFilter, pageSize])
+  }, [searchQuery, scenarioFilter, categoryFilter, statusFilter, pageSize])
 
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages)
@@ -437,6 +506,31 @@ function PromptsPageContent() {
               ))}
             </div>
           </PageHeader>
+
+          <Tabs
+            value={scenarioFilter}
+            onValueChange={setScenarioFilter}
+            className="w-full"
+          >
+            <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 rounded-xl border border-slate-200/80 bg-card p-1.5 shadow-[0_1px_0_rgba(15,23,42,0.03)]">
+              {SCENARIO_DEFINITIONS.map((def) => (
+                <TabsTrigger
+                  key={def.value}
+                  value={def.value}
+                  className="h-9 gap-1.5 rounded-lg px-3 text-[13px] font-medium data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 data-[state=active]:shadow-sm"
+                >
+                  <span>{def.label}</span>
+                  <Badge
+                    variant="secondary"
+                    className="h-5 min-w-[1.5rem] justify-center rounded-md bg-slate-100 px-1.5 text-[11px] font-semibold text-slate-600 data-[active=true]:bg-blue-100 data-[active=true]:text-blue-700"
+                    data-active={scenarioFilter === def.value}
+                  >
+                    {scenarioCounts[def.value] ?? 0}
+                  </Badge>
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
 
           <section className="rounded-xl border border-slate-200/80 bg-card shadow-[0_1px_0_rgba(15,23,42,0.03)]">
             <div className="flex flex-col gap-3 border-b border-slate-200/75 p-4 xl:flex-row xl:items-center">

@@ -42,6 +42,15 @@ export function ChatPageClient({
     [router, initialConversationId]
   )
 
+  const handlePromptConsumed = useCallback(() => {
+    if (!searchParams?.get('prompt') && !searchParams?.get('autorun')) return
+    const params = new URLSearchParams(searchParams.toString())
+    params.delete('prompt')
+    params.delete('autorun')
+    const qs = params.toString()
+    router.replace(qs ? `/?${qs}` : '/')
+  }, [router, searchParams])
+
   // If we used `?rag=1` to open the popover, clean it up so the URL stays stable.
   useEffect(() => {
     if (!initialOpenRagSettings) return
@@ -75,6 +84,7 @@ export function ChatPageClient({
         initialAutoSendPrompt={initialAutoSendPrompt}
         initialOpenRagSettings={initialOpenRagSettings}
         onConversationId={handleConversationId}
+        onPromptConsumed={handlePromptConsumed}
       />
     </AppFrame>
   )

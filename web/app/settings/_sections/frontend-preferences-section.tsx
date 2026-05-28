@@ -22,22 +22,22 @@ export function FrontendPreferencesSection({
   return (
     <section>
       <Panel
-        className="space-y-3 rounded-[16px] border-slate-200/75 bg-card shadow-sm"
+        className="space-y-3 rounded-[16px] border-border/60 bg-card/82 shadow-sm"
         padding="md"
       >
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <div className="space-y-2">
-            <div className="flex items-center gap-1.5 text-[12px] font-medium text-slate-700">
+            <div className="flex items-center gap-1.5 text-[12px] font-medium text-foreground/78">
               <span>解析方式</span>
               <span className="group/frontend-local-help relative inline-flex">
                 <button
                   type="button"
                   aria-label="查看前端偏好保存说明"
-                  className="inline-flex size-5 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-blue-50 hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
+                  className="inline-flex size-5 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
                 >
                   <HelpCircle className="h-3.5 w-3.5" />
                 </button>
-                <span className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 hidden w-[min(320px,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-blue-100 bg-white px-3 py-2 text-[11px] font-medium leading-relaxed text-slate-600 shadow-[0_14px_34px_rgba(15,23,42,0.14)] group-hover/frontend-local-help:block group-focus-within/frontend-local-help:block md:left-full md:top-1/2 md:mt-0 md:ml-2 md:-translate-x-0 md:-translate-y-1/2">
+                <span className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 hidden w-[min(320px,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-primary/20 bg-popover px-3 py-2 text-[11px] font-medium leading-relaxed text-popover-foreground shadow-[0_14px_34px_hsl(var(--foreground)/0.14)] group-hover/frontend-local-help:block group-focus-within/frontend-local-help:block md:left-full md:top-1/2 md:mt-0 md:ml-2 md:-translate-x-0 md:-translate-y-1/2">
                   这些偏好仅保存在当前浏览器，用于新上传和预览流程，不会写入后端配置
                 </span>
               </span>
@@ -45,7 +45,7 @@ export function FrontendPreferencesSection({
             <ParserDropdown value={parserBackend} onChange={setParserBackend} />
           </div>
           <div className="space-y-2">
-            <div className="text-[12px] font-medium text-slate-700">
+            <div className="text-[12px] font-medium text-foreground/78">
               切块策略
             </div>
             <ChunkStrategyDropdown
@@ -55,12 +55,12 @@ export function FrontendPreferencesSection({
           </div>
         </div>
 
-        <details className="group rounded-[14px] border border-slate-200 bg-slate-50/45">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-[12px] font-medium text-slate-700 transition-colors hover:bg-slate-50">
+        <details className="group rounded-[14px] border border-border/60 bg-muted/24">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-[12px] font-medium text-foreground/78 transition-colors hover:bg-muted/35">
             <span>入库管线高级配置</span>
-            <ChevronDown className="size-4 text-slate-400 transition-transform group-open:rotate-180" />
+            <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
           </summary>
-          <div className="border-t border-slate-200 bg-card/75 p-3">
+          <div className="border-t border-border/60 bg-card/75 p-3">
             <PipelineOptionsPanel compact />
           </div>
         </details>

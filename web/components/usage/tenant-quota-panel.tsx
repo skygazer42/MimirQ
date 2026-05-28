@@ -21,6 +21,17 @@ import { queryKeys } from '@/lib/query-keys'
 import { cn, detachPromise } from '@/lib/utils'
 import type { TenantQuotaSummary } from '@/types'
 
+const TENANT_QUOTA_PANEL_CLASS =
+  'overflow-hidden rounded-2xl border border-border/60 bg-card/82 shadow-[0_1px_0_hsl(var(--primary)/0.05)]'
+const QUOTA_CARD_CLASS =
+  'rounded-xl border border-border/60 bg-card/82 px-3 py-2.5 shadow-[0_1px_2px_hsl(var(--primary)/0.04)]'
+const QUOTA_DISABLED_TONE =
+  'border-border/60 bg-muted/55 text-muted-foreground'
+const QUOTA_ENABLED_TONE =
+  'border-success/20 bg-success/10 text-success'
+const QUOTA_EXCEEDED_TONE =
+  'border-destructive/20 bg-destructive/10 text-destructive'
+
 function prettyJson(value: unknown) {
   try {
     return JSON.stringify(value, null, 2)
@@ -83,23 +94,23 @@ function QuotaCard({
   progress = 0,
 }: QuotaCardProps) {
   const tone = exceeded
-    ? 'border-rose-100 bg-rose-50 text-rose-600'
+    ? QUOTA_EXCEEDED_TONE
     : enabled
-      ? 'border-emerald-100 bg-emerald-50 text-emerald-600'
-      : 'border-slate-100 bg-slate-50 text-slate-500'
+      ? QUOTA_ENABLED_TONE
+      : QUOTA_DISABLED_TONE
 
   return (
-    <div className="rounded-xl border border-slate-200/70 bg-card px-3 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.02)]">
+    <div className={QUOTA_CARD_CLASS}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2.5">
           <div className={cn('flex size-8 items-center justify-center rounded-lg border', tone)}>
             <Icon className="size-3.5" />
           </div>
           <div className="min-w-0">
-            <p className="truncate text-[12px] font-semibold text-slate-800">
+            <p className="truncate text-[12px] font-semibold text-foreground">
               {title}
             </p>
-            <p className="mt-0.5 truncate text-[10px] text-slate-400">
+            <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
               {secondary}
             </p>
           </div>
@@ -108,10 +119,10 @@ function QuotaCard({
           className={cn(
             'shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold',
             exceeded
-              ? 'border-rose-100 bg-rose-50 text-rose-600'
+              ? QUOTA_EXCEEDED_TONE
               : enabled
-                ? 'border-emerald-100 bg-emerald-50 text-emerald-600'
-                : 'border-slate-100 bg-slate-50 text-slate-500'
+                ? QUOTA_ENABLED_TONE
+                : QUOTA_DISABLED_TONE
           )}
         >
           {exceeded ? '已超额' : enabled ? '已启用' : '未启用'}
@@ -119,23 +130,27 @@ function QuotaCard({
       </div>
       <div className="mt-2 flex min-h-5 items-end justify-between gap-3">
         {enabled ? (
-          <p className="text-[17px] font-semibold tabular-nums text-slate-950">
+          <p className="text-[17px] font-semibold tabular-nums text-foreground">
             {primary}
           </p>
         ) : (
-          <p className="text-[10px] font-medium text-slate-400">
+          <p className="text-[10px] font-medium text-muted-foreground">
             等待后端开启
           </p>
         )}
-        <p className="text-[9px] font-medium uppercase tracking-[0.12em] text-slate-300">
+        <p className="text-[9px] font-medium uppercase tracking-[0.12em] text-muted-foreground/55">
           租户
         </p>
       </div>
-      <div className="mt-2 h-1 overflow-hidden rounded-full bg-slate-100">
+      <div className="mt-2 h-1 overflow-hidden rounded-full bg-muted">
         <div
           className={cn(
             'h-full rounded-full',
-            exceeded ? 'bg-rose-500' : enabled ? 'bg-emerald-500' : 'bg-slate-300'
+            exceeded
+              ? 'bg-destructive'
+              : enabled
+                ? 'bg-success'
+                : 'bg-muted-foreground/45'
           )}
           style={{ width: `${Math.max(0, Math.min(100, progress))}%` }}
         />
@@ -192,21 +207,21 @@ export function TenantQuotaPanel() {
   return (
     <Panel
       padding="none"
-      className="overflow-hidden rounded-2xl border border-slate-200/80 bg-card shadow-[0_1px_0_rgba(15,23,42,0.03)]"
+      className={TENANT_QUOTA_PANEL_CLASS}
     >
       <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h2 className="text-[17px] font-semibold tracking-[-0.01em] text-slate-950">
+          <h2 className="text-[17px] font-semibold tracking-[-0.01em] text-foreground">
             租户级配额状态
           </h2>
-          <p className="mt-1 text-[13px] leading-5 text-slate-500">
+          <p className="mt-1 text-[13px] leading-5 text-muted-foreground">
             由后端配额配置控制，当前按租户生效，不按数据集或用户拆分。
           </p>
         </div>
         <Button
           size="sm"
           variant="outline"
-          className="h-10 gap-2 rounded-xl border-slate-200 bg-card px-4 text-[13px] font-medium text-slate-800 shadow-sm hover:bg-slate-50"
+          className="h-10 gap-2 rounded-xl border-border/60 bg-card px-4 text-[13px] font-medium text-foreground shadow-sm hover:bg-muted/45"
           disabled={quotaQuery.isFetching}
           onClick={() => detachPromise(refreshQuota())}
         >
@@ -219,7 +234,7 @@ export function TenantQuotaPanel() {
         </Button>
       </div>
 
-      <div className="border-t border-slate-200 px-5 pb-5 pt-4">
+      <div className="border-t border-border/50 px-5 pb-5 pt-4">
         {payload ? (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
 	            <QuotaCard
@@ -273,25 +288,25 @@ export function TenantQuotaPanel() {
             />
           </div>
         ) : (
-          <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-6 text-center text-[13px] text-slate-500">
+          <div className="rounded-xl border border-dashed border-border/60 bg-muted/35 px-4 py-6 text-center text-[13px] text-muted-foreground">
             {quotaQuery.isFetching
               ? '正在读取租户配额...'
               : '暂无配额数据，点击刷新重新读取。'}
           </div>
         )}
 
-        <details className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-slate-50/60">
-          <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-[12px] font-semibold text-slate-600 hover:bg-slate-100/70 [&::-webkit-details-marker]:hidden">
+        <details className="mt-4 overflow-hidden rounded-xl border border-border/60 bg-muted/35">
+          <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-[12px] font-semibold text-muted-foreground hover:bg-muted/55 [&::-webkit-details-marker]:hidden">
             查看原始响应
-            <span className="text-[10px] font-medium text-slate-400">
+            <span className="text-[10px] font-medium text-muted-foreground">
               JSON
             </span>
           </summary>
-          <div className="relative border-t border-slate-200">
+          <div className="relative border-t border-border/60">
           <Button
             variant="ghost"
             size="icon"
-            className="absolute right-3 top-3 z-10 size-8 rounded-lg border border-slate-200 bg-card text-slate-500 shadow-sm hover:bg-slate-50"
+            className="absolute right-3 top-3 z-10 size-8 rounded-lg border border-border/60 bg-card text-muted-foreground shadow-sm hover:bg-muted/45"
             onClick={() => detachPromise(copyText(json))}
             aria-label="复制租户配额 JSON"
           >
@@ -303,13 +318,13 @@ export function TenantQuotaPanel() {
                 key={`${index}-${line}`}
                 className="grid grid-cols-[44px_1fr]"
               >
-                <span className="select-none border-r border-slate-200 pr-3 text-right font-mono text-slate-400">
+                <span className="select-none border-r border-border/60 pr-3 text-right font-mono text-muted-foreground">
                   {index + 1}
                 </span>
                 <code
                   className={cn(
-                    'pl-4 font-mono text-slate-700',
-                    line.includes('"message"') && 'text-teal-700'
+                    'pl-4 font-mono text-foreground',
+                    line.includes('"message"') && 'text-primary'
                   )}
                 >
                   {line || ' '}

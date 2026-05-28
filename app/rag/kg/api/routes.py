@@ -2,7 +2,6 @@ import asyncio
 import contextlib
 import gzip
 import hashlib
-from app.rag.core.logging import get_logger
 import time
 import uuid
 import zlib
@@ -21,6 +20,7 @@ from app.core.database import get_db
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
 from app.rag.core.errors import ConfigError
+from app.rag.core.logging import get_logger
 from app.rag.kg.pipeline import extract_events, kg_search
 from app.rag.kg.schemas import (
     KGDeleteResponse,

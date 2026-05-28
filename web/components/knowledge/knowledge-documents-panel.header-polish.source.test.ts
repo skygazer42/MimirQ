@@ -16,9 +16,9 @@ describe('Knowledge documents inventory header polish', () => {
 
     expect(panelSrc).toContain('const inventoryStatCardClassName =')
     expect(panelSrc).toContain('radial-gradient(circle_at_14%_0%')
-    expect(panelSrc).toContain('bg-[linear-gradient(90deg,transparent,rgba(14,165,233,0.42),transparent)]')
-    expect(panelSrc).toContain('border border-transparent bg-white/66')
-    expect(panelSrc).toContain('rounded-[14px] border border-sky-100/65 bg-white/58 p-1.5')
+    expect(panelSrc).toContain('bg-[linear-gradient(90deg,transparent,hsl(var(--primary)/0.42),transparent)]')
+    expect(panelSrc).toContain('border border-border/60 bg-card/56')
+    expect(panelSrc).toContain('rounded-[14px] border border-border/60 bg-muted/30 px-3 py-2.5')
     expect(panelSrc).toContain("compactEmptyInventory && 'flex-none'")
     expect(panelSrc).toContain('min-h-[272px]')
     expect(pageSrc).toContain('inline-flex max-w-full flex-wrap items-center gap-2 rounded-[12px]')

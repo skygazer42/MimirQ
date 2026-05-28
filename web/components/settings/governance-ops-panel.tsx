@@ -45,10 +45,10 @@ export function GovernanceOpsPanel() {
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <div className={cn(settingsTextTokens.sectionTitle, 'flex items-center gap-1.5')}>
-            <Database className="h-3.5 w-3.5 text-blue-500" />
+            <Database className="h-3.5 w-3.5 text-primary" />
             数据集复核运维
           </div>
-          <p className="mt-1 text-xs leading-5 text-slate-500">
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
             待复核/过期文档是按数据集查询，已自动绑定首个可用数据集，可按需切换
             切块预设删除不按数据集筛选，放在高级维护里单独确认
           </p>
@@ -89,7 +89,7 @@ export function GovernanceOpsPanel() {
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <ActionButton icon={FileClock} busy={busy === 'stale'} disabled={Boolean(busy) || !datasetId.trim()} label="查询待复核文档" onClick={() => runAction('stale', '待复核文档', () => governanceApi.listStaleDocumentsByDataset(datasetId.trim(), { mode, due_within_days: dueWithinDays, limit: 50 }))} />
-        <div className="text-[11px] leading-4 text-slate-500/85">
+        <div className="text-[11px] leading-4 text-muted-foreground/85">
           当前接口：<span className="font-mono">/governance/datasets/{'{dataset_id}'}/stale-documents</span>
         </div>
       </div>
@@ -103,7 +103,7 @@ export function GovernanceOpsPanel() {
         tone="neutral"
         icon="help"
       >
-        <p className="text-xs leading-5 text-slate-500">
+        <p className="text-xs leading-5 text-muted-foreground">
           这里不跟上方数据集巡检联动；删除前请确认没有数据集或入库策略继续引用该预设
         </p>
         <div className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">

@@ -12,7 +12,6 @@ PII safety:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from app.rag.core.logging import get_logger
 from typing import Any
 from uuid import UUID
 
@@ -21,6 +20,7 @@ from sqlalchemy.orm import Session
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
 from app.models.evidence import EvidenceItem, EvidenceSuite
+from app.rag.core.logging import get_logger
 from app.services.audit_log_service import audit_log_event
 from app.services.evidence_drift_audit import classify_reference_source_drift
 

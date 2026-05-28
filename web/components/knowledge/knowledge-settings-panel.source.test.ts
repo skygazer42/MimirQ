@@ -171,4 +171,27 @@ describe('KnowledgeSettingsPanel module', () => {
     expectSourceToContain(src, 'space-y-2.5 xl:h-full xl:max-h-full xl:min-h-0 xl:overflow-y-auto')
     expectSourceNotToContain(src, 'overflow-y-auto p-2 no-scrollbar xl:overflow-hidden')
   })
+
+  it('uses theme tokens for the embedding configuration surfaces instead of fixed blue-white chrome', () => {
+    const src = fs.readFileSync(
+      path.resolve(__dirname, 'knowledge-settings-panel.tsx'),
+      'utf8'
+    )
+
+    expectSourceToContain(src, 'bg-transparent dark:bg-background/35')
+    expectSourceToContain(src, 'SETTINGS_PANEL_CLASS')
+    expectSourceToContain(src, 'SETTINGS_PANEL_HEADER_CLASS')
+    expectSourceToContain(src, 'SETTINGS_PANEL_ICON_CLASS')
+    expectSourceToContain(src, 'border-border/60 bg-card/82')
+    expectSourceToContain(src, 'border-border/60 bg-background/74')
+    expectSourceToContain(src, 'border-primary/45 bg-[linear-gradient(180deg,hsl(var(--primary)/0.12),hsl(var(--card)/0.84))]')
+    expectSourceToContain(src, 'border-border/60 bg-card/78 hover:border-primary/30 hover:bg-background/82')
+    expectSourceToContain(src, 'bg-primary')
+    expectSourceNotToContain(src, 'bg-[#F6FAFF]/70')
+    expectSourceNotToContain(src, 'border border-sky-100/75 bg-white/88')
+    expectSourceNotToContain(src, 'border-b border-sky-100/75')
+    expectSourceNotToContain(src, 'border-sky-300/90 bg-[linear-gradient(180deg,rgba(239,246,255,0.98),rgba(219,234,254,0.64))]')
+    expectSourceNotToContain(src, 'border-sky-100/80 bg-white/86')
+    expectSourceNotToContain(src, 'text-sky-800')
+  })
 })

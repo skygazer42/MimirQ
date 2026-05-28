@@ -41,15 +41,15 @@ const ICON_MAP = {
 
 // 颜色映射
 const COLOR_MAP = {
-  auto: { bg: 'bg-sky-100 dark:bg-sky-500/20', text: 'text-sky-600 dark:text-sky-300' },
+  auto: { bg: 'bg-primary/10', text: 'text-primary' },
   basic: { bg: 'bg-muted', text: 'text-muted-foreground' },
-  docling: { bg: 'bg-teal-100 dark:bg-teal-500/20', text: 'text-teal-700 dark:text-teal-300' },
-  layout: { bg: 'bg-emerald-100 dark:bg-emerald-500/20', text: 'text-emerald-700 dark:text-emerald-300' },
-  mineru: { bg: 'bg-blue-100 dark:bg-blue-500/20', text: 'text-blue-600 dark:text-blue-300' },
-  deepdoc: { bg: 'bg-orange-100 dark:bg-orange-500/20', text: 'text-orange-600 dark:text-orange-300' },
-  deepseekocr: { bg: 'bg-rose-100 dark:bg-rose-500/20', text: 'text-rose-700 dark:text-rose-300' },
-  markitdown: { bg: 'bg-purple-100 dark:bg-purple-500/20', text: 'text-purple-600 dark:text-purple-300' },
-  magicpdf: { bg: 'bg-fuchsia-100 dark:bg-fuchsia-500/20', text: 'text-fuchsia-700 dark:text-fuchsia-300' },
+  docling: { bg: 'bg-info/10', text: 'text-info' },
+  layout: { bg: 'bg-success/10', text: 'text-success' },
+  mineru: { bg: 'bg-primary/10', text: 'text-primary' },
+  deepdoc: { bg: 'bg-warning/10', text: 'text-warning' },
+  deepseekocr: { bg: 'bg-destructive/10', text: 'text-destructive' },
+  markitdown: { bg: 'bg-accent/10', text: 'text-accent' },
+  magicpdf: { bg: 'bg-accent/10', text: 'text-accent' },
 }
 
 interface ParserDropdownProps {
@@ -127,7 +127,7 @@ export function ParserDropdown({ value, onChange, className, filename, compact =
           compact ? 'gap-2 px-2.5 py-1.5 rounded-full' : 'gap-2.5 px-2.5 py-2 rounded-xl',
           'bg-card hover:bg-muted',
           isOpen
-            ? 'border-sky-300/60 ring-2 ring-sky-500/10'
+            ? 'border-primary/30 ring-2 ring-primary/10'
             : 'border-border hover:border-border'
         )}
       >
@@ -140,12 +140,12 @@ export function ParserDropdown({ value, onChange, className, filename, compact =
               {selectedOption.label}
             </span>
             {selectedOption.badge && (
-              <span className="rounded bg-sky-100 px-1.5 py-px text-[9px] font-medium leading-4 text-sky-600 dark:bg-sky-500/20 dark:text-sky-300">
+              <span className="rounded bg-primary/10 px-1.5 py-px text-[9px] font-medium leading-4 text-primary">
                 {selectedOption.badge}
               </span>
             )}
             {selectedOption.value === 'paddle_vl' && paddleVlVersionBadge ? (
-              <span className="rounded bg-emerald-100 px-1.5 py-px text-[9px] font-medium leading-4 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300">
+              <span className="rounded bg-success/10 px-1.5 py-px text-[9px] font-medium leading-4 text-success">
                 {paddleVlVersionBadge}
               </span>
             ) : null}
@@ -175,7 +175,7 @@ export function ParserDropdown({ value, onChange, className, filename, compact =
               className={cn(
                 'px-3 py-2 text-xs border-b',
                 error
-                  ? 'bg-red-50 text-red-700 border-red-100 dark:bg-red-500/10 dark:text-red-300 dark:border-red-500/30'
+                  ? 'bg-destructive/10 text-destructive border-destructive/25'
                   : 'bg-muted text-muted-foreground border-border'
               )}
             >
@@ -186,7 +186,7 @@ export function ParserDropdown({ value, onChange, className, filename, compact =
                 {error ? (
                   <button
                     type="button"
-                    className="flex-shrink-0 text-xs text-red-700 hover:text-red-800 dark:text-red-300 dark:hover:text-red-200 underline underline-offset-2"
+                    className="flex-shrink-0 text-xs text-destructive hover:text-destructive/80 underline underline-offset-2"
                     onClick={() => {
                       detachPromise(refresh())
                     }}
@@ -196,7 +196,7 @@ export function ParserDropdown({ value, onChange, className, filename, compact =
                 ) : null}
               </div>
               {error ? (
-                <div className="mt-1 text-[11px] text-red-600/80 dark:text-red-300/80 truncate" title={error}>
+                <div className="mt-1 truncate text-[11px] text-destructive/80" title={error}>
                   {error}
                 </div>
               ) : null}
@@ -233,7 +233,7 @@ export function ParserDropdown({ value, onChange, className, filename, compact =
                   }}
                   className={cn(
                     'w-full flex items-center gap-3 px-3 py-2.5 transition-colors',
-                    isSelected ? 'bg-sky-500/10 dark:bg-sky-500/20' : 'hover:bg-muted',
+                    isSelected ? 'bg-primary/10' : 'hover:bg-muted',
                     isDisabled && 'opacity-50 cursor-not-allowed hover:bg-transparent'
                   )}
                 >
@@ -245,7 +245,7 @@ export function ParserDropdown({ value, onChange, className, filename, compact =
                       <span
                         className={cn(
                           'text-sm font-medium truncate',
-                          isSelected ? 'text-sky-600 dark:text-sky-300' : 'text-foreground'
+                          isSelected ? 'text-primary' : 'text-foreground'
                         )}
                       >
                         {option.label}
@@ -255,7 +255,7 @@ export function ParserDropdown({ value, onChange, className, filename, compact =
                           className={cn(
                             'text-[11px] font-medium px-1.5 py-0.5 rounded',
                             isSelected
-                              ? 'bg-sky-100 text-sky-600 dark:bg-sky-500/20 dark:text-sky-300'
+                              ? 'bg-primary/10 text-primary'
                               : 'bg-muted text-muted-foreground'
                           )}
                         >
@@ -267,8 +267,8 @@ export function ParserDropdown({ value, onChange, className, filename, compact =
                           className={cn(
                             'text-[11px] font-medium px-1.5 py-0.5 rounded',
                             isSelected
-                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'
-                              : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
+                              ? 'bg-success/10 text-success'
+                              : 'bg-success/8 text-success'
                           )}
                         >
                           {paddleVlVersionBadge}
@@ -283,7 +283,7 @@ export function ParserDropdown({ value, onChange, className, filename, compact =
                     </span>
                   )}
                   {isSelected && (
-                    <Check className="size-4 text-sky-600 dark:text-sky-300 flex-shrink-0" />
+                    <Check className="size-4 flex-shrink-0 text-primary" />
                   )}
                 </button>
               )

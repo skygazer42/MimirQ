@@ -20,7 +20,7 @@ const GovernanceCommonLinesPage = dynamic(
 
 export default function GovernanceCommonLinesRoutePage() {
   return (
-    <NavigationVisibilityGate moduleKey="commonLines" pageName="样板行发现">
+    <NavigationVisibilityGate moduleKey="commonLines" pageName="重复行学习">
       <AppFrame>
         <GovernanceCommonLinesPage />
       </AppFrame>

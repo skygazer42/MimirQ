@@ -7,7 +7,7 @@ describe('governance common lines layout source', () => {
   it('uses a dense pseudo-table header for candidates', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'governance-common-lines-page.tsx'), 'utf8')
 
-    expect(src).toContain('样板行预览')
+    expect(src).toContain('重复行预览')
     expect(src).toContain('命中文档')
     expect(src).toContain('命中比例')
     expect(src).toContain('grid-cols-[44px_minmax(0,1fr)_110px_110px]')
@@ -42,6 +42,7 @@ describe('governance common lines layout source', () => {
     expect(src).toContain('common-lines-control-panel')
     expect(src).not.toContain('mt-4 rounded-2xl border border-border/60 bg-card shadow-subtle')
     expect(src).not.toContain('样板行参数')
+    expect(src).not.toContain('重复行参数')
   })
 
   it('keeps the empty results panel close to the reference workflow canvas', () => {

@@ -7,7 +7,6 @@ Currently provides minimal loop capability:
 
 from __future__ import annotations
 
-from app.rag.core.logging import get_logger
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -31,6 +30,7 @@ from app.models.chat import Conversation, Message
 from app.models.evaluation import RagasRegressionCase
 from app.models.evidence import EvidenceItem, EvidenceSuite
 from app.models.feedback import MessageFeedback
+from app.rag.core.logging import get_logger
 from app.rag.feedback_loop.dispatcher import dispatch_feedback_loop_batch
 from app.rag.industry_rules.loaders.yaml_loader import load_ruleset, ruleset_exists
 from app.services.audit_log_service import audit_log_event

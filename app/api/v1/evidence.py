@@ -13,7 +13,6 @@ import csv
 import hashlib
 import io
 import json
-from app.rag.core.logging import get_logger
 import re
 import zipfile
 from datetime import UTC, datetime, timedelta
@@ -55,6 +54,7 @@ from app.models.document import Document as DBDocument
 from app.models.evaluation import RagasRegressionCase
 from app.models.evidence import EvidenceItem, EvidenceSuite
 from app.models.feedback import MessageFeedback
+from app.rag.core.logging import get_logger
 from app.services.audit_log_service import audit_log_event
 from app.services.dataset_service import DatasetService
 from app.services.hardcase_discovery_service import (

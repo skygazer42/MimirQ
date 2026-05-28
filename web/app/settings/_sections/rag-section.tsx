@@ -24,7 +24,7 @@ type RagSectionProps = {
 }
 
 const RANGE_INPUT_CLASS =
-  'h-2 w-full cursor-pointer appearance-none rounded-full bg-blue-100 accent-blue-600 outline-none transition-colors hover:bg-blue-200/70 focus-visible:ring-2 focus-visible:ring-blue-500/30 focus-visible:ring-offset-2 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-white [&::-moz-range-thumb]:bg-blue-600 [&::-moz-range-thumb]:shadow-[0_2px_8px_rgba(37,99,235,0.28)] [&::-moz-range-track]:h-2 [&::-moz-range-track]:rounded-full [&::-moz-range-track]:bg-blue-100 [&::-webkit-slider-runnable-track]:h-2 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-blue-100 [&::-webkit-slider-thumb]:mt-[-4px] [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-white [&::-webkit-slider-thumb]:bg-blue-600 [&::-webkit-slider-thumb]:shadow-[0_2px_8px_rgba(37,99,235,0.28)]'
+  'h-2 w-full cursor-pointer appearance-none rounded-full bg-primary/18 accent-[hsl(var(--primary))] outline-none transition-colors hover:bg-primary/25 focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-background [&::-moz-range-thumb]:bg-primary [&::-moz-range-thumb]:shadow-[0_2px_8px_hsl(var(--primary)/0.28)] [&::-moz-range-track]:h-2 [&::-moz-range-track]:rounded-full [&::-moz-range-track]:bg-primary/18 [&::-webkit-slider-runnable-track]:h-2 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-primary/18 [&::-webkit-slider-thumb]:mt-[-4px] [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-background [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-[0_2px_8px_hsl(var(--primary)/0.28)]'
 const DEFAULT_RERANKER_PROVIDER = 'llm'
 
 function getRerankerProviderLabel(value: string): string {
@@ -40,11 +40,11 @@ function InlineHelp({
       <button
         type="button"
         aria-label={label}
-        className="ml-1 inline-flex size-4 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-blue-50 hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30"
+        className="ml-1 inline-flex size-4 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
       >
         <HelpCircle className="size-3.5" />
       </button>
-      <span className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 hidden w-64 -translate-x-1/2 rounded-xl border border-blue-100 bg-white px-3 py-2 text-[11px] font-medium leading-relaxed text-slate-600 shadow-[0_12px_30px_rgba(15,23,42,0.12)] group-hover/help:block group-focus-within/help:block">
+      <span className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 hidden w-64 -translate-x-1/2 rounded-xl border border-primary/20 bg-popover px-3 py-2 text-[11px] font-medium leading-relaxed text-popover-foreground shadow-[0_12px_30px_hsl(var(--foreground)/0.12)] group-hover/help:block group-focus-within/help:block">
         {children}
       </span>
     </span>
@@ -70,7 +70,7 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
         检索增强生成参数（RAG）
       </h2>
 
-      <div className="rounded-[16px] border border-slate-200/75 bg-card p-3.5 shadow-sm">
+      <div className="rounded-[16px] border border-border/60 bg-card/82 p-3.5 shadow-sm">
         <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2 lg:grid-cols-3">
           <div>
             <div className="mb-1.5 flex items-center justify-between">
@@ -197,7 +197,7 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
             </p>
           </div>
 
-          <div className="rounded-[13px] border border-blue-100/80 bg-blue-50/45 p-3">
+          <div className="rounded-[13px] border border-primary/20 bg-primary/8 p-3">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <div className={cn(systemPageTokens.microLabel, 'text-foreground')}>

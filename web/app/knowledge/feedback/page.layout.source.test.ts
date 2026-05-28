@@ -10,7 +10,7 @@ import {
 
 describe('feedback triage page layout', () => {
   it('uses a dense full-width board with inline list controls instead of a floating capsule toolbar', () => {
-    const src = fs.readFileSync(path.resolve(__dirname, 'page.tsx'), 'utf8')
+    const src = fs.readFileSync(path.resolve(__dirname, 'page-client.tsx'), 'utf8')
 
     expectSourceNotToContain(src, 'toolbar={')
     expectSourceNotToContain(

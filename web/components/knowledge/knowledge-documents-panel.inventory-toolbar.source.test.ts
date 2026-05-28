@@ -14,7 +14,7 @@ describe('KnowledgeDocumentsPanel inventory toolbar composition', () => {
     expect(src).toContain('const inventoryToolbar = (')
     expect(src).toContain('checkboxCellClassName')
     expect(src).toContain('checkboxInputClassName')
-    expect(src).toContain('border-b border-sky-100/70 bg-[linear-gradient(180deg,rgba(248,251,255,0.94),rgba(240,247,255,0.78))]')
+    expect(src).toContain('border-b border-border/60 bg-[linear-gradient(180deg,hsl(var(--card)/0.78),hsl(var(--surface-2)/0.42))]')
     expect(src).toContain('grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center')
   })
 })

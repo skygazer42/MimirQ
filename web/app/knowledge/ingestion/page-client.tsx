@@ -82,6 +82,7 @@ import {
   buildThroughputAreaRows,
   computeDocsPerMinute,
   computeDurationPercentiles,
+  computeMegabytesPerSecond,
   getDocumentKind,
   getDocumentKindAccent,
   matchesReasonFilter,
@@ -98,6 +99,7 @@ const PRECHECK_SAMPLE_MAX = 2000
 
 type IngestionMode = 'sales-audit' | 'execution-monitor'
 type SampleDisposition = 'approved' | 'manual'
+type AuditDispositionFilter = 'all' | 'pending' | 'manual' | 'approved'
 
 const EMPTY_INGESTION_SUMMARY: IngestionDashboardSummaryResponse = {
   window_hours: 0,
@@ -1731,6 +1733,8 @@ export default function KnowledgeIngestionPageClient() {
   const [desktopScopeCollapsed, setDesktopScopeCollapsed] = useState(false)
   const [headerCollapsed, setHeaderCollapsed] = useState(false)
   const [selectedReason, setSelectedReason] = useState<string | null>(null)
+  const [auditDispositionFilter, setAuditDispositionFilter] =
+    useState<AuditDispositionFilter>('all')
   const [selectedAuditIds, setSelectedAuditIds] = useState<string[]>([])
   const [sampleDispositions, setSampleDispositions] = useState<
     Record<string, SampleDisposition>
@@ -2008,8 +2012,12 @@ export default function KnowledgeIngestionPageClient() {
           failed: row.failed,
           quarantined: row.quarantined,
         }))
-      ),
+    ),
     [throughputRows]
+  )
+  const megabytesPerSecond = useMemo(
+    () => computeMegabytesPerSecond(documents),
+    [documents]
   )
   const recentThroughputDetail = useMemo(() => {
     if (throughputRowsSource === 'documents') {
@@ -2112,7 +2120,34 @@ export default function KnowledgeIngestionPageClient() {
     [auditCandidates, selectedReason]
   )
 
-  const visibleAuditSamples = reasonFilteredAuditSamples
+  const auditRailCounts = useMemo(() => {
+    const counts = {
+      all: reasonFilteredAuditSamples.length,
+      pending: 0,
+      manual: 0,
+      approved: 0,
+    }
+    for (const document of reasonFilteredAuditSamples) {
+      const disposition = resolvedSampleDispositions[document.id]
+      if (disposition === 'manual') counts.manual += 1
+      else if (disposition === 'approved') counts.approved += 1
+      else counts.pending += 1
+    }
+    return counts
+  }, [reasonFilteredAuditSamples, resolvedSampleDispositions])
+
+  const visibleAuditSamples = useMemo(() => {
+    if (auditDispositionFilter === 'all') return reasonFilteredAuditSamples
+    return reasonFilteredAuditSamples.filter((document) => {
+      const disposition = resolvedSampleDispositions[document.id]
+      if (auditDispositionFilter === 'pending') return !disposition
+      return disposition === auditDispositionFilter
+    })
+  }, [
+    auditDispositionFilter,
+    reasonFilteredAuditSamples,
+    resolvedSampleDispositions,
+  ])
 
   const selectedAuditDocuments = useMemo(
     () =>
@@ -2252,7 +2287,7 @@ export default function KnowledgeIngestionPageClient() {
         suffix: '',
         icon: Activity,
         tone: 'text-accent',
-        detail: recentThroughputDetail,
+        detail: `${recentThroughputDetail} · ${megabytesPerSecond?.toFixed(2) ?? '0.00'} MB/s`,
       },
     ],
     [
@@ -2261,6 +2296,7 @@ export default function KnowledgeIngestionPageClient() {
       executionProcessingMode.detail,
       executionProcessingMode.tone,
       executionProcessingMode.value,
+      megabytesPerSecond,
       recentThroughputDetail,
       selectedDatasetId,
       selectedDatasetLabel,
@@ -2913,9 +2949,9 @@ export default function KnowledgeIngestionPageClient() {
             data: [
               {
                 value: costRadarValues,
-                areaStyle: { color: 'rgba(37,99,235,0.12)' },
-                lineStyle: { color: '#2563eb', width: 2 },
-                itemStyle: { color: '#2563eb' },
+                areaStyle: { color: 'hsl(var(--primary) / 0.12)' },
+                lineStyle: { color: 'hsl(var(--primary))', width: 2 },
+                itemStyle: { color: 'hsl(var(--primary))' },
               },
             ],
           },
@@ -3432,7 +3468,7 @@ export default function KnowledgeIngestionPageClient() {
         fileSizeLabel: formatFileSize(file.file_size || 0),
         primaryRisk,
         riskDescription: buildEvidenceSlotReason(file),
-        actionLabel: '查看',
+        actionLabel: '加入阻断',
         icon,
         iconTone,
       }
@@ -3955,7 +3991,7 @@ export default function KnowledgeIngestionPageClient() {
     <div
       ref={scrollContainerRef}
       data-page-scroll-container="true"
-      className="flex-1 h-full min-h-0 overflow-y-auto overscroll-contain no-scrollbar scroll-fade-bottom bg-[radial-gradient(circle_at_top,rgba(148,163,184,0.18),transparent_42%),linear-gradient(180deg,rgba(248,250,252,0.98),rgba(241,245,249,0.92))] text-foreground"
+      className="flex-1 h-full min-h-0 overflow-y-auto overscroll-contain no-scrollbar scroll-fade-bottom bg-[radial-gradient(circle_at_top,hsl(var(--primary)/0.08),transparent_42%),linear-gradient(180deg,hsl(var(--background)),hsl(var(--surface-2)/0.56))] text-foreground"
     >
       <DropZone
         ref={dropZoneRef}
@@ -4053,6 +4089,44 @@ export default function KnowledgeIngestionPageClient() {
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+
+                <div className="mb-2 grid grid-cols-2 gap-1">
+                  {([
+                    ['pending', '待确认', auditRailCounts.pending],
+                    ['manual', '人工处理', auditRailCounts.manual],
+                    ['approved', '已确认', auditRailCounts.approved],
+                  ] as const).map(([value, label, count]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      aria-pressed={auditDispositionFilter === value}
+                      onClick={() => setAuditDispositionFilter(value)}
+                      className={cn(
+                        'rounded-[0.62rem] border px-2 py-1 text-left text-[8px] transition-colors',
+                        auditDispositionFilter === value
+                          ? 'border-info/25 bg-info/10 text-info'
+                          : 'border-border/45 bg-background/78 text-muted-foreground hover:text-foreground'
+                      )}
+                    >
+                      <span className="block font-medium">{label}</span>
+                      <span className="font-mono tabular-nums">{count}</span>
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    aria-pressed={auditDispositionFilter === 'all'}
+                    onClick={() => setAuditDispositionFilter('all')}
+                    className={cn(
+                      'rounded-[0.62rem] border px-2 py-1 text-left text-[8px] transition-colors',
+                      auditDispositionFilter === 'all'
+                        ? 'border-info/25 bg-info/10 text-info'
+                        : 'border-border/45 bg-background/78 text-muted-foreground hover:text-foreground'
+                    )}
+                  >
+                    <span className="block font-medium">全部</span>
+                    <span className="font-mono tabular-nums">{auditRailCounts.all}</span>
+                  </button>
                 </div>
 
                 <div className="space-y-1.5">
@@ -4230,7 +4304,7 @@ export default function KnowledgeIngestionPageClient() {
                     </div>
                   ) : null}
                     <div className="flex items-center justify-between border-t border-border/45 px-1 pt-2 text-[9px] font-medium text-muted-foreground">
-                      <span>共 {visibleAuditSamples.length} 个资产</span>
+                      <span>共 {visibleAuditSamples.length} 项线索</span>
                       {selectedReason ? (
                         <button
                           type="button"
@@ -4849,7 +4923,7 @@ export default function KnowledgeIngestionPageClient() {
                             icon={CircleAlert}
                             iconTone="text-warning"
                             subtitle="优先解释阻断和人工处理归因"
-                            actionLabel="查看全部"
+                            actionLabel="查看入库依据"
                           />
                           <div className="mt-1.5 overflow-hidden rounded-[0.9rem] border border-border/50">
                             <table className="w-full text-left text-[8px]">

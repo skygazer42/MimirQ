@@ -119,6 +119,69 @@ GOVERNANCE_RULE_PACKS: dict[str, list[RegexRule]] = {
         RegexRule(pattern=r"(?mi)^\s*created\s+with\b.*$", repl="", flags=0),
         RegexRule(pattern=r"(?mi)^\s*last\s+updated\b.*$", repl="", flags=0),
     ],
+    # ---------- A 股年报 / 招股书 / 金融披露文档常见噪声 ----------
+    "cn_finance_report_artifacts": [
+        # 披露免责声明 / 真实性承诺(常见在年报/公告/招股书首页)
+        RegexRule(
+            pattern=r"(?m)^.*(?:董事会|监事会)(?:、|及).*(?:全体)?(?:成员|董事|监事).*(?:真实|准确|完整).*(?:承诺|保证).*$",
+            repl="",
+            flags=0,
+        ),
+        RegexRule(
+            pattern=r"(?m)^.*(?:本(?:公司|公告|报告|说明书))?.*(?:不存在|无)(?:虚假记载|误导性陈述|重大遗漏).*$",
+            repl="",
+            flags=0,
+        ),
+        # 报告标识/披露指引 line-oriented
+        RegexRule(pattern=r"(?m)^\s*(?:股票代码|证券代码)[:：].*$", repl="", flags=0),
+        RegexRule(pattern=r"(?m)^\s*(?:股票简称|证券简称)[:：].*$", repl="", flags=0),
+        RegexRule(pattern=r"(?m)^\s*(?:公告编号|公告序号)[:：].*$", repl="", flags=0),
+        # 年报披露说明
+        RegexRule(pattern=r"(?m)^\s*年度报告(?:全文)?披露于.*$", repl="", flags=0),
+        # 简式 / 详式 报告备注
+        RegexRule(
+            pattern=r"(?m)^\s*本(?:简式|详式)?(?:权益变动报告书|要约收购报告书).*依据.*$",
+            repl="",
+            flags=0,
+        ),
+    ],
+    # ---------- 政府公文 / 红头文件常见噪声 ----------
+    "cn_gov_redhead_artifacts": [
+        # 抄送 / 印发 / 签发(末尾常见,line-oriented)
+        RegexRule(pattern=r"(?m)^\s*抄\s*送[:：].*$", repl="", flags=0),
+        RegexRule(pattern=r"(?m)^.*(?:办公厅|办公室|发文办)\s*\d{4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日\s*印发\s*$", repl="", flags=0),
+        RegexRule(pattern=r"(?m)^\s*签\s*发[:：\s]*\S.*$", repl="", flags=0),
+        RegexRule(pattern=r"(?m)^\s*承办\s*(?:单位|处室|司局|部门)[:：].*$", repl="", flags=0),
+        RegexRule(pattern=r"(?m)^\s*主送[:：].*$", repl="", flags=0),
+        # 主题词(已废,但旧公文常见)
+        RegexRule(pattern=r"(?m)^\s*主题\s*词[:：].*$", repl="", flags=0),
+        # 联系电话块
+        RegexRule(pattern=r"(?m)^\s*联系\s*(?:人|电话)[:：].*$", repl="", flags=0),
+    ],
+    # ---------- 电子病历 / 医疗报告常见表头噪声(脱敏前去除展示性字段) ----------
+    "cn_medical_record_artifacts": [
+        # 医院 / 科室 / 床号 / 工号(line-oriented)
+        RegexRule(pattern=r"(?m)^\s*(?:门诊号|住院号|病案号|就诊卡号)[:：]\s*\S+\s*$", repl="", flags=0),
+        RegexRule(pattern=r"(?m)^\s*(?:床位号|床号|病床号)[:：]\s*\S+\s*$", repl="", flags=0),
+        RegexRule(pattern=r"(?m)^\s*(?:主管医生|主治医师|主任医师|住院医师|查房医师)[:：]\s*\S+\s*$", repl="", flags=0),
+        RegexRule(pattern=r"(?m)^\s*(?:护士长|责任护士|主管护士)[:：]\s*\S+\s*$", repl="", flags=0),
+        RegexRule(pattern=r"(?m)^\s*(?:科室|入院科室|出院科室|当前科室)[:：]\s*\S+\s*$", repl="", flags=0),
+        # 病历打印 / 系统标识
+        RegexRule(pattern=r"(?m)^\s*打印(?:时间|人)[:：].*$", repl="", flags=0),
+        RegexRule(pattern=r"(?m)^\s*病历(?:打印|录入|审核)(?:时间|人)?[:：].*$", repl="", flags=0),
+    ],
+    # ---------- 飞书 / Lark 知识库导出常见噪声 ----------
+    "feishu_lark_noise": [
+        RegexRule(pattern=r"(?mi)^\s*由\s*(?:飞书|lark)\s*(?:文档|知识库|妙记)?\s*导出\s*$", repl="", flags=0),
+        RegexRule(pattern=r"(?mi)^\s*powered\s+by\s+(?:lark|feishu)\b.*$", repl="", flags=0),
+        # 文档元信息 line-oriented
+        RegexRule(pattern=r"(?m)^\s*(?:最后(?:编辑|修改)|最近编辑)[:：\s].*$", repl="", flags=0),
+        RegexRule(pattern=r"(?m)^\s*(?:文档(?:所有者|归属|拥有人|拥有者))[:：\s].*$", repl="", flags=0),
+        RegexRule(pattern=r"(?m)^\s*(?:协作者|共享给)[:：\s].*$", repl="", flags=0),
+        RegexRule(pattern=r"(?m)^\s*(?:创建(?:时间|于)|创建人)[:：\s].*$", repl="", flags=0),
+        # 妙记 / 妙享标识
+        RegexRule(pattern=r"(?mi)^\s*(?:妙记|妙享)\s*文档\s*$", repl="", flags=0),
+    ],
 }
 
 

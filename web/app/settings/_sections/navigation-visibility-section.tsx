@@ -28,7 +28,7 @@ const MODULE_GROUPS: Array<{
 }> = [
   {
     title: '入库治理',
-    description: '治理规则和样板行发现入口，适合交付/数据治理人员开放',
+    description: '治理规则和重复行学习入口，适合交付/数据治理人员开放',
     items: [
       {
         key: 'governanceProfiles',
@@ -38,7 +38,7 @@ const MODULE_GROUPS: Array<{
       },
       {
         key: 'commonLines',
-        label: '样板行发现',
+        label: '重复行学习',
         description: '跨文档识别页眉、页脚和重复噪声',
         icon: Hash,
       },
@@ -118,35 +118,35 @@ export function NavigationVisibilitySection({
     <section>
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="flex items-center gap-2 text-[13px] font-semibold text-slate-950">
-            <Eye className="h-3.5 w-3.5 text-blue-600" />
+          <h2 className="flex items-center gap-2 text-[13px] font-semibold text-foreground">
+            <Eye className="h-3.5 w-3.5 text-primary" />
             普通用户入口显示
             <span className="group/nav-entry-help relative inline-flex">
               <button
                 type="button"
                 aria-label="查看普通用户入口显示说明"
-                className="inline-flex size-5 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-blue-50 hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
+                className="inline-flex size-5 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
               >
                 <HelpCircle className="h-3.5 w-3.5" />
               </button>
-              <span className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 hidden w-[min(360px,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-blue-100 bg-white px-3 py-2 text-[11px] font-medium leading-relaxed text-slate-600 shadow-[0_14px_34px_rgba(15,23,42,0.14)] group-hover/nav-entry-help:block group-focus-within/nav-entry-help:block md:left-full md:top-1/2 md:mt-0 md:ml-2 md:-translate-x-0 md:-translate-y-1/2">
-                管理员始终可见；这里控制普通用户左侧导航和直接访问页的前端入口
+              <span className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 hidden w-[min(360px,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-primary/20 bg-popover px-3 py-2 text-[11px] font-medium leading-relaxed text-popover-foreground shadow-[0_14px_34px_hsl(var(--foreground)/0.14)] group-hover/nav-entry-help:block group-focus-within/nav-entry-help:block md:left-full md:top-1/2 md:mt-0 md:ml-2 md:-translate-x-0 md:-translate-y-1/2">
+                管理员始终可见；这里通过后端 /settings 持久化普通用户左侧导航和直接访问页的入口策略
               </span>
             </span>
           </h2>
         </div>
       </div>
 
-      <div className="rounded-[16px] border border-slate-200/75 bg-card p-3.5 shadow-sm">
+      <div className="rounded-[16px] border border-border/60 bg-card/82 p-3.5 shadow-sm">
         <div className="grid gap-3 xl:grid-cols-3">
           {MODULE_GROUPS.map((group) => (
             <div
               key={group.title}
-              className="rounded-[14px] border border-slate-200 bg-white/80 p-3 shadow-[0_8px_20px_rgba(15,23,42,0.025)]"
+              className="rounded-[14px] border border-border/60 bg-card/80 p-3 shadow-[0_8px_20px_hsl(var(--foreground)/0.025)]"
             >
               <div className="mb-2.5">
-                <div className="text-[12px] font-semibold text-slate-950">{group.title}</div>
-                <div className="mt-0.5 text-[10.5px] font-medium leading-4 text-slate-600">{group.description}</div>
+                <div className="text-[12px] font-semibold text-foreground">{group.title}</div>
+                <div className="mt-0.5 text-[10.5px] font-medium leading-4 text-muted-foreground">{group.description}</div>
               </div>
               <div className="space-y-2">
                 {group.items.map((item) => {
@@ -158,22 +158,22 @@ export function NavigationVisibilitySection({
                       className={cn(
                         'flex items-center justify-between gap-3 rounded-[12px] border px-3 py-2 transition-colors',
                         checked
-                          ? 'border-blue-200 bg-blue-50/55'
-                          : 'border-slate-200 bg-card hover:border-slate-300'
+                          ? 'border-primary/25 bg-primary/10'
+                          : 'border-border/60 bg-card hover:border-muted-foreground/30'
                       )}
                     >
                       <div className="flex min-w-0 items-center gap-2.5">
                         <span
                           className={cn(
                             'flex size-7 shrink-0 items-center justify-center rounded-[10px]',
-                            checked ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-500'
+                            checked ? 'bg-primary/12 text-primary' : 'bg-muted text-muted-foreground'
                           )}
                         >
                           <Icon className="size-3.5" />
                         </span>
                         <div className="min-w-0">
-                          <div className="text-[12px] font-semibold text-slate-950">{item.label}</div>
-                          <div className="truncate text-[10.5px] font-medium leading-4 text-slate-600">
+                          <div className="text-[12px] font-semibold text-foreground">{item.label}</div>
+                          <div className="truncate text-[10.5px] font-medium leading-4 text-muted-foreground">
                             {item.description}
                           </div>
                         </div>

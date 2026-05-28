@@ -22,7 +22,7 @@ describe('settings Dify integration section', () => {
     expect(section).toContain('当前绑定')
     expect(section).toContain('已选择数据集')
     expect(section).not.toContain('<textarea')
-    expect(section).toContain('className="block text-[11px] leading-4 text-slate-600"')
+    expect(section).toContain('className="block text-[11px] leading-4 text-muted-foreground"')
     expect(section).not.toContain('className="block">')
 
     expect(hook).toContain('DEFAULT_DIFY_EXTERNAL_KNOWLEDGE')

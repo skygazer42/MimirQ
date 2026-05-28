@@ -22,10 +22,10 @@ type RuntimeControlsSectionProps = {
 }
 
 const RUNTIME_CARD =
-  'rounded-[16px] border border-slate-200/75 bg-white/88 p-3.5 shadow-[0_8px_24px_rgba(15,23,42,0.03)]'
+  'rounded-[16px] border border-border/60 bg-card/82 p-3.5 shadow-[0_8px_24px_hsl(var(--foreground)/0.03)]'
 const RUNTIME_LABEL = settingsTextTokens.fieldLabel
 const RUNTIME_HINT = settingsTextTokens.helpText
-const RUNTIME_INPUT = 'h-8 rounded-lg border-slate-200 bg-white text-[12px]'
+const RUNTIME_INPUT = 'h-8 rounded-lg border-border/60 bg-background text-[12px]'
 
 function RuntimeToggle({
   checked,
@@ -61,12 +61,12 @@ function RuntimeCard({
     <div className={RUNTIME_CARD}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 gap-2.5">
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-[12px] border border-blue-100 bg-blue-50 text-blue-600">
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-[12px] border border-primary/20 bg-primary/10 text-primary">
             <Icon className="h-4 w-4" />
           </div>
           <div className="min-w-0">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-blue-500/75">{label}</div>
-            <div className="mt-0.5 text-[13px] font-medium tracking-[-0.005em] text-slate-800">{title}</div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-primary/75">{label}</div>
+            <div className="mt-0.5 text-[13px] font-medium tracking-[-0.005em] text-foreground">{title}</div>
             <div className={cn(RUNTIME_HINT, 'mt-0.5')}>{description}</div>
           </div>
         </div>
@@ -94,7 +94,7 @@ function OptionRow({
     <div
       className={cn(
         'flex items-start justify-between gap-3 rounded-xl border px-3 py-2.5 transition-colors',
-        checked ? 'border-blue-200 bg-blue-50/45' : 'border-slate-200 bg-slate-50/45'
+        checked ? 'border-primary/25 bg-primary/10' : 'border-border/60 bg-muted/28'
       )}
     >
       <div className="min-w-0">
@@ -177,7 +177,7 @@ export function RuntimeControlsSection({
               className={RUNTIME_INPUT}
             />
           </Field>
-          <div className={cn('rounded-xl border border-slate-200 bg-slate-50/55 px-3 py-2', settingsTextTokens.helpText)}>
+          <div className={cn('rounded-xl border border-border/60 bg-muted/35 px-3 py-2', settingsTextTokens.helpText)}>
             适合经过代理或负载均衡的长连接场景，避免空闲连接被误断
           </div>
         </div>
@@ -209,7 +209,7 @@ export function RuntimeControlsSection({
         </div>
 
         {isChatResponseCacheEnabled ? (
-          <div className="grid gap-3 rounded-xl border border-blue-100 bg-blue-50/35 p-3 md:grid-cols-3">
+          <div className="grid gap-3 rounded-xl border border-primary/20 bg-primary/8 p-3 md:grid-cols-3">
             <Field label="缓存时长（秒）">
               <Input
                 type="number"
@@ -241,7 +241,7 @@ export function RuntimeControlsSection({
                 className={RUNTIME_INPUT}
               />
             </Field>
-            <div className="flex items-center justify-between gap-3 pt-5 text-[12px] font-medium text-slate-600">
+            <div className="flex items-center justify-between gap-3 pt-5 text-[12px] font-medium text-muted-foreground">
               <span>仅无历史</span>
               <SettingsSwitch
                 checked={cache.chat_response_cache_require_empty_history ?? true}

@@ -1,5 +1,5 @@
-from pathlib import Path
 import re
+from pathlib import Path
 
 
 def test_regression_sample_builder_no_longer_uses_silent_pass_fallbacks() -> None:

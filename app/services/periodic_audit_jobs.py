@@ -18,7 +18,6 @@ Design principles (mirrors retention/stale jobs):
 from __future__ import annotations
 
 from collections import Counter
-from app.rag.core.logging import get_logger
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -32,6 +31,7 @@ from app.models.document import Document, DocumentPermission
 from app.models.evidence import EvidenceItem, EvidenceSuite
 from app.models.group_permissions import DatasetGroupPermission, DocumentGroupPermission
 from app.models.tenant_group import TenantGroup, TenantGroupMember
+from app.rag.core.logging import get_logger
 from app.services.audit_log_service import audit_log_event
 from app.services.embedding_drift_monitor import run_embedding_drift_monitor
 from app.services.evidence_drift_audit_service import audit_reference_sources_drift

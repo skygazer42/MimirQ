@@ -35,8 +35,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Badge } from '@/components/ui/badge'
 
 import { datasetApi, pipelineApi } from '@/lib/api'
+import type { BuiltinProcessingScript } from '@/lib/api/pipeline'
 import { formatApiError } from '@/lib/api-errors'
 import { queryKeys } from '@/lib/query-keys'
 import { cn, detachPromise } from '@/lib/utils'
@@ -69,7 +79,7 @@ const emptyWorkflowSteps = [
   {
     icon: FileText,
     title: '扫描文档',
-    description: '从数据集中抽取解析结果,识别潜在的重复样板行。',
+    description: '从数据集中抽取解析结果,识别潜在的反复出现的行。',
   },
   {
     icon: UsersRound,
@@ -87,8 +97,8 @@ const DEFAULT_COMMON_LINES_PROFILE_KEY = 'common-lines-default'
 
 const DEFAULT_COMMON_LINES_PROFILE: GovernanceProfileCreate = {
   key: DEFAULT_COMMON_LINES_PROFILE_KEY,
-  name: '样板行发现默认配置',
-  description: '用于承接样板行发现生成的页眉、页脚、导航和免责声明清洗规则。',
+  name: '重复行学习默认配置',
+  description: '用于承接重复行学习生成的页眉、页脚、导航和免责声明清洗规则。',
   payload: {
     version: '1',
     extends: null,
@@ -170,6 +180,11 @@ export function GovernanceCommonLinesPage() {
     null
   )
   const [selected, setSelected] = useState<Record<string, boolean>>({})
+  const [templateLibraryOpen, setTemplateLibraryOpen] = useState(false)
+  const [selectedTemplateKeys, setSelectedTemplateKeys] = useState<Set<string>>(
+    () => new Set()
+  )
+  const [templateSearch, setTemplateSearch] = useState('')
 
   const datasetsQuery = useQuery({
     queryKey: queryKeys.datasets.list(COMMON_LINES_DATASET_PARAMS),
@@ -178,6 +193,11 @@ export function GovernanceCommonLinesPage() {
   const profilesQuery = useQuery({
     queryKey: queryKeys.governance.profiles(COMMON_LINES_PROFILE_PARAMS),
     queryFn: listWritableCommonLineProfiles,
+  })
+  const templateLibraryQuery = useQuery({
+    queryKey: ['governance-processing-scripts', 'builtins'] as const,
+    queryFn: () => pipelineApi.listBuiltinProcessingScripts(),
+    staleTime: 30 * 60 * 1000,
   })
 
   const datasets = useMemo(
@@ -275,7 +295,7 @@ export function GovernanceCommonLinesPage() {
       setResp(out)
       toast.success(`已生成候选行：${(out.candidates || []).length}`)
     } catch (err: any) {
-      toast.error(formatApiError(err, '扫描样板行失败'))
+      toast.error(formatApiError(err, '扫描重复行失败'))
     } finally {
       setLoading(false)
     }
@@ -363,6 +383,96 @@ export function GovernanceCommonLinesPage() {
     [profileRef]
   )
 
+  const appendBuiltinScripts = useCallback(
+    async (templates: BuiltinProcessingScript[]) => {
+      const ref = profileRef.trim()
+      if (!ref) {
+        toast.error('请先选择写入目标治理配置')
+        return
+      }
+      if (!templates.length) {
+        toast.error('请先选择至少一个模板')
+        return
+      }
+
+      setImportingScript(true)
+      try {
+        const prof = await pipelineApi.getGovernanceProfile(ref)
+        if (prof.is_system) {
+          toast.error('内置治理配置只读，请选择自定义治理配置')
+          return
+        }
+
+        const drafts: GovernanceProcessingScript[] = templates.map((tpl) => ({
+          name: tpl.name,
+          language: tpl.language,
+          stage: tpl.stage,
+          content: tpl.content,
+          enabled: false,
+          description: tpl.description,
+          created_at: new Date().toISOString(),
+        }))
+
+        const existing = prof.payload.processing_scripts ?? []
+        const byKey = new Map<string, GovernanceProcessingScript>()
+        for (const item of existing)
+          byKey.set(`${item.language}:${item.name}`, item)
+        for (const item of drafts)
+          byKey.set(`${item.language}:${item.name}`, item)
+        const nextScripts = Array.from(byKey.values())
+        if (nextScripts.length > 10) {
+          toast.error('处理脚本最多保留 10 个，请先在治理配置中清理旧脚本')
+          return
+        }
+
+        await pipelineApi.updateGovernanceProfile(ref, {
+          payload: {
+            ...prof.payload,
+            processing_scripts: nextScripts,
+          },
+        })
+        toast.success(`已从模板库添加 ${drafts.length} 个处理脚本`)
+        setTemplateLibraryOpen(false)
+        setSelectedTemplateKeys(new Set())
+      } catch (err: any) {
+        toast.error(formatApiError(err, '从模板库添加处理脚本失败'))
+      } finally {
+        setImportingScript(false)
+      }
+    },
+    [profileRef]
+  )
+
+  const filteredTemplates = useMemo(() => {
+    const all = templateLibraryQuery.data?.items ?? []
+    const q = templateSearch.trim().toLowerCase()
+    if (!q) return all
+    return all.filter((tpl) =>
+      [tpl.name, tpl.description, tpl.key, ...(tpl.tags ?? [])]
+        .filter(Boolean)
+        .some((field) => String(field).toLowerCase().includes(q))
+    )
+  }, [templateLibraryQuery.data?.items, templateSearch])
+
+  const toggleTemplateSelection = useCallback((key: string) => {
+    setSelectedTemplateKeys((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }, [])
+
+  const confirmAddFromTemplateLibrary = useCallback(() => {
+    const all = templateLibraryQuery.data?.items ?? []
+    const picked = all.filter((tpl) => selectedTemplateKeys.has(tpl.key))
+    detachPromise(appendBuiltinScripts(picked))
+  }, [
+    appendBuiltinScripts,
+    selectedTemplateKeys,
+    templateLibraryQuery.data?.items,
+  ])
+
   const applyToProfile = useCallback(async () => {
     const ref = profileRef.trim()
     if (!ref) {
@@ -426,12 +536,12 @@ export function GovernanceCommonLinesPage() {
 
   return (
     <PageScaffold
-      title="样板行发现"
+      title="重复行学习"
       badge="规则生成"
       iconImage="profile-discovery"
       icon={Hash}
       iconColor="text-success"
-      description="跨文档识别页眉、页脚、导航和免责声明等重复样板行，可一键写入自定义治理配置。"
+      description="跨文档识别页眉、页脚、导航和免责声明等反复出现的行,可一键写入自定义治理配置。"
       size="full"
       density="system-dense"
       headerClassName="max-w-none"
@@ -648,6 +758,26 @@ export function GovernanceCommonLinesPage() {
                       )}
                       {importingScript ? '导入中' : '导入脚本草案'}
                     </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="mt-2 h-9 w-full gap-2 rounded-lg border-success/25 bg-card text-[12px] font-semibold text-success shadow-none hover:bg-success/[0.08] hover:text-success"
+                      disabled={
+                        importingScript ||
+                        loading ||
+                        !profileRef.trim() ||
+                        templateLibraryQuery.isFetching
+                      }
+                      onClick={() => {
+                        setSelectedTemplateKeys(new Set())
+                        setTemplateSearch('')
+                        setTemplateLibraryOpen(true)
+                      }}
+                    >
+                      <Sparkles className="size-3.5" />
+                      从模板库选择
+                    </Button>
                   </div>
                 </div>
               </section>
@@ -820,7 +950,7 @@ export function GovernanceCommonLinesPage() {
                 <div className="min-w-[720px]">
                   <div className="grid grid-cols-[44px_minmax(0,1fr)_110px_110px] items-center gap-3 border-b border-border/60 bg-muted/[0.18] px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/85">
                     <div></div>
-                    <div>样板行预览</div>
+                    <div>重复行预览</div>
                     <div className="text-right">命中文档</div>
                     <div className="text-right">命中比例</div>
                   </div>
@@ -917,7 +1047,7 @@ export function GovernanceCommonLinesPage() {
                     />
                   </div>
                   <div className="text-[18px] font-semibold tracking-[-0.01em] text-foreground">
-                    {resp ? '没有发现候选样板行' : '尚未生成候选结果'}
+                    {resp ? '没有发现候选重复行' : '尚未生成候选结果'}
                   </div>
                   <p className="mt-3 max-w-xl text-[14px] leading-6 text-muted-foreground">
                     {resp
@@ -963,6 +1093,147 @@ export function GovernanceCommonLinesPage() {
           </div>
         </section>
       </div>
+
+      <Dialog
+        open={templateLibraryOpen}
+        onOpenChange={(open) => {
+          setTemplateLibraryOpen(open)
+          if (!open) {
+            setSelectedTemplateKeys(new Set())
+            setTemplateSearch('')
+          }
+        }}
+      >
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>从内置模板库选择处理脚本</DialogTitle>
+            <DialogDescription>
+              选中的脚本会被添加到当前治理配置的 processing_scripts 中,用于审计与版本管理;入库管道不会自动执行模板代码,可在自定义服务中复用。
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Search className="size-4 text-muted-foreground" />
+              <Input
+                value={templateSearch}
+                onChange={(event) => setTemplateSearch(event.target.value)}
+                placeholder="按名称、描述、tag 搜索..."
+                className="h-9 flex-1 rounded-lg text-[13px]"
+              />
+            </div>
+
+            <div className="max-h-[480px] overflow-y-auto rounded-lg border border-border/60">
+              {templateLibraryQuery.isLoading ? (
+                <div className="flex items-center justify-center gap-2 py-12 text-[13px] text-muted-foreground">
+                  <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
+                  正在加载模板库...
+                </div>
+              ) : templateLibraryQuery.error ? (
+                <div className="px-4 py-8 text-center text-[13px] text-destructive">
+                  加载模板库失败:
+                  {formatApiError(templateLibraryQuery.error, '未知错误')}
+                </div>
+              ) : filteredTemplates.length === 0 ? (
+                <div className="px-4 py-8 text-center text-[13px] text-muted-foreground">
+                  {templateSearch ? '没有匹配的模板' : '模板库为空'}
+                </div>
+              ) : (
+                <ul className="divide-y divide-border/60">
+                  {filteredTemplates.map((tpl) => {
+                    const picked = selectedTemplateKeys.has(tpl.key)
+                    return (
+                      <li
+                        key={tpl.key}
+                        className={cn(
+                          'cursor-pointer px-4 py-3 transition-colors hover:bg-muted/40',
+                          picked && 'bg-success/[0.06]'
+                        )}
+                        onClick={() => toggleTemplateSelection(tpl.key)}
+                      >
+                        <div className="flex items-start gap-3">
+                          <Checkbox
+                            checked={picked}
+                            onCheckedChange={() =>
+                              toggleTemplateSelection(tpl.key)
+                            }
+                            onClick={(e) => e.stopPropagation()}
+                            aria-label={`选择 ${tpl.name}`}
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-[13px] font-semibold text-foreground">
+                                {tpl.name}
+                              </span>
+                              <Badge
+                                variant="secondary"
+                                className="h-5 rounded-md px-1.5 text-[10px] font-medium uppercase"
+                              >
+                                {tpl.language}
+                              </Badge>
+                              <Badge
+                                variant="outline"
+                                className="h-5 rounded-md px-1.5 text-[10px] font-medium"
+                              >
+                                {tpl.stage === 'post_parse'
+                                  ? '解析后'
+                                  : '治理后'}
+                              </Badge>
+                            </div>
+                            <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
+                              {tpl.description}
+                            </p>
+                            {tpl.tags?.length ? (
+                              <div className="mt-1.5 flex flex-wrap gap-1">
+                                {tpl.tags
+                                  .filter((t) => t !== 'builtin')
+                                  .slice(0, 6)
+                                  .map((tag) => (
+                                    <span
+                                      key={tag}
+                                      className="rounded bg-muted/60 px-1.5 py-[1px] text-[10px] text-muted-foreground"
+                                    >
+                                      {tag}
+                                    </span>
+                                  ))}
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-2">
+            <div className="mr-auto self-center text-[12px] text-muted-foreground">
+              已选 {selectedTemplateKeys.size} / {filteredTemplates.length}
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => setTemplateLibraryOpen(false)}
+              disabled={importingScript}
+            >
+              取消
+            </Button>
+            <Button
+              onClick={confirmAddFromTemplateLibrary}
+              disabled={importingScript || selectedTemplateKeys.size === 0}
+              className="gap-2"
+            >
+              {importingScript ? (
+                <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
+              ) : (
+                <Sparkles className="size-4" />
+              )}
+              添加到治理配置
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageScaffold>
   )
 }

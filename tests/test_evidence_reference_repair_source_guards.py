@@ -1,5 +1,5 @@
-from pathlib import Path
 import re
+from pathlib import Path
 
 
 def test_evidence_reference_repair_service_no_longer_uses_silent_pass_fallbacks() -> None:

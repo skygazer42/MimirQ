@@ -24,7 +24,7 @@ const ALLOWED_FORBIDDEN_HITS: Array<{ relativePath: string; pattern: RegExp }> =
 ]
 
 const DEMO_GATED_FILES = [
-  'app/knowledge/feedback/page.tsx',
+  'app/knowledge/feedback/page-client.tsx',
   'app/knowledge/ingestion/page-client.tsx',
   'app/knowledge/quarantine/page.tsx',
 ] as const

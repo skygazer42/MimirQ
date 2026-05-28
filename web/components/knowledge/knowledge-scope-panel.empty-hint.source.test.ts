@@ -8,8 +8,8 @@ describe('KnowledgeScopePanel empty folder hint', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'knowledge-scope-panel.tsx'), 'utf8')
 
     expect(src).toContain("import { ChevronDown, Filter, FolderSearch } from 'lucide-react'")
-    expect(src).toContain('group/empty rounded-[16px] border border-dashed border-sky-100/80 bg-white/45')
-    expect(src).toContain('border border-sky-100/80 bg-white/80')
+    expect(src).toContain('group/empty rounded-[16px] border border-dashed border-border/60 bg-card/36')
+    expect(src).toContain('border border-border/60 bg-card/76')
     expect(src).toContain("t('folder.pendingTitle')")
     expect(src).not.toContain('Pending Scope')
   })

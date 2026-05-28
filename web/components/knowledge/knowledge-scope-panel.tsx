@@ -117,8 +117,8 @@ export function KnowledgeScopePanel({
           className={cn(
             'font-mono text-[11px] transition-all tabular-nums',
             count === 0
-              ? 'rounded-md bg-white/50 px-1.5 py-0.5 font-semibold text-foreground/58 dark:bg-muted/20 dark:text-foreground/55'
-              : 'rounded-md border border-sky-100/70 bg-white/75 px-1.5 py-0.5 font-medium text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-border/60 dark:bg-muted/35'
+              ? 'rounded-md bg-muted/35 px-1.5 py-0.5 font-semibold text-foreground/58 dark:bg-muted/20 dark:text-foreground/55'
+              : 'rounded-md border border-border/60 bg-card/75 px-1.5 py-0.5 font-medium text-foreground shadow-[inset_0_1px_0_hsl(var(--card)/0.82)] dark:border-border/60 dark:bg-muted/35'
           )}
         >
           {count}
@@ -131,8 +131,8 @@ export function KnowledgeScopePanel({
     <div className="space-y-2">
       {/* text-[11px] font-medium tracking-[0.08em] */}
       <div className="flex items-start gap-2.5">
-        <div className="relative flex size-6 items-center justify-center rounded-lg border border-sky-100/80 bg-white/82 text-primary/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.86),0_10px_20px_-18px_rgba(37,99,235,0.22)] dark:border-border/70 dark:bg-background/70">
-          <span className="pointer-events-none absolute inset-0 rounded-[inherit] bg-[linear-gradient(135deg,rgba(255,255,255,0.28),transparent_54%)] opacity-80" />
+        <div className="relative flex size-6 items-center justify-center rounded-lg border border-border/70 bg-card/82 text-primary/80 shadow-[inset_0_1px_0_hsl(var(--card)/0.86),0_10px_20px_-18px_hsl(var(--primary)/0.24)] dark:border-border/70 dark:bg-background/70">
+          <span className="pointer-events-none absolute inset-0 rounded-[inherit] bg-[linear-gradient(135deg,hsl(var(--primary)/0.12),transparent_54%)] opacity-80" />
           <Filter className="h-3 w-3" />
         </div>
         <div className="min-w-0">
@@ -147,7 +147,7 @@ export function KnowledgeScopePanel({
           </div>
         </div>
       </div>
-      <div className="h-px w-full bg-sky-100/80 dark:bg-border/70" />
+      <div className="h-px w-full bg-border/70 dark:bg-border/70" />
     </div>
   )
 
@@ -156,10 +156,10 @@ export function KnowledgeScopePanel({
   // const sectionShellClassName = embedded
   // rounded-2xl border border-border/40 bg-muted/10
   const sectionShellClassName = embedded
-    ? 'rounded-[18px] border border-sky-100/80 bg-white/78 px-2.5 py-2.5 shadow-[0_10px_20px_-22px_rgba(37,99,235,0.20)] backdrop-blur-xl dark:border-border/70 dark:bg-background/58'
+    ? 'rounded-[18px] border border-border/60 bg-card/72 px-2.5 py-2.5 shadow-[0_10px_20px_-22px_hsl(var(--primary)/0.22)] backdrop-blur-xl dark:border-border/70 dark:bg-background/58'
     : undefined
   const embeddedSelectTriggerClassName = embedded
-    ? 'h-8 rounded-[12px] border-sky-100/80 bg-white/85 pl-3 pr-2 text-[11px] shadow-none transition-colors duration-200 hover:bg-white hover:border-sky-200/80 dark:border-border/70 dark:bg-background/62 [&>span]:font-medium [&>span]:text-foreground/90 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:text-muted-foreground/65'
+    ? 'h-8 rounded-[12px] border-border/60 bg-background/80 pl-3 pr-2 text-[11px] shadow-none transition-colors duration-200 hover:bg-card/90 hover:border-primary/25 dark:border-border/70 dark:bg-background/62 [&>span]:font-medium [&>span]:text-foreground/90 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:text-muted-foreground/65'
     : 'h-9'
   const embeddedSelectContentClassName = embedded
     ? 'rounded-[14px] border-border/70 bg-popover p-1 shadow-[0_18px_42px_-28px_hsl(var(--foreground)/0.36)]'
@@ -173,11 +173,11 @@ export function KnowledgeScopePanel({
     datasetItems.find((item) => item.id === datasetScope) ?? datasetItems[0]
 
   const statusThemes: Record<DocStatusFilter, string> = {
-    all: 'bg-primary/10 border-primary/40 text-primary shadow-[0_0_12px_-4px_rgba(var(--primary),0.3)]',
+    all: 'bg-primary/10 border-primary/40 text-primary shadow-[0_0_12px_-4px_hsl(var(--primary)/0.3)]',
     completed:
       'bg-success/10 border-success/40 text-success dark:text-success shadow-[0_0_12px_-4px_rgba(16,185,129,0.3)]',
     processing:
-      'bg-info/10 border-info/40 text-info dark:text-info shadow-[0_0_12px_-4px_rgba(14,165,233,0.3)]',
+      'bg-info/10 border-info/40 text-info dark:text-info shadow-[0_0_12px_-4px_hsl(var(--info)/0.3)]',
     failed:
       'bg-destructive/10 border-destructive/40 text-destructive dark:text-destructive/85 shadow-[0_0_12px_-4px_rgba(239,68,68,0.3)]',
     quarantined:
@@ -198,10 +198,10 @@ export function KnowledgeScopePanel({
             aria-expanded={datasetListExpanded}
             onClick={() => setDatasetListExpanded((prev) => !prev)}
             className={cn(
-              'flex w-full items-center justify-between gap-2.5 rounded-[12px] border border-sky-100/80 bg-white/85 px-2.5 py-2 text-left transition-colors focus-ring dark:border-border/70 dark:bg-background/62',
+              'flex w-full items-center justify-between gap-2.5 rounded-[12px] border border-border/60 bg-background/80 px-2.5 py-2 text-left transition-colors focus-ring dark:border-border/70 dark:bg-background/62',
               datasetListExpanded
                 ? 'border-primary/25'
-                : 'hover:border-sky-200/80 hover:bg-white dark:hover:border-border'
+                : 'hover:border-primary/25 hover:bg-card/90 dark:hover:border-border'
             )}
           >
             <div className="min-w-0">
@@ -224,7 +224,7 @@ export function KnowledgeScopePanel({
               role="group"
               aria-label={t('dataset.ariaLabel')}
               className={cn(
-                'space-y-1 rounded-[12px] border border-sky-100/80 bg-white/82 p-1 dark:border-border/70 dark:bg-background/62'
+                'space-y-1 rounded-[12px] border border-border/60 bg-card/78 p-1 dark:border-border/70 dark:bg-background/62'
               )}
             >
               {datasetsLoading ? (
@@ -247,7 +247,7 @@ export function KnowledgeScopePanel({
                           'flex w-full items-center gap-2 rounded-[10px] px-2 py-1.5 text-left text-[11px] transition-colors focus-ring',
                           isActive
                             ? 'bg-primary/10 text-primary'
-                            : 'text-muted-foreground hover:bg-sky-50/70 hover:text-foreground dark:hover:bg-muted/35'
+                            : 'text-muted-foreground hover:bg-muted/45 hover:text-foreground dark:hover:bg-muted/35'
                         )}
                         aria-pressed={isActive}
                       >
@@ -289,7 +289,7 @@ export function KnowledgeScopePanel({
                   statusFilter === item.key
                     ? statusThemes[item.key as DocStatusFilter] ||
                         statusThemes.all
-                    : 'border-sky-100/80 bg-white/76 text-foreground/76 hover:border-sky-200/80 hover:bg-white/95 hover:text-foreground dark:border-border/60 dark:bg-background/45 dark:text-foreground/70 dark:hover:bg-muted/30'
+                    : 'border-border/60 bg-card/64 text-foreground/76 hover:border-primary/25 hover:bg-card/90 hover:text-foreground dark:border-border/60 dark:bg-background/45 dark:text-foreground/70 dark:hover:bg-muted/30'
                 )}
                 aria-pressed={statusFilter === item.key}
               >
@@ -349,7 +349,7 @@ export function KnowledgeScopePanel({
               <DatasetFolderTree
                 className={
                   embedded
-                    ? 'rounded-[12px] border border-sky-100/80 bg-white/82 p-2 dark:border-border/70 dark:bg-background/58'
+                    ? 'rounded-[12px] border border-border/60 bg-card/74 p-2 dark:border-border/70 dark:bg-background/58'
                     : undefined
                 }
                 datasetId={selectedDatasetId}
@@ -362,12 +362,12 @@ export function KnowledgeScopePanel({
             <div
               aria-disabled="true"
               title={t('folder.empty')}
-              className="group/empty rounded-[16px] border border-dashed border-sky-100/80 bg-white/45 p-2.5 text-[10px] text-muted-foreground dark:border-border/70 dark:bg-transparent"
+              className="group/empty rounded-[16px] border border-dashed border-border/60 bg-card/36 p-2.5 text-[10px] text-muted-foreground dark:border-border/70 dark:bg-transparent"
             >
               {/* group/empty rounded-2xl border border-dashed border-border/60 */}
               {/* hover:scale-[1.015] */}
               <div className="flex items-start gap-2.5">
-                <div className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-lg border border-sky-100/80 bg-white/80 text-muted-foreground/60 dark:border-border/70 dark:bg-background/62">
+                <div className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-card/76 text-muted-foreground/60 dark:border-border/70 dark:bg-background/62">
                   <FolderSearch className="h-3 w-3" />
                 </div>
                 <div className="space-y-1">
@@ -416,7 +416,7 @@ export function KnowledgeScopePanel({
   if (embedded) {
     return (
       <div className={cn('flex flex-col border-0 bg-transparent', className)}>
-        <div className="border-b border-sky-100/75 bg-white/62 px-3 py-3 backdrop-blur-xl dark:border-border/70 dark:bg-background/58">
+        <div className="border-b border-border/60 bg-card/56 px-3 py-3 backdrop-blur-xl dark:border-border/70 dark:bg-background/58">
           {header}
         </div>
         {body}

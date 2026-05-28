@@ -50,7 +50,7 @@ class _FakeSession:
     def query(self, *args, **_kwargs):  # noqa: ANN001
         # `_enrich_results_with_db_metadata` issues:
         # - query(DocumentChunk) -> model class
-        # - query(DBDocument.id, DBDocument.dataset_id, DBDocument.status, DBDocument.doc_metadata, archived_at, disabled_at, publication_status)
+        # - query(DBDocument.id, DBDocument.filename, DBDocument.dataset_id, DBDocument.status, DBDocument.doc_metadata, archived_at, disabled_at, publication_status)
         if len(args) == 1 and getattr(args[0], "__name__", "") == "DocumentChunk":
             return _FakeQuery(self._chunks)
         return _FakeQuery(self._doc_rows)
@@ -84,10 +84,10 @@ def test_retriever_candidate_acl_trims_disallowed_docs(monkeypatch: pytest.Monke
             doc_metadata={"pipeline_hash": "h"},
         ),
     ]
-    # (doc_id, dataset_id, status, doc_metadata)
+    # (doc_id, filename, dataset_id, status, doc_metadata, archived_at, disabled_at, publication_status)
     doc_rows = [
-        (doc_allowed, None, "completed", {"active_pipeline_ready": True, "pipeline_hash": "h"}, None, None, "published"),
-        (doc_denied, None, "completed", {"active_pipeline_ready": True, "pipeline_hash": "h"}, None, None, "published"),
+        (doc_allowed, "allowed.pdf", None, "completed", {"active_pipeline_ready": True, "pipeline_hash": "h"}, None, None, "published"),
+        (doc_denied, "denied.pdf", None, "completed", {"active_pipeline_ready": True, "pipeline_hash": "h"}, None, None, "published"),
     ]
 
     monkeypatch.setattr(
@@ -149,6 +149,7 @@ def test_retriever_filters_archived_documents(monkeypatch: pytest.MonkeyPatch) -
     doc_rows = [
         (
             document_id,
+            "archived.pdf",
             None,
             "completed",
             {"active_pipeline_ready": True, "pipeline_hash": "h"},
@@ -196,7 +197,7 @@ def test_retriever_filters_disabled_chunks(monkeypatch: pytest.MonkeyPatch) -> N
 
     chunks = [disabled_chunk]
     doc_rows = [
-        (document_id, None, "completed", {"active_pipeline_ready": True, "pipeline_hash": "h"}, None, None, "published"),
+        (document_id, "disabled.pdf", None, "completed", {"active_pipeline_ready": True, "pipeline_hash": "h"}, None, None, "published"),
     ]
 
     monkeypatch.setattr(
@@ -236,7 +237,7 @@ def test_retriever_filters_non_published_documents(monkeypatch: pytest.MonkeyPat
         )
     ]
     doc_rows = [
-        (document_id, None, "completed", {"active_pipeline_ready": True, "pipeline_hash": "h"}, None, None, "draft"),
+        (document_id, "draft.pdf", None, "completed", {"active_pipeline_ready": True, "pipeline_hash": "h"}, None, None, "draft"),
     ]
 
     monkeypatch.setattr(
@@ -288,8 +289,8 @@ def test_retriever_acl_escape_forged_metadata_document_id_does_not_bypass_db_acl
         ),
     ]
     doc_rows = [
-        (doc_allowed, None, "completed", {"active_pipeline_ready": True, "pipeline_hash": "h"}, None, None, "published"),
-        (doc_denied, None, "completed", {"active_pipeline_ready": True, "pipeline_hash": "h"}, None, None, "published"),
+        (doc_allowed, "allowed.pdf", None, "completed", {"active_pipeline_ready": True, "pipeline_hash": "h"}, None, None, "published"),
+        (doc_denied, "denied.pdf", None, "completed", {"active_pipeline_ready": True, "pipeline_hash": "h"}, None, None, "published"),
     ]
 
     monkeypatch.setattr(
@@ -343,7 +344,7 @@ def test_retriever_acl_escape_fails_closed_when_acl_resolution_errors(
         ),
     ]
     doc_rows = [
-        (document_id, None, "completed", {"active_pipeline_ready": True, "pipeline_hash": "h"}, None, None, "published"),
+        (document_id, "acl-error.pdf", None, "completed", {"active_pipeline_ready": True, "pipeline_hash": "h"}, None, None, "published"),
     ]
 
     monkeypatch.setattr(

@@ -4,6 +4,7 @@ import { connection } from 'next/server'
 import { NextIntlClientProvider } from 'next-intl'
 import { getLocale, getMessages } from 'next-intl/server'
 import './globals.css'
+import { ThemeAppearanceProvider } from '@/components/theme-appearance-provider'
 import { ThemeProvider } from "@/components/theme-provider"
 import { SonnerToaster } from "@/components/sonner-toaster"
 import { CommandMenu } from "@/components/command-menu"
@@ -62,6 +63,7 @@ export default async function RootLayout({
               <ServiceWorkerRegistrar />
               <WebVitalsReporter />
               <SonnerToaster />
+              <ThemeAppearanceProvider />
               <CommandMenu />
               <RouteScrollReset />
               {enableFluidCursor ? <FluidCursor /> : null}

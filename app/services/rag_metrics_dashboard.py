@@ -15,7 +15,6 @@ from __future__ import annotations
 import gzip
 import hashlib
 import json
-from app.rag.core.logging import get_logger
 import math
 import time
 from collections import defaultdict
@@ -26,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from app.core.config import settings
+from app.rag.core.logging import get_logger
 
 DEFAULT_METRICS_LOG_PATH = "./logs/rag_metrics.jsonl"
 logger = get_logger(__name__)

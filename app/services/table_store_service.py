@@ -12,7 +12,6 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import json
-from app.rag.core.logging import get_logger
 import re
 import sqlite3
 import time
@@ -24,6 +23,7 @@ from uuid import UUID
 import pandas as pd  # type: ignore
 
 from app.core.config import settings
+from app.rag.core.logging import get_logger
 from app.services.table_sql_fingerprint import fingerprint_sql
 from app.services.table_store import (
     format_table_id,

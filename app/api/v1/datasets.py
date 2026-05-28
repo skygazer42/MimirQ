@@ -6,7 +6,6 @@ import contextlib
 import gzip as gzip_lib
 import io
 import json
-from app.rag.core.logging import get_logger
 import re
 import uuid
 import zipfile
@@ -73,6 +72,7 @@ from app.parsing.backends import normalize_parser_backend
 from app.parsing.factory import ParserFactory
 from app.rag.chunking import chunker_factory
 from app.rag.core.hashing import stable_hash
+from app.rag.core.logging import get_logger
 from app.services.audit_log_service import audit_log_event
 from app.services.dataset_category_service import DatasetCategoryService, collect_descendant_ids
 from app.services.dataset_profile_scan_runner import run_dataset_profile_deep_scan

@@ -16,8 +16,8 @@ from app.api.schemas.document import DocumentDetail, ManualDocumentCreate
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.document import Document as DBDocument
-from app.services.indexer import Indexer
 from app.services.document_preview_utils import DATA_IMAGE_PREFIX, MINIO_IMAGE_REF_RE, PREVIEW_IMAGE_REF_RE
+from app.services.indexer import Indexer
 from app.types.indexing import IndexKind, IndexRecord
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {

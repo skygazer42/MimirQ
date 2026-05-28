@@ -28,6 +28,9 @@ Chat: {
     ragSettings: 'RAG 配置',
     retrievalSettings: '检索设置',
     adjustRetrievalParameters: '调整检索参数',
+    dragToMove: '拖拽移动',
+    dragRagSettingsPanel: '拖拽移动 RAG 检索设置面板',
+    dragRagSettingsPanelHint: '按住标题栏拖拽移动，双击或按 Home 重置位置，方向键微调位置',
     retrievalMode: '检索模式',
     retrievalModes: {
       auto: 'Auto (自动)',
@@ -184,7 +187,7 @@ Navbar: {
       parsing: '文档解析',
       dataGovernance: '数据治理',
       governanceProfiles: '治理配置',
-      commonLines: '样板行发现',
+      commonLines: '重复行学习',
       chunkPreview: '切块预览',
       datasets: '数据集',
       knowledgeBase: '知识库',

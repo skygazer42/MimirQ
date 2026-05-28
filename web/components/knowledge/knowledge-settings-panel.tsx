@@ -163,6 +163,20 @@ const EMBEDDING_PRESETS = [
 ] as const
 type EmbeddingPresetModel = (typeof EMBEDDING_PRESETS)[number]['model']
 const SETTINGS_GUIDE_PANEL_ID = 'knowledge-settings-guide'
+const SETTINGS_PANEL_CLASS =
+  'rounded-[18px] border border-border/60 bg-card/82 shadow-[0_12px_26px_-22px_hsl(var(--primary)/0.20)] backdrop-blur-xl dark:border-border/70 dark:bg-background/62'
+const SETTINGS_SIDE_PANEL_CLASS =
+  'rounded-[16px] border border-border/60 bg-card/80 shadow-[0_10px_20px_-18px_hsl(var(--primary)/0.18)] backdrop-blur-xl dark:border-border/70 dark:bg-background/62'
+const SETTINGS_PANEL_HEADER_CLASS = 'border-b border-border/60 px-3 py-2.5 dark:border-border/60'
+const SETTINGS_SIDE_HEADER_CLASS = 'border-b border-border/60 px-3 py-3 dark:border-border/60'
+const SETTINGS_PANEL_ICON_CLASS =
+  'relative flex size-7 items-center justify-center rounded-[12px] border border-border/60 bg-card/82 text-primary shadow-[0_12px_18px_-16px_hsl(var(--primary)/0.28)]'
+const SETTINGS_SIDE_ICON_CLASS =
+  'relative mt-0.5 flex size-6 items-center justify-center rounded-lg border border-border/60 bg-card/82 text-primary/80 shadow-[inset_0_1px_0_hsl(var(--card)/0.86),0_10px_20px_-18px_hsl(var(--primary)/0.22)] dark:border-border/70 dark:bg-background/70'
+const SETTINGS_CONTROL_CLASS =
+  'border-border/60 bg-background/74 shadow-[inset_0_1px_0_hsl(var(--card)/0.62)] hover:border-primary/25 hover:bg-card/82 dark:border-border/70 dark:bg-background/62'
+const SETTINGS_INSET_CLASS =
+  'border border-border/60 bg-background/74 shadow-[inset_0_1px_0_hsl(var(--card)/0.65)] dark:border-border/70 dark:bg-background/58'
 const EMBEDDING_MODEL_META: Record<
   EmbeddingPresetModel,
   { description: string; chips: string[] }
@@ -374,8 +388,8 @@ export function KnowledgeSettingsPanel({
   if (settingsLoading && !draftConfig)
     return (
       <div className="p-8 space-y-4 animate-pulse">
-        <div className="h-20 rounded-2xl bg-sky-50/55" />
-        <div className="h-40 rounded-2xl bg-sky-50/45" />
+        <div className="h-20 rounded-2xl bg-muted/55" />
+        <div className="h-40 rounded-2xl bg-muted/45" />
       </div>
     )
 
@@ -444,7 +458,10 @@ export function KnowledgeSettingsPanel({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#F6FAFF]/70 dark:bg-background/35">
+    <div
+      className="flex h-full min-h-0 flex-col overflow-hidden bg-transparent dark:bg-background/35"
+      aria-label={t('header.title')}
+    >
       <div className="flex-1 min-h-0 overflow-y-auto p-2 no-scrollbar xl:overflow-y-auto">
         <div
           className={cn(
@@ -458,12 +475,12 @@ export function KnowledgeSettingsPanel({
             <div className="space-y-2 xl:sticky xl:top-0 xl:self-start">
               <Panel
                 padding="none"
-                className="rounded-[16px] border border-sky-100/75 bg-white/88 shadow-[0_10px_18px_-18px_rgba(37,99,235,0.16)] backdrop-blur-xl dark:border-border/70 dark:bg-background/62"
+                className={SETTINGS_SIDE_PANEL_CLASS}
               >
-                <div className="border-b border-sky-100/75 px-3 py-3 dark:border-border/60">
+                <div className={SETTINGS_SIDE_HEADER_CLASS}>
                   <div className="flex items-start gap-2.5">
-                    <div className="relative mt-0.5 flex size-6 items-center justify-center rounded-lg border border-sky-100/80 bg-white/82 text-primary/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.86),0_10px_20px_-18px_rgba(37,99,235,0.22)] dark:border-border/70 dark:bg-background/70">
-                      <span className="pointer-events-none absolute inset-0 rounded-[inherit] bg-[linear-gradient(135deg,rgba(255,255,255,0.28),transparent_54%)] opacity-80" />
+                    <div className={SETTINGS_SIDE_ICON_CLASS}>
+                      <span className="pointer-events-none absolute inset-0 rounded-[inherit] bg-[linear-gradient(135deg,hsl(var(--primary)/0.12),transparent_54%)] opacity-80" />
                       <Database className="size-3" />
                     </div>
                     <div className="min-w-0">
@@ -490,7 +507,7 @@ export function KnowledgeSettingsPanel({
                       disabled={!onDatasetScopeChange || datasetsLoading}
                     >
                       <SelectTrigger
-                        className="h-8 rounded-[12px] border-sky-100/80 bg-white/85 pl-3 pr-2 text-[11px] shadow-none transition-colors duration-200 hover:border-sky-200/80 hover:bg-white dark:border-border/70 dark:bg-background/62 [&>span]:font-medium [&>span]:text-foreground/90 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:text-muted-foreground/65"
+                        className={cn('h-8 rounded-[12px] pl-3 pr-2 text-[11px] transition-colors duration-200 [&>span]:font-medium [&>span]:text-foreground/90 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:text-muted-foreground/65', SETTINGS_CONTROL_CLASS)}
                         aria-label="选择数据集配置作用域"
                       >
                         <SelectValue
@@ -511,13 +528,13 @@ export function KnowledgeSettingsPanel({
                       </SelectContent>
                     </Select>
                     {datasets.length === 0 && !datasetsLoading ? (
-                      <div className="rounded-[11px] border border-dashed border-sky-100/80 bg-white/52 px-2.5 py-2 text-[10px] leading-4 text-muted-foreground/70 dark:border-border/70 dark:bg-background/45">
+                      <div className="rounded-[11px] border border-dashed border-border/60 bg-background/52 px-2.5 py-2 text-[10px] leading-4 text-muted-foreground/70 dark:border-border/70 dark:bg-background/45">
                         暂无可选数据集，可先使用系统默认配置。
                       </div>
                     ) : null}
                   </div>
 
-                  <div className="rounded-[14px] border border-sky-100/80 bg-white/78 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.76)] dark:border-border/70 dark:bg-background/58">
+                  <div className={cn('rounded-[14px] p-2.5', SETTINGS_INSET_CLASS)}>
                     <div className="text-[10px] text-muted-foreground/72">
                       作用范围
                     </div>
@@ -542,7 +559,7 @@ export function KnowledgeSettingsPanel({
 
               <Panel
                 padding="none"
-                className="rounded-[16px] border border-sky-100/75 bg-white/86 shadow-[0_10px_18px_-18px_rgba(37,99,235,0.14)] backdrop-blur-xl dark:border-border/70 dark:bg-background/62"
+                className={SETTINGS_SIDE_PANEL_CLASS}
               >
               <div className="p-3">
                 <div className="flex items-center gap-2 text-[11px] font-medium text-foreground">
@@ -570,7 +587,7 @@ export function KnowledgeSettingsPanel({
                 {guideExpanded ? (
                   <div
                     id={SETTINGS_GUIDE_PANEL_ID}
-                    className="mt-2.5 space-y-2 rounded-[13px] border border-sky-100/75 bg-white/78 p-2.5 text-[9px] leading-4 text-muted-foreground/76 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] dark:border-border/70 dark:bg-background/55"
+                    className="mt-2.5 space-y-2 rounded-[13px] border border-border/60 bg-background/74 p-2.5 text-[9px] leading-4 text-muted-foreground/76 shadow-[inset_0_1px_0_hsl(var(--card)/0.65)] dark:border-border/70 dark:bg-background/55"
                   >
                     <div>
                       <span className="font-medium text-foreground/82">
@@ -597,9 +614,9 @@ export function KnowledgeSettingsPanel({
 
               <Panel
                 padding="none"
-                className="rounded-[16px] border border-sky-100/75 bg-white/86 shadow-[0_10px_18px_-18px_rgba(37,99,235,0.14)] backdrop-blur-xl dark:border-border/70 dark:bg-background/62"
+                className={SETTINGS_SIDE_PANEL_CLASS}
               >
-              <div className="border-b border-sky-100/75 px-3 py-2.5 dark:border-border/60">
+              <div className={SETTINGS_PANEL_HEADER_CLASS}>
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-[11px] font-medium text-foreground">
                     当前配置
@@ -609,7 +626,7 @@ export function KnowledgeSettingsPanel({
                     aria-expanded={currentConfigOpen}
                     aria-controls="knowledge-current-config-panel"
                     onClick={() => setCurrentConfigOpen((open) => !open)}
-                    className="inline-flex size-6 items-center justify-center rounded-full border border-sky-100/80 bg-white/85 text-foreground/72 shadow-[0_5px_12px_-10px_rgba(37,99,235,0.45)] transition-colors hover:border-primary/25 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 dark:border-border/70 dark:bg-background/62"
+                    className="inline-flex size-6 items-center justify-center rounded-full border border-border/60 bg-background/74 text-foreground/72 shadow-[0_5px_12px_-10px_hsl(var(--primary)/0.28)] transition-colors hover:border-primary/25 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 dark:border-border/70 dark:bg-background/62"
                   >
                     <ChevronDown
                       className={cn(
@@ -669,7 +686,7 @@ export function KnowledgeSettingsPanel({
                   <Button
                     type="button"
                     variant="outline"
-                    className="h-8 w-full rounded-[12px] border-sky-100/80 bg-white/85 text-[10px] font-medium hover:bg-white dark:border-border/70 dark:bg-background/62"
+                    className={cn('h-8 w-full rounded-[12px] text-[10px] font-medium', SETTINGS_CONTROL_CLASS)}
                     onClick={handleSaveDraft}
                     disabled={isSavingSettings || !draftConfig || !isDirty}
                   >
@@ -687,13 +704,13 @@ export function KnowledgeSettingsPanel({
           <div className="space-y-2.5 xl:h-full xl:max-h-full xl:min-h-0 xl:overflow-y-auto xl:pr-1 xl:no-scrollbar">
             <Panel
               padding="none"
-              className="rounded-[18px] border border-sky-100/75 bg-white/88 shadow-[0_12px_22px_-20px_rgba(37,99,235,0.16)] backdrop-blur-xl dark:border-border/70 dark:bg-background/62"
+              className={SETTINGS_PANEL_CLASS}
             >
-              <div className="border-b border-sky-100/75 px-3 py-2.5 dark:border-border/60">
+              <div className={SETTINGS_PANEL_HEADER_CLASS}>
                 <div className="flex items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
-                    <div className="relative flex size-7 items-center justify-center rounded-[12px] border border-info/20 bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.16),transparent_62%),linear-gradient(180deg,rgba(239,246,255,0.96),rgba(219,234,254,0.78))] text-info shadow-[0_12px_18px_-16px_rgba(37,99,235,0.32)]">
-                      <span className="pointer-events-none absolute inset-0 rounded-[inherit] bg-[linear-gradient(135deg,rgba(255,255,255,0.34),transparent_48%)] opacity-80" />
+                    <div className={SETTINGS_PANEL_ICON_CLASS}>
+                      <span className="pointer-events-none absolute inset-0 rounded-[inherit] bg-[linear-gradient(135deg,hsl(var(--primary)/0.12),transparent_48%)] opacity-80" />
                       <Database className="size-3" />
                     </div>
                     <div>
@@ -706,7 +723,7 @@ export function KnowledgeSettingsPanel({
                       </p>
                     </div>
                   </div>
-                  <span className="rounded-full border border-sky-100/80 bg-sky-50/75 px-2.5 py-1 text-[9px] font-medium text-sky-700 dark:border-border/70 dark:bg-background/62 dark:text-sky-200">
+                  <span className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-[9px] font-medium text-primary dark:border-border/70 dark:bg-background/62">
                     {isDatasetScoped
                       ? hasDatasetEmbeddingOverride
                         ? '数据集独立配置'
@@ -744,14 +761,14 @@ export function KnowledgeSettingsPanel({
                         className={cn(
                           'relative overflow-hidden rounded-[16px] border p-3 text-left transition-all duration-300',
                           selected
-                            ? 'border-sky-300/90 bg-[linear-gradient(180deg,rgba(239,246,255,0.98),rgba(219,234,254,0.64))] shadow-[0_18px_38px_-28px_rgba(37,99,235,0.34)] ring-1 ring-sky-200/90'
-                            : 'border-sky-100/80 bg-white/86 hover:border-sky-200/90 hover:bg-sky-50/72 hover:shadow-[0_16px_30px_-28px_rgba(37,99,235,0.24)] dark:border-border/70 dark:bg-background/58 dark:hover:bg-primary/[0.02]'
+                            ? 'border-primary/45 bg-[linear-gradient(180deg,hsl(var(--primary)/0.12),hsl(var(--card)/0.84))] shadow-[0_18px_38px_-28px_hsl(var(--primary)/0.28)] ring-1 ring-primary/20'
+                            : 'border-border/60 bg-card/78 hover:border-primary/30 hover:bg-background/82 hover:shadow-[0_16px_30px_-28px_hsl(var(--primary)/0.18)] dark:border-border/70 dark:bg-background/58 dark:hover:bg-primary/[0.02]'
                         )}
                       >
                         <div
                           className={cn(
                             'pointer-events-none absolute inset-x-0 top-0 h-px',
-                            selected ? 'bg-sky-300/80' : 'bg-primary/10'
+                            selected ? 'bg-primary/65' : 'bg-primary/10'
                           )}
                         />
                         <div className="flex items-center justify-between gap-3">
@@ -760,18 +777,18 @@ export function KnowledgeSettingsPanel({
                               className={cn(
                                 'size-4 rounded-full border',
                                 selected
-                                  ? 'border-sky-400/80 bg-white shadow-[0_0_0_4px_rgba(14,165,233,0.10)]'
-                                  : 'border-sky-100/80 bg-white/85 dark:border-border/70 dark:bg-background/62'
+                                  ? 'border-primary/65 bg-card shadow-[0_0_0_4px_hsl(var(--primary)/0.12)]'
+                                  : 'border-border/60 bg-background/74 dark:border-border/70 dark:bg-background/62'
                               )}
                             >
                               {selected ? (
-                                <span className="m-[3px] block size-2 rounded-full bg-sky-500" />
+                                <span className="m-[3px] block size-2 rounded-full bg-primary" />
                               ) : null}
                             </span>
                             <div
                               className={cn(
                                 'text-[11px] font-medium',
-                                selected ? 'text-sky-800' : 'text-foreground'
+                                selected ? 'text-primary' : 'text-foreground'
                               )}
                             >
                               {model}
@@ -783,7 +800,7 @@ export function KnowledgeSettingsPanel({
                             ) : null}
                           </div>
                           {selected ? (
-                            <div className="size-3 rounded-full bg-sky-500 shadow-[0_0_12px_rgba(14,165,233,0.45)]" />
+                            <div className="size-3 rounded-full bg-primary shadow-[0_0_12px_hsl(var(--primary)/0.35)]" />
                           ) : null}
                         </div>
 
@@ -792,7 +809,7 @@ export function KnowledgeSettingsPanel({
                         </p>
 
                         <div className="mt-2 flex items-center justify-between gap-3 text-[9px]">
-                          <span className="rounded-full border border-sky-100/80 bg-white/85 px-2 py-0.5 font-medium text-foreground/75 dark:border-border/70 dark:bg-background/62">
+                          <span className="rounded-full border border-border/60 bg-background/74 px-2 py-0.5 font-medium text-foreground/75 dark:border-border/70 dark:bg-background/62">
                             {preset.brand}
                           </span>
                           <span className="font-mono text-muted-foreground/62">
@@ -860,12 +877,12 @@ export function KnowledgeSettingsPanel({
 
             <Panel
               padding="none"
-              className="rounded-[18px] border border-sky-100/75 bg-white/88 shadow-[0_12px_22px_-20px_rgba(37,99,235,0.16)] backdrop-blur-xl dark:border-border/70 dark:bg-background/62"
+              className="rounded-[18px] border border-border/60 bg-card/82 shadow-[0_12px_26px_-22px_hsl(var(--primary)/0.20)] backdrop-blur-xl dark:border-border/70 dark:bg-background/62"
             >
-              <div className="border-b border-sky-100/75 px-3 py-2.5 dark:border-border/60">
+              <div className="border-b border-border/60 px-3 py-2.5 dark:border-border/60">
                 <div className="flex items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
-                    <div className="flex size-7 items-center justify-center rounded-[12px] border border-sky-100/80 bg-white/86 text-info shadow-[0_12px_18px_-16px_rgba(37,99,235,0.28)]">
+                    <div className="flex size-7 items-center justify-center rounded-[12px] border border-border/60 bg-card/82 text-primary shadow-[0_12px_18px_-16px_hsl(var(--primary)/0.28)]">
                       <Settings className="size-3" />
                     </div>
                     <div>
@@ -880,7 +897,7 @@ export function KnowledgeSettingsPanel({
                   <Button
                     type="button"
                     variant="outline"
-                    className="h-6.5 rounded-[10px] border-sky-100/80 bg-white/85 px-3 text-[10px] font-medium hover:bg-white dark:border-border/70 dark:bg-background/62"
+                    className="h-6.5 rounded-[10px] border-border/60 bg-background/74 px-3 text-[10px] font-medium hover:bg-card/82 dark:border-border/70 dark:bg-background/62"
                     onClick={handleResetDraft}
                     disabled={!isDirty}
                   >
@@ -890,7 +907,7 @@ export function KnowledgeSettingsPanel({
               </div>
 
               <div className="grid gap-2 p-3 xl:grid-cols-[1fr_1fr_0.95fr]">
-                <div className="rounded-[15px] border border-sky-100/80 bg-white/90 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.78)] dark:border-border/70 dark:bg-background/58">
+                <div className="rounded-[15px] border border-border/60 bg-background/74 p-3 shadow-[inset_0_1px_0_hsl(var(--card)/0.65)] dark:border-border/70 dark:bg-background/58">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <div className="text-[11px] font-medium text-foreground">
@@ -900,13 +917,13 @@ export function KnowledgeSettingsPanel({
                         返回最相关的 Top K 个结果
                       </div>
                     </div>
-                    <div className="rounded-[12px] border border-sky-200/80 bg-sky-50/75 px-2.5 py-1 font-mono text-[14px] font-semibold text-primary">
+                    <div className="rounded-[12px] border border-primary/20 bg-primary/10 px-2.5 py-1 font-mono text-[14px] font-semibold text-primary">
                       {retrievalTopK}
                     </div>
                   </div>
                   <div className="mt-3">
                     <div className="relative h-5">
-                      <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1 rounded-full bg-sky-100/75 -translate-y-1/2 dark:bg-muted-foreground/20" />
+                      <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1 rounded-full bg-muted/70 -translate-y-1/2 dark:bg-muted-foreground/20" />
                       <div
                         className="pointer-events-none absolute left-0 top-1/2 h-1 rounded-full bg-info/80 -translate-y-1/2 dark:bg-info"
                         style={{ width: `${topKTrackPercent}%` }}
@@ -929,7 +946,7 @@ export function KnowledgeSettingsPanel({
                               : null
                           )
                         }
-                        className="relative z-10 h-5 w-full cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-5 [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:mt-0 [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-sky-300 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-[0_6px_14px_-8px_rgba(37,99,235,0.55)] dark:[&::-webkit-slider-thumb]:border-border dark:[&::-webkit-slider-thumb]:bg-card [&::-moz-range-track]:h-5 [&::-moz-range-track]:bg-transparent [&::-moz-range-progress]:h-5 [&::-moz-range-progress]:bg-transparent [&::-moz-range-thumb]:size-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-sky-300 [&::-moz-range-thumb]:bg-white"
+                        className="relative z-10 h-5 w-full cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-5 [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:mt-0 [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-primary/45 [&::-webkit-slider-thumb]:bg-card [&::-webkit-slider-thumb]:shadow-[0_6px_14px_-8px_hsl(var(--primary)/0.45)] dark:[&::-webkit-slider-thumb]:border-border dark:[&::-webkit-slider-thumb]:bg-card [&::-moz-range-track]:h-5 [&::-moz-range-track]:bg-transparent [&::-moz-range-progress]:h-5 [&::-moz-range-progress]:bg-transparent [&::-moz-range-thumb]:size-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-primary/45 [&::-moz-range-thumb]:bg-card"
                       />
                     </div>
                     <div className="mt-2 flex items-center justify-between text-[9px] text-muted-foreground/62">
@@ -939,13 +956,13 @@ export function KnowledgeSettingsPanel({
                       <span>20</span>
                       <span>50</span>
                     </div>
-                    <div className="mt-2 rounded-[12px] border border-sky-100/70 bg-white/80 px-2.5 py-1.5 text-[9px] text-muted-foreground/72 dark:border-border/70 dark:bg-background/55">
+                    <div className="mt-2 rounded-[12px] border border-border/60 bg-background/74 px-2.5 py-1.5 text-[9px] text-muted-foreground/72 dark:border-border/70 dark:bg-background/55">
                       建议范围：8 ～ 20
                     </div>
                   </div>
                 </div>
 
-                <div className="rounded-[15px] border border-sky-100/80 bg-white/90 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.78)] dark:border-border/70 dark:bg-background/58">
+                <div className="rounded-[15px] border border-border/60 bg-background/74 p-3 shadow-[inset_0_1px_0_hsl(var(--card)/0.65)] dark:border-border/70 dark:bg-background/58">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <div className="text-[11px] font-medium text-foreground">
@@ -955,13 +972,13 @@ export function KnowledgeSettingsPanel({
                         过滤相似度低于阈值的结果
                       </div>
                     </div>
-                    <div className="rounded-[12px] border border-sky-200/80 bg-sky-50/75 px-2.5 py-1 font-mono text-[14px] font-semibold text-primary">
+                    <div className="rounded-[12px] border border-primary/20 bg-primary/10 px-2.5 py-1 font-mono text-[14px] font-semibold text-primary">
                       {similarityThreshold.toFixed(2)}
                     </div>
                   </div>
                   <div className="mt-3">
                     <div className="relative h-5">
-                      <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1 rounded-full bg-sky-100/75 -translate-y-1/2 dark:bg-muted-foreground/20" />
+                      <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1 rounded-full bg-muted/70 -translate-y-1/2 dark:bg-muted-foreground/20" />
                       <div
                         className="pointer-events-none absolute left-0 top-1/2 h-1 rounded-full bg-info/80 -translate-y-1/2 dark:bg-info"
                         style={{ width: `${similarityTrackPercent}%` }}
@@ -987,7 +1004,7 @@ export function KnowledgeSettingsPanel({
                               : null
                           )
                         }
-                        className="relative z-10 h-5 w-full cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-5 [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:mt-0 [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-sky-300 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-[0_6px_14px_-8px_rgba(37,99,235,0.55)] dark:[&::-webkit-slider-thumb]:border-border dark:[&::-webkit-slider-thumb]:bg-card [&::-moz-range-track]:h-5 [&::-moz-range-track]:bg-transparent [&::-moz-range-progress]:h-5 [&::-moz-range-progress]:bg-transparent [&::-moz-range-thumb]:size-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-sky-300 [&::-moz-range-thumb]:bg-white"
+                        className="relative z-10 h-5 w-full cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-5 [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:mt-0 [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-primary/45 [&::-webkit-slider-thumb]:bg-card [&::-webkit-slider-thumb]:shadow-[0_6px_14px_-8px_hsl(var(--primary)/0.45)] dark:[&::-webkit-slider-thumb]:border-border dark:[&::-webkit-slider-thumb]:bg-card [&::-moz-range-track]:h-5 [&::-moz-range-track]:bg-transparent [&::-moz-range-progress]:h-5 [&::-moz-range-progress]:bg-transparent [&::-moz-range-thumb]:size-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-primary/45 [&::-moz-range-thumb]:bg-card"
                       />
                     </div>
                     <div className="mt-2 flex items-center justify-between text-[9px] text-muted-foreground/62">
@@ -997,13 +1014,13 @@ export function KnowledgeSettingsPanel({
                       <span>0.75</span>
                       <span>1</span>
                     </div>
-                    <div className="mt-2 rounded-[12px] border border-sky-100/70 bg-white/80 px-2.5 py-1.5 text-[9px] text-muted-foreground/72 dark:border-border/70 dark:bg-background/55">
+                    <div className="mt-2 rounded-[12px] border border-border/60 bg-background/74 px-2.5 py-1.5 text-[9px] text-muted-foreground/72 dark:border-border/70 dark:bg-background/55">
                       建议范围：0.50 ～ 0.80
                     </div>
                   </div>
                 </div>
 
-                <div className="rounded-[15px] border border-sky-100/80 bg-white/90 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.78)] dark:border-border/70 dark:bg-background/58">
+                <div className="rounded-[15px] border border-border/60 bg-background/74 p-3 shadow-[inset_0_1px_0_hsl(var(--card)/0.65)] dark:border-border/70 dark:bg-background/58">
                   <div className="text-[11px] font-medium text-foreground">
                     召回策略（Retrieval Mode）
                   </div>
@@ -1015,7 +1032,7 @@ export function KnowledgeSettingsPanel({
                       value={retrievalModeView}
                       onValueChange={setRetrievalModeView}
                     >
-                      <SelectTrigger className="h-8 rounded-[12px] border-sky-100/80 bg-white/92 text-[10px] font-medium dark:border-border/70 dark:bg-background/62">
+                      <SelectTrigger className="h-8 rounded-[12px] border-border/60 bg-background/74 text-[10px] font-medium dark:border-border/70 dark:bg-background/62">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -1025,7 +1042,7 @@ export function KnowledgeSettingsPanel({
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="mt-2 rounded-[12px] border border-sky-100/70 bg-white/78 px-2.5 py-1.5 text-[9px] text-muted-foreground/72 dark:border-border/70 dark:bg-muted/30">
+                  <div className="mt-2 rounded-[12px] border border-border/60 bg-background/74 px-2.5 py-1.5 text-[9px] text-muted-foreground/72 dark:border-border/70 dark:bg-muted/30">
                     默认策略，适合大多数场景
                   </div>
                 </div>
@@ -1035,7 +1052,7 @@ export function KnowledgeSettingsPanel({
             <div className="grid gap-2 xl:grid-cols-[1.35fr_0.85fr]">
               <Panel
                 padding="none"
-                className="rounded-[18px] border border-sky-100/75 bg-white/86 shadow-[0_12px_22px_-20px_rgba(37,99,235,0.14)] backdrop-blur-xl dark:border-border/70 dark:bg-background/62"
+                className="rounded-[18px] border border-border/60 bg-card/82 shadow-[0_12px_26px_-22px_hsl(var(--primary)/0.20)] backdrop-blur-xl dark:border-border/70 dark:bg-background/62"
               >
                 <div className="p-3">
                   <div className="flex items-center gap-2">
@@ -1047,7 +1064,7 @@ export function KnowledgeSettingsPanel({
                     </div>
                   </div>
                   <div className="mt-2.5 grid gap-2 md:grid-cols-4">
-                    <div className="rounded-[14px] border border-sky-100/80 bg-white/82 px-2.5 py-2.5 dark:border-border/70 dark:bg-background/58">
+                    <div className="rounded-[14px] border border-border/60 bg-card/82 px-2.5 py-2.5 dark:border-border/70 dark:bg-background/58">
                       <div className="text-[10px] text-muted-foreground/66">
                         召回率
                       </div>
@@ -1060,7 +1077,7 @@ export function KnowledgeSettingsPanel({
                         ↑ {estimatedRecall - baselineRecall}%
                       </div>
                     </div>
-                    <div className="rounded-[14px] border border-sky-100/80 bg-white/82 px-2.5 py-2.5 dark:border-border/70 dark:bg-background/58">
+                    <div className="rounded-[14px] border border-border/60 bg-card/82 px-2.5 py-2.5 dark:border-border/70 dark:bg-background/58">
                       <div className="text-[10px] text-muted-foreground/66">
                         结果多样性
                       </div>
@@ -1071,7 +1088,7 @@ export function KnowledgeSettingsPanel({
                         平衡
                       </div>
                     </div>
-                    <div className="rounded-[14px] border border-sky-100/80 bg-white/82 px-2.5 py-2.5 dark:border-border/70 dark:bg-background/58">
+                    <div className="rounded-[14px] border border-border/60 bg-card/82 px-2.5 py-2.5 dark:border-border/70 dark:bg-background/58">
                       <div className="text-[10px] text-muted-foreground/66">
                         噪声率
                       </div>
@@ -1084,7 +1101,7 @@ export function KnowledgeSettingsPanel({
                         ↑ {noisePercent - baselineNoise}%
                       </div>
                     </div>
-                    <div className="rounded-[14px] border border-sky-100/80 bg-white/82 px-2.5 py-2.5 dark:border-border/70 dark:bg-background/58">
+                    <div className="rounded-[14px] border border-border/60 bg-card/82 px-2.5 py-2.5 dark:border-border/70 dark:bg-background/58">
                       <div className="text-[10px] text-muted-foreground/66">
                         预估延迟
                       </div>
@@ -1103,7 +1120,7 @@ export function KnowledgeSettingsPanel({
 
               <Panel
                 padding="none"
-                className="rounded-[18px] border border-sky-100/75 bg-white/86 shadow-[0_12px_22px_-20px_rgba(37,99,235,0.14)] backdrop-blur-xl dark:border-border/70 dark:bg-background/62"
+                className="rounded-[18px] border border-border/60 bg-card/82 shadow-[0_12px_26px_-22px_hsl(var(--primary)/0.20)] backdrop-blur-xl dark:border-border/70 dark:bg-background/62"
               >
                 <div className="p-3">
                   <div className="text-[12px] font-medium text-foreground">
@@ -1127,7 +1144,7 @@ export function KnowledgeSettingsPanel({
 
             <Panel
               padding="none"
-              className="rounded-[18px] border border-sky-100/75 bg-white/86 shadow-[0_12px_22px_-20px_rgba(37,99,235,0.12)] backdrop-blur-xl dark:border-border/70 dark:bg-background/62"
+              className="rounded-[18px] border border-border/60 bg-card/82 shadow-[0_12px_26px_-22px_hsl(var(--primary)/0.20)] backdrop-blur-xl dark:border-border/70 dark:bg-background/62"
             >
               <div className="grid gap-2.5 p-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
                 <div>
@@ -1153,7 +1170,7 @@ export function KnowledgeSettingsPanel({
                   <Button
                     type="button"
                     variant="outline"
-                    className="h-9 rounded-[12px] border-sky-200/80 bg-sky-50/65 px-4 text-[11px] font-medium text-sky-700 hover:border-sky-300 hover:bg-sky-100/75 hover:text-sky-900 disabled:border-sky-100/70 disabled:bg-white/70 disabled:text-muted-foreground/60 dark:border-sky-400/25 dark:bg-sky-400/10 dark:text-sky-200 dark:hover:bg-sky-400/20 dark:hover:text-sky-100 dark:disabled:border-border/70 dark:disabled:bg-background/62 dark:disabled:text-muted-foreground/55"
+                    className="h-9 rounded-[12px] border-border/60 bg-background/74 px-4 text-[11px] font-medium text-muted-foreground hover:border-primary/30 hover:bg-card/82 hover:text-primary disabled:border-border/50 disabled:bg-muted/40 disabled:text-muted-foreground/60 dark:border-border/70 dark:bg-background/62 dark:disabled:border-border/70 dark:disabled:bg-background/62 dark:disabled:text-muted-foreground/55"
                     onClick={handleSaveDraft}
                     disabled={isSavingSettings || !draftConfig || !isDirty}
                   >
@@ -1164,7 +1181,7 @@ export function KnowledgeSettingsPanel({
                   </Button>
                   <Button
                     type="button"
-                    className="h-9 rounded-[12px] px-4 text-[11px] font-medium shadow-[0_16px_24px_-18px_rgba(37,99,235,0.46)]"
+                    className="h-9 rounded-[12px] px-4 text-[11px] font-medium shadow-[0_16px_24px_-18px_hsl(var(--primary)/0.38)]"
                     onClick={() => {
                       onGoToRetrievalTest?.()
                     }}

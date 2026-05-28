@@ -3,7 +3,8 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any, cast
 
-from app.core.regex_runtime import RegexSubstitutionTimeoutError, safe_subn as safe_regex_subn
+from app.core.regex_runtime import RegexSubstitutionTimeoutError
+from app.core.regex_runtime import safe_subn as safe_regex_subn
 from app.rag.preprocessing.normalization import normalize_text
 from app.rag.preprocessing.segmentation import limit_blank_lines
 

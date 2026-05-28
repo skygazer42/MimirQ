@@ -44,12 +44,20 @@ import type {
 
 // --- Advanced Style Tokens ---
 
-const GLASS_CARD =
-  'bg-card/80 backdrop-blur-md rounded-2xl border border-border/40 shadow-[0_8px_32px_rgba(0,0,0,0.04)] overflow-hidden transition-all duration-300'
+const USAGE_PANEL_CLASS =
+  'overflow-hidden rounded-3xl border border-border/60 bg-card/82 shadow-[0_14px_40px_hsl(var(--primary)/0.06)] backdrop-blur-xl'
+const USAGE_SURFACE_CLASS =
+  'rounded-2xl border border-border/60 bg-background/70 shadow-[0_12px_30px_hsl(var(--primary)/0.05)]'
+const GLASS_CARD = `${USAGE_SURFACE_CLASS} backdrop-blur-md overflow-hidden transition-all duration-300`
 const GLOW_CARD =
-  'group relative bg-card rounded-2xl border border-slate-200/60 p-6 shadow-sm hover:shadow-[0_20px_40px_rgba(59,130,246,0.08)] hover:-translate-y-1 transition-all duration-300'
+  'group relative rounded-2xl border border-border/60 bg-card/82 p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_20px_40px_hsl(var(--primary)/0.08)]'
 const NUMBER_ACCENT =
-  'text-2xl font-black text-slate-900 font-mono bg-clip-text'
+  'text-2xl font-black text-foreground font-mono bg-clip-text'
+const USAGE_TABLE_HEAD_CLASS = 'bg-muted/38 border-b border-border/50'
+const USAGE_TABLE_HEADER_CLASS =
+  'px-8 py-4 text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]'
+const USAGE_LINK_CLASS =
+  'inline-flex items-center gap-1.5 rounded-lg border border-primary/20 bg-primary/10 px-2.5 py-1.5 text-[11px] font-semibold text-primary transition-colors hover:border-primary/30 hover:bg-primary/15'
 const WINDOW_PRESETS = [
   { value: 7, label: '7天' },
   { value: 14, label: '14天' },
@@ -117,10 +125,10 @@ function StylizedMetricCard({
   tone?: string
 }) {
   const accentMap = {
-    blue: 'bg-blue-500',
-    green: 'bg-emerald-500',
-    indigo: 'bg-indigo-500',
-    slate: 'bg-slate-300',
+    blue: 'bg-primary',
+    green: 'bg-success',
+    indigo: 'bg-accent',
+    slate: 'bg-muted-foreground/45',
   }
   return (
     <div className={GLOW_CARD}>
@@ -134,15 +142,15 @@ function StylizedMetricCard({
 
       <div className="flex items-start justify-between mb-5">
         <div className="flex items-center gap-3">
-          <div className="size-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-blue-600 group-hover:text-info-foreground group-hover:rotate-6 transition-all duration-300 shadow-sm">
+          <div className="size-10 rounded-xl bg-background/70 border border-border/60 flex items-center justify-center text-muted-foreground group-hover:bg-primary group-hover:text-primary-foreground group-hover:rotate-6 transition-all duration-300 shadow-sm">
             <Icon className="size-5" />
           </div>
-          <span className="text-[12px] font-black text-slate-400 uppercase">
+          <span className="text-[12px] font-black text-muted-foreground uppercase">
             {label}
           </span>
         </div>
-        <div className="size-6 rounded-full bg-slate-50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-          <ArrowUpRight className="size-3 text-blue-500" />
+        <div className="size-6 rounded-full bg-muted/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+          <ArrowUpRight className="size-3 text-primary" />
         </div>
       </div>
 
@@ -150,10 +158,10 @@ function StylizedMetricCard({
         <span className={NUMBER_ACCENT}>{value}</span>
         {detail && (
           <div className="mt-3 flex items-center gap-1.5">
-            <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 uppercase">
+            <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-muted text-muted-foreground uppercase">
               {detail}
             </span>
-            <TrendingUp className="size-3 text-emerald-500 opacity-50" />
+            <TrendingUp className="size-3 text-success opacity-50" />
           </div>
         )}
       </div>
@@ -171,10 +179,10 @@ function OverviewStat({
   tone?: 'blue' | 'green' | 'red' | 'slate'
 }) {
   const toneClass = {
-    blue: 'border-blue-100 bg-blue-50/70 text-blue-700',
-    green: 'border-emerald-100 bg-emerald-50/70 text-emerald-700',
-    red: 'border-rose-100 bg-rose-50/70 text-rose-700',
-    slate: 'border-slate-200/70 bg-white/75 text-slate-700',
+    blue: 'border-primary/20 bg-primary/10 text-primary',
+    green: 'border-success/20 bg-success/10 text-success',
+    red: 'border-destructive/20 bg-destructive/10 text-destructive',
+    slate: 'border-border/60 bg-card/72 text-foreground',
   }[tone]
   return (
     <div
@@ -183,7 +191,7 @@ function OverviewStat({
         toneClass
       )}
     >
-      <span className="block text-[10px] font-bold tracking-[0.12em] text-slate-400">
+      <span className="block text-[10px] font-bold tracking-[0.12em] text-muted-foreground">
         {label}
       </span>
       <span className="mt-0.5 block truncate text-[14px] font-black leading-tight">
@@ -202,10 +210,10 @@ function OverviewMeta({
 }) {
   return (
     <div className="flex min-w-0 items-center gap-2">
-      <span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+      <span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
         {label}
       </span>
-      <span className="truncate text-[12px] font-semibold text-slate-700">
+      <span className="truncate text-[12px] font-semibold text-foreground">
         {value}
       </span>
     </div>
@@ -313,20 +321,20 @@ function UsagePageContent() {
         description="管理员查看当前租户的总用量、数据集归因和租户级配额状态"
         iconImage="usage-quota"
         icon={Coins}
-        iconColor="text-blue-600"
+        iconColor="text-primary"
         size="full"
-        bodyClassName="bg-[#F8FAFC] relative"
+        bodyClassName="bg-transparent relative"
       >
         {/* Ambient background glow */}
         <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
-          <div className="absolute -left-[10%] -top-[10%] size-[40%] rounded-full bg-blue-400/5 blur-[120px]" />
-          <div className="absolute -right-[5%] top-[20%] size-[30%] rounded-full bg-indigo-400/5 blur-[100px]" />
+          <div className="absolute -left-[10%] -top-[10%] size-[40%] rounded-full bg-primary/5 blur-[120px]" />
+          <div className="absolute -right-[5%] top-[20%] size-[30%] rounded-full bg-accent/5 blur-[100px]" />
         </div>
 
         <div className="relative z-10 flex flex-col gap-6 pb-24">
           <section
             data-usage-overview="compact"
-            className="overflow-hidden rounded-3xl border border-slate-200/80 bg-white/85 shadow-[0_14px_40px_rgba(15,23,42,0.05)] backdrop-blur-xl"
+            className={USAGE_PANEL_CLASS}
           >
             {loadErrorMessage && (
               <span className="sr-only" role="status">
@@ -335,14 +343,14 @@ function UsagePageContent() {
             )}
             <div className="flex flex-col gap-4 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex min-w-[220px] items-center gap-3">
-                <div className="flex size-9 items-center justify-center rounded-2xl border border-blue-100 bg-blue-50 text-blue-600 shadow-inner">
+                <div className="flex size-9 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary shadow-inner">
                   <Coins className="size-4" />
                 </div>
                 <div className="min-w-0">
-                  <h2 className="text-[15px] font-black leading-tight text-slate-950">
+                  <h2 className="text-[15px] font-black leading-tight text-foreground">
                     租户用量与配额
                   </h2>
-                  <p className="mt-1 text-[11px] font-semibold text-slate-500">
+                  <p className="mt-1 text-[11px] font-semibold text-muted-foreground">
                     当前租户 · 数据集归因 · 租户级配额
                   </p>
                 </div>
@@ -382,7 +390,7 @@ function UsagePageContent() {
                   value={String(windowDays)}
                   onValueChange={(v) => setWindowDays(Number(v))}
                 >
-                  <SelectTrigger className="h-9 w-[96px] rounded-2xl border-slate-200 bg-white text-[12px] font-bold shadow-sm transition-all hover:bg-blue-50/70">
+                  <SelectTrigger className="h-9 w-[96px] rounded-2xl border-border/60 bg-background/70 text-[12px] font-bold shadow-sm transition-all hover:bg-primary/10">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -396,7 +404,7 @@ function UsagePageContent() {
                 <Button
                   variant="outline"
                   size="icon"
-                  className="size-9 rounded-2xl border-slate-200 bg-white shadow-sm transition-all hover:bg-blue-50 hover:text-blue-700"
+                  className="size-9 rounded-2xl border-border/60 bg-background/70 shadow-sm transition-all hover:bg-primary/10 hover:text-primary"
                   aria-label="刷新用量数据"
                   onClick={() => {
                     void summaryQuery.refetch()
@@ -407,7 +415,7 @@ function UsagePageContent() {
                 >
                   <RefreshCw
                     className={cn(
-                      'size-4 text-slate-600',
+                      'size-4 text-muted-foreground',
                       loading && 'animate-spin'
                     )}
                   />
@@ -415,7 +423,7 @@ function UsagePageContent() {
               </div>
             </div>
 
-            <div className="border-t border-slate-100 bg-slate-50/55 px-4 py-2.5">
+            <div className="border-t border-border/50 bg-muted/28 px-4 py-2.5">
               <div className="grid gap-2 md:grid-cols-3">
                 <OverviewMeta label="统计范围" value="当前租户总量" />
                 <OverviewMeta
@@ -481,42 +489,42 @@ function UsagePageContent() {
             <div
               className={cn(
                 GLASS_CARD,
-                'xl:col-span-5 flex flex-col border-blue-100/30'
+                'xl:col-span-5 flex flex-col border-primary/10'
               )}
             >
-              <div className="px-8 py-6 border-b border-slate-100/50 flex items-center justify-between from-blue-50/50 to-transparent">
+              <div className="px-8 py-6 border-b border-border/50 flex items-center justify-between bg-primary/[0.025]">
                 <div>
-                  <h3 className="text-[14px] font-black text-slate-900 uppercase flex items-center gap-2">
-                    <TrendingUp className="size-4 text-blue-500" />
+                  <h3 className="text-[14px] font-black text-foreground uppercase flex items-center gap-2">
+                    <TrendingUp className="size-4 text-primary" />
                     数据集用量排行
                   </h3>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">
+                  <p className="text-[10px] text-muted-foreground font-bold uppercase mt-1">
                     按 dataset_id 归因 · {formatWindow(summary?.window_start, summary?.window_end)}
                   </p>
                 </div>
-                <div className="size-8 rounded-lg bg-card border border-slate-100 flex items-center justify-center text-slate-200">
+                <div className="size-8 rounded-lg bg-background/70 border border-border/60 flex items-center justify-center text-muted-foreground/55">
                   <LayoutGrid className="size-4" />
                 </div>
               </div>
               <div className="overflow-auto max-h-[520px]">
                 <table className="w-full text-left">
                   <thead>
-                    <tr className="bg-slate-50/30 border-b border-slate-100/50">
-                      <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                    <tr className={USAGE_TABLE_HEAD_CLASS}>
+                      <th className={USAGE_TABLE_HEADER_CLASS}>
                         数据集
                       </th>
-                      <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-right">
+                      <th className={cn(USAGE_TABLE_HEADER_CLASS, 'text-right')}>
                         消息
                       </th>
-	                      <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-right">
+	                      <th className={cn(USAGE_TABLE_HEADER_CLASS, 'text-right')}>
 	                        消耗
 	                      </th>
-	                      <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-right">
+	                      <th className={cn(USAGE_TABLE_HEADER_CLASS, 'text-right')}>
 	                        操作
 	                      </th>
 	                    </tr>
 	                  </thead>
-	                  <tbody className="divide-y divide-slate-50/50">
+	                  <tbody className="divide-y divide-border/40">
 	                    {rows.map((r) => {
 	                      const datasetId = r.dataset_id || ''
 	                      const datasetName = datasetNameById[datasetId] || ''
@@ -524,33 +532,33 @@ function UsagePageContent() {
 	                      return (
 	                        <tr
 	                          key={datasetId || 'unbound'}
-	                          className="hover:bg-blue-50/30 transition-all duration-200 group"
+	                          className="hover:bg-primary/[0.04] transition-all duration-200 group"
 	                        >
 	                          <td className="px-8 py-5">
-	                            <p className="text-[13px] font-bold text-slate-700 truncate max-w-[200px] group-hover:text-blue-600 transition-colors">
+	                            <p className="text-[13px] font-bold text-foreground truncate max-w-[200px] group-hover:text-primary transition-colors">
 	                              {datasetName || (datasetId ? '已删除或无权限数据集' : '未绑定数据集')}
 	                            </p>
-	                            <p className="text-[9px] font-mono text-slate-300 group-hover:text-slate-400 uppercase">
+	                            <p className="text-[9px] font-mono text-muted-foreground/55 group-hover:text-muted-foreground uppercase">
 	                              {datasetId ? shortId(datasetId) : 'NO DATASET ID'}
 	                            </p>
 	                          </td>
-	                          <td className="px-8 py-5 text-[12px] font-mono text-slate-500 text-right">
+	                          <td className="px-8 py-5 text-[12px] font-mono text-muted-foreground text-right">
 	                            {formatNumber(r.assistant_messages)}
 	                          </td>
-	                          <td className="px-8 py-5 text-[12px] font-mono font-black text-slate-900 text-right">
+	                          <td className="px-8 py-5 text-[12px] font-mono font-black text-foreground text-right">
 	                            {formatNumber(r.assistant_tokens)}
 	                          </td>
 	                          <td className="px-8 py-5 text-right">
 	                            {canOpenDataset ? (
 	                              <Link
 	                                href={buildDatasetKnowledgeHref(datasetId)}
-	                                className="inline-flex items-center gap-1.5 rounded-lg border border-blue-100 bg-blue-50 px-2.5 py-1.5 text-[11px] font-semibold text-blue-700 transition-colors hover:border-blue-200 hover:bg-blue-100"
+	                                className={USAGE_LINK_CLASS}
 	                              >
 	                                查看
 	                                <ArrowUpRight className="size-3" />
 	                              </Link>
 	                            ) : (
-	                              <span className="text-[11px] font-medium text-slate-300">
+	                              <span className="text-[11px] font-medium text-muted-foreground/55">
 	                                不可跳转
 	                              </span>
 	                            )}
@@ -567,45 +575,45 @@ function UsagePageContent() {
             <div
               className={cn(
                 GLASS_CARD,
-                'xl:col-span-7 flex flex-col border-indigo-100/30'
+                'xl:col-span-7 flex flex-col border-accent/10'
               )}
             >
-              <div className="px-8 py-6 border-b border-slate-100/50 flex items-center justify-between from-indigo-50/50 to-transparent">
+              <div className="px-8 py-6 border-b border-border/50 flex items-center justify-between bg-accent/[0.025]">
                 <div>
-                  <h3 className="text-[14px] font-black text-slate-900 uppercase flex items-center gap-2">
-                    <Zap className="size-4 text-indigo-500 fill-current" />
+                  <h3 className="text-[14px] font-black text-foreground uppercase flex items-center gap-2">
+                    <Zap className="size-4 text-accent fill-current" />
                     数据集成本归因（估算）
                   </h3>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">
+                  <p className="text-[10px] text-muted-foreground font-bold uppercase mt-1">
                     聊天与检索链路聚合 · {formatWindow(cost?.window_start, cost?.window_end)}
                   </p>
                 </div>
-                <div className="size-8 rounded-lg bg-card border border-slate-100 flex items-center justify-center text-slate-200">
+                <div className="size-8 rounded-lg bg-background/70 border border-border/60 flex items-center justify-center text-muted-foreground/55">
                   <BarChart3 className="size-4" />
                 </div>
               </div>
               <div className="overflow-auto max-h-[520px]">
                 <table className="w-full text-left">
                   <thead>
-                    <tr className="bg-slate-50/30 border-b border-slate-100/50">
-                      <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                    <tr className={USAGE_TABLE_HEAD_CLASS}>
+                      <th className={USAGE_TABLE_HEADER_CLASS}>
                         分析维度
                       </th>
-                      <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-right">
+                      <th className={cn(USAGE_TABLE_HEADER_CLASS, 'text-right')}>
                         LLM TOKEN
                       </th>
-                      <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-right">
+                      <th className={cn(USAGE_TABLE_HEADER_CLASS, 'text-right')}>
                         向量 TOKEN
                       </th>
-	                      <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-right">
+	                      <th className={cn(USAGE_TABLE_HEADER_CLASS, 'text-right')}>
 	                        平均检索
 	                      </th>
-	                      <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] text-right">
+	                      <th className={cn(USAGE_TABLE_HEADER_CLASS, 'text-right')}>
 	                        操作
 	                      </th>
 	                    </tr>
 	                  </thead>
-	                  <tbody className="divide-y divide-slate-50/50">
+	                  <tbody className="divide-y divide-border/40">
 	                    {costRows.map((r) => {
 	                      const datasetId = r.dataset_id || ''
 	                      const datasetName = datasetNameById[datasetId] || ''
@@ -613,23 +621,23 @@ function UsagePageContent() {
 	                      return (
 	                        <tr
 	                          key={datasetId || 'unbound-cost'}
-	                          className="hover:bg-indigo-50/30 transition-all duration-200 group"
+	                          className="hover:bg-accent/[0.04] transition-all duration-200 group"
 	                        >
 	                          <td className="px-8 py-5">
-	                            <p className="text-[13px] font-bold text-slate-700 truncate max-w-[240px] group-hover:text-indigo-600 transition-colors">
+	                            <p className="text-[13px] font-bold text-foreground truncate max-w-[240px] group-hover:text-accent transition-colors">
 	                              {datasetName || (datasetId ? '已删除或无权限数据集' : '未绑定数据集')}
 	                            </p>
-	                            <p className="text-[9px] font-mono text-slate-300 group-hover:text-slate-400 uppercase">
+	                            <p className="text-[9px] font-mono text-muted-foreground/55 group-hover:text-muted-foreground uppercase">
 	                              {datasetId ? shortId(datasetId) : 'NO DATASET ID'}
 	                            </p>
 	                          </td>
-	                          <td className="px-8 py-5 text-[12px] font-mono font-black text-slate-800 text-right">
+	                          <td className="px-8 py-5 text-[12px] font-mono font-black text-foreground text-right">
 	                            {formatNumber(r.llm_total_tokens)}
 	                          </td>
-	                          <td className="px-8 py-5 text-[12px] font-mono text-slate-500 text-right">
+	                          <td className="px-8 py-5 text-[12px] font-mono text-muted-foreground text-right">
 	                            {formatNumber(r.embedding_query_tokens)}
 	                          </td>
-	                          <td className="px-8 py-5 text-[12px] font-mono text-slate-400 text-right">
+	                          <td className="px-8 py-5 text-[12px] font-mono text-muted-foreground text-right">
 	                            {formatSec(
 	                              r.retrieval_elapsed_sec_sum /
 	                                Math.max(1, r.assistant_messages || 0)
@@ -639,13 +647,13 @@ function UsagePageContent() {
 	                            {canOpenDataset ? (
 	                              <Link
 	                                href={buildDatasetKnowledgeHref(datasetId)}
-	                                className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-100 bg-indigo-50 px-2.5 py-1.5 text-[11px] font-semibold text-indigo-700 transition-colors hover:border-indigo-200 hover:bg-indigo-100"
+	                                className={USAGE_LINK_CLASS}
 	                              >
 	                                查看
 	                                <ArrowUpRight className="size-3" />
 	                              </Link>
 	                            ) : (
-	                              <span className="text-[11px] font-medium text-slate-300">
+	                              <span className="text-[11px] font-medium text-muted-foreground/55">
 	                                不可跳转
 	                              </span>
 	                            )}
@@ -661,7 +669,7 @@ function UsagePageContent() {
 
           {/* Bottom Custom Panel */}
           <div className="relative">
-            <div className="absolute inset-0 from-transparent via-white/5 to-white/10 rounded-3xl pointer-events-none" />
+            <div className="absolute inset-0 rounded-3xl pointer-events-none bg-[radial-gradient(circle_at_50%_0%,hsl(var(--primary)/0.05),transparent_58%)]" />
             <TenantQuotaPanel />
           </div>
         </div>

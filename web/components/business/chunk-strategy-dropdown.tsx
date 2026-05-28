@@ -39,12 +39,12 @@ const COLOR_MAP: Record<
   ChunkStrategyOption['icon'],
   { bg: string; text: string }
 > = {
-  recursive: { bg: 'bg-sky-100 dark:bg-sky-500/20', text: 'text-sky-600 dark:text-sky-300' },
-  token: { bg: 'bg-amber-100 dark:bg-amber-500/20', text: 'text-amber-600 dark:text-amber-300' },
-  sentence: { bg: 'bg-green-100 dark:bg-green-500/20', text: 'text-green-600 dark:text-green-300' },
+  recursive: { bg: 'bg-primary/10', text: 'text-primary' },
+  token: { bg: 'bg-warning/10', text: 'text-warning' },
+  sentence: { bg: 'bg-success/10', text: 'text-success' },
   separator: { bg: 'bg-muted', text: 'text-muted-foreground' },
-  hierarchical: { bg: 'bg-purple-100 dark:bg-purple-500/20', text: 'text-purple-600 dark:text-purple-300' },
-  integrated: { bg: 'bg-sky-100 dark:bg-sky-500/20', text: 'text-sky-600 dark:text-sky-300' },
+  hierarchical: { bg: 'bg-accent/10', text: 'text-accent' },
+  integrated: { bg: 'bg-primary/10', text: 'text-primary' },
 }
 
 const RECOMMENDATION_STYLES: Record<
@@ -52,24 +52,24 @@ const RECOMMENDATION_STYLES: Record<
   { chip: string; section: string }
 > = {
   mainstream: {
-    chip: 'bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-300',
-    section: 'text-sky-700 dark:text-sky-300',
+    chip: 'bg-primary/10 text-primary',
+    section: 'text-primary',
   },
   specialized: {
-    chip: 'bg-slate-100 text-slate-700 dark:bg-slate-500/20 dark:text-slate-200',
-    section: 'text-slate-700 dark:text-slate-200',
+    chip: 'bg-muted text-muted-foreground',
+    section: 'text-muted-foreground',
   },
   experimental: {
-    chip: 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300',
-    section: 'text-amber-700 dark:text-amber-300',
+    chip: 'bg-warning/10 text-warning',
+    section: 'text-warning',
   },
   optional: {
-    chip: 'bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300',
-    section: 'text-violet-700 dark:text-violet-300',
+    chip: 'bg-accent/10 text-accent',
+    section: 'text-accent',
   },
   integrated: {
-    chip: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-500/20 dark:text-cyan-300',
-    section: 'text-cyan-700 dark:text-cyan-300',
+    chip: 'bg-info/10 text-info',
+    section: 'text-info',
   },
 }
 
@@ -228,7 +228,7 @@ export function ChunkStrategyDropdown({ value, onChange, className }: Readonly<C
                         }}
                         className={cn(
                           'w-full flex items-center gap-2.5 px-3 py-2 transition-colors',
-                          isSelected ? 'bg-sky-500/10 dark:bg-sky-500/20' : 'hover:bg-muted',
+                          isSelected ? 'bg-primary/10' : 'hover:bg-muted',
                           isDisabled && 'opacity-50 cursor-not-allowed hover:bg-transparent'
                         )}
                       >
@@ -240,7 +240,7 @@ export function ChunkStrategyDropdown({ value, onChange, className }: Readonly<C
                             <span
                               className={cn(
                                 'truncate text-[11px] font-medium',
-                                isSelected ? 'text-sky-600 dark:text-sky-300' : 'text-foreground'
+                                isSelected ? 'text-primary' : 'text-foreground'
                               )}
                             >
                               {option.label}
@@ -257,7 +257,7 @@ export function ChunkStrategyDropdown({ value, onChange, className }: Readonly<C
                           <p className="truncate text-[11px] text-muted-foreground">{option.description}</p>
                         </div>
                         {isSelected ? (
-                          <Check className="size-4 flex-shrink-0 text-sky-600 dark:text-sky-300" />
+                          <Check className="size-4 flex-shrink-0 text-primary" />
                         ) : null}
                       </button>
                     )
@@ -285,7 +285,7 @@ export function ChunkStrategyDropdown({ value, onChange, className }: Readonly<C
           'w-full flex items-center gap-2.5 rounded-lg border px-2.5 py-2 transition-colors duration-150 motion-reduce:transition-none',
           'bg-card hover:bg-muted',
           isOpen
-            ? 'border-sky-300/60 ring-2 ring-sky-500/10'
+            ? 'border-primary/30 ring-2 ring-primary/10'
             : 'border-border hover:border-border'
         )}
       >
@@ -306,7 +306,7 @@ export function ChunkStrategyDropdown({ value, onChange, className }: Readonly<C
               {selectedRecommendationLabel}
             </span>
             {selectedView.badge && (
-              <span className="rounded bg-sky-100 px-1.5 py-px text-[9px] font-medium leading-4 text-sky-600 dark:bg-sky-500/20 dark:text-sky-300">
+              <span className="rounded bg-primary/10 px-1.5 py-px text-[9px] font-medium leading-4 text-primary">
                 {selectedView.badge}
               </span>
             )}

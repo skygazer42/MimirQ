@@ -227,8 +227,8 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
     {
       title: '数据治理',
       icon: ShieldCheck,
-      color: 'text-sky-600 dark:text-sky-300',
-      bgColor: 'bg-sky-500/10 dark:bg-sky-500/20',
+      color: 'text-primary',
+      bgColor: 'bg-primary/10',
       items: [
         {
           key: 'governance_enabled',
@@ -240,8 +240,8 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
     {
       title: '索引策略',
       icon: Layers,
-      color: 'text-sky-600 dark:text-sky-300',
-      bgColor: 'bg-sky-500/10 dark:bg-sky-500/20',
+      color: 'text-primary',
+      bgColor: 'bg-primary/10',
       items: [
         {
           key: 'chunk_vector_enabled',
@@ -258,8 +258,8 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
     {
       title: 'Embedding',
       icon: Sparkles,
-      color: 'text-emerald-600 dark:text-emerald-300',
-      bgColor: 'bg-emerald-500/10 dark:bg-emerald-500/20',
+      color: 'text-success',
+      bgColor: 'bg-success/10',
       items: [
         {
           key: 'embedding_context_prefix_enabled',
@@ -272,8 +272,8 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
     {
       title: '知识图谱',
       icon: Network,
-      color: 'text-purple-600 dark:text-purple-300',
-      bgColor: 'bg-purple-500/10 dark:bg-purple-500/20',
+      color: 'text-accent',
+      bgColor: 'bg-accent/10',
       items: [
         {
           key: 'kg_enabled',

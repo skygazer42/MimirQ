@@ -21,6 +21,8 @@ from sqlalchemy.orm import Session
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.governance_profile import (
+    BuiltinProcessingScriptListResponse,
+    BuiltinProcessingScriptOut,
     GovernanceProfileCreate,
     GovernanceProfileImportResponse,
     GovernanceProfileListResponse,
@@ -108,6 +110,7 @@ from app.rag.preprocessing.tables import normalize_markdown_tables
 from app.rag.preprocessing.urls import normalize_urls
 from app.services.dataset_service import DatasetService
 from app.services.document_access import get_allowed_document_id_sets
+from app.services.governance_processing_scripts import list_builtin_processing_scripts
 from app.services.governance_profiles import (
     builtin_profile_to_out,
     get_builtin_governance_profiles,
@@ -133,6 +136,7 @@ logger = get_logger(__name__)
 
 _BUILTIN_GOVERNANCE_PROFILES = get_builtin_governance_profiles()
 _BUILTIN_GOVERNANCE_BY_KEY = {p.key: p for p in _BUILTIN_GOVERNANCE_PROFILES}
+_BUILTIN_PROCESSING_SCRIPTS = list_builtin_processing_scripts()
 GOVERNANCE_PROFILE_NOT_FOUND_DETAIL = "Governance profile not found"
 REDACTED_MASK = "[REDACTED]"
 SECRET_MASK = "[SECRET]"
@@ -1500,6 +1504,41 @@ async def list_governance_profiles(
     items.extend([_profile_summary_from_row(r) for r in rows])
 
     return GovernanceProfileListResponse(total=(builtin_count + total_custom), items=items)
+
+
+@router.get(
+    "/governance-processing-scripts/builtins",
+    response_model=BuiltinProcessingScriptListResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
+async def list_builtin_processing_scripts_endpoint(
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+):
+    """
+    List built-in processing script templates exposed on the 重复行学习 page.
+
+    Notes:
+    - Templates are read-only and shipped in code.
+    - Per ``GovernanceProcessingScript`` schema, scripts are persisted with a
+      governance profile only for review/versioning; the ingestion pipeline does
+      not execute them. Templates are reference code customers can copy as a
+      starting point.
+    """
+    items = [
+        BuiltinProcessingScriptOut(
+            key=s.key,
+            name=s.name,
+            description=s.description,
+            language=s.language,
+            stage=s.stage,
+            content=s.content,
+            tags=list(s.tags),
+        )
+        for s in _BUILTIN_PROCESSING_SCRIPTS
+    ]
+    return BuiltinProcessingScriptListResponse(total=len(items), items=items)
 
 
 @router.post("/governance-profiles", response_model=GovernanceProfileOut, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)

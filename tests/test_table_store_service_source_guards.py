@@ -1,5 +1,5 @@
-from pathlib import Path
 import re
+from pathlib import Path
 
 
 def test_table_store_service_no_longer_uses_silent_pass_fallbacks() -> None:

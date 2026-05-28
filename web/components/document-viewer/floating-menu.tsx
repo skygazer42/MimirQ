@@ -3,9 +3,14 @@
 import { useEffect, useRef, useState } from "react"
 import { Sparkles, Languages, FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { useRouter } from "@/i18n/navigation"
 import { globalEventBus } from "@/lib/event-bus"
+import { useDocumentView } from "@/store/document-view"
 
 export function FloatingMenu() {
+  const router = useRouter()
+  const documentId = useDocumentView((state) => state.documentId)
+  const chunkId = useDocumentView((state) => state.highlightChunkId)
   const [visible, setVisible] = useState(false)
   const [position, setPosition] = useState({ top: 0, left: 0 })
   const [selection, setSelection] = useState("")
@@ -91,7 +96,18 @@ export function FloatingMenu() {
             break
     }
     
-    globalEventBus.emit("chat:submit", prompt)
+    const handled = globalEventBus.emit("chat:submit", prompt)
+    if (handled === 0) {
+      const currentParams = new URLSearchParams(globalThis.window.location.search)
+      const params = new URLSearchParams()
+      const conversationId = (currentParams.get("id") || currentParams.get("conversation") || "").trim()
+      if (conversationId) params.set("conversation", conversationId)
+      if (documentId) params.set("doc", documentId)
+      if (chunkId) params.set("chunk", chunkId)
+      params.set("prompt", prompt)
+      params.set("autorun", "1")
+      router.push(`/?${params.toString()}`)
+    }
     setVisible(false)
     globalThis.window.getSelection()?.removeAllRanges()
   }

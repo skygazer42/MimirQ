@@ -128,10 +128,10 @@ const FEATURE_FLAGS_CONFIG: FeatureFlagDescriptor[] = [
 function getColorClasses(color: FeatureFlagDescriptor['color']) {
   const styles = {
     primary: {
-      bg: 'bg-blue-50/35',
-      border: 'border-blue-200/75',
-      text: 'text-blue-600',
-      iconBg: 'bg-blue-100/65',
+      bg: 'bg-primary/10',
+      border: 'border-primary/25',
+      text: 'text-primary',
+      iconBg: 'bg-primary/12',
     },
     info: {
       bg: 'bg-info/10',
@@ -140,16 +140,16 @@ function getColorClasses(color: FeatureFlagDescriptor['color']) {
       iconBg: 'bg-info/10',
     },
     success: {
-      bg: 'bg-emerald-50/35',
-      border: 'border-emerald-200/75',
-      text: 'text-emerald-600',
-      iconBg: 'bg-emerald-100/65',
+      bg: 'bg-success/10',
+      border: 'border-success/25',
+      text: 'text-success',
+      iconBg: 'bg-success/12',
     },
     warning: {
-      bg: 'bg-orange-50/35',
-      border: 'border-orange-200/75',
-      text: 'text-orange-600',
-      iconBg: 'bg-orange-100/65',
+      bg: 'bg-warning/10',
+      border: 'border-warning/25',
+      text: 'text-warning',
+      iconBg: 'bg-warning/12',
     },
   }
 
@@ -177,18 +177,18 @@ export function FeatureFlagsSection({
   toggleFeature,
 }: Readonly<FeatureFlagsSectionProps>) {
   return (
-    <section className="rounded-[16px] border border-slate-200/75 bg-card p-3.5 shadow-sm">
+    <section className="rounded-[16px] border border-border/60 bg-card/82 p-3.5 shadow-sm">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="flex items-center gap-2 text-[13px] font-semibold text-slate-950">
-            <Zap className="h-3.5 w-3.5 text-orange-500" />
+          <h2 className="flex items-center gap-2 text-[13px] font-semibold text-foreground">
+            <Zap className="h-3.5 w-3.5 text-warning" />
             功能开关
           </h2>
-          <p className="mt-0.5 text-[11.5px] font-medium leading-[18px] text-slate-600">
+          <p className="mt-0.5 text-[11.5px] font-medium leading-[18px] text-muted-foreground">
             按需启用各项能力模块，保存后会影响后续请求；外部解析器仍需对应服务已启动
           </p>
         </div>
-        <div className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50/70 px-2.5 py-1 text-[11px] font-medium text-blue-600">
+        <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-[11px] font-medium text-primary">
           <AlertCircle className="h-3 w-3" />
           <span>保存后影响后续请求</span>
         </div>
@@ -210,9 +210,9 @@ export function FeatureFlagsSection({
               className={cn(
                 'group relative w-full rounded-[13px] border px-3 py-2 text-left transition-[border-color,background-color,box-shadow] duration-150 focus-ring motion-reduce:transition-none',
                 isEnabled
-                  ? `${colors.border} ${colors.bg} shadow-[inset_0_0_0_1px_rgba(255,255,255,0.55)]`
-                  : 'border-slate-200 bg-card hover:border-blue-100 hover:bg-slate-50/65',
-                isEdited && 'ring-2 ring-blue-400/70 ring-offset-1'
+                  ? `${colors.border} ${colors.bg} shadow-[inset_0_0_0_1px_hsl(var(--card)/0.55)]`
+                  : 'border-border/60 bg-card hover:border-primary/20 hover:bg-muted/30',
+                isEdited && 'ring-2 ring-primary/55 ring-offset-1'
               )}
               aria-pressed={isEnabled}
               onClick={() => toggleFeature(feature.key)}
@@ -222,7 +222,7 @@ export function FeatureFlagsSection({
                   <div
                     className={cn(
                       'mt-0.5 flex size-[23px] shrink-0 items-center justify-center rounded-[9px] transition-colors',
-                      isEnabled ? colors.iconBg : 'bg-slate-100'
+                      isEnabled ? colors.iconBg : 'bg-muted'
                     )}
                   >
                     <Icon
@@ -236,7 +236,7 @@ export function FeatureFlagsSection({
                     <h3
                       className={cn(
                         'text-[12px] font-semibold leading-[15px] transition-colors',
-                        isEnabled ? 'text-slate-950' : 'text-slate-700'
+                        isEnabled ? 'text-foreground' : 'text-foreground/78'
                       )}
                     >
                       {feature.name}
@@ -254,7 +254,7 @@ export function FeatureFlagsSection({
                         {feature.dependencies.map((dependency) => (
                           <span
                             key={dependency}
-                            className="rounded-md border border-slate-200 bg-card/75 px-1.5 py-0.5 text-[10px] font-medium leading-[14px] text-slate-600"
+                            className="rounded-md border border-border/60 bg-card/75 px-1.5 py-0.5 text-[10px] font-medium leading-[14px] text-muted-foreground"
                           >
                             需要: {dependency}
                           </span>
