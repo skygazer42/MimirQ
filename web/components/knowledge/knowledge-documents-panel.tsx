@@ -857,12 +857,12 @@ export function KnowledgeDocumentsPanel({
 
               return (
                 <div
-                  data-knowledge-empty-shelf-dock="bottom"
-                  className="flex min-h-0 flex-1 items-end px-2 pb-2 pt-1.5"
+                  data-knowledge-empty-shelf-dock="integrated-canvas"
+                  className="flex min-h-0 flex-1 px-2 pb-2 pt-1.5"
                 >
                   <div
                     data-knowledge-empty-shelf="true"
-                    className="relative w-full min-h-[272px] overflow-hidden rounded-[20px] border border-dashed border-info/18 bg-[radial-gradient(circle_at_50%_0%,rgba(59,130,246,0.12),transparent_44%)]"
+                    className="relative flex min-h-[clamp(220px,30vh,320px)] w-full flex-1 overflow-hidden rounded-[20px] border border-dashed border-info/18 bg-[radial-gradient(circle_at_50%_0%,rgba(59,130,246,0.12),transparent_44%)]"
                   >
                     <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(59,130,246,0.055)_1px,transparent_1px),linear-gradient(90deg,rgba(59,130,246,0.055)_1px,transparent_1px)] bg-[size:34px_34px]" />
                     <div className="pointer-events-none absolute -left-12 top-16 size-44 rounded-full bg-info/10 blur-3xl" />
@@ -927,7 +927,7 @@ export function KnowledgeDocumentsPanel({
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
-                    <div className="relative mx-auto flex max-w-5xl flex-col items-center px-4 py-5 text-center">
+                    <div className="relative mx-auto flex h-full max-w-5xl flex-col items-center justify-center px-4 py-8 text-center">
                       <div className="relative mb-3 flex h-[72px] w-24 items-end justify-center">
                         <div className="absolute bottom-0 h-12 w-20 rounded-[20px] border border-info/20 bg-background/80 shadow-[0_20px_44px_-34px_hsl(var(--primary)/0.7)]" />
                         <div className="absolute bottom-3.5 h-10 w-[68px] rounded-[15px] border border-info/20 bg-info/10" />
