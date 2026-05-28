@@ -1105,14 +1105,6 @@ export default function FeedbackTriagePage() {
 
                       {hasExtendedFilters ? (
                         <div className="mt-2 flex flex-wrap gap-1.5">
-                          {boardTab !== 'all' ? (
-                            <Badge
-                              variant="secondary"
-                              className="rounded-full px-3 py-1 text-[10px] font-medium"
-                            >
-                              {boardTab}
-                            </Badge>
-                          ) : null}
                           {filterType !== 'all' ? (
                             <Badge
                               variant="secondary"
