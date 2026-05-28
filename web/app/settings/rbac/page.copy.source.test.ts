@@ -35,4 +35,14 @@ describe('settings rbac page copy', () => {
     expect(src).not.toContain('min-h-[82px]')
     expect(src).not.toContain('所有成员总数')
   })
+
+  it('keeps the member role save action readable across themes', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'page.tsx'), 'utf8')
+
+    expect(src).toContain('data-rbac-save-role-action="true"')
+    expect(src).toContain('bg-foreground px-3 text-[12px] font-semibold text-background')
+    expect(src).toContain('disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100')
+    expect(src).not.toContain('bg-slate-950 px-3 text-[12px] font-semibold text-info-foreground')
+    expect(src).not.toContain('bg-primary px-3 text-[12px] font-semibold text-primary-foreground')
+  })
 })
