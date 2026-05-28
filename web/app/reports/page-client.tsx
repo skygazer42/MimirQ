@@ -82,6 +82,20 @@ const CHART_TOOLTIP_STYLE = {
 const CHART_TOOLTIP_LABEL_STYLE = { color: '#334155', fontWeight: 600 }
 const CHART_TOOLTIP_CURSOR = { fill: 'rgba(148,163,184,0.08)' }
 const DEFAULT_PIPELINE_VERSION_VALUE = '__mimirq_default_pipeline_version__'
+const REPORT_LABEL_CLASS =
+  'text-[0.6875rem] font-medium uppercase tracking-[0.11em] text-slate-500/90'
+const REPORT_VALUE_CLASS =
+  'truncate text-[0.875rem] font-semibold leading-5 tracking-[-0.01em] text-slate-900'
+const REPORT_SUBTEXT_CLASS = 'text-[0.75rem] leading-5 text-slate-500'
+const REPORT_METRIC_VALUE_CLASS =
+  'text-[1.375rem] font-semibold leading-none tracking-[-0.035em] tabular-nums text-slate-950'
+const REPORT_RISK_VALUE_CLASS =
+  'text-[1.25rem] font-semibold leading-none tracking-[-0.03em] tabular-nums'
+const REPORT_PANEL_TITLE_CLASS =
+  'text-[0.9375rem] font-semibold leading-6 tracking-[-0.015em] text-slate-950'
+const REPORT_TABLE_HEADER_CLASS =
+  'text-[0.6875rem] font-medium uppercase tracking-[0.1em] text-slate-500'
+const REPORT_TABLE_ROW_CLASS = 'text-[0.8125rem] leading-5 text-slate-700'
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
@@ -153,12 +167,10 @@ function DataPill({
         <Icon className="size-4" />
       </div>
       <div className="min-w-0">
-        <div className="text-[11px] text-slate-500">{label}</div>
-        <div className="truncate text-[13px] font-semibold text-slate-900">
-          {value}
-        </div>
+        <div className={REPORT_LABEL_CLASS}>{label}</div>
+        <div className={REPORT_VALUE_CLASS}>{value}</div>
         {sub ? (
-          <div className="mt-0.5 truncate text-[11px] text-slate-500">
+          <div className={cn('mt-0.5 truncate', REPORT_SUBTEXT_CLASS)}>
             {sub}
           </div>
         ) : null}
@@ -201,11 +213,11 @@ function AuditMetricCard({
           <Icon className="size-5" />
         </div>
       </div>
-      <div className="mt-3 text-[12px] font-medium text-slate-500">{label}</div>
-      <div className="mt-1 font-mono text-[22px] font-semibold tracking-[-0.03em] text-slate-950">
+      <div className={cn('mt-3', REPORT_LABEL_CLASS)}>{label}</div>
+      <div className={cn('mt-1', REPORT_METRIC_VALUE_CLASS)}>
         {value}
       </div>
-      <div className="mt-3 text-[11px] text-slate-500">{sub}</div>
+      <div className={cn('mt-3', REPORT_SUBTEXT_CLASS)}>{sub}</div>
     </div>
   )
 }
@@ -231,13 +243,13 @@ function MiniRiskCard({
   }[tone]
   return (
     <div className="rounded-xl border border-slate-200/80 bg-card/80 p-3">
-      <div className="text-[12px] text-slate-500">{label}</div>
+      <div className={REPORT_LABEL_CLASS}>{label}</div>
       <div
-        className={cn('mt-2 font-mono text-[20px] font-semibold', toneClass)}
+        className={cn('mt-2', REPORT_RISK_VALUE_CLASS, toneClass)}
       >
         {value}
       </div>
-      <div className="mt-2 text-[11px] text-slate-500">{sub}</div>
+      <div className={cn('mt-2', REPORT_SUBTEXT_CLASS)}>{sub}</div>
     </div>
   )
 }
@@ -249,7 +261,12 @@ function ProgressRow({
 }: Readonly<{ label: string; value: number; max: number }>) {
   const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0
   return (
-    <div className="grid grid-cols-[120px_1fr_48px] items-center gap-3 text-[12px]">
+    <div
+      className={cn(
+        'grid grid-cols-[120px_1fr_48px] items-center gap-3',
+        REPORT_TABLE_ROW_CLASS
+      )}
+    >
       <div className="truncate text-slate-600" title={label}>
         {label}
       </div>
@@ -259,7 +276,7 @@ function ProgressRow({
           style={{ width: `${pct}%` }}
         />
       </div>
-      <div className="text-right font-mono text-slate-600">
+      <div className="text-right tabular-nums text-slate-600">
         {formatPct(value, max)}
       </div>
     </div>
@@ -1368,7 +1385,7 @@ export default function ReportsCenterPage() {
 
                 <div className="grid gap-4 xl:grid-cols-[1.05fr_1.2fr_1.05fr_0.95fr]">
                   <div className="rounded-2xl border border-slate-200/80 bg-card p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
-                    <div className="mb-4 text-[15px] font-semibold text-slate-900">
+                    <div className={cn('mb-4', REPORT_PANEL_TITLE_CLASS)}>
                       边缘指标 / 风险指标
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
@@ -1401,7 +1418,7 @@ export default function ReportsCenterPage() {
 
                   <div className="rounded-2xl border border-slate-200/80 bg-card p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
                     <div className="mb-4 flex items-center justify-between gap-3">
-                      <div className="text-[15px] font-semibold text-slate-900">
+                      <div className={REPORT_PANEL_TITLE_CLASS}>
                         字段覆盖分布
                       </div>
                       <Badge
@@ -1425,7 +1442,7 @@ export default function ReportsCenterPage() {
 
                   <div className="rounded-2xl border border-slate-200/80 bg-card p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
                     <div className="mb-4 flex items-center justify-between gap-3">
-                      <div className="text-[15px] font-semibold text-slate-900">
+                      <div className={REPORT_PANEL_TITLE_CLASS}>
                         文档分布 Top
                       </div>
                       <Button
@@ -1446,7 +1463,10 @@ export default function ReportsCenterPage() {
                         {topDocumentRows.map((row) => (
                           <div
                             key={row.name}
-                            className="grid grid-cols-[1fr_52px_100px] items-center gap-3 text-[12px]"
+                            className={cn(
+                              'grid grid-cols-[1fr_52px_100px] items-center gap-3',
+                              REPORT_TABLE_ROW_CLASS
+                            )}
                           >
                             <div
                               className="truncate font-medium text-slate-700"
@@ -1454,7 +1474,7 @@ export default function ReportsCenterPage() {
                             >
                               {row.name}
                             </div>
-                            <div className="font-mono text-slate-700">
+                            <div className="tabular-nums text-slate-700">
                               {row.value}
                             </div>
                             <div className="h-2 rounded-full bg-slate-100">
@@ -1472,7 +1492,7 @@ export default function ReportsCenterPage() {
                   </div>
 
                   <div className="rounded-2xl border border-slate-200/80 bg-card p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
-                    <div className="mb-4 text-[15px] font-semibold text-slate-900">
+                    <div className={cn('mb-4', REPORT_PANEL_TITLE_CLASS)}>
                       污染观察 / 内容健康
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
@@ -1506,7 +1526,7 @@ export default function ReportsCenterPage() {
 
                 <div className="grid gap-4 xl:grid-cols-[1.2fr_0.9fr_1.4fr]">
                   <div className="rounded-2xl border border-slate-200/80 bg-card p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
-                    <div className="mb-4 text-[15px] font-semibold text-slate-900">
+                    <div className={cn('mb-4', REPORT_PANEL_TITLE_CLASS)}>
                       知识分类统计
                     </div>
                     {categoryBarData.length === 0 ? (
@@ -1546,7 +1566,7 @@ export default function ReportsCenterPage() {
                   </div>
 
                   <div className="rounded-2xl border border-slate-200/80 bg-card p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
-                    <div className="mb-4 text-[15px] font-semibold text-slate-900">
+                    <div className={cn('mb-4', REPORT_PANEL_TITLE_CLASS)}>
                       源状态版本分布 Top
                     </div>
                     {pipelineVersions.length === 0 ? (
@@ -1586,7 +1606,10 @@ export default function ReportsCenterPage() {
                           {pipelineVersions.slice(0, 5).map((version, idx) => (
                             <div
                               key={version.pipeline_hash}
-                              className="flex items-center justify-between gap-2 text-[12px]"
+                              className={cn(
+                                'flex items-center justify-between gap-2',
+                                REPORT_TABLE_ROW_CLASS
+                              )}
                             >
                               <span className="flex min-w-0 items-center gap-2">
                                 <span
@@ -1603,7 +1626,7 @@ export default function ReportsCenterPage() {
                                   {shortPipelineHash(version.pipeline_hash)}
                                 </span>
                               </span>
-                              <span className="font-mono text-slate-500">
+                              <span className="tabular-nums text-slate-500">
                                 {version.documents} (
                                 {formatPct(version.documents, versionTotal)})
                               </span>
@@ -1616,7 +1639,7 @@ export default function ReportsCenterPage() {
 
                   <div className="rounded-2xl border border-slate-200/80 bg-card p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
                     <div className="mb-4 flex items-center justify-between gap-3">
-                      <div className="text-[15px] font-semibold text-slate-900">
+                      <div className={REPORT_PANEL_TITLE_CLASS}>
                         风险命中记录
                       </div>
                       <Badge
@@ -1633,7 +1656,12 @@ export default function ReportsCenterPage() {
                       />
                     ) : (
                       <div className="overflow-hidden rounded-xl border border-slate-100">
-                        <div className="grid grid-cols-[120px_72px_120px_1fr_64px] bg-slate-50 px-3 py-2 text-[11px] font-medium text-slate-500">
+                        <div
+                          className={cn(
+                            'grid grid-cols-[120px_72px_120px_1fr_64px] bg-slate-50 px-3 py-2',
+                            REPORT_TABLE_HEADER_CLASS
+                          )}
+                        >
                           <span>来源/时间</span>
                           <span>级别</span>
                           <span>类型</span>
@@ -1643,7 +1671,10 @@ export default function ReportsCenterPage() {
                         {issueRows.map((row) => (
                           <div
                             key={row.id}
-                            className="grid grid-cols-[120px_72px_120px_1fr_64px] items-center border-t border-slate-100 px-3 py-3 text-[12px] text-slate-700"
+                            className={cn(
+                              'grid grid-cols-[120px_72px_120px_1fr_64px] items-center border-t border-slate-100 px-3 py-3',
+                              REPORT_TABLE_ROW_CLASS
+                            )}
                           >
                             <span className="truncate">{row.time}</span>
                             <span
@@ -1662,7 +1693,7 @@ export default function ReportsCenterPage() {
                             <span className="truncate" title={row.description}>
                               {row.description}
                             </span>
-                            <span className="text-right font-mono">
+                            <span className="text-right tabular-nums">
                               {row.target}
                             </span>
                           </div>
