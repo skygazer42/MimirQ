@@ -168,12 +168,29 @@ describe('KG diagnostics quality report wiring', () => {
     )
 
     expectSourceToContain(pageSrc, 'min-h-[160px]')
-    expectSourceToContain(pageSrc, 'min-h-[280px]')
+    expectSourceToContain(pageSrc, 'min-h-[220px]')
     expectSourceToContain(pageSrc, 'px-6 py-5')
     expectSourceToContain(
       pageSrc,
       'gap-4 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]'
     )
+  })
+
+  it('uses a clean empty result workbench instead of a numbered onboarding stepper', () => {
+    const pageSrc = fs.readFileSync(
+      path.resolve(__dirname, 'kg-diagnostics-page.tsx'),
+      'utf8'
+    )
+
+    expectSourceToContain(pageSrc, 'grid min-h-[220px] gap-5')
+    expectSourceToContain(pageSrc, '运行后会自动填充')
+    expectSourceToContain(pageSrc, '核心指标')
+    expectSourceToContain(pageSrc, '失败样本')
+    expectSourceToContain(pageSrc, '原始结果')
+    expectSourceNotToContain(pageSrc, '选择评测参数')
+    expectSourceNotToContain(pageSrc, '系统将自动执行评测流程')
+    expectSourceNotToContain(pageSrc, '指标趋势、分析与改进')
+    expectSourceNotToContain(pageSrc, 'steps.map')
   })
 
   it('keeps metric tiles compact and centered inside each card', () => {
