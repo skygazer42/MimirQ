@@ -36,4 +36,18 @@ describe('datasets page source', () => {
     expect(src).not.toContain('setIsLoading')
     expect(src).not.toContain('const load = useCallback')
   })
+
+  it('keeps primary dataset actions bound to theme tokens instead of the default ocean palette', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'datasets-page.tsx'), 'utf8')
+
+    expect(src).not.toContain('border-blue-300/80 bg-blue-50/50')
+    expect(src).not.toContain('ring-blue-200/70')
+    expect(src).not.toContain('border-blue-200 bg-blue-100/80')
+    expect(src).not.toContain('text-blue-600')
+    expect(src).not.toContain('bg-blue-600')
+    expect(src).not.toContain('hover:bg-blue-50')
+    expect(src).toContain('border-primary/30 bg-primary/5')
+    expect(src).toContain('text-primary')
+    expect(src).toContain('bg-primary')
+  })
 })

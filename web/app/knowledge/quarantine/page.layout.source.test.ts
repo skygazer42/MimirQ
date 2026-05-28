@@ -34,7 +34,7 @@ describe('quarantine queue page layout', () => {
     expectSourceToContain(src, 'min-h-[104px]')
     expectSourceToContain(
       src,
-      'bg-[radial-gradient(circle_at_top,rgba(37,99,235,0.10),transparent_34rem)'
+      'bg-[radial-gradient(circle_at_top,hsl(var(--primary)/0.10),transparent_34rem)'
     )
     expectSourceToContain(src, '规则命中分布 TOP5')
     expectSourceToContain(src, '快捷操作')
@@ -45,5 +45,19 @@ describe('quarantine queue page layout', () => {
     expectSourceToContain(src, 'const listSummary = useMemo(() => {')
     expectSourceToContain(src, '当前筛选条件下暂无隔离记录')
     expectSourceToContain(src, '当前没有待审隔离样本')
+  })
+
+  it('binds sync controls and decorative page color to theme tokens instead of the default ocean palette', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'page.tsx'), 'utf8')
+
+    expectSourceNotToContain(src, 'rgba(37,99,235')
+    expectSourceNotToContain(src, 'border-blue-500/55')
+    expectSourceNotToContain(src, 'text-blue-700')
+    expectSourceNotToContain(src, 'hover:bg-blue-50')
+    expectSourceNotToContain(src, 'data-[state=checked]:bg-blue-600')
+    expectSourceToContain(src, 'hsl(var(--primary)/0.10)')
+    expectSourceToContain(src, 'border-primary/35')
+    expectSourceToContain(src, 'text-primary')
+    expectSourceToContain(src, 'data-[state=checked]:bg-primary')
   })
 })
