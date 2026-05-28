@@ -22,11 +22,13 @@ describe('KnowledgePage documents panel', () => {
     expect(src).toContain('documents={scopedDocuments}')
   })
 
-  it('does not stretch the empty document inventory to full workbench height', () => {
+  it('keeps the empty document inventory docked to the bottom of the workbench', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'knowledge-page.tsx'), 'utf8')
 
     expect(src).toContain('const documentsEmptySurface =')
-    expect(src.split("documentsEmptySurface ? 'flex-none overflow-visible pb-2' : undefined")).toHaveLength(3)
-    expect(src).toContain("documentsEmptySurface ? 'flex-none' : 'flex-1'")
+    expect(src.split("documentsEmptySurface ? 'min-h-0 flex-1 overflow-hidden pb-3' : undefined")).toHaveLength(3)
+    expect(src).toContain("className=\"flex min-h-0 flex-1 flex-col\"")
+    expect(src).not.toContain("documentsEmptySurface ? 'flex-none overflow-visible pb-2' : undefined")
+    expect(src).not.toContain("documentsEmptySurface ? 'flex-none' : 'flex-1'")
   })
 })
