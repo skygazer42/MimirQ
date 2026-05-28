@@ -15,6 +15,7 @@ export default function SettingsError({
       reset={reset}
       title="设置页加载失败"
       message="无法加载系统设置，请重试或返回首页"
+      fullScreen
     />
   )
 }
