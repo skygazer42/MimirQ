@@ -154,8 +154,8 @@ function getDatasetStatusBadgeConfig(status: 'active' | 'anomaly' | 'pending' | 
     case 'testing':
       return {
         label: '测试集',
-        className: 'border-blue-500/20 bg-blue-500/10 text-blue-600',
-        dotClassName: 'bg-blue-500',
+        className: 'border-info/20 bg-info/10 text-info',
+        dotClassName: 'bg-info',
       }
   }
 }
@@ -179,8 +179,8 @@ function getDatasetStatusIconConfig(status: 'active' | 'anomaly' | 'pending' | '
       }
     case 'testing':
       return {
-        defaultClassName: 'border-blue-200/80 bg-blue-50 text-blue-600',
-        activeClassName: 'border-blue-300/90 bg-blue-100 text-blue-700',
+        defaultClassName: 'border-info/20 bg-info/10 text-info',
+        activeClassName: 'border-info/30 bg-info/15 text-info',
       }
   }
 }
@@ -204,10 +204,10 @@ function getDatasetIconTone(icon: LucideIcon) {
 
   if (icon === FolderOpen || icon === FileSearch || icon === Search) {
     return {
-      iconClassName: 'text-sky-600',
-      softIconClassName: 'text-sky-500',
-      containerClassName: 'border-sky-200/80 bg-sky-50 text-sky-600',
-      chipClassName: 'text-sky-600',
+      iconClassName: 'text-info',
+      softIconClassName: 'text-info/80',
+      containerClassName: 'border-info/20 bg-info/10 text-info',
+      chipClassName: 'text-info',
     }
   }
 
@@ -222,10 +222,10 @@ function getDatasetIconTone(icon: LucideIcon) {
 
   if (icon === ShieldCheck || icon === Users) {
     return {
-      iconClassName: 'text-blue-600',
-      softIconClassName: 'text-blue-500',
-      containerClassName: 'border-blue-200/80 bg-blue-50 text-blue-600',
-      chipClassName: 'text-blue-600',
+      iconClassName: 'text-primary',
+      softIconClassName: 'text-primary/80',
+      containerClassName: 'border-primary/20 bg-primary/10 text-primary',
+      chipClassName: 'text-primary',
     }
   }
 
@@ -750,7 +750,7 @@ export default function DatasetsPage() {
                   count={statusCounts.pending}
                   active={collectionFilter === 'pending'}
                   onClick={() => setCollectionFilter('pending')}
-                  dotClassName="bg-blue-500"
+                  dotClassName="bg-info"
                 />
                 <DatasetFilterButton
                   label="测试集"
@@ -841,7 +841,7 @@ export default function DatasetsPage() {
                             className={cn(
                               'focus-ring group w-full cursor-pointer rounded-[20px] border px-4 py-3 text-left transition-all duration-200 active:scale-[0.998]',
                               isActive
-                                ? 'border-blue-300/80 bg-blue-50/50 shadow-[0_14px_26px_-20px_rgba(37,99,235,0.22)] ring-2 ring-blue-200/70'
+                                ? 'border-primary/30 bg-primary/5 shadow-[0_14px_26px_-20px_hsl(var(--primary)/0.22)] ring-2 ring-primary/15'
                                 : 'border-border/60 bg-background/80 shadow-[0_10px_18px_-18px_rgba(15,23,42,0.1)] hover:border-slate-300/80 hover:bg-background hover:shadow-[0_16px_28px_-22px_rgba(15,23,42,0.12)]'
                             )}
                           >
@@ -875,14 +875,14 @@ export default function DatasetsPage() {
                               </div>
 
                               {isActive ? (
-                                <div className="inline-flex shrink-0 items-center gap-1 rounded-full border border-blue-200 bg-blue-100/80 p-0.5">
+                                <div className="inline-flex shrink-0 items-center gap-1 rounded-full border border-primary/20 bg-primary/10 p-0.5">
                                   <button
                                     type="button"
                                     onClick={(e) => {
                                       e.stopPropagation()
                                       setSelectedDatasetId(dataset.id)
                                     }}
-                                    className="rounded-full bg-card px-2.5 py-1 text-[11px] font-medium text-blue-600 shadow-sm transition-all duration-200 hover:bg-blue-50 hover:text-blue-700 active:scale-[0.98]"
+                                    className="rounded-full bg-card px-2.5 py-1 text-[11px] font-medium text-primary shadow-sm transition-all duration-200 hover:bg-primary/10 hover:text-primary active:scale-[0.98]"
                                   >
                                     详情
                                   </button>
@@ -892,13 +892,13 @@ export default function DatasetsPage() {
                                       e.stopPropagation()
                                       router.push(`/knowledge?tab=retrieval&dataset=${dataset.id}`)
                                     }}
-                                    className="rounded-full bg-card px-2.5 py-1 text-[11px] font-medium text-blue-600 shadow-sm transition-all duration-200 hover:bg-blue-50 hover:text-blue-700 active:scale-[0.98]"
+                                    className="rounded-full bg-card px-2.5 py-1 text-[11px] font-medium text-primary shadow-sm transition-all duration-200 hover:bg-primary/10 hover:text-primary active:scale-[0.98]"
                                   >
                                     检索
                                   </button>
                                   <Button
                                     size="sm"
-                                    className="h-8 rounded-full bg-blue-600 px-3 text-[11px] font-medium text-primary-foreground shadow-[0_10px_20px_-14px_rgba(37,99,235,0.65)] transition-transform duration-200 hover:bg-blue-700 active:scale-[0.98]"
+                                    className="h-8 rounded-full bg-primary px-3 text-[11px] font-medium text-primary-foreground shadow-[0_10px_20px_-14px_hsl(var(--primary)/0.65)] transition-transform duration-200 hover:bg-primary/90 active:scale-[0.98]"
                                     onClick={(e) => {
                                       e.stopPropagation()
                                       router.push(`/datasets/${dataset.id}/ingestion`)
@@ -966,7 +966,7 @@ export default function DatasetsPage() {
                       >
                         ‹
                       </button>
-                      <span className="inline-flex min-w-[60px] items-center justify-center rounded-[11px] bg-primary px-2.5 text-[11px] font-semibold text-primary-foreground shadow-[0_10px_18px_-16px_rgba(37,99,235,0.6)]">
+                      <span className="inline-flex min-w-[60px] items-center justify-center rounded-[11px] bg-primary px-2.5 text-[11px] font-semibold text-primary-foreground shadow-[0_10px_18px_-16px_hsl(var(--primary)/0.6)]">
                         {totalPages === 0 ? '0 / 0' : `${currentPage} / ${totalPages}`}
                       </span>
                       <button
@@ -1420,7 +1420,7 @@ function DatasetShortcutButton({
         'focus-ring group relative flex w-full items-center gap-3 overflow-hidden border transition-all duration-200 motion-reduce:transition-none active:scale-[0.99]',
         compact ? 'rounded-2xl px-3 py-2.5' : 'rounded-3xl px-5 py-4',
         emphasis
-          ? 'border-primary/20 bg-primary/[0.03] hover:border-primary/35 hover:bg-primary/[0.06] hover:shadow-[0_12px_22px_-18px_rgba(37,99,235,0.22)]'
+          ? 'border-primary/20 bg-primary/[0.03] hover:border-primary/35 hover:bg-primary/[0.06] hover:shadow-[0_12px_22px_-18px_hsl(var(--primary)/0.22)]'
           : 'border-slate-200/80 bg-slate-50/75 hover:border-primary/20 hover:bg-primary/[0.03] hover:shadow-[0_12px_22px_-18px_rgba(15,23,42,0.14)]'
       )}
       onClick={onClick}

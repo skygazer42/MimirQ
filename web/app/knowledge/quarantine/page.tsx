@@ -634,8 +634,8 @@ function SummaryStatCard({
   return (
     <div
       className={cn(
-        'relative flex h-full min-h-[104px] flex-col justify-between overflow-hidden rounded-[1.15rem] border bg-background/92 px-3.5 py-3 shadow-[0_18px_44px_-38px_rgba(15,23,42,0.2)] backdrop-blur-sm',
-        tone === 'neutral' && 'border-blue-500/12',
+        'relative flex h-full min-h-[104px] flex-col justify-between overflow-hidden rounded-[1.15rem] border bg-background/92 px-3.5 py-3 shadow-[0_18px_44px_-38px_hsl(var(--foreground)/0.20)] backdrop-blur-sm',
+        tone === 'neutral' && 'border-primary/12',
         tone === 'success' && 'border-emerald-500/12',
         tone === 'warning' && 'border-amber-500/14',
         tone === 'danger' && 'border-red-500/12',
@@ -646,7 +646,7 @@ function SummaryStatCard({
         className={cn(
           'pointer-events-none absolute inset-0 opacity-95',
           tone === 'neutral' &&
-            'bg-[radial-gradient(circle_at_top_right,rgba(37,99,235,0.12),transparent_58%)]',
+            'bg-[radial-gradient(circle_at_top_right,hsl(var(--primary)/0.12),transparent_58%)]',
           tone === 'success' &&
             'bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.14),transparent_58%)]',
           tone === 'warning' &&
@@ -670,7 +670,7 @@ function SummaryStatCard({
           className={cn(
             'flex size-9 shrink-0 items-center justify-center rounded-[0.9rem] border shadow-[0_14px_30px_-22px_currentColor]',
             tone === 'neutral' &&
-              'border-blue-500/10 bg-blue-500/10 text-blue-600',
+              'border-primary/10 bg-primary/10 text-primary',
             tone === 'success' &&
               'border-emerald-500/10 bg-emerald-500/10 text-emerald-600',
             tone === 'warning' &&
@@ -708,7 +708,7 @@ function SummaryStatCard({
               key={`${label}-${index}`}
               className={cn(
                 'w-[5px] rounded-full',
-                tone === 'neutral' && 'bg-blue-400/70',
+                tone === 'neutral' && 'bg-primary/70',
                 tone === 'success' && 'bg-emerald-400/70',
                 tone === 'warning' && 'bg-amber-400/80',
                 tone === 'danger' && 'bg-red-400/70',
@@ -823,9 +823,9 @@ function QuickActionCard({
     <button
       type="button"
       onClick={onClick}
-      className="flex min-h-[62px] items-start gap-2.5 rounded-[0.9rem] border border-border/60 bg-background/88 px-3 py-2 text-left transition-all hover:-translate-y-0.5 hover:border-blue-500/25 hover:bg-blue-50/60 hover:shadow-[0_18px_35px_-30px_rgba(37,99,235,0.5)] dark:hover:bg-blue-950/20"
+      className="flex min-h-[62px] items-start gap-2.5 rounded-[0.9rem] border border-border/60 bg-background/88 px-3 py-2 text-left transition-all hover:-translate-y-0.5 hover:border-primary/25 hover:bg-primary/10 hover:shadow-[0_18px_35px_-30px_hsl(var(--primary)/0.5)]"
     >
-      <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[0.8rem] border border-blue-500/10 bg-blue-500/10 text-blue-600">
+      <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[0.8rem] border border-primary/10 bg-primary/10 text-primary">
         <Icon className="size-3.5" />
       </span>
       <span className="min-w-0">
@@ -865,9 +865,9 @@ function StatusPill({ status }: Readonly<{ status: Document['status'] }>) {
         status === 'quarantined' &&
           'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300',
         status === 'pending' &&
-          'border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-300',
+          'border-info/20 bg-info/10 text-info',
         status === 'processing' &&
-          'border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-300',
+          'border-info/20 bg-info/10 text-info',
         status === 'cancelled' &&
           'border-border/60 bg-muted/60 text-muted-foreground'
       )}
@@ -893,15 +893,15 @@ function QuarantineEmptyState({
   return (
     <div className="flex min-h-[10.5rem] flex-col items-center justify-center px-6 py-3.5 text-center">
       <div className="relative mb-2 h-[58px] w-[92px]">
-        <div className="absolute inset-x-2 bottom-2 h-14 rounded-[1.35rem] bg-blue-200/55 blur-2xl" />
-        <div className="absolute left-4 top-4 h-8 w-14 rounded-[0.8rem] border border-blue-200 bg-blue-100 shadow-[0_14px_30px_-24px_rgba(37,99,235,0.55)]" />
-        <div className="absolute left-4 top-2.5 h-4 w-8 rounded-t-xl bg-blue-200" />
-        <div className="absolute left-7 top-6 flex size-9 items-center justify-center rounded-full border-[3px] border-blue-400/70 bg-background/80 shadow-sm">
-          <Search className="size-4 text-blue-500" />
+        <div className="absolute inset-x-2 bottom-2 h-14 rounded-[1.35rem] bg-primary/15 blur-2xl" />
+        <div className="absolute left-4 top-4 h-8 w-14 rounded-[0.8rem] border border-primary/20 bg-primary/10 shadow-[0_14px_30px_-24px_hsl(var(--primary)/0.55)]" />
+        <div className="absolute left-4 top-2.5 h-4 w-8 rounded-t-xl bg-primary/15" />
+        <div className="absolute left-7 top-6 flex size-9 items-center justify-center rounded-full border-[3px] border-primary/40 bg-background/80 shadow-sm">
+          <Search className="size-4 text-primary" />
         </div>
-        <span className="absolute left-1 top-7 size-1.5 rounded-full bg-blue-300" />
-        <span className="absolute right-6 top-2 size-2 rounded-full bg-blue-300" />
-        <span className="absolute right-2 top-10 size-1.5 rounded-full bg-blue-200" />
+        <span className="absolute left-1 top-7 size-1.5 rounded-full bg-primary/30" />
+        <span className="absolute right-6 top-2 size-2 rounded-full bg-primary/30" />
+        <span className="absolute right-2 top-10 size-1.5 rounded-full bg-primary/20" />
       </div>
 
       <div className="text-[0.98rem] font-semibold text-foreground">
@@ -927,7 +927,7 @@ function QuarantineEmptyState({
         </Button>
         <Button
           type="button"
-          className="h-8 rounded-xl bg-blue-600 px-3.5 text-[11px] font-semibold text-primary-foreground shadow-[0_16px_30px_-22px_rgba(37,99,235,0.8)] hover:bg-blue-500"
+          className="h-8 rounded-xl bg-primary px-3.5 text-[11px] font-semibold text-primary-foreground shadow-[0_16px_30px_-22px_hsl(var(--primary)/0.8)] hover:bg-primary/90"
           onClick={onRefresh}
         >
           <RefreshCw
@@ -1870,7 +1870,7 @@ export default function QuarantineQueuePage() {
         icon={ShieldAlert}
         showHeader={false}
         size="full"
-        topClassName="mx-auto w-full max-w-[1520px] bg-[radial-gradient(circle_at_top,rgba(37,99,235,0.10),transparent_34rem)] px-4 pt-3 pb-2 md:px-5 xl:px-6"
+        topClassName="mx-auto w-full max-w-[1520px] bg-[radial-gradient(circle_at_top,hsl(var(--primary)/0.10),transparent_34rem)] px-4 pt-3 pb-2 md:px-5 xl:px-6"
         top={
           <div className="space-y-2.5">
             <PageHeader
@@ -1887,7 +1887,7 @@ export default function QuarantineQueuePage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-9 gap-2 rounded-xl border-blue-500/55 bg-background px-4 text-[12px] font-medium text-blue-700 shadow-[0_16px_30px_-26px_rgba(37,99,235,0.55)] hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-950/25"
+                    className="h-9 gap-2 rounded-xl border-primary/35 bg-background px-4 text-[12px] font-medium text-primary shadow-[0_16px_30px_-26px_hsl(var(--primary)/0.55)] hover:bg-primary/10"
                     onClick={handleExitDemoMode}
                   >
                     <Play className="size-4 fill-current" />
@@ -1897,7 +1897,7 @@ export default function QuarantineQueuePage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-9 gap-2 rounded-xl border-info/25 bg-info/[0.06] px-3.5 text-[12px] font-medium text-info shadow-[0_12px_24px_-22px_rgba(37,99,235,0.5)] hover:border-info/40 hover:bg-info/[0.12] hover:text-info"
+                  className="h-9 gap-2 rounded-xl border-info/25 bg-info/[0.06] px-3.5 text-[12px] font-medium text-info shadow-[0_12px_24px_-22px_hsl(var(--info)/0.5)] hover:border-info/40 hover:bg-info/[0.12] hover:text-info"
                   onClick={() => {
                     if (demoMode) {
                       toast.success('Demo 数据已刷新')
@@ -1924,7 +1924,7 @@ export default function QuarantineQueuePage() {
                   <Switch
                     checked={autoRefresh}
                     onCheckedChange={setAutoRefresh}
-                    className="data-[state=checked]:bg-blue-600"
+                    className="data-[state=checked]:bg-primary"
                   />
                 </div>
               </div>
@@ -2254,7 +2254,7 @@ export default function QuarantineQueuePage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="h-9 rounded-xl border-info/25 bg-info/[0.06] px-3.5 text-[11px] font-medium text-info shadow-[0_12px_24px_-22px_rgba(37,99,235,0.5)] hover:border-info/40 hover:bg-info/[0.12] hover:text-info"
+                    className="h-9 rounded-xl border-info/25 bg-info/[0.06] px-3.5 text-[11px] font-medium text-info shadow-[0_12px_24px_-22px_hsl(var(--info)/0.5)] hover:border-info/40 hover:bg-info/[0.12] hover:text-info"
                     onClick={() => void refreshQueue({ notify: true })}
                   >
                     <RefreshCw
@@ -2347,7 +2347,7 @@ export default function QuarantineQueuePage() {
                                 setReviewDrawerOpen(true)
                               }}
                             >
-                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[0.85rem] border border-blue-500/10 bg-blue-500/8 text-blue-600">
+                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[0.85rem] border border-primary/10 bg-primary/8 text-primary">
                                 <FileKindGlyph
                                   kind={getDocumentKind(doc.filename)}
                                   className="h-4 w-4"
@@ -2548,7 +2548,13 @@ export default function QuarantineQueuePage() {
             <DonutSummaryCard
               title="规则命中分布 TOP5"
               items={reasonTopItems}
-              colors={['#60a5fa', '#8b5cf6', '#6ee7b7', '#f59e0b', '#94a3b8']}
+              colors={[
+                'hsl(var(--primary))',
+                'hsl(var(--info))',
+                'hsl(var(--success))',
+                'hsl(var(--warning))',
+                'hsl(var(--muted-foreground))',
+              ]}
             />
             <DonutSummaryCard
               title="疑似度分布"
@@ -2558,7 +2564,12 @@ export default function QuarantineQueuePage() {
             <DonutSummaryCard
               title="来源分布"
               items={sourceItems}
-              colors={['#60a5fa', '#6ee7b7', '#f59e0b', '#c4b5fd']}
+              colors={[
+                'hsl(var(--primary))',
+                'hsl(var(--success))',
+                'hsl(var(--warning))',
+                'hsl(var(--info))',
+              ]}
             />
 
             <div className="flex h-full flex-col rounded-[1.2rem] border border-border/60 bg-background/92 p-4 shadow-[0_20px_48px_-40px_rgba(15,23,42,0.2)] backdrop-blur-sm">
