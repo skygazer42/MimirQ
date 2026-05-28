@@ -88,4 +88,26 @@ describe('data governance panel source', () => {
       "chunkStatus?: 'draft' | 'ready' | 'submitted'"
     )
   })
+
+  it('presents the empty governance workbench as a designed holographic intake surface', () => {
+    const src = fs.readFileSync(
+      path.resolve(__dirname, 'data-governance-panel.tsx'),
+      'utf8'
+    )
+    const zhSrc = fs.readFileSync(
+      path.resolve(__dirname, '../i18n/messages/zh-CN/governance.ts'),
+      'utf8'
+    )
+
+    expectSourceToContain(src, 'data-governance-empty-hologram="true"')
+    expectSourceToContain(src, 'const EMPTY_UPLOAD_FORMATS =')
+    expectSourceToContain(src, 'const EMPTY_UPLOAD_STEPS =')
+    expectSourceToContain(src, 'EmptyStructurePreview')
+    expectSourceToContain(src, "t('emptyUpload.structureEmptyTitle')")
+    expectSourceToContain(src, "t('emptyUpload.structureEmptyDescription')")
+    expectSourceToContain(src, "t('emptyUpload.dropCta')")
+    expectSourceNotToContain(src, 'w-full max-w-3xl overflow-hidden rounded-3xl border border-dashed p-16 text-center')
+    expectSourceToContain(zhSrc, "structureEmptyTitle: '等待生成目录'")
+    expectSourceToContain(zhSrc, "dropCta: '拖入文件或点击选择，系统会自动解析目录、章节和清洗线索。'")
+  })
 })
