@@ -18,7 +18,7 @@ const SETTINGS_SWITCH_TONE =
   'bg-muted/70 ring-1 ring-border/70 data-[switch-state=checked]:border-primary/45 data-[switch-state=checked]:bg-primary/15 data-[switch-state=checked]:shadow-[0_8px_18px_hsl(var(--primary)/0.14)] data-[switch-state=unchecked]:border-border data-[switch-state=unchecked]:bg-muted/65 data-[switch-state=unchecked]:shadow-inner hover:data-[switch-state=checked]:border-primary/60 hover:data-[switch-state=unchecked]:border-muted-foreground/35'
 
 const SETTINGS_SWITCH_THUMB =
-  '[&>span]:relative [&>span]:z-10 [&>span]:h-[1.375rem] [&>span]:w-9 [&>span]:rounded-full [&>span]:border [&>span]:transition-transform data-[switch-state=checked]:[&>span]:border-primary data-[switch-state=checked]:[&>span]:bg-gradient-to-r data-[switch-state=checked]:[&>span]:from-primary data-[switch-state=checked]:[&>span]:to-accent data-[switch-state=checked]:[&>span]:shadow-[0_6px_14px_hsl(var(--primary)/0.28)] data-[switch-state=unchecked]:[&>span]:border-background data-[switch-state=unchecked]:[&>span]:bg-background data-[switch-state=unchecked]:[&>span]:shadow-[0_4px_10px_hsl(var(--foreground)/0.12)]'
+  '[&>span]:relative [&>span]:z-10 [&>span]:h-[1.375rem] [&>span]:w-9 [&>span]:rounded-full [&>span]:border [&>span]:transition-transform data-[switch-state=checked]:[&>span]:border-primary data-[switch-state=checked]:[&>span]:bg-primary data-[switch-state=checked]:[&>span]:shadow-[0_6px_14px_hsl(var(--primary)/0.24)] data-[switch-state=unchecked]:[&>span]:border-background data-[switch-state=unchecked]:[&>span]:bg-background data-[switch-state=unchecked]:[&>span]:shadow-[0_4px_10px_hsl(var(--foreground)/0.12)]'
 
 export function SettingsSwitchIndicator({
   checked,
