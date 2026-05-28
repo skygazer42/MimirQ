@@ -632,7 +632,9 @@ function SettingsRbacPageContent() {
                                 <div className="flex justify-end gap-2">
                                   <Button
                                     size="sm"
-                                    className="h-8 rounded-lg bg-slate-950 px-3 text-[12px] font-semibold text-info-foreground hover:bg-slate-800"
+                                    data-rbac-save-role-action="true"
+                                    aria-label={`保存 ${display.primary} 的角色`}
+                                    className="h-8 rounded-lg bg-foreground px-3 text-[12px] font-semibold text-background shadow-sm hover:bg-foreground/90 disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100"
                                     disabled={!uid || saving || removing}
                                     onClick={() => saveRole(uid)}
                                   >
