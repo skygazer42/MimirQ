@@ -761,8 +761,8 @@ export default function KnowledgeIngestionOperationPage() {
   }
 
   return (
-    <div className="min-h-full overflow-y-auto bg-[radial-gradient(circle_at_14%_0%,hsl(var(--primary)/0.08),transparent_32%),radial-gradient(circle_at_86%_10%,hsl(var(--accent)/0.06),transparent_30%),linear-gradient(180deg,hsl(var(--background))_0%,hsl(var(--surface-2)/0.60)_46%,hsl(var(--background))_100%)] px-4 py-2.5 text-foreground lg:px-5">
-      <div className="mx-auto flex max-w-[1680px] flex-col gap-2">
+    <div className="flex min-h-full overflow-y-auto bg-[radial-gradient(circle_at_14%_0%,hsl(var(--primary)/0.08),transparent_32%),radial-gradient(circle_at_86%_10%,hsl(var(--accent)/0.06),transparent_30%),linear-gradient(180deg,hsl(var(--background))_0%,hsl(var(--surface-2)/0.60)_46%,hsl(var(--background))_100%)] px-4 py-2.5 text-foreground lg:px-5">
+      <div className="mx-auto flex min-h-[calc(100dvh-1.25rem)] w-full max-w-[1680px] flex-col gap-2">
         <PageHeader
           title="入库中心"
           description="选择目标数据集、接入来源和入库策略，提交后在同一工作台跟踪进度并同步知识库。"
@@ -834,8 +834,8 @@ export default function KnowledgeIngestionOperationPage() {
           <StatusRail items={statusRailItems} />
         </section>
 
-        <div className="space-y-2">
-          <main className="space-y-2">
+        <div className="flex min-h-0 flex-1 flex-col">
+          <main className="flex min-h-0 flex-1 flex-col gap-2">
             <section className={cn(SOFT_PANEL_CLASS, 'p-2.5')}>
               <SectionTitle title="入库任务创建" />
               <DatasetSummaryCard
@@ -1431,7 +1431,7 @@ function TaskListCard({
   }, [statusFilter])
 
   return (
-    <section className={cn(SOFT_PANEL_CLASS, 'p-2.5')}>
+    <section data-ingestion-task-list-card="true" className={cn(SOFT_PANEL_CLASS, 'flex min-h-[260px] flex-1 flex-col p-2.5')}>
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <SectionTitle title="入库进度与任务列表" />
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
@@ -1458,7 +1458,7 @@ function TaskListCard({
           </Button>
         </div>
       </div>
-      <div className={TABLE_SHELL_CLASS}>
+      <div className={cn(TABLE_SHELL_CLASS, 'min-h-0 flex-1 overflow-auto')}>
         <table className="w-full text-left text-xs">
           <thead className={TABLE_HEAD_CLASS}>
             <tr>
@@ -1504,7 +1504,7 @@ function TaskListCard({
               ))
             ) : (
               <tr>
-                <td colSpan={8} className="px-3 py-5 text-center text-muted-foreground">
+                <td colSpan={8} className="px-3 py-10 text-center text-muted-foreground">
                   暂无任务记录
                 </td>
               </tr>
@@ -1512,7 +1512,7 @@ function TaskListCard({
           </tbody>
         </table>
       </div>
-      <div className="mt-2 flex flex-wrap items-center justify-end gap-2 border-t border-border/50 pt-2">
+      <div className="mt-auto flex flex-wrap items-center justify-end gap-2 border-t border-border/50 pt-2">
         <div className="items-center inline-flex gap-1 rounded-[0.95rem] border border-border/60 bg-card/72 px-1.5 py-1 text-xs text-muted-foreground shadow-sm">
           <span className="px-1 text-muted-foreground">共 {filteredTasks.length} 条</span>
           <Button
