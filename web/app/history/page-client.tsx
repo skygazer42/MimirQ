@@ -782,44 +782,35 @@ function HistorySidebarEmptyState({
   return (
     <div
       data-history-empty-archive="true"
+      data-history-empty-inline="true"
       aria-live="polite"
-      className="mx-2 mt-3 overflow-hidden rounded-[28px] border border-sky-200/70 bg-[radial-gradient(circle_at_50%_0%,rgba(14,165,233,0.16),transparent_55%)] p-[1px] shadow-[0_18px_48px_rgba(37,99,235,0.10)]"
+      className="mx-2 mt-8 px-4 text-center"
     >
-      <div className="relative rounded-[27px] bg-background/88 px-5 py-6 text-center ring-1 ring-white/70">
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-x-6 top-4 h-16 rounded-full bg-sky-300/10 blur-2xl"
-        />
-        <div className="relative mx-auto mb-4 grid size-16 place-items-center rounded-[24px] border border-sky-200/80 bg-[linear-gradient(145deg,rgba(255,255,255,0.95),rgba(224,244,255,0.82))] text-primary shadow-[0_14px_30px_rgba(14,165,233,0.16)]">
-          <History className="size-7" />
-          <span className="absolute -right-1.5 top-2 size-2.5 rounded-full bg-sky-300 shadow-[0_0_0_4px_rgba(14,165,233,0.12)]" />
-          <span className="absolute -left-2 bottom-4 size-1.5 rounded-full bg-blue-200" />
-        </div>
-
-        <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-sky-500/80">
-          {t('historyEmptyKicker')}
-        </p>
-        <h3 className="mt-2 text-[15px] font-semibold tracking-[-0.03em] text-foreground">
-          {t('noConversationRecords')}
-        </h3>
-        <p className="mx-auto mt-2 max-w-[14rem] text-[12px] leading-5 text-muted-foreground/78">
-          {t('historyEmptyDescription')}
-        </p>
-
-        <Button
-          asChild
-          size="sm"
-          className="mt-5 h-9 rounded-full bg-info px-4 text-[12px] font-semibold text-white shadow-[0_12px_24px_hsl(var(--info)/0.24)] hover:bg-info/90"
-        >
-          <Link href="/">
-            <Plus className="size-3.5" />
-            {t('startNewConversation')}
-          </Link>
-        </Button>
-        <p className="mt-3 text-[11px] leading-5 text-muted-foreground/60">
-          {t('startConversationHint')}
-        </p>
+      <div className="relative mx-auto mb-4 grid size-14 place-items-center rounded-[22px] bg-sky-50/75 text-primary">
+        <History className="size-6" />
+        <span className="absolute -right-1 top-2 size-2 rounded-full bg-sky-300" />
+        <span className="absolute -left-1.5 bottom-4 size-1.5 rounded-full bg-blue-200" />
       </div>
+      <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-sky-500/75">
+        {t('historyEmptyKicker')}
+      </p>
+      <h3 className="mt-2 text-[15px] font-semibold tracking-[-0.03em] text-foreground">
+        {t('noConversationRecords')}
+      </h3>
+      <p className="mx-auto mt-2 max-w-[14rem] text-[12px] leading-5 text-muted-foreground/75">
+        {t('historyEmptyDescription')}
+      </p>
+
+      <Button
+        asChild
+        size="sm"
+        className="mt-5 h-9 rounded-full bg-info px-4 text-[12px] font-semibold text-white shadow-[0_10px_20px_hsl(var(--info)/0.20)] hover:bg-info/90"
+      >
+        <Link href="/">
+          <Plus className="size-3.5" />
+          {t('startNewConversation')}
+        </Link>
+      </Button>
     </div>
   )
 }
