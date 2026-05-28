@@ -425,7 +425,22 @@ DataGovernancePanel: {
       idleTitle: '拖拽文档至全息工作台',
       uploadingDescription: 'AI 正在分析文档结构并提取内容，请稍候...',
       idleDescription: '支持 PDF, Word, Excel, TXT, MD, ZIP 等格式。即刻开启智能治理流程。',
+      dropCta: '拖入文件或点击选择，系统会自动解析目录、章节和清洗线索。',
+      scanRingLabel: 'Governance Intake',
       structureTitle: '文档结构',
+      structureEmptyTitle: '等待生成目录',
+      structureEmptyDescription: '上传后会在这里生成根目录、章节树、清洗线索和待切块候选，不再只显示空的根目录计数。',
+      structureNodes: {
+        root: '根目录',
+        sections: '章节索引',
+        signals: '治理线索',
+      },
+      intakeChecksTitle: '预检能力',
+      intakeChecks: {
+        structure: '提取目录与文档层级',
+        quality: '扫描乱码、重复、低密度内容',
+        cleaning: '生成清洗、标注与分类入口',
+      },
       selectLocalFiles: '选择本地文件',
       cancelParsing: '取消解析',
       stages: {

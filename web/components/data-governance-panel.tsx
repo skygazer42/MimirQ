@@ -145,6 +145,95 @@ type GovernanceParsingDocument = Awaited<
 >['items'][number]
 
 const ALL_DATASETS_VALUE = '__all_datasets__'
+const EMPTY_UPLOAD_FORMATS = ['PDF', 'Word', 'Excel', 'TXT', 'MD', 'ZIP'] as const
+const EMPTY_UPLOAD_STEPS = ['parse', 'quality', 'clean'] as const
+
+type DataGovernanceTranslator = ReturnType<typeof useTranslations>
+
+function EmptyStructurePreview({
+  t,
+}: Readonly<{ t: DataGovernanceTranslator }>) {
+  const previewNodes = [
+    {
+      label: t('emptyUpload.structureNodes.root'),
+      value: '0',
+      tone: 'primary',
+    },
+    {
+      label: t('emptyUpload.structureNodes.sections'),
+      value: '—',
+      tone: 'info',
+    },
+    {
+      label: t('emptyUpload.structureNodes.signals'),
+      value: '—',
+      tone: 'success',
+    },
+  ] as const
+
+  return (
+    <div className="relative overflow-hidden rounded-[1.35rem] border border-border/70 bg-background/82 p-4 shadow-[0_20px_46px_-38px_hsl(var(--foreground)/0.5)] backdrop-blur-xl">
+      <div
+        aria-hidden
+        className="absolute inset-0 bg-[radial-gradient(circle_at_20%_8%,hsl(var(--primary)/0.12),transparent_34%),radial-gradient(circle_at_85%_18%,hsl(var(--info)/0.10),transparent_30%)]"
+      />
+      <div className="relative">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-primary/75">
+              {t('emptyUpload.structureTitle')}
+            </div>
+            <div className="mt-1 text-sm font-semibold tracking-[-0.01em] text-foreground">
+              {t('emptyUpload.structureEmptyTitle')}
+            </div>
+          </div>
+          <div className="grid size-10 place-items-center rounded-2xl border border-primary/15 bg-primary/10 text-primary">
+            <FolderTree className="size-4" />
+          </div>
+        </div>
+
+        <p className="mt-2 text-xs leading-5 text-muted-foreground">
+          {t('emptyUpload.structureEmptyDescription')}
+        </p>
+
+        <div className="mt-4 space-y-2.5">
+          {previewNodes.map((node, index) => (
+            <div
+              key={node.label}
+              className="relative flex items-center gap-3 rounded-2xl border border-border/55 bg-card/72 px-3 py-2.5"
+            >
+              <span
+                aria-hidden
+                className={cn(
+                  'grid size-7 place-items-center rounded-xl border text-[10px] font-semibold tabular-nums',
+                  node.tone === 'primary' &&
+                    'border-primary/18 bg-primary/10 text-primary',
+                  node.tone === 'info' && 'border-info/18 bg-info/10 text-info',
+                  node.tone === 'success' &&
+                    'border-success/18 bg-success/10 text-success'
+                )}
+              >
+                {node.value}
+              </span>
+              <span className="min-w-0 flex-1 text-xs font-medium text-foreground/86">
+                {node.label}
+              </span>
+              <span
+                aria-hidden
+                className={cn(
+                  'h-1.5 rounded-full',
+                  index === 0 && 'w-14 bg-primary/28',
+                  index === 1 && 'w-10 bg-info/22',
+                  index === 2 && 'w-8 bg-success/22'
+                )}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
 
 function normalizeBackendCandidate(value: unknown): string {
   return typeof value === 'string' && value.trim() ? value.trim() : ''
@@ -1296,108 +1385,204 @@ export function DataGovernancePanel() {
         pipelineRail={<PipelineRail />}
         mainPanel={
           <div className="flex-1 flex flex-col min-h-0">
-            <div className="flex-1 flex items-center justify-center p-6 relative">
+            <div className="relative flex flex-1 items-center justify-center overflow-hidden p-4 md:p-6">
               <div
+                aria-hidden
+                className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_16%_12%,hsl(var(--primary)/0.14),transparent_30%),radial-gradient(circle_at_82%_18%,hsl(var(--teal)/0.12),transparent_28%),linear-gradient(135deg,hsl(var(--background)),hsl(var(--surface-2)/0.62))]"
+              />
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-x-8 top-8 h-px bg-[linear-gradient(90deg,transparent,hsl(var(--primary)/0.32),transparent)]"
+              />
+              <div
+                data-governance-empty-hologram="true"
                 className={cn(
-                  'group relative w-full max-w-3xl overflow-hidden rounded-3xl border border-dashed p-16 text-center transition-colors duration-200 motion-reduce:transition-none',
+                  'group relative w-full max-w-6xl overflow-hidden rounded-[2rem] border p-4 transition-all duration-200 motion-reduce:transition-none md:p-5 xl:p-6',
                   isDragging
-                    ? 'border-primary/50 bg-primary/10'
-                    : 'border-border/60 bg-card hover:border-primary/25 hover:bg-card/[0.07] hover:shadow-md'
+                    ? 'border-primary/55 bg-primary/10 shadow-[0_34px_90px_-58px_hsl(var(--primary)/0.9)]'
+                    : 'border-border/70 bg-card/88 shadow-[0_28px_80px_-64px_hsl(var(--foreground)/0.55)] hover:border-primary/25'
                 )}
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
               >
-                {/* Holographic Grid Background */}
-                <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-[0.03] pointer-events-none" />
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute inset-0 bg-[url('/grid.svg')] opacity-[0.045]"
+                />
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute -left-24 top-16 h-64 w-64 rounded-full bg-primary/12 blur-3xl"
+                />
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute -right-24 -top-16 h-72 w-72 rounded-full bg-teal/12 blur-3xl"
+                />
 
-                <div className="relative z-10 flex flex-col items-center">
-                  <button
-                    type="button"
-                    className="flex flex-col items-center rounded-2xl bg-transparent text-center"
-                    onClick={() =>
-                      globalThis.document.getElementById('file-upload')?.click()
-                    }
-                    disabled={uploading}
-                    aria-label={t('emptyUpload.openUploadDialog')}
-                  >
-                    <div className="mb-8 flex size-24 items-center justify-center rounded-full border border-primary/20 bg-primary/10 shadow-sm">
-                      {uploading ? (
-                        <Sparkles className="w-10 h-10 text-primary animate-spin motion-reduce:animate-none" />
-                      ) : (
-                        <Upload className="w-10 h-10 text-primary" />
+                <div className="relative z-10 grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]">
+                  <div className="relative overflow-hidden rounded-[1.6rem] border border-dashed border-primary/24 bg-background/76 p-5 md:p-7">
+                    <div
+                      aria-hidden
+                      className={cn(
+                        'absolute inset-4 rounded-[1.3rem] border border-primary/10 opacity-70',
+                        isDragging && 'border-primary/35 bg-primary/5'
+                      )}
+                    />
+                    <div
+                      aria-hidden
+                      className="absolute left-1/2 top-10 h-40 w-40 -translate-x-1/2 rounded-full border border-primary/12 bg-[conic-gradient(from_140deg,hsl(var(--primary)/0.08),hsl(var(--teal)/0.18),hsl(var(--primary)/0.08))] blur-[0.2px]"
+                    />
+
+                    <button
+                      type="button"
+                      className="relative z-10 flex w-full flex-col items-center rounded-[1.25rem] bg-transparent text-center focus-ring"
+                      onClick={() =>
+                        globalThis.document
+                          .getElementById('file-upload')
+                          ?.click()
+                      }
+                      disabled={uploading}
+                      aria-label={t('emptyUpload.openUploadDialog')}
+                    >
+                      <div className="relative mb-5 mt-2 grid size-28 place-items-center">
+                        <span
+                          aria-hidden
+                          className="absolute inset-0 rounded-full border border-primary/18 bg-primary/8 shadow-[inset_0_0_32px_hsl(var(--primary)/0.08)]"
+                        />
+                        <span
+                          aria-hidden
+                          className={cn(
+                            'absolute inset-3 rounded-full border border-dashed border-teal/25',
+                            uploading && 'animate-spin motion-reduce:animate-none'
+                          )}
+                        />
+                        <span className="relative grid size-16 place-items-center rounded-3xl border border-primary/18 bg-card/90 text-primary shadow-[0_18px_42px_-28px_hsl(var(--primary)/0.8)]">
+                          {uploading ? (
+                            <Sparkles className="size-7 animate-spin motion-reduce:animate-none" />
+                          ) : (
+                            <Upload className="size-7" />
+                          )}
+                        </span>
+                      </div>
+
+                      <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary/12 bg-primary/8 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">
+                        <ScanLine className="size-3.5" />
+                        {t('emptyUpload.scanRingLabel')}
+                      </div>
+
+                      <h3 className="max-w-xl text-balance text-3xl font-semibold tracking-[-0.04em] text-foreground md:text-4xl">
+                        {uploading
+                          ? t('emptyUpload.uploadingTitle')
+                          : t('emptyUpload.idleTitle')}
+                      </h3>
+                      <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-muted-foreground md:text-[15px]">
+                        {uploading
+                          ? t('emptyUpload.uploadingDescription')
+                          : t('emptyUpload.idleDescription')}
+                      </p>
+                      <p className="mx-auto mt-2 max-w-xl text-xs leading-5 text-muted-foreground/78">
+                        {t('emptyUpload.dropCta')}
+                      </p>
+                    </button>
+
+                    <div className="relative z-20 mt-6 flex flex-wrap items-center justify-center gap-2">
+                      {EMPTY_UPLOAD_FORMATS.map((format) => (
+                        <span
+                          key={format}
+                          className="rounded-full border border-border/55 bg-card/78 px-3 py-1 text-[11px] font-semibold text-foreground/80 shadow-sm"
+                        >
+                          {format}
+                        </span>
+                      ))}
+                    </div>
+
+                    <div className="relative z-20 mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
+                      <div className="relative">
+                        <input
+                          type="file"
+                          multiple
+                          accept={UPLOAD_ACCEPT_WITH_ZIP}
+                          className="hidden"
+                          id="file-upload"
+                          onChange={handleFileSelect}
+                          disabled={uploading}
+                        />
+                        <label
+                          htmlFor="file-upload"
+                          className={cn(
+                            'inline-flex cursor-pointer items-center gap-3 rounded-2xl border border-info/25 bg-info px-7 py-3.5 text-sm font-semibold text-info-foreground shadow-[0_18px_38px_-28px_hsl(var(--info)/0.88)] transition-all duration-150 hover:-translate-y-0.5 hover:bg-info/90 motion-reduce:transition-none',
+                            uploading && 'cursor-not-allowed opacity-50'
+                          )}
+                        >
+                          <Upload className="size-5" />
+                          {t('emptyUpload.selectLocalFiles')}
+                        </label>
+                      </div>
+                      {uploading && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={cancelUploadAndParse}
+                          className="gap-2 rounded-2xl border-border/60 bg-background px-7 py-3.5 text-muted-foreground transition-colors duration-150 hover:border-destructive/30 hover:bg-destructive/10 hover:text-destructive motion-reduce:transition-none"
+                        >
+                          <X className="size-5" />
+                          {t('emptyUpload.cancelParsing')}
+                        </Button>
                       )}
                     </div>
 
-                    <h3 className="text-3xl font-medium text-foreground mb-4">
-                      {uploading
-                        ? t('emptyUpload.uploadingTitle')
-                        : t('emptyUpload.idleTitle')}
-                    </h3>
-                    <p className="text-muted-foreground mb-10 max-w-lg mx-auto text-lg leading-relaxed">
-                      {uploading
-                        ? t('emptyUpload.uploadingDescription')
-                        : t('emptyUpload.idleDescription')}
-                    </p>
-                  </button>
-
-                  <div className="relative z-20 mx-auto mb-10 w-full max-w-md text-left">
-                    <div className="mb-3 pl-2 text-xs font-medium text-muted-foreground">
-                      {t('emptyUpload.structureTitle')}
-                    </div>
-                    <div className="max-h-48 overflow-y-auto overscroll-contain rounded-2xl border border-border/60 bg-muted/30 p-5 shadow-sm">
-                      <DocumentFolderTree />
+                    <div className="relative z-20 mt-7 grid gap-2.5 md:grid-cols-3">
+                      {EMPTY_UPLOAD_STEPS.map((step, index) => (
+                        <div
+                          key={step}
+                          className="rounded-2xl border border-border/55 bg-card/68 px-3 py-2.5 text-left"
+                      >
+                          <div className="mb-2 flex items-center gap-2">
+                            <span className="grid size-6 place-items-center rounded-lg border border-primary/15 bg-primary/10 text-[10px] font-bold text-primary">
+                              {index + 1}
+                            </span>
+                            <span className="text-xs font-semibold text-foreground">
+                              {t(`emptyUpload.stages.${step}`)}
+                            </span>
+                          </div>
+                          <div className="h-1.5 overflow-hidden rounded-full bg-muted/70">
+                            <div
+                              className={cn(
+                                'h-full rounded-full',
+                                index === 0 && 'w-10/12 bg-primary/55',
+                                index === 1 && 'w-8/12 bg-info/55',
+                                index === 2 && 'w-6/12 bg-teal/55'
+                              )}
+                            />
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
 
-                  <div className="flex justify-center gap-4 relative z-20">
-                    <div className="relative">
-                      <input
-                        type="file"
-                        multiple
-                        accept={UPLOAD_ACCEPT_WITH_ZIP}
-                        className="hidden"
-                        id="file-upload"
-                        onChange={handleFileSelect}
-                        disabled={uploading}
-                      />
-                      <label
-                        htmlFor="file-upload"
-                        className={cn(
-                          'flex items-center gap-3 px-8 py-4 rounded-xl font-medium shadow-sm cursor-pointer border bg-info text-info-foreground hover:bg-info/90 border-info/25 dark:bg-info/20 dark:text-foreground dark:hover:bg-info/30 transition-colors duration-150 motion-reduce:transition-none',
-                          uploading && 'opacity-50 cursor-not-allowed'
-                        )}
-                      >
-                        <Upload className="w-5 h-5" />
-                        {t('emptyUpload.selectLocalFiles')}
-                      </label>
+                  <div className="space-y-4">
+                    <EmptyStructurePreview t={t} />
+                    <div className="rounded-[1.35rem] border border-border/65 bg-background/72 p-4 backdrop-blur-xl">
+                      <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                        <Sparkles className="size-3.5 text-teal" />
+                        {t('emptyUpload.intakeChecksTitle')}
+                      </div>
+                      <div className="mt-3 grid gap-2">
+                        {[
+                          t('emptyUpload.intakeChecks.structure'),
+                          t('emptyUpload.intakeChecks.quality'),
+                          t('emptyUpload.intakeChecks.cleaning'),
+                        ].map((item) => (
+                          <div
+                            key={item}
+                            className="flex items-center gap-2 rounded-xl border border-border/45 bg-card/58 px-3 py-2 text-xs text-foreground/82"
+                          >
+                            <Check className="size-3.5 text-success" />
+                            <span>{item}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                    {uploading && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={cancelUploadAndParse}
-                        className="flex items-center gap-2 px-8 py-4 rounded-xl border-border/40 bg-card hover:bg-destructive/10 dark:bg-destructive/20 hover:text-destructive hover:border-destructive/30 transition-colors duration-150 motion-reduce:transition-none text-muted-foreground"
-                      >
-                        <X className="w-5 h-5" />
-                        {t('emptyUpload.cancelParsing')}
-                      </Button>
-                    )}
-                  </div>
-
-                  <div className="mt-12 flex items-center justify-center gap-8 text-xs font-mono text-muted-foreground uppercase">
-                    <span className="flex items-center gap-2 hover:text-info transition-colors">
-                      <FileText className="w-4 h-4" />{' '}
-                      {t('emptyUpload.stages.parse')}
-                    </span>
-                    <span className="flex items-center gap-2 hover:text-info transition-colors">
-                      <ShieldCheck className="w-4 h-4" />{' '}
-                      {t('emptyUpload.stages.quality')}
-                    </span>
-                    <span className="flex items-center gap-2 hover:text-info transition-colors">
-                      <Sparkles className="w-4 h-4" />{' '}
-                      {t('emptyUpload.stages.clean')}
-                    </span>
                   </div>
                 </div>
               </div>
