@@ -519,7 +519,7 @@ function MetricInfoTooltip({
 
 function DiagnosticUseGuide() {
   return (
-    <div className="rounded-2xl border border-blue-100/70 bg-gradient-to-r from-blue-50/90 via-white to-sky-50/80 p-3 shadow-[0_10px_24px_rgba(37,99,235,0.05)]">
+    <div className="rounded-2xl border border-primary/15 bg-[linear-gradient(135deg,hsl(var(--primary)/0.10),hsl(var(--card))_48%,hsl(var(--accent)/0.08))] p-3 shadow-[0_10px_24px_hsl(var(--primary)/0.05)]">
       <div className="grid gap-2 lg:grid-cols-[1.1fr_1fr_1fr]">
         <DiagnosticUseStep
           icon={Search}
@@ -557,12 +557,12 @@ function DiagnosticUseStep({
 }) {
   return (
     <div className="flex gap-3 rounded-xl border border-white/80 bg-white/75 px-3 py-2.5">
-      <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-blue-100 bg-blue-50 text-blue-600">
+      <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-primary/15 bg-primary/10 text-primary">
         <Icon className="size-4" />
       </div>
       <div className="min-w-0">
         <p className="text-[12px] font-semibold text-slate-900">{title}</p>
-        <p className="mt-0.5 text-[10px] font-semibold text-blue-600">
+        <p className="mt-0.5 text-[10px] font-semibold text-primary">
           {action}
         </p>
         <p className="mt-1 text-[11px] leading-5 text-slate-500">{text}</p>
@@ -1287,7 +1287,8 @@ export default function DiagnosticsPage() {
                 </div>
                 <div className="flex gap-2">
                   <Button
-                    className="h-9 flex-1 bg-blue-600 text-[13px] font-semibold hover:bg-blue-700"
+                    data-rag-preview-action="true"
+                    className="h-9 flex-1 bg-primary text-primary-foreground hover:bg-primary/90 text-[13px] font-semibold shadow-[0_10px_24px_hsl(var(--primary)/0.18)] disabled:bg-muted disabled:text-muted-foreground"
                     onClick={runPromptPreviewProbe}
                     disabled={probeRunning || !activeDatasetId}
                   >
