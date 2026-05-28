@@ -1085,108 +1085,108 @@ export default function FeedbackTriagePage() {
         bodyClassName="mx-auto w-full max-w-[1480px] px-3 md:px-4 xl:px-5 pb-5 z-10"
       >
         <div className="grid gap-3 xl:h-[calc(100vh-14.25rem)] xl:min-h-0 xl:grid-cols-[minmax(0,1.72fr)_minmax(320px,0.78fr)]">
-          <div className="space-y-4 xl:flex xl:min-h-0 xl:flex-col xl:space-y-3">
-            <div className="inline-flex w-fit max-w-full flex-wrap items-center gap-1 rounded-2xl border border-border/60 bg-card/80 p-1 shadow-subtle">
-              {(
-                [
-                  ['all', '全部'],
-                  ['pending', '待分析'],
-                  ['high-priority', '高优先级'],
-                  ['archived', '已归档'],
-                ] as const
-              ).map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setBoardTab(value)}
-                  className={cn(
-                    'rounded-xl border px-3.5 py-1.5 text-[12px] font-medium transition-colors',
-                    boardTab === value
-                      ? 'border-info/25 bg-info/[0.12] text-info shadow-[0_10px_22px_-18px_rgba(37,99,235,0.55)]'
-                      : 'border-transparent bg-transparent text-muted-foreground hover:bg-background/80 hover:text-foreground'
-                  )}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            <div className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-soft xl:flex xl:min-h-0 xl:flex-1 xl:flex-col">
+          <div className="xl:flex xl:min-h-0 xl:flex-col">
+            <div data-feedback-list-board="true" className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-soft xl:flex xl:min-h-0 xl:flex-1 xl:flex-col">
               <div className="border-b border-border/60 px-5 py-3.5">
                 <div className="space-y-3">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
                     <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <div className="text-[1.22rem] font-semibold text-foreground">
-                        反馈列表
+                      <div className="flex flex-wrap items-center gap-3">
+                        <div className="text-[1.22rem] font-semibold text-foreground">
+                          反馈列表
+                        </div>
+                        <span className="rounded-full border border-border/60 bg-muted/40 px-3 py-1 text-[10px] font-medium text-muted-foreground">
+                          {listSummary || '当前空列表'}
+                        </span>
                       </div>
-                      <span className="rounded-full border border-border/60 bg-muted/40 px-3 py-1 text-[10px] font-medium text-muted-foreground">
-                        {listSummary || '当前空列表'}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
-                      {items.length ? '长反馈与答复摘要优先' : '当前暂无反馈'}
-                    </p>
+                      <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
+                        {items.length ? '长反馈与答复摘要优先' : '当前暂无反馈'}
+                      </p>
 
-                    {hasExtendedFilters ? (
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {boardTab !== 'all' ? (
-                          <Badge
-                            variant="secondary"
-                            className="rounded-full px-3 py-1 text-[10px] font-medium"
-                          >
-                            {boardTab}
-                          </Badge>
-                        ) : null}
-                        {filterType !== 'all' ? (
-                          <Badge
-                            variant="secondary"
-                            className="rounded-full px-3 py-1 text-[10px] font-medium"
-                          >
-                            {filterType === 'thumbs_up'
-                              ? '类型: 点赞'
-                              : '类型: 点踩'}
-                          </Badge>
-                        ) : null}
-                        {ratingFilter !== 'all' ? (
-                          <Badge
-                            variant="secondary"
-                            className="rounded-full px-3 py-1 text-[10px] font-medium"
-                          >
-                            {ratingFilter} 星
-                          </Badge>
-                        ) : null}
-                        {sourceFilter !== 'all' ? (
-                          <Badge
-                            variant="secondary"
-                            className="rounded-full px-3 py-1 text-[10px] font-medium"
-                          >
-                            {getFeedbackSourceLabel(sourceFilter)}
-                          </Badge>
-                        ) : null}
-                        {timeRange !== 'all' ? (
-                          <Badge
-                            variant="secondary"
-                            className="rounded-full px-3 py-1 text-[10px] font-medium"
-                          >
-                            {timeRange === '7d'
-                              ? '最近 7 天'
-                              : timeRange === '30d'
-                                ? '最近 30 天'
-                                : '最近 90 天'}
-                          </Badge>
-                        ) : null}
-                        {searchTerm.trim() ? (
-                          <Badge
-                            variant="secondary"
-                            className="rounded-full px-3 py-1 text-[10px] font-medium"
-                          >
-                            {searchTerm.trim()}
-                          </Badge>
-                        ) : null}
-                      </div>
-                    ) : null}
-                  </div>
+                      {hasExtendedFilters ? (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {boardTab !== 'all' ? (
+                            <Badge
+                              variant="secondary"
+                              className="rounded-full px-3 py-1 text-[10px] font-medium"
+                            >
+                              {boardTab}
+                            </Badge>
+                          ) : null}
+                          {filterType !== 'all' ? (
+                            <Badge
+                              variant="secondary"
+                              className="rounded-full px-3 py-1 text-[10px] font-medium"
+                            >
+                              {filterType === 'thumbs_up'
+                                ? '类型: 点赞'
+                                : '类型: 点踩'}
+                            </Badge>
+                          ) : null}
+                          {ratingFilter !== 'all' ? (
+                            <Badge
+                              variant="secondary"
+                              className="rounded-full px-3 py-1 text-[10px] font-medium"
+                            >
+                              {ratingFilter} 星
+                            </Badge>
+                          ) : null}
+                          {sourceFilter !== 'all' ? (
+                            <Badge
+                              variant="secondary"
+                              className="rounded-full px-3 py-1 text-[10px] font-medium"
+                            >
+                              {getFeedbackSourceLabel(sourceFilter)}
+                            </Badge>
+                          ) : null}
+                          {timeRange !== 'all' ? (
+                            <Badge
+                              variant="secondary"
+                              className="rounded-full px-3 py-1 text-[10px] font-medium"
+                            >
+                              {timeRange === '7d'
+                                ? '最近 7 天'
+                                : timeRange === '30d'
+                                  ? '最近 30 天'
+                                  : '最近 90 天'}
+                            </Badge>
+                          ) : null}
+                          {searchTerm.trim() ? (
+                            <Badge
+                              variant="secondary"
+                              className="rounded-full px-3 py-1 text-[10px] font-medium"
+                            >
+                              {searchTerm.trim()}
+                            </Badge>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div data-feedback-board-tabs="true" className="flex w-full max-w-full flex-wrap items-center gap-1 rounded-2xl border border-border/60 bg-background/70 p-1 shadow-subtle xl:w-auto xl:justify-end">
+                      {(
+                        [
+                          ['all', '全部'],
+                          ['pending', '待分析'],
+                          ['high-priority', '高优先级'],
+                          ['archived', '已归档'],
+                        ] as const
+                      ).map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setBoardTab(value)}
+                          className={cn(
+                            'rounded-xl border px-3.5 py-1.5 text-[12px] font-medium transition-colors',
+                            boardTab === value
+                              ? 'border-info/25 bg-info/[0.12] text-info shadow-[0_10px_22px_-18px_rgba(37,99,235,0.55)]'
+                              : 'border-transparent bg-transparent text-muted-foreground hover:bg-card/85 hover:text-foreground'
+                          )}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
                   <div className="grid w-full gap-2 md:grid-cols-2 xl:grid-cols-[minmax(18rem,1fr)_7.5rem_7.5rem_7.5rem_8.25rem]">
@@ -1552,7 +1552,7 @@ export default function FeedbackTriagePage() {
                   })}
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center px-6 py-20 text-center">
+                <div className="flex min-h-[360px] flex-1 flex-col items-center justify-center px-6 py-20 text-center">
                   <div className="mb-5 flex size-24 items-center justify-center rounded-full bg-muted/50">
                     <Search
                       className="size-9 text-muted-foreground/55"

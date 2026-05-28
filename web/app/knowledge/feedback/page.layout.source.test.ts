@@ -30,9 +30,25 @@ describe('feedback triage page layout', () => {
       src,
       'xl:grid-cols-[minmax(0,1.72fr)_minmax(320px,0.78fr)]'
     )
-    expectSourceToContain(
+    expectSourceNotToContain(
       src,
       'inline-flex w-fit max-w-full flex-wrap items-center gap-1 rounded-2xl border border-border/60 bg-card/80 p-1 shadow-subtle'
+    )
+    expectSourceToContain(src, 'data-feedback-list-board="true"')
+    expectSourceToContain(src, 'data-feedback-board-tabs="true"')
+    expectSourceToContain(
+      src,
+      'overflow-hidden rounded-2xl border border-border/60 bg-card shadow-soft xl:flex xl:min-h-0 xl:flex-1 xl:flex-col'
+    )
+    expectSourceToContain(
+      src,
+      'flex min-h-[360px] flex-1 flex-col items-center justify-center px-6 py-20 text-center'
+    )
+    expect(src.indexOf('data-feedback-board-tabs="true"')).toBeGreaterThan(
+      src.indexOf('反馈列表')
+    )
+    expect(src.indexOf('data-feedback-board-tabs="true"')).toBeLessThan(
+      src.indexOf('placeholder="搜索反馈 / 原因 / 标签 / 账号"')
     )
     expectSourceToContain(src, 'min-h-[72px]')
     expectSourceToContain(src, 'grid w-full gap-2 md:grid-cols-2 xl:grid-cols-[minmax(18rem,1fr)_7.5rem_7.5rem_7.5rem_8.25rem]')
