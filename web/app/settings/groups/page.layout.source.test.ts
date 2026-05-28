@@ -24,4 +24,13 @@ describe('settings groups page layout source', () => {
     expect(src).not.toContain('OIDC groups claim')
     expect(src).not.toContain('外部组 ID（EXTERNAL_ID）')
   })
+
+  it('keeps the create group actions readable across themes', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'page.tsx'), 'utf8')
+
+    expect(src).toContain('data-settings-groups-create-action="true"')
+    expect(src).toContain('bg-foreground px-3.5 text-[12px] font-semibold text-background')
+    expect(src).toContain('hover:bg-foreground/90')
+    expect(src).not.toContain('bg-blue-600 px-3.5 text-[12px] font-semibold text-info-foreground')
+  })
 })
