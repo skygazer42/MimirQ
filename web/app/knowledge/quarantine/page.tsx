@@ -39,6 +39,7 @@ import { Badge } from '@/components/ui/badge'
 import { cn, formatDate, formatFileSize } from '@/lib/utils'
 import { documentApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { captureApiError } from '@/lib/api-error-reporting'
 import { useDatasets } from '@/hooks/use-datasets'
 import type { Document, DocumentPipelineOptions } from '@/types'
 import { useDocumentView } from '@/store/document-view'
@@ -65,6 +66,11 @@ import {
 type QuarantineAction = 'release' | 'retry' | 'delete' | 'review' | 'tune'
 type ActingState = { id: string; action: QuarantineAction } | null
 type ReviewState = 'all' | 'pending' | 'reviewed'
+type QueueSyncStatus = {
+  type: 'success' | 'error'
+  message: string
+  at: string
+}
 
 const QUARANTINE_PAGE_SIZE = 6
 
@@ -1238,6 +1244,7 @@ export default function QuarantineQueuePage() {
   const [acting, setActing] = useState<ActingState>(null)
   const [detailOpen, setDetailOpen] = useState(false)
   const [detailDocumentId, setDetailDocumentId] = useState<string | null>(null)
+  const [lastQueueSync, setLastQueueSync] = useState<QueueSyncStatus | null>(null)
 
   const [tuneOpen, setTuneOpen] = useState(false)
   const [tuneTarget, setTuneTarget] = useState<Document | null>(null)
@@ -1245,7 +1252,7 @@ export default function QuarantineQueuePage() {
   const { datasets, isLoading: datasetsLoading } = useDatasets()
   const selectedDatasetId = selectedDataset === 'all' ? null : selectedDataset
 
-  const { data, isFetching, refetch } = useQuery({
+  const { data, error: queueError, isFetching, refetch } = useQuery({
     queryKey: ['quarantine-documents', 'quarantined', selectedDatasetId],
     queryFn: ({ signal }) =>
       documentApi.list(
@@ -1263,6 +1270,7 @@ export default function QuarantineQueuePage() {
 
   const {
     data: failedData,
+    error: failedQueueError,
     isFetching: isFetchingFailed,
     refetch: refetchFailed,
   } = useQuery({
@@ -1289,9 +1297,61 @@ export default function QuarantineQueuePage() {
     [data, demoMode, failedData]
   )
   const queueFetching = isFetching || isFetchingFailed
-  const refreshQueue = useCallback(async () => {
-    await Promise.all([refetch(), refetchFailed()])
-  }, [refetch, refetchFailed])
+  const queueErrorMessage = useMemo(() => {
+    const err = queueError || failedQueueError
+    return err ? formatApiError(err, '隔离队列同步失败') : null
+  }, [failedQueueError, queueError])
+  const refreshQueue = useCallback(
+    async ({ notify = false }: { notify?: boolean } = {}) => {
+      try {
+        const [quarantineResult, failedResult] = await Promise.all([
+          refetch(),
+          refetchFailed(),
+        ])
+        const err = quarantineResult.error || failedResult.error
+        if (err) {
+          const info = captureApiError(err, '隔离队列同步失败', {
+            level: 'warning',
+            tags: { page: 'knowledge-quarantine', action: 'manual-sync' },
+          })
+          setLastQueueSync({
+            type: 'error',
+            message: info.message,
+            at: new Date().toISOString(),
+          })
+          if (notify) toast.error(info.message)
+          return false
+        }
+
+        const quarantinedTotal = quarantineResult.data?.total ?? data?.total ?? 0
+        const failedTotal = failedResult.data?.total ?? failedData?.total ?? 0
+        const message =
+          quarantinedTotal + failedTotal > 0
+            ? `同步完成：待审核 ${quarantinedTotal} 条，失败 ${failedTotal} 条`
+            : '同步完成：当前没有隔离或失败记录'
+        setLastQueueSync({
+          type: 'success',
+          message,
+          at: new Date().toISOString(),
+        })
+        if (notify) toast.success(message)
+        return true
+      } catch (err) {
+        const info = captureApiError(err, '隔离队列同步失败', {
+          level: 'warning',
+          tags: { page: 'knowledge-quarantine', action: 'manual-sync' },
+        })
+        setLastQueueSync({
+          type: 'error',
+          message: info.message,
+          at: new Date().toISOString(),
+        })
+        if (notify) toast.error(info.message)
+        return false
+      }
+    },
+    [data?.total, failedData?.total, refetch, refetchFailed]
+  )
 
   useEffect(() => {
     setSelectedDataset(searchParams.get('datasetId') || 'all')
@@ -1843,7 +1903,7 @@ export default function QuarantineQueuePage() {
                       toast.success('Demo 数据已刷新')
                       return
                     }
-                    void refreshQueue()
+                    void refreshQueue({ notify: true })
                   }}
                 >
                   <RefreshCw
@@ -1869,6 +1929,42 @@ export default function QuarantineQueuePage() {
                 </div>
               </div>
             </PageHeader>
+
+            {queueErrorMessage ? (
+              <div className="flex items-start gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-[12px] text-red-700 dark:text-red-300">
+                <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                <div className="min-w-0">
+                  <div className="font-medium">隔离队列同步异常</div>
+                  <div className="mt-0.5 break-words text-[11px] opacity-85">
+                    {queueErrorMessage}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {lastQueueSync ? (
+              <div
+                className={cn(
+                  'flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2 text-[11px]',
+                  lastQueueSync.type === 'success'
+                    ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                    : 'border-red-500/20 bg-red-500/10 text-red-700 dark:text-red-300'
+                )}
+              >
+                {lastQueueSync.type === 'success' ? (
+                  <CheckCircle2 className="size-4 shrink-0" />
+                ) : (
+                  <AlertCircle className="size-4 shrink-0" />
+                )}
+                <span className="font-medium">
+                  {lastQueueSync.type === 'success' ? '上次同步成功' : '上次同步异常'}
+                </span>
+                <span className="min-w-0 flex-1 truncate">{lastQueueSync.message}</span>
+                <span className="font-mono text-[10px] opacity-70">
+                  {formatDate(lastQueueSync.at)}
+                </span>
+              </div>
+            ) : null}
 
             <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-4">
               <SummaryStatCard
@@ -2159,7 +2255,7 @@ export default function QuarantineQueuePage() {
                     variant="outline"
                     size="sm"
                     className="h-9 rounded-xl border-info/25 bg-info/[0.06] px-3.5 text-[11px] font-medium text-info shadow-[0_12px_24px_-22px_rgba(37,99,235,0.5)] hover:border-info/40 hover:bg-info/[0.12] hover:text-info"
-                    onClick={() => void refreshQueue()}
+                    onClick={() => void refreshQueue({ notify: true })}
                   >
                     <RefreshCw
                       className={cn(
@@ -2218,7 +2314,7 @@ export default function QuarantineQueuePage() {
                           autoRefresh={autoRefresh}
                           isFetching={queueFetching}
                           onResetFilters={resetFilters}
-                          onRefresh={() => void refreshQueue()}
+                          onRefresh={() => void refreshQueue({ notify: true })}
                         />
                       </td>
                     </tr>

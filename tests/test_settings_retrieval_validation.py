@@ -4,8 +4,8 @@ import pytest
 
 
 def test_settings_uses_shared_openai_base_constant(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.core.constants import DEFAULT_OPENAI_API_BASE
     from app.core.config import Settings
+    from app.core.constants import DEFAULT_OPENAI_API_BASE
 
     monkeypatch.delenv("LLM_API_BASE", raising=False)
     monkeypatch.delenv("OPENAI_BASE_URL", raising=False)

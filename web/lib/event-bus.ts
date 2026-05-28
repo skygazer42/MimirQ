@@ -31,12 +31,13 @@ class EventBus<EventMap extends Record<string, unknown>> {
     }
   }
 
-  emit<K extends keyof EventMap>(event: K, payload: EventMap[K]) {
+  emit<K extends keyof EventMap>(event: K, payload: EventMap[K]): number {
     const listeners = this.handlers.get(event)
-    if (!listeners) return
+    if (!listeners) return 0
     listeners.forEach((handler) => {
       ;(handler as EventHandler<EventMap, K>)(payload)
     })
+    return listeners.size
   }
 }
 

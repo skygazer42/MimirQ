@@ -11,7 +11,7 @@ function read(relativePath: string): string {
 
 describe('next-intl knowledge routing source', () => {
   it('uses locale-aware navigation helpers across the remaining knowledge entry points', () => {
-    const feedbackPage = read('app/knowledge/feedback/page.tsx')
+    const feedbackPage = read('app/knowledge/feedback/page-client.tsx')
     const knowledgePage = read('components/knowledge/knowledge-page.tsx')
 
     expect(feedbackPage).toContain('@/i18n/navigation')

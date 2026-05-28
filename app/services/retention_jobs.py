@@ -14,7 +14,6 @@ Principles:
 
 from __future__ import annotations
 
-from app.rag.core.logging import get_logger
 from collections import Counter
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -23,6 +22,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.models.document import Document as DBDocument
+from app.rag.core.logging import get_logger
 from app.services.audit_log_retention import plan_audit_log_purge, purge_audit_log_rows
 from app.services.audit_log_service import audit_log_event
 from app.services.regression_run_retention import plan_regression_run_purge, purge_regression_run_rows

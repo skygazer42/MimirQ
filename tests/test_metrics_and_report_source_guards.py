@@ -1,5 +1,5 @@
-from pathlib import Path
 import re
+from pathlib import Path
 
 
 def test_metrics_and_report_services_no_longer_use_silent_pass_fallbacks() -> None:

@@ -23,7 +23,7 @@ export default function KnowledgeIngestionPage() {
 
   return (
     <AppFrame>
-      <div className="min-h-full bg-[#f6f9ff]">
+      <div className="min-h-full bg-transparent">
         {activeView === 'execution-monitor' ? <ExecutionMonitorPageClient /> : <OperationPageClient />}
       </div>
     </AppFrame>

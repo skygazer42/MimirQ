@@ -4,8 +4,8 @@ import asyncio
 
 
 def test_kg_embedding_client_respects_kg_embed_batch_limit(monkeypatch) -> None:
-    from app.core.config import settings
     import app.rag.llm.factory as llm_factory
+    from app.core.config import settings
 
     calls: list[list[str]] = []
 

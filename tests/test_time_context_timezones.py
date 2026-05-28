@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime as real_datetime
+from datetime import UTC
+from datetime import datetime as real_datetime
 from zoneinfo import ZoneInfo
 
 

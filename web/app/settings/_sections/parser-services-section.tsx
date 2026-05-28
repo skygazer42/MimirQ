@@ -33,13 +33,13 @@ type ParserServicesSectionProps = {
 }
 
 const SECTION_TITLE =
-  'mb-2 flex items-center gap-2 text-[13px] font-semibold text-slate-950'
+  'mb-2 flex items-center gap-2 text-[13px] font-semibold text-foreground'
 const CARD = cn(
   systemWorkbenchTokens.panel,
-  'space-y-3 rounded-[16px] border border-slate-200/75 bg-card p-3 shadow-sm'
+  'space-y-3 rounded-[16px] border border-border/60 bg-card/82 p-3 shadow-sm'
 )
 const GRID = 'grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3'
-const FIELD_LABEL = 'text-[11px] font-semibold text-slate-600'
+const FIELD_LABEL = 'text-[11px] font-semibold text-muted-foreground'
 const FIELD_HINT = systemPageTokens.subtle
 const DENSE_INPUT = 'h-8 rounded-md border-border/70 bg-background text-[12px]'
 const DENSE_SELECT =
@@ -84,13 +84,13 @@ export function ParserServicesSection({
     <>
       <section>
         <h2 className={SECTION_TITLE}>
-          <ScanLine className="h-4 w-4 text-blue-600" />
+          <ScanLine className="h-4 w-4 text-primary" />
           MinerU 配置
         </h2>
 
         <div className={CARD}>
-          <div className="rounded-[14px] border border-blue-100/80 bg-blue-50/35 px-3 py-2.5">
-            <div className="text-[12px] font-semibold text-slate-900">本地部署优先</div>
+          <div className="rounded-[14px] border border-primary/20 bg-primary/8 px-3 py-2.5">
+            <div className="text-[12px] font-semibold text-foreground">本地部署优先</div>
             <div className={cn(FIELD_HINT, 'mt-0.5')}>
               配置本地 MinerU 服务地址后，解析会走本地 ZIP 模式；未配置时再使用在线 API 令牌
             </div>
@@ -115,11 +115,11 @@ export function ParserServicesSection({
 
               <details
                 open={mineruBackend === 'vlm-http-client'}
-                className="group rounded-[14px] border border-dashed border-slate-200/80 bg-slate-50/60 px-3 py-2"
+                className="group rounded-[14px] border border-dashed border-border/70 bg-muted/35 px-3 py-2"
               >
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-[12px] font-semibold text-slate-700">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-[12px] font-semibold text-foreground/78">
                   <span>VLM HTTP 后端</span>
-                  <span className="text-[11px] font-medium text-slate-500">
+                  <span className="text-[11px] font-medium text-muted-foreground">
                     {mineruBackend === 'vlm-http-client'
                       ? '当前会使用'
                       : '默认不会使用'}
@@ -375,7 +375,7 @@ export function ParserServicesSection({
 
       <section>
         <h2 className={SECTION_TITLE}>
-          <ScanLine className="h-4 w-4 text-orange-600 dark:text-orange-300" />
+          <ScanLine className="h-4 w-4 text-warning" />
           PaddleOCR-VL 配置
         </h2>
 
@@ -582,7 +582,7 @@ export function ParserServicesSection({
 
       <section>
         <h2 className={SECTION_TITLE}>
-          <Wand2 className="h-4 w-4 text-fuchsia-700 dark:text-fuchsia-300" />
+          <Wand2 className="h-4 w-4 text-accent" />
           MagicPDF 配置
         </h2>
 

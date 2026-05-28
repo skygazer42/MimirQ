@@ -8,7 +8,6 @@ Design goals:
 
 from __future__ import annotations
 
-from app.rag.core.logging import get_logger
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -16,6 +15,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.models.ingestion_run import IngestionRun, IngestionRunDocument
+from app.rag.core.logging import get_logger
 
 logger = get_logger(__name__)
 

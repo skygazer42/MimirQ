@@ -99,8 +99,24 @@ def test_builtin_prompt_templates_compile_with_langchain_f_string_format() -> No
         "contexts": "[C1] Alpha rollout uses the blue flag.",
         "answer": "Alpha uses the blue flag.",
         "document_chunk": "Alpha rollout uses the blue flag.",
+        "document_summary": "A document about Alpha rollout and blue flag usage.",
         "n": 2,
         "existing_questions": "",
+        "draft_answer": "Alpha uses the blue flag.",
+        "retrieved_chunks": "[C1] Alpha rollout uses the blue flag.",
+        "documents": "[D1] Alpha rollout uses the blue flag.",
+        "entities": "Alpha rollout; blue flag",
+        "candidate_entities": "Alpha rollout; blue flag",
+        "candidate_relations": "Alpha rollout -> uses -> blue flag",
+        "ontology": "Event, Concept",
+        "path_triples": "(Alpha rollout, uses, blue flag)",
+        "chunk": "Alpha rollout uses the blue flag.",
+        "ground_truth": "Alpha rollout uses the blue flag.",
+        "citations": "[C1]",
+        "clause_a": "Alpha rollout uses the blue flag.",
+        "clause_b": "Alpha rollout does not use the red flag.",
+        "document": "Alpha rollout uses the blue flag.",
+        "redlines": "No redlines.",
     }
 
     for template in list_builtin_prompt_templates():
@@ -126,22 +142,20 @@ def test_builtin_prompt_templates_compile_with_langchain_f_string_format() -> No
 
 
 def test_builtin_prompt_sync_endpoint_creates_and_updates_system_templates(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.rag.llm.prompts.builtin_library import list_builtin_prompt_templates
     from tests.test_prompt_templates_endpoints import _build_client
 
     tenant_id = uuid.uuid4()
     client, db = _build_client(monkeypatch=monkeypatch, tenant_id=tenant_id)
+    builtins = list_builtin_prompt_templates()
+    builtin_keys = {template.template_key for template in builtins}
 
     first = client.post("/api/v1/prompt-templates/builtins/sync")
     assert first.status_code == 200, first.text
     first_body = first.json()
-    assert first_body["created"] == 4
+    assert first_body["created"] == len(builtins)
     assert first_body["updated"] == 0
-    assert set(first_body["template_keys"]) == {
-        "rag_answer_claude_xml_zh",
-        "kg_extract_graphrag_zh",
-        "judge_faithfulness_ragas_zh",
-        "testset_generation_ragas_zh",
-    }
+    assert set(first_body["template_keys"]) == builtin_keys
 
     stored = {item.template_key: item for item in db.items}
     assert all(item.tenant_id == tenant_id for item in stored.values())
@@ -160,8 +174,8 @@ def test_builtin_prompt_sync_endpoint_creates_and_updates_system_templates(monke
     assert second.status_code == 200, second.text
     second_body = second.json()
     assert second_body["created"] == 0
-    assert second_body["updated"] == 4
-    assert len(db.items) == 4
+    assert second_body["updated"] == len(builtins)
+    assert len(db.items) == len(builtins)
     assert stored["rag_answer_claude_xml_zh"].content != "stale"
 
 

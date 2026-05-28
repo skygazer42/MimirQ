@@ -3,10 +3,19 @@
  */
 'use client'
 
-import { useState, useRef, useEffect, useCallback, useMemo, useLayoutEffect } from 'react'
+import {
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+  useMemo,
+  useLayoutEffect,
+  type KeyboardEvent,
+  type PointerEvent,
+} from 'react'
 import Image from 'next/image'
 import { useTranslations } from 'next-intl'
-import { Send, StopCircle, Sparkles, Database, Wand2, Settings2, Mic, ArrowDown, Route, Keyboard, Palette, type LucideIcon } from 'lucide-react'
+import { Send, StopCircle, Sparkles, Database, Wand2, Settings2, Mic, ArrowDown, Route, Keyboard, Palette } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQuery } from '@tanstack/react-query'
 import { useChat } from '@/hooks/use-chat'
@@ -46,6 +55,17 @@ const LOAD_MORE_STEP = 40
 const METADATA_FILTER_MODE_VALUES = ['all', 'exclude_qa', 'qa_only', 'custom'] as const
 const CHAT_DATASET_LIST_PARAMS = { limit: 200 }
 const CHAT_PROMPT_TEMPLATE_PARAMS = { is_active: true, limit: 50 }
+const RAG_SETTINGS_VIEWPORT_MARGIN = 12
+const RAG_SETTINGS_KEYBOARD_MOVE_STEP = 12
+
+type RagSettingsOffset = { x: number; y: number }
+type RagSettingsDragState = {
+  pointerId: number
+  startClientX: number
+  startClientY: number
+  startOffset: RagSettingsOffset
+  baseRect: { left: number; top: number; width: number; height: number }
+}
 
 function escapeAttributeSelector(value: string): string {
   if (typeof globalThis.CSS?.escape === 'function') {
@@ -60,12 +80,14 @@ export function ChatArea({
   initialAutoSendPrompt,
   initialOpenRagSettings,
   onConversationId,
+  onPromptConsumed,
 }: Readonly<{
   initialConversationId?: string
   initialPrompt?: string
   initialAutoSendPrompt?: boolean
   initialOpenRagSettings?: boolean
   onConversationId?: (conversationId: string) => void
+  onPromptConsumed?: () => void
 }> = {}) {
   const router = useRouter()
   const t = useTranslations('Chat')
@@ -104,10 +126,14 @@ export function ChatArea({
   const [enableSummaryMemory, setEnableSummaryMemory] = useState(false)
   const [summaryDialogOpen, setSummaryDialogOpen] = useState(false)
   const [traceDialogOpen, setTraceDialogOpen] = useState(false)
+  const [ragSettingsOffset, setRagSettingsOffset] = useState<RagSettingsOffset>({ x: 0, y: 0 })
+  const [isRagSettingsDragging, setIsRagSettingsDragging] = useState(false)
   const [visibleCount, setVisibleCount] = useState(DEFAULT_VISIBLE_MESSAGES)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const ragSettingsPanelRef = useRef<HTMLDivElement>(null)
+  const ragSettingsDragRef = useRef<RagSettingsDragState | null>(null)
   const prevInitialConversationIdRef = useRef<string | undefined>(initialConversationId)
   const autoScrollRef = useRef(true)
   const [isNearBottom, setIsNearBottom] = useState(true)
@@ -207,6 +233,151 @@ export function ChatArea({
     () => datasets.find((dataset) => dataset.id === selectedDatasetId),
     [datasets, selectedDatasetId]
   )
+
+  const clampRagSettingsOffset = useCallback(
+    (
+      offset: RagSettingsOffset,
+      baseRect: RagSettingsDragState['baseRect']
+    ): RagSettingsOffset => {
+      if (typeof globalThis.window === 'undefined') return offset
+
+      const maxX =
+        globalThis.window.innerWidth -
+        RAG_SETTINGS_VIEWPORT_MARGIN -
+        baseRect.left -
+        baseRect.width
+      const minX = RAG_SETTINGS_VIEWPORT_MARGIN - baseRect.left
+      const maxY =
+        globalThis.window.innerHeight -
+        RAG_SETTINGS_VIEWPORT_MARGIN -
+        baseRect.top -
+        baseRect.height
+      const minY = RAG_SETTINGS_VIEWPORT_MARGIN - baseRect.top
+      const safeMaxX = Math.max(minX, maxX)
+      const safeMaxY = Math.max(minY, maxY)
+
+      return {
+        x: Math.min(Math.max(offset.x, minX), safeMaxX),
+        y: Math.min(Math.max(offset.y, minY), safeMaxY),
+      }
+    },
+    []
+  )
+
+  const getRagSettingsBaseRect = useCallback(() => {
+    const panel = ragSettingsPanelRef.current
+    if (!panel) return null
+
+    const rect = panel.getBoundingClientRect()
+    return {
+      left: rect.left - ragSettingsOffset.x,
+      top: rect.top - ragSettingsOffset.y,
+      width: rect.width,
+      height: rect.height,
+    }
+  }, [ragSettingsOffset.x, ragSettingsOffset.y])
+
+  const resetRagSettingsPosition = useCallback(() => {
+    setRagSettingsOffset({ x: 0, y: 0 })
+  }, [])
+
+  const beginRagSettingsDrag = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0 && event.pointerType !== 'touch') return
+
+      const baseRect = getRagSettingsBaseRect()
+      if (!baseRect) return
+
+      ragSettingsDragRef.current = {
+        pointerId: event.pointerId,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        startOffset: ragSettingsOffset,
+        baseRect,
+      }
+      setIsRagSettingsDragging(true)
+      event.currentTarget.setPointerCapture(event.pointerId)
+      event.preventDefault()
+    },
+    [getRagSettingsBaseRect, ragSettingsOffset]
+  )
+
+  const moveRagSettingsDrag = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      const drag = ragSettingsDragRef.current
+      if (!drag || drag.pointerId !== event.pointerId) return
+
+      const nextOffset = {
+        x: drag.startOffset.x + event.clientX - drag.startClientX,
+        y: drag.startOffset.y + event.clientY - drag.startClientY,
+      }
+      setRagSettingsOffset(clampRagSettingsOffset(nextOffset, drag.baseRect))
+      event.preventDefault()
+    },
+    [clampRagSettingsOffset]
+  )
+
+  const endRagSettingsDrag = useCallback((event: PointerEvent<HTMLDivElement>) => {
+    const drag = ragSettingsDragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+    ragSettingsDragRef.current = null
+    setIsRagSettingsDragging(false)
+  }, [])
+
+  const handleRagSettingsDragKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      const arrowDelta: Record<string, RagSettingsOffset> = {
+        ArrowUp: { x: 0, y: -RAG_SETTINGS_KEYBOARD_MOVE_STEP },
+        ArrowDown: { x: 0, y: RAG_SETTINGS_KEYBOARD_MOVE_STEP },
+        ArrowLeft: { x: -RAG_SETTINGS_KEYBOARD_MOVE_STEP, y: 0 },
+        ArrowRight: { x: RAG_SETTINGS_KEYBOARD_MOVE_STEP, y: 0 },
+      }
+
+      if (event.key === 'Home') {
+        resetRagSettingsPosition()
+        event.preventDefault()
+        return
+      }
+
+      const delta = arrowDelta[event.key]
+      if (!delta) return
+
+      const baseRect = getRagSettingsBaseRect()
+      if (!baseRect) return
+
+      const multiplier = event.shiftKey ? 3 : 1
+      setRagSettingsOffset((current) =>
+        clampRagSettingsOffset(
+          {
+            x: current.x + delta.x * multiplier,
+            y: current.y + delta.y * multiplier,
+          },
+          baseRect
+        )
+      )
+      event.preventDefault()
+    },
+    [clampRagSettingsOffset, getRagSettingsBaseRect, resetRagSettingsPosition]
+  )
+
+  useEffect(() => {
+    if (showRagSettings) return
+    ragSettingsDragRef.current = null
+    setIsRagSettingsDragging(false)
+  }, [showRagSettings])
+
+  useEffect(() => {
+    if (!showRagSettings) return
+
+    const handleResize = () => {
+      const baseRect = getRagSettingsBaseRect()
+      if (!baseRect) return
+      setRagSettingsOffset((current) => clampRagSettingsOffset(current, baseRect))
+    }
+
+    globalThis.window.addEventListener('resize', handleResize)
+    return () => globalThis.window.removeEventListener('resize', handleResize)
+  }, [clampRagSettingsOffset, getRagSettingsBaseRect, showRagSettings])
 
   const applyMetadataFilterPreset = useCallback(
     (mode: 'all' | 'exclude_qa' | 'qa_only' | 'custom') => {
@@ -584,16 +755,17 @@ export function ChatArea({
     const p = (initialPrompt || '').trim()
     if (!initialAutoSendPrompt || !p) return
     if (autoSendPromptRef.current) return
-    if (isLoading || messages.length > 0) return
+    if (isLoading) return
     if (!datasetScopeReady || !hasChatScope) return
 
     if (!submitMessage(p)) return
     autoSendPromptRef.current = true
     setInputValue('')
+    onPromptConsumed?.()
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
     }
-  }, [datasetScopeReady, hasChatScope, initialAutoSendPrompt, initialPrompt, isLoading, messages.length, submitMessage])
+  }, [datasetScopeReady, hasChatScope, initialAutoSendPrompt, initialPrompt, isLoading, onPromptConsumed, submitMessage])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -731,32 +903,32 @@ export function ChatArea({
         <div
           className={cn(
             'mx-auto w-full',
-            isWelcomeState ? 'max-w-[1040px]' : 'max-w-[44rem] space-y-4'
+            isWelcomeState ? 'max-w-[1040px]' : 'max-w-[48rem] space-y-2.5'
           )}
         >
           <div
+            aria-label={t('conversationTools')}
             className={cn(
-              'flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-border/60 bg-background/80 px-3 py-2 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/70',
+              'flex flex-col gap-2 rounded-[1.5rem] border border-border/55 bg-background/60 px-2.5 py-2 shadow-sm backdrop-blur-xl supports-[backdrop-filter]:bg-background/55 md:flex-row md:flex-nowrap md:items-center md:justify-between',
               isWelcomeState && 'hidden'
             )}
           >
-            <div className="flex min-w-0 items-center gap-2">
-              <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-card px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm">
+            <div className="flex min-w-0 items-center gap-2 px-1">
+              <div className="hidden size-7 shrink-0 items-center justify-center rounded-full border border-primary/15 bg-primary/10 text-primary sm:flex">
                 <Sparkles className="size-3.5 text-primary" />
-                <span>{t('conversationTools')}</span>
               </div>
-              <div className="hidden text-[11px] text-muted-foreground md:block">
-                {t('toolsHint')}
-              </div>
+              <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground/70">
+                {t('conversationTools')}
+              </span>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 md:flex-nowrap md:justify-end">
               {promptTemplates.length > 0 && (
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button variant="ghost" size="sm" className="h-9 gap-2 rounded-full border border-border/60 bg-card px-3 text-foreground shadow-sm hover:bg-secondary/80">
+                    <Button variant="ghost" size="sm" className="h-8 max-w-full gap-2 rounded-full border border-border/60 bg-card/80 px-3 text-foreground shadow-sm hover:border-primary/25 hover:bg-secondary/70 md:max-w-[15rem]">
                       <Wand2 className="w-3.5 h-3.5 text-primary" />
-                      <span className="text-xs">{selectedPromptTemplate?.name || t('defaultTemplate')}</span>
+                      <span className="max-w-[16rem] truncate text-xs">{selectedPromptTemplate?.name || t('defaultTemplate')}</span>
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-64 p-2" align="start">
@@ -790,10 +962,10 @@ export function ChatArea({
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-9 gap-2 rounded-full border border-border/60 bg-card px-3 text-foreground shadow-sm hover:bg-secondary/80"
+                    className="h-8 max-w-full gap-2 rounded-full border border-border/60 bg-card/80 px-3 text-foreground shadow-sm hover:border-primary/25 hover:bg-secondary/70 md:max-w-[14rem]"
                   >
                     <Database className="w-3.5 h-3.5 text-primary" />
-                    <span className="max-w-[180px] truncate text-xs">
+                    <span className="max-w-[12rem] truncate text-xs">
                       {hasDocumentScope
                         ? t('currentDocumentScope')
                         : selectedDataset?.name || (datasetsLoading ? t('datasetScopeLoading') : t('selectDataset'))}
@@ -838,21 +1010,60 @@ export function ChatArea({
                     variant="ghost"
                     size="sm"
                     className={cn(
-                      'h-9 gap-2 rounded-full border px-3 shadow-sm transition-colors',
+                      'h-8 gap-2 rounded-full border px-3 text-xs shadow-sm transition-colors',
                       ragConfig.retrieval_mode !== 'auto' || ragConfig.use_graph
                         ? 'border-primary/30 bg-primary/10 text-primary hover:bg-primary/15'
-                        : 'border-border/60 bg-card text-muted-foreground hover:bg-secondary/80'
+                        : 'border-border/60 bg-card/80 text-muted-foreground hover:border-primary/25 hover:bg-secondary/70'
                     )}
                   >
                     <Settings2 className="w-3.5 h-3.5" />
-                    <span className="text-xs">{t('ragSettings')}</span>
+                    <span>{t('ragSettings')}</span>
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-80 p-4" align="end" sideOffset={10}>
+                <PopoverContent
+                  className="w-[min(20rem,calc(100vw-1.5rem))] overflow-visible border-transparent bg-transparent p-0 shadow-none [box-shadow:none]"
+                  align="end"
+                  sideOffset={10}
+                >
+                  <div
+                    ref={ragSettingsPanelRef}
+                    className={cn(
+                      'rounded-lg bg-popover p-4 shadow-strong transition-shadow duration-200',
+                      isRagSettingsDragging && 'shadow-[0_28px_68px_-34px_rgba(15,23,42,0.72)]'
+                    )}
+                    style={{
+                      transform: `translate3d(${ragSettingsOffset.x}px, ${ragSettingsOffset.y}px, 0)`,
+                    }}
+                  >
                   <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h4 className="font-medium text-sm">{t('retrievalSettings')}</h4>
-                      <span className="text-[11px] text-muted-foreground">{t('adjustRetrievalParameters')}</span>
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      aria-label={t('dragRagSettingsPanel')}
+                      title={t('dragRagSettingsPanelHint')}
+                      className={cn(
+                        '-mx-2 -mt-2 flex touch-none select-none items-start justify-between gap-3 rounded-md px-2 py-2 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/70',
+                        isRagSettingsDragging
+                          ? 'cursor-grabbing bg-secondary/70'
+                          : 'cursor-grab hover:bg-secondary/55'
+                      )}
+                      onPointerDown={beginRagSettingsDrag}
+                      onPointerMove={moveRagSettingsDrag}
+                      onPointerUp={endRagSettingsDrag}
+                      onPointerCancel={endRagSettingsDrag}
+                      onLostPointerCapture={endRagSettingsDrag}
+                      onDoubleClick={resetRagSettingsPosition}
+                      onKeyDown={handleRagSettingsDragKeyDown}
+                    >
+                      <div className="min-w-0">
+                        <h4 className="font-medium text-sm">{t('retrievalSettings')}</h4>
+                        <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                          {t('adjustRetrievalParameters')}
+                        </span>
+                      </div>
+                      <span className="shrink-0 rounded-full border border-border/70 bg-background/70 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                        {t('dragToMove')}
+                      </span>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -1035,6 +1246,7 @@ export function ChatArea({
                     )}
                   </div>
                 </div>
+                </div>
               </PopoverContent>
             </Popover>
           </div>
@@ -1042,10 +1254,10 @@ export function ChatArea({
 
           <div
             className={cn(
-              'relative group bg-card transition-colors duration-150',
+              'relative group overflow-hidden bg-card transition-colors duration-150',
               isWelcomeState
                 ? 'rounded-[28px] border border-border/70 bg-card/90 px-3 pb-3 pt-2 shadow-[0_22px_56px_-34px_rgba(15,23,42,0.46)] backdrop-blur-xl focus-within:border-primary/25'
-                : 'rounded-xl border border-border/30 shadow-soft hover:shadow-strong focus-within:ring-0 focus-within:border-primary/50 focus-within:shadow-[0_0_0_3px_hsl(var(--primary)/0.06)]'
+                : 'rounded-[2rem] border border-border/55 bg-background/95 shadow-[0_18px_50px_-34px_rgba(15,23,42,0.55)] hover:border-primary/20 hover:shadow-[0_22px_60px_-36px_rgba(15,23,42,0.62)] focus-within:border-primary/40 focus-within:ring-0 focus-within:shadow-[0_0_0_3px_hsl(var(--primary)/0.07),0_22px_60px_-36px_rgba(15,23,42,0.62)]'
             )}
           >
             <Label htmlFor="chat-composer" className="sr-only">
@@ -1069,7 +1281,7 @@ export function ChatArea({
                 'w-full resize-none outline-none max-h-[200px] bg-transparent text-sm leading-relaxed placeholder:text-muted-foreground/40 no-scrollbar text-foreground',
                 isWelcomeState
                   ? 'min-h-[70px] rounded-[22px] px-12 pb-4 pt-4 pr-24'
-                  : 'rounded-xl px-6 pt-4 pb-14 pr-20'
+                  : 'min-h-[92px] rounded-[2rem] px-5 pb-14 pt-5 pr-24'
               )}
               rows={1}
             />
@@ -1230,113 +1442,6 @@ function WelcomeScreen() {
             className="h-auto w-[min(76vw,560px)] select-none object-contain"
           />
         </div>
-      </div>
-    </div>
-  )
-}
-
-function QuickStartChip({
-  icon: Icon,
-  title,
-  prompt,
-  onSelect,
-}: Readonly<{
-  icon: LucideIcon
-  title: string
-  prompt: string
-  onSelect: (prompt: string) => void
-}>) {
-  return (
-    <button
-      type="button"
-      onClick={() => onSelect(prompt)}
-      className="group relative h-full overflow-hidden rounded-3xl border border-border/60 bg-card/90 p-5 text-left shadow-sm transition-all duration-200 hover:border-primary/40 hover:bg-card hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
-    >
-      <div aria-hidden="true" className="absolute inset-x-0 top-0 h-px bg-primary/30 opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
-      <div className="flex items-start gap-3">
-        <div className="mt-0.5 flex size-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
-          <Icon className="size-4" aria-hidden="true" />
-        </div>
-        <div className="min-w-0">
-          <div className="text-sm font-semibold leading-snug text-foreground">{title}</div>
-          <div className="mt-1 text-xs leading-5 text-muted-foreground/90 group-hover:text-foreground/80">
-            {prompt}
-          </div>
-        </div>
-      </div>
-    </button>
-  )
-}
-
-function WelcomeStatusCard({
-  icon: Icon,
-  title,
-  desc,
-  badge,
-  actionLabel,
-  onAction,
-  tone = 'neutral',
-}: Readonly<{
-  icon: LucideIcon
-  title: string
-  desc: string
-  badge?: string
-  actionLabel?: string
-  onAction?: () => void
-  tone?: 'primary' | 'neutral'
-}>) {
-  const isPrimary = tone === 'primary'
-
-  return (
-    <div
-      className={cn(
-        'relative h-full overflow-hidden rounded-3xl border p-5 text-left shadow-soft md:p-6',
-        isPrimary ? 'border-primary/20 bg-primary/[0.07]' : 'border-border/60 bg-card/90'
-      )}
-    >
-      <div
-        aria-hidden="true"
-        className={cn(
-          'pointer-events-none absolute inset-x-0 top-0 h-24',
-          isPrimary ? 'bg-primary/[0.10]' : 'bg-primary/[0.05]'
-        )}
-      />
-      <div className="relative flex h-full flex-col">
-        <div className="flex items-start justify-between gap-3">
-          <div
-            className={cn(
-              'flex size-9 items-center justify-center rounded-xl text-primary',
-              isPrimary ? 'bg-background/80' : 'bg-primary/10'
-            )}
-          >
-            <Icon className="size-5" aria-hidden="true" />
-          </div>
-          {badge ? (
-            <div
-              className={cn(
-                'rounded-full border px-3 py-1 text-xs font-semibold tracking-[0.08em] shadow-sm',
-                isPrimary ? 'border-primary/15 bg-background/85 text-foreground' : 'border-border/60 bg-background/85 text-foreground/80'
-              )}
-            >
-              {badge}
-            </div>
-          ) : null}
-        </div>
-        <div className="mt-5">
-          <h3 className="text-sm font-semibold leading-snug text-foreground/95">{title}</h3>
-          <p className="mt-2 text-xs leading-6 text-muted-foreground/90">{desc}</p>
-        </div>
-        {actionLabel && onAction ? (
-          <Button
-            type="button"
-            variant={isPrimary ? 'default' : 'outline'}
-            size="sm"
-            className="mt-5 h-10 self-start rounded-full px-4"
-            onClick={onAction}
-          >
-            {actionLabel}
-          </Button>
-        ) : null}
       </div>
     </div>
   )

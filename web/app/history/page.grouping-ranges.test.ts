@@ -11,6 +11,6 @@ describe('history page conversation grouping ranges', () => {
     expect(src).toContain('last30Days: t(\'groupLast30Days\')')
     expect(src).not.toContain('groupOrder = [\n    groupLabels.today,\n    groupLabels.yesterday,')
     expect(src).not.toContain('group = labels.yesterday')
-    expect(src).toContain('lastMonth.setDate(lastMonth.getDate() - 30)')
+    expect(src).toContain('lastMonth.setUTCDate(lastMonth.getUTCDate() - 30)')
   })
 })

@@ -109,6 +109,15 @@
     --surface-1: var(--card);
     --surface-2: 220 20% 98%;
     --surface-3: var(--popover);
+
+    /* Global app backdrop: visible enough for theme personalization, but still low-noise for reading. */
+    --app-background-base: radial-gradient(circle at 18% 0%, hsl(var(--primary) / 0.10), transparent 32%),
+      radial-gradient(circle at 82% 8%, hsl(var(--info) / 0.08), transparent 34%),
+      linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--surface-2) / 0.70) 48%, hsl(var(--background)) 100%);
+    --app-orb-primary: var(--primary);
+    --app-orb-secondary: var(--info);
+    --app-orb-primary-opacity: 0.14;
+    --app-orb-secondary-opacity: 0.12;
   }
 
   html:not(.dark)[data-surface-theme="classic"] {
@@ -133,6 +142,11 @@
     --sidebar-border: 210 16% 88%;
     --code-background: 210 18% 95%;
     --surface-2: 210 18% 96.2%;
+    --app-background-base: radial-gradient(circle at 16% -4%, hsl(var(--primary) / 0.08), transparent 32%),
+      radial-gradient(circle at 86% 4%, hsl(var(--primary) / 0.05), transparent 34%),
+      linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--surface-2) / 0.84) 50%, hsl(var(--background)) 100%);
+    --app-orb-primary-opacity: 0.10;
+    --app-orb-secondary-opacity: 0.08;
   }
 
   html:not(.dark)[data-surface-theme="earth"] {
@@ -157,6 +171,11 @@
     --sidebar-border: 34 20% 82%;
     --code-background: 35 24% 88%;
     --surface-2: 38 24% 90.5%;
+    --app-background-base: radial-gradient(circle at 18% -2%, hsl(var(--primary) / 0.12), transparent 34%),
+      radial-gradient(circle at 84% 4%, hsl(var(--accent) / 0.12), transparent 36%),
+      linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--surface-2) / 0.86) 52%, hsl(var(--background)) 100%);
+    --app-orb-primary-opacity: 0.14;
+    --app-orb-secondary-opacity: 0.11;
   }
 
   html.dark[data-surface-theme="classic"] {
@@ -173,6 +192,9 @@
     --input: 216 10% 23%;
     --sidebar-background: 216 16% 10%;
     --sidebar-border: 216 10% 20%;
+    --app-background-base: radial-gradient(circle at 18% -4%, hsl(var(--primary) / 0.13), transparent 34%),
+      radial-gradient(circle at 82% 2%, hsl(var(--accent) / 0.10), transparent 36%),
+      linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--surface-2) / 0.52) 52%, hsl(var(--background)) 100%);
   }
 
   html.dark[data-surface-theme="earth"] {
@@ -190,6 +212,9 @@
     --sidebar-background: 30 20% 10%;
     --sidebar-border: 30 10% 22%;
     --code-background: 30 14% 14%;
+    --app-background-base: radial-gradient(circle at 16% -4%, hsl(var(--primary) / 0.15), transparent 34%),
+      radial-gradient(circle at 84% 4%, hsl(var(--accent) / 0.10), transparent 36%),
+      linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--surface-2) / 0.48) 52%, hsl(var(--background)) 100%);
   }
 
   html.dark {
@@ -287,6 +312,13 @@
     --surface-1: var(--card);
     --surface-2: 220 12% 17%;
     --surface-3: var(--popover);
+    --app-background-base: radial-gradient(circle at 18% 0%, hsl(var(--primary) / 0.10), transparent 34%),
+      radial-gradient(circle at 82% 8%, hsl(var(--info) / 0.08), transparent 36%),
+      linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--surface-2) / 0.52) 48%, hsl(var(--background)) 100%);
+    --app-orb-primary: var(--primary);
+    --app-orb-secondary: var(--info);
+    --app-orb-primary-opacity: 0.12;
+    --app-orb-secondary-opacity: 0.10;
   }
 }
 
@@ -307,6 +339,21 @@
     line-height: 1.55;
     background-image: linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--surface-2) / 0.4) 100%);
     background-attachment: fixed;
+  }
+
+  .app-background__base {
+    background: var(--app-background-base);
+    transition: background 220ms ease;
+  }
+
+  .app-background__orb-primary {
+    background: radial-gradient(circle, hsl(var(--app-orb-primary) / var(--app-orb-primary-opacity, 0.14)) 0%, transparent 68%);
+    transition: background 220ms ease, opacity 220ms ease;
+  }
+
+  .app-background__orb-secondary {
+    background: radial-gradient(circle, hsl(var(--app-orb-secondary) / var(--app-orb-secondary-opacity, 0.12)) 0%, transparent 70%);
+    transition: background 220ms ease, opacity 220ms ease;
   }
 
   h1 {

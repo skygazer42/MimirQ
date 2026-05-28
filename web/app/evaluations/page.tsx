@@ -969,7 +969,7 @@ function EvaluationsPageContent() {
       >
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto px-5 py-2">
           <PageHeader
-            title={activeTabMeta.title}
+            title={<span className="text-[22px] font-semibold leading-snug tracking-[-0.01em] text-slate-950">{activeTabMeta.title}</span>}
             description="选择评测指标及参数，在同一工作区完成参数配置、运行快捷与结果评估。"
             iconImage="ragas-evaluation"
             icon={ActiveTabIcon}

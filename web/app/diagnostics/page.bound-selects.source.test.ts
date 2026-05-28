@@ -35,6 +35,24 @@ describe('/diagnostics backend-bound selectors', () => {
     expectSourceToContain(src, 'onToggle={() => toggleDimension(dimension.id)}')
   })
 
+  it('keeps shared query-key data in list-response shape during client navigation', () => {
+    const src = fs.readFileSync(
+      path.resolve(__dirname, 'page-client.tsx'),
+      'utf8'
+    )
+
+    expectSourceToContain(src, 'function getListItems<T>')
+    expectSourceToContain(src, 'Promise<DatasetListResponse>')
+    expectSourceToContain(src, 'Promise<DocumentList>')
+    expectSourceToContain(src, 'getListItems<Dataset>(datasetsQuery.data, EMPTY_DATASETS)')
+    expectSourceToContain(
+      src,
+      'getListItems<KnowledgeDocument>(documentsQuery.data, EMPTY_DOCUMENTS)'
+    )
+    expectSourceNotToContain(src, 'const datasets = datasetsQuery.data ?? EMPTY_DATASETS')
+    expectSourceNotToContain(src, 'const documents = documentsQuery.data ?? EMPTY_DOCUMENTS')
+  })
+
   it('prefers the polling ready snapshot for vector dependency status', () => {
     const src = fs.readFileSync(
       path.resolve(__dirname, 'page-client.tsx'),

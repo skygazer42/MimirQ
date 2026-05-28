@@ -16,4 +16,11 @@ describe('global event bus source', () => {
     expect(src).toContain("'chat:send': string")
     expect(src).toContain("'chat:submit': string")
   })
+
+  it('reports whether an emitted event had an active listener', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'event-bus.ts'), 'utf8')
+
+    expect(src).toContain('emit<K extends keyof EventMap>(event: K, payload: EventMap[K]): number')
+    expect(src).toContain('return listeners.size')
+  })
 })

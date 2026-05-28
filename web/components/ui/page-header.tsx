@@ -30,7 +30,7 @@ export function PageHeader({
       <div
         data-testid="page-title-shell"
         className={cn(
-          "relative overflow-hidden rounded-[24px] border border-border/70 bg-[linear-gradient(135deg,hsl(var(--card)/0.98),hsl(var(--muted)/0.34))] shadow-[0_18px_46px_-40px_rgba(15,23,42,0.46)]",
+          "relative overflow-hidden rounded-[24px] border border-border/70 bg-[linear-gradient(135deg,hsl(var(--card)/0.98),hsl(var(--muted)/0.34))] shadow-[0_18px_46px_-40px_hsl(var(--foreground)/0.46)]",
           "flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between",
           compact ? "px-4 py-3" : "px-5 py-5 md:px-6"
         )}

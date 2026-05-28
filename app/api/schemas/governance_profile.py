@@ -122,3 +122,26 @@ class GovernanceProfileResolvedResponse(BaseModel):
     profile: GovernanceProfileOut
     chain: list[GovernanceProfileSummary] = Field(default_factory=list)
     effective: GovernanceProfilePayload
+
+
+class BuiltinProcessingScriptOut(BaseModel):
+    """
+    Built-in processing script template exposed via the data-governance UI as
+    "从模板库选择" on the 重复行学习 page.
+
+    Mirrors :class:`GovernanceProcessingScript` so the UI can splice an instance
+    straight into ``payload.processing_scripts`` after user selection.
+    """
+
+    key: str
+    name: str
+    description: str
+    language: Literal["javascript", "typescript", "python", "rust"]
+    stage: Literal["post_parse", "post_governance"]
+    content: str
+    tags: list[str] = Field(default_factory=list)
+
+
+class BuiltinProcessingScriptListResponse(BaseModel):
+    total: int
+    items: list[BuiltinProcessingScriptOut] = Field(default_factory=list)

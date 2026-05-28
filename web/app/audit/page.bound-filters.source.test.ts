@@ -35,8 +35,11 @@ describe('audit page bound filters', () => {
     expectSourceToContain(src, 'function formatAuditAction')
     expectSourceToContain(src, 'formatOption={formatAuditAction}')
     expectSourceToContain(src, 'formatOption={formatAuditResourceType}')
-    expectSourceToContain(src, 'hover:bg-blue-50 hover:text-blue-700')
-    expectSourceToContain(src, 'border-blue-600 bg-blue-600 text-white')
+    expectSourceToContain(src, 'hover:bg-primary/10 hover:text-primary')
+    expectSourceToContain(
+      src,
+      'border-primary bg-primary text-primary-foreground'
+    )
     expectSourceToContain(src, 'auditApi.deleteLog(id)')
     expectSourceToContain(src, 'auditApi.bulkDeleteLogs(ids)')
     expectSourceToContain(src, '删除已选 {selectedIds.length}')

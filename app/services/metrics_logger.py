@@ -12,7 +12,6 @@ import contextlib
 import contextvars
 import hashlib
 import json
-from app.rag.core.logging import get_logger
 import os
 import queue
 import socket
@@ -27,6 +26,7 @@ from uuid import UUID
 
 from app.core.config import settings
 from app.core.pii_redaction import redact_obj
+from app.rag.core.logging import get_logger
 
 _METRICS_SCHEMA_VERSION = 1
 _HOSTNAME = socket.gethostname()

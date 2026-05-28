@@ -12,11 +12,11 @@ It must be safe and fast:
 
 from __future__ import annotations
 
-from app.rag.core.logging import get_logger
 import re
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from app.rag.core.logging import get_logger
 from app.rag.preprocessing.cleaning import build_repeated_line_signatures
 from app.rag.preprocessing.quality_filters import drop_if_low_density, drop_if_outline_only
 

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from app.rag.core.logging import get_logger
 import math
 import re
 from typing import Any
 
 from app.rag.core.hashing import stable_hash
+from app.rag.core.logging import get_logger
 from app.rag.core.text import is_claim_supported, split_into_claims
 from app.rag.evaluation.chunk_diagnostics import compute_chunk_diagnostics
 from app.rag.evaluation.multihop import score_multihop_citation_chain

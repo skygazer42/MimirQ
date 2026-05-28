@@ -1,5 +1,5 @@
-from pathlib import Path
 import re
+from pathlib import Path
 
 
 def test_rag_metrics_dashboard_no_longer_uses_silent_pass_fallbacks() -> None:

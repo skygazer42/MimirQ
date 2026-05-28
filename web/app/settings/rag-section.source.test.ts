@@ -32,7 +32,7 @@ describe('settings RAG section', () => {
     expect(section).toContain('RERANKER_PROVIDER')
     expect(section).toContain('RERANKER_TOP_N')
     expect(section).toContain('const RANGE_INPUT_CLASS')
-    expect(section).toContain('[&::-webkit-slider-thumb]:bg-blue-600')
+    expect(section).toContain('[&::-webkit-slider-thumb]:bg-primary')
     expect(section).toContain('function InlineHelp')
     expect(section).toContain('group-hover/help:block')
     expect(section).toContain('启用关键词通道，对精确词匹配召回更友好')

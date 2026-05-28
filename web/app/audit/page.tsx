@@ -52,7 +52,14 @@ import { useTenantAccess } from '@/hooks/use-tenant-access'
 // --- Constants ---
 
 const FIELD_LABEL =
-  'text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 mb-1.5 block'
+  'text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground mb-1.5 block'
+const AUDIT_SURFACE_CLASS =
+  'border-border/60 bg-background/70 text-foreground'
+const AUDIT_PANEL_CLASS = `rounded-2xl ${AUDIT_SURFACE_CLASS} bg-card/82 shadow-[0_12px_30px_hsl(var(--primary)/0.05)]`
+const AUDIT_TABLE_HEAD_CLASS =
+  'border-b border-border/50 bg-muted/38 text-left backdrop-blur'
+const AUDIT_TABLE_HEADER_CLASS =
+  'px-6 py-3.5 text-[11px] font-semibold tracking-[0.08em] text-muted-foreground'
 const FILTER_ALL_VALUE = '__all__'
 const FILTER_EMPTY_VALUE_PREFIX = '__empty__'
 const AUDIT_FILTER_OPTION_PAGE_SIZE = 200
@@ -214,10 +221,10 @@ function formatAuditDateTime(value: string) {
 // --- Helper Components ---
 
 const HUD_TONE_CLASSES = {
-  slate: 'bg-slate-50 text-slate-400 border-slate-100',
-  green: 'bg-emerald-50 text-emerald-500 border-emerald-100',
-  blue: 'bg-blue-50 text-blue-600 border-blue-100',
-  purple: 'bg-purple-50 text-purple-500 border-purple-100',
+  slate: 'bg-muted/55 text-muted-foreground border-border/60',
+  green: 'bg-success/10 text-success border-success/20',
+  blue: 'bg-primary/10 text-primary border-primary/20',
+  purple: 'bg-accent/10 text-accent border-accent/20',
 } as const
 
 function HUDTile({
@@ -234,7 +241,7 @@ function HUDTile({
   const toneClasses = HUD_TONE_CLASSES[tone] || HUD_TONE_CLASSES.slate
 
   return (
-    <div className="bg-card rounded-2xl border border-slate-200/60 p-5 flex items-center gap-4 shadow-[0_1px_2px_rgba(0,0,0,0.01)]">
+    <div className="bg-card rounded-2xl border border-border/60 p-5 flex items-center gap-4 shadow-[0_1px_2px_rgba(0,0,0,0.01)]">
       <div
         className={cn(
           'size-10 rounded-xl flex items-center justify-center border',
@@ -244,10 +251,10 @@ function HUDTile({
         <Icon className="size-5" />
       </div>
       <div className="min-w-0">
-        <p className="text-[11px] font-medium text-slate-400 leading-none mb-1.5 uppercase">
+        <p className="text-[11px] font-medium text-muted-foreground leading-none mb-1.5 uppercase">
           {label}
         </p>
-        <h4 className="text-[18px] font-black text-slate-900 leading-none">
+        <h4 className="text-[18px] font-black text-foreground leading-none">
           {value}
         </h4>
       </div>
@@ -271,8 +278,8 @@ function PresetButton({
       className={cn(
         'h-7 rounded-full px-3 text-[11px] font-bold shadow-none transition-all',
         active
-          ? 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700 hover:text-white'
-          : 'border-blue-100 bg-blue-50/35 text-slate-600 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700'
+          ? 'border-primary bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground'
+          : 'border-primary/20 bg-primary/[0.06] text-muted-foreground hover:border-primary/30 hover:bg-primary/10 hover:text-primary'
       )}
       onClick={onClick}
     >
@@ -320,11 +327,11 @@ function BoundFilterSelect({
         <SelectTrigger
           id={id}
           aria-label={label}
-          className="h-9 rounded-lg border-slate-200 bg-slate-50/60 text-left text-xs font-medium text-slate-700 shadow-none hover:border-blue-200 hover:bg-card focus-visible:ring-blue-100"
+          className="h-9 rounded-lg border-border/60 bg-background/70 text-left text-xs font-medium text-foreground shadow-none hover:border-primary/30 hover:bg-card focus-visible:ring-primary/20"
         >
           <span className="truncate">{currentLabel}</span>
         </SelectTrigger>
-        <SelectContent className="max-h-72 rounded-xl border-slate-200 bg-card text-slate-700 shadow-lg">
+        <SelectContent className="max-h-72 rounded-xl border-border/60 bg-card text-foreground shadow-lg">
           <SelectItem value={FILTER_ALL_VALUE} className="text-xs font-medium">
             {allLabel}
           </SelectItem>
@@ -339,7 +346,7 @@ function BoundFilterSelect({
                   {compactOption(formatOption ? formatOption(option) : option)}
                 </span>
                 {formatOption && formatOption(option) !== option && (
-                  <span className="truncate font-mono text-[10px] font-normal text-slate-400">
+                  <span className="truncate font-mono text-[10px] font-normal text-muted-foreground">
                     {compactOption(option, 56)}
                   </span>
                 )}
@@ -350,7 +357,7 @@ function BoundFilterSelect({
             <SelectItem
               value={emptyValue}
               disabled
-              className="text-xs text-slate-400"
+              className="text-xs text-muted-foreground"
             >
               {loading ? '正在加载后端选项' : '暂无后端选项'}
             </SelectItem>
@@ -627,15 +634,15 @@ function AuditLogsPageContent() {
         description={t('description')}
         iconImage="audit-log"
         icon={ShieldCheck}
-        iconColor="text-blue-600"
+        iconColor="text-primary"
         size="full"
-        bodyClassName="bg-slate-50/50"
+        bodyClassName="bg-transparent"
         actions={
           <div className="flex items-center gap-3">
             <Button
               variant="outline"
               size="sm"
-              className="h-8 gap-2 rounded-lg text-[12px] font-bold border-slate-200 bg-card"
+              className="h-8 gap-2 rounded-lg text-[12px] font-bold border-border/60 bg-card/80"
               onClick={() => {
                 void logsQuery.refetch()
                 void filterOptionsQuery.refetch()
@@ -649,7 +656,7 @@ function AuditLogsPageContent() {
             <Button
               variant="outline"
               size="icon"
-              className="h-8 w-8 rounded-lg border-slate-200 bg-card"
+              className="h-8 w-8 rounded-lg border-border/60 bg-card/80"
               aria-label="清空审计筛选"
               onClick={() => {
                 setFilters({ ...EMPTY_AUDIT_FILTERS })
@@ -697,10 +704,10 @@ function AuditLogsPageContent() {
           </div>
 
           {/* Filter Console */}
-          <div className="bg-card rounded-2xl border border-slate-200/60 shadow-sm p-6">
+          <div className={cn(AUDIT_PANEL_CLASS, 'p-6')}>
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-4">
-                <span className="text-[11px] font-black uppercase text-slate-400">
+                <span className="text-[11px] font-black uppercase text-muted-foreground">
                   {t('presets.quick')}
                 </span>
                 <div className="flex flex-wrap gap-2">
@@ -717,7 +724,7 @@ function AuditLogsPageContent() {
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 gap-1.5 text-[11px] font-bold text-slate-500"
+                className="h-7 gap-1.5 text-[11px] font-bold text-muted-foreground hover:text-primary"
                 onClick={() => setShowAdvanced(!showAdvanced)}
               >
                 {showAdvanced ? t('filters.more') : '更多筛选'}
@@ -785,7 +792,7 @@ function AuditLogsPageContent() {
                       type="datetime-local"
                       value={filters.since}
                       onChange={(e) => setFilterValue('since', e.target.value)}
-                      className="h-9 rounded-lg bg-slate-50/60 border-slate-200 text-[10px]"
+                      className="h-9 rounded-lg bg-background/70 border-border/60 text-[10px]"
                     />
                   </div>
                   <div className="space-y-1">
@@ -794,7 +801,7 @@ function AuditLogsPageContent() {
                       type="datetime-local"
                       value={filters.until}
                       onChange={(e) => setFilterValue('until', e.target.value)}
-                      className="h-9 rounded-lg bg-slate-50/60 border-slate-200 text-[10px]"
+                      className="h-9 rounded-lg bg-background/70 border-border/60 text-[10px]"
                     />
                   </div>
                 </div>
@@ -813,13 +820,13 @@ function AuditLogsPageContent() {
           </div>
 
           {/* Table Canvas */}
-          <div className="bg-card rounded-2xl border border-slate-200/60 shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between border-b border-slate-100 bg-card px-6 py-4">
+          <div className={cn(AUDIT_PANEL_CLASS, 'overflow-hidden')}>
+            <div className="flex items-center justify-between border-b border-border/50 bg-card/80 px-6 py-4">
               <div>
-                <h2 className="text-[15px] font-semibold text-slate-900">
+                <h2 className="text-[15px] font-semibold text-foreground">
                   审计事件
                 </h2>
-                <p className="mt-1 text-[12px] text-slate-500">
+                <p className="mt-1 text-[12px] text-muted-foreground">
                   按后端审计日志展示时间、操作者、事件名称、资源/租户与操作明细。
                 </p>
               </div>
@@ -837,14 +844,14 @@ function AuditLogsPageContent() {
                       variant="outline"
                       size="sm"
                       disabled={!canManageAudit || Boolean(deletingScope)}
-                      className="h-8 gap-1.5 rounded-lg border-red-100 bg-red-50 px-3 text-[11px] font-bold text-red-700 shadow-none hover:bg-red-100 hover:text-red-800"
+                      className="h-8 gap-1.5 rounded-lg border-destructive/20 bg-destructive/10 px-3 text-[11px] font-bold text-destructive shadow-none hover:bg-destructive/15 hover:text-destructive"
                     >
                       <Trash2 className="size-3.5" />
                       删除已选 {selectedIds.length}
                     </Button>
                   </ConfirmDialog>
                 )}
-                <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-500">
+                <div className="rounded-full border border-border/60 bg-muted/40 px-3 py-1 text-[11px] font-semibold text-muted-foreground">
                   共 {total} 条
                 </div>
               </div>
@@ -852,7 +859,7 @@ function AuditLogsPageContent() {
             <div className="max-h-[640px] overflow-auto">
               <table className="w-full border-collapse">
                 <thead className="sticky top-0 z-10">
-                  <tr className="border-b border-slate-100 bg-slate-50/95 text-left backdrop-blur">
+                  <tr className={AUDIT_TABLE_HEAD_CLASS}>
                     <th className="w-10 px-6 py-3.5">
                       <input
                         type="checkbox"
@@ -862,27 +869,27 @@ function AuditLogsPageContent() {
                         onChange={(event) =>
                           toggleSelectAllVisible(event.currentTarget.checked)
                         }
-                        className="size-3.5 rounded border-slate-300 text-blue-600 accent-blue-600"
+                        className="size-3.5 rounded border-border text-primary accent-[hsl(var(--primary))]"
                       />
                     </th>
-                    <th className="px-6 py-3.5 text-[11px] font-semibold tracking-[0.08em] text-slate-500">
+                    <th className={AUDIT_TABLE_HEADER_CLASS}>
                       时间
                     </th>
-                    <th className="px-6 py-3.5 text-[11px] font-semibold tracking-[0.08em] text-slate-500">
+                    <th className={AUDIT_TABLE_HEADER_CLASS}>
                       操作者
                     </th>
-                    <th className="px-6 py-3.5 text-[11px] font-semibold tracking-[0.08em] text-slate-500">
+                    <th className={AUDIT_TABLE_HEADER_CLASS}>
                       事件名称
                     </th>
-                    <th className="px-6 py-3.5 text-[11px] font-semibold tracking-[0.08em] text-slate-500">
+                    <th className={AUDIT_TABLE_HEADER_CLASS}>
                       资源 / 租户
                     </th>
-                    <th className="px-6 py-3.5 text-[11px] font-semibold tracking-[0.08em] text-slate-500 text-right">
+                    <th className={cn(AUDIT_TABLE_HEADER_CLASS, 'text-right')}>
                       操作
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-50">
+                <tbody className="divide-y divide-border/40">
                   {resp ? (
                     resp.items.length > 0 ? (
                       resp.items.map((log) => (
@@ -918,7 +925,7 @@ function AuditLogsPageContent() {
                     <tr>
                       <td
                         colSpan={6}
-                        className="p-12 text-center text-xs text-slate-400 font-medium"
+                        className="p-12 text-center text-xs text-muted-foreground font-medium"
                       >
                         {loading ? (
                           <RefreshCw className="size-5 animate-spin mx-auto mb-2" />
@@ -931,19 +938,19 @@ function AuditLogsPageContent() {
                 </tbody>
               </table>
             </div>
-            <div className="flex flex-col gap-3 border-t border-slate-100 bg-slate-50/50 px-6 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-2 text-[12px] font-medium text-slate-500">
+            <div className="flex flex-col gap-3 border-t border-border/50 bg-muted/30 px-6 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2 text-[12px] font-medium text-muted-foreground">
                 <span>共 {total} 条</span>
-                <span className="text-slate-300">/</span>
+                <span className="text-muted-foreground/45">/</span>
                 <span>每页</span>
                 <Select
                   value={String(limit)}
                   onValueChange={handlePageSizeChange}
                 >
-                  <SelectTrigger className="h-8 w-[88px] rounded-lg border-slate-200 bg-card text-[12px] font-semibold text-slate-700 shadow-none">
+                  <SelectTrigger className="h-8 w-[88px] rounded-lg border-border/60 bg-card text-[12px] font-semibold text-foreground shadow-none">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="rounded-xl border-slate-200 bg-card">
+                  <SelectContent className="rounded-xl border-border/60 bg-card">
                     {AUDIT_PAGE_SIZE_OPTIONS.map((size) => (
                       <SelectItem
                         key={size}
@@ -960,19 +967,19 @@ function AuditLogsPageContent() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-8 gap-1 rounded-lg border-slate-200 bg-card px-3 text-[11px] font-semibold shadow-none"
+                  className="h-8 gap-1 rounded-lg border-border/60 bg-card px-3 text-[11px] font-semibold shadow-none"
                   onClick={() => setSkip(Math.max(0, skip - limit))}
                   disabled={skip <= 0}
                 >
                   <ChevronLeft className="size-3.5" /> 上一页
                 </Button>
-                <span className="min-w-[88px] rounded-lg border border-slate-200 bg-card px-3 py-1.5 text-center text-[12px] font-semibold text-slate-700">
+                <span className="min-w-[88px] rounded-lg border border-border/60 bg-card px-3 py-1.5 text-center text-[12px] font-semibold text-foreground">
                   第 {displayPage} / {totalPages} 页
                 </span>
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-8 gap-1 rounded-lg border-slate-200 bg-card px-3 text-[11px] font-semibold shadow-none"
+                  className="h-8 gap-1 rounded-lg border-border/60 bg-card px-3 text-[11px] font-semibold shadow-none"
                   onClick={() =>
                     setSkip(
                       Math.min(
@@ -990,8 +997,8 @@ function AuditLogsPageContent() {
           </div>
 
           {/* Detailed Response Collapsible */}
-          <details className="group border-t border-slate-100 pt-6">
-            <summary className="flex cursor-pointer list-none items-center justify-between text-slate-400 hover:text-slate-600 transition-colors">
+          <details className="group border-t border-border/50 pt-6">
+            <summary className="flex cursor-pointer list-none items-center justify-between text-muted-foreground hover:text-foreground transition-colors">
               <div className="flex items-center gap-3">
                 <FileJson className="size-4" />
                 <span className="text-[11px] font-black uppercase tracking-[0.2em]">
@@ -1001,7 +1008,7 @@ function AuditLogsPageContent() {
               <ChevronDown className="size-4 transition-transform group-open:rotate-180" />
             </summary>
             <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <pre className="p-5 rounded-2xl bg-slate-950 font-mono text-[11px] text-blue-400/80 max-h-[300px] overflow-auto custom-scrollbar shadow-strong border border-slate-800">
+              <pre className="p-5 rounded-2xl bg-foreground font-mono text-[11px] text-background/85 max-h-[300px] overflow-auto custom-scrollbar shadow-strong border border-border/60">
                 {JSON.stringify(resp, null, 2)}
               </pre>
             </div>
@@ -1044,9 +1051,9 @@ function AuditRow({
     <>
       <tr
         className={cn(
-          'hover:bg-slate-50/50 transition-colors group cursor-pointer',
-          expanded && 'bg-blue-50/20',
-          selected && 'bg-blue-50/30'
+          'hover:bg-primary/[0.035] transition-colors group cursor-pointer',
+          expanded && 'bg-primary/[0.045]',
+          selected && 'bg-primary/[0.065]'
         )}
       >
         <td className="px-6 py-4 align-top">
@@ -1056,30 +1063,30 @@ function AuditRow({
             disabled={!canDelete}
             checked={selected}
             onChange={(event) => onSelectChange(event.currentTarget.checked)}
-            className="mt-1 size-3.5 rounded border-slate-300 text-blue-600 accent-blue-600"
+            className="mt-1 size-3.5 rounded border-border text-primary accent-[hsl(var(--primary))]"
           />
         </td>
         <td className="px-6 py-4" onClick={onToggle}>
           <div className="flex flex-col">
-            <span className="text-[12px] font-semibold text-slate-800 leading-none mb-1">
+            <span className="text-[12px] font-semibold text-foreground leading-none mb-1">
               {timestamp.date}
             </span>
-            <span className="text-[10px] font-mono text-slate-400 font-medium">
+            <span className="text-[10px] font-mono text-muted-foreground font-medium">
               {timestamp.time}
             </span>
           </div>
         </td>
         <td className="px-6 py-4" onClick={onToggle}>
           <div className="flex items-center gap-2">
-            <div className="size-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-black text-slate-500 uppercase">
+            <div className="size-6 rounded-full bg-muted flex items-center justify-center text-[10px] font-black text-muted-foreground uppercase">
               {log.actor_id?.slice(0, 2) || '??'}
             </div>
             <div className="min-w-0">
-              <div className="max-w-[220px] truncate font-mono text-[12px] font-medium text-slate-700">
+              <div className="max-w-[220px] truncate font-mono text-[12px] font-medium text-foreground">
                 {log.actor_id || 'system'}
               </div>
               {log.ip && (
-                <div className="mt-0.5 font-mono text-[10px] text-slate-400">
+                <div className="mt-0.5 font-mono text-[10px] text-muted-foreground">
                   {log.ip}
                 </div>
               )}
@@ -1088,14 +1095,14 @@ function AuditRow({
         </td>
         <td className="px-6 py-4" onClick={onToggle}>
           <div className="max-w-[320px]">
-            <div className="truncate text-[13px] font-semibold text-slate-800">
+            <div className="truncate text-[13px] font-semibold text-foreground">
               {actionLabel}
             </div>
-            <div className="mt-1 truncate font-mono text-[10px] text-slate-400">
+            <div className="mt-1 truncate font-mono text-[10px] text-muted-foreground">
               {log.action}
             </div>
             {log.request_id && (
-              <div className="mt-1 truncate font-mono text-[10px] text-slate-400">
+              <div className="mt-1 truncate font-mono text-[10px] text-muted-foreground">
                 请求 {log.request_id}
               </div>
             )}
@@ -1103,15 +1110,15 @@ function AuditRow({
         </td>
         <td className="px-6 py-4" onClick={onToggle}>
           <div className="max-w-[320px]">
-            <div className="truncate text-[12px] font-semibold text-slate-700">
+            <div className="truncate text-[12px] font-semibold text-foreground">
               {log.resource_type ? resourceTypeLabel : '未绑定资源'}
             </div>
             {resource && (
-              <div className="mt-1 truncate font-mono text-[10px] font-medium text-slate-400">
+              <div className="mt-1 truncate font-mono text-[10px] font-medium text-muted-foreground">
                 {resource}
               </div>
             )}
-            <div className="mt-1 truncate text-[10px] font-medium text-slate-400">
+            <div className="mt-1 truncate text-[10px] font-medium text-muted-foreground">
               租户 <span className="font-mono">{log.tenant_id || '-'}</span>
             </div>
           </div>
@@ -1121,7 +1128,7 @@ function AuditRow({
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 rounded-lg px-2.5 text-[10px] font-semibold text-slate-500 hover:bg-blue-50 hover:text-blue-600"
+              className="h-7 rounded-lg px-2.5 text-[10px] font-semibold text-muted-foreground hover:bg-primary/10 hover:text-primary"
               onClick={onToggle}
             >
               {expanded ? '收起' : '详情'}
@@ -1129,7 +1136,7 @@ function AuditRow({
             <Button
               variant="outline"
               size="sm"
-              className="h-7 gap-1.5 rounded-lg border-slate-200 bg-card px-2.5 text-[10px] font-black shadow-none transition-all hover:border-blue-200 hover:text-blue-600"
+              className="h-7 gap-1.5 rounded-lg border-border/60 bg-card px-2.5 text-[10px] font-black shadow-none transition-all hover:border-primary/30 hover:text-primary"
               onClick={() => onCopy(JSON.stringify(log.details, null, 2))}
             >
               <FileJson className="size-3" /> JSON
@@ -1146,7 +1153,7 @@ function AuditRow({
                 variant="outline"
                 size="sm"
                 disabled={!canDelete || deleting}
-                className="h-7 gap-1.5 rounded-lg border-red-100 bg-red-50 px-2.5 text-[10px] font-black text-red-700 shadow-none transition-all hover:bg-red-100 hover:text-red-800"
+                className="h-7 gap-1.5 rounded-lg border-destructive/20 bg-destructive/10 px-2.5 text-[10px] font-black text-destructive shadow-none transition-all hover:bg-destructive/15 hover:text-destructive"
               >
                 {deleting ? (
                   <RefreshCw className="size-3 animate-spin" />
@@ -1160,9 +1167,9 @@ function AuditRow({
         </td>
       </tr>
       {expanded && (
-        <tr className="bg-blue-50/10">
+        <tr className="bg-primary/[0.025]">
           <td colSpan={6} className="px-6 pb-6">
-            <div className="rounded-xl border border-blue-100 bg-card p-4 shadow-inner relative group">
+            <div className="rounded-xl border border-primary/15 bg-card p-4 shadow-inner relative group">
               <Button
                 variant="ghost"
                 size="icon"
@@ -1172,7 +1179,7 @@ function AuditRow({
               >
                 <Copy className="size-3" />
               </Button>
-              <pre className="font-mono text-[11px] leading-relaxed text-slate-600 overflow-auto max-h-[300px] custom-scrollbar">
+              <pre className="font-mono text-[11px] leading-relaxed text-foreground overflow-auto max-h-[300px] custom-scrollbar">
                 {JSON.stringify(log.details, null, 2)}
               </pre>
             </div>

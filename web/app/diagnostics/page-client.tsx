@@ -57,7 +57,9 @@ import { queryKeys } from '@/lib/query-keys'
 import { cn } from '@/lib/utils'
 import type {
   Dataset,
+  DatasetListResponse,
   Document as KnowledgeDocument,
+  DocumentList,
   OnlineQualitySummaryResponse,
   PromptPreviewResponse,
 } from '@/types'
@@ -240,6 +242,17 @@ function datasetLabel(dataset: Dataset) {
 
 function documentLabel(document: KnowledgeDocument) {
   return document.filename || shortId(document.id)
+}
+
+function getListItems<T>(
+  source: { items?: T[] } | T[] | null | undefined,
+  fallback: T[]
+): T[] {
+  if (Array.isArray(source)) return source
+  if (source && typeof source === 'object' && Array.isArray(source.items)) {
+    return source.items
+  }
+  return fallback
 }
 
 function metricSource(hasResult: boolean, source: string) {
@@ -597,13 +610,10 @@ export default function DiagnosticsPage() {
 
   const datasetsQuery = useQuery({
     queryKey: queryKeys.datasets.list({ limit: 200 }),
-    queryFn: async (): Promise<Dataset[]> => {
-      const res = await datasetApi.list({ limit: 200 })
-      return Array.isArray(res.items) ? res.items : []
-    },
+    queryFn: (): Promise<DatasetListResponse> => datasetApi.list({ limit: 200 }),
     staleTime: 30_000,
   })
-  const datasets = datasetsQuery.data ?? EMPTY_DATASETS
+  const datasets = getListItems<Dataset>(datasetsQuery.data, EMPTY_DATASETS)
   const datasetsLoading = datasetsQuery.isPending
   const activeDatasetId = probeDatasetId || datasets[0]?.id || ''
 
@@ -615,19 +625,18 @@ export default function DiagnosticsPage() {
       order_dir: 'desc',
     }),
     enabled: Boolean(activeDatasetId),
-    queryFn: async (): Promise<KnowledgeDocument[]> => {
-      const res = await documentApi.list({
+    queryFn: (): Promise<DocumentList> =>
+      documentApi.list({
         skip: 0,
         limit: 200,
         dataset_id: activeDatasetId,
         order_by: 'created_at',
         order_dir: 'desc',
-      })
-      return Array.isArray(res.items) ? res.items : []
-    },
+      }),
     staleTime: 15_000,
   })
-  const documents = documentsQuery.data ?? EMPTY_DOCUMENTS
+  const documents =
+    getListItems<KnowledgeDocument>(documentsQuery.data, EMPTY_DOCUMENTS)
   const documentsLoading =
     Boolean(activeDatasetId) &&
     (documentsQuery.isPending || documentsQuery.isFetching)

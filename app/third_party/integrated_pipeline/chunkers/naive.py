@@ -21,11 +21,11 @@ from functools import reduce
 from io import BytesIO
 from timeit import default_timer as timer
 
+import httpx
 from docx import Document
 from docx.image.exceptions import InvalidImageStreamError, UnexpectedEndOfFileError, UnrecognizedImageError
 from docx.opc.oxml import parse_xml
 from docx.opc.pkgreader import _SerializedRelationship, _SerializedRelationships
-import httpx
 from markdown import markdown
 from PIL import Image
 

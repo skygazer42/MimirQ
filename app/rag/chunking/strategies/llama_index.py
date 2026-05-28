@@ -5,11 +5,11 @@ Provides intelligent chunking strategies based on LlamaIndex.
 """
 
 
-from app.rag.core.logging import get_logger
 from langchain_core.documents import Document
 
 from app.core.config import settings
 from app.rag.chunking.base import BaseChunker
+from app.rag.core.logging import get_logger
 
 logger = get_logger(__name__)
 

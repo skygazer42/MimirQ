@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -42,6 +42,8 @@ import { DatasetCategoryTree } from '@/components/dataset-categories/category-tr
 import { DatasetCategoryMultiSelect } from '@/components/dataset-categories/category-multi-select'
 import { CreateDatasetButton } from '@/components/datasets/create-dataset-button'
 import { GroupChipsInput } from '@/components/groups/group-chips-input'
+
+const DATASET_STATS_REQUEST_SPACING_MS = 90
 
 type DatasetFormState = {
   name: string
@@ -279,6 +281,7 @@ export default function DatasetsPage() {
   const [deleteDocumentCountHint, setDeleteDocumentCountHint] = useState<number | null>(null)
   const [deletePending, setDeletePending] = useState(false)
   const [statsByDatasetId, setStatsByDatasetId] = useState<Record<string, DatasetIngestionStats>>({})
+  const requestedStatsIdsRef = useRef<Set<string>>(new Set())
 
   const [createOpen, setCreateOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
@@ -327,6 +330,8 @@ export default function DatasetsPage() {
   }, [datasetsQuery.error, datasetsQuery.errorUpdatedAt])
 
   const refreshDatasets = useCallback(async () => {
+    requestedStatsIdsRef.current.clear()
+    setStatsByDatasetId({})
     await datasetsQuery.refetch()
   }, [datasetsQuery])
 
@@ -336,44 +341,6 @@ export default function DatasetsPage() {
       return updater(current)
     })
   }, [datasetsQueryKey, queryClient])
-
-  useEffect(() => {
-    const missingIds = items
-      .map((dataset) => dataset.id)
-      .filter((id) => !statsByDatasetId[id])
-
-    if (missingIds.length === 0) return
-
-    let cancelled = false
-    detachPromise((async () => {
-      const statsEntries = await Promise.all(
-        missingIds.map(async (datasetId) => {
-          try {
-            const stats = await datasetApi.getIngestionStats(datasetId)
-            return [datasetId, stats] as const
-          } catch {
-            return null
-          }
-        })
-      )
-
-      if (cancelled) return
-
-      setStatsByDatasetId((prev) => {
-        const next = { ...prev }
-        for (const entry of statsEntries) {
-          if (!entry) continue
-          const [datasetId, stats] = entry
-          next[datasetId] = stats
-        }
-        return next
-      })
-    })())
-
-    return () => {
-      cancelled = true
-    }
-  }, [items, statsByDatasetId])
 
   const filteredItems = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()
@@ -407,6 +374,49 @@ export default function DatasetsPage() {
     const start = (currentPage - 1) * pageSize
     return displayedItems.slice(start, start + pageSize)
   }, [currentPage, displayedItems, pageSize])
+
+  useEffect(() => {
+    const missingIds = pagedItems
+      .map((dataset) => dataset.id)
+      .filter((id) => !statsByDatasetId[id] && !requestedStatsIdsRef.current.has(id))
+
+    if (missingIds.length === 0) return
+
+    let cancelled = false
+    detachPromise((async () => {
+      const statsEntries: Array<readonly [string, DatasetIngestionStats]> = []
+
+      for (const datasetId of missingIds) {
+        if (cancelled) return
+        requestedStatsIdsRef.current.add(datasetId)
+
+        try {
+          const stats = await datasetApi.getIngestionStats(datasetId)
+          statsEntries.push([datasetId, stats] as const)
+        } catch {
+          // Stats are decorative for the catalog; keep the page usable on partial backend failures.
+        }
+
+        if (!cancelled && DATASET_STATS_REQUEST_SPACING_MS > 0) {
+          await new Promise((resolve) => setTimeout(resolve, DATASET_STATS_REQUEST_SPACING_MS))
+        }
+      }
+
+      if (cancelled || statsEntries.length === 0) return
+
+      setStatsByDatasetId((prev) => {
+        const next = { ...prev }
+        for (const [datasetId, stats] of statsEntries) {
+          next[datasetId] = stats
+        }
+        return next
+      })
+    })())
+
+    return () => {
+      cancelled = true
+    }
+  }, [pagedItems, statsByDatasetId])
 
   useEffect(() => {
     setCurrentPage(1)

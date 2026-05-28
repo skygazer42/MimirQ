@@ -75,11 +75,11 @@ const SETTINGS_SECTION_BY_ID = Object.fromEntries(
   SETTINGS_SECTIONS.map((section) => [section.id, section])
 ) as Record<string, SettingsSectionDefinition>
 const SETTINGS_CARD_CLASS =
-  'rounded-[16px] border border-slate-200/75 bg-card shadow-sm'
+  'rounded-[16px] border border-border/60 bg-card/82 shadow-sm'
 const SETTINGS_OUTLINE_BUTTON =
-  'h-8 rounded-[12px] border-slate-200 bg-card px-3 text-[12px] font-medium text-slate-700 shadow-sm hover:bg-slate-50'
+  'h-8 rounded-[12px] border-border/60 bg-card/82 px-3 text-[12px] font-medium text-foreground shadow-sm hover:bg-muted/45'
 const SETTINGS_PRIMARY_BUTTON =
-  'h-8 rounded-[12px] bg-blue-600 px-3 text-[12px] font-medium text-info-foreground shadow-sm hover:bg-blue-700 disabled:opacity-80 disabled:bg-blue-500 disabled:text-info-foreground'
+  'h-8 rounded-[12px] bg-primary px-3 text-[12px] font-medium text-primary-foreground shadow-sm hover:bg-primary/90 disabled:bg-primary/55 disabled:opacity-80 disabled:text-primary-foreground'
 
 type SettingsMetricTone = 'blue' | 'green' | 'indigo' | 'slate'
 
@@ -92,10 +92,10 @@ type SettingsMetricItem = {
 }
 
 const SETTINGS_METRIC_TONE_CLASS: Record<SettingsMetricTone, string> = {
-  blue: 'bg-blue-50 text-blue-600',
-  green: 'bg-emerald-50 text-emerald-600',
-  indigo: 'bg-indigo-50 text-indigo-600',
-  slate: 'bg-slate-100 text-slate-500',
+  blue: 'bg-primary/10 text-primary',
+  green: 'bg-success/10 text-success',
+  indigo: 'bg-accent/10 text-accent',
+  slate: 'bg-muted text-muted-foreground',
 }
 
 function SettingsMetricStrip({
@@ -104,14 +104,14 @@ function SettingsMetricStrip({
   return (
     <div
       data-testid="settings-metric-strip"
-      className="flex flex-wrap items-center gap-1.5 rounded-[16px] border border-slate-200/75 bg-white/78 p-1.5 shadow-[0_8px_24px_rgba(15,23,42,0.03)]"
+      className="flex flex-wrap items-center gap-1.5 rounded-[16px] border border-border/60 bg-card/82 p-1.5 shadow-[0_8px_24px_hsl(var(--foreground)/0.03)]"
     >
       {items.map((item) => {
         const Icon = item.icon
         return (
           <div
             key={item.label}
-            className="flex min-h-9 flex-1 basis-[150px] items-center gap-2 rounded-[12px] border border-slate-100 bg-slate-50/60 px-2.5 py-1.5"
+            className="flex min-h-9 flex-1 basis-[150px] items-center gap-2 rounded-[12px] border border-border/50 bg-muted/28 px-2.5 py-1.5"
           >
             <div
               className={cn(
@@ -122,12 +122,12 @@ function SettingsMetricStrip({
               <Icon className="size-3.5" />
             </div>
             <div className="flex min-w-0 flex-1 items-baseline justify-between gap-2">
-              <p className="truncate text-[11px] font-semibold text-slate-600">
+              <p className="truncate text-[11px] font-semibold text-muted-foreground">
                 {item.label}
               </p>
               <p
                 className={cn(
-                  'shrink-0 text-[13px] font-semibold leading-none text-slate-950',
+                  'shrink-0 text-[13px] font-semibold leading-none text-foreground',
                   item.valueClassName
                 )}
               >
@@ -152,7 +152,7 @@ function SettingsSaveFeedback({
     return (
       <Alert
         variant="destructive"
-        className="rounded-xl border-rose-200/80 bg-rose-50/70 shadow-none"
+        className="rounded-xl border-destructive/25 bg-destructive/10 shadow-none"
       >
         <XCircle className="size-4" />
         <div>
@@ -169,43 +169,43 @@ function SettingsSaveFeedback({
   const extraCount = Math.max(0, updatedKeys.length - visibleKeys.length)
 
   return (
-    <div className="rounded-[16px] border border-emerald-200/80 bg-[linear-gradient(135deg,rgba(236,253,245,0.96),rgba(255,255,255,0.96))] px-3.5 py-3 shadow-[0_10px_30px_rgba(16,185,129,0.06)]">
+    <div className="rounded-[16px] border border-success/25 bg-[linear-gradient(135deg,hsl(var(--success)/0.12),hsl(var(--card)/0.90))] px-3.5 py-3 shadow-[0_10px_30px_hsl(var(--success)/0.06)]">
       <div className="flex items-start gap-3">
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-[11px] border border-emerald-200/80 bg-emerald-100/85 text-emerald-600">
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-[11px] border border-success/25 bg-success/15 text-success">
           <CheckCircle2 className="size-4" />
         </div>
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="text-[13px] font-semibold leading-none text-slate-950">
+            <p className="text-[13px] font-semibold leading-none text-foreground">
               已保存
             </p>
             {message.detail ? (
-              <span className="rounded-full border border-emerald-200/80 bg-white/85 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
+              <span className="rounded-full border border-success/25 bg-card/85 px-2 py-0.5 text-[10px] font-medium text-success">
                 少量配置需重启服务
               </span>
             ) : null}
           </div>
-          <p className="text-[12px] leading-5 text-slate-600">{message.text}</p>
+          <p className="text-[12px] leading-5 text-muted-foreground">{message.text}</p>
           {message.detail ? (
-            <p className="text-[11.5px] font-medium leading-[18px] text-slate-600">
+            <p className="text-[11.5px] font-medium leading-[18px] text-muted-foreground">
               {message.detail}
             </p>
           ) : null}
           {updatedKeys.length > 0 ? (
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-[10px] font-semibold text-slate-500">
+              <span className="text-[10px] font-semibold text-muted-foreground">
                 本次更新
               </span>
               {visibleKeys.map((key) => (
                 <span
                   key={key}
-                  className="rounded-full border border-slate-200/80 bg-white/85 px-2 py-0.5 font-mono text-[10px] text-slate-600"
+                  className="rounded-full border border-border/60 bg-card/85 px-2 py-0.5 font-mono text-[10px] text-muted-foreground"
                 >
                   {key}
                 </span>
               ))}
               {extraCount > 0 ? (
-                <span className="rounded-full border border-slate-200/70 bg-slate-100/80 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                <span className="rounded-full border border-border/60 bg-muted/60 px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
                   +{extraCount} 项
                 </span>
               ) : null}
@@ -240,19 +240,19 @@ function EnhancementCard({
     tone === 'emerald'
       ? {
           card: checked
-            ? 'border-emerald-200/90 bg-emerald-50/35'
-            : 'border-slate-200 bg-card',
+            ? 'border-success/30 bg-success/10'
+            : 'border-border/60 bg-card',
           icon: checked
-            ? 'bg-emerald-100 text-emerald-600'
-            : 'bg-slate-100 text-slate-500',
+            ? 'bg-success/15 text-success'
+            : 'bg-muted text-muted-foreground',
         }
       : {
           card: checked
-            ? 'border-blue-200/90 bg-blue-50/35'
-            : 'border-slate-200 bg-card',
+            ? 'border-primary/30 bg-primary/10'
+            : 'border-border/60 bg-card',
           icon: checked
-            ? 'bg-blue-100 text-blue-600'
-            : 'bg-slate-100 text-slate-500',
+            ? 'bg-primary/15 text-primary'
+            : 'bg-muted text-muted-foreground',
         }
 
   return (
@@ -261,7 +261,7 @@ function EnhancementCard({
       aria-pressed={checked}
       onClick={onToggle}
       className={cn(
-        'group flex min-h-[54px] w-full items-center justify-between gap-3 rounded-[13px] border px-3 py-2 text-left transition-[border-color,background-color,box-shadow] duration-150 focus-ring hover:border-blue-200/80 motion-reduce:transition-none',
+        'group flex min-h-[54px] w-full items-center justify-between gap-3 rounded-[13px] border px-3 py-2 text-left transition-[border-color,background-color,box-shadow] duration-150 focus-ring hover:border-primary/30 motion-reduce:transition-none',
         toneClass.card
       )}
     >
@@ -275,10 +275,10 @@ function EnhancementCard({
           <Icon className="size-3.5" />
         </span>
         <span className="min-w-0">
-          <span className="block text-[12px] font-semibold leading-4 text-slate-950">
+          <span className="block text-[12px] font-semibold leading-4 text-foreground">
             {title}
           </span>
-          <span className="mt-0.5 block truncate text-[10.5px] font-medium leading-4 text-slate-600">
+          <span className="mt-0.5 block truncate text-[10.5px] font-medium leading-4 text-muted-foreground">
             {description}
           </span>
           {tags.length > 0 ? (
@@ -286,7 +286,7 @@ function EnhancementCard({
               {tags.map((tag) => (
                 <span
                   key={tag}
-                  className="rounded-md border border-slate-200 bg-card/80 px-1.5 py-0.5 text-[10px] font-medium leading-[14px] text-slate-600"
+                  className="rounded-md border border-border/60 bg-card/80 px-1.5 py-0.5 text-[10px] font-medium leading-[14px] text-muted-foreground"
                 >
                   {tag}
                 </span>
@@ -305,12 +305,12 @@ function RetrievalEnhancementSection({ state }: Readonly<{ state: any }>) {
   const kgEnabled = state.getFeatureValue('kg_enabled')
 
   return (
-    <section className="rounded-[16px] border border-slate-200/75 bg-card p-3.5 shadow-sm">
+    <section className="rounded-[16px] border border-border/60 bg-card/82 p-3.5 shadow-sm">
       <div className="mb-2.5">
-        <h2 className="text-[13px] font-semibold text-slate-950">
+        <h2 className="text-[13px] font-semibold text-foreground">
           关键词增强配置
         </h2>
-        <p className="mt-0.5 text-[11.5px] font-medium leading-[18px] text-slate-600">
+        <p className="mt-0.5 text-[11.5px] font-medium leading-[18px] text-muted-foreground">
           绑定后端 RAG 与 KG 开关，控制关键词索引和图谱增强是否参与检索
         </p>
       </div>
@@ -395,14 +395,14 @@ function SettingsSectionFrame({
       id={section.id}
       aria-labelledby={`${section.id}-title`}
       className={cn(
-        'relative scroll-mt-24 overflow-visible rounded-[20px] border border-slate-200/70 bg-white/78 shadow-[0_14px_34px_rgba(15,23,42,0.035)]',
-        'before:absolute before:-left-3 before:top-4 before:bottom-4 before:w-px before:rounded-full before:bg-gradient-to-b before:from-transparent before:via-blue-200/80 before:to-transparent',
+        'relative scroll-mt-24 overflow-visible rounded-[20px] border border-border/60 bg-card/82 shadow-[0_14px_34px_hsl(var(--foreground)/0.035)]',
+        'before:absolute before:-left-3 before:top-4 before:bottom-4 before:w-px before:rounded-full before:bg-gradient-to-b before:from-transparent before:via-primary/35 before:to-transparent',
         className
       )}
     >
-      <div className="rounded-t-[20px] border-b border-slate-100 bg-gradient-to-r from-slate-50/95 via-white to-blue-50/45 px-4 py-3 ring-1 ring-inset ring-white/70">
+      <div className="rounded-t-[20px] border-b border-border/50 bg-[linear-gradient(90deg,hsl(var(--muted)/0.38),hsl(var(--card)/0.88),hsl(var(--primary)/0.06))] px-4 py-3 ring-1 ring-inset ring-border/40">
         <div className="flex min-w-0 items-center gap-3">
-          <span className="flex h-7 w-9 shrink-0 items-center justify-center rounded-[12px] border border-blue-100 bg-blue-50 text-[11px] font-black text-blue-600">
+          <span className="flex h-7 w-9 shrink-0 items-center justify-center rounded-[12px] border border-primary/20 bg-primary/10 text-[11px] font-black text-primary">
             {String(index + 1).padStart(2, '0')}
           </span>
           <div className="min-w-0">
@@ -412,13 +412,13 @@ function SettingsSectionFrame({
             >
               {section.label}
             </h2>
-            <p className="mt-0.5 text-[11.5px] font-medium leading-[18px] text-slate-600">
+            <p className="mt-0.5 text-[11.5px] font-medium leading-[18px] text-muted-foreground">
               {section.hint}
             </p>
           </div>
         </div>
       </div>
-      <div className="space-y-3 border-t border-white/70 p-3.5">{children}</div>
+      <div className="space-y-3 border-t border-border/35 p-3.5">{children}</div>
     </section>
   )
 }
@@ -463,7 +463,7 @@ function SettingsPageContent() {
       value: state.hasChanges ? '待保存' : '已同步',
       icon: Layers,
       tone: 'green',
-      valueClassName: state.hasChanges ? 'text-amber-600' : 'text-emerald-600',
+      valueClassName: state.hasChanges ? 'text-warning' : 'text-success',
     },
     {
       label: '保存状态',
@@ -478,12 +478,12 @@ function SettingsPageContent() {
       tone: state.saveMessage?.type === 'success' ? 'green' : 'indigo',
       valueClassName:
         state.saveMessage?.type === 'error'
-          ? 'text-rose-600'
+          ? 'text-destructive'
           : state.saving
-            ? 'text-amber-600'
+            ? 'text-warning'
             : state.saveMessage?.type === 'success'
-              ? 'text-emerald-600'
-              : 'text-slate-950',
+              ? 'text-success'
+              : 'text-foreground',
     },
     {
       label: '最近更新',
@@ -505,7 +505,7 @@ function SettingsPageContent() {
         size="full"
         compact
         density="system-dense"
-        headerClassName="[&_h1]:!text-[21px] [&_h1]:md:!text-[23px] [&_h1]:!font-semibold [&_h1]:!leading-tight [&_h1]:!tracking-[-0.026em] [&_[class*='rounded-full']]:border-blue-100 [&_[class*='rounded-full']]:bg-blue-50 [&_[class*='rounded-full']]:font-medium [&_[class*='rounded-full']]:normal-case [&_[class*='rounded-full']]: [&_[class*='rounded-full']]:text-blue-600"
+        headerClassName="[&_h1]:!text-[21px] [&_h1]:md:!text-[23px] [&_h1]:!font-semibold [&_h1]:!leading-tight [&_h1]:!tracking-[-0.026em] [&_[class*='rounded-full']]:border-primary/20 [&_[class*='rounded-full']]:bg-primary/10 [&_[class*='rounded-full']]:font-medium [&_[class*='rounded-full']]:normal-case [&_[class*='rounded-full']]:text-primary"
         topClassName="pb-2.5"
         bodyClassName="pt-0.5"
         top={
@@ -514,7 +514,7 @@ function SettingsPageContent() {
             {state.loadError ? (
               <Alert
                 variant="destructive"
-                className="rounded-xl border-rose-200/80 bg-rose-50/70 shadow-none"
+                className="rounded-xl border-destructive/25 bg-destructive/10 shadow-none"
               >
                 <XCircle className="size-4" />
                 <div>
@@ -644,8 +644,8 @@ function SettingsContent({
                   'relative w-full rounded-[12px] px-3 py-2 text-left transition-colors',
                   'text-[12px] font-semibold leading-[18px]',
                   activeId === sec.id
-                    ? 'bg-blue-50/90 text-blue-600 before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[3px] before:rounded-full before:bg-blue-600'
-                    : 'text-slate-700 hover:bg-slate-50 hover:text-slate-950'
+                    ? 'bg-primary/10 text-primary before:absolute before:left-0 before:top-2 before:bottom-2 before:w-[3px] before:rounded-full before:bg-primary'
+                    : 'text-foreground/78 hover:bg-muted/45 hover:text-foreground'
                 )}
               >
                 {sec.label}

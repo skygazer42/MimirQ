@@ -16,9 +16,9 @@ from sqlalchemy.orm import Session, aliased
 
 from app.core.config import settings
 from app.core.constants import EmbeddingProviders
+from app.models.dataset import Dataset as DBDataset
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
-from app.models.dataset import Dataset as DBDataset
 from app.rag.chunking.utils.hierarchical import apply_sequence_hierarchy_metadata
 from app.rag.core.metadata import ensure_hierarchy_overlay_metadata, normalize_image_metadata
 from app.rag.embedding import create_langchain_embeddings_from_config
@@ -27,12 +27,12 @@ from app.rag.kg.models import KgEntity, KgEventEntity, KgRelation, KgSourceEvent
 from app.rag.kg.provenance import build_event_entity_provenance
 from app.rag.preprocessing.normalization import normalize_text
 from app.rag.retriever import hybrid_retriever
-from app.services.metrics_logger import log_metrics
 from app.services.dataset_embedding_config import (
     DatasetEmbeddingRuntimeConfig,
     create_embeddings_for_runtime,
     resolve_dataset_embedding_runtime,
 )
+from app.services.metrics_logger import log_metrics
 from app.storage.vector.factory import get_vector_store
 from app.storage.vector.milvus import get_milvus_adapter, resolve_collection_name
 from app.types.indexing import (

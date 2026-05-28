@@ -101,16 +101,16 @@ export function SystemStatusSection({
           <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <div className={cn(systemPageTokens.microLabel, 'flex items-center gap-1.5 text-foreground/80')}>
-                <Server className="h-3.5 w-3.5 text-blue-500" />
+                <Server className="h-3.5 w-3.5 text-primary" />
                 运行能力
               </div>
-              <div className="mt-1 text-[11px] font-medium leading-5 text-slate-600">
+              <div className="mt-1 text-[11px] font-medium leading-5 text-muted-foreground">
                 API、运行环境与解析器可用性汇总
               </div>
             </div>
             {backendMeta ? (
-              <div className="text-right text-[11px] font-medium leading-5 text-slate-600">
-                <div className="text-slate-900">
+              <div className="text-right text-[11px] font-medium leading-5 text-muted-foreground">
+                <div className="text-foreground">
                   {backendMeta.name} · {backendMeta.api_version}
                   {backendMeta.build?.sha ? ` · ${backendMeta.build.sha.slice(0, 7)}` : ''}
                 </div>
@@ -119,7 +119,7 @@ export function SystemStatusSection({
             ) : null}
           </div>
 
-          <div className="flex flex-wrap gap-1.5 border-t border-slate-100 pt-3">
+          <div className="flex flex-wrap gap-1.5 border-t border-border/50 pt-3">
             {parserEntries.map(([key, info]) => (
               <span
                 key={key}
@@ -127,14 +127,14 @@ export function SystemStatusSection({
                 className={cn(
                   'inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-semibold',
                   info.available
-                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                    : 'border-slate-200 bg-slate-50 text-slate-500'
+                    ? 'border-success/25 bg-success/10 text-success'
+                    : 'border-border/60 bg-muted/35 text-muted-foreground'
                 )}
               >
                 <span
                   className={cn(
                     'size-1.5 rounded-full',
-                    info.available ? 'bg-emerald-500' : 'bg-slate-300'
+                    info.available ? 'bg-success' : 'bg-muted-foreground/45'
                   )}
                 />
                 {formatParserName(key)}

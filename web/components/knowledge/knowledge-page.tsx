@@ -67,13 +67,13 @@ import { cn, detachPromise, formatFileSize } from '@/lib/utils'
 
 const DATASET_ALL = '__all__'
 const KNOWLEDGE_BACKGROUND_CLASS =
-  'bg-[radial-gradient(circle_at_18%_0%,rgba(37,99,235,0.10),transparent_30%),radial-gradient(circle_at_82%_8%,rgba(14,165,233,0.08),transparent_32%),linear-gradient(180deg,#fbfdff_0%,#f2f7ff_46%,#fbfdff_100%)] dark:bg-[radial-gradient(circle_at_20%_0%,rgba(59,130,246,0.13),transparent_30%),radial-gradient(circle_at_80%_8%,rgba(14,165,233,0.10),transparent_32%),linear-gradient(180deg,hsl(var(--background))_0%,hsl(var(--muted)/0.18)_48%,hsl(var(--background))_100%)]'
+  'bg-[radial-gradient(circle_at_18%_0%,hsl(var(--primary)/0.10),transparent_30%),radial-gradient(circle_at_82%_8%,hsl(var(--accent)/0.08),transparent_32%),linear-gradient(180deg,hsl(var(--background))_0%,hsl(var(--surface-2)/0.55)_46%,hsl(var(--background))_100%)]'
 const KNOWLEDGE_GRID_OVERLAY_CLASS =
-  'pointer-events-none absolute inset-0 opacity-[0.26] [background-image:linear-gradient(rgba(37,99,235,0.026)_1px,transparent_1px),linear-gradient(90deg,rgba(37,99,235,0.022)_1px,transparent_1px)] [background-size:32px_32px] [mask-image:linear-gradient(180deg,rgba(0,0,0,0.72),rgba(0,0,0,0.18)_55%,transparent_100%)] dark:opacity-[0.16]'
+  'pointer-events-none absolute inset-0 opacity-[0.24] [background-image:linear-gradient(hsl(var(--primary)/0.026)_1px,transparent_1px),linear-gradient(90deg,hsl(var(--primary)/0.022)_1px,transparent_1px)] [background-size:32px_32px] [mask-image:linear-gradient(180deg,rgba(0,0,0,0.72),rgba(0,0,0,0.18)_55%,transparent_100%)] dark:opacity-[0.16]'
 const KNOWLEDGE_GLASS_CARD_CLASS =
-  'border-sky-100/70 bg-white/[0.92] shadow-[0_8px_22px_rgba(37,99,235,0.035)] backdrop-blur-xl dark:border-border/45 dark:bg-card/72'
+  'border-border/55 bg-card/80 shadow-[0_8px_22px_hsl(var(--primary)/0.06)] backdrop-blur-xl dark:border-border/45 dark:bg-card/72'
 const KNOWLEDGE_WORKBENCH_SURFACE_CLASS =
-  'border-sky-100/70 bg-white/[0.86] shadow-[0_10px_28px_rgba(37,99,235,0.032)] backdrop-blur-xl dark:border-border/45 dark:bg-card/62'
+  'border-border/50 bg-card/68 shadow-[0_10px_28px_hsl(var(--primary)/0.05)] backdrop-blur-xl dark:border-border/45 dark:bg-card/62'
 const DOCUMENTS_PAGE_SIZE = 20
 type TabKey = 'documents' | 'retrieval' | 'settings'
 
@@ -415,7 +415,7 @@ export default function KnowledgePage() {
 
   const documentScopeSummary = useMemo(
     () => (
-      <div className="inline-flex max-w-full flex-wrap items-center gap-2 rounded-[12px] border border-sky-100/60 bg-white/42 px-2.5 py-1.5 text-[11px] shadow-[0_10px_24px_-28px_rgba(37,99,235,0.28)] backdrop-blur-xl dark:border-border/55 dark:bg-background/30">
+      <div className="inline-flex max-w-full flex-wrap items-center gap-2 rounded-[12px] border border-border/55 bg-card/42 px-2.5 py-1.5 text-[11px] shadow-[0_10px_24px_-28px_hsl(var(--primary)/0.32)] backdrop-blur-xl dark:border-border/55 dark:bg-background/30">
         <span className="inline-flex items-center font-medium text-foreground/82">
           <Database className="mr-1.5 size-3 text-info" />
           Dataset Scope
@@ -423,7 +423,7 @@ export default function KnowledgePage() {
             {selectedDatasetLabel || scopeT('dataset.all')}
           </span>
         </span>
-        <span className="h-3.5 w-px bg-sky-100/80 dark:bg-border/70" />
+        <span className="h-3.5 w-px bg-border/80 dark:bg-border/70" />
         <span className="inline-flex items-center font-medium text-foreground/82">
           <Eye className="mr-1.5 size-3 text-info" />
           Visible
@@ -431,7 +431,7 @@ export default function KnowledgePage() {
             {filteredDocuments.length}
           </span>
         </span>
-        <span className="h-3.5 w-px bg-sky-100/80 dark:bg-border/70" />
+        <span className="h-3.5 w-px bg-border/80 dark:bg-border/70" />
         <span className="inline-flex items-center font-medium text-foreground/82">
           <Activity className="mr-1.5 size-3 text-success" />
           Lifecycle
@@ -1091,7 +1091,7 @@ export default function KnowledgePage() {
           </div>
         }
         bodyClassName={cn(
-          'bg-[#F5FAFF]/70 pt-3 dark:bg-background/20',
+          'bg-background/35 pt-3 dark:bg-background/20',
           documentsEmptySurface ? 'flex-none overflow-visible pb-2' : undefined
         )}
         mainPaneClassName={cn(

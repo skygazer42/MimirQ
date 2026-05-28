@@ -76,6 +76,11 @@ from app.models.document import Document as DBDocument
 from app.models.document import DocumentPermission
 from app.models.group_permissions import DocumentGroupPermission
 from app.models.tenant_group import TenantGroup
+from app.services.audit_log_service import audit_log_event
+from app.services.connector_reconcile_service import (
+    plan_connector_reconcile,
+    resolve_connector_reconcile_source_refs,
+)
 from app.services.connector_registry import get_connector_definition
 from app.services.connector_sync_state import (
     build_persisted_state as build_persisted_state,
@@ -89,11 +94,6 @@ from app.services.connector_sync_state import (
 )
 from app.services.dataset_service import DatasetService
 from app.services.document_permission_service import DocumentGroupPermissionService, DocumentPermissionService
-from app.services.audit_log_service import audit_log_event
-from app.services.connector_reconcile_service import (
-    plan_connector_reconcile,
-    resolve_connector_reconcile_source_refs,
-)
 from app.services.security_redaction import redact_connection_info
 from app.services.web_crawler import crawl_site
 from app.tasks.queue import enqueue_connector_run as enqueue_connector_run

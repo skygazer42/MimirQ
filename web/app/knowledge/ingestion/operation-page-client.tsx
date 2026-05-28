@@ -132,11 +132,19 @@ const ACCEPTED_EXTENSIONS = [
 ]
 
 const WORKBENCH_SURFACE_CLASS =
-  'rounded-[1.45rem] border border-blue-100/70 bg-white/82 shadow-[0_18px_50px_rgba(30,64,175,0.06)] backdrop-blur-2xl'
+  'rounded-[1.45rem] border border-border/60 bg-card/78 shadow-[0_18px_50px_hsl(var(--primary)/0.08)] backdrop-blur-2xl'
 const SOFT_PANEL_CLASS =
-  'rounded-[1.28rem] border border-blue-100/60 bg-white/72 shadow-[0_12px_34px_rgba(30,64,175,0.045)] backdrop-blur-xl'
+  'rounded-[1.28rem] border border-border/55 bg-card/66 shadow-[0_12px_34px_hsl(var(--primary)/0.06)] backdrop-blur-xl'
 const SOFT_CONTROL_CLASS =
-  'rounded-[1rem] border-slate-200/70 bg-white/82 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)]'
+  'rounded-[1rem] border-border/60 bg-background/82 shadow-[inset_0_1px_0_hsl(var(--card)/0.72)]'
+const INLINE_FIELD_CLASS =
+  'border border-border/55 bg-background/50 text-foreground shadow-[inset_0_1px_0_hsl(var(--card)/0.55)]'
+const CONFIG_BOX_CLASS = 'rounded-[1.25rem] border border-border/60 bg-background/46'
+const CONFIG_INPUT_CLASS =
+  'rounded-[1rem] border-border/60 bg-card/78 shadow-[inset_0_1px_0_hsl(var(--card)/0.7)]'
+const TABLE_SHELL_CLASS = 'overflow-hidden rounded-[1.15rem] border border-border/60 bg-card/72'
+const TABLE_HEAD_CLASS = 'bg-muted/38 text-muted-foreground'
+const TABLE_ROW_CLASS = 'border-t border-border/50'
 
 function loadDraft(): DraftState {
   if (typeof window === 'undefined') return DEFAULT_DRAFT
@@ -519,7 +527,7 @@ export default function KnowledgeIngestionOperationPage() {
       return Array.from(byKey.values())
     })
     if (rejected > 0) {
-      toast.warning(`${rejected} 个文件格式暂不支持，已跳过`)
+      toast.warning(`${rejected} 个文件格式未在允许列表中，已跳过`)
     }
   }, [])
 
@@ -753,7 +761,7 @@ export default function KnowledgeIngestionOperationPage() {
   }
 
   return (
-    <div className="min-h-full overflow-y-auto bg-[radial-gradient(circle_at_14%_0%,rgba(96,165,250,0.075),transparent_32%),radial-gradient(circle_at_86%_10%,rgba(125,211,252,0.06),transparent_30%),linear-gradient(180deg,#fbfdff_0%,#f6faff_46%,#f9fbff_100%)] px-4 py-2.5 text-foreground lg:px-5">
+    <div className="min-h-full overflow-y-auto bg-[radial-gradient(circle_at_14%_0%,hsl(var(--primary)/0.08),transparent_32%),radial-gradient(circle_at_86%_10%,hsl(var(--accent)/0.06),transparent_30%),linear-gradient(180deg,hsl(var(--background))_0%,hsl(var(--surface-2)/0.60)_46%,hsl(var(--background))_100%)] px-4 py-2.5 text-foreground lg:px-5">
       <div className="mx-auto flex max-w-[1680px] flex-col gap-2">
         <PageHeader
           title="入库中心"
@@ -795,14 +803,14 @@ export default function KnowledgeIngestionOperationPage() {
             </FieldBlock>
             <FieldBlock label="数据来源">
               <Tabs value={source} onValueChange={(value) => setSource(value as UploadSource)}>
-                <TabsList className="grid h-10 grid-cols-5 overflow-hidden rounded-[1rem] border border-blue-100/70 bg-blue-50/35 p-0.5">
+                <TabsList className="grid h-10 grid-cols-5 overflow-hidden rounded-[1rem] border border-border/60 bg-muted/35 p-0.5">
                   {SOURCE_OPTIONS.map((item) => {
                     const Icon = item.icon
                     return (
                       <TabsTrigger
                         key={item.value}
                         value={item.value}
-                        className="h-full gap-2 rounded-[0.85rem] text-xs text-slate-600 data-[state=active]:bg-white/95 data-[state=active]:text-blue-700 data-[state=active]:shadow-[0_8px_18px_rgba(96,165,250,0.12)]"
+                        className="h-full gap-2 rounded-[0.85rem] text-xs text-muted-foreground data-[state=active]:bg-card/95 data-[state=active]:text-primary data-[state=active]:shadow-[0_8px_18px_hsl(var(--primary)/0.12)]"
                       >
                         <Icon className="size-4" />
                         <span className="hidden md:inline">{item.label}</span>
@@ -813,11 +821,11 @@ export default function KnowledgeIngestionOperationPage() {
               </Tabs>
             </FieldBlock>
             <div className="flex items-end gap-2">
-              <Button variant="outline" className="h-9 rounded-[1rem] border-blue-100/80 bg-white/82 text-slate-700 shadow-sm hover:bg-blue-50/60" onClick={() => router.push('/datasets')}>
+              <Button variant="outline" className="h-9 rounded-[1rem] border-border/60 bg-card/82 text-foreground shadow-sm hover:bg-muted/50" onClick={() => router.push('/datasets')}>
                 <Plus className="mr-2 size-4" />
                 新建数据集
               </Button>
-              <Button className="h-9 rounded-[1rem] bg-[linear-gradient(135deg,#2563eb,#60a5fa)] px-4 text-white shadow-[0_12px_24px_rgba(37,99,235,0.18)] hover:brightness-105" onClick={() => void uploadFiles('ingest')} disabled={!canStartIngest}>
+              <Button className="h-9 rounded-[1rem] bg-[linear-gradient(135deg,hsl(var(--primary)),hsl(var(--info)))] px-4 text-primary-foreground shadow-[0_12px_24px_hsl(var(--primary)/0.18)] hover:brightness-105" onClick={() => void uploadFiles('ingest')} disabled={!canStartIngest}>
                 {status === 'uploading' ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Play className="mr-2 size-4" />}
                 开始入库
               </Button>
@@ -904,7 +912,7 @@ function FieldBlock({
 }>) {
   return (
     <label className="block">
-      <div className="mb-2 text-xs font-semibold text-slate-600">
+      <div className="mb-2 text-xs font-semibold text-muted-foreground">
         {required ? <span className="mr-1 text-red-500">*</span> : null}
         {label}
       </div>
@@ -916,7 +924,7 @@ function FieldBlock({
 function SectionTitle({ title }: Readonly<{ title: string }>) {
   return (
     <div className="mb-1.5 flex items-center justify-between">
-      <h2 className="text-sm font-semibold tracking-[-0.01em] text-slate-950">{title}</h2>
+      <h2 className="text-sm font-semibold tracking-[-0.01em] text-foreground">{title}</h2>
     </div>
   )
 }
@@ -933,7 +941,7 @@ function StatusRail({
   }>
 }>) {
   return (
-    <div className="grid gap-1 rounded-[1.1rem] border border-blue-50 bg-blue-50/22 px-2 py-1.5 md:grid-cols-4">
+    <div className="grid gap-1 rounded-[1.1rem] border border-border/55 bg-background/42 px-2 py-1.5 md:grid-cols-4">
       {items.map((item) => (
         <StatusRailItem key={item.label} {...item} />
       ))}
@@ -955,21 +963,21 @@ function StatusRailItem({
   tone: 'blue' | 'green' | 'amber'
 }>) {
   const toneClass = {
-    blue: 'bg-blue-50/80 text-blue-600 ring-1 ring-blue-100/80',
+    blue: 'bg-info/[0.10] text-info ring-1 ring-info/20',
     green: 'bg-emerald-50/80 text-emerald-600 ring-1 ring-emerald-100/80',
     amber: 'bg-amber-50/80 text-amber-600 ring-1 ring-amber-100/80',
   }[tone]
   return (
-    <div className="flex min-w-0 items-center gap-2 rounded-[0.95rem] px-2 py-1.5 md:border-r md:border-blue-100/70 md:last:border-r-0">
+    <div className="flex min-w-0 items-center gap-2 rounded-[0.95rem] px-2 py-1.5 md:border-r md:border-border/55 md:last:border-r-0">
       <span className={cn('flex size-7 shrink-0 items-center justify-center rounded-[0.9rem]', toneClass)}>
         <Icon className="size-3.5" />
       </span>
       <div className="min-w-0">
         <div className="flex items-baseline gap-1.5">
-          <span className="text-xs text-slate-500">{label}</span>
-          <span className="text-[1.02rem] font-semibold leading-5 tracking-[-0.035em] text-slate-950">{value}</span>
+          <span className="text-xs text-muted-foreground">{label}</span>
+          <span className="text-[1.02rem] font-semibold leading-5 tracking-[-0.035em] text-foreground">{value}</span>
         </div>
-        <div className="mt-0.5 truncate text-[11px] text-slate-500">{helper}</div>
+        <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{helper}</div>
       </div>
       <span className={cn('ml-auto hidden size-7 items-center justify-center rounded-[0.9rem] opacity-55 xl:flex', toneClass)}>
         <Icon className="size-4" />
@@ -998,21 +1006,21 @@ function DatasetSummaryCard({
     : '选择数据集后承接上传、解析、切块与索引同步'
 
   return (
-    <div className="rounded-[1.2rem] border border-blue-100/70 bg-[linear-gradient(135deg,#ffffff_0%,#fbfdff_52%,#f0f7ff_100%)] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
+    <div className="rounded-[1.2rem] border border-border/60 bg-[linear-gradient(135deg,hsl(var(--card)/0.92)_0%,hsl(var(--surface-2)/0.56)_52%,hsl(var(--background)/0.78)_100%)] px-3 py-2 shadow-[inset_0_1px_0_hsl(var(--card)/0.8)]">
       <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex min-w-0 items-start gap-2.5">
-          <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-[1rem] border border-blue-100/80 bg-white text-blue-600 shadow-[0_10px_22px_rgba(96,165,250,0.12)]">
+          <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-[1rem] border border-border/60 bg-card text-primary shadow-[0_10px_22px_hsl(var(--primary)/0.14)]">
             <Database className="size-4" />
           </span>
           <div className="min-w-0">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <div className="truncate text-sm font-semibold text-slate-950">{dataset?.name ?? '未选择数据集'}</div>
-              <span className="flex items-center gap-1 text-[11px] text-slate-500">
+              <div className="truncate text-sm font-semibold text-foreground">{dataset?.name ?? '未选择数据集'}</div>
+              <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
                 ID: <span className="font-mono">{datasetShortId(dataset)}</span>
                 <Copy className="size-3" />
               </span>
             </div>
-            <div className="mt-1 text-xs text-slate-500">
+            <div className="mt-1 text-xs text-muted-foreground">
               当前目标数据集 · {capacitySummary} · {dataset ? statsSource : '等待选择'}
             </div>
           </div>
@@ -1056,15 +1064,17 @@ function UploadDropArea({
         onFiles(Array.from(event.dataTransfer.files ?? []))
       }}
       className={cn(
-        'flex min-h-[3.35rem] w-full flex-col items-center justify-center rounded-[1.35rem] border border-dashed bg-[radial-gradient(circle_at_center,rgba(147,197,253,0.12),transparent_48%),linear-gradient(180deg,#ffffff,#f7fbff)] px-4 py-2 text-center transition',
-        dragging ? 'border-blue-300 shadow-[0_0_0_4px_rgba(147,197,253,0.18)]' : 'border-blue-200/80 hover:border-blue-300/80 hover:bg-blue-50/25'
+        'flex min-h-[3.35rem] w-full flex-col items-center justify-center rounded-[1.35rem] border border-dashed bg-[radial-gradient(circle_at_center,hsl(var(--primary)/0.10),transparent_48%),linear-gradient(180deg,hsl(var(--card)/0.92),hsl(var(--background)/0.76))] px-4 py-2 text-center transition',
+        dragging
+          ? 'border-primary/45 shadow-[0_0_0_4px_hsl(var(--primary)/0.14)]'
+          : 'border-border/70 hover:border-primary/35 hover:bg-primary/[0.04]'
       )}
     >
-      <span className="flex size-7 items-center justify-center rounded-[0.95rem] bg-blue-50/90 text-blue-600 ring-1 ring-blue-100/80">
+      <span className="flex size-7 items-center justify-center rounded-[0.95rem] bg-primary/10 text-primary ring-1 ring-primary/20">
         <UploadCloud className="size-3.5" />
       </span>
-      <div className="mt-1 text-sm font-semibold text-slate-950">点击选择文件，或将文件拖拽到此处</div>
-      <div className="mt-0.5 text-[11px] text-slate-500">
+      <div className="mt-1 text-sm font-semibold text-foreground">点击选择文件，或将文件拖拽到此处</div>
+      <div className="mt-0.5 text-[11px] text-muted-foreground">
         支持 pdf、docx、txt、md、xlsx、csv、pptx 等格式，单文件 ≤ 2GB
       </div>
     </button>
@@ -1120,18 +1130,18 @@ function SourceConfiguration({
 }>) {
   if (source === 'folder') {
     return (
-      <div className="rounded-[1.25rem] border border-dashed border-blue-100/80 bg-blue-50/28 px-3 py-2">
+      <div className={cn(CONFIG_BOX_CLASS, 'border-dashed px-3 py-2')}>
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
           <div className="flex min-w-0 items-center gap-2.5">
-            <span className="flex size-8 shrink-0 items-center justify-center rounded-[1rem] bg-white/90 text-blue-600 ring-1 ring-blue-100/80">
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-[1rem] bg-primary/10 text-primary ring-1 ring-primary/20">
               <Folder className="size-4" />
             </span>
             <div className="min-w-0">
-              <div className="text-sm font-semibold text-slate-950">选择本地文件夹</div>
-              <div className="text-xs text-slate-500">浏览器会保留相对路径，后端按文件夹内文件批量上传到当前数据集。</div>
+              <div className="text-sm font-semibold text-foreground">选择本地文件夹</div>
+              <div className="text-xs text-muted-foreground">浏览器会保留相对路径，后端按文件夹内文件批量上传到当前数据集。</div>
             </div>
           </div>
-          <Button variant="outline" className="rounded-[1rem] border-blue-100/80 bg-white/85 shadow-sm hover:bg-blue-50/50" onClick={() => folderInputRef.current?.click()}>
+          <Button variant="outline" className={cn(CONFIG_INPUT_CLASS, 'hover:bg-background/92')} onClick={() => folderInputRef.current?.click()}>
             <Folder className="mr-2 size-4" />
             选择文件夹
           </Button>
@@ -1153,15 +1163,15 @@ function SourceConfiguration({
 
   if (source === 'url') {
     return (
-      <div className="grid gap-2 rounded-[1.25rem] border border-blue-100/70 bg-blue-50/28 p-2 md:grid-cols-[minmax(0,1fr)_15rem]">
+      <div className={cn(CONFIG_BOX_CLASS, 'grid gap-2 p-2 md:grid-cols-[minmax(0,1fr)_15rem]')}>
         <FieldBlock label="URL 列表">
           <Textarea
-            className="min-h-[5.2rem] rounded-[1rem] border-blue-100/80 bg-white/88 shadow-sm"
+            className={cn('min-h-[5.2rem]', CONFIG_INPUT_CLASS)}
             value={urlList}
             onChange={(event) => setUrlList(event.target.value)}
             placeholder="https://example.com/manual.pdf&#10;https://example.com/guide.md"
           />
-          <div className="mt-1 text-[11px] text-slate-500">
+          <div className="mt-1 text-[11px] text-muted-foreground">
             {urlIngestEnabled
               ? `已识别 ${parsedUrls.length} 个有效 http(s) 地址，提交后走后端 URL 批量导入任务。`
               : 'URL 导入未启用：请先在系统设置开启 URL_INGEST_ENABLED。'}
@@ -1169,7 +1179,7 @@ function SourceConfiguration({
         </FieldBlock>
         <FieldBlock label="统一文件名（可选）">
           <Input
-            className="h-9 rounded-[1rem] border-blue-100/80 bg-white/88 shadow-sm"
+            className={cn('h-9', CONFIG_INPUT_CLASS)}
             value={urlFilename}
             onChange={(event) => setUrlFilename(event.target.value)}
             placeholder="remote-documents.md"
@@ -1181,7 +1191,7 @@ function SourceConfiguration({
 
   if (source === 'object') {
     return (
-      <div className="grid gap-2 rounded-[1.25rem] border border-blue-100/70 bg-blue-50/28 p-2 md:grid-cols-2 xl:grid-cols-4">
+      <div className={cn(CONFIG_BOX_CLASS, 'grid gap-2 p-2 md:grid-cols-2 xl:grid-cols-4')}>
         {!urlIngestEnabled ? (
           <div className="md:col-span-2 xl:col-span-4 rounded-[1rem] border border-amber-100 bg-amber-50/70 px-3 py-2 text-xs text-amber-700">
             URL 导入未启用：对象存储需要后端通过 presigned URL 拉取文件，请先开启 URL_INGEST_ENABLED。
@@ -1189,7 +1199,7 @@ function SourceConfiguration({
         ) : null}
         <FieldBlock label="Bucket（可选）">
           <Input
-            className="h-9 rounded-[1rem] border-blue-100/80 bg-white/88 shadow-sm"
+            className={cn('h-9', CONFIG_INPUT_CLASS)}
             value={objectBucket}
             onChange={(event) => setObjectBucket(event.target.value)}
             placeholder="默认使用后端 MINIO_BUCKET_NAME"
@@ -1197,7 +1207,7 @@ function SourceConfiguration({
         </FieldBlock>
         <FieldBlock label="对象前缀">
           <Input
-            className="h-9 rounded-[1rem] border-blue-100/80 bg-white/88 shadow-sm"
+            className={cn('h-9', CONFIG_INPUT_CLASS)}
             value={objectPrefix}
             onChange={(event) => setObjectPrefix(event.target.value)}
             placeholder="manuals/2026/"
@@ -1205,16 +1215,16 @@ function SourceConfiguration({
         </FieldBlock>
         <FieldBlock label="扩展名">
           <Input
-            className="h-9 rounded-[1rem] border-blue-100/80 bg-white/88 shadow-sm"
+            className={cn('h-9', CONFIG_INPUT_CLASS)}
             value={objectExtensions}
             onChange={(event) => setObjectExtensions(event.target.value)}
             placeholder=".pdf, .md, .txt"
           />
-          <div className="mt-1 text-[11px] text-slate-500">实际提交：{parsedObjectExtensions.join(', ')}</div>
+          <div className="mt-1 text-[11px] text-muted-foreground">实际提交：{parsedObjectExtensions.join(', ')}</div>
         </FieldBlock>
         <FieldBlock label="最大对象数">
           <Input
-            className="h-9 rounded-[1rem] border-blue-100/80 bg-white/88 shadow-sm"
+            className={cn('h-9', CONFIG_INPUT_CLASS)}
             min={1}
             max={200}
             type="number"
@@ -1227,21 +1237,21 @@ function SourceConfiguration({
   }
 
   return (
-    <div className="grid gap-2 rounded-[1.25rem] border border-blue-100/70 bg-blue-50/28 p-2 md:grid-cols-[16rem_minmax(0,1fr)]">
+    <div className={cn(CONFIG_BOX_CLASS, 'grid gap-2 p-2 md:grid-cols-[16rem_minmax(0,1fr)]')}>
       <FieldBlock label="生成文件名">
         <Input
-          className="h-9 rounded-[1rem] border-blue-100/80 bg-white/88 shadow-sm"
+          className={cn('h-9', CONFIG_INPUT_CLASS)}
           value={apiFilename}
           onChange={(event) => setApiFilename(event.target.value)}
           placeholder="api-payload.json"
         />
-        <div className="mt-1 text-[11px] text-slate-500">
+        <div className="mt-1 text-[11px] text-muted-foreground">
           提交时直接调用后端手动入库接口，按单段内容写入当前数据集。
         </div>
       </FieldBlock>
       <FieldBlock label="API Payload">
         <Textarea
-          className="min-h-[5.2rem] rounded-[1rem] border-blue-100/80 bg-white/88 font-mono text-xs shadow-sm"
+          className={cn('min-h-[5.2rem] font-mono text-xs', CONFIG_INPUT_CLASS)}
           value={apiContent}
           onChange={(event) => setApiContent(event.target.value)}
           placeholder='{"title":"产品说明","content":"这里粘贴接口推送内容"}'
@@ -1265,16 +1275,16 @@ function SelectedFilesTable({
   if (!rows.length) return null
 
   return (
-    <div className="mt-2 overflow-hidden rounded-[1.2rem] border border-blue-100/70 bg-white/82 shadow-[0_12px_30px_rgba(30,64,175,0.04)]">
-      <div className="flex items-center justify-between border-b border-blue-50 px-3 py-1.5">
-        <div className="text-sm font-semibold text-slate-950">已选文件（{rows.length}）</div>
-        <Button variant="ghost" className="h-7 rounded-[0.85rem] px-2 text-xs text-slate-500 hover:bg-blue-50/60" onClick={onClear} disabled={!rows.length}>
+    <div className={cn('mt-2 rounded-[1.2rem] shadow-[0_12px_30px_hsl(var(--primary)/0.04)]', TABLE_SHELL_CLASS)}>
+      <div className="flex items-center justify-between border-b border-border/50 px-3 py-1.5">
+        <div className="text-sm font-semibold text-foreground">已选文件（{rows.length}）</div>
+        <Button variant="ghost" className="h-7 rounded-[0.85rem] px-2 text-xs text-muted-foreground hover:bg-background/72" onClick={onClear} disabled={!rows.length}>
           清空列表
         </Button>
       </div>
       <div className="max-h-[7.5rem] overflow-auto">
         <table className="w-full text-left text-xs">
-          <thead className="sticky top-0 bg-blue-50/38 text-slate-500">
+          <thead className={cn('sticky top-0', TABLE_HEAD_CLASS)}>
             <tr>
               <th className="px-3 py-1.5 font-medium">文件名</th>
               <th className="px-2.5 py-1.5 font-medium">大小</th>
@@ -1285,20 +1295,27 @@ function SelectedFilesTable({
           </thead>
           <tbody>
             {rows.map(({ file, Icon, key }) => (
-              <tr key={key} className="border-t border-blue-50">
+              <tr key={key} className={TABLE_ROW_CLASS}>
                 <td className="px-3 py-1.5">
                   <div className="flex min-w-0 items-center gap-2">
-                    <span className="flex size-6 shrink-0 items-center justify-center rounded-[0.8rem] border border-blue-100/80 bg-blue-50/50 text-blue-600">
+                    <span className="flex size-6 shrink-0 items-center justify-center rounded-[0.8rem] border border-border/60 bg-primary/10 text-primary">
                       <Icon className="size-3.5" />
                     </span>
-                    <span className="truncate font-medium text-slate-900">{file.name}</span>
+                    <span className="truncate font-medium text-foreground">{file.name}</span>
                   </div>
                 </td>
-                <td className="px-2.5 py-1.5 font-mono text-slate-600">{formatFileSize(file.size)}</td>
-                <td className="px-2.5 py-1.5 text-slate-600">{formatFileType(file)}</td>
-                <td className="px-2.5 py-1.5 text-slate-600">本地上传</td>
+                <td className="px-2.5 py-1.5 font-mono text-muted-foreground">{formatFileSize(file.size)}</td>
+                <td className="px-2.5 py-1.5 text-muted-foreground">{formatFileType(file)}</td>
+                <td className="px-2.5 py-1.5 text-muted-foreground">本地上传</td>
                 <td className="px-2.5 py-1.5">
-                  <Button variant="ghost" size="icon" className="size-7 rounded-[0.85rem] text-slate-500 hover:bg-rose-50 hover:text-rose-600" onClick={() => onRemove(key)}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`移除文件 ${file.name}`}
+                    title={`移除文件 ${file.name}`}
+                    className="size-7 rounded-[0.85rem] text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                    onClick={() => onRemove(key)}
+                  >
                     <Trash2 className="size-3.5" />
                   </Button>
                 </td>
@@ -1307,7 +1324,7 @@ function SelectedFilesTable({
           </tbody>
         </table>
       </div>
-      <div className="border-t border-blue-50 px-3 py-1.5 text-xs text-slate-500">
+      <div className="border-t border-border/50 px-3 py-1.5 text-xs text-muted-foreground">
         共 {rows.length} 个文件，合计 {formatFileSize(totalBytes)}
       </div>
     </div>
@@ -1323,28 +1340,28 @@ function IngestTaskControls({
 }>) {
   return (
     <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
-      <label className="flex h-7 min-w-[10rem] items-center gap-1.5 rounded-[0.85rem] border border-blue-100/55 bg-blue-50/18 px-2">
-        <span className="shrink-0 text-[11px] font-medium text-slate-500">标签</span>
+      <label className={cn('flex h-7 min-w-[10rem] items-center gap-1.5 rounded-[0.85rem] px-2', INLINE_FIELD_CLASS)}>
+        <span className="shrink-0 text-[11px] font-medium text-muted-foreground">标签</span>
         <Input
-          className="h-5 min-w-0 flex-1 border-0 bg-transparent px-0 text-xs shadow-none focus-visible:ring-0"
+          className="h-5 min-w-0 flex-1 border-0 bg-transparent px-0 text-xs shadow-none focus-visible:ring-1 focus-visible:ring-primary/30"
           value={draft.tags}
           onChange={(event) => updateDraft('tags', event.target.value)}
           placeholder="选择或输入标签"
         />
       </label>
-      <label className="flex h-7 min-w-[8.8rem] items-center gap-1.5 rounded-[0.85rem] border border-blue-100/55 bg-blue-50/18 px-2">
-        <span className="shrink-0 text-[11px] font-medium text-slate-500">目标目录</span>
+      <label className={cn('flex h-7 min-w-[8.8rem] items-center gap-1.5 rounded-[0.85rem] px-2', INLINE_FIELD_CLASS)}>
+        <span className="shrink-0 text-[11px] font-medium text-muted-foreground">目标目录</span>
         <Input
-          className="h-5 min-w-0 flex-1 border-0 bg-transparent px-0 text-xs shadow-none focus-visible:ring-0"
+          className="h-5 min-w-0 flex-1 border-0 bg-transparent px-0 text-xs shadow-none focus-visible:ring-1 focus-visible:ring-primary/30"
           value={draft.collection}
           onChange={(event) => updateDraft('collection', event.target.value)}
           placeholder="default"
         />
       </label>
-      <div className="flex h-7 items-center gap-1.5 rounded-[0.85rem] border border-blue-100/55 bg-blue-50/18 px-2">
-        <span className="shrink-0 text-[11px] font-medium text-slate-500">重复处理</span>
+      <div className={cn('flex h-7 items-center gap-1.5 rounded-[0.85rem] px-2', INLINE_FIELD_CLASS)}>
+        <span className="shrink-0 text-[11px] font-medium text-muted-foreground">重复处理</span>
         <Select value={draft.dedupStrategy} onValueChange={(value) => updateDraft('dedupStrategy', value)}>
-          <SelectTrigger className="h-5 w-[7.8rem] border-0 bg-transparent px-0 text-xs shadow-none focus:ring-0 focus:ring-offset-0">
+          <SelectTrigger className="h-5 w-[7.8rem] border-0 bg-transparent px-0 text-xs shadow-none focus:ring-1 focus:ring-primary/30 focus:ring-offset-0">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -1354,10 +1371,10 @@ function IngestTaskControls({
           </SelectContent>
         </Select>
       </div>
-      <label className="flex h-7 items-center gap-1.5 rounded-[0.85rem] border border-blue-100/55 bg-blue-50/18 px-2 text-xs text-slate-600">
+      <label className={cn('flex h-7 items-center gap-1.5 rounded-[0.85rem] px-2 text-xs text-muted-foreground', INLINE_FIELD_CLASS)}>
         <Switch
           checked={draft.syncDataset}
-          className="h-5 w-9 data-[state=checked]:bg-blue-500 data-[state=unchecked]:bg-slate-200 [&>span]:h-4 [&>span]:w-4 [&>span[data-state=checked]]:translate-x-4"
+          className="h-5 w-9 data-[state=checked]:bg-primary data-[state=unchecked]:bg-muted [&>span]:h-4 [&>span]:w-4 [&>span[data-state=checked]]:translate-x-4"
           onCheckedChange={(checked) => updateDraft('syncDataset', checked)}
         />
         自动同步知识库
@@ -1429,14 +1446,21 @@ function TaskListCard({
               <SelectItem value="done">已完成</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" size="icon" className="size-7 rounded-[0.85rem] border-blue-100/80 bg-white/82 shadow-sm hover:bg-blue-50/60" onClick={() => void onRefresh()}>
+          <Button
+            variant="outline"
+            size="icon"
+            aria-label="刷新入库任务列表"
+            title="刷新入库任务列表"
+            className={cn('size-7 rounded-[0.85rem] hover:bg-background/92', CONFIG_INPUT_CLASS)}
+            onClick={() => void onRefresh()}
+          >
             <RefreshCw className="size-3.5" />
           </Button>
         </div>
       </div>
-      <div className="overflow-hidden rounded-[1.15rem] border border-blue-100/70 bg-white/74">
+      <div className={TABLE_SHELL_CLASS}>
         <table className="w-full text-left text-xs">
-          <thead className="bg-blue-50/38 text-slate-500">
+          <thead className={TABLE_HEAD_CLASS}>
             <tr>
               <th className="px-2.5 py-1.5 font-medium">任务ID</th>
               <th className="px-2.5 py-1.5 font-medium">文件名（数量）</th>
@@ -1451,28 +1475,28 @@ function TaskListCard({
           <tbody>
             {paginatedTasks.length ? (
               paginatedTasks.map((task) => (
-                <tr key={task.id} className="border-t border-blue-50">
-                  <td className="px-2.5 py-1.5 font-mono text-blue-600">{task.id}</td>
-                  <td className="max-w-[16rem] truncate px-2.5 py-1.5 text-slate-700">{task.filename ?? `${task.files ?? 1} 个文件`}</td>
-                  <td className="max-w-[14rem] truncate px-2.5 py-1.5 text-slate-600">{datasetName}</td>
-                  <td className="px-2.5 py-1.5 text-slate-600">{task.sourceName ?? sourceName}</td>
+                <tr key={task.id} className={TABLE_ROW_CLASS}>
+                  <td className="px-2.5 py-1.5 font-mono text-primary">{task.id}</td>
+                  <td className="max-w-[16rem] truncate px-2.5 py-1.5 text-foreground">{task.filename ?? `${task.files ?? 1} 个文件`}</td>
+                  <td className="max-w-[14rem] truncate px-2.5 py-1.5 text-muted-foreground">{datasetName}</td>
+                  <td className="px-2.5 py-1.5 text-muted-foreground">{task.sourceName ?? sourceName}</td>
                   <td className="px-2.5 py-1.5">
                     <Badge variant={statusVariant(task.status)}>{statusLabel(task.status)}</Badge>
                   </td>
                   <td className="px-2.5 py-1.5">
                     <div className="flex min-w-[7rem] items-center gap-2">
-                      <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-blue-50">
+                      <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted/70">
                         <span
-                          className={cn('block h-full rounded-full', task.status === 'failed' ? 'bg-rose-500' : 'bg-blue-500')}
+                          className={cn('block h-full rounded-full', task.status === 'failed' ? 'bg-destructive' : 'bg-primary')}
                           style={{ width: `${task.progress ?? 0}%` }}
                         />
                       </span>
-                      <span className="w-8 text-right font-mono text-[11px] text-slate-500">{task.progress ?? 0}%</span>
+                      <span className="w-8 text-right font-mono text-[11px] text-muted-foreground">{task.progress ?? 0}%</span>
                     </div>
                   </td>
-                  <td className="px-2.5 py-1.5 text-slate-500">{formatDate(task.created_at)}</td>
+                  <td className="px-2.5 py-1.5 text-muted-foreground">{formatDate(task.created_at)}</td>
                   <td className="px-2.5 py-1.5">
-                    <Button variant="ghost" className="h-7 rounded-[0.85rem] px-2 text-xs hover:bg-blue-50/60" onClick={() => void onInspectTask(task)}>
+                    <Button variant="ghost" className="h-7 rounded-[0.85rem] px-2 text-xs hover:bg-background/72" onClick={() => void onInspectTask(task)}>
                       查看
                     </Button>
                   </td>
@@ -1480,7 +1504,7 @@ function TaskListCard({
               ))
             ) : (
               <tr>
-                <td colSpan={8} className="px-3 py-5 text-center text-slate-500">
+                <td colSpan={8} className="px-3 py-5 text-center text-muted-foreground">
                   暂无任务记录
                 </td>
               </tr>
@@ -1488,25 +1512,25 @@ function TaskListCard({
           </tbody>
         </table>
       </div>
-      <div className="mt-2 flex flex-wrap items-center justify-end gap-2 border-t border-blue-50 pt-2">
-        <div className="items-center inline-flex gap-1 rounded-[0.95rem] border border-blue-100/70 bg-white/82 px-1.5 py-1 text-xs text-slate-600 shadow-sm">
-          <span className="px-1 text-slate-500">共 {filteredTasks.length} 条</span>
+      <div className="mt-2 flex flex-wrap items-center justify-end gap-2 border-t border-border/50 pt-2">
+        <div className="items-center inline-flex gap-1 rounded-[0.95rem] border border-border/60 bg-card/72 px-1.5 py-1 text-xs text-muted-foreground shadow-sm">
+          <span className="px-1 text-muted-foreground">共 {filteredTasks.length} 条</span>
           <Button
             type="button"
             variant="ghost"
-            className="h-5 rounded-[0.7rem] px-1.5 text-xs hover:bg-blue-50/60"
+            className="h-5 rounded-[0.7rem] px-1.5 text-xs hover:bg-background/72"
             disabled={safePage <= 1}
             onClick={() => setPage((current) => Math.max(1, current - 1))}
           >
             上一页
           </Button>
-          <span className="min-w-[4.4rem] text-center font-mono text-[11px] text-slate-700">
+          <span className="min-w-[4.4rem] text-center font-mono text-[11px] text-foreground">
             第 {safePage} / {totalPages} 页
           </span>
           <Button
             type="button"
             variant="ghost"
-            className="h-5 rounded-[0.7rem] px-1.5 text-xs hover:bg-blue-50/60"
+            className="h-5 rounded-[0.7rem] px-1.5 text-xs hover:bg-background/72"
             disabled={safePage >= totalPages}
             onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
           >

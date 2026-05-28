@@ -381,6 +381,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         path = request.url.path
+        if request.method.upper() == "OPTIONS":
+            return await call_next(request)
+
         if path in self.exclude_paths or (self.exclude_prefixes and any(path.startswith(p) for p in self.exclude_prefixes)):
             return await call_next(request)
 

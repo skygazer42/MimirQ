@@ -4,10 +4,19 @@ import * as React from "react"
 import { Moon, Sun, Settings2, RefreshCw } from "lucide-react"
 import { useTranslations } from 'next-intl'
 import { useTheme } from "next-themes"
-import chroma from "chroma-js"
 
 import { cn } from "@/lib/utils"
-import { applySurfaceTheme, getSurfaceThemeMeta, readSurfaceTheme, SURFACE_THEMES, THEME_COLOR_STORAGE_KEY, type SurfaceThemeKey } from "@/lib/theme-surface"
+import {
+  applySurfaceTheme,
+  applyThemeColor,
+  notifyThemeAppearanceChanged,
+  readSurfaceTheme,
+  readThemeColor,
+  SURFACE_THEME_STORAGE_KEY,
+  SURFACE_THEMES,
+  THEME_COLOR_STORAGE_KEY,
+  type SurfaceThemeKey,
+} from "@/lib/theme-surface"
 import { IconButton } from "@/components/ui/icon-button"
 import {
   Popover,
@@ -49,50 +58,23 @@ export function ThemeCustomizer({ trigger }: Readonly<ThemeCustomizerProps> = {}
   React.useEffect(() => {
     if (typeof window !== 'undefined') {
       const nextSurfaceTheme = readSurfaceTheme(window.localStorage)
-      const storedColor = window.localStorage.getItem(THEME_COLOR_STORAGE_KEY)
       setSurfaceTheme(nextSurfaceTheme)
-      if (storedColor && chroma.valid(storedColor)) {
-        setColor(storedColor)
-      } else {
-        setColor(getSurfaceThemeMeta(nextSurfaceTheme).defaultPrimary)
-      }
+      setColor(readThemeColor(window.localStorage, nextSurfaceTheme))
     }
     setMounted(true)
   }, [])
 
-  // Apply theme color
   React.useEffect(() => {
-    const root = document.documentElement
-    
-    // Generate palette
-    // Primary: The selected color
-    const primary = chroma(color)
-    
-    // Convert to HSL for Tailwind
-    const toHsl = (c: any) => {
-        const [h, s, l] = c.hsl()
-        return `${isNaN(h) ? 0 : h.toFixed(1)} ${(s * 100).toFixed(1)}% ${(l * 100).toFixed(1)}%`
-    }
+    if (!mounted) return
 
-    root.style.setProperty("--primary", toHsl(primary))
-    root.style.setProperty("--ring", toHsl(primary.alpha(0.5)))
-    
-    // We could generate more derived colors here if needed
-    // e.g. --primary-foreground based on contrast
-    const fg = chroma.contrast(primary, 'white') > 4.5 ? 'white' : 'black'
-    root.style.setProperty("--primary-foreground", toHsl(chroma(fg)))
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem(THEME_COLOR_STORAGE_KEY, color)
-    }
-
-  }, [color])
-
-  React.useEffect(() => {
     applySurfaceTheme(surfaceTheme)
+    applyThemeColor(color)
     if (typeof window !== 'undefined') {
-      window.localStorage.setItem('mimirq.surfaceTheme', surfaceTheme)
+      window.localStorage.setItem(SURFACE_THEME_STORAGE_KEY, surfaceTheme)
+      window.localStorage.setItem(THEME_COLOR_STORAGE_KEY, color)
+      notifyThemeAppearanceChanged()
     }
-  }, [surfaceTheme])
+  }, [color, mounted, surfaceTheme])
 
   if (!mounted) {
     return null

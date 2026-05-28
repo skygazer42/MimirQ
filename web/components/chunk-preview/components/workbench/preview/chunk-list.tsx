@@ -917,7 +917,7 @@ export function ChunkList() {
                   value={queryInput}
                   onChange={(e) => setQueryInput(e.target.value)}
                   placeholder={t('chunkList.searchPlaceholder')}
-                  className="h-full min-w-0 flex-1 border-0 bg-transparent px-1.5 pr-5 text-[11px] shadow-none placeholder:text-muted-foreground/65 focus-visible:ring-0"
+                  className="h-full min-w-0 flex-1 border-0 bg-transparent px-1.5 pr-5 text-[11px] shadow-none placeholder:text-muted-foreground/65 focus-visible:ring-1 focus-visible:ring-primary/30"
                 />
                 {queryInput ? (
                   <button

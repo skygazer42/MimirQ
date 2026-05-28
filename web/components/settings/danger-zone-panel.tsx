@@ -35,8 +35,8 @@ export function DangerZonePanel({
       className={cn(
         'group rounded-xl p-0',
         isNeutral
-          ? 'border border-border/70 bg-card/70 shadow-[0_8px_24px_rgba(15,23,42,0.04)]'
-          : 'border border-destructive/20 bg-destructive/[0.035] shadow-[0_8px_24px_rgba(127,29,29,0.035)]',
+          ? 'border border-border/70 bg-card/70 shadow-[0_8px_24px_hsl(var(--foreground)/0.04)]'
+          : 'border border-destructive/20 bg-destructive/[0.035] shadow-[0_8px_24px_hsl(var(--destructive)/0.035)]',
         className
       )}
     >
@@ -51,7 +51,7 @@ export function DangerZonePanel({
             className={cn(
               'shrink-0 items-center justify-center rounded-lg',
               isNeutral
-                ? 'border border-rose-200/55 bg-rose-50/70 text-rose-500'
+                ? 'border border-primary/20 bg-primary/10 text-primary'
                 : 'border border-destructive/20 bg-destructive/10 text-destructive',
               compact ? 'mt-0 flex size-6' : 'mt-0.5 flex size-7'
             )}
@@ -60,12 +60,12 @@ export function DangerZonePanel({
           </div>
           <div className="min-w-0">
             <div className={cn('flex flex-wrap items-center', compact ? 'gap-1.5' : 'gap-2')}>
-              <span className={cn('font-medium tracking-[-0.005em] text-slate-800', compact ? 'text-[11.5px]' : 'text-[12px]')}>{title}</span>
+              <span className={cn('font-medium tracking-[-0.005em] text-foreground', compact ? 'text-[11.5px]' : 'text-[12px]')}>{title}</span>
               <span
                 className={cn(
                   'rounded-full bg-background/80 font-semibold',
                   isNeutral
-                    ? 'border border-border/60 text-slate-500'
+                    ? 'border border-border/60 text-muted-foreground'
                     : 'border border-destructive/20 text-destructive',
                   compact ? 'px-1.5 py-0.5 text-[9px]' : 'px-1.5 py-0.5 text-[10px]'
                 )}
@@ -73,7 +73,7 @@ export function DangerZonePanel({
                 {badge}
               </span>
             </div>
-            <p className={cn('text-slate-500/90', compact ? 'mt-0.5 text-[10px] leading-3.5' : 'mt-0.5 text-[11px] leading-4')}>
+            <p className={cn('text-muted-foreground/90', compact ? 'mt-0.5 text-[10px] leading-3.5' : 'mt-0.5 text-[11px] leading-4')}>
               {impact}
             </p>
           </div>

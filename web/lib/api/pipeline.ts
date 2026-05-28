@@ -400,4 +400,24 @@ export const pipelineApi = {
     const { data } = await apiClient.post('/pipeline/ingestion-preview', formData, { timeout: API_LONG_TIMEOUT_MS })
     return data
   },
+
+  async listBuiltinProcessingScripts(): Promise<BuiltinProcessingScriptListResponse> {
+    const { data } = await apiClient.get('/pipeline/governance-processing-scripts/builtins')
+    return { total: data?.total ?? 0, items: Array.isArray(data?.items) ? data.items : [] }
+  },
+}
+
+export type BuiltinProcessingScript = {
+  key: string
+  name: string
+  description: string
+  language: 'javascript' | 'typescript' | 'python' | 'rust'
+  stage: 'post_parse' | 'post_governance'
+  content: string
+  tags: string[]
+}
+
+export type BuiltinProcessingScriptListResponse = {
+  total: number
+  items: BuiltinProcessingScript[]
 }

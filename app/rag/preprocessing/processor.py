@@ -2,7 +2,6 @@
 Markdown governance processor shared by parsing and indexing pipelines.
 """
 
-from app.rag.core.logging import get_logger
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any
@@ -10,6 +9,7 @@ from typing import Any
 from langchain_core.documents import Document
 
 from app.core.config import settings
+from app.rag.core.logging import get_logger
 from app.rag.preprocessing.boilerplate import remove_markdown_boilerplate
 from app.rag.preprocessing.cleaning import (
     RegexRule,

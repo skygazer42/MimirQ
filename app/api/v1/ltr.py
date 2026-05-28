@@ -9,7 +9,6 @@ Provides a small, file-based registry for LTR reranker artifacts:
 
 from __future__ import annotations
 
-from app.rag.core.logging import get_logger
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -20,6 +19,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.core.database import get_db
+from app.rag.core.logging import get_logger
 from app.services.audit_log_service import audit_log_event
 from app.services.ltr_model_registry import (
     activate_model,

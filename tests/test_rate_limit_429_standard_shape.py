@@ -74,6 +74,32 @@ def test_rate_limit_middleware_returns_standard_429_body_and_header() -> None:
     assert second.headers.get("Retry-After") == str(detail.get("retry_after_sec"))
 
 
+def test_rate_limit_middleware_does_not_count_cors_preflight_options() -> None:
+    from app.api.middleware.rate_limit import RateLimitMiddleware
+
+    app = _build_app()
+    app.add_middleware(RateLimitMiddleware, requests_per_second=1, burst_size=1)
+
+    @app.options("/ping")
+    def ping_preflight():  # noqa: ANN201
+        return {"ok": True}
+
+    @app.get("/ping")
+    def ping():  # noqa: ANN201
+        return {"ok": True}
+
+    client = TestClient(app)
+
+    preflight = client.options("/ping")
+    assert preflight.status_code == 200
+
+    first_get = client.get("/ping")
+    assert first_get.status_code == 200
+
+    second_get = client.get("/ping")
+    assert second_get.status_code == 429
+
+
 def test_tenant_qps_quota_429_has_standard_shape_and_retry_after_header(monkeypatch) -> None:
     import app.services.tenant_quota_service as quota_mod
     from app.core.config import settings

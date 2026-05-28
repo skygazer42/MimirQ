@@ -28,7 +28,7 @@ describe('settings LTR and runtime section styling', () => {
     expect(src).toContain('function RuntimeCard')
     expect(src).toContain('function OptionRow')
     expect(src).toContain('className="grid gap-3 xl:grid-cols-2"')
-    expect(src).toContain('h-7 w-7')
+    expect(src).toContain('size-8 shrink-0')
     expect(src).toContain('对话流式稳定性')
     expect(src).toContain('性能与缓存')
     expect(src).not.toContain('space-y-8 rounded-2xl border border-border bg-card p-6')

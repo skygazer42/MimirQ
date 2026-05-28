@@ -485,20 +485,6 @@ app.add_middleware(
     max_body_bytes=int(getattr(settings, "REQUEST_MAX_BODY_BYTES", 0) or 0),
 )
 
-# CORS config
-cors_origins = parse_csv(settings.CORS_ORIGINS)
-if not is_production_env():
-    cors_origins = _expand_dev_cors_origins(cors_origins)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=cors_origins,
-    allow_credentials=bool(getattr(settings, "CORS_ALLOW_CREDENTIALS", True)),
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
-    expose_headers=_build_cors_expose_headers(getattr(settings, "CORS_EXPOSE_HEADERS", "X-Request-ID")),
-)
-
 # Rate limiting middleware
 if settings.RATE_LIMIT_ENABLED:
     from app.api.middleware.rate_limit import RateLimitMiddleware
@@ -583,6 +569,21 @@ app.add_middleware(ResponseHeaderSanitizerMiddleware)
 
 # Request-id middleware (outermost; propagates X-Request-ID for tracing).
 app.add_middleware(RequestIDMiddleware)
+
+# CORS must be the final middleware added so it wraps rate-limit and security
+# error responses instead of letting browsers surface them as opaque CORS failures.
+cors_origins = parse_csv(settings.CORS_ORIGINS)
+if not is_production_env():
+    cors_origins = _expand_dev_cors_origins(cors_origins)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,
+    allow_credentials=bool(getattr(settings, "CORS_ALLOW_CREDENTIALS", True)),
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+    expose_headers=_build_cors_expose_headers(getattr(settings, "CORS_EXPOSE_HEADERS", "X-Request-ID")),
+)
 
 # Register routes
 app.include_router(api_v1_router, prefix="/api/v1", dependencies=[Depends(bind_route_context)])

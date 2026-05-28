@@ -15,6 +15,7 @@
 #
 
 import contextlib
+import logging
 import re
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -28,8 +29,8 @@ import pdfplumber
 from docling.document_converter import DocumentConverter
 from PIL import Image
 
-from app.rag.core.logging import get_logger
 from app.deepdoc.parser.pdf_parser import IntegratedPipelinePdfParser
+from app.rag.core.logging import get_logger
 
 logger = get_logger("deepdoc.parser.docling")
 
