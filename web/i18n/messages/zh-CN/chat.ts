@@ -132,6 +132,8 @@ History: {
     noMatchedConversation: '没有找到匹配的对话',
     noConversationRecords: '暂无对话记录',
     startConversationHint: '去首页发起新对话开始探索',
+    historyEmptyKicker: 'ARCHIVE READY',
+    historyEmptyDescription: '提问后，对话会按时间自动沉淀到这里，方便回看答案、证据和评测链路。',
     loadConversationListFailed: '加载对话列表失败',
     loadConversationMessagesFailed: '加载对话消息失败',
     loadOlderMessagesFailed: '加载更早消息失败',

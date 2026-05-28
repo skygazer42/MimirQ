@@ -32,7 +32,6 @@ import { RagTraceDialog } from '@/components/rag-trace/rag-trace-dialog'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
 import { SearchInput } from '@/components/ui/search-input'
-import { EmptyState } from '@/components/ui/empty-state'
 import { PageLoading } from '@/components/ui/page-loading'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import { PageTitleIcon } from '@/components/ui/page-title-icon'
@@ -451,11 +450,7 @@ function HistoryPageContent({
                     </div>);
     }
     else if (filteredConversations.length === 0) {
-            return (<div className="rounded-3xl border border-dashed border-border/70 bg-background/70 px-5 py-10 text-center text-sm text-muted-foreground shadow-sm">
-                      <MessageSquare className="mx-auto mb-3 h-8 w-8 opacity-20"/>
-                      <p>{searchQuery ? t('noMatchedConversation') : t('noConversationRecords')}</p>
-                      {searchQuery ? null : (<p className="mt-2 text-[11px] leading-relaxed text-muted-foreground/80">{t('startConversationHint')}</p>)}
-                    </div>);
+            return <HistorySidebarEmptyState isSearching={Boolean(searchQuery.trim())} />;
         }
         else {
             return (groupOrder.map((group) => {
@@ -661,48 +656,7 @@ function HistoryPageContent({
                   </div>
                 </>
               ) : (
-                <div className="flex-1 bg-muted/[0.12] p-4 md:p-6">
-                  <EmptyState
-                    icon={History}
-                    iconClassName="text-primary"
-                    title={t('noConversationSelected')}
-                    description={
-                      <>
-                        {t('noConversationSelectedDescription').split('\n')[0]}<br />
-                        {t('noConversationSelectedDescription').split('\n')[1]}
-                      </>
-                    }
-                    className="min-h-full rounded-3xl border border-border/70 bg-background/85 px-8 py-10 text-left shadow-soft"
-                  >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Button asChild className="rounded-full">
-                        <Link href="/">{t('startNewConversation')}</Link>
-                      </Button>
-                      <Button
-                        asChild
-                        variant="outline"
-                        size="sm"
-                        className="h-auto rounded-full border-warning/20 bg-warning/10 px-3 py-2 text-xs font-medium text-warning shadow-sm hover:bg-warning/15 hover:text-warning"
-                      >
-                        <Link href="/evaluations">
-                          <BarChart3 className="h-3.5 w-3.5" />
-                          {t('evaluateConversation')}
-                        </Link>
-                      </Button>
-                      <Button
-                        asChild
-                        variant="outline"
-                        size="sm"
-                        className="h-auto rounded-full border-info/20 bg-info/10 px-3 py-2 text-xs font-medium text-info shadow-sm hover:bg-info/15 hover:text-info"
-                      >
-                        <Link href="/observability">
-                          <Route className="h-3.5 w-3.5" />
-                          {t('ragTrace')}
-                        </Link>
-                      </Button>
-                    </div>
-                  </EmptyState>
-                </div>
+                <HistoryMainEmptyState />
               )}
             </motion.div>
           </section>
@@ -715,6 +669,158 @@ function HistoryPageContent({
         />
       </PageScaffold>
     </AppFrame>
+  )
+}
+
+function HistoryMainEmptyState() {
+  const t = useTranslations('History')
+  const descriptionLines = t('noConversationSelectedDescription').split('\n')
+
+  return (
+    <div className="flex-1 bg-muted/[0.12] p-4 md:p-6">
+      <section
+        data-history-main-empty="true"
+        className="relative isolate flex min-h-full items-center justify-center overflow-hidden rounded-[32px] border border-sky-100/80 bg-[linear-gradient(135deg,rgba(14,165,233,0.08),transparent_42%),radial-gradient(circle_at_50%_105%,rgba(59,130,246,0.10),transparent_45%)] px-8 py-12 text-center shadow-soft"
+      >
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 bg-[linear-gradient(to_right,rgba(14,165,233,0.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(14,165,233,0.07)_1px,transparent_1px)] bg-[size:44px_44px] opacity-35"
+        />
+        <div
+          aria-hidden="true"
+          className="absolute left-1/2 top-1/2 size-[420px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-sky-200/20 blur-3xl"
+        />
+
+        <div className="relative mx-auto flex max-w-xl flex-col items-center">
+          <div className="mb-5 grid size-[72px] place-items-center rounded-[26px] border border-sky-200/80 bg-[linear-gradient(145deg,rgba(255,255,255,0.96),rgba(224,244,255,0.84))] text-primary shadow-[0_18px_38px_rgba(14,165,233,0.16)]">
+            <History className="size-8" />
+          </div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-sky-500/80">
+            {t('historyEmptyKicker')}
+          </p>
+          <h2 className="mt-3 text-xl font-semibold tracking-[-0.04em] text-foreground">
+            {t('noConversationSelected')}
+          </h2>
+          <p className="mt-3 max-w-md text-sm leading-7 text-muted-foreground/78">
+            {descriptionLines[0]}<br />
+            {descriptionLines[1]}
+          </p>
+
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+            <Button asChild className="h-10 rounded-full bg-info px-5 text-[13px] font-semibold text-white shadow-[0_14px_28px_hsl(var(--info)/0.24)] hover:bg-info/90">
+              <Link href="/">
+                <Plus className="h-4 w-4" />
+                {t('startNewConversation')}
+              </Link>
+            </Button>
+            <Button
+              asChild
+              variant="outline"
+              size="sm"
+              className="h-10 rounded-full border-warning/20 bg-warning/10 px-4 text-xs font-semibold text-warning shadow-sm hover:bg-warning/15 hover:text-warning"
+            >
+              <Link href="/evaluations">
+                <BarChart3 className="h-3.5 w-3.5" />
+                {t('evaluateConversation')}
+              </Link>
+            </Button>
+            <Button
+              asChild
+              variant="outline"
+              size="sm"
+              className="h-10 rounded-full border-info/20 bg-info/10 px-4 text-xs font-semibold text-info shadow-sm hover:bg-info/15 hover:text-info"
+            >
+              <Link href="/observability">
+                <Route className="h-3.5 w-3.5" />
+                {t('ragTrace')}
+              </Link>
+            </Button>
+          </div>
+
+          <div className="mt-7 grid w-full max-w-lg gap-2 text-left sm:grid-cols-3">
+            {[
+              ['答案留存', '保存对话结论'],
+              ['证据回看', '追溯引用来源'],
+              ['评测追踪', '连接质量诊断'],
+            ].map(([title, desc]) => (
+              <div
+                key={title}
+                className="rounded-2xl border border-white/80 bg-background/72 px-3.5 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)] backdrop-blur"
+              >
+                <div className="flex items-center gap-2 text-[12px] font-semibold text-foreground/82">
+                  <span className="size-1.5 rounded-full bg-sky-400" />
+                  {title}
+                </div>
+                <p className="mt-1 text-[11px] leading-4 text-muted-foreground/70">
+                  {desc}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function HistorySidebarEmptyState({
+  isSearching,
+}: Readonly<{
+  isSearching: boolean
+}>) {
+  const t = useTranslations('History')
+
+  if (isSearching) {
+    return (
+      <div className="mx-2 mt-3 rounded-[22px] border border-dashed border-border/70 bg-background/75 px-5 py-8 text-center text-sm text-muted-foreground shadow-sm">
+        <Search className="mx-auto mb-3 size-7 text-muted-foreground/35" />
+        <p className="font-medium text-foreground/70">{t('noMatchedConversation')}</p>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      data-history-empty-archive="true"
+      aria-live="polite"
+      className="mx-2 mt-3 overflow-hidden rounded-[28px] border border-sky-200/70 bg-[radial-gradient(circle_at_50%_0%,rgba(14,165,233,0.16),transparent_55%)] p-[1px] shadow-[0_18px_48px_rgba(37,99,235,0.10)]"
+    >
+      <div className="relative rounded-[27px] bg-background/88 px-5 py-6 text-center ring-1 ring-white/70">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-6 top-4 h-16 rounded-full bg-sky-300/10 blur-2xl"
+        />
+        <div className="relative mx-auto mb-4 grid size-16 place-items-center rounded-[24px] border border-sky-200/80 bg-[linear-gradient(145deg,rgba(255,255,255,0.95),rgba(224,244,255,0.82))] text-primary shadow-[0_14px_30px_rgba(14,165,233,0.16)]">
+          <History className="size-7" />
+          <span className="absolute -right-1.5 top-2 size-2.5 rounded-full bg-sky-300 shadow-[0_0_0_4px_rgba(14,165,233,0.12)]" />
+          <span className="absolute -left-2 bottom-4 size-1.5 rounded-full bg-blue-200" />
+        </div>
+
+        <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-sky-500/80">
+          {t('historyEmptyKicker')}
+        </p>
+        <h3 className="mt-2 text-[15px] font-semibold tracking-[-0.03em] text-foreground">
+          {t('noConversationRecords')}
+        </h3>
+        <p className="mx-auto mt-2 max-w-[14rem] text-[12px] leading-5 text-muted-foreground/78">
+          {t('historyEmptyDescription')}
+        </p>
+
+        <Button
+          asChild
+          size="sm"
+          className="mt-5 h-9 rounded-full bg-info px-4 text-[12px] font-semibold text-white shadow-[0_12px_24px_hsl(var(--info)/0.24)] hover:bg-info/90"
+        >
+          <Link href="/">
+            <Plus className="size-3.5" />
+            {t('startNewConversation')}
+          </Link>
+        </Button>
+        <p className="mt-3 text-[11px] leading-5 text-muted-foreground/60">
+          {t('startConversationHint')}
+        </p>
+      </div>
+    </div>
   )
 }
 
