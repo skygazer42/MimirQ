@@ -1,4 +1,5 @@
 const STALE_CHUNK_RELOAD_PREFIX = 'mimirq:stale-chunk-reloaded:'
+const STALE_CHUNK_RELOAD_COOLDOWN_MS = 30_000
 
 const STALE_CHUNK_PATTERNS = [
   /ChunkLoadError/i,
@@ -39,8 +40,16 @@ export function reloadOnceForStaleChunk(error: unknown) {
       globalThis.window.location.pathname,
       globalThis.window.location.search,
     ].join('')
-    if (globalThis.window.sessionStorage.getItem(storageKey) === '1') return false
-    globalThis.window.sessionStorage.setItem(storageKey, '1')
+    const lastReloadedAt = Number(globalThis.window.sessionStorage.getItem(storageKey) || 0)
+    const now = Date.now()
+    if (
+      Number.isFinite(lastReloadedAt) &&
+      lastReloadedAt > 0 &&
+      now - lastReloadedAt < STALE_CHUNK_RELOAD_COOLDOWN_MS
+    ) {
+      return false
+    }
+    globalThis.window.sessionStorage.setItem(storageKey, String(now))
   } catch {
     // If storage is unavailable, still prefer one hard reload over a stale chunk error page.
   }

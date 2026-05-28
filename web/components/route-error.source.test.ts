@@ -74,4 +74,10 @@ describe('route error source', () => {
     expect(src).toContain("import { RouteError } from '@/components/route-error'")
     expect(src).toContain('<RouteError')
   })
+
+  it('renders the settings route boundary as a full-screen failure page', () => {
+    const src = read('../app/settings/error.tsx')
+
+    expect(src).toContain('fullScreen')
+  })
 })
