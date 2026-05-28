@@ -71,6 +71,12 @@ function setColorToken(target: HTMLElement, name: string, color: Color) {
 }
 
 function getReadableForeground(color: Color): Color {
+  const lightness = color.get('hsl.l')
+
+  if (Number.isFinite(lightness) && lightness <= 0.72) {
+    return chroma('white')
+  }
+
   return chroma.contrast(color, 'white') > 4.5 ? chroma('white') : chroma('black')
 }
 

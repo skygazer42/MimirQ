@@ -1328,7 +1328,7 @@ export function ChatArea({
                       'rounded-full shadow-sm transition-colors transition-shadow transition-transform duration-200 motion-reduce:transition-none',
                       isWelcomeState ? 'size-10' : 'size-9',
                       inputValue.trim() && hasChatScope
-                        ? 'bg-foreground text-background hover:bg-foreground/90'
+                        ? 'bg-info text-white hover:bg-info/90'
                         : 'bg-muted/50 text-muted-foreground/50 cursor-not-allowed'
                     )}
                     title={hasChatScope ? t('send') : (datasetsLoading ? t('datasetScopeLoading') : t('datasetScopeRequired'))}

@@ -890,7 +890,7 @@ function SnapshotStudioToolbar({
                 className={cn(
                   'inline-flex items-center justify-center gap-1 rounded-lg px-2 text-[11.5px] font-semibold transition-colors',
                   studioView === item.value
-                    ? 'bg-foreground text-background shadow-sm'
+                    ? 'bg-info text-white shadow-sm'
                     : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
                 )}
                 onClick={() =>

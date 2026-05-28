@@ -1549,7 +1549,7 @@ export function RetrievalAblationsPage() {
                               className={cn(
                                 'h-7 rounded-md px-2.5 text-[11px] font-medium',
                                 leaderboardAssignRole === 'base'
-                                  ? 'bg-foreground text-background shadow-sm'
+                                  ? 'bg-info text-white shadow-sm'
                                   : 'text-muted-foreground hover:bg-slate-100'
                               )}
                               onClick={() => setLeaderboardAssignRole('base')}
@@ -1610,7 +1610,7 @@ export function RetrievalAblationsPage() {
                                     dense
                                   />
                                   {isBase ? (
-                                    <span className="rounded-full bg-foreground px-1.5 py-0.5 text-[9px] font-medium text-background">
+                                    <span className="rounded-full bg-info px-1.5 py-0.5 text-[9px] font-medium text-white">
                                       基线
                                     </span>
                                   ) : null}
@@ -1776,7 +1776,7 @@ export function RetrievalAblationsPage() {
                       </div>
                       <div className="flex items-center gap-1.5">
                         <Button
-                          className="h-9 gap-1.5 rounded-xl bg-slate-950 px-4 text-[13px] text-info-foreground shadow-[0_10px_24px_rgba(15,23,42,0.20)] hover:bg-slate-800"
+                          className="h-9 gap-1.5 rounded-xl bg-info px-4 text-[13px] text-white shadow-[0_10px_24px_rgba(14,165,233,0.22)] hover:bg-info/90"
                           disabled={diffLoading || !canGenerateDiff}
                           onClick={() => detachPromise(computeDiff())}
                         >
