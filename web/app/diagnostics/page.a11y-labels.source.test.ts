@@ -64,4 +64,17 @@ describe('diagnostics page accessibility labels', () => {
     expect(src).toContain('样本未发现漂移')
     expect(src).toContain('多少条可引用证据')
   })
+
+  it('uses theme tokens for the RAG preview action instead of fixed blue colors', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'page-client.tsx'), 'utf8')
+
+    expect(src).toContain('data-rag-preview-action="true"')
+    expect(src).toContain('bg-primary text-primary-foreground hover:bg-primary/90')
+    expect(src).toContain('border-primary/15 bg-primary/10 text-primary')
+    expect(src).toContain('text-[10px] font-semibold text-primary')
+    expect(src).not.toContain('h-9 flex-1 bg-blue-600 text-[13px] font-semibold hover:bg-blue-700')
+    expect(src).not.toContain('rounded-2xl border border-blue-100/70 bg-gradient-to-r from-blue-50/90 via-white to-sky-50/80')
+    expect(src).not.toContain('border border-blue-100 bg-blue-50 text-blue-600')
+    expect(src).not.toContain('<p className="mt-0.5 text-[10px] font-semibold text-blue-600">')
+  })
 })
