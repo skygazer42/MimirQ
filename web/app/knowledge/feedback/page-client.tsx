@@ -69,6 +69,12 @@ type FeedbackSourceFilter =
   | 'api'
   | 'other'
 type FeedbackTimeRange = '7d' | '30d' | '90d' | 'all'
+type FeedbackMetricKey = 'all' | FeedbackType | 'neutral'
+type FeedbackDelta = {
+  label: string
+  tone: 'positive' | 'negative' | 'neutral'
+  title: string
+}
 
 const FEEDBACK_PAGE_SIZE = 3
 
@@ -245,6 +251,54 @@ function isArchivedFeedback(item: MessageFeedbackEnriched): boolean {
   return Boolean(extra?.archived)
 }
 
+function isFeedbackMetricMatch(
+  item: MessageFeedbackEnriched,
+  metric: FeedbackMetricKey
+): boolean {
+  if (metric === 'all') return true
+  return classifyFeedback(item.rating) === metric
+}
+
+function countFeedbackMetricForDay(
+  items: MessageFeedbackEnriched[],
+  dayKey: string,
+  metric: FeedbackMetricKey
+): number {
+  return items.filter(
+    (item) =>
+      utcDayKey(item.created_at) === dayKey &&
+      isFeedbackMetricMatch(item, metric)
+  ).length
+}
+
+function buildFeedbackDelta(
+  items: MessageFeedbackEnriched[],
+  metric: FeedbackMetricKey,
+  now = new Date()
+): FeedbackDelta {
+  const todayKey = utcDayKey(now)
+  const yesterday = new Date(`${todayKey}T00:00:00.000Z`)
+  yesterday.setUTCDate(yesterday.getUTCDate() - 1)
+  const yesterdayKey = utcDayKey(yesterday)
+  const today = countFeedbackMetricForDay(items, todayKey, metric)
+  const previous = countFeedbackMetricForDay(items, yesterdayKey, metric)
+
+  if (previous <= 0) {
+    return {
+      label: today > 0 ? `昨日 0 / 今日 ${today}` : '暂无昨日基线',
+      tone: today > 0 ? 'positive' : 'neutral',
+      title: `今日 ${today}，昨日 ${previous}`,
+    }
+  }
+
+  const change = ((today - previous) / previous) * 100
+  return {
+    label: `${change >= 0 ? '+' : ''}${change.toFixed(1)}%`,
+    tone: change > 0 ? 'positive' : change < 0 ? 'negative' : 'neutral',
+    title: `今日 ${today}，昨日 ${previous}`,
+  }
+}
+
 function FeedbackSummaryCard({
   label,
   value,
@@ -254,7 +308,7 @@ function FeedbackSummaryCard({
 }: Readonly<{
   label: string
   value: number
-  delta: string
+  delta: FeedbackDelta
   icon: typeof ThumbsUp
   tone: 'indigo' | 'emerald' | 'rose' | 'blue'
 }>) {
@@ -274,9 +328,12 @@ function FeedbackSummaryCard({
         : tone === 'rose'
           ? 'text-rose'
           : 'text-info'
-  const deltaTone = delta.trim().startsWith('-')
-    ? 'text-muted-foreground'
-    : 'text-foreground'
+  const deltaTone =
+    delta.tone === 'positive'
+      ? 'text-success'
+      : delta.tone === 'negative'
+        ? 'text-rose'
+        : 'text-muted-foreground'
 
   return (
     <div className="min-h-[72px] rounded-[1.1rem] border border-border/60 bg-background/92 px-3.5 py-2.5 shadow-[0_14px_34px_-30px_rgba(15,23,42,0.25)]">
@@ -303,7 +360,9 @@ function FeedbackSummaryCard({
           </div>
           <div className="mt-1 text-[9px] font-medium text-foreground/85 dark:text-muted-foreground">
             较昨日{' '}
-            <span className={cn('font-semibold', deltaTone)}>{delta}</span>
+            <span className={cn('font-semibold', deltaTone)} title={delta.title}>
+              {delta.label}
+            </span>
           </div>
         </div>
       </div>
@@ -327,6 +386,7 @@ function FeedbackDonutCard({
   const values = items.map((item) => item.value)
   const total = values.reduce((sum, value) => sum + value, 0)
   const gradient = buildConicGradient(values, colors)
+  const hasItems = items.length > 0
 
   return (
     <div className="rounded-[1.1rem] border border-border/60 bg-background/92 p-3 shadow-subtle">
@@ -362,26 +422,32 @@ function FeedbackDonutCard({
           </div>
         </div>
         <div className="space-y-1.5">
-          {items.map((item, index) => (
-            <div
-              key={item.label}
-              className="flex items-center justify-between gap-2 text-[11px]"
-            >
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <span
-                  className="h-2 w-2 rounded-full"
-                  style={{ backgroundColor: colors[index] }}
-                />
-                <span>{item.label}</span>
+          {hasItems ? (
+            items.map((item, index) => (
+              <div
+                key={item.label}
+                className="flex items-center justify-between gap-2 text-[11px]"
+              >
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <span
+                    className="h-2 w-2 rounded-full"
+                    style={{ backgroundColor: colors[index] }}
+                  />
+                  <span>{item.label}</span>
+                </div>
+                <div className="font-mono text-foreground">
+                  {item.value}{' '}
+                  {total > 0
+                    ? `(${((item.value / total) * 100).toFixed(1)}%)`
+                    : '(0%)'}
+                </div>
               </div>
-              <div className="font-mono text-foreground">
-                {item.value}{' '}
-                {total > 0
-                  ? `(${((item.value / total) * 100).toFixed(1)}%)`
-                  : '(0%)'}
-              </div>
+            ))
+          ) : (
+            <div className="rounded-2xl border border-dashed border-border/60 bg-muted/20 px-3 py-4 text-center text-[11px] leading-5 text-muted-foreground">
+              暂无来源分布，收到真实反馈后自动统计。
             </div>
-          ))}
+          )}
         </div>
       </div>
     </div>
@@ -402,6 +468,7 @@ function FeedbackTrendCard({
   onAction?: () => void
 }>) {
   const allValues = series.flatMap((item) => item.values)
+  const hasTrendData = allValues.some((value) => value > 0)
   const max = Math.max(1, ...allValues)
   const width = 320
   const height = 170
@@ -435,63 +502,70 @@ function FeedbackTrendCard({
             </span>
           ))}
         </div>
-        <svg
-          viewBox={`0 0 ${width} ${height}`}
-          className="h-[164px] w-full"
-          aria-hidden="true"
-        >
-          {Array.from({ length: 5 }, (_, gridLineIndex) => gridLineIndex).map((gridLineIndex) => {
-            const y = 18 + gridLineIndex * 34
-            return (
-              <line
-                key={`feedback-trend-grid-line-${gridLineIndex}`}
-                x1="0"
-                y1={y}
-                x2={width}
-                y2={y}
-                stroke="rgba(148,163,184,0.18)"
-              />
-            )
-          })}
-          {series.map((item) => {
-            const path = item.values
-              .map((value, index) => {
-                const x =
-                  (index / Math.max(1, item.values.length - 1)) * (width - 16) +
-                  8
-                const y = 152 - (value / max) * 110
-                return `${index === 0 ? 'M' : 'L'} ${x} ${y}`
-              })
-              .join(' ')
-            return (
-              <path
-                key={item.label}
-                d={path}
-                fill="none"
-                stroke={item.color}
-                strokeWidth="2.2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            )
-          })}
-          {labels.map((label, index) => {
-            const x =
-              (index / Math.max(1, labels.length - 1)) * (width - 16) + 8
-            return (
-              <text
-                key={label}
-                x={x}
-                y={181}
-                textAnchor="middle"
-                fontSize="11"
-                fill="rgba(100,116,139,0.9)"
-              >
-                {label}
-              </text>
-            )
-          })}
-        </svg>
+        <div className="relative">
+          <svg
+            viewBox={`0 0 ${width} ${height}`}
+            className={cn('h-[164px] w-full', !hasTrendData && 'opacity-35')}
+            aria-hidden="true"
+          >
+            {Array.from({ length: 5 }, (_, gridLineIndex) => gridLineIndex).map((gridLineIndex) => {
+              const y = 18 + gridLineIndex * 34
+              return (
+                <line
+                  key={`feedback-trend-grid-line-${gridLineIndex}`}
+                  x1="0"
+                  y1={y}
+                  x2={width}
+                  y2={y}
+                  stroke="rgba(148,163,184,0.18)"
+                />
+              )
+            })}
+            {series.map((item) => {
+              const path = item.values
+                .map((value, index) => {
+                  const x =
+                    (index / Math.max(1, item.values.length - 1)) * (width - 16) +
+                    8
+                  const y = 152 - (value / max) * 110
+                  return `${index === 0 ? 'M' : 'L'} ${x} ${y}`
+                })
+                .join(' ')
+              return (
+                <path
+                  key={item.label}
+                  d={path}
+                  fill="none"
+                  stroke={item.color}
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              )
+            })}
+            {labels.map((label, index) => {
+              const x =
+                (index / Math.max(1, labels.length - 1)) * (width - 16) + 8
+              return (
+                <text
+                  key={label}
+                  x={x}
+                  y={181}
+                  textAnchor="middle"
+                  fontSize="11"
+                  fill="rgba(100,116,139,0.9)"
+                >
+                  {label}
+                </text>
+              )
+            })}
+          </svg>
+          {!hasTrendData ? (
+            <div className="absolute inset-x-4 top-10 rounded-2xl border border-dashed border-border/60 bg-background/86 px-4 py-5 text-center text-[11px] leading-5 text-muted-foreground shadow-sm">
+              最近 7 天暂无反馈趋势，收到数据后会自动绘制曲线。
+            </div>
+          ) : null}
+        </div>
       </div>
     </div>
   )
@@ -727,6 +801,7 @@ export default function FeedbackTriagePage() {
       total: 0,
       upvotes: 0,
       downvotes: 0,
+      neutral: 0,
     }
     for (const it of items) {
       s.total++
@@ -735,6 +810,7 @@ export default function FeedbackTriagePage() {
       const kind = classifyFeedback(r)
       if (kind === 'thumbs_up') s.upvotes++
       if (kind === 'thumbs_down') s.downvotes++
+      if (kind === 'neutral') s.neutral++
     }
     return s
   }, [demoMetrics.stats, demoMode, items])
@@ -979,33 +1055,33 @@ export default function FeedbackTriagePage() {
       {
         label: '总反馈量',
         value: stats.total,
-        delta: '+12%',
+        delta: buildFeedbackDelta(items, 'all'),
         icon: MessageSquare,
         tone: 'indigo' as const,
       },
       {
         label: '点赞',
         value: stats.upvotes,
-        delta: '+8%',
+        delta: buildFeedbackDelta(items, 'thumbs_up'),
         icon: ThumbsUp,
         tone: 'emerald' as const,
       },
       {
         label: '点踩',
         value: stats.downvotes,
-        delta: '+21%',
+        delta: buildFeedbackDelta(items, 'thumbs_down'),
         icon: ThumbsDown,
         tone: 'rose' as const,
       },
       {
         label: '中立反馈',
-        value: stats.total - stats.upvotes - stats.downvotes,
-        delta: '-5%',
+        value: stats.neutral,
+        delta: buildFeedbackDelta(items, 'neutral'),
         icon: Star,
         tone: 'blue' as const,
       },
     ],
-    [stats.downvotes, stats.total, stats.upvotes]
+    [items, stats.downvotes, stats.neutral, stats.total, stats.upvotes]
   )
 
   return (
@@ -1673,52 +1749,66 @@ export default function FeedbackTriagePage() {
                 </button>
               </div>
               <div className="mt-4 space-y-5">
-                {topReasonStats.map((item, index) => (
-                  <div key={item.label} className="space-y-2">
-                    <div className="flex items-center justify-between gap-3 text-[13px]">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={cn(
-                            'inline-flex h-5 w-5 items-center justify-center rounded-md text-[11px] font-medium tabular-nums',
-                            index === 0
-                              ? 'bg-rose text-rose-foreground'
-                              : 'bg-muted text-muted-foreground border border-border/60'
-                          )}
-                        >
-                          {index + 1}
-                        </span>
-                        <span className="font-medium text-foreground">
-                          {item.label}
+                {topReasonStats.length ? (
+                  topReasonStats.map((item, index) => (
+                    <div key={item.label} className="space-y-2">
+                      <div className="flex items-center justify-between gap-3 text-[13px]">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={cn(
+                              'inline-flex h-5 w-5 items-center justify-center rounded-md text-[11px] font-medium tabular-nums',
+                              index === 0
+                                ? 'bg-rose text-rose-foreground'
+                                : 'bg-muted text-muted-foreground border border-border/60'
+                            )}
+                          >
+                            {index + 1}
+                          </span>
+                          <span className="font-medium text-foreground">
+                            {item.label}
+                          </span>
+                        </div>
+                        <span className="font-mono tabular-nums text-muted-foreground">
+                          {item.value}{' '}
+                          <span className="text-muted-foreground/65">
+                            (
+                            {stats.total > 0
+                              ? ((item.value / stats.total) * 100).toFixed(1)
+                              : '0.0'}
+                            %)
+                          </span>
                         </span>
                       </div>
-                      <span className="font-mono tabular-nums text-muted-foreground">
-                        {item.value}{' '}
-                        <span className="text-muted-foreground/65">
-                          (
-                          {stats.total > 0
-                            ? ((item.value / stats.total) * 100).toFixed(1)
-                            : '0.0'}
-                          %)
-                        </span>
-                      </span>
+                      <div className="h-2 overflow-hidden rounded-full bg-muted/50">
+                        <div
+                          className={cn(
+                            'h-full rounded-full transition-[width] duration-300 motion-reduce:transition-none',
+                            index === 0
+                              ? 'bg-rose'
+                              : index === 1
+                                ? 'bg-rose/60'
+                                : 'bg-rose/35'
+                          )}
+                          style={{
+                            width: `${stats.total ? (item.value / stats.total) * 100 : 0}%`,
+                          }}
+                        />
+                      </div>
                     </div>
-                    <div className="h-2 overflow-hidden rounded-full bg-muted/50">
-                      <div
-                        className={cn(
-                          'h-full rounded-full transition-[width] duration-300 motion-reduce:transition-none',
-                          index === 0
-                            ? 'bg-rose'
-                            : index === 1
-                              ? 'bg-rose/60'
-                              : 'bg-rose/35'
-                        )}
-                        style={{
-                          width: `${stats.total ? (item.value / stats.total) * 100 : 0}%`,
-                        }}
-                      />
+                  ))
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-border/60 bg-muted/20 px-4 py-6 text-center">
+                    <div className="mx-auto mb-2 flex size-9 items-center justify-center rounded-2xl bg-rose/10 text-rose">
+                      <ThumbsDown className="size-4" />
                     </div>
+                    <div className="text-[12px] font-semibold text-foreground">
+                      暂无高频原因
+                    </div>
+                    <p className="mt-1 text-[11px] leading-5 text-muted-foreground">
+                      暂无高频原因，收到低分反馈后自动聚合 TOP3。
+                    </p>
                   </div>
-                ))}
+                )}
               </div>
             </div>
 
@@ -1795,9 +1885,9 @@ export default function FeedbackTriagePage() {
                     </Badge>
                   ))
                 ) : (
-                  <span className="text-[11px] text-muted-foreground">
-                    暂无 glossary 候选，积累更多低分反馈后展示。
-                  </span>
+                  <div className="w-full rounded-2xl border border-dashed border-border/60 bg-muted/20 px-3 py-4 text-[11px] leading-5 text-muted-foreground">
+                    暂无可反哺候选；积累低分反馈后会生成 HardNeg、训练三元组和规则候选。
+                  </div>
                 )}
               </div>
             </div>
