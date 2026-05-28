@@ -26,6 +26,23 @@ describe('feedback page source', () => {
     expect(src).toContain('规则候选')
   })
 
+  it('uses real day-over-day feedback deltas instead of fixed placeholder percentages', () => {
+    const src = read('./page-client.tsx')
+
+    expect(src).toContain('function buildFeedbackDelta(')
+    expect(src).toContain("todayKey = utcDayKey(now)")
+    expect(src).toContain("yesterday.setUTCDate(yesterday.getUTCDate() - 1)")
+    expect(src).toContain("label: `${change >= 0 ? '+' : ''}${change.toFixed(1)}%`")
+    expect(src).toContain("label: today > 0 ? `昨日 0 / 今日 ${today}` : '暂无昨日基线'")
+    expect(src).not.toContain("delta: '+12%'")
+    expect(src).not.toContain("delta: '+8%'")
+    expect(src).not.toContain("delta: '+21%'")
+    expect(src).not.toContain("delta: '-5%'")
+    expect(src).toContain('暂无高频原因，收到低分反馈后自动聚合 TOP3。')
+    expect(src).toContain('暂无来源分布，收到真实反馈后自动统计。')
+    expect(src).toContain('最近 7 天暂无反馈趋势，收到数据后会自动绘制曲线。')
+  })
+
   it('defers relative timestamp chips until after mount and buckets trend stats by UTC day keys', () => {
     const src = read('./page-client.tsx')
 
