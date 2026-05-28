@@ -25,4 +25,11 @@ describe('chat area composer layout source', () => {
     expect(src).toContain('RAG_SETTINGS_VIEWPORT_MARGIN')
     expect(src).toContain('border-transparent bg-transparent p-0 shadow-none [box-shadow:none]')
   })
+
+  it('keeps the enabled send action on the theme accent instead of a black button', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'chat-area.tsx'), 'utf8')
+
+    expect(src).toContain('bg-info text-white hover:bg-info/90')
+    expect(src).not.toContain('bg-foreground text-background hover:bg-foreground/90')
+  })
 })

@@ -49,6 +49,24 @@ describe('theme surface helpers', () => {
     expect(root.style.getPropertyValue('--ring')).toBe('346.8 77.2% 49.8%')
   })
 
+  it('keeps brand action foregrounds light for default theme accents', () => {
+    const root = document.createElement('html')
+
+    applyThemeColor('#0ea5e9', root)
+
+    expect(root.style.getPropertyValue('--primary-foreground')).toBe('0.0 0.0% 100.0%')
+    expect(root.style.getPropertyValue('--info-foreground')).toBe('0.0 0.0% 100.0%')
+  })
+
+  it('falls back to dark action foregrounds only for very pale custom accents', () => {
+    const root = document.createElement('html')
+
+    applyThemeColor('#fde68a', root)
+
+    expect(root.style.getPropertyValue('--primary-foreground')).toBe('0.0 0.0% 0.0%')
+    expect(root.style.getPropertyValue('--info-foreground')).toBe('0.0 0.0% 0.0%')
+  })
+
   it('applies stored theme appearance globally and notifies same-tab listeners', () => {
     const root = document.createElement('html')
     const storage = new Map<string, string>([

@@ -1545,7 +1545,7 @@ export function RagvizSimilarityWorkbench() {
                     className={cn(
                       'rounded-xl',
                       mainView === 'heatmap' &&
-                        'bg-slate-950 text-info-foreground hover:bg-slate-900'
+                        'bg-info text-white hover:bg-info/90'
                     )}
                     onClick={() => setMainView('heatmap')}
                   >
@@ -2203,7 +2203,7 @@ function IconBtn({
       className={cn(
         'flex h-9 w-9 items-center justify-center rounded-xl border shadow-subtle transition-colors',
         active
-          ? 'border-slate-950 bg-slate-950 text-info-foreground'
+          ? 'border-info bg-info text-white'
           : 'border-sidebar-border/70 bg-card text-muted-foreground hover:border-primary/25 hover:text-primary'
       )}
     >
