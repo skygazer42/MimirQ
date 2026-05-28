@@ -1092,7 +1092,7 @@ export default function KnowledgePage() {
         }
         bodyClassName={cn(
           'bg-background/35 pt-3 dark:bg-background/20',
-          documentsEmptySurface ? 'flex-none overflow-visible pb-2' : undefined
+          documentsEmptySurface ? 'min-h-0 flex-1 overflow-hidden pb-3' : undefined
         )}
         mainPaneClassName={cn(
           activeTab === 'documents' ? 'rounded-none border-0 bg-transparent shadow-none' : undefined
@@ -1100,7 +1100,7 @@ export default function KnowledgePage() {
         mainPaneBodyClassName={cn(
           activeTab === 'documents' ? 'overflow-hidden bg-transparent p-0' : undefined,
           activeTab === 'settings' ? 'overflow-hidden p-0' : undefined,
-          documentsEmptySurface ? 'flex-none overflow-visible pb-2' : undefined
+          documentsEmptySurface ? 'min-h-0 flex-1 overflow-hidden pb-3' : undefined
         )}
         // leftPanel={!desktopScopeCollapsed ? (
         // Legacy source-test anchor:
@@ -1224,10 +1224,7 @@ export default function KnowledgePage() {
             layout={!reduceMotion}
             layoutId="knowledge-documents-surface"
             transition={layoutTransition}
-            className={cn(
-              'flex min-h-0 flex-col',
-              documentsEmptySurface ? 'flex-none' : 'flex-1'
-            )}
+            className="flex min-h-0 flex-1 flex-col"
           >
             <KnowledgeDocumentsPanel
               embedded

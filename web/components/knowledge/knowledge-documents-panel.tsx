@@ -720,9 +720,8 @@ export function KnowledgeDocumentsPanel({
       <div
         className={cn(
           'flex min-h-0 flex-col overflow-hidden rounded-[22px] border border-border/60 bg-card/56 shadow-[0_16px_36px_-32px_hsl(var(--primary)/0.26),0_0_0_1px_hsl(var(--card)/0.72)] dark:border-border/50 dark:bg-card/35',
-          embedded && !compactEmptyInventory && 'h-full flex-1',
-          compactEmptyInventory && 'flex-none',
-          embedded ? (!compactEmptyInventory && 'h-full') : 'min-h-[560px]'
+          embedded && 'h-full flex-1',
+          embedded ? 'h-full' : 'min-h-[560px]'
         )}
       >
         <div className="relative overflow-hidden border-b border-border/60 bg-[radial-gradient(circle_at_14%_0%,hsl(var(--primary)/0.045),transparent_34%),linear-gradient(180deg,hsl(var(--card)/0.88),hsl(var(--surface-2)/0.52))] px-4 pb-2 pt-3.5 dark:border-border/60 dark:bg-background/45">
@@ -818,7 +817,7 @@ export function KnowledgeDocumentsPanel({
           <div
             className={cn(
               'flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border-0 bg-transparent shadow-none',
-              compactEmptyInventory && 'flex-none'
+              compactEmptyInventory && 'overflow-visible'
             )}
           >
             <div className="border-b border-border/60 bg-[linear-gradient(180deg,hsl(var(--card)/0.78),hsl(var(--surface-2)/0.42))] px-3 py-2.5 dark:border-border/60 dark:bg-muted/[0.12]">
@@ -857,10 +856,13 @@ export function KnowledgeDocumentsPanel({
                 : '当前筛选条件没有命中文档，可以放宽范围、清空搜索，或切回全部数据集重新查看。'
 
               return (
-                <div className="px-2 py-1.5">
+                <div
+                  data-knowledge-empty-shelf-dock="bottom"
+                  className="flex min-h-0 flex-1 items-end px-2 pb-2 pt-1.5"
+                >
                   <div
                     data-knowledge-empty-shelf="true"
-                    className="relative min-h-[272px] overflow-hidden rounded-[20px] border border-dashed border-info/18 bg-[radial-gradient(circle_at_50%_0%,rgba(59,130,246,0.12),transparent_44%)]"
+                    className="relative w-full min-h-[272px] overflow-hidden rounded-[20px] border border-dashed border-info/18 bg-[radial-gradient(circle_at_50%_0%,rgba(59,130,246,0.12),transparent_44%)]"
                   >
                     <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(59,130,246,0.055)_1px,transparent_1px),linear-gradient(90deg,rgba(59,130,246,0.055)_1px,transparent_1px)] bg-[size:34px_34px]" />
                     <div className="pointer-events-none absolute -left-12 top-16 size-44 rounded-full bg-info/10 blur-3xl" />
