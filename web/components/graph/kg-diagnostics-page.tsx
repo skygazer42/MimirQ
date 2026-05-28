@@ -2,7 +2,6 @@
 
 import {
   Activity,
-  ChevronRight,
   ClipboardList,
   CircleAlert,
   Download,
@@ -610,34 +609,41 @@ function DiagnosticsRunHeroPanel({
     )
   }
 
-  const steps = [
+  const resultPreviewItems = [
     {
-      index: '1',
-      title: '选择评测参数',
-      description: '设置评测范围、基线等参数',
+      title: '核心指标',
+      description: 'Hit Rate、MRR、Recall、NDCG、MAP 会集中显示在顶部指标卡。',
+      icon: <Target className="h-4 w-4" aria-hidden="true" />,
     },
-    { index: '2', title: '开始评测', description: '系统将自动执行评测流程' },
     {
-      index: '3',
-      title: '查看结果与分析',
-      description: '指标趋势、分析与改进',
+      title: '失败样本',
+      description: '未命中问题、召回位置和错误分布会进入下方分析区。',
+      icon: <CircleAlert className="h-4 w-4" aria-hidden="true" />,
+    },
+    {
+      title: '原始结果',
+      description: '保存后的 run 记录与 JSON 明细可直接查看或导出。',
+      icon: <FileStack className="h-4 w-4" aria-hidden="true" />,
     },
   ]
 
   return (
-    <div className="min-h-[280px] rounded-xl border border-border/70 bg-background px-6 py-5 shadow-sm">
-      <div className="flex items-center justify-center gap-10 text-left">
-        <div className="relative flex h-[128px] w-[160px] shrink-0 items-center justify-center text-sky-300">
+    <div className="grid min-h-[220px] gap-5 rounded-xl border border-border/70 bg-[radial-gradient(circle_at_16%_0%,hsl(var(--info)/0.10),transparent_34%),linear-gradient(180deg,hsl(var(--background)),hsl(var(--card)/0.92))] px-6 py-5 shadow-sm md:grid-cols-[minmax(0,0.95fr)_minmax(320px,1.05fr)]">
+      <div className="flex items-center gap-5">
+        <div className="relative flex h-[112px] w-[132px] shrink-0 items-center justify-center text-sky-300">
           <div
             className="absolute inset-5 rounded-[30px] bg-sky-100/70 blur-2xl"
             aria-hidden="true"
           />
-          <div className="relative flex h-[96px] w-[96px] items-center justify-center rounded-[24px] border border-sky-100 bg-sky-50/90 shadow-sm">
-            <ClipboardList className="h-11 w-11" aria-hidden="true" />
+          <div className="relative flex h-[84px] w-[84px] items-center justify-center rounded-[24px] border border-sky-100 bg-sky-50/90 shadow-sm">
+            <ClipboardList className="h-10 w-10" aria-hidden="true" />
           </div>
         </div>
-        <div className="min-w-0 text-center md:text-left">
-          <h3 className="text-[21px] font-semibold text-foreground">
+        <div className="min-w-0">
+          <div className="inline-flex rounded-full border border-sky-100 bg-sky-50 px-2.5 py-1 text-[11px] font-medium text-sky-700">
+            运行后会自动填充
+          </div>
+          <h3 className="mt-3 text-[22px] font-semibold tracking-[-0.03em] text-foreground">
             {emptyTitle}
           </h3>
           <p className="mt-2 max-w-[520px] text-[12px] leading-5 text-muted-foreground">
@@ -646,28 +652,41 @@ function DiagnosticsRunHeroPanel({
         </div>
       </div>
 
-      <div className="mx-auto mt-5 flex w-full max-w-[720px] items-center justify-center rounded-xl border border-border/70 bg-card/90 px-5 py-3.5 shadow-sm">
-        {steps.map((step, index) => (
-          <div key={step.index} className="flex items-center gap-4">
-            <div className="min-w-[140px] text-left">
-              <div className="inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-sky-200 bg-sky-50 px-1.5 text-[11px] font-semibold text-sky-700">
-                {step.index}
+      <div className="rounded-[18px] border border-border/70 bg-card/86 p-3 shadow-[inset_0_1px_0_hsl(var(--background)/0.86)]">
+        <div className="flex items-center justify-between gap-3 px-1 pb-2">
+          <div>
+            <div className="text-[12px] font-semibold text-foreground">
+              结果工作台
+            </div>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              一次评测完成后，关键证据会按下面三个区域落位。
+            </p>
+          </div>
+          <div className="hidden rounded-full border border-border/70 bg-background px-2.5 py-1 text-[10.5px] font-medium text-muted-foreground sm:block">
+            KG Eval
+          </div>
+        </div>
+
+        <div className="grid gap-2.5">
+          {resultPreviewItems.map((item) => (
+            <div
+              key={item.title}
+              className="flex items-start gap-3 rounded-[14px] border border-border/60 bg-background/82 px-3.5 py-3"
+            >
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] border border-sky-100 bg-sky-50 text-sky-600">
+                {item.icon}
               </div>
-              <div className="mt-1 text-[12px] font-semibold text-foreground">
-                {step.title}
-              </div>
-              <div className="mt-0.5 text-[10.5px] leading-[18px] text-muted-foreground">
-                {step.description}
+              <div className="min-w-0">
+                <div className="text-[12px] font-semibold text-foreground">
+                  {item.title}
+                </div>
+                <p className="mt-0.5 text-[11px] leading-5 text-muted-foreground">
+                  {item.description}
+                </p>
               </div>
             </div>
-            {index < steps.length - 1 ? (
-              <ChevronRight
-                className="h-4 w-4 text-muted-foreground/60"
-                aria-hidden="true"
-              />
-            ) : null}
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </div>
   )
