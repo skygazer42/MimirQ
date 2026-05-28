@@ -77,6 +77,7 @@ describe('feedback triage page layout', () => {
       src,
       "{ratingFilter === 'all' ? '星级' : `星级 · ${ratingFilter} 星`}"
     )
+    expectSourceNotToContain(src, '{boardTab}')
     expectSourceToContain(
       src,
       'hover:border-info/35 hover:bg-info/[0.10] hover:text-info'
