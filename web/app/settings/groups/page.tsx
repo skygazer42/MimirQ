@@ -296,6 +296,7 @@ function SettingsGroupsPageContent() {
         headerClassName="[&_h1]:!text-[27px] [&_h1]:md:!text-[29px] [&_h1]:!leading-tight [&_h1]:!tracking-[-0.035em]"
         topClassName="pb-2.5"
         bodyClassName="pt-1.5"
+        bodyContainerClassName="flex min-h-full flex-col"
         top={<GroupSummaryStrip items={summaryItems} />}
         actions={
           <div className="flex items-center gap-2">
@@ -400,7 +401,12 @@ function SettingsGroupsPageContent() {
           </div>
         }
       >
-        <div className={cn(CARD_CLASS, 'min-h-[560px] p-5')}>
+        <div
+          className={cn(
+            CARD_CLASS,
+            'flex min-h-[calc(100dvh-22rem)] flex-1 flex-col p-5'
+          )}
+        >
           <div className="mb-5 flex flex-col gap-3.5">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-3">
@@ -454,7 +460,7 @@ function SettingsGroupsPageContent() {
             </div>
           </div>
 
-          <div className="flex min-h-[390px] flex-col overflow-hidden rounded-2xl border border-slate-200">
+          <div className="flex min-h-[440px] flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200">
             <div className="grid grid-cols-12 bg-slate-50 px-4 py-2.5 text-[12px] font-semibold text-slate-800">
               <div className="col-span-5 flex items-center gap-2">
                 名称
@@ -468,7 +474,7 @@ function SettingsGroupsPageContent() {
               <div className="col-span-1 text-right">操作</div>
             </div>
 
-            <div className="flex-1">
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
               {visibleGroups.length ? (
                 visibleGroups.map((g) => {
                   const gid = String(g.id || '').trim()
@@ -552,11 +558,11 @@ function SettingsGroupsPageContent() {
                   )
                 })
               ) : loading ? (
-                <div className="flex h-full min-h-[320px] items-center justify-center text-[13px] text-slate-500">
+                <div className="flex min-h-[360px] flex-1 items-center justify-center text-[13px] text-slate-500">
                   加载中…
                 </div>
               ) : (
-                <div className="flex h-full min-h-[320px] flex-col items-center justify-center border-t border-slate-100 px-6 text-center">
+                <div className="flex min-h-[360px] flex-1 flex-col items-center justify-center border-t border-slate-100 px-6 text-center">
                   <div className="relative mb-4 flex size-[72px] items-center justify-center rounded-[22px] bg-blue-50 text-blue-500 shadow-inner">
                     <UsersRound className="size-9" />
                     <span className="absolute -right-1 top-2 size-2 rounded-full bg-blue-300" />
