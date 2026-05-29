@@ -25,7 +25,7 @@ export type {
   IndustryRulesIntentsUpdateRequest,
   IndustryRulesRewritePreviewRequest,
   IndustryRulesRewritePreviewResponse,
-}
+} from '@/types/backend'
 
 export const industryRulesApi = {
   async listRulesets(): Promise<IndustryRulesetListResponse> {

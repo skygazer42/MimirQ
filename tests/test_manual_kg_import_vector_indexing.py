@@ -1,15 +1,20 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
+from typing import cast
 from uuid import UUID, uuid4
+
+from sqlalchemy.orm import Session
+
+from app.models.document import Document
+from app.rag.kg.models import KgEntity, KgSourceEvent
 
 
 def test_manual_kg_import_embeds_events_and_entities(monkeypatch):
     import app.rag.kg.manual_import as manual_import
 
     embedded_texts: list[str] = []
-    indexed_events: list[object] = []
-    indexed_entities: list[object] = []
+    indexed_events: list[KgSourceEvent] = []
+    indexed_entities: list[KgEntity] = []
 
     class _FakeEmbeddings:
         def embed_documents(self, texts: list[str]) -> list[list[float]]:
@@ -29,35 +34,47 @@ def test_manual_kg_import_embeds_events_and_entities(monkeypatch):
         def _embedding_runtime_for_document(self, *, tenant_id: UUID, document_id: UUID) -> object:
             return {"tenant_id": tenant_id, "document_id": document_id}
 
-        def _index_event_vectors(self, events: list[object]) -> list[str]:
+        def _index_event_vectors(self, events: list[KgSourceEvent]) -> list[str]:
             indexed_events.extend(events)
-            return [f"event:{getattr(event, 'id')}" for event in events]
+            return [f"event:{event.id}" for event in events]
 
-        def _index_entity_vectors(self, entities: list[object]) -> list[str]:
+        def _index_entity_vectors(self, entities: list[KgEntity]) -> list[str]:
             indexed_entities.extend(entities)
-            return [f"entity:{getattr(entity, 'id')}" for entity in entities]
+            return [f"entity:{entity.id}" for entity in entities]
 
     monkeypatch.setattr(manual_import, "Indexer", _FakeIndexer, raising=False)
-    monkeypatch.setattr(manual_import, "create_embeddings_for_runtime", lambda _runtime: _FakeEmbeddings(), raising=False)
+    monkeypatch.setattr(
+        manual_import, "create_embeddings_for_runtime", lambda _runtime: _FakeEmbeddings(), raising=False
+    )
 
-    document = SimpleNamespace(id=uuid4())
-    event = SimpleNamespace(
+    document = Document(
         id=uuid4(),
+        tenant_id=UUID(int=1),
+        filename="manual.json",
+        file_type="json",
+        file_size=0,
+        file_path="manual://test",
+    )
+    event = KgSourceEvent(
+        id=uuid4(),
+        tenant_id=UUID(int=1),
         title="事项关系",
         summary="办理对象关系",
         content="企业设立登记需要提交申请材料。",
         content_vector=None,
     )
-    entity = SimpleNamespace(
+    entity = KgEntity(
         id=uuid4(),
+        tenant_id=UUID(int=1),
         name="企业设立登记",
         type="ServiceItem",
         description="政务服务事项",
+        normalized_name="企业设立登记",
         vector=None,
     )
 
     out = manual_import._index_manual_import_vectors(
-        db=object(),
+        db=cast(Session, object()),
         tenant_id=UUID(int=1),
         document=document,
         events=[event],
@@ -102,12 +119,20 @@ def test_manual_kg_import_vector_indexing_is_fail_open(monkeypatch):
     monkeypatch.setattr(manual_import, "Indexer", _FakeIndexer, raising=False)
     monkeypatch.setattr(manual_import, "create_embeddings_for_runtime", _raise_embedding_error, raising=False)
 
-    event = SimpleNamespace(id=uuid4(), title="t", summary="s", content="c", content_vector=None)
+    event = KgSourceEvent(id=uuid4(), tenant_id=UUID(int=1), title="t", summary="s", content="c", content_vector=None)
+    document = Document(
+        id=uuid4(),
+        tenant_id=UUID(int=1),
+        filename="manual.json",
+        file_type="json",
+        file_size=0,
+        file_path="manual://test",
+    )
 
     out = manual_import._index_manual_import_vectors(
-        db=object(),
+        db=cast(Session, object()),
         tenant_id=UUID(int=1),
-        document=SimpleNamespace(id=uuid4()),
+        document=document,
         events=[event],
         entities=[],
         enabled=True,
@@ -140,7 +165,9 @@ def test_manual_kg_import_delete_removes_event_and_entity_vectors(monkeypatch):
 
     event_id = uuid4()
     entity_id = uuid4()
-    manual_import._delete_manual_import_vectors(db=object(), event_ids=[event_id], entity_ids=[entity_id])
+    manual_import._delete_manual_import_vectors(
+        db=cast(Session, object()), event_ids=[event_id], entity_ids=[entity_id]
+    )
 
     assert deleted_events == [str(event_id)]
     assert deleted_entities == [str(entity_id)]

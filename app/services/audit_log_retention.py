@@ -23,6 +23,8 @@ from app.rag.core.logging import get_logger
 
 logger = get_logger(__name__)
 
+BOUNDED_DELETE_FAILED_LOG = "audit-log purge: bounded delete failed, rolled back: %s"
+
 
 def _coerce_uuid_list(rows: Sequence[object]) -> list[UUID]:
     out: list[UUID] = []
@@ -134,7 +136,7 @@ def purge_audit_log_rows(
             with contextlib.suppress(Exception):
                 db.flush()
     except Exception as exc:
-        logger.warning("audit-log purge: bounded delete failed, rolled back: %s", exc)
+        logger.warning(BOUNDED_DELETE_FAILED_LOG, exc)
         with contextlib.suppress(Exception):
             db.rollback()
         return 0
@@ -221,7 +223,7 @@ def purge_filtered_audit_log_rows(
                 db.flush()
         return deleted
     except Exception as exc:
-        logger.warning("audit-log purge: bounded delete failed, rolled back: %s", exc)
+        logger.warning(BOUNDED_DELETE_FAILED_LOG, exc)
         with contextlib.suppress(Exception):
             db.rollback()
         return 0
@@ -253,7 +255,7 @@ def delete_audit_log_rows(
                 db.flush()
         return deleted
     except Exception as exc:
-        logger.warning("audit-log purge: bounded delete failed, rolled back: %s", exc)
+        logger.warning(BOUNDED_DELETE_FAILED_LOG, exc)
         with contextlib.suppress(Exception):
             db.rollback()
         return 0

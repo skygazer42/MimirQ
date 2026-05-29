@@ -86,13 +86,67 @@ export function GraphScopePickerDialog({
     onOpenChange(false)
   }, [onOpenChange, router])
 
-  const currentScopeSummary = currentDatasetId
-    ? `当前已选知识库 ${currentDatasetId}`
-    : currentPipelineHash
-      ? `当前按解析批次 ${currentPipelineHash} 查看`
-      : currentDocumentCount > 0
-        ? `当前按 ${currentDocumentCount} 篇文档范围查看`
-        : '当前未指定图谱范围'
+  let currentScopeSummary = '当前未指定图谱范围'
+  if (currentDatasetId) {
+    currentScopeSummary = `当前已选知识库 ${currentDatasetId}`
+  } else if (currentPipelineHash) {
+    currentScopeSummary = `当前按解析批次 ${currentPipelineHash} 查看`
+  } else if (currentDocumentCount > 0) {
+    currentScopeSummary = `当前按 ${currentDocumentCount} 篇文档范围查看`
+  }
+
+  let datasetListContent = filteredDatasets.map((dataset) => {
+    const isSelected = selectedDatasetId === dataset.id
+    return (
+      <button
+        key={dataset.id}
+        type="button"
+        className={cn(
+          'w-full rounded-xl border px-4 py-3 text-left transition-colors',
+          isSelected ? 'border-primary/40 bg-primary/5 shadow-sm' : 'border-border/50 bg-background hover:border-border hover:bg-muted/40'
+        )}
+        onClick={() => setSelectedDatasetId(dataset.id)}
+      >
+        <div className="flex items-start gap-3">
+          <div
+            className={cn(
+              'mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl',
+              isSelected ? 'bg-primary/12 text-primary' : 'bg-muted/60 text-muted-foreground'
+            )}
+          >
+            <Database className="h-4 w-4" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-medium text-foreground">{dataset.name || dataset.id}</div>
+            <div className="mt-1 truncate font-mono text-[11px] text-muted-foreground">{dataset.id}</div>
+            {dataset.description ? (
+              <div className="mt-2 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{dataset.description}</div>
+            ) : null}
+          </div>
+        </div>
+      </button>
+    )
+  })
+  if (loading && datasets.length === 0) {
+    datasetListContent = [
+      <div key="loading" className="flex min-h-40 items-center justify-center text-sm text-muted-foreground">
+        <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
+        正在读取知识库列表...
+      </div>,
+    ]
+  } else if (error) {
+    datasetListContent = [
+      <div key="error" className="flex min-h-40 items-center justify-center px-6 text-center text-sm text-muted-foreground">
+        {error}
+      </div>,
+    ]
+  } else if (filteredDatasets.length === 0) {
+    datasetListContent = [
+      <div key="empty" className="flex min-h-40 items-center justify-center px-6 text-center text-sm text-muted-foreground">
+        没有匹配的知识库。可尝试清空搜索，或导入 KG JSON / JSONL 创建后端图谱。
+      </div>,
+    ]
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -134,57 +188,7 @@ export function GraphScopePickerDialog({
 
           <div className="rounded-2xl border border-border/60 bg-background/80 p-2">
             <div className="max-h-[22rem] space-y-2 overflow-auto pr-1">
-              {loading && datasets.length === 0 ? (
-                <div className="flex min-h-40 items-center justify-center text-sm text-muted-foreground">
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
-                  正在读取知识库列表...
-                </div>
-              ) : error ? (
-                <div className="flex min-h-40 items-center justify-center px-6 text-center text-sm text-muted-foreground">
-                  {error}
-                </div>
-              ) : filteredDatasets.length === 0 ? (
-                <div className="flex min-h-40 items-center justify-center px-6 text-center text-sm text-muted-foreground">
-                  没有匹配的知识库。可尝试清空搜索，或导入 KG JSON / JSONL 创建后端图谱。
-                </div>
-              ) : (
-                filteredDatasets.map((dataset) => {
-                  const isSelected = selectedDatasetId === dataset.id
-                  return (
-                    <button
-                      key={dataset.id}
-                      type="button"
-                      className={cn(
-                        'w-full rounded-xl border px-4 py-3 text-left transition-colors',
-                        isSelected
-                          ? 'border-primary/40 bg-primary/5 shadow-sm'
-                          : 'border-border/50 bg-background hover:border-border hover:bg-muted/40'
-                      )}
-                      onClick={() => setSelectedDatasetId(dataset.id)}
-                    >
-                      <div className="flex items-start gap-3">
-                        <div
-                          className={cn(
-                            'mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl',
-                            isSelected ? 'bg-primary/12 text-primary' : 'bg-muted/60 text-muted-foreground'
-                          )}
-                        >
-                          <Database className="h-4 w-4" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-medium text-foreground">{dataset.name || dataset.id}</div>
-                          <div className="mt-1 truncate font-mono text-[11px] text-muted-foreground">{dataset.id}</div>
-                          {dataset.description ? (
-                            <div className="mt-2 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
-                              {dataset.description}
-                            </div>
-                          ) : null}
-                        </div>
-                      </div>
-                    </button>
-                  )
-                })
-              )}
+              {datasetListContent}
             </div>
           </div>
         </div>
