@@ -29,7 +29,7 @@ describe('chat area composer layout source', () => {
   it('keeps the enabled send action on the theme accent instead of a black button', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'chat-area.tsx'), 'utf8')
 
-    expect(src).toContain('bg-info text-white hover:bg-info/90')
+    expect(src).toContain('bg-info text-primary-foreground hover:bg-info/90')
     expect(src).not.toContain('bg-foreground text-background hover:bg-foreground/90')
   })
 })

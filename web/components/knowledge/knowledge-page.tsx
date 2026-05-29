@@ -674,7 +674,7 @@ export default function KnowledgePage() {
           <div className="flex min-w-0 items-center gap-3">
             <div className="relative flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-[18px] border border-info/18 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.10))] text-info shadow-[inset_0_1px_0_hsl(var(--background)),0_14px_30px_-24px_hsl(var(--info)/0.75)]">
               <span
-                className="absolute inset-x-2 top-1 h-px bg-white/70"
+                className="absolute inset-x-2 top-1 h-px bg-card/70"
                 aria-hidden="true"
               />
               <PageTitleIcon name="knowledge-management" className="size-8" />

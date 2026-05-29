@@ -135,18 +135,18 @@ const seedRecentQueries: RecentQueryItem[] = [
 const RETRIEVAL_ADVANCED_PANEL_ID = 'retrieval-advanced-params'
 const RETRIEVAL_HISTORY_PANEL_ID = 'retrieval-query-history'
 const RETRIEVAL_RANGE_INPUT_CLASS =
-  'relative z-10 h-5 w-full cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-5 [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:mt-0 [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-sky-300 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-[0_6px_14px_-8px_rgba(37,99,235,0.55)] dark:[&::-webkit-slider-thumb]:border-border dark:[&::-webkit-slider-thumb]:bg-card [&::-moz-range-track]:h-5 [&::-moz-range-track]:bg-transparent [&::-moz-range-progress]:h-5 [&::-moz-range-progress]:bg-transparent [&::-moz-range-thumb]:size-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-sky-300 [&::-moz-range-thumb]:bg-white'
+  'relative z-10 h-5 w-full cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-5 [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:mt-0 [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-sky-300 [&::-webkit-slider-thumb]:bg-card [&::-webkit-slider-thumb]:shadow-[0_6px_14px_-8px_rgba(37,99,235,0.55)] dark:[&::-webkit-slider-thumb]:border-border dark:[&::-webkit-slider-thumb]:bg-card [&::-moz-range-track]:h-5 [&::-moz-range-track]:bg-transparent [&::-moz-range-progress]:h-5 [&::-moz-range-progress]:bg-transparent [&::-moz-range-thumb]:size-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-sky-300 [&::-moz-range-thumb]:bg-card'
 const RETRIEVAL_PANEL_SURFACE_CLASS =
-  'border-sky-100/75 bg-white/[0.94] shadow-[0_14px_26px_-24px_rgba(37,99,235,0.18)] backdrop-blur-xl dark:border-border/70 dark:bg-background/62'
+  'border-sky-100/75 bg-card/[0.94] shadow-[0_14px_26px_-24px_rgba(37,99,235,0.18)] backdrop-blur-xl dark:border-border/70 dark:bg-background/62'
 const RETRIEVAL_CONTROL_SURFACE_CLASS =
-  'border-sky-100/80 bg-white/[0.92] shadow-[inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-border/70 dark:bg-background/58'
+  'border-sky-100/80 bg-card/[0.92] shadow-[inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-border/70 dark:bg-background/58'
 
 function SemanticRetrievalMark() {
   return (
     <div className="relative flex size-14 items-center justify-center rounded-[22px] border border-sky-200/75 bg-[radial-gradient(circle_at_30%_18%,rgba(255,255,255,0.92),transparent_34%),linear-gradient(145deg,#EFF6FF_0%,#DBEAFE_58%,#E0F2FE_100%)] text-blue-600 shadow-[0_18px_32px_-24px_rgba(37,99,235,0.52)]">
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute inset-1 rounded-[18px] border border-white/70"
+        className="pointer-events-none absolute inset-1 rounded-[18px] border border-border/70"
       />
       <svg
         aria-label="语义检索图标"
@@ -394,7 +394,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
               type="button"
               variant="ghost"
               size="sm"
-              className="h-8 rounded-[12px] border border-sky-100/80 bg-white/90 px-3 text-[12px] font-medium hover:bg-sky-50/70 dark:border-border/70 dark:bg-background/62"
+              className="h-8 rounded-[12px] border border-sky-100/80 bg-card/90 px-3 text-[12px] font-medium hover:bg-sky-50/70 dark:border-border/70 dark:bg-background/62"
               onClick={handleReset}
             >
               <RotateCcw className="mr-2 size-3.5" />
@@ -426,7 +426,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
 
           <div className="mt-2 flex flex-col gap-2.5 border-t border-sky-100/70 px-4 py-3 lg:flex-row lg:items-center lg:justify-between dark:border-border/60">
             <div className="flex flex-wrap items-center gap-3 text-[12px] text-muted-foreground/72">
-              <span className="inline-flex h-8 items-center rounded-full border border-sky-100/80 bg-white/90 px-3 dark:border-border/70 dark:bg-background/62">
+              <span className="inline-flex h-8 items-center rounded-full border border-sky-100/80 bg-card/90 px-3 dark:border-border/70 dark:bg-background/62">
                 <Database className="mr-2 size-3.5 text-blue-500" />
                 {selectedDatasetId || '全部数据集'}
               </span>
@@ -465,7 +465,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                   key={question}
                   type="button"
                   onClick={() => handleApplySuggestedQuery(question)}
-                  className="flex w-full items-center justify-between rounded-[14px] border border-sky-100/80 bg-white/86 px-3 py-2.5 text-left transition-colors hover:border-primary/30 hover:bg-sky-50/70 dark:border-border/70 dark:bg-background/58 dark:hover:bg-primary/[0.03]"
+                  className="flex w-full items-center justify-between rounded-[14px] border border-sky-100/80 bg-card/86 px-3 py-2.5 text-left transition-colors hover:border-primary/30 hover:bg-sky-50/70 dark:border-border/70 dark:bg-background/58 dark:hover:bg-primary/[0.03]"
                 >
                   <span className="pr-4 text-[12px] leading-5 text-foreground/86">{question}</span>
                   <ChevronRight className="size-3.5 shrink-0 text-muted-foreground/55" />
@@ -485,7 +485,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
               <div className="space-y-2">
                 <div className="text-[12px] text-muted-foreground/74">Top K（返回结果数）</div>
                 <Select value={topK} onValueChange={setTopK}>
-                  <SelectTrigger className="h-9 rounded-[14px] border-sky-100/80 bg-white/90 text-[12px] font-medium dark:border-border/70 dark:bg-background/62">
+                  <SelectTrigger className="h-9 rounded-[14px] border-sky-100/80 bg-card/90 text-[12px] font-medium dark:border-border/70 dark:bg-background/62">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -538,12 +538,12 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                 {advancedParamsOpen ? (
                   <div
                     id={RETRIEVAL_ADVANCED_PANEL_ID}
-                    className="space-y-3 rounded-[16px] border border-sky-100/80 bg-white/86 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-border/70 dark:bg-background/55"
+                    className="space-y-3 rounded-[16px] border border-sky-100/80 bg-card/86 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-border/70 dark:bg-background/55"
                   >
                     <div className="space-y-1.5">
                       <div className="text-[11px] text-muted-foreground/70">检索模式</div>
                       <Select value={retrievalMode} onValueChange={setRetrievalMode}>
-                        <SelectTrigger className="h-8 rounded-[12px] border-sky-100/80 bg-white/90 text-[12px] font-medium dark:border-border/70 dark:bg-background/62">
+                        <SelectTrigger className="h-8 rounded-[12px] border-sky-100/80 bg-card/90 text-[12px] font-medium dark:border-border/70 dark:bg-background/62">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -580,7 +580,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                       <div className="space-y-1.5">
                         <div className="text-[11px] text-muted-foreground/70">上下文预算</div>
                         <Select value={maxTokens} onValueChange={setMaxTokens}>
-                          <SelectTrigger className="h-8 rounded-[12px] border-sky-100/80 bg-white/90 text-[12px] font-medium dark:border-border/70 dark:bg-background/62">
+                          <SelectTrigger className="h-8 rounded-[12px] border-sky-100/80 bg-card/90 text-[12px] font-medium dark:border-border/70 dark:bg-background/62">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -597,7 +597,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                           'mt-5 h-8 rounded-[12px] border px-3 text-[11px] font-medium transition-colors',
                           enableWeightRerank
                             ? 'border-success/25 bg-success/10 text-success'
-                            : 'border-sky-100/80 bg-white/88 text-muted-foreground dark:border-border/70 dark:bg-background/58'
+                            : 'border-sky-100/80 bg-card/88 text-muted-foreground dark:border-border/70 dark:bg-background/58'
                         )}
                       >
                         权重重排 {enableWeightRerank ? '开启' : '关闭'}
@@ -639,7 +639,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                 </button>
               ))}
               {visibleRecentQueries.length === 0 ? (
-                <div className="rounded-[14px] border border-dashed border-sky-100/80 bg-white/70 px-3 py-3 text-[12px] text-muted-foreground/70 dark:border-border/70 dark:bg-background/50">
+                <div className="rounded-[14px] border border-dashed border-sky-100/80 bg-card/70 px-3 py-3 text-[12px] text-muted-foreground/70 dark:border-border/70 dark:bg-background/50">
                   暂无检索历史
                 </div>
               ) : null}
@@ -664,7 +664,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
             {fullHistoryOpen ? (
               <div
                 id={RETRIEVAL_HISTORY_PANEL_ID}
-                className="mt-3 rounded-[16px] border border-sky-100/80 bg-white/86 p-3 dark:border-border/70 dark:bg-background/55"
+                className="mt-3 rounded-[16px] border border-sky-100/80 bg-card/86 p-3 dark:border-border/70 dark:bg-background/55"
               >
                 <div className="text-[11px] font-medium text-foreground">当前会话历史</div>
                 <div className="mt-2 space-y-2">
@@ -674,7 +674,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                         key={`history-${item.query}-${item.timestampLabel}`}
                         type="button"
                         onClick={() => handleApplySuggestedQuery(item.query)}
-                        className="flex w-full items-center justify-between gap-3 rounded-[12px] border border-sky-100/70 bg-white/88 px-3 py-2 text-left transition-colors hover:border-primary/30 hover:bg-sky-50/70 dark:border-border/60 dark:bg-background/58 dark:hover:bg-primary/[0.03]"
+                        className="flex w-full items-center justify-between gap-3 rounded-[12px] border border-sky-100/70 bg-card/88 px-3 py-2 text-left transition-colors hover:border-primary/30 hover:bg-sky-50/70 dark:border-border/60 dark:bg-background/58 dark:hover:bg-primary/[0.03]"
                       >
                         <span className="line-clamp-1 text-[12px] text-foreground/86">{item.query}</span>
                         <span className="shrink-0 text-[10px] text-muted-foreground/60">{item.timestampLabel}</span>
@@ -710,7 +710,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                 key={label}
                 type="button"
                 onClick={() => handleApplySuggestedQuery(label)}
-                className="rounded-full border border-sky-100/80 bg-white/88 px-3 py-1.5 text-[12px] text-foreground/80 transition-colors hover:border-primary/30 hover:bg-sky-50/70 dark:border-border/70 dark:bg-background/58 dark:hover:bg-primary/[0.04]"
+                className="rounded-full border border-sky-100/80 bg-card/88 px-3 py-1.5 text-[12px] text-foreground/80 transition-colors hover:border-primary/30 hover:bg-sky-50/70 dark:border-border/70 dark:bg-background/58 dark:hover:bg-primary/[0.04]"
               >
                 {label}
               </button>
@@ -722,7 +722,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
           <div className="text-[13px] font-medium text-foreground">排查方向</div>
           <div className="mt-3 grid gap-3 md:grid-cols-3">
             {noResultDiagnosticTips.map((item) => (
-              <div key={item.title} className="rounded-[18px] border border-sky-100/80 bg-white/88 px-4 py-4 dark:border-border/70 dark:bg-background/58">
+              <div key={item.title} className="rounded-[18px] border border-sky-100/80 bg-card/88 px-4 py-4 dark:border-border/70 dark:bg-background/58">
                 <div className="text-[13px] font-medium text-foreground">{item.title}</div>
                 <div className="mt-2 text-[12px] leading-5 text-muted-foreground/72">{item.description}</div>
               </div>
@@ -758,7 +758,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
               </span>
             ) : null}
             {role.startsWith('hierarchy_') ? (
-              <span className="rounded-full border border-sky-100/80 bg-white/88 px-2.5 py-1 text-[11px] text-muted-foreground dark:border-border/70 dark:bg-background/58">
+              <span className="rounded-full border border-sky-100/80 bg-card/88 px-2.5 py-1 text-[11px] text-muted-foreground dark:border-border/70 dark:bg-background/58">
                 {role}
               </span>
             ) : null}
@@ -766,7 +766,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
         </div>
 
         {hasImage ? (
-          <div className="overflow-hidden rounded-[20px] border border-sky-100/80 bg-white/88 dark:border-border/70 dark:bg-background/58">
+          <div className="overflow-hidden rounded-[20px] border border-sky-100/80 bg-card/88 dark:border-border/70 dark:bg-background/58">
             {imageUrl ? (
               <AuthImage src={imageUrl} alt="命中图像缩略图" className="h-44 w-full object-cover" />
             ) : (
@@ -777,28 +777,28 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
           </div>
         ) : null}
 
-        <div className="rounded-[20px] border border-sky-100/80 bg-white/88 px-4 py-4 dark:border-border/70 dark:bg-background/58">
+        <div className="rounded-[20px] border border-sky-100/80 bg-card/88 px-4 py-4 dark:border-border/70 dark:bg-background/58">
           <div className="text-[12px] leading-6 text-foreground/86">{previewChunkContent(hit.chunk_content)}</div>
         </div>
 
         <div className="grid gap-3 md:grid-cols-2">
-          <div className="rounded-[18px] border border-sky-100/80 bg-white/88 px-4 py-4 dark:border-border/70 dark:bg-background/58">
+          <div className="rounded-[18px] border border-sky-100/80 bg-card/88 px-4 py-4 dark:border-border/70 dark:bg-background/58">
             <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground/62">Chunk ID</div>
             <div className="mt-2 break-all font-mono text-[12px] text-foreground/84">{chunkId || '—'}</div>
           </div>
-          <div className="rounded-[18px] border border-sky-100/80 bg-white/88 px-4 py-4 dark:border-border/70 dark:bg-background/58">
+          <div className="rounded-[18px] border border-sky-100/80 bg-card/88 px-4 py-4 dark:border-border/70 dark:bg-background/58">
             <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground/62">Clause</div>
             <div className="mt-2 text-[12px] text-foreground/84">{clause || '—'}</div>
           </div>
         </div>
 
-        <div className="rounded-[18px] border border-sky-100/80 bg-white/88 px-4 py-4 dark:border-border/70 dark:bg-background/58">
+        <div className="rounded-[18px] border border-sky-100/80 bg-card/88 px-4 py-4 dark:border-border/70 dark:bg-background/58">
           <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground/62">Path</div>
           <div className="mt-2 break-all text-[12px] text-foreground/84">{pathStr || '—'}</div>
         </div>
 
         {terms.length ? (
-          <div className="rounded-[18px] border border-sky-100/80 bg-white/88 px-4 py-4 dark:border-border/70 dark:bg-background/58">
+          <div className="rounded-[18px] border border-sky-100/80 bg-card/88 px-4 py-4 dark:border-border/70 dark:bg-background/58">
             <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground/62">Matched Terms</div>
             <div className="mt-3 flex flex-wrap gap-2">
               {terms.map((term) => (
@@ -860,8 +860,8 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2 text-[12px] text-muted-foreground/72">
-                  <span className="rounded-full border border-sky-100/80 bg-white/88 px-3 py-1 dark:border-border/70 dark:bg-background/58">Family {resultStats.familyHits}</span>
-                  <span className="rounded-full border border-sky-100/80 bg-white/88 px-3 py-1 dark:border-border/70 dark:bg-background/58">Hierarchy {resultStats.hierarchyHits}</span>
+                  <span className="rounded-full border border-sky-100/80 bg-card/88 px-3 py-1 dark:border-border/70 dark:bg-background/58">Family {resultStats.familyHits}</span>
+                  <span className="rounded-full border border-sky-100/80 bg-card/88 px-3 py-1 dark:border-border/70 dark:bg-background/58">Hierarchy {resultStats.hierarchyHits}</span>
                 </div>
               </div>
             </div>
@@ -920,7 +920,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
                         {expandedHit && terms.length ? (
                           <div className="mt-3 flex flex-wrap gap-2">
                             {terms.map((term) => (
-                               <span key={term} className="rounded-full border border-sky-100/80 bg-white/88 px-2.5 py-1 text-[11px] text-foreground/82 dark:border-border/70 dark:bg-background/58">
+                               <span key={term} className="rounded-full border border-sky-100/80 bg-card/88 px-2.5 py-1 text-[11px] text-foreground/82 dark:border-border/70 dark:bg-background/58">
                                 {term}
                               </span>
                             ))}

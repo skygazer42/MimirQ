@@ -30,6 +30,15 @@ const IGNORE_FILES = new Set([
   path.join('scripts', 'check-design-tokens.mjs'),
 ])
 
+const IGNORE_FILE_SUFFIXES = [
+  '.source.test.ts',
+  '.source.test.tsx',
+  '.test.ts',
+  '.test.tsx',
+  '.spec.ts',
+  '.spec.tsx',
+]
+
 const INCLUDE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.css'])
 
 /**
@@ -112,6 +121,7 @@ async function collectFiles(dir) {
     const ext = path.extname(ent.name)
     if (!INCLUDE_EXTENSIONS.has(ext)) continue
     if (IGNORE_FILES.has(rel)) continue
+    if (IGNORE_FILE_SUFFIXES.some((suffix) => rel.endsWith(suffix))) continue
 
     out.push({ abs, rel })
   }

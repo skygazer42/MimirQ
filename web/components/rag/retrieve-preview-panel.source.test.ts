@@ -87,7 +87,7 @@ describe('retrieve preview panel source', () => {
     expect(src).toContain('const RETRIEVAL_PANEL_SURFACE_CLASS =')
     expect(src).toContain('const RETRIEVAL_CONTROL_SURFACE_CLASS =')
     expect(src).toContain("bg-[#F8FBFF]/75")
-    expect(src).toContain('border-sky-100/75 bg-white/[0.94]')
+    expect(src).toContain('border-sky-100/75 bg-card/[0.94]')
     expect(src).not.toContain('bg-background/40')
     expect(src).not.toContain('bg-background/92')
   })

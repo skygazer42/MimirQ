@@ -25,6 +25,19 @@ _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
 logger = get_logger(__name__)
 
 
+def _safe_direct_child(root: Path, name: str, *, field: str) -> Path:
+    child = Path(str(name or "").strip())
+    if child.is_absolute() or len(child.parts) != 1 or child.name in {"", ".", ".."}:
+        raise ValueError(f"invalid {field}: {name}")
+    resolved_root = root.resolve(strict=False)
+    resolved_child = (resolved_root / child.name).resolve(strict=False)
+    try:
+        resolved_child.relative_to(resolved_root)
+    except ValueError as exc:
+        raise ValueError(f"invalid {field}: {name}") from exc
+    return resolved_child
+
+
 def _choose_markdown_file(markdown_files: list[Path]) -> Path:
     preferred = {"output.md", "result.md", "index.md", "readme.md"}
 
@@ -103,7 +116,7 @@ def normalize_extracted_artifacts(
         "mapping": { "<original_key>": "images/<new_name>" }
       }
     """
-    root = Path(extract_root)
+    root = Path(extract_root).resolve(strict=False)
     if not root.exists():
         raise FileNotFoundError(str(root))
 
@@ -111,7 +124,7 @@ def normalize_extracted_artifacts(
     if not md_files:
         return {
             "markdown_file": None,
-            "image_dir": (root / output_image_dir),
+            "image_dir": _safe_direct_child(root, output_image_dir, field="output_image_dir"),
             "image_count": 0,
             "mapping": {},
         }
@@ -119,7 +132,7 @@ def normalize_extracted_artifacts(
     md_file = _choose_markdown_file(md_files)
     md_text = md_file.read_text(encoding="utf-8", errors="ignore")
 
-    image_dir = root / output_image_dir
+    image_dir = _safe_direct_child(root, output_image_dir, field="output_image_dir")
     image_dir.mkdir(exist_ok=True)
 
     images = sorted(_iter_image_files(root), key=lambda p: p.as_posix())
@@ -190,7 +203,7 @@ def normalize_extracted_artifacts(
         md_text = re.sub(md_img_pattern, _replace_md, md_text)
         md_text = re.sub(html_img_pattern, _replace_html, md_text)
 
-    out_md = root / output_markdown_name
+    out_md = _safe_direct_child(root, output_markdown_name, field="output_markdown_name")
     out_md.write_text(md_text.strip() + "\n", encoding="utf-8")
 
     return {

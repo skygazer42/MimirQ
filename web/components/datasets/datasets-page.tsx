@@ -1237,7 +1237,7 @@ export default function DatasetsPage() {
                   </p>
                 </div>
               </div>
-              <label className="mt-3 flex cursor-pointer items-center gap-2 rounded-xl border border-amber-200/70 bg-white/70 px-3 py-2 text-xs font-medium text-amber-950">
+              <label className="mt-3 flex cursor-pointer items-center gap-2 rounded-xl border border-amber-200/70 bg-card/70 px-3 py-2 text-xs font-medium text-amber-950">
                 <Checkbox
                   checked={deleteIncludingDocuments}
                   onCheckedChange={(checked) => setDeleteIncludingDocuments(checked === true)}

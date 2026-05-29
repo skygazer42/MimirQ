@@ -35,7 +35,7 @@ def _get_int_env(name: str, default: int) -> int:
 
 _MAX_CONCURRENT_JOBS = max(1, _get_int_env("MAGIC_PDF_MAX_CONCURRENT_JOBS", 1))
 _PIPELINE_TIMEOUT_SEC = max(30, _get_int_env("MAGIC_PDF_PIPELINE_TIMEOUT_SEC", 600))
-_ARTIFACT_ROOT = Path(os.environ.get("MAGIC_PDF_ARTIFACT_ROOT") or "/tmp/magicpdf-artifacts")
+_ARTIFACT_ROOT = Path(os.environ.get("MAGIC_PDF_ARTIFACT_ROOT") or "/var/lib/mimirq/magicpdf-artifacts")
 _CLI = (os.environ.get("MAGIC_PDF_CLI") or "magic-pdf").strip() or "magic-pdf"
 _MODELS_DIR = (os.environ.get("MAGIC_PDF_MODELS_DIR") or "/opt/mimirq-model-cache").strip()
 _DEFAULT_DEVICE_MODE = (os.environ.get("MAGIC_PDF_DEVICE_MODE") or "cuda").strip().lower() or "cuda"

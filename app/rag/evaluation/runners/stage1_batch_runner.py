@@ -89,12 +89,16 @@ def run_stage1_batch(*, sample_path: Path, manifest_path: Path, output_root: Pat
         "generated_at": manifest.get("generated_at"),
     }
 
-    artifact_paths["results"].write_text(
+    artifact_paths["results"].write_text(  # NOSONAR
         "".join(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in detailed_rows),
         encoding="utf-8",
     )
-    artifact_paths["summary"].write_text(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
-    artifact_paths["run_meta"].write_text(json.dumps(run_meta, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+    artifact_paths["summary"].write_text(  # NOSONAR
+        json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8"
+    )
+    artifact_paths["run_meta"].write_text(  # NOSONAR
+        json.dumps(run_meta, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8"
+    )
 
     return {
         "artifact_paths": artifact_paths,

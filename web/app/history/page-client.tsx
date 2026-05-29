@@ -707,7 +707,7 @@ function HistoryMainEmptyState() {
           </p>
 
           <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
-            <Button asChild className="h-10 rounded-full bg-info px-5 text-[13px] font-semibold text-white shadow-[0_14px_28px_hsl(var(--info)/0.24)] hover:bg-info/90">
+            <Button asChild className="h-10 rounded-full bg-info px-5 text-[13px] font-semibold text-primary-foreground shadow-[0_14px_28px_hsl(var(--info)/0.24)] hover:bg-info/90">
               <Link href="/">
                 <Plus className="h-4 w-4" />
                 {t('startNewConversation')}
@@ -745,7 +745,7 @@ function HistoryMainEmptyState() {
             ].map(([title, desc]) => (
               <div
                 key={title}
-                className="rounded-2xl border border-white/80 bg-background/72 px-3.5 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)] backdrop-blur"
+                className="rounded-2xl border border-border/80 bg-background/72 px-3.5 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)] backdrop-blur"
               >
                 <div className="flex items-center gap-2 text-[12px] font-semibold text-foreground/82">
                   <span className="size-1.5 rounded-full bg-sky-400" />
@@ -804,7 +804,7 @@ function HistorySidebarEmptyState({
       <Button
         asChild
         size="sm"
-        className="mt-5 h-9 rounded-full bg-info px-4 text-[12px] font-semibold text-white shadow-[0_10px_20px_hsl(var(--info)/0.20)] hover:bg-info/90"
+        className="mt-5 h-9 rounded-full bg-info px-4 text-[12px] font-semibold text-primary-foreground shadow-[0_10px_20px_hsl(var(--info)/0.20)] hover:bg-info/90"
       >
         <Link href="/">
           <Plus className="size-3.5" />

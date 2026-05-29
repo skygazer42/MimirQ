@@ -240,7 +240,7 @@ services:
       MAGIC_PDF_MODELS_DIR: ${MAGIC_PDF_MODELS_DIR:-/opt/mimirq-model-cache}
       MAGIC_PDF_DEVICE_MODE: ${MAGIC_PDF_DEVICE_MODE:-cuda}
       MAGIC_PDF_FORMULA_ENABLED: ${MAGIC_PDF_FORMULA_ENABLED:-false}
-      MAGIC_PDF_ARTIFACT_ROOT: ${MAGIC_PDF_ARTIFACT_ROOT:-/tmp/magicpdf-artifacts}
+      MAGIC_PDF_ARTIFACT_ROOT: ${MAGIC_PDF_ARTIFACT_ROOT:-/var/lib/mimirq/magicpdf-artifacts}
     volumes:
       - mineru_cache:/opt/mimirq-model-cache:ro
       - magicpdf_cache:/root/.cache

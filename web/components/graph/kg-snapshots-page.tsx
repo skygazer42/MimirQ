@@ -890,7 +890,7 @@ function SnapshotStudioToolbar({
                 className={cn(
                   'inline-flex items-center justify-center gap-1 rounded-lg px-2 text-[11.5px] font-semibold transition-colors',
                   studioView === item.value
-                    ? 'bg-info text-white shadow-sm'
+                    ? 'bg-info text-primary-foreground shadow-sm'
                     : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
                 )}
                 onClick={() =>
@@ -904,7 +904,7 @@ function SnapshotStudioToolbar({
           </div>
 
           <Button
-            className="h-8 shrink-0 gap-1.5 rounded-xl bg-slate-900 px-3 text-[11.5px] font-semibold text-white shadow-sm hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
+            className="h-8 shrink-0 gap-1.5 rounded-xl bg-slate-900 px-3 text-[11.5px] font-semibold text-primary-foreground shadow-sm hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-card"
             onClick={onDiffClick}
             disabled={isRunning}
           >

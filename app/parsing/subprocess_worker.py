@@ -45,13 +45,35 @@ def _jsonable(obj: Any) -> Any:
     return json.loads(json.dumps(obj, ensure_ascii=False, default=str))
 
 
-def _write_result(path: Path, *, ok: bool, data: dict[str, Any] | None = None, error: dict[str, Any] | None = None) -> None:
+def _safe_upload_child(*parts: str) -> Path:
+    root = Path(settings.UPLOAD_DIR).resolve(strict=False)
+    candidate = root.joinpath(*parts).resolve(strict=False)
+    try:
+        candidate.relative_to(root)
+    except ValueError as exc:
+        raise ValueError("path outside upload directory") from exc
+    return candidate
+
+
+def _safe_worker_io_path(path: Path) -> Path:
+    resolved = Path(path).resolve(strict=False)
+    upload_root = Path(settings.UPLOAD_DIR).resolve(strict=False)
+    try:
+        resolved.relative_to(upload_root)
+    except ValueError as exc:
+        raise ValueError("worker result path outside upload directory") from exc
+    return resolved
+
+
+def _write_result(
+    path: Path, *, ok: bool, data: dict[str, Any] | None = None, error: dict[str, Any] | None = None
+) -> None:
     payload: dict[str, Any] = {"ok": bool(ok)}
     if ok:
         payload["data"] = data or {}
     else:
         payload["error"] = error or {}
-    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    _safe_worker_io_path(path).write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
 
 def _materialize_images_for_ingest(
@@ -83,8 +105,10 @@ def _materialize_images_for_ingest(
     images_dir: Path | None = None
     if needs_persist:
         if artifact_root is None:
-            artifact_root = Path(settings.UPLOAD_DIR) / str(tenant_id) / ".mimirq_parse" / uuid.uuid4().hex
-        images_dir = artifact_root / "images"
+            artifact_root = _safe_upload_child(str(tenant_id), ".mimirq_parse", uuid.uuid4().hex)
+        else:
+            artifact_root = _safe_worker_io_path(artifact_root)
+        images_dir = artifact_root.joinpath("images").resolve(strict=False)
         images_dir.mkdir(parents=True, exist_ok=True)
 
     from io import BytesIO
@@ -109,7 +133,7 @@ def _materialize_images_for_ingest(
         if artifact_root is not None:
             meta["artifact_dir"] = str(artifact_root)
         out_id = uuid.uuid4().hex
-        out_path = (images_dir or Path(settings.UPLOAD_DIR) / str(tenant_id) / "images") / f"{out_id}.jpg"
+        out_path = (images_dir or _safe_upload_child(str(tenant_id), "images")).joinpath(f"{out_id}.jpg")
         meta["image_path"] = str(out_path)
         meta.pop("image", None)
         doc.metadata = meta
@@ -245,8 +269,11 @@ def _pipeline_parse_preview(payload: dict[str, Any]) -> dict[str, Any]:
     tenant_id = _as_uuid(payload["tenant_id"])
     file_path = Path(str(payload["file_path"]))
     parser_backend = payload.get("parser_backend")
-    result = document_parser_service.parse_for_preview(file_path=file_path, tenant_id=tenant_id, parser_backend=parser_backend)
+    result = document_parser_service.parse_for_preview(
+        file_path=file_path, tenant_id=tenant_id, parser_backend=parser_backend
+    )
     return _jsonable(result)
+
 
 def _sleep(payload: dict[str, Any]) -> dict[str, Any]:
     """
