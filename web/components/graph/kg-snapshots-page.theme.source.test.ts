@@ -15,7 +15,7 @@ describe('KG snapshots page theme source', () => {
   it('keeps studio view toggles on the theme accent instead of black', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'kg-snapshots-page.tsx'), 'utf8')
 
-    expect(src).toContain('bg-info text-white shadow-sm')
+    expect(src).toContain('bg-info text-primary-foreground shadow-sm')
     expect(src).not.toContain('bg-foreground text-background shadow-sm')
   })
 })

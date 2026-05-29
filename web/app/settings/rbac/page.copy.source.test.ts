@@ -40,7 +40,7 @@ describe('settings rbac page copy', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'page.tsx'), 'utf8')
 
     expect(src).toContain('data-rbac-save-role-action="true"')
-    expect(src).toContain('bg-info px-3 text-[12px] font-semibold text-white')
+    expect(src).toContain('bg-info px-3 text-[12px] font-semibold text-primary-foreground')
     expect(src).toContain('hover:bg-info/90')
     expect(src).toContain('disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100')
     expect(src).not.toContain('bg-foreground px-3 text-[12px] font-semibold text-background')

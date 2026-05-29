@@ -33,8 +33,8 @@ describe('settings groups page layout source', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'page.tsx'), 'utf8')
 
     expect(src).toContain('data-settings-groups-create-action="true"')
-    expect(src).toContain('bg-info px-3.5 text-[12px] font-semibold text-white')
-    expect(src).toContain('text-[12px] font-semibold text-white')
+    expect(src).toContain('bg-info px-3.5 text-[12px] font-semibold text-primary-foreground')
+    expect(src).toContain('text-[12px] font-semibold text-primary-foreground')
     expect(src).toContain('hover:bg-info/90')
     expect(src).not.toContain('bg-foreground px-3.5 text-[12px] font-semibold text-background')
     expect(src).not.toContain('hsl(var(--primary))')

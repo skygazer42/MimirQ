@@ -205,11 +205,11 @@ function selectedMapValues(selected: Record<string, boolean>): string[] {
 
 const INDUSTRY_RULES_DATASET_PARAMS = { limit: 200 } as const
 const WORKBENCH_PANEL =
-  'rounded-[14px] border border-slate-200/85 bg-white/90 shadow-[0_10px_28px_rgba(15,23,42,0.045)]'
+  'rounded-[14px] border border-slate-200/85 bg-card/90 shadow-[0_10px_28px_rgba(15,23,42,0.045)]'
 const DENSE_FIELD =
-  'h-9 rounded-lg border-slate-200 bg-white text-[13px] font-medium text-slate-800 shadow-none focus-visible:ring-blue-500/20'
+  'h-9 rounded-lg border-slate-200 bg-card text-[13px] font-medium text-slate-800 shadow-none focus-visible:ring-blue-500/20'
 const DENSE_BUTTON =
-  'h-8 rounded-lg border-slate-200 bg-white px-2.5 text-[12px] font-semibold text-slate-700 hover:bg-blue-50 hover:text-blue-700'
+  'h-8 rounded-lg border-slate-200 bg-card px-2.5 text-[12px] font-semibold text-slate-700 hover:bg-blue-50 hover:text-blue-700'
 
 export function IndustryRulesWorkbench() {
   const [selectedRuleset, setSelectedRuleset] = useState('')
@@ -518,9 +518,9 @@ export function IndustryRulesWorkbench() {
         <div className="space-y-3">
           <div className="relative flex min-h-[150px] items-center overflow-hidden rounded-[16px] border border-blue-100/80 bg-[linear-gradient(105deg,#ffffff_0%,#f8fbff_45%,#dbeafe_100%)] px-5 py-5 shadow-[0_14px_36px_rgba(15,23,42,0.06)]">
             <div className="pointer-events-none absolute inset-y-0 right-0 hidden w-[460px] overflow-hidden lg:block">
-              <div className="absolute right-[-80px] top-[-80px] h-[260px] w-[430px] rotate-[-16deg] rounded-[42px] border border-white/70 bg-white/35" />
+              <div className="absolute right-[-80px] top-[-80px] h-[260px] w-[430px] rotate-[-16deg] rounded-[42px] border border-border/70 bg-card/35" />
               <div className="absolute right-[48px] top-[22px] h-[118px] w-[210px] rotate-[-16deg] rounded-[30px] bg-blue-100/70 shadow-[0_18px_42px_rgba(37,99,235,0.18)]" />
-              <div className="absolute right-[132px] top-[24px] flex h-[84px] w-[96px] rotate-[-16deg] items-center justify-center rounded-[24px] border border-blue-200/70 bg-white/85 shadow-[0_18px_32px_rgba(37,99,235,0.2)]">
+              <div className="absolute right-[132px] top-[24px] flex h-[84px] w-[96px] rotate-[-16deg] items-center justify-center rounded-[24px] border border-blue-200/70 bg-card/85 shadow-[0_18px_32px_rgba(37,99,235,0.2)]">
                 <ShieldCheck className="h-11 w-11 rotate-[16deg] text-blue-600" />
               </div>
             </div>
@@ -612,25 +612,25 @@ export function IndustryRulesWorkbench() {
                   规则集概览
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Badge variant="outline" className="bg-white font-semibold">
+                  <Badge variant="outline" className="bg-card font-semibold">
                     术语{' '}
                     {selectedRulesetSummary?.glossary_count ??
                       glossaryEntries.length}
                   </Badge>
-                  <Badge variant="outline" className="bg-white font-semibold">
+                  <Badge variant="outline" className="bg-card font-semibold">
                     模式{' '}
                     {selectedRulesetSummary?.pattern_count ??
                       patternEntries.length}
                   </Badge>
-                  <Badge variant="outline" className="bg-white font-semibold">
+                  <Badge variant="outline" className="bg-card font-semibold">
                     意图{' '}
                     {selectedRulesetSummary?.intent_count ?? intentEntries.length}
                   </Badge>
-                  <Badge variant="outline" className="bg-white font-semibold">
+                  <Badge variant="outline" className="bg-card font-semibold">
                     候选 {visibleGlossarySuggestions.length}
                   </Badge>
                   {selectedDataset ? (
-                    <Badge variant="outline" className="bg-white font-semibold">
+                    <Badge variant="outline" className="bg-card font-semibold">
                       数据集 {selectedDataset.name || selectedDataset.id}
                     </Badge>
                   ) : null}
@@ -701,7 +701,7 @@ export function IndustryRulesWorkbench() {
 
             <TabsContent value="glossary" className="m-0 flex flex-1 flex-col p-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <div className="flex min-w-[260px] items-center gap-2 rounded-lg border border-slate-200 bg-white px-3">
+                <div className="flex min-w-[260px] items-center gap-2 rounded-lg border border-slate-200 bg-card px-3">
                   <Search className="h-4 w-4 text-slate-500" />
                   <Input
                     value={searchValue}
@@ -729,7 +729,7 @@ export function IndustryRulesWorkbench() {
                     新增术语
                   </Button>
                   <Button
-                    className="h-8 rounded-lg bg-blue-600 px-3 text-[12px] font-semibold text-white hover:bg-blue-700"
+                    className="h-8 rounded-lg bg-blue-600 px-3 text-[12px] font-semibold text-primary-foreground hover:bg-blue-700"
                     disabled={savingGlossary}
                     onClick={() => detachPromise(saveGlossary())}
                   >
@@ -843,7 +843,7 @@ export function IndustryRulesWorkbench() {
                     新增模式
                   </Button>
                   <Button
-                    className="h-8 rounded-lg bg-blue-600 px-3 text-[12px] font-semibold text-white hover:bg-blue-700"
+                    className="h-8 rounded-lg bg-blue-600 px-3 text-[12px] font-semibold text-primary-foreground hover:bg-blue-700"
                     disabled={savingPatterns}
                     onClick={() => detachPromise(savePatterns())}
                   >
@@ -861,7 +861,7 @@ export function IndustryRulesWorkbench() {
                 {patternEntries.map((entry) => (
                   <div
                     key={entry.id}
-                    className="rounded-[12px] border border-slate-200 bg-white p-3"
+                    className="rounded-[12px] border border-slate-200 bg-card p-3"
                   >
                     <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_120px_56px]">
                       <Input
@@ -944,7 +944,7 @@ export function IndustryRulesWorkbench() {
                     新增意图
                   </Button>
                   <Button
-                    className="h-8 rounded-lg bg-blue-600 px-3 text-[12px] font-semibold text-white hover:bg-blue-700"
+                    className="h-8 rounded-lg bg-blue-600 px-3 text-[12px] font-semibold text-primary-foreground hover:bg-blue-700"
                     disabled={savingIntents}
                     onClick={() => detachPromise(saveIntents())}
                   >
@@ -962,7 +962,7 @@ export function IndustryRulesWorkbench() {
                 {intentEntries.map((entry) => (
                   <div
                     key={entry.id}
-                    className="rounded-[12px] border border-slate-200 bg-white p-3"
+                    className="rounded-[12px] border border-slate-200 bg-card p-3"
                   >
                     <div className="grid gap-3 lg:grid-cols-[180px_minmax(0,1fr)_180px_56px]">
                       <Input
@@ -1060,7 +1060,7 @@ export function IndustryRulesWorkbench() {
                     <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
                       输出
                     </div>
-                    <div className="mt-1 rounded-lg border border-blue-100 bg-white px-3 py-2 font-medium text-slate-900">
+                    <div className="mt-1 rounded-lg border border-blue-100 bg-card px-3 py-2 font-medium text-slate-900">
                       {preview.expandedQuery}
                     </div>
                   </div>
@@ -1146,7 +1146,7 @@ export function IndustryRulesWorkbench() {
               {visibleGlossarySuggestions.map((entry) => (
                 <div
                   key={entry.token}
-                  className="rounded-[12px] border border-slate-200 bg-white p-3"
+                  className="rounded-[12px] border border-slate-200 bg-card p-3"
                 >
                   <div className="flex items-start gap-2">
                     <Checkbox
@@ -1173,7 +1173,7 @@ export function IndustryRulesWorkbench() {
                   <div className="mt-3 flex gap-2">
                     <Button
                       variant="outline"
-                      className="h-8 flex-1 rounded-lg border-slate-200 bg-white px-2.5 text-[12px] font-semibold hover:bg-blue-50 hover:text-blue-700"
+                      className="h-8 flex-1 rounded-lg border-slate-200 bg-card px-2.5 text-[12px] font-semibold hover:bg-blue-50 hover:text-blue-700"
                       onClick={() => addGlossarySuggestion(entry.token)}
                     >
                       <Check className="h-3.5 w-3.5" />

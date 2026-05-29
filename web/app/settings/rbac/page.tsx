@@ -634,7 +634,7 @@ function SettingsRbacPageContent() {
                                     size="sm"
                                     data-rbac-save-role-action="true"
                                     aria-label={`保存 ${display.primary} 的角色`}
-                                    className="h-8 rounded-lg bg-info px-3 text-[12px] font-semibold text-white shadow-sm hover:bg-info/90 disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100"
+                                    className="h-8 rounded-lg bg-info px-3 text-[12px] font-semibold text-primary-foreground shadow-sm hover:bg-info/90 disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100"
                                     disabled={!uid || saving || removing}
                                     onClick={() => saveRole(uid)}
                                   >

@@ -43,15 +43,15 @@ from app.rag.kg.schemas import (
     KGExtractResponse,
     KGGraphNode,
     KGGraphResponse,
-    KGPredicateOntologyCreateRequest,
-    KGPredicateOntologyItem,
-    KGPredicateOntologyListResponse,
-    KGPredicateOntologyUpdateRequest,
     KGManualImportDeleteResponse,
     KGManualImportListResponse,
     KGManualImportPreviewResponse,
     KGManualImportRequest,
     KGManualImportResponse,
+    KGPredicateOntologyCreateRequest,
+    KGPredicateOntologyItem,
+    KGPredicateOntologyListResponse,
+    KGPredicateOntologyUpdateRequest,
     KGSearchRequest,
     KGSearchResponse,
     KGStatsResponse,
@@ -340,11 +340,14 @@ def _resolve_allowed_documents(
 def get_kg_graph(
     document_ids: Annotated[list[UUID] | None, Query()] = None,
     dataset_id: Annotated[UUID | None, Query(description=DATASET_SCOPE_FILTER_DESC)] = None,
-    pipeline_hash: Annotated[str | None, Query(
-        min_length=1,
-        max_length=200,
-        description=PIPELINE_VERSION_FILTER_DESC,
-    )] = None,
+    pipeline_hash: Annotated[
+        str | None,
+        Query(
+            min_length=1,
+            max_length=200,
+            description=PIPELINE_VERSION_FILTER_DESC,
+        ),
+    ] = None,
     max_events: Annotated[int, Query(ge=1, le=2000)] = 200,
     max_entities: Annotated[int, Query(ge=1, le=5000)] = 400,
     max_links: Annotated[int, Query(ge=1, le=20000)] = 2000,
@@ -397,12 +400,9 @@ def get_kg_graph(
     from app.rag.kg.models import KgEntity, KgEventEntity, KgRelation, KgSourceEvent
     from app.rag.kg.provenance import build_event_entity_provenance
 
-    events_q = (
-        db.query(KgSourceEvent)
-        .filter(
-            KgSourceEvent.tenant_id == tenant_id,
-            KgSourceEvent.document_id.in_(allowed_doc_ids),
-        )
+    events_q = db.query(KgSourceEvent).filter(
+        KgSourceEvent.tenant_id == tenant_id,
+        KgSourceEvent.document_id.in_(allowed_doc_ids),
     )
     events_q = _apply_event_pipeline_scope(events_q, pipeline_hash=pipeline_hash)
     events = events_q.order_by(KgSourceEvent.updated_at.desc()).limit(int(max_events)).all()
@@ -562,14 +562,11 @@ def get_kg_graph(
     if bool(include_relation_links) and len(links) < int(max_links):
         remaining_budget = max(0, int(max_links) - len(links))
         if remaining_budget > 0:
-            rel_q = (
-                db.query(KgRelation)
-                .filter(
-                    KgRelation.tenant_id == tenant_id,
-                    KgRelation.document_id.in_(allowed_doc_ids),
-                    KgRelation.subject_entity_id.in_(allowed_entity_ids),
-                    KgRelation.object_entity_id.in_(allowed_entity_ids),
-                )
+            rel_q = db.query(KgRelation).filter(
+                KgRelation.tenant_id == tenant_id,
+                KgRelation.document_id.in_(allowed_doc_ids),
+                KgRelation.subject_entity_id.in_(allowed_entity_ids),
+                KgRelation.object_entity_id.in_(allowed_entity_ids),
             )
             rel_q = _apply_relation_pipeline_scope(rel_q, pipeline_hash=pipeline_hash)
             rel_rows = rel_q.order_by(KgRelation.updated_at.desc()).limit(int(remaining_budget)).all()
@@ -679,11 +676,14 @@ def expand_kg_graph(
     node_id: Annotated[UUID, Query(description="Center node id (KgSourceEvent.id or KgEntity.id)")],
     document_ids: Annotated[list[UUID] | None, Query()] = None,
     dataset_id: Annotated[UUID | None, Query(description=DATASET_SCOPE_FILTER_DESC)] = None,
-    pipeline_hash: Annotated[str | None, Query(
-        min_length=1,
-        max_length=200,
-        description=PIPELINE_VERSION_FILTER_DESC,
-    )] = None,
+    pipeline_hash: Annotated[
+        str | None,
+        Query(
+            min_length=1,
+            max_length=200,
+            description=PIPELINE_VERSION_FILTER_DESC,
+        ),
+    ] = None,
     max_events: Annotated[int, Query(ge=1, le=500)] = 50,
     max_entities: Annotated[int, Query(ge=1, le=5000)] = 400,
     max_links: Annotated[int, Query(ge=1, le=20000)] = 5000,
@@ -731,13 +731,10 @@ def expand_kg_graph(
     from app.rag.kg.provenance import build_event_entity_provenance
 
     # Determine node kind: event (scoped by allowed documents) or entity (tenant-scoped).
-    center_event_q = (
-        db.query(KgSourceEvent)
-        .filter(
-            KgSourceEvent.tenant_id == tenant_id,
-            KgSourceEvent.id == node_id,
-            KgSourceEvent.document_id.in_(allowed_doc_ids),
-        )
+    center_event_q = db.query(KgSourceEvent).filter(
+        KgSourceEvent.tenant_id == tenant_id,
+        KgSourceEvent.id == node_id,
+        KgSourceEvent.document_id.in_(allowed_doc_ids),
     )
     center_event_q = _apply_event_pipeline_scope(center_event_q, pipeline_hash=pipeline_hash)
     center_event = center_event_q.first()
@@ -747,10 +744,7 @@ def expand_kg_graph(
     if center_event:
         # Expand event -> entities -> other related events (by shared entities)
         entity_ids = (
-            db.query(KgEventEntity.entity_id)
-            .filter(KgEventEntity.event_id == center_event.id)
-            .limit(2000)
-            .all()
+            db.query(KgEventEntity.entity_id).filter(KgEventEntity.event_id == center_event.id).limit(2000).all()
         )
         entity_ids_flat = [row[0] for row in entity_ids]
 
@@ -770,20 +764,15 @@ def expand_kg_graph(
             related_event_ids = [
                 row[0]
                 for row in (
-                    related_q.order_by(KgSourceEvent.updated_at.desc())
-                    .limit(max(0, int(max_events) - 1))
-                    .all()
+                    related_q.order_by(KgSourceEvent.updated_at.desc()).limit(max(0, int(max_events) - 1)).all()
                 )
             ]
 
         event_ids = [center_event.id] + related_event_ids
-        events_q = (
-            db.query(KgSourceEvent)
-            .filter(
-                KgSourceEvent.tenant_id == tenant_id,
-                KgSourceEvent.id.in_(event_ids),
-                KgSourceEvent.document_id.in_(allowed_doc_ids),
-            )
+        events_q = db.query(KgSourceEvent).filter(
+            KgSourceEvent.tenant_id == tenant_id,
+            KgSourceEvent.id.in_(event_ids),
+            KgSourceEvent.document_id.in_(allowed_doc_ids),
         )
         events_q = _apply_event_pipeline_scope(events_q, pipeline_hash=pipeline_hash)
         events = events_q.order_by(KgSourceEvent.updated_at.desc()).limit(int(max_events)).all()
@@ -823,13 +812,10 @@ def expand_kg_graph(
             )
             return out
 
-        events_q = (
-            db.query(KgSourceEvent)
-            .filter(
-                KgSourceEvent.tenant_id == tenant_id,
-                KgSourceEvent.id.in_(event_ids),
-                KgSourceEvent.document_id.in_(allowed_doc_ids),
-            )
+        events_q = db.query(KgSourceEvent).filter(
+            KgSourceEvent.tenant_id == tenant_id,
+            KgSourceEvent.id.in_(event_ids),
+            KgSourceEvent.document_id.in_(allowed_doc_ids),
         )
         events_q = _apply_event_pipeline_scope(events_q, pipeline_hash=pipeline_hash)
         events = events_q.order_by(KgSourceEvent.updated_at.desc()).limit(int(max_events)).all()
@@ -991,14 +977,11 @@ def expand_kg_graph(
     if bool(include_relation_links) and len(links) < int(max_links):
         remaining_budget = max(0, int(max_links) - len(links))
         if remaining_budget > 0:
-            rel_q = (
-                db.query(KgRelation)
-                .filter(
-                    KgRelation.tenant_id == tenant_id,
-                    KgRelation.document_id.in_(allowed_doc_ids),
-                    KgRelation.subject_entity_id.in_(allowed_entity_ids),
-                    KgRelation.object_entity_id.in_(allowed_entity_ids),
-                )
+            rel_q = db.query(KgRelation).filter(
+                KgRelation.tenant_id == tenant_id,
+                KgRelation.document_id.in_(allowed_doc_ids),
+                KgRelation.subject_entity_id.in_(allowed_entity_ids),
+                KgRelation.object_entity_id.in_(allowed_entity_ids),
             )
             rel_q = _apply_relation_pipeline_scope(rel_q, pipeline_hash=pipeline_hash)
             rel_rows = rel_q.order_by(KgRelation.updated_at.desc()).limit(int(remaining_budget)).all()
@@ -1110,11 +1093,14 @@ def search_kg_graph_nodes(
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     document_ids: Annotated[list[UUID] | None, Query()] = None,
     dataset_id: Annotated[UUID | None, Query(description=DATASET_SCOPE_FILTER_DESC)] = None,
-    pipeline_hash: Annotated[str | None, Query(
-        min_length=1,
-        max_length=200,
-        description=PIPELINE_VERSION_FILTER_DESC,
-    )] = None,
+    pipeline_hash: Annotated[
+        str | None,
+        Query(
+            min_length=1,
+            max_length=200,
+            description=PIPELINE_VERSION_FILTER_DESC,
+        ),
+    ] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1172,19 +1158,12 @@ def search_kg_graph_nodes(
             )
         )
         ent_q = _apply_event_pipeline_scope(ent_q, pipeline_hash=pipeline_hash)
-        ent_rows = (
-            ent_q.group_by(KgEntity.id)
-            .order_by(func.max(KgEntity.updated_at).desc())
-            .limit(int(limit))
-            .all()
-        )
+        ent_rows = ent_q.group_by(KgEntity.id).order_by(func.max(KgEntity.updated_at).desc()).limit(int(limit)).all()
         entity_ids = [row[0] for row in ent_rows if row and row[0]]
         if entity_ids:
             ents_by_id = {
                 ent.id: ent
-                for ent in db.query(KgEntity)
-                .filter(KgEntity.tenant_id == tenant_id, KgEntity.id.in_(entity_ids))
-                .all()
+                for ent in db.query(KgEntity).filter(KgEntity.tenant_id == tenant_id, KgEntity.id.in_(entity_ids)).all()
             }
         else:
             ents_by_id = {}
@@ -1211,16 +1190,13 @@ def search_kg_graph_nodes(
         return nodes[: int(limit)]
 
     if mode in {"all", "event"}:
-        events_q = (
-            db.query(KgSourceEvent)
-            .filter(
-                KgSourceEvent.tenant_id == tenant_id,
-                KgSourceEvent.document_id.in_(allowed_doc_ids),
-                or_(
-                    KgSourceEvent.title.ilike(pattern),
-                    KgSourceEvent.summary.ilike(pattern),
-                ),
-            )
+        events_q = db.query(KgSourceEvent).filter(
+            KgSourceEvent.tenant_id == tenant_id,
+            KgSourceEvent.document_id.in_(allowed_doc_ids),
+            or_(
+                KgSourceEvent.title.ilike(pattern),
+                KgSourceEvent.summary.ilike(pattern),
+            ),
         )
         events_q = _apply_event_pipeline_scope(events_q, pipeline_hash=pipeline_hash)
         events = events_q.order_by(KgSourceEvent.updated_at.desc()).limit(remaining).all()
@@ -1246,11 +1222,14 @@ def search_kg_graph_nodes(
 def get_kg_stats(
     document_ids: Annotated[list[UUID] | None, Query()] = None,
     dataset_id: Annotated[UUID | None, Query(description=DATASET_SCOPE_FILTER_DESC)] = None,
-    pipeline_hash: Annotated[str | None, Query(
-        min_length=1,
-        max_length=200,
-        description=PIPELINE_VERSION_FILTER_DESC,
-    )] = None,
+    pipeline_hash: Annotated[
+        str | None,
+        Query(
+            min_length=1,
+            max_length=200,
+            description=PIPELINE_VERSION_FILTER_DESC,
+        ),
+    ] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1361,7 +1340,9 @@ def get_kg_stats(
     return out
 
 
-@router.post("/imports/preview", response_model=KGManualImportPreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/imports/preview", response_model=KGManualImportPreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
+)
 def preview_manual_kg_import(
     payload: KGManualImportRequest,
     *,
@@ -1412,10 +1393,14 @@ def list_manual_kg_imports(
     return list_manual_imports(db, tenant_id=tenant_id, account_id=account_id, limit=limit)
 
 
-@router.delete("/imports/{import_id}", response_model=KGManualImportDeleteResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.delete(
+    "/imports/{import_id}", response_model=KGManualImportDeleteResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
+)
 def delete_manual_kg_import(
     import_id: str,
-    prune_entities: Annotated[bool, Query(description="Delete entities created only by this import when they become orphaned")] = True,
+    prune_entities: Annotated[
+        bool, Query(description="Delete entities created only by this import when they become orphaned")
+    ] = True,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1763,11 +1748,14 @@ def compare_kg_snapshots(
 def export_kg_graph(
     document_ids: Annotated[list[UUID] | None, Query()] = None,
     dataset_id: Annotated[UUID | None, Query(description=DATASET_SCOPE_FILTER_DESC)] = None,
-    pipeline_hash: Annotated[str | None, Query(
-        min_length=1,
-        max_length=200,
-        description=PIPELINE_VERSION_FILTER_DESC,
-    )] = None,
+    pipeline_hash: Annotated[
+        str | None,
+        Query(
+            min_length=1,
+            max_length=200,
+            description=PIPELINE_VERSION_FILTER_DESC,
+        ),
+    ] = None,
     max_events: Annotated[int, Query(ge=1, le=2000)] = 200,
     max_entities: Annotated[int, Query(ge=1, le=5000)] = 400,
     max_links: Annotated[int, Query(ge=1, le=20000)] = 2000,
@@ -1899,11 +1887,14 @@ def get_kg_event_detail(
     event_id: UUID,
     document_ids: Annotated[list[UUID] | None, Query()] = None,
     dataset_id: Annotated[UUID | None, Query(description=DATASET_SCOPE_FILTER_DESC)] = None,
-    pipeline_hash: Annotated[str | None, Query(
-        min_length=1,
-        max_length=200,
-        description=PIPELINE_VERSION_FILTER_DESC,
-    )] = None,
+    pipeline_hash: Annotated[
+        str | None,
+        Query(
+            min_length=1,
+            max_length=200,
+            description=PIPELINE_VERSION_FILTER_DESC,
+        ),
+    ] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1925,13 +1916,10 @@ def get_kg_event_detail(
     from app.rag.kg.models import KgEntity, KgEventEntity, KgSourceEvent
     from app.rag.kg.provenance import build_event_entity_provenance
 
-    ev_q = (
-        db.query(KgSourceEvent)
-        .filter(
-            KgSourceEvent.tenant_id == tenant_id,
-            KgSourceEvent.id == event_id,
-            KgSourceEvent.document_id.in_(allowed_doc_ids),
-        )
+    ev_q = db.query(KgSourceEvent).filter(
+        KgSourceEvent.tenant_id == tenant_id,
+        KgSourceEvent.id == event_id,
+        KgSourceEvent.document_id.in_(allowed_doc_ids),
     )
     ev_q = _apply_event_pipeline_scope(ev_q, pipeline_hash=pipeline_hash)
     ev = ev_q.first()
@@ -1963,7 +1951,9 @@ def get_kg_event_detail(
                 references=(
                     getattr(assoc, "extra_data", None)
                     if isinstance(getattr(assoc, "extra_data", None), dict)
-                    else (getattr(ev, "references", None) if isinstance(getattr(ev, "references", None), dict) else None)
+                    else (
+                        getattr(ev, "references", None) if isinstance(getattr(ev, "references", None), dict) else None
+                    )
                 ),
             ),
         )
@@ -1979,11 +1969,14 @@ def get_kg_entity_detail(
     entity_id: UUID,
     document_ids: Annotated[list[UUID] | None, Query()] = None,
     dataset_id: Annotated[UUID | None, Query(description=DATASET_SCOPE_FILTER_DESC)] = None,
-    pipeline_hash: Annotated[str | None, Query(
-        min_length=1,
-        max_length=200,
-        description=PIPELINE_VERSION_FILTER_DESC,
-    )] = None,
+    pipeline_hash: Annotated[
+        str | None,
+        Query(
+            min_length=1,
+            max_length=200,
+            description=PIPELINE_VERSION_FILTER_DESC,
+        ),
+    ] = None,
     max_events: Annotated[int, Query(ge=1, le=200)] = 30,
     max_neighbors: Annotated[int, Query(ge=0, le=200)] = 20,
     *,
@@ -2075,7 +2068,9 @@ def get_kg_entity_detail(
     )
 
 
-@router.get("/entities/{entity_id}/aliases", response_model=KGEntityAliasesResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/entities/{entity_id}/aliases", response_model=KGEntityAliasesResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
+)
 def list_kg_entity_aliases(
     entity_id: UUID,
     *,
@@ -2121,7 +2116,9 @@ def list_kg_entity_aliases(
     )
 
 
-@router.post("/entities/{entity_id}/aliases", response_model=KGEntityAliasItem, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/entities/{entity_id}/aliases", response_model=KGEntityAliasItem, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
+)
 def create_kg_entity_alias(
     entity_id: UUID,
     payload: KGEntityAliasCreateRequest,
@@ -2206,7 +2203,11 @@ def create_kg_entity_alias(
     return KGEntityAliasItem.model_validate(alias_row)
 
 
-@router.delete("/entities/{entity_id}/aliases/{alias_id}", response_model=KGEntityAliasesResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.delete(
+    "/entities/{entity_id}/aliases/{alias_id}",
+    response_model=KGEntityAliasesResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def delete_kg_entity_alias(
     entity_id: UUID,
     alias_id: UUID,
@@ -2256,7 +2257,11 @@ def delete_kg_entity_alias(
     return list_kg_entity_aliases(entity_id=entity_id, tenant_id=tenant_id, account_id=account_id, db=db)
 
 
-@router.get("/entities/{entity_id}/alias_suggestions", response_model=KGEntityAliasSuggestionsResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/entities/{entity_id}/alias_suggestions",
+    response_model=KGEntityAliasSuggestionsResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def suggest_kg_entity_aliases(
     entity_id: UUID,
     mode: Annotated[str, Query(min_length=1, max_length=16, description="offline|vector")] = "offline",
@@ -2370,7 +2375,9 @@ def suggest_kg_entity_aliases(
         )
 
 
-@router.post("/entities/merge/preview", response_model=KGEntityMergePreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/entities/merge/preview", response_model=KGEntityMergePreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
+)
 def preview_kg_entity_merge(
     payload: KGEntityMergeRequest,
     *,
@@ -2439,7 +2446,9 @@ def preview_kg_entity_merge(
     )
 
 
-@router.get("/ontology/predicates", response_model=KGPredicateOntologyListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/ontology/predicates", response_model=KGPredicateOntologyListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
+)
 def list_kg_predicate_ontology(
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
@@ -2460,7 +2469,9 @@ def list_kg_predicate_ontology(
     return KGPredicateOntologyListResponse(predicates=[KGPredicateOntologyItem.model_validate(r) for r in rows])
 
 
-@router.post("/ontology/predicates", response_model=KGPredicateOntologyItem, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/ontology/predicates", response_model=KGPredicateOntologyItem, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
+)
 def create_kg_predicate_ontology(
     payload: KGPredicateOntologyCreateRequest,
     *,
@@ -2530,7 +2541,11 @@ def create_kg_predicate_ontology(
     return KGPredicateOntologyItem.model_validate(row)
 
 
-@router.patch("/ontology/predicates/{predicate_id}", response_model=KGPredicateOntologyItem, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.patch(
+    "/ontology/predicates/{predicate_id}",
+    response_model=KGPredicateOntologyItem,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def update_kg_predicate_ontology(
     predicate_id: UUID,
     payload: KGPredicateOntologyUpdateRequest,
@@ -2587,7 +2602,11 @@ def update_kg_predicate_ontology(
     return KGPredicateOntologyItem.model_validate(row)
 
 
-@router.delete("/ontology/predicates/{predicate_id}", response_model=KGPredicateOntologyListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.delete(
+    "/ontology/predicates/{predicate_id}",
+    response_model=KGPredicateOntologyListResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def delete_kg_predicate_ontology(
     predicate_id: UUID,
     *,
@@ -2694,7 +2713,9 @@ def merge_kg_entities(
     assoc_snapshot_by_id: dict[str, dict[str, Any]] = {
         str(a.id): _event_entity_snapshot(a) for a in source_assocs if getattr(a, "id", None)
     }
-    impacted_event_ids = {getattr(a, "event_id", None) for a in source_assocs if getattr(a, "event_id", None) is not None}
+    impacted_event_ids = {
+        getattr(a, "event_id", None) for a in source_assocs if getattr(a, "event_id", None) is not None
+    }
 
     # Relations: fetch both directions and dedupe by id.
     rel_rows = []
@@ -3037,7 +3058,11 @@ def split_kg_entity(
     )
 
 
-@router.post("/entities/resolution/actions/{action_id}/undo", response_model=KGEntityResolutionUndoResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/entities/resolution/actions/{action_id}/undo",
+    response_model=KGEntityResolutionUndoResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 def undo_kg_entity_resolution_action(
     action_id: UUID,
     *,
@@ -3224,13 +3249,13 @@ def undo_kg_entity_resolution_action(
             remaining_assocs = db.query(KgEventEntity).filter_by(entity_id=new_id).all()
             remaining_rel_subj = db.query(KgRelation).filter_by(tenant_id=tenant_id, subject_entity_id=new_id).all()
             remaining_rel_obj = db.query(KgRelation).filter_by(tenant_id=tenant_id, object_entity_id=new_id).all()
-            remaining_aliases = db.query(KgEntityAlias).filter_by(
-                tenant_id=tenant_id, canonical_entity_id=new_id
-            ).all()
-            remaining_redirects_from = db.query(KgEntityRedirect).filter_by(
-                tenant_id=tenant_id, from_entity_id=new_id
-            ).all()
-            remaining_redirects_to = db.query(KgEntityRedirect).filter_by(tenant_id=tenant_id, to_entity_id=new_id).all()
+            remaining_aliases = db.query(KgEntityAlias).filter_by(tenant_id=tenant_id, canonical_entity_id=new_id).all()
+            remaining_redirects_from = (
+                db.query(KgEntityRedirect).filter_by(tenant_id=tenant_id, from_entity_id=new_id).all()
+            )
+            remaining_redirects_to = (
+                db.query(KgEntityRedirect).filter_by(tenant_id=tenant_id, to_entity_id=new_id).all()
+            )
             if (
                 not remaining_assocs
                 and not remaining_rel_subj
@@ -3363,21 +3388,34 @@ def delete_kg_for_document(
     return KGDeleteResponse(document_id=document_id, **(stats or {}))
 
 
-@router.post("/documents/{document_id}/extract", response_model=KGExtractResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/documents/{document_id}/extract", response_model=KGExtractResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
+)
 async def run_kg_extraction_for_document(
     document_id: UUID,
     response: Response,
     async_mode: Annotated[bool, Query(alias="async")] = False,
-    pipeline_hash: Annotated[str | None, Query(
-        min_length=1,
-        max_length=200,
-        description="Optional pipeline hash override (defaults to active pipeline)",
-    )] = None,
-    replace_existing: Annotated[bool | None, Query(description="Replace previously extracted events for this document")] = None,
-    prune_orphan_entities: Annotated[bool | None, Query(description="Prune entities with no remaining event links")] = None,
-    extract_relations: Annotated[bool | None, Query(description="Extract entity relations (triples) (override settings)")] = None,
+    pipeline_hash: Annotated[
+        str | None,
+        Query(
+            min_length=1,
+            max_length=200,
+            description="Optional pipeline hash override (defaults to active pipeline)",
+        ),
+    ] = None,
+    replace_existing: Annotated[
+        bool | None, Query(description="Replace previously extracted events for this document")
+    ] = None,
+    prune_orphan_entities: Annotated[
+        bool | None, Query(description="Prune entities with no remaining event links")
+    ] = None,
+    extract_relations: Annotated[
+        bool | None, Query(description="Extract entity relations (triples) (override settings)")
+    ] = None,
     extract_skills: Annotated[bool | None, Query(description="Extract Skill/SOP entities (override settings)")] = None,
-    extraction_backend: Annotated[str | None, Query(description="Extraction backend override: llm, gliner, hybrid, heuristic")] = None,
+    extraction_backend: Annotated[
+        str | None, Query(description="Extraction backend override: llm, gliner, hybrid, heuristic")
+    ] = None,
     prompt_template_id: Annotated[UUID | None, Query()] = None,
     prompt_template_key: Annotated[str | None, Query()] = None,
     prompt_ab_experiment_key: Annotated[str | None, Query()] = None,
@@ -3390,11 +3428,7 @@ async def run_kg_extraction_for_document(
     Trigger KG extraction for a processed document (rebuilds events/entities from chunks).
     """
     _ensure_enabled()
-    document = (
-        db.query(DBDocument)
-        .filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id)
-        .first()
-    )
+    document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
 
@@ -3438,12 +3472,18 @@ async def run_kg_extraction_for_document(
             except Exception:
                 eff_prompt_template_id = None
 
-    eff_prompt_template_key = (prompt_template_key or "").strip() or (getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_KEY", "") or "").strip() or None
-    eff_prompt_ab_experiment_key = (prompt_ab_experiment_key or "").strip() or (getattr(settings, "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY", "") or "").strip() or None
-
-    eff_replace_existing = bool(
-        settings.KG_EXTRACT_REPLACE_EXISTING if replace_existing is None else replace_existing
+    eff_prompt_template_key = (
+        (prompt_template_key or "").strip()
+        or (getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_KEY", "") or "").strip()
+        or None
     )
+    eff_prompt_ab_experiment_key = (
+        (prompt_ab_experiment_key or "").strip()
+        or (getattr(settings, "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY", "") or "").strip()
+        or None
+    )
+
+    eff_replace_existing = bool(settings.KG_EXTRACT_REPLACE_EXISTING if replace_existing is None else replace_existing)
     eff_prune_orphans = bool(
         settings.KG_EXTRACT_PRUNE_ORPHAN_ENTITIES if prune_orphan_entities is None else prune_orphan_entities
     )

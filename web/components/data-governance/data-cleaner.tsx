@@ -264,7 +264,7 @@ export function DataCleaner({
   }, [content, onClean])
 
   const applyButtonClass =
-    'h-8 flex-1 gap-2 rounded-lg border-primary/35 bg-gradient-to-r from-primary/[0.16] via-primary/[0.12] to-info/[0.14] text-primary shadow-[0_8px_18px_rgba(37,99,235,0.08)] hover:border-primary/45 hover:from-primary/[0.22] hover:via-primary/[0.16] hover:to-info/[0.18] hover:text-primary'
+    'h-8 flex-1 gap-2 rounded-lg border-primary/35 bg-primary/[0.14] text-primary shadow-[0_8px_18px_rgba(37,99,235,0.08)] hover:border-primary/45 hover:bg-primary/[0.2] hover:text-primary'
   const llmToggleClass = cn(
     'h-8 rounded-lg shadow-none transition-colors motion-reduce:transition-none',
     llmEnabled
@@ -272,11 +272,11 @@ export function DataCleaner({
       : 'border-border/60 bg-background/70 text-muted-foreground hover:bg-muted/50 hover:text-foreground'
   )
   const configShellClass =
-    'space-y-2.5 rounded-2xl border border-info/15 bg-gradient-to-b from-surface-2/80 to-card/95 p-3 shadow-soft'
+    'space-y-2.5 rounded-2xl border border-info/15 bg-surface-2/80 p-3 shadow-soft'
   const configHeaderClass =
-    'rounded-xl border border-info/15 bg-gradient-to-br from-info/10 via-card to-primary/5 px-3 py-2.5'
+    'rounded-xl border border-info/15 bg-info/10 px-3 py-2.5'
   const rulesPanelClass =
-    'overflow-hidden rounded-xl border border-info/15 bg-gradient-to-b from-surface-2/80 to-card/95'
+    'overflow-hidden rounded-xl border border-info/15 bg-surface-2/80'
   const llmPanelClass =
     'rounded-xl border border-accent/20 bg-accent/5 p-3'
   const diffPanelClass =

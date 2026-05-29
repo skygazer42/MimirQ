@@ -75,7 +75,7 @@ export default function AuthPage() {
             <div className="relative z-10 w-full max-w-md p-6">
                 {/* Logo / Brand */}
                 <div className="flex flex-col items-center mb-8 space-y-4">
-                    <div className="flex size-20 items-center justify-center rounded-2xl border border-[#CAF0F8]/70 bg-white/85 shadow-[0_18px_48px_rgba(8,47,73,0.10)] backdrop-blur">
+                    <div className="flex size-20 items-center justify-center rounded-2xl border border-[#CAF0F8]/70 bg-card/85 shadow-[0_18px_48px_rgba(8,47,73,0.10)] backdrop-blur">
                       <Image
                         src="/brand/mimirq-mark-badge.png"
                         alt="MimirQ"

@@ -531,7 +531,7 @@ export function Navbar({
         {/* Logo 区域 */}
         <div className="h-14 px-5 border-b border-sidebar-border/50 flex items-center gap-3">
           <Link href="/" className="flex items-center gap-3 group rounded-xl focus-ring">
-            <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-white shadow-[0_8px_22px_-18px_rgba(15,23,42,0.65)] ring-1 ring-slate-200/70 transition-transform duration-200 group-hover:scale-[1.03] motion-reduce:transition-none">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-card shadow-[0_8px_22px_-18px_rgba(15,23,42,0.65)] ring-1 ring-slate-200/70 transition-transform duration-200 group-hover:scale-[1.03] motion-reduce:transition-none">
               <Image
                 src="/brand/mimirq-mark.png"
                 alt=""

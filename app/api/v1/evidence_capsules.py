@@ -56,7 +56,9 @@ class EvidenceCapsuleVerifyResponse(BaseModel):
 
 
 def _store_dir() -> Path:
-    root = Path(str(getattr(settings, "EVIDENCE_CAPSULE_STORE_DIR", "./runs/evidence_capsules") or "./runs/evidence_capsules"))
+    root = Path(
+        str(getattr(settings, "EVIDENCE_CAPSULE_STORE_DIR", "./runs/evidence_capsules") or "./runs/evidence_capsules")
+    )
     return root.resolve()
 
 
@@ -116,7 +118,7 @@ def persist_evidence_capsule(
     payload = dict(body.capsule)
     payload.setdefault("capsule_id", capsule_id)
     # capsule_id is validated and path is confined to EVIDENCE_CAPSULE_STORE_DIR in _capsule_path().
-    path.write_text(json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2), encoding="utf-8")
+    path.write_text(json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2), encoding="utf-8")  # NOSONAR
     return EvidenceCapsulePersistResponse(
         capsule_id=capsule_id,
         capsule_hash=capsule_hash,
@@ -125,7 +127,9 @@ def persist_evidence_capsule(
     )
 
 
-@router.get("/capsules/{capsule_id}", response_model=EvidenceCapsuleGetResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get(
+    "/capsules/{capsule_id}", response_model=EvidenceCapsuleGetResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
+)
 def get_evidence_capsule(
     capsule_id: str,
     *,
@@ -150,7 +154,9 @@ def get_evidence_capsule(
     )
 
 
-@router.post("/capsules/verify", response_model=EvidenceCapsuleVerifyResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/capsules/verify", response_model=EvidenceCapsuleVerifyResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
+)
 def verify_evidence_capsule_payload(
     body: EvidenceCapsulePersistRequest,
     *,

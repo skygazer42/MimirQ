@@ -396,7 +396,7 @@ function SettingsSectionFrame({
       aria-labelledby={`${section.id}-title`}
       className={cn(
         'relative scroll-mt-24 overflow-visible rounded-[20px] border border-border/60 bg-card/82 shadow-[0_14px_34px_hsl(var(--foreground)/0.035)]',
-        'before:absolute before:-left-3 before:top-4 before:bottom-4 before:w-px before:rounded-full before:bg-gradient-to-b before:from-transparent before:via-primary/35 before:to-transparent',
+        'before:absolute before:-left-3 before:top-4 before:bottom-4 before:w-px before:rounded-full before:bg-primary/25',
         className
       )}
     >

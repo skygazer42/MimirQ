@@ -1417,7 +1417,7 @@ export function ParsingWorkbenchShell({
                             <div className="h-1 w-11 rounded-full bg-info/35" />
                             <div className="h-1 w-10 rounded-full bg-info/25" />
                           </div>
-                          <span className="absolute -bottom-3 -right-3 flex size-10 items-center justify-center rounded-full bg-[#2563eb] text-white shadow-[0_18px_32px_-18px_rgba(37,99,235,0.75)]">
+                          <span className="absolute -bottom-3 -right-3 flex size-10 items-center justify-center rounded-full bg-[#2563eb] text-primary-foreground shadow-[0_18px_32px_-18px_rgba(37,99,235,0.75)]">
                             <UploadCloud className="size-4" />
                           </span>
                         </div>
@@ -1430,7 +1430,7 @@ export function ParsingWorkbenchShell({
                       </p>
                       <Button
                         type="button"
-                        className="mt-6 h-11 min-w-36 gap-2 rounded-[16px] bg-[#2563eb] px-6 text-[14px] font-semibold text-white shadow-[0_18px_34px_-20px_rgba(37,99,235,0.78)] hover:bg-[#1d4ed8]"
+                        className="mt-6 h-11 min-w-36 gap-2 rounded-[16px] bg-[#2563eb] px-6 text-[14px] font-semibold text-primary-foreground shadow-[0_18px_34px_-20px_rgba(37,99,235,0.78)] hover:bg-[#1d4ed8]"
                         onClick={() => requestUploadToFolder(currentFolderId)}
                       >
                         <UploadCloud className="size-4" />

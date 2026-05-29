@@ -7,10 +7,14 @@ from pathlib import Path
 
 def _config_path() -> Path:
     name = (os.environ.get("MINERU_TOOLS_CONFIG_JSON") or "mineru.json").strip() or "mineru.json"
-    path = Path(name)
-    if path.is_absolute():
-        return path
-    return Path.home() / path
+    home = Path.home().resolve(strict=False)
+    path = Path(name).expanduser()
+    candidate = path.resolve(strict=False) if path.is_absolute() else (home / path).resolve(strict=False)
+    try:
+        candidate.relative_to(home)
+    except ValueError:
+        return home / "mineru.json"
+    return candidate
 
 
 def _existing_snapshot_root(path: Path) -> str | None:
