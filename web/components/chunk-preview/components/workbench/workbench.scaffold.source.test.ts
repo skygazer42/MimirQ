@@ -23,4 +23,14 @@ describe('Chunk preview workbench scaffold', () => {
     expect(src).not.toContain("label={t('workbench.header.duration')}")
     expect(src).not.toContain("label={t('workbench.header.source')}")
   })
+
+  it('uses a single integrated empty intake canvas when no file is selected', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'index.tsx'), 'utf8')
+
+    expect(src).toContain('function ChunkPreviewEmptyCanvas()')
+    expect(src).toContain('data-chunk-preview-empty-canvas="true"')
+    expect(src).toContain('currentFile && currentFileItem ? (')
+    expect(src).toContain('<ChunkPreviewEmptyCanvas />')
+    expect(src).not.toContain('{showOriginalPanel ? <OriginalPreview /> : null}\n              <ChunkList />')
+  })
 })
