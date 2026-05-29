@@ -1,57 +1,30 @@
 import { apiClient } from '@/lib/api/core'
+import type {
+  IndustryRulesetSummary,
+  IndustryRulesetDetail,
+  IndustryRulesetListResponse,
+  IndustryRulesetDetailResponse,
+  IndustryRulesUpdateResponse,
+  IndustryRulesGlossaryUpdateRequest,
+  IndustryRulesPatternsUpdateRequest,
+  IndustryRulesIntentsUpdateRequest,
+  IndustryRulesRewritePreviewRequest,
+  IndustryRulesRewritePreviewResponse,
+} from '@/types/backend'
 
-export type IndustryRulesetSummary = {
-  name: string
-  glossary_count: number
-  pattern_count: number
-  intent_count: number
-}
-
-export type IndustryRulesetDetail = IndustryRulesetSummary & {
-  glossary: Record<string, string[]>
-  patterns: Array<Record<string, any>>
-  intents: Array<Record<string, any>>
-}
-
-export type IndustryRulesetListResponse = {
-  schema: string
-  count: number
-  rulesets: IndustryRulesetSummary[]
-}
-
-export type IndustryRulesetDetailResponse = {
-  schema: string
-  ruleset: IndustryRulesetDetail
-}
-
-export type IndustryRulesUpdateResponse = {
-  schema: string
-  [key: string]: any
-}
-
-export type IndustryRulesGlossaryUpdateRequest = {
-  glossary: Record<string, string[]>
-}
-
-export type IndustryRulesPatternsUpdateRequest = {
-  patterns: Array<Record<string, any>>
-}
-
-export type IndustryRulesIntentsUpdateRequest = {
-  intents: Array<Record<string, any>>
-}
-
-export type IndustryRulesRewritePreviewRequest = {
-  ruleset: string
-  query: string
-}
-
-export type IndustryRulesRewritePreviewResponse = {
-  schema: string
-  ruleset: string
-  original_query: string
-  expanded_query: string
-  changed: boolean
+// Re-exported from generated OpenAPI types (see web/types/backend.ts) so existing
+// imports from '@/lib/api/industry-rules' keep working without hand-written duplicates.
+export type {
+  IndustryRulesetSummary,
+  IndustryRulesetDetail,
+  IndustryRulesetListResponse,
+  IndustryRulesetDetailResponse,
+  IndustryRulesUpdateResponse,
+  IndustryRulesGlossaryUpdateRequest,
+  IndustryRulesPatternsUpdateRequest,
+  IndustryRulesIntentsUpdateRequest,
+  IndustryRulesRewritePreviewRequest,
+  IndustryRulesRewritePreviewResponse,
 }
 
 export const industryRulesApi = {

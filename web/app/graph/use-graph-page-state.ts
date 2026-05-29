@@ -237,8 +237,8 @@ export function useGraphPageState() {
     return viewMode === '3d' ? graph3dRef.current : graph2dRef.current
   }, [viewMode])
 
-  const fileInputRef = useRef<HTMLInputElement>(null)
   const traceFileInputRef = useRef<HTMLInputElement>(null)
+  const manualKgFileInputRef = useRef<HTMLInputElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -363,8 +363,8 @@ export function useGraphPageState() {
     graphViewportWidth,
     graphViewportHeight,
     getActiveGraph,
-    fileInputRef,
     traceFileInputRef,
+    manualKgFileInputRef,
     searchInputRef,
     resetConnectMode,
     resetExplainMode,

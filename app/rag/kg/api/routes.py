@@ -47,6 +47,11 @@ from app.rag.kg.schemas import (
     KGPredicateOntologyItem,
     KGPredicateOntologyListResponse,
     KGPredicateOntologyUpdateRequest,
+    KGManualImportDeleteResponse,
+    KGManualImportListResponse,
+    KGManualImportPreviewResponse,
+    KGManualImportRequest,
+    KGManualImportResponse,
     KGSearchRequest,
     KGSearchResponse,
     KGStatsResponse,
@@ -1354,6 +1359,82 @@ def get_kg_stats(
         elapsed_sec=round(float(time.perf_counter() - t0), 3),
     )
     return out
+
+
+@router.post("/imports/preview", response_model=KGManualImportPreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+def preview_manual_kg_import(
+    payload: KGManualImportRequest,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Validate a governed external KG payload without writing it to storage."""
+    _ensure_enabled()
+    DatasetService.ensure_member(db, tenant_id, account_id)
+    from app.rag.kg.manual_import import preview_manual_import
+
+    return preview_manual_import(payload)
+
+
+@router.post("/imports", response_model=KGManualImportResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+def import_manual_kg(
+    payload: KGManualImportRequest,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """
+    Import a manually governed KG payload into MimirQ.
+
+    Domain-specific extraction/rule building should happen outside MimirQ and
+    produce this stable import format.
+    """
+    _ensure_enabled()
+    from app.rag.kg.manual_import import apply_manual_import
+
+    return apply_manual_import(db, tenant_id=tenant_id, account_id=account_id, payload=payload)
+
+
+@router.get("/imports", response_model=KGManualImportListResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+def list_manual_kg_imports(
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """List manual KG import batches visible to the current account."""
+    _ensure_enabled()
+    from app.rag.kg.manual_import import list_manual_imports
+
+    return list_manual_imports(db, tenant_id=tenant_id, account_id=account_id, limit=limit)
+
+
+@router.delete("/imports/{import_id}", response_model=KGManualImportDeleteResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+def delete_manual_kg_import(
+    import_id: str,
+    prune_entities: Annotated[bool, Query(description="Delete entities created only by this import when they become orphaned")] = True,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Rollback a manual KG import batch by import_id."""
+    _ensure_enabled()
+    from app.rag.kg.manual_import import delete_manual_import
+
+    clean_import_id = str(import_id or "").strip()
+    if not clean_import_id:
+        raise HTTPException(status_code=400, detail="import_id is required")
+    return delete_manual_import(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        import_id=clean_import_id,
+        prune_entities=bool(prune_entities),
+    )
 
 
 class KGSnapshotDiffRequest(BaseModel):

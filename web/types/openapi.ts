@@ -2887,6 +2887,73 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/kg/imports/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Manual Kg Import
+         * @description Validate a governed external KG payload without writing it to storage.
+         */
+        post: operations["preview_manual_kg_import_api_v1_kg_imports_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/imports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Manual Kg Imports
+         * @description List manual KG import batches visible to the current account.
+         */
+        get: operations["list_manual_kg_imports_api_v1_kg_imports_get"];
+        put?: never;
+        /**
+         * Import Manual Kg
+         * @description Import a manually governed KG payload into MimirQ.
+         *
+         *     Domain-specific extraction/rule building should happen outside MimirQ and
+         *     produce this stable import format.
+         */
+        post: operations["import_manual_kg_api_v1_kg_imports_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/kg/imports/{import_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Manual Kg Import
+         * @description Rollback a manual KG import batch by import_id.
+         */
+        delete: operations["delete_manual_kg_import_api_v1_kg_imports__import_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/kg/snapshots/export": {
         parameters: {
             query?: never;
@@ -4402,7 +4469,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List Prompt Templates
+         * 列出提示词模板
          * @description List prompt templates with optional filtering and pagination.
          *
          *     Retrieves prompt templates for the current tenant with support for
@@ -4802,7 +4869,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Industry Rulesets */
+        /**
+         * 列出行业规则集
+         * @description 返回当前租户全部行业规则集(industry rulesets)的摘要列表,每条含术语映射、问题模式、意图分类三个 section 的条目数。用于治理后台的规则集总览。返回体的 `schema` 字段是版本化的 payload 标记。
+         */
         get: operations["get_industry_rulesets_api_v1_industry_rules_rulesets_get"];
         put?: never;
         post?: never;
@@ -4819,7 +4889,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Industry Ruleset */
+        /**
+         * 获取单个行业规则集详情
+         * @description 按规则集名称返回完整内容,包含 glossary(术语映射:规范词→同义/变体列表)、patterns(问题模式)、intents(意图分类)三个 section 的全量数据。规则集不存在时返回 404。
+         */
         get: operations["get_industry_ruleset_api_v1_industry_rules_rulesets__name__get"];
         put?: never;
         post?: never;
@@ -4837,7 +4910,10 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Put Industry Ruleset Glossary */
+        /**
+         * 整体替换术语映射表
+         * @description 用请求体中的 glossary 全量替换指定规则集的术语映射表(非增量合并)。返回写入条目数。规则集不存在时返回 404。
+         */
         put: operations["put_industry_ruleset_glossary_api_v1_industry_rules_rulesets__name__glossary_put"];
         post?: never;
         delete?: never;
@@ -4854,7 +4930,10 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Put Industry Ruleset Patterns */
+        /**
+         * 整体替换问题模式
+         * @description 用请求体中的 patterns 全量替换指定规则集的问题模式列表(非增量合并)。返回写入条目数。规则集不存在时返回 404。
+         */
         put: operations["put_industry_ruleset_patterns_api_v1_industry_rules_rulesets__name__patterns_put"];
         post?: never;
         delete?: never;
@@ -4871,7 +4950,10 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Put Industry Ruleset Intents */
+        /**
+         * 整体替换意图分类
+         * @description 用请求体中的 intents 全量替换指定规则集的意图分类列表(非增量合并)。返回写入条目数。规则集不存在时返回 404。
+         */
         put: operations["put_industry_ruleset_intents_api_v1_industry_rules_rulesets__name__intents_put"];
         post?: never;
         delete?: never;
@@ -4889,7 +4971,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Preview Industry Rules Rewrite */
+        /**
+         * 预览查询改写效果
+         * @description 用指定规则集的术语映射对输入 query 做术语展开,返回展开前后的查询及是否发生变化。用于治理后台实时预览 glossary 对检索查询改写的影响,不落库。规则集不存在时返回 404。
+         */
         post: operations["preview_industry_rules_rewrite_api_v1_industry_rules_preview_rewrite_post"];
         delete?: never;
         options?: never;
@@ -4972,6 +5057,33 @@ export interface paths {
         put?: never;
         /** Create Governance Profile */
         post: operations["create_governance_profile_api_v1_pipeline_governance_profiles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pipeline/governance-processing-scripts/builtins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Builtin Processing Scripts Endpoint
+         * @description List built-in processing script templates exposed on the 重复行学习 page.
+         *
+         *     Notes:
+         *     - Templates are read-only and shipped in code.
+         *     - Per ``GovernanceProcessingScript`` schema, scripts are persisted with a
+         *       governance profile only for review/versioning; the ingestion pipeline does
+         *       not execute them. Templates are reference code customers can copy as a
+         *       starting point.
+         */
+        get: operations["list_builtin_processing_scripts_endpoint_api_v1_pipeline_governance_processing_scripts_builtins_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -7804,6 +7916,43 @@ export interface components {
             sha?: string | null;
             /** Time */
             time?: string | null;
+        };
+        /** BuiltinProcessingScriptListResponse */
+        BuiltinProcessingScriptListResponse: {
+            /** Total */
+            total: number;
+            /** Items */
+            items?: components["schemas"]["BuiltinProcessingScriptOut"][];
+        };
+        /**
+         * BuiltinProcessingScriptOut
+         * @description Built-in processing script template exposed via the data-governance UI as
+         *     "从模板库选择" on the 重复行学习 page.
+         *
+         *     Mirrors :class:`GovernanceProcessingScript` so the UI can splice an instance
+         *     straight into ``payload.processing_scripts`` after user selection.
+         */
+        BuiltinProcessingScriptOut: {
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /**
+             * Language
+             * @enum {string}
+             */
+            language: "javascript" | "typescript" | "python" | "rust";
+            /**
+             * Stage
+             * @enum {string}
+             */
+            stage: "post_parse" | "post_governance";
+            /** Content */
+            content: string;
+            /** Tags */
+            tags?: string[];
         };
         /**
          * BuiltinPromptTemplateSyncResponse
@@ -15335,13 +15484,6 @@ export interface components {
                 [key: string]: unknown;
             };
         };
-        /** GlossaryUpdateRequest */
-        GlossaryUpdateRequest: {
-            /** Glossary */
-            glossary?: {
-                [key: string]: string[];
-            };
-        };
         /** GovernanceAnalyzeRequest */
         GovernanceAnalyzeRequest: {
             /** Markdown */
@@ -16043,6 +16185,209 @@ export interface components {
              */
             resolution_note: string;
         };
+        /** IndustryRulesGlossaryUpdateRequest */
+        IndustryRulesGlossaryUpdateRequest: {
+            /**
+             * Glossary
+             * @description Full replacement glossary: canonical term -> synonyms/variants.
+             */
+            glossary?: {
+                [key: string]: string[];
+            };
+        };
+        /** IndustryRulesIntentsUpdateRequest */
+        IndustryRulesIntentsUpdateRequest: {
+            /**
+             * Intents
+             * @description Full replacement intent-classifier list.
+             */
+            intents?: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** IndustryRulesPatternsUpdateRequest */
+        IndustryRulesPatternsUpdateRequest: {
+            /**
+             * Patterns
+             * @description Full replacement question-pattern list.
+             */
+            patterns?: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** IndustryRulesRewritePreviewRequest */
+        IndustryRulesRewritePreviewRequest: {
+            /**
+             * Ruleset
+             * @description Ruleset to preview against.
+             */
+            ruleset: string;
+            /**
+             * Query
+             * @description User query to expand.
+             */
+            query: string;
+        };
+        /**
+         * IndustryRulesRewritePreviewResponse
+         * @description Response of POST /industry-rules/preview-rewrite.
+         */
+        IndustryRulesRewritePreviewResponse: {
+            /**
+             * Schema
+             * @description Versioned payload schema marker.
+             */
+            schema: string;
+            /**
+             * Ruleset
+             * @description Ruleset used for the rewrite.
+             */
+            ruleset: string;
+            /**
+             * Original Query
+             * @description Original user query.
+             */
+            original_query: string;
+            /**
+             * Expanded Query
+             * @description Query after glossary term expansion.
+             */
+            expanded_query: string;
+            /**
+             * Changed
+             * @description Whether expansion changed the query.
+             */
+            changed: boolean;
+        };
+        /**
+         * IndustryRulesUpdateResponse
+         * @description Response of the PUT glossary/patterns/intents endpoints.
+         */
+        IndustryRulesUpdateResponse: {
+            /**
+             * Schema
+             * @description Versioned payload schema marker.
+             */
+            schema: string;
+            /**
+             * Ruleset
+             * @description Ruleset that was updated.
+             */
+            ruleset: string;
+            /**
+             * Section
+             * @description Updated section: glossary | patterns | intents.
+             */
+            section: string;
+            /**
+             * Updated Count
+             * @description Number of entries written.
+             */
+            updated_count: number;
+        };
+        /**
+         * IndustryRulesetDetail
+         * @description Full ruleset payload including glossary / patterns / intents bodies.
+         */
+        IndustryRulesetDetail: {
+            /**
+             * Name
+             * @description Ruleset identifier (tenant-scoped slug).
+             */
+            name: string;
+            /**
+             * Glossary Count
+             * @description Number of glossary term-mapping entries.
+             */
+            glossary_count: number;
+            /**
+             * Pattern Count
+             * @description Number of question-pattern entries.
+             */
+            pattern_count: number;
+            /**
+             * Intent Count
+             * @description Number of intent-classifier entries.
+             */
+            intent_count: number;
+            /**
+             * Glossary
+             * @description Term-mapping table: canonical term -> list of synonyms/variants.
+             */
+            glossary?: {
+                [key: string]: string[];
+            };
+            /**
+             * Patterns
+             * @description Question-pattern rules (free-form objects, schema per ruleset).
+             */
+            patterns?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Intents
+             * @description Intent-classifier rules (free-form objects, schema per ruleset).
+             */
+            intents?: {
+                [key: string]: unknown;
+            }[];
+        };
+        /**
+         * IndustryRulesetDetailResponse
+         * @description Response of GET /industry-rules/rulesets/{name}.
+         */
+        IndustryRulesetDetailResponse: {
+            /**
+             * Schema
+             * @description Versioned payload schema marker.
+             */
+            schema: string;
+            ruleset: components["schemas"]["IndustryRulesetDetail"];
+        };
+        /**
+         * IndustryRulesetListResponse
+         * @description Response of GET /industry-rules/rulesets.
+         */
+        IndustryRulesetListResponse: {
+            /**
+             * Schema
+             * @description Versioned payload schema marker.
+             */
+            schema: string;
+            /**
+             * Count
+             * @description Number of rulesets returned.
+             */
+            count: number;
+            /** Rulesets */
+            rulesets?: components["schemas"]["IndustryRulesetSummary"][];
+        };
+        /**
+         * IndustryRulesetSummary
+         * @description Lightweight ruleset descriptor with section counts only.
+         */
+        IndustryRulesetSummary: {
+            /**
+             * Name
+             * @description Ruleset identifier (tenant-scoped slug).
+             */
+            name: string;
+            /**
+             * Glossary Count
+             * @description Number of glossary term-mapping entries.
+             */
+            glossary_count: number;
+            /**
+             * Pattern Count
+             * @description Number of question-pattern entries.
+             */
+            pattern_count: number;
+            /**
+             * Intent Count
+             * @description Number of intent-classifier entries.
+             */
+            intent_count: number;
+        };
         /**
          * IngestDeadLetterItem
          * @description Persistent ingest dead-letter item.
@@ -16480,13 +16825,6 @@ export interface components {
             finished_at?: string | null;
             /** Documents */
             documents?: components["schemas"]["IngestionRunDocumentOut"][];
-        };
-        /** IntentsUpdateRequest */
-        IntentsUpdateRequest: {
-            /** Intents */
-            intents?: {
-                [key: string]: unknown;
-            }[];
         };
         /**
          * KGConfig
@@ -16968,6 +17306,277 @@ export interface components {
             /** Rationale */
             rationale?: string | null;
             run?: components["schemas"]["KGSearchRunResult"] | null;
+        };
+        /**
+         * KGManualEntityInput
+         * @description Curated external KG entity row for manual import.
+         */
+        KGManualEntityInput: {
+            /**
+             * Key
+             * @description Stable external id within this import
+             */
+            key?: string | null;
+            /** Name */
+            name: string;
+            /** Type */
+            type: string;
+            /** Description */
+            description?: string | null;
+            /** Aliases */
+            aliases?: string[];
+            /** Extra Data */
+            extra_data?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * KGManualEntityRef
+         * @description Relation endpoint reference. Prefer key; name/type allows inline entities.
+         */
+        KGManualEntityRef: {
+            /** Key */
+            key?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Type */
+            type?: string | null;
+        };
+        /** KGManualImportDeleteResponse */
+        KGManualImportDeleteResponse: {
+            /** Import Id */
+            import_id: string;
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /**
+             * Events Deleted
+             * @default 0
+             */
+            events_deleted: number;
+            /**
+             * Relations Deleted
+             * @default 0
+             */
+            relations_deleted: number;
+            /**
+             * Chunks Deleted
+             * @default 0
+             */
+            chunks_deleted: number;
+            /**
+             * Entities Pruned
+             * @default 0
+             */
+            entities_pruned: number;
+            /**
+             * Message
+             * @default Manual KG import deleted
+             */
+            message: string;
+        };
+        /** KGManualImportIssue */
+        KGManualImportIssue: {
+            /** Level */
+            level: string;
+            /** Message */
+            message: string;
+            /** Row */
+            row?: number | null;
+            /** Field */
+            field?: string | null;
+        };
+        /** KGManualImportListItem */
+        KGManualImportListItem: {
+            /** Import Id */
+            import_id: string;
+            /** Name */
+            name: string;
+            /** Pipeline Hash */
+            pipeline_hash: string;
+            /** Dataset Id */
+            dataset_id?: string | null;
+            /**
+             * Document Id
+             * Format: uuid
+             */
+            document_id: string;
+            /** Stats */
+            stats?: {
+                [key: string]: unknown;
+            };
+            /** Created At */
+            created_at?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** KGManualImportListResponse */
+        KGManualImportListResponse: {
+            /** Items */
+            items?: components["schemas"]["KGManualImportListItem"][];
+        };
+        /** KGManualImportPreviewResponse */
+        KGManualImportPreviewResponse: {
+            /** Import Id */
+            import_id: string;
+            /** Pipeline Hash */
+            pipeline_hash: string;
+            /** Name */
+            name: string;
+            /** Valid */
+            valid: boolean;
+            stats: components["schemas"]["KGManualImportStats"];
+            /** Issues */
+            issues?: components["schemas"]["KGManualImportIssue"][];
+        };
+        /**
+         * KGManualImportRequest
+         * @description Manual KG import payload.
+         *
+         *     The payload is intentionally domain-neutral. Business-specific extraction
+         *     should happen outside MimirQ; this endpoint only imports governed graph rows.
+         */
+        KGManualImportRequest: {
+            /**
+             * Name
+             * @default 手动知识图谱导入
+             */
+            name: string;
+            /** Import Id */
+            import_id?: string | null;
+            /** Dataset Id */
+            dataset_id?: string | null;
+            /** Dataset Name */
+            dataset_name?: string | null;
+            /** Pipeline Hash */
+            pipeline_hash?: string | null;
+            /**
+             * Replace Existing
+             * @description Replace an existing manual import with the same import_id
+             * @default false
+             */
+            replace_existing: boolean;
+            /**
+             * Upsert Entities
+             * @description Reuse existing same tenant/type/normalized-name entities
+             * @default true
+             */
+            upsert_entities: boolean;
+            /**
+             * Allow Label Truncation
+             * @description Compact labels longer than KG schema limits
+             * @default true
+             */
+            allow_label_truncation: boolean;
+            /**
+             * Index Vectors
+             * @description Embed and index imported KG events/entities for vector recall
+             * @default true
+             */
+            index_vectors: boolean;
+            /** Entities */
+            entities?: components["schemas"]["KGManualEntityInput"][];
+            /** Relations */
+            relations?: components["schemas"]["KGManualRelationInput"][];
+        };
+        /** KGManualImportResponse */
+        KGManualImportResponse: {
+            /** Import Id */
+            import_id: string;
+            /** Pipeline Hash */
+            pipeline_hash: string;
+            /** Name */
+            name: string;
+            /** Valid */
+            valid: boolean;
+            stats: components["schemas"]["KGManualImportStats"];
+            /** Issues */
+            issues?: components["schemas"]["KGManualImportIssue"][];
+            /** Dataset Id */
+            dataset_id?: string | null;
+            /** Document Id */
+            document_id?: string | null;
+            /** Inserted */
+            inserted?: {
+                [key: string]: number;
+            };
+            /** Vector Index */
+            vector_index?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Message
+             * @default Manual KG import completed
+             */
+            message: string;
+        };
+        /** KGManualImportStats */
+        KGManualImportStats: {
+            /**
+             * Entities
+             * @default 0
+             */
+            entities: number;
+            /**
+             * Relations
+             * @default 0
+             */
+            relations: number;
+            /**
+             * Events
+             * @default 0
+             */
+            events: number;
+            /**
+             * Chunks
+             * @default 0
+             */
+            chunks: number;
+            /**
+             * Aliases
+             * @default 0
+             */
+            aliases: number;
+            /**
+             * Warnings
+             * @default 0
+             */
+            warnings: number;
+        };
+        /**
+         * KGManualRelationInput
+         * @description Curated external KG relation row for manual import.
+         */
+        KGManualRelationInput: {
+            /** Subject */
+            subject: string | components["schemas"]["KGManualEntityRef"];
+            /** Predicate */
+            predicate: string;
+            /** Object */
+            object: string | components["schemas"]["KGManualEntityRef"];
+            /**
+             * Confidence
+             * @default 1
+             */
+            confidence: number;
+            /** Evidence */
+            evidence?: string | null;
+            /** Source */
+            source?: string | null;
+            /** Qualifiers */
+            qualifiers?: {
+                [key: string]: unknown;
+            };
+            /** References */
+            references?: {
+                [key: string]: unknown;
+            };
+            /** Extra Data */
+            extra_data?: {
+                [key: string]: unknown;
+            };
         };
         /** KGPredicateOntologyCreateRequest */
         KGPredicateOntologyCreateRequest: {
@@ -18430,13 +19039,6 @@ export interface components {
             evidence?: {
                 [key: string]: unknown;
             };
-        };
-        /** PatternsUpdateRequest */
-        PatternsUpdateRequest: {
-            /** Patterns */
-            patterns?: {
-                [key: string]: unknown;
-            }[];
         };
         /** PerfSuiteRunRequest */
         PerfSuiteRunRequest: {
@@ -21177,13 +21779,6 @@ export interface components {
             metrics?: {
                 [key: string]: unknown;
             };
-        };
-        /** RewritePreviewRequest */
-        RewritePreviewRequest: {
-            /** Ruleset */
-            ruleset: string;
-            /** Query */
-            query: string;
         };
         /** RuntimeMeta */
         RuntimeMeta: {
@@ -34346,6 +34941,293 @@ export interface operations {
             };
         };
     };
+    preview_manual_kg_import_api_v1_kg_imports_preview_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KGManualImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KGManualImportPreviewResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_manual_kg_imports_api_v1_kg_imports_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KGManualImportListResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_manual_kg_api_v1_kg_imports_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KGManualImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KGManualImportResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_manual_kg_import_api_v1_kg_imports__import_id__delete: {
+        parameters: {
+            query?: {
+                /** @description Delete entities created only by this import when they become orphaned */
+                prune_entities?: boolean;
+            };
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                import_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KGManualImportDeleteResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     export_kg_snapshot_api_v1_kg_snapshots_export_get: {
         parameters: {
             query: {
@@ -42083,9 +42965,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["IndustryRulesetListResponse"];
                 };
             };
             /** @description Bad Request */
@@ -42142,9 +43022,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["IndustryRulesetDetailResponse"];
                 };
             };
             /** @description Bad Request */
@@ -42204,7 +43082,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["GlossaryUpdateRequest"];
+                "application/json": components["schemas"]["IndustryRulesGlossaryUpdateRequest"];
             };
         };
         responses: {
@@ -42214,9 +43092,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["IndustryRulesUpdateResponse"];
                 };
             };
             /** @description Bad Request */
@@ -42276,7 +43152,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["PatternsUpdateRequest"];
+                "application/json": components["schemas"]["IndustryRulesPatternsUpdateRequest"];
             };
         };
         responses: {
@@ -42286,9 +43162,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["IndustryRulesUpdateResponse"];
                 };
             };
             /** @description Bad Request */
@@ -42348,7 +43222,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["IntentsUpdateRequest"];
+                "application/json": components["schemas"]["IndustryRulesIntentsUpdateRequest"];
             };
         };
         responses: {
@@ -42358,9 +43232,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["IndustryRulesUpdateResponse"];
                 };
             };
             /** @description Bad Request */
@@ -42418,7 +43290,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["RewritePreviewRequest"];
+                "application/json": components["schemas"]["IndustryRulesRewritePreviewRequest"];
             };
         };
         responses: {
@@ -42428,9 +43300,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["IndustryRulesRewritePreviewResponse"];
                 };
             };
             /** @description Bad Request */
@@ -42787,6 +43657,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GovernanceProfileOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_builtin_processing_scripts_endpoint_api_v1_pipeline_governance_processing_scripts_builtins_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuiltinProcessingScriptListResponse"];
                 };
             };
             /** @description Bad Request */

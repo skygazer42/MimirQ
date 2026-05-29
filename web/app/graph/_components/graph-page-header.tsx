@@ -2,7 +2,7 @@
 
 import type { ChangeEventHandler, RefObject } from 'react'
 
-import { BarChart3, FileCode, FileText, Filter, MoreHorizontal, Network, RefreshCw, Share2, Upload, Link as LinkIcon } from 'lucide-react'
+import { BarChart3, FileCode, FileText, Filter, MoreHorizontal, Network, RefreshCw, Share2, Link as LinkIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { PageTitleIcon } from '@/components/ui/page-title-icon'
@@ -14,7 +14,6 @@ import type { KGStatsResponse } from '@/types'
 
 import type { GraphConfBucket } from '../graph-page-utils'
 import { GraphFiltersPopover } from './graph-filters-popover'
-import { graphmlImportButtonClass } from './graph-button-styles'
 import { GraphSearchOverlay } from './graph-search-overlay'
 import { GraphStatusBanners } from './graph-status-banners'
 
@@ -78,9 +77,9 @@ type GraphPageHeaderProps = Readonly<{
   onTriggerTraceUpload: () => void
   traceFileInputRef: RefObject<HTMLInputElement | null>
   onTraceFileUpload: ChangeEventHandler<HTMLInputElement>
-  onTriggerFileUpload: () => void
-  fileInputRef: RefObject<HTMLInputElement | null>
-  onFileUpload: ChangeEventHandler<HTMLInputElement>
+  onTriggerManualKgUpload: () => void
+  manualKgFileInputRef: RefObject<HTMLInputElement | null>
+  onManualKgFileUpload: ChangeEventHandler<HTMLInputElement>
 }>
 
 export function GraphPageHeader({
@@ -138,9 +137,9 @@ export function GraphPageHeader({
   onTriggerTraceUpload,
   traceFileInputRef,
   onTraceFileUpload,
-  onTriggerFileUpload,
-  fileInputRef,
-  onFileUpload,
+  onTriggerManualKgUpload,
+  manualKgFileInputRef,
+  onManualKgFileUpload,
 }: GraphPageHeaderProps) {
   return (
     <header className="absolute top-0 left-0 right-0 z-20 flex h-16 items-center gap-3 border-b border-border/60 bg-[linear-gradient(135deg,hsl(var(--card)/0.98),hsl(var(--muted)/0.34))] px-4 shadow-[0_18px_46px_-40px_rgba(15,23,42,0.46)] pointer-events-none lg:px-6">
@@ -270,12 +269,12 @@ export function GraphPageHeader({
               ) : null}
             </Button>
           </PopoverTrigger>
-          <PopoverContent align="end" className="w-[360px] p-3">
+          <PopoverContent align="end" className="w-[390px] p-3">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="text-sm font-semibold text-foreground">图谱工具</div>
                 <div className="mt-0.5 text-[11px] text-muted-foreground">
-                  导出、筛选、刷新和文件导入统一收纳
+                  KG JSON/JSONL 是唯一外部图谱导入方式
                 </div>
               </div>
               <div className="rounded-full border border-border/60 bg-muted/45 px-2.5 py-1 text-[11px] font-mono text-muted-foreground">
@@ -284,6 +283,23 @@ export function GraphPageHeader({
             </div>
 
             <div className="mt-3 grid grid-cols-2 gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onTriggerManualKgUpload}
+                disabled={isLoading}
+                className="col-span-2 h-auto justify-start gap-3 rounded-xl border-info/20 bg-info/10 px-3 py-3 text-left text-info shadow-none hover:bg-info/15 hover:text-info"
+                title="导入人工治理后的 KG JSON / JSONL 到后端图谱库，并自动创建事件与向量索引"
+              >
+                <Network className="h-4 w-4 shrink-0" />
+                <span className="min-w-0">
+                  <span className="block text-[13px] font-semibold leading-4">导入 KG JSON / JSONL</span>
+                  <span className="mt-0.5 block text-[11px] font-normal leading-4 text-muted-foreground">
+                    实体、关系、证据入库并自动关联事件
+                  </span>
+                </span>
+              </Button>
+
               {dataSource === 'live' ? (
                 <Button
                   variant="outline"
@@ -356,16 +372,6 @@ export function GraphPageHeader({
                 <FileText className="h-4 w-4" />
                 Trace
               </Button>
-
-              <Button
-                variant="outline"
-                size="sm"
-                className={cn('justify-start gap-2', graphmlImportButtonClass)}
-                onClick={onTriggerFileUpload}
-              >
-                <Upload className="h-4 w-4" />
-                GraphML
-              </Button>
             </div>
           </PopoverContent>
         </Popover>
@@ -377,11 +383,11 @@ export function GraphPageHeader({
           onChange={onTraceFileUpload}
         />
         <input
-          ref={fileInputRef}
+          ref={manualKgFileInputRef}
           type="file"
-          accept=".graphml,.xml"
+          accept=".json,.jsonl,application/json"
           className="hidden"
-          onChange={onFileUpload}
+          onChange={onManualKgFileUpload}
         />
       </div>
     </header>

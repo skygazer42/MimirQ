@@ -2,7 +2,7 @@
 
 /**
  * 知识图谱可视化页面
- * 功能：上传 .graphml 文件并进行可视化展示
+ * 功能：查看后端 KG，并导入 KG JSON/JSONL
  * 优化：主流视觉设计、交互侧边栏、玻璃拟态控件、搜索与高级筛选、后端集成、路径分析、布局切换、图编辑、RAG可解释性、3D可视化
  */
 import { useTheme } from 'next-themes'
@@ -49,8 +49,8 @@ function GraphPageContent() {
     setIsDetailOpen: state.setIsDetailOpen,
     setSelectedNode: state.setSelectedNode,
     setViewMode: state.setViewMode,
-    fileInputRef: state.fileInputRef,
     traceFileInputRef: state.traceFileInputRef,
+    manualKgFileInputRef: state.manualKgFileInputRef,
     resetPathMode: state.resetPathMode,
     resetConnectMode: state.resetConnectMode,
     resetExplainMode: state.resetExplainMode,

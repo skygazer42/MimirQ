@@ -263,6 +263,7 @@ compose-diagnostics:
 api-check:
 	node web/scripts/check-api-contract.mjs
 	node web/scripts/check-api-coverage.mjs
+	node web/scripts/check-api-types-drift.mjs
 
 api-ping:
 	$(PY) scripts/api_ping.py

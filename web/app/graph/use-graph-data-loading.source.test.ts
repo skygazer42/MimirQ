@@ -34,15 +34,14 @@ describe('graph data loading source', () => {
     expect(src).toContain('const stats = await kgApi.getStats(scopeParams || undefined)')
   })
 
-  it('moves GraphML file parsing into a worker-backed pipeline with explicit main-thread fallback', () => {
+  it('does not expose GraphML file import parsing after KG JSON becomes the only import path', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'use-graph-data-loading.ts'), 'utf8')
 
-    expect(src).toContain("new URL('../../workers/graph-parser.worker.ts', import.meta.url)")
-    expect(src).toContain('wrap<GraphParserWorkerApi>')
-    expect(src).toContain('graphParserWorkerDisabledRef.current = true')
-    expect(src).toContain("console.warn('Graph parser worker failed; falling back to main-thread parse', error)")
-    expect(src).toContain('graphParserWorkerRef.current?.terminate()')
-    expect(src).toContain('reader.onload = async (loadEvent) => {')
-    expect(src).toContain('const parsedData = await parseGraphFileContent(content)')
+    expect(src).not.toContain("new URL('../../workers/graph-parser.worker.ts', import.meta.url)")
+    expect(src).not.toContain('wrap<GraphParserWorkerApi>')
+    expect(src).not.toContain('graphParserWorkerDisabledRef')
+    expect(src).not.toContain('parseGraphFileContent')
+    expect(src).not.toContain('handleFileUpload')
+    expect(src).not.toContain('triggerFileUpload')
   })
 })

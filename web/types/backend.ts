@@ -204,3 +204,21 @@ export type EvidenceReferenceRepairResponse = OpenApiSchema<'EvidenceReferenceRe
 
 export type EvidenceHardcaseCandidate = OpenApiSchema<'EvidenceHardcaseCandidateOut'>
 export type EvidenceHardcaseDiscovery = OpenApiSchema<'EvidenceHardcaseDiscoveryOut'>
+
+// ==================== Governance processing scripts ====================
+
+export type BuiltinProcessingScript = OpenApiSchema<'BuiltinProcessingScriptOut'>
+export type BuiltinProcessingScriptListResponse = OpenApiSchema<'BuiltinProcessingScriptListResponse'>
+
+// ==================== Industry rules ====================
+
+export type IndustryRulesetSummary = OpenApiSchema<'IndustryRulesetSummary'>
+export type IndustryRulesetDetail = OpenApiSchema<'IndustryRulesetDetail'>
+export type IndustryRulesetListResponse = OpenApiSchema<'IndustryRulesetListResponse'>
+export type IndustryRulesetDetailResponse = OpenApiSchema<'IndustryRulesetDetailResponse'>
+export type IndustryRulesUpdateResponse = OpenApiSchema<'IndustryRulesUpdateResponse'>
+export type IndustryRulesRewritePreviewResponse = OpenApiSchema<'IndustryRulesRewritePreviewResponse'>
+export type IndustryRulesRewritePreviewRequest = OpenApiSchema<'IndustryRulesRewritePreviewRequest'>
+export type IndustryRulesGlossaryUpdateRequest = OpenApiSchema<'IndustryRulesGlossaryUpdateRequest'>
+export type IndustryRulesPatternsUpdateRequest = OpenApiSchema<'IndustryRulesPatternsUpdateRequest'>
+export type IndustryRulesIntentsUpdateRequest = OpenApiSchema<'IndustryRulesIntentsUpdateRequest'>

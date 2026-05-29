@@ -14,9 +14,10 @@ describe('graph page header layout', () => {
 
     expect(header).toContain('flex h-16 items-center gap-3')
     expect(header).toContain('pointer-events-auto flex min-w-[300px] flex-1 justify-center')
-    expect(header).toContain('PopoverContent align="end" className="w-[360px] p-3"')
+    expect(header).toContain('PopoverContent align="end" className="w-[390px] p-3"')
     expect(header).toContain('图谱工具')
-    expect(header).toContain('导出、筛选、刷新和文件导入统一收纳')
+    expect(header).toContain('KG JSON/JSONL 是唯一外部图谱导入方式')
+    expect(header).toContain('导入 KG JSON / JSONL')
     expect(header).toContain('shrink-0')
     expect(header).not.toContain('title="共现阈值（点击循环）"')
     expect(header).not.toContain('flex min-h-16 flex-col gap-2')

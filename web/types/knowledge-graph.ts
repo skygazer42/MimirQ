@@ -114,6 +114,105 @@ export interface KGDeleteResponse {
   entities_pruned: number
 }
 
+export interface KGManualEntityInput {
+  key?: string | null
+  name: string
+  type: string
+  description?: string | null
+  aliases?: string[]
+  extra_data?: JsonObject
+}
+
+export type KGManualEntityRef = string | {
+  key?: string | null
+  name?: string | null
+  type?: string | null
+}
+
+export interface KGManualRelationInput {
+  subject: KGManualEntityRef
+  predicate: string
+  object: KGManualEntityRef
+  confidence?: number
+  evidence?: string | null
+  source?: string | null
+  qualifiers?: JsonObject
+  references?: JsonObject
+  extra_data?: JsonObject
+}
+
+export interface KGManualImportRequest {
+  name?: string
+  import_id?: string | null
+  dataset_id?: string | null
+  dataset_name?: string | null
+  pipeline_hash?: string | null
+  replace_existing?: boolean
+  upsert_entities?: boolean
+  allow_label_truncation?: boolean
+  index_vectors?: boolean
+  entities: KGManualEntityInput[]
+  relations?: KGManualRelationInput[]
+}
+
+export interface KGManualImportStats {
+  entities: number
+  relations: number
+  events: number
+  chunks: number
+  aliases: number
+  warnings: number
+}
+
+export interface KGManualImportIssue {
+  level: string
+  message: string
+  row?: number | null
+  field?: string | null
+}
+
+export interface KGManualImportPreviewResponse {
+  import_id: string
+  pipeline_hash: string
+  name: string
+  valid: boolean
+  stats: KGManualImportStats
+  issues: KGManualImportIssue[]
+}
+
+export interface KGManualImportResponse extends KGManualImportPreviewResponse {
+  dataset_id?: string | null
+  document_id?: string | null
+  inserted?: JsonObject
+  vector_index?: JsonObject
+  message: string
+}
+
+export interface KGManualImportListItem {
+  import_id: string
+  name: string
+  pipeline_hash: string
+  dataset_id?: string | null
+  document_id: string
+  stats?: JsonObject
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export interface KGManualImportListResponse {
+  items: KGManualImportListItem[]
+}
+
+export interface KGManualImportDeleteResponse {
+  import_id: string
+  document_id: string
+  events_deleted: number
+  relations_deleted: number
+  chunks_deleted: number
+  entities_pruned: number
+  message: string
+}
+
 export interface KGEntityMergeRequest {
   source_entity_id: string
   target_entity_id: string

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
-import { Database, FileCode, Loader2, Search } from 'lucide-react'
+import { Database, Loader2, Network, Search } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
 import { Button } from '@/components/ui/button'
@@ -20,15 +20,13 @@ import { datasetApi } from '@/lib/api'
 import { queryKeys } from '@/lib/query-keys'
 import { cn } from '@/lib/utils'
 
-import { graphmlImportButtonClass } from './graph-button-styles'
-
 type GraphScopePickerDialogProps = Readonly<{
   open: boolean
   onOpenChange: (open: boolean) => void
   currentDatasetId: string | null
   currentPipelineHash: string | null
   currentDocumentCount: number
-  onTriggerFileUpload: () => void
+  onTriggerManualKgUpload: () => void
 }>
 
 const GRAPH_SCOPE_DATASET_PARAMS = { limit: 200 } as const
@@ -39,7 +37,7 @@ export function GraphScopePickerDialog({
   currentDatasetId,
   currentPipelineHash,
   currentDocumentCount,
-  onTriggerFileUpload,
+  onTriggerManualKgUpload,
 }: GraphScopePickerDialogProps) {
   const router = useRouter()
   const [query, setQuery] = useState('')
@@ -102,7 +100,7 @@ export function GraphScopePickerDialog({
         <DialogHeader className="border-b border-border/60 px-6 py-5">
           <DialogTitle className="text-base font-semibold text-foreground">选择图谱范围</DialogTitle>
           <DialogDescription className="text-sm text-muted-foreground">
-            优先加载已有知识库的 KG 结果；导入 GraphML 仅用于调试或导入外部图数据。
+            优先加载已有知识库 KG；外部图谱统一使用 KG JSON / JSONL 导入。
           </DialogDescription>
         </DialogHeader>
 
@@ -147,7 +145,7 @@ export function GraphScopePickerDialog({
                 </div>
               ) : filteredDatasets.length === 0 ? (
                 <div className="flex min-h-40 items-center justify-center px-6 text-center text-sm text-muted-foreground">
-                  没有匹配的知识库。可尝试清空搜索，或直接导入 GraphML 临时查看。
+                  没有匹配的知识库。可尝试清空搜索，或导入 KG JSON / JSONL 创建后端图谱。
                 </div>
               ) : (
                 filteredDatasets.map((dataset) => {
@@ -195,15 +193,14 @@ export function GraphScopePickerDialog({
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center">
             <Button
               type="button"
-              variant="outline"
-              className={`rounded-xl ${graphmlImportButtonClass}`}
+              className="rounded-xl"
               onClick={() => {
                 onOpenChange(false)
-                onTriggerFileUpload()
+                onTriggerManualKgUpload()
               }}
             >
-              <FileCode className="h-4 w-4" />
-              导入 GraphML
+              <Network className="h-4 w-4" />
+              导入 KG JSON / JSONL
             </Button>
             <Button
               type="button"
