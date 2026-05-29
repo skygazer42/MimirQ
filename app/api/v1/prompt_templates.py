@@ -5,6 +5,7 @@ This module provides REST API endpoints for managing prompt templates,
 including CRUD operations and template duplication functionality.
 All operations respect tenant boundaries and access control.
 """
+
 from typing import Annotated
 from uuid import UUID
 
@@ -130,7 +131,12 @@ async def sync_builtin_prompt_templates(
     return BuiltinPromptTemplateSyncResponse(created=created, updated=updated, template_keys=template_keys)
 
 
-@router.post("", response_model=PromptTemplateOut, status_code=status.HTTP_201_CREATED, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "",
+    response_model=PromptTemplateOut,
+    status_code=status.HTTP_201_CREATED,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 async def create_prompt_template(
     request: PromptTemplateCreate,
     *,
@@ -194,7 +200,6 @@ async def create_prompt_template(
 
 @router.get(
     "",
-    response_model=PromptTemplateList,
     summary="列出提示词模板",
     responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
@@ -318,9 +323,7 @@ async def create_prompt_template_version(
     DatasetService.ensure_member(db, tenant_id, account_id)
 
     current = (
-        db.query(PromptTemplate)
-        .filter(PromptTemplate.id == template_id, PromptTemplate.tenant_id == tenant_id)
-        .first()
+        db.query(PromptTemplate).filter(PromptTemplate.id == template_id, PromptTemplate.tenant_id == tenant_id).first()
     )
     if not current:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_PROMPT_TEMPLATE_NOT_FOUND_DETAIL)
@@ -355,7 +358,9 @@ async def create_prompt_template_version(
         tags=request.tags if request.tags is not None else (current.tags or []),
         is_active=bool(request.is_active),
         is_system=False,
-        ab_experiment_key=request.ab_experiment_key if request.ab_experiment_key is not None else current.ab_experiment_key,
+        ab_experiment_key=request.ab_experiment_key
+        if request.ab_experiment_key is not None
+        else current.ab_experiment_key,
         ab_variant=request.ab_variant if request.ab_variant is not None else current.ab_variant,
         ab_weight=float(request.ab_weight) if request.ab_weight is not None else float(current.ab_weight or 1.0),
         usage_count=0,

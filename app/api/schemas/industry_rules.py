@@ -17,6 +17,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+SCHEMA_MARKER_DESCRIPTION = "Versioned payload schema marker."
+
 
 class IndustryRulesetSummary(BaseModel):
     """Lightweight ruleset descriptor with section counts only."""
@@ -49,7 +51,7 @@ class IndustryRulesetListResponse(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    schema_: str = Field(alias="schema", description="Versioned payload schema marker.")
+    schema_: str = Field(alias="schema", description=SCHEMA_MARKER_DESCRIPTION)
     count: int = Field(..., description="Number of rulesets returned.")
     rulesets: list[IndustryRulesetSummary] = Field(default_factory=list)
 
@@ -59,7 +61,7 @@ class IndustryRulesetDetailResponse(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    schema_: str = Field(alias="schema", description="Versioned payload schema marker.")
+    schema_: str = Field(alias="schema", description=SCHEMA_MARKER_DESCRIPTION)
     ruleset: IndustryRulesetDetail
 
 
@@ -68,7 +70,7 @@ class IndustryRulesUpdateResponse(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    schema_: str = Field(alias="schema", description="Versioned payload schema marker.")
+    schema_: str = Field(alias="schema", description=SCHEMA_MARKER_DESCRIPTION)
     ruleset: str = Field(..., description="Ruleset that was updated.")
     section: str = Field(..., description="Updated section: glossary | patterns | intents.")
     updated_count: int = Field(..., description="Number of entries written.")
@@ -79,7 +81,7 @@ class IndustryRulesRewritePreviewResponse(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    schema_: str = Field(alias="schema", description="Versioned payload schema marker.")
+    schema_: str = Field(alias="schema", description=SCHEMA_MARKER_DESCRIPTION)
     ruleset: str = Field(..., description="Ruleset used for the rewrite.")
     original_query: str = Field(..., description="Original user query.")
     expanded_query: str = Field(..., description="Query after glossary term expansion.")

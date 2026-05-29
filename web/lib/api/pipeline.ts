@@ -27,7 +27,6 @@ import type {
   ZipWithImagesResponse,
 } from '@/types'
 import type {
-  BuiltinProcessingScript,
   BuiltinProcessingScriptListResponse,
 } from '@/types/backend'
 
@@ -413,4 +412,4 @@ export const pipelineApi = {
 
 // Re-exported from generated OpenAPI types (see web/types/backend.ts) so existing
 // imports from '@/lib/api/pipeline' keep working without a hand-written duplicate.
-export type { BuiltinProcessingScript, BuiltinProcessingScriptListResponse }
+export type { BuiltinProcessingScript, BuiltinProcessingScriptListResponse } from '@/types/backend'

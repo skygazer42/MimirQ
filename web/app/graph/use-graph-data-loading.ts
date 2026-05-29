@@ -262,13 +262,14 @@ export function useGraphDataLoading({
       throw new Error('empty manual KG file')
     }
 
+    const firstString = (...values: unknown[]) => values.find((value): value is string => typeof value === 'string') ?? ''
     const coerceRows = (rows: unknown[]): KGManualImportRequest => {
       const entities: any[] = []
       const relations: any[] = []
       for (const row of rows) {
         if (!row || typeof row !== 'object') continue
         const item = row as Record<string, unknown>
-        const kind = String(item.kind || item.row_type || item.type_hint || '').toLowerCase()
+        const kind = firstString(item.kind, item.row_type, item.type_hint).toLowerCase()
         if (kind === 'relation' || ('subject' in item && 'object' in item && 'predicate' in item)) {
           relations.push(item)
           continue
