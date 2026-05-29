@@ -62,49 +62,39 @@ type SidebarVariant = 'panel' | 'dialog' | 'pane'
 type SidebarProps = Readonly<{ variant?: SidebarVariant }>
 type HistogramDatum = { label: string; min: number | null; max: number | null; count: number }
 type AccentTone = 'sky' | 'amber' | 'emerald' | 'violet' | 'cyan'
+type SidebarToneStyle = { chip: string; icon: string; note: string; panel: string }
 type FileVisual = {
   icon: LucideIcon
   shellClassName: string
   iconClassName: string
 }
 
-const SIDEBAR_TONE_STYLES: Record<AccentTone, { chip: string; icon: string; note: string; panel: string }> = {
-  sky: {
-    chip: 'border-sky-200/80 bg-sky-50/90 text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-200',
-    icon: 'border-sky-200/80 bg-sky-50 text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-200',
-    note: 'border-sky-200/70 bg-sky-50/70 text-sky-700/90 dark:border-sky-900/60 dark:bg-sky-950/30 dark:text-sky-200/90',
-    panel:
-      'border-sky-200/70 bg-[linear-gradient(180deg,hsl(var(--background)),rgba(239,246,255,0.92))] dark:border-sky-900/50 dark:bg-[linear-gradient(180deg,hsl(var(--background)),rgba(8,47,73,0.22))]',
-  },
-  amber: {
-    chip: 'border-amber-200/80 bg-amber-50/90 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/35 dark:text-amber-200',
-    icon: 'border-amber-200/80 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/35 dark:text-amber-200',
-    note: 'border-amber-200/70 bg-amber-50/70 text-amber-700/90 dark:border-amber-900/60 dark:bg-amber-950/25 dark:text-amber-200/90',
-    panel:
-      'border-amber-200/70 bg-[linear-gradient(180deg,hsl(var(--background)),rgba(255,247,237,0.94))] dark:border-amber-900/50 dark:bg-[linear-gradient(180deg,hsl(var(--background)),rgba(120,53,15,0.18))]',
-  },
-  emerald: {
-    chip: 'border-emerald-200/80 bg-emerald-50/90 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/35 dark:text-emerald-200',
-    icon: 'border-emerald-200/80 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/35 dark:text-emerald-200',
-    note: 'border-emerald-200/70 bg-emerald-50/70 text-emerald-700/90 dark:border-emerald-900/60 dark:bg-emerald-950/25 dark:text-emerald-200/90',
-    panel:
-      'border-emerald-200/70 bg-[linear-gradient(180deg,hsl(var(--background)),rgba(236,253,245,0.94))] dark:border-emerald-900/50 dark:bg-[linear-gradient(180deg,hsl(var(--background)),rgba(6,78,59,0.2))]',
-  },
-  violet: {
-    chip: 'border-violet-200/80 bg-violet-50/90 text-violet-700 dark:border-violet-900/60 dark:bg-violet-950/35 dark:text-violet-200',
-    icon: 'border-violet-200/80 bg-violet-50 text-violet-700 dark:border-violet-900/60 dark:bg-violet-950/35 dark:text-violet-200',
-    note: 'border-violet-200/70 bg-violet-50/70 text-violet-700/90 dark:border-violet-900/60 dark:bg-violet-950/25 dark:text-violet-200/90',
-    panel:
-      'border-violet-200/70 bg-[linear-gradient(180deg,hsl(var(--background)),rgba(245,243,255,0.94))] dark:border-violet-900/50 dark:bg-[linear-gradient(180deg,hsl(var(--background)),rgba(76,29,149,0.18))]',
-  },
-  cyan: {
-    chip: 'border-info/30 bg-info/10 text-info dark:border-info/30 dark:bg-info/20 dark:text-info',
-    icon: 'border-info/30 bg-info/10 text-info dark:border-info/30 dark:bg-info/20 dark:text-info',
-    note: 'border-info/25 bg-info/10 text-info/90 dark:border-info/30 dark:bg-info/15 dark:dark:text-info/90',
-    panel:
-      'border-info/25 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.08))] dark:border-info/30 dark:bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.12))]',
-  },
+const SIDEBAR_BASE_TONE: SidebarToneStyle = {
+  chip: 'border-border/55 bg-background/78 text-muted-foreground',
+  icon: 'border-border/55 bg-background/78 text-muted-foreground',
+  note: 'border-border/55 bg-muted/24 text-muted-foreground',
+  panel: 'border-border/55 bg-[linear-gradient(180deg,hsl(var(--background)/0.96),hsl(var(--muted)/0.16))]',
 }
+
+const SIDEBAR_PRIMARY_TONE: SidebarToneStyle = {
+  chip: 'border-primary/22 bg-primary/7 text-primary',
+  icon: 'border-primary/18 bg-primary/7 text-primary',
+  note: 'border-primary/18 bg-primary/6 text-muted-foreground',
+  panel: 'border-border/55 bg-[linear-gradient(180deg,hsl(var(--background)/0.98),hsl(var(--primary)/0.045))]',
+}
+
+const SIDEBAR_TONE_STYLES: Record<AccentTone, SidebarToneStyle> = {
+  sky: SIDEBAR_PRIMARY_TONE,
+  amber: SIDEBAR_BASE_TONE,
+  emerald: SIDEBAR_BASE_TONE,
+  violet: SIDEBAR_BASE_TONE,
+  cyan: SIDEBAR_BASE_TONE,
+}
+
+const SIDEBAR_FILE_ICON_STYLE = {
+  shellClassName: 'border-border/55 bg-background/72 text-muted-foreground',
+  iconClassName: 'text-muted-foreground',
+} satisfies Omit<FileVisual, 'icon'>
 
 function getFileVisual(file: { displayName?: string; originalFileType?: string } | null | undefined): FileVisual {
   const rawType = String(file?.originalFileType || '').toLowerCase().replace(/^\./, '')
@@ -114,63 +104,54 @@ function getFileVisual(file: { displayName?: string; originalFileType?: string }
   if (ext === 'pdf') {
     return {
       icon: FileText,
-      shellClassName: 'border-red-200/80 bg-red-50 text-red-600',
-      iconClassName: 'text-red-600',
+      ...SIDEBAR_FILE_ICON_STYLE,
     }
   }
   if (['doc', 'docx', 'rtf'].includes(ext)) {
     return {
       icon: FileType,
-      shellClassName: 'border-blue-200/80 bg-blue-50 text-blue-600',
-      iconClassName: 'text-blue-600',
+      ...SIDEBAR_FILE_ICON_STYLE,
     }
   }
   if (['xls', 'xlsx', 'csv', 'tsv'].includes(ext)) {
     return {
       icon: FileSpreadsheet,
-      shellClassName: 'border-emerald-200/80 bg-emerald-50 text-emerald-600',
-      iconClassName: 'text-emerald-600',
+      ...SIDEBAR_FILE_ICON_STYLE,
     }
   }
   if (['md', 'markdown', 'txt'].includes(ext)) {
     return {
       icon: FileText,
-      shellClassName: 'border-sky-200/80 bg-sky-50 text-sky-600',
-      iconClassName: 'text-sky-600',
+      ...SIDEBAR_FILE_ICON_STYLE,
     }
   }
   if (['html', 'htm', 'xml'].includes(ext)) {
     return {
       icon: FileCode2,
-      shellClassName: 'border-orange-200/80 bg-orange-50 text-orange-600',
-      iconClassName: 'text-orange-600',
+      ...SIDEBAR_FILE_ICON_STYLE,
     }
   }
   if (['json', 'jsonl'].includes(ext)) {
     return {
       icon: FileJson,
-      shellClassName: 'border-violet-200/80 bg-violet-50 text-violet-600',
-      iconClassName: 'text-violet-600',
+      ...SIDEBAR_FILE_ICON_STYLE,
     }
   }
   if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'tiff'].includes(ext)) {
     return {
       icon: FileImage,
-      shellClassName: 'border-cyan-200/80 bg-cyan-50 text-cyan-600',
-      iconClassName: 'text-cyan-600',
+      ...SIDEBAR_FILE_ICON_STYLE,
     }
   }
   if (['zip', 'tar', 'gz', '7z', 'rar'].includes(ext)) {
     return {
       icon: FileArchive,
-      shellClassName: 'border-amber-200/80 bg-amber-50 text-amber-700',
-      iconClassName: 'text-amber-700',
+      ...SIDEBAR_FILE_ICON_STYLE,
     }
   }
   return {
     icon: FileIcon,
-    shellClassName: 'border-border/55 bg-background/75 text-muted-foreground',
-    iconClassName: 'text-muted-foreground',
+    ...SIDEBAR_FILE_ICON_STYLE,
   }
 }
 
@@ -924,7 +905,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                 </div>
                 <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
                   {selectedDataset.pipeline.governance_enabled ? (
-                    <span className="px-2 py-0.5 rounded-full bg-info/10 text-info border border-info/20">
+                    <span className="px-2 py-0.5 rounded-full border border-primary/18 bg-primary/7 text-primary">
                       {t('sidebar.dataset.badges.governanceOn')}
                     </span>
                   ) : (
@@ -951,7 +932,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                     </span>
                   )}
                   {selectedDataset.pipeline.kg_enabled ? (
-                    <span className="px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-700 dark:text-purple-200 border border-purple-500/20">
+                    <span className="px-2 py-0.5 rounded-full border border-primary/18 bg-primary/7 text-primary">
                       {t('sidebar.dataset.badges.kg')}
                     </span>
                   ) : null}
@@ -1258,16 +1239,16 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
               </div>
               {cacheHit ? <SidebarChip tone="sky">Cache</SidebarChip> : <SidebarChip tone="emerald">配置</SidebarChip>}
             </div>
-            <div className="grid grid-cols-2 gap-2 rounded-xl border border-emerald-200/55 bg-background/78 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] dark:border-emerald-900/45 dark:bg-background/55">
+            <div className="grid grid-cols-2 gap-2 rounded-xl border border-border/50 bg-background/75 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]">
               <Button
                 onClick={() => runPreview()}
                 disabled={isLoading || !canRunPreview}
-                className="h-9 rounded-xl border border-emerald-200/70 bg-emerald-50/90 text-[10.5px] font-medium text-emerald-800 shadow-none transition-colors hover:bg-emerald-100/90 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-100"
+                className="h-9 rounded-xl border border-primary/22 bg-primary/10 text-[10.5px] font-medium text-primary shadow-none transition-colors hover:bg-primary/14"
               >
                 {isLoading ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
                 ) : (
-                  <Sparkles className="mr-2 h-4 w-4 text-emerald-700 dark:text-emerald-200" />
+                  <Sparkles className="mr-2 h-4 w-4 text-primary" />
                 )}
                 {isLoading ? t('sidebar.previewActions.loading') : t('sidebar.previewActions.run')}
               </Button>
@@ -1291,13 +1272,13 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
               </Button>
             </div>
 
-            <div className="h-px bg-emerald-200/55 dark:bg-emerald-900/45" />
+            <div className="h-px bg-border/50" />
 
             <div>
-              <ChunkPresetPanel className="border-emerald-200/45 bg-background/78 dark:border-emerald-900/40 dark:bg-background/55" />
+              <ChunkPresetPanel className="border-border/50 bg-background/75" />
             </div>
 
-            <div className="h-px bg-emerald-200/55 dark:bg-emerald-900/45" />
+            <div className="h-px bg-border/50" />
 
             <div className="flex items-center justify-between gap-2">
               <div className="text-[11px] font-semibold text-foreground/82">{t('sidebar.strategy.title')}</div>
@@ -1359,11 +1340,11 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
             </div>
 
             {!hideChunkSizeControl ? (
-              <div className="space-y-2.5 rounded-xl border border-emerald-200/55 bg-background/78 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] dark:border-emerald-900/45 dark:bg-background/55">
+              <div className="space-y-2.5 rounded-xl border border-border/50 bg-background/75 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]">
                 <div className="flex items-center justify-between gap-2">
                   <label className="text-[11px] font-medium text-muted-foreground">{chunkSizeLabel}</label>
                   <div className="flex items-center gap-2">
-                    <span className="rounded bg-emerald-500/10 px-2 py-0.5 font-mono text-[11px] font-medium text-emerald-700 dark:text-emerald-200">{chunkSize}</span>
+                    <span className="rounded bg-primary/8 px-2 py-0.5 font-mono text-[11px] font-medium text-primary">{chunkSize}</span>
                     <Input
                       type="number"
                       inputMode="numeric"
@@ -1391,7 +1372,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                   step={chunkSizeStep}
                   value={chunkSize}
                   onChange={(e) => updateSettings({ chunkSize: Number(e.target.value) })}
-                  className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-emerald-500/15 accent-emerald-600 transition-colors"
+                  className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-primary/15 accent-primary transition-colors"
                 />
                 <div className="flex justify-between font-mono text-[10px] text-muted-foreground">
                   <span>{chunkSizeMin}</span>
@@ -1422,11 +1403,11 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
             ) : null}
 
             {showOverlapControl ? (
-              <div className="space-y-2.5 rounded-xl border border-emerald-200/55 bg-background/78 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] dark:border-emerald-900/45 dark:bg-background/55">
+              <div className="space-y-2.5 rounded-xl border border-border/50 bg-background/75 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]">
                 <div className="flex items-center justify-between gap-2">
                   <label className="text-[11px] font-medium text-muted-foreground">{overlapLabel}</label>
                   <div className="flex items-center gap-2">
-                    <span className="rounded bg-emerald-500/10 px-2 py-0.5 font-mono text-[11px] font-medium text-emerald-700 dark:text-emerald-200">{chunkOverlap}</span>
+                    <span className="rounded bg-primary/8 px-2 py-0.5 font-mono text-[11px] font-medium text-primary">{chunkOverlap}</span>
                     <Input
                       type="number"
                       inputMode="numeric"
@@ -1451,7 +1432,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                   step={overlapStep}
                   value={chunkOverlap}
                   onChange={(e) => updateSettings({ chunkOverlap: Number(e.target.value) })}
-                  className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-emerald-500/15 accent-emerald-600 transition-colors"
+                  className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-primary/15 accent-primary transition-colors"
                 />
                 {overlapGuidance ? (
                   <div className="flex items-center justify-between text-[11px] text-muted-foreground">
