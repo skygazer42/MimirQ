@@ -89,7 +89,7 @@ describe('data governance panel source', () => {
     )
   })
 
-  it('presents the empty governance workbench as a designed holographic intake surface', () => {
+  it('presents the empty governance workbench as a frameless intake surface', () => {
     const src = fs.readFileSync(
       path.resolve(__dirname, 'data-governance-panel.tsx'),
       'utf8'
@@ -99,7 +99,7 @@ describe('data governance panel source', () => {
       'utf8'
     )
 
-    expectSourceToContain(src, 'data-governance-empty-hologram="true"')
+    expectSourceToContain(src, 'data-governance-empty-workbench="true"')
     expectSourceToContain(src, 'const EMPTY_UPLOAD_FORMATS =')
     expectSourceToContain(src, 'const EMPTY_UPLOAD_STEPS =')
     expectSourceToContain(src, 'EmptyStructurePreview')
@@ -107,6 +107,12 @@ describe('data governance panel source', () => {
     expectSourceToContain(src, "t('emptyUpload.structureEmptyDescription')")
     expectSourceToContain(src, "t('emptyUpload.dropCta')")
     expectSourceNotToContain(src, 'w-full max-w-3xl overflow-hidden rounded-3xl border border-dashed p-16 text-center')
+    expectSourceNotToContain(src, 'data-governance-empty-hologram="true"')
+    expectSourceNotToContain(src, 'rounded-[2rem] border p-4')
+    expectSourceNotToContain(src, 'rounded-[1.6rem] border border-dashed')
+    expectSourceNotToContain(src, 'rounded-[1.35rem] border border-border/70')
+    expectSourceToContain(src, 'border-y border-dashed border-primary/24')
+    expectSourceToContain(src, 'data-governance-empty-structure-rail="true"')
     expectSourceToContain(zhSrc, "structureEmptyTitle: '等待生成目录'")
     expectSourceToContain(zhSrc, "dropCta: '拖入文件或点击选择，系统会自动解析目录、章节和清洗线索。'")
   })
