@@ -1,23 +1,21 @@
 'use client'
 
-import type { Remote } from 'comlink'
-
 import type { ChangeEvent, Dispatch, RefObject, SetStateAction } from 'react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import { toast } from 'sonner'
 
 import { metaApi } from '@/lib/api'
 import { kgApi } from '@/lib/api/graph'
 import { GraphService } from '@/lib/graph-service'
-import { parseGraphML, type GraphData } from '@/lib/graph-parser'
+import type { GraphData } from '@/lib/graph-parser'
 import type {
   KGEntityDetailResponse,
   KGEventDetailResponse,
+  KGManualImportRequest,
   KGStatsResponse,
   RagTrace,
 } from '@/types'
-import type { GraphParserWorkerApi } from '@/workers/graph-parser.worker'
 
 import {
   buildGraphFromTrace,
@@ -58,8 +56,8 @@ type UseGraphDataLoadingParams = Readonly<{
   setIsDetailOpen: Dispatch<SetStateAction<boolean>>
   setSelectedNode: Dispatch<SetStateAction<GraphNodeLike | null>>
   setViewMode: Dispatch<SetStateAction<'2d' | '3d'>>
-  fileInputRef: RefObject<HTMLInputElement | null>
   traceFileInputRef: RefObject<HTMLInputElement | null>
+  manualKgFileInputRef: RefObject<HTMLInputElement | null>
   resetPathMode: () => void
   resetConnectMode: () => void
   resetExplainMode: () => void
@@ -70,10 +68,10 @@ type UseGraphDataLoadingResult = Readonly<{
     source?: 'live',
     opts?: { includeEntityLinks?: boolean; includeRelationLinks?: boolean; minSharedEvents?: number }
   ) => Promise<void>
-  handleFileUpload: (event: ChangeEvent<HTMLInputElement>) => Promise<void>
-  triggerFileUpload: () => void
   handleTraceFileUpload: (event: ChangeEvent<HTMLInputElement>) => Promise<void>
   triggerTraceUpload: () => void
+  handleManualKgFileUpload: (event: ChangeEvent<HTMLInputElement>) => Promise<void>
+  triggerManualKgUpload: () => void
 }>
 
 export function useGraphDataLoading({
@@ -95,16 +93,13 @@ export function useGraphDataLoading({
   setIsDetailOpen,
   setSelectedNode,
   setViewMode,
-  fileInputRef,
   traceFileInputRef,
+  manualKgFileInputRef,
   resetPathMode,
   resetConnectMode,
   resetExplainMode,
 }: UseGraphDataLoadingParams): UseGraphDataLoadingResult {
   const [autoLoadedGraphKey, setAutoLoadedGraphKey] = useState<string | null>(null)
-  const graphParserWorkerRef = useRef<Worker | null>(null)
-  const graphParserApiRef = useRef<Remote<GraphParserWorkerApi> | null>(null)
-  const graphParserWorkerDisabledRef = useRef(false)
 
   const resetGraphSurface = useCallback(() => {
     setKgNodeDetail(null)
@@ -213,85 +208,6 @@ export function useGraphDataLoading({
     void loadInitialData('live')
   }, [autoLoadedGraphKey, loadInitialData, scope, scopedDocumentIds])
 
-  useEffect(() => {
-    return () => {
-      graphParserWorkerRef.current?.terminate()
-      graphParserWorkerRef.current = null
-      graphParserApiRef.current = null
-    }
-  }, [])
-
-  const parseGraphFileContent = useCallback(async (content: string): Promise<GraphData> => {
-    if (graphParserWorkerDisabledRef.current || typeof Worker === 'undefined') {
-      return parseGraphML(content)
-    }
-
-    try {
-      if (!graphParserWorkerRef.current || !graphParserApiRef.current) {
-        const { wrap } = await import('comlink')
-        graphParserWorkerRef.current = new Worker(
-          new URL('../../workers/graph-parser.worker.ts', import.meta.url),
-          { type: 'module' }
-        )
-        graphParserApiRef.current = wrap<GraphParserWorkerApi>(graphParserWorkerRef.current)
-      }
-
-      return await graphParserApiRef.current.parseGraphML(content)
-    } catch (error) {
-      console.warn('Graph parser worker failed; falling back to main-thread parse', error)
-      graphParserWorkerDisabledRef.current = true
-      graphParserWorkerRef.current?.terminate()
-      graphParserWorkerRef.current = null
-      graphParserApiRef.current = null
-      return parseGraphML(content)
-    }
-  }, [])
-
-  const handleFileUpload = useCallback(
-    async (event: ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0]
-      if (!file) return
-
-      setIsLoading(true)
-      setFileName(file.name)
-
-      const reader = new FileReader()
-      reader.onload = async (loadEvent) => {
-        try {
-          const content = loadEvent.target?.result as string
-          const parsedData = await parseGraphFileContent(content)
-          setGraphData(parsedData)
-          setDataSource('file')
-          setTraceReplay(null)
-          setKgStats(null)
-          resetGraphSurface()
-        } catch (error) {
-          console.error('Failed to parse graph file:', error)
-          toast.error('解析文件失败，请确保是有效的 GraphML 文件')
-        } finally {
-          setIsLoading(false)
-        }
-      }
-
-      reader.readAsText(file)
-      event.target.value = ''
-    },
-    [
-      parseGraphFileContent,
-      resetGraphSurface,
-      setDataSource,
-      setFileName,
-      setGraphData,
-      setIsLoading,
-      setKgStats,
-      setTraceReplay,
-    ]
-  )
-
-  const triggerFileUpload = useCallback(() => {
-    fileInputRef.current?.click()
-  }, [fileInputRef])
-
   const handleTraceFileUpload = useCallback(
     async (event: ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0]
@@ -340,12 +256,106 @@ export function useGraphDataLoading({
     traceFileInputRef.current?.click()
   }, [traceFileInputRef])
 
+  const parseManualKgPayload = useCallback((text: string, fileName: string): KGManualImportRequest => {
+    const trimmed = text.trim()
+    if (!trimmed) {
+      throw new Error('empty manual KG file')
+    }
+
+    const coerceRows = (rows: unknown[]): KGManualImportRequest => {
+      const entities: any[] = []
+      const relations: any[] = []
+      for (const row of rows) {
+        if (!row || typeof row !== 'object') continue
+        const item = row as Record<string, unknown>
+        const kind = String(item.kind || item.row_type || item.type_hint || '').toLowerCase()
+        if (kind === 'relation' || ('subject' in item && 'object' in item && 'predicate' in item)) {
+          relations.push(item)
+          continue
+        }
+        if (kind === 'entity' || ('name' in item && 'type' in item)) {
+          entities.push(item)
+        }
+      }
+      return {
+        name: fileName.replace(/\.(jsonl|json)$/i, '') || '手动知识图谱导入',
+        entities,
+        relations,
+      }
+    }
+
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      const parsed = JSON.parse(trimmed)
+      if (Array.isArray(parsed)) return coerceRows(parsed)
+      if (parsed && typeof parsed === 'object') {
+        const payload = parsed as KGManualImportRequest
+        return {
+          name: payload.name || fileName.replace(/\.(jsonl|json)$/i, '') || '手动知识图谱导入',
+          entities: Array.isArray(payload.entities) ? payload.entities : [],
+          relations: Array.isArray(payload.relations) ? payload.relations : [],
+          import_id: payload.import_id,
+          dataset_id: payload.dataset_id,
+          dataset_name: payload.dataset_name,
+          pipeline_hash: payload.pipeline_hash,
+          replace_existing: payload.replace_existing,
+          upsert_entities: payload.upsert_entities,
+          allow_label_truncation: payload.allow_label_truncation,
+          index_vectors: payload.index_vectors,
+        }
+      }
+    }
+
+    const rows = trimmed
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => JSON.parse(line))
+    return coerceRows(rows)
+  }, [])
+
+  const handleManualKgFileUpload = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0]
+      if (!file) return
+
+      setIsLoading(true)
+      try {
+        const payload = parseManualKgPayload(await file.text(), file.name)
+        const preview = await kgApi.previewManualImport(payload)
+        if (!preview.valid) {
+          const first = preview.issues?.find((issue) => issue.level === 'error') || preview.issues?.[0]
+          toast.error(first ? `KG 导入预检失败：${first.message}` : 'KG 导入预检失败')
+          return
+        }
+
+        const imported = await kgApi.importManualGraph(payload)
+        if (!imported.valid) {
+          toast.error(imported.issues?.[0]?.message || 'KG 导入失败')
+          return
+        }
+        toast.success(`KG 已导入：实体 ${imported.stats.entities}，关系 ${imported.stats.relations}`)
+        await loadInitialData('live')
+      } catch (error) {
+        console.error('Failed to import manual KG:', error)
+        toast.error('导入 KG 失败：请检查 JSON / JSONL 格式或后端校验信息')
+      } finally {
+        setIsLoading(false)
+        event.target.value = ''
+      }
+    },
+    [loadInitialData, parseManualKgPayload, setIsLoading]
+  )
+
+  const triggerManualKgUpload = useCallback(() => {
+    manualKgFileInputRef.current?.click()
+  }, [manualKgFileInputRef])
+
   return {
     loadInitialData,
-    handleFileUpload,
-    triggerFileUpload,
     handleTraceFileUpload,
     triggerTraceUpload,
+    handleManualKgFileUpload,
+    triggerManualKgUpload,
   }
 }
 

@@ -100,3 +100,6 @@ docker/.env.*
 data/sparse_indexes/
 data/colbert_indexes/
 web/.next_3101/
+
+# Local generated analysis/training artifacts
+work/

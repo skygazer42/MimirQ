@@ -19,6 +19,9 @@ from uuid import UUID
 from sqlalchemy.orm import Query, Session
 
 from app.models.audit_log import AuditLog
+from app.rag.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def _coerce_uuid_list(rows: Sequence[object]) -> list[UUID]:
@@ -110,7 +113,8 @@ def purge_audit_log_rows(
             db.query(AuditLog.id).filter(AuditLog.tenant_id == tenant_id, AuditLog.created_at < cutoff),
             max_delete=max_delete,
         )
-    except Exception:
+    except Exception as exc:
+        logger.warning("audit-log purge: candidate id query failed: %s", exc)
         candidate_ids = []
 
     if not candidate_ids:
@@ -129,7 +133,8 @@ def purge_audit_log_rows(
         else:
             with contextlib.suppress(Exception):
                 db.flush()
-    except Exception:
+    except Exception as exc:
+        logger.warning("audit-log purge: bounded delete failed, rolled back: %s", exc)
         with contextlib.suppress(Exception):
             db.rollback()
         return 0
@@ -195,7 +200,8 @@ def purge_filtered_audit_log_rows(
             until=until,
         )
         candidate_ids = _candidate_ids_from_query(q, max_delete=max_delete)
-    except Exception:
+    except Exception as exc:
+        logger.warning("audit-log purge: candidate id query failed: %s", exc)
         candidate_ids = []
 
     if not candidate_ids:
@@ -214,7 +220,8 @@ def purge_filtered_audit_log_rows(
             with contextlib.suppress(Exception):
                 db.flush()
         return deleted
-    except Exception:
+    except Exception as exc:
+        logger.warning("audit-log purge: bounded delete failed, rolled back: %s", exc)
         with contextlib.suppress(Exception):
             db.rollback()
         return 0
@@ -245,7 +252,8 @@ def delete_audit_log_rows(
             with contextlib.suppress(Exception):
                 db.flush()
         return deleted
-    except Exception:
+    except Exception as exc:
+        logger.warning("audit-log purge: bounded delete failed, rolled back: %s", exc)
         with contextlib.suppress(Exception):
             db.rollback()
         return 0

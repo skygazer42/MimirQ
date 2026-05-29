@@ -26,6 +26,10 @@ import type {
   PipelineParsePreviewResponse,
   ZipWithImagesResponse,
 } from '@/types'
+import type {
+  BuiltinProcessingScript,
+  BuiltinProcessingScriptListResponse,
+} from '@/types/backend'
 
 import { API_LONG_TIMEOUT_MS } from '@/lib/env'
 import { resolveParserBackendForFilename } from '@/lib/parser-compat'
@@ -407,17 +411,6 @@ export const pipelineApi = {
   },
 }
 
-export type BuiltinProcessingScript = {
-  key: string
-  name: string
-  description: string
-  language: 'javascript' | 'typescript' | 'python' | 'rust'
-  stage: 'post_parse' | 'post_governance'
-  content: string
-  tags: string[]
-}
-
-export type BuiltinProcessingScriptListResponse = {
-  total: number
-  items: BuiltinProcessingScript[]
-}
+// Re-exported from generated OpenAPI types (see web/types/backend.ts) so existing
+// imports from '@/lib/api/pipeline' keep working without a hand-written duplicate.
+export type { BuiltinProcessingScript, BuiltinProcessingScriptListResponse }

@@ -155,6 +155,117 @@ class KGDeleteResponse(BaseModel):
     entities_pruned: int = 0
 
 
+class KGManualEntityInput(BaseModel):
+    """Curated external KG entity row for manual import."""
+
+    key: str | None = Field(default=None, max_length=255, description="Stable external id within this import")
+    name: str = Field(..., min_length=1, max_length=4000)
+    type: str = Field(..., min_length=1, max_length=100)
+    description: str | None = None
+    aliases: list[str] = Field(default_factory=list)
+    extra_data: dict[str, Any] = Field(default_factory=dict)
+
+
+class KGManualEntityRef(BaseModel):
+    """Relation endpoint reference. Prefer key; name/type allows inline entities."""
+
+    key: str | None = Field(default=None, max_length=255)
+    name: str | None = Field(default=None, max_length=4000)
+    type: str | None = Field(default=None, max_length=100)
+
+
+class KGManualRelationInput(BaseModel):
+    """Curated external KG relation row for manual import."""
+
+    subject: str | KGManualEntityRef
+    predicate: str = Field(..., min_length=1, max_length=200)
+    object: str | KGManualEntityRef
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+    evidence: str | None = Field(default=None, max_length=20000)
+    source: str | None = Field(default=None, max_length=1000)
+    qualifiers: dict[str, Any] = Field(default_factory=dict)
+    references: dict[str, Any] = Field(default_factory=dict)
+    extra_data: dict[str, Any] = Field(default_factory=dict)
+
+
+class KGManualImportRequest(BaseModel):
+    """Manual KG import payload.
+
+    The payload is intentionally domain-neutral. Business-specific extraction
+    should happen outside MimirQ; this endpoint only imports governed graph rows.
+    """
+
+    name: str = Field(default="手动知识图谱导入", min_length=1, max_length=255)
+    import_id: str | None = Field(default=None, max_length=120)
+    dataset_id: UUID | None = None
+    dataset_name: str | None = Field(default=None, max_length=255)
+    pipeline_hash: str | None = Field(default=None, max_length=200)
+    replace_existing: bool = Field(default=False, description="Replace an existing manual import with the same import_id")
+    upsert_entities: bool = Field(default=True, description="Reuse existing same tenant/type/normalized-name entities")
+    allow_label_truncation: bool = Field(default=True, description="Compact labels longer than KG schema limits")
+    index_vectors: bool = Field(default=True, description="Embed and index imported KG events/entities for vector recall")
+    entities: list[KGManualEntityInput] = Field(default_factory=list)
+    relations: list[KGManualRelationInput] = Field(default_factory=list)
+
+
+class KGManualImportStats(BaseModel):
+    entities: int = 0
+    relations: int = 0
+    events: int = 0
+    chunks: int = 0
+    aliases: int = 0
+    warnings: int = 0
+
+
+class KGManualImportIssue(BaseModel):
+    level: str
+    message: str
+    row: int | None = None
+    field: str | None = None
+
+
+class KGManualImportPreviewResponse(BaseModel):
+    import_id: str
+    pipeline_hash: str
+    name: str
+    valid: bool
+    stats: KGManualImportStats
+    issues: list[KGManualImportIssue] = Field(default_factory=list)
+
+
+class KGManualImportResponse(KGManualImportPreviewResponse):
+    dataset_id: UUID | None = None
+    document_id: UUID | None = None
+    inserted: dict[str, int] = Field(default_factory=dict)
+    vector_index: dict[str, Any] = Field(default_factory=dict)
+    message: str = "Manual KG import completed"
+
+
+class KGManualImportListItem(BaseModel):
+    import_id: str
+    name: str
+    pipeline_hash: str
+    dataset_id: UUID | None = None
+    document_id: UUID
+    stats: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class KGManualImportListResponse(BaseModel):
+    items: list[KGManualImportListItem] = Field(default_factory=list)
+
+
+class KGManualImportDeleteResponse(BaseModel):
+    import_id: str
+    document_id: UUID
+    events_deleted: int = 0
+    relations_deleted: int = 0
+    chunks_deleted: int = 0
+    entities_pruned: int = 0
+    message: str = "Manual KG import deleted"
+
+
 class KGEntityMergeRequest(BaseModel):
     """Request body to merge one entity into another."""
 

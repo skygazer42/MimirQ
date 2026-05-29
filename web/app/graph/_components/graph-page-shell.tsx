@@ -117,9 +117,9 @@ export function GraphPageShell({
           onTriggerTraceUpload={dataLoading.triggerTraceUpload}
           traceFileInputRef={state.traceFileInputRef}
           onTraceFileUpload={dataLoading.handleTraceFileUpload}
-          onTriggerFileUpload={dataLoading.triggerFileUpload}
-          fileInputRef={state.fileInputRef}
-          onFileUpload={dataLoading.handleFileUpload}
+          onTriggerManualKgUpload={dataLoading.triggerManualKgUpload}
+          manualKgFileInputRef={state.manualKgFileInputRef}
+          onManualKgFileUpload={dataLoading.handleManualKgFileUpload}
         />
 
         <GraphPageBody
@@ -147,7 +147,7 @@ export function GraphPageShell({
             onBackgroundClick: pageActions.handleBackgroundClick,
             onBackgroundRightClick: pageActions.handleBackgroundRightClick,
             onOpenGraphPicker: () => setGraphScopePickerOpen(true),
-            onTriggerFileUpload: dataLoading.triggerFileUpload,
+            onTriggerManualKgUpload: dataLoading.triggerManualKgUpload,
           }}
           contextMenuProps={{
             contextMenu: pageActions.contextMenu,
@@ -306,7 +306,7 @@ export function GraphPageShell({
           currentDatasetId={state.scope.datasetId}
           currentPipelineHash={state.scope.pipelineHash}
           currentDocumentCount={state.scopedDocumentIds?.length ?? 0}
-          onTriggerFileUpload={dataLoading.triggerFileUpload}
+          onTriggerManualKgUpload={dataLoading.triggerManualKgUpload}
         />
       </PageScaffold>
     </AppFrame>

@@ -12,7 +12,7 @@ import {
   type RefObject,
 } from 'react'
 
-import { PanelRightClose, PanelRightOpen, Rows3 } from 'lucide-react'
+import { Network, PanelRightClose, PanelRightOpen, Rows3 } from 'lucide-react'
 import dynamic from 'next/dynamic'
 
 import type { Remote } from 'comlink'
@@ -29,7 +29,6 @@ import { detachPromise } from '@/lib/utils'
 import type { GraphClusteringWorkerApi } from '@/workers/graph-clustering.worker'
 
 import type { GraphLinkLike, GraphNodeLike } from '../graph-page-utils'
-import { graphmlImportButtonClass } from './graph-button-styles'
 import { getNextKeyboardRovingIndex } from './graph-keyboard-roving'
 
 const SEMANTIC_LIST_ITEM_LIMIT = 200
@@ -167,7 +166,7 @@ type GraphCanvasProps = Readonly<{
   onBackgroundClick: () => void
   onBackgroundRightClick: (event: MouseEvent) => void
   onOpenGraphPicker: () => void
-  onTriggerFileUpload: () => void
+  onTriggerManualKgUpload: () => void
 }>
 
 function normalizeNodeLabel(node: Record<string, unknown>, fallback: string) {
@@ -212,7 +211,7 @@ export function GraphCanvas({
   onBackgroundClick,
   onBackgroundRightClick,
   onOpenGraphPicker,
-  onTriggerFileUpload,
+  onTriggerManualKgUpload,
 }: GraphCanvasProps) {
   const [isSemanticListVisible, setIsSemanticListVisible] = useState(viewMode === '3d')
   const [clusterResult, setClusterResult] = useState<GraphClusterResult | null>(null)
@@ -894,24 +893,25 @@ export function GraphCanvas({
                 {hasActiveScope ? (
                   '当前知识库范围还没有可视化结果。请先执行 KG 抽取，或切换到其他已有图谱的范围。'
                 ) : (
-                  '优先查看前面流程已生成的 KG 结果；也可临时导入 GraphML 做离线分析。'
+                  '优先查看已有知识库 KG；外部图谱统一使用 KG JSON / JSONL 导入。'
                 )}
               </div>
               <div className="mx-auto mt-7 flex w-full max-w-[30rem] flex-wrap items-center justify-center gap-3">
                 <Button
                   size="lg"
                   className="h-10 rounded-lg px-4 text-[13px] font-semibold shadow-soft hover:bg-primary hover:opacity-96"
-                  onClick={onOpenGraphPicker}
+                  onClick={onTriggerManualKgUpload}
                 >
-                  选择图谱
+                  <Network className="h-4 w-4" />
+                  导入 KG JSON / JSONL
                 </Button>
                 <Button
                   size="lg"
                   variant="outline"
-                  onClick={onTriggerFileUpload}
-                  className={`h-10 rounded-lg px-4 text-[13px] font-medium ${graphmlImportButtonClass}`}
+                  className="h-10 rounded-lg px-4 text-[13px] font-semibold shadow-soft hover:bg-primary hover:opacity-96"
+                  onClick={onOpenGraphPicker}
                 >
-                  导入 GraphML
+                  选择图谱
                 </Button>
               </div>
             </section>

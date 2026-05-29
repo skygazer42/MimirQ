@@ -15,6 +15,11 @@ import type {
   KGExtractResponse,
   KGGraphNode,
   KGGraphResponse,
+  KGManualImportDeleteResponse,
+  KGManualImportListResponse,
+  KGManualImportPreviewResponse,
+  KGManualImportRequest,
+  KGManualImportResponse,
   KGPredicateOntologyCreateRequest,
   KGPredicateOntologyItem,
   KGPredicateOntologyListResponse,
@@ -66,6 +71,29 @@ export const kgApi = {
     params?: { prune_orphan_entities?: boolean }
   ): Promise<KGDeleteResponse> {
     const { data } = await apiClient.delete(`/kg/documents/${documentId}`, { params })
+    return data
+  },
+
+  async previewManualImport(body: KGManualImportRequest): Promise<KGManualImportPreviewResponse> {
+    const { data } = await apiClient.post('/kg/imports/preview', body)
+    return data
+  },
+
+  async importManualGraph(body: KGManualImportRequest): Promise<KGManualImportResponse> {
+    const { data } = await apiClient.post('/kg/imports', body)
+    return data
+  },
+
+  async listManualImports(params?: { limit?: number }): Promise<KGManualImportListResponse> {
+    const { data } = await apiClient.get('/kg/imports', { params })
+    return data
+  },
+
+  async deleteManualImport(
+    importId: string,
+    params?: { prune_entities?: boolean }
+  ): Promise<KGManualImportDeleteResponse> {
+    const { data } = await apiClient.delete(`/kg/imports/${encodeURIComponent(importId)}`, { params })
     return data
   },
 
