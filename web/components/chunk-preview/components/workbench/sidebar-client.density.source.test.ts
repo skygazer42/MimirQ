@@ -4,7 +4,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 describe('chunk preview sidebar density source', () => {
-  it('keeps the settings rail compact and uses tinted helper copy blocks', () => {
+  it('keeps the settings rail compact and uses helper copy blocks', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'sidebar-client.tsx'), 'utf8')
 
     expect(src).toContain("'p-4'")
@@ -12,6 +12,15 @@ describe('chunk preview sidebar density source', () => {
     expect(src).toContain("w-[19rem] border-r border-border/60")
     expect(src).toContain('function SidebarChip(')
     expect(src).toContain('function SidebarNote(')
+  })
+
+  it('keeps the sidebar palette restrained around theme tokens', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'sidebar-client.tsx'), 'utf8')
+
+    expect(src).toContain('const SIDEBAR_BASE_TONE')
+    expect(src).toContain('const SIDEBAR_PRIMARY_TONE')
+    expect(src).not.toMatch(/\b(?:border|bg|text)-(?:sky|amber|emerald|violet|cyan|purple|red|blue|orange)-\d/)
+    expect(src).not.toContain('accent-emerald')
   })
 
   it('compresses the file queue toolbar and avoids a duplicated batch-ingest helper card', () => {
