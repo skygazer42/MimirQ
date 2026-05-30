@@ -251,9 +251,6 @@ function DocumentCard({
   onDelete: () => void
   getStatusIcon: (status: string) => React.ReactNode
 }>) {
-  const [isHovered, setIsHovered] = useState(false)
-  const [isFocusWithin, setIsFocusWithin] = useState(false)
-  const isActive = isHovered || isFocusWithin
   const parserBackend = (document.metadata?.parser_backend as string) || ''
   const parserLabel = parserBackend ? getParserLabel(parserBackend) : null
 		    return (
@@ -263,17 +260,10 @@ function DocumentCard({
 		        isSelected
 		          ? 'bg-primary/8 border-primary/35 shadow-xs'
 		          : 'bg-background/25 hover:bg-background/45 border-border/45 hover:border-primary/15'
-		      )}
+	      )}
 	      onClick={onSelect}
-	      onMouseEnter={() => setIsHovered(true)}
-	      onMouseLeave={() => setIsHovered(false)}
-        onFocus={() => setIsFocusWithin(true)}
         selected={isSelected}
         ariaLabel={`选择文档：${document.filename}`}
-        onBlur={(e) => {
-          const next = e.relatedTarget as Node | null
-          if (!next || !e.currentTarget.contains(next)) setIsFocusWithin(false)
-        }}
 	    >
       <div className="flex items-start gap-3">
         {/* 文件图标容器 */}
@@ -323,8 +313,8 @@ function DocumentCard({
           )}
 
 	          {/* 属性标签 */}
-	          {document.status === 'completed' && isActive && (
-	            <div className="mt-2 flex flex-wrap gap-1 motion-safe:animate-fade-in">
+	          {document.status === 'completed' && (
+	            <div className="mt-2 flex flex-wrap gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100 motion-reduce:transition-none">
 	              <span className="text-[11px] px-1.5 py-0.5 bg-secondary/80 rounded text-muted-foreground">
 	                {document.chunk_count} 片段
 	              </span>
@@ -354,8 +344,7 @@ function DocumentCard({
 
 		      {/* 悬浮操作栏 */}
 		      <div className={cn(
-		        "pointer-events-auto absolute right-2 top-2 flex flex-col gap-1 transition duration-200 ease-out",
-		        isActive ? "opacity-100 motion-safe:translate-x-0" : "opacity-0 motion-safe:translate-x-2 pointer-events-none"
+		        "pointer-events-auto absolute right-2 top-2 flex flex-col gap-1 opacity-0 transition-opacity duration-200 ease-out group-hover:opacity-100 group-focus-within:opacity-100 motion-reduce:transition-none"
 		      )}>
 	        <DocumentDetailDialog document={document} trigger={
 	          <Button

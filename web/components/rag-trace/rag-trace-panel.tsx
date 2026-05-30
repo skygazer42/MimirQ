@@ -182,12 +182,6 @@ export type CitationSimulationRow = {
   contributions: CitationSimulationContribution[]
 }
 
-function isEditableTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false
-  const tagName = target.tagName
-  return target.isContentEditable || tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT'
-}
-
 function getCitationSimulationScore(citation: RagTraceCitation, key: CitationSimulationChannelKey): number | null {
   const raw = citation[key]
   if (raw == null) return null
@@ -1214,35 +1208,6 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
     setCitationSimulationWeights(buildCitationSimulationWeightsForPreset('balanced', availableCitationSimulationChannels))
   }, [availableCitationSimulationChannels, requestId])
 
-  const handlePipelineTimelineKeyDown = React.useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!pipelineInspectorSections.length) return
-
-    const key = event.key.toLowerCase()
-    let direction: -1 | 1 | null = null
-    if (key === 'arrowright' || key === 'l') direction = 1
-    if (key === 'arrowleft' || key === 'h') direction = -1
-    if (direction == null) return
-
-    event.preventDefault()
-    const nextIndex = movePipelineSelectionIndex(selectedPipelineSectionIndex, pipelineInspectorSections.length, direction)
-    const nextId = pipelineInspectorSections[nextIndex]?.id ?? null
-    if (nextId) setSelectedPipelineSectionId(nextId)
-  }, [pipelineInspectorSections, selectedPipelineSectionIndex])
-
-  const handleTracePanelKeyDown = React.useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!items.length) return
-    if (isEditableTarget(event.target)) return
-
-    const key = event.key.toLowerCase()
-    let direction: -1 | 1 | null = null
-    if (key === 'arrowdown' || key === 'j') direction = 1
-    if (key === 'arrowup' || key === 'k') direction = -1
-    if (direction == null) return
-
-    event.preventDefault()
-    setSelectedIndex((current) => moveTraceSelectionIndex(current, items.length, direction))
-  }, [items.length])
-
   const applyCitationSimulationPreset = React.useCallback((preset: CitationSimulationPreset) => {
     setCitationSimulationWeights(buildCitationSimulationWeightsForPreset(preset, availableCitationSimulationChannels))
   }, [availableCitationSimulationChannels])
@@ -1512,10 +1477,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
   return (
     <section
       className={cn('grid grid-cols-1 gap-4 md:grid-cols-[260px,1fr]', className)}
-      role="application"
       aria-label="RAG trace keyboard navigation"
-      tabIndex={0}
-      onKeyDownCapture={handleTracePanelKeyDown}
     >
       <Panel variant="glass" padding="none" className="overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-border/60">
@@ -1897,10 +1859,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
               </div>
               <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.2fr)_minmax(18rem,0.8fr)]">
                 <section
-                  role="application"
                   aria-label="Pipeline timeline keyboard navigation"
-                  tabIndex={0}
-                  onKeyDown={handlePipelineTimelineKeyDown}
                   className="outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 >
                   <RagTracePipelineTimeline
