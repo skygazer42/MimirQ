@@ -216,56 +216,56 @@ class TextRecognizer:
         self.input_tensor = self.predictor.get_inputs()[0]
 
     def resize_norm_img(self, img, max_wh_ratio):
-        imgC, imgH, imgW = self.rec_image_shape
+        img_c, img_h, img_w = self.rec_image_shape
 
-        assert imgC == img.shape[2]
-        imgW = int((imgH * max_wh_ratio))
+        assert img_c == img.shape[2]
+        img_w = int((img_h * max_wh_ratio))
         w = self.input_tensor.shape[3:][0]
         if isinstance(w, str):
             pass
         elif w is not None and w > 0:
-            imgW = w
+            img_w = w
         h, w = img.shape[:2]
         ratio = w / float(h)
-        if math.ceil(imgH * ratio) > imgW:
-            resized_w = imgW
+        if math.ceil(img_h * ratio) > img_w:
+            resized_w = img_w
         else:
-            resized_w = int(math.ceil(imgH * ratio))
+            resized_w = int(math.ceil(img_h * ratio))
 
-        resized_image = cv2.resize(img, (resized_w, imgH))
+        resized_image = cv2.resize(img, (resized_w, img_h))
         resized_image = resized_image.astype('float32')
         resized_image = resized_image.transpose((2, 0, 1)) / 255
         resized_image -= 0.5
         resized_image /= 0.5
-        padding_im = np.zeros((imgC, imgH, imgW), dtype=np.float32)
+        padding_im = np.zeros((img_c, img_h, img_w), dtype=np.float32)
         padding_im[:, :, 0:resized_w] = resized_image
         return padding_im
 
     def resize_norm_img_vl(self, img, image_shape):
 
-        _imgC, imgH, imgW = image_shape
+        _img_c, img_h, img_w = image_shape
         img = img[:, :, ::-1]  # bgr2rgb
         resized_image = cv2.resize(
-            img, (imgW, imgH), interpolation=cv2.INTER_LINEAR)
+            img, (img_w, img_h), interpolation=cv2.INTER_LINEAR)
         resized_image = resized_image.astype('float32')
         resized_image = resized_image.transpose((2, 0, 1)) / 255
         return resized_image
 
     def resize_norm_img_srn(self, img, image_shape):
-        _imgC, imgH, imgW = image_shape
+        _img_c, img_h, img_w = image_shape
 
-        img_black = np.zeros((imgH, imgW))
+        img_black = np.zeros((img_h, img_w))
         im_hei = img.shape[0]
         im_wid = img.shape[1]
 
         if im_wid <= im_hei * 1:
-            img_new = cv2.resize(img, (imgH * 1, imgH))
+            img_new = cv2.resize(img, (img_h * 1, img_h))
         elif im_wid <= im_hei * 2:
-            img_new = cv2.resize(img, (imgH * 2, imgH))
+            img_new = cv2.resize(img, (img_h * 2, img_h))
         elif im_wid <= im_hei * 3:
-            img_new = cv2.resize(img, (imgH * 3, imgH))
+            img_new = cv2.resize(img, (img_h * 3, img_h))
         else:
-            img_new = cv2.resize(img, (imgW, imgH))
+            img_new = cv2.resize(img, (img_w, img_h))
 
         img_np = np.asarray(img_new)
         img_np = cv2.cvtColor(img_np, cv2.COLOR_BGR2GRAY)
@@ -279,8 +279,8 @@ class TextRecognizer:
 
     def srn_other_inputs(self, image_shape, num_heads, max_text_length):
 
-        _imgC, imgH, imgW = image_shape
-        feature_dim = int((imgH / 8) * (imgW / 8))
+        _img_c, img_h, img_w = image_shape
+        feature_dim = int((img_h / 8) * (img_w / 8))
 
         encoder_word_pos = np.array(range(0, feature_dim)).reshape(
             (feature_dim, 1)).astype('int64')
@@ -325,7 +325,7 @@ class TextRecognizer:
 
     def resize_norm_img_sar(self, img, image_shape,
                             width_downsample_ratio=0.25):
-        imgC, imgH, imgW_min, imgW_max = image_shape
+        img_c, img_h, img_w_min, img_w_max = image_shape
         h = img.shape[0]
         w = img.shape[1]
         valid_ratio = 1.0
@@ -333,15 +333,15 @@ class TextRecognizer:
         width_divisor = int(1 / width_downsample_ratio)
         # resize
         ratio = w / float(h)
-        resize_w = math.ceil(imgH * ratio)
+        resize_w = math.ceil(img_h * ratio)
         if resize_w % width_divisor != 0:
             resize_w = round(resize_w / width_divisor) * width_divisor
-        if imgW_min is not None:
-            resize_w = max(imgW_min, resize_w)
-        if imgW_max is not None:
-            valid_ratio = min(1.0, 1.0 * resize_w / imgW_max)
-            resize_w = min(imgW_max, resize_w)
-        resized_image = cv2.resize(img, (resize_w, imgH))
+        if img_w_min is not None:
+            resize_w = max(img_w_min, resize_w)
+        if img_w_max is not None:
+            valid_ratio = min(1.0, 1.0 * resize_w / img_w_max)
+            resize_w = min(img_w_max, resize_w)
+        resized_image = cv2.resize(img, (resize_w, img_h))
         resized_image = resized_image.astype('float32')
         # norm
         if image_shape[0] == 1:
@@ -352,7 +352,7 @@ class TextRecognizer:
         resized_image -= 0.5
         resized_image /= 0.5
         resize_shape = resized_image.shape
-        padding_im = -1.0 * np.ones((imgC, imgH, imgW_max), dtype=np.float32)
+        padding_im = -1.0 * np.ones((img_c, img_h, img_w_max), dtype=np.float32)
         padding_im[:, :, 0:resize_w] = resized_image
         pad_shape = padding_im.shape
 
@@ -377,9 +377,9 @@ class TextRecognizer:
 
     def resize_norm_img_svtr(self, img, image_shape):
 
-        _imgC, imgH, imgW = image_shape
+        _img_c, img_h, img_w = image_shape
         resized_image = cv2.resize(
-            img, (imgW, imgH), interpolation=cv2.INTER_LINEAR)
+            img, (img_w, img_h), interpolation=cv2.INTER_LINEAR)
         resized_image = resized_image.astype('float32')
         resized_image = resized_image.transpose((2, 0, 1)) / 255
         resized_image -= 0.5
@@ -388,10 +388,10 @@ class TextRecognizer:
 
     def resize_norm_img_abinet(self, img, image_shape):
 
-        _imgC, imgH, imgW = image_shape
+        _img_c, img_h, img_w = image_shape
 
         resized_image = cv2.resize(
-            img, (imgW, imgH), interpolation=cv2.INTER_LINEAR)
+            img, (img_w, img_h), interpolation=cv2.INTER_LINEAR)
         resized_image = resized_image.astype('float32')
         resized_image = resized_image / 255.
 
@@ -412,10 +412,10 @@ class TextRecognizer:
 
         if self.rec_image_shape[0] == 1:
             h, w = img.shape
-            _, imgH, imgW = self.rec_image_shape
-            if h < imgH or w < imgW:
-                padding_h = max(imgH - h, 0)
-                padding_w = max(imgW - w, 0)
+            _, img_h, img_w = self.rec_image_shape
+            if h < img_h or w < img_w:
+                padding_h = max(img_h - h, 0)
+                padding_w = max(img_w - w, 0)
                 img_padded = np.pad(img, ((0, padding_h), (0, padding_w)),
                                     'constant',
                                     constant_values=(255))
@@ -427,8 +427,8 @@ class TextRecognizer:
         return img
 
     def _effective_width_ratio(self, img) -> float:
-        _imgC, imgH, imgW = self.rec_image_shape[:3]
-        base_ratio = imgW / float(imgH or 1)
+        _img_c, img_h, img_w = self.rec_image_shape[:3]
+        base_ratio = img_w / float(img_h or 1)
         h, w = img.shape[:2]
         return max(base_ratio, w / float(h or 1))
 

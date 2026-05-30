@@ -401,7 +401,7 @@ export function GraphCanvas({
           label: normalizeNodeLabel(nodeRecord, nodeId),
           type,
           kind,
-          raw: node as GraphNodeLike,
+          raw: node,
         }
       }),
     [graphRenderData.nodes]
@@ -516,7 +516,7 @@ export function GraphCanvas({
 
   const handleSemanticPanelPointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     const dragState = semanticPanelDragStateRef.current
-    if (!dragState || dragState.pointerId !== event.pointerId) return
+    if (dragState?.pointerId !== event.pointerId) return
 
     const nextPosition = clampSemanticPanelPosition({
       x: dragState.originX + (event.clientX - dragState.startX),
@@ -524,7 +524,7 @@ export function GraphCanvas({
     })
 
     setSemanticPanelPosition((current) => {
-      if (current && current.x === nextPosition.x && current.y === nextPosition.y) {
+      if (current?.x === nextPosition.x && current.y === nextPosition.y) {
         return current
       }
       return nextPosition

@@ -16,7 +16,7 @@ _KNOWN_LABELS = {"email_address", "phone_number", "cn_id"}
 
 
 def discover_pii_candidates(samples: list[str], *, max_candidates: int = 20) -> dict[str, Any]:
-    rows = [str(item or "") for item in list(samples or []) if str(item or "").strip()]
+    rows = [str(item or "") for item in samples or [] if str(item or "").strip()]
     counts: Counter[str] = Counter()
     examples: dict[str, str] = {}
 
@@ -24,7 +24,7 @@ def discover_pii_candidates(samples: list[str], *, max_candidates: int = 20) -> 
         analyzed = analyze_pii_text(text)
         covered_spans = {
             (int(item["start"]), int(item["end"]))
-            for item in list(analyzed.get("entities") or [])
+            for item in analyzed.get("entities") or []
             if isinstance(item, dict) and {"start", "end"} <= set(item.keys())
         }
 

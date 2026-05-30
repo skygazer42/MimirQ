@@ -14,11 +14,11 @@ def build_bge_m3_triplet_payload(
     colbert_fn: Callable[[str], list[list[float]]] | None = None,
 ) -> dict[str, Any]:
     raw = str(text or "")
-    dense = [float(v) for v in list(dense_fn(raw) or [])]
+    dense = [float(v) for v in dense_fn(raw) or []]
     sparse_raw = sparse_fn(raw) if sparse_fn is not None else {}
     sparse = {str(k): float(v) for k, v in dict(sparse_raw or {}).items() if str(k or "").strip()}
     colbert_raw = colbert_fn(raw) if colbert_fn is not None else []
-    colbert = [[float(v) for v in list(row or [])] for row in list(colbert_raw or [])]
+    colbert = [[float(v) for v in row or []] for row in colbert_raw or []]
     return {
         "schema": "mimirq.bge_m3_triplet.v1",
         "dense": dense,

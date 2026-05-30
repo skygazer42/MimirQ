@@ -38,11 +38,8 @@ import { cn, formatFileSize, formatDate, detachPromise } from '@/lib/utils'
 import { useRouter } from '@/i18n/navigation'
 
 import type {
-  DatasetPrecheckDiffResponse,
   DatasetPrecheckFileOut,
   DatasetPrecheckFindingSummary,
-  DatasetPrecheckNearDupResponse,
-  DatasetPrecheckSamplesResponse,
   DatasetPrecheckScanRunCreateRequest,
   DatasetPrecheckScanRunOut,
   DatasetPrecheckSummary,

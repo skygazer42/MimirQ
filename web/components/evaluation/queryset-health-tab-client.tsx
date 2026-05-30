@@ -31,11 +31,6 @@ import { observabilityApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { queryKeys } from '@/lib/query-keys'
 import { cn } from '@/lib/utils'
-import type {
-  QuerysetHealthDiffResponse,
-  QuerysetHealthRunsResponse,
-} from '@/types'
-
 function formatTs(tsMs: number) {
   try {
     return new Date(tsMs).toLocaleString([], {
@@ -231,7 +226,7 @@ export function QuerysetHealthTab({
             variant="outline"
             size="sm"
             className="gap-2"
-            onClick={() => void runsQuery.refetch()}
+            onClick={() => runsQuery.refetch()}
             disabled={loadingRuns}
           >
             <RefreshCw
@@ -257,7 +252,7 @@ export function QuerysetHealthTab({
             variant="outline"
             size="sm"
             className="gap-2"
-            onClick={() => void runsQuery.refetch()}
+            onClick={() => runsQuery.refetch()}
             disabled={loadingRuns}
           >
             <RefreshCw

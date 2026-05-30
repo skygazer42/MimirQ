@@ -75,7 +75,6 @@ import { cn, detachPromise } from '@/lib/utils'
 import type {
   Dataset,
   Document,
-  KGGraphLink,
   KGGraphNode,
   KGGraphResponse,
 } from '@/types'
@@ -393,8 +392,8 @@ function buildSnapshotStudioGraphFromKgGraph(graph: KGGraphResponse | null): {
   const nodeById = new Map(nodes.map((node) => [node.id, node]))
   const links = rawLinks
     .map((link) => {
-      const source = getLinkEndpointId((link as KGGraphLink).source)
-      const target = getLinkEndpointId((link as KGGraphLink).target)
+      const source = getLinkEndpointId(link.source)
+      const target = getLinkEndpointId(link.target)
       if (!source || !target || !nodeById.has(source) || !nodeById.has(target))
         return null
       const label = String(

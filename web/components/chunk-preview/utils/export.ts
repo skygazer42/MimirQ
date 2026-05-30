@@ -8,7 +8,7 @@ import type {
 } from '@/types'
 import { toPrimitiveString, toSingleLinePrimitiveString } from '@/lib/primitive-text'
 import { sanitizeFilename } from '@/lib/sanitize'
-import type { ChunkOverride, ChunkOverrides } from '../types'
+import type { ChunkOverrides } from '../types'
 
 export { sanitizeFilename } from '@/lib/sanitize'
 

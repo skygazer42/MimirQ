@@ -264,8 +264,8 @@ export default function ObservabilityPage() {
                 variant="outline"
                 className="gap-2 rounded-xl"
                 onClick={() => {
-                  if (tab === 'summary') void summaryQuery.refetch()
-                  else void analyticsQuery.refetch()
+                  if (tab === 'summary') summaryQuery.refetch()
+                  else analyticsQuery.refetch()
                 }}
                 disabled={loading}
               >
@@ -459,7 +459,7 @@ export default function ObservabilityPage() {
             if (analytics.enabled) {
                 if (analytics.rag_trace_count <= 0) {
                     return (<EmptyState title="暂无 Query Analytics 数据" description="提示：只有走到检索链路（rag_trace）时才会计入统计；可尝试先发起一次检索请求再刷新。" icon={TriangleAlert} iconClassName="text-sky-600 dark:text-sky-400">
-                  <Button variant="outline" className="rounded-xl" onClick={() => void analyticsQuery.refetch()} disabled={loadingAnalytics}>
+                  <Button variant="outline" className="rounded-xl" onClick={() => analyticsQuery.refetch()} disabled={loadingAnalytics}>
                     <RefreshCw className={cn('size-4', loadingAnalytics && 'animate-spin motion-reduce:animate-none')}/>
                     刷新
                   </Button>

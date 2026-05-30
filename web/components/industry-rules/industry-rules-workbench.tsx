@@ -278,8 +278,8 @@ export function IndustryRulesWorkbench() {
   const loadingSuggestions = glossarySuggestionsQuery.isFetching
 
   const refreshMeta = () => {
-    void rulesetsQuery.refetch()
-    void datasetsQuery.refetch()
+    rulesetsQuery.refetch()
+    datasetsQuery.refetch()
   }
 
   const runPreview = async (query: string, rulesetName: string) => {

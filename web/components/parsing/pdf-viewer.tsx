@@ -228,8 +228,7 @@ function getPdfSourceHeaders(fileUrl?: string | null): Record<string, string> | 
  const apiUrl = new URL(API_BASE_URL)
  const isBackendApiUrl = parsedUrl.origin === apiUrl.origin && parsedUrl.pathname.startsWith('/api/')
  const isSameOriginApiUrl =
- globalThis.window !== undefined &&
- parsedUrl.origin === globalThis.window.location.origin &&
+   globalThis.window?.location.origin === parsedUrl.origin &&
  parsedUrl.pathname.startsWith('/api/')
  if (!isBackendApiUrl && !isSameOriginApiUrl) return undefined
  } catch {

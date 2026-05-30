@@ -924,7 +924,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
   const handleVersionsDialogOpenChange = useCallback((next: boolean) => {
     setVersionsDialogOpen(next)
     if (next) {
-      void versionsQuery.refetch()
+      versionsQuery.refetch()
     }
   }, [versionsQuery])
 
@@ -939,7 +939,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
   }, [accessInfo?.partial_group_list, accessInfo?.partial_member_list, effectiveAccessMode, isSavingAccess])
 
   const handleVersionsRefresh = useCallback(() => {
-    void versionsQuery.refetch()
+    versionsQuery.refetch()
   }, [versionsQuery])
 
   const handleCopyText = useCallback((text: string) => {
@@ -1110,10 +1110,10 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
             isLoadingChunks={isLoadingChunks}
             loadError={loadError}
             onRetryChunks={() => {
-              void detailQuery.refetch()
-              void accessQuery.refetch()
-              void lifecyclePermissionQuery.refetch()
-              void versionsQuery.refetch()
+              detailQuery.refetch()
+              accessQuery.refetch()
+              lifecyclePermissionQuery.refetch()
+              versionsQuery.refetch()
               detachPromise(reloadChunks())
             }}
             onClose={() => setOpen(false)}
@@ -1138,7 +1138,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
             isLoadingTimeline={isLoadingTimeline}
             timelineError={timelineError}
             docError={docError}
-            onLoadTimeline={() => void timelineQuery.refetch()}
+            onLoadTimeline={() => timelineQuery.refetch()}
             timelineRowVirtualizer={timelineRowVirtualizer}
           />
         </main>

@@ -91,7 +91,7 @@ class ErrorHandlerMiddleware:
 
                 except Exception as e:
                     # Non-retryable error
-                    logger.error(f"Non-retryable error: {type(e).__name__}: {e}")
+                    logger.exception(f"Non-retryable error: {type(e).__name__}: {e}")
                     raise
 
             # All retries exhausted

@@ -121,7 +121,7 @@ def build_agent_redteam_summary(results: list[dict[str, Any]]) -> dict[str, Any]
 
 
 def run_agent_redteam_suite(cases: list[dict[str, Any]]) -> dict[str, Any]:
-    results = [evaluate_agent_redteam_case(case) for case in list(cases or [])]
+    results = [evaluate_agent_redteam_case(case) for case in cases or []]
     summary = build_agent_redteam_summary(results)
     return {
         "schema": "mimirq.agent_redteam_suite.v1",

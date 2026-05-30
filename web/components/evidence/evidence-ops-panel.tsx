@@ -97,12 +97,12 @@ export function EvidenceOpsPanel() {
           </Field>
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
-        <ActionButton icon={ShieldCheck} busy={busy === 'repair'} disabled={Boolean(busy) || !suite} label="修复引用" onClick={() => runAction('repair', '修复 Suite Reference Sources', () => evidenceApi.repairSuiteReferenceSources(suite, parseJson(payloadJson) as any))} />
-        <ActionButton icon={ShieldCheck} busy={busy === 'patch-suite'} disabled={Boolean(busy) || !suite} label="Patch Suite" onClick={() => runAction('patch-suite', 'Patch Evidence Suite', () => evidenceApi.patchSuite(suite, parseJson(payloadJson) as any))} />
-        <ActionButton icon={ShieldCheck} busy={busy === 'patch-item'} disabled={Boolean(busy) || !item} label="Patch Item" onClick={() => runAction('patch-item', 'Patch Evidence Item', () => evidenceApi.patchItem(item, parseJson(payloadJson) as any))} />
-        <ActionButton icon={PackageCheck} busy={busy === 'persist'} disabled={Boolean(busy)} label="保存 Capsule" onClick={() => runAction('persist', '保存 Evidence Capsule', () => evidenceApi.persistCapsule(parseJson(payloadJson) as any))} />
+        <ActionButton icon={ShieldCheck} busy={busy === 'repair'} disabled={Boolean(busy) || !suite} label="修复引用" onClick={() => runAction('repair', '修复 Suite Reference Sources', () => evidenceApi.repairSuiteReferenceSources(suite, parseJson(payloadJson)))} />
+        <ActionButton icon={ShieldCheck} busy={busy === 'patch-suite'} disabled={Boolean(busy) || !suite} label="Patch Suite" onClick={() => runAction('patch-suite', 'Patch Evidence Suite', () => evidenceApi.patchSuite(suite, parseJson(payloadJson)))} />
+        <ActionButton icon={ShieldCheck} busy={busy === 'patch-item'} disabled={Boolean(busy) || !item} label="Patch Item" onClick={() => runAction('patch-item', 'Patch Evidence Item', () => evidenceApi.patchItem(item, parseJson(payloadJson)))} />
+        <ActionButton icon={PackageCheck} busy={busy === 'persist'} disabled={Boolean(busy)} label="保存 Capsule" onClick={() => runAction('persist', '保存 Evidence Capsule', () => evidenceApi.persistCapsule(parseJson(payloadJson)))} />
         <ActionButton icon={PackageCheck} busy={busy === 'get-capsule'} disabled={Boolean(busy) || !capsule} label="读取 Capsule" onClick={() => runAction('get-capsule', '读取 Evidence Capsule', () => evidenceApi.getCapsule(capsule))} />
-        <ActionButton icon={PackageCheck} busy={busy === 'verify'} disabled={Boolean(busy)} label="校验 Capsule" onClick={() => runAction('verify', '校验 Evidence Capsule', () => evidenceApi.verifyCapsule(parseJson(payloadJson) as any))} />
+        <ActionButton icon={PackageCheck} busy={busy === 'verify'} disabled={Boolean(busy)} label="校验 Capsule" onClick={() => runAction('verify', '校验 Evidence Capsule', () => evidenceApi.verifyCapsule(parseJson(payloadJson)))} />
         </div>
         <Field label="高级载荷（JSON）">
           <Textarea value={payloadJson} onChange={(event) => setPayloadJson(event.target.value)} className="mt-3 min-h-[140px] font-mono text-xs" />

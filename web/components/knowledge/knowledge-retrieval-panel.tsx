@@ -338,47 +338,6 @@ export function KnowledgeRetrievalPanel({
     </div>
   )
 
-  const renderCompactHeader = () => (
-    <div className="border-b border-border/40 bg-background/40 px-5 py-4 backdrop-blur-xl">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary border border-primary/20">
-            <Fingerprint className="size-4" />
-          </div>
-          <div className="min-w-0">
-            <h4 className="text-[13px] font-medium text-foreground leading-none">
-              {t('header.title')}
-            </h4>
-            <div className="flex items-center gap-1.5 mt-1.5 min-w-0">
-              <span className="text-[9px] font-medium text-muted-foreground/40 uppercase shrink-0">
-                {t('header.currentDataset')}
-              </span>
-              <span className="text-[10px] font-medium font-mono text-muted-foreground/80 truncate px-1.5 py-0.5 rounded bg-muted/40">
-                {selectedDatasetId || t('header.noneSelected')}
-              </span>
-            </div>
-          </div>
-        </div>
-        <IconButton
-          label={t('actions.run')}
-          variant="outline"
-          className={cn(
-            'size-8 rounded-lg',
-            indexAuditLoading && 'text-primary border-primary/20'
-          )}
-          onClick={() => detachPromise(runIndexAudit())}
-          disabled={!selectedDatasetId || indexAuditLoading}
-        >
-          {indexAuditLoading ? (
-            <Loader2 className="size-3.5 animate-spin" />
-          ) : (
-            <RefreshCw className="size-3.5" />
-          )}
-        </IconButton>
-      </div>
-    </div>
-  )
-
   if (compact) {
     return (
       <div className="flex h-full flex-col bg-background/30">

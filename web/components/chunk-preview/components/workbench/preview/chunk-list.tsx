@@ -42,7 +42,6 @@ import { computeRoleIndices, roughEstimateTokens } from '@/components/chunk-prev
 import { getChunkSectionPath } from '@/components/chunk-preview/utils/sections'
 import { buildChunkSearchIndex, searchChunkIndex, type ChunkSearchResult } from '@/components/chunk-preview/utils/retrieval-search'
 import { rerankChunkSearchResults, type RerankedChunkSearchResult } from '@/components/chunk-preview/utils/reranker-sim'
-import { detachPromise } from '@/lib/utils'
 import {
   ORIGINAL_PREVIEW_MODE_STORAGE_KEY,
   getStoredOriginalPreviewMode,
@@ -868,19 +867,6 @@ export function ChunkList() {
     'h-7 rounded-full border-border/45 px-2 text-[10.5px] font-medium text-muted-foreground shadow-none transition-colors hover:border-primary/30 hover:bg-primary/10 hover:text-primary'
   const chunkListToolbarActiveButtonClass =
     'h-7 rounded-full border-primary/20 bg-primary/10 px-2 text-[10.5px] font-semibold text-primary shadow-none transition-colors hover:bg-primary/20'
-
-  const copyText = async (value: string, okMessage: string) => {
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(value)
-        toast.success(okMessage)
-        return
-      }
-    } catch {
-      // ignore
-    }
-    toast.error(t('chunkList.toasts.clipboardUnsupported'))
-  }
 
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-background">

@@ -179,7 +179,7 @@ export function GraphScopePickerDialog({
               variant="ghost"
               size="sm"
               className="h-10 rounded-xl px-3 text-muted-foreground"
-              onClick={() => void refetchDatasets()}
+              onClick={() => refetchDatasets()}
               disabled={loading}
             >
               {loading ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : '刷新'}

@@ -288,7 +288,7 @@ async function loadVectorNebulaData(): Promise<NebulaData> {
     documents.slice(0, 8).map(async (document) => {
       try {
         const chunkList = await documentApi.listChunks(document.id, { limit: 80 })
-        chunksByDocument.set(document.id, (chunkList.items || []) as DocumentChunkItem[])
+        chunksByDocument.set(document.id, chunkList.items || [])
       } catch {
         chunksByDocument.set(document.id, [])
       }
@@ -408,7 +408,7 @@ export function VectorNebula() {
               variant="outline"
               className="h-8 text-xs"
               onClick={() => {
-                void nebulaQuery.refetch()
+                nebulaQuery.refetch()
               }}
             >
               <RefreshCw className="mr-1.5 h-3.5 w-3.5" />

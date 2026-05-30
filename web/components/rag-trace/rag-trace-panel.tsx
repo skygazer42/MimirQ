@@ -436,7 +436,7 @@ function getRagTraceChannelBox(
   channels: Record<string, any> | null | undefined,
   channel: Exclude<RagTraceCitationChannelFilter, 'all'>
 ): Record<string, any> | null {
-  return (channels as Record<string, any> | null | undefined)?.[channel] ?? null
+  return channels?.[channel] ?? null
 }
 
 export function filterTraceCitationsByChannel(
@@ -467,7 +467,7 @@ export function buildTraceCitationChannelSummaries(
     (trace?.retrieval?.per_query || []).find((query) => query?.kind === 'main') ??
     (trace?.retrieval?.per_query || [])[0] ??
     null
-  const channels = (mainQuery?.retriever_debug as Record<string, unknown> | null | undefined)?.channels as
+  const channels = mainQuery?.retriever_debug?.channels as
     | Record<string, any>
     | null
     | undefined
@@ -757,9 +757,9 @@ export function buildPipelineInspectorSections(trace: RagTrace | null, t: RagTra
   if (!trace) return []
 
   const mainQuery = (trace.retrieval?.per_query || []).find((query) => query?.kind === 'main') ?? (trace.retrieval?.per_query || [])[0] ?? null
-  const channels = (mainQuery?.retriever_debug as Record<string, unknown> | null | undefined)?.channels as Record<string, any> | null | undefined
-  const hierarchyRecall = (mainQuery?.retriever_debug as Record<string, unknown> | null | undefined)?.hierarchy_recall as Record<string, any> | null | undefined
-  const rerankMeta = (channels as Record<string, any> | null | undefined)?.rerank as Record<string, any> | null | undefined
+  const channels = mainQuery?.retriever_debug?.channels as Record<string, any> | null | undefined
+  const hierarchyRecall = mainQuery?.retriever_debug?.hierarchy_recall as Record<string, any> | null | undefined
+  const rerankMeta = channels?.rerank as Record<string, any> | null | undefined
   const citationSummary = buildCitationsSummary(trace.citations || [])
 
   const sections = buildPipelineTimelineSteps(trace).map<PipelineInspectorSection>((step) => {
@@ -868,7 +868,7 @@ export function buildPipelineTimelineSteps(trace: RagTrace | null): PipelineTime
   const stepRows = rawSteps.map((step) => {
     const elapsed = Math.max(0, asFiniteNumber(step.elapsed_sec) ?? 0)
     const lowerKey = String(step.key || '').toLowerCase()
-    const meta = (step.meta ?? null) as Record<string, unknown> | null
+    const meta = step.meta ?? null
     const mode = typeof meta?.mode === 'string' ? meta.mode : null
     const queryCount = getMetaNumber(meta, 'query_count') ?? (lowerKey.includes('retriev') ? asFiniteNumber(trace?.retrieval?.query_count) : null)
     const itemCount = getMetaNumber(meta, 'count')

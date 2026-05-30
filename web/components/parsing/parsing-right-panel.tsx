@@ -64,7 +64,7 @@ export function ParsingRightPanel({
   const handlePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     const container = containerRef.current
     const dragState = dragStateRef.current
-    if (!container || !dragState || event.pointerId !== dragState.pointerId) return
+    if (!container || dragState?.pointerId !== event.pointerId) return
 
     const deltaX = event.clientX - dragState.startX
     const deltaY = event.clientY - dragState.startY
@@ -87,7 +87,7 @@ export function ParsingRightPanel({
   const handlePointerUp = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       const dragState = dragStateRef.current
-      if (!dragState || event.pointerId !== dragState.pointerId) return
+      if (dragState?.pointerId !== event.pointerId) return
       clearDragState()
     },
     [clearDragState]

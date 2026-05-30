@@ -194,18 +194,20 @@ export function buildWhyMissedReport(args: {
       if (fRank) hints.family_hit_rank = fRank
     }
 
-    let status: WhyMissedReferenceStatus = 'unknown'
+    const status: WhyMissedReferenceStatus = !chunkId
+      ? 'unknown'
+      : driftDetail
+        ? 'drifted'
+        : cite
+          ? 'retrieved'
+          : 'missing'
     if (!chunkId) {
-      status = 'unknown'
       unknown += 1
     } else if (driftDetail) {
-      status = 'drifted'
       driftedCnt += 1
     } else if (cite) {
-      status = 'retrieved'
       retrieved += 1
     } else {
-      status = 'missing'
       missing += 1
     }
 

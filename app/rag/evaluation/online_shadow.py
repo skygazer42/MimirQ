@@ -101,8 +101,8 @@ def diff_online_shadow_runs(
     baseline: list[dict[str, Any]],
     candidate: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    baseline_by_id = {str(row.get("sample_id") or "").strip(): dict(row) for row in list(baseline or []) if str(row.get("sample_id") or "").strip()}
-    candidate_by_id = {str(row.get("sample_id") or "").strip(): dict(row) for row in list(candidate or []) if str(row.get("sample_id") or "").strip()}
+    baseline_by_id = {str(row.get("sample_id") or "").strip(): dict(row) for row in baseline or [] if str(row.get("sample_id") or "").strip()}
+    candidate_by_id = {str(row.get("sample_id") or "").strip(): dict(row) for row in candidate or [] if str(row.get("sample_id") or "").strip()}
 
     shared_ids = sorted(set(baseline_by_id.keys()) & set(candidate_by_id.keys()))
     baseline_only = sorted(set(baseline_by_id.keys()) - set(candidate_by_id.keys()))

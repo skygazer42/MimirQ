@@ -125,7 +125,7 @@ export function DocumentViewerPanelShell({
 
   const finishResize = useCallback((event: PointerEvent<HTMLButtonElement>) => {
     const current = resizeStartRef.current
-    if (!current || current.pointerId !== event.pointerId) return
+    if (current?.pointerId !== event.pointerId) return
     resizeStartRef.current = null
     setIsResizing(false)
     try {
@@ -151,7 +151,7 @@ export function DocumentViewerPanelShell({
 
   const handleResizePointerMove = useCallback((event: PointerEvent<HTMLButtonElement>) => {
     const current = resizeStartRef.current
-    if (!current || current.pointerId !== event.pointerId) return
+    if (current?.pointerId !== event.pointerId) return
     event.preventDefault()
     setPanelWidthPx(clampPanelWidth(current.startWidth + current.startX - event.clientX))
   }, [clampPanelWidth, setPanelWidthPx])

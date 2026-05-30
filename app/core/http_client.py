@@ -361,7 +361,7 @@ class HTTPClientPool:
                     await asyncio.sleep(sleep_for)
                     current_delay *= backoff_factor
                 else:
-                    logger.error("Request failed after %s attempts: %s", max_retries + 1, str(e)[:200])
+                    logger.exception("Request failed after %s attempts: %s", max_retries + 1, str(e)[:200])
             
             except httpx.HTTPStatusError as e:
                 # Retry on 5xx/429; raise other 4xx errors.

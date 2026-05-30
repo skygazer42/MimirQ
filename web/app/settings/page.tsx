@@ -45,7 +45,7 @@ import { cn } from '@/lib/utils'
 import { TENANT_PERMISSIONS } from '@/lib/tenant-permissions'
 import { useTenantAccess } from '@/hooks/use-tenant-access'
 import { tenantAccessIsAdmin } from '@/lib/navigation-visibility'
-import { settingsTextTokens, systemPageTokens } from '@/components/ui/system-page-tokens'
+import { settingsTextTokens } from '@/components/ui/system-page-tokens'
 
 type SettingsSectionDefinition = {
   id: string

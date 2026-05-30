@@ -252,7 +252,7 @@ function mapBackendStatusToGovernanceStatus(
 }
 
 function isParsingWorkspaceDocument(doc: GovernanceDocument): boolean {
-  const meta = doc.metadata as Record<string, unknown> | undefined
+  const meta = doc.metadata
   return meta?.workspace === 'parsing'
 }
 
@@ -260,7 +260,7 @@ function mapKnowledgeDocumentToGovernanceFile(
   doc: GovernanceDocument,
   datasetNameById: Map<string, string>
 ): ParsedFileData {
-  const meta = doc.metadata as Record<string, unknown> | undefined
+  const meta = doc.metadata
   const backendCandidate =
     normalizeBackendCandidate(meta?.parser_backend) ||
     normalizeBackendCandidate(meta?.parser_backend_requested) ||
@@ -297,7 +297,7 @@ function mapKnowledgeDocumentToGovernanceFile(
 function mapParsingDocumentToGovernanceFile(
   doc: GovernanceParsingDocument
 ): ParsedFileData {
-  const meta = doc.metadata as Record<string, unknown> | undefined
+  const meta = doc.metadata
   const backendCandidate =
     normalizeBackendCandidate(meta?.parser_backend) ||
     normalizeBackendCandidate(meta?.parser_backend_requested) ||

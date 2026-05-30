@@ -1,7 +1,7 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import { useCallback, useEffect, useMemo, type Dispatch, type SetStateAction } from 'react'
+import { useEffect, useMemo, type Dispatch, type SetStateAction } from 'react'
 
 import { toast } from 'sonner'
 
@@ -73,7 +73,7 @@ function mapParsingDocumentToLibraryFile(
   const byId = new Map(currentFiles.map((file) => [file.id, file]))
   const id = String(doc.id || '').trim()
   const existing = byId.get(id)
-  const meta = doc.metadata as Record<string, unknown> | undefined
+  const meta = doc.metadata
   const rawDuration = meta?.parse_duration_sec
   const durationSec = Number.isFinite(Number(rawDuration)) ? Number(rawDuration) : existing?.durationSec
   const backendFromServer =
@@ -116,7 +116,7 @@ function mapKnowledgeDocumentToLibraryFile(
   const byId = new Map(currentFiles.map((file) => [file.id, file]))
   const id = String(doc.id || '').trim()
   const existing = byId.get(id)
-  const meta = doc.metadata as Record<string, unknown> | undefined
+  const meta = doc.metadata
   const rawDuration = meta?.parse_duration_sec
   const durationSec = Number.isFinite(Number(rawDuration)) ? Number(rawDuration) : existing?.durationSec
   const backendFromServer =
@@ -152,7 +152,7 @@ function mapKnowledgeDocumentToLibraryFile(
 }
 
 function isParsingWorkspaceDocument(doc: Awaited<ReturnType<typeof documentApi.list>>['items'][number]): boolean {
-  const meta = doc.metadata as Record<string, unknown> | undefined
+  const meta = doc.metadata
   return meta?.workspace === 'parsing'
 }
 
@@ -466,7 +466,7 @@ export function useParsingViewState({
     if (rehydratedFolderIdsRef.current.has(folderId)) return
 
     const candidates = visibleLibraryOnlyFiles.filter((file) => {
-      const status = (file.status || 'parsed') as FileStatus
+      const status = file.status || 'parsed'
       if (file.source === 'knowledge_base') return false
       return status === 'pending' || status === 'error' || status === 'parsing'
     })

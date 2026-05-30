@@ -215,7 +215,7 @@ export default function DatasetWorkflowPage() {
   const onWorkflowLayoutChange = useCallback((workflowLayout: Record<string, any>) => {
     startTransition(() => {
       setWorkingConfig((prev) => ({
-        ...((prev ?? exportRes?.config ?? {}) as DatasetConfigBundle),
+        ...(prev ?? exportRes?.config ?? {}),
         workflow_layout: workflowLayout,
       }))
     })
@@ -321,7 +321,7 @@ export default function DatasetWorkflowPage() {
               graph={graph}
               workflowLayout={workingConfig?.workflow_layout ?? null}
               onWorkflowLayoutChange={onWorkflowLayoutChange}
-              onNodeSelect={(node) => setSelectedNode(node as DatasetWorkflowGraphNode | null)}
+              onNodeSelect={(node) => setSelectedNode(node)}
             />
           </Panel>
 

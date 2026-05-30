@@ -192,7 +192,7 @@ function SettingsGroupsPageContent() {
       setCreateOpen(false)
       setNameDraft('')
       setExternalIdDraft('')
-      void queryClient.invalidateQueries({ queryKey: queryKeys.groups.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.groups.all })
     },
     onError: (err: unknown) => {
       toast.error(formatApiError(err, '创建组失败'))
@@ -212,7 +212,7 @@ function SettingsGroupsPageContent() {
         queryKeys.groups.list(GROUP_PAGE_LIST_PARAMS),
         (prev) => (prev || []).filter((g) => g.id !== groupId)
       )
-      void queryClient.invalidateQueries({ queryKey: queryKeys.groups.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.groups.all })
     },
     onError: (err: unknown) => {
       toast.error(formatApiError(err, '删除组失败'))
@@ -306,7 +306,7 @@ function SettingsGroupsPageContent() {
               className={OUTLINE_BUTTON}
               disabled={loading}
               onClick={() => {
-                void groupsQuery.refetch()
+                groupsQuery.refetch()
               }}
             >
               <RefreshCw

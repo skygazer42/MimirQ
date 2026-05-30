@@ -242,7 +242,7 @@ Respond with JSON: {{"score": <float>, "explanation": "<string>"}}
                 explanation=result.get("explanation", ""),
             )
         except Exception as e:
-            logger.error("LLM faithfulness evaluation failed: %s", e)
+            logger.exception("LLM faithfulness evaluation failed: %s", e)
             return self._heuristic_evaluate(answer, contexts)
 
 
@@ -333,7 +333,7 @@ Respond with JSON: {{"score": <float>, "explanation": "<string>"}}
                 explanation=result.get("explanation", ""),
             )
         except Exception as e:
-            logger.error("LLM relevance evaluation failed: %s", e)
+            logger.exception("LLM relevance evaluation failed: %s", e)
             return self._heuristic_evaluate(question, answer)
 
 
@@ -486,7 +486,7 @@ Respond with JSON: {{"score": <float>, "explanation": "<string>"}}
                 explanation=result.get("explanation", ""),
             )
         except Exception as e:
-            logger.error("LLM correctness evaluation failed: %s", e)
+            logger.exception("LLM correctness evaluation failed: %s", e)
             return self._heuristic_evaluate(answer, ground_truth)
 
 

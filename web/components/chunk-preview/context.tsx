@@ -104,7 +104,7 @@ function isChunkPreviewFileInScope(item: ChunkPreviewFileItem, datasetId: string
 }
 
 function isParsingWorkspaceDocument(doc: Awaited<ReturnType<typeof documentApi.list>>['items'][number]): boolean {
-  const meta = doc.metadata as Record<string, unknown> | undefined
+  const meta = doc.metadata
   return meta?.workspace === 'parsing'
 }
 
@@ -152,7 +152,7 @@ async function loadParsingWorkspaceChunkFiles(): Promise<ChunkPreviewFileItem[]>
       const content = await parsingApi.getContent(id)
       const markdown = (content.markdown_content || content.original_markdown_content || '').trim()
       if (!markdown) continue
-      const meta = doc.metadata as Record<string, unknown> | undefined
+      const meta = doc.metadata
       items.push(
         makeMarkdownChunkFileItem({
           id,

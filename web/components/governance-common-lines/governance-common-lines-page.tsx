@@ -212,10 +212,10 @@ export function GovernanceCommonLinesPage() {
   const metaError = datasetsQuery.error || profilesQuery.error
 
   const refreshMeta = useCallback(() => {
-    void queryClient.invalidateQueries({
+    queryClient.invalidateQueries({
       queryKey: queryKeys.datasets.list(COMMON_LINES_DATASET_PARAMS),
     })
-    void queryClient.invalidateQueries({
+    queryClient.invalidateQueries({
       queryKey: queryKeys.governance.profiles(COMMON_LINES_PROFILE_PARAMS),
     })
   }, [queryClient])

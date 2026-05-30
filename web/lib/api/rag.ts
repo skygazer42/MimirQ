@@ -168,10 +168,10 @@ export const ragApi = {
       path: '/api/v1/rag/retrieve',
       method: 'post',
       body: params,
-      responseSchema: evidenceRetrieveResponseSchema as any,
+      responseSchema: evidenceRetrieveResponseSchema,
       responseSchemaName: 'EvidenceRetrieveResponse',
     })
-    return data as EvidenceRetrieveResponse
+    return data
   },
 
   async promptPreview(params: PromptPreviewRequest): Promise<PromptPreviewResponse> {

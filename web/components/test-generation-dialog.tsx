@@ -115,10 +115,6 @@ export function TestGenerationDialog({
   useEffect(() => {
     if (!open) return
 
-    const effectiveSourceType: SourceType = (initialDocumentIds?.length
-      ? 'documents'
-      : (initialSourceType as SourceType) || sourceType)
-
     // Preselect support (enterprise workflow: chunk -> ingest -> generate tests).
     if (initialDatasetId) setSelectedDatasetId(initialDatasetId)
     if (initialDocumentIds?.length) {
@@ -128,7 +124,7 @@ export function TestGenerationDialog({
     } else if (initialSourceType) {
       setSourceType(initialSourceType)
     }
-  }, [open, sourceType, initialSourceType, initialDatasetId, initialDocumentIds])
+  }, [open, initialSourceType, initialDatasetId, initialDocumentIds])
 
   useEffect(() => {
     const error =

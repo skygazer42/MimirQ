@@ -305,7 +305,7 @@ export function ChatArea({
   const moveRagSettingsDrag = useCallback(
     (event: PointerEvent<HTMLDivElement>) => {
       const drag = ragSettingsDragRef.current
-      if (!drag || drag.pointerId !== event.pointerId) return
+      if (drag?.pointerId !== event.pointerId) return
 
       const nextOffset = {
         x: drag.startOffset.x + event.clientX - drag.startClientX,
@@ -319,7 +319,7 @@ export function ChatArea({
 
   const endRagSettingsDrag = useCallback((event: PointerEvent<HTMLDivElement>) => {
     const drag = ragSettingsDragRef.current
-    if (!drag || drag.pointerId !== event.pointerId) return
+    if (drag?.pointerId !== event.pointerId) return
     ragSettingsDragRef.current = null
     setIsRagSettingsDragging(false)
   }, [])

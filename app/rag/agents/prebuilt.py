@@ -196,7 +196,7 @@ def create_retriever_tool(
             return "\n\n".join(output_parts)
 
         except Exception as e:
-            logger.error("Retrieval failed: %s", e)
+            logger.exception("Retrieval failed: %s", e)
             return f"Error during retrieval: {str(e)[:200]}"
 
     return retrieve

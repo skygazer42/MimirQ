@@ -407,10 +407,10 @@ function UsagePageContent() {
                   className="size-9 rounded-2xl border-border/60 bg-background/70 shadow-sm transition-all hover:bg-primary/10 hover:text-primary"
                   aria-label="刷新用量数据"
                   onClick={() => {
-                    void summaryQuery.refetch()
-                    void costQuery.refetch()
-                    void quotaQuery.refetch()
-                    void datasetLabelsQuery.refetch()
+                    summaryQuery.refetch()
+                    costQuery.refetch()
+                    quotaQuery.refetch()
+                    datasetLabelsQuery.refetch()
                   }}
                 >
                   <RefreshCw

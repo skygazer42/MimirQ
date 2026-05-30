@@ -131,7 +131,7 @@ export function useGraphNodeOperations({
           minSharedEvents,
           maxEntityLinks,
           documentIds:
-            dataSource === 'live' && scopedDocumentIds && scopedDocumentIds.length ? scopedDocumentIds : undefined,
+            dataSource === 'live' && scopedDocumentIds?.length ? scopedDocumentIds : undefined,
           datasetId: dataSource === 'live' ? (scopeParams?.dataset_id || undefined) : undefined,
           pipelineHash: dataSource === 'live' ? (pipelineHash || undefined) : undefined,
         })

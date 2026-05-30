@@ -644,8 +644,8 @@ function AuditLogsPageContent() {
               size="sm"
               className="h-8 gap-2 rounded-lg text-[12px] font-bold border-border/60 bg-card/80"
               onClick={() => {
-                void logsQuery.refetch()
-                void filterOptionsQuery.refetch()
+                logsQuery.refetch()
+                filterOptionsQuery.refetch()
               }}
             >
               <RefreshCw
@@ -813,8 +813,8 @@ function AuditLogsPageContent() {
               activeFilterCount={activeFilterCount}
               total={total}
               onAfterPurge={() => {
-                void logsQuery.refetch()
-                void filterOptionsQuery.refetch()
+                logsQuery.refetch()
+                filterOptionsQuery.refetch()
               }}
             />
           </div>

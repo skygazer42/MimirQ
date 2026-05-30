@@ -52,7 +52,7 @@ def evaluate_hard_negative_case(case: dict[str, Any]) -> dict[str, Any]:
 
 
 def run_hard_negative_stress(cases: list[dict[str, Any]]) -> dict[str, Any]:
-    results = [evaluate_hard_negative_case(case) for case in list(cases or [])]
+    results = [evaluate_hard_negative_case(case) for case in cases or []]
     total_cases = len(results)
     failed_cases = sum(1 for result in results if not bool(result.get("passed")))
     pass_rate = round((total_cases - failed_cases) / float(total_cases), 4) if total_cases else None

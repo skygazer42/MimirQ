@@ -227,7 +227,7 @@ class FileContentProvider(BaseContextProvider):
         try:
             return path.read_text(encoding="utf-8")
         except Exception as e:
-            logger.error("Failed to read file: %s", e)
+            logger.exception("Failed to read file: %s", e)
             return None
 
 
@@ -457,7 +457,7 @@ class ContextInjectionMiddleware:
                 items = await provider.get_context(state, **kwargs)
                 all_items.extend(items)
             except Exception as e:
-                logger.error("Context provider %s failed: %s", provider.name, e)
+                logger.exception("Context provider %s failed: %s", provider.name, e)
 
         # Sort by priority (descending)
         all_items.sort(key=lambda x: x.priority, reverse=True)

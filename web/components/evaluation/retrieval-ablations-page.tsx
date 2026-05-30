@@ -74,7 +74,6 @@ import type {
   RegressionAblationGridValue,
   RegressionRun,
   RegressionRunCreate,
-  RagasRegressionRunDiffResponse,
 } from '@/types'
 import { cn, detachPromise } from '@/lib/utils'
 
@@ -1014,12 +1013,6 @@ export function RetrievalAblationsPage() {
     () => LEADERBOARD_METRIC_OPTIONS.map((item) => item.key),
     []
   )
-  const completedRunsCount = useMemo(
-    () =>
-      runsByDataset.filter((run) => String(run.status || '') === 'completed')
-        .length,
-    [runsByDataset]
-  )
   const diffDelta = toNumber(diffScore?.delta)
   const metricDiffRows = useMemo(
     () => (Array.isArray(diff?.metric_diffs) ? diff.metric_diffs : []),
@@ -1073,8 +1066,8 @@ export function RetrievalAblationsPage() {
                   className="h-9 w-9 rounded-xl border-slate-200 bg-card text-blue-700 hover:bg-blue-50"
                   disabled={datasetsLoading || runsLoading}
                   onClick={() => {
-                    void datasetsQuery.refetch()
-                    void runsQuery.refetch()
+                    datasetsQuery.refetch()
+                    runsQuery.refetch()
                   }}
                 >
                   <RefreshCcw className="h-4 w-4" />
@@ -1532,7 +1525,7 @@ export function RetrievalAblationsPage() {
                             variant="outline"
                             className="h-9 gap-1.5 rounded-xl border-slate-200 bg-card px-3 text-[13px] text-slate-900 hover:bg-slate-50"
                             disabled={leaderboardLoading}
-                            onClick={() => void leaderboardQuery.refetch()}
+                            onClick={() => leaderboardQuery.refetch()}
                           >
                             <RefreshCcw className="h-3.5 w-3.5" />
                             刷新

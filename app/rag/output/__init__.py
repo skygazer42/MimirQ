@@ -229,7 +229,7 @@ def _adapt_shared_payload(
 
     if mode == OutputMode.SUMMARY:
         summary = str(payload.get("summary") or payload.get("answer") or "").strip()
-        bullets = [str(item or "").strip() for item in list(payload.get("bullets") or []) if str(item or "").strip()]
+        bullets = [str(item or "").strip() for item in payload.get("bullets") or [] if str(item or "").strip()]
         return SummaryOutput(
             title=str(query or "").strip() or "Summary",
             summary=summary,
@@ -395,7 +395,7 @@ class StructuredOutputGenerator:
             return self._parse_response(content, mode, schema, sources, query=query, context=context)
 
         except Exception as e:
-            logger.error("Structured output generation failed: %s", e)
+            logger.exception("Structured output generation failed: %s", e)
             # Return plain output as fallback
             return PlainOutput(
                 content=f"Error generating structured output: {e}",

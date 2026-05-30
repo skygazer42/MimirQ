@@ -61,7 +61,7 @@ def _cosine(left: list[float], right: list[float]) -> float:
 
 def _coerce_vector(value: Any) -> list[float]:
     out: list[float] = []
-    for item in list(value or []):
+    for item in value or []:
         try:
             out.append(float(item))
         except (TypeError, ValueError):

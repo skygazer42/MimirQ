@@ -74,7 +74,6 @@ import { IngestionDetailDialog } from '@/components/ingestion/ingestion-detail-d
 import {
   buildEvidenceSlotReason,
   buildEvidenceSlotTags,
-  buildFileSizeDistribution,
   buildFileTypeDistribution,
   buildDocumentThroughputAreaRows,
   buildPdfDispositionBreakdown,
@@ -2052,10 +2051,6 @@ export default function KnowledgeIngestionPageClient() {
     () => computeDurationPercentiles(documents),
     [documents]
   )
-  const fileSizeDistribution = useMemo(
-    () => buildFileSizeDistribution(documents),
-    [documents]
-  )
   const pdfDisposition = useMemo(
     () => buildPdfDispositionBreakdown(documents),
     [documents]
@@ -2148,12 +2143,6 @@ export default function KnowledgeIngestionPageClient() {
     reasonFilteredAuditSamples,
     resolvedSampleDispositions,
   ])
-
-  const selectedAuditDocuments = useMemo(
-    () =>
-      documents.filter((document) => selectedAuditIds.includes(document.id)),
-    [documents, selectedAuditIds]
-  )
 
   const activeAuditDocument = useMemo(
     () => documents.find((document) => document.id === activeDetailId) || null,
@@ -3240,14 +3229,6 @@ export default function KnowledgeIngestionPageClient() {
     return collectSalesAuditSampleFiles(salesAuditSamples).slice(0, 12)
   }, [salesAuditSamples])
 
-  const selectedSalesEvidence = useMemo(
-    () =>
-      salesEvidenceItems.filter((file) =>
-        selectedAuditIds.includes(String(file.name))
-      ),
-    [salesEvidenceItems, selectedAuditIds]
-  )
-
   const salesHeatmapData = useMemo(() => {
     if (!salesAuditSummary?.findings?.length) return []
     const peak = Math.max(
@@ -3751,12 +3732,12 @@ export default function KnowledgeIngestionPageClient() {
       }))
 
       if (mode === 'execution-monitor' && !demoMode) {
-        void persistExecutionMonitorDisposition(documentId, disposition)
+        persistExecutionMonitorDisposition(documentId, disposition)
         return
       }
 
       if (mode === 'sales-audit' && !demoMode) {
-        void persistSalesAuditDisposition(documentId, disposition)
+        persistSalesAuditDisposition(documentId, disposition)
         return
       }
 
@@ -3883,31 +3864,13 @@ export default function KnowledgeIngestionPageClient() {
   useEffect(() => {
     const off = globalEventBus.on('ingestion:download-report', () => {
       if (mode === 'sales-audit') {
-        void handleExportSalesAuditReport()
+        handleExportSalesAuditReport()
         return
       }
-      void handleDownloadReport()
+      handleDownloadReport()
     })
     return off
   }, [handleDownloadReport, handleExportSalesAuditReport, mode])
-
-  const handleExportSelection = useCallback(() => {
-    const payload = selectedAuditDocuments.map((document) => ({
-      id: document.id,
-      filename: document.filename,
-      status: document.status,
-      stage: document.current_stage,
-      disposition: resolvedSampleDispositions[document.id] || 'pending',
-      clue: document.error_message,
-    }))
-
-    downloadTextFile(
-      'audit-sample-selection.json',
-      JSON.stringify(payload, null, 2),
-      'application/json;charset=utf-8'
-    )
-    toast.success('已导出当前预检抽样清单')
-  }, [resolvedSampleDispositions, selectedAuditDocuments])
 
   const handleRefreshExecutionMonitor = useCallback(async () => {
     const results = await Promise.allSettled([
@@ -3922,16 +3885,6 @@ export default function KnowledgeIngestionPageClient() {
     }
     toast.success('运行态已刷新')
   }, [documentsQuery, summaryQuery, taskQueueQuery])
-
-  const handleBulkDisposition = useCallback(
-    (disposition: SampleDisposition) => {
-      selectedAuditIds.forEach((documentId) => {
-        handleSampleDisposition(documentId, disposition)
-      })
-      setSelectedAuditIds([])
-    },
-    [handleSampleDisposition, selectedAuditIds]
-  )
 
   const handleHeatmapSelect = useCallback((reason: string) => {
     setSelectedReason((previous) => (previous === reason ? null : reason))
@@ -3998,10 +3951,10 @@ export default function KnowledgeIngestionPageClient() {
         datasetId={selectedDatasetId}
         precheckOnly
         onUploadComplete={() => {
-          void documentsQuery.refetch()
-          void summaryQuery.refetch()
-          void taskQueueQuery.refetch()
-          void precheckRunsQuery.refetch()
+          documentsQuery.refetch()
+          summaryQuery.refetch()
+          taskQueueQuery.refetch()
+          precheckRunsQuery.refetch()
         }}
       />
 
@@ -4445,7 +4398,7 @@ export default function KnowledgeIngestionPageClient() {
                             type="button"
                             variant="outline"
                             className="h-7 rounded-lg px-2 text-[9px]"
-                            onClick={() => void handleExportSalesAuditReport()}
+                            onClick={() => handleExportSalesAuditReport()}
                           >
                             <Download className="mr-1.5 h-3.5 w-3.5" />
                             入库预检报告
@@ -4462,7 +4415,7 @@ export default function KnowledgeIngestionPageClient() {
                               summaryQuery.isFetching ||
                               taskQueueQuery.isFetching
                             }
-                            onClick={() => void handleRefreshExecutionMonitor()}
+                            onClick={() => handleRefreshExecutionMonitor()}
                           >
                             <RefreshCcw className="mr-1.5 h-3.5 w-3.5" />
                             刷新运行态

@@ -172,7 +172,7 @@ export function GovernanceProfileSelector({ className, compact, onApplyPatch }: 
         <Button
           variant="outline"
           size={compact ? 'sm' : 'default'}
-          onClick={() => void profilesQuery.refetch()}
+          onClick={() => profilesQuery.refetch()}
           disabled={loading}
           aria-label="刷新治理预设"
           title="刷新治理预设"

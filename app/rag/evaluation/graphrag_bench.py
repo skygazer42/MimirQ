@@ -17,7 +17,7 @@ def _to_float(value: Any) -> float:
 
 def summarize_graphrag_bench(rows: list[dict[str, Any]]) -> dict[str, Any]:
     systems: dict[str, dict[str, float]] = {}
-    for row in list(rows or []):
+    for row in rows or []:
         system = str((row or {}).get("system") or "").strip()
         if not system:
             continue

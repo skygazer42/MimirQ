@@ -1077,8 +1077,7 @@ export function ParsingWorkbenchShell({
   )
   const shouldAutoRestoreLibraryPdf =
     !activeFile &&
-    activeLibraryFile &&
-    activeLibraryFile.status === 'parsed' &&
+    activeLibraryFile?.status === 'parsed' &&
     activeLibraryMarkdownAvailable &&
     filename.toLowerCase().endsWith('.pdf')
 

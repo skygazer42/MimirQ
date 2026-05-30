@@ -138,7 +138,7 @@ export function useGraphDataLoading({
           includeRelationLinks: includeRels,
           minSharedEvents: sharedThreshold,
           maxEntityLinks,
-          documentIds: scopedDocumentIds && scopedDocumentIds.length ? scopedDocumentIds : undefined,
+          documentIds: scopedDocumentIds?.length ? scopedDocumentIds : undefined,
           datasetId: scope.datasetId || undefined,
           pipelineHash: scope.pipelineHash || undefined,
         })

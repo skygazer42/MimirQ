@@ -194,11 +194,6 @@ function SettingsRbacPageContent() {
     })
   }, [members, query, roleFilter, statusFilter])
 
-  const savingCount = useMemo(
-    () => Object.values(savingIds).filter(Boolean).length,
-    [savingIds]
-  )
-
   const adminCount = useMemo(
     () =>
       members.filter((member) =>
@@ -257,7 +252,7 @@ function SettingsRbacPageContent() {
         ROLE_OPTIONS.find((option) => option.key === desired)?.label ??
         `角色键（${desired}）`
       toast.success(`已更新角色：${uid} -> ${roleLabel}`)
-      void queryClient.invalidateQueries({
+      queryClient.invalidateQueries({
         queryKey: queryKeys.rbac.members(RBAC_MEMBERS_PARAMS),
       })
     },
@@ -305,7 +300,7 @@ function SettingsRbacPageContent() {
         return next
       })
       toast.success(`已移除成员：${uid}`)
-      void queryClient.invalidateQueries({
+      queryClient.invalidateQueries({
         queryKey: queryKeys.rbac.members(RBAC_MEMBERS_PARAMS),
       })
     },
@@ -381,7 +376,7 @@ function SettingsRbacPageContent() {
               className="h-9 gap-2 rounded-lg border-slate-200 bg-card px-3 text-[12px] font-semibold text-slate-600 shadow-sm hover:bg-slate-50"
               disabled={loading}
               onClick={() => {
-                void membersQuery.refetch()
+                membersQuery.refetch()
               }}
             >
               <RefreshCw
@@ -417,7 +412,7 @@ function SettingsRbacPageContent() {
                 className="h-8 w-fit gap-2 rounded-lg border-slate-200 bg-card px-3 text-[12px] font-semibold text-slate-600"
                 disabled={loading}
                 onClick={() => {
-                  void membersQuery.refetch()
+                  membersQuery.refetch()
                 }}
               >
                 <RefreshCw

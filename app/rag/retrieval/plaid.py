@@ -6,7 +6,7 @@ PLAID_COMPRESSION_SCHEMA = "mimirq.plaid_compression.v1"
 
 
 def _coerce_vector(raw: Any) -> list[float]:
-    return [float(v) for v in list(raw or [])]
+    return [float(v) for v in raw or []]
 
 
 def _sq_l2(a: list[float], b: list[float]) -> float:
@@ -57,7 +57,7 @@ def compress_plaid_vectors(
     token_vectors: list[list[float]],
     num_centroids: int = 8,
 ) -> dict[str, Any]:
-    vectors = [_coerce_vector(row) for row in list(token_vectors or [])]
+    vectors = [_coerce_vector(row) for row in token_vectors or []]
     if not vectors:
         return {
             "schema": PLAID_COMPRESSION_SCHEMA,
@@ -87,8 +87,8 @@ def compress_plaid_vectors(
 
 
 def decompress_plaid_vectors(payload: dict[str, Any]) -> list[list[float]]:
-    centroids = [_coerce_vector(row) for row in list((payload or {}).get("centroids") or [])]
-    assignments = [int(v) for v in list((payload or {}).get("assignments") or [])]
+    centroids = [_coerce_vector(row) for row in (payload or {}).get("centroids") or []]
+    assignments = [int(v) for v in (payload or {}).get("assignments") or []]
     if not centroids or not assignments:
         return []
     out: list[list[float]] = []

@@ -362,7 +362,7 @@ Your response:"""
             try:
                 reasoning = await self._reason(current_state)
             except Exception as e:
-                logger.error("Reasoning failed: %s", e)
+                logger.exception("Reasoning failed: %s", e)
                 return self.create_result(
                     current_state,
                     success=False,

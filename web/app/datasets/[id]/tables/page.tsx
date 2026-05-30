@@ -229,8 +229,8 @@ export default function DatasetTablesPage() {
               variant="outline"
               className="gap-2"
               onClick={() => {
-                void datasetQuery.refetch()
-                void tablesQuery.refetch()
+                datasetQuery.refetch()
+                tablesQuery.refetch()
               }}
               disabled={isLoading}
             >

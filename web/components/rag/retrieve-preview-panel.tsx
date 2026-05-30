@@ -7,14 +7,11 @@ import {
   Copy,
   Database,
   ExternalLink,
-  FileStack,
   History,
   Loader2,
   RotateCcw,
   Search,
   SlidersHorizontal,
-  TestTube2,
-  X,
   Zap,
 } from 'lucide-react'
 import type { Citation, EvidenceRetrieveRequest, EvidenceRetrieveResponse } from '@/types'

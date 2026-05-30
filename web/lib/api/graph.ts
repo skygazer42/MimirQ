@@ -156,7 +156,7 @@ export const kgApi = {
       params,
       responseType: 'text',
     })
-    return data as unknown as string
+    return data
   },
 
   async getKHopNeighbors(body: KGNetworkRequest): Promise<KGNetworkResponse> {

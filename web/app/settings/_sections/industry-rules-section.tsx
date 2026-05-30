@@ -281,7 +281,7 @@ export function IndustryRulesSection() {
                       glossary: parseJson<Record<string, string[]>>(glossaryJson, {}),
                     })
                     .then((payload) => {
-                      void queryClient.invalidateQueries({
+                      queryClient.invalidateQueries({
                         queryKey: queryKeys.industryRules.ruleset(trimmedRulesetName),
                       })
                       return payload
@@ -307,7 +307,7 @@ export function IndustryRulesSection() {
                       patterns: parseJson<Array<Record<string, unknown>>>(patternsJson, []),
                     })
                     .then((payload) => {
-                      void queryClient.invalidateQueries({
+                      queryClient.invalidateQueries({
                         queryKey: queryKeys.industryRules.ruleset(trimmedRulesetName),
                       })
                       return payload
@@ -333,7 +333,7 @@ export function IndustryRulesSection() {
                       intents: parseJson<Array<Record<string, unknown>>>(intentsJson, []),
                     })
                     .then((payload) => {
-                      void queryClient.invalidateQueries({
+                      queryClient.invalidateQueries({
                         queryKey: queryKeys.industryRules.ruleset(trimmedRulesetName),
                       })
                       return payload

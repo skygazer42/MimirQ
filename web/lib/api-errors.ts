@@ -36,7 +36,7 @@ function safeJson(value: unknown): string | undefined {
 
 function parseJsonObjectString(value: string): ErrorResponseLike | undefined {
   const trimmed = value.trim()
-  if (!trimmed || !trimmed.startsWith('{')) return undefined
+  if (!trimmed?.startsWith('{')) return undefined
   try {
     const parsed = JSON.parse(trimmed)
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed)

@@ -559,7 +559,7 @@ export function buildPdfDispositionBreakdown(documents: Document[]): Array<{ lab
 
   for (const doc of documents) {
     if (String(doc.file_type || '').toLowerCase() !== 'pdf') continue
-    const profile = String((doc.metadata as Record<string, unknown> | undefined)?.audit_profile || '').toLowerCase()
+    const profile = String(doc.metadata?.audit_profile || '').toLowerCase()
     if (profile === 'scan_pdf') counts.OCR += 1
     else if (profile === 'mixed_pdf') counts.Mixed += 1
     else counts.Native += 1

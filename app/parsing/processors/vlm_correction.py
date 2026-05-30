@@ -87,7 +87,7 @@ async def apply_vlm_correction_async(
     applied_pages: list[int] = []
     remaining = max(0, int(max_pages or 0))
 
-    for doc in list(documents or []):
+    for doc in documents or []:
         meta = dict(doc.metadata or {})
         page_raw = meta.get("page")
         if page_raw is None:
@@ -129,7 +129,7 @@ def apply_vlm_correction(
     applied_pages: list[int] = []
     remaining = max(0, int(max_pages or 0))
 
-    for doc in list(documents or []):
+    for doc in documents or []:
         meta = dict(doc.metadata or {})
         page_raw = meta.get("page")
         if page_raw is None:

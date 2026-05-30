@@ -305,7 +305,7 @@ async def stream_chat_sse_events(
                 ):
                     yield fallback_chunk
                 return
-            logger.error("LangGraph stream error: %s", str(exc)[:200])
+            logger.exception("LangGraph stream error: %s", str(exc)[:200])
             error_event = {
                 "type": "error",
                 "data": {
@@ -389,7 +389,7 @@ async def stream_chat_sse_events(
             ):
                 yield fallback_chunk
             return
-        logger.error("Chat stream error: %s", str(exc)[:200])
+        logger.exception("Chat stream error: %s", str(exc)[:200])
         detail = format_stream_error_message(exc)
         message = "An error occurred during chat processing"
         if not is_production_env() and detail:

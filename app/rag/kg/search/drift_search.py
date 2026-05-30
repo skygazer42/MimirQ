@@ -18,7 +18,7 @@ def run_drift_search(
 ) -> dict[str, Any]:
     query_tokens = _tokenize(str(query or ""))
     scored: list[tuple[float, dict[str, Any]]] = []
-    for report in list(community_reports or []):
+    for report in community_reports or []:
         if not isinstance(report, dict):
             continue
         summary = str(report.get("summary") or "").strip()

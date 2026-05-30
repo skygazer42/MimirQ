@@ -1252,14 +1252,16 @@ export function RegressionTestTab({
                   </div>
                 ) : null}
                 {(() => {
-                  const slices = (summary as any)?.retrieval_slices
-                  const pq = (slices as any)?.parse_quality?.buckets
-                  const cq = (slices as any)?.chunk_quality?.buckets
-                  const hasPq = Array.isArray(pq) && pq.length
-                  const hasCq = Array.isArray(cq) && cq.length
+                  const slices = safeRecord(summary?.retrieval_slices)
+                  const parseQuality = safeRecord(slices.parse_quality)
+                  const chunkQuality = safeRecord(slices.chunk_quality)
+                  const pq = Array.isArray(parseQuality.buckets) ? parseQuality.buckets : []
+                  const cq = Array.isArray(chunkQuality.buckets) ? chunkQuality.buckets : []
+                  const hasPq = pq.length
+                  const hasCq = cq.length
                   if (!hasPq && !hasCq) return null
 
-                  const renderTable = (title: string, rows: any[]) => {
+                  const renderTable = (title: string, rows: unknown[]) => {
                     const top = (rows || []).slice(0, 8)
                     return (
                       <div className="rounded-xl border border-border bg-muted/20 p-3">
@@ -1283,34 +1285,37 @@ export function RegressionTestTab({
                               </tr>
                             </thead>
                             <tbody>
-                              {top.map((r: any) => (
-                                <tr
-                                  key={String(r?.key || '')}
-                                  className="border-b border-border/40"
-                                >
-                                  <td className="py-1 pr-2 font-mono text-muted-foreground">
-                                    {String(r?.key || '')}
-                                  </td>
-                                  <td className="py-1 pr-2 text-right tabular-nums">
-                                    {String(r?.items ?? '—')}
-                                  </td>
-                                  <td className="py-1 pr-2 text-right tabular-nums">
-                                    {typeof r?.retrieval_recall === 'number'
-                                      ? r.retrieval_recall.toFixed(3)
-                                      : '—'}
-                                  </td>
-                                  <td className="py-1 pr-2 text-right tabular-nums">
-                                    {typeof r?.retrieval_mrr === 'number'
-                                      ? r.retrieval_mrr.toFixed(3)
-                                      : '—'}
-                                  </td>
-                                  <td className="py-1 pr-2 text-right tabular-nums">
-                                    {typeof r?.retrieval_ndcg_at_10 === 'number'
-                                      ? r.retrieval_ndcg_at_10.toFixed(3)
-                                      : '—'}
-                                  </td>
-                                </tr>
-                              ))}
+                              {top.map((r) => {
+                                const row = safeRecord(r)
+                                return (
+                                  <tr
+                                    key={String(row.key || '')}
+                                    className="border-b border-border/40"
+                                  >
+                                    <td className="py-1 pr-2 font-mono text-muted-foreground">
+                                      {String(row.key || '')}
+                                    </td>
+                                    <td className="py-1 pr-2 text-right tabular-nums">
+                                      {String(row.items ?? '—')}
+                                    </td>
+                                    <td className="py-1 pr-2 text-right tabular-nums">
+                                      {typeof row.retrieval_recall === 'number'
+                                        ? row.retrieval_recall.toFixed(3)
+                                        : '—'}
+                                    </td>
+                                    <td className="py-1 pr-2 text-right tabular-nums">
+                                      {typeof row.retrieval_mrr === 'number'
+                                        ? row.retrieval_mrr.toFixed(3)
+                                        : '—'}
+                                    </td>
+                                    <td className="py-1 pr-2 text-right tabular-nums">
+                                      {typeof row.retrieval_ndcg_at_10 === 'number'
+                                        ? row.retrieval_ndcg_at_10.toFixed(3)
+                                        : '—'}
+                                    </td>
+                                  </tr>
+                                )
+                              })}
                             </tbody>
                           </table>
                         </div>
@@ -1327,13 +1332,13 @@ export function RegressionTestTab({
                         {hasPq
                           ? renderTable(
                               'parse_quality → retrieval',
-                              pq as any[]
+                              pq
                             )
                           : null}
                         {hasCq
                           ? renderTable(
                               'chunk_quality → retrieval',
-                              cq as any[]
+                              cq
                             )
                           : null}
                       </div>
@@ -1393,7 +1398,7 @@ export function RegressionTestTab({
                         </div>
                       )}
                       {(() => {
-                        const exps = (item as any)?.meta?.explanations
+                        const exps = item.meta?.explanations
                         if (!exps || typeof exps !== 'object') return null
                         const entries = Object.entries(
                           exps as Record<string, any>
@@ -1420,16 +1425,15 @@ export function RegressionTestTab({
                         )
                       })()}
                       {(() => {
-                        const judge = (item as any)?.meta?.llm_judge
-                        if (!judge || typeof judge !== 'object') return null
-                        if (!Boolean((judge as any)?.enabled)) return null
-                        const overall = (judge as any)?.overall_score
-                        const modelUsed = (judge as any)?.model_used
-                        const parts: Array<{ key: string; obj: any }> = [
-                          { key: 'retrieval', obj: (judge as any)?.retrieval },
+                        const judge = safeRecord(item.meta?.llm_judge)
+                        if (!Boolean(judge.enabled)) return null
+                        const overall = judge.overall_score
+                        const modelUsed = judge.model_used
+                        const parts: Array<{ key: string; obj: Record<string, unknown> }> = [
+                          { key: 'retrieval', obj: safeRecord(judge.retrieval) },
                           {
                             key: 'generation',
-                            obj: (judge as any)?.generation,
+                            obj: safeRecord(judge.generation),
                           },
                         ]
                         return (
@@ -1447,15 +1451,11 @@ export function RegressionTestTab({
                                 </div>
                               ) : null}
                               {parts.map(({ key, obj }) => {
-                                if (!obj || typeof obj !== 'object') return null
-                                const score = (obj as any)?.score
-                                const reason = (obj as any)?.reason
-                                const quotes = Array.isArray(
-                                  (obj as any)?.evidence_quotes
-                                )
-                                  ? (
-                                      (obj as any)?.evidence_quotes as any[]
-                                    ).filter((x) => typeof x === 'string' && x)
+                                if (!Object.keys(obj).length) return null
+                                const score = obj.score
+                                const reason = obj.reason
+                                const quotes = Array.isArray(obj.evidence_quotes)
+                                  ? obj.evidence_quotes.filter((x): x is string => typeof x === 'string' && Boolean(x))
                                   : []
                                 return (
                                   <div

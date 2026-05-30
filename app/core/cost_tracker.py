@@ -85,7 +85,7 @@ def build_cost_event(
 
 
 def summarize_cost_events(events: list[dict[str, Any]]) -> dict[str, Any]:
-    rows = [dict(item or {}) for item in list(events or [])]
+    rows = [dict(item or {}) for item in events or []]
     by_provider: dict[str, dict[str, Any]] = defaultdict(lambda: {"events": 0, "total_tokens": 0, "total_cost_usd": 0.0})
     by_tenant: dict[str, dict[str, Any]] = defaultdict(lambda: {"events": 0, "total_tokens": 0, "total_cost_usd": 0.0})
 

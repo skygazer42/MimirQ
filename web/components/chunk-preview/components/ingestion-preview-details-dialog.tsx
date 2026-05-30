@@ -19,7 +19,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { isJsonObject } from '@/components/chunk-preview/utils/metadata'
 import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { cn, formatFileSize } from '@/lib/utils'
-import type { DocumentPipelineOptions, GovernanceIssue, IngestionPreviewResponse, JsonObject, PreprocessStepLog } from '@/types'
+import type { DocumentPipelineOptions, GovernanceIssue, IngestionPreviewResponse, PreprocessStepLog } from '@/types'
 
 function toShortNote(note: unknown, maxChars: number = 180): string {
   const s = toTrimmedPrimitiveString(note)
