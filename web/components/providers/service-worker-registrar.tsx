@@ -66,18 +66,18 @@ function scheduleLocalMimirqServiceWorkerCleanup() {
 
   runCleanup()
 
-  if (typeof window === 'undefined') return undefined
+  if (globalThis.window === undefined) return undefined
 
-  const timers = LOCAL_SERVICE_WORKER_CLEANUP_RETRY_DELAYS_MS.map((delay) => window.setTimeout(runCleanup, delay))
+  const timers = LOCAL_SERVICE_WORKER_CLEANUP_RETRY_DELAYS_MS.map((delay) => globalThis.setTimeout(runCleanup, delay))
   return () => {
-    timers.forEach((timer) => window.clearTimeout(timer))
+    timers.forEach((timer) => globalThis.clearTimeout(timer))
   }
 }
 
 export function ServiceWorkerRegistrar() {
   useEffect(() => {
     const env = {
-      hasWindow: typeof window !== 'undefined',
+      hasWindow: globalThis.window !== undefined,
       hasServiceWorker: typeof navigator !== 'undefined' && 'serviceWorker' in navigator,
       hostname: globalThis.window?.location?.hostname || '',
       protocol: globalThis.window?.location?.protocol || '',

@@ -129,8 +129,8 @@ export function applyThemeColor(color: string, root?: HTMLElement | null) {
 export function notifyThemeAppearanceChanged(eventTarget?: ThemeEventTarget | null) {
   const target =
     eventTarget === undefined
-      ? typeof window !== 'undefined'
-        ? window
+      ? globalThis.window !== undefined
+        ? globalThis.window
         : null
       : eventTarget
   if (!target) return
@@ -150,8 +150,8 @@ export function applyStoredThemeAppearance(
 ) {
   const effectiveStorage =
     storage === undefined
-      ? typeof window !== 'undefined'
-        ? window.localStorage
+      ? globalThis.window !== undefined
+        ? globalThis.window.localStorage
         : null
       : storage
   const surfaceTheme = readSurfaceTheme(effectiveStorage)

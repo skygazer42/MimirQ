@@ -181,7 +181,7 @@ function HistoryPageContent({
   const isLoadingMessages = Boolean(selectedConversationId) && messagesQuery.isLoading
 
   useEffect(() => {
-    const media = window.matchMedia('(min-width: 1280px)')
+    const media = globalThis.window.matchMedia('(min-width: 1280px)')
     const updateViewportWidth = () => setIsWideHistoryViewport(media.matches)
 
     updateViewportWidth()

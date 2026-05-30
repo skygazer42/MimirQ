@@ -27,12 +27,12 @@ function clampParsingLeftPanelWidth(width: number) {
 }
 
 function readStoredParsingLeftPanelWidth() {
-  if (typeof window === 'undefined') {
+  if (globalThis.window === undefined) {
     return DEFAULT_PARSING_LEFT_PANEL_WIDTH
   }
 
   const storedWidth = Number.parseInt(
-    window.localStorage.getItem(PARSING_LEFT_PANEL_WIDTH_KEY) || '',
+    globalThis.window.localStorage.getItem(PARSING_LEFT_PANEL_WIDTH_KEY) || '',
     10
   )
   return Number.isFinite(storedWidth)
@@ -61,11 +61,11 @@ export function ParsingLeftPanel({
   }, [])
 
   const persistSidebarWidth = useCallback((width: number) => {
-    if (typeof window === 'undefined') {
+    if (globalThis.window === undefined) {
       return
     }
 
-    window.localStorage.setItem(
+    globalThis.window.localStorage.setItem(
       PARSING_LEFT_PANEL_WIDTH_KEY,
       String(clampParsingLeftPanelWidth(width))
     )
@@ -117,14 +117,14 @@ export function ParsingLeftPanel({
         restorePageInteraction()
       }
 
-      window.addEventListener('pointermove', handlePointerMove, {
+      globalThis.window.addEventListener('pointermove', handlePointerMove, {
         signal: controller.signal,
       })
-      window.addEventListener('pointerup', handlePointerUp, {
+      globalThis.window.addEventListener('pointerup', handlePointerUp, {
         once: true,
         signal: controller.signal,
       })
-      window.addEventListener('pointercancel', handlePointerUp, {
+      globalThis.window.addEventListener('pointercancel', handlePointerUp, {
         once: true,
         signal: controller.signal,
       })

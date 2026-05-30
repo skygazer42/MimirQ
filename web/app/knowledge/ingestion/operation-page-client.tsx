@@ -147,9 +147,9 @@ const TABLE_HEAD_CLASS = 'bg-muted/38 text-muted-foreground'
 const TABLE_ROW_CLASS = 'border-t border-border/50'
 
 function loadDraft(): DraftState {
-  if (typeof window === 'undefined') return DEFAULT_DRAFT
+  if (globalThis.window === undefined) return DEFAULT_DRAFT
   try {
-    const raw = window.localStorage.getItem(DRAFT_KEY)
+    const raw = globalThis.window.localStorage.getItem(DRAFT_KEY)
     if (!raw) return DEFAULT_DRAFT
     const parsed = JSON.parse(raw) as Partial<DraftState>
     return { ...DEFAULT_DRAFT, ...parsed }
