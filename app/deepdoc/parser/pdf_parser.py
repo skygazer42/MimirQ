@@ -644,7 +644,7 @@ class IntegratedPipelinePdfParser:
                                                                                                  "equation"]:
                 i += 1
                 continue
-                # If Y direction height difference is small, consider as same row boxes, merge
+            # If Y direction height difference is small, consider as same row boxes, merge
             if abs(self._y_dis(b, b_)
                    ) < self.mean_height[bxs[i]["page_number"] - 1] / 3:
                 # merge
@@ -654,9 +654,6 @@ class IntegratedPipelinePdfParser:
                 bxs[i]["text"] += b_["text"]
                 bxs.pop(i + 1)
                 continue
-            i += 1
-            continue
-
             dis_thr = 1
             dis = b["x1"] - b_["x0"]
             if b.get("layout_type", "") != "text" or b_.get(
@@ -860,7 +857,7 @@ class IntegratedPipelinePdfParser:
         while i < len(self.boxes):
             # Match possible table of contents, acknowledgments and other fields
             if not re.match(r"(contents|目录|目次|table of contents|致谢|acknowledge)$",
-                            re.sub(r"( | |\u3000)+", "", self.boxes[i]["text"].lower())):
+                            re.sub(r"[ \u3000]+", "", self.boxes[i]["text"].lower())):
                 i += 1
                 continue
             findit = True
@@ -892,7 +889,7 @@ class IntegratedPipelinePdfParser:
         # If table of contents not found, exclude page numbers by detecting abnormal formats like "··"
         page_dirty = [0] * len(self.page_images)
         for b in self.boxes:
-            if re.search(r"(··|··|··)", b["text"]):
+            if re.search(r"··", b["text"]):
                 page_dirty[b["page_number"] - 1] += 1
         page_dirty = {i + 1 for i, t in enumerate(page_dirty) if t > 3}
         if not page_dirty:

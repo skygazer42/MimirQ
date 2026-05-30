@@ -151,8 +151,7 @@ export function KnowledgeScopePanel({
     </div>
   )
 
-  // const sectionClassName = embedded ? 'space-y-3' : 'space-y-2'
-  const sectionClassName = embedded ? 'space-y-2' : 'space-y-2'
+  const sectionClassName = 'space-y-2'
   // const sectionShellClassName = embedded
   // rounded-2xl border border-border/40 bg-muted/10
   const sectionShellClassName = embedded

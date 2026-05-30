@@ -60,7 +60,6 @@ def _derive_template_key(name: str) -> str:
 
 @router.post(
     "/builtins/sync",
-    response_model=BuiltinPromptTemplateSyncResponse,
     responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 async def sync_builtin_prompt_templates(

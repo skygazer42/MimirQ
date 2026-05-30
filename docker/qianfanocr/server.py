@@ -5,7 +5,7 @@ import base64
 import os
 import re
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any
+from typing import Annotated, Any
 
 import fitz
 import requests
@@ -46,7 +46,8 @@ _PAGE_CONCURRENCY = max(1, _get_int_env("QIANFAN_OCR_PAGE_CONCURRENCY", 1))
 _PDF_DPI = max(72, _get_int_env("QIANFAN_OCR_PDF_DPI", 200))
 _TIMEOUT_SEC = max(10.0, _get_float_env("QIANFAN_OCR_REQUEST_TIMEOUT_SEC", 120.0))
 _SERVER_URL = (os.environ.get("QIANFAN_OCR_SERVER_URL") or "").strip()
-_DEFAULT_MODEL = "deepseek-ocr" if "qianfan.baidubce.com" in _SERVER_URL else "baidu/Qianfan-OCR"
+_QIANFAN_ONLINE_HOST = "qianfan.baidubce.com"
+_DEFAULT_MODEL = "deepseek-ocr" if _QIANFAN_ONLINE_HOST in _SERVER_URL else "baidu/Qianfan-OCR"
 _MODEL = (os.environ.get("QIANFAN_OCR_MODEL") or _DEFAULT_MODEL).strip() or _DEFAULT_MODEL
 _SERVER_API_KEY = (
     os.environ.get("QIANFAN_OCR_SERVER_API_KEY")
@@ -63,7 +64,7 @@ _QIANFAN_ONLINE_PROMPT = "OCR this image."
 
 
 def _default_prompt_for_server(server_url: str) -> str:
-    if "qianfan.baidubce.com" in (server_url or ""):
+    if _QIANFAN_ONLINE_HOST in (server_url or ""):
         return _QIANFAN_ONLINE_PROMPT
     return _DEFAULT_MARKDOWN_PROMPT
 
@@ -233,11 +234,14 @@ def health() -> dict[str, Any]:
     }
 
 
-@app.post("/convert")
+@app.post(
+    "/convert",
+    responses={400: {"description": "Invalid or empty upload"}},
+)
 async def convert(
-    file: UploadFile = File(...),
-    output_format: str = Form("markdown"),  # kept for parity; ignored (always markdown)
-    layout_as_thought: str = Form(""),
+    file: Annotated[UploadFile, File()],
+    output_format: Annotated[str, Form()] = "markdown",  # kept for parity; ignored (always markdown)
+    layout_as_thought: Annotated[str, Form()] = "",
 ) -> dict[str, Any]:
     _ = output_format
     name = (file.filename or "").lower()

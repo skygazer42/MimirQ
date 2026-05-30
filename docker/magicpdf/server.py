@@ -9,6 +9,7 @@ import subprocess
 import time
 import uuid
 from pathlib import Path
+from typing import Annotated
 
 import yaml
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -44,6 +45,7 @@ _semaphore = asyncio.Semaphore(_MAX_CONCURRENT_JOBS)
 
 _IMAGE_MD_RE = re.compile(r"!\[[^\]]*\]\(\s*[^)\s]+?\s*\)\s*")
 _IMAGE_HTML_RE = re.compile(r"<img[^>]*?>", flags=re.IGNORECASE)
+_PDF_EXTRACT_KIT_MODEL_DIR = "models--opendatalab--PDF-Extract-Kit-1.0"
 _REQUIRED_MODEL_FILES = (
     "Layout/YOLO/doclayout_yolo_docstructbench_imgsz1280_2501.pt",
     "OCR/paddleocr_torch/ch_PP-OCRv3_det_infer.pth",
@@ -90,9 +92,9 @@ def _resolve_models_dir(configured: str) -> Path:
 
     candidates = [
         root,
-        root / "huggingface" / "hub" / "models--opendatalab--PDF-Extract-Kit-1.0" / "snapshots",
-        root / "huggingface" / "models--opendatalab--PDF-Extract-Kit-1.0" / "snapshots",
-        root / "models--opendatalab--PDF-Extract-Kit-1.0" / "snapshots",
+        root / "huggingface" / "hub" / _PDF_EXTRACT_KIT_MODEL_DIR / "snapshots",
+        root / "huggingface" / _PDF_EXTRACT_KIT_MODEL_DIR / "snapshots",
+        root / _PDF_EXTRACT_KIT_MODEL_DIR / "snapshots",
     ]
     for candidate in candidates:
         if candidate.name == "models" and _has_required_models(candidate):
@@ -172,7 +174,7 @@ def _find_markdown(run_root: Path, *, safe_stem: str, method: str) -> Path | Non
         return candidates[0]
     all_candidates = list(run_root.rglob("*.md"))
     if all_candidates:
-        return sorted(all_candidates, key=lambda p: len(str(p)))[0]
+        return min(all_candidates, key=lambda p: len(str(p)))
     return None
 
 
@@ -287,15 +289,21 @@ def health() -> dict:
     }
 
 
-@app.post("/convert")
+@app.post(
+    "/convert",
+    responses={
+        400: {"description": "Invalid or empty upload"},
+        500: {"description": "MagicPDF conversion failed"},
+    },
+)
 async def convert(
-    file: UploadFile = File(...),
-    method: str = Form("auto"),
-    lang: str = Form(""),
-    debug: bool = Form(False),
-    device_mode: str = Form(_DEFAULT_DEVICE_MODE),
-    keep_artifacts: bool = Form(False),
-    document_id: str = Form(""),
+    file: Annotated[UploadFile, File()],
+    method: Annotated[str, Form()] = "auto",
+    lang: Annotated[str, Form()] = "",
+    debug: Annotated[bool, Form()] = False,
+    device_mode: Annotated[str, Form()] = _DEFAULT_DEVICE_MODE,
+    keep_artifacts: Annotated[bool, Form()] = False,
+    document_id: Annotated[str, Form()] = "",
 ) -> dict:
     suffix = Path(file.filename or "").suffix.lower()
     if suffix and suffix != ".pdf":

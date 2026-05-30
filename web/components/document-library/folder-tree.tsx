@@ -607,29 +607,23 @@ export function DocumentFolderTree({
           )}
         >
           {renderIndentGuides(level)}
-          <button
-            type="button"
+          <div
             className={cn(
-              'flex h-9 w-full items-center gap-2 pr-2 text-left focus-ring',
+              'flex h-9 w-full items-center gap-2 pr-2 text-left',
               hasInlineActions && 'pr-10',
               file.isSelectable && 'pl-1'
             )}
             style={{ paddingLeft: `${TREE_ROW_BASE_PADDING + level * TREE_INDENT_STEP}px` }}
             title={file.error || (file.sourcePath ? `${file.name} · ${file.sourcePath}` : file.name)}
-            onClick={() => {
-              setActiveFolderId(parentFolderId || ROOT_FOLDER_ID)
-              onSelectFile?.(file.id)
-            }}
             draggable={Boolean(onFileDragStart) && !file.readOnly}
             onDragStart={!file.readOnly && onFileDragStart ? (event) => onFileDragStart(event, file.id) : undefined}
           >
             {file.isSelectable ? (
-              <span
-                role="checkbox"
-                aria-checked={file.isSelected}
+              <button
+                type="button"
                 aria-label={file.isSelected ? '取消选择待提交文档' : '选择待提交文档'}
                 className={cn(
-                  'flex size-4 shrink-0 items-center justify-center rounded-full border text-[10px] font-semibold transition-colors',
+                  'flex size-4 shrink-0 items-center justify-center rounded-full border text-[10px] font-semibold transition-colors focus-ring',
                   file.isSelected
                     ? 'border-primary bg-primary text-primary-foreground'
                     : 'border-border/70 bg-background text-transparent group-hover/file:border-primary/50 group-hover/file:text-primary/40'
@@ -640,36 +634,45 @@ export function DocumentFolderTree({
                 }}
               >
                 ✓
-              </span>
+              </button>
             ) : null}
-            {getFileIcon(file.name, 'h-6 w-6 rounded-lg')}
-            <div className="flex min-w-0 flex-1 items-center gap-1.5">
-              <span className="min-w-0 flex-1 truncate text-[12px] font-medium leading-4">{file.name}</span>
-              {governanceStatusLabel ? (
-                <span
-                  className={cn(
-                    'shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-medium',
-                    file.governanceStatus === 'ready'
-                      ? 'border-warning/25 bg-warning/[0.10] text-warning'
-                      : 'border-success/25 bg-success/[0.08] text-success'
-                  )}
-                >
-                  {governanceStatusLabel}
-                </span>
-              ) : null}
-              {isParsing ? (
-                <span className="shrink-0 text-primary" title={progress != null ? `处理中 ${Math.round(progress)}%` : '处理中'}>
-                  <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" />
-                </span>
-              ) : null}
-              {isPending ? (
-                <span className="shrink-0 text-amber-600/80 dark:text-amber-300/80" title="待解析">
-                  <Clock3 className="h-3 w-3" />
-                </span>
-              ) : null}
-              {isError ? <AlertCircle className="h-3.5 w-3.5 shrink-0 text-destructive" /> : null}
-            </div>
-          </button>
+            <button
+              type="button"
+              className="flex min-w-0 flex-1 items-center gap-1.5 text-left focus-ring"
+              onClick={() => {
+                setActiveFolderId(parentFolderId || ROOT_FOLDER_ID)
+                onSelectFile?.(file.id)
+              }}
+            >
+              {getFileIcon(file.name, 'h-6 w-6 rounded-lg')}
+              <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                <span className="min-w-0 flex-1 truncate text-[12px] font-medium leading-4">{file.name}</span>
+                {governanceStatusLabel ? (
+                  <span
+                    className={cn(
+                      'shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-medium',
+                      file.governanceStatus === 'ready'
+                        ? 'border-warning/25 bg-warning/[0.10] text-warning'
+                        : 'border-success/25 bg-success/[0.08] text-success'
+                    )}
+                  >
+                    {governanceStatusLabel}
+                  </span>
+                ) : null}
+                {isParsing ? (
+                  <span className="shrink-0 text-primary" title={progress != null ? `处理中 ${Math.round(progress)}%` : '处理中'}>
+                    <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" />
+                  </span>
+                ) : null}
+                {isPending ? (
+                  <span className="shrink-0 text-amber-600/80 dark:text-amber-300/80" title="待解析">
+                    <Clock3 className="h-3 w-3" />
+                  </span>
+                ) : null}
+                {isError ? <AlertCircle className="h-3.5 w-3.5 shrink-0 text-destructive" /> : null}
+              </span>
+            </button>
+          </div>
 
           {hasInlineActions ? (
             <div className="pointer-events-none absolute right-1 top-1 flex items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover/file:pointer-events-auto group-hover/file:opacity-100">

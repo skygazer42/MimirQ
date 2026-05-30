@@ -7,7 +7,7 @@ import subprocess
 import tempfile
 import zipfile
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
@@ -129,13 +129,20 @@ def health() -> dict[str, Any]:
     }
 
 
-@app.post("/convert")
+@app.post(
+    "/convert",
+    responses={
+        400: {"description": "Invalid or empty upload"},
+        500: {"description": "PaddleVL conversion failed"},
+        504: {"description": "PaddleVL conversion timed out"},
+    },
+)
 async def convert(
-    file: UploadFile = File(...),
-    output_format: str = Form("markdown"),  # kept for parity; ignored (always ZIP)
-    dpi: int = Form(150),  # kept for parity; ignored by doc_parser
-    pipeline_version: str = Form(""),
-    device: str = Form(""),
+    file: Annotated[UploadFile, File()],
+    output_format: Annotated[str, Form()] = "markdown",  # kept for parity; ignored (always ZIP)
+    dpi: Annotated[int, Form()] = 150,  # kept for parity; ignored by doc_parser
+    pipeline_version: Annotated[str, Form()] = "",
+    device: Annotated[str, Form()] = "",
 ) -> Response:
     name = (file.filename or "").lower()
     if not name.endswith(".pdf"):

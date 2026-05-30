@@ -23,7 +23,7 @@ describe('graph viewport LOD', () => {
       { id: 'missing-position' },
     ])
 
-    expect(index.query(VIEWPORT).map((node) => node.id).sort()).toEqual(['inside-a', 'inside-b'])
+    expect(index.query(VIEWPORT).map((node) => String(node.id)).sort((a, b) => a.localeCompare(b))).toEqual(['inside-a', 'inside-b'])
     expect(index.nearest({ x: 9, y: -5 })?.id).toBe('inside-b')
   })
 
@@ -50,7 +50,7 @@ describe('graph viewport LOD', () => {
     })
 
     expect(lod.tier).toBe('overview')
-    expect(Array.from(lod.visibleNodeIds).sort()).toEqual(['a', 'b'])
+    expect(Array.from(lod.visibleNodeIds).sort((a, b) => a.localeCompare(b))).toEqual(['a', 'b'])
     expect(Array.from(lod.visibleLinkIds)).toEqual(['ab'])
     expect(lod.hiddenNodeCount).toBe(2)
     expect(lod.hiddenLinkCount).toBe(2)

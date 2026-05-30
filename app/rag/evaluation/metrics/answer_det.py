@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import re
 from typing import Any
 
@@ -37,7 +38,8 @@ def evaluate_answer_deterministic(
 
     refusal = bool(_REFUSAL_RE.search(norm_answer))
     refusal_correct = refusal if is_unanswerable else None
-    obvious_hallucination = bool(not is_unanswerable and norm_gold and norm_answer and norm_answer != norm_gold and answer_f1 == 0.0)
+    zero_f1 = math.isclose(answer_f1, 0.0, abs_tol=1e-12)
+    obvious_hallucination = bool(not is_unanswerable and norm_gold and norm_answer and norm_answer != norm_gold and zero_f1)
 
     return {
         "question": str(question or ""),

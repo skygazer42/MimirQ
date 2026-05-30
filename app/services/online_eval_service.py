@@ -15,6 +15,7 @@ from __future__ import annotations
 import atexit
 import hashlib
 import json
+import math
 import queue
 import threading
 import time
@@ -37,7 +38,7 @@ def _mean(values: Iterable[float]) -> float | None:
             fv = float(v)
         except Exception:
             continue
-        if fv != fv:  # NaN
+        if math.isnan(fv):
             continue
         vals.append(fv)
     if not vals:
@@ -238,7 +239,7 @@ def summarize_online_quality(
             fd_f = float(fd) if fd is not None else None
         except Exception:
             fd_f = None
-        if fd_f is not None and fd_f == fd_f:
+        if fd_f is not None and math.isfinite(fd_f):
             faith_vals.append(fd_f)
             bucket["faith_sum"] = float(bucket.get("faith_sum") or 0.0) + float(fd_f)
             bucket["faith_n"] = int(bucket.get("faith_n") or 0) + 1
@@ -248,7 +249,7 @@ def summarize_online_quality(
             cu_f = float(cu) if cu is not None else None
         except Exception:
             cu_f = None
-        if cu_f is not None and cu_f == cu_f:
+        if cu_f is not None and math.isfinite(cu_f):
             util_vals.append(cu_f)
             bucket["util_sum"] = float(bucket.get("util_sum") or 0.0) + float(cu_f)
             bucket["util_n"] = int(bucket.get("util_n") or 0) + 1
@@ -458,4 +459,3 @@ __all__ = [
     "maybe_enqueue_online_eval",
     "summarize_online_quality",
 ]
-

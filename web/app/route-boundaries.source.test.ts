@@ -37,7 +37,7 @@ function collectRouteDirs(dir: string): string[] {
     routeDirs.add(relativeDir ? `./${relativeDir}` : '.')
   }
 
-  return [...routeDirs].sort()
+  return [...routeDirs].sort((a, b) => a.localeCompare(b))
 }
 
 describe('route boundaries source', () => {

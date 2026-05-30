@@ -132,7 +132,7 @@ export function ParserDropdown({ value, onChange, className, filename, compact =
         )}
       >
         <div className={cn(compact ? 'rounded-md p-1' : 'rounded-md p-1.5', selectedColor.bg)}>
-          <SelectedIcon className={cn(compact ? 'size-3.5' : 'size-3.5', selectedColor.text)} />
+          <SelectedIcon className={cn('size-3.5', selectedColor.text)} />
         </div>
         <div className="flex-1 text-left min-w-0">
           <div className="flex items-center gap-2">

@@ -10,6 +10,7 @@ Goal:
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -69,7 +70,7 @@ def _strict_number(value: Any, *, key: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError(f"{key} must be a number")
     out = float(value)
-    if out != out or out in {float("inf"), float("-inf")}:
+    if not math.isfinite(out):
         raise ValueError(f"{key} must be finite")
     return out
 

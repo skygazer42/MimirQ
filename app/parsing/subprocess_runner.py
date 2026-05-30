@@ -35,6 +35,26 @@ class SubprocessCancelledError(RuntimeError):
 SubprocessCancelled = SubprocessCancelledError
 
 
+def _start_subprocess_worker_fallback(
+    *,
+    payload_path: Path,
+    result_path: Path,
+    log_file: Any,
+) -> subprocess.Popen[bytes]:
+    return subprocess.Popen(  # noqa: S603
+        [
+            sys.executable,
+            "-m",
+            "app.parsing.subprocess_worker",
+            str(payload_path),
+            str(result_path),
+        ],
+        stdout=log_file,
+        stderr=log_file,
+        start_new_session=True,
+    )
+
+
 def _get_subprocess_workdir(*, _tenant_id: UUID) -> Path:
     root = Path(getattr(settings, "UPLOAD_DIR", "uploads"))
     return (root / str(_tenant_id) / ".subprocess").resolve(strict=False)
@@ -173,17 +193,10 @@ async def run_subprocess_worker(
                 "asyncio subprocess API not available on this event loop (%s); falling back to subprocess.Popen",
                 asyncio.get_running_loop().__class__.__name__,
             )
-            process = subprocess.Popen(  # noqa: S603
-                [
-                    sys.executable,
-                    "-m",
-                    "app.parsing.subprocess_worker",
-                    str(payload_path),
-                    str(result_path),
-                ],
-                stdout=log_file,
-                stderr=log_file,
-                start_new_session=True,
+            process = _start_subprocess_worker_fallback(
+                payload_path=payload_path,
+                result_path=result_path,
+                log_file=log_file,
             )
 
         start = time.monotonic()

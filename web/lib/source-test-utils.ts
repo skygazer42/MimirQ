@@ -36,7 +36,7 @@ export function readMessageCatalogSource(webRoot: string): string {
   const parts = [fs.readFileSync(rootPath, 'utf8')]
 
   if (fs.existsSync(moduleDir)) {
-    for (const fileName of fs.readdirSync(moduleDir).sort()) {
+    for (const fileName of fs.readdirSync(moduleDir).sort((a, b) => a.localeCompare(b))) {
       if (fileName.endsWith('.ts')) {
         parts.push(fs.readFileSync(path.join(moduleDir, fileName), 'utf8'))
       }

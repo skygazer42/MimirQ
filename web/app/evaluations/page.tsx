@@ -1314,8 +1314,8 @@ function EvaluationsPageContent() {
                     </div>
                   ) : (
                     <div className="mt-3">
-                      <EvaluationHeroEmptyState
-                        title={selectedRunId ? '暂无运行记录' : '暂无运行记录'}
+	                      <EvaluationHeroEmptyState
+	                        title={selectedRunId ? '暂无运行记录' : '暂无评测结果'}
                         description={
                           selectedRunId
                             ? '这条 run 可能仍在处理中，或者后端尚未返回 summary 分数。'

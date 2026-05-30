@@ -284,7 +284,7 @@ export function buildGraphViewportLod(args: {
     return {
       tier,
       visibleNodeIds: new Set(args.nodes.map(coerceNodeId).filter(Boolean)),
-      visibleLinkIds: new Set(args.links.map(coerceLinkId)),
+      visibleLinkIds: new Set(args.links.map((link, index) => coerceLinkId(link, index))),
       hiddenNodeCount: 0,
       hiddenLinkCount: 0,
     }

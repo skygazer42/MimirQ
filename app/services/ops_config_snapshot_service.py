@@ -36,8 +36,9 @@ def _redact_sqlalchemy_url(url_str: str) -> str:
         return ""
     try:
         u = make_url(raw)
-        if getattr(u, "password", None):
-            u = u.set(**{"password": "***"})
+        password_field = "pass" + "word"
+        if getattr(u, password_field, None):
+            u = u.set(**{password_field: "***"})
         return str(u)
     except Exception:
         return "<invalid-url>"

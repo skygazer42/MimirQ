@@ -7,7 +7,7 @@ from typing import Any
 
 from PIL import Image as PILImage
 
-_FORMULA_TEXT_RE = re.compile(r"(\\[a-zA-Z]+|[=∑√∞≈≤≥]|\\frac|\\sum|\\int|\$[^$]+\$)")
+_FORMULA_TEXT_RE = re.compile(r"(\\[a-zA-Z]+|[=∑√∞≈≤≥]|\$[^$]+\$)")
 _CHART_TEXT_RE = re.compile(
     r"\b(chart|plot|graph|trend|bar|line|pie)\b|图表|趋势图|柱状图|折线图|饼图|曲线图",
     re.IGNORECASE,

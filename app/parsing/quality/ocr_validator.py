@@ -99,6 +99,7 @@ class RapidOCRService:
         if self._ocr is None:
             return ""
 
+        text = ""
         try:
             # Save to temp file (RapidOCR requires a file path).
             with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
@@ -108,8 +109,7 @@ class RapidOCRService:
             try:
                 result, _ = self._ocr(str(tmp_path))
                 if result:
-                    return "\n".join([line[1] for line in result])
-                return ""
+                    text = "\n".join([line[1] for line in result])
             finally:
                 # Clean up temp file.
                 if tmp_path.exists():
@@ -117,7 +117,7 @@ class RapidOCRService:
 
         except Exception as e:
             logger.warning("RapidOCR image OCR failed: %s", e)
-            return ""
+        return text
 
 
 # Global instance (lazy init).

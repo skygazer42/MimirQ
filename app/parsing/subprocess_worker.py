@@ -87,7 +87,7 @@ def _materialize_images_for_ingest(
     upload them to MinIO without pickling PIL.Image across processes.
     """
     if not documents:
-        return documents
+        return []
 
     needs_persist = False
     for doc in documents:
@@ -162,7 +162,7 @@ def _materialize_images_for_ingest(
             except Exception as exc:
                 logger.debug("Ignoring non-critical subprocess worker image close failure: %s", exc)
 
-    return documents
+    return list(documents)
 
 
 def _serialize_documents(documents: list[Document]) -> list[dict[str, Any]]:
