@@ -127,7 +127,7 @@ export function applyThemeColor(color: string, root?: HTMLElement | null) {
 }
 
 export function notifyThemeAppearanceChanged(
-  eventTarget: ThemeEventTarget | null = globalThis.window !== undefined ? globalThis.window : null
+  eventTarget: ThemeEventTarget | null = globalThis.window ?? null
 ) {
   const target = eventTarget
   if (!target) return
@@ -140,7 +140,7 @@ export function notifyThemeAppearanceChanged(
 }
 
 export function applyStoredThemeAppearance(
-  storage: StorageReader | null = globalThis.window !== undefined ? globalThis.window.localStorage : null,
+  storage: StorageReader | null = globalThis.window?.localStorage ?? null,
   root?: HTMLElement | null,
   eventTarget?: ThemeEventTarget | null,
   options: ApplyThemeAppearanceOptions = {}

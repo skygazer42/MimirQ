@@ -553,7 +553,6 @@ export function CommandMenu() {
 
           if (id === "governance") {
             router.push("/data-governance")
-            return
           }
         },
       })),
