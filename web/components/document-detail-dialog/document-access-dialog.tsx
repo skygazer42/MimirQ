@@ -47,7 +47,7 @@ function DocumentAccessDialogForm({
   accessMembersText,
   onAccessMembersTextChange,
   onOpenChange,
-}: Omit<DocumentAccessDialogProps, 'open' | 'action'>) {
+}: Readonly<Omit<DocumentAccessDialogProps, 'open' | 'action'>>) {
   const t = useTranslations('DocumentAccessDialog')
   const { pending } = useFormStatus()
 

@@ -232,12 +232,12 @@ function HUDTile({
   label,
   value,
   tone = 'slate',
-}: {
+}: Readonly<{
   icon: LucideIcon
   label: string
   value: string | number
   tone?: keyof typeof HUD_TONE_CLASSES
-}) {
+}>) {
   const toneClasses = HUD_TONE_CLASSES[tone] || HUD_TONE_CLASSES.slate
 
   return (
@@ -266,11 +266,11 @@ function PresetButton({
   label,
   active,
   onClick,
-}: {
+}: Readonly<{
   label: string
   active?: boolean
   onClick: () => void
-}) {
+}>) {
   return (
     <Button
       variant="outline"
@@ -297,7 +297,7 @@ function BoundFilterSelect({
   loading,
   formatOption,
   onChange,
-}: {
+}: Readonly<{
   id: string
   label: string
   value: string
@@ -306,7 +306,7 @@ function BoundFilterSelect({
   loading?: boolean
   formatOption?: (value: string) => string
   onChange: (value: string) => void
-}) {
+}>) {
   const emptyValue = `${FILTER_EMPTY_VALUE_PREFIX}-${id}`
   const currentLabel = value
     ? compactOption(formatOption ? formatOption(value) : value, 28)
@@ -1029,7 +1029,7 @@ function AuditRow({
   onToggle,
   onCopy,
   onDelete,
-}: {
+}: Readonly<{
   log: AuditLogItem
   expanded: boolean
   selected: boolean
@@ -1039,7 +1039,7 @@ function AuditRow({
   onToggle: () => void
   onCopy: (s: string) => void
   onDelete: () => void | Promise<void>
-}) {
+}>) {
   const resource = [log.resource_type, log.resource_id]
     .filter(Boolean)
     .join(': ')

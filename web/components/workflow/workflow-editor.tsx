@@ -224,7 +224,7 @@ export function WorkflowEditor({
   workflowLayout = null,
   onWorkflowLayoutChange,
   onNodeSelect,
-}: WorkflowEditorProps) {
+}: Readonly<WorkflowEditorProps>) {
   const nodeIds = useMemo(() => new Set(graph.nodes.map((node) => node.id)), [graph.nodes])
   const nodes = useMemo(() => buildEditorNodes(graph, workflowLayout), [graph, workflowLayout])
   const edges = useMemo(() => buildEditorEdges(graph, workflowLayout, nodeIds), [graph, nodeIds, workflowLayout])
