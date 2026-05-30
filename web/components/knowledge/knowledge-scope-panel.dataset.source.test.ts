@@ -23,7 +23,7 @@ describe('KnowledgeScopePanel dataset scope selector', () => {
       'const [datasetListExpanded, setDatasetListExpanded] = useState(false)'
     )
     expectSourceToContain(src, 'aria-expanded={datasetListExpanded}')
-    expectSourceToContain(src, 'role="group"')
+    expectSourceToContain(src, '<section')
     expectSourceToContain(src, 'aria-pressed={isActive}')
   })
 })

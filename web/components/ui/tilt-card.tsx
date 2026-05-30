@@ -12,9 +12,10 @@ interface TiltCardProps {
   onMouseLeave?: () => void
   onFocus?: React.FocusEventHandler<HTMLDivElement>
   onBlur?: React.FocusEventHandler<HTMLDivElement>
+  selected?: boolean
 }
 
-export function TiltCard({ children, className, onClick, onMouseEnter, onMouseLeave, onFocus, onBlur }: Readonly<TiltCardProps>) {
+export function TiltCard({ children, className, onClick, onMouseEnter, onMouseLeave, onFocus, onBlur, selected = false }: Readonly<TiltCardProps>) {
   const ref = useRef<HTMLDivElement>(null)
   const shouldReduceMotion = useReducedMotion()
   const [isFinePointer, setIsFinePointer] = useState(false)
@@ -103,7 +104,8 @@ export function TiltCard({ children, className, onClick, onMouseEnter, onMouseLe
       <div
         ref={ref}
         onClick={onClick}
-        role="button"
+        role="option"
+        aria-selected={selected}
         tabIndex={0}
         onKeyDown={handleKeyDown}
         onPointerEnter={() => onMouseEnter?.()}
@@ -121,7 +123,8 @@ export function TiltCard({ children, className, onClick, onMouseEnter, onMouseLe
     <div
       ref={ref}
       onClick={onClick}
-      role="button"
+      role="option"
+      aria-selected={selected}
       tabIndex={0}
       onKeyDown={handleKeyDown}
       onPointerMove={handlePointerMove}

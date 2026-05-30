@@ -393,8 +393,7 @@ export function TopBar() {
   }
 
   return (
-    <div
-      role="group"
+    <section
       aria-label={workbenchTitle}
       className="relative flex min-w-0 flex-col gap-2.5 rounded-2xl border border-border/55 bg-card/90 px-3 py-2.5 shadow-[0_10px_28px_rgba(15,23,42,0.045)] xl:flex-row xl:items-center xl:justify-between"
     >
@@ -1038,6 +1037,6 @@ export function TopBar() {
         initialDatasetId={datasetId || undefined}
         initialDocumentIds={createdDocumentId ? [createdDocumentId] : undefined}
       />
-    </div>
+    </section>
   )
 }

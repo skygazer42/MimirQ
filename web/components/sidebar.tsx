@@ -268,6 +268,7 @@ function DocumentCard({
 	      onMouseEnter={() => setIsHovered(true)}
 	      onMouseLeave={() => setIsHovered(false)}
         onFocus={() => setIsFocusWithin(true)}
+        selected={isSelected}
         onBlur={(e) => {
           const next = e.relatedTarget as Node | null
           if (!next || !e.currentTarget.contains(next)) setIsFocusWithin(false)

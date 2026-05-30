@@ -1510,9 +1510,8 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
   }
 
   return (
-    <div
+    <section
       className={cn('grid grid-cols-1 gap-4 md:grid-cols-[260px,1fr]', className)}
-      role="button"
       aria-label="RAG trace keyboard navigation"
       tabIndex={0}
       onKeyDownCapture={handleTracePanelKeyDown}
@@ -1896,8 +1895,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                 ) : null}
               </div>
               <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.2fr)_minmax(18rem,0.8fr)]">
-                <div
-                  role="button"
+                <section
                   aria-label="Pipeline timeline keyboard navigation"
                   tabIndex={0}
                   onKeyDown={handlePipelineTimelineKeyDown}
@@ -1909,7 +1907,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                     onSelectStep={(key) => setSelectedPipelineSectionId(normalizePipelineSectionId(key))}
                     emptyLabel={t("panel.timeline.unavailable")}
                   />
-                </div>
+                </section>
                 <div className="border-t border-border/60 bg-muted/10 lg:border-l lg:border-t-0">
                   <AnimatePresence mode="wait" initial={false}>
                     {selectedPipelineSection ? (
@@ -2472,6 +2470,6 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
           </>
         ) : null}
       </div>
-    </div>
+    </section>
   )
 }

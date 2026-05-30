@@ -282,7 +282,7 @@ export function ChatArea({
   }, [])
 
   const beginRagSettingsDrag = useCallback(
-    (event: PointerEvent<HTMLDivElement>) => {
+    (event: PointerEvent<HTMLButtonElement>) => {
       if (event.button !== 0 && event.pointerType !== 'touch') return
 
       const baseRect = getRagSettingsBaseRect()
@@ -303,7 +303,7 @@ export function ChatArea({
   )
 
   const moveRagSettingsDrag = useCallback(
-    (event: PointerEvent<HTMLDivElement>) => {
+    (event: PointerEvent<HTMLButtonElement>) => {
       const drag = ragSettingsDragRef.current
       if (drag?.pointerId !== event.pointerId) return
 
@@ -317,7 +317,7 @@ export function ChatArea({
     [clampRagSettingsOffset]
   )
 
-  const endRagSettingsDrag = useCallback((event: PointerEvent<HTMLDivElement>) => {
+  const endRagSettingsDrag = useCallback((event: PointerEvent<HTMLButtonElement>) => {
     const drag = ragSettingsDragRef.current
     if (drag?.pointerId !== event.pointerId) return
     ragSettingsDragRef.current = null
@@ -325,7 +325,7 @@ export function ChatArea({
   }, [])
 
   const handleRagSettingsDragKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLDivElement>) => {
+    (event: KeyboardEvent<HTMLButtonElement>) => {
       const arrowDelta: Record<string, RagSettingsOffset> = {
         ArrowUp: { x: 0, y: -RAG_SETTINGS_KEYBOARD_MOVE_STEP },
         ArrowDown: { x: 0, y: RAG_SETTINGS_KEYBOARD_MOVE_STEP },
@@ -1035,13 +1035,12 @@ export function ChatArea({
                     }}
                   >
                   <div className="space-y-4">
-                    <div
-                      role="button"
-                      tabIndex={0}
+                    <button
+                      type="button"
                       aria-label={t('dragRagSettingsPanel')}
                       title={t('dragRagSettingsPanelHint')}
                       className={cn(
-                        '-mx-2 -mt-2 flex touch-none select-none items-start justify-between gap-3 rounded-md px-2 py-2 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/70',
+                        '-mx-2 -mt-2 flex w-[calc(100%+1rem)] touch-none select-none items-start justify-between gap-3 rounded-md border-0 bg-transparent px-2 py-2 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/70',
                         isRagSettingsDragging
                           ? 'cursor-grabbing bg-secondary/70'
                           : 'cursor-grab hover:bg-secondary/55'
@@ -1063,7 +1062,7 @@ export function ChatArea({
                       <span className="shrink-0 rounded-full border border-border/70 bg-background/70 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
                         {t('dragToMove')}
                       </span>
-                    </div>
+                    </button>
 
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1.5">

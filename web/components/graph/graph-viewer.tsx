@@ -267,12 +267,11 @@ type GraphRenderBoundaryState = Readonly<{
 
 function GraphRenderFallback() {
   return (
-    <div
-      role="status"
+    <output
       className="absolute inset-0 flex items-center justify-center px-6 text-center text-sm text-muted-foreground"
     >
       图谱渲染失败，请尝试刷新当前视图。
-    </div>
+    </output>
   )
 }
 

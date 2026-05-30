@@ -283,9 +283,9 @@ export function DocumentDetailActivityPanel({
           </Alert>
         ) : null}
 
-        <div
-          role="list"
+        <ul
           aria-label={t('chunks.listAriaLabel')}
+          className="m-0 list-none p-0"
           style={{ height: `${chunkRowVirtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}
         >
           {chunkRowVirtualizer.getVirtualItems().map((virtualRow) => {
@@ -293,11 +293,10 @@ export function DocumentDetailActivityPanel({
             if (!chunk) return null
 
             return (
-              <div
+              <li
                 key={virtualRow.key}
                 data-index={virtualRow.index}
                 ref={chunkRowVirtualizer.measureElement}
-                role="listitem"
                 style={{
                   position: 'absolute',
                   top: 0,
@@ -406,10 +405,10 @@ export function DocumentDetailActivityPanel({
                     </div>
                   )}
                 </div>
-              </div>
+              </li>
             )
           })}
-        </div>
+        </ul>
 
         {canLoadMoreChunks ? (
           <div className="flex justify-center pt-2">
@@ -472,9 +471,9 @@ export function DocumentDetailActivityPanel({
           </Alert>
         ) : null}
 
-        <div
-          role="list"
+        <ul
           aria-label={t('timeline.listAriaLabel')}
+          className="m-0 list-none p-0"
           style={{ height: `${timelineRowVirtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}
         >
           {timelineRowVirtualizer.getVirtualItems().map((virtualRow) => {
@@ -485,11 +484,10 @@ export function DocumentDetailActivityPanel({
             const hasDetails = detailPairs.length > 0
 
             return (
-              <div
+              <li
                 key={virtualRow.key}
                 data-index={virtualRow.index}
                 ref={timelineRowVirtualizer.measureElement}
-                role="listitem"
                 style={{
                   position: 'absolute',
                   top: 0,
@@ -573,10 +571,10 @@ export function DocumentDetailActivityPanel({
                     </div>
                   ) : null}
                 </div>
-              </div>
+              </li>
             )
           })}
-        </div>
+        </ul>
       </div>
     )
   }

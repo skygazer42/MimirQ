@@ -219,8 +219,7 @@ export function KnowledgeScopePanel({
           </button>
 
           {datasetListExpanded ? (
-            <div
-              role="group"
+            <section
               aria-label={t('dataset.ariaLabel')}
               className={cn(
                 'space-y-1 rounded-[12px] border border-border/60 bg-card/78 p-1 dark:border-border/70 dark:bg-background/62'
@@ -264,7 +263,7 @@ export function KnowledgeScopePanel({
                   })}
                 </div>
               )}
-            </div>
+            </section>
           ) : null}
         </div>
       </div>

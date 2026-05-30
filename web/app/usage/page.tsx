@@ -337,9 +337,9 @@ function UsagePageContent() {
             className={USAGE_PANEL_CLASS}
           >
             {loadErrorMessage && (
-              <span className="sr-only" role="status">
+              <output className="sr-only">
                 {loadErrorMessage}
-              </span>
+              </output>
             )}
             <div className="flex flex-col gap-4 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex min-w-[220px] items-center gap-3">

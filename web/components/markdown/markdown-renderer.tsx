@@ -70,15 +70,14 @@ type MarkdownRenderBoundaryState = Readonly<{
 
 function MarkdownRenderFallback({ className }: Readonly<{ className?: string }>) {
   return (
-    <div
-      role="status"
+    <output
       className={cn(
         'rounded-lg border border-amber-500/30 bg-amber-500/8 px-4 py-3 text-sm text-amber-900 dark:text-amber-100',
         className
       )}
     >
       Markdown 内容渲染失败，请尝试刷新或查看原始文本。
-    </div>
+    </output>
   )
 }
 
