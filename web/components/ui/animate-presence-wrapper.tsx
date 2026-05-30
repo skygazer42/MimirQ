@@ -48,7 +48,7 @@ export function AnimatedPresence({
   mode = "wait",
   className,
   ...rest
-}: AnimatedPresenceProps) {
+}: Readonly<AnimatedPresenceProps>) {
   const shouldReduceMotion = useReducedMotion()
   const config = presets[preset]
 

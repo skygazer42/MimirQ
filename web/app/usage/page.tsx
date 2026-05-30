@@ -117,13 +117,13 @@ function StylizedMetricCard({
   value,
   detail,
   tone = 'blue',
-}: {
+}: Readonly<{
   icon: LucideIcon
   label: string
   value: string | number
   detail?: string
   tone?: string
-}) {
+}>) {
   const accentMap = {
     blue: 'bg-primary',
     green: 'bg-success',
@@ -173,11 +173,11 @@ function OverviewStat({
   label,
   value,
   tone = 'slate',
-}: {
+}: Readonly<{
   label: string
   value: string | number
   tone?: 'blue' | 'green' | 'red' | 'slate'
-}) {
+}>) {
   const toneClass = {
     blue: 'border-primary/20 bg-primary/10 text-primary',
     green: 'border-success/20 bg-success/10 text-success',
@@ -204,10 +204,10 @@ function OverviewStat({
 function OverviewMeta({
   label,
   value,
-}: {
+}: Readonly<{
   label: string
   value: string
-}) {
+}>) {
   return (
     <div className="flex min-w-0 items-center gap-2">
       <span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">

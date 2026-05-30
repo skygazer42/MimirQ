@@ -17,7 +17,7 @@ const VIEW_OPTIONS: Array<{ value: IngestionView; label: string }> = [
   { value: 'execution-monitor', label: '执行监控' },
 ]
 
-export function IngestionViewSwitch({ className, compact = false }: IngestionViewSwitchProps) {
+export function IngestionViewSwitch({ className, compact = false }: Readonly<IngestionViewSwitchProps>) {
   const searchParams = useSearchParams()
   const pathname = usePathname()
   const router = useRouter()

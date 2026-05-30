@@ -92,7 +92,7 @@ function QuotaCard({
   primary,
   secondary,
   progress = 0,
-}: QuotaCardProps) {
+}: Readonly<QuotaCardProps>) {
   const tone = exceeded
     ? QUOTA_EXCEEDED_TONE
     : enabled

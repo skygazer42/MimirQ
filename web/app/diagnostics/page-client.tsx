@@ -299,13 +299,13 @@ function TopHUDTile({
   value,
   detail,
   tone = 'slate',
-}: {
+}: Readonly<{
   icon: LucideIcon
   label: string
   value: string
   detail: string
   tone?: keyof typeof TOP_HUD_TONE_CLASSES
-}) {
+}>) {
   const toneClasses = TOP_HUD_TONE_CLASSES[tone] || TOP_HUD_TONE_CLASSES.slate
 
   return (
@@ -347,7 +347,7 @@ function DimensionMatrixItem({
   source,
   tone = 'blue',
   onToggle,
-}: {
+}: Readonly<{
   icon: LucideIcon
   title: string
   subtitle: string
@@ -356,7 +356,7 @@ function DimensionMatrixItem({
   source: string
   tone?: MetricTone
   onToggle: () => void
-}) {
+}>) {
   const colorMap: Record<MetricTone, string> = {
     blue: 'bg-blue-50 text-blue-600 border-blue-100',
     green: 'bg-emerald-50 text-emerald-600 border-emerald-100',
@@ -433,14 +433,14 @@ function MainMetricCard({
   help,
   loading = false,
   tone = 'slate',
-}: {
+}: Readonly<{
   icon: LucideIcon
   label: string
   value: string
   help?: ReactNode
   loading?: boolean
   tone?: string
-}) {
+}>) {
   const isWait = isPendingMetricLabel(value)
   const toneClass =
     {
@@ -490,11 +490,11 @@ function MetricInfoTooltip({
   label,
   children,
   side = 'top',
-}: {
+}: Readonly<{
   label: string
   children: ReactNode
   side?: 'top' | 'right' | 'bottom' | 'left'
-}) {
+}>) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -549,12 +549,12 @@ function DiagnosticUseStep({
   title,
   action,
   text,
-}: {
+}: Readonly<{
   icon: LucideIcon
   title: string
   action: string
   text: string
-}) {
+}>) {
   return (
     <div className="flex gap-3 rounded-xl border border-border/80 bg-card/75 px-3 py-2.5">
       <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-primary/15 bg-primary/10 text-primary">
@@ -1626,7 +1626,7 @@ export default function DiagnosticsPage() {
   )
 }
 
-function ConclusionItem({ label, status }: { label: string; status: string }) {
+function ConclusionItem({ label, status }: Readonly<{ label: string; status: string }>) {
   return (
     <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 bg-card px-2.5 py-2">
       <div className="flex items-center gap-3">
@@ -1642,7 +1642,7 @@ function ConclusionItem({ label, status }: { label: string; status: string }) {
   )
 }
 
-function ResourceItem({ label, status }: { label: string; status: string }) {
+function ResourceItem({ label, status }: Readonly<{ label: string; status: string }>) {
   const normalized = String(status || 'unknown').toLowerCase()
   const isOk = ['connected', 'ok', 'ready'].includes(normalized)
   const isChecking = ['checking', 'pending'].includes(normalized)
@@ -1671,12 +1671,12 @@ function DiagnosticsSummaryItem({
   detail,
   value,
   tone = 'slate',
-}: {
+}: Readonly<{
   label: string
   detail: string
   value: string
   tone?: 'slate' | 'green' | 'blue' | 'red' | 'amber'
-}) {
+}>) {
   const toneClass =
     {
       slate: 'border-slate-100 bg-slate-50 text-slate-600',
@@ -1709,10 +1709,10 @@ function DiagnosticsSummaryItem({
 function RawDiagnosticsDetails({
   json,
   onCopy,
-}: {
+}: Readonly<{
   json: string
   onCopy: () => void
-}) {
+}>) {
   return (
     <details className="group mt-3 rounded-xl border border-slate-200/70 bg-card">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-[12px] font-semibold text-slate-700 transition-colors hover:bg-blue-50/50 [&::-webkit-details-marker]:hidden">
