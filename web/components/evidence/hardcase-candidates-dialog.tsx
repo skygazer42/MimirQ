@@ -167,7 +167,8 @@ export function HardcaseCandidatesDialog({
                     const templateKey = template ? String(template.template_key || '').trim() : ''
                     const templateVersion = template && Number.isFinite(Number(template.version)) ? Number(template.version) : null
                     const templatePatch = template ? String(template.patch_hash || '').trim() : ''
-                    const templateLabel = templateKey ? `${templateKey}${templateVersion === null ? '' : `@${templateVersion}`}` : ''
+                    const templateVersionLabel = templateVersion === null ? '' : `@${templateVersion}`
+                    const templateLabel = templateKey ? `${templateKey}${templateVersionLabel}` : ''
 
                     const errBadgeNodes: ReactNode[] = []
                     for (const [key, value] of errBadges) {

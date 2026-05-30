@@ -415,7 +415,8 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
 
     const qs = params.toString()
     const path = '/chunk-preview'
-    router.replace(`${path}${qs ? `?${qs}` : ''}`)
+    const query = qs ? `?${qs}` : ''
+    router.replace(`${path}${query}`)
   }, [router, searchParams, selectedChunkIndex])
 
   useEffect(() => {
@@ -1579,7 +1580,9 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     const params = new URLSearchParams(searchParams.toString())
     if (nextDatasetId) params.set('dataset_id', nextDatasetId)
     else params.delete('dataset_id')
-    router.replace(`/chunk-preview${params.toString() ? `?${params.toString()}` : ''}`)
+    const qs = params.toString()
+    const query = qs ? `?${qs}` : ''
+    router.replace(`/chunk-preview${query}`)
   }, [router, searchParams])
 
   // 组装 Context Value

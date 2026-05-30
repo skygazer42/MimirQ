@@ -2673,8 +2673,9 @@ export default function KnowledgeIngestionPageClient() {
         : ok
           ? '任务完成'
           : '任务失败或被跳过'
+      const elapsedLabel = elapsed ? `${elapsed.toFixed(2)}s` : reason
       return {
-        detail: `${jobName} · ${elapsed ? `${elapsed.toFixed(2)}s` : reason}`,
+        detail: `${jobName} · ${elapsedLabel}`,
         id: `${jobName}-${index}`,
         stage: ok ? '队列完成' : '队列异常',
         time: formatClockSecondsLabel(finishedAt),

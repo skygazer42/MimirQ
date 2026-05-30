@@ -56,8 +56,9 @@ export function PreviewTabPanel({
   if (canInlinePreview && fileUrl) {
     const hasAnchorContext = Boolean(previewAnchor || highlightChunkId || highlightRange)
     const title = previewAnchor?.pageNumber ? "PDF 已跳转到引用页" : "已保留引用定位"
+    const searchText = previewAnchor?.searchText ? `，并尝试搜索“${previewAnchor.searchText}”` : ""
     const description = previewAnchor?.pageNumber
-      ? `当前定位到 P.${previewAnchor.pageNumber}${previewAnchor.searchText ? `，并尝试搜索“${previewAnchor.searchText}”` : ""}。`
+      ? `当前定位到 P.${previewAnchor.pageNumber}${searchText}。`
       : "当前引用定位已保留，可切回文本定位查看高亮，或切到智能切片查看命中块。"
 
     return (

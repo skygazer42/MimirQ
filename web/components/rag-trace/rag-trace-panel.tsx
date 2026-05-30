@@ -1259,8 +1259,9 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
         previewAnchor: getDocumentPreviewAnchorFromCitation(citation),
       })
       if (opts?.notify) {
+        const chunkSuffix = chunkId ? ` · ${chunkId}` : ''
         toast.message(t("panel.toasts.openedCitationDocument"), {
-          description: `${label}${chunkId ? ` · ${chunkId}` : ''}`,
+          description: `${label}${chunkSuffix}`,
         })
       }
     },

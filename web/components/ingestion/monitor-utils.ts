@@ -657,7 +657,8 @@ export function buildEvidenceSlotReason(file: DatasetPrecheckFileOut): string {
   const findings = new Set((file.findings || []).map((value) => String(value || '').trim().toLowerCase()))
 
   if (findings.has('parse_failed')) {
-    return `解析失败，需人工检查${file.error_message ? `：${file.error_message}` : ''}`
+    const message = file.error_message ? `：${file.error_message}` : ''
+    return `解析失败，需人工检查${message}`
   }
 
   if (file.file_type.toLowerCase() === 'pdf' && file.pdf_pages?.page_count) {

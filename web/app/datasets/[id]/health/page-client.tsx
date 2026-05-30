@@ -198,7 +198,7 @@ export default function DatasetHealthPage() {
   return (
     <AppFrame>
       <PageScaffold
-        title={`健康概览${dataset?.name ? ` · ${dataset.name}` : ''}`}
+        title={`健康概览${dataset?.name ? ' · ' + dataset.name : ''}`}
         badge="Dataset Health"
         icon={Activity}
         iconColor="text-rose"
