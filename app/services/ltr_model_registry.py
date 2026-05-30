@@ -29,6 +29,7 @@ _MANIFEST_SCHEMA_V1 = "mimirq.ltr_model_manifest.v1"
 
 # Re-entrant because rollback calls activate_model() which also needs the registry lock.
 _LOCK = threading.RLock()
+_SHA256_HEX_LEN = 64
 
 
 def _now_utc_iso() -> str:
@@ -40,15 +41,36 @@ def _sha256(data: bytes) -> str:
 
 
 def _atomic_write_text(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    tmp.write_text(text, encoding="utf-8")
-    tmp.replace(path)
+    safe_path = _safe_registry_path(path)
+    safe_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = safe_path.with_name(f".{safe_path.name}.{os.getpid()}.tmp")
+    # Path is constrained to the LTR registry root before the atomic write.
+    tmp.write_text(text, encoding="utf-8")  # NOSONAR
+    tmp.replace(safe_path)
+
+
+def _atomic_write_bytes(path: Path, data: bytes) -> None:
+    safe_path = _safe_registry_path(path)
+    safe_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = safe_path.with_name(f".{safe_path.name}.{os.getpid()}.tmp")
+    # Path is constrained to the LTR registry root before the atomic write.
+    tmp.write_bytes(data)  # NOSONAR
+    tmp.replace(safe_path)
 
 
 def _registry_root() -> Path:
     root = Path(getattr(settings, "UPLOAD_DIR", "./uploads") or "./uploads")
     return (root / ".ltr_registry").resolve(strict=False)
+
+
+def _safe_registry_path(path: Path) -> Path:
+    root = _registry_root()
+    resolved = Path(path).resolve(strict=False)
+    try:
+        resolved.relative_to(root)
+    except ValueError as exc:
+        raise ValueError("registry path outside LTR registry") from exc
+    return resolved
 
 
 def _models_root() -> Path:
@@ -60,7 +82,9 @@ def _active_path() -> Path:
 
 
 def _model_dir(model_id: str) -> Path:
-    safe = "".join([c for c in str(model_id or "").strip().lower() if c.isalnum()])
+    safe = str(model_id or "").strip().lower()
+    if len(safe) != _SHA256_HEX_LEN or any(c not in "0123456789abcdef" for c in safe):
+        raise ValueError("model_id must be a sha256 hex digest")
     return _models_root() / safe
 
 
@@ -331,7 +355,7 @@ def register_model(
         out_dir.mkdir(parents=True, exist_ok=True)
 
         mp = _model_path(model_id)
-        mp.write_bytes(bytes(model_bytes))
+        _atomic_write_bytes(mp, bytes(model_bytes))
 
         man_p = _manifest_path(model_id)
         _write_json(man_p, manifest_clean)

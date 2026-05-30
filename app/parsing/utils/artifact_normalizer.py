@@ -204,7 +204,8 @@ def normalize_extracted_artifacts(
         md_text = re.sub(html_img_pattern, _replace_html, md_text)
 
     out_md = _safe_direct_child(root, output_markdown_name, field="output_markdown_name")
-    out_md.write_text(md_text.strip() + "\n", encoding="utf-8")
+    # Output filename is validated as a direct child of the extraction root.
+    out_md.write_text(md_text.strip() + "\n", encoding="utf-8")  # NOSONAR
 
     return {
         "markdown_file": out_md,

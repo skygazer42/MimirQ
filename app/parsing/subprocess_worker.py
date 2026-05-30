@@ -73,7 +73,8 @@ def _write_result(
         payload["data"] = data or {}
     else:
         payload["error"] = error or {}
-    _safe_worker_io_path(path).write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    # Path is constrained to settings.UPLOAD_DIR by _safe_worker_io_path().
+    _safe_worker_io_path(path).write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")  # NOSONAR
 
 
 def _materialize_images_for_ingest(
@@ -298,8 +299,8 @@ def main() -> int:
     if len(sys.argv) != 3:
         raise SystemExit("Usage: python -m app.parsing.subprocess_worker <payload_path> <result_path>")
 
-    payload_path = Path(sys.argv[1])
-    result_path = Path(sys.argv[2])
+    payload_path = _safe_worker_io_path(Path(sys.argv[1]))
+    result_path = _safe_worker_io_path(Path(sys.argv[2]))
 
     try:
         payload = json.loads(payload_path.read_text(encoding="utf-8"))
