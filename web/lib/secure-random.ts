@@ -8,7 +8,7 @@ function fillRandomBytes(bytes: Uint8Array): Uint8Array {
   fallbackCounter = (fallbackCounter + 1) >>> 0
   const seed = `${Date.now()}:${fallbackCounter}:${globalThis.performance?.now?.() ?? 0}`
   for (let index = 0; index < bytes.length; index += 1) {
-    const code = seed.charCodeAt(index % seed.length) || 0
+    const code = seed.codePointAt(index % seed.length) || 0
     bytes[index] = (code + index * 31 + fallbackCounter) & 0xff
   }
   return bytes

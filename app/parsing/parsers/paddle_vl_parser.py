@@ -22,7 +22,7 @@ import requests
 from langchain_core.documents import Document
 
 from app.core.config import settings
-from app.parsing.utils.artifact_normalizer import normalize_extracted_artifacts
+from app.parsing.utils.artifact_normalizer import normalize_extracted_artifacts, rewrite_html_image_refs
 from app.parsing.utils.zip_processor import ZipImageProcessor
 from app.rag.core.logging import get_logger
 
@@ -283,20 +283,15 @@ class PaddleVLParser:
                         return f"![{alt_text}]({self.STANDARD_IMAGE_DIR}/{new_name})"
                     return match.group(0)
 
-                html_img_pattern = r'<img\s+([^>]*\s+)?src="([^"]+)"([^>]*)>'
-
-                def replace_html_path(match: re.Match) -> str:
-                    before_src = match.group(1) or ""
-                    img_path = match.group(2)
-                    after_src = match.group(3) or ""
+                def resolve_html_img_src(img_path: str) -> str | None:
                     img_filename = Path(img_path).name
                     new_name = full_image_mapping.get(img_filename)
                     if new_name:
-                        return f'<img {before_src}src="{self.STANDARD_IMAGE_DIR}/{new_name}"{after_src}>'
-                    return match.group(0)
+                        return f"{self.STANDARD_IMAGE_DIR}/{new_name}"
+                    return None
 
                 new_content = re.sub(md_img_pattern, replace_md_path, content)
-                new_content = re.sub(html_img_pattern, replace_html_path, new_content)
+                new_content = rewrite_html_image_refs(new_content, resolve_html_img_src)
                 if new_content != content:
                     main_md.write_text(new_content, encoding="utf-8")
             except Exception as exc:
