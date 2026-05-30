@@ -7,7 +7,7 @@ describe('KnowledgeScopePanel embedded density', () => {
   it('keeps the embedded rail compact while separating scope modules through lighter glass shells and tight gaps', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'knowledge-scope-panel.tsx'), 'utf8')
 
-    expect(src).toContain("const sectionClassName = embedded ? 'space-y-2' : 'space-y-2'")
+    expect(src).toContain("const sectionClassName = 'space-y-2'")
     expect(src).toContain("const sectionShellClassName = embedded")
     expect(src).toContain('border border-border/60 bg-card/72')
     expect(src).toContain("cn('space-y-3', embedded && 'space-y-2.5 p-3')")

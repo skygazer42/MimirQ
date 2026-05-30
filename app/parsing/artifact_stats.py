@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import re
 from collections.abc import Iterable, Mapping
 from typing import Any
@@ -15,7 +16,7 @@ def _coerce_int(value: Any) -> int:
     if isinstance(value, int):
         return int(value)
     if isinstance(value, float):
-        if value != value:  # NaN
+        if math.isnan(value):
             return 0
         return int(value)
     if isinstance(value, str):
@@ -105,4 +106,3 @@ def compute_parsing_artifact_stats(
         "image_count": int(image_count),
         "block_count": int(block_count),
     }
-

@@ -22,17 +22,17 @@ def _run_coroutine_sync(factory: Any) -> Any:
 
 
 async def _call_mathpix_backend_async(*, file_path: Path, app_id: str, app_key: str) -> str:
+    file_bytes = await asyncio.to_thread(file_path.read_bytes)
     async with httpx.AsyncClient() as client:
-        with file_path.open("rb") as fh:
-            resp = await client.post(
-                "https://api.mathpix.com/v3/pdf",
-                headers={
-                    "app_id": str(app_id or "").strip(),
-                    "app_key": str(app_key or "").strip(),
-                },
-                files={"file": (file_path.name, fh, "application/pdf")},
-                timeout=30,
-            )
+        resp = await client.post(
+            "https://api.mathpix.com/v3/pdf",
+            headers={
+                "app_id": str(app_id or "").strip(),
+                "app_key": str(app_key or "").strip(),
+            },
+            files={"file": (file_path.name, file_bytes, "application/pdf")},
+            timeout=30,
+        )
     resp.raise_for_status()
     try:
         data = resp.json()

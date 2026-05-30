@@ -1190,20 +1190,6 @@ async def get_pipeline_capabilities(
                 notes = "Set PADDLE_VL_ENABLED=true."
             elif not api_url:
                 notes = "Configure PADDLE_VL_API_URL (e.g., http://localhost:9030/convert)."
-        elif b == "textin":
-            enabled = bool(getattr(settings, "TEXTIN_ENABLED", False))
-            api_url = bool((getattr(settings, "TEXTIN_API_URL", "") or "").strip())
-            app_id = bool((getattr(settings, "TEXTIN_APP_ID", "") or "").strip())
-            secret_code = bool((getattr(settings, "TEXTIN_SECRET_CODE", "") or "").strip())
-            available = bool(enabled and api_url and app_id and secret_code)
-            if not enabled:
-                notes = "Set TEXTIN_ENABLED=true."
-            elif not api_url:
-                notes = "Configure TEXTIN_API_URL."
-            elif not app_id:
-                notes = "Configure TEXTIN_APP_ID."
-            elif not secret_code:
-                notes = "Configure TEXTIN_SECRET_CODE."
         elif b == "olmocr":
             enabled = bool(getattr(settings, "OLMOCR_ENABLED", False))
             api_url = bool((getattr(settings, "OLMOCR_API_URL", "") or "").strip())

@@ -48,6 +48,7 @@ const EMPTY_CHUNKS: DocumentChunk[] = []
 const ACTIVE_PIPELINE_VALUE = '__active__'
 const CHUNK_PAGE_SIZE = 200
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+type SaveActionState = 'idle' | 'skipped' | 'saved' | 'failed'
 type DocumentPublicationStatus = 'draft' | 'published' | 'deprecated'
 type LifecycleDraftValues = {
   publicationStatus: DocumentPublicationStatus
@@ -399,8 +400,8 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
     return false
   }, [persistedTags, tagsDraft, tagsEditing])
 
-  const [, saveTagsAction, isSavingTags] = useActionState(async (_state: null, formData: FormData) => {
-    if (!tagsEditing) return null
+  const [, saveTagsAction, isSavingTags] = useActionState(async (_state: SaveActionState, formData: FormData): Promise<SaveActionState> => {
+    if (!tagsEditing) return 'skipped'
 
     let parsedTags: unknown = []
     try {
@@ -411,7 +412,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
 
     const nextTags = normalizeTags(parsedTags)
     if (nextTags.length === persistedTags.length && nextTags.every((tag, index) => tag === persistedTags[index])) {
-      return null
+      return 'skipped'
     }
 
     setTagsError(null)
@@ -425,6 +426,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       const updated = await documentApi.patchUserMetadata(initialDocument.id, buildTagsPatch(nextTags))
       queryClient.setQueryData(detailQueryKey, updated)
       toast.success(t("toasts.tagsUpdated"))
+      return 'saved'
     } catch (err) {
       console.error('Update document tags failed:', err)
       const msg = formatApiError(err, t('errors.saveTagsFailed'))
@@ -432,10 +434,9 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       setTagsDraft(nextTags)
       setTagsEditing(true)
       toast.error(msg)
+      return 'failed'
     }
-
-    return null
-  }, null)
+  }, 'idle' as SaveActionState)
 
   const canSaveTags = hasPendingTagChanges && !isSavingTags
 
@@ -549,8 +550,8 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
     [detail, initialDocument, lifecycleDraftValues]
   )
 
-  const [, saveLifecycleAction, isSavingLifecycle] = useActionState(async (_state: null, formData: FormData) => {
-    if (!lifecycleEditing) return null
+  const [, saveLifecycleAction, isSavingLifecycle] = useActionState(async (_state: SaveActionState, formData: FormData): Promise<SaveActionState> => {
+    if (!lifecycleEditing) return 'skipped'
 
     const nextValues: LifecycleDraftValues = {
       publicationStatus: normalizePublicationStatus(formData.get('publication_status')),
@@ -563,12 +564,12 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
     const validationError = getLifecycleValidationError(nextValues, t)
     if (validationError) {
       setLifecycleError(validationError)
-      return null
+      return 'failed'
     }
 
     const currentDoc = detail || initialDocument
     if (!hasLifecycleChanges(currentDoc, nextValues)) {
-      return null
+      return 'skipped'
     }
 
     setLifecycleError(null)
@@ -588,15 +589,15 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
         accessQuery.refetch(),
         lifecyclePermissionQuery.refetch(),
       ])
+      return 'saved'
     } catch (err) {
       console.error('Update document lifecycle metadata failed:', err)
       const msg = formatApiError(err, t('errors.saveLifecycleFailed'))
       setLifecycleError(msg)
       toast.error(msg)
+      return 'failed'
     }
-
-    return null
-  }, null)
+  }, 'idle' as SaveActionState)
 
   const canSaveLifecycle = lifecycleEditing && !isSavingLifecycle && !lifecycleValidationError && lifecycleHasChanges
 
@@ -882,8 +883,8 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
     return out
   }, [])
 
-  const [, saveAccessAction, isSavingAccess] = useActionState(async (_state: null, formData: FormData) => {
-    if (!displayDoc?.id) return null
+  const [, saveAccessAction, isSavingAccess] = useActionState(async (_state: SaveActionState, formData: FormData): Promise<SaveActionState> => {
+    if (!displayDoc?.id) return 'skipped'
 
     const nextAccessMode = normalizeAccessMode(formData.get('access_mode'))
     const nextAccessGroupIds =
@@ -912,13 +913,13 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       )
       toast.success(t('toasts.accessUpdated'))
       setAccessDialogOpen(false)
+      return 'saved'
     } catch (err) {
       console.error('Update document access failed:', err)
       toast.error(formatApiError(err, t('errors.updateAccessFailed')))
+      return 'failed'
     }
-
-    return null
-  }, null)
+  }, 'idle' as SaveActionState)
 
   const handleVersionsDialogOpenChange = useCallback((next: boolean) => {
     setVersionsDialogOpen(next)

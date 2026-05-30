@@ -55,7 +55,7 @@ async def request_rtbf_cascade(
     )
 
 
-@router.get("/status/{ticket_id}", response_model=RTBFStatusResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.get("/status/{ticket_id}", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_rtbf_status(
     ticket_id: str,
     *,

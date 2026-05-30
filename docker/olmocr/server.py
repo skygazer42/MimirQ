@@ -3,12 +3,12 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import os
-import signal
 import shlex
+import signal
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Any, Optional
+from typing import Annotated, Any, Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 
@@ -287,11 +287,18 @@ def health() -> dict[str, Any]:
     return _runtime_status()
 
 
-@app.post("/convert")
+@app.post(
+    "/convert",
+    responses={
+        400: {"description": "Invalid or empty upload"},
+        500: {"description": "OLMoCR conversion failed"},
+        503: {"description": "OLMoCR runtime unavailable"},
+    },
+)
 async def convert(
     request: Request,
-    file: UploadFile = File(...),
-    output_format: str = Form("markdown"),  # kept for parity; ignored (always markdown)
+    file: Annotated[UploadFile, File()],
+    output_format: Annotated[str, Form()] = "markdown",  # kept for parity; ignored (always markdown)
 ) -> dict[str, Any]:
     name = (file.filename or "").lower()
     if not (name.endswith(".pdf") or name.endswith(".png") or name.endswith(".jpg") or name.endswith(".jpeg")):

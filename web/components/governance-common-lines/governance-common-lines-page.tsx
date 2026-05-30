@@ -1146,10 +1146,9 @@ export function GovernanceCommonLinesPage() {
                       <li
                         key={tpl.key}
                         className={cn(
-                          'cursor-pointer px-4 py-3 transition-colors hover:bg-muted/40',
+                          'px-4 py-3 transition-colors hover:bg-muted/40',
                           picked && 'bg-success/[0.06]'
                         )}
-                        onClick={() => toggleTemplateSelection(tpl.key)}
                       >
                         <div className="flex items-start gap-3">
                           <Checkbox

@@ -182,8 +182,8 @@ class LayoutRecognizer4YOLOv10(LayoutRecognizer):
     ]
 
     def __init__(self, domain):
-        domain = "layout"
-        super().__init__(domain)
+        _ = domain
+        super().__init__("layout")
         self.auto = False
         self.scaleFill = False
         self.scaleup = True
@@ -218,11 +218,12 @@ class LayoutRecognizer4YOLOv10(LayoutRecognizer):
         return inputs
 
     def postprocess(self, boxes, inputs, thr):
-        thr = 0.08
+        _ = thr
+        effective_thr = 0.08
         boxes = np.squeeze(boxes)
         scores = boxes[:, 4]
-        boxes = boxes[scores > thr, :]
-        scores = scores[scores > thr]
+        boxes = boxes[scores > effective_thr, :]
+        scores = scores[scores > effective_thr]
         if len(boxes) == 0:
             return []
         class_ids = boxes[:, -1].astype(int)

@@ -6,6 +6,10 @@ from typing import Any
 from app.parsing.factory import ParserFactory
 
 
+def _empty_pdf_text_sample() -> dict[str, Any]:
+    return {"page_count": 0, "samples": [], "is_scanned": False}
+
+
 def sample_pdf_text_pages(
     pdf_path: Path,
     *,
@@ -22,26 +26,24 @@ def sample_pdf_text_pages(
         "is_scanned": bool
       }
     """
-    out: dict[str, Any] = {"page_count": 0, "samples": [], "is_scanned": False}
     try:
         import fitz  # PyMuPDF
     except Exception:
-        return out
+        return _empty_pdf_text_sample()
 
     path = Path(pdf_path)
     if not path.exists() or not path.is_file():
-        return out
+        return _empty_pdf_text_sample()
 
     try:
         doc = fitz.open(str(path))
     except Exception:
-        return out
+        return _empty_pdf_text_sample()
 
     try:
         page_count = int(getattr(doc, "page_count", 0) or 0)
-        out["page_count"] = page_count
         if page_count <= 0:
-            return out
+            return {"page_count": page_count, "samples": [], "is_scanned": False}
 
         # Sample first/middle/last pages (1-based) with de-dup.
         idxs: list[int] = [1]
@@ -63,10 +65,9 @@ def sample_pdf_text_pages(
             excerpt = txt[: max(0, int(max_excerpt_chars or 0))] if txt else ""
             samples.append({"page": page_no, "text_chars": len(txt), "excerpt": excerpt})
 
-        out["samples"] = samples
         # Heuristic: if none of sampled pages has meaningful selectable text, treat as scanned.
-        out["is_scanned"] = bool(samples) and all(int(s.get("text_chars") or 0) < 20 for s in samples)
-        return out
+        is_scanned = bool(samples) and all(int(s.get("text_chars") or 0) < 20 for s in samples)
+        return {"page_count": page_count, "samples": samples, "is_scanned": is_scanned}
     finally:
         try:
             doc.close()

@@ -41,7 +41,7 @@ describe('buildSimilarityDiagnostics', () => {
       diagnostics.nodes
         .filter((node) => node.isOutlier)
         .map((node) => node.id)
-        .sort()
+        .sort((a, b) => a.localeCompare(b))
     ).toEqual(['x:x-2', 'y:y-2'])
   })
 

@@ -128,33 +128,36 @@ def _coerce_milvus_metadata_value(value: Any) -> Any:
 def _normalize_milvus_metadata_batch(metadatas: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Ensure consistent keys and Milvus-compatible values across a batch."""
     if not metadatas:
-        return metadatas
+        return []
 
     schema_meta: dict[str, Any] = {}
     for k, v in (metadatas[0] or {}).items():
         schema_meta[str(k)] = _coerce_milvus_metadata_value(v)
 
     schema_keys = list(schema_meta.keys())
+    normalized: list[dict[str, Any]] = []
     for meta in metadatas:
+        normalized_meta = dict(meta or {})
         # Normalize values for known keys first.
-        for k in list(meta.keys()):
-            meta[k] = _coerce_milvus_metadata_value(meta.get(k))
+        for k in list(normalized_meta.keys()):
+            normalized_meta[k] = _coerce_milvus_metadata_value(normalized_meta.get(k))
 
         # Fill missing schema keys so insert columns remain aligned.
         for k in schema_keys:
-            if k in meta and meta[k] != "":
+            if k in normalized_meta and normalized_meta[k] != "":
                 continue
             exemplar = schema_meta.get(k)
             if isinstance(exemplar, bool):
-                meta[k] = False
+                normalized_meta[k] = False
             elif isinstance(exemplar, int):
-                meta[k] = 0
+                normalized_meta[k] = 0
             elif isinstance(exemplar, float):
-                meta[k] = 0.0
+                normalized_meta[k] = 0.0
             else:
-                meta[k] = ""
+                normalized_meta[k] = ""
+        normalized.append(normalized_meta)
 
-    return metadatas
+    return normalized
 
 
 def _escape_milvus_string(value: str) -> str:

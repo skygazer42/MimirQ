@@ -20,7 +20,7 @@ function normalizeText(value: string | null | undefined): string {
 }
 
 function uniqueSorted(values: string[]): string[] {
-  return Array.from(new Set(values.filter(Boolean))).sort()
+  return Array.from(new Set(values.filter(Boolean))).sort((a, b) => a.localeCompare(b))
 }
 
 function normalizePages(pages: number[] | null | undefined): string {

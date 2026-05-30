@@ -476,7 +476,9 @@ class MinerUParser(IntegratedPipelinePdfParser):
 
         # mirror MinerU's sanitize_filename to align ZIP naming
         def _sanitize_filename(name: str) -> str:
-            sanitized = re.sub(r"[/\\.]{2,}|[/\\]", "", name)
+            sanitized = name.replace("/", "").replace("\\", "")
+            while ".." in sanitized:
+                sanitized = sanitized.replace("..", "")
             sanitized = re.sub(r"[^\w.-]", "_", sanitized, flags=re.UNICODE)
             if sanitized.startswith("."):
                 sanitized = "_" + sanitized[1:]

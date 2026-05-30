@@ -31,6 +31,7 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     401: {"description": "Unauthorized"},
     403: {"description": "Forbidden"},
     404: {"description": "Not Found"},
+    503: {"description": "Service Unavailable"},
 }
 
 _TOKEN_SPLIT_RE = re.compile(r"[,\s]+")
@@ -402,7 +403,7 @@ async def _retrieve_dataset_citations(
     return list(response.citations or [])
 
 
-@router.post("/retrieval", response_model=DifyExternalKnowledgeResponse)
+@router.post("/retrieval", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def retrieve_external_knowledge(
     body: DifyExternalKnowledgeRequest,
     actor: Annotated[_DifyActor, Depends(_require_dify_actor)],

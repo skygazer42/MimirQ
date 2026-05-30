@@ -247,14 +247,10 @@ class Recognizer:
                 s = ii + 1
                 continue
             break
-        while s < ii:
-            if box["top"] > bxs[s]["bottom"]:
-                s += 1
-            break
-        while e - 1 > ii:
-            if box["bottom"] < bxs[e - 1]["top"]:
-                e -= 1
-            break
+        while s < ii and box["top"] > bxs[s]["bottom"]:
+            s += 1
+        while e - 1 > ii and box["bottom"] < bxs[e - 1]["top"]:
+            e -= 1
 
         max_overlaped_i, max_overlaped = None, 0
         for i in range(s, e):

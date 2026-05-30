@@ -53,7 +53,7 @@ function extractHierarchyBasis(preview: ChunkPreviewResponse): string[] {
     if (!basis) continue
     bases.add(basis)
   }
-  return Array.from(bases).sort()
+  return Array.from(bases).sort((a, b) => a.localeCompare(b))
 }
 
 function EvidenceHighlightsPanel(props: Readonly<{

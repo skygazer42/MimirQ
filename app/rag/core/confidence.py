@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any
 
 
@@ -8,7 +9,7 @@ def _clamp_unit(value: Any) -> float | None:
         num = float(value)
     except (TypeError, ValueError):
         return None
-    if num != num:
+    if math.isnan(num):
         return None
     return max(0.0, min(1.0, num))
 
