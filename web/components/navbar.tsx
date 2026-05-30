@@ -493,9 +493,6 @@ export function Navbar({
       ]
     : []
 
-  const statusBadgeState = backendOk === true ? 'completed' : backendOk === false ? 'failed' : 'processing'
-  const statusBadgeSuffix = backendOk === true ? 'OK' : backendOk === false ? 'Down' : '...'
-  const statusBadgeLabel = `${t('status.badgePrefix')}${statusBadgeSuffix}`
   const userDisplayName =
     user?.username || user?.email || (isDevMode ? t('user.developerMode') : t('user.unauthenticatedName'))
   const userStatusLine = isAuthenticated ? user?.email || t('user.onlineStatus') : t('user.offlineEnvironment')

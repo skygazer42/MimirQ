@@ -57,7 +57,7 @@ async def _run_case(case: dict[str, Any]) -> dict[str, Any]:
 
 
 async def run_redteam_suite(cases: list[dict[str, Any]]) -> dict[str, Any]:
-    results = [await _run_case(case) for case in list(cases or [])]
+    results = [await _run_case(case) for case in cases or []]
     total = len(results)
     failed = sum(1 for result in results if not bool(result.get("passed")))
 

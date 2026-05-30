@@ -91,7 +91,7 @@ export function GovernanceProfilesPage() {
     : null
 
   const invalidateProfiles = () => {
-    void queryClient.invalidateQueries({
+    queryClient.invalidateQueries({
       queryKey: queryKeys.governance.profiles(params),
     })
   }
@@ -266,7 +266,7 @@ export function GovernanceProfilesPage() {
               className="h-8 gap-1.5 text-[12px]"
               disabled={loading}
               onClick={() => {
-                void profilesQuery.refetch()
+                profilesQuery.refetch()
               }}
             >
               <RefreshCw

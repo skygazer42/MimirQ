@@ -42,7 +42,7 @@ def build_hybrid_sweep_configs(
 
 def _coerce_ranked_ids(items: Any) -> list[str]:
     out: list[str] = []
-    for item in list(items or []):
+    for item in items or []:
         if isinstance(item, dict):
             raw = item.get("chunk_id") or item.get("id") or item.get("document_id")
         else:

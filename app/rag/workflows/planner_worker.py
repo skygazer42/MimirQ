@@ -164,7 +164,7 @@ Plan:"""
         try:
             return await self._worker(subtask.description)
         except Exception as e:
-            logger.error("Worker failed for %s: %s", subtask.id, e)
+            logger.exception("Worker failed for %s: %s", subtask.id, e)
             return f"Error: {str(e)}"
 
     async def _execute_subtasks(self, subtasks: list[SubTask]) -> dict[str, str]:
@@ -282,7 +282,7 @@ Final Answer:"""
             current_state["plan"] = [{"id": t.id, "description": t.description, "dependencies": t.dependencies} for t in subtasks]
             execution_path.append(f"planned:{len(subtasks)}_tasks")
         except Exception as e:
-            logger.error("Planning failed: %s", e)
+            logger.exception("Planning failed: %s", e)
             return self.create_result(
                 current_state,
                 success=False,
@@ -305,7 +305,7 @@ Final Answer:"""
             for task_id in results:
                 execution_path.append(f"worker:{task_id}")
         except Exception as e:
-            logger.error("Execution failed: %s", e)
+            logger.exception("Execution failed: %s", e)
             return self.create_result(
                 current_state,
                 success=False,
@@ -328,7 +328,7 @@ Final Answer:"""
             )
 
         except Exception as e:
-            logger.error("Synthesis failed: %s", e)
+            logger.exception("Synthesis failed: %s", e)
             return self.create_result(
                 current_state,
                 success=False,

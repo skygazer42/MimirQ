@@ -1,7 +1,5 @@
 import { apiClient } from '@/lib/api/core'
 import type {
-  IndustryRulesetSummary,
-  IndustryRulesetDetail,
   IndustryRulesetListResponse,
   IndustryRulesetDetailResponse,
   IndustryRulesUpdateResponse,

@@ -8,7 +8,7 @@ EMBEDDING_BENCHMARK_SCHEMA = "mimirq.embedding_benchmark.v1"
 
 def _normalize_ids(values: Any) -> list[str]:
     out: list[str] = []
-    for value in list(values or []):
+    for value in values or []:
         item = str(value or "").strip()
         if item and item not in out:
             out.append(item)
@@ -95,7 +95,7 @@ def _resolve_retrieved_ids(*, query_id: str, model_run: dict[str, Any], top_k: i
         return rank_corpus_by_cosine(
             query_embedding=[_to_float(item) for item in query_embedding],
             corpus_embeddings={
-                str(doc_id): [_to_float(item) for item in list(embedding or [])]
+                str(doc_id): [_to_float(item) for item in embedding or []]
                 for doc_id, embedding in corpus_embeddings.items()
                 if isinstance(embedding, list)
             },
@@ -118,7 +118,7 @@ def run_embedding_benchmark(
             "query": str((case or {}).get("query") or ""),
             "expected_document_ids": _normalize_ids((case or {}).get("expected_document_ids")),
         }
-        for case in list(cases or [])
+        for case in cases or []
         if str((case or {}).get("query_id") or "").strip()
     ]
 

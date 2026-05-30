@@ -31,7 +31,7 @@ def assign_ab_variant(
     user_id: str,
     variants: list[str],
 ) -> dict[str, Any]:
-    normalized_variants = [str(item).strip() for item in list(variants or []) if str(item).strip()]
+    normalized_variants = [str(item).strip() for item in variants or [] if str(item).strip()]
     if not normalized_variants:
         raise ValueError("variants_empty")
 
@@ -52,7 +52,7 @@ def summarize_ab_results(rows: list[dict[str, Any]]) -> dict[str, Any]:
     grouped: dict[str, dict[str, list[float]]] = defaultdict(lambda: {"faithfulness": [], "latency_ms": []})
     counts: dict[str, int] = defaultdict(int)
 
-    for row in list(rows or []):
+    for row in rows or []:
         variant = str((row or {}).get("variant") or "").strip()
         if not variant:
             continue

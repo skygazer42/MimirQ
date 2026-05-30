@@ -166,7 +166,7 @@ class OCRHandler2:
             return text_output
 
         except Exception as ex:
-            logging.error(f"OCR recognition failed: {str(ex)}")
+            logging.exception(f"OCR recognition failed: {str(ex)}")
             raise
         finally:
             if tmp_file_path and os.path.exists(tmp_file_path):

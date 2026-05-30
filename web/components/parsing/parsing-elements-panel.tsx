@@ -181,7 +181,7 @@ export function ParsingElementsPanel({
  const visualKind = typeof element.visual_kind === 'string' && element.visual_kind
  ? element.visual_kind
  : typeof attributes?.visual_kind === 'string'
- ? (attributes.visual_kind as string)
+ ? attributes.visual_kind
  : ''
 
  return (
@@ -197,7 +197,7 @@ export function ParsingElementsPanel({
  <span className="font-mono text-[11px] text-muted-foreground">{element.id}</span>
  {typeof attributes?.source_content_type === 'string' ? (
  <span className="rounded-full border border-border/60 px-1.5 py-0.5 text-[11px] text-muted-foreground">
- {attributes.source_content_type as string}
+ {attributes.source_content_type}
  </span>
  ) : null}
  {visualKind ? (

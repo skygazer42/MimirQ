@@ -605,7 +605,7 @@ def add_feedback(
         )
         return True
     except Exception as e:
-        logger.error("Failed to add feedback: %s", e)
+        logger.exception("Failed to add feedback: %s", e)
         return False
 
 

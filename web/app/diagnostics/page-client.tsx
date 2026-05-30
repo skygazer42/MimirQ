@@ -224,7 +224,7 @@ function fmtDateTime(value?: string | null) {
     .replaceAll('/', '-')
 }
 
-function metricTone(v: number | null) {
+function metricTone(v: number | null): MetricTone {
   if (v === null) return 'slate'
   if (v >= 0.8) return 'green'
   if (v >= 0.6) return 'amber'
@@ -791,7 +791,7 @@ export default function DiagnosticsPage() {
           '已运行'
       )
     : PENDING_RUN_LABEL
-  const perfGateTone = /pass|passed|ok|success|通过|已运行/i.test(
+  const perfGateTone: MetricTone = /pass|passed|ok|success|通过|已运行/i.test(
     perfGateStatus
   )
     ? 'green'
@@ -926,7 +926,7 @@ export default function DiagnosticsPage() {
     retrieval_accuracy: {
       value: fmtMetricOrMissing(hasProbeResult, retrievalScore),
       source: metricSource(hasProbeResult, 'metrics'),
-      tone: metricTone(retrievalScore) as MetricTone,
+      tone: metricTone(retrievalScore),
     },
     retrieval_recall: {
       value: fmtCountOrMissing(hasProbeResult, citationCount, ' 条'),
@@ -941,22 +941,22 @@ export default function DiagnosticsPage() {
     context_relevance: {
       value: fmtMetricOrMissing(hasProbeResult, contextScore),
       source: metricSource(hasProbeResult, 'metrics'),
-      tone: metricTone(contextScore) as MetricTone,
+      tone: metricTone(contextScore),
     },
     generation_quality: {
       value: fmtMetricOrMissing(hasProbeResult, generationScore),
       source: metricSource(hasProbeResult, 'metrics'),
-      tone: metricTone(generationScore) as MetricTone,
+      tone: metricTone(generationScore),
     },
     fact_consistency: {
       value: fmtMetricOrMissing(hasProbeResult, factScore),
       source: metricSource(hasProbeResult, 'metrics'),
-      tone: metricTone(factScore) as MetricTone,
+      tone: metricTone(factScore),
     },
     safety_compliance: {
       value: fmtMetricOrMissing(hasProbeResult, safetyScore),
       source: metricSource(hasProbeResult, 'metrics'),
-      tone: metricTone(safetyScore) as MetricTone,
+      tone: metricTone(safetyScore),
     },
     cost_analysis: {
       value: fmtCountOrMissing(hasProbeResult, promptTokenCount, ' tokens'),
@@ -985,7 +985,7 @@ export default function DiagnosticsPage() {
             : latencyMs <= 3000
               ? 'amber'
               : 'red'
-          : (perfGateTone as MetricTone),
+          : perfGateTone,
     },
   }
 
@@ -1140,7 +1140,7 @@ export default function DiagnosticsPage() {
               label="性能门禁"
               value={perfGateStatus}
               detail="PERF_GATE"
-              tone={perfGateTone as keyof typeof TOP_HUD_TONE_CLASSES}
+              tone={perfGateTone}
             />
             <TopHUDTile
               icon={Timer}

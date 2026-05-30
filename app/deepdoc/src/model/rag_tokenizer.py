@@ -237,25 +237,25 @@ class RagTokenizer:
             return line
         return HanziConv.toSimplified(line)
 
-    def dfs_(self, chars, s, preTks, tkslist, _depth=0, _memo=None):
+    def dfs_(self, chars, s, pre_tks, tkslist, _depth=0, _memo=None):
         if _memo is None:
             _memo = {}
         MAX_DEPTH = 10
         if _depth > MAX_DEPTH:
             if s < len(chars):
-                copy_pretks = copy.deepcopy(preTks)
+                copy_pretks = copy.deepcopy(pre_tks)
                 remaining = "".join(chars[s:])
                 copy_pretks.append((remaining, (-12, '')))
                 tkslist.append(copy_pretks)
             return s
 
-        state_key = (s, tuple(tk[0] for tk in preTks)) if preTks else (s, None)
+        state_key = (s, tuple(tk[0] for tk in pre_tks)) if pre_tks else (s, None)
         if state_key in _memo:
             return _memo[state_key]
 
         res = s
         if s >= len(chars):
-            tkslist.append(preTks)
+            tkslist.append(pre_tks)
             _memo[state_key] = s
             return s
         if s < len(chars) - 4:
@@ -272,7 +272,7 @@ class RagTokenizer:
                 mid = s + min(10, end - s)
                 t = "".join(chars[s:mid])
                 k = self.key_(t)
-                copy_pretks = copy.deepcopy(preTks)
+                copy_pretks = copy.deepcopy(pre_tks)
                 if k in self.trie_:
                     copy_pretks.append((t, self.trie_[k]))
                 else:
@@ -288,8 +288,8 @@ class RagTokenizer:
             t2 = "".join(chars[s:s + 2])
             if self.trie_.has_keys_with_prefix(self.key_(t1)) and not self.trie_.has_keys_with_prefix(self.key_(t2)):
                 S = s + 2
-        if len(preTks) > 2 and len(preTks[-1][0]) == 1 and len(preTks[-2][0]) == 1 and len(preTks[-3][0]) == 1:
-            t1 = preTks[-1][0] + "".join(chars[s:s + 1])
+        if len(pre_tks) > 2 and len(pre_tks[-1][0]) == 1 and len(pre_tks[-2][0]) == 1 and len(pre_tks[-3][0]) == 1:
+            t1 = pre_tks[-1][0] + "".join(chars[s:s + 1])
             if self.trie_.has_keys_with_prefix(self.key_(t1)):
                 S = s + 2
 
@@ -299,7 +299,7 @@ class RagTokenizer:
             if e > s + 1 and not self.trie_.has_keys_with_prefix(k):
                 break
             if k in self.trie_:
-                pretks = copy.deepcopy(preTks)
+                pretks = copy.deepcopy(pre_tks)
                 pretks.append((t, self.trie_[k]))
                 res = max(res, self.dfs_(chars, e, pretks, tkslist, _depth + 1, _memo))
 
@@ -309,7 +309,7 @@ class RagTokenizer:
 
         t = "".join(chars[s:s + 1])
         k = self.key_(t)
-        copy_pretks = copy.deepcopy(preTks)
+        copy_pretks = copy.deepcopy(pre_tks)
         if k in self.trie_:
             copy_pretks.append((t, self.trie_[k]))
         else:

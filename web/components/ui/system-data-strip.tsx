@@ -34,7 +34,7 @@ export function SystemDataStrip({
 
   const resolveTone = (tone: SystemDataStripItem['tone']) => {
     if (!tone) return TONE_CLASS.default
-    return tone in TONE_CLASS ? TONE_CLASS[tone as keyof typeof TONE_CLASS] : TONE_CLASS.default
+    return tone in TONE_CLASS ? TONE_CLASS[tone] : TONE_CLASS.default
   }
 
   return (

@@ -5,9 +5,8 @@
  * 优化版：任务中心极致高密度、UI Pro Max 视觉增强
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  Activity,
   ChevronDown,
   ChevronRight,
   Database,
@@ -15,14 +14,11 @@ import {
   Info,
   Link2,
   Loader2,
-  Play,
   RefreshCw,
   RotateCcw,
   Settings,
   Terminal,
-  Trash2,
   X,
-  TriangleAlert,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -39,12 +35,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import {
-  StatusBadge,
-  type StatusBadgeStatus,
-} from '@/components/ui/status-badge'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Input } from '@/components/ui/input'
-import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -53,12 +43,10 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import { Switch } from '@/components/ui/switch'
 
 import {
-  connectorApi,
   datasetApi,
   settingsApi,
   type SystemSettings,
@@ -66,7 +54,7 @@ import {
 import { formatApiError } from '@/lib/api-errors'
 import { queryKeys } from '@/lib/query-keys'
 import { cn, detachPromise, formatDate } from '@/lib/utils'
-import type { ConnectorInfo, ConnectorRunOut, Dataset } from '@/types'
+import type { ConnectorRunOut, Dataset } from '@/types'
 
 // --- 类型定义 ---
 type KnowledgeSettingsConfig = Pick<SystemSettings, 'embedding' | 'rag'>
@@ -98,28 +86,6 @@ type KnowledgeConnectorRunsPanelProps = {
   onResumeConnectorRun: (id: string) => void | Promise<void>
   onRetryFailedConnectorRun: (id: string) => void | Promise<void>
   onLoadConnectorRuns: (params: { datasetId?: string }) => void | Promise<void>
-}
-
-// --- 辅助函数 ---
-function getConnectorRunBadge(
-  status: string,
-  t: any
-): { status: StatusBadgeStatus; label: string } {
-  const s = String(status || '').toLowerCase()
-  switch (s) {
-    case 'completed':
-      return { status: 'completed', label: t('runStatus.completed') }
-    case 'failed':
-      return { status: 'failed', label: t('runStatus.failed') }
-    case 'running':
-      return { status: 'processing', label: t('runStatus.running') }
-    case 'pending':
-      return { status: 'pending', label: t('runStatus.pending') }
-    case 'cancelled':
-      return { status: 'cancelled', label: t('runStatus.cancelled') }
-    default:
-      return { status: 'pending', label: s || 'Unknown' }
-  }
 }
 
 function getConnectorRunProgress(stats: any) {
@@ -1415,7 +1381,6 @@ function TaskCard({
   isExpanded,
   onToggleExpand,
 }: any) {
-  const badge = getConnectorRunBadge(run.status, t)
   const { total, processed } = getConnectorRunProgress(run.stats || {})
   const progressPct = total > 0 ? Math.round((processed / total) * 100) : 0
   const isFailed = run.status === 'failed'

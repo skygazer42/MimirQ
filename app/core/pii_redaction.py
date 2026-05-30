@@ -126,7 +126,7 @@ def redact_text(text: str) -> str:
         return _get_redactor(_current_mask()).redact_text(text)[0]
     except Exception as exc:  # noqa: BLE001
         # Fail-closed: do not emit raw content when redaction is enabled.
-        logger.error(
+        logger.exception(
             "PII redaction failed; content masked: feature=%s reason=%s error=%s",
             "pii_redaction",
             "exception",
@@ -141,7 +141,7 @@ def redact_obj(obj: Any) -> Any:
     try:
         return _get_redactor(_current_mask()).redact_obj(obj)
     except Exception as exc:  # noqa: BLE001
-        logger.error(
+        logger.exception(
             "PII redaction failed; object masked: feature=%s reason=%s error=%s",
             "pii_redaction",
             "exception",

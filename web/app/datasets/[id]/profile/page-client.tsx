@@ -1,7 +1,7 @@
 'use client'
 
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { toast } from 'sonner'
 import {
@@ -53,12 +53,10 @@ import { useRouter } from '@/i18n/navigation'
 import { Breadcrumb, usePathBreadcrumbs } from '@/components/ui/breadcrumb'
 
 import type {
-  Dataset,
   Document,
   DatasetProfileFindingSummary,
   DatasetProfileScanRunCreateRequest,
   DatasetProfileScanRunOut,
-  DatasetProfileSummary,
 } from '@/types'
 
 const PIE_COLORS = [

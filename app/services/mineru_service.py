@@ -302,7 +302,7 @@ class MinerUService:
                 logger.debug("Ignoring non-critical MinerU fallback failure: %s", exc)
             return ok
         except Exception as exc:  # noqa: BLE001
-            logger.error("Upload file failed: %s", str(exc)[:200])
+            logger.exception("Upload file failed: %s", str(exc)[:200])
             return False
 
     def upload_file(self, file_path: Path, upload_url: str) -> bool:
@@ -985,7 +985,7 @@ class MinerUService:
                 parser_name="mineru_local",
             )
         except Exception as e:  # noqa: BLE001
-            logger.error("MinerU local parsing failed (async): %s", str(e)[:200])
+            logger.exception("MinerU local parsing failed (async): %s", str(e)[:200])
             raise RuntimeError(f"MinerU local parsing failed: {str(e)}") from e
 
     def parse_file(

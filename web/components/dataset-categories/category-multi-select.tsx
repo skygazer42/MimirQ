@@ -47,7 +47,7 @@ export function DatasetCategoryMultiSelect({ datasetId, className }: Readonly<{ 
       datasetApi.setCategories(datasetId, { category_ids: categoryIds }),
     onSuccess: (res) => {
       queryClient.setQueryData(queryKeys.datasets.categories(datasetId), res)
-      void queryClient.invalidateQueries({
+      queryClient.invalidateQueries({
         queryKey: queryKeys.datasets.categories(datasetId),
       })
     },
@@ -142,7 +142,7 @@ export function DatasetCategoryMultiSelect({ datasetId, className }: Readonly<{ 
             size="sm"
             className="h-9 px-3"
             onClick={() => {
-              void Promise.all([
+              Promise.all([
                 categoryTreeQuery.refetch(),
                 assignedCategoriesQuery.refetch(),
               ])
@@ -232,7 +232,7 @@ export function DatasetCategoryMultiSelect({ datasetId, className }: Readonly<{ 
                 </Button>
                 <Button
                   onClick={() => {
-                    void save()
+                    save()
                   }}
                   disabled={saving}
                 >

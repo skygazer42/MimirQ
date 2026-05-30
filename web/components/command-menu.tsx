@@ -674,7 +674,7 @@ export function CommandMenu() {
       if (isEditableTarget(e.target)) return
 
       const key = normalizeChordKey(e.key)
-      if (!key || key.length !== 1) {
+      if (key?.length !== 1) {
         if (key === "escape") clearPendingChord()
         return
       }

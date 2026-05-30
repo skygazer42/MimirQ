@@ -115,9 +115,9 @@ function buildHeuristicExplainSteps(data: GraphData): GraphExplainabilityStep[] 
       const sourceId = getGraphLinkEndpointId(link.source)
       const targetId = getGraphLinkEndpointId(link.target)
       const nextId = sourceId === current.id ? targetId : sourceId
-      current = (data.nodes.find((node) => node.id === nextId) as GraphNodeLike | undefined) || (data.nodes[idx + 1] as GraphNodeLike)
+      current = data.nodes.find((node) => node.id === nextId) || data.nodes[idx + 1]
     } else {
-      current = data.nodes[Math.min(idx + 5, data.nodes.length - 1)] as GraphNodeLike
+      current = data.nodes[Math.min(idx + 5, data.nodes.length - 1)]
     }
   }
 

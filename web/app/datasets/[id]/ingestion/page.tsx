@@ -672,11 +672,6 @@ export default function DatasetIngestionPolicyPage() {
   const ingestionStats = ingestionStatsQuery.data ?? null
   const versions = versionsQuery.data ?? null
   const versionsLoading = versionsQuery.isFetching
-  const loading = Boolean(datasetId) && (
-    datasetQuery.isPending ||
-    policyQuery.isPending ||
-    ingestionStatsQuery.isPending
-  )
   const refreshing = Boolean(datasetId) && (
     datasetQuery.isFetching ||
     policyQuery.isFetching ||

@@ -77,13 +77,13 @@ export function KnowledgeScopePanel({
   const DATASET_ALL = datasetAllValue ?? '__all__'
   const embedded = surface === 'embedded'
   const showDocumentFilters = mode === 'documents'
-  const statusItems = [
+  const statusItems = ([
     { key: 'all', count: totalDocs },
     { key: 'completed', count: completedDocsValue },
     { key: 'processing', count: processingDocsValue },
     { key: 'failed', count: failedDocsValue },
     { key: 'quarantined', count: quarantinedDocsValue },
-  ].map((item) => {
+  ] satisfies Array<{ key: DocStatusFilter; count: DocCountValue }>).map((item) => {
     const count = Number(item.count || 0)
     const ratio =
       item.key === 'all'
@@ -279,14 +279,14 @@ export function KnowledgeScopePanel({
               <button
                 key={item.key}
                 type="button"
-                onClick={() => setStatusFilter(item.key as DocStatusFilter)}
+                onClick={() => setStatusFilter(item.key)}
                 className={cn(
                   'relative overflow-hidden transition-[transform,box-shadow]',
                   embedded
                     ? 'min-h-7 rounded-[9px] border px-2 py-1 text-[11px] font-semibold tracking-[-0.01em] transition-all duration-300 hover:-translate-y-[1px] focus-ring'
                     : 'h-9 rounded-full border px-3 text-xs font-medium transition-all duration-300 hover:-translate-y-[1px] focus-ring',
                   statusFilter === item.key
-                    ? statusThemes[item.key as DocStatusFilter] ||
+                    ? statusThemes[item.key] ||
                         statusThemes.all
                     : 'border-border/60 bg-card/64 text-foreground/76 hover:border-primary/25 hover:bg-card/90 hover:text-foreground dark:border-border/60 dark:bg-background/45 dark:text-foreground/70 dark:hover:bg-muted/30'
                 )}

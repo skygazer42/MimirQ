@@ -288,7 +288,7 @@ Provide an improved answer that addresses the feedback:"""
             answer = await generate(current_state)
             current_state["answer"] = answer
         except Exception as e:
-            logger.error("Generation failed: %s", e)
+            logger.exception("Generation failed: %s", e)
             return self.create_result(
                 current_state,
                 success=False,
@@ -319,7 +319,7 @@ Provide an improved answer that addresses the feedback:"""
                 )
 
             except Exception as e:
-                logger.error("Evaluation failed: %s", e)
+                logger.exception("Evaluation failed: %s", e)
                 # Continue with assumed pass
                 break
 
@@ -346,7 +346,7 @@ Provide an improved answer that addresses the feedback:"""
                     answer = await optimize(question, answer, eval_result.feedback)
                     current_state["answer"] = answer
                 except Exception as e:
-                    logger.error("Optimization failed: %s", e)
+                    logger.exception("Optimization failed: %s", e)
                     # Continue with current answer
                     break
 
@@ -424,7 +424,7 @@ def create_ragas_evaluator(
             score = 0.6 if len(answer) > 100 else 0.4
             return EvaluationResult(score, "RAGAS not available")
         except Exception as e:
-            logger.error("RAGAS evaluation failed: %s", e)
+            logger.exception("RAGAS evaluation failed: %s", e)
             return EvaluationResult(0.5, f"Evaluation error: {e}")
 
     return evaluator

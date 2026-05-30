@@ -233,7 +233,7 @@ export function DatasetFolderTree({
           size="sm"
           className="h-7 px-2 text-muted-foreground"
           onClick={() => {
-            void folderTreeQuery.refetch()
+            folderTreeQuery.refetch()
           }}
           disabled={refreshing}
           aria-label={t('refresh')}

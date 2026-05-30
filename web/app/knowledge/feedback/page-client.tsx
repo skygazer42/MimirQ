@@ -89,7 +89,7 @@ function getFeedbackSource(
   item: MessageFeedbackEnriched
 ): FeedbackSourceFilter {
   const raw =
-    `${String(item.account_id || '')} ${String((item.extra as Record<string, unknown> | undefined)?.source || '')}`.toLowerCase()
+    `${String(item.account_id || '')} ${String(item.extra?.source || '')}`.toLowerCase()
   if (
     raw.includes('mobile') ||
     raw.includes('ios') ||
@@ -247,8 +247,7 @@ function buildLoopCandidateMetrics(
 }
 
 function isArchivedFeedback(item: MessageFeedbackEnriched): boolean {
-  const extra = item.extra as Record<string, unknown> | undefined
-  return Boolean(extra?.archived)
+  return Boolean(item.extra?.archived)
 }
 
 function isFeedbackMetricMatch(
@@ -1126,8 +1125,8 @@ export default function FeedbackTriagePage() {
                   toast.success('Demo 数据已刷新')
                   return
                 }
-                void refetch()
-                void refetchLoopCandidates()
+                refetch()
+                refetchLoopCandidates()
               }}
             >
               <RefreshCw
@@ -1539,7 +1538,7 @@ export default function FeedbackTriagePage() {
                             <Button
                               variant="outline"
                               className="h-6 rounded-xl px-2.5 text-[10px]"
-                              onClick={() => void createRegressionCase(item)}
+                              onClick={() => createRegressionCase(item)}
                               disabled={creatingCase}
                             >
                               <TestTube2 className="mr-1.5 size-2.5" />
@@ -1548,7 +1547,7 @@ export default function FeedbackTriagePage() {
                             <Button
                               variant="outline"
                               className="h-6 rounded-xl px-2.5 text-[10px]"
-                              onClick={() => void toggleArchived(item)}
+                              onClick={() => toggleArchived(item)}
                               disabled={archivingId === item.id}
                             >
                               {archivingId === item.id ? (
@@ -1582,7 +1581,7 @@ export default function FeedbackTriagePage() {
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   className="text-[12px]"
-                                  onSelect={() => void copyDetail(item)}
+                                  onSelect={() => copyDetail(item)}
                                 >
                                   复制反馈 JSON
                                 </DropdownMenuItem>
@@ -1600,14 +1599,14 @@ export default function FeedbackTriagePage() {
                                 <DropdownMenuItem
                                   className="text-[12px]"
                                   disabled={creatingCase}
-                                  onSelect={() => void createRegressionCase(item)}
+                                  onSelect={() => createRegressionCase(item)}
                                 >
                                   加入回归集
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   className="text-[12px]"
                                   disabled={archivingId === item.id}
-                                  onSelect={() => void toggleArchived(item)}
+                                  onSelect={() => toggleArchived(item)}
                                 >
                                   {archived ? '取消归档' : '标记已处理'}
                                 </DropdownMenuItem>

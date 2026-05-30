@@ -14,7 +14,7 @@ def run_agentic_beam_search(
     max_llm_calls: int | None = None,
     budget_seconds: float | None = None,
 ) -> dict[str, Any]:
-    seeds = [str(item or "").strip() for item in list(topic_entities or []) if str(item or "").strip()]
+    seeds = [str(item or "").strip() for item in topic_entities or [] if str(item or "").strip()]
     width = max(1, int(beam_width or 1))
     depth = max(1, int(max_depth or 1))
     max_calls = max(0, int(max_llm_calls or 0))

@@ -163,7 +163,7 @@ class StreamWriter(BaseStreamWriter):
                 try:
                     listener(chunk)
                 except Exception as e:
-                    logger.error("Stream listener error: %s", e)
+                    logger.exception("Stream listener error: %s", e)
 
         except asyncio.TimeoutError:
             logger.warning("Stream buffer full, dropping chunk")
@@ -338,7 +338,7 @@ class CallbackStreamWriter(BaseStreamWriter):
             if asyncio.iscoroutine(result):
                 await result
         except Exception as e:
-            logger.error("Callback error: %s", e)
+            logger.exception("Callback error: %s", e)
 
     async def write(self, content: Any, **kwargs) -> None:
         chunk = StreamChunk(

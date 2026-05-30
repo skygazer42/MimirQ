@@ -1252,7 +1252,6 @@ export function KGDiagnosticsPage() {
     () => (Array.isArray(runResp?.items) ? runResp.items : []),
     [runResp?.items]
   )
-  const runIdShort = String(runResp?.run_id || '').slice(0, 8)
   const selectedDataset = useMemo(() => {
     const selectedId = datasetId.trim()
     return (
@@ -1298,13 +1297,6 @@ export function KGDiagnosticsPage() {
     () => Object.entries(diff?.summary_delta || {}),
     [diff]
   )
-
-  const viewDescription =
-    activeView === 'run'
-      ? t('workspace.runIntro')
-      : activeView === 'quality'
-        ? t('workspace.qualityIntro')
-        : t('workspace.compareIntro')
 
   function handleDatasetChange(nextDatasetId: string): void {
     setDatasetId(nextDatasetId)

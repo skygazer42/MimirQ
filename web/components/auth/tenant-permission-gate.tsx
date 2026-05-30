@@ -62,7 +62,7 @@ export function TenantPermissionGate({ permission, pageName, children }: Readonl
                   当前角色：{access.data?.role || '未知'}。如需访问，请联系管理员调整成员角色。
                 </p>
               </div>
-              <Button variant="outline" className="gap-2 self-start" onClick={() => void access.refetch()}>
+              <Button variant="outline" className="gap-2 self-start" onClick={() => access.refetch()}>
                 <RefreshCw className="size-4" />
                 重新校验
               </Button>

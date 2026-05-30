@@ -110,14 +110,14 @@ export function KgPredicateOntologySettings() {
   }
 
   const refreshStatus = () => {
-    void settingsQuery.refetch()
+    settingsQuery.refetch()
     if (settingsKgEnabled) {
-      void predicateOntologyQuery.refetch()
+      predicateOntologyQuery.refetch()
     }
   }
 
   const invalidatePredicateOntology = () => {
-    void queryClient.invalidateQueries({
+    queryClient.invalidateQueries({
       queryKey: queryKeys.kg.predicateOntology,
     })
   }

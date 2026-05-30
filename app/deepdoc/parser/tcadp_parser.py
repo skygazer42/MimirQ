@@ -127,7 +127,7 @@ class TencentCloudAPIClient:
                                 progress = data_dict.get("Progress", "0")
                                 logging.info(f"[TCADP] Progress: {progress}%")
                         except json.JSONDecodeError as e:
-                            logging.error(f"[TCADP] Failed to parse JSON data: {e}")
+                            logging.exception(f"[TCADP] Failed to parse JSON data: {e}")
                             logging.error(f"[TCADP] Raw data: {event.get('data')}")
                             continue
                     else:
@@ -140,7 +140,7 @@ class TencentCloudAPIClient:
                         parser_result = data_dict
                         logging.info(f"[TCADP] JSON parsing successful: {parser_result}")
                     except json.JSONDecodeError as e:
-                        logging.error(f"[TCADP] JSON parsing failed: {e}")
+                        logging.exception(f"[TCADP] JSON parsing failed: {e}")
                         return None
                 else:
                     logging.error("[TCADP] No data in response")
@@ -149,8 +149,8 @@ class TencentCloudAPIClient:
             return parser_result
 
         except Exception as err:
-            logging.error(f"[TCADP] API error: {err}")
-            logging.error(f"[TCADP] Error stack trace: {traceback.format_exc()}")
+            logging.exception(f"[TCADP] API error: {err}")
+            logging.exception(f"[TCADP] Error stack trace: {traceback.format_exc()}")
             return None
 
     def download_result_file(self, download_url, output_dir):
@@ -177,7 +177,7 @@ class TencentCloudAPIClient:
             return file_path
 
         except httpx.HTTPError as e:
-            logging.error(f"[TCADP] Failed to download file: {e}")
+            logging.exception(f"[TCADP] Failed to download file: {e}")
             return None
 
 

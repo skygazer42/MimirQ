@@ -133,7 +133,7 @@ class RoutingWorkflow(BaseWorkflow):
                 return self._default_route
             return route
         except Exception as e:
-            logger.error("Classification failed: %s", e)
+            logger.exception("Classification failed: %s", e)
             return self._default_route
 
     async def run(self, state: dict[str, Any]) -> WorkflowResult:
@@ -191,7 +191,7 @@ class RoutingWorkflow(BaseWorkflow):
             )
 
         except Exception as e:
-            logger.error("Handler %s failed: %s", handler.name, e)
+            logger.exception("Handler %s failed: %s", handler.name, e)
             return self.create_result(
                 current_state,
                 success=False,

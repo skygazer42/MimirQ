@@ -210,11 +210,11 @@ class MCPClient:
                 return response.json()
 
             except httpx.HTTPStatusError as e:
-                logger.error("MCP HTTP error: %s", e)
+                logger.exception("MCP HTTP error: %s", e)
                 if attempt == self.max_retries - 1:
                     raise MCPError(f"HTTP error: {e}") from e
             except httpx.RequestError as e:
-                logger.error("MCP request error: %s", e)
+                logger.exception("MCP request error: %s", e)
                 if attempt == self.max_retries - 1:
                     raise MCPConnectionError(f"Connection error: {e}") from e
 
@@ -246,7 +246,7 @@ class MCPClient:
             logger.info("Loaded %d tools from MCP server", len(tools))
             return tools
         except Exception as e:
-            logger.error("Failed to list MCP tools: %s", e)
+            logger.exception("Failed to list MCP tools: %s", e)
             return []
 
     async def get_tool(self, name: str) -> MCPTool | None:
@@ -309,7 +309,7 @@ class MCPClient:
             response = await self._request("GET", "/resources")
             return response.get("resources", [])
         except Exception as e:
-            logger.error("Failed to list MCP resources: %s", e)
+            logger.exception("Failed to list MCP resources: %s", e)
             return []
 
     async def read_resource(
@@ -333,7 +333,7 @@ class MCPClient:
             )
             return response
         except Exception as e:
-            logger.error("Failed to read MCP resource: %s", e)
+            logger.exception("Failed to read MCP resource: %s", e)
             return None
 
     async def list_prompts(self) -> list[dict[str, Any]]:
@@ -342,7 +342,7 @@ class MCPClient:
             response = await self._request("GET", "/prompts")
             return response.get("prompts", [])
         except Exception as e:
-            logger.error("Failed to list MCP prompts: %s", e)
+            logger.exception("Failed to list MCP prompts: %s", e)
             return []
 
     async def get_prompt(
@@ -371,7 +371,7 @@ class MCPClient:
             )
             return response.get("text")
         except Exception as e:
-            logger.error("Failed to get MCP prompt: %s", e)
+            logger.exception("Failed to get MCP prompt: %s", e)
             return None
 
     def to_langchain_tools(self, tools: list[MCPTool]) -> list[dict[str, Any]]:

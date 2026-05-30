@@ -383,7 +383,7 @@ export function scrollToElementId(
     ? globalThis.window.document.querySelector<HTMLElement>(containerSelector)
     : null
 
-  if (container && container.contains(el)) {
+  if (container?.contains(el)) {
     const containerRect = container.getBoundingClientRect()
     const elementRect = el.getBoundingClientRect()
     const elementTop = container.scrollTop + (elementRect.top - containerRect.top)

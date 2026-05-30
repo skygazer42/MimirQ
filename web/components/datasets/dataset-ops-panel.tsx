@@ -111,8 +111,8 @@ export function DatasetOpsPanel({ datasetId, datasetName }: Readonly<{ datasetId
         <div className="mt-3 flex flex-wrap gap-2">
           <ActionButton icon={FolderTree} busy={busy === 'precheck-files'} disabled={Boolean(busy) || !dataset || !scan} label="预检文件" onClick={() => runAction('precheck-files', '预检文件列表', () => datasetApi.listPrecheckFiles(dataset, scan, { limit: 50 }))} />
           <ActionButton icon={TableProperties} busy={busy === 'table-preview'} disabled={Boolean(busy) || !dataset || !table} label="表预览" onClick={() => runAction('table-preview', '表预览', () => datasetApi.previewTable(dataset, table, { limit: 20 }))} />
-          <ActionButton icon={FolderTree} busy={busy === 'category-update'} disabled={Boolean(busy) || !category} label="更新分类" onClick={() => runAction('category-update', '更新数据集分类', () => datasetCategoryApi.update(category, parseJson(payloadJson) as any))} />
-          <ActionButton icon={FolderTree} busy={busy === 'category-move'} disabled={Boolean(busy) || !category} label="移动分类" onClick={() => runAction('category-move', '移动数据集分类', () => datasetCategoryApi.move(category, parseJson(payloadJson) as any))} />
+          <ActionButton icon={FolderTree} busy={busy === 'category-update'} disabled={Boolean(busy) || !category} label="更新分类" onClick={() => runAction('category-update', '更新数据集分类', () => datasetCategoryApi.update(category, parseJson(payloadJson)))} />
+          <ActionButton icon={FolderTree} busy={busy === 'category-move'} disabled={Boolean(busy) || !category} label="移动分类" onClick={() => runAction('category-move', '移动数据集分类', () => datasetCategoryApi.move(category, parseJson(payloadJson)))} />
         </div>
         <Field label="分类更新内容（JSON）">
           <Textarea value={payloadJson} onChange={(event) => setPayloadJson(event.target.value)} className="mt-2 min-h-[104px] font-mono text-xs" />

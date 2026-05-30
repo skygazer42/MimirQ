@@ -40,7 +40,7 @@ import { cn, detachPromise } from '@/lib/utils'
 import { GraphService } from '@/lib/graph-service'
 import type { GraphClusteringWorkerApi } from '@/workers/graph-clustering.worker'
 
-import type { Dataset, Document, KGExtractResponse, KGGraphNode, KGStatsResponse } from '@/types'
+import type { Document, KGExtractResponse, KGGraphNode, KGStatsResponse } from '@/types'
 
 function asDatasetId(raw: unknown): string | null {
   if (typeof raw === 'string' && raw.trim()) return raw

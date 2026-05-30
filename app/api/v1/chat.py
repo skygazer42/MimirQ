@@ -507,7 +507,7 @@ async def chat(
     except Exception as exc:  # noqa: BLE001
         if singleflight_key and singleflight_leader:
             reject_inflight_chat_response(singleflight_key, exc)
-        logger.error("Chat error: %s", str(exc)[:200])
+        logger.exception("Chat error: %s", str(exc)[:200])
         raise HTTPException(status_code=500, detail=_format_stream_error_message(exc)) from exc
 
     if conversation_id is None:

@@ -220,7 +220,7 @@ export function RagvizSimilarityWorkbench() {
     ? getErrorMessage(collectionsQuery.error, '加载 collections 失败')
     : ''
   const refreshCollections = () => {
-    void collectionsQuery.refetch()
+    collectionsQuery.refetch()
   }
 
   const availableCollectionOptions = useMemo(() => {
@@ -666,7 +666,7 @@ export function RagvizSimilarityWorkbench() {
 
   const topKAxisForStats: 'x' | 'y' | 'none' = useMemo(() => {
     const topK = uiTopK
-    if (!topK || !topK.value) return 'none'
+    if (!topK?.value) return 'none'
     return topK.axis
   }, [uiTopK])
 
@@ -713,7 +713,7 @@ export function RagvizSimilarityWorkbench() {
 
   const handleHeatmapCellSelect = useCallback((cell: SelectedHeatmapCell) => {
     setSelectedCell((prev) =>
-      prev && prev.rowIndex === cell.rowIndex && prev.colIndex === cell.colIndex
+      prev?.rowIndex === cell.rowIndex && prev.colIndex === cell.colIndex
         ? null
         : cell
     )

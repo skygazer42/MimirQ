@@ -21,7 +21,6 @@ import {
   Search,
   PanelLeftClose,
   PanelLeftOpen,
-  Bot
 } from 'lucide-react'
 import { AppFrame } from '@/components/app-frame'
 import { ChatMessageItem } from '@/components/chat/message-item'
@@ -31,7 +30,6 @@ import { AnswerLineageAction } from '@/components/history/answer-lineage-action'
 import { RagTraceDialog } from '@/components/rag-trace/rag-trace-dialog'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
-import { SearchInput } from '@/components/ui/search-input'
 import { PageLoading } from '@/components/ui/page-loading'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import { PageTitleIcon } from '@/components/ui/page-title-icon'

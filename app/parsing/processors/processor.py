@@ -5664,7 +5664,7 @@ class DocumentProcessorService:
             return img_id
             
         except Exception as e:
-            logger.error("Image upload failed: %s", e)
+            logger.exception("Image upload failed: %s", e)
             return None
 
     def _extract_and_save_image(self, metadata: dict[str, Any], tenant_id: UUID) -> str | None:

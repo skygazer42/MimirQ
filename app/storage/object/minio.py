@@ -211,7 +211,7 @@ class MinIOService:
             return img_id
 
         except Exception as e:  # noqa: BLE001
-            logger.error("MinIO upload failed: %s", e)
+            logger.exception("MinIO upload failed: %s", e)
             self._log_metric("upload", False, time.perf_counter() - t0, object_name, error=str(e))
             raise RuntimeError(f"MinIO image upload failed: {e}") from e
 
@@ -296,7 +296,7 @@ class MinIOService:
                         "chunk_key": img_info["chunk_key"]
                     }
                 except Exception as e:
-                    logger.error(f"Batch upload failed for chunk_key {img_info.get('chunk_key')}: {str(e)}")
+                    logger.exception(f"Batch upload failed for chunk_key {img_info.get('chunk_key')}: {str(e)}")
                     return {
                         "success": False,
                         "error": str(e),
@@ -360,7 +360,7 @@ class MinIOService:
             return url
 
         except Exception as e:
-            logger.error("MinIO presign URL failed: %s", e)
+            logger.exception("MinIO presign URL failed: %s", e)
             self._log_metric("presign", False, time.perf_counter() - t0, locals().get("object_name", ""), error=str(e))
             raise RuntimeError(f"MinIO get image URL failed: {e}") from e
 
@@ -442,7 +442,7 @@ class MinIOService:
             self._log_metric("upload_doc", True, time.perf_counter() - t0, object_name)
             return self.build_object_uri(self._bucket_name, object_name)
         except Exception as exc:  # noqa: BLE001
-            logger.error("MinIO document upload failed: %s", str(exc)[:200])
+            logger.exception("MinIO document upload failed: %s", str(exc)[:200])
             self._log_metric("upload_doc", False, time.perf_counter() - t0, object_name, error=str(exc))
             raise RuntimeError(f"MinIO document upload failed: {exc}") from exc
 

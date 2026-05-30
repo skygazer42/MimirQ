@@ -181,13 +181,13 @@ export function DocumentOperationsPanel({
       <div className="mt-3 flex flex-wrap gap-2">
         <ActionButton icon={FileJson} busy={busy === 'stats'} disabled={Boolean(busy)} label="文档统计" onClick={() => runAction('stats', '文档统计', () => documentApi.stats({ dataset_id: effectiveDatasetId || undefined }))} />
         <ActionButton icon={FileJson} busy={busy === 'parsed'} disabled={Boolean(busy) || !firstDocumentId} label="查看解析内容" onClick={() => runAction('parsed', '解析内容', () => documentApi.getParsedContent(firstDocumentId, { max_chars: 20_000 }))} />
-        <ActionButton icon={ShieldCheck} busy={busy === 'access'} disabled={Boolean(busy) || ids.length === 0} label="批量权限" onClick={() => runAction('access', '批量权限更新', () => documentApi.batchUpdateAccess({ document_ids: ids, ...(parseJson(payloadJson) as any) } as any))} />
-        <ActionButton icon={FolderInput} busy={busy === 'move'} disabled={Boolean(busy) || ids.length === 0 || !targetDatasetId.trim()} label="批量移动" onClick={() => runAction('move', '批量移动', () => documentApi.batchMove({ document_ids: ids, target_dataset_id: targetDatasetId.trim() } as any))} />
+        <ActionButton icon={ShieldCheck} busy={busy === 'access'} disabled={Boolean(busy) || ids.length === 0} label="批量权限" onClick={() => runAction('access', '批量权限更新', () => documentApi.batchUpdateAccess({ document_ids: ids, ...parseJson(payloadJson) }))} />
+        <ActionButton icon={FolderInput} busy={busy === 'move'} disabled={Boolean(busy) || ids.length === 0 || !targetDatasetId.trim()} label="批量移动" onClick={() => runAction('move', '批量移动', () => documentApi.batchMove({ document_ids: ids, target_dataset_id: targetDatasetId.trim() }))} />
         <ActionButton icon={FileJson} busy={busy === 'duplicates'} disabled={Boolean(busy) || !effectiveDatasetId} label="重复文档" onClick={() => runAction('duplicates', '重复文档', () => documentApi.listDuplicates({ dataset_id: effectiveDatasetId, min_count: 2, max_groups: 20, max_docs_per_group: 10 }))} />
         <ActionButton icon={FileJson} busy={busy === 'lifecycle'} disabled={Boolean(busy) || !firstDocumentId} label="生命周期元数据" onClick={() => runAction('lifecycle', '生命周期元数据', () => documentApi.getLifecycleMetadata(firstDocumentId))} />
-        <ActionButton icon={FileJson} busy={busy === 'metadata'} disabled={Boolean(busy) || ids.length === 0} label="批量元数据" onClick={() => runAction('metadata', '批量用户元数据', () => documentApi.batchPatchUserMetadata({ document_ids: ids, ...(parseJson(payloadJson) as any) } as any))} />
+        <ActionButton icon={FileJson} busy={busy === 'metadata'} disabled={Boolean(busy) || ids.length === 0} label="批量元数据" onClick={() => runAction('metadata', '批量用户元数据', () => documentApi.batchPatchUserMetadata({ document_ids: ids, ...parseJson(payloadJson) }))} />
         <ActionButton icon={FileJson} busy={busy === 'apply-urls'} disabled={Boolean(busy)} label="申请上传 URL" onClick={() => runAction('apply-urls', '申请批量上传 URL', () => {
-          const parsed = parseJson(payloadJson) as any
+          const parsed = parseJson(payloadJson)
           const files = Array.isArray(parsed) ? parsed : Array.isArray(parsed.files) ? parsed.files : []
           return documentApi.applyBatchUploadUrls(files)
         })} />

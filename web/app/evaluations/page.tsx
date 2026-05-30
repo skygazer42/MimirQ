@@ -1236,7 +1236,7 @@ function EvaluationsPageContent() {
                   <Button
                     variant="outline"
                     className="mt-2 h-8 w-full rounded-lg border-slate-200 bg-card text-[12px]"
-                    onClick={() => void refreshEvaluationWorkspace()}
+                    onClick={() => refreshEvaluationWorkspace()}
                   >
                     <RefreshCw
                       className={cn(
@@ -1386,7 +1386,7 @@ function EvaluationsPageContent() {
                   <Button
                     variant="ghost"
                     className="h-7 shrink-0 px-2 text-[12px] text-blue-700"
-                    onClick={() => void runsQuery.refetch()}
+                    onClick={() => runsQuery.refetch()}
                   >
                     刷新
                   </Button>

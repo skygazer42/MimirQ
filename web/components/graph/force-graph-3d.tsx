@@ -561,7 +561,7 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
 
         // Text sprites
         nodeThreeObject={useCustomNodeObjects ? (node: GraphNodeDatum) => {
-          const { id, isDimmed, isHighlighted, isHovered, isSelected } = getNodeDecorationState(node)
+          const { isDimmed, isHighlighted, isHovered, isSelected } = getNodeDecorationState(node)
           const emphasis = isSelected || isHighlighted || isHovered
           const color = getNodeColor(node)
           const labelDirection = Number(node?.x ?? 0) >= 0 ? 1 : -1

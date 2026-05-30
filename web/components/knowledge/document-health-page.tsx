@@ -124,7 +124,7 @@ export default function DocumentHealthPage({ documentId }: Readonly<{ documentId
               className="rounded-xl"
               disabled={loading}
               onClick={() => {
-                void healthQuery.refetch()
+                healthQuery.refetch()
               }}
             >
               <RefreshCw className={cn('mr-2 size-4', loading ? 'animate-spin motion-reduce:animate-none' : '')} />

@@ -127,7 +127,7 @@ class ChainWorkflow(BaseWorkflow):
                     )
 
             except Exception as e:
-                logger.error("Step %s failed: %s", step_name, e)
+                logger.exception("Step %s failed: %s", step_name, e)
                 if self.stop_on_error:
                     return self.create_result(
                         current_state,

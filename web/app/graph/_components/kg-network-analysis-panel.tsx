@@ -186,7 +186,7 @@ export function KgNetworkAnalysisPanel({
 
   function movePanel(event: ReactPointerEvent<HTMLButtonElement>) {
     const drag = dragStateRef.current
-    if (!drag || drag.pointerId !== event.pointerId) return
+    if (drag?.pointerId !== event.pointerId) return
     setPanelOffset({
       x: drag.startX + event.clientX - drag.startClientX,
       y: drag.startY + event.clientY - drag.startClientY,
@@ -195,7 +195,7 @@ export function KgNetworkAnalysisPanel({
 
   function stopPanelDrag(event: ReactPointerEvent<HTMLButtonElement>) {
     const drag = dragStateRef.current
-    if (!drag || drag.pointerId !== event.pointerId) return
+    if (drag?.pointerId !== event.pointerId) return
     dragStateRef.current = null
     event.currentTarget.releasePointerCapture(event.pointerId)
   }

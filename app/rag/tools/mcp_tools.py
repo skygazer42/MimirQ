@@ -146,7 +146,7 @@ async def search_documents(
             "results": results,
         }
     except Exception as e:
-        logger.error("Document search failed: %s", e)
+        logger.exception("Document search failed: %s", e)
         return {
             "query": query,
             "count": 0,
@@ -351,7 +351,7 @@ def _get_document_content_sync(
             "content": content,
         }
     except Exception as e:
-        logger.error("Failed to get document: %s", e)
+        logger.exception("Failed to get document: %s", e)
         return {
             "document_id": document_id,
             "error": str(e),
@@ -447,7 +447,7 @@ def _get_document_sync(
                 "description": meta.get("doc_description") or meta.get("description"),
             }
     except Exception as e:
-        logger.error("Failed to get document info: %s", e)
+        logger.exception("Failed to get document info: %s", e)
         return {"document_id": document_id, "error": str(e)}
 
 
@@ -495,7 +495,7 @@ def _get_document_structure_sync(
                 max_nodes=max_nodes,
             )
     except Exception as e:
-        logger.error("Failed to get document structure: %s", e)
+        logger.exception("Failed to get document structure: %s", e)
         return {"schema": "mimirq.document_structure.v1", "document": {"document_id": document_id}, "nodes": [], "error": str(e)}
 
 

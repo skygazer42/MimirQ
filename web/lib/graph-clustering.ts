@@ -12,7 +12,7 @@ function coerceEndpointId(endpoint: GraphEndpoint): string {
   if (endpoint == null) return ''
   if (typeof endpoint === 'string' || typeof endpoint === 'number') return String(endpoint)
   if (typeof endpoint === 'object' && 'id' in endpoint) {
-    const id = (endpoint as { id?: unknown }).id
+    const id = endpoint.id
     if (typeof id === 'string' || typeof id === 'number') return String(id)
   }
   return ''
@@ -104,4 +104,3 @@ export function computeConnectedComponents(
     clusterSizes: sortedRoots.map((row) => row.size),
   }
 }
-

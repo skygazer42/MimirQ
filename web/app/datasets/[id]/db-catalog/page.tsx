@@ -21,7 +21,7 @@ import { useRouter } from '@/i18n/navigation'
 import { formatApiError } from '@/lib/api-errors'
 import { connectorApi, datasetApi } from '@/lib/api'
 import { queryKeys } from '@/lib/query-keys'
-import { cn, detachPromise } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 
 import type {
   ConnectorRunListResponse,
@@ -155,8 +155,8 @@ export default function DatasetDbCatalogPage() {
   const { refetch: refetchCatalogTables } = catalogTablesQuery
   const { refetch: refetchLatestRun } = latestRunQuery
   const refreshCatalogList = useCallback(() => {
-    void refetchDataset()
-    void refetchCatalogTables()
+    refetchDataset()
+    refetchCatalogTables()
   }, [refetchCatalogTables, refetchDataset])
   const entitlementHash = useMemo(() => {
     const maybeHash = (latestRun?.stats as { result?: { entitlement_hash?: unknown } } | null | undefined)
@@ -264,7 +264,7 @@ export default function DatasetDbCatalogPage() {
       // Best-effort: refresh after a short delay (sync runs async).
       globalThis.window.setTimeout(() => {
         refreshCatalogList()
-        void refetchLatestRun()
+        refetchLatestRun()
       }, 1500)
     } catch (e: any) {
       console.error('Failed to create DB catalog run', e)
@@ -409,7 +409,7 @@ export default function DatasetDbCatalogPage() {
                     variant="outline"
                     size="sm"
                     className="gap-2"
-                    onClick={() => void refetchLatestRun()}
+                    onClick={() => refetchLatestRun()}
                     disabled={latestRunLoading}
                   >
                     <RefreshCw className={cn('h-3.5 w-3.5', latestRunLoading && 'animate-spin motion-reduce:animate-none')} />

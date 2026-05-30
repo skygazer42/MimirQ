@@ -158,7 +158,7 @@ export const datasetApi = {
       params,
       responseType: 'text',
     })
-    return data as unknown as string
+    return data
   },
 
   async exportAnalysisHtmlReport(datasetId: string, params?: DatasetAnalysisFilters): Promise<string> {
@@ -166,7 +166,7 @@ export const datasetApi = {
       params,
       responseType: 'text',
     })
-    return data as unknown as string
+    return data
   },
 
   async writebackAnalysisGlossary(

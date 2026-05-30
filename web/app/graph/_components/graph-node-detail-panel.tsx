@@ -407,7 +407,7 @@ export function GraphNodeDetailPanel({
           panelHeight: panel.offsetHeight,
         })
 
-    if (!panelPosition || nextPosition.x !== panelPosition.x || nextPosition.y !== panelPosition.y) {
+    if (panelPosition?.x !== nextPosition.x || panelPosition.y !== nextPosition.y) {
       setPanelPosition(nextPosition)
     }
   }, [open, panelPosition, selectedNode])
@@ -468,7 +468,7 @@ export function GraphNodeDetailPanel({
     const dragState = dragStateRef.current
     const panel = panelRef.current
     const container = panel?.offsetParent
-    if (!dragState || dragState.pointerId !== event.pointerId) return
+    if (dragState?.pointerId !== event.pointerId) return
     if (!(panel instanceof HTMLElement) || !(container instanceof HTMLElement)) return
 
     const nextX = dragState.originX + event.clientX - dragState.startX
@@ -488,7 +488,7 @@ export function GraphNodeDetailPanel({
 
   const handleDragEnd = (event: ReactPointerEvent<HTMLDivElement>) => {
     const dragState = dragStateRef.current
-    if (!dragState || dragState.pointerId !== event.pointerId) return
+    if (dragState?.pointerId !== event.pointerId) return
 
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId)

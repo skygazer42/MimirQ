@@ -12,7 +12,7 @@ export type FolderTreeIndex<T extends FolderTreeNodeLike> = Readonly<{
 const folderTreeIndexCache = new WeakMap<readonly FolderTreeNodeLike[], FolderTreeIndex<FolderTreeNodeLike>>()
 
 export function getFolderTreeIndex<T extends FolderTreeNodeLike>(folders: readonly T[]): FolderTreeIndex<T> {
-  const cached = folderTreeIndexCache.get(folders as readonly FolderTreeNodeLike[]) as FolderTreeIndex<T> | undefined
+  const cached = folderTreeIndexCache.get(folders) as FolderTreeIndex<T> | undefined
   if (cached) return cached
 
   const byId = new Map<string, T>()
@@ -36,7 +36,7 @@ export function getFolderTreeIndex<T extends FolderTreeNodeLike>(folders: readon
     descendantIdsByFolderId: new Map<string, string[]>(),
   }
 
-  folderTreeIndexCache.set(folders as readonly FolderTreeNodeLike[], index as FolderTreeIndex<FolderTreeNodeLike>)
+  folderTreeIndexCache.set(folders, index)
   return index
 }
 

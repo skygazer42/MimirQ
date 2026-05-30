@@ -597,7 +597,7 @@ export function useParsingLibraryActions({
             const libId = String(doc.id || '').trim()
             if (!libId) throw new Error('Missing document id from backend')
 
-            const metadata = doc.metadata as Record<string, unknown> | undefined
+            const metadata = doc.metadata
             const requestedBackend =
               normalizeBackendCandidate(metadata?.parser_backend_requested) ||
               queuedFile.parserBackend ||
@@ -653,7 +653,7 @@ export function useParsingLibraryActions({
           const libId = String(doc.id || '').trim()
           if (!libId) throw new Error('Missing document id from backend')
 
-          const metadata = doc.metadata as Record<string, unknown> | undefined
+          const metadata = doc.metadata
           const requestedBackend =
             normalizeBackendCandidate(metadata?.parser_backend_requested) ||
             queuedFile.parserBackend ||

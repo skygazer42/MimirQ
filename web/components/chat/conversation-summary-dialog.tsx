@@ -119,7 +119,7 @@ export function ConversationSummaryDialog(props: Readonly<{
                   size="sm"
                   className="h-8 gap-2"
                   onClick={() => {
-                    void summaryQuery.refetch()
+                    summaryQuery.refetch()
                   }}
                   disabled={loading || !hasConversation}
                 >
@@ -141,7 +141,7 @@ export function ConversationSummaryDialog(props: Readonly<{
                   size="sm"
                   className="h-8 gap-2"
                   onClick={() => {
-                    void copy()
+                    copy()
                   }}
                   disabled={!summary.trim()}
                 >

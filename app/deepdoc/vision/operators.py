@@ -564,21 +564,21 @@ class SRResize:
         self.infer_mode = infer_mode
 
     def __call__(self, data):
-        imgH = self.imgH
-        imgW = self.imgW
+        img_h = self.imgH
+        img_w = self.imgW
         images_lr = data["image_lr"]
         transform2 = ResizeNormalize(
-            (imgW // self.down_sample_scale, imgH // self.down_sample_scale))
+            (img_w // self.down_sample_scale, img_h // self.down_sample_scale))
         images_lr = transform2(images_lr)
         data["img_lr"] = images_lr
         if self.infer_mode:
             return data
 
-        images_HR = data["image_hr"]
+        images_hr = data["image_hr"]
         _label_strs = data["label"]
-        transform = ResizeNormalize((imgW, imgH))
-        images_HR = transform(images_HR)
-        data["img_hr"] = images_HR
+        transform = ResizeNormalize((img_w, img_h))
+        images_hr = transform(images_hr)
+        data["img_hr"] = images_hr
         return data
 
 

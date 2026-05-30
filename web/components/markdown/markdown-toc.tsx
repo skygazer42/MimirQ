@@ -1,6 +1,6 @@
 'use client'
 
-import { memo, useMemo, useState, useEffect, useRef, useCallback } from 'react'
+import { memo, useMemo, useState, useEffect, useRef } from 'react'
 
 import { cn } from '@/lib/utils'
 import { extractMarkdownHeadings, flashElementId, scrollToElementId } from '@/lib/markdown'
@@ -12,15 +12,6 @@ function useScrollSpy(
   scrollContainerSelector?: string
 ): string | null {
   const [activeId, setActiveId] = useState<string | null>(null)
-  const skipNextScrollRef = useRef(false)
-
-  const skipScrollSpy = useCallback(() => {
-    skipNextScrollRef.current = true
-    const timer = globalThis.window?.setTimeout(() => {
-      skipNextScrollRef.current = false
-    }, 600)
-    return () => globalThis.window?.clearTimeout(timer)
-  }, [])
 
   useEffect(() => {
     if (typeof IntersectionObserver === 'undefined' || headingIds.length === 0) return
@@ -31,8 +22,6 @@ function useScrollSpy(
 
     const observer = new IntersectionObserver(
       (entries) => {
-        if (skipNextScrollRef.current) return
-
         const visible = entries
           .filter((e) => e.isIntersecting)
           .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)

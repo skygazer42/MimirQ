@@ -183,7 +183,7 @@ class ParallelWorkflow(BaseWorkflow):
                         completed_tasks.append(task.name)
 
         except Exception as e:
-            logger.error("Parallel execution failed: %s", e)
+            logger.exception("Parallel execution failed: %s", e)
             return self.create_result(
                 state,
                 success=False,
@@ -220,7 +220,7 @@ class ParallelWorkflow(BaseWorkflow):
             )
 
         except Exception as e:
-            logger.error("Aggregation failed: %s", e)
+            logger.exception("Aggregation failed: %s", e)
             return self.create_result(
                 state,
                 success=False,

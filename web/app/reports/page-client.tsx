@@ -18,7 +18,6 @@ import {
   Loader2,
   PlayCircle,
   RefreshCw,
-  ShieldAlert,
   ShieldCheck,
   type LucideIcon,
 } from 'lucide-react'
@@ -296,7 +295,7 @@ export default function ReportsCenterPage() {
   const [isExportingBundle, setIsExportingBundle] = useState(false)
 
   const [folderQuery, setFolderQuery] = useState<string>('')
-  const [categoryQuery, setCategoryQuery] = useState<string>('')
+  const [categoryQuery] = useState<string>('')
 
   const [flatFolders, setFlatFolders] = useState<FlatFolderRow[] | null>(null)
   const transformsWorkerRef = useRef<Worker | null>(null)
@@ -638,12 +637,6 @@ export default function ReportsCenterPage() {
       .slice(0, 12)
   }, [governance?.rule_packs_docs])
 
-  const govAuditReductionPct = useMemo(() => {
-    const ratio = Number(governanceAudit?.char_reduction_ratio || 0)
-    if (!Number.isFinite(ratio) || ratio <= 0) return 0
-    return Math.round(ratio * 1000) / 10
-  }, [governanceAudit?.char_reduction_ratio])
-
   const govAuditCharData = useMemo(() => {
     if (!governanceAudit) return []
     return [
@@ -781,10 +774,6 @@ export default function ReportsCenterPage() {
   const topDocumentMax = Math.max(
     1,
     ...topDocumentRows.map((item) => safeNumber(item.value))
-  )
-  const categoryMax = Math.max(
-    1,
-    ...categoryBarData.map((item) => safeNumber(item.value))
   )
   const versionTotal = pipelineVersions.reduce(
     (acc, item) => acc + safeNumber(item.documents),
@@ -1303,7 +1292,7 @@ export default function ReportsCenterPage() {
                   </Button>
                   <Button
                     className="h-8 rounded-lg bg-blue-600 text-info-foreground shadow-[0_8px_20px_rgba(37,99,235,0.22)] hover:bg-blue-700"
-                    onClick={() => void reportQuery.refetch()}
+                    onClick={() => reportQuery.refetch()}
                     disabled={!datasetId || isLoadingReport}
                     aria-label="重新生成报告"
                   >
@@ -1318,9 +1307,9 @@ export default function ReportsCenterPage() {
                     variant="outline"
                     className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50 hover:text-slate-700"
                     onClick={() => {
-                      void datasetsQuery.refetch()
-                      void categoriesQuery.refetch()
-                      if (datasetId) void reportQuery.refetch()
+                      datasetsQuery.refetch()
+                      categoriesQuery.refetch()
+                      if (datasetId) reportQuery.refetch()
                     }}
                     disabled={isLoadingDatasets}
                     aria-label="刷新"

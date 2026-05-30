@@ -68,7 +68,6 @@ export function StatusBadge({
 }>) {
   const t = useTranslations('CommonUi')
   const meta = getStatusMeta(t)[status]
-  const Icon = meta.icon
   return (
     <span
       className={cn(

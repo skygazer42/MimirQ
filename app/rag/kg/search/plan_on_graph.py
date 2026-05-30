@@ -9,8 +9,8 @@ def build_plan_on_graph(
     topic_entities: list[str],
     explored_entities: list[str] | None = None,
 ) -> dict[str, Any]:
-    entities = [str(item or "").strip() for item in list(topic_entities or []) if str(item or "").strip()]
-    explored = [str(item or "").strip() for item in list(explored_entities or []) if str(item or "").strip()]
+    entities = [str(item or "").strip() for item in topic_entities or [] if str(item or "").strip()]
+    explored = [str(item or "").strip() for item in explored_entities or [] if str(item or "").strip()]
 
     if not entities:
         return {

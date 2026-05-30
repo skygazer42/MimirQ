@@ -419,7 +419,7 @@ export function ProfileEditorDrawer({
   const updatePatchBoolean = (key: keyof DocumentPipelineOptions, value: boolean) => {
     applyPipelinePatchUpdate(
       key,
-      value as DocumentPipelineOptions[keyof DocumentPipelineOptions],
+      value,
       setPipelinePatch,
       setPatchJsonError,
       setPatchJsonDirty

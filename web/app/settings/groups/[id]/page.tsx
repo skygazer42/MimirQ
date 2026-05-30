@@ -178,7 +178,7 @@ function SettingsGroupDetailPageContent() {
         externalId: String(updated.external_id || ''),
       })
       toast.success('已保存组信息')
-      void queryClient.invalidateQueries({ queryKey: queryKeys.groups.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.groups.all })
     },
     onError: (err: unknown) => {
       toast.error(formatApiError(err, '保存失败'))
@@ -194,7 +194,7 @@ function SettingsGroupDetailPageContent() {
       toast.success(`已添加 ${res.updated} 个成员`)
       setAddText('')
       setAddOpen(false)
-      void queryClient.invalidateQueries({ queryKey: membersQueryKey })
+      queryClient.invalidateQueries({ queryKey: membersQueryKey })
     },
     onError: (err: unknown) => {
       toast.error(formatApiError(err, '添加成员失败'))
@@ -219,7 +219,7 @@ function SettingsGroupDetailPageContent() {
           total: Math.max(0, Number(prev?.total ?? previousItems.length) - 1),
         }
       })
-      void queryClient.invalidateQueries({ queryKey: membersQueryKey })
+      queryClient.invalidateQueries({ queryKey: membersQueryKey })
     },
     onError: (err: unknown) => {
       toast.error(formatApiError(err, '移除成员失败'))
@@ -296,8 +296,8 @@ function SettingsGroupDetailPageContent() {
               className="gap-2 rounded-xl"
               disabled={loadingGroup || loadingMembers}
               onClick={() => {
-                void groupQuery.refetch()
-                void membersQuery.refetch()
+                groupQuery.refetch()
+                membersQuery.refetch()
               }}
             >
               <RefreshCw className={cn('size-4', (loadingGroup || loadingMembers) && 'animate-spin motion-reduce:animate-none')} />

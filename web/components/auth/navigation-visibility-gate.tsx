@@ -67,7 +67,7 @@ export function NavigationVisibilityGate({
                   当前角色：{access.data?.role || '未知'}。如需访问，请联系管理员在「设置 → 导航权限」中开放。
                 </p>
               </div>
-              <Button variant="outline" className="gap-2 self-start" onClick={() => void access.refetch()}>
+              <Button variant="outline" className="gap-2 self-start" onClick={() => access.refetch()}>
                 <RefreshCw className="size-4" />
                 重新校验
               </Button>
