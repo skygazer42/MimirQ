@@ -44,6 +44,7 @@ import { CreateDatasetButton } from '@/components/datasets/create-dataset-button
 import { GroupChipsInput } from '@/components/groups/group-chips-input'
 
 const DATASET_STATS_REQUEST_SPACING_MS = 90
+type DatasetOperationalStatus = 'active' | 'anomaly' | 'pending' | 'testing'
 
 type DatasetFormState = {
   name: string
@@ -111,7 +112,7 @@ function getDatasetPendingCount(stats?: DatasetIngestionStats | null): number {
   return Number(byStatus.pending || 0) + Number(byStatus.processing || 0)
 }
 
-function getDatasetOperationalStatus(dataset: Dataset, stats?: DatasetIngestionStats | null): 'active' | 'anomaly' | 'pending' | 'testing' {
+function getDatasetOperationalStatus(dataset: Dataset, stats?: DatasetIngestionStats | null): DatasetOperationalStatus {
   const name = String(dataset.name || '').toLowerCase()
   if (name.includes('test') || name.includes('demo') || name.includes('测试')) return 'testing'
   if (getDatasetAnomalyCount(stats) > 0) return 'anomaly'
@@ -560,7 +561,7 @@ export default function DatasetsPage() {
       const isNonEmptyDataset = /Dataset is not empty|still reference this dataset|数据集内仍有/.test(message)
       if (isNonEmptyDataset) {
         shouldCloseDialog = false
-        const countHint = Number(message.match(/\d+/)?.[0] || 1)
+        const countHint = Number(/\d+/.exec(message)?.[0] || 1)
         setDeleteDocumentCountHint(Number.isFinite(countHint) && countHint > 0 ? countHint : 1)
       }
       toast.error(isNonEmptyDataset ? '数据集内仍有文档，请勾选“同时删除文档和索引”后再删除。' : message)

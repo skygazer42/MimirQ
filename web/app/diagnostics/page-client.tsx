@@ -58,12 +58,12 @@ import { cn } from '@/lib/utils'
 import type {
   Dataset,
   DatasetListResponse,
+  DepsDiagnosticsResponse,
   Document as KnowledgeDocument,
   DocumentList,
   OnlineQualitySummaryResponse,
   PromptPreviewResponse,
 } from '@/types'
-import type { DepsDiagnosticsResponse } from '@/types'
 
 // --- Constants & Styles ---
 
@@ -1011,7 +1011,7 @@ export default function DiagnosticsPage() {
           deps: depsSnapshot ?? null,
         },
         metrics: {
-          ...(probeResult?.metrics ?? {}),
+          ...probeResult?.metrics,
           drift_rate: driftMetric,
           perf_gate: perfGateStatus,
         },

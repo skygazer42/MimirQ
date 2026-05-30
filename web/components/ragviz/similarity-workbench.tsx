@@ -755,7 +755,7 @@ export function RagvizSimilarityWorkbench() {
 
   const updateDisplayFields = (xField: string, yField: string) => {
     if (primaryIndex === null) return
-    const target = exclusiveIndex === null ? primaryIndex : exclusiveIndex
+    const target = exclusiveIndex ?? primaryIndex
     setResults((prev) =>
       prev.map((entry, idx) => {
         if (idx !== target) return entry

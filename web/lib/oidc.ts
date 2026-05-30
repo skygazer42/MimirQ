@@ -223,7 +223,7 @@ export async function startOidcLogin(params: { providerId?: string; returnTo?: s
   const extra = parseAuthParams(extraRaw)
   const mergedExtra = {
     ...extra,
-    ...(provider.auth_params || {}),
+    ...provider.auth_params,
   }
   for (const [key, value] of Object.entries(mergedExtra)) {
     if (key) url.searchParams.set(key, String(value ?? ''))

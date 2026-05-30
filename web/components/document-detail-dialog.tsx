@@ -62,6 +62,7 @@ type LifecycleValidationKey =
   | 'validation.authorityInteger'
   | 'validation.authorityRange'
   | 'validation.reviewDueAt'
+type AccessModeFormValue = FormDataEntryValue | string | null | undefined
 
 function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob)
@@ -102,7 +103,7 @@ function toDatetimeLocalValue(value: string | null | undefined): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-function normalizeAccessMode(value: FormDataEntryValue | string | null | undefined): DocumentAccessMode {
+function normalizeAccessMode(value: AccessModeFormValue): DocumentAccessMode {
   const normalized = String(value || '').trim()
   switch (normalized) {
     case 'inherit':

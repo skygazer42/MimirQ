@@ -1505,7 +1505,6 @@ export function ChunkList() {
           if (e.key === 'Escape') {
             e.preventDefault()
             selectChunkIndex(null)
-            return
           }
         }}
         className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-4 focus-ring"

@@ -126,13 +126,10 @@ export function applyThemeColor(color: string, root?: HTMLElement | null) {
   }
 }
 
-export function notifyThemeAppearanceChanged(eventTarget?: ThemeEventTarget | null) {
-  const target =
-    eventTarget === undefined
-      ? globalThis.window !== undefined
-        ? globalThis.window
-        : null
-      : eventTarget
+export function notifyThemeAppearanceChanged(
+  eventTarget: ThemeEventTarget | null = globalThis.window !== undefined ? globalThis.window : null
+) {
+  const target = eventTarget
   if (!target) return
 
   const event =
@@ -143,17 +140,12 @@ export function notifyThemeAppearanceChanged(eventTarget?: ThemeEventTarget | nu
 }
 
 export function applyStoredThemeAppearance(
-  storage?: StorageReader | null,
+  storage: StorageReader | null = globalThis.window !== undefined ? globalThis.window.localStorage : null,
   root?: HTMLElement | null,
   eventTarget?: ThemeEventTarget | null,
   options: ApplyThemeAppearanceOptions = {}
 ) {
-  const effectiveStorage =
-    storage === undefined
-      ? globalThis.window !== undefined
-        ? globalThis.window.localStorage
-        : null
-      : storage
+  const effectiveStorage = storage
   const surfaceTheme = readSurfaceTheme(effectiveStorage)
   const color = readThemeColor(effectiveStorage, surfaceTheme)
 

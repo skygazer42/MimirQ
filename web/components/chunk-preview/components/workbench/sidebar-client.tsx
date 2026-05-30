@@ -99,7 +99,7 @@ const SIDEBAR_FILE_ICON_STYLE = {
 function getFileVisual(file: { displayName?: string; originalFileType?: string } | null | undefined): FileVisual {
   const rawType = String(file?.originalFileType || '').toLowerCase().replace(/^\./, '')
   const name = String(file?.displayName || '').toLowerCase()
-  const ext = rawType || name.match(/\.([a-z0-9]+)(?:$|\?)/)?.[1] || ''
+  const ext = rawType || /\.([a-z0-9]+)(?:$|\?)/.exec(name)?.[1] || ''
 
   if (ext === 'pdf') {
     return {

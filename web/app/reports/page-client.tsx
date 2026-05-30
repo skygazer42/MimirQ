@@ -95,6 +95,7 @@ const REPORT_PANEL_TITLE_CLASS =
 const REPORT_TABLE_HEADER_CLASS =
   'text-[0.6875rem] font-medium uppercase tracking-[0.1em] text-slate-500'
 const REPORT_TABLE_ROW_CLASS = 'text-[0.8125rem] leading-5 text-slate-700'
+type DataPillTone = 'blue' | 'green' | 'amber' | 'rose' | 'violet' | 'slate'
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
@@ -144,7 +145,7 @@ function DataPill({
   label: string
   value: string
   sub?: string
-  tone?: 'blue' | 'green' | 'amber' | 'rose' | 'violet' | 'slate'
+  tone?: DataPillTone
 }>) {
   const toneClass = {
     blue: 'bg-blue-50 text-blue-600 ring-blue-100',

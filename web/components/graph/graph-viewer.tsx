@@ -136,7 +136,7 @@ function parseColorToRgb(color: string): RgbColor | null {
     }
   }
 
-  const rgbMatch = value.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/i)
+  const rgbMatch = /rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/i.exec(value)
   if (!rgbMatch) return null
 
   return {

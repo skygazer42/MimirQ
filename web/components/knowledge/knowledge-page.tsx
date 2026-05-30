@@ -88,12 +88,10 @@ export default function KnowledgePage() {
   const reduceMotion = useReducedMotion()
 
   const initialQueryStateRef = useRef<KnowledgeQueryState | null>(null)
-  if (!initialQueryStateRef.current) {
-    initialQueryStateRef.current = parseKnowledgeQueryState(
-      new URLSearchParams(searchParams.toString()),
-      { datasetAllValue: DATASET_ALL }
-    )
-  }
+  initialQueryStateRef.current ??= parseKnowledgeQueryState(
+    new URLSearchParams(searchParams.toString()),
+    { datasetAllValue: DATASET_ALL }
+  )
   const initialQueryState = initialQueryStateRef.current
 
   const [activeTab, setActiveTab] = useState<TabKey>(
