@@ -52,7 +52,6 @@ def main(args):
         layouts = detr(images, thr=float(args.threshold))
     for i, lyt in enumerate(layouts):
         if args.mode.lower() == "tsr":
-            # lyt = [t for t in lyt if t["type"] == "table column"]
             html = get_table_html(images[i], lyt, ocr)
             with open(outputs[i] + ".html", "w+", encoding='utf-8') as f:
                 f.write(html)

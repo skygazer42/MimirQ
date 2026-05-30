@@ -358,7 +358,6 @@ class TextRecognizer:
 
     def resize_norm_img_spin(self, img):
         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        # return padding_im
         img = cv2.resize(img, (100, 32), cv2.INTER_CUBIC)
         img = np.array(img, np.float32)
         img = np.expand_dims(img, -1)
@@ -841,8 +840,5 @@ class OCR:
                 filter_rec_res.append(rec_result)
         end = time.time()
         time_dict['all'] = end - start
-
-        # for bno in range(len(img_crop_list)):
-        #    print(f"{bno}, {rec_res[bno]}")
 
         return list(zip([a.tolist() for a in filter_boxes], filter_rec_res, strict=False))

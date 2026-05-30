@@ -324,12 +324,10 @@ class DetResizeForTest:
             img = self.image_padding(img)
 
         if self.resize_type == 0:
-            # img, shape = self.resize_image_type0(img)
             img, [ratio_h, ratio_w] = self.resize_image_type0(img)
         elif self.resize_type == 2:
             img, [ratio_h, ratio_w] = self.resize_image_type2(img)
         else:
-            # img, shape = self.resize_image_type1(img)
             img, [ratio_h, ratio_w] = self.resize_image_type1(img)
         data['image'] = img
         data['shape'] = np.array([src_h, src_w, ratio_h, ratio_w])
@@ -351,7 +349,6 @@ class DetResizeForTest:
         ratio_h = float(resize_h) / ori_h
         ratio_w = float(resize_w) / ori_w
         img = cv2.resize(img, (int(resize_w), int(resize_h)))
-        # return img, np.array([ori_h, ori_w])
         return img, [ratio_h, ratio_w]
 
     def resize_image_type0(self, img):

@@ -13,8 +13,6 @@ from tqdm import tqdm
 
 from ..configs.settings import DATA_PARSER_DATA, MODEL_OCR_PATH
 
-# from argparse import ArgumentParser
-
 # ====== Absolute paths ======
 
 # Global data pool

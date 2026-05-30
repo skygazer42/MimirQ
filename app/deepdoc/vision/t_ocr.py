@@ -42,11 +42,7 @@ import trio
 
 from app.rag.core.logging import get_logger
 
-# os.environ['CUDA_VISIBLE_DEVICES'] = '0,2' #2 gpus, uncontinuous
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'  # 1 gpu
-
-
-# os.environ['CUDA_VISIBLE_DEVICES'] = '' #cpu
 
 
 def main(args):
