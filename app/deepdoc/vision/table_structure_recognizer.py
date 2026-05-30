@@ -163,7 +163,6 @@ class TableStructureRecognizer(Recognizer):
         rowh = [b["R_bott"] - b["R_top"] for b in boxes if "R" in b]
         rowh = np.min(rowh) if rowh else 0
         boxes = Recognizer.sort_R_firstly(boxes, rowh / 2)
-        # for b in boxes:print(b)
         boxes[0]["rn"] = 0
         rows = [[boxes[0]]]
         btm = boxes[0]["bottom"]

@@ -1037,9 +1037,6 @@ class IntegratedPipelinePdfParser:
 
             tk, tv = nearest(tables)
             fk, fv = nearest(figures)
-            # if min(tv, fv) > 2000:
-            #    i += 1
-            #    continue
             if tv < fv and tk:
                 tables[tk].insert(0, c)
                 logging.debug(
@@ -1651,11 +1648,3 @@ if __name__ == "__main__":
 
     logging.info("All text content:")
     logging.info("%s", full_text)
-
-    # print(f"\n📊 Number of tables or images: {len(tables_and_figures)}")
-    # output_dir = "output_images"
-    # os.makedirs(output_dir, exist_ok=True)
-    # for idx, (img, _) in enumerate(tables_and_figures):
-    #     img_path = os.path.join(output_dir, f"table_or_fig_{idx + 1}.png")
-    #     img.save(img_path)
-    #     print(f"✅ Image saved: {img_path}")
