@@ -52,6 +52,8 @@ export function GraphContextMenu({
 
   return (
     <div
+      role="menu"
+      aria-label="图谱上下文菜单"
       className="absolute z-30"
       style={{ left: contextMenu.x, top: contextMenu.y }}
       onMouseDown={(e) => e.stopPropagation()}

@@ -43,13 +43,15 @@ export const Alert = React.forwardRef<HTMLDivElement, AlertProps>(function Alert
 export const AlertTitle = React.forwardRef<
   RadixRef<"h5">,
   React.ComponentPropsWithoutRef<"h5">
->(function AlertTitle({ className, ...props }, ref) {
+>(function AlertTitle({ className, children, ...props }, ref) {
   return (
     <h5
       ref={ref}
       className={cn("mb-1 font-medium leading-none ", className)}
       {...props}
-    />
+    >
+      {children}
+    </h5>
   )
 })
 

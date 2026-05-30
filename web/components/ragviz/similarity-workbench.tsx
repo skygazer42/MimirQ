@@ -2861,7 +2861,7 @@ function NumberField({
   max: number
 }>) {
   return (
-    <label className="space-y-1.5 block">
+    <div className="space-y-1.5 block">
       <div className="flex items-center justify-between gap-2">
         <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-foreground/72">
           {label}
@@ -2871,6 +2871,7 @@ function NumberField({
         </div>
       </div>
       <input
+        aria-label={label}
         className="h-9 w-full rounded-[16px] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(244,247,250,0.96))] px-3 text-sm text-foreground shadow-[0_1px_0_rgba(255,255,255,0.85),0_6px_16px_rgba(15,23,42,0.06)] outline-none transition-[border-color,box-shadow] hover:border-primary/25 focus:border-primary/35 focus:shadow-[0_1px_0_rgba(255,255,255,0.9),0_0_0_4px_rgba(59,130,246,0.10),0_10px_24px_rgba(15,23,42,0.08)]"
         type="number"
         min={min}
@@ -2882,7 +2883,7 @@ function NumberField({
           onChange(parsed)
         }}
       />
-    </label>
+    </div>
   )
 }
 

@@ -902,7 +902,7 @@ function ResizableParsingInspectorRail({
 
       {!inspectorCollapsed ? (
         <div
-          role="separator"
+          role="slider"
           aria-label="调整解析信息宽度"
           aria-orientation="vertical"
           aria-valuemax={MAX_PARSING_INSPECTOR_WIDTH}

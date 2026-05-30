@@ -273,7 +273,7 @@ export function ModelConfigDialog({
                     min="0"
                     max="2"
                     value={config.temperature}
-                    onChange={(e) => setConfig({ ...config, temperature: parseFloat(e.target.value) })}
+                    onChange={(e) => setConfig({ ...config, temperature: Number.parseFloat(e.target.value) })}
                     className="h-9 text-sm"
                   />
                 </div>

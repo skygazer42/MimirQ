@@ -108,7 +108,7 @@ def create_operators(op_param_list, global_config=None):
     for operator in op_param_list:
         assert isinstance(operator,
                           dict) and len(operator) == 1, "yaml format error"
-        op_name = list(operator)[0]
+        op_name = next(iter(operator))
         param = {} if operator[op_name] is None else operator[op_name]
         if global_config is not None:
             param.update(global_config)

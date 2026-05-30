@@ -38,8 +38,8 @@ export function GraphMinimap({
   const nodePositions = useMemo(() => {
     const out: Array<{ x: number; y: number }> = []
     for (const n of data.nodes || []) {
-      const x = safeNumber((n as any)?.x, NaN)
-      const y = safeNumber((n as any)?.y, NaN)
+      const x = safeNumber((n as any)?.x, Number.NaN)
+      const y = safeNumber((n as any)?.y, Number.NaN)
       if (!Number.isFinite(x) || !Number.isFinite(y)) continue
       out.push({ x, y })
     }
