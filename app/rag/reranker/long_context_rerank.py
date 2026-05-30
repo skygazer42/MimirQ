@@ -39,7 +39,7 @@ def _default_long_context_scorer(query: str, docs: list[RerankCandidate]) -> dic
         return {str(doc.id): 0.0 for doc in (docs or [])}
 
     doc_tokens: dict[str, set[str]] = {}
-    df: dict[str, int] = {token: 0 for token in query_tokens}
+    df: dict[str, int] = dict.fromkeys(query_tokens, 0)
     for doc in docs or []:
         tokens = set(tokenize_for_bm25(str(doc.text or "")))
         doc_tokens[str(doc.id)] = tokens

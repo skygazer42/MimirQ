@@ -297,7 +297,7 @@ export function TenantQuotaPanel() {
 
         <details className="mt-4 overflow-hidden rounded-xl border border-border/60 bg-muted/35">
           <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-[12px] font-semibold text-muted-foreground hover:bg-muted/55 [&::-webkit-details-marker]:hidden">
-            查看原始响应
+            <span>查看原始响应</span>
             <span className="text-[10px] font-medium text-muted-foreground">
               JSON
             </span>

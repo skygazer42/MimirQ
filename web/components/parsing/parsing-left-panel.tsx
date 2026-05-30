@@ -72,7 +72,7 @@ export function ParsingLeftPanel({
   }, [])
 
   const handleResizePointerDown = useCallback(
-    (event: React.PointerEvent<HTMLButtonElement>) => {
+    (event: React.PointerEvent<HTMLDivElement>) => {
       if (collapsed) {
         return
       }
@@ -133,7 +133,7 @@ export function ParsingLeftPanel({
   )
 
   const handleResizeKeyDown = useCallback(
-    (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
       if (collapsed) {
         return
       }
@@ -194,8 +194,7 @@ export function ParsingLeftPanel({
         )}
       </Button>
 
-      <button
-        type="button"
+      <div
         role="separator"
         aria-label="调整文档列表宽度"
         aria-orientation="vertical"

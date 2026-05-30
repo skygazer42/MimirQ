@@ -99,6 +99,28 @@ def _normalize_ref_path(raw: str) -> str:
     return val
 
 
+def _skip_spaces(text: str, cursor: int) -> int:
+    while cursor < len(text) and text[cursor].isspace():
+        cursor += 1
+    return cursor
+
+
+def _has_attribute_name_boundary(tag: str, name_start: int) -> bool:
+    before = tag[name_start - 1] if name_start > 0 else " "
+    return not (before.isalnum() or before in {"-", "_", ":"})
+
+
+def _read_quoted_attribute_value(tag: str, quote_at: int) -> tuple[int, int, str] | None:
+    if quote_at >= len(tag) or tag[quote_at] not in {"'", '"'}:
+        return None
+    quote = tag[quote_at]
+    value_start = quote_at + 1
+    value_end = tag.find(quote, value_start)
+    if value_end < 0:
+        return None
+    return value_start, value_end, tag[value_start:value_end]
+
+
 def _find_img_src_span(tag: str) -> tuple[int, int, str] | None:
     lower = tag.lower()
     pos = 0
@@ -106,28 +128,15 @@ def _find_img_src_span(tag: str) -> tuple[int, int, str] | None:
         src_at = lower.find("src", pos)
         if src_at < 0:
             return None
-        before = tag[src_at - 1] if src_at > 0 else " "
-        if before.isalnum() or before in {"-", "_", ":"}:
-            pos = src_at + 3
+        pos = src_at + 3
+        if not _has_attribute_name_boundary(tag, src_at):
             continue
-        cursor = src_at + 3
-        while cursor < len(tag) and tag[cursor].isspace():
-            cursor += 1
-        if cursor >= len(tag) or tag[cursor] != "=":
-            pos = src_at + 3
+        eq_at = _skip_spaces(tag, pos)
+        if eq_at >= len(tag) or tag[eq_at] != "=":
             continue
-        cursor += 1
-        while cursor < len(tag) and tag[cursor].isspace():
-            cursor += 1
-        if cursor >= len(tag) or tag[cursor] not in {"'", '"'}:
-            pos = src_at + 3
-            continue
-        quote = tag[cursor]
-        value_start = cursor + 1
-        value_end = tag.find(quote, value_start)
-        if value_end < 0:
-            return None
-        return value_start, value_end, tag[value_start:value_end]
+        src_span = _read_quoted_attribute_value(tag, _skip_spaces(tag, eq_at + 1))
+        if src_span:
+            return src_span
 
 
 def rewrite_html_image_refs(text: str, resolver: Any) -> str:

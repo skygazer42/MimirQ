@@ -91,6 +91,7 @@ async def startup(ctx):  # noqa: ANN001
         logger.info("Worker heartbeat enabled queue=%s interval_sec=%s", queue_name, interval)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to start worker heartbeat: %s", str(exc)[:200])
+    await asyncio.sleep(0)
 
 
 async def shutdown(ctx):  # noqa: ANN001

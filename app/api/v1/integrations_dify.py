@@ -156,7 +156,7 @@ def _coerce_uuid(value: object, *, label: str) -> UUID:
         raise HTTPException(status_code=400, detail=f"Invalid {label}") from exc
 
 
-async def _require_dify_actor(
+def _require_dify_actor(
     request: Request,
     authorization: Annotated[str | None, Header(alias="Authorization")] = None,
 ) -> _DifyActor:

@@ -34,7 +34,7 @@ function percentile(sorted: number[], p: number) {
 function fnv1a32(text: string) {
   let hash = 0x811c9dc5
   for (let i = 0; i < text.length; i += 1) {
-    hash ^= text.charCodeAt(i)
+    hash ^= text.codePointAt(i) ?? 0
     // hash *= 16777619 (keep 32-bit)
     hash = (hash + (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24)) >>> 0
   }

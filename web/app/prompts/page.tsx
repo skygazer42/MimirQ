@@ -988,7 +988,7 @@ function PromptsPageContent() {
                 <span className="font-mono">
                   {deleteTemplateTarget?.name || '-'}
                 </span>
-                。此操作不可撤销。
+                <span>。此操作不可撤销。</span>
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>

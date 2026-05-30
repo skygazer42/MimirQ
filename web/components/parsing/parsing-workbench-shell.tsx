@@ -800,7 +800,7 @@ function ResizableParsingInspectorRail({
   }, [])
 
   const handleResizePointerDown = useCallback(
-    (event: React.PointerEvent<HTMLButtonElement>) => {
+    (event: React.PointerEvent<HTMLDivElement>) => {
       event.preventDefault()
       resizeStateRef.current = {
         currentWidth: inspectorWidth,
@@ -857,7 +857,7 @@ function ResizableParsingInspectorRail({
   )
 
   const handleResizeKeyDown = useCallback(
-    (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
       const step = event.shiftKey ? 32 : 16
       const nextWidthByKey: Record<string, number | undefined> = {
         ArrowLeft: inspectorWidth + step,
@@ -901,8 +901,7 @@ function ResizableParsingInspectorRail({
       </Button>
 
       {!inspectorCollapsed ? (
-        <button
-          type="button"
+        <div
           role="separator"
           aria-label="调整解析信息宽度"
           aria-orientation="vertical"

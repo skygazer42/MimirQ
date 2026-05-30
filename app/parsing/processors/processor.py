@@ -1903,6 +1903,7 @@ class DocumentProcessorService:
 
         async def cancel_check(*, force: bool = False) -> bool:
             nonlocal last_check, cached_cancel
+            await asyncio.sleep(0)
             now = time.monotonic()
             if not force and (now - last_check) < float(poll_interval_sec):
                 return cached_cancel
@@ -4149,6 +4150,7 @@ class DocumentProcessorService:
         **kwargs
     ):
         """Update document processing status."""
+        await asyncio.sleep(0)
         db_doc = (
             db.query(DBDocument)
             .populate_existing()

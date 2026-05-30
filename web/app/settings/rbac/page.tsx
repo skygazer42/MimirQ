@@ -107,7 +107,7 @@ function avatarTone(userId?: string | null) {
     'bg-slate-200 text-slate-700',
   ]
   const raw = String(userId || '')
-  const sum = raw.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
+  const sum = raw.split('').reduce((acc, char) => acc + (char.codePointAt(0) ?? 0), 0)
   return tones[sum % tones.length]
 }
 

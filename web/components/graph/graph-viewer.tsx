@@ -194,7 +194,7 @@ function traceRoundRect(
 function hashTypeToIndex(type: string): number {
   let hash = 0
   for (let i = 0; i < type.length; i++) {
-    hash = ((hash << 5) - hash + type.charCodeAt(i)) | 0
+    hash = Math.trunc((hash * 31 + (type.codePointAt(i) ?? 0)) % 0x7fffffff)
   }
   return Math.abs(hash) % NODE_COLOR_PALETTE.length
 }

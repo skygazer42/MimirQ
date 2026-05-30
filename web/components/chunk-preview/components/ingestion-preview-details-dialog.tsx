@@ -358,7 +358,9 @@ export function IngestionPreviewDetailsDialog({
                       <span className="font-mono">{cleanSummary.referencesRemovedLines}</span>
                     </div>
                     <div>
-                      +<span className="font-mono">{cleanSummary.added}</span> -<span className="font-mono">{cleanSummary.removed}</span> ~
+                      <span>+</span><span className="font-mono">{cleanSummary.added}</span>{' '}
+                      <span>-</span><span className="font-mono">{cleanSummary.removed}</span>{' '}
+                      <span>~</span>
                       <span className="font-mono">{cleanSummary.changedLines}</span>
                     </div>
                     <div>

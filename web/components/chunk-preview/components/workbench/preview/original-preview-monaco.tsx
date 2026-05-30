@@ -95,7 +95,7 @@ type MonacoModule = {
 function buildLineStarts(text: string) {
   const starts = [0]
   for (let i = 0; i < text.length; i++) {
-    if (text.charCodeAt(i) === 10) starts.push(i + 1) // '\n'
+    if (text.codePointAt(i) === 10) starts.push(i + 1) // '\n'
   }
   return starts
 }

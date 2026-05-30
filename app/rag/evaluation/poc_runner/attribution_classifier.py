@@ -141,7 +141,7 @@ def classify_feedback_records(
     max_examples_per_category: int = 10,
 ) -> dict[str, Any]:
     selected = [dict(row or {}) for row in (records or []) if isinstance(row, dict) and _is_negative_feedback(row)]
-    counts = {category: 0 for category in _CATEGORIES}
+    counts = dict.fromkeys(_CATEGORIES, 0)
     top_examples = {category: [] for category in _CATEGORIES}
     manual_review_candidates: list[dict[str, Any]] = []
 

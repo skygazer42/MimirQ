@@ -553,7 +553,7 @@ type JsonTokenKind =
   | 'punctuation'
 
 function splitCodeLines(value: string): string[] {
-  const normalized = String(value ?? '').replace(/\r/g, '')
+  const normalized = String(value ?? '').replaceAll('\r', '')
   const lines = normalized.split('\n')
   if (lines.length > 1 && lines[lines.length - 1] === '') lines.pop()
   return lines.length ? lines : ['']

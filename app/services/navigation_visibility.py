@@ -22,12 +22,15 @@ _ALLOWED_NAVIGATION_MODULE_SET = frozenset(ADMIN_CONTROLLED_NAVIGATION_MODULES)
 
 def _iter_raw_modules(value: Any) -> Iterable[str]:
     if value is None:
-        return ()
+        return
     if isinstance(value, str):
-        return (part.strip() for part in value.replace(";", ",").split(","))
-    if isinstance(value, Iterable):
-        return (str(part or "").strip() for part in value)
-    return (str(value or "").strip(),)
+        source: Iterable[Any] = value.replace(";", ",").split(",")
+    elif isinstance(value, Iterable):
+        source = value
+    else:
+        source = (value,)
+    for part in source:
+        yield str(part or "").strip()
 
 
 def normalize_navigation_modules(value: Any, *, reject_unknown: bool = False) -> list[str]:

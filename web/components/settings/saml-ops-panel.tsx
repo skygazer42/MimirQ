@@ -71,7 +71,7 @@ export function SamlOpsPanel() {
           </div>
           <div>
             <div className="flex items-center gap-2 text-[14px] font-semibold text-slate-950">
-              SAML 单点登录
+              <span>SAML 单点登录</span>
               <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
                 按需配置
               </span>

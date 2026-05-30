@@ -384,7 +384,7 @@ class Recognizer:
                 ious = compute_iou(boxes[box_id, :], boxes[sorted_indices[1:], :])
 
                 # Remove boxes with IoU over the threshold
-                keep_indices = np.where(ious < iou_threshold)[0]
+                keep_indices = np.nonzero(ious < iou_threshold)[0]
 
                 # print(keep_indices.shape, sorted_indices.shape)
                 sorted_indices = sorted_indices[keep_indices + 1]
@@ -410,7 +410,7 @@ class Recognizer:
         unique_class_ids = np.unique(class_ids)
         indices = []
         for class_id in unique_class_ids:
-            class_indices = np.where(class_ids == class_id)[0]
+            class_indices = np.nonzero(class_ids == class_id)[0]
             class_boxes = boxes[class_indices, :]
             class_scores = scores[class_indices]
             class_keep_boxes = iou_filter(class_boxes, class_scores, 0.2)

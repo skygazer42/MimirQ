@@ -484,7 +484,7 @@ export function KgPredicateOntologySettings() {
               <span className="font-mono">
                 {deleteTarget?.predicate || '-'}
               </span>
-              。此操作不可撤销（但可以重新创建）。
+              <span>。此操作不可撤销（但可以重新创建）。</span>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
