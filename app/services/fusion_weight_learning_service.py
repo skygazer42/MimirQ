@@ -114,9 +114,10 @@ def summarize_fusion_weight_observability(
             str(row.get("schema") or "").strip() == "mimirq.training_export_row.v1"
             and isinstance(row.get("reference_sources"), list)
             and isinstance(trace.get("citations"), list)
+            and row.get("reference_sources")
+            and trace.get("citations")
         ):
-            if row.get("reference_sources") and trace.get("citations"):
-                ltr_training_ready_rows += 1
+            ltr_training_ready_rows += 1
 
     return {
         "schema": FUSION_WEIGHT_OBSERVABILITY_SCHEMA,

@@ -11,7 +11,7 @@ export function validateChunkStrategyParams(value: unknown): ChunkStrategyParams
     return { ok: false, error: 'chunk_strategy_params 必须是 JSON Object（键值对）' }
   }
 
-  const entries = Object.entries(value as Record<string, unknown>)
+  const entries = Object.entries(value)
   if (entries.length > 30) {
     return { ok: false, error: 'chunk_strategy_params 键过多（最多 30 个）' }
   }
@@ -43,7 +43,7 @@ export function validateChunkStrategyParams(value: unknown): ChunkStrategyParams
     return { ok: false, error: '只允许原始类型 value（null/bool/number/string），不允许嵌套对象/数组' }
   }
 
-  return { ok: true, value: Object.keys(cleaned).length ? (cleaned as ChunkStrategyParams) : undefined }
+  return { ok: true, value: Object.keys(cleaned).length ? cleaned : undefined }
 }
 
 export function parseChunkStrategyParamsJson(text: string): ChunkStrategyParamsValidateResult {

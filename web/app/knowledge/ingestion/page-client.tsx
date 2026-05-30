@@ -2397,7 +2397,7 @@ export default function KnowledgeIngestionPageClient() {
             type: 'pie',
           },
         ],
-      }) as EChartsOption,
+      }),
     [executionFileTypeDistributionRows]
   )
 
@@ -2840,7 +2840,7 @@ export default function KnowledgeIngestionPageClient() {
           data: forecastSeries,
         },
       ],
-    } as EChartsOption
+    }
   }, [forecastPoints, throughputRows, throughputRowsSource])
 
   const costRadarValues = useMemo(() => {
@@ -2943,7 +2943,7 @@ export default function KnowledgeIngestionPageClient() {
             ],
           },
         ],
-      }) as EChartsOption,
+      }),
     [costRadarValues]
   )
 
@@ -3219,7 +3219,7 @@ export default function KnowledgeIngestionPageClient() {
             type: 'bar',
           },
         ],
-      }) as EChartsOption,
+      }),
     [executionBatchAnalysis.distributionBars]
   )
 
@@ -3494,7 +3494,7 @@ export default function KnowledgeIngestionPageClient() {
           })),
         },
       ],
-    } as EChartsOption
+    }
   }, [salesAuditSummary])
 
   const salesLengthOption = useMemo<EChartsOption>(() => {
@@ -3544,7 +3544,7 @@ export default function KnowledgeIngestionPageClient() {
           },
         },
       ],
-    } as EChartsOption
+    }
   }, [salesAuditSummary])
 
   const salesRadarOption = useMemo<EChartsOption>(() => {
@@ -3645,7 +3645,7 @@ export default function KnowledgeIngestionPageClient() {
           ],
         },
       ],
-    } as EChartsOption
+    }
   }, [salesAuditSummary])
 
   const persistExecutionMonitorDisposition = useCallback(

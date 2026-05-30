@@ -7,7 +7,7 @@ import json
 import math
 import os
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from uuid import UUID
 
 from app.core.config import settings
@@ -20,9 +20,6 @@ from app.storage.vector.pgvector import PGVectorStore
 from app.storage.vector.qdrant import QdrantVectorStore
 
 logger = get_logger("storage.vector.factory")
-
-if TYPE_CHECKING:
-    pass
 
 _FAISS_CLS = None
 _CHROMA_CLS = None

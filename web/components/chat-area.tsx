@@ -239,7 +239,7 @@ export function ChatArea({
       offset: RagSettingsOffset,
       baseRect: RagSettingsDragState['baseRect']
     ): RagSettingsOffset => {
-      if (typeof globalThis.window === 'undefined') return offset
+      if (globalThis.window === undefined) return offset
 
       const maxX =
         globalThis.window.innerWidth -

@@ -119,7 +119,7 @@ export class GraphService {
 
     try {
       const nodes = await kgApi.searchGraphNodes({ q, kind: 'all', limit: 20 })
-      return Array.isArray(nodes) ? (nodes as GraphNode[]) : []
+      return Array.isArray(nodes) ? nodes : []
     } catch {
       return []
     }

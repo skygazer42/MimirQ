@@ -158,11 +158,11 @@ export function QuerysetHealthTab({
     if (latest || prev) setBaselineTs((p) => p || prev || latest)
   }, [runsQuery.data])
 
-  const latest = runs?.items?.[0] as Record<string, any> | undefined
-  const latestMetrics = (latest?.metrics as Record<string, any>) || {}
-  const latestRisk = (latest?.risk as Record<string, any>) || {}
+  const latest = runs?.items?.[0]
+  const latestMetrics: Record<string, any> = latest?.metrics || {}
+  const latestRisk: Record<string, any> = latest?.risk || {}
   const latestFlags = Array.isArray(latest?.degradation_flags)
-    ? (latest?.degradation_flags as any[])
+    ? latest?.degradation_flags
     : []
 
   const chartData = useMemo(() => {
@@ -625,8 +625,8 @@ export function QuerysetHealthTab({
                 </tr>
               ) : (
                 runItems.slice(0, 30).map((it: any) => {
-                  const m = (it?.metrics as any) || {}
-                  const r = (it?.risk as any) || {}
+                  const m = it?.metrics || {}
+                  const r = it?.risk || {}
                   const st = String(it?.status || 'unknown')
                   const isDegraded = st === 'degraded'
                   const stLabel =

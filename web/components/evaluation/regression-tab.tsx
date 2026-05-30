@@ -1426,7 +1426,7 @@ export function RegressionTestTab({
                       })()}
                       {(() => {
                         const judge = safeRecord(item.meta?.llm_judge)
-                        if (!Boolean(judge.enabled)) return null
+                        if (!judge.enabled) return null
                         const overall = judge.overall_score
                         const modelUsed = judge.model_used
                         const parts: Array<{ key: string; obj: Record<string, unknown> }> = [

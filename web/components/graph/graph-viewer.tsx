@@ -444,7 +444,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
     if (viewportLodFrameRef.current !== null || viewportLodTimeoutRef.current !== null) return
 
     if (
-      typeof globalThis.window !== 'undefined' &&
+      globalThis.window !== undefined &&
       typeof globalThis.window.requestAnimationFrame === 'function'
     ) {
       viewportLodFrameRef.current = globalThis.window.requestAnimationFrame(() => {
@@ -496,7 +496,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
 
   useEffect(() => {
     return () => {
-      if (viewportLodFrameRef.current !== null && typeof globalThis.window !== 'undefined') {
+      if (viewportLodFrameRef.current !== null && globalThis.window !== undefined) {
         globalThis.window.cancelAnimationFrame(viewportLodFrameRef.current)
         viewportLodFrameRef.current = null
       }

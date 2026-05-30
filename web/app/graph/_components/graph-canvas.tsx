@@ -88,7 +88,7 @@ function getNowMs(): number {
 }
 
 function getFrontendTracePage(): string {
-  if (typeof globalThis.window === 'undefined') return '/graph'
+  if (globalThis.window === undefined) return '/graph'
   return globalThis.window.location?.pathname || '/graph'
 }
 

@@ -161,7 +161,7 @@ export function useParsingLibraryActions({
       const restoredDurationSec =
         !autoParse && Number.isFinite(Number(libEntry.durationSec)) ? Number(libEntry.durationSec) : undefined
 
-      const libStatus = (libEntry.status || 'parsed') as FileStatus
+      const libStatus = libEntry.status || 'parsed'
 
       let status: FileStatus
       let errorMessage: string | undefined

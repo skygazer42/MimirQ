@@ -23,7 +23,7 @@ type RouteErrorProps = Readonly<{
 
 function retryRouteAfterBoundaryError(reset: () => void) {
   reset()
-  if (typeof globalThis.window === 'undefined') return
+  if (globalThis.window === undefined) return
   globalThis.window.location.reload()
 }
 

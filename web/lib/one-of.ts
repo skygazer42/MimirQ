@@ -2,7 +2,7 @@ export function isOneOf<const T extends readonly string[]>(
   values: T,
   value: string,
 ): value is T[number] {
-  return values.includes(value as T[number])
+  return values.includes(value)
 }
 
 export function coerceOneOf<const T extends readonly string[]>(

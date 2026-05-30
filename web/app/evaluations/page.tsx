@@ -119,7 +119,7 @@ function parseEvaluationTab(value: string | null | undefined): TabType | null {
     tab === 'conversation' ||
     tab === 'queryset_health'
   )
-    return tab as TabType
+    return tab
   return null
 }
 

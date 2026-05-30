@@ -109,6 +109,7 @@ const DOCUMENT_EXTENSIONS = new Set([
   'adoc',
 ])
 const SPREADSHEET_EXTENSIONS = new Set(['xls', 'xlsx', 'csv', 'tsv'])
+const DIRECTORY_INPUT_PROPS = { webkitdirectory: '' }
 
 function getSidebarFileExtension(name: string) {
   return name.split('.').pop()?.trim().toLowerCase() || ''
@@ -471,7 +472,7 @@ export function ParsingSidebarPane({
         ref={folderInputRef}
         type="file"
         multiple
-        {...({ webkitdirectory: '' } as { webkitdirectory: string })}
+        {...DIRECTORY_INPUT_PROPS}
         className="hidden"
         onChange={onFileSelect}
       />

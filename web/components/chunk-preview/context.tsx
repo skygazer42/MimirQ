@@ -464,7 +464,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     try {
       const data = JSON.parse(raw)
       if (typeof data?.parentChildRatio === 'number' && Number.isFinite(data.parentChildRatio)) {
-        setParentChildRatio(Math.max(0.05, Math.min(1.0, Number(data.parentChildRatio))))
+        setParentChildRatio(Math.max(0.05, Math.min(1, Number(data.parentChildRatio))))
       }
       if (typeof data?.parentChildMinChildSize === 'number' && Number.isFinite(data.parentChildMinChildSize)) {
         setParentChildMinChildSize(Math.max(50, Math.min(4000, Math.trunc(Number(data.parentChildMinChildSize)))))
@@ -1343,7 +1343,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     setChunkOverrides((prev) => {
       const next = { ...prev }
       const cur = next[idx] || {}
-      const nextDisabled = !Boolean(cur.disabled)
+      const nextDisabled = !cur.disabled
 
       if (nextDisabled) {
         next[idx] = { ...cur, disabled: true, updatedAt: Date.now() }
@@ -1474,7 +1474,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     (settings: Partial<Pick<ChunkPreviewState, 'parentChildRatio' | 'parentChildMinChildSize'>>) => {
       if (settings.parentChildRatio !== undefined) {
         const n = Number(settings.parentChildRatio)
-        if (Number.isFinite(n)) setParentChildRatio(Math.max(0.05, Math.min(1.0, n)))
+        if (Number.isFinite(n)) setParentChildRatio(Math.max(0.05, Math.min(1, n)))
       }
       if (settings.parentChildMinChildSize !== undefined) {
         const n = Number(settings.parentChildMinChildSize)

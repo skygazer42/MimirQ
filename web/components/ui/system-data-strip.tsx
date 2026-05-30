@@ -1,12 +1,14 @@
 import { cn } from "@/lib/utils"
 import { systemPageTokens } from "@/components/ui/system-page-tokens"
 
+type SystemDataStripTone = "default" | "success" | "warning" | "danger"
+
 export type SystemDataStripItem = {
   id?: string
   label: string
   value: React.ReactNode
   hint?: React.ReactNode
-  tone?: "default" | "success" | "warning" | "danger" | string
+  tone?: SystemDataStripTone
   mono?: boolean
 }
 
@@ -16,7 +18,7 @@ type SystemDataStripProps = {
   minColumnWidth?: number
 }
 
-const TONE_CLASS: Record<NonNullable<SystemDataStripItem["tone"]>, string> = {
+const TONE_CLASS: Record<SystemDataStripTone, string> = {
   default: "text-foreground",
   success: "text-success",
   warning: "text-warning",

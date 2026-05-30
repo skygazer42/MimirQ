@@ -185,12 +185,12 @@ export function buildGraphFromTrace(trace: RagTrace): {
 
   nodes.push(
     { id: rootId, label: 'RAG Trace', kind: 'trace', val: 2.5, color: '#0ea5e9' },
-    { id: idRetrieve, label: 'Retrieve', kind: 'step', val: 2.0, color: '#2563eb' }
+    { id: idRetrieve, label: 'Retrieve', kind: 'step', val: 2, color: '#2563eb' }
   )
   if (hasRerank) {
-    nodes.push({ id: idRerank, label: 'Rerank', kind: 'step', val: 2.0, color: '#14b8a6' })
+    nodes.push({ id: idRerank, label: 'Rerank', kind: 'step', val: 2, color: '#14b8a6' })
   }
-  nodes.push({ id: idCitations, label: 'Citations', kind: 'step', val: 2.0, color: '#f97316' })
+  nodes.push({ id: idCitations, label: 'Citations', kind: 'step', val: 2, color: '#f97316' })
 
   links.push({ source: rootId, target: idRetrieve, label: 'start' })
   if (hasRerank) {
