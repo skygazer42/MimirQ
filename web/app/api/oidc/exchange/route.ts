@@ -148,7 +148,8 @@ export async function POST(req: NextRequest) {
 
   const headers: Record<string, string> = { 'Content-Type': 'application/x-www-form-urlencoded' }
   if (secret && authMethod === 'basic') {
-    headers.Authorization = `Basic ${Buffer.from(`${clientId}:${secret}`).toString('base64')}`
+    const credentials = `${clientId}:${secret}`
+    headers.Authorization = `Basic ${Buffer.from(credentials).toString('base64')}`
   }
 
   const res = await fetch(tokenEndpoint, {

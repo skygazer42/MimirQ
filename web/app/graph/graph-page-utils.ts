@@ -209,12 +209,13 @@ export function buildGraphFromTrace(trace: RagTrace): {
     const page = citation.page_number == null ? '' : `p${citation.page_number}`
     const score = citation.rerank_score ?? citation.retrieval_score ?? citation.relevance_score
     const scoreText = score == null ? '' : ` score=${Number(score).toFixed(3)}`
+    const pageText = page ? ` · ${page}` : ''
     const id = `${rootId}:c${idx}`
 
     citationNodeIds.push(id)
     nodes.push({
       id,
-      label: `#${idx + 1} ${doc}${page ? ` · ${page}` : ''}${scoreText}`,
+      label: `#${idx + 1} ${doc}${pageText}${scoreText}`,
       kind: 'citation',
       val: 1.2,
       color: '#64748b',

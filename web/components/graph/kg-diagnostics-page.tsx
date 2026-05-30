@@ -2068,9 +2068,10 @@ export function KGDiagnosticsPage() {
                                 const b =
                                   String(detailB?.run?.id || '').slice(0, 8) ||
                                   'B'
+                                const diffName = sanitizeFilename(`kg_diagnostics_diff_${a}_vs_${b}`)
                                 downloadJson(
                                   diff ?? {},
-                                  `${sanitizeFilename(`kg_diagnostics_diff_${a}_vs_${b}`)}.json`
+                                  `${diffName}.json`
                                 )
                                 toast.success(t('compare.exported'))
                               }}

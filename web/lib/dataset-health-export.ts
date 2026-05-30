@@ -60,7 +60,8 @@ export function datasetHealthToMarkdown(input: DatasetHealthExportInput): string
       const sev = oneLine(s.severity || 'info')
       const title = oneLine(s.title)
       const detail = oneLine(s.detail)
-      lines.push(`- [${sev}] ${title}${detail ? `: ${detail}` : ''}`)
+      const detailSuffix = detail ? `: ${detail}` : ''
+      lines.push(`- [${sev}] ${title}${detailSuffix}`)
     }
   }
 

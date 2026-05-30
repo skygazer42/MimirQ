@@ -738,7 +738,7 @@ export default function DatasetProfilePage() {
   return (
     <AppFrame>
       <PageScaffold
-        title={`数据画像${dataset?.name ? ` · ${dataset.name}` : ''}`}
+        title={`数据画像${dataset?.name ? ' · ' + dataset.name : ''}`}
         badge="Dataset Profile"
         icon={BarChart3}
         iconColor="text-info"
