@@ -10,8 +10,8 @@ interface TiltCardProps {
   onClick?: () => void
   onMouseEnter?: () => void
   onMouseLeave?: () => void
-  onFocus?: React.FocusEventHandler<HTMLDivElement>
-  onBlur?: React.FocusEventHandler<HTMLDivElement>
+  onFocus?: React.FocusEventHandler<HTMLButtonElement>
+  onBlur?: React.FocusEventHandler<HTMLButtonElement>
   selected?: boolean
   ariaLabel?: string
 }
@@ -53,7 +53,7 @@ export function TiltCard({ children, className, onClick, onMouseEnter, onMouseLe
     }
   }, [])
 
-  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+  const handlePointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
     if (!enabled) return
     if (!ref.current) return
 
@@ -94,16 +94,16 @@ export function TiltCard({ children, className, onClick, onMouseEnter, onMouseLe
     return (
       <div
         ref={ref}
-        onPointerEnter={() => onMouseEnter?.()}
-        onPointerLeave={() => onMouseLeave?.()}
-        onFocus={onFocus}
-        onBlur={onBlur}
         className={cn("relative", className)}
       >
         <button
           type="button"
           className="absolute inset-0 z-0 rounded-[inherit] text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           onClick={onClick}
+          onPointerEnter={() => onMouseEnter?.()}
+          onPointerLeave={() => onMouseLeave?.()}
+          onFocus={onFocus}
+          onBlur={onBlur}
           aria-label={ariaLabel}
           aria-pressed={selected}
         />
@@ -117,17 +117,17 @@ export function TiltCard({ children, className, onClick, onMouseEnter, onMouseLe
   return (
     <div
       ref={ref}
-      onPointerMove={handlePointerMove}
-      onPointerEnter={() => onMouseEnter?.()}
-      onPointerLeave={handlePointerLeave}
-      onFocus={onFocus}
-      onBlur={onBlur}
       className={cn("relative perspective-1000", className)}
     >
       <button
         type="button"
         className="absolute inset-0 z-0 rounded-[inherit] text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         onClick={onClick}
+        onPointerMove={handlePointerMove}
+        onPointerEnter={() => onMouseEnter?.()}
+        onPointerLeave={handlePointerLeave}
+        onFocus={onFocus}
+        onBlur={onBlur}
         aria-label={ariaLabel}
         aria-pressed={selected}
       />

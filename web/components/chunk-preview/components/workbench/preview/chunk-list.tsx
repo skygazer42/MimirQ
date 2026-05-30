@@ -77,14 +77,6 @@ type DisplayRow =
       count: number
     }
 
-function isEditableTarget(target: EventTarget | null) {
-  const el = target as HTMLElement | null
-  if (!el) return false
-  const tag = (el.tagName || '').toLowerCase()
-  if (tag === 'input' || tag === 'textarea' || tag === 'select') return true
-  return el.isContentEditable
-}
-
 function toSignalSet(values: readonly number[] | undefined): Set<number> {
   const out = new Set<number>()
   for (const value of values || []) {
@@ -650,15 +642,6 @@ export function ChunkList() {
       rowVirtualizer.scrollToIndex(pos, { align: 'center' })
     }
   }, [displayRows, rowVirtualizer, selectedChunkIndex])
-
-  const navigableIndices = useMemo(() => {
-    const out: number[] = []
-    for (const row of displayRows) {
-      if (row.kind !== 'chunk') continue
-      out.push(row.index)
-    }
-    return out
-  }, [displayRows])
 
   const matchesLabel = useMemo(() => {
     const hasFilter =
@@ -1459,55 +1442,8 @@ export function ChunkList() {
       <section
         ref={scrollRef}
         data-page-scroll-container="true"
-        role="application"
         aria-label={t('chunkList.ariaLabel')}
-        tabIndex={0}
-        onKeyDown={(e) => {
-          if (!previewData?.chunks?.length) return
-          if (isEditableTarget(e.target)) return
-          if (navigableIndices.length === 0) return
-
-          const currentPos =
-            selectedChunkIndex == null
-              ? -1
-              : navigableIndices.indexOf(selectedChunkIndex)
-
-          const clamp = (n: number) => Math.max(0, Math.min(navigableIndices.length - 1, n))
-
-          if (e.key === '/') {
-            e.preventDefault()
-            searchRef.current?.focus()
-            return
-          }
-          if (e.key === 'Home' || (e.key.toLowerCase() === 'g' && !e.shiftKey)) {
-            e.preventDefault()
-            selectChunkIndex(navigableIndices[0] ?? null)
-            return
-          }
-          if (e.key === 'End' || (e.key.toLowerCase() === 'g' && e.shiftKey)) {
-            e.preventDefault()
-            selectChunkIndex(navigableIndices.at(-1) ?? null)
-            return
-          }
-
-          if (e.key === 'ArrowDown' || e.key.toLowerCase() === 'j') {
-            e.preventDefault()
-            const nextPos = clamp(currentPos < 0 ? 0 : currentPos + 1)
-            selectChunkIndex(navigableIndices[nextPos] ?? null)
-            return
-          }
-          if (e.key === 'ArrowUp' || e.key.toLowerCase() === 'k') {
-            e.preventDefault()
-            const nextPos = clamp(currentPos < 0 ? 0 : currentPos - 1)
-            selectChunkIndex(navigableIndices[nextPos] ?? null)
-            return
-          }
-          if (e.key === 'Escape') {
-            e.preventDefault()
-            selectChunkIndex(null)
-          }
-        }}
-        className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-4 focus-ring"
+        className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-4"
       >
         <AnimatePresence initial={false} mode="wait">
           <motion.div
