@@ -115,8 +115,9 @@ export function usePathBreadcrumbs(): BreadcrumbItem[] {
     }
 
     // The last item represents the current page – drop its href.
-    if (items.length > 0) {
-      items[items.length - 1] = { label: items[items.length - 1].label }
+    const lastItem = items.at(-1)
+    if (lastItem) {
+      items.splice(-1, 1, { label: lastItem.label })
     }
 
     return items

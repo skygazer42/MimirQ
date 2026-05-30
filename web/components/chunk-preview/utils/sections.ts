@@ -44,7 +44,7 @@ export function getChunkSectionLabel(chunk: ChunkPreviewItem): { full: string; s
 
   // Use last segment as short label for cards; keep the full path in a tooltip.
   const parts = full.split(' / ').map((p) => p.trim()).filter(Boolean)
-  const last = parts[parts.length - 1] || full
+  const last = parts.at(-1) || full
   const short = last.length > 40 ? last.slice(0, 39) + '…' : last
   return { full, short }
 }

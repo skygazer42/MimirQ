@@ -278,7 +278,7 @@ async function copyToClipboard(text = ''): Promise<void> {
     await navigator.clipboard.writeText(text)
     toast.success('已复制')
   } catch (err) {
-    toast.error('复制失败')
+    toast.error(err instanceof Error && err.message ? `复制失败：${err.message}` : '复制失败')
   }
 }
 

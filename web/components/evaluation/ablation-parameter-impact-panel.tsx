@@ -113,15 +113,16 @@ function buildImpactRows(runs: RegressionRun[], metricKey: string): ImpactRow[] 
       if (buckets.length < 2) return null
       const sorted = buckets.sort((a, b) => b.mean - a.mean)
       const best = sorted[0]
-      const worst = sorted[sorted.length - 1]
+      const worst = sorted.at(-1)
+      const worstMetric = worst?.mean ?? 0
       return {
         key,
         values: buckets.length,
         bestLabel: best.label,
         bestMetric: best.mean,
-        worstLabel: worst.label,
-        worstMetric: worst.mean,
-        spread: best.mean - worst.mean,
+        worstLabel: worst?.label ?? '-',
+        worstMetric,
+        spread: best.mean - worstMetric,
         samples: buckets.reduce((sum, bucket) => sum + bucket.count, 0),
       }
     })

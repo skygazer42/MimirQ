@@ -15,8 +15,8 @@ export const SEPARATOR_PRESET_OPTIONS: Array<{
   label: string
   hint: string
 }> = [
-  { value: 'paragraph', label: '段落（\\\\n\\\\n）', hint: '按空行分段（推荐）' },
-  { value: 'line', label: '按行（\\\\n）', hint: '按换行切分' },
+  { value: 'paragraph', label: String.raw`段落（\\n\\n）`, hint: '按空行分段（推荐）' },
+  { value: 'line', label: String.raw`按行（\\n）`, hint: '按换行切分' },
   { value: 'sentence_cn', label: '中文句号（。)', hint: '按中文句号切分' },
   { value: 'sentence_en', label: '英文句号（.)', hint: '按英文句号切分' },
   { value: 'markdown_hr', label: 'Markdown 分隔线（---）', hint: '适用于 slides/sections' },

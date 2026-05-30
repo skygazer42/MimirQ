@@ -2036,7 +2036,7 @@ export default function KnowledgeIngestionPageClient() {
 
     if (recentBuckets.length >= 2) {
       const first = recentBuckets[0]?.ts ?? 0
-      const last = recentBuckets[recentBuckets.length - 1]?.ts ?? 0
+      const last = recentBuckets.at(-1)?.ts ?? 0
       const spanMinutes = Math.round((last - first) / 60_000)
 
       if (spanMinutes >= 60) {
@@ -2768,7 +2768,7 @@ export default function KnowledgeIngestionPageClient() {
 
   const forecastPoints = useMemo(() => {
     if (!throughputRows.length) return []
-    const last = throughputRows[throughputRows.length - 1]
+    const last = throughputRows.at(-1)
     const base = last?.total ?? 0
     const rate = docsPerMinute ?? 0
     const stepMinutes = summary.bucket_minutes || 20
@@ -2782,11 +2782,12 @@ export default function KnowledgeIngestionPageClient() {
 
   const predictionOption = useMemo<EChartsOption>(() => {
     const actualSeries = throughputRows.map((row) => [row.ts, row.total])
-    const forecastSeries = actualSeries.length
+    const lastActualPoint = actualSeries.at(-1)
+    const forecastSeries = lastActualPoint
       ? [
           [
-            actualSeries[actualSeries.length - 1][0],
-            actualSeries[actualSeries.length - 1][1],
+            lastActualPoint[0],
+            lastActualPoint[1],
           ],
           ...forecastPoints.map((row) => [row.ts, row.total]),
         ]
@@ -3804,7 +3805,11 @@ export default function KnowledgeIngestionPageClient() {
       if (reportWindow) {
         reportWindow.document.write(html)
         reportWindow.document.close()
-        toast.error('JPG 生成失败，已回退到 HTML 预览')
+        toast.error(
+          error instanceof Error && error.message
+            ? `JPG 生成失败，已回退到 HTML 预览：${error.message}`
+            : 'JPG 生成失败，已回退到 HTML 预览'
+        )
         return
       }
 
@@ -3813,7 +3818,11 @@ export default function KnowledgeIngestionPageClient() {
         html,
         'text/html;charset=utf-8'
       )
-      toast.error('JPG 生成失败，已回退到 HTML 文件')
+      toast.error(
+        error instanceof Error && error.message
+          ? `JPG 生成失败，已回退到 HTML 文件：${error.message}`
+          : 'JPG 生成失败，已回退到 HTML 文件'
+      )
     }
   }, [
     docsPerMinute,
@@ -3849,7 +3858,11 @@ export default function KnowledgeIngestionPageClient() {
       )
       toast.success('已导出脱敏 JPG 报告')
     } catch (error) {
-      toast.error('导出脱敏 JPG 报告失败，已回退到当前页面报告')
+      toast.error(
+        error instanceof Error && error.message
+          ? `导出脱敏 JPG 报告失败，已回退到当前页面报告：${error.message}`
+          : '导出脱敏 JPG 报告失败，已回退到当前页面报告'
+      )
       await handleDownloadReport()
     }
   }, [

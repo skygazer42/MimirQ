@@ -71,7 +71,7 @@ function escapeAttributeSelector(value: string): string {
   if (typeof globalThis.CSS?.escape === 'function') {
     return globalThis.CSS.escape(value)
   }
-  return String(value).replace(/["\\\]]/g, '\\$&')
+  return String(value).replace(/["\\\]]/g, String.raw`\$&`)
 }
 
 export function ChatArea({

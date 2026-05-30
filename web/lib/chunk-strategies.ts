@@ -25,7 +25,7 @@ export const CHUNK_STRATEGY_OPTIONS: ChunkStrategyOption[] = [
     value: 'pdf_layout',
     label: 'PDF 版式感知（bbox/columns）',
     description:
-      '适用于包含 @@page\\tl\\tr\\tt\\tb## 位置标签的 PDF 解析结果：按版面块聚合，写入 bbox/column 元数据，并从 chunk 文本中去除位置标签。',
+      String.raw`适用于包含 @@page\tl\tr\tt\tb## 位置标签的 PDF 解析结果：按版面块聚合，写入 bbox/column 元数据，并从 chunk 文本中去除位置标签。`,
     icon: 'hierarchical',
     badge: 'PDF',
     group: 'preset',
@@ -474,7 +474,7 @@ export const CHUNK_STRATEGY_OPTIONS: ChunkStrategyOption[] = [
   {
     value: 'latex_sections',
     label: 'LaTeX（预设）',
-    description: '识别 \\section/\\chapter 等结构命令，按章节切块。',
+    description: String.raw`识别 \section/\chapter 等结构命令，按章节切块。`,
     icon: 'hierarchical',
     badge: 'LaTeX',
     group: 'preset',
