@@ -70,13 +70,87 @@ type FeedbackSourceFilter =
   | 'other'
 type FeedbackTimeRange = '7d' | '30d' | '90d' | 'all'
 type FeedbackMetricKey = 'all' | FeedbackType | 'neutral'
+type FeedbackKind = FeedbackType | 'neutral'
+type FeedbackSummaryTone = 'indigo' | 'emerald' | 'rose' | 'blue'
+type FeedbackStatusTone = 'positive' | 'negative' | 'neutral' | 'priority'
 type FeedbackDelta = {
   label: string
   tone: 'positive' | 'negative' | 'neutral'
   title: string
 }
+type ActiveFeedbackFilterBadge = {
+  key: string
+  label: string
+}
 
 const FEEDBACK_PAGE_SIZE = 3
+
+const FEEDBACK_RANGE_DAYS: Record<Exclude<FeedbackTimeRange, 'all'>, number> = {
+  '7d': 7,
+  '30d': 30,
+  '90d': 90,
+}
+
+const SUMMARY_ICON_CLASSES: Record<FeedbackSummaryTone, string> = {
+  blue: 'border-info/12 bg-info/10 text-info',
+  emerald: 'border-success/20 bg-success text-success-foreground',
+  indigo: 'border-indigo/12 bg-indigo/10 text-indigo',
+  rose: 'border-destructive/20 bg-destructive text-destructive-foreground',
+}
+
+const SUMMARY_VALUE_CLASSES: Record<FeedbackSummaryTone, string> = {
+  blue: 'text-info',
+  emerald: 'text-success',
+  indigo: 'text-indigo',
+  rose: 'text-rose',
+}
+
+const DELTA_TONE_CLASSES: Record<FeedbackDelta['tone'], string> = {
+  negative: 'text-rose',
+  neutral: 'text-muted-foreground',
+  positive: 'text-success',
+}
+
+const FEEDBACK_KIND_LABELS: Record<FeedbackKind, string> = {
+  neutral: '中立',
+  thumbs_down: '点踩',
+  thumbs_up: '点赞',
+}
+
+const FEEDBACK_KIND_BADGE_CLASSES: Record<FeedbackKind, string> = {
+  neutral: 'border-info/15 bg-info/10 text-info',
+  thumbs_down: 'border-rose/15 bg-rose/10 text-rose',
+  thumbs_up: 'border-success/15 bg-success/10 text-success',
+}
+
+const SOURCE_BADGE_LABELS: Record<Exclude<FeedbackSourceFilter, 'all'>, string> = {
+  api: '引用不足',
+  enterprise: '引用不足',
+  mobile: '解析问题',
+  other: '引用不足',
+  web: '未命中知识库',
+}
+
+const RESOLUTION_LABELS: Record<FeedbackKind, string> = {
+  neutral: '待确认',
+  thumbs_down: '高优先级',
+  thumbs_up: '有帮助',
+}
+
+const TIME_RANGE_SHORT_LABELS: Record<FeedbackTimeRange, string> = {
+  '7d': '7 天',
+  '30d': '30 天',
+  '90d': '90 天',
+  all: '全部时间',
+}
+
+const TIME_RANGE_BADGE_LABELS: Record<Exclude<FeedbackTimeRange, 'all'>, string> = {
+  '7d': '最近 7 天',
+  '30d': '最近 30 天',
+  '90d': '最近 90 天',
+}
+
+const TOP_REASON_BAR_CLASSES = ['bg-rose', 'bg-rose/60', 'bg-rose/35'] as const
 
 function classifyFeedback(rating: number): FeedbackType | 'neutral' {
   const v = Number(rating) || 0
@@ -85,11 +159,114 @@ function classifyFeedback(rating: number): FeedbackType | 'neutral' {
   return 'neutral'
 }
 
+function feedbackDisplayString(value: unknown): string {
+  if (typeof value === 'string') return value.trim()
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    return String(value).trim()
+  }
+  return ''
+}
+
+function firstFeedbackDisplayString(...values: unknown[]): string {
+  for (const value of values) {
+    const direct = feedbackDisplayString(value)
+    if (direct) return direct
+
+    if (value && typeof value === 'object') {
+      const record = value as Record<string, unknown>
+      const nested = firstFeedbackDisplayString(record.value, record.label, record.name, record.id)
+      if (nested) return nested
+    }
+  }
+  return ''
+}
+
+function feedbackDeltaTone(value: number): FeedbackDelta['tone'] {
+  if (value > 0) return 'positive'
+  if (value < 0) return 'negative'
+  return 'neutral'
+}
+
+function feedbackKindIcon(kind: FeedbackKind) {
+  if (kind === 'thumbs_up') return <ThumbsUp className="size-3.5" />
+  if (kind === 'thumbs_down') return <ThumbsDown className="size-3.5" />
+  return <Star className="size-3.5" />
+}
+
+function feedbackStatusTone(
+  badge: string,
+  issue: string,
+  kind: FeedbackKind
+): FeedbackStatusTone {
+  if (badge === '高优先级') return 'priority'
+  if (badge === '有帮助') return 'positive'
+  if (badge === issue && kind === 'thumbs_down') return 'negative'
+  return 'neutral'
+}
+
+function filterTypeTitle(filterType: FeedbackTypeFilter): string {
+  if (filterType === 'all') return '按类型筛选（当前：全部）'
+  return `按类型筛选：${FEEDBACK_KIND_LABELS[filterType]}反馈`
+}
+
+function filterTypeTriggerLabel(filterType: FeedbackTypeFilter): string {
+  if (filterType === 'all') return '类型'
+  return `类型 · ${FEEDBACK_KIND_LABELS[filterType]}`
+}
+
+function feedbackSourceBadgeLabel(source: FeedbackSourceFilter): string {
+  if (source === 'all') return '引用不足'
+  return SOURCE_BADGE_LABELS[source]
+}
+
+function topReasonBarClass(index: number): string {
+  return TOP_REASON_BAR_CLASSES[index] ?? 'bg-rose/35'
+}
+
+function trendOpacityClass(hasTrendData: boolean): string {
+  return hasTrendData ? '' : 'opacity-35'
+}
+
+function buildActiveFeedbackFilterBadges(
+  filterType: FeedbackTypeFilter,
+  ratingFilter: RatingFilter,
+  sourceFilter: FeedbackSourceFilter,
+  timeRange: FeedbackTimeRange,
+  searchTerm: string
+): ActiveFeedbackFilterBadge[] {
+  const badges: ActiveFeedbackFilterBadge[] = []
+  if (filterType !== 'all') {
+    badges.push({ key: 'type', label: `类型: ${FEEDBACK_KIND_LABELS[filterType]}` })
+  }
+  if (ratingFilter !== 'all') {
+    badges.push({ key: 'rating', label: `${ratingFilter} 星` })
+  }
+  if (sourceFilter !== 'all') {
+    badges.push({ key: 'source', label: getFeedbackSourceLabel(sourceFilter) })
+  }
+  if (timeRange !== 'all') {
+    badges.push({ key: 'time', label: TIME_RANGE_BADGE_LABELS[timeRange] })
+  }
+  const query = searchTerm.trim()
+  if (query) badges.push({ key: 'search', label: query })
+  return badges
+}
+
+function demoMessageContentForRating(rating: number): string {
+  if (rating <= 2) {
+    return '当前回答主要覆盖了概念说明，但缺少配置步骤、示例和知识库命中依据，因此用户仍然无法直接完成设置。'
+  }
+  if (rating === 3) {
+    return '回答提供了方向性解释，但对具体限制、适用条件和边界情况说明不足，用户需要进一步确认。'
+  }
+  return '回答结构清晰，给出了对比关系、适用场景和操作建议，整体可读性较好。'
+}
+
 function getFeedbackSource(
   item: MessageFeedbackEnriched
 ): FeedbackSourceFilter {
   const raw =
-    `${String(item.account_id || '')} ${String(item.extra?.source || '')}`.toLowerCase()
+    `${feedbackDisplayString(item.account_id)} ${firstFeedbackDisplayString(item.extra?.source)}`.toLowerCase()
   if (
     raw.includes('mobile') ||
     raw.includes('ios') ||
@@ -161,7 +338,7 @@ function isWithinRange(
   const ts = new Date(String(value || '')).getTime()
   if (!Number.isFinite(ts)) return false
   const now = Date.now()
-  const days = range === '7d' ? 7 : range === '30d' ? 30 : 90
+  const days = FEEDBACK_RANGE_DAYS[range]
   return now - ts <= days * 24 * 60 * 60 * 1000
 }
 
@@ -229,7 +406,7 @@ function buildLoopCandidateMetrics(
   const tokens = glossaryItems
     .map((item) =>
       typeof item === 'object' && item !== null
-        ? String((item as Record<string, unknown>).token || '')
+        ? firstFeedbackDisplayString((item as Record<string, unknown>).token)
         : ''
     )
     .filter(Boolean)
@@ -293,7 +470,7 @@ function buildFeedbackDelta(
   const change = ((today - previous) / previous) * 100
   return {
     label: `${change >= 0 ? '+' : ''}${change.toFixed(1)}%`,
-    tone: change > 0 ? 'positive' : change < 0 ? 'negative' : 'neutral',
+    tone: feedbackDeltaTone(change),
     title: `今日 ${today}，昨日 ${previous}`,
   }
 }
@@ -309,30 +486,11 @@ function FeedbackSummaryCard({
   value: number
   delta: FeedbackDelta
   icon: typeof ThumbsUp
-  tone: 'indigo' | 'emerald' | 'rose' | 'blue'
+  tone: FeedbackSummaryTone
 }>) {
-  const iconClassName =
-    tone === 'indigo'
-      ? 'border-indigo/12 bg-indigo/10 text-indigo'
-      : tone === 'emerald'
-        ? 'border-success/20 bg-success text-success-foreground'
-        : tone === 'rose'
-          ? 'border-destructive/20 bg-destructive text-destructive-foreground'
-          : 'border-info/12 bg-info/10 text-info'
-  const valueClassName =
-    tone === 'indigo'
-      ? 'text-indigo'
-      : tone === 'emerald'
-        ? 'text-success'
-        : tone === 'rose'
-          ? 'text-rose'
-          : 'text-info'
-  const deltaTone =
-    delta.tone === 'positive'
-      ? 'text-success'
-      : delta.tone === 'negative'
-        ? 'text-rose'
-        : 'text-muted-foreground'
+  const iconClassName = SUMMARY_ICON_CLASSES[tone]
+  const valueClassName = SUMMARY_VALUE_CLASSES[tone]
+  const deltaTone = DELTA_TONE_CLASSES[delta.tone]
 
   return (
     <div className="min-h-[72px] rounded-[1.1rem] border border-border/60 bg-background/92 px-3.5 py-2.5 shadow-[0_14px_34px_-30px_rgba(15,23,42,0.25)]">
@@ -504,7 +662,7 @@ function FeedbackTrendCard({
         <div className="relative">
           <svg
             viewBox={`0 0 ${width} ${height}`}
-            className={cn('h-[164px] w-full', !hasTrendData && 'opacity-35')}
+            className={cn('h-[164px] w-full', trendOpacityClass(hasTrendData))}
             aria-hidden="true"
           >
             {Array.from({ length: 5 }, (_, gridLineIndex) => gridLineIndex).map((gridLineIndex) => {
@@ -559,11 +717,11 @@ function FeedbackTrendCard({
               )
             })}
           </svg>
-          {!hasTrendData ? (
+          {hasTrendData ? null : (
             <div className="absolute inset-x-4 top-10 rounded-2xl border border-dashed border-border/60 bg-background/86 px-4 py-5 text-center text-[11px] leading-5 text-muted-foreground shadow-sm">
               最近 7 天暂无反馈趋势，收到数据后会自动绘制曲线。
             </div>
-          ) : null}
+          )}
         </div>
       </div>
     </div>
@@ -660,12 +818,7 @@ function buildDemoFeedbackItems(): MessageFeedbackEnriched[] {
       created_at: createdAt,
       updated_at: createdAt,
       conversation_title: seed.title,
-      message_content:
-        seed.rating <= 2
-          ? '当前回答主要覆盖了概念说明，但缺少配置步骤、示例和知识库命中依据，因此用户仍然无法直接完成设置。'
-          : seed.rating === 3
-            ? '回答提供了方向性解释，但对具体限制、适用条件和边界情况说明不足，用户需要进一步确认。'
-            : '回答结构清晰，给出了对比关系、适用场景和操作建议，整体可读性较好。',
+      message_content: demoMessageContentForRating(seed.rating),
       message_created_at: createdAt,
     }
   })
@@ -1040,6 +1193,17 @@ export default function FeedbackTriagePage() {
     if (hasExtendedFilters) return `筛选 ${filtered.length} / ${items.length}`
     return `共 ${items.length} 条`
   }, [filtered.length, hasExtendedFilters, items.length])
+  const activeFilterBadges = useMemo(
+    () =>
+      buildActiveFeedbackFilterBadges(
+        filterType,
+        ratingFilter,
+        sourceFilter,
+        timeRange,
+        searchTerm
+      ),
+    [filterType, ratingFilter, searchTerm, sourceFilter, timeRange]
+  )
 
   useEffect(() => {
     setPage(1)
@@ -1180,52 +1344,15 @@ export default function FeedbackTriagePage() {
 
                       {hasExtendedFilters ? (
                         <div className="mt-2 flex flex-wrap gap-1.5">
-                          {filterType !== 'all' ? (
+                          {activeFilterBadges.map((badge) => (
                             <Badge
+                              key={badge.key}
                               variant="secondary"
                               className="rounded-full px-3 py-1 text-[10px] font-medium"
                             >
-                              {filterType === 'thumbs_up'
-                                ? '类型: 点赞'
-                                : '类型: 点踩'}
+                              {badge.label}
                             </Badge>
-                          ) : null}
-                          {ratingFilter !== 'all' ? (
-                            <Badge
-                              variant="secondary"
-                              className="rounded-full px-3 py-1 text-[10px] font-medium"
-                            >
-                              {ratingFilter} 星
-                            </Badge>
-                          ) : null}
-                          {sourceFilter !== 'all' ? (
-                            <Badge
-                              variant="secondary"
-                              className="rounded-full px-3 py-1 text-[10px] font-medium"
-                            >
-                              {getFeedbackSourceLabel(sourceFilter)}
-                            </Badge>
-                          ) : null}
-                          {timeRange !== 'all' ? (
-                            <Badge
-                              variant="secondary"
-                              className="rounded-full px-3 py-1 text-[10px] font-medium"
-                            >
-                              {timeRange === '7d'
-                                ? '最近 7 天'
-                                : timeRange === '30d'
-                                  ? '最近 30 天'
-                                  : '最近 90 天'}
-                            </Badge>
-                          ) : null}
-                          {searchTerm.trim() ? (
-                            <Badge
-                              variant="secondary"
-                              className="rounded-full px-3 py-1 text-[10px] font-medium"
-                            >
-                              {searchTerm.trim()}
-                            </Badge>
-                          ) : null}
+                          ))}
                         </div>
                       ) : null}
                     </div>
@@ -1272,21 +1399,11 @@ export default function FeedbackTriagePage() {
                       }
                     >
                       <SelectTrigger
-                        title={
-                          filterType === 'all'
-                            ? '按类型筛选（当前：全部）'
-                            : filterType === 'thumbs_up'
-                              ? '按类型筛选：点赞反馈'
-                              : '按类型筛选：点踩反馈'
-                        }
+                        title={filterTypeTitle(filterType)}
                         className="h-9 w-full rounded-xl border-border/60 bg-background/75 px-3 shadow-none [&>svg]:text-muted-foreground/65"
                       >
                         <span className="truncate pr-2 text-[12px] font-medium text-foreground">
-                          {filterType === 'all'
-                            ? '类型'
-                            : filterType === 'thumbs_up'
-                              ? '类型 · 点赞'
-                              : '类型 · 点踩'}
+                          {filterTypeTriggerLabel(filterType)}
                         </span>
                       </SelectTrigger>
                       <SelectContent className="rounded-lg border-border/60 bg-popover p-1 shadow-soft">
@@ -1353,13 +1470,7 @@ export default function FeedbackTriagePage() {
                         <span className="inline-flex items-center gap-2 truncate pr-2 text-[12px] font-medium text-foreground">
                           <CalendarDays className="size-4 shrink-0 text-muted-foreground" />
                           <span className="truncate">
-                            {timeRange === 'all'
-                              ? '全部时间'
-                              : timeRange === '7d'
-                                ? '7 天'
-                              : timeRange === '30d'
-                                ? '30 天'
-                                : '90 天'}
+                            {TIME_RANGE_SHORT_LABELS[timeRange]}
                           </span>
                         </span>
                       </SelectTrigger>
@@ -1386,18 +1497,8 @@ export default function FeedbackTriagePage() {
                       item.reason ||
                       item.conversation_title ||
                       `反馈 ${item.id.slice(0, 8)}`
-                    const sourceBadgeLabel =
-                      source === 'web'
-                        ? '未命中知识库'
-                        : source === 'mobile'
-                          ? '解析问题'
-                          : '引用不足'
-                    const resolutionLabel =
-                      kind === 'thumbs_down'
-                        ? '高优先级'
-                        : kind === 'neutral'
-                          ? '待确认'
-                          : '有帮助'
+                    const sourceBadgeLabel = feedbackSourceBadgeLabel(source)
+                    const resolutionLabel = RESOLUTION_LABELS[kind]
                     const badgeItems = Array.from(
                       new Set(
                         [
@@ -1417,20 +1518,10 @@ export default function FeedbackTriagePage() {
                           <div
                             className={cn(
                               'flex h-7.5 w-7.5 shrink-0 items-center justify-center rounded-lg border',
-                              kind === 'thumbs_up'
-                                ? 'border-success/15 bg-success/10 text-success'
-                                : kind === 'thumbs_down'
-                                  ? 'border-rose/15 bg-rose/10 text-rose'
-                                  : 'border-info/15 bg-info/10 text-info'
+                              FEEDBACK_KIND_BADGE_CLASSES[kind]
                             )}
                           >
-                            {kind === 'thumbs_up' ? (
-                              <ThumbsUp className="size-3.5" />
-                            ) : kind === 'thumbs_down' ? (
-                              <ThumbsDown className="size-3.5" />
-                            ) : (
-                              <Star className="size-3.5" />
-                            )}
+                            {feedbackKindIcon(kind)}
                           </div>
 
                           <div className="min-w-0 flex-1">
@@ -1442,11 +1533,7 @@ export default function FeedbackTriagePage() {
                                 <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
                                   <span>
                                     用户反馈（
-                                    {kind === 'thumbs_up'
-                                      ? '点赞'
-                                      : kind === 'thumbs_down'
-                                        ? '点踩'
-                                        : '中立'}
+                                    {FEEDBACK_KIND_LABELS[kind]}
                                     ）
                                   </span>
                                   <span className="text-muted-foreground/35">
@@ -1488,14 +1575,7 @@ export default function FeedbackTriagePage() {
                                   key={badge}
                                   label={badge}
                                   tone={
-                                    badge === '高优先级'
-                                      ? 'priority'
-                                      : badge === '有帮助'
-                                        ? 'positive'
-                                        : badge === issue &&
-                                            kind === 'thumbs_down'
-                                          ? 'negative'
-                                          : 'neutral'
+                                    feedbackStatusTone(badge, issue, kind)
                                   }
                                 />
                               ))}
@@ -1782,11 +1862,7 @@ export default function FeedbackTriagePage() {
                         <div
                           className={cn(
                             'h-full rounded-full transition-[width] duration-300 motion-reduce:transition-none',
-                            index === 0
-                              ? 'bg-rose'
-                              : index === 1
-                                ? 'bg-rose/60'
-                                : 'bg-rose/35'
+                            topReasonBarClass(index)
                           )}
                           style={{
                             width: `${stats.total ? (item.value / stats.total) * 100 : 0}%`,
