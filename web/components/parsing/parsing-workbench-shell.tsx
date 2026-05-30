@@ -1395,18 +1395,10 @@ export function ParsingWorkbenchShell({
                     ) : null}
                   </>
                 ) : (
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    aria-label={t('sidebar.uploadFile')}
+                  <button
+                    type="button"
                     className="relative flex flex-1 items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_50%_38%,hsl(var(--info)/0.10),transparent_24%),linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.05)_48%,hsl(var(--background)))]"
                     onClick={() => requestUploadToFolder(currentFolderId)}
-                    onKeyDown={(event) => {
-                      if (event.target !== event.currentTarget) return
-                      if (event.key !== 'Enter' && event.key !== ' ') return
-                      event.preventDefault()
-                      requestUploadToFolder(currentFolderId)
-                    }}
                     onDragOver={(event) =>
                       handleFolderDragOver(event, currentFolderId)
                     }
@@ -1445,7 +1437,7 @@ export function ParsingWorkbenchShell({
                         或将文件拖拽到此区域
                       </div>
                     </div>
-                  </div>
+                  </button>
                 )}
               </div>
             </ParsingMainPanel>
