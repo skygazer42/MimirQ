@@ -380,7 +380,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
   }, [previewData?.stats?.histogram])
 
   const histogramMax = useMemo(() => {
-    const last = histogramData[histogramData.length - 1]
+    const last = histogramData.at(-1)
     if (!last) return serverStats?.max ?? 0
     if (typeof last.max === 'number' && Number.isFinite(last.max)) return Math.trunc(last.max)
     return serverStats?.max ?? 0
@@ -440,7 +440,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
     if (!raw) return '\n\n'
     try {
       // Same trick as context.decodeSeparatorInput: support \n, \t, \uXXXX etc.
-      return JSON.parse(`"${raw.replaceAll("\"", '\\"')}"`)
+      return JSON.parse(`"${raw.replaceAll('"', String.raw`\"`)}"`)
     } catch {
       return raw
     }

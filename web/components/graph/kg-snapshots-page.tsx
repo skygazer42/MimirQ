@@ -486,7 +486,7 @@ function layoutSnapshotStudioNodes(
 function splitCodeLines(value: string): string[] {
   const normalized = String(value ?? '').replaceAll('\r', '')
   const lines = normalized.split('\n')
-  if (lines.length > 1 && lines[lines.length - 1] === '') lines.pop()
+  if (lines.length > 1 && lines.at(-1) === '') lines.pop()
   return lines.length ? lines : ['']
 }
 

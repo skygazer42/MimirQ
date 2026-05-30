@@ -45,7 +45,7 @@ const PREPROCESS_STEP_CATALOG: Array<{ id: string; label: string; desc: string }
   { id: 'text.collapse_blank_lines', label: '压缩连续空行', desc: '把 3+ 连续空行压缩为最多 2 行，降低噪声' },
   { id: 'text.trim_trailing_whitespace', label: '去掉行尾空格', desc: '减少 diff 抖动与无意义字符' },
   { id: 'text.remove_zero_width', label: '移除零宽字符/软连字符', desc: '修复网页/扫描/OCR/PDF 文本中常见的隐藏字符' },
-  { id: 'text.remove_control_chars', label: '移除控制字符', desc: '去掉 \\x00 等控制字符（保留 TAB/LF/CR）' },
+  { id: 'text.remove_control_chars', label: '移除控制字符', desc: String.raw`去掉 \x00 等控制字符（保留 TAB/LF/CR）` },
   { id: 'text.normalize_unicode_nfc', label: 'Unicode 规范化（NFC）', desc: '更保守的 Unicode 归一（比 NFKC 更少语义风险）' },
   { id: 'text.normalize_unicode_nfkc', label: 'Unicode 规范化（NFKC）', desc: '全角/半角与兼容字符归一（谨慎启用）' },
   { id: 'html.strip_scripts_styles', label: 'HTML：移除 script/style', desc: '减少网页样板/脚本注入噪声' },

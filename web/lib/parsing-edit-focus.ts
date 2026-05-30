@@ -27,7 +27,7 @@ export type ParsingEditSession =
     }
 
 function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return value.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`)
 }
 
 function findTextRange(markdown: string, text: string, fromIndex: number): ParsingEditSelection | null {
@@ -45,7 +45,7 @@ function findTextRange(markdown: string, text: string, fromIndex: number): Parsi
   const tokens = candidate.split(/\s+/).filter(Boolean)
   if (tokens.length <= 1) return null
 
-  const pattern = tokens.map(escapeRegExp).join('\\s+')
+  const pattern = tokens.map(escapeRegExp).join(String.raw`\s+`)
   const re = new RegExp(pattern, 'm')
   const segment = markdown.slice(Math.max(0, fromIndex))
   const match = re.exec(segment)

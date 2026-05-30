@@ -222,7 +222,7 @@ function decodeSeparatorInput(raw: string) {
   const value = (raw || '').trim()
   if (!value) return ''
   try {
-    return JSON.parse(`"${value.replaceAll("\"", '\\"')}"`)
+    return JSON.parse(`"${value.replaceAll('"', String.raw`\"`)}"`)
   } catch {
     return value
   }
@@ -317,7 +317,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
   const [useParseCache, setUseParseCache] = useState(true)
 
   const [separatorPreset, setSeparatorPreset] = useState('paragraph')
-  const [separatorCustom, setSeparatorCustom] = useState('\\n\\n')
+  const [separatorCustom, setSeparatorCustom] = useState(String.raw`\n\n`)
   const [keepSeparator, setKeepSeparator] = useState(true)
   const [separatorMaxChunkSize, setSeparatorMaxChunkSize] = useState(0)
 
@@ -1512,7 +1512,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     setShowOriginalPanel(true)
     setShowSettingsPanel(false)
     setSeparatorPreset('paragraph')
-    setSeparatorCustom('\\n\\n')
+    setSeparatorCustom(String.raw`\n\n`)
     setKeepSeparator(true)
     setSeparatorMaxChunkSize(0)
     setParentChildRatio(0.5)

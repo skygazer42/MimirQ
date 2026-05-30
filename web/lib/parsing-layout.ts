@@ -78,6 +78,18 @@ const PARSING_LAYOUT_META: Record<ParsingLayoutKind, ParsingLayoutMeta> = {
     overlayClassName: 'border-rose-500/75 bg-rose-500/10',
   },
 }
+const EQUATION_MARKER_TOKENS = [
+  String.raw`\begin{equation}`,
+  String.raw`\frac`,
+  String.raw`\sum`,
+  String.raw`\int`,
+  String.raw`\alpha`,
+  String.raw`\beta`,
+  String.raw`\gamma`,
+  String.raw`\times`,
+  String.raw`\cdot`,
+  String.raw`\sqrt`,
+]
 
 function hasTabularRows(text: string): boolean {
   const lines = text
@@ -116,7 +128,7 @@ export function classifyParsingBlock(block: Pick<ParsingBlock, 'text'>): Parsing
 
   if ((text.includes('![') && text.includes('](')) || text.toLowerCase().includes('<img')) return 'image'
   if (hasTabularRows(text)) return 'table'
-  if (text.includes('$$') || ['\\begin{equation}', '\\frac', '\\sum', '\\int', '\\alpha', '\\beta', '\\gamma', '\\times', '\\cdot', '\\sqrt'].some((token) => text.includes(token))) return 'equation'
+  if (text.includes('$$') || EQUATION_MARKER_TOKENS.some((token) => text.includes(token))) return 'equation'
   if (trimmedLines.some((line) => ['-', '*', '+'].includes(line[0] || '') || /^\d+[.)]\s/.test(line))) return 'list'
   if (trimmedLines.some((line) => line.startsWith('#') && line.length > 1 && line[1] !== '#') || looksLikeHeading(text)) return 'heading'
 

@@ -1486,7 +1486,7 @@ export function ChunkList() {
           }
           if (e.key === 'End' || (e.key.toLowerCase() === 'g' && e.shiftKey)) {
             e.preventDefault()
-            selectChunkIndex(navigableIndices[navigableIndices.length - 1] ?? null)
+            selectChunkIndex(navigableIndices.at(-1) ?? null)
             return
           }
 

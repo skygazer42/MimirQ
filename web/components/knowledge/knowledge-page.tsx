@@ -928,7 +928,6 @@ export default function KnowledgePage() {
                 )}
                 onClick={() => setDesktopScopeCollapsed((prev) => !prev)}
               >
-                {/* label={desktopScopeCollapsed ? t('actions.showScope') : t('actions.hideScope')} */}
                 {desktopScopeCollapsed ? (
                   <Maximize2 className="mr-2 size-3.5" />
                 ) : (
@@ -941,7 +940,6 @@ export default function KnowledgePage() {
 
               {activeTab === 'documents' ? (
                 <>
-                  {/* {activeTab === 'documents' && ( */}
                   <Button
                     type="button"
                     variant="ghost"
@@ -967,7 +965,6 @@ export default function KnowledgePage() {
                     )}
                     {activeTasksCount > 0 ? (
                       <>
-                        {/* <span className="font-mono tabular-nums">{activeTasksCount}</span> */}
                         <span className="font-mono tabular-nums">
                           {activeTasksCount}
                         </span>
@@ -978,8 +975,6 @@ export default function KnowledgePage() {
                     )}
                   </Button>
 
-                  {/* onConnectorRunCreated={(run) => { setShowTaskCenter(true); setPeekingDocId(null); setActiveTab('documents'); }} */}
-                  {/* className="h-8 rounded-xl border border-info/20 bg-info/[0.08] px-4 text-[10px] font-medium text-info dark:text-info shadow-soft" */}
                   <KnowledgeWorkbenchActions
                     className="h-10 rounded-xl border border-primary/20 bg-primary px-4 text-[13px] font-medium text-primary-foreground shadow-soft"
                     datasets={datasets}

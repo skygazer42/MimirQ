@@ -307,7 +307,6 @@ export function KnowledgeScopePanel({
                     }}
                   />
                 ) : null}
-                {/* className={cn('pointer-events-none absolute inset-x-2 bottom-1 h-[2px] rounded-full opacity-90', item.ratioClassName)} */}
                 <span className="relative z-10">
                   {item.label}
                   <span

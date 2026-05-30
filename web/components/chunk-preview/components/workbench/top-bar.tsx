@@ -80,6 +80,11 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback
 }
 
+const ESCAPED_NEWLINE = String.raw`\n`
+const SHELL_BACKSLASH = String.fromCharCode(92)
+const DOUBLE_SHELL_BACKSLASH = SHELL_BACKSLASH.repeat(2)
+const BACKTICK = String.fromCharCode(96)
+
 export function TopBar() {
   const router = useRouter()
   const t = useTranslations('ChunkPreview')
@@ -209,19 +214,21 @@ export function TopBar() {
     if (previewData.parse_cache_hit) {
       rows.push(`parse_cache_age_ms: ${previewData.parse_cache_age_ms ?? '-'}`)
     }
-    return rows.join('\\n')
+    return rows.join(ESCAPED_NEWLINE)
   })()
 
   const escapeForAnsiC = (value: string) => {
     // Used for bash $'...' strings in generated cURL.
-    return value.replaceAll('\\', '\\\\').replaceAll("'", "\\\\'")
+    return value
+      .replaceAll(SHELL_BACKSLASH, DOUBLE_SHELL_BACKSLASH)
+      .replaceAll("'", String.raw`\\'`)
   }
   const escapeForDoubleQuotedShell = (value: string) =>
     value
-      .replaceAll('\\', '\\\\')
-      .replaceAll('"', '\\"')
-      .replaceAll('$', '\\$')
-      .replaceAll('`', '\\`')
+      .replaceAll(SHELL_BACKSLASH, DOUBLE_SHELL_BACKSLASH)
+      .replaceAll('"', String.raw`\"`)
+      .replaceAll('$', String.raw`\$`)
+      .replaceAll(BACKTICK, SHELL_BACKSLASH + BACKTICK)
 
   const summaryChipClass =
     'inline-flex h-7 items-center gap-1.5 rounded-full border border-border/55 bg-muted/30 px-2.5 text-[11px] leading-none text-muted-foreground'
@@ -515,7 +522,7 @@ export function TopBar() {
                     ? 'border-destructive/20 bg-destructive/10 text-destructive'
                     : 'border-warning/20 bg-warning/10 text-warning'
               )}
-              title={(previewData?.quality_gate?.reasons || []).join('\\n')}
+              title={(previewData?.quality_gate?.reasons || []).join(ESCAPED_NEWLINE)}
             >
               {t('topBar.status.quality', {
                 grade: visibleQualityLabel,
@@ -526,7 +533,7 @@ export function TopBar() {
           {previewData?.warnings?.length ? (
             <span
               className={cn(stateChipClass, 'border-warning/20 bg-warning/10 text-warning')}
-              title={(previewData.warnings || []).join('\\n')}
+              title={(previewData.warnings || []).join(ESCAPED_NEWLINE)}
             >
               {t('topBar.status.warnings', {
                 count: previewData.warnings.length,
@@ -914,7 +921,8 @@ export function TopBar() {
                   }
                 }
                 if (pipeline) {
-                  lines[lines.length - 1] = `${lines[lines.length - 1]} \\`
+                  const lastLine = lines.at(-1)
+                  if (lastLine) lines.splice(-1, 1, `${lastLine} ${String.fromCharCode(92)}`)
                   lines.push(`  -F 'pipeline=${pipeline}'`)
                 }
                 detachPromise(

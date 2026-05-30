@@ -346,7 +346,7 @@ export function computePercentiles(values: number[]): PercentileSummary {
     p75: percentile(sorted, 75),
     p90: percentile(sorted, 90),
     p99: percentile(sorted, 99),
-    max: sorted[sorted.length - 1],
+    max: sorted.at(-1) ?? 0,
   }
 }
 
@@ -485,7 +485,7 @@ export function buildLatencyBoxplotRows(documents: Document[]): LatencyBoxplotRo
           percentile(values, 25),
           percentile(values, 50),
           percentile(values, 75),
-          values[values.length - 1],
+          values.at(-1) ?? 0,
         ] as [number, number, number, number, number],
       }
     })

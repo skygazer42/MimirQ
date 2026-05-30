@@ -748,9 +748,7 @@ function buildCitationsSummary(citations: RagTraceCitation[]) {
 }
 
 export function movePipelineSelectionIndex(currentIndex: number, total: number, direction: -1 | 1): number {
-  if (!Number.isFinite(total) || total <= 0) return -1
-  const base = Number.isFinite(currentIndex) && currentIndex >= 0 ? Math.trunc(currentIndex) % total : 0
-  return (base + direction + total) % total
+  return moveTraceSelectionIndex(currentIndex, total, direction)
 }
 
 export function buildPipelineInspectorSections(trace: RagTrace | null, t: RagTraceTranslation = fallbackRagTraceTranslation): PipelineInspectorSection[] {
