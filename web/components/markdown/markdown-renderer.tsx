@@ -1,6 +1,6 @@
 'use client'
 
-import { Component, memo, useEffect, useMemo, useRef } from 'react'
+import { Component, createContext, memo, useContext, useEffect, useMemo } from 'react'
 import type * as React from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -11,6 +11,7 @@ import type { Options as RehypeSanitizeOptions } from 'rehype-sanitize'
 import { AuthImage } from '@/components/auth-image'
 import { cn } from '@/lib/utils'
 import { extractMarkdownHeadings, flashElementId, scrollToElementId } from '@/lib/markdown'
+import type { MarkdownHeading } from '@/lib/markdown'
 import { resolveMarkdownImageSrc, sanitizeMarkdownHref } from './markdown-safety'
 
 const FLASH_CLASS = 'bg-primary/10 ring-1 ring-primary/25 rounded-md transition-colors'
@@ -68,6 +69,164 @@ type MarkdownRenderBoundaryState = Readonly<{
   hasError: boolean
 }>
 
+type MarkdownRendererRuntime = Readonly<{
+  enableTocAnchors: boolean
+  headings: MarkdownHeading[]
+  scrollContainerSelector?: string
+}>
+
+const MARKDOWN_RENDERER_RUNTIME = createContext<MarkdownRendererRuntime>({
+  enableTocAnchors: true,
+  headings: [],
+})
+
+function useMarkdownRendererRuntime() {
+  return useContext(MARKDOWN_RENDERER_RUNTIME)
+}
+
+function MarkdownHeadingComponent({
+  children,
+  className,
+  level,
+  node,
+  ...props
+}: any) {
+  const { enableTocAnchors, headings, scrollContainerSelector } = useMarkdownRendererRuntime()
+  const Tag = `h${level}` as keyof React.JSX.IntrinsicElements
+  const line = Number(node?.position?.start?.line || 0)
+  const heading = line
+    ? headings.find((item) => item.line === line && item.level === level)
+    : undefined
+  const id = heading?.id
+
+  return (
+    <Tag id={id} className={cn('group scroll-mt-32', className)} {...props}>
+      {children}
+      {enableTocAnchors && id && (
+        <a
+          href={`#${encodeURIComponent(id)}`}
+          onClick={(event) => {
+            event.preventDefault()
+            if (globalThis.window !== undefined) {
+              globalThis.window.history.replaceState(null, '', `#${encodeURIComponent(id)}`)
+            }
+            scrollToElementId(id, { scrollContainerSelector })
+            flashElementId(id, FLASH_CLASS)
+          }}
+          className="ml-2 no-underline text-muted-foreground/60 hover:text-primary opacity-0 group-hover:opacity-100"
+          aria-label="Jump to section"
+        >
+          #
+        </a>
+      )}
+    </Tag>
+  )
+}
+
+function MarkdownH1(props: any) {
+  return <MarkdownHeadingComponent level={1} {...props} />
+}
+
+function MarkdownH2(props: any) {
+  return <MarkdownHeadingComponent level={2} {...props} />
+}
+
+function MarkdownH3(props: any) {
+  return <MarkdownHeadingComponent level={3} {...props} />
+}
+
+function MarkdownH4(props: any) {
+  return <MarkdownHeadingComponent level={4} {...props} />
+}
+
+function MarkdownH5(props: any) {
+  return <MarkdownHeadingComponent level={5} {...props} />
+}
+
+function MarkdownH6(props: any) {
+  return <MarkdownHeadingComponent level={6} {...props} />
+}
+
+function MarkdownAnchor({ href, children }: any) {
+  const { scrollContainerSelector } = useMarkdownRendererRuntime()
+  const rawHref = typeof href === 'string' ? href : ''
+  const safeHref = sanitizeMarkdownHref(rawHref)
+  if (!safeHref) {
+    return <span className="text-muted-foreground">{children}</span>
+  }
+
+  if (safeHref.startsWith('#')) {
+    const id = safeHref.slice(1)
+    return (
+      <a
+        href={safeHref}
+        onClick={(event) => {
+          event.preventDefault()
+          const decoded = id ? decodeURIComponent(id) : ''
+          if (!decoded) return
+          if (globalThis.window !== undefined) {
+            globalThis.window.history.replaceState(null, '', `#${encodeURIComponent(decoded)}`)
+          }
+          scrollToElementId(decoded, { scrollContainerSelector })
+          flashElementId(decoded, FLASH_CLASS)
+        }}
+        className="underline decoration-border/70 underline-offset-2 hover:decoration-border"
+      >
+        {children}
+      </a>
+    )
+  }
+
+  return (
+    <a
+      href={safeHref}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="underline decoration-border/70 underline-offset-2 hover:decoration-border"
+    >
+      {children}
+    </a>
+  )
+}
+
+function MarkdownImage({ src, alt }: any) {
+  const raw = typeof src === 'string' ? src : ''
+  const resolved = resolveMarkdownImageSrc(raw)
+  if (!resolved) return null
+  return (
+    <AuthImage
+      src={resolved}
+      alt={alt || 'image'}
+      width={1200}
+      height={800}
+      unoptimized
+      className="my-2 w-full h-auto max-h-96 object-contain rounded-lg border border-border/70 bg-card shadow-sm"
+    />
+  )
+}
+
+function MarkdownTable({ className, children, node: _node, ...props }: any) {
+  return (
+    <div className="my-4 overflow-x-auto">
+      <table aria-label="Markdown 表格" className={cn('w-full', className)} {...props}>
+        {children}
+      </table>
+    </div>
+  )
+}
+
+const MARKDOWN_RENDERER_COMPONENTS = {
+  a: MarkdownAnchor,
+  h1: MarkdownH1,
+  h2: MarkdownH2,
+  h3: MarkdownH3,
+  h4: MarkdownH4,
+  h5: MarkdownH5,
+  h6: MarkdownH6,
+  img: MarkdownImage,
+  table: MarkdownTable,
+}
+
 function MarkdownRenderFallback({ className }: Readonly<{ className?: string }>) {
   return (
     <output
@@ -121,11 +280,6 @@ function MarkdownRendererContent({
     [text, enableTocAnchors]
   )
 
-  const headingCursorRef = useRef(0)
-  useEffect(() => {
-    headingCursorRef.current = 0
-  }, [text, enableTocAnchors])
-
   useEffect(() => {
     if (!autoScrollToHash) return
     if (globalThis.window === undefined) return
@@ -148,121 +302,26 @@ function MarkdownRendererContent({
     return () => globalThis.window.removeEventListener('hashchange', onHashChange)
   }, [autoScrollToHash, scrollContainerSelector, text])
 
-  const headingComponent = (level: 1 | 2 | 3 | 4 | 5 | 6) => {
-    const Tag = `h${level}` as keyof React.JSX.IntrinsicElements
-    return function Heading({ children, ...props }: any) {
-      const idx = headingCursorRef.current
-      const heading = headings[idx]
-      headingCursorRef.current += 1
-      const id = heading?.id
-
-      return (
-        <Tag
-          id={id}
-          className={cn('group scroll-mt-32', props.className)}
-          {...props}
-        >
-          {children}
-          {enableTocAnchors && id && (
-            <a
-              href={`#${encodeURIComponent(id)}`}
-              onClick={(e) => {
-                e.preventDefault()
-                if (globalThis.window !== undefined) {
-                  globalThis.window.history.replaceState(null, '', `#${encodeURIComponent(id)}`)
-                }
-                scrollToElementId(id, { scrollContainerSelector })
-                flashElementId(id, FLASH_CLASS)
-              }}
-              className="ml-2 no-underline text-muted-foreground/60 hover:text-primary opacity-0 group-hover:opacity-100"
-              aria-label="Jump to section"
-            >
-              #
-            </a>
-          )}
-        </Tag>
-      )
-    }
-  }
+  const runtime = useMemo<MarkdownRendererRuntime>(
+    () => ({
+      enableTocAnchors,
+      headings,
+      scrollContainerSelector,
+    }),
+    [enableTocAnchors, headings, scrollContainerSelector]
+  )
 
   return (
     <div className={className}>
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeRaw, [rehypeSanitize, MARKDOWN_SANITIZE_SCHEMA]]}
-        components={{
-          h1: headingComponent(1),
-          h2: headingComponent(2),
-          h3: headingComponent(3),
-          h4: headingComponent(4),
-          h5: headingComponent(5),
-          h6: headingComponent(6),
-          a: ({ href, children }) => {
-            const rawHref = typeof href === 'string' ? href : ''
-            const safeHref = sanitizeMarkdownHref(rawHref)
-            if (!safeHref) {
-              return <span className="text-muted-foreground">{children}</span>
-            }
-
-            if (safeHref.startsWith('#')) {
-              const id = safeHref.slice(1)
-              return (
-                <a
-                  href={safeHref}
-                  onClick={(e) => {
-                    e.preventDefault()
-                    const decoded = id ? decodeURIComponent(id) : ''
-                    if (!decoded) return
-                    if (globalThis.window !== undefined) {
-                      globalThis.window.history.replaceState(null, '', `#${encodeURIComponent(decoded)}`)
-                    }
-                    scrollToElementId(decoded, { scrollContainerSelector })
-                    flashElementId(decoded, FLASH_CLASS)
-                  }}
-                  className="underline decoration-border/70 underline-offset-2 hover:decoration-border"
-                >
-                  {children}
-                </a>
-              )
-            }
-
-            return (
-              <a
-                href={safeHref}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline decoration-border/70 underline-offset-2 hover:decoration-border"
-              >
-                {children}
-              </a>
-            )
-          },
-          img: ({ src, alt }) => {
-            const raw = typeof src === 'string' ? src : ''
-            const resolved = resolveMarkdownImageSrc(raw)
-            if (!resolved) return null
-            return (
-              <AuthImage
-                src={resolved}
-                alt={alt || 'image'}
-                width={1200}
-                height={800}
-                unoptimized
-                className="my-2 w-full h-auto max-h-96 object-contain rounded-lg border border-border/70 bg-card shadow-sm"
-              />
-            )
-          },
-          table: ({ node, className, children, ...props }) => (
-            <div className="my-4 overflow-x-auto">
-              <table aria-label="Markdown 表格" className={cn('w-full', className)} {...props}>
-                {children}
-              </table>
-            </div>
-          ),
-        }}
-      >
-        {text}
-      </ReactMarkdown>
+      <MARKDOWN_RENDERER_RUNTIME.Provider value={runtime}>
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          rehypePlugins={[rehypeRaw, [rehypeSanitize, MARKDOWN_SANITIZE_SCHEMA]]}
+          components={MARKDOWN_RENDERER_COMPONENTS}
+        >
+          {text}
+        </ReactMarkdown>
+      </MARKDOWN_RENDERER_RUNTIME.Provider>
     </div>
   )
 }
