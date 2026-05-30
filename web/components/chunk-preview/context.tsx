@@ -1414,7 +1414,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
 
   const updateSettings = useCallback(
     (settings: Partial<Pick<ChunkPreviewState, 'chunkSize' | 'chunkOverlap' | 'strategy'>>) => {
-      const nextStrategy = settings.strategy === undefined ? chunkStrategy : settings.strategy
+      const nextStrategy = settings.strategy ?? chunkStrategy
 
       if (settings.chunkSize !== undefined) {
         setChunkSize(settings.chunkSize)
@@ -1538,7 +1538,6 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
       if (isCmdOrCtrl && event.key.toLowerCase() === 's') {
         event.preventDefault()
         submitChunks()
-        return
       }
     }
     globalThis.window.addEventListener('keydown', handleKeyDown)

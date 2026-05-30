@@ -13,6 +13,7 @@ type ParetoPoint = {
   y: number
   pareto: boolean
 }
+type ParetoCandidate = Pick<ParetoPoint, 'id' | 'metric' | 'latency'>
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
@@ -52,7 +53,7 @@ function latency(run: RegressionRun): number | null {
   return null
 }
 
-function isParetoCandidate(point: Pick<ParetoPoint, 'id' | 'metric' | 'latency'>, points: Array<Pick<ParetoPoint, 'id' | 'metric' | 'latency'>>): boolean {
+function isParetoCandidate(point: ParetoCandidate, points: ParetoCandidate[]): boolean {
   return !points.some((other) => {
     if (other.id === point.id) return false
     const dominates = other.metric >= point.metric && other.latency <= point.latency

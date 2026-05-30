@@ -555,8 +555,6 @@ export function CommandMenu() {
             router.push("/data-governance")
             return
           }
-
-          return
         },
       })),
     [currentViewPrompt.description, currentViewPrompt.prompt, hasResumeTarget, pathname, resumeLastDocumentContext, router, t]

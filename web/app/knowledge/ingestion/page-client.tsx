@@ -202,7 +202,16 @@ function getDocumentElementTexts(document: Document): string[] {
 function countPatternInTexts(texts: string[], pattern: RegExp): number {
   return texts.reduce((sum, text) => {
     pattern.lastIndex = 0
-    return sum + (text.match(pattern)?.length ?? 0)
+    let count = 0
+    let match: RegExpExecArray | null
+
+    while ((match = pattern.exec(text)) !== null) {
+      count += 1
+      if (!pattern.global) break
+      if (match[0] === '') pattern.lastIndex += 1
+    }
+
+    return sum + count
   }, 0)
 }
 

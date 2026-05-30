@@ -83,7 +83,7 @@ export function DataCleaner({
 
     try {
       const opt = <T,>(value: T | null | undefined): T | undefined =>
-        value === null || value === undefined ? undefined : value
+        value ?? undefined
 
       const request: CleanPreviewRequest = {
         markdown: content,

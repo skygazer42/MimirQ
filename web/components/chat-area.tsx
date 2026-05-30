@@ -402,7 +402,6 @@ export function ChatArea({
         const filter = { file_type: { $eq: 'qa' } }
         setMetadataFilterText(JSON.stringify(filter, null, 2))
         setRagConfig((prev) => ({ ...prev, metadata_filter: filter }))
-        return
       }
 
       // custom: keep current JSON text; parsing happens in an effect.

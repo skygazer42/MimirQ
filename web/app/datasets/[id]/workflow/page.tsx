@@ -215,7 +215,7 @@ export default function DatasetWorkflowPage() {
   const onWorkflowLayoutChange = useCallback((workflowLayout: Record<string, any>) => {
     startTransition(() => {
       setWorkingConfig((prev) => ({
-        ...(prev ?? exportRes?.config ?? {}),
+        ...(prev ?? exportRes?.config),
         workflow_layout: workflowLayout,
       }))
     })

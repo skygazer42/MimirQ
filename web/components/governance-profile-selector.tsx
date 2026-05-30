@@ -94,7 +94,7 @@ export function GovernanceProfileSelector({ className, compact, onApplyPatch }: 
       : []
 
     const patch: Partial<DocumentPipelineOptions> = {
-      ...(effective.pipeline_patch || {}),
+      ...effective.pipeline_patch,
       governance_regex_rules: normalizedRegexRules,
       governance_enabled: true,
     }

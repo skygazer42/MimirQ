@@ -44,7 +44,7 @@ const MARKDOWN_SANITIZE_SCHEMA: RehypeSanitizeOptions = {
     col: [...((defaultSchema.attributes?.col as string[] | undefined) || []), 'span'],
   },
   protocols: {
-    ...(defaultSchema.protocols || {}),
+    ...defaultSchema.protocols,
     href: ['http', 'https', 'mailto', 'tel'],
     src: ['http', 'https', 'blob', 'data'],
   },
