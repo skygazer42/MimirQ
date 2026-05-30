@@ -171,19 +171,16 @@ export function ChunkCard({
       )}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
-      onClick={onToggleSelect}
-      role="checkbox"
-      aria-checked={isSelected}
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault()
-          onToggleSelect()
-        }
-      }}
       aria-label={t('chunkCard.ariaLabel', { index: index + 1 })}
     >
-      <div className="flex items-center justify-between mb-2">
+      <button
+        type="button"
+        className="absolute inset-0 z-0 rounded-xl text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        onClick={onToggleSelect}
+        aria-label={t('chunkCard.ariaLabel', { index: index + 1 })}
+        aria-pressed={isSelected}
+      />
+      <div className="relative z-10 mb-2 flex items-center justify-between pointer-events-none">
         <div className="flex items-center gap-2">
           <span
             className={cn(
@@ -278,7 +275,7 @@ export function ChunkCard({
             {chunkMetricLabel}
           </span>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 pointer-events-auto">
           {chunk.page_number != null && (
             <span className="text-[11px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">P.{chunk.page_number}</span>
           )}
@@ -418,7 +415,7 @@ export function ChunkCard({
 
       <div
         className={cn(
-          'text-sm font-sans leading-relaxed whitespace-pre-wrap break-words transition-colors',
+          'relative z-10 pointer-events-none text-sm font-sans leading-relaxed whitespace-pre-wrap break-words transition-colors',
           isSelected
             ? 'max-h-72 overflow-y-auto rounded-lg border border-border/55 bg-background/80 p-3 text-foreground shadow-inner shadow-border/20'
             : 'line-clamp-5',

@@ -13,9 +13,10 @@ interface TiltCardProps {
   onFocus?: React.FocusEventHandler<HTMLDivElement>
   onBlur?: React.FocusEventHandler<HTMLDivElement>
   selected?: boolean
+  ariaLabel?: string
 }
 
-export function TiltCard({ children, className, onClick, onMouseEnter, onMouseLeave, onFocus, onBlur, selected = false }: Readonly<TiltCardProps>) {
+export function TiltCard({ children, className, onClick, onMouseEnter, onMouseLeave, onFocus, onBlur, selected = false, ariaLabel = "Select item" }: Readonly<TiltCardProps>) {
   const ref = useRef<HTMLDivElement>(null)
   const shouldReduceMotion = useReducedMotion()
   const [isFinePointer, setIsFinePointer] = useState(false)
@@ -78,16 +79,6 @@ export function TiltCard({ children, className, onClick, onMouseEnter, onMouseLe
     onMouseLeave?.()
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!interactive) return
-    // Only trigger when the card itself is focused, not when a nested control is.
-    if (e.currentTarget !== e.target) return
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault()
-      onClick?.()
-    }
-  }
-
   if (!interactive) {
     return (
       <div
@@ -103,18 +94,22 @@ export function TiltCard({ children, className, onClick, onMouseEnter, onMouseLe
     return (
       <div
         ref={ref}
-        onClick={onClick}
-        role="option"
-        aria-selected={selected}
-        tabIndex={0}
-        onKeyDown={handleKeyDown}
         onPointerEnter={() => onMouseEnter?.()}
         onPointerLeave={() => onMouseLeave?.()}
         onFocus={onFocus}
         onBlur={onBlur}
         className={cn("relative", className)}
       >
-        {children}
+        <button
+          type="button"
+          className="absolute inset-0 z-0 rounded-[inherit] text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          onClick={onClick}
+          aria-label={ariaLabel}
+          aria-pressed={selected}
+        />
+        <div className="relative z-10 pointer-events-none">
+          {children}
+        </div>
       </div>
     )
   }
@@ -122,11 +117,6 @@ export function TiltCard({ children, className, onClick, onMouseEnter, onMouseLe
   return (
     <div
       ref={ref}
-      onClick={onClick}
-      role="option"
-      aria-selected={selected}
-      tabIndex={0}
-      onKeyDown={handleKeyDown}
       onPointerMove={handlePointerMove}
       onPointerEnter={() => onMouseEnter?.()}
       onPointerLeave={handlePointerLeave}
@@ -134,6 +124,13 @@ export function TiltCard({ children, className, onClick, onMouseEnter, onMouseLe
       onBlur={onBlur}
       className={cn("relative perspective-1000", className)}
     >
+      <button
+        type="button"
+        className="absolute inset-0 z-0 rounded-[inherit] text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        onClick={onClick}
+        aria-label={ariaLabel}
+        aria-pressed={selected}
+      />
       <motion.div
         style={{
           rotateX,
@@ -143,7 +140,7 @@ export function TiltCard({ children, className, onClick, onMouseEnter, onMouseLe
         className="h-full transition-transform duration-200 ease-out"
       >
         {/* Content */}
-        <div className="relative z-10 h-full">
+        <div className="relative z-10 h-full pointer-events-none">
           {children}
         </div>
       </motion.div>
