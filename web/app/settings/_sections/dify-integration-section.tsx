@@ -110,7 +110,7 @@ export function DifyIntegrationSection({
   )
 
   useEffect(() => {
-    setOrigin(window.location.origin)
+    setOrigin(globalThis.window.location.origin)
   }, [])
 
   useEffect(() => {
@@ -167,7 +167,7 @@ export function DifyIntegrationSection({
     if (!endpointUrl) return
     await navigator.clipboard?.writeText(endpointUrl)
     setCopied(true)
-    window.setTimeout(() => setCopied(false), 1200)
+    globalThis.setTimeout(() => setCopied(false), 1200)
   }
 
   return (

@@ -10,16 +10,16 @@ import {
 } from "@/lib/theme-surface"
 
 const useIsomorphicLayoutEffect =
-  typeof window !== 'undefined' ? React.useLayoutEffect : React.useEffect
+  globalThis.window !== undefined ? React.useLayoutEffect : React.useEffect
 
 export function ThemeAppearanceProvider() {
   useIsomorphicLayoutEffect(() => {
-    applyStoredThemeAppearance(window.localStorage, document.documentElement, window, { notify: false })
+    applyStoredThemeAppearance(globalThis.window.localStorage, globalThis.document.documentElement, globalThis.window, { notify: false })
   }, [])
 
   React.useEffect(() => {
     const applyStoredAppearance = () => {
-      applyStoredThemeAppearance(window.localStorage, document.documentElement, window, { notify: false })
+      applyStoredThemeAppearance(globalThis.window.localStorage, globalThis.document.documentElement, globalThis.window, { notify: false })
     }
 
     const handleStorage = (event: StorageEvent) => {
@@ -33,12 +33,12 @@ export function ThemeAppearanceProvider() {
       applyStoredAppearance()
     }
 
-    window.addEventListener('storage', handleStorage)
-    window.addEventListener(THEME_APPEARANCE_CHANGED_EVENT, applyStoredAppearance)
+    globalThis.window.addEventListener('storage', handleStorage)
+    globalThis.window.addEventListener(THEME_APPEARANCE_CHANGED_EVENT, applyStoredAppearance)
 
     return () => {
-      window.removeEventListener('storage', handleStorage)
-      window.removeEventListener(THEME_APPEARANCE_CHANGED_EVENT, applyStoredAppearance)
+      globalThis.window.removeEventListener('storage', handleStorage)
+      globalThis.window.removeEventListener(THEME_APPEARANCE_CHANGED_EVENT, applyStoredAppearance)
     }
   }, [])
 

@@ -56,10 +56,10 @@ export function ThemeCustomizer({ trigger }: Readonly<ThemeCustomizerProps> = {}
   )
 
   React.useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const nextSurfaceTheme = readSurfaceTheme(window.localStorage)
+    if (globalThis.window !== undefined) {
+      const nextSurfaceTheme = readSurfaceTheme(globalThis.window.localStorage)
       setSurfaceTheme(nextSurfaceTheme)
-      setColor(readThemeColor(window.localStorage, nextSurfaceTheme))
+      setColor(readThemeColor(globalThis.window.localStorage, nextSurfaceTheme))
     }
     setMounted(true)
   }, [])
@@ -69,9 +69,9 @@ export function ThemeCustomizer({ trigger }: Readonly<ThemeCustomizerProps> = {}
 
     applySurfaceTheme(surfaceTheme)
     applyThemeColor(color)
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem(SURFACE_THEME_STORAGE_KEY, surfaceTheme)
-      window.localStorage.setItem(THEME_COLOR_STORAGE_KEY, color)
+    if (globalThis.window !== undefined) {
+      globalThis.window.localStorage.setItem(SURFACE_THEME_STORAGE_KEY, surfaceTheme)
+      globalThis.window.localStorage.setItem(THEME_COLOR_STORAGE_KEY, color)
       notifyThemeAppearanceChanged()
     }
   }, [color, mounted, surfaceTheme])

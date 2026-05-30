@@ -9,14 +9,14 @@ import type { VelocityUnit } from './monitor-utils'
 export const VELOCITY_STORAGE_KEY = 'mimirq.ingestion.velocityUnit'
 
 export function readStoredVelocityUnit(): VelocityUnit {
-  if (typeof window === 'undefined') return 'docs'
-  const value = window.localStorage.getItem(VELOCITY_STORAGE_KEY)
+  if (globalThis.window === undefined) return 'docs'
+  const value = globalThis.window.localStorage.getItem(VELOCITY_STORAGE_KEY)
   return value === 'bytes' ? 'bytes' : 'docs'
 }
 
 export function persistVelocityUnit(unit: VelocityUnit) {
-  if (typeof window === 'undefined') return
-  window.localStorage.setItem(VELOCITY_STORAGE_KEY, unit)
+  if (globalThis.window === undefined) return
+  globalThis.window.localStorage.setItem(VELOCITY_STORAGE_KEY, unit)
 }
 
 function formatValue(value: number | null, unit: VelocityUnit): string {

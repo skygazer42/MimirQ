@@ -39,13 +39,13 @@ export function SafeResponsiveChart({
       })
     }
 
-    frameRef.current = window.requestAnimationFrame(update)
+    frameRef.current = globalThis.window.requestAnimationFrame(update)
     const observer = new ResizeObserver(update)
     observer.observe(root)
 
     return () => {
       if (frameRef.current !== null) {
-        window.cancelAnimationFrame(frameRef.current)
+        globalThis.window.cancelAnimationFrame(frameRef.current)
       }
       observer.disconnect()
     }
