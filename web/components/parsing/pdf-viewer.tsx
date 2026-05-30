@@ -46,10 +46,9 @@ interface PdfViewerProps {
  onClickBlockId?: (blockId: string, hint?: ParsingEditFocusHint) => void
 }
 
-type IdleCallbackHandle = number
 type IdleGlobal = typeof globalThis & {
- requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => IdleCallbackHandle
- cancelIdleCallback?: (id: IdleCallbackHandle) => void
+ requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number
+ cancelIdleCallback?: (id: number) => void
 }
 
 const MAX_CONCURRENT_RENDERS = 1
@@ -300,7 +299,7 @@ export function PdfViewer({
  const queuedPagesRef = useRef<Set<number>>(new Set())
  const retainedPageIndicesRef = useRef<Set<number>>(new Set())
  const renderQueueRef = useRef<number[]>([])
- const idleRenderHandleRef = useRef<IdleCallbackHandle | null>(null)
+ const idleRenderHandleRef = useRef<number | null>(null)
  const idleRenderTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
  const pageRenderRetryCountsRef = useRef<Map<number, number>>(new Map())
  const pageRenderRetryTimeoutsRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map())

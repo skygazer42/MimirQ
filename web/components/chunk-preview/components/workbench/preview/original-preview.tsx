@@ -24,10 +24,9 @@ import { getInitialOriginalPreviewMode, ORIGINAL_PREVIEW_MODE_STORAGE_KEY } from
 const AUTO_LOAD_TEXT_MAX_BYTES = 800_000
 type PreviewMode = 'raw' | 'rendered' | 'editor' | 'pdf'
 
-type IdleCallbackHandle = number
 type IdleGlobal = typeof globalThis & {
-  requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => IdleCallbackHandle
-  cancelIdleCallback?: (id: IdleCallbackHandle) => void
+  requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number
+  cancelIdleCallback?: (id: number) => void
 }
 
 function getErrorMessage(error: unknown, fallback: string): string {

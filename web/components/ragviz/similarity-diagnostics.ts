@@ -61,7 +61,6 @@ export interface SimilarityDiagnosticsResult {
   summary: SimilarityDiagnosticsSummary
 }
 
-export type SimilarityDiagnosticDecision = DiagnosticDecision
 export type SimilarityDiagnosticNode = SimilarityDiagnosticsNode
 export type SimilarityDiagnosticLink = SimilarityDiagnosticsLink
 export type SimilarityDiagnosticOutlier = SimilarityDiagnosticsOutlier

@@ -31,7 +31,8 @@ function decodeSeparatorInput(raw: string) {
   const value = (raw || '').trim()
   if (!value) return ''
   try {
-    return JSON.parse(`"${value.replaceAll('"', String.raw`\"`)}"`)
+    const escapedValue = value.replaceAll('"', String.raw`\"`)
+    return JSON.parse(`"${escapedValue}"`)
   } catch {
     return value
   }

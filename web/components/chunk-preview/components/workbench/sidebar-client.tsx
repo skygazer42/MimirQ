@@ -440,7 +440,8 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
     if (!raw) return '\n\n'
     try {
       // Same trick as context.decodeSeparatorInput: support \n, \t, \uXXXX etc.
-      return JSON.parse(`"${raw.replaceAll('"', String.raw`\"`)}"`)
+      const escapedValue = raw.replaceAll('"', String.raw`\"`)
+      return JSON.parse(`"${escapedValue}"`)
     } catch {
       return raw
     }
