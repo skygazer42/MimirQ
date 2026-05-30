@@ -269,6 +269,7 @@ function DocumentCard({
 	      onMouseLeave={() => setIsHovered(false)}
         onFocus={() => setIsFocusWithin(true)}
         selected={isSelected}
+        ariaLabel={`选择文档：${document.filename}`}
         onBlur={(e) => {
           const next = e.relatedTarget as Node | null
           if (!next || !e.currentTarget.contains(next)) setIsFocusWithin(false)
@@ -353,7 +354,7 @@ function DocumentCard({
 
 		      {/* 悬浮操作栏 */}
 		      <div className={cn(
-		        "absolute right-2 top-2 flex flex-col gap-1 transition duration-200 ease-out",
+		        "pointer-events-auto absolute right-2 top-2 flex flex-col gap-1 transition duration-200 ease-out",
 		        isActive ? "opacity-100 motion-safe:translate-x-0" : "opacity-0 motion-safe:translate-x-2 pointer-events-none"
 		      )}>
 	        <DocumentDetailDialog document={document} trigger={

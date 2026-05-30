@@ -1512,6 +1512,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
   return (
     <section
       className={cn('grid grid-cols-1 gap-4 md:grid-cols-[260px,1fr]', className)}
+      role="application"
       aria-label="RAG trace keyboard navigation"
       tabIndex={0}
       onKeyDownCapture={handleTracePanelKeyDown}
@@ -1896,6 +1897,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
               </div>
               <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.2fr)_minmax(18rem,0.8fr)]">
                 <section
+                  role="application"
                   aria-label="Pipeline timeline keyboard navigation"
                   tabIndex={0}
                   onKeyDown={handlePipelineTimelineKeyDown}

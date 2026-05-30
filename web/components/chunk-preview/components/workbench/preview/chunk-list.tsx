@@ -1459,6 +1459,7 @@ export function ChunkList() {
       <section
         ref={scrollRef}
         data-page-scroll-container="true"
+        role="application"
         aria-label={t('chunkList.ariaLabel')}
         tabIndex={0}
         onKeyDown={(e) => {
