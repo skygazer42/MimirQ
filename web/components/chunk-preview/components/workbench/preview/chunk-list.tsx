@@ -1456,10 +1456,9 @@ export function ChunkList() {
         </div>
       ) : null}
 
-      <div
+      <section
         ref={scrollRef}
         data-page-scroll-container="true"
-        role="listbox"
         aria-label={t('chunkList.ariaLabel')}
         tabIndex={0}
         onKeyDown={(e) => {
@@ -1661,7 +1660,7 @@ export function ChunkList() {
 })()}
           </motion.div>
         </AnimatePresence>
-      </div>
+      </section>
 
       <ChunkInspectorDialog
         open={inspectorOpen}

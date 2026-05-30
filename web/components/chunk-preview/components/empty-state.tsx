@@ -44,20 +44,26 @@ export function EmptyState() {
           </div>
         </div>
 
-        <div
+        <input
+          id="chunk-file-input"
+          type="file"
+          accept={UPLOAD_ACCEPT}
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            const files = e.target.files ? Array.from(e.target.files) : []
+            if (files.length > 0) addFiles(files)
+            e.target.value = ''
+          }}
+        />
+
+        <button
+          type="button"
           className={cn(
-            'w-full bg-card rounded-3xl p-2 shadow-strong border border-border/70 transition-colors transition-shadow duration-200 motion-reduce:transition-none',
+            'w-full bg-card rounded-3xl p-2 text-left shadow-strong border border-border/70 transition-colors transition-shadow duration-200 motion-reduce:transition-none focus-ring',
             isDragging ? 'ring-4 ring-primary/15 border-primary/25' : 'hover:border-primary/25'
           )}
-          role="button"
-          tabIndex={0}
           onClick={() => document.getElementById('chunk-file-input')?.click()}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault()
-              document.getElementById('chunk-file-input')?.click()
-            }
-          }}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
@@ -68,19 +74,6 @@ export function EmptyState() {
               isDragging ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/40 hover:bg-primary/5'
             )}
           >
-            <input
-              id="chunk-file-input"
-              type="file"
-              accept={UPLOAD_ACCEPT}
-              multiple
-              className="hidden"
-              onChange={(e) => {
-                const files = e.target.files ? Array.from(e.target.files) : []
-                if (files.length > 0) addFiles(files)
-                e.target.value = ''
-              }}
-            />
-
             <div className="w-14 h-14 bg-card rounded-2xl shadow-sm border border-border flex items-center justify-center mb-5">
               <FileUp className={cn('w-7 h-7', isDragging ? 'text-primary' : 'text-muted-foreground')} />
             </div>
@@ -92,7 +85,7 @@ export function EmptyState() {
               <p className="text-xs text-muted-foreground">{t('emptyState.uploadHint')}</p>
             </div>
           </div>
-        </div>
+        </button>
 
         <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
           <button

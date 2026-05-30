@@ -153,7 +153,7 @@ export function ChunkCard({
   }, [t])
 
   return (
-    <div
+    <article
       className={cn(
         'group relative bg-card p-4 rounded-xl border transition-colors transition-shadow duration-200 motion-reduce:transition-none cursor-pointer focus-within:ring-1 focus-within:ring-ring/20',
         (() => {
@@ -172,7 +172,8 @@ export function ChunkCard({
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
       onClick={onToggleSelect}
-      role="button"
+      role="checkbox"
+      aria-checked={isSelected}
       tabIndex={0}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -426,6 +427,6 @@ export function ChunkCard({
       >
         {highlightText(chunk.content || '', query)}
       </div>
-    </div>
+    </article>
   )
 }

@@ -498,7 +498,7 @@ export function GraphCanvas({
     }
   }, [graphViewportHeight, graphViewportWidth, isSemanticListVisible])
 
-  const handleSemanticPanelPointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+  const handleSemanticPanelPointerDown = useCallback((event: ReactPointerEvent<HTMLElement>) => {
     if (event.button !== 0) return
 
     const panelElement = semanticPanelRef.current
@@ -514,7 +514,7 @@ export function GraphCanvas({
     event.preventDefault()
   }, [semanticPanelPosition])
 
-  const handleSemanticPanelPointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+  const handleSemanticPanelPointerMove = useCallback((event: ReactPointerEvent<HTMLElement>) => {
     const dragState = semanticPanelDragStateRef.current
     if (dragState?.pointerId !== event.pointerId) return
 
@@ -531,7 +531,7 @@ export function GraphCanvas({
     })
   }, [clampSemanticPanelPosition])
 
-  const handleSemanticPanelPointerUp = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+  const handleSemanticPanelPointerUp = useCallback((event: ReactPointerEvent<HTMLElement>) => {
     if (semanticPanelDragStateRef.current?.pointerId !== event.pointerId) return
     semanticPanelDragStateRef.current = null
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
@@ -645,9 +645,9 @@ export function GraphCanvas({
               <div
                 className={`flex items-center gap-2 px-3 py-2.5 ${isSemanticListVisible ? 'border-b border-border/55' : ''}`}
               >
-                <div
-                  className="flex h-8 w-8 shrink-0 cursor-grab items-center justify-center rounded-xl border border-border/60 bg-card/55 text-muted-foreground touch-none select-none active:cursor-grabbing"
-                  role="button"
+                <button
+                  type="button"
+                  className="flex h-8 w-8 shrink-0 cursor-grab appearance-none items-center justify-center rounded-xl border border-border/60 bg-card/55 p-0 text-muted-foreground touch-none select-none active:cursor-grabbing"
                   aria-label="拖动语义图谱列表"
                   onPointerDown={handleSemanticPanelPointerDown}
                   onPointerMove={handleSemanticPanelPointerMove}
@@ -659,7 +659,7 @@ export function GraphCanvas({
                       <span key={`semantic-drag-dot-${dotIndex}`} className="h-1 w-1 rounded-full bg-current/60" />
                     ))}
                   </div>
-                </div>
+                </button>
 
                 {isSemanticListVisible ? (
                   <div className="min-w-0 flex-1">
@@ -722,10 +722,9 @@ export function GraphCanvas({
                   ? `键盘当前聚焦：${semanticNodes[keyboardRovingIndex].label}（${keyboardRovingIndex + 1}/${semanticNodes.length}）`
                   : '键盘当前聚焦：尚未选中节点'}
               </p>
-              <div
+              <section
                 id={semanticPanelId}
                 hidden={!isSemanticListVisible}
-                role="region"
                 aria-label="知识图谱语义化结构列表"
                 className="space-y-3 px-3 py-3 max-h-[min(22rem,calc(100vh-12rem))] overflow-auto"
               >
@@ -836,7 +835,7 @@ export function GraphCanvas({
                     ) : null}
                   </>
                 ) : null}
-              </div>
+              </section>
             </div>
           </aside>
         </>
