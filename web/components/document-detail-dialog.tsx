@@ -333,18 +333,12 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
     switch (event.key) {
       case 'ArrowLeft':
       case 'ArrowUp':
+      case 'Home':
         event.preventDefault()
         focusViewTab('chunks')
         break
       case 'ArrowRight':
       case 'ArrowDown':
-        event.preventDefault()
-        focusViewTab('timeline')
-        break
-      case 'Home':
-        event.preventDefault()
-        focusViewTab('chunks')
-        break
       case 'End':
         event.preventDefault()
         focusViewTab('timeline')

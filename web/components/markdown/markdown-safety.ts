@@ -14,9 +14,7 @@ function normalizeMarkdownUrl(value: string | null | undefined): string {
 function getMarkdownUrlScheme(value: string): string | null {
   let scheme = ''
 
-  for (let index = 0; index < value.length; index += 1) {
-    const char = value[index]
-
+  for (const char of value) {
     if (char === ':') {
       return scheme ? scheme.toLowerCase() : null
     }

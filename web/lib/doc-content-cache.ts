@@ -203,10 +203,11 @@ async function collectStoreRecords<T>(
     }
 
     const rejectOnce = (reason: unknown, message: string) => {
-      if (settled) return
-      settled = true
-      close()
-      reject(toError(reason, message))
+      if (!settled) {
+        settled = true
+        close()
+        reject(toError(reason, message))
+      }
     }
 
     request.onsuccess = (event) => {

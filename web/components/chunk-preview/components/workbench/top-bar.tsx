@@ -81,9 +81,9 @@ function getErrorMessage(error: unknown, fallback: string): string {
 }
 
 const ESCAPED_NEWLINE = String.raw`\n`
-const SHELL_BACKSLASH = String.fromCharCode(92)
+const SHELL_BACKSLASH = String.fromCodePoint(92)
 const DOUBLE_SHELL_BACKSLASH = SHELL_BACKSLASH.repeat(2)
-const BACKTICK = String.fromCharCode(96)
+const BACKTICK = String.fromCodePoint(96)
 
 export function TopBar() {
   const router = useRouter()
@@ -922,7 +922,7 @@ export function TopBar() {
                 }
                 if (pipeline) {
                   const lastLine = lines.at(-1)
-                  if (lastLine) lines.splice(-1, 1, `${lastLine} ${String.fromCharCode(92)}`)
+                  if (lastLine) lines.splice(-1, 1, `${lastLine} ${SHELL_BACKSLASH}`)
                   lines.push(`  -F 'pipeline=${pipeline}'`)
                 }
                 detachPromise(

@@ -13,8 +13,8 @@ export async function scanFiles(items: DataTransferItemList): Promise<File[]> {
 
   // 获取所有入口（文件或文件夹）
   const entries: FileSystemEntry[] = []
-  for (let i = 0; i < items.length; i++) {
-    const entry = items[i].webkitGetAsEntry()
+  for (const item of Array.from(items)) {
+    const entry = item.webkitGetAsEntry()
     if (entry) entries.push(entry)
   }
 
