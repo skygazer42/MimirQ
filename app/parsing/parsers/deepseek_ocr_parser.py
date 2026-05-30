@@ -411,7 +411,8 @@ class DeepSeekOCRParser:
                 continue
 
             ref_lower = ref_stripped.lower()
-            if ref_lower.startswith(("http://", "https://", "data:", "blob:", "/api/")):
+            ref_scheme = ref_stripped.split(":", 1)[0].lower()
+            if ref_scheme in {"http", "https", "data", "blob"} or ref_lower.startswith("/api/"):
                 continue
 
             ref_path = ref_stripped.split("?", 1)[0].split("#", 1)[0].strip()

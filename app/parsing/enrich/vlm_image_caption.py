@@ -109,7 +109,7 @@ def _safe_read_local_image_bytes(*, src: str, origin_path: Path, max_bytes: int)
         return None
     if raw.startswith("data:"):
         return None
-    if raw.lower().startswith(("http://", "https://")):
+    if urlparse(raw).scheme in {"http", "https"}:
         return None
     if "/api/v1/documents/image-url/" in raw:
         # Already rewritten to MinIO URL (no local file mapping here).

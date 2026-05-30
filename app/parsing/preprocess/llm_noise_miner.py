@@ -6,20 +6,42 @@ from typing import Any
 
 _SCHEMA = "mimirq.llm_noise_miner.v1"
 
-_TEMPLATE_LIBRARY: list[tuple[str, re.Pattern[str], str]] = [
+def _is_attachment_download_meta(line: str) -> bool:
+    text = line.strip()
+    if not (text.startswith("(") and text.endswith(")") and "下载次数:" in text):
+        return False
+    size_part, _, count_part = text[1:-1].partition(",")
+    unit = size_part.strip().split(" ")[-1].upper()
+    count = count_part.replace("下载次数:", "", 1).strip()
+    return unit in {"MB", "KB", "GB"} and count.isdigit()
+
+
+def _is_reply_time(line: str) -> bool:
+    return line.strip().startswith("回复时间：")
+
+
+def _is_forum_reply_title(line: str) -> bool:
+    text = line.strip()
+    if not (text.startswith("【回复") and text.endswith("】") and "-" in text):
+        return False
+    number = text.removeprefix("【回复").split("-", 1)[0].strip()
+    return number.isdigit()
+
+
+_TEMPLATE_LIBRARY: list[tuple[str, Any, str]] = [
     (
         "attachment_download_meta",
-        re.compile(r"^\([\d\.]+\s*(MB|KB|GB),\s*下载次数:\s*\d+\)\s*$"),
+        _is_attachment_download_meta,
         r"(?m)^\([\d\.]+\s*(MB|KB|GB),\s*下载次数:\s*\d+\)\s*$",
     ),
     (
         "reply_time",
-        re.compile(r"^回复时间：.+$"),
+        _is_reply_time,
         r"(?m)^\s*回复时间：.*$",
     ),
     (
         "forum_reply_title",
-        re.compile(r"^【回复\s+\d+\s*-\s*.*】$"),
+        _is_forum_reply_title,
         r"(?m)^\s*【回复\s+\d+\s*-\s*.*】\s*$",
     ),
 ]
@@ -44,7 +66,7 @@ def mine_noise_rule_candidates(
     template_hits: dict[str, dict[str, Any]] = {}
     for line in normalized:
         for key, matcher, pattern in _TEMPLATE_LIBRARY:
-            if matcher.match(line):
+            if matcher(line):
                 entry = template_hits.setdefault(
                     pattern,
                     {

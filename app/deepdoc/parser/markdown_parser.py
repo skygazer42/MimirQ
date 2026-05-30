@@ -15,9 +15,6 @@
 #  limitations under the License.
 #
 
-import re
-
-
 class IntegratedPipelineMarkdownParser:
     def __init__(self, chunk_token_num=128):
         self.chunk_token_num = int(chunk_token_num)
@@ -26,56 +23,60 @@ class IntegratedPipelineMarkdownParser:
         if not bool(separate_tables):
             return markdown_text, []
 
-        tables = []
-        remainder = markdown_text
-        if "|" in markdown_text:  # for optimize performance
-            # Standard Markdown table
-            border_table_pattern = re.compile(
-                r'''
-                (?:\n|^)                     
-                (?:\|.*?\|.*?\|.*?\n)        
-                (?:\|(?:\s*[:-]+[-| :]*\s*)\|.*?\n) 
-                (?:\|.*?\|.*?\|.*?\n)+
-            ''', re.VERBOSE)
-            border_tables = border_table_pattern.findall(markdown_text)
-            tables.extend(border_tables)
-            remainder = border_table_pattern.sub('', remainder)
-
-            # Borderless Markdown table
-            no_border_table_pattern = re.compile(
-                r'''
-                (?:\n|^)                 
-                (?:\S.*?\|.*?\n)
-                (?:(?:\s*[:-]+[-| :]*\s*).*?\n)
-                (?:\S.*?\|.*?\n)+
-                ''', re.VERBOSE)
-            no_border_tables = no_border_table_pattern.findall(remainder)
-            tables.extend(no_border_tables)
-            remainder = no_border_table_pattern.sub('', remainder)
-
-        if "<table>" in remainder.lower():  # for optimize performance
-            # HTML table extraction - handle possible html/body wrapper tags
-            html_table_pattern = re.compile(
-                r'''
-                (?:\n|^)
-                \s*
-                (?:
-                    # case1: <html><body><table>...</table></body></html>
-                    (?:<html[^>]*>\s*<body[^>]*>\s*<table[^>]*>.*?</table>\s*</body>\s*</html>)
-                    |
-                    # case2: <body><table>...</table></body>
-                    (?:<body[^>]*>\s*<table[^>]*>.*?</table>\s*</body>)
-                    |
-                    # case3: only<table>...</table>
-                    (?:<table[^>]*>.*?</table>)
-                )
-                \s*
-                (?=\n|$)
-                ''',
-                re.VERBOSE | re.DOTALL | re.IGNORECASE
-            )
-            html_tables = html_table_pattern.findall(remainder)
-            tables.extend(html_tables)
-            remainder = html_table_pattern.sub('', remainder)
-
+        remainder, tables = self._extract_markdown_tables(markdown_text)
+        remainder, html_tables = self._extract_html_tables(remainder)
+        tables.extend(html_tables)
         return remainder, tables
+
+    @staticmethod
+    def _is_table_separator(line):
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) < 2:
+            return False
+        return all(cell and set(cell) <= {"-", ":", " "} and cell.count("-") >= 3 for cell in cells)
+
+    @classmethod
+    def _extract_markdown_tables(cls, markdown_text):
+        if "|" not in markdown_text:
+            return markdown_text, []
+        lines = markdown_text.splitlines(keepends=True)
+        tables = []
+        remainder = []
+        index = 0
+        while index < len(lines):
+            if index + 1 < len(lines) and "|" in lines[index] and cls._is_table_separator(lines[index + 1]):
+                start = index
+                index += 2
+                while index < len(lines) and "|" in lines[index] and lines[index].strip():
+                    index += 1
+                if index - start >= 3:
+                    tables.append("".join(lines[start:index]))
+                    continue
+                remainder.extend(lines[start:index])
+                continue
+            remainder.append(lines[index])
+            index += 1
+        return "".join(remainder), tables
+
+    @staticmethod
+    def _extract_html_tables(markdown_text):
+        lowered = markdown_text.lower()
+        if "<table" not in lowered:
+            return markdown_text, []
+        tables = []
+        parts = []
+        cursor = 0
+        while True:
+            start = lowered.find("<table", cursor)
+            if start == -1:
+                parts.append(markdown_text[cursor:])
+                break
+            end = lowered.find("</table>", start)
+            if end == -1:
+                parts.append(markdown_text[cursor:])
+                break
+            end += len("</table>")
+            parts.append(markdown_text[cursor:start])
+            tables.append(markdown_text[start:end])
+            cursor = end
+        return "".join(parts), tables

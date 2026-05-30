@@ -39,6 +39,7 @@ import {
   type IndustryRulesetDetail,
 } from '@/lib/api'
 import { queryKeys } from '@/lib/query-keys'
+import { randomBase36Id } from '@/lib/secure-random'
 import { cn, detachPromise } from '@/lib/utils'
 
 type GlossaryEntry = {
@@ -80,7 +81,7 @@ type ResultSummary = {
 
 function makeLocalId(prefix: string, seed?: string): string {
   const suffix =
-    seed?.trim() || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    seed?.trim() || `${Date.now()}-${randomBase36Id(6)}`
   return `${prefix}-${suffix}`
 }
 

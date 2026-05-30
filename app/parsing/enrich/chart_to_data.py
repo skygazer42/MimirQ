@@ -128,7 +128,7 @@ def _safe_read_local_image_bytes(*, src: str, origin_path: Path, max_bytes: int)
         return None, "empty_src"
     if raw.startswith("data:"):
         return None, "data_url_unsupported"
-    if raw.lower().startswith(("http://", "https://")):
+    if urlparse(raw).scheme in {"http", "https"}:
         return None, "remote_url_unsupported"
     if _MINIO_URL_HINT in raw:
         return None, "already_minio_url"

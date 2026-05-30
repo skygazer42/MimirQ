@@ -32,7 +32,11 @@ function base64ToBytes(base64: string): Uint8Array {
 }
 
 export function base64UrlEncode(bytes: Uint8Array): string {
-  return bytesToBase64(bytes).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/g, '')
+  let encoded = bytesToBase64(bytes).replaceAll('+', '-').replaceAll('/', '_')
+  while (encoded.endsWith('=')) {
+    encoded = encoded.slice(0, -1)
+  }
+  return encoded
 }
 
 export function base64UrlDecodeToBytes(base64Url: string): Uint8Array {

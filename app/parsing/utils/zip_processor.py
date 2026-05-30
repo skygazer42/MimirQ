@@ -116,7 +116,7 @@ class ZipImageProcessor:
         if val.startswith("<") and ">" in val:
             val = val[1:val.index(">")].strip()
         # Drop optional title: (path "title")
-        if not (val.startswith("http://") or val.startswith("https://")):
+        if val.split(":", 1)[0].lower() not in {"http", "https"}:
             val = val.split()[0] if val.split() else val
         val = val.strip().strip('"').strip("'")
         val = val.split("#", 1)[0].split("?", 1)[0]

@@ -27,17 +27,33 @@ function stripApiV1Prefix(rawPath: string): string {
 
 function renderPathTemplate(pathTemplate: string, params?: Record<string, unknown>): string {
   const base = stripApiV1Prefix(pathTemplate)
-  return base.replaceAll(/\{([^}]+)\}/g, (_m, keyRaw) => {
-    const key = String(keyRaw || '').trim()
+  let output = ''
+  let cursor = 0
+  while (cursor < base.length) {
+    const open = base.indexOf('{', cursor)
+    if (open === -1) {
+      output += base.slice(cursor)
+      break
+    }
+    const close = base.indexOf('}', open + 1)
+    if (close === -1) {
+      output += base.slice(cursor)
+      break
+    }
+    output += base.slice(cursor, open)
+    const key = base.slice(open + 1, close).trim()
     const value = params?.[key]
     if (value === undefined || value === null || key === '') {
       throw new Error(`[openapi-request] missing path param: ${key || '(empty)'}`)
     }
     if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
-      return encodeURIComponent(String(value))
+      output += encodeURIComponent(String(value))
+      cursor = close + 1
+      continue
     }
     throw new Error(`[openapi-request] invalid path param: ${key}`)
-  })
+  }
+  return output
 }
 
 function isFormData(value: unknown): value is FormData {

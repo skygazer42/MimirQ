@@ -1,10 +1,11 @@
 import type { Document } from '@/types'
+import { randomBase36Id } from '@/lib/secure-random'
 
 function createDemoDocument(overrides: Partial<Document>): Document {
   const now = new Date().toISOString()
 
   return {
-    id: `demo-${Math.random().toString(36).slice(2, 10)}`,
+    id: `demo-${randomBase36Id(8)}`,
     filename: 'demo.txt',
     file_type: 'txt',
     file_size: 0,

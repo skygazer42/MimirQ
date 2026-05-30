@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import math
-import random
 import statistics
 from collections.abc import Iterable, Mapping
 from typing import Any
@@ -29,6 +28,11 @@ def _as_float(value: Any) -> float | None:
     except (TypeError, ValueError):
         return None
     return number if math.isfinite(number) else None
+
+
+def _deterministic_bootstrap_index(metric_key: str, iteration: int, offset: int, size: int) -> int:
+    digest = hashlib.sha256(f"{metric_key}:{iteration}:{offset}".encode("utf-8")).digest()
+    return int.from_bytes(digest[:8], "big") % size
 
 
 def _case_id(item: Any) -> str:
@@ -132,11 +136,12 @@ def _bootstrap_ci(metric_key: str, deltas: list[float], iterations: int) -> tupl
         value = round(float(deltas[0]), 6)
         return value, value
     iterations = max(50, min(int(iterations or 0), 5000))
-    seed = int(hashlib.sha256(metric_key.encode("utf-8")).hexdigest()[:16], 16)
-    rng = random.Random(seed)
     means: list[float] = []
-    for _ in range(iterations):
-        sample = [deltas[rng.randrange(len(deltas))] for _idx in range(len(deltas))]
+    for iteration in range(iterations):
+        sample = [
+            deltas[_deterministic_bootstrap_index(metric_key, iteration, offset, len(deltas))]
+            for offset in range(len(deltas))
+        ]
         means.append(sum(sample) / len(sample))
     means.sort()
     low_idx = max(0, min(len(means) - 1, int(math.floor(0.025 * (len(means) - 1)))))

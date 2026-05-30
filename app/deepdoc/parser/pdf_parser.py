@@ -19,7 +19,6 @@ warnings.filterwarnings("ignore")
 import io
 import logging
 import os
-import random
 import re
 import sys
 import threading
@@ -66,6 +65,13 @@ def _resolve_ocr_page_concurrency() -> int:
         except ValueError:
             logging.warning("Invalid DEEPDOC_OCR_PAGE_CONCURRENCY=%r; falling back to serial", raw)
     return 1
+
+
+def _evenly_sample(values, limit):
+    if len(values) <= limit:
+        return values
+    step = len(values) / float(limit)
+    return [values[min(len(values) - 1, int(index * step))] for index in range(limit)]
 
 
 def vision_llm_describe_prompt(page=None) -> str:
@@ -137,9 +143,14 @@ def get_default_resource_dir():
 
 
 def clean_markdown_block(text):
-    text = re.sub(r'^\s*```markdown\s*\n?', '', text)
-    text = re.sub(r'\n?\s*```\s*$', '', text)
-    return text.strip()
+    stripped = text.strip()
+    if stripped.lower().startswith("```markdown"):
+        stripped = stripped[len("```markdown"):].lstrip()
+    elif stripped.startswith("```"):
+        stripped = stripped[3:].lstrip()
+    if stripped.endswith("```"):
+        stripped = stripped[:-3].rstrip()
+    return stripped
 
 
 def picture_vision_llm_chunk(binary, vision_model, prompt=None, callback=None):
@@ -1338,9 +1349,13 @@ class IntegratedPipelinePdfParser:
             logging.warning("Miss outlines")
 
         logging.debug("Images converted.")
-        self.is_english = [re.search(r"[a-zA-Z0-9,/¸;:'\[\]\(\)!@#$%^&*\"?<>._-]{30,}", "".join(
-            random.choices([c["text"] for c in self.page_chars[i]], k=min(100, len(self.page_chars[i]))))) for i in
-                           range(len(self.page_chars))]
+        self.is_english = [
+            re.search(
+                r"[a-zA-Z0-9,/¸;:'\[\]\(\)!@#$%^&*\"?<>._-]{30,}",
+                "".join(_evenly_sample([c["text"] for c in self.page_chars[i]], min(100, len(self.page_chars[i])))),
+            )
+            for i in range(len(self.page_chars))
+        ]
         if sum([1 if e else 0 for e in self.is_english]) > len(
                 self.page_images) / 2:
             self.is_english = True
@@ -1402,8 +1417,10 @@ class IntegratedPipelinePdfParser:
         if not self.is_english and not any(
                 c for c in self.page_chars) and self.boxes:
             bxes = [b for bxs in self.boxes for b in bxs]
-            self.is_english = re.search(r"[\na-zA-Z0-9,/¸;:'\[\]\(\)!@#$%^&*\"?<>._-]{30,}",
-                                        "".join([b["text"] for b in random.choices(bxes, k=min(30, len(bxes)))]))
+            self.is_english = re.search(
+                r"[\na-zA-Z0-9,/¸;:'\[\]\(\)!@#$%^&*\"?<>._-]{30,}",
+                "".join([b["text"] for b in _evenly_sample(bxes, min(30, len(bxes)))]),
+            )
 
         logging.debug("Is it English:", self.is_english)
 

@@ -5342,7 +5342,7 @@ class DocumentProcessorService:
 
         for ref in found:
             # Already remote or already rewritten.
-            if ref.lower().startswith(("http://", "https://")):
+            if urlparse(ref).scheme in {"http", "https"}:
                 continue
             if "/api/v1/documents/image-url/" in ref:
                 continue

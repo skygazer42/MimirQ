@@ -250,11 +250,18 @@ export function QualityChecker({
   }, [t, textStats])
 
   const formatInfo = useMemo(() => {
-    const hasMarkdown = /^#{1,6}\s|^\*{1,2}.*?\*{1,2}|^\[.*?\]\(.*?\)/m.test(content)
-    const hasHtml = /<[^>]+>/.test(content)
-    const hasHeaders = (content.match(/^#{1,6}\s/gm) || []).length
-    const hasLists = (content.match(/^\s*[-*+]\s|^\s*\d+\.\s/gm) || []).length
-    const hasTables = (content.match(/\|.*\|/g) || []).length > 0
+    const lines = content.split(/\r?\n/)
+    const hasMarkdown = lines.some((line) => {
+      const trimmed = line.trim()
+      return trimmed.startsWith('#') || trimmed.startsWith('**') || (trimmed.startsWith('[') && trimmed.includes(']('))
+    })
+    const hasHtml = content.includes('<') && content.includes('>')
+    const hasHeaders = lines.filter((line) => line.trimStart().startsWith('#')).length
+    const hasLists = lines.filter((line) => {
+      const trimmed = line.trimStart()
+      return ['-', '*', '+'].includes(trimmed[0] || '') || /^\d+\.\s/.test(trimmed)
+    }).length
+    const hasTables = lines.some((line) => line.includes('|'))
 
     return {
       format: getContentFormat(hasHtml, hasMarkdown, t),

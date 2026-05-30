@@ -112,7 +112,8 @@ class DocumentParserService:
                     continue
 
                 ref_lower = ref_stripped.lower()
-                if ref_lower.startswith(("http://", "https://", "data:", "blob:")):
+                ref_scheme = ref_stripped.split(":", 1)[0].lower()
+                if ref_scheme in {"http", "https", "data", "blob"}:
                     continue
                 if "/api/v1/documents/image-url/" in ref_lower or "/api/v1/documents/image/" in ref_lower:
                     continue

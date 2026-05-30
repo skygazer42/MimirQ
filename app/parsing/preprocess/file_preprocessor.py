@@ -314,14 +314,16 @@ def preprocess_file(
         elif sid == "text.collapse_blank_lines":
             applied = True
             # Keep up to 2 consecutive newlines to avoid noisy whitespace inflation.
-            new = re.sub(r"\n{3,}", "\n\n", text)
+            new = text
+            while "\n\n\n" in new:
+                new = new.replace("\n\n\n", "\n\n")
             if new != text:
                 text = new
                 changed = True
         elif sid == "text.trim_trailing_whitespace":
             applied = True
             # Trim spaces/tabs at EOL (keep newlines).
-            new = re.sub(r"[\\t ]+\\n", "\n", text)
+            new = "\n".join(line.rstrip(" \t") for line in text.split("\n"))
             if new != text:
                 text = new
                 changed = True
