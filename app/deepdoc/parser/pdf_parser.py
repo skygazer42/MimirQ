@@ -1011,7 +1011,6 @@ class IntegratedPipelinePdfParser:
         i = 0
         while i < len(self.boxes):
             c = self.boxes[i]
-            # mh = self.mean_height[c["page_number"]-1]
             if not TableStructureRecognizer.is_caption(c):
                 i += 1
                 continue
