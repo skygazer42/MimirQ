@@ -115,6 +115,8 @@ type JsonTokenKind =
   | 'null'
   | 'punctuation'
 type AuditSeverity = 'healthy' | 'notice' | 'warning'
+type SnapshotInlineStatTone = 'muted' | 'neutral' | 'positive' | 'negative' | 'warning'
+type DeltaDirection = 'positive' | 'negative' | 'flat'
 
 type PipelineCandidate = {
   hash: string
@@ -170,12 +172,174 @@ type SnapshotStudioLink = {
 
 const DIFF_KEYS = ['docs', 'events', 'entities', 'links', 'relations'] as const
 
+const INLINE_STAT_TONE_CLASSES: Record<SnapshotInlineStatTone, string> = {
+  muted: 'border-border/70 bg-card text-muted-foreground',
+  neutral: 'border-border/70 bg-card text-foreground',
+  positive: 'border-emerald-200/70 bg-emerald-50/70 text-emerald-700',
+  negative: 'border-rose-200/70 bg-rose-50/70 text-rose-700',
+  warning: 'border-amber-200/70 bg-amber-50/70 text-amber-700',
+}
+
+const INLINE_STAT_VALUE_TONE_CLASSES: Record<SnapshotInlineStatTone, string> = {
+  muted: 'text-muted-foreground',
+  neutral: 'text-foreground',
+  positive: 'text-emerald-700',
+  negative: 'text-rose-700',
+  warning: 'text-amber-700',
+}
+
+const SNAPSHOT_NODE_TONE_CLASSES: Record<SnapshotStudioNode['tone'], string> = {
+  amber: 'from-amber-400 to-orange-500 ring-amber-200',
+  blue: 'from-blue-500 to-sky-500 ring-blue-200',
+  green: 'from-emerald-400 to-teal-500 ring-emerald-200',
+  orange: 'from-orange-400 to-rose-500 ring-orange-200',
+  purple: 'from-violet-400 to-indigo-500 ring-violet-200',
+  rose: 'from-rose-400 to-pink-500 ring-rose-200',
+  teal: 'from-teal-400 to-cyan-500 ring-teal-200',
+}
+
+const DELTA_TEXT_CLASSES: Record<DeltaDirection, string> = {
+  flat: 'text-muted-foreground',
+  negative: 'text-rose-700',
+  positive: 'text-emerald-700',
+}
+
+const DELTA_TINT_CLASSES: Record<DeltaDirection, string> = {
+  flat: 'bg-muted/40 ring-border',
+  negative: 'bg-rose-50 ring-rose-200/60',
+  positive: 'bg-emerald-50 ring-emerald-200/60',
+}
+
+const DELTA_BADGE_VARIANTS: Record<DeltaDirection, 'soft' | 'outline' | 'destructive'> = {
+  flat: 'outline',
+  negative: 'destructive',
+  positive: 'soft',
+}
+
+const DELTA_LABELS: Record<DeltaDirection, string> = {
+  flat: 'flat',
+  negative: 'decrease',
+  positive: 'increase',
+}
+
 function prettyJson(value: unknown): string {
   try {
     return JSON.stringify(value, null, 2)
   } catch {
     return String(value)
   }
+}
+
+function primitiveDisplayString(value: unknown): string {
+  if (typeof value === 'string') return value.trim()
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    return String(value).trim()
+  }
+  return ''
+}
+
+function firstDisplayString(...values: unknown[]): string {
+  for (const value of values) {
+    const direct = primitiveDisplayString(value)
+    if (direct) return direct
+
+    if (value && typeof value === 'object') {
+      const record = value as Record<string, unknown>
+      const nested = firstDisplayString(record.id, record.name, record.label, record.title)
+      if (nested) return nested
+    }
+  }
+  return ''
+}
+
+function deltaDirection(value: number): DeltaDirection {
+  if (value > 0) return 'positive'
+  if (value < 0) return 'negative'
+  return 'flat'
+}
+
+function deltaSign(value: number): string {
+  return value > 0 ? '+' : ''
+}
+
+function deltaFill(value: number): string {
+  const direction = deltaDirection(value)
+  if (direction === 'positive') return '#10b981'
+  if (direction === 'negative') return '#f43f5e'
+  return '#94a3b8'
+}
+
+function driftScoreToneForSeverity(severity: AuditSeverity): SnapshotInlineStatTone {
+  if (severity === 'healthy') return 'positive'
+  if (severity === 'notice') return 'warning'
+  return 'negative'
+}
+
+function inlineStatToneForDelta(value: number): SnapshotInlineStatTone {
+  const direction = deltaDirection(value)
+  if (direction === 'positive') return 'positive'
+  if (direction === 'negative') return 'negative'
+  return 'muted'
+}
+
+function auditSeverityForDriftScore(score: number): AuditSeverity {
+  if (score >= 0.35) return 'warning'
+  if (score >= 0.12) return 'notice'
+  return 'healthy'
+}
+
+function getHashPairStatus(hasA: boolean, hasB: boolean): string {
+  if (hasA && hasB) return '已就绪'
+  if (hasA || hasB) return '待补全'
+  return '未设置'
+}
+
+function getHashPairTone(hasA: boolean, hasB: boolean): SnapshotInlineStatTone {
+  if (hasA && hasB) return 'positive'
+  if (hasA || hasB) return 'warning'
+  return 'muted'
+}
+
+function getHashPairIcon(hasA: boolean, hasB: boolean): ReactNode {
+  if (hasA && hasB) return <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+  if (hasA || hasB) return <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />
+  return <CircleDashed className="h-3.5 w-3.5" aria-hidden="true" />
+}
+
+function getSnapshotScopeSubtitle(
+  documentCount: number,
+  datasetId: string | undefined,
+  datasetLabel: string
+): string {
+  if (documentCount > 0) return `${documentCount} 个文档范围`
+  if (datasetId) return `${datasetLabel} · 数据集范围`
+  return '后端全局范围'
+}
+
+function getSelectedDatasetLabel(
+  selectedDataset: Dataset | null,
+  selectedDatasetId: string
+): string {
+  if (selectedDataset) return getDatasetLabel(selectedDataset)
+  if (selectedDatasetId) return selectedDatasetId
+  return '全部数据集'
+}
+
+function getScopeDocumentCountLabel(documentCount: number, selectedDatasetId: string): string {
+  if (documentCount > 0) return `${documentCount} 个文档`
+  if (selectedDatasetId) return '后端解析'
+  return '全局范围'
+}
+
+function getPipelineCandidatesStatusText(
+  loading: boolean,
+  error: string | null,
+  count: number
+): string {
+  if (loading) return '正在读取候选版本'
+  if (error) return error
+  if (count > 0) return `已发现 ${count} 个版本`
+  return '暂无可选版本'
 }
 
 function downloadJson(value: unknown, filename: string): void {
@@ -222,7 +386,7 @@ function getLinkEndpointId(value: unknown): string {
     return String(value)
   if (value && typeof value === 'object') {
     const record = value as Record<string, unknown>
-    return String(record.id ?? record.name ?? record.label ?? '').trim()
+    return firstDisplayString(record.id, record.name, record.label)
   }
   return ''
 }
@@ -283,8 +447,9 @@ function sortPipelineCandidates(candidates: PipelineCandidate[]): PipelineCandid
 }
 
 function getNodeType(node: KGGraphNode): string {
-  return String(
-    getNodeMetaValue(node, 'type', 'entity_type', 'kind', 'node_type') || '节点'
+  return (
+    firstDisplayString(getNodeMetaValue(node, 'type', 'entity_type', 'kind', 'node_type')) ||
+    '节点'
   )
 }
 
@@ -338,6 +503,51 @@ function strengthForWeight(weight: unknown): SnapshotStudioLink['strength'] {
   return 'medium'
 }
 
+function getProminentNodeLimit(isDense: boolean, isMedium: boolean): number {
+  if (isDense) return 8
+  if (isMedium) return 14
+  return 28
+}
+
+function getLinkBaseOpacity(
+  hasFilter: boolean,
+  sourceVisible: boolean,
+  targetVisible: boolean,
+  strength: SnapshotStudioLink['strength']
+): number {
+  if (hasFilter && (!sourceVisible || !targetVisible)) return 0.08
+  if (strength === 'strong') return 0.56
+  if (strength === 'medium') return 0.38
+  return 0.24
+}
+
+function getLinkDensityOpacity(baseOpacity: number, isDense: boolean, isMedium: boolean): number {
+  if (isDense) return baseOpacity * 0.52
+  if (isMedium) return baseOpacity * 0.72
+  return baseOpacity
+}
+
+function getLinkStrokeWidth(isDense: boolean, strength: SnapshotStudioLink['strength']): number {
+  if (isDense) return 0.16
+  if (strength === 'strong') return 0.36
+  return 0.24
+}
+
+function getGraphNodeSizeClass(isDense: boolean, isMedium: boolean): string {
+  if (isDense) return 'h-7 w-7'
+  if (isMedium) return 'h-10 w-10'
+  return 'h-14 w-14'
+}
+
+function graphLoadingTitle(isLoading: boolean): string {
+  return isLoading ? '正在读取真实 KG 图谱' : '暂无图谱节点'
+}
+
+function graphLoadingDescription(isLoading: boolean, emptyMessage?: string): string {
+  if (isLoading) return '系统会按当前数据集、文档范围和 pipeline hash 请求后端接口。'
+  return emptyMessage || '当前作用域没有返回 KG 节点，请先完成文档入库或 KG 抽取。'
+}
+
 function buildSnapshotStudioGraphFromKgGraph(graph: KGGraphResponse | null): {
   nodes: SnapshotStudioNode[]
   links: SnapshotStudioLink[]
@@ -369,13 +579,10 @@ function buildSnapshotStudioGraphFromKgGraph(graph: KGGraphResponse | null): {
         id,
         label: String(node.label || id),
         type,
-        kind: String(
-          getNodeMetaValue(node, 'kind', 'node_type', 'source') || type
-        ),
-        description: String(
-          getNodeMetaValue(node, 'description', 'summary', 'content') ||
-            '来自 KG 图谱接口的真实节点。'
-        ),
+        kind: firstDisplayString(getNodeMetaValue(node, 'kind', 'node_type', 'source')) || type,
+        description:
+          firstDisplayString(getNodeMetaValue(node, 'description', 'summary', 'content')) ||
+          '来自 KG 图谱接口的真实节点。',
         x: Math.round((50 + Math.cos(angle) * radiusX) * 10) / 10,
         y: Math.round((50 + Math.sin(angle) * radiusY) * 10) / 10,
         tone: toneForNodeType(type),
@@ -649,9 +856,18 @@ function tokenizeJsonLine(
 }
 
 function toneClassForDelta(value: number) {
-  if (value > 0) return 'text-emerald-700'
-  if (value < 0) return 'text-rose-700'
+  return DELTA_TEXT_CLASSES[deltaDirection(value)]
+}
+
+function lineNumberClassForStatus(status: DiffCellStatus | 'single'): string {
+  if (status === 'added') return 'text-emerald-700'
+  if (status === 'removed') return 'text-rose-700'
   return 'text-muted-foreground'
+}
+
+function jsonLineSurfaceClass(status: DiffCellStatus | 'single', side: 'left' | 'right' | 'single') {
+  if (status === 'single') return 'bg-transparent'
+  return cellSurfaceClass(status, side === 'single' ? 'left' : side)
 }
 
 function tabLabelForView(view: SnapshotView) {
@@ -693,26 +909,8 @@ function SnapshotInlineStat({
   valueTitle?: string
   valueClassName?: string
 }>) {
-  const toneClasses =
-    tone === 'positive'
-      ? 'border-emerald-200/70 bg-emerald-50/70 text-emerald-700'
-      : tone === 'negative'
-        ? 'border-rose-200/70 bg-rose-50/70 text-rose-700'
-        : tone === 'warning'
-          ? 'border-amber-200/70 bg-amber-50/70 text-amber-700'
-          : tone === 'neutral'
-            ? 'border-border/70 bg-card text-foreground'
-            : 'border-border/70 bg-card text-muted-foreground'
-  const valueTone =
-    tone === 'positive'
-      ? 'text-emerald-700'
-      : tone === 'negative'
-        ? 'text-rose-700'
-        : tone === 'warning'
-          ? 'text-amber-700'
-          : tone === 'neutral'
-            ? 'text-foreground'
-            : 'text-muted-foreground'
+  const toneClasses = INLINE_STAT_TONE_CLASSES[tone]
+  const valueTone = INLINE_STAT_VALUE_TONE_CLASSES[tone]
 
   return (
     <div
@@ -747,20 +945,7 @@ function snapshotToneClassName(
   tone: SnapshotStudioNode['tone'],
   selected: boolean
 ) {
-  const base =
-    tone === 'green'
-      ? 'from-emerald-400 to-teal-500 ring-emerald-200'
-      : tone === 'orange'
-        ? 'from-orange-400 to-rose-500 ring-orange-200'
-        : tone === 'purple'
-          ? 'from-violet-400 to-indigo-500 ring-violet-200'
-          : tone === 'rose'
-            ? 'from-rose-400 to-pink-500 ring-rose-200'
-            : tone === 'amber'
-              ? 'from-amber-400 to-orange-500 ring-amber-200'
-              : tone === 'teal'
-                ? 'from-teal-400 to-cyan-500 ring-teal-200'
-                : 'from-blue-500 to-sky-500 ring-blue-200'
+  const base = SNAPSHOT_NODE_TONE_CLASSES[tone]
   return cn(
     base,
     selected ? 'ring-4 ring-offset-4 ring-offset-background' : 'ring-1'
@@ -1023,7 +1208,7 @@ function SnapshotGraphCanvas({
     })
     return new Set(
       sorted
-        .slice(0, isDenseGraph ? 8 : mediumGraph ? 14 : 28)
+        .slice(0, getProminentNodeLimit(isDenseGraph, mediumGraph))
         .map((node) => node.id)
     )
   }, [displayNodes, isDenseGraph, mediumGraph])
@@ -1087,13 +1272,10 @@ function SnapshotGraphCanvas({
               </div>
             </div>
             <div className="mt-4 text-[15px] font-semibold text-foreground">
-              {isLoading ? '正在读取真实 KG 图谱' : '暂无图谱节点'}
+              {graphLoadingTitle(isLoading)}
             </div>
             <div className="mt-1.5 text-[12px] leading-5 text-muted-foreground">
-              {isLoading
-                ? '系统会按当前数据集、文档范围和 pipeline hash 请求后端接口。'
-                : emptyMessage ||
-                  '当前作用域没有返回 KG 节点，请先完成文档入库或 KG 抽取。'}
+              {graphLoadingDescription(isLoading, emptyMessage)}
             </div>
           </div>
         </div>
@@ -1128,19 +1310,13 @@ function SnapshotGraphCanvas({
           if (!source || !target) return null
           const sourceVisible = filteredNodeIds.has(source.id)
           const targetVisible = filteredNodeIds.has(target.id)
-          const baseOpacity =
-            hasFilter && (!sourceVisible || !targetVisible)
-              ? 0.08
-              : link.strength === 'strong'
-                ? 0.56
-                : link.strength === 'medium'
-                  ? 0.38
-                  : 0.24
-          const opacity = isDenseGraph
-            ? baseOpacity * 0.52
-            : mediumGraph
-              ? baseOpacity * 0.72
-              : baseOpacity
+          const baseOpacity = getLinkBaseOpacity(
+            hasFilter,
+            sourceVisible,
+            targetVisible,
+            link.strength
+          )
+          const opacity = getLinkDensityOpacity(baseOpacity, isDenseGraph, mediumGraph)
           const midX = (source.x + target.x) / 2
           const midY = (source.y + target.y) / 2
           const curve = source.x < target.x ? -6 : 6
@@ -1152,13 +1328,7 @@ function SnapshotGraphCanvas({
                 d={`M ${source.x} ${source.y} C ${midX} ${midY + curve}, ${midX} ${midY - curve}, ${target.x} ${target.y}`}
                 fill="none"
                 stroke="rgb(148 163 184)"
-                strokeWidth={
-                  isDenseGraph
-                    ? 0.16
-                    : link.strength === 'strong'
-                      ? 0.36
-                      : 0.24
-                }
+                strokeWidth={getLinkStrokeWidth(isDenseGraph, link.strength)}
                 strokeDasharray={
                   link.strength === 'weak' ? '1.1 1.1' : undefined
                 }
@@ -1208,11 +1378,7 @@ function SnapshotGraphCanvas({
             <span
               className={cn(
                 'flex items-center justify-center rounded-full text-info-foreground shadow-strong shadow-slate-900/10',
-                isDenseGraph
-                  ? 'h-7 w-7'
-                  : mediumGraph
-                    ? 'h-10 w-10'
-                    : 'h-14 w-14',
+                getGraphNodeSizeClass(isDenseGraph, mediumGraph),
                 snapshotToneClassName(node.tone, selected)
               )}
             >
@@ -1565,11 +1731,7 @@ function SnapshotChartTooltip({
         <span
           className={cn(
             'font-mono font-semibold',
-            row.delta > 0
-              ? 'text-emerald-700'
-              : row.delta < 0
-                ? 'text-rose-700'
-                : 'text-foreground'
+            deltaDirection(row.delta) === 'flat' ? 'text-foreground' : toneClassForDelta(row.delta)
           )}
         >
           Δ {sign}
@@ -1745,7 +1907,7 @@ function SnapshotExactDriftPanel({
             const items = exactDiffSample(diff, row.key)
             const preview = items
               .slice(0, 3)
-              .map((item) => String(item.name || item.id || 'unknown'))
+              .map((item) => firstDisplayString(item.name, item.id) || 'unknown')
               .join(' / ')
             return (
               <div
@@ -1801,20 +1963,13 @@ function JsonLine({
   side?: 'left' | 'right' | 'single'
 }>) {
   const tokens = useMemo(() => tokenizeJsonLine(text), [text])
-  const lineNumberClass =
-    status === 'added'
-      ? 'text-emerald-700'
-      : status === 'removed'
-        ? 'text-rose-700'
-        : 'text-muted-foreground'
+  const lineNumberClass = lineNumberClassForStatus(status)
 
   return (
     <div
       className={cn(
         'grid min-w-0 grid-cols-[52px_minmax(0,1fr)] border-b border-border/60 text-[12px] leading-6',
-        status === 'single'
-          ? 'bg-transparent'
-          : cellSurfaceClass(status, side === 'single' ? 'left' : side)
+        jsonLineSurfaceClass(status, side)
       )}
     >
       <div
@@ -1849,12 +2004,7 @@ function JsonDiffCell({
   side: 'left' | 'right'
 }>) {
   const tokens = useMemo(() => tokenizeJsonLine(cell.text), [cell.text])
-  const lineNumberClass =
-    cell.status === 'added'
-      ? 'text-emerald-700'
-      : cell.status === 'removed'
-        ? 'text-rose-700'
-        : 'text-muted-foreground'
+  const lineNumberClass = lineNumberClassForStatus(cell.status)
 
   return (
     <>
@@ -2145,12 +2295,7 @@ function SnapshotAuditPanel({
   const shownDriftRows = compactRows
     ? typeDriftRows.slice(0, 14)
     : typeDriftRows
-  const driftScoreTone: 'positive' | 'warning' | 'negative' =
-    severity === 'healthy'
-      ? 'positive'
-      : severity === 'notice'
-        ? 'warning'
-        : 'negative'
+  const driftScoreTone = driftScoreToneForSeverity(severity)
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -2244,13 +2389,7 @@ function SnapshotAuditPanel({
                   {chartRows.map((row) => (
                     <Cell
                       key={`delta:${row.key}`}
-                      fill={
-                        row.delta > 0
-                          ? '#10b981'
-                          : row.delta < 0
-                            ? '#f43f5e'
-                            : '#94a3b8'
-                      }
+                      fill={deltaFill(row.delta)}
                     />
                   ))}
                 </Bar>
@@ -2282,19 +2421,10 @@ function SnapshotAuditPanel({
               shownDriftRows.map((row, index) => {
                 const type = String(row.type || 'unknown')
                 const delta = Number(row.delta ?? 0)
-                const sign = delta > 0 ? '+' : ''
-                const tone =
-                  delta > 0
-                    ? 'text-emerald-700'
-                    : delta < 0
-                      ? 'text-rose-700'
-                      : 'text-muted-foreground'
-                const tint =
-                  delta > 0
-                    ? 'bg-emerald-50 ring-emerald-200/60'
-                    : delta < 0
-                      ? 'bg-rose-50 ring-rose-200/60'
-                      : 'bg-muted/40 ring-border'
+                const direction = deltaDirection(delta)
+                const sign = deltaSign(delta)
+                const tone = DELTA_TEXT_CLASSES[direction]
+                const tint = DELTA_TINT_CLASSES[direction]
                 return (
                   <button
                     key={`drift:${type}:${index}`}
@@ -2316,16 +2446,10 @@ function SnapshotAuditPanel({
                       {delta}
                     </span>
                     <Badge
-                      variant={
-                        delta > 0
-                          ? 'soft'
-                          : delta < 0
-                            ? 'destructive'
-                            : 'outline'
-                      }
+                      variant={DELTA_BADGE_VARIANTS[direction]}
                       className="font-mono text-[10.5px]"
                     >
-                      {delta > 0 ? 'increase' : delta < 0 ? 'decrease' : 'flat'}
+                      {DELTA_LABELS[direction]}
                     </Badge>
                   </button>
                 )
@@ -2402,16 +2526,8 @@ export function KGSnapshotsPage() {
   const scopeDatasetId = selectedDatasetId || undefined
   const scopeDocumentIds = documentIds.length > 0 ? documentIds : undefined
   const scopeDocumentIdsKey = scopeDocumentIds?.join(',') ?? ''
-  const selectedDatasetLabel = selectedDataset
-    ? getDatasetLabel(selectedDataset)
-    : selectedDatasetId
-      ? selectedDatasetId
-      : '全部数据集'
-  const scopeDocumentCountLabel = documentIds.length
-    ? `${documentIds.length} 个文档`
-    : selectedDatasetId
-      ? '后端解析'
-      : '全局范围'
+  const selectedDatasetLabel = getSelectedDatasetLabel(selectedDataset, selectedDatasetId)
+  const scopeDocumentCountLabel = getScopeDocumentCountLabel(documentIds.length, selectedDatasetId)
 
   useEffect(() => {
     setSelectedDatasetId(datasetIdFromUrl)
@@ -2483,12 +2599,10 @@ export function KGSnapshotsPage() {
           .catch(() => null)
 
         for (const document of documents?.items ?? []) {
-          const activeHash = String(
-            getDocumentMetaValue(document, 'active_pipeline_hash') || ''
-          ).trim()
-          const currentHash = String(
-            getDocumentMetaValue(document, 'pipeline_hash') || ''
-          ).trim()
+          const activeHash = firstDisplayString(
+            getDocumentMetaValue(document, 'active_pipeline_hash')
+          )
+          const currentHash = firstDisplayString(getDocumentMetaValue(document, 'pipeline_hash'))
           if (activeHash) {
             mergePipelineCandidate(candidateMap, {
               hash: activeHash,
@@ -2672,13 +2786,19 @@ export function KGSnapshotsPage() {
   const hasHashB = Boolean(hashBValue)
   const hashATitle = hashAValue || '未设置'
   const hashBTitle = hashBValue || '未设置'
-  const hashPairStatus =
-    hasHashA && hasHashB ? '已就绪' : hasHashA || hasHashB ? '待补全' : '未设置'
+  const hashPairStatus = getHashPairStatus(hasHashA, hasHashB)
   const hashPairTitle = `A: ${hashAValue || '未填写'}\nB: ${hashBValue || '未填写'}`
+  const hashPairTone = getHashPairTone(hasHashA, hasHashB)
+  const hashPairIcon = getHashPairIcon(hasHashA, hasHashB)
   const diffBaseName =
     sanitizeFilename(
       `kg_snapshot_${hashAValue || 'A'}_vs_${hashBValue || 'B'}`
     ) || 'kg_snapshot'
+  const snapshotScopeSubtitle = getSnapshotScopeSubtitle(
+    scopeDocumentIds?.length ?? 0,
+    scopeDatasetId,
+    selectedDatasetLabel
+  )
   const snapshotAFileName =
     sanitizeFilename(`kg_snapshot_${hashAValue || 'A'}`) || 'kg_snapshot_A'
   const snapshotBFileName =
@@ -2788,8 +2908,7 @@ export function KGSnapshotsPage() {
     )
     return totalDelta / denominator
   }, [deltaRows])
-  const auditSeverity: AuditSeverity =
-    driftScore >= 0.35 ? 'warning' : driftScore >= 0.12 ? 'notice' : 'healthy'
+  const auditSeverity = auditSeverityForDriftScore(driftScore)
   const auditDriftRows = useMemo(() => {
     return [...deferredEntityTypesDelta].sort(
       (a, b) => Math.abs(Number(b.delta ?? 0)) - Math.abs(Number(a.delta ?? 0))
@@ -2946,31 +3065,13 @@ export function KGSnapshotsPage() {
                   </button>
                 </div>
                 <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                  {hasHashA && hasHashB ? (
-                    <SnapshotInlineStat
-                      icon={<CheckCircle2 className="h-3.5 w-3.5" />}
-                      label="A/B"
-                      value={hashPairStatus}
-                      valueTitle={hashPairTitle}
-                      tone="positive"
-                    />
-                  ) : hasHashA || hasHashB ? (
-                    <SnapshotInlineStat
-                      icon={<AlertCircle className="h-3.5 w-3.5" />}
-                      label="A/B"
-                      value={hashPairStatus}
-                      valueTitle={hashPairTitle}
-                      tone="warning"
-                    />
-                  ) : (
-                    <SnapshotInlineStat
-                      icon={<CircleDashed className="h-3.5 w-3.5" />}
-                      label="A/B"
-                      value={hashPairStatus}
-                      valueTitle={hashPairTitle}
-                      tone="muted"
-                    />
-                  )}
+                  <SnapshotInlineStat
+                    icon={hashPairIcon}
+                    label="A/B"
+                    value={hashPairStatus}
+                    valueTitle={hashPairTitle}
+                    tone={hashPairTone}
+                  />
                   {typeof latencyMs === 'number' ? (
                     <SnapshotInlineStat
                       icon={<Sparkles className="h-3.5 w-3.5" />}
@@ -2996,13 +3097,11 @@ export function KGSnapshotsPage() {
 
                       <div className="flex items-center justify-between gap-2 text-[11px]">
                         <span className="text-muted-foreground">
-                          {pipelineCandidatesLoading
-                            ? '正在读取候选版本'
-                            : pipelineCandidatesError
-                              ? pipelineCandidatesError
-                              : pipelineCandidates.length
-                                ? `已发现 ${pipelineCandidates.length} 个版本`
-                                : '暂无可选版本'}
+                          {getPipelineCandidatesStatusText(
+                            pipelineCandidatesLoading,
+                            pipelineCandidatesError,
+                            pipelineCandidates.length
+                          )}
                         </span>
                         <Button
                           type="button"
@@ -3378,13 +3477,7 @@ export function KGSnapshotsPage() {
                                     key={row.key}
                                     label={row.key}
                                     value={`${row.a} → ${row.b} (${sign}${row.delta})`}
-                                    tone={
-                                      row.delta > 0
-                                        ? 'positive'
-                                        : row.delta < 0
-                                          ? 'negative'
-                                          : 'muted'
-                                    }
+                                    tone={inlineStatToneForDelta(row.delta)}
                                   />
                                 )
                               })
@@ -3406,20 +3499,8 @@ export function KGSnapshotsPage() {
                         <SnapshotDiffView
                           titleA={`Snapshot A · ${hashATitle}`}
                           titleB={`Snapshot B · ${hashBTitle}`}
-                          subtitleA={
-                            scopeDocumentIds?.length
-                              ? `${scopeDocumentIds.length} 个文档范围`
-                              : scopeDatasetId
-                                ? `${selectedDatasetLabel} · 数据集范围`
-                                : '后端全局范围'
-                          }
-                          subtitleB={
-                            scopeDocumentIds?.length
-                              ? `${scopeDocumentIds.length} 个文档范围`
-                              : scopeDatasetId
-                                ? `${selectedDatasetLabel} · 数据集范围`
-                                : '后端全局范围'
-                          }
+                          subtitleA={snapshotScopeSubtitle}
+                          subtitleB={snapshotScopeSubtitle}
                           leftCode={snapAJson}
                           rightCode={snapBJson}
                           diff={diff}
