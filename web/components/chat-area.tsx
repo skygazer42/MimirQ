@@ -12,6 +12,7 @@ import {
   useLayoutEffect,
   type KeyboardEvent,
   type PointerEvent,
+  type ReactNode,
 } from 'react'
 import Image from 'next/image'
 import { useTranslations } from 'next-intl'
@@ -65,6 +66,14 @@ type RagSettingsDragState = {
   startClientY: number
   startOffset: RagSettingsOffset
   baseRect: { left: number; top: number; width: number; height: number }
+}
+
+function renderComposerSlash(chunks: ReactNode) {
+  return <span className="font-mono text-foreground/80">{chunks}</span>
+}
+
+function renderComposerEnter(chunks: ReactNode) {
+  return <span className="font-medium text-foreground/80">{chunks}</span>
 }
 
 function escapeAttributeSelector(value: string): string {
@@ -1385,9 +1394,9 @@ export function ChatArea({
           {!isWelcomeState ? (
             <p className="text-[11px] text-center text-muted-foreground/75">
               {t.rich('composerHelpText', {
-                slash: (chunks) => <span className="font-mono text-foreground/80">{chunks}</span>,
-                enter: (chunks) => <span className="font-medium text-foreground/80">{chunks}</span>,
-                shiftEnter: (chunks) => <span className="font-medium text-foreground/80">{chunks}</span>,
+                slash: renderComposerSlash,
+                enter: renderComposerEnter,
+                shiftEnter: renderComposerEnter,
               })}
             </p>
           ) : null}

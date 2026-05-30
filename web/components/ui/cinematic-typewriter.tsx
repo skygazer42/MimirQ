@@ -34,6 +34,91 @@ type MarkdownChildrenProps = Readonly<{ children?: React.ReactNode }>
 type MarkdownLinkProps = Readonly<{ href?: string; children?: React.ReactNode }>
 type MarkdownImageProps = Readonly<{ src?: string | Blob; alt?: string }>
 
+function CinematicMarkdownParagraph({ children }: MarkdownChildrenProps) {
+  return (
+    <p className="mb-3 last:mb-0 leading-relaxed motion-safe:animate-fade-in">
+      {children}
+    </p>
+  )
+}
+
+function CinematicMarkdownList({ children }: MarkdownChildrenProps) {
+  return (
+    <ul className="list-disc pl-5 mb-3 space-y-1.5 marker:text-muted-foreground/60 motion-safe:animate-fade-in">
+      {children}
+    </ul>
+  )
+}
+
+function CinematicMarkdownOrderedList({ children }: MarkdownChildrenProps) {
+  return (
+    <ol className="list-decimal pl-5 mb-3 space-y-1.5 marker:text-muted-foreground/60 motion-safe:animate-fade-in">
+      {children}
+    </ol>
+  )
+}
+
+function CinematicMarkdownLink({ href, children }: MarkdownLinkProps) {
+  const safeHref = sanitizeMarkdownHref(href)
+  if (!safeHref) return <span className="text-muted-foreground">{children}</span>
+
+  return (
+    <a
+      href={safeHref}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-primary font-medium hover:underline decoration-primary/30 underline-offset-4 transition-colors"
+    >
+      {children}
+    </a>
+  )
+}
+
+function CinematicMarkdownImage({ src, alt }: MarkdownImageProps) {
+  const resolved = resolveMarkdownImageSrc(typeof src === 'string' ? src : '')
+  if (!resolved) return null
+
+  return (
+    <AuthImage
+      src={resolved}
+      alt={alt || 'image'}
+      width={1200}
+      height={800}
+      unoptimized
+      sizes="(max-width: 768px) 100vw, 768px"
+      loading="lazy"
+      className="my-3 w-full h-auto max-h-96 rounded-xl border border-border/50 bg-background/50 object-contain shadow-sm motion-safe:animate-fade-in"
+    />
+  )
+}
+
+function CinematicMarkdownCode({ className, children, ...props }: any) {
+  const match = /language-(\w+)/.exec(className || '')
+  if (match) {
+    return (
+      <CinematicCodeBlock
+        language={match[1]}
+        code={String(children).replace(/\n$/, '')}
+      />
+    )
+  }
+
+  return (
+    <code className="bg-secondary/50 px-1.5 py-0.5 rounded-md text-sm font-mono text-primary" {...props}>
+      {children}
+    </code>
+  )
+}
+
+const CINEMATIC_MARKDOWN_COMPONENTS = {
+  a: CinematicMarkdownLink,
+  code: CinematicMarkdownCode,
+  img: CinematicMarkdownImage,
+  ol: CinematicMarkdownOrderedList,
+  p: CinematicMarkdownParagraph,
+  ul: CinematicMarkdownList,
+}
+
 function randomDelay(minMs: number, maxMs: number) {
   return randomIntInclusive(minMs, maxMs)
 }
@@ -127,62 +212,6 @@ export function CinematicTypewriter({
   useEffect(() => {
     pendingRef.current = pendingToken
   }, [pendingToken])
-
-  // Markdown 组件配置
-  const markdownComponents = useMemo(() => ({
-    p: ({ children }: MarkdownChildrenProps) => <p className="mb-3 last:mb-0 leading-relaxed motion-safe:animate-fade-in">{children}</p>,
-    ul: ({ children }: MarkdownChildrenProps) => (
-      <ul className="list-disc pl-5 mb-3 space-y-1.5 marker:text-muted-foreground/60 motion-safe:animate-fade-in">{children}</ul>
-    ),
-    ol: ({ children }: MarkdownChildrenProps) => (
-      <ol className="list-decimal pl-5 mb-3 space-y-1.5 marker:text-muted-foreground/60 motion-safe:animate-fade-in">{children}</ol>
-    ),
-    a: ({ href, children }: MarkdownLinkProps) => {
-      const safeHref = sanitizeMarkdownHref(href)
-      if (!safeHref) return <span className="text-muted-foreground">{children}</span>
-
-      return (
-        <a
-          href={safeHref}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-primary font-medium hover:underline decoration-primary/30 underline-offset-4 transition-colors"
-        >
-          {children}
-        </a>
-      )
-    },
-    img: ({ src, alt }: MarkdownImageProps) => {
-      const resolved = resolveMarkdownImageSrc(typeof src === 'string' ? src : '')
-      if (!resolved) return null
-
-      return (
-        <AuthImage
-          src={resolved}
-          alt={alt || 'image'}
-          width={1200}
-          height={800}
-          unoptimized
-          sizes="(max-width: 768px) 100vw, 768px"
-          loading="lazy"
-          className="my-3 w-full h-auto max-h-96 rounded-xl border border-border/50 bg-background/50 object-contain shadow-sm motion-safe:animate-fade-in"
-        />
-      )
-    },
-    code: ({ className, children, ...props }: any) => {
-      const match = /language-(\w+)/.exec(className || '')
-      return match ? (
-        <CinematicCodeBlock
-          language={match[1]}
-          code={String(children).replace(/\n$/, '')}
-        />
-      ) : (
-        <code className="bg-secondary/50 px-1.5 py-0.5 rounded-md text-sm font-mono text-primary" {...props}>
-          {children}
-        </code>
-      )
-    },
-  }), [])
 
   useEffect(() => {
     if (reduceMotion) {
@@ -299,7 +328,7 @@ export function CinematicTypewriter({
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         skipHtml
-        components={markdownComponents}
+        components={CINEMATIC_MARKDOWN_COMPONENTS}
       >
         {displayedContent}
       </ReactMarkdown>

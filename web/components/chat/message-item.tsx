@@ -4,7 +4,7 @@
 'use client'
 
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { memo, useEffect, useRef, useState, useCallback } from 'react'
+import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { BarChart3, Check, ChevronDown, Copy, Database, Bot, Loader2, Star, TestTube2, User } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
@@ -31,6 +31,16 @@ import { formatApiError } from '@/lib/api-errors'
 import { toast } from 'sonner'
 
 const INLINE_CITATION_HREF_PREFIX = 'mimirq-citation://'
+
+type InlineCitationHandlers = Readonly<{
+  onClick: (href?: string) => void
+  onPrefetch: (href?: string) => void
+}>
+
+const INLINE_CITATION_HANDLERS = createContext<InlineCitationHandlers>({
+  onClick: () => {},
+  onPrefetch: () => {},
+})
 
 type ConfidenceMeta = Readonly<{
   label: string
@@ -175,73 +185,126 @@ function buildCitationScoreTitle(citation: Citation): string {
 }
 
 const markdownPlugins = [remarkGfm]
-const markdownBaseComponents = {
-  p: ({ children }: { children?: ReactNode }) => <p className="mb-3 last:mb-0 leading-relaxed">{children}</p>,
-  ul: ({ children }: { children?: ReactNode }) => (
-    <ul className="list-disc pl-5 mb-3 space-y-1.5 marker:text-muted-foreground/60">{children}</ul>
-  ),
-  ol: ({ children }: { children?: ReactNode }) => (
-    <ol className="list-decimal pl-5 mb-3 space-y-1.5 marker:text-muted-foreground/60">{children}</ol>
-  ),
-  li: ({ children }: { children?: ReactNode }) => <li className="pl-1">{children}</li>,
-  a: ({ href, children }: { href?: string; children?: ReactNode }) => (
-    (() => {
-      const safeHref = sanitizeMarkdownHref(href)
-      if (!safeHref) return <span className="text-muted-foreground">{children}</span>
+type MessageMarkdownChildrenProps = Readonly<{ children?: ReactNode }>
+type MessageMarkdownLinkProps = Readonly<{ href?: string; children?: ReactNode }>
+type MessageMarkdownImageProps = Readonly<{ src?: string | Blob; alt?: string }>
+type MessageMarkdownCodeProps = Readonly<{ className?: string; children?: ReactNode }>
 
-      return (
-        <a
-          href={safeHref}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-primary font-medium hover:underline decoration-primary/30 underline-offset-4 transition-colors"
-        >
-          {children}
-        </a>
-      )
-    })()
-  ),
-  img: ({ src, alt }: { src?: string | Blob; alt?: string }) => {
-    const raw = typeof src === 'string' ? src : ''
-    const resolved = resolveMarkdownImageSrc(raw)
-    if (!resolved) return null
+function MessageMarkdownParagraph({ children }: MessageMarkdownChildrenProps) {
+  return <p className="mb-3 last:mb-0 leading-relaxed">{children}</p>
+}
+
+function MessageMarkdownList({ children }: MessageMarkdownChildrenProps) {
+  return (
+    <ul className="list-disc pl-5 mb-3 space-y-1.5 marker:text-muted-foreground/60">
+      {children}
+    </ul>
+  )
+}
+
+function MessageMarkdownOrderedList({ children }: MessageMarkdownChildrenProps) {
+  return (
+    <ol className="list-decimal pl-5 mb-3 space-y-1.5 marker:text-muted-foreground/60">
+      {children}
+    </ol>
+  )
+}
+
+function MessageMarkdownListItem({ children }: MessageMarkdownChildrenProps) {
+  return <li className="pl-1">{children}</li>
+}
+
+function MessageMarkdownAnchor({ href, children }: MessageMarkdownLinkProps) {
+  const { onClick, onPrefetch } = useContext(INLINE_CITATION_HANDLERS)
+  const inlineCitation = parseInlineCitationHref(href)
+  if (inlineCitation) {
     return (
-      <AuthImage
-        src={resolved}
-        alt={alt || 'image'}
-        width={1200}
-        height={800}
-        unoptimized
-        sizes="(max-width: 768px) 100vw, 768px"
-        loading="lazy"
-        className="my-3 w-full h-auto max-h-96 object-contain rounded-xl border border-border/50 bg-background/50 shadow-sm"
-      />
+      <button
+        type="button"
+        onClick={() => onClick(href)}
+        onMouseEnter={() => onPrefetch(href)}
+        onFocus={() => onPrefetch(href)}
+        className="inline-flex items-center rounded-md border border-primary/20 bg-primary/5 px-1.5 py-0.5 text-[0.75em] font-semibold text-primary no-underline transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+      >
+        {children}
+      </button>
     )
-  },
-  blockquote: ({ children }: { children?: React.ReactNode }) => (
+  }
+
+  const safeHref = sanitizeMarkdownHref(href)
+  if (!safeHref) return <span className="text-muted-foreground">{children}</span>
+
+  return (
+    <a
+      href={safeHref}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-primary font-medium hover:underline decoration-primary/30 underline-offset-4 transition-colors"
+    >
+      {children}
+    </a>
+  )
+}
+
+function MessageMarkdownImage({ src, alt }: MessageMarkdownImageProps) {
+  const raw = typeof src === 'string' ? src : ''
+  const resolved = resolveMarkdownImageSrc(raw)
+  if (!resolved) return null
+  return (
+    <AuthImage
+      src={resolved}
+      alt={alt || 'image'}
+      width={1200}
+      height={800}
+      unoptimized
+      sizes="(max-width: 768px) 100vw, 768px"
+      loading="lazy"
+      className="my-3 w-full h-auto max-h-96 object-contain rounded-xl border border-border/50 bg-background/50 shadow-sm"
+    />
+  )
+}
+
+function MessageMarkdownBlockquote({ children }: MessageMarkdownChildrenProps) {
+  return (
     <blockquote className="border-l-4 border-primary/30 pl-4 italic text-muted-foreground my-3 bg-secondary/30 py-2 pr-2 rounded-r-lg">
       {children}
     </blockquote>
-  ),
-  code: ({ className, children, ...props }: { className?: string; children?: ReactNode }) => {
-    const match = /language-(\w+)/.exec(className || '')
-    return match ? (
+  )
+}
+
+function MessageMarkdownCode({ className, children, ...props }: MessageMarkdownCodeProps) {
+  const match = /language-(\w+)/.exec(className || '')
+  if (match) {
+    return (
       <code className={className} {...props}>
         {children}
       </code>
-    ) : (
-      <code
-        className={cn(
-          'px-1.5 py-0.5 rounded-md text-sm font-mono text-primary',
-          className
-        )}
-        style={{ backgroundColor: 'hsl(var(--code-background))' }}
-        {...props}
-      >
-        {children}
-      </code>
     )
-  },
+  }
+
+  return (
+    <code
+      className={cn(
+        'px-1.5 py-0.5 rounded-md text-sm font-mono text-primary',
+        className
+      )}
+      style={{ backgroundColor: 'hsl(var(--code-background))' }}
+      {...props}
+    >
+      {children}
+    </code>
+  )
+}
+
+const markdownBaseComponents = {
+  a: MessageMarkdownAnchor,
+  blockquote: MessageMarkdownBlockquote,
+  code: MessageMarkdownCode,
+  img: MessageMarkdownImage,
+  li: MessageMarkdownListItem,
+  ol: MessageMarkdownOrderedList,
+  p: MessageMarkdownParagraph,
+  ul: MessageMarkdownList,
 }
 
 export const ChatMessageItem = memo(function ChatMessageItem({
@@ -457,36 +520,13 @@ export const ChatMessageItem = memo(function ChatMessageItem({
     )
   }, [message.id, openDocument])
 
-  const markdownComponents = {
-    ...markdownBaseComponents,
-    a: ({ href, children }: { href?: string; children?: ReactNode }) => {
-      const inlineCitation = parseInlineCitationHref(href)
-      if (inlineCitation) {
-        return (
-          <button
-            type="button"
-            onClick={() => handleInlineCitationClick(href)}
-            onMouseEnter={() => handleInlineCitationPrefetch(href)}
-            onFocus={() => handleInlineCitationPrefetch(href)}
-            className="inline-flex items-center rounded-md border border-primary/20 bg-primary/5 px-1.5 py-0.5 text-[0.75em] font-semibold text-primary no-underline transition-colors hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
-          >
-            {children}
-          </button>
-        )
-      }
-
-      return (
-        <a
-          href={href}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-primary font-medium hover:underline decoration-primary/30 underline-offset-4 transition-colors"
-        >
-          {children}
-        </a>
-      )
-    },
-  }
+  const inlineCitationHandlers = useMemo<InlineCitationHandlers>(
+    () => ({
+      onClick: handleInlineCitationClick,
+      onPrefetch: handleInlineCitationPrefetch,
+    }),
+    [handleInlineCitationClick, handleInlineCitationPrefetch]
+  )
 
   let renderedContent: ReactNode
   if (isUser) {
@@ -495,9 +535,11 @@ export const ChatMessageItem = memo(function ChatMessageItem({
     renderedContent = <CinematicTypewriter content={message.content} isStreaming={true} />
   } else {
     renderedContent = (
-      <ReactMarkdown remarkPlugins={markdownPlugins} skipHtml components={markdownComponents}>
-        {message.content}
-      </ReactMarkdown>
+      <INLINE_CITATION_HANDLERS.Provider value={inlineCitationHandlers}>
+        <ReactMarkdown remarkPlugins={markdownPlugins} skipHtml components={markdownBaseComponents}>
+          {message.content}
+        </ReactMarkdown>
+      </INLINE_CITATION_HANDLERS.Provider>
     )
   }
 
