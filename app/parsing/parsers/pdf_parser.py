@@ -1,7 +1,6 @@
 """
 PDF parser (based on PyMuPDF).
 """
-import re
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -11,8 +10,6 @@ from langchain_core.documents import Document
 from PIL import Image as PILImage
 
 from app.parsing.enrich.image_understanding import decode_image_codes, infer_visual_kind_from_pixels
-
-_TABLE_SEP_RE = re.compile(r"^\s*\|?(?:\s*:?-+:?\s*\|)+\s*:?-+:?\s*\|?\s*$", re.MULTILINE)
 
 
 class PDFParser:
@@ -40,7 +37,11 @@ class PDFParser:
             separator = lines[index + 1]
             if "|" not in header or "|" not in separator:
                 continue
-            if not _TABLE_SEP_RE.match(separator):
+            separator_cells = [cell.strip() for cell in separator.strip().strip("|").split("|")]
+            if not separator_cells or not all(
+                cell and set(cell) <= {"-", ":", " "} and cell.count("-") >= 3
+                for cell in separator_cells
+            ):
                 continue
             columns = [cell.strip() for cell in header.strip().strip("|").split("|") if cell.strip()]
             if not columns:

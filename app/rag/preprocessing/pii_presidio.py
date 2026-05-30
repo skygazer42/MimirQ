@@ -8,7 +8,7 @@ from app.rag.preprocessing.pii_anonymizer import find_pii_matches
 _CN_PLATE_RE = re.compile(
     r"(?<![A-Z0-9])([京津沪渝冀豫云辽黑湘皖鲁新苏浙赣鄂桂甘晋蒙陕吉闽贵粤青藏川宁琼][A-Z][A-Z0-9]{5,6})(?![A-Z0-9])"
 )
-_CN_SOCIAL_SECURITY_RE = re.compile(r"(?:社保号|社会保障号|社保)\s*[:：]?\s*(\d{8,12})")
+_CN_SOCIAL_SECURITY_LABELS = ("社会保障号", "社保号", "社保")
 
 _KIND_MAP = {
     "email": "EMAIL_ADDRESS",
@@ -57,17 +57,34 @@ def analyze_pii_text(text: str) -> dict[str, Any]:
             },
         )
 
-    for found in _CN_SOCIAL_SECURITY_RE.finditer(raw):
-        _append_unique(
-            entities,
-            {
-                "entity_type": "CN_SOCIAL_SECURITY",
-                "start": int(found.start(1)),
-                "end": int(found.end(1)),
-                "text": str(found.group(1) or ""),
-                "score": 0.86,
-            },
-        )
+    for label in _CN_SOCIAL_SECURITY_LABELS:
+        offset = 0
+        while True:
+            label_start = raw.find(label, offset)
+            if label_start == -1:
+                break
+            cursor = label_start + len(label)
+            while cursor < len(raw) and raw[cursor].isspace():
+                cursor += 1
+            if cursor < len(raw) and raw[cursor] in {":", "："}:
+                cursor += 1
+            while cursor < len(raw) and raw[cursor].isspace():
+                cursor += 1
+            end = cursor
+            while end < len(raw) and raw[end].isdigit() and end - cursor < 12:
+                end += 1
+            if 8 <= end - cursor <= 12:
+                _append_unique(
+                    entities,
+                    {
+                        "entity_type": "CN_SOCIAL_SECURITY",
+                        "start": cursor,
+                        "end": end,
+                        "text": raw[cursor:end],
+                        "score": 0.86,
+                    },
+                )
+            offset = label_start + len(label)
 
     entities.sort(key=lambda item: (int(item["start"]), int(item["end"]), str(item["entity_type"])))
     return {

@@ -79,12 +79,6 @@ const PARSING_LAYOUT_META: Record<ParsingLayoutKind, ParsingLayoutMeta> = {
   },
 }
 
-const MARKDOWN_IMAGE_RE = /!\[[^\]]*]\([^)]+\)|<img\b/i
-const ORDERED_LIST_RE = /^\s*\d+[.)]\s+/m
-const UNORDERED_LIST_RE = /^\s*[-*+]\s+/m
-const EQUATION_RE = /\$\$[\s\S]*?\$\$|\\(?:begin\{equation\}|frac|sum|int|alpha|beta|gamma|times|cdot|sqrt)/i
-const HEADING_RE = /^\s{0,3}#{1,6}\s+\S+/m
-
 function hasTabularRows(text: string): boolean {
   const lines = text
     .split(/\r?\n/)
@@ -95,7 +89,7 @@ function hasTabularRows(text: string): boolean {
   const pipeLines = lines.filter((line) => line.includes('|'))
   if (pipeLines.length >= 2) return true
 
-  return lines.some((line) => /^\|?\s*:?-{3,}/.test(line))
+  return lines.some((line) => line.replaceAll('|', '').replaceAll(':', '').trimStart().startsWith('---'))
 }
 
 function looksLikeHeading(text: string): boolean {
@@ -108,7 +102,7 @@ function looksLikeHeading(text: string): boolean {
 
   const candidate = lines[0]
   if (!candidate || candidate.length > 72) return false
-  if (/[。！？.!?;；:：]$/.test(candidate)) return false
+  if ('。！？.!?;；:：'.includes(candidate.at(-1) || '')) return false
   if (candidate.includes('|')) return false
 
   return candidate.split(/\s+/).length <= 12
@@ -117,12 +111,14 @@ function looksLikeHeading(text: string): boolean {
 export function classifyParsingBlock(block: Pick<ParsingBlock, 'text'>): ParsingLayoutKind {
   const text = block.text.trim()
   if (!text) return 'paragraph'
+  const lines = text.split(/\r?\n/)
+  const trimmedLines = lines.map((line) => line.trimStart())
 
-  if (MARKDOWN_IMAGE_RE.test(text)) return 'image'
+  if ((text.includes('![') && text.includes('](')) || text.toLowerCase().includes('<img')) return 'image'
   if (hasTabularRows(text)) return 'table'
-  if (EQUATION_RE.test(text)) return 'equation'
-  if (ORDERED_LIST_RE.test(text) || UNORDERED_LIST_RE.test(text)) return 'list'
-  if (HEADING_RE.test(text) || looksLikeHeading(text)) return 'heading'
+  if (text.includes('$$') || ['\\begin{equation}', '\\frac', '\\sum', '\\int', '\\alpha', '\\beta', '\\gamma', '\\times', '\\cdot', '\\sqrt'].some((token) => text.includes(token))) return 'equation'
+  if (trimmedLines.some((line) => ['-', '*', '+'].includes(line[0] || '') || /^\d+[.)]\s/.test(line))) return 'list'
+  if (trimmedLines.some((line) => line.startsWith('#') && line.length > 1 && line[1] !== '#') || looksLikeHeading(text)) return 'heading'
 
   return 'paragraph'
 }

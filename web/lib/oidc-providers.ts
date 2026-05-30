@@ -27,7 +27,11 @@ function trimPrimitiveString(raw: unknown): string {
 }
 
 function normalizeIssuer(raw: unknown): string {
-  return trimPrimitiveString(raw).replace(/\/+$/, '')
+  let issuer = trimPrimitiveString(raw)
+  while (issuer.endsWith('/')) {
+    issuer = issuer.slice(0, -1)
+  }
+  return issuer
 }
 
 function normalizeProviderId(raw: unknown): string {

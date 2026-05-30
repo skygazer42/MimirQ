@@ -8,9 +8,6 @@ from langchain_core.documents import Document
 
 _NUMBERED_LIST_RE = re.compile(r"^\s*(\d+)[.)]\s+")
 _BULLET_LIST_RE = re.compile(r"^\s*([-*+])\s+")
-_TABLE_CONTINUATION_LABEL_RE = re.compile(r"(?i)^(?:table|tbl|表)\s*[\w.\-() ]*continued[\w.\-() ]*$|^(?:续表|下表续页|表格续页)")
-
-
 def _page_number(meta: dict[str, Any]) -> int:
     raw = meta.get("page")
     if raw is None:
@@ -69,7 +66,12 @@ def _strip_redundant_table_header(text: str) -> str:
 
 
 def _is_table_continuation_label(line: str) -> bool:
-    return bool(_TABLE_CONTINUATION_LABEL_RE.match(str(line or "").strip()))
+    text = " ".join(str(line or "").strip().lower().split())
+    return (
+        text in {"续表", "下表续页", "表格续页"}
+        or text.startswith("续表")
+        or (text.startswith(("table", "tbl", "表")) and "continued" in text)
+    )
 
 
 def _table_lines_without_continuation_labels(text: str) -> list[str]:

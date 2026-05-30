@@ -1,27 +1,26 @@
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 from PIL import Image
 
 from app.parsing.quality.ocr_validator import rapid_ocr_service
 
-_ROWS_FOOTER_RE = re.compile(r"(?i)^rows\s*:?\s*(\d+)\s*$")
-
 
 def _normalize_lines(text: str) -> tuple[list[str], int | None]:
-    lines = [re.sub(r"\s+", " ", line).strip() for line in str(text or "").splitlines()]
+    lines = [" ".join(line.split()) for line in str(text or "").splitlines()]
     lines = [line for line in lines if line]
     expected_rows: int | None = None
     if lines:
-        match = _ROWS_FOOTER_RE.match(lines[-1])
-        if match:
+        footer = lines[-1].strip()
+        if footer.lower().startswith("rows"):
+            raw_count = footer.split(":", 1)[1] if ":" in footer else footer[4:]
             try:
-                expected_rows = max(0, int(match.group(1)))
+                expected_rows = max(0, int(raw_count.strip()))
             except Exception:
                 expected_rows = None
-            lines = lines[:-1]
+            if expected_rows is not None:
+                lines = lines[:-1]
     return lines, expected_rows
 
 

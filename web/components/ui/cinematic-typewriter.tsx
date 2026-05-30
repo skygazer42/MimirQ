@@ -7,6 +7,7 @@ import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { AuthImage } from '@/components/auth-image'
 import { resolveMarkdownImageSrc, sanitizeMarkdownHref } from '@/components/markdown/markdown-safety'
+import { randomIntInclusive } from '@/lib/secure-random'
 import { cn } from "@/lib/utils"
 
 const CinematicCodeBlock = dynamic(
@@ -34,9 +35,7 @@ type MarkdownLinkProps = Readonly<{ href?: string; children?: React.ReactNode }>
 type MarkdownImageProps = Readonly<{ src?: string | Blob; alt?: string }>
 
 function randomDelay(minMs: number, maxMs: number) {
-  const min = Math.max(0, Math.floor(minMs))
-  const max = Math.max(min, Math.floor(maxMs))
-  return Math.floor(Math.random() * (max - min + 1)) + min
+  return randomIntInclusive(minMs, maxMs)
 }
 
 function isAsciiWordChar(char: string) {

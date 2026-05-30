@@ -25,6 +25,7 @@ import { formatApiError } from '@/lib/api-errors'
 import { INGESTION_FALLBACK_CHUNK_STRATEGY_VALUES } from '@/lib/chunk-strategies'
 import { PARSER_BACKEND_REGISTRY_OPTIONS } from '@/lib/parser-options'
 import { queryKeys } from '@/lib/query-keys'
+import { randomBase36Id } from '@/lib/secure-random'
 import { cn, detachPromise } from '@/lib/utils'
 import { useRouter } from '@/i18n/navigation'
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
@@ -514,7 +515,7 @@ function safeIdFromNow() {
 }
 
 function generateTemplateRuleIds(count: number) {
-  const base = `tpl-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
+  const base = `tpl-${Date.now().toString(36)}-${randomBase36Id(4)}`
   return Array.from({ length: count }).map((_, i) => `${base}-${(i + 1).toString(36)}`)
 }
 

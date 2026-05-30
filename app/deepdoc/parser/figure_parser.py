@@ -16,7 +16,6 @@
 
 
 import io
-import re
 
 from PIL import Image
 
@@ -72,9 +71,14 @@ Ensure high accuracy, clarity, and completeness in your analysis, and includes o
 
 
 def clean_markdown_block(text):
-    text = re.sub(r'^\s*```markdown\s*\n?', '', text)
-    text = re.sub(r'\n?\s*```\s*$', '', text)
-    return text.strip()
+    stripped = text.strip()
+    if stripped.lower().startswith("```markdown"):
+        stripped = stripped[len("```markdown"):].lstrip()
+    elif stripped.startswith("```"):
+        stripped = stripped[3:].lstrip()
+    if stripped.endswith("```"):
+        stripped = stripped[:-3].rstrip()
+    return stripped
 
 
 def picture_vision_llm_chunk(binary, vision_model, prompt=None, callback=None):

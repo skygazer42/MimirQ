@@ -1,11 +1,7 @@
 from __future__ import annotations
 
-import re
 from typing import Any
 from uuid import UUID
-
-_PATH_SPLIT_RE = re.compile(r"\s*(?:/|>|›|»|\||｜|->|→)\s*")
-_NON_SLUG_RE = re.compile(r"[^a-z0-9\u4e00-\u9fff]+")
 
 
 def _as_dict(value: Any) -> dict[str, Any]:
@@ -16,13 +12,14 @@ def _clean_text(value: Any, *, max_len: int = 160) -> str:
     text = str(value or "").strip()
     if not text:
         return ""
-    text = re.sub(r"\s+", " ", text)
+    text = " ".join(text.split())
     return text[:max_len]
 
 
 def _slug(value: str) -> str:
     raw = _clean_text(value, max_len=120).lower()
-    slug = _NON_SLUG_RE.sub("-", raw).strip("-")
+    slug = "".join(char if char.isalnum() or "\u4e00" <= char <= "\u9fff" else "-" for char in raw)
+    slug = "-".join(part for part in slug.split("-") if part)
     return slug or "section"
 
 
@@ -30,7 +27,10 @@ def _coerce_path(value: Any) -> list[str]:
     if isinstance(value, (list, tuple)):
         return [_clean_text(v, max_len=120) for v in value if _clean_text(v, max_len=120)]
     if isinstance(value, str) and value.strip():
-        return [_clean_text(v, max_len=120) for v in _PATH_SPLIT_RE.split(value) if _clean_text(v, max_len=120)]
+        normalized = value.replace("->", "/")
+        for separator in (">", "›", "»", "|", "｜", "→"):
+            normalized = normalized.replace(separator, "/")
+        return [_clean_text(v, max_len=120) for v in normalized.split("/") if _clean_text(v, max_len=120)]
     return []
 
 

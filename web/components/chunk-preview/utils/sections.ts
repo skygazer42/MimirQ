@@ -6,8 +6,12 @@ function normalizePath(raw: string) {
 
   // markdown_header uses " > " separators; outline uses " / ".
   // Keep a single visual separator for UI grouping.
-  const normalized = s.replaceAll(/\s*>\s*/g, ' / ').replaceAll(/\s*\/\s*/g, ' / ')
-  return normalized.replaceAll(/\s{2,}/g, ' ').trim()
+  return s
+    .split('>')
+    .flatMap((part) => part.split('/'))
+    .map((part) => part.trim().split(/\s+/).filter(Boolean).join(' '))
+    .filter(Boolean)
+    .join(' / ')
 }
 
 export function getChunkSectionPath(chunk: ChunkPreviewItem): string | null {
@@ -44,4 +48,3 @@ export function getChunkSectionLabel(chunk: ChunkPreviewItem): { full: string; s
   const short = last.length > 40 ? last.slice(0, 39) + '…' : last
   return { full, short }
 }
-

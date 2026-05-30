@@ -89,7 +89,7 @@ def _normalize_ref_path(raw: str) -> str:
     if not val:
         return ""
     # Drop optional title: (path "title")
-    if not (val.startswith("http://") or val.startswith("https://")):
+    if val.split(":", 1)[0].lower() not in {"http", "https"}:
         val = val.split()[0] if val.split() else val
     val = val.strip().strip('"').strip("'")
     val = val.split("#", 1)[0].split("?", 1)[0]

@@ -3385,7 +3385,11 @@ function resolveHeatmapPoint(
 
 function formatHeatmapValue(value: number | null) {
   if (typeof value !== 'number' || !Number.isFinite(value)) return '—'
-  return value.toFixed(4).replace(/\.?0+$/, '')
+  let formatted = value.toFixed(4)
+  while (formatted.includes('.') && formatted.endsWith('0')) {
+    formatted = formatted.slice(0, -1)
+  }
+  return formatted.endsWith('.') ? formatted.slice(0, -1) : formatted
 }
 
 function StatsGrid({ children }: Readonly<{ children: ReactNode }>) {

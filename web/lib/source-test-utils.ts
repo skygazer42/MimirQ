@@ -4,22 +4,34 @@ import path from 'node:path'
 import { expect } from 'vitest'
 
 export function normalizeSourceSnippet(value: string): string {
-  return value
-    .replace(/['"]/g, '"')
-    .replace(/\s+/g, ' ')
-    .replace(/\s+\./g, '.')
-    .replace(/,\s*([}\])])/g, '$1')
-    .replace(/\(\s+/g, '(')
-    .replace(/\s+\)/g, ')')
-    .replace(/\[\s+/g, '[')
-    .replace(/\s+\]/g, ']')
-    .replace(/\{\s+/g, '{')
-    .replace(/\s+\}/g, '}')
-    .replace(/<\s+/g, '<')
-    .replace(/\s+>/g, '>')
-    .replace(/>\s+/g, '>')
-    .replace(/\s+<\//g, '</')
+  let normalized = ''
+  let previousWasSpace = false
+  for (const char of value) {
+    const next = char === "'" || char === '"' ? '"' : char
+    if (/\s/u.test(next)) {
+      if (!previousWasSpace) normalized += ' '
+      previousWasSpace = true
+    } else {
+      normalized += next
+      previousWasSpace = false
+    }
+  }
+  return normalized
     .trim()
+    .replaceAll(' .', '.')
+    .replaceAll(', }', '}')
+    .replaceAll(', ]', ']')
+    .replaceAll(', )', ')')
+    .replaceAll('( ', '(')
+    .replaceAll(' )', ')')
+    .replaceAll('[ ', '[')
+    .replaceAll(' ]', ']')
+    .replaceAll('{ ', '{')
+    .replaceAll(' }', '}')
+    .replaceAll('< ', '<')
+    .replaceAll(' >', '>')
+    .replaceAll('> ', '>')
+    .replaceAll(' </', '</')
 }
 
 export function expectSourceToContain(source: string, snippet: string): void {
