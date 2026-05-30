@@ -1396,7 +1396,17 @@ export function ParsingWorkbenchShell({
                   </>
                 ) : (
                   <div
+                    role="button"
+                    tabIndex={0}
+                    aria-label={t('sidebar.uploadFile')}
                     className="relative flex flex-1 items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_50%_38%,hsl(var(--info)/0.10),transparent_24%),linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.05)_48%,hsl(var(--background)))]"
+                    onClick={() => requestUploadToFolder(currentFolderId)}
+                    onKeyDown={(event) => {
+                      if (event.target !== event.currentTarget) return
+                      if (event.key !== 'Enter' && event.key !== ' ') return
+                      event.preventDefault()
+                      requestUploadToFolder(currentFolderId)
+                    }}
                     onDragOver={(event) =>
                       handleFolderDragOver(event, currentFolderId)
                     }
@@ -1427,14 +1437,10 @@ export function ParsingWorkbenchShell({
                       <p className="mx-auto max-w-[34ch] text-[14px] leading-6 text-muted-foreground">
                         {t('emptyDescription')}
                       </p>
-                      <Button
-                        type="button"
-                        className="mt-6 h-11 min-w-36 gap-2 rounded-[16px] bg-[#2563eb] px-6 text-[14px] font-semibold text-primary-foreground shadow-[0_18px_34px_-20px_rgba(37,99,235,0.78)] hover:bg-[#1d4ed8]"
-                        onClick={() => requestUploadToFolder(currentFolderId)}
-                      >
+                      <span className="mt-6 inline-flex h-11 min-w-36 items-center justify-center gap-2 rounded-[16px] bg-[#2563eb] px-6 text-[14px] font-semibold text-primary-foreground shadow-[0_18px_34px_-20px_rgba(37,99,235,0.78)] transition-colors hover:bg-[#1d4ed8]">
                         <UploadCloud className="size-4" />
                         {t('sidebar.uploadFile')}
-                      </Button>
+                      </span>
                       <div className="mt-3 text-[12px] text-muted-foreground/75">
                         或将文件拖拽到此区域
                       </div>

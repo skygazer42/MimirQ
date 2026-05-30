@@ -1397,9 +1397,6 @@ export function DataGovernancePanel() {
                     ? 'bg-primary/8'
                     : 'bg-transparent'
                 )}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
               >
                 <div
                   aria-hidden
@@ -1431,6 +1428,9 @@ export function DataGovernancePanel() {
                     <button
                       type="button"
                       className="relative z-10 flex w-full flex-col items-center rounded-[1.25rem] bg-transparent text-center focus-ring"
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleDrop}
                       onClick={() =>
                         globalThis.document
                           .getElementById('file-upload')
