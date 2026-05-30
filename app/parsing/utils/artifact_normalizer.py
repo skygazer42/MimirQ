@@ -99,6 +99,69 @@ def _normalize_ref_path(raw: str) -> str:
     return val
 
 
+def _find_img_src_span(tag: str) -> tuple[int, int, str] | None:
+    lower = tag.lower()
+    pos = 0
+    while True:
+        src_at = lower.find("src", pos)
+        if src_at < 0:
+            return None
+        before = tag[src_at - 1] if src_at > 0 else " "
+        if before.isalnum() or before in {"-", "_", ":"}:
+            pos = src_at + 3
+            continue
+        cursor = src_at + 3
+        while cursor < len(tag) and tag[cursor].isspace():
+            cursor += 1
+        if cursor >= len(tag) or tag[cursor] != "=":
+            pos = src_at + 3
+            continue
+        cursor += 1
+        while cursor < len(tag) and tag[cursor].isspace():
+            cursor += 1
+        if cursor >= len(tag) or tag[cursor] not in {"'", '"'}:
+            pos = src_at + 3
+            continue
+        quote = tag[cursor]
+        value_start = cursor + 1
+        value_end = tag.find(quote, value_start)
+        if value_end < 0:
+            return None
+        return value_start, value_end, tag[value_start:value_end]
+
+
+def rewrite_html_image_refs(text: str, resolver: Any) -> str:
+    """Rewrite quoted src values inside HTML img tags using a linear scan."""
+    source = str(text or "")
+    lower = source.lower()
+    out: list[str] = []
+    cursor = 0
+    while True:
+        start = lower.find("<img", cursor)
+        if start < 0:
+            out.append(source[cursor:])
+            break
+        out.append(source[cursor:start])
+        end = source.find(">", start + 4)
+        if end < 0:
+            out.append(source[start:])
+            break
+        tag = source[start : end + 1]
+        src_span = _find_img_src_span(tag)
+        if not src_span:
+            out.append(tag)
+            cursor = end + 1
+            continue
+        value_start, value_end, raw_path = src_span
+        new_path = resolver(raw_path)
+        if new_path:
+            out.append(f"{tag[:value_start]}{new_path}{tag[value_end:]}")
+        else:
+            out.append(tag)
+        cursor = end + 1
+    return "".join(out)
+
+
 def normalize_extracted_artifacts(
     extract_root: Path,
     *,
@@ -188,20 +251,15 @@ def normalize_extracted_artifacts(
                 return f"![{alt}]({new_rel})"
             return m.group(0)
 
-        html_img_pattern = r'<img\s+([^>]*\s+)?src="([^"]+)"([^>]*)>'
-
-        def _replace_html(m: re.Match) -> str:
-            before = m.group(1) or ""
-            raw_path = m.group(2)
-            after = m.group(3) or ""
+        def _resolve_html_src(raw_path: str) -> str | None:
             key = _normalize_ref_path(raw_path)
             new_rel = mapping.get(key) or mapping.get(Path(key).name)
             if new_rel:
-                return f'<img {before}src="{new_rel}"{after}>'
-            return m.group(0)
+                return new_rel
+            return None
 
         md_text = re.sub(md_img_pattern, _replace_md, md_text)
-        md_text = re.sub(html_img_pattern, _replace_html, md_text)
+        md_text = rewrite_html_image_refs(md_text, _resolve_html_src)
 
     out_md = _safe_direct_child(root, output_markdown_name, field="output_markdown_name")
     # Output filename is validated as a direct child of the extraction root.
@@ -217,4 +275,5 @@ def normalize_extracted_artifacts(
 
 __all__ = [
     "normalize_extracted_artifacts",
+    "rewrite_html_image_refs",
 ]

@@ -57,20 +57,19 @@ _INTENT_FAQ_RE = re.compile(
     flags=re.IGNORECASE,
 )
 
-_INTENT_GREETING_RE = re.compile(
-    r"^\s*(?:hi|hello|hey|你好|您好|嗨|哈喽|早上好|下午好|晚上好)\s*[!,.?~。！？、，]*\s*$",
-    flags=re.IGNORECASE,
-)
-
-_INTENT_THANKS_RE = re.compile(
-    r"^\s*(?:thanks|thank\s+you|thx|谢谢|多谢|感谢|辛苦了)\s*[!,.?~。！？、，]*\s*$",
-    flags=re.IGNORECASE,
-)
-
-_INTENT_SMALLTALK_RE = re.compile(
-    r"^\s*(?:how\s+are\s+you|who\s+are\s+you|what\s+can\s+you\s+do|在吗|你在吗|你是谁|你能做什么|你会什么)\s*[!,.?~。！？、，]*\s*$",
-    flags=re.IGNORECASE,
-)
+_SOCIAL_BOUNDARY_CHARS = "!,.?~。！？、，"
+_GREETING_TERMS = {"hi", "hello", "hey", "你好", "您好", "嗨", "哈喽", "早上好", "下午好", "晚上好"}
+_THANKS_TERMS = {"thanks", "thank you", "thx", "谢谢", "多谢", "感谢", "辛苦了"}
+_SMALLTALK_TERMS = {
+    "how are you",
+    "who are you",
+    "what can you do",
+    "在吗",
+    "你在吗",
+    "你是谁",
+    "你能做什么",
+    "你会什么",
+}
 
 _POLICY_ALLOWED_OVERRIDES = {
     "retrieval_mode",
@@ -122,6 +121,21 @@ def _normalize_match_terms(raw: Any, *, max_items: int = 8) -> list[str]:
         if len(out) >= max_items:
             break
     return out
+
+
+def _normalize_social_query(query: str) -> str:
+    text = " ".join(str(query or "").strip().split()).casefold()
+    while text:
+        stripped = text.strip(_SOCIAL_BOUNDARY_CHARS).strip()
+        if stripped == text:
+            break
+        text = stripped
+    return text
+
+
+def _matches_social_query(query: str, terms: set[str]) -> bool:
+    text = _normalize_social_query(query)
+    return bool(text and text in terms)
 
 
 def _coerce_policy_bool(value: Any) -> bool | None:
@@ -270,11 +284,11 @@ def route_intent(query: str) -> dict[str, Any]:
     """Route lightweight no-retrieval intents before retrieval preset logic."""
     q = (query or "").strip()
     if q:
-        if _INTENT_GREETING_RE.match(q):
+        if _matches_social_query(q, _GREETING_TERMS):
             return {"intent": "greeting", "reasons": ["social:greeting"], "skip_retrieval": True}
-        if _INTENT_THANKS_RE.match(q):
+        if _matches_social_query(q, _THANKS_TERMS):
             return {"intent": "thanks", "reasons": ["social:thanks"], "skip_retrieval": True}
-        if _INTENT_SMALLTALK_RE.match(q):
+        if _matches_social_query(q, _SMALLTALK_TERMS):
             return {"intent": "smalltalk", "reasons": ["social:smalltalk"], "skip_retrieval": True}
 
     intent, reasons = classify_query_intent(query)
