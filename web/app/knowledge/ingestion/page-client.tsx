@@ -124,6 +124,33 @@ function safeNumber(value: unknown): number {
   return Number.isFinite(numeric) ? numeric : 0
 }
 
+function stringifyForDisplay(value: unknown): string {
+  if (value == null) return ''
+  if (typeof value === 'string') return value
+  if (
+    typeof value === 'number' ||
+    typeof value === 'boolean' ||
+    typeof value === 'bigint'
+  ) {
+    return String(value)
+  }
+  if (typeof value === 'symbol') return value.description ?? ''
+
+  try {
+    return JSON.stringify(value) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+function firstDisplayValue(...values: unknown[]): string {
+  for (const value of values) {
+    const text = stringifyForDisplay(value).trim()
+    if (text) return text
+  }
+  return ''
+}
+
 function estimatePdfPageCountFromSignals({
   characters,
   fileSize,
@@ -220,12 +247,11 @@ function countDocumentImageRefs(document: Document): number {
   const elementKindCount = Array.isArray(elements)
     ? elements.filter((element) => {
         const record = getRecord(element)
-        const kind = String(
+        const kind = firstDisplayValue(
           record?.kind ??
             record?.type ??
             record?.category ??
-            record?.visual_kind ??
-            ''
+            record?.visual_kind
         ).toLowerCase()
         return ['image', 'figure', 'picture'].includes(kind)
       }).length
@@ -242,8 +268,8 @@ function countDocumentTableRefs(document: Document): number {
   const elementKindCount = Array.isArray(elements)
     ? elements.filter((element) => {
         const record = getRecord(element)
-        const kind = String(
-          record?.kind ?? record?.type ?? record?.category ?? ''
+        const kind = firstDisplayValue(
+          record?.kind ?? record?.type ?? record?.category
         ).toLowerCase()
         return kind === 'table'
       }).length
@@ -288,11 +314,7 @@ function getDocumentRuntimeStats(document: Document) {
     blockCount,
     imageCount,
     pageCount,
-    pageCountSource: typeof meta.page_count_source === 'string'
-      ? meta.page_count_source
-      : pageCount
-        ? 'metadata'
-        : '',
+    pageCountSource: getPageCountSourceLabel(meta, pageCount),
     parseDurationSec,
     tableCount,
   }
@@ -390,7 +412,7 @@ function downloadTextFile(filename: string, content: string, type: string) {
 }
 
 function escapeHtml(value: unknown): string {
-  return String(value ?? '')
+  return stringifyForDisplay(value)
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
@@ -1669,12 +1691,413 @@ type SalesEvidenceTableRow = {
   iconTone: string
 }
 
+type RiskTagPresentation = {
+  actionLabel: string
+  icon: LucideIcon
+  iconTone: string
+  primaryRisk: string
+}
+
+type StatusToneResult = {
+  label: string
+  tone: string
+}
+
+type BatchProfileFile = {
+  blockCount: number
+  chars: number
+  fileSize: number
+  fileType: string
+  imageCount: number
+  pageCountEstimated: boolean
+  pdfPages: number
+  tableCount: number
+}
+
 const SALES_PANEL_CLASS =
   'rounded-[1rem] border border-border/55 bg-background/92 shadow-[0_14px_28px_-24px_rgba(15,23,42,0.12)]'
 const SALES_PANEL_INSET_CLASS =
   'rounded-[0.9rem] border border-border/50 bg-background/82'
 const SALES_SUMMARY_STRIP_CLASS =
   'overflow-hidden rounded-[1rem] border border-border/55 bg-background/72 shadow-[0_12px_28px_-24px_rgba(15,23,42,0.1)]'
+
+function getPageCountSourceLabel(
+  meta: Record<string, unknown>,
+  pageCount: number
+): string {
+  if (typeof meta.page_count_source === 'string') return meta.page_count_source
+  if (pageCount) return 'metadata'
+  return ''
+}
+
+function resolveThroughputRowsSource(
+  hasBackendRows: boolean,
+  documentRowsLength: number
+): 'backend' | 'documents' {
+  if (hasBackendRows) return 'backend'
+  if (documentRowsLength) return 'documents'
+  return 'backend'
+}
+
+function getQueueOutcomeReason(item: { reason?: unknown }, ok: boolean): string {
+  const reason = stringifyForDisplay(item.reason)
+  if (reason) return reason
+  if (ok) return '任务完成'
+  return '任务失败或被跳过'
+}
+
+function getRecentLogDetail(status: string, filename: string): string {
+  switch (status) {
+    case 'failed':
+      return `解析失败：${filename}`
+    case 'completed':
+      return `解析成功：${filename}`
+    default:
+      return `开始解析：${filename}`
+  }
+}
+
+function getRecentLogTone(status: string): string {
+  switch (status) {
+    case 'failed':
+      return 'bg-rose'
+    case 'completed':
+      return 'bg-success'
+    default:
+      return 'bg-muted-foreground/40'
+  }
+}
+
+function resolveFallbackComplexity({
+  durationP90,
+  executionRetryRate,
+  pdfRatio,
+  totalCharacters,
+  totalSizeBytes,
+}: Readonly<{
+  durationP90: number
+  executionRetryRate: number
+  pdfRatio: number
+  totalCharacters: number
+  totalSizeBytes: number
+}>): '高' | '中' | '低' {
+  if (pdfRatio >= 0.35 || executionRetryRate >= 8 || durationP90 >= 20) {
+    return '高'
+  }
+  if (pdfRatio >= 0.12 || totalSizeBytes >= 500 * 1024 * 1024 || totalCharacters >= 500_000) {
+    return '中'
+  }
+  return '低'
+}
+
+function formatPdfPageAverageLabel({
+  avgPdfPages,
+  hasEstimatedPdfPages,
+  hasPdfProfiles,
+}: Readonly<{
+  avgPdfPages: number
+  hasEstimatedPdfPages: boolean
+  hasPdfProfiles: boolean
+}>): string {
+  if (avgPdfPages) {
+    const estimatedSuffix = hasEstimatedPdfPages ? '估算' : ''
+    return `${Math.round(avgPdfPages)} 页${estimatedSuffix}`
+  }
+  if (hasPdfProfiles) return '后端未回传'
+  return '无 PDF'
+}
+
+function formatStructureAverageLabel({
+  avgPdfBlocks,
+  avgPdfTables,
+  hasPdfProfiles,
+}: Readonly<{
+  avgPdfBlocks: number
+  avgPdfTables: number
+  hasPdfProfiles: boolean
+}>): string {
+  if (!hasPdfProfiles) return '无 PDF'
+  if (avgPdfTables) return `${Math.round(avgPdfTables)} 表`
+  return `${Math.round(avgPdfBlocks).toLocaleString()} 块`
+}
+
+function getRiskTagPresentation(firstTag: string): RiskTagPresentation {
+  switch (firstTag) {
+    case 'OCR_REQUIRED':
+      return {
+        actionLabel: 'OCR 处理',
+        icon: CircleDashed,
+        iconTone: 'text-info',
+        primaryRisk: '扫描件',
+      }
+    case 'PARSE_FAILED':
+      return {
+        actionLabel: '人工审核',
+        icon: CircleAlert,
+        iconTone: 'text-rose',
+        primaryRisk: '解析失败',
+      }
+    case 'TABLE_HEAVY':
+      return {
+        actionLabel: '格式转换',
+        icon: TableProperties,
+        iconTone: 'text-orange',
+        primaryRisk: '合并单元格',
+      }
+    case 'SENSITIVE_REVIEW':
+      return {
+        actionLabel: '确认入库',
+        icon: ShieldAlert,
+        iconTone: 'text-warning',
+        primaryRisk: '敏感信息',
+      }
+    case 'VERSION_CONFLICT':
+      return {
+        actionLabel: '确认入库',
+        icon: FileDigit,
+        iconTone: 'text-success',
+        primaryRisk: '版本冲突',
+      }
+    default:
+      return {
+        actionLabel: '确认入库',
+        icon: FileDigit,
+        iconTone: 'text-success',
+        primaryRisk: '通用文档',
+      }
+  }
+}
+
+function getSeverityFill(severity: string, intensity: number): string {
+  if (severity === 'error') {
+    return `linear-gradient(135deg, rgba(185,28,28,${0.16 + intensity * 0.32}), rgba(127,29,29,${0.24 + intensity * 0.28}))`
+  }
+  if (severity === 'warning') {
+    return `linear-gradient(135deg, rgba(217,119,6,${0.16 + intensity * 0.32}), rgba(146,64,14,${0.24 + intensity * 0.28}))`
+  }
+  return `linear-gradient(135deg, rgba(71,85,105,${0.16 + intensity * 0.32}), rgba(51,65,85,${0.24 + intensity * 0.28}))`
+}
+
+function getPdfSplitColor(name: string): string {
+  switch (name) {
+    case 'SCAN':
+      return '#f59e0b'
+    case 'MIXED':
+      return '#94a3b8'
+    default:
+      return '#10b981'
+  }
+}
+
+function getSalesCoreIcon(index: number): LucideIcon {
+  switch (index) {
+    case 0:
+      return FileSearch
+    case 1:
+      return Workflow
+    case 2:
+      return CircleAlert
+    default:
+      return ShieldAlert
+  }
+}
+
+function getSalesCoreIconTone(index: number): string {
+  switch (index) {
+    case 0:
+      return 'text-muted-foreground'
+    case 1:
+      return 'text-accent'
+    case 2:
+      return 'text-rose'
+    default:
+      return 'text-warning'
+  }
+}
+
+function getDriverDotTone(key: string): string {
+  switch (key) {
+    case 'ocr':
+      return 'bg-info'
+    case 'table_heavy':
+      return 'bg-warning'
+    case 'blocking':
+      return 'bg-rose'
+    default:
+      return 'bg-accent'
+  }
+}
+
+function getAuditRailStatusTone({
+  disposition,
+  status,
+}: Readonly<{
+  disposition?: SampleDisposition
+  status: string
+}>): StatusToneResult {
+  if (disposition === 'approved') {
+    return {
+      label: '已确认',
+      tone: 'border-success/20 bg-success/10 text-success',
+    }
+  }
+  if (disposition === 'manual') {
+    return {
+      label: '转人工',
+      tone: 'border-warning/25 bg-warning/10 text-warning',
+    }
+  }
+
+  switch (status) {
+    case 'completed':
+      return {
+        label: '已完成',
+        tone: 'border-success/20 bg-success/10 text-success',
+      }
+    case 'failed':
+      return {
+        label: '失败',
+        tone: 'border-destructive/20 bg-destructive/10 text-destructive',
+      }
+    case 'processing':
+      return {
+        label: '处理中',
+        tone: 'border-info/25 bg-info/10 text-info',
+      }
+    case 'pending':
+      return {
+        label: '待处理',
+        tone: 'border-border/55 bg-muted/20 text-muted-foreground',
+      }
+    default:
+      return {
+        label: '待确认',
+        tone: 'border-border/55 bg-muted/20 text-muted-foreground',
+      }
+  }
+}
+
+function getProgressTone(status: string): string {
+  switch (status) {
+    case 'completed':
+      return 'bg-success'
+    case 'failed':
+      return 'bg-destructive'
+    default:
+      return 'bg-info'
+  }
+}
+
+function getTaskProgress(document: Document): number {
+  if (typeof document.processing_progress === 'number') {
+    return Math.round(Number(document.processing_progress))
+  }
+  switch (document.status) {
+    case 'completed':
+      return 100
+    case 'processing':
+      return 60
+    case 'pending':
+      return 15
+    default:
+      return 0
+  }
+}
+
+function getDocumentStatusLabel(status: string | null | undefined): string {
+  switch (status) {
+    case 'completed':
+      return '已完成'
+    case 'failed':
+      return '失败'
+    case 'processing':
+      return '进行中'
+    case 'pending':
+      return '等待中'
+    default:
+      return String(status || '未开始')
+  }
+}
+
+function getDocumentStatusTone(status: string | null | undefined): string {
+  switch (status) {
+    case 'completed':
+      return 'text-success'
+    case 'failed':
+      return 'text-rose'
+    case 'processing':
+      return 'text-info'
+    default:
+      return 'text-muted-foreground'
+  }
+}
+
+function buildPrecheckProfileFile(file: DatasetPrecheckFileOut): BatchProfileFile {
+  return {
+    chars: Number(file.text_characters || 0),
+    fileSize: Number(file.file_size || 0),
+    fileType: String(file.file_type || ''),
+    pdfPages:
+      Number(file.pdf_pages?.page_count || 0) ||
+      estimatePdfPageCountFromSignals({
+        characters: Number(file.text_characters || 0),
+        fileSize: Number(file.file_size || 0),
+      }),
+    pageCountEstimated: !file.pdf_pages?.page_count,
+    imageCount: Number(file.pdf_pages?.scanned_pages || 0),
+    tableCount: 0,
+    blockCount: 0,
+  }
+}
+
+function buildDocumentProfileFile(document: Document): BatchProfileFile {
+  const runtimeStats = getDocumentRuntimeStats(document)
+  const isPdf = String(document.file_type || '').toLowerCase() === 'pdf'
+  const estimatedPdfPages =
+    isPdf && runtimeStats.pageCount <= 0
+      ? estimatePdfPageCountFromSignals({
+          characters: Number(document.total_characters || 0),
+          fileSize: Number(document.file_size || 0),
+        })
+      : 0
+
+  return {
+    blockCount: runtimeStats.blockCount,
+    chars: Number(document.total_characters || 0),
+    fileSize: Number(document.file_size || 0),
+    fileType: String(document.file_type || ''),
+    imageCount: runtimeStats.imageCount,
+    pageCountEstimated: Boolean(isPdf && estimatedPdfPages > 0),
+    pdfPages: runtimeStats.pageCount || estimatedPdfPages,
+    tableCount: runtimeStats.tableCount,
+  }
+}
+
+function getHeaderAnimation({
+  headerCollapsed,
+  mode,
+  reduceMotion,
+}: Readonly<{
+  headerCollapsed: boolean
+  mode: IngestionMode
+  reduceMotion: boolean | null
+}>): { paddingBottom: number; paddingTop: number } | undefined {
+  if (reduceMotion || mode !== 'sales-audit') return undefined
+  const padding = headerCollapsed ? 9 : 13
+  return {
+    paddingBottom: padding,
+    paddingTop: padding,
+  }
+}
+
+function getHeaderBodyVisibilityClass(
+  mode: IngestionMode,
+  headerCollapsed: boolean
+): string {
+  if (mode !== 'sales-audit') return 'mt-1.5 max-h-28 opacity-100'
+  if (headerCollapsed) return 'mt-0 max-h-0 opacity-0'
+  return 'mt-1.5 max-h-28 opacity-100'
+}
 
 type SalesPanelHeaderProps = {
   actionLabel?: string
@@ -1995,11 +2418,10 @@ export default function KnowledgeIngestionPageClient() {
   )
   const throughputRowsSource = useMemo(
     () =>
-      summaryThroughputRows.some((row) => row.total > 0)
-        ? 'backend'
-        : documentThroughputRows.length
-          ? 'documents'
-          : 'backend',
+      resolveThroughputRowsSource(
+        summaryThroughputRows.some((row) => row.total > 0),
+        documentThroughputRows.length
+      ),
     [documentThroughputRows.length, summaryThroughputRows]
   )
   const throughputRows = useMemo(
@@ -2668,11 +3090,7 @@ export default function KnowledgeIngestionPageClient() {
         ? String(item.finished_at)
         : taskQueueSnapshot?.generated_at || renderTimestamp
       const elapsed = Number(item.elapsed_sec || 0)
-      const reason = item.reason
-        ? String(item.reason)
-        : ok
-          ? '任务完成'
-          : '任务失败或被跳过'
+      const reason = getQueueOutcomeReason(item, ok)
       const elapsedLabel = elapsed ? `${elapsed.toFixed(2)}s` : reason
       return {
         detail: `${jobName} · ${elapsedLabel}`,
@@ -2715,18 +3133,8 @@ export default function KnowledgeIngestionPageClient() {
               renderTimestamp
           ),
           stage: String(document.current_stage || '系统'),
-          detail:
-            status === 'failed'
-              ? `解析失败：${document.filename}`
-              : status === 'completed'
-                ? `解析成功：${document.filename}`
-                : `开始解析：${document.filename}`,
-          tone:
-            status === 'failed'
-              ? 'bg-rose'
-              : status === 'completed'
-                ? 'bg-success'
-                : 'bg-muted-foreground/40',
+          detail: getRecentLogDetail(status, document.filename),
+          tone: getRecentLogTone(status),
         }
       })
   }, [documents, recentQueueOutcomes, renderTimestamp])
@@ -3027,43 +3435,8 @@ export default function KnowledgeIngestionPageClient() {
     const samplePool = collectSalesAuditSampleFiles(salesAuditSamples)
     const needsReviewCount = Object.values(salesAuditSamples?.needs_review ?? {}).flat().length
     const profileFiles = samplePool.length
-      ? samplePool.map((file) => ({
-          chars: Number(file.text_characters || 0),
-          fileSize: Number(file.file_size || 0),
-          fileType: String(file.file_type || ''),
-          pdfPages:
-            Number(file.pdf_pages?.page_count || 0) ||
-            estimatePdfPageCountFromSignals({
-              characters: Number(file.text_characters || 0),
-              fileSize: Number(file.file_size || 0),
-            }),
-          pageCountEstimated: !file.pdf_pages?.page_count,
-          imageCount: Number(file.pdf_pages?.scanned_pages || 0),
-          tableCount: 0,
-          blockCount: 0,
-        }))
-      : documents.map((document) => {
-          const runtimeStats = getDocumentRuntimeStats(document)
-          const isPdf = String(document.file_type || '').toLowerCase() === 'pdf'
-          const estimatedPdfPages =
-            isPdf && runtimeStats.pageCount <= 0
-              ? estimatePdfPageCountFromSignals({
-                  characters: Number(document.total_characters || 0),
-                  fileSize: Number(document.file_size || 0),
-                })
-              : 0
-
-          return {
-            blockCount: runtimeStats.blockCount,
-            chars: Number(document.total_characters || 0),
-            fileSize: Number(document.file_size || 0),
-            fileType: String(document.file_type || ''),
-            imageCount: runtimeStats.imageCount,
-            pageCountEstimated: Boolean(isPdf && estimatedPdfPages > 0),
-            pdfPages: runtimeStats.pageCount || estimatedPdfPages,
-            tableCount: runtimeStats.tableCount,
-          }
-        })
+      ? samplePool.map(buildPrecheckProfileFile)
+      : documents.map(buildDocumentProfileFile)
     const pdfProfileFiles = profileFiles.filter(
       (file) => file.fileType.toLowerCase() === 'pdf'
     )
@@ -3094,12 +3467,13 @@ export default function KnowledgeIngestionPageClient() {
         ? `3/1000 抽样 · 覆盖 ${presentTypeCount || 0} 类，每类至少 1 个 / 总 ${totalFiles.toLocaleString()} 个`
         : '等待文件进入监控'
     const pdfRatio = totalFiles ? pdfTotal / totalFiles : 0
-    const fallbackComplexity =
-      pdfRatio >= 0.35 || executionRetryRate >= 8 || (durationPercentiles.p90 || 0) >= 20
-        ? '高'
-        : pdfRatio >= 0.12 || totalSizeBytes >= 500 * 1024 * 1024 || totalCharacters >= 500_000
-          ? '中'
-          : '低'
+    const fallbackComplexity = resolveFallbackComplexity({
+      durationP90: durationPercentiles.p90 || 0,
+      executionRetryRate,
+      pdfRatio,
+      totalCharacters,
+      totalSizeBytes,
+    })
 
     return {
       complexity: salesAuditProfile?.complexity ?? fallbackComplexity,
@@ -3127,11 +3501,11 @@ export default function KnowledgeIngestionPageClient() {
           detail: '优先使用后端 page_count，缺失时才按字数/体量估算',
           label: 'PDF 平均页数',
           score: clampScore((avgPdfPages / 80) * 100),
-          value: avgPdfPages
-            ? `${Math.round(avgPdfPages)} 页${hasEstimatedPdfPages ? '估算' : ''}`
-            : hasPdfProfiles
-              ? '后端未回传'
-              : '无 PDF',
+          value: formatPdfPageAverageLabel({
+            avgPdfPages,
+            hasEstimatedPdfPages,
+            hasPdfProfiles,
+          }),
         },
         {
           color: '#64748b',
@@ -3149,11 +3523,11 @@ export default function KnowledgeIngestionPageClient() {
             : `结构块均值 ${Math.round(avgPdfBlocks).toLocaleString()} 个`,
           label: '表格/结构块',
           score: clampScore(Math.max(avgPdfTables * 10, avgPdfBlocks / 8)),
-          value: hasPdfProfiles
-            ? avgPdfTables
-              ? `${Math.round(avgPdfTables)} 表`
-              : `${Math.round(avgPdfBlocks).toLocaleString()} 块`
-            : '无 PDF',
+          value: formatStructureAverageLabel({
+            avgPdfBlocks,
+            avgPdfTables,
+            hasPdfProfiles,
+          }),
         },
         {
           color: '#0891b2',
@@ -3262,12 +3636,7 @@ export default function KnowledgeIngestionPageClient() {
           count: Number(item.count || 0),
           formatLabel: item.severity.toUpperCase(),
           timeLabel: '入库风险',
-          fill:
-            item.severity === 'error'
-              ? `linear-gradient(135deg, rgba(185,28,28,${0.16 + intensity * 0.32}), rgba(127,29,29,${0.24 + intensity * 0.28}))`
-              : item.severity === 'warning'
-                ? `linear-gradient(135deg, rgba(217,119,6,${0.16 + intensity * 0.32}), rgba(146,64,14,${0.24 + intensity * 0.28}))`
-                : `linear-gradient(135deg, rgba(71,85,105,${0.16 + intensity * 0.32}), rgba(51,65,85,${0.24 + intensity * 0.28}))`,
+          fill: getSeverityFill(item.severity, intensity),
         }
       })
   }, [salesAuditSummary])
@@ -3354,56 +3723,18 @@ export default function KnowledgeIngestionPageClient() {
     return salesEvidenceItems.slice(0, 5).map((file) => {
       const tags = buildEvidenceSlotTags(file)
       const firstTag = tags[0] || 'STRAIGHT_THROUGH'
-      const primaryRisk =
-        firstTag === 'OCR_REQUIRED'
-          ? '扫描件'
-          : firstTag === 'PARSE_FAILED'
-            ? '解析失败'
-            : firstTag === 'TABLE_HEAVY'
-              ? '合并单元格'
-              : firstTag === 'SENSITIVE_REVIEW'
-                ? '敏感信息'
-                : firstTag === 'VERSION_CONFLICT'
-                  ? '版本冲突'
-                  : '通用文档'
-      const icon =
-        firstTag === 'OCR_REQUIRED'
-          ? CircleDashed
-          : firstTag === 'TABLE_HEAVY'
-            ? TableProperties
-            : firstTag === 'PARSE_FAILED'
-              ? CircleAlert
-              : firstTag === 'SENSITIVE_REVIEW'
-                ? ShieldAlert
-                : FileDigit
-      const iconTone =
-        firstTag === 'OCR_REQUIRED'
-          ? 'text-info'
-          : firstTag === 'TABLE_HEAVY'
-            ? 'text-orange'
-            : firstTag === 'PARSE_FAILED'
-              ? 'text-rose'
-              : firstTag === 'SENSITIVE_REVIEW'
-                ? 'text-warning'
-                : 'text-success'
+      const presentation = getRiskTagPresentation(firstTag)
 
       return {
         id: String(file.name),
         fileName: anonymizeEvidenceName(file.name),
         fileType: file.file_type.toUpperCase(),
         fileSizeLabel: formatFileSize(file.file_size || 0),
-        primaryRisk,
+        primaryRisk: presentation.primaryRisk,
         riskDescription: buildEvidenceSlotReason(file),
-        actionLabel:
-          firstTag === 'OCR_REQUIRED'
-            ? 'OCR 处理'
-            : firstTag === 'PARSE_FAILED'
-              ? '人工审核'
-              : firstTag === 'TABLE_HEAVY'
-                ? '格式转换'
-                : '确认入库',
-        icon,
-        iconTone,
+        actionLabel: presentation.actionLabel,
+        icon: presentation.icon,
+        iconTone: presentation.iconTone,
       }
     })
   }, [salesEvidenceItems])
@@ -3418,49 +3749,18 @@ export default function KnowledgeIngestionPageClient() {
     return source.map((file) => {
       const tags = buildEvidenceSlotTags(file)
       const firstTag = tags[0] || 'STRAIGHT_THROUGH'
-      const primaryRisk =
-        firstTag === 'OCR_REQUIRED'
-          ? '扫描件'
-          : firstTag === 'PARSE_FAILED'
-            ? '解析失败'
-            : firstTag === 'TABLE_HEAVY'
-              ? '合并单元格'
-              : firstTag === 'SENSITIVE_REVIEW'
-                ? '敏感信息'
-                : firstTag === 'VERSION_CONFLICT'
-                  ? '版本冲突'
-                  : '通用文档'
-      const icon =
-        firstTag === 'OCR_REQUIRED'
-          ? CircleDashed
-          : firstTag === 'TABLE_HEAVY'
-            ? TableProperties
-            : firstTag === 'PARSE_FAILED'
-              ? CircleAlert
-              : firstTag === 'SENSITIVE_REVIEW'
-                ? ShieldAlert
-                : FileDigit
-      const iconTone =
-        firstTag === 'OCR_REQUIRED'
-          ? 'text-info'
-          : firstTag === 'TABLE_HEAVY'
-            ? 'text-orange'
-            : firstTag === 'PARSE_FAILED'
-              ? 'text-rose'
-              : firstTag === 'SENSITIVE_REVIEW'
-                ? 'text-warning'
-                : 'text-success'
+      const presentation = getRiskTagPresentation(firstTag)
 
       return {
         id: String(file.name),
         fileName: anonymizeEvidenceName(file.name),
         fileType: file.file_type.toUpperCase(),
         fileSizeLabel: formatFileSize(file.file_size || 0),
-        primaryRisk,
+        primaryRisk: presentation.primaryRisk,
         riskDescription: buildEvidenceSlotReason(file),
         actionLabel: '加入阻断',
-        icon,
-        iconTone,
+        icon: presentation.icon,
+        iconTone: presentation.iconTone,
       }
     })
   }, [salesAuditSamples?.needs_review, salesEvidenceItems])
@@ -3495,12 +3795,7 @@ export default function KnowledgeIngestionPageClient() {
           data: rows.map((row) => ({
             ...row,
             itemStyle: {
-              color:
-                row.name === 'SCAN'
-                  ? '#f59e0b'
-                  : row.name === 'MIXED'
-                    ? '#94a3b8'
-                    : '#10b981',
+              color: getPdfSplitColor(row.name),
             },
           })),
         },
@@ -3953,6 +4248,14 @@ export default function KnowledgeIngestionPageClient() {
     mode === 'execution-monitor' && !showEmptyState && !desktopScopeCollapsed
   const showDesktopAuditRailToggle =
     mode === 'execution-monitor' && !showEmptyState
+  const headerAnimation = getHeaderAnimation({
+    headerCollapsed,
+    mode,
+    reduceMotion,
+  })
+  const salesAuditPocSampleLabel = salesAuditProfile
+    ? `${salesAuditProfile.pocSampleCount} 份`
+    : '待预检'
 
   return (
     <div
@@ -4111,30 +4414,10 @@ export default function KnowledgeIngestionPageClient() {
                             Number(document.processing_progress || 0)
                           )
                         )
-                        const statusLabel = disposition
-                          ? disposition === 'approved'
-                            ? '已确认'
-                            : '转人工'
-                          : status === 'completed'
-                            ? '已完成'
-                            : status === 'failed'
-                              ? '失败'
-                              : status === 'processing'
-                                ? '处理中'
-                                : status === 'pending'
-                                  ? '待处理'
-                                  : '待确认'
-                        const statusTone = disposition
-                          ? disposition === 'approved'
-                            ? 'border-success/20 bg-success/10 text-success'
-                            : 'border-warning/25 bg-warning/10 text-warning'
-                          : status === 'completed'
-                            ? 'border-success/20 bg-success/10 text-success'
-                            : status === 'failed'
-                              ? 'border-destructive/20 bg-destructive/10 text-destructive'
-                              : status === 'processing'
-                                ? 'border-info/25 bg-info/10 text-info'
-                                : 'border-border/55 bg-muted/20 text-muted-foreground'
+                        const statusPresentation = getAuditRailStatusTone({
+                          disposition,
+                          status,
+                        })
                         const stageLabel =
                           document.current_stage ||
                           (status === 'completed' ? 'completed' : status)
@@ -4184,10 +4467,10 @@ export default function KnowledgeIngestionPageClient() {
                                     <span
                                       className={cn(
                                         'shrink-0 rounded-full border px-1.5 py-0.5 text-[8px] font-medium',
-                                        statusTone
+                                        statusPresentation.tone
                                       )}
                                     >
-                                      {statusLabel}
+                                      {statusPresentation.label}
                                     </span>
                                   </div>
 
@@ -4216,11 +4499,7 @@ export default function KnowledgeIngestionPageClient() {
                                     <div
                                       className={cn(
                                         'h-full rounded-full transition-all',
-                                        status === 'completed'
-                                          ? 'bg-success'
-                                          : status === 'failed'
-                                            ? 'bg-destructive'
-                                            : 'bg-info'
+                                        getProgressTone(status)
                                       )}
                                       style={{ width: `${progress}%` }}
                                     />
@@ -4293,14 +4572,7 @@ export default function KnowledgeIngestionPageClient() {
             <div className="sticky top-3 z-30">
               <motion.div
                 className="relative overflow-hidden rounded-[1.35rem] border border-border/60 bg-[linear-gradient(135deg,hsl(var(--background)/0.92),hsl(var(--muted)/0.36))] shadow-[0_20px_56px_-34px_rgba(15,23,42,0.28)] backdrop-blur-xl"
-                animate={
-                  reduceMotion || mode !== 'sales-audit'
-                    ? undefined
-                    : {
-                        paddingTop: headerCollapsed ? 9 : 13,
-                        paddingBottom: headerCollapsed ? 9 : 13,
-                      }
-                }
+                animate={headerAnimation}
                 transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
               >
                 <div
@@ -4337,11 +4609,7 @@ export default function KnowledgeIngestionPageClient() {
                       <div
                         className={cn(
                           'overflow-hidden transition-[max-height,opacity,margin] duration-200 ease-out',
-                          mode !== 'sales-audit'
-                            ? 'mt-1.5 max-h-28 opacity-100'
-                            : headerCollapsed
-                              ? 'mt-0 max-h-0 opacity-0'
-                              : 'mt-1.5 max-h-28 opacity-100'
+                          getHeaderBodyVisibilityClass(mode, headerCollapsed)
                         )}
                       >
                         <div className="flex min-w-0 items-start gap-2">
@@ -4447,7 +4715,7 @@ export default function KnowledgeIngestionPageClient() {
                     </div>
                   </div>
 
-                  {mode === 'sales-audit' ? (
+                  {mode === 'sales-audit' && (
                     <div className={cn('mt-2.5', SALES_SUMMARY_STRIP_CLASS)}>
                       <div className="grid gap-px sm:grid-cols-4">
                         {[
@@ -4467,9 +4735,7 @@ export default function KnowledgeIngestionPageClient() {
                           },
                           {
                             label: '抽样确认量',
-                            value: salesAuditProfile
-                              ? `${salesAuditProfile.pocSampleCount} 份`
-                              : '待预检',
+                            value: salesAuditPocSampleLabel,
                             icon: FileCheck2,
                             tone: 'text-info',
                             detail: '',
@@ -4508,7 +4774,7 @@ export default function KnowledgeIngestionPageClient() {
                         ))}
                       </div>
                     </div>
-                  ) : null}
+                  )}
                 </div>
               </motion.div>
             </div>
@@ -4531,14 +4797,15 @@ export default function KnowledgeIngestionPageClient() {
             </AnimatePresence>
 
             <div className={cn(mode === 'sales-audit' ? 'mt-5' : 'mt-2.5')}>
-              {mode === 'sales-audit' ? (
-                showEmptyState ? (
+              {mode === 'sales-audit' && showEmptyState && (
                   <EmptyState
                     mode="truly-empty"
                     onUploadSample={handleUploadSampleAssessment}
                     onUploadIngest={handleUploadFormalIngest}
                   />
-                ) : (
+              )}
+
+              {mode === 'sales-audit' && !showEmptyState && (
                   <div
                     title="入库依据"
                     className={cn(
@@ -4577,22 +4844,8 @@ export default function KnowledgeIngestionPageClient() {
                           <div className="grid gap-1 sm:grid-cols-2 xl:grid-cols-4">
                             {salesCoreSummary.map(
                               ([label, value, note], index) => {
-                                const Icon =
-                                  index === 0
-                                    ? FileSearch
-                                    : index === 1
-                                      ? Workflow
-                                      : index === 2
-                                        ? CircleAlert
-                                        : ShieldAlert
-                                const iconTone =
-                                  index === 0
-                                    ? 'text-muted-foreground'
-                                    : index === 1
-                                      ? 'text-accent'
-                                      : index === 2
-                                        ? 'text-rose'
-                                        : 'text-warning'
+                                const Icon = getSalesCoreIcon(index)
+                                const iconTone = getSalesCoreIconTone(index)
                                 return (
                                   <div
                                     key={label}
@@ -4727,13 +4980,7 @@ export default function KnowledgeIngestionPageClient() {
                                     <span
                                       className={cn(
                                         'h-2 w-2 rounded-full',
-                                        driver.key === 'ocr'
-                                          ? 'bg-info'
-                                          : driver.key === 'table_heavy'
-                                            ? 'bg-warning'
-                                            : driver.key === 'blocking'
-                                              ? 'bg-rose'
-                                              : 'bg-accent'
+                                        getDriverDotTone(driver.key)
                                       )}
                                     />
                                     <span className="text-foreground">
@@ -4949,21 +5196,23 @@ export default function KnowledgeIngestionPageClient() {
                       </div>
                     </div>
                   </div>
-                )
-              ) : (
+              )}
+
+              {mode !== 'sales-audit' && (
                 <>
                   {documentsQuery.isLoading &&
                   !documents.length &&
                   !demoMode ? (
                     <LoadingWireframe />
                   ) : null}
-                  {showEmptyState ? (
+                  {showEmptyState && (
                     <EmptyState
                       mode="truly-empty"
                       onUploadSample={handleUploadSampleAssessment}
                       onUploadIngest={handleUploadFormalIngest}
                     />
-                  ) : (
+                  )}
+                  {!showEmptyState && (
                     <div
                       title="入库预检报告"
                       className={cn(
@@ -5371,19 +5620,7 @@ export default function KnowledgeIngestionPageClient() {
                               </thead>
                               <tbody>
                                 {visibleExecutionTaskRows.map((document) => {
-                                  const progress =
-                                    typeof document.processing_progress ===
-                                    'number'
-                                      ? Math.round(
-                                          Number(document.processing_progress)
-                                        )
-                                      : document.status === 'completed'
-                                        ? 100
-                                        : document.status === 'processing'
-                                          ? 60
-                                          : document.status === 'pending'
-                                            ? 15
-                                            : 0
+                                  const progress = getTaskProgress(document)
                                   const elapsedMinutes = (() => {
                                     const created = new Date(
                                       String(document.created_at || '')
@@ -5401,26 +5638,12 @@ export default function KnowledgeIngestionPageClient() {
                                       (updated - created) / 1000
                                     )
                                   })()
-                                  const statusLabel =
-                                    document.status === 'completed'
-                                      ? '已完成'
-                                      : document.status === 'failed'
-                                        ? '失败'
-                                        : document.status === 'processing'
-                                          ? '进行中'
-                                          : document.status === 'pending'
-                                            ? '等待中'
-                                            : String(
-                                                document.status || '未开始'
-                                              )
-                                  const statusTone =
-                                    document.status === 'completed'
-                                      ? 'text-success'
-                                      : document.status === 'failed'
-                                        ? 'text-rose'
-                                        : document.status === 'processing'
-                                          ? 'text-info'
-                                          : 'text-muted-foreground'
+                                  const statusLabel = getDocumentStatusLabel(
+                                    document.status
+                                  )
+                                  const statusTone = getDocumentStatusTone(
+                                    document.status
+                                  )
 
                                   return (
                                     <tr
@@ -5543,7 +5766,7 @@ export default function KnowledgeIngestionPageClient() {
         </div>
       </div>
 
-      {selectedEvidenceFile ? (
+      {selectedEvidenceFile && (
         <Sheet
           open={Boolean(selectedEvidenceFile)}
           onOpenChange={(open) => !open && setSelectedEvidenceFile(null)}
@@ -5676,7 +5899,9 @@ export default function KnowledgeIngestionPageClient() {
             </div>
           </SheetContent>
         </Sheet>
-      ) : activeAuditIsDemo ? (
+      )}
+
+      {!selectedEvidenceFile && activeAuditIsDemo && (
         <Sheet
           open={Boolean(activeAuditDocument)}
           onOpenChange={(open) => !open && setActiveDetailId(null)}
@@ -5693,7 +5918,7 @@ export default function KnowledgeIngestionPageClient() {
                 {activeAuditDocument?.id || ''}
               </SheetDescription>
             </SheetHeader>
-            {activeAuditDocument ? (
+            {activeAuditDocument && (
               <div className="flex h-full min-h-0 flex-col">
                 <div className="border-b border-border/60 px-6 py-5">
                   <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
@@ -5782,10 +6007,12 @@ export default function KnowledgeIngestionPageClient() {
                   </div>
                 </div>
               </div>
-            ) : null}
+            )}
           </SheetContent>
         </Sheet>
-      ) : (
+      )}
+
+      {!selectedEvidenceFile && !activeAuditIsDemo && (
         <IngestionDetailDialog
           open={Boolean(activeDetailId)}
           onOpenChange={(open) => !open && setActiveDetailId(null)}
