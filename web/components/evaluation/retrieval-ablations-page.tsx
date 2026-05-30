@@ -678,7 +678,7 @@ export function RetrievalAblationsPage() {
   const [skipEmptyContexts, setSkipEmptyContexts] = useState(true)
 
   const [topK, setTopK] = useState(20)
-  const [scoreThreshold, setScoreThreshold] = useState(0.0)
+  const [scoreThreshold, setScoreThreshold] = useState(0)
   const [retrievalMode, setRetrievalMode] = useState('hybrid')
   const [alpha, setAlpha] = useState(0.6)
   const [enableWeightRerank, setEnableWeightRerank] = useState(true)

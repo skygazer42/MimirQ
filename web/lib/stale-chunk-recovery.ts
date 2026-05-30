@@ -32,7 +32,7 @@ export function isLikelyStaleChunkError(error: unknown) {
 
 export function reloadOnceForStaleChunk(error: unknown) {
   if (!isLikelyStaleChunkError(error)) return false
-  if (typeof globalThis.window === 'undefined') return false
+  if (globalThis.window === undefined) return false
 
   try {
     const storageKey = [

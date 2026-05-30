@@ -51,8 +51,8 @@ function downloadJson(value: unknown, filename: string) {
 
 function normalizeImportedBundle(raw: unknown): DatasetConfigBundle | null {
   if (!raw || typeof raw !== 'object') return null
-  if ('config' in raw && raw.config && typeof raw.config === 'object') return raw.config as DatasetConfigBundle
-  return raw as DatasetConfigBundle
+  if ('config' in raw && raw.config && typeof raw.config === 'object') return raw.config
+  return raw
 }
 
 export default function DatasetWorkflowPage() {

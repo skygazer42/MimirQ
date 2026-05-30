@@ -99,7 +99,7 @@ export function ChunkAutoTuneDialog() {
 
   const candidates = useMemo(() => {
     const base = clampInt(chunkSize || 1000, sizeMin, sizeMax)
-    const multipliers = [0.6, 0.8, 1.0, 1.2, 1.5, 1.8]
+    const multipliers = [0.6, 0.8, 1, 1.2, 1.5, 1.8]
     const sizes = uniqSorted(
       multipliers.map((m) => clampInt(roundToStep(base * m, effectiveStep), sizeMin, sizeMax))
     )

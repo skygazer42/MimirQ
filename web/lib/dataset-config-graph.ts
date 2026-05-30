@@ -4,7 +4,7 @@ import { toTrimmedPrimitiveString } from './primitive-text'
 type AnyObj = Record<string, any>
 
 function isNonEmptyObject(v: unknown): v is AnyObj {
-  return !!v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v as AnyObj).length > 0
+  return !!v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length > 0
 }
 
 function truthyCount(obj: AnyObj, prefix: string) {

@@ -295,7 +295,7 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
     const getLookAtTarget = useCallback(() => {
       const g = fgRef.current
       const controls = g?.controls?.()
-      const t = (controls as any)?.target
+      const t = controls?.target
       if (t && typeof t.x === "number" && typeof t.y === "number" && typeof t.z === "number") {
         return { x: t.x, y: t.y, z: t.z }
       }

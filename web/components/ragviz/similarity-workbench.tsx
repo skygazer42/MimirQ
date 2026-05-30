@@ -576,7 +576,7 @@ export function RagvizSimilarityWorkbench() {
 
   const maskedMatrix = useMemo(() => {
     if (!displayMatrix) return null
-    if (!effectiveMask) return displayMatrix as Array<Array<number | null>>
+    if (!effectiveMask) return displayMatrix
     return applyMask(displayMatrix, effectiveMask)
   }, [displayMatrix, effectiveMask])
 

@@ -601,7 +601,7 @@ export default function DiagnosticsPage() {
   const [driftRunning, setDriftRunning] = useState(false)
 
   const [perfSuiteIterations, setPerfSuiteIterations] = useState(10)
-  const [perfSuiteTimeoutSec, setPerfSuiteTimeoutSec] = useState(2.0)
+  const [perfSuiteTimeoutSec, setPerfSuiteTimeoutSec] = useState(2)
   const [perfSuiteResult, setPerfSuiteResult] = useState<Record<
     string,
     any
@@ -1506,19 +1506,19 @@ export default function DiagnosticsPage() {
 	                </MetricInfoTooltip>
 	              </h3>
 	              <div className="space-y-2 pt-1">
-	                <结论项
-	                  label="RAG 预览"
-	                  status={probeRunning ? '执行中' : ragPreviewStatusLabel}
-	                />
-	                <结论项
-	                  label="漂移检查"
-	                  status={driftRunning ? '执行中' : driftStatusLabel}
-	                />
-	                <结论项 label="性能门禁" status={perfGateStatus} />
-	                <结论项
-	                  label="报告时间"
-	                  status={fmtDateTime(health.data?.payload?.time)}
-	                />
+                <ConclusionItem
+                  label="RAG 预览"
+                  status={probeRunning ? '执行中' : ragPreviewStatusLabel}
+                />
+                <ConclusionItem
+                  label="漂移检查"
+                  status={driftRunning ? '执行中' : driftStatusLabel}
+                />
+                <ConclusionItem label="性能门禁" status={perfGateStatus} />
+                <ConclusionItem
+                  label="报告时间"
+                  status={fmtDateTime(health.data?.payload?.time)}
+                />
 	              </div>
 	            </div>
 
@@ -1529,7 +1529,7 @@ export default function DiagnosticsPage() {
               </h3>
               <div className="grid grid-cols-2 gap-2 pt-1">
                 {dependencyItems.map((item) => (
-                  <资源项
+                  <ResourceItem
                     key={item.label}
                     label={item.label}
                     status={
@@ -1626,7 +1626,7 @@ export default function DiagnosticsPage() {
   )
 }
 
-function 结论项({ label, status }: { label: string; status: string }) {
+function ConclusionItem({ label, status }: { label: string; status: string }) {
   return (
     <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 bg-card px-2.5 py-2">
       <div className="flex items-center gap-3">
@@ -1642,7 +1642,7 @@ function 结论项({ label, status }: { label: string; status: string }) {
   )
 }
 
-function 资源项({ label, status }: { label: string; status: string }) {
+function ResourceItem({ label, status }: { label: string; status: string }) {
   const normalized = String(status || 'unknown').toLowerCase()
   const isOk = ['connected', 'ok', 'ready'].includes(normalized)
   const isChecking = ['checking', 'pending'].includes(normalized)

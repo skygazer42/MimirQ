@@ -500,7 +500,7 @@ export function ChunkList() {
         const g = groups.get(key)
         if (!g) continue
         rows.push({ kind: 'section', key, label: g.label, count: g.items.length })
-        if (Boolean(collapsedGroups[key])) continue
+        if (collapsedGroups[key]) continue
         for (const it of g.items) {
           rows.push({
             kind: 'chunk',
@@ -695,7 +695,7 @@ export function ChunkList() {
 
   const filterActiveCount = useMemo(() => {
     let count = 0
-    if (Boolean(query.trim())) count += 1
+    if (query.trim()) count += 1
     if (isParentChildStrategy && viewMode !== 'flat') count += 1
     if (!isHierarchyView && groupMode !== 'none') count += 1
     if (sortMode !== 'index') count += 1
@@ -1544,7 +1544,7 @@ export function ChunkList() {
                         <button
                           type="button"
                           className="h-6 w-6 inline-flex items-center justify-center rounded-md border border-border/60 bg-card text-muted-foreground hover:text-foreground hover:border-primary/30 hover:bg-muted transition-colors focus-ring"
-                          onClick={() => setCollapsedGroups((prev) => ({ ...prev, [groupKey]: !Boolean(prev[groupKey]) }))}
+                          onClick={() => setCollapsedGroups((prev) => ({ ...prev, [groupKey]: !prev[groupKey] }))}
                           aria-label={isCollapsed ? t('chunkList.groupToggle.expandSection') : t('chunkList.groupToggle.collapseSection')}
                           title={isCollapsed ? t('chunkList.groupToggle.expandSection') : t('chunkList.groupToggle.collapseSection')}
                         >
@@ -1586,7 +1586,7 @@ export function ChunkList() {
                         if (canCollapse) {
                             return (<button type="button" className="h-6 w-6 inline-flex items-center justify-center rounded-md border border-border/60 bg-card text-muted-foreground hover:text-foreground hover:border-primary/30 hover:bg-muted transition-colors focus-ring" onClick={(e) => {
                                     e.stopPropagation();
-                                    const nextCollapsed = !Boolean(collapsedGroups[groupKey]);
+                                    const nextCollapsed = !collapsedGroups[groupKey];
                                     setCollapsedGroups((prev) => ({ ...prev, [groupKey]: nextCollapsed }));
                                     // Keep selection visible when collapsing a group.
                                     if (nextCollapsed && selectedChunkIndex != null) {

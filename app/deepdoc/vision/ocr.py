@@ -221,9 +221,7 @@ class TextRecognizer:
         assert img_c == img.shape[2]
         img_w = int((img_h * max_wh_ratio))
         w = self.input_tensor.shape[3:][0]
-        if isinstance(w, str):
-            pass
-        elif w is not None and w > 0:
+        if not isinstance(w, str) and w is not None and w > 0:
             img_w = w
         h, w = img.shape[:2]
         ratio = w / float(h)
@@ -559,9 +557,14 @@ class TextDetector:
         self.input_tensor = self.predictor.get_inputs()[0]
 
         img_h, img_w = self.input_tensor.shape[2:]
-        if isinstance(img_h, str) or isinstance(img_w, str):
-            pass
-        elif img_h is not None and img_w is not None and img_h > 0 and img_w > 0:
+        if (
+                not isinstance(img_h, str)
+                and not isinstance(img_w, str)
+                and img_h is not None
+                and img_w is not None
+                and img_h > 0
+                and img_w > 0
+        ):
             pre_process_list[0] = {
                 'DetResizeForTest': {
                     'image_shape': [img_h, img_w]

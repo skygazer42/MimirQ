@@ -41,9 +41,8 @@ all_codecs = [
 
 def find_codec(blob):
     detected = chardet.detect(blob[:1024])
-    if detected['confidence'] > 0.5:
-        if detected['encoding'] == "ascii":
-            return "utf-8"
+    if detected['confidence'] > 0.5 and detected['encoding'] == "ascii":
+        return "utf-8"
 
     for c in all_codecs:
         try:

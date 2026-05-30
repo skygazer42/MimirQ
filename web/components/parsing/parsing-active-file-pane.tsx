@@ -515,7 +515,7 @@ export function ParsingActiveFilePane({
  if (!targetCard) return
  if (typeof targetCard.scrollIntoView !== 'function') return
  const reduceMotion =
- typeof globalThis.window !== 'undefined' &&
+ globalThis.window !== undefined &&
  typeof globalThis.window.matchMedia === 'function' &&
  globalThis.window.matchMedia('(prefers-reduced-motion: reduce)').matches
  targetCard.scrollIntoView({

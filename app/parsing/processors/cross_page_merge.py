@@ -108,11 +108,7 @@ def _can_merge_tables(prev: Document, cur: Document, *, max_page_gap: int) -> bo
     cur_cols = _table_columns(cur_meta, cur.page_content or "")
     if prev_cols and cur_cols and prev_cols != cur_cols:
         return False
-    if prev_cols and not cur_cols:
-        pass
-    elif not prev_cols and cur_cols:
-        pass
-    elif not prev_cols and not cur_cols:
+    if not prev_cols and not cur_cols:
         prev_pipes = (prev.page_content or "").splitlines()[0].count("|") if (prev.page_content or "").splitlines() else 0
         cur_pipes = (cur.page_content or "").splitlines()[0].count("|") if (cur.page_content or "").splitlines() else 0
         if prev_pipes > 0 and cur_pipes > 0 and prev_pipes != cur_pipes:

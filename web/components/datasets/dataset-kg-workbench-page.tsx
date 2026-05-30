@@ -520,7 +520,7 @@ export default function DatasetKGWorkbenchPage() {
         kgApi.getStats({ document_ids: docIds, pipeline_hash: effectivePipelineHash }).catch(() => null),
       ])
 
-      setGraphData(graph as GraphData)
+      setGraphData(graph)
       setGraphStats(stats)
     } catch (e: any) {
       console.error('Failed to load graph preview', e)

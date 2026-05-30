@@ -938,7 +938,7 @@ export function KGDiagnosticsPage() {
   const [qualityDocLimit, setQualityDocLimit] = useState(200)
   const [qualityPipelineHash, setQualityPipelineHash] = useState('')
   const [qualityLoading, setQualityLoading] = useState(false)
-  const [qualityReport, setQualityReport] = useState<any | null>(null)
+  const [qualityReport, setQualityReport] = useState<unknown>(null)
   const qualityJson = useMemo(
     () => prettyJson(qualityReport ?? { hint: t('qualityReport.hint') }),
     [qualityReport, t]
