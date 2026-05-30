@@ -1,7 +1,6 @@
 'use client'
 
 import {
-  type MouseEvent,
   useCallback,
   useEffect,
   useMemo,
@@ -1741,7 +1740,6 @@ export default function KnowledgeIngestionPageClient() {
   const [activeDetailId, setActiveDetailId] = useState<string | null>(null)
   const [selectedEvidenceFile, setSelectedEvidenceFile] =
     useState<DatasetPrecheckFileOut | null>(null)
-  const [canvasGlow, setCanvasGlow] = useState({ x: 36, y: 24 })
   const [successPulseVisible, setSuccessPulseVisible] = useState(false)
   const [executionTaskPage, setExecutionTaskPage] = useState(1)
   const [renderTimestamp] = useState(() => Date.now())
@@ -3921,13 +3919,6 @@ export default function KnowledgeIngestionPageClient() {
     router.replace(query ? `${pathname}?${query}` : pathname)
   }, [pathname, router, searchParams])
 
-  const handleCanvasMove = useCallback((event: MouseEvent<HTMLDivElement>) => {
-    const rect = event.currentTarget.getBoundingClientRect()
-    const x = ((event.clientX - rect.left) / rect.width) * 100
-    const y = ((event.clientY - rect.top) / rect.height) * 100
-    setCanvasGlow({ x, y })
-  }, [])
-
   const showEmptyState =
     mode === 'sales-audit'
       ? !demoMode &&
@@ -4527,7 +4518,6 @@ export default function KnowledgeIngestionPageClient() {
                 ) : (
                   <div
                     title="入库依据"
-                    onMouseMove={handleCanvasMove}
                     className={cn(
                       'relative overflow-hidden rounded-[1.3rem] border border-border/60 bg-background/86 p-2.5 shadow-[0_24px_68px_-44px_rgba(15,23,42,0.24)] md:p-3',
                       'bg-[linear-gradient(rgba(148,163,184,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.08)_1px,transparent_1px)] [background-size:28px_28px]'
@@ -4537,7 +4527,7 @@ export default function KnowledgeIngestionPageClient() {
                       aria-hidden
                       className="pointer-events-none absolute inset-0 opacity-70"
                       style={{
-                        background: `radial-gradient(circle at ${canvasGlow.x}% ${canvasGlow.y}%, rgba(255,255,255,0.48), transparent 28%)`,
+                        background: 'radial-gradient(circle at 36% 24%, rgba(255,255,255,0.48), transparent 28%)',
                       }}
                     />
                     <div className="relative z-10 space-y-2">
@@ -4953,7 +4943,6 @@ export default function KnowledgeIngestionPageClient() {
                   ) : (
                     <div
                       title="入库预检报告"
-                      onMouseMove={handleCanvasMove}
                       className={cn(
                         'relative overflow-hidden rounded-[1.45rem] border border-border/60 bg-background/86 p-3 shadow-[0_28px_72px_-46px_rgba(15,23,42,0.32)] md:p-3.5',
                         demoMode &&
@@ -4964,7 +4953,7 @@ export default function KnowledgeIngestionPageClient() {
                         aria-hidden
                         className="pointer-events-none absolute inset-0 opacity-70"
                         style={{
-                          background: `radial-gradient(circle at ${canvasGlow.x}% ${canvasGlow.y}%, rgba(255,255,255,0.48), transparent 28%)`,
+                          background: 'radial-gradient(circle at 36% 24%, rgba(255,255,255,0.48), transparent 28%)',
                         }}
                       />
                       <div className="relative z-10 space-y-3">

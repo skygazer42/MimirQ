@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { ArrowRightLeft, ChevronDown, ChevronRight, FileText, Folder, FolderOpen, MoreHorizontal, Pencil, Plus, Trash2, FileImage, FileCode, FileSpreadsheet, FileArchive, AlertCircle, Paperclip, FolderUp, FileJson, AlignLeft, FileSignature, RotateCcw, Loader2, Clock3 } from 'lucide-react'
 import { toast } from 'sonner'
 import { collectFolderDescendantIds } from '@/lib/folder-tree-index'
@@ -721,6 +722,58 @@ export function DocumentFolderTree({
     [onFileDragStart, onRemoveFile, onRetryFile, onSelectFile, onToggleFileSelected, setActiveFolderId]
   )
 
+  const expandVisibleFolder = useCallback((folderId: string) => {
+    if (showFiles !== 'expanded') return
+    setExpandedFileFolderIds((prev) => {
+      if (prev.has(folderId)) return prev
+      const next = new Set(prev)
+      next.add(folderId)
+      return next
+    })
+  }, [showFiles])
+
+  const collapseVisibleFolder = useCallback((folderId: string) => {
+    if (showFiles !== 'expanded') return
+    setExpandedFileFolderIds((prev) => {
+      if (!prev.has(folderId)) return prev
+      const next = new Set(prev)
+      next.delete(folderId)
+      return next
+    })
+  }, [showFiles])
+
+  const selectFolder = useCallback((folderId: string) => {
+    setActiveFolderId(folderId)
+    expandVisibleFolder(folderId)
+  }, [expandVisibleFolder, setActiveFolderId])
+
+  const handleFolderRowKeyDown = useCallback((
+    event: ReactKeyboardEvent<HTMLDivElement>,
+    folderId: string,
+    hasContent: boolean
+  ) => {
+    if (event.target !== event.currentTarget) return
+
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      selectFolder(folderId)
+      return
+    }
+
+    if (!hasContent || showFiles !== 'expanded') return
+
+    if (event.key === 'ArrowRight') {
+      event.preventDefault()
+      expandVisibleFolder(folderId)
+      return
+    }
+
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault()
+      collapseVisibleFolder(folderId)
+    }
+  }, [collapseVisibleFolder, expandVisibleFolder, selectFolder, showFiles])
+
   function renderFolder(folder: FolderNode, depth: number) {
       const isActive = activeFolderId === folder.id
       const count = directCountByFolderId[folder.id] || 0
@@ -737,6 +790,10 @@ export function DocumentFolderTree({
       return (
         <div key={folder.id}>
           <div
+            role="treeitem"
+            tabIndex={0}
+            aria-selected={isActive}
+            aria-expanded={hasContent ? isExpanded : undefined}
             className={cn(
               'group relative flex items-center gap-1 rounded-xl py-1.5 transition-colors before:absolute before:bottom-1.5 before:left-0 before:top-1.5 before:w-0.5 before:rounded-full before:bg-primary/0 before:transition-colors',
               isActive
@@ -749,6 +806,7 @@ export function DocumentFolderTree({
               paddingRight: '0.5rem',
             }}
             draggable
+            onKeyDown={(e) => handleFolderRowKeyDown(e, folder.id, hasContent)}
             onDragStart={(e) => {
               // Folder drag
               draggedFolderIdRef.current = folder.id
@@ -816,17 +874,7 @@ export function DocumentFolderTree({
             )}
             <button
               className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
-              onClick={() => {
-                setActiveFolderId(folder.id)
-                if (showFiles === 'expanded') {
-                  setExpandedFileFolderIds((prev) => {
-                    if (prev.has(folder.id)) return prev
-                    const next = new Set(prev)
-                    next.add(folder.id)
-                    return next
-                  })
-                }
-              }}
+              onClick={() => selectFolder(folder.id)}
               type="button"
               title={folder.name}
             >
@@ -974,11 +1022,17 @@ export function DocumentFolderTree({
     ? directFilesByFolderId.get(ROOT_FOLDER_ID) || []
     : []
   const rootDirectCount = directCountByFolderId[ROOT_FOLDER_ID] || 0
+  const rootHasContent = rootDirectCount > 0 || rootChildren.length > 0
+  const isRootExpanded = expandedFileFolderIds.has(ROOT_FOLDER_ID)
 
   return (
-    <div className={cn('flex flex-col', className)} ref={scrollContainerRef}>
+    <div className={cn('flex flex-col', className)} ref={scrollContainerRef} role="tree" aria-label="文档目录">
       <div className="space-y-0.5">
         <div
+          role="treeitem"
+          tabIndex={0}
+          aria-selected={activeFolderId === ROOT_FOLDER_ID}
+          aria-expanded={rootHasContent ? isRootExpanded : undefined}
           className={cn(
             'group relative flex items-center gap-1 rounded-xl py-1.5 transition-colors before:absolute before:bottom-1.5 before:left-0 before:top-1.5 before:w-0.5 before:rounded-full before:bg-primary/0 before:transition-colors',
             activeFolderId === ROOT_FOLDER_ID
@@ -987,6 +1041,7 @@ export function DocumentFolderTree({
             dragOverId === ROOT_FOLDER_ID && 'bg-info/[0.08] before:bg-info/50'
           )}
           style={{ paddingLeft: `${TREE_ROW_BASE_PADDING}px`, paddingRight: '0.5rem' }}
+          onKeyDown={(e) => handleFolderRowKeyDown(e, ROOT_FOLDER_ID, rootHasContent)}
           onDragOver={(e) => {
             e.preventDefault()
             setDragOverId(ROOT_FOLDER_ID)
@@ -1023,7 +1078,7 @@ export function DocumentFolderTree({
           {dragOverId === ROOT_FOLDER_ID && (
             <div className="absolute left-2 right-2 bottom-0 h-0.5 bg-primary rounded-full" />
           )}
-          {showFiles === 'expanded' && (rootDirectCount > 0 || rootChildren.length > 0) && (
+          {showFiles === 'expanded' && rootHasContent && (
             <button
               type="button"
               className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/75 hover:bg-muted/40 hover:text-foreground focus-ring"
@@ -1031,9 +1086,9 @@ export function DocumentFolderTree({
                 e.stopPropagation()
                 toggleFileList(ROOT_FOLDER_ID)
               }}
-              aria-label={expandedFileFolderIds.has(ROOT_FOLDER_ID) ? 'Collapse' : 'Expand'}
+              aria-label={isRootExpanded ? 'Collapse' : 'Expand'}
             >
-              {expandedFileFolderIds.has(ROOT_FOLDER_ID) ? (
+              {isRootExpanded ? (
                 <ChevronDown className="h-3.5 w-3.5" />
               ) : (
                 <ChevronRight className="h-3.5 w-3.5" />
@@ -1042,17 +1097,7 @@ export function DocumentFolderTree({
           )}
           <button
             className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
-            onClick={() => {
-              setActiveFolderId(ROOT_FOLDER_ID)
-              if (showFiles === 'expanded') {
-                setExpandedFileFolderIds((prev) => {
-                  if (prev.has(ROOT_FOLDER_ID)) return prev
-                  const next = new Set(prev)
-                  next.add(ROOT_FOLDER_ID)
-                  return next
-                })
-              }
-            }}
+            onClick={() => selectFolder(ROOT_FOLDER_ID)}
             type="button"
           >
             {getFolderIconElement(0, activeFolderId === ROOT_FOLDER_ID)}
