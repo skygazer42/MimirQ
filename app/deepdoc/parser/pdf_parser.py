@@ -1060,7 +1060,7 @@ class IntegratedPipelinePdfParser:
             nonlocal ZM
             pn = {b["page_number"] - 1 for b in bxs}
             if len(pn) < 2:
-                pn = list(pn)[0]
+                pn = next(iter(pn))
                 ht = self.page_cum_height[pn]
                 b = {
                     "x0": np.min([b["x0"] for b in bxs]),

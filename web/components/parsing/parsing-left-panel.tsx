@@ -195,7 +195,7 @@ export function ParsingLeftPanel({
       </Button>
 
       <div
-        role="separator"
+        role="slider"
         aria-label="调整文档列表宽度"
         aria-orientation="vertical"
         aria-valuemax={MAX_PARSING_LEFT_PANEL_WIDTH}

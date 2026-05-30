@@ -517,6 +517,8 @@ export function GraphNodeDetailPanel({
   return (
     <div
       ref={panelRef}
+      role="region"
+      aria-label="图谱节点详情"
       className={cn(
         'group absolute z-20 flex w-[18.25rem] max-h-[min(31rem,calc(100vh-5.5rem))] transform flex-col overflow-visible rounded-2xl transition-transform duration-200 ease-out',
         open && selectedNode ? 'translate-x-0' : 'translate-x-[120%]'

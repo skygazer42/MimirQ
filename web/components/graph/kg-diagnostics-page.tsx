@@ -501,7 +501,7 @@ function DiagnosticsToggleCard({
         }
 
   return (
-    <label
+    <div
       className={cn(
         'block cursor-pointer select-none rounded-lg border px-3 py-1.5 transition-colors',
         toneClasses.surface
@@ -530,7 +530,7 @@ function DiagnosticsToggleCard({
               <span className="inline-flex items-center rounded-full border border-border/70 bg-card/90 px-2 py-0.5 text-[11px] font-normal text-muted-foreground">
                 {stateLabel}
               </span>
-              <Switch checked={checked} onCheckedChange={onCheckedChange} />
+              <Switch aria-label={title} checked={checked} onCheckedChange={onCheckedChange} />
             </div>
           </div>
           {description ? (
@@ -540,7 +540,7 @@ function DiagnosticsToggleCard({
           ) : null}
         </div>
       </div>
-    </label>
+    </div>
   )
 }
 

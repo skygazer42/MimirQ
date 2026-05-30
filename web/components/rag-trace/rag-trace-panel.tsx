@@ -1514,6 +1514,8 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
   return (
     <div
       className={cn('grid grid-cols-1 gap-4 md:grid-cols-[260px,1fr]', className)}
+      role="application"
+      aria-label="RAG trace keyboard navigation"
       tabIndex={0}
       onKeyDownCapture={handleTracePanelKeyDown}
     >
@@ -1897,6 +1899,8 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
               </div>
               <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.2fr)_minmax(18rem,0.8fr)]">
                 <div
+                  role="application"
+                  aria-label="Pipeline timeline keyboard navigation"
                   tabIndex={0}
                   onKeyDown={handlePipelineTimelineKeyDown}
                   className="outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
@@ -2175,7 +2179,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                           {availableCitationSimulationChannels.map((channel) => {
                             const value = citationSimulationWeights[channel.key] ?? 0
                             return (
-                              <label
+                              <div
                                 key={channel.key}
                                 className="space-y-2 rounded-xl border border-sidebar-border/70 bg-sidebar/55 px-3 py-3 shadow-soft"
                               >
@@ -2184,6 +2188,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                                   <span className="text-[11px] font-mono text-muted-foreground">{Math.round(value * 100)}%</span>
                                 </div>
                                 <input
+                                  aria-label={channel.label}
                                   type="range"
                                   min={0}
                                   max={100}
@@ -2198,7 +2203,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                                   }}
                                   className="w-full accent-sky-600"
                                 />
-                              </label>
+                              </div>
                             )
                           })}
                         </div>
