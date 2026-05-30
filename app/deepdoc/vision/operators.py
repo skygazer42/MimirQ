@@ -726,6 +726,6 @@ def nms(bboxes, scores, iou_thresh):
         h = np.maximum(0, y22 - y11 + 1)
         overlaps = w * h
         ious = overlaps / (areas[i] + areas[index[1:]] - overlaps)
-        idx = np.where(ious <= iou_thresh)[0]
+        idx = np.nonzero(ious <= iou_thresh)[0]
         index = index[idx + 1]
     return indices

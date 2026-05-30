@@ -84,10 +84,12 @@ class HTTPClientPool:
 
     async def _ainject_internal_context_headers(self, request: httpx.Request) -> None:
         """Async-compatible wrapper for internal request hooks."""
+        await asyncio.sleep(0)
         self._inject_internal_context_headers(request)
 
     async def _ainject_external_context_headers(self, request: httpx.Request) -> None:
         """Async-compatible wrapper for external request hooks."""
+        await asyncio.sleep(0)
         self._inject_external_context_headers(request)
 
     # Backwards-compatible name (internal behavior).

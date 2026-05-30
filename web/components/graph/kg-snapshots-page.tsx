@@ -484,7 +484,7 @@ function layoutSnapshotStudioNodes(
 }
 
 function splitCodeLines(value: string): string[] {
-  const normalized = String(value ?? '').replace(/\r/g, '')
+  const normalized = String(value ?? '').replaceAll('\r', '')
   const lines = normalized.split('\n')
   if (lines.length > 1 && lines[lines.length - 1] === '') lines.pop()
   return lines.length ? lines : ['']
@@ -928,7 +928,7 @@ function SnapshotStudioToolbar({
               <span className="inline-flex h-[18px] w-[18px] items-center justify-center rounded-full bg-emerald-100 text-[10px] font-bold text-emerald-700">
                 A
               </span>
-              视图 A
+              <span>视图 A</span>
             </button>
             <button
               type="button"
@@ -943,7 +943,7 @@ function SnapshotStudioToolbar({
               <span className="inline-flex h-[18px] w-[18px] items-center justify-center rounded-full bg-sky-100 text-[10px] font-bold text-sky-700">
                 B
               </span>
-              视图 B
+              <span>视图 B</span>
             </button>
           </div>
         </div>
@@ -1245,10 +1245,11 @@ function SnapshotGraphCanvas({
           <span>暂无类型</span>
         )}
         <span className="inline-flex items-center gap-2">
-          关系强度:
+          <span>关系强度:</span>
           <span className="h-px w-10 bg-slate-300" aria-hidden />
-          弱
-          <span className="h-0.5 w-14 bg-slate-500" aria-hidden />强
+          <span>弱</span>
+          <span className="h-0.5 w-14 bg-slate-500" aria-hidden />
+          <span>强</span>
         </span>
       </div>
     </div>
@@ -3022,7 +3023,7 @@ export function KGSnapshotsPage() {
                           <span className="inline-flex h-4 w-4 items-center justify-center rounded-md bg-emerald-50 text-[10px] font-bold text-emerald-700 ring-1 ring-emerald-200/60">
                             A
                           </span>
-                          快照 A
+                          <span>快照 A</span>
                         </Label>
                         <select
                           id="pipeline-hash-a"
@@ -3055,7 +3056,7 @@ export function KGSnapshotsPage() {
                           <span className="inline-flex h-4 w-4 items-center justify-center rounded-md bg-sky-50 text-[10px] font-bold text-sky-700 ring-1 ring-sky-200/60">
                             B
                           </span>
-                          快照 B
+                          <span>快照 B</span>
                         </Label>
                         <select
                           id="pipeline-hash-b"
@@ -3354,7 +3355,7 @@ export function KGSnapshotsPage() {
                                 <span className="inline-flex h-4 w-4 items-center justify-center rounded-md bg-emerald-50 text-[10px] font-bold text-emerald-700 ring-1 ring-emerald-200/60 data-[state=active]:bg-emerald-700 data-[state=active]:text-info-foreground data-[state=active]:ring-0">
                                   A
                                 </span>
-                                视图 A
+                                <span>视图 A</span>
                               </TabsTrigger>
                               <TabsTrigger
                                 value="b"
@@ -3363,7 +3364,7 @@ export function KGSnapshotsPage() {
                                 <span className="inline-flex h-4 w-4 items-center justify-center rounded-md bg-sky-50 text-[10px] font-bold text-sky-700 ring-1 ring-sky-200/60 data-[state=active]:bg-sky-700 data-[state=active]:text-info-foreground data-[state=active]:ring-0">
                                   B
                                 </span>
-                                视图 B
+                                <span>视图 B</span>
                               </TabsTrigger>
                             </TabsList>
                           </div>

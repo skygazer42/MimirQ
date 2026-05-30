@@ -2350,7 +2350,7 @@ function SimilarityEmptyState() {
           <span className="flex size-5 items-center justify-center rounded-full border border-primary/20 text-primary">
             i
           </span>
-          支持切换主图、筛选器和独占模式，进一步探索和聚焦数据
+          <span>支持切换主图、筛选器和独占模式，进一步探索和聚焦数据</span>
         </div>
         <div className="flex items-center gap-4 text-primary/70">
           <Grid3X3 className="size-5" />

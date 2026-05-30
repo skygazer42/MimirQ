@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import re
 from collections import OrderedDict
 from typing import Any
@@ -277,6 +278,8 @@ class HeuristicExtractor:
         if not text:
             return []
 
+        # The extractor is CPU-bound but implements the async KG backend contract.
+        await asyncio.sleep(0)
         max_events_i = max(1, int(max_events or 1))
         rows = self._event_fact_candidates(
             text,

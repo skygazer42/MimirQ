@@ -132,6 +132,7 @@ class ReActWorkflow(BaseWorkflow):
 
     def register_retrieval_config_tool(self) -> "ReActWorkflow":
         async def _configure(input_text: str) -> str:
+            await asyncio.sleep(0)
             payload: dict[str, Any] = {}
             raw = str(input_text or "").strip()
             if raw:

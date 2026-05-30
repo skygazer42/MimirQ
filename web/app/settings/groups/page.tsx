@@ -463,11 +463,11 @@ function SettingsGroupsPageContent() {
           <div className="flex min-h-[440px] flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200">
             <div className="grid grid-cols-12 bg-slate-50 px-4 py-2.5 text-[12px] font-semibold text-slate-800">
               <div className="col-span-5 flex items-center gap-2">
-                名称
+                <span>名称</span>
                 <span className="text-slate-400">↕</span>
               </div>
               <div className="col-span-3 flex items-center gap-2">
-                外部组 ID
+                <span>外部组 ID</span>
                 <span className="text-slate-400">↕</span>
               </div>
               <div className="col-span-3">组 ID</div>

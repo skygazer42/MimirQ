@@ -559,19 +559,19 @@ export function KnowledgeSettingsPanel({
                       <span className="font-medium text-foreground/82">
                         模型：
                       </span>
-                      中文知识库优先看中文/多语言模型；数据集独立配置只影响当前范围，隔离文档不会因为配置变化自动重新嵌入。
+                      <span>中文知识库优先看中文/多语言模型；数据集独立配置只影响当前范围，隔离文档不会因为配置变化自动重新嵌入。</span>
                     </div>
                     <div>
                       <span className="font-medium text-foreground/82">
                         Top K：
                       </span>
-                      常规问答建议 8～20；值越高召回更全，但延迟和噪声会上升。
+                      <span>常规问答建议 8～20；值越高召回更全，但延迟和噪声会上升。</span>
                     </div>
                     <div>
                       <span className="font-medium text-foreground/82">
                         阈值：
                       </span>
-                      建议 0.50～0.80；低阈值保召回，高阈值保精度。
+                      <span>建议 0.50～0.80；低阈值保召回，高阈值保精度。</span>
                     </div>
                   </div>
                 ) : null}

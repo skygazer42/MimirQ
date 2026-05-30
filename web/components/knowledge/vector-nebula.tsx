@@ -160,7 +160,7 @@ const TYPE_STYLES: Record<string, Omit<ClusterDefinition, "count" | "chunkCount"
 function hashString(value: string): number {
   let hash = 2166136261
   for (let i = 0; i < value.length; i += 1) {
-    hash ^= value.charCodeAt(i)
+    hash ^= value.codePointAt(i) ?? 0
     hash = Math.imul(hash, 16777619)
   }
   return hash >>> 0
@@ -387,7 +387,7 @@ export function VectorNebula() {
       <div className="absolute left-4 top-4 max-w-xs rounded-xl border border-border bg-background/85 p-4 shadow-lg backdrop-blur-md">
         <h3 className="mb-2 flex items-center gap-2 text-lg font-bold">
           <span className="h-2 w-2 rounded-full bg-primary/60 animate-pulse motion-reduce:animate-none" />
-          语义星云
+          <span>语义星云</span>
         </h3>
         <p className="mb-4 text-xs text-muted-foreground">
           基于后端文档清单与真实 chunk 接口生成。节点代表入库切片，颜色来自文档类型，大小来自切片长度。

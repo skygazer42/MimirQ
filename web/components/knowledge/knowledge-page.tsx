@@ -696,13 +696,13 @@ export default function KnowledgePage() {
                     className="size-1 rounded-full bg-info/70"
                     aria-hidden
                   />
-                  范围
+                  <span>范围</span>
                   <span className="font-medium text-foreground">
                     {selectedDatasetLabel || scopeT('dataset.all')}
                   </span>
                 </span>
                 <span className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-muted/40 px-2 py-0.5 text-muted-foreground">
-                  任务
+                  <span>任务</span>
                   <span className="font-medium tabular-nums text-foreground">
                     {activeTasksCount}
                   </span>
@@ -911,7 +911,7 @@ export default function KnowledgePage() {
             <div className="flex flex-wrap items-center justify-end gap-2">
               {activeTab === 'documents' ? (
                 <div className="hidden items-center rounded-full border border-border/60 bg-card px-3 py-1 text-[11px] text-muted-foreground/80 transition-colors hover:border-border xl:inline-flex">
-                  列表
+                  <span>列表</span>
                   <span className="ml-2 font-mono tabular-nums text-foreground">
                     {filteredDocuments.length}
                   </span>

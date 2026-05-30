@@ -41,7 +41,7 @@ function isPrivateIpv6(hostname: string): boolean {
   if (normalized === '::' || normalized === '::1') return true
   if (normalized.startsWith('fc') || normalized.startsWith('fd')) return true
 
-  const compact = normalized.replace(/:/g, '')
+  const compact = normalized.replaceAll(':', '')
   return compact.startsWith('fe8') || compact.startsWith('fe9') || compact.startsWith('fea') || compact.startsWith('feb')
 }
 

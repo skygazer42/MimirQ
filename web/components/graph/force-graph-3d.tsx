@@ -34,7 +34,7 @@ import {
 
 function hashCode(s: string): number {
   let h = 0
-  for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0
+  for (let i = 0; i < s.length; i++) h = Math.trunc((h * 31 + (s.codePointAt(i) ?? 0)) % 0x7fffffff)
   return h
 }
 

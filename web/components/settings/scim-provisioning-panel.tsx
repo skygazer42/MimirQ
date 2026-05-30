@@ -55,7 +55,7 @@ export function ScimProvisioningPanel() {
           </div>
           <div>
             <div className="flex items-center gap-2 text-[14px] font-semibold text-slate-950">
-              SCIM 同步
+              <span>SCIM 同步</span>
               <span
                 className={cn(
                   'rounded-full border px-2 py-0.5 text-[10px] font-semibold',

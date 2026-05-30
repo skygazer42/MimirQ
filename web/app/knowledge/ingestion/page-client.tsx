@@ -1406,7 +1406,7 @@ function anonymizeEvidenceName(name: string): string {
   const value = String(name || '')
   let hash = 0
   for (let index = 0; index < value.length; index += 1) {
-    hash = (hash * 31 + value.charCodeAt(index)) >>> 0
+    hash = (hash * 31 + (value.codePointAt(index) ?? 0)) >>> 0
   }
   return `FILE_${hash.toString(36).toUpperCase().padStart(6, '0').slice(-6)}`
 }

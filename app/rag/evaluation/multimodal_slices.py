@@ -159,9 +159,9 @@ def classify_regression_case_multimodal_slice(case: Any) -> str:
 
 
 def summarize_multimodal_regression_slices(eval_items: list[dict[str, Any]]) -> dict[str, Any]:
-    counts = {key: 0 for key in _KNOWN_SLICES}
-    evaluatable = {key: 0 for key in _KNOWN_SLICES}
-    abstained = {key: 0 for key in _KNOWN_SLICES}
+    counts = dict.fromkeys(_KNOWN_SLICES, 0)
+    evaluatable = dict.fromkeys(_KNOWN_SLICES, 0)
+    abstained = dict.fromkeys(_KNOWN_SLICES, 0)
 
     for item in eval_items or []:
         meta = item.get("item_meta") if isinstance(item.get("item_meta"), dict) else {}

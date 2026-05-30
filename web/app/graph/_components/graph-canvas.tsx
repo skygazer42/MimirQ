@@ -45,7 +45,7 @@ function clampNumber(value: number, min: number, max: number) {
 function getSemanticNodeTone(seed: string) {
   let hash = 0
   for (let index = 0; index < seed.length; index += 1) {
-    hash = (hash * 31 + seed.charCodeAt(index)) | 0
+    hash = Math.trunc((hash * 31 + (seed.codePointAt(index) ?? 0)) % 0x7fffffff)
   }
   return SEMANTIC_NODE_TONES[Math.abs(hash) % SEMANTIC_NODE_TONES.length]
 }

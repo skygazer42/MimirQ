@@ -239,7 +239,7 @@ class LayoutRecognizer4YOLOv10(LayoutRecognizer):
         unique_class_ids = np.unique(class_ids)
         indices = []
         for class_id in unique_class_ids:
-            class_indices = np.where(class_ids == class_id)[0]
+            class_indices = np.nonzero(class_ids == class_id)[0]
             class_boxes = boxes[class_indices, :]
             class_scores = scores[class_indices]
             class_keep_boxes = nms(class_boxes, class_scores, 0.45)
