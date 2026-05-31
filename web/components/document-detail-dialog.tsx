@@ -64,6 +64,10 @@ type LifecycleValidationKey =
   | 'validation.reviewDueAt'
 type AccessModeFormValue = FormDataEntryValue | string | null | undefined
 
+function formString(value: FormDataEntryValue | string | null | undefined, fallback = ''): string {
+  return typeof value === 'string' ? value : fallback
+}
+
 function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
@@ -95,7 +99,7 @@ function asStatusBadgeStatus(status: string | undefined): StatusBadgeStatus {
 }
 
 function toDatetimeLocalValue(value: string | null | undefined): string {
-  const raw = String(value || '').trim()
+  const raw = formString(value).trim()
   if (!raw) return ''
   const d = new Date(raw)
   if (Number.isNaN(d.getTime())) return ''
@@ -104,7 +108,7 @@ function toDatetimeLocalValue(value: string | null | undefined): string {
 }
 
 function normalizeAccessMode(value: AccessModeFormValue): DocumentAccessMode {
-  const normalized = String(value || '').trim()
+  const normalized = formString(value).trim()
   switch (normalized) {
     case 'inherit':
     case 'only_me':
@@ -119,7 +123,7 @@ function normalizeAccessMode(value: AccessModeFormValue): DocumentAccessMode {
 function parseStringArrayField(value: FormDataEntryValue | string | null | undefined): string[] {
   let parsed: unknown = []
   try {
-    parsed = JSON.parse(String(value || '[]'))
+    parsed = JSON.parse(formString(value, '[]'))
   } catch {
     parsed = []
   }
@@ -140,7 +144,7 @@ function parseStringArrayField(value: FormDataEntryValue | string | null | undef
 }
 
 function normalizePublicationStatus(value: FormDataEntryValue | string | null | undefined): DocumentPublicationStatus {
-  const normalized = String(value || '').trim()
+  const normalized = formString(value).trim()
   return normalized === 'draft' || normalized === 'deprecated' ? normalized : 'published'
 }
 
@@ -386,7 +390,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
 
     let parsedTags: unknown = []
     try {
-      parsedTags = JSON.parse(String(formData.get('tags_json') || '[]'))
+      parsedTags = JSON.parse(formString(formData.get('tags_json'), '[]'))
     } catch {
       parsedTags = []
     }
@@ -536,10 +540,10 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
 
     const nextValues: LifecycleDraftValues = {
       publicationStatus: normalizePublicationStatus(formData.get('publication_status')),
-      owner: String(formData.get('lifecycle_owner') || '').trim(),
-      reviewDueAt: String(formData.get('review_due_at') || '').trim(),
-      authorityLevel: String(formData.get('authority_level') || '').trim(),
-      supersedesDocumentId: String(formData.get('supersedes_document_id') || '').trim(),
+      owner: formString(formData.get('lifecycle_owner')).trim(),
+      reviewDueAt: formString(formData.get('review_due_at')).trim(),
+      authorityLevel: formString(formData.get('authority_level')).trim(),
+      supersedesDocumentId: formString(formData.get('supersedes_document_id')).trim(),
     }
 
     const validationError = getLifecycleValidationError(nextValues, t)
@@ -858,7 +862,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
     const nextAccessMode = normalizeAccessMode(formData.get('access_mode'))
     const nextAccessGroupIds =
       nextAccessMode === 'partial_members' ? parseStringArrayField(formData.get('access_group_ids_json')) : []
-    const nextAccessMembersText = String(formData.get('access_members_text') || '')
+    const nextAccessMembersText = formString(formData.get('access_members_text'))
 
     try {
       const res = await documentApi.updateAccess(displayDoc.id, {
