@@ -44,20 +44,21 @@ def test_chunk_quality_scoring_normal_text_is_good() -> None:
 
 
 def test_chunk_asset_stage_attaches_chunk_quality_metadata() -> None:
-    from app.parsing.processors.processor import ChunkAssetStage
+    from app.parsing.processors.processor import ChunkAssetOptions, ChunkAssetStage
 
     stage = ChunkAssetStage(_FakeProcessorSvc())
     out = stage.run(
         chunks=[Document(page_content="Page 1 of 10", metadata={"source": "demo.pdf", "file_type": "pdf"})],
         tenant_id=uuid.uuid4(),
-        dataset_id=str(uuid.uuid4()),
         document_id=uuid.uuid4(),
-        resolved_backend="basic",
-        resolved_chunk_strategy="langchain_recursive",
+        options=ChunkAssetOptions(
+            dataset_id=str(uuid.uuid4()),
+            resolved_backend="basic",
+            resolved_chunk_strategy="langchain_recursive",
+        ),
     )
     assert out.chunks
     meta = out.chunks[0].metadata or {}
     q = meta.get("chunk_quality")
     assert isinstance(q, dict)
     assert q.get("schema") == "mimirq.chunk_quality.v1"
-

@@ -2,7 +2,7 @@ from uuid import UUID
 
 from langchain_core.documents import Document
 
-from app.parsing.processors.processor import ChunkAssetStage, ChunkDedupStage
+from app.parsing.processors.processor import ChunkAssetOptions, ChunkAssetStage, ChunkDedupStage
 
 
 def test_chunk_dedup_stage_drops_exact_duplicates_but_keeps_assets():
@@ -38,10 +38,12 @@ def test_chunk_asset_stage_sets_chunk_key_and_content_hash():
     out = stage.run(
         chunks=chunks,
         tenant_id=UUID(int=2),
-        dataset_id="ds",
         document_id=doc_id,
-        resolved_backend="basic",
-        resolved_chunk_strategy="langchain_recursive",
+        options=ChunkAssetOptions(
+            dataset_id="ds",
+            resolved_backend="basic",
+            resolved_chunk_strategy="langchain_recursive",
+        ),
     )
 
     assert out.chunks[0].metadata["chunk_index"] == 0

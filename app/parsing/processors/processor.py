@@ -171,6 +171,23 @@ class ChunkAssetResult:
 
 
 @dataclass(frozen=True)
+class ChunkAssetOptions:
+    dataset_id: str
+    resolved_backend: str
+    resolved_chunk_strategy: str
+    image_caption_enabled: bool = False
+    image_ocr_enabled: bool = False
+    image_ocr_max_chars: int = 2000
+    image_ocr_max_images: int = 20
+    pii_anonymize: bool = False
+    pii_mode: str = "mask"
+    pii_mask: str = REDACTED_MASK
+    secrets_redact: bool = False
+    secrets_mode: str = "mask"
+    secrets_mask: str = SECRET_MASK
+
+
+@dataclass(frozen=True)
 class ChunkPostprocessStats:
     merge_small_enabled: bool
     merge_small_min_chars: int
@@ -1605,20 +1622,8 @@ class ChunkAssetStage:
         *,
         chunks: list[Document],
         tenant_id: UUID,
-        dataset_id: str,
         document_id: UUID,
-        resolved_backend: str,
-        resolved_chunk_strategy: str,
-        image_caption_enabled: bool = False,
-        image_ocr_enabled: bool = False,
-        image_ocr_max_chars: int = 2000,
-        image_ocr_max_images: int = 20,
-        pii_anonymize: bool = False,
-        pii_mode: str = "mask",
-        pii_mask: str = REDACTED_MASK,
-        secrets_redact: bool = False,
-        secrets_mode: str = "mask",
-        secrets_mask: str = SECRET_MASK,
+        options: ChunkAssetOptions,
     ) -> ChunkAssetResult:
         from app.parsing.enrich.image_understanding import (
             append_image_understanding_text,
@@ -1631,7 +1636,20 @@ class ChunkAssetStage:
         from app.parsing.enrich.ocr_redaction import redact_ocr_text
         from app.services.chunk_quality_scoring import score_chunk_quality
 
-        max_images = max(0, int(image_ocr_max_images or 0))
+        dataset_id = options.dataset_id
+        resolved_backend = options.resolved_backend
+        resolved_chunk_strategy = options.resolved_chunk_strategy
+        image_caption_enabled = options.image_caption_enabled
+        image_ocr_enabled = options.image_ocr_enabled
+        image_ocr_max_chars = options.image_ocr_max_chars
+        pii_anonymize = options.pii_anonymize
+        pii_mode = options.pii_mode
+        pii_mask = options.pii_mask
+        secrets_redact = options.secrets_redact
+        secrets_mode = options.secrets_mode
+        secrets_mask = options.secrets_mask
+
+        max_images = max(0, int(options.image_ocr_max_images or 0))
         ocr_remaining: int | None = (max_images if max_images > 0 else None)
 
         img_ids: list[str] = []
@@ -3688,20 +3706,22 @@ class DocumentProcessorService:
                 chunk_asset = chunk_asset_stage.run(
                     chunks=chunks,
                     tenant_id=tenant_id,
-                    dataset_id=dataset_id,
                     document_id=document_id,
-                    resolved_backend=resolved_backend,
-                    resolved_chunk_strategy=resolved_chunk_strategy,
-                    image_caption_enabled=bool(getattr(pipeline_effective, "image_caption_enabled", False)),
-                    image_ocr_enabled=bool(getattr(pipeline_effective, "image_ocr_enabled", False)),
-                    image_ocr_max_chars=int(getattr(pipeline_effective, "image_ocr_max_chars", 0) or 0),
-                    image_ocr_max_images=int(getattr(pipeline_effective, "image_ocr_max_images", 0) or 0),
-                    pii_anonymize=bool(getattr(pipeline_effective, "governance_pii_anonymize", False)),
-                    pii_mode=str(getattr(pipeline_effective, "governance_pii_mode", "mask") or "mask"),
-                    pii_mask=str(getattr(pipeline_effective, "governance_pii_mask", REDACTED_MASK) or REDACTED_MASK),
-                    secrets_redact=bool(getattr(pipeline_effective, "governance_secrets_redact", False)),
-                    secrets_mode=str(getattr(pipeline_effective, "governance_secrets_mode", "mask") or "mask"),
-                    secrets_mask=str(getattr(pipeline_effective, "governance_secrets_mask", SECRET_MASK) or SECRET_MASK),
+                    options=ChunkAssetOptions(
+                        dataset_id=dataset_id,
+                        resolved_backend=resolved_backend,
+                        resolved_chunk_strategy=resolved_chunk_strategy,
+                        image_caption_enabled=bool(getattr(pipeline_effective, "image_caption_enabled", False)),
+                        image_ocr_enabled=bool(getattr(pipeline_effective, "image_ocr_enabled", False)),
+                        image_ocr_max_chars=int(getattr(pipeline_effective, "image_ocr_max_chars", 0) or 0),
+                        image_ocr_max_images=int(getattr(pipeline_effective, "image_ocr_max_images", 0) or 0),
+                        pii_anonymize=bool(getattr(pipeline_effective, "governance_pii_anonymize", False)),
+                        pii_mode=str(getattr(pipeline_effective, "governance_pii_mode", "mask") or "mask"),
+                        pii_mask=str(getattr(pipeline_effective, "governance_pii_mask", REDACTED_MASK) or REDACTED_MASK),
+                        secrets_redact=bool(getattr(pipeline_effective, "governance_secrets_redact", False)),
+                        secrets_mode=str(getattr(pipeline_effective, "governance_secrets_mode", "mask") or "mask"),
+                        secrets_mask=str(getattr(pipeline_effective, "governance_secrets_mask", SECRET_MASK) or SECRET_MASK),
+                    ),
                 )
             _add_stage_duration("chunk_assets", (time.perf_counter() - t0) * 1000)
             chunks = chunk_asset.chunks
