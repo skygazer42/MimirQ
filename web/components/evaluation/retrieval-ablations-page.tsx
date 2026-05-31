@@ -96,6 +96,26 @@ type RegressionRunLeaderboard = {
 }
 
 type AblationInlineTone = 'neutral' | 'sky' | 'amber' | 'violet' | 'emerald'
+type LeaderboardAssignRole = 'base' | 'target'
+
+type AblationRunPayloadConfig = {
+  datasetId: string
+  retrievalOnly: boolean
+  metricKeys: string[]
+  skipEmptyContexts: boolean
+  maxCases: number
+  topK: number
+  scoreThreshold: number
+  retrievalMode: string
+  alpha: number
+  enableWeightRerank: boolean
+  vectorWeight: number
+  keywordWeight: number
+  mmrLambda: number
+  enableReranker: boolean
+  rerankerProvider: string
+  rerankerTopN: number
+}
 
 const ABLATION_INLINE_TONE_CLASSES: Record<
   AblationInlineTone,
@@ -170,6 +190,10 @@ function toNumber(value: unknown): number | null {
   if (value === null || value === undefined) return null
   const n = Number(value)
   return Number.isFinite(n) ? n : null
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(value, max))
 }
 
 const RAGAS_METRIC_OPTIONS = [
@@ -272,6 +296,161 @@ function pickRunPair(
   }
 
   return { baseRunId, targetRunId }
+}
+
+function buildRegressionRunPayload(
+  config: AblationRunPayloadConfig,
+  variant: Partial<RegressionRunCreate> = {}
+): RegressionRunCreate | null {
+  const ds = config.datasetId.trim()
+  if (!ds) return null
+
+  return {
+    dataset_id: ds,
+    metrics: config.retrievalOnly ? [] : config.metricKeys,
+    skip_empty_contexts: Boolean(config.skipEmptyContexts),
+    max_cases: clampNumber(config.maxCases, 1, 500),
+    top_k: clampNumber(config.topK, 1, 50),
+    score_threshold: clampNumber(config.scoreThreshold, 0, 1),
+    retrieval_mode: config.retrievalMode,
+    alpha: clampNumber(config.alpha, 0, 1),
+    enable_weight_rerank: Boolean(config.enableWeightRerank),
+    vector_weight: clampNumber(config.vectorWeight, 0, 1),
+    keyword_weight: clampNumber(config.keywordWeight, 0, 1),
+    mmr_lambda: clampNumber(config.mmrLambda, 0, 1),
+    enable_reranker: Boolean(config.enableReranker),
+    reranker_provider: String(config.rerankerProvider || 'llm'),
+    reranker_top_n: clampNumber(config.rerankerTopN, 1, 200),
+    ...variant,
+  }
+}
+
+async function submitAblationRun(
+  payload: RegressionRunCreate | null,
+  refetchRuns: () => Promise<unknown>,
+  selectTargetRun: (id: string) => void
+): Promise<void> {
+  if (!payload) {
+    toast.error('请选择数据集')
+    return
+  }
+
+  try {
+    const run = await evaluationApi.createRegressionRun(payload)
+    toast.success('已创建实验运行')
+    await refetchRuns()
+    selectTargetRun(run.id)
+  } catch (err) {
+    toast.error(formatApiError(err, '创建实验运行失败'))
+  }
+}
+
+async function submitAblationBatch(
+  payload: RegressionRunCreate | null,
+  grid: Record<string, RegressionAblationGridValue[]>,
+  maxCombinations: number,
+  refetchRuns: () => Promise<unknown>,
+  selectTargetRun: (id: string) => void
+): Promise<void> {
+  if (!payload) {
+    toast.error('请选择数据集')
+    return
+  }
+
+  try {
+    const batch = await evaluationApi.createRegressionAblationBatch({
+      ...payload,
+      grid,
+      max_combinations: maxCombinations,
+    })
+    if (batch.run_ids[0]) {
+      selectTargetRun(batch.run_ids[0])
+    }
+    await refetchRuns()
+    toast.success(`已提交 ${batch.total} 个消融实验运行`)
+  } catch (err) {
+    const message = formatApiError(err, '批量创建消融实验运行失败')
+    toast.error(message)
+    throw new Error(message)
+  }
+}
+
+function getComparableRunIds(
+  selectedBaseRunId: string,
+  selectedTargetRunId: string
+): { baseId: string; targetId: string } | null {
+  const baseId = String(selectedBaseRunId || '').trim()
+  const targetId = String(selectedTargetRunId || '').trim()
+  if (!baseId || !targetId) {
+    toast.error('请选择基线与候选')
+    return null
+  }
+  if (baseId === targetId) {
+    toast.error('基线与候选不能相同')
+    return null
+  }
+  return { baseId, targetId }
+}
+
+async function computeRegressionDiff(
+  selectedBaseRunId: string,
+  selectedTargetRunId: string,
+  refetchDiff: () => Promise<{ error?: unknown }>
+): Promise<void> {
+  const pair = getComparableRunIds(selectedBaseRunId, selectedTargetRunId)
+  if (!pair) return
+
+  try {
+    const res = await refetchDiff()
+    if (res.error) return
+    toast.success('已生成差异对比')
+  } catch {}
+}
+
+async function exportRegressionDiffHtml(
+  selectedBaseRunId: string,
+  selectedTargetRunId: string
+): Promise<void> {
+  const pair = getComparableRunIds(selectedBaseRunId, selectedTargetRunId)
+  if (!pair) return
+
+  try {
+    const blob = await evaluationApi.exportRegressionRunDiffHtml(pair.targetId, {
+      base_run_id: pair.baseId,
+      redact: true,
+    })
+    const name = sanitizeFilename(
+      `regression-diff_${pair.baseId.slice(0, 8)}_vs_${pair.targetId.slice(0, 8)}.html`
+    )
+    downloadBlob(blob, name)
+  } catch (err) {
+    toast.error(formatApiError(err, '导出对比页面失败'))
+  }
+}
+
+async function exportRegressionRunBundle(
+  runId: string,
+  label: string
+): Promise<void> {
+  const id = String(runId || '').trim()
+  if (!id) {
+    toast.error('请选择运行记录')
+    return
+  }
+
+  try {
+    const blob = await evaluationApi.exportRegressionRunBundle(id, {
+      include_text: false,
+      include_contexts: false,
+      download: true,
+    })
+    const name = sanitizeFilename(
+      `regression-run_${label}_${id.slice(0, 8)}.json`
+    )
+    downloadBlob(blob, name)
+  } catch (err) {
+    toast.error(formatApiError(err, '导出运行记录失败'))
+  }
 }
 
 function runSelectText(run: RegressionRun): string {
@@ -723,9 +902,8 @@ export function RetrievalAblationsPage() {
 
   const [selectedBaseRunId, setSelectedBaseRunId] = useState('')
   const [selectedTargetRunId, setSelectedTargetRunId] = useState('')
-  const [leaderboardAssignRole, setLeaderboardAssignRole] = useState<
-    'base' | 'target'
-  >('target')
+  const [leaderboardAssignRole, setLeaderboardAssignRole] =
+    useState<LeaderboardAssignRole>('target')
   const [leftSidebarCollapsed, setLeftSidebarCollapsed] = useState(false)
   const [leaderboardCollapsed, setLeaderboardCollapsed] = useState(false)
   const leftSidebarExpanded = leftSidebarCollapsed === false
@@ -893,145 +1071,64 @@ export function RetrievalAblationsPage() {
     setDatasetId((prev) => prev || datasets?.[0]?.id || '')
   }, [datasets])
 
-  function buildRegressionRunPayload(
+  const runPayloadConfig: AblationRunPayloadConfig = {
+    datasetId,
+    retrievalOnly,
+    metricKeys,
+    skipEmptyContexts,
+    maxCases,
+    topK,
+    scoreThreshold,
+    retrievalMode,
+    alpha,
+    enableWeightRerank,
+    vectorWeight,
+    keywordWeight,
+    mmrLambda,
+    enableReranker,
+    rerankerProvider,
+    rerankerTopN,
+  }
+
+  function buildCurrentRegressionRunPayload(
     variant: Partial<RegressionRunCreate> = {}
   ): RegressionRunCreate | null {
-    const ds = datasetId.trim()
-    if (!ds) {
-      return null
-    }
-    const basePayload: RegressionRunCreate = {
-      dataset_id: ds,
-      metrics: retrievalOnly ? [] : metricKeys,
-      skip_empty_contexts: Boolean(skipEmptyContexts),
-      max_cases: Math.max(1, Math.min(maxCases, 500)),
-      top_k: Math.max(1, Math.min(topK, 50)),
-      score_threshold: Math.max(0, Math.min(scoreThreshold, 1)),
-      retrieval_mode: retrievalMode,
-      alpha: Math.max(0, Math.min(alpha, 1)),
-      enable_weight_rerank: Boolean(enableWeightRerank),
-      vector_weight: Math.max(0, Math.min(vectorWeight, 1)),
-      keyword_weight: Math.max(0, Math.min(keywordWeight, 1)),
-      mmr_lambda: Math.max(0, Math.min(mmrLambda, 1)),
-      enable_reranker: Boolean(enableReranker),
-      reranker_provider: String(rerankerProvider || 'llm'),
-      reranker_top_n: Math.max(1, Math.min(rerankerTopN, 200)),
-    }
-    return {
-      ...basePayload,
-      ...variant,
-      dataset_id: ds,
-    }
+    return buildRegressionRunPayload(runPayloadConfig, variant)
   }
 
   async function runAblation(): Promise<void> {
-    const payload = buildRegressionRunPayload()
-    if (!payload) {
-      toast.error('请选择数据集')
-      return
-    }
-
-    try {
-      const run = await evaluationApi.createRegressionRun(payload)
-      toast.success('已创建实验运行')
-      await runsQuery.refetch()
-      setSelectedTargetRunId(run.id)
-    } catch (err) {
-      toast.error(formatApiError(err, '创建实验运行失败'))
-    }
+    await submitAblationRun(
+      buildCurrentRegressionRunPayload(),
+      () => runsQuery.refetch(),
+      setSelectedTargetRunId
+    )
   }
 
   async function runGridBatch(
     grid: Record<string, RegressionAblationGridValue[]>,
     maxCombinations: number
   ): Promise<void> {
-    const payload = buildRegressionRunPayload()
-    if (!payload) {
-      toast.error('请选择数据集')
-      return
-    }
-    try {
-      const batch = await evaluationApi.createRegressionAblationBatch({
-        ...payload,
-        grid,
-        max_combinations: maxCombinations,
-      })
-      if (batch.run_ids[0]) {
-        setSelectedTargetRunId(batch.run_ids[0])
-      }
-      await runsQuery.refetch()
-      toast.success(`已提交 ${batch.total} 个消融实验运行`)
-    } catch (err) {
-      const message = formatApiError(err, '批量创建消融实验运行失败')
-      toast.error(message)
-      throw new Error(message)
-    }
+    await submitAblationBatch(
+      buildCurrentRegressionRunPayload(),
+      grid,
+      maxCombinations,
+      () => runsQuery.refetch(),
+      setSelectedTargetRunId
+    )
   }
 
   async function computeDiff(): Promise<void> {
-    const baseId = String(selectedBaseRunId || '').trim()
-    const targetId = String(selectedTargetRunId || '').trim()
-    if (!baseId || !targetId) {
-      toast.error('请选择基线与候选')
-      return
-    }
-    if (baseId === targetId) {
-      toast.error('基线与候选不能相同')
-      return
-    }
-    try {
-      const res = await diffQuery.refetch()
-      if (res.error) return
-      toast.success('已生成差异对比')
-    } catch {}
+    await computeRegressionDiff(selectedBaseRunId, selectedTargetRunId, () =>
+      diffQuery.refetch()
+    )
   }
 
   async function exportDiffHtml(): Promise<void> {
-    const baseId = String(selectedBaseRunId || '').trim()
-    const targetId = String(selectedTargetRunId || '').trim()
-    if (!baseId || !targetId) {
-      toast.error('请选择基线与候选')
-      return
-    }
-    if (baseId === targetId) {
-      toast.error('基线与候选不能相同')
-      return
-    }
-
-    try {
-      const blob = await evaluationApi.exportRegressionRunDiffHtml(targetId, {
-        base_run_id: baseId,
-        redact: true,
-      })
-      const name = sanitizeFilename(
-        `regression-diff_${baseId.slice(0, 8)}_vs_${targetId.slice(0, 8)}.html`
-      )
-      downloadBlob(blob, name)
-    } catch (err) {
-      toast.error(formatApiError(err, '导出对比页面失败'))
-    }
+    await exportRegressionDiffHtml(selectedBaseRunId, selectedTargetRunId)
   }
 
   async function exportRunBundle(runId: string, label: string): Promise<void> {
-    const id = String(runId || '').trim()
-    if (!id) {
-      toast.error('请选择运行记录')
-      return
-    }
-
-    try {
-      const blob = await evaluationApi.exportRegressionRunBundle(id, {
-        include_text: false,
-        include_contexts: false,
-        download: true,
-      })
-      const name = sanitizeFilename(
-        `regression-run_${label}_${id.slice(0, 8)}.json`
-      )
-      downloadBlob(blob, name)
-    } catch (err) {
-      toast.error(formatApiError(err, '导出运行记录失败'))
-    }
+    await exportRegressionRunBundle(runId, label)
   }
 
   const leaderboardItems = leaderboardQuery.data?.items
