@@ -68,7 +68,7 @@ class _FakeSession:
 @pytest.mark.asyncio
 async def test_kg_extract_async_requires_queue_enabled(monkeypatch):
     from app.core import config as config_mod
-    from app.rag.kg.api.routes import run_kg_extraction_for_document
+    from app.rag.kg.api.routes import KGExtractionOptions, run_kg_extraction_for_document
 
     monkeypatch.setattr(config_mod.settings, "KG_ENABLED", True, raising=False)
     monkeypatch.setattr(config_mod.settings, "TASK_QUEUE_ENABLED", False, raising=False)
@@ -79,14 +79,7 @@ async def test_kg_extract_async_requires_queue_enabled(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         await run_kg_extraction_for_document(
             document_id=UUID(int=2),
-            async_mode=True,
-            replace_existing=None,
-            prune_orphan_entities=None,
-            extract_relations=None,
-            extract_skills=None,
-            prompt_template_id=None,
-            prompt_template_key=None,
-            prompt_ab_experiment_key=None,
+            options=KGExtractionOptions(async_mode=True),
             tenant_id=UUID(int=3),
             account_id="u",
             response=Response(),
@@ -98,7 +91,7 @@ async def test_kg_extract_async_requires_queue_enabled(monkeypatch):
 @pytest.mark.asyncio
 async def test_kg_extract_async_enqueues_and_returns_202(monkeypatch):
     from app.core import config as config_mod
-    from app.rag.kg.api.routes import run_kg_extraction_for_document
+    from app.rag.kg.api.routes import KGExtractionOptions, run_kg_extraction_for_document
 
     monkeypatch.setattr(config_mod.settings, "KG_ENABLED", True, raising=False)
     monkeypatch.setattr(config_mod.settings, "TASK_QUEUE_ENABLED", True, raising=False)
@@ -135,14 +128,7 @@ async def test_kg_extract_async_enqueues_and_returns_202(monkeypatch):
     resp = Response()
     out = await run_kg_extraction_for_document(
         document_id=UUID(int=2),
-        async_mode=True,
-        replace_existing=None,
-        prune_orphan_entities=None,
-        extract_relations=None,
-        extract_skills=None,
-        prompt_template_id=None,
-        prompt_template_key=None,
-        prompt_ab_experiment_key=None,
+        options=KGExtractionOptions(async_mode=True),
         tenant_id=UUID(int=3),
         account_id="u",
         response=resp,
