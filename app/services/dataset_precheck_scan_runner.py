@@ -58,6 +58,7 @@ from app.services.dataset_profile_utils import (
 )
 
 logger = get_logger("services.dataset_precheck_scan")
+_PRECHECK_RUNNER_FALLBACK_LOG_MESSAGE = "Ignoring non-critical precheck runner fallback failure: %s"
 
 UPLOAD_DIR_FALLBACK = "./uploads"
 REDACTED_MASK = "[REDACTED]"
@@ -716,7 +717,7 @@ def _xlsx_spreadsheet_stats(path: Path, *, max_sheets: int = 3) -> tuple[dict[st
             if wb is not None:
                 wb.close()
         except Exception as exc:
-            logger.debug("Ignoring non-critical precheck runner fallback failure: %s", exc)
+            logger.debug(_PRECHECK_RUNNER_FALLBACK_LOG_MESSAGE, exc)
 
 
 def _mask_pii_value(kind: str, raw: str) -> str:
@@ -1341,7 +1342,7 @@ def run_dataset_precheck_scan(
                                 for b in risk_buckets_for_file(file_type=ft, findings=prev_findings):
                                     risk_bucket_counts[b] = int(risk_bucket_counts.get(b, 0) or 0) + 1
                             except Exception as exc:
-                                logger.debug("Ignoring non-critical precheck runner fallback failure: %s", exc)
+                                logger.debug(_PRECHECK_RUNNER_FALLBACK_LOG_MESSAGE, exc)
 
                             _update_directory_stats(name=rec.name, file_size=int(bs), findings=list(prev_findings) if isinstance(prev_findings, list) else [])
 
@@ -1366,7 +1367,7 @@ def run_dataset_precheck_scan(
                                     try:
                                         simhash_entries.append((rec.name, int(sim_hex, 16), int(bs), int(tl), int(prev.get("file_mtime") or 0)))
                                     except Exception as exc:
-                                        logger.debug("Ignoring non-critical precheck runner fallback failure: %s", exc)
+                                        logger.debug(_PRECHECK_RUNNER_FALLBACK_LOG_MESSAGE, exc)
                             if compute_file_hash:
                                 sha = str(prev.get("file_sha256") or "").strip().lower()
                                 if sha:
@@ -1709,7 +1710,7 @@ def run_dataset_precheck_scan(
                 for b in risk_buckets_for_file(file_type=ft, findings=rec.findings):
                     risk_bucket_counts[b] = int(risk_bucket_counts.get(b, 0) or 0) + 1
             except Exception as exc:
-                logger.debug("Ignoring non-critical precheck runner fallback failure: %s", exc)
+                logger.debug(_PRECHECK_RUNNER_FALLBACK_LOG_MESSAGE, exc)
 
             # Write JSONL line.
             jf.write(json.dumps(asdict(rec), ensure_ascii=False, separators=(",", ":")))

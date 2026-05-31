@@ -12,6 +12,7 @@ from app.rag.chunking.base import BaseChunker
 from app.rag.core.logging import get_logger
 
 logger = get_logger(__name__)
+_LLAMA_INDEX_CHUNKING_FALLBACK_LOG_MESSAGE = "Ignoring non-critical LlamaIndex chunking fallback failure: %s"
 
 
 def _estimate_tokens_from_chars(chars: int, *, min_tokens: int = 0) -> int:
@@ -148,14 +149,14 @@ class LlamaIndexHierarchicalChunker(BaseChunker):
                     if parent_id:
                         parent_by_id[node_id_str] = str(parent_id)
                 except Exception as exc:
-                    logger.debug("Ignoring non-critical LlamaIndex chunking fallback failure: %s", exc)
+                    logger.debug(_LLAMA_INDEX_CHUNKING_FALLBACK_LOG_MESSAGE, exc)
 
                 try:
                     children_rel = rels.get(NodeRelationship.CHILD)
                     if children_rel:
                         child_counts[node_id_str] = len(children_rel) if hasattr(children_rel, "__len__") else 1
                 except Exception as exc:
-                    logger.debug("Ignoring non-critical LlamaIndex chunking fallback failure: %s", exc)
+                    logger.debug(_LLAMA_INDEX_CHUNKING_FALLBACK_LOG_MESSAGE, exc)
 
             level_cache: dict[str, int] = {}
 
@@ -199,7 +200,7 @@ class LlamaIndexHierarchicalChunker(BaseChunker):
                     if parent_rel and getattr(parent_rel, "node_id", None):
                         metadata["parent_node_id"] = parent_rel.node_id
                 except Exception as exc:
-                    logger.debug("Ignoring non-critical LlamaIndex chunking fallback failure: %s", exc)
+                    logger.debug(_LLAMA_INDEX_CHUNKING_FALLBACK_LOG_MESSAGE, exc)
                 
                 chunks.append(Document(page_content=node.get_content(), metadata=metadata))
         return chunks

@@ -21,6 +21,7 @@ from app.parsing.quality.reading_order import score_pdfplumber_reading_order
 from app.rag.core.logging import get_logger
 
 logger = get_logger("parsing.quality.scorer")
+_PARSING_QUALITY_FALLBACK_LOG_MESSAGE = "Ignoring non-critical parsing quality fallback failure: %s"
 
 
 def score_pdf_quality(
@@ -96,7 +97,7 @@ def score_pdf_quality(
         try:
             preprocess_info.update(_detect_preprocess_info(file_path, sample_pages=sample_pages))
         except Exception as exc:
-            logger.debug("Ignoring non-critical parsing quality fallback failure: %s", exc)
+            logger.debug(_PARSING_QUALITY_FALLBACK_LOG_MESSAGE, exc)
 
     # Weighted sum: text 40% + format 25% + table 20% + reading order 15%.
     final_score = (
@@ -186,7 +187,7 @@ def _detect_preprocess_info(file_path: Path, *, sample_pages: int) -> dict[str, 
             if doc is not None:
                 doc.close()
         except Exception as exc:
-            logger.debug("Ignoring non-critical parsing quality fallback failure: %s", exc)
+            logger.debug(_PARSING_QUALITY_FALLBACK_LOG_MESSAGE, exc)
 
 
 def _score_text_quality(
@@ -283,7 +284,7 @@ def _score_format_consistency(pages: list) -> float:
             text = page.extract_text() or ""
             paragraph_count += len(re.findall(r"\n\n+", text)) + 1
         except Exception as exc:
-            logger.debug("Ignoring non-critical parsing quality fallback failure: %s", exc)
+            logger.debug(_PARSING_QUALITY_FALLBACK_LOG_MESSAGE, exc)
 
     if not font_sizes:
         # No font info => default to mid score.
@@ -338,7 +339,7 @@ def _score_table_quality(pages: list) -> float:
                 if rows >= 2 and len(cells) >= 4:
                     well_formed_tables += 1
         except Exception as exc:
-            logger.debug("Ignoring non-critical parsing quality fallback failure: %s", exc)
+            logger.debug(_PARSING_QUALITY_FALLBACK_LOG_MESSAGE, exc)
 
     if total_tables == 0:
         # No tables => full score.

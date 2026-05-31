@@ -23,6 +23,7 @@ _POSITION_TAG_RE = re.compile(
 )
 _SENTENCE_BOUNDARIES = {"。", "！", "？", ".", "!", "?", "\n"}
 logger = get_logger(__name__)
+_CITATION_FALLBACK_LOG_MESSAGE = "Ignoring non-critical citation fallback failure: %s"
 
 
 def _collapse_ws(text: str) -> str:
@@ -852,7 +853,7 @@ def build_citations_from_docs(
                 try:
                     citation["tag_schema_link_score"] = round(float(tag_schema_link_score), 6)
                 except Exception as exc:
-                    logger.debug("Ignoring non-critical citation fallback failure: %s", exc)
+                    logger.debug(_CITATION_FALLBACK_LOG_MESSAGE, exc)
             if tag_schema_link_strategy is not None:
                 citation["tag_schema_link_strategy"] = str(tag_schema_link_strategy)[:80]
             if tag_row_source_table is not None:
@@ -891,7 +892,7 @@ def build_citations_from_docs(
                         try:
                             item["confidence"] = round(float(conf), 6)
                         except Exception as exc:
-                            logger.debug("Ignoring non-critical citation fallback failure: %s", exc)
+                            logger.debug(_CITATION_FALLBACK_LOG_MESSAGE, exc)
                     if item:
                         join_items.append(item)
                     if len(join_items) >= 10:
@@ -960,7 +961,7 @@ def build_citations_from_docs(
                 if raw.get("hops") is not None:
                     out["hops"] = int(raw.get("hops") or 0)
             except Exception as exc:
-                logger.debug("Ignoring non-critical citation fallback failure: %s", exc)
+                logger.debug(_CITATION_FALLBACK_LOG_MESSAGE, exc)
 
             nodes_raw = raw.get("nodes")
             if isinstance(nodes_raw, list) and nodes_raw:
@@ -1131,6 +1132,6 @@ def build_citations_from_docs(
             if matched2:
                 c["matched_terms"] = matched2
     except Exception as exc:
-        logger.debug("Ignoring non-critical citation fallback failure: %s", exc)
+        logger.debug(_CITATION_FALLBACK_LOG_MESSAGE, exc)
 
     return citations

@@ -20,6 +20,8 @@ logger = get_logger("storage.vector.milvus")
 
 _MILVUS_MAX_VARCHAR_BYTES = 65_535
 _MILVUS_EXPR_MAX_CHARS = 8000
+_MILVUS_EXPR_AND = " and "
+_MILVUS_FALLBACK_LOG_MESSAGE = "Ignoring non-critical Milvus fallback failure: %s"
 _MILVUS_FIELD_NAME_RE = re.compile(r"^[A-Za-z_]\w*$")
 _MILVUS_WARNED_WRITE_COMPAT_FALLBACK = False
 _MILVUS_WARNED_SEARCH_EXPR_FALLBACK = False
@@ -289,7 +291,7 @@ def _build_milvus_metadata_expr(metadata_filter: dict[str, Any] | None) -> str |
 
     if not parts:
         return None
-    expr = " and ".join(parts)
+    expr = _MILVUS_EXPR_AND.join(parts)
     if len(expr) > _MILVUS_EXPR_MAX_CHARS:
         return None
     return expr
@@ -530,12 +532,12 @@ class MilvusAdapter:
         if tenant_id:
             parts.append(f'tenant_id == "{_escape_milvus_string(str(tenant_id))}"')
         parts.append(f'document_id == "{_escape_milvus_string(str(document_id))}"')
-        expr = " and ".join(parts)
+        expr = _MILVUS_EXPR_AND.join(parts)
         self._store.delete(expr=expr)
         try:
             self._store.col.flush()  # type: ignore[union-attr]
         except Exception as exc:
-            logger.debug("Ignoring non-critical Milvus fallback failure: %s", exc)
+            logger.debug(_MILVUS_FALLBACK_LOG_MESSAGE, exc)
 
     def delete_by_document_id_and_filter(
         self,
@@ -554,13 +556,13 @@ class MilvusAdapter:
         if tenant_id:
             parts.append(f'tenant_id == "{_escape_milvus_string(str(tenant_id))}"')
         parts.append(f'document_id == "{_escape_milvus_string(str(document_id))}"')
-        base_expr = " and ".join(parts)
+        base_expr = _MILVUS_EXPR_AND.join(parts)
         expr = f"({base_expr}) and ({metadata_expr})"
         self._store.delete(expr=expr)
         try:
             self._store.col.flush()  # type: ignore[union-attr]
         except Exception as exc:
-            logger.debug("Ignoring non-critical Milvus fallback failure: %s", exc)
+            logger.debug(_MILVUS_FALLBACK_LOG_MESSAGE, exc)
 
     def search(
         self,
@@ -732,7 +734,7 @@ class MilvusVectorStore:
             else:
                 doc_id_strs = [f'"{str(doc_id)}"' for doc_id in document_ids]
                 expr_parts.append(f"document_id in [{', '.join(doc_id_strs)}]")
-        return " and ".join(expr_parts) if expr_parts else None
+        return _MILVUS_EXPR_AND.join(expr_parts) if expr_parts else None
 
     def add_documents(
         self,
@@ -779,7 +781,7 @@ class MilvusVectorStore:
 
                     observe_milvus_write_compat_fallback(dropped_fields="dataset_id_embedding_space_hash")
                 except Exception as exc:
-                    logger.debug("Ignoring non-critical Milvus fallback failure: %s", exc)
+                    logger.debug(_MILVUS_FALLBACK_LOG_MESSAGE, exc)
                 for m in metadatas_norm:
                     m.pop("dataset_id", None)
                     m.pop("embedding_space_hash", None)
@@ -886,7 +888,7 @@ class MilvusVectorStore:
                     has_base_expr=bool(base_expr),
                 )
             except Exception as exc:
-                logger.debug("Ignoring non-critical Milvus fallback failure: %s", exc)
+                logger.debug(_MILVUS_FALLBACK_LOG_MESSAGE, exc)
             results = self._store.similarity_search_with_score(query, k=top_k * 2, expr=base_expr)
 
         formatted: list[dict[str, Any]] = []
@@ -937,7 +939,7 @@ class MilvusVectorStore:
             try:
                 self._store.col.flush()  # type: ignore[union-attr]
             except Exception as exc:
-                logger.debug("Ignoring non-critical Milvus fallback failure: %s", exc)
+                logger.debug(_MILVUS_FALLBACK_LOG_MESSAGE, exc)
 
     def delete_by_document_id_and_filter(
         self,
@@ -966,7 +968,7 @@ class MilvusVectorStore:
         try:
             self._store.col.flush()  # type: ignore[union-attr]
         except Exception as exc:
-            logger.debug("Ignoring non-critical Milvus fallback failure: %s", exc)
+            logger.debug(_MILVUS_FALLBACK_LOG_MESSAGE, exc)
 
     def get_collection_count(self) -> int:
         """Return document count in the vector collection."""

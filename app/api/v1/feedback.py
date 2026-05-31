@@ -48,6 +48,7 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 
 router = APIRouter(tags=["Feedback"], responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 logger = get_logger(__name__)
+_FEEDBACK_FALLBACK_LOG_MESSAGE = "Ignoring non-critical feedback fallback failure: %s"
 
 
 class FeedbackToRegressionCaseRequest(BaseModel):
@@ -485,7 +486,7 @@ async def create_regression_case_from_feedback(
     try:
         db.flush()
     except Exception as exc:
-        logger.debug("Ignoring non-critical feedback fallback failure: %s", exc)
+        logger.debug(_FEEDBACK_FALLBACK_LOG_MESSAGE, exc)
 
     # Best-effort audit log (commit in the same transaction).
     audit_log_event(
@@ -647,7 +648,7 @@ async def create_evidence_item_from_feedback(
                 reference_sources=reference_sources,
             )
     except Exception as exc:
-        logger.debug("Ignoring non-critical feedback fallback failure: %s", exc)
+        logger.debug(_FEEDBACK_FALLBACK_LOG_MESSAGE, exc)
 
     retrieval_snapshot: dict[str, Any] = trace_payload if isinstance(trace_payload, dict) else {}
     rag_config_snapshot: dict[str, Any] = {}
@@ -681,7 +682,7 @@ async def create_evidence_item_from_feedback(
     try:
         db.flush()
     except Exception as exc:
-        logger.debug("Ignoring non-critical feedback fallback failure: %s", exc)
+        logger.debug(_FEEDBACK_FALLBACK_LOG_MESSAGE, exc)
 
     audit_log_event(
         db,

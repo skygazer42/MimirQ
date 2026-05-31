@@ -78,6 +78,7 @@ INCLUDE_ENTITY_LINKS_DESC = "Include entity-entity co-occurrence links"
 INCLUDE_RELATION_LINKS_DESC = "Include entity-entity relation links (triples)"
 KG_API_GRAPH_METRIC = "kg.api.graph"
 KG_API_GRAPH_EXPAND_METRIC = "kg.api.graph_expand"
+KG_API_FALLBACK_LOG_MESSAGE = "Ignoring non-critical KG API fallback failure: %s"
 
 
 def _log_kg_api_metric(event: str, **fields: object) -> None:
@@ -2189,7 +2190,7 @@ def create_kg_entity_alias(
             )
         )
     except Exception as exc:
-        logger.debug("Ignoring non-critical KG API fallback failure: %s", exc)
+        logger.debug(KG_API_FALLBACK_LOG_MESSAGE, exc)
 
     try:
         db.commit()
@@ -2197,7 +2198,7 @@ def create_kg_entity_alias(
         try:
             db.rollback()
         except Exception as exc:
-            logger.debug("Ignoring non-critical KG API fallback failure: %s", exc)
+            logger.debug(KG_API_FALLBACK_LOG_MESSAGE, exc)
         raise
 
     return KGEntityAliasItem.model_validate(alias_row)
@@ -2242,7 +2243,7 @@ def delete_kg_entity_alias(
             )
         )
     except Exception as exc:
-        logger.debug("Ignoring non-critical KG API fallback failure: %s", exc)
+        logger.debug(KG_API_FALLBACK_LOG_MESSAGE, exc)
 
     try:
         db.commit()
@@ -2250,7 +2251,7 @@ def delete_kg_entity_alias(
         try:
             db.rollback()
         except Exception as exc:
-            logger.debug("Ignoring non-critical KG API fallback failure: %s", exc)
+            logger.debug(KG_API_FALLBACK_LOG_MESSAGE, exc)
         raise
 
     # Return the current alias set after deletion.
@@ -2526,7 +2527,7 @@ def create_kg_predicate_ontology(
             )
         )
     except Exception as exc:
-        logger.debug("Ignoring non-critical KG API fallback failure: %s", exc)
+        logger.debug(KG_API_FALLBACK_LOG_MESSAGE, exc)
 
     try:
         db.commit()
@@ -2535,7 +2536,7 @@ def create_kg_predicate_ontology(
         try:
             db.rollback()
         except Exception as exc:
-            logger.debug("Ignoring non-critical KG API fallback failure: %s", exc)
+            logger.debug(KG_API_FALLBACK_LOG_MESSAGE, exc)
         raise
 
     return KGPredicateOntologyItem.model_validate(row)
@@ -2587,7 +2588,7 @@ def update_kg_predicate_ontology(
             )
         )
     except Exception as exc:
-        logger.debug("Ignoring non-critical KG API fallback failure: %s", exc)
+        logger.debug(KG_API_FALLBACK_LOG_MESSAGE, exc)
 
     try:
         db.commit()
@@ -2596,7 +2597,7 @@ def update_kg_predicate_ontology(
         try:
             db.rollback()
         except Exception as exc:
-            logger.debug("Ignoring non-critical KG API fallback failure: %s", exc)
+            logger.debug(KG_API_FALLBACK_LOG_MESSAGE, exc)
         raise
 
     return KGPredicateOntologyItem.model_validate(row)
@@ -2640,7 +2641,7 @@ def delete_kg_predicate_ontology(
             )
         )
     except Exception as exc:
-        logger.debug("Ignoring non-critical KG API fallback failure: %s", exc)
+        logger.debug(KG_API_FALLBACK_LOG_MESSAGE, exc)
 
     try:
         db.commit()
@@ -2648,7 +2649,7 @@ def delete_kg_predicate_ontology(
         try:
             db.rollback()
         except Exception as exc:
-            logger.debug("Ignoring non-critical KG API fallback failure: %s", exc)
+            logger.debug(KG_API_FALLBACK_LOG_MESSAGE, exc)
         raise
 
     # Return updated list for convenience in the UI.
@@ -2891,7 +2892,7 @@ def merge_kg_entities(
         try:
             db.rollback()
         except Exception as exc:
-            logger.debug("Ignoring non-critical KG API fallback failure: %s", exc)
+            logger.debug(KG_API_FALLBACK_LOG_MESSAGE, exc)
         raise
 
     return KGEntityMergeResponse(
@@ -3036,7 +3037,7 @@ def split_kg_entity(
             )
         )
     except Exception as exc:
-        logger.debug("Ignoring non-critical KG API fallback failure: %s", exc)
+        logger.debug(KG_API_FALLBACK_LOG_MESSAGE, exc)
 
     try:
         db.commit()
@@ -3044,7 +3045,7 @@ def split_kg_entity(
         try:
             db.rollback()
         except Exception as exc:
-            logger.debug("Ignoring non-critical KG API fallback failure: %s", exc)
+            logger.debug(KG_API_FALLBACK_LOG_MESSAGE, exc)
         raise
 
     return KGEntitySplitResponse(
@@ -3214,7 +3215,7 @@ def undo_kg_entity_resolution_action(
                         embeddings=[list(ent.vector)],
                     )
             except Exception as exc:
-                logger.debug("Ignoring non-critical KG API fallback failure: %s", exc)
+                logger.debug(KG_API_FALLBACK_LOG_MESSAGE, exc)
 
     elif action_kind == "split":
         original_id = _uuid_or_none(payload.get("original_entity_id"))
@@ -3269,7 +3270,7 @@ def undo_kg_entity_resolution_action(
                     db.delete(ent)
                     deleted_new_entity = True
         except Exception as exc:
-            logger.debug("Ignoring non-critical KG API fallback failure: %s", exc)
+            logger.debug(KG_API_FALLBACK_LOG_MESSAGE, exc)
 
         source_id = original_id
         target_id = new_id
@@ -3291,7 +3292,7 @@ def undo_kg_entity_resolution_action(
             )
         )
     except Exception as exc:
-        logger.debug("Ignoring non-critical KG API fallback failure: %s", exc)
+        logger.debug(KG_API_FALLBACK_LOG_MESSAGE, exc)
 
     try:
         db.commit()
@@ -3299,7 +3300,7 @@ def undo_kg_entity_resolution_action(
         try:
             db.rollback()
         except Exception as exc:
-            logger.debug("Ignoring non-critical KG API fallback failure: %s", exc)
+            logger.debug(KG_API_FALLBACK_LOG_MESSAGE, exc)
         raise
 
     return KGEntityResolutionUndoResponse(
@@ -3347,7 +3348,7 @@ def delete_kg_for_document(
         try:
             db.rollback()
         except Exception as exc:
-            logger.debug("Ignoring non-critical KG API fallback failure: %s", exc)
+            logger.debug(KG_API_FALLBACK_LOG_MESSAGE, exc)
 
     stats = Indexer(db).delete_event_indexes(
         tenant_id=tenant_id,

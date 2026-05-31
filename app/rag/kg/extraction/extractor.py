@@ -42,6 +42,7 @@ from app.services.prompt_resolver import resolve_prompt_template
 from app.types.indexing import EventEntityInput, IndexingOptions, IndexKind, IndexRecord
 
 logger = get_logger("kg.extract.extractor")
+_KG_EXTRACTOR_FALLBACK_LOG_MESSAGE = "Ignoring non-critical KG extractor fallback failure: %s"
 
 _PROMPT_SELECTOR_KEYS = (
     "kg_prompt_template_id",
@@ -1920,7 +1921,7 @@ class EventExtractor:
                     try:
                         session.rollback()
                     except Exception as exc:
-                        logger.debug("Ignoring non-critical KG extractor fallback failure: %s", exc)
+                        logger.debug(_KG_EXTRACTOR_FALLBACK_LOG_MESSAGE, exc)
                     logger.warning("KG relation pass failed; continuing without relations: %s", str(exc)[:200])
 
             # Optional pass: extract Skill/SOP entities and link them to the new events.
@@ -2313,7 +2314,7 @@ class EventExtractor:
                                             continue
                                         seen_skill_rel_keys.add((subj_id, str(pred or "").strip(), obj_id))
                                 except Exception as exc:
-                                    logger.debug("Ignoring non-critical KG extractor fallback failure: %s", exc)
+                                    logger.debug(_KG_EXTRACTOR_FALLBACK_LOG_MESSAGE, exc)
 
                                 skill_ids_in_chunk: list[tuple[object, float, dict]] = []
                                 for item in items:
@@ -2557,7 +2558,7 @@ class EventExtractor:
                     try:
                         session.rollback()
                     except Exception as exc:
-                        logger.debug("Ignoring non-critical KG extractor fallback failure: %s", exc)
+                        logger.debug(_KG_EXTRACTOR_FALLBACK_LOG_MESSAGE, exc)
                     logger.warning("KG skill pass failed; continuing without skills: %s", str(exc)[:200])
 
             replace_cleanup_chunk_ids = list(
@@ -2750,5 +2751,5 @@ class EventExtractor:
             try:
                 session.rollback()
             except Exception as exc:
-                logger.debug("Ignoring non-critical KG extractor fallback failure: %s", exc)
+                logger.debug(_KG_EXTRACTOR_FALLBACK_LOG_MESSAGE, exc)
             logger.warning("Failed to write back kg metrics to document metadata: %s", str(exc)[:200])

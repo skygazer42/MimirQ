@@ -28,6 +28,7 @@ from app.core.config import settings
 from app.rag.core.logging import get_logger
 
 logger = get_logger("parsing.etl4llm")
+_ETL4LLM_PARSER_FALLBACK_LOG_MESSAGE = "Ignoring non-critical ETL4LLM parser fallback failure: %s"
 
 
 _HEADER_FOOTER_TYPES = {
@@ -192,7 +193,7 @@ class Etl4LlmParser:
                 try:
                     img.close()
                 except Exception as exc:
-                    logger.debug("Ignoring non-critical ETL4LLM parser fallback failure: %s", exc)
+                    logger.debug(_ETL4LLM_PARSER_FALLBACK_LOG_MESSAGE, exc)
             pdf.close()
 
         return written, mapping
@@ -252,7 +253,7 @@ class Etl4LlmParser:
             try:
                 meta["bboxes"].extend([list(map(int, b)) for b in bboxes if isinstance(b, (list, tuple)) and len(b) == 4])
             except Exception as exc:
-                logger.debug("Ignoring non-critical ETL4LLM parser fallback failure: %s", exc)
+                logger.debug(_ETL4LLM_PARSER_FALLBACK_LOG_MESSAGE, exc)
             if isinstance(pages, list):
                 meta["pages"].extend(pages)
             if isinstance(types, list):
@@ -268,7 +269,7 @@ class Etl4LlmParser:
                     shifted.append([s + prev_length, e + prev_length])
                 meta["indexes"].extend(shifted)
             except Exception as exc:
-                logger.debug("Ignoring non-critical ETL4LLM parser fallback failure: %s", exc)
+                logger.debug(_ETL4LLM_PARSER_FALLBACK_LOG_MESSAGE, exc)
 
             prev_length += len(parts[-1])
             last_label = label
@@ -370,7 +371,7 @@ class Etl4LlmParser:
                     try:
                         pdf.close()
                     except Exception as exc:
-                        logger.debug("Ignoring non-critical ETL4LLM parser fallback failure: %s", exc)
+                        logger.debug(_ETL4LLM_PARSER_FALLBACK_LOG_MESSAGE, exc)
 
                 if page_refs:
                     gallery = "\n\n".join(page_refs).strip()

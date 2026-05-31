@@ -33,6 +33,7 @@ from app.deepdoc.parser.pdf_parser import IntegratedPipelinePdfParser
 from app.rag.core.logging import get_logger
 
 logger = get_logger("deepdoc.parser.docling")
+_DOCLING_PARSER_FALLBACK_LOG_MESSAGE = "Ignoring non-critical docling parser fallback failure: %s"
 
 
 class DoclingContentType(str, Enum):
@@ -100,7 +101,7 @@ class JsonReportProcessor:
             try:
                 html = tab.export_to_html(doc=doc)
             except Exception as exc:
-                logger.debug("Ignoring non-critical docling parser fallback failure: %s", exc)
+                logger.debug(_DOCLING_PARSER_FALLBACK_LOG_MESSAGE, exc)
             rows.append(((img, html), positions if positions else ""))
         return rows
 
@@ -126,7 +127,7 @@ class JsonReportProcessor:
             try:
                 captions = pic.caption_text(doc=doc)
             except Exception as exc:
-                logger.debug("Ignoring non-critical docling parser fallback failure: %s", exc)
+                logger.debug(_DOCLING_PARSER_FALLBACK_LOG_MESSAGE, exc)
             rows.append(((img, [captions]), positions if positions else ""))
         return rows
 
@@ -478,7 +479,7 @@ class DoclingParser(IntegratedPipelinePdfParser):
             try:
                 Path(src_path).unlink(missing_ok=True)
             except Exception as exc:
-                logger.debug("Ignoring non-critical docling parser fallback failure: %s", exc)
+                logger.debug(_DOCLING_PARSER_FALLBACK_LOG_MESSAGE, exc)
 
         if callback:
             callback(1.0, "[Docling] Done.")

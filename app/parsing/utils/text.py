@@ -21,6 +21,7 @@ from app.core.optional_deps import optional_import
 from app.rag.core.logging import get_logger
 
 logger = get_logger(__name__)
+_TEXT_DECODE_FALLBACK_LOG_MESSAGE = "Ignoring non-critical text decode fallback failure: %s"
 
 
 @dataclass(frozen=True)
@@ -178,14 +179,14 @@ def read_text_file(path: Path, *, default_encoding: str = "utf-8") -> DecodedTex
             text = blob.decode("utf-32", errors="strict")
             return DecodedText(text=text.lstrip("\ufeff"), encoding="utf-32", confidence=1.0, had_bom=True)
         except UnicodeDecodeError as exc:
-            logger.debug("Ignoring non-critical text decode fallback failure: %s", exc)
+            logger.debug(_TEXT_DECODE_FALLBACK_LOG_MESSAGE, exc)
 
     if _has_utf16_bom(blob):
         try:
             text = blob.decode("utf-16", errors="strict")
             return DecodedText(text=text.lstrip("\ufeff"), encoding="utf-16", confidence=1.0, had_bom=True)
         except UnicodeDecodeError as exc:
-            logger.debug("Ignoring non-critical text decode fallback failure: %s", exc)
+            logger.debug(_TEXT_DECODE_FALLBACK_LOG_MESSAGE, exc)
 
     # 2) Fast path: UTF-8 (with BOM stripping).
     try:
@@ -196,7 +197,7 @@ def read_text_file(path: Path, *, default_encoding: str = "utf-8") -> DecodedTex
             had_bom=had_bom,
         )
     except UnicodeDecodeError as exc:
-        logger.debug("Ignoring non-critical text decode fallback failure: %s", exc)
+        logger.debug(_TEXT_DECODE_FALLBACK_LOG_MESSAGE, exc)
 
     # 3) Best-effort detection with chardet.
     detected_encoding: str | None = None

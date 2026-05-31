@@ -28,6 +28,7 @@ from app.services.audit_log_service import audit_log_event
 from app.services.regression_run_retention import plan_regression_run_purge, purge_regression_run_rows
 
 logger = get_logger(__name__)
+_RETENTION_FALLBACK_LOG_MESSAGE = "Ignoring non-critical retention fallback failure: %s"
 SYSTEM_RETENTION_ACTOR_ID = "system:retention"
 
 _delete_document_lifecycle = None
@@ -169,7 +170,7 @@ def run_audit_log_retention(
         try:
             db.rollback()
         except Exception as exc:
-            logger.debug("Ignoring non-critical retention fallback failure: %s", exc)
+            logger.debug(_RETENTION_FALLBACK_LOG_MESSAGE, exc)
 
     return {
         "tenant_id": str(tenant_id),
@@ -258,7 +259,7 @@ def run_regression_run_retention(
         try:
             db.rollback()
         except Exception as exc:
-            logger.debug("Ignoring non-critical retention fallback failure: %s", exc)
+            logger.debug(_RETENTION_FALLBACK_LOG_MESSAGE, exc)
 
     return {
         "tenant_id": str(tenant_id),
@@ -383,7 +384,7 @@ async def run_knowledge_asset_retention(
         try:
             db.rollback()
         except Exception as exc:
-            logger.debug("Ignoring non-critical retention fallback failure: %s", exc)
+            logger.debug(_RETENTION_FALLBACK_LOG_MESSAGE, exc)
 
     return summary
 

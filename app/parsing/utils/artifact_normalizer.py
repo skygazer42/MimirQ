@@ -23,6 +23,7 @@ from app.rag.core.logging import get_logger
 
 _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
 logger = get_logger(__name__)
+_ARTIFACT_NORMALIZATION_FALLBACK_LOG_MESSAGE = "Ignoring non-critical artifact normalization fallback failure: %s"
 
 
 def _safe_direct_child(root: Path, name: str, *, field: str) -> Path:
@@ -217,7 +218,7 @@ def normalize_extracted_artifacts(
             img.relative_to(image_dir)
             continue
         except Exception as exc:
-            logger.debug("Ignoring non-critical artifact normalization fallback failure: %s", exc)
+            logger.debug(_ARTIFACT_NORMALIZATION_FALLBACK_LOG_MESSAGE, exc)
 
         new_name = f"image_{counter:03d}{img.suffix.lower()}"
         new_rel = f"{output_image_dir}/{new_name}"
@@ -228,11 +229,11 @@ def normalize_extracted_artifacts(
         try:
             keys.append(img.relative_to(root).as_posix())
         except Exception as exc:
-            logger.debug("Ignoring non-critical artifact normalization fallback failure: %s", exc)
+            logger.debug(_ARTIFACT_NORMALIZATION_FALLBACK_LOG_MESSAGE, exc)
         try:
             keys.append(img.relative_to(md_file.parent).as_posix())
         except Exception as exc:
-            logger.debug("Ignoring non-critical artifact normalization fallback failure: %s", exc)
+            logger.debug(_ARTIFACT_NORMALIZATION_FALLBACK_LOG_MESSAGE, exc)
         keys.append(img.name)
 
         # Move (best-effort).

@@ -40,6 +40,7 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 logger = get_logger(__name__)
+_LTR_ROUTER_FALLBACK_LOG_MESSAGE = "Ignoring non-critical LTR router fallback failure: %s"
 
 _NO_PERMISSION_TO_MANAGE_LTR_MODELS_DETAIL = "No permission to manage LTR models"
 
@@ -164,7 +165,7 @@ async def register_ltr_model(
         try:
             db.rollback()
         except Exception as exc:
-            logger.debug("Ignoring non-critical LTR router fallback failure: %s", exc)
+            logger.debug(_LTR_ROUTER_FALLBACK_LOG_MESSAGE, exc)
 
     return LTRModelRegisterResponse(
         model=LTRModelInfo(
@@ -222,7 +223,7 @@ async def activate_ltr_model(
         try:
             db.rollback()
         except Exception as exc:
-            logger.debug("Ignoring non-critical LTR router fallback failure: %s", exc)
+            logger.debug(_LTR_ROUTER_FALLBACK_LOG_MESSAGE, exc)
 
     return LTRModelActivateResponse(active=dict(active or {}))
 
@@ -266,6 +267,6 @@ async def rollback_ltr_model(
         try:
             db.rollback()
         except Exception as exc:
-            logger.debug("Ignoring non-critical LTR router fallback failure: %s", exc)
+            logger.debug(_LTR_ROUTER_FALLBACK_LOG_MESSAGE, exc)
 
     return LTRModelActivateResponse(active=dict(active or {}))

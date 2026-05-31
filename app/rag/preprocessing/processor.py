@@ -41,6 +41,7 @@ from app.rag.preprocessing.tables import normalize_markdown_tables
 from app.rag.preprocessing.urls import normalize_urls as normalize_urls_fn
 
 logger = get_logger(__name__)
+_MARKDOWN_GOVERNANCE_FALLBACK_LOG_MESSAGE = "Ignoring non-critical markdown governance fallback failure: %s"
 
 GOVERNANCE_RULESET_VERSION = "1"
 
@@ -399,7 +400,7 @@ class GovernanceProcessor:
                     paragraphs_dropped = int(getattr(para, "paragraphs_dropped", 0) or 0)
                     changed_any = changed_any or bool(getattr(para, "changed", False))
                 except Exception as exc:
-                    logger.debug("Ignoring non-critical markdown governance fallback failure: %s", exc)
+                    logger.debug(_MARKDOWN_GOVERNANCE_FALLBACK_LOG_MESSAGE, exc)
 
             if trim_references:
                 try:
@@ -408,7 +409,7 @@ class GovernanceProcessor:
                     references_removed_lines = int(getattr(ref, "removed_lines", 0) or 0)
                     changed_any = changed_any or bool(getattr(ref, "changed", False))
                 except Exception as exc:
-                    logger.debug("Ignoring non-critical markdown governance fallback failure: %s", exc)
+                    logger.debug(_MARKDOWN_GOVERNANCE_FALLBACK_LOG_MESSAGE, exc)
 
             if normalize_urls:
                 try:
@@ -417,7 +418,7 @@ class GovernanceProcessor:
                     urls_changed = int(getattr(url, "urls_changed", 0) or 0)
                     changed_any = changed_any or bool(getattr(url, "changed", False))
                 except Exception as exc:
-                    logger.debug("Ignoring non-critical markdown governance fallback failure: %s", exc)
+                    logger.debug(_MARKDOWN_GOVERNANCE_FALLBACK_LOG_MESSAGE, exc)
 
             paragraphs_dropped_total += int(paragraphs_dropped or 0)
             references_removed_total += int(references_removed_lines or 0)
