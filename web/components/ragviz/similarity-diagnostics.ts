@@ -96,7 +96,7 @@ function toFiniteNumber(value: number | null | undefined): number | null {
 }
 
 function sanitizeId(raw: unknown, fallback: string): string {
-  const value = String(raw ?? '').trim()
+  const value = typeof raw === 'string' || typeof raw === 'number' ? String(raw).trim() : ''
   return value || fallback
 }
 

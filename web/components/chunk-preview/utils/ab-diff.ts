@@ -84,7 +84,11 @@ export type SemanticEvidenceHighlights = {
 }
 
 function normalizeEvidenceText(value: unknown): string {
-  return String(value ?? '').trim().replace(/\s+/g, ' ')
+  if (value == null) return ''
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value).trim().replace(/\s+/g, ' ')
+  }
+  return ''
 }
 
 function buildBigramSet(value: string): Set<string> {

@@ -315,7 +315,7 @@ export default function DatasetDbCatalogPage() {
       const v = latestProfile?.profile?.row_count_estimate
       if (v === null || v === undefined) return null
       if (typeof v === 'number' && Number.isFinite(v)) return v
-      const n = Number.parseInt(String(v), 10)
+      const n = typeof v === 'string' ? Number.parseInt(v, 10) : Number.NaN
       return Number.isFinite(n) ? n : null
     })()
     return (

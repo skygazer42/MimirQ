@@ -21,6 +21,12 @@ function kindLabel(kind: string): string {
  return '正文'
 }
 
+function primitiveText(value: unknown, fallback = ''): string {
+ if (typeof value === 'string') return value
+ if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+ return fallback
+}
+
 function formatBbox(value: ParsingElement['bbox']): string {
  if (!value) return ''
  return `${value.x0},${value.y0},${value.x1},${value.y1}`
@@ -87,7 +93,7 @@ export function ParsingElementsPanel({
  const filterVisualKinds = useMemo(() => {
  const visualKinds = new Set<string>(['all'])
  for (const element of elements || []) {
- const visualKind = String(element.visual_kind || (element.attributes as Record<string, unknown> | null)?.visual_kind || '').trim()
+ const visualKind = primitiveText(element.visual_kind || (element.attributes as Record<string, unknown> | null)?.visual_kind).trim()
  if (visualKind) visualKinds.add(visualKind)
  }
  return Array.from(visualKinds)
@@ -96,7 +102,7 @@ export function ParsingElementsPanel({
  return (elements || []).filter((element) => {
  if (filterKind !== 'all' && element.kind !== filterKind) return false
  if (filterVisualKind === 'all') return true
- const visualKind = String(element.visual_kind || (element.attributes as Record<string, unknown> | null)?.visual_kind || '').trim()
+ const visualKind = primitiveText(element.visual_kind || (element.attributes as Record<string, unknown> | null)?.visual_kind).trim()
  return visualKind === filterVisualKind
  })
  }, [elements, filterKind, filterVisualKind])

@@ -718,7 +718,9 @@ export function GraphNodeDetailPanel({
                       文档来源
                     </div>
                     <div className="text-[11px] leading-4.5 text-info underline underline-offset-4">
-                      {String(selectedNode.source)}
+                      {typeof selectedNode.source === 'string' || typeof selectedNode.source === 'number'
+                        ? String(selectedNode.source)
+                        : ''}
                     </div>
                   </button>
                 ) : null}

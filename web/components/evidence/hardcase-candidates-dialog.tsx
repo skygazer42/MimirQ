@@ -164,9 +164,9 @@ export function HardcaseCandidatesDialog({
                     const errKinds = (candidate.retrieval_error_kinds || {}) as Record<string, number>
                     const errBadges = buildErrBadges(errKinds)
                     const template = candidate.rag_config_template ?? null
-                    const templateKey = template ? String(template.template_key || '').trim() : ''
+                    const templateKey = template && typeof template.template_key === 'string' ? template.template_key.trim() : ''
                     const templateVersion = template && Number.isFinite(Number(template.version)) ? Number(template.version) : null
-                    const templatePatch = template ? String(template.patch_hash || '').trim() : ''
+                    const templatePatch = template && typeof template.patch_hash === 'string' ? template.patch_hash.trim() : ''
                     const templateVersionLabel = templateVersion === null ? '' : `@${templateVersion}`
                     const templateLabel = templateKey ? `${templateKey}${templateVersionLabel}` : ''
 
