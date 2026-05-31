@@ -25,7 +25,7 @@ describe('parsing residual message sources', () => {
     expect(utilsSrc).toContain("label: t('libraryStatus.parsing')")
     expect(utilsSrc).toContain("label: t('libraryStatus.error')")
     expect(utilsSrc).toContain("label: t('libraryStatus.pending')")
-    expect(shellSrc).toContain('getLibraryStatusBadge(activeLibraryFile.status, t)')
+    expect(shellSrc).toContain('getLibraryStatusBadge(t, activeLibraryFile.status)')
   })
 
   it('moves queue/editor/run action toast copy into ParsingWorkbench translations', () => {

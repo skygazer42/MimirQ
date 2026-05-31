@@ -521,7 +521,7 @@ function generateTemplateRuleIds(count: number) {
 
 function parseExtensions(text: string): string[] {
   return (text || '')
-    .split(/[,\\n\\s]+/g)
+    .split(/[,\s]+/g)
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean)
     .map((s) => (s.startsWith('.') ? s : `.${s}`))

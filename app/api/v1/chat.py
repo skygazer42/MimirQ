@@ -572,7 +572,6 @@ async def stream_chat(
     Streaming chat endpoint (core flow).
     """
 
-    conversation_id = request.conversation_id
     long_term_messages: list[dict] = []
     allow_empty_docs = bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True))
     allow_open_scope = bool(getattr(settings, "CHAT_ALLOW_OPEN_SCOPE", False))

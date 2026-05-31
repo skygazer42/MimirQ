@@ -182,19 +182,17 @@ function toSignalValueMap(values: Record<string, number> | Record<number, number
 }
 
 function csvEscape(value: unknown) {
-  let raw = ''
   if (value == null) {
-    raw = ''
-  } else if (
+    return ''
+  }
+  const raw = (
     typeof value === 'string'
     || typeof value === 'number'
     || typeof value === 'boolean'
     || typeof value === 'bigint'
-  ) {
-    raw = toPrimitiveString(value)
-  } else {
-    raw = JSON.stringify(value)
-  }
+  )
+    ? toPrimitiveString(value)
+    : JSON.stringify(value)
   const needsQuote = /[",\n\r]/.test(raw)
   const escaped = raw.replaceAll("\"", '""')
   return needsQuote ? `"${escaped}"` : escaped

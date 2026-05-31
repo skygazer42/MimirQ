@@ -64,7 +64,7 @@ def _iter_cues(text: str) -> list[_Cue]:
         m = _TIMECODE_RE.match(line.text.strip())
         if not m:
             continue
-        cue_start = lines[i].start
+        cue_start = line.start
         if i > 0:
             prev = lines[i - 1].text.strip()
             if prev.isdigit():

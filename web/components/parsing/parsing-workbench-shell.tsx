@@ -1121,7 +1121,7 @@ export function ParsingWorkbenchShell({
     (activeLibraryFolderPathLabel.split('/').pop() || '').trim() ||
     activeLibraryFolderPathLabel
   const activeLibraryStatusBadge = activeLibraryFile?.status
-    ? getLibraryStatusBadge(activeLibraryFile.status, t)
+    ? getLibraryStatusBadge(t, activeLibraryFile.status)
     : null
   const filename = String(activeLibraryFile?.filename || '')
   const activeLibraryMarkdownAvailable = Boolean(

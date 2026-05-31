@@ -321,7 +321,7 @@ class MinerUParser(IntegratedPipelinePdfParser):
             if pdf is not None:
                 pdf.close()
 
-    def _line_tag(self, bx):
+    def _line_tag(self, bx, zoom=1):
         pn = [bx["page_idx"] + 1]
         positions = bx.get("bbox", (0, 0, 0, 0))
         x0, top, x1, bott = positions
