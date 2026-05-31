@@ -39,6 +39,9 @@ from app.services.chat_conversation_titles import (
     apply_auto_conversation_title as _apply_auto_conversation_title,  # noqa: F401
 )
 from app.services.chat_execution_runtime import (
+    ChatExecutionContext as _ChatExecutionContext,
+)
+from app.services.chat_execution_runtime import (
     execute_extractive_fallback_once as _execute_extractive_fallback_once,
 )
 from app.services.chat_execution_runtime import (
@@ -383,45 +386,34 @@ async def chat(
                         )
                 else:
                     try:
+                        execution_context = _ChatExecutionContext(
+                            db=db,
+                            tenant_id=tenant_id,
+                            account_id=account_id,
+                            request=request,
+                            conversation_id=conversation_id,
+                            request_id=str(request_id),
+                            doc_ids_to_use=doc_ids_to_use,
+                            history_for_llm=history_for_llm,
+                            scope_dataset_id=scope_dataset_id,
+                            dataset_id_used=dataset_id_used,
+                            effective_rag_config=effective_rag_config,
+                            effective_prompt_template_id=effective_prompt_template_id,
+                            effective_prompt_template_key=effective_prompt_template_key,
+                            effective_prompt_ab_experiment_key=effective_prompt_ab_experiment_key,
+                            rag_config_template_meta=rag_config_template_meta,
+                        )
                         if effective_rag_config.use_graph:
                             chat_result = await run_blocking_retrieval_call(
                                 _execute_graph_chat_once,
-                                db=db,
-                                tenant_id=tenant_id,
-                                account_id=account_id,
-                                request=request,
-                                conversation_id=conversation_id,
-                                request_id=str(request_id),
-                                doc_ids_to_use=doc_ids_to_use,
-                                history_for_llm=history_for_llm,
-                                scope_dataset_id=scope_dataset_id,
-                                dataset_id_used=dataset_id_used,
-                                effective_rag_config=effective_rag_config,
-                                effective_prompt_template_id=effective_prompt_template_id,
-                                effective_prompt_template_key=effective_prompt_template_key,
-                                effective_prompt_ab_experiment_key=effective_prompt_ab_experiment_key,
-                                rag_config_template_meta=rag_config_template_meta,
+                                context=execution_context,
                                 runtime_metrics=offload_metrics,
                             )
                         else:
                             engine = get_rag_engine()
                             chat_result = await _execute_langchain_chat_once(
                                 engine=engine,
-                                db=db,
-                                tenant_id=tenant_id,
-                                account_id=account_id,
-                                request=request,
-                                conversation_id=conversation_id,
-                                request_id=str(request_id),
-                                doc_ids_to_use=doc_ids_to_use,
-                                history_for_llm=history_for_llm,
-                                scope_dataset_id=scope_dataset_id,
-                                dataset_id_used=dataset_id_used,
-                                effective_rag_config=effective_rag_config,
-                                effective_prompt_template_id=effective_prompt_template_id,
-                                effective_prompt_template_key=effective_prompt_template_key,
-                                effective_prompt_ab_experiment_key=effective_prompt_ab_experiment_key,
-                                rag_config_template_meta=rag_config_template_meta,
+                                context=execution_context,
                             )
                     except Exception as exc:
                         if not _is_model_provider_unavailable_error(exc):

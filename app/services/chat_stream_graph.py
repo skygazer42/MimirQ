@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import Any, AsyncIterator, Callable, cast
-from uuid import UUID
-
-from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.services.chat_execution_runtime import ChatExecutionContext
 from app.services.chat_runtime import (
     ChatStreamPersistInput,
     annotate_chat_cache_metrics,
@@ -20,27 +18,47 @@ from app.services.chat_stream_common import (
 from app.services.chat_stream_persistence import dispatch_chat_stream_persistence
 
 
+@dataclass(frozen=True)
+class GraphChatStreamSessionInput:
+    execution: ChatExecutionContext
+    cache_feature_enabled: bool
+    cache_hit: bool
+    cache_skip_reason: str | None
+    cache_eligible: bool
+    cache_key: str | None
+    dataset_rag_defaults_applied_fields: list[str] | None
+    dataset_rag_config_template_defaults_applied_fields: list[str] | None
+    dataset_prompt_defaults_applied_fields: list[str] | None
+    tenant_qps_meta: dict[str, Any] | None
+    quota_meta: dict[str, Any] | None
+    persist_in_background: bool
+    spawn_background_task: Callable[[Any], None]
+    persist_options: ChatStreamPersistInput
+
+
 async def stream_graph_chat_events(
     *,
-    db: Session,
-    tenant_id: UUID,
-    account_id: str,
-    request: Any,
-    conversation_id: UUID | None,
-    request_id: str,
-    doc_ids_to_use: list[UUID],
-    history_for_llm: list[dict[str, Any]],
-    scope_dataset_id: UUID | None,
-    dataset_id_used: UUID | None,
-    effective_rag_config: Any,
-    effective_prompt_template_id: UUID | None,
-    effective_prompt_template_key: str | None,
-    effective_prompt_ab_experiment_key: str | None,
-    rag_config_template_meta: dict[str, Any] | None,
+    context: ChatExecutionContext,
     result_holder: dict[str, Any],
 ) -> AsyncIterator[dict[str, Any]]:
     from app.rag.core.text import parse_json_from_text
     from app.rag.pipelines.langgraph import build_rag_state, rag_workflow
+
+    db = context.db
+    tenant_id = context.tenant_id
+    account_id = context.account_id
+    request = context.request
+    conversation_id = context.conversation_id
+    request_id = context.request_id
+    doc_ids_to_use = context.doc_ids_to_use
+    history_for_llm = context.history_for_llm
+    scope_dataset_id = context.scope_dataset_id
+    dataset_id_used = context.dataset_id_used
+    effective_rag_config = context.effective_rag_config
+    effective_prompt_template_id = context.effective_prompt_template_id
+    effective_prompt_template_key = context.effective_prompt_template_key
+    effective_prompt_ab_experiment_key = context.effective_prompt_ab_experiment_key
+    rag_config_template_meta = context.rag_config_template_meta
 
     thread_id = str(conversation_id) if conversation_id else f"rag-{request_id}"
     runtime_context = {
@@ -212,52 +230,20 @@ async def stream_graph_chat_events(
 
 async def stream_graph_chat_session_events(
     *,
-    db: Session,
-    tenant_id: UUID,
-    account_id: str,
-    request: Any,
-    conversation_id: UUID | None,
-    request_id: str,
-    doc_ids_to_use: list[UUID],
-    history_for_llm: list[dict[str, Any]],
-    scope_dataset_id: UUID | None,
-    dataset_id_used: UUID | None,
-    effective_rag_config: Any,
-    effective_prompt_template_id: UUID | None,
-    effective_prompt_template_key: str | None,
-    effective_prompt_ab_experiment_key: str | None,
-    rag_config_template_meta: dict[str, Any] | None,
-    cache_feature_enabled: bool,
-    cache_hit: bool,
-    cache_skip_reason: str | None,
-    cache_eligible: bool,
-    cache_key: str | None,
-    dataset_rag_defaults_applied_fields: list[str] | None = None,
-    dataset_rag_config_template_defaults_applied_fields: list[str] | None = None,
-    dataset_prompt_defaults_applied_fields: list[str] | None = None,
-    tenant_qps_meta: dict[str, Any] | None = None,
-    quota_meta: dict[str, Any] | None = None,
-    persist_in_background: bool,
-    spawn_background_task: Callable[[Any], None],
-    persist_options: ChatStreamPersistInput,
+    options: GraphChatStreamSessionInput,
 ) -> AsyncIterator[dict[str, Any]]:
+    context = options.execution
+    db = context.db
+    tenant_id = context.tenant_id
+    conversation_id = context.conversation_id
+    request_id = context.request_id
+    dataset_id_used = context.dataset_id_used
+    effective_rag_config = context.effective_rag_config
+    rag_config_template_meta = context.rag_config_template_meta
+
     graph_stream_state: dict[str, Any] = {}
     async for graph_event in stream_graph_chat_events(
-        db=db,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        request=request,
-        conversation_id=conversation_id,
-        request_id=request_id,
-        doc_ids_to_use=doc_ids_to_use,
-        history_for_llm=history_for_llm,
-        scope_dataset_id=scope_dataset_id,
-        dataset_id_used=dataset_id_used,
-        effective_rag_config=effective_rag_config,
-        effective_prompt_template_id=effective_prompt_template_id,
-        effective_prompt_template_key=effective_prompt_template_key,
-        effective_prompt_ab_experiment_key=effective_prompt_ab_experiment_key,
-        rag_config_template_meta=rag_config_template_meta,
+        context=context,
         result_holder=graph_stream_state,
     ):
         graph_event["request_id"] = str(request_id)
@@ -270,24 +256,24 @@ async def stream_graph_chat_session_events(
 
     metrics_data = annotate_chat_cache_metrics(
         metrics_data,
-        enabled=cache_feature_enabled,
-        hit=cache_hit,
-        skip_reason=None if cache_hit else cache_skip_reason,
+        enabled=options.cache_feature_enabled,
+        hit=options.cache_hit,
+        skip_reason=None if options.cache_hit else options.cache_skip_reason,
     )
     metrics_data = apply_chat_runtime_metrics_context(
         metrics_data,
         dataset_id_used=dataset_id_used,
-        dataset_rag_defaults_applied_fields=dataset_rag_defaults_applied_fields,
-        dataset_rag_config_template_defaults_applied_fields=dataset_rag_config_template_defaults_applied_fields,
+        dataset_rag_defaults_applied_fields=options.dataset_rag_defaults_applied_fields,
+        dataset_rag_config_template_defaults_applied_fields=options.dataset_rag_config_template_defaults_applied_fields,
         rag_config_template_meta=rag_config_template_meta,
-        dataset_prompt_defaults_applied_fields=dataset_prompt_defaults_applied_fields,
-        tenant_qps_meta=tenant_qps_meta,
-        quota_meta=quota_meta,
+        dataset_prompt_defaults_applied_fields=options.dataset_prompt_defaults_applied_fields,
+        tenant_qps_meta=options.tenant_qps_meta,
+        quota_meta=options.quota_meta,
     )
 
     yield build_chat_stream_done_event(
         request_id=str(request_id),
-        assistant_message_id=persist_options.assistant_message_id,
+        assistant_message_id=options.persist_options.assistant_message_id,
         conversation_id=conversation_id,
         content=full_response,
         citations=citations_data,
@@ -300,9 +286,9 @@ async def stream_graph_chat_session_events(
     )
 
     store_chat_response_cache_if_needed(
-        cache_eligible=cache_eligible,
-        cache_hit=cache_hit,
-        cache_key=cache_key,
+        cache_eligible=options.cache_eligible,
+        cache_hit=options.cache_hit,
+        cache_key=options.cache_key,
         content=full_response,
         citations=citations_data,
         metrics=metrics_data,
@@ -320,12 +306,12 @@ async def stream_graph_chat_session_events(
 
     dispatch_chat_stream_persistence(
         db=db,
-        persist_in_background=persist_in_background,
-        spawn_background_task=spawn_background_task,
+        persist_in_background=options.persist_in_background,
+        spawn_background_task=options.spawn_background_task,
         options=cast(
             ChatStreamPersistInput,
             replace(
-                persist_options,
+                options.persist_options,
                 content=full_response,
                 citations=citations_data,
                 metrics=metrics_data,
