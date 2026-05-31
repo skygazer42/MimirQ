@@ -11,7 +11,7 @@ import uuid
 import zipfile
 from difflib import SequenceMatcher, unified_diff
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
@@ -305,7 +305,7 @@ def _is_focus_keyword(text: str) -> bool:
         return False
     if not token.isascii() and len(token) > 12:
         return False
-    if token.startswith("项目由") or token.startswith("本文"):
+    if token.startswith(("项目由", "本文")):
         return False
     return True
 
@@ -409,6 +409,50 @@ def _dedupe_auto_document_tags(items: list[AutoDocumentTag], *, max_items: int) 
         if len(out) >= max_items:
             break
     return out
+
+
+def _normalize_auto_document_tags(raw_tags: list[Any]) -> list[AutoDocumentTag]:
+    document_tags: list[AutoDocumentTag] = []
+    for tag in raw_tags:
+        item = _make_auto_document_tag(
+            tag_type=str(tag.type),
+            value=tag.value,
+            label=tag.label,
+            confidence=float(tag.confidence),
+            source=tag.source,
+        )
+        if item is not None:
+            document_tags.append(item)
+    return document_tags
+
+
+def _normalize_span_annotations(
+    text: str,
+    raw_annotations: list[Any],
+    *,
+    max_items: int,
+) -> list[AutoAnnotationItem]:
+    annotations: list[AutoAnnotationItem] = []
+    for raw in raw_annotations:
+        quote = str(raw.text or "").strip()
+        if not quote:
+            continue
+        for start, end in _find_keyword_offsets(text, quote, limit=1):
+            item = _make_auto_annotation(
+                source_text=text,
+                start=start,
+                end=end,
+                annotation_type=str(raw.type),
+                label=raw.label,
+                confidence=min(0.99, max(0.0, float(raw.confidence))),
+                source=raw.source,
+            )
+            if item is not None:
+                annotations.append(item)
+            break
+        if len(annotations) >= max_items:
+            break
+    return annotations
 
 
 def _derive_document_tags_from_annotations(items: list[AutoAnnotationItem], *, max_items: int) -> list[AutoDocumentTag]:
@@ -773,38 +817,8 @@ async def _collect_llm_focus_annotations(
         max_items=max_items,
     )
 
-    document_tags: list[AutoDocumentTag] = []
-    for tag in result.document_tags:
-        item = _make_auto_document_tag(
-            tag_type=str(tag.type),
-            value=tag.value,
-            label=tag.label,
-            confidence=float(tag.confidence),
-            source=tag.source,
-        )
-        if item is not None:
-            document_tags.append(item)
-
-    annotations: list[AutoAnnotationItem] = []
-    for raw in result.span_annotations:
-        quote = str(raw.text or "").strip()
-        if not quote:
-            continue
-        for start, end in _find_keyword_offsets(text, quote, limit=1):
-            item = _make_auto_annotation(
-                source_text=text,
-                start=start,
-                end=end,
-                annotation_type=str(raw.type),
-                label=raw.label,
-                confidence=min(0.99, max(0.0, float(raw.confidence))),
-                source=raw.source,
-            )
-            if item is not None:
-                annotations.append(item)
-            break
-        if len(annotations) >= max_items:
-            break
+    document_tags = _normalize_auto_document_tags(result.document_tags)
+    annotations = _normalize_span_annotations(text, result.span_annotations, max_items=max_items)
     return result.summary, document_tags, annotations
 
 
@@ -822,38 +836,8 @@ def _collect_cpu_focus_annotations(
         max_items=max_items,
     )
 
-    document_tags: list[AutoDocumentTag] = []
-    for tag in result.document_tags:
-        item = _make_auto_document_tag(
-            tag_type=str(tag.type),
-            value=tag.value,
-            label=tag.label,
-            confidence=float(tag.confidence),
-            source=tag.source,
-        )
-        if item is not None:
-            document_tags.append(item)
-
-    annotations: list[AutoAnnotationItem] = []
-    for raw in result.span_annotations:
-        quote = str(raw.text or "").strip()
-        if not quote:
-            continue
-        for start, end in _find_keyword_offsets(text, quote, limit=1):
-            item = _make_auto_annotation(
-                source_text=text,
-                start=start,
-                end=end,
-                annotation_type=str(raw.type),
-                label=raw.label,
-                confidence=min(0.99, max(0.0, float(raw.confidence))),
-                source=raw.source,
-            )
-            if item is not None:
-                annotations.append(item)
-            break
-        if len(annotations) >= max_items:
-            break
+    document_tags = _normalize_auto_document_tags(result.document_tags)
+    annotations = _normalize_span_annotations(text, result.span_annotations, max_items=max_items)
     return result.summary, document_tags, annotations
 
 
@@ -1019,6 +1003,46 @@ def _resolve_profile_ref(
         return _profile_out_from_row(row)
 
     raise HTTPException(status_code=404, detail=GOVERNANCE_PROFILE_NOT_FOUND_DETAIL)
+
+
+def _resolve_custom_profile_row(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    profile_ref: str,
+) -> DBGovernanceProfile:
+    ref = str(profile_ref or "").strip()
+    if ref in _BUILTIN_GOVERNANCE_BY_KEY:
+        raise HTTPException(status_code=403, detail="built-in profiles are read-only")
+
+    try:
+        ref_uuid = UUID(ref)
+    except Exception:
+        ref_uuid = None
+
+    q = db.query(DBGovernanceProfile).filter(DBGovernanceProfile.tenant_id == tenant_id)
+    row = q.filter(DBGovernanceProfile.id == ref_uuid).first() if ref_uuid else q.filter(DBGovernanceProfile.key == ref).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail=GOVERNANCE_PROFILE_NOT_FOUND_DETAIL)
+    return row
+
+
+def _governance_analysis_options(body: CleanPreviewRequest | GovernanceAnalyzeRequest) -> dict[str, object]:
+    return {
+        "remove_control_chars": bool(body.remove_control_chars),
+        "unwrap_lines": bool(body.unwrap_lines),
+        "remove_common_lines": bool(body.remove_common_lines),
+        "remove_boilerplate": bool(body.remove_boilerplate),
+        "normalize_tables": bool(body.normalize_tables),
+        "normalize_urls": bool(body.normalize_urls),
+        "normalize_urls_strip_tracking": bool(body.normalize_urls_strip_tracking),
+        "remove_images": str(body.remove_images or "none"),
+        "drop_outline_only": bool(body.drop_outline_only),
+        "drop_outline_min_content_chars": int(body.drop_outline_min_content_chars or 0),
+        "drop_outline_max_heading_ratio": float(body.drop_outline_max_heading_ratio or 0.0),
+        "drop_low_density": bool(body.drop_low_density),
+        "drop_low_density_threshold": float(body.drop_low_density_threshold or 0.0),
+    }
 
 
 def _line_diff_stats(before: str, after: str) -> tuple[int, int, int]:
@@ -1622,20 +1646,7 @@ async def update_governance_profile(
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    ref = str(profile_ref or "").strip()
-    if ref in _BUILTIN_GOVERNANCE_BY_KEY:
-        raise HTTPException(status_code=403, detail="built-in profiles are read-only")
-
-    # Resolve custom profile row by UUID or key.
-    try:
-        ref_uuid = UUID(ref)
-    except Exception:
-        ref_uuid = None
-
-    q = db.query(DBGovernanceProfile).filter(DBGovernanceProfile.tenant_id == tenant_id)
-    row = q.filter(DBGovernanceProfile.id == ref_uuid).first() if ref_uuid else q.filter(DBGovernanceProfile.key == ref).first()
-    if row is None:
-        raise HTTPException(status_code=404, detail=GOVERNANCE_PROFILE_NOT_FOUND_DETAIL)
+    row = _resolve_custom_profile_row(db=db, tenant_id=tenant_id, profile_ref=profile_ref)
 
     if body.name is not None:
         name = str(body.name or "").strip()
@@ -1671,19 +1682,7 @@ async def delete_governance_profile(
 ):
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    ref = str(profile_ref or "").strip()
-    if ref in _BUILTIN_GOVERNANCE_BY_KEY:
-        raise HTTPException(status_code=403, detail="built-in profiles are read-only")
-
-    try:
-        ref_uuid = UUID(ref)
-    except Exception:
-        ref_uuid = None
-
-    q = db.query(DBGovernanceProfile).filter(DBGovernanceProfile.tenant_id == tenant_id)
-    row = q.filter(DBGovernanceProfile.id == ref_uuid).first() if ref_uuid else q.filter(DBGovernanceProfile.key == ref).first()
-    if row is None:
-        raise HTTPException(status_code=404, detail=GOVERNANCE_PROFILE_NOT_FOUND_DETAIL)
+    row = _resolve_custom_profile_row(db=db, tenant_id=tenant_id, profile_ref=profile_ref)
 
     db.delete(row)
     db.commit()
@@ -2253,21 +2252,7 @@ async def clean_preview(
 
     baseline_text = input_text or ""
 
-    analysis_opts = {
-        "remove_control_chars": bool(body.remove_control_chars),
-        "unwrap_lines": bool(body.unwrap_lines),
-        "remove_common_lines": bool(body.remove_common_lines),
-        "remove_boilerplate": bool(body.remove_boilerplate),
-        "normalize_tables": bool(body.normalize_tables),
-        "normalize_urls": bool(body.normalize_urls),
-        "normalize_urls_strip_tracking": bool(body.normalize_urls_strip_tracking),
-        "remove_images": str(body.remove_images or "none"),
-        "drop_outline_only": bool(body.drop_outline_only),
-        "drop_outline_min_content_chars": int(body.drop_outline_min_content_chars or 0),
-        "drop_outline_max_heading_ratio": float(body.drop_outline_max_heading_ratio or 0.0),
-        "drop_low_density": bool(body.drop_low_density),
-        "drop_low_density_threshold": float(body.drop_low_density_threshold or 0.0),
-    }
+    analysis_opts = _governance_analysis_options(body)
 
     def _analyze(after_text: str) -> tuple[list[GovernanceIssue], dict[str, object]]:
         issues, patch = analyze_governance(
@@ -2659,21 +2644,7 @@ async def governance_analyze(
             raise HTTPException(status_code=400, detail=f"Invalid XPath: {extracted.xpath_error}")
         input_text = extracted.text or ""
 
-    analysis_opts = {
-        "remove_control_chars": bool(body.remove_control_chars),
-        "unwrap_lines": bool(body.unwrap_lines),
-        "remove_common_lines": bool(body.remove_common_lines),
-        "remove_boilerplate": bool(body.remove_boilerplate),
-        "normalize_tables": bool(body.normalize_tables),
-        "normalize_urls": bool(body.normalize_urls),
-        "normalize_urls_strip_tracking": bool(body.normalize_urls_strip_tracking),
-        "remove_images": str(body.remove_images or "none"),
-        "drop_outline_only": bool(body.drop_outline_only),
-        "drop_outline_min_content_chars": int(body.drop_outline_min_content_chars or 0),
-        "drop_outline_max_heading_ratio": float(body.drop_outline_max_heading_ratio or 0.0),
-        "drop_low_density": bool(body.drop_low_density),
-        "drop_low_density_threshold": float(body.drop_low_density_threshold or 0.0),
-    }
+    analysis_opts = _governance_analysis_options(body)
 
     issues, patch = analyze_governance(
         input_text or "",

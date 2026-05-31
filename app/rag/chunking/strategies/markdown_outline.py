@@ -56,7 +56,7 @@ def _iter_headings(text: str) -> list[MarkdownHeading]:
             continue
 
         # Ignore headings inside fenced code blocks (``` or ~~~).
-        if stripped.startswith("```") or stripped.startswith("~~~"):
+        if stripped.startswith(("```", "~~~")):
             marker = stripped[:3]
             if not in_fence:
                 in_fence = True

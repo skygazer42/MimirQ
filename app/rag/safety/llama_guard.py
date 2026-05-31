@@ -11,6 +11,14 @@ _PROMPT_INJECTION_RE = re.compile(
 _SENSITIVE_RE = re.compile(r"\b1\d{10}\b|\b\d{17}[\dXx]\b")
 
 
+def _action_for_score(score: float) -> str:
+    if score >= 0.8:
+        return "block"
+    if score >= 0.35:
+        return "warn"
+    return "allow"
+
+
 @dataclass(frozen=True)
 class LlamaGuardResult:
     action: str
@@ -31,7 +39,7 @@ class LlamaGuard:
         if _PROMPT_INJECTION_RE.search(text):
             categories.append("prompt_injection")
         score = 0.86 if categories else 0.0
-        action = "block" if score >= 0.8 else ("warn" if score >= 0.35 else "allow")
+        action = _action_for_score(score)
         return LlamaGuardResult(action=action, score=score, categories=categories)
 
     @staticmethod
@@ -40,7 +48,7 @@ class LlamaGuard:
         if _SENSITIVE_RE.search(text):
             categories.append("sensitive_info")
         score = 0.82 if categories else 0.0
-        action = "block" if score >= 0.8 else ("warn" if score >= 0.35 else "allow")
+        action = _action_for_score(score)
         return LlamaGuardResult(action=action, score=score, categories=categories)
 
 

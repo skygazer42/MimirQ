@@ -403,7 +403,11 @@ def _build_samples_payload(*, jsonl_path: Path, target_size: int) -> dict[str, A
     )
 
     for file_type, items in sorted(type_groups.items(), key=lambda kv: (-len(kv[1]), kv[0]))[:type_minimum]:
-        items_sorted = sorted(items, key=lambda o: (_stable_sample_key(o, salt=f"type:{file_type}"), str(o.get("name") or "")))
+        keyed_items = [
+            (_stable_sample_key(item, salt=f"type:{file_type}"), str(item.get("name") or ""), item)
+            for item in items
+        ]
+        items_sorted = [item for _, _, item in sorted(keyed_items, key=lambda entry: (entry[0], entry[1]))]
         if not items_sorted:
             continue
         item = items_sorted[0]

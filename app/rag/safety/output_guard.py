@@ -40,7 +40,7 @@ class OutputGuard:
         question: str | None = None,
         tenant: str | None = None,
     ) -> OutputGuardResult:
-        del tenant  # reserved for future topic policy
+        del question, tenant  # reserved for future topic policy
         sync_result = await asyncio.to_thread(
             self._check_sync,
             str(text or ""),

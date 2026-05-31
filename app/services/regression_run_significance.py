@@ -242,7 +242,12 @@ def compare_regression_items(
         mean_delta = _mean(deltas)
         label = "无分数"
         if mean_delta is not None:
-            label = "改善" if mean_delta > 0.05 else "退化" if mean_delta < -0.05 else "无明显变化"
+            if mean_delta > 0.05:
+                label = "改善"
+            elif mean_delta < -0.05:
+                label = "退化"
+            else:
+                label = "无明显变化"
         case_diffs.append(
             {
                 "case_id": case_id,

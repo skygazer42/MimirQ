@@ -74,7 +74,7 @@ class IntegratedPipelineExcelParser:
         file_head = file_like_object.read(4)
         file_like_object.seek(0)
 
-        if not (file_head.startswith(b'PK\x03\x04') or file_head.startswith(b'\xD0\xCF\x11\xE0')):
+        if not file_head.startswith((b'PK\x03\x04', b'\xD0\xCF\x11\xE0')):
             logging.info("****wxy: Not an Excel file, converting CSV to Excel Workbook")
 
             try:

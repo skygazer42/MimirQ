@@ -21,7 +21,12 @@ def _resolve_confidence(
         except (TypeError, ValueError):
             score = None
         if score is not None:
-            band = "high" if score >= 0.75 else "medium" if score >= 0.5 else "low"
+            if score >= 0.75:
+                band = "high"
+            elif score >= 0.5:
+                band = "medium"
+            else:
+                band = "low"
             return {"score": round(score, 4), "band": band, "reasons": [{"signal": "explicit_confidence", "value": score}]}
 
     return compute_confidence_score(

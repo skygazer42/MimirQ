@@ -177,6 +177,77 @@ class IndexResult:
     db_chunks: list[DocumentChunk]
 
 
+def _collect_parser_asset_refs(
+    parsed: ParseResult,
+    *,
+    document_img_ids: set[str],
+    artifact_dirs: set[str],
+) -> None:
+    for doc in parsed.documents or []:
+        images = (doc.metadata or {}).get("images")
+        if isinstance(images, list):
+            for item in images:
+                img_id = item.get("img_id") if isinstance(item, dict) else None
+                if isinstance(img_id, str) and img_id.strip():
+                    document_img_ids.add(img_id)
+        artifact_dir = (doc.metadata or {}).get("artifact_dir")
+        if isinstance(artifact_dir, str) and artifact_dir.strip():
+            artifact_dirs.add(artifact_dir.strip())
+
+    for doc in parsed.chunks or []:
+        artifact_dir = (doc.metadata or {}).get("artifact_dir")
+        if isinstance(artifact_dir, str) and artifact_dir.strip():
+            artifact_dirs.add(artifact_dir.strip())
+
+
+def _inline_asset_audit_needed(inline_result: InlineAssetResult) -> bool:
+    return (
+        int(getattr(inline_result, "image_codes_added", 0) or 0) > 0
+        or isinstance(getattr(inline_result, "image_code_audit", None), dict)
+        or int(getattr(inline_result, "captions_added", 0) or 0) > 0
+        or isinstance(getattr(inline_result, "caption_audit", None), dict)
+        or int(getattr(inline_result, "formulas_added", 0) or 0) > 0
+        or isinstance(getattr(inline_result, "formula_audit", None), dict)
+        or int(getattr(inline_result, "charts_added", 0) or 0) > 0
+        or isinstance(getattr(inline_result, "chart_audit", None), dict)
+    )
+
+
+def _apply_inline_asset_audit_patch(
+    db: Session,
+    db_document: DBDocument,
+    inline_result: InlineAssetResult,
+) -> None:
+    if not _inline_asset_audit_needed(inline_result):
+        return
+
+    try:
+        meta_patch = dict(db_document.doc_metadata or {})
+        meta_patch["image_codes_added"] = int(getattr(inline_result, "image_codes_added", 0) or 0)
+        if isinstance(getattr(inline_result, "image_code_audit", None), dict):
+            meta_patch["image_code_audit"] = dict(inline_result.image_code_audit or {})
+        meta_patch["image_captions_added"] = int(getattr(inline_result, "captions_added", 0) or 0)
+        if getattr(inline_result, "caption_backend", None):
+            meta_patch["image_caption_backend"] = str(inline_result.caption_backend or "")
+        if isinstance(getattr(inline_result, "caption_audit", None), dict):
+            meta_patch["image_caption_audit"] = dict(inline_result.caption_audit or {})
+        meta_patch["formula_ocr_added"] = int(getattr(inline_result, "formulas_added", 0) or 0)
+        if getattr(inline_result, "formula_backend", None):
+            meta_patch["formula_ocr_backend"] = str(inline_result.formula_backend or "")
+        if isinstance(getattr(inline_result, "formula_audit", None), dict):
+            meta_patch["formula_ocr_audit"] = dict(inline_result.formula_audit or {})
+        meta_patch["chart_data_added"] = int(getattr(inline_result, "charts_added", 0) or 0)
+        if getattr(inline_result, "chart_backend", None):
+            meta_patch["chart_data_backend"] = str(inline_result.chart_backend or "")
+        if isinstance(getattr(inline_result, "chart_audit", None), dict):
+            meta_patch["chart_data_audit"] = dict(inline_result.chart_audit or {})
+        db_document.doc_metadata = meta_patch
+        db.commit()
+        db.refresh(db_document)
+    except Exception as exc:
+        logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
+
+
 def _chunk_has_asset(meta: dict[str, Any]) -> bool:
     doc_type = str(meta.get("doc_type_kwd") or "").lower()
     if doc_type in {"image", "table"}:
@@ -331,13 +402,12 @@ def _build_ocr_quality_summary(
     low_spans: list[dict[str, Any]] = []
 
     def visit(meta: dict[str, Any], text: str) -> None:
-        confidence = _coerce_float(
-            meta.get("confidence")
-            if meta.get("confidence") is not None
-            else meta.get("element_confidence")
-            if meta.get("element_confidence") is not None
-            else meta.get("ocr_confidence")
-        )
+        confidence_value = meta.get("confidence")
+        if confidence_value is None:
+            confidence_value = meta.get("element_confidence")
+        if confidence_value is None:
+            confidence_value = meta.get("ocr_confidence")
+        confidence = _coerce_float(confidence_value)
         if confidence is None:
             return
         confidence = max(0.0, min(1.0, float(confidence)))
@@ -1193,7 +1263,6 @@ class InlineAssetStage:
                 except Exception as exc:
                     _log_processor_fallback('run', exc)
                     # Never fail ingest due to optional enrichment.
-                    pass
 
             # Best-effort chart -> structured data extraction.
             if chart_enabled and next_content:
@@ -1238,7 +1307,6 @@ class InlineAssetStage:
                 except Exception as exc:
                     _log_processor_fallback('run', exc)
                     # Never fail ingest due to optional captioning.
-                    pass
 
             if upload_enabled:
                 new_content, new_img_ids, asset_idx = self._svc._upload_inline_images_to_minio(
@@ -1722,7 +1790,6 @@ class ChunkAssetStage:
                 except Exception as exc:
                     _log_processor_fallback('run', exc)
                     # Best-effort only.
-                    pass
             chunk.metadata = meta
 
             img_id = self._svc._extract_and_upload_image_to_minio(
@@ -1930,6 +1997,35 @@ class DocumentProcessorService:
             return False
 
         return cancel_check
+
+    def _rollback_and_cleanup_indexes(
+        self,
+        db: Session,
+        *,
+        db_document: DBDocument,
+        tenant_id: UUID,
+        document_id: UUID,
+    ) -> None:
+        try:
+            db.rollback()
+        except Exception as exc:
+            logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
+
+        try:
+            meta = dict(getattr(db_document, "doc_metadata", None) or {})
+            active_hash = str(meta.get("active_pipeline_hash") or "").strip()
+            cur_hash = str(meta.get("pipeline_hash") or "").strip()
+            active_ready = bool(meta.get("active_pipeline_ready"))
+            if active_ready and active_hash and cur_hash and cur_hash != active_hash:
+                Indexer(db).delete_chunk_indexes_for_doc_pipeline_key(
+                    tenant_id=tenant_id,
+                    document_id=document_id,
+                    doc_pipeline_key=f"{document_id}:{cur_hash}",
+                )
+            else:
+                Indexer(db).delete_chunk_indexes(tenant_id=tenant_id, document_id=document_id)
+        except Exception as exc:
+            logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
 
     async def process_document(
         self,
@@ -2849,145 +2945,92 @@ class DocumentProcessorService:
             merge_small_after = 0
             merge_small_reduced = 0
 
-            if parsed.chunks is not None:
-                # Collect images uploaded by the parser (e.g., MinerU ZIP mode returns images).
-                if parsed.documents:
-                    for doc in parsed.documents:
-                        images = (doc.metadata or {}).get("images")
-                        if isinstance(images, list):
-                            for item in images:
-                                img_id = item.get("img_id") if isinstance(item, dict) else None
-                                if isinstance(img_id, str) and img_id.strip():
-                                    document_img_ids.add(img_id)
-                        artifact_dir = (doc.metadata or {}).get("artifact_dir")
-                        if isinstance(artifact_dir, str) and artifact_dir.strip():
-                            artifact_dirs.add(artifact_dir.strip())
-                # Also collect artifact directories from integrated chunks (subprocess image materialization).
-                if parsed.chunks:
-                    for doc in parsed.chunks:
-                        artifact_dir = (doc.metadata or {}).get("artifact_dir")
-                        if isinstance(artifact_dir, str) and artifact_dir.strip():
-                            artifact_dirs.add(artifact_dir.strip())
+            _collect_parser_asset_refs(parsed, document_img_ids=document_img_ids, artifact_dirs=artifact_dirs)
 
-                # Inline image assets (non-integrated path: documents -> documents).
-                if parsed.documents:
-                    t0 = time.perf_counter()
-                    with metrics_span("ingest.inline_assets"):
-                        inline_result = inline_asset_stage.run(
-                            documents=parsed.documents,
-                            tenant_id=tenant_id,
-                            dataset_id=dataset_id,
-                            document_id=document_id,
-                            origin_path=file_path,
-                            start_index=0,
-                            image_caption_enabled=bool(getattr(pipeline_effective, "image_caption_enabled", False)),
-                        )
-                    _add_stage_duration("inline_assets", (time.perf_counter() - t0) * 1000)
-                    parsed_documents = inline_result.documents
-                    for iid in inline_result.uploaded_img_ids:
-                        if isinstance(iid, str) and iid.strip():
-                            document_img_ids.add(iid)
-                    # Persist optional enrichment audit (best-effort; useful for dashboards/debug).
-                    if (
-                        int(getattr(inline_result, "image_codes_added", 0) or 0) > 0
-                        or isinstance(getattr(inline_result, "image_code_audit", None), dict)
-                        or int(getattr(inline_result, "captions_added", 0) or 0) > 0
-                        or isinstance(getattr(inline_result, "caption_audit", None), dict)
-                        or int(getattr(inline_result, "formulas_added", 0) or 0) > 0
-                        or isinstance(getattr(inline_result, "formula_audit", None), dict)
-                        or int(getattr(inline_result, "charts_added", 0) or 0) > 0
-                        or isinstance(getattr(inline_result, "chart_audit", None), dict)
-                    ):
-                        try:
-                            meta_patch = dict(db_document.doc_metadata or {})
-                            meta_patch["image_codes_added"] = int(getattr(inline_result, "image_codes_added", 0) or 0)
-                            if isinstance(getattr(inline_result, "image_code_audit", None), dict):
-                                meta_patch["image_code_audit"] = dict(inline_result.image_code_audit or {})
-                            meta_patch["image_captions_added"] = int(getattr(inline_result, "captions_added", 0) or 0)
-                            if getattr(inline_result, "caption_backend", None):
-                                meta_patch["image_caption_backend"] = str(inline_result.caption_backend or "")
-                            if isinstance(getattr(inline_result, "caption_audit", None), dict):
-                                meta_patch["image_caption_audit"] = dict(inline_result.caption_audit or {})
-                            meta_patch["formula_ocr_added"] = int(getattr(inline_result, "formulas_added", 0) or 0)
-                            if getattr(inline_result, "formula_backend", None):
-                                meta_patch["formula_ocr_backend"] = str(inline_result.formula_backend or "")
-                            if isinstance(getattr(inline_result, "formula_audit", None), dict):
-                                meta_patch["formula_ocr_audit"] = dict(inline_result.formula_audit or {})
-                            meta_patch["chart_data_added"] = int(getattr(inline_result, "charts_added", 0) or 0)
-                            if getattr(inline_result, "chart_backend", None):
-                                meta_patch["chart_data_backend"] = str(inline_result.chart_backend or "")
-                            if isinstance(getattr(inline_result, "chart_audit", None), dict):
-                                meta_patch["chart_data_audit"] = dict(inline_result.chart_audit or {})
-                            db_document.doc_metadata = meta_patch
-                            db.commit()
-                            db.refresh(db_document)
-                        except Exception as exc:
-                            logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-                else:
-                    parsed_documents = None
-
-                if parsed_documents and bool(getattr(pipeline_effective, "cross_page_merge_enabled", False)):
-                    t0 = time.perf_counter()
-                    with metrics_span("ingest.cross_page_merge"):
-                        parsed_documents = merge_cross_page_documents(
-                            parsed_documents,
-                            max_page_gap=int(getattr(pipeline_effective, "cross_page_merge_max_page_gap", 1) or 1),
-                        )
-                    _add_stage_duration("cross_page_merge", (time.perf_counter() - t0) * 1000)
-
-                if parsed_documents and file_path.suffix.lower() == ".pdf":
-                    try:
-                        joined_for_ro = "\n\n".join([(d.page_content or "") for d in parsed_documents])
-                        ro = score_reading_order(joined_for_ro)
-                        meta_patch = dict(db_document.doc_metadata or {})
-                        meta_patch["reading_order"] = ro
-                        db_document.doc_metadata = meta_patch
-                        db.commit()
-                        db.refresh(db_document)
-                    except Exception as exc:
-                        logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-
-                pdf_quality = (db_document.doc_metadata or {}).get("pdf_quality") if isinstance((db_document.doc_metadata or {}).get("pdf_quality"), dict) else None
-                if (
-                    parsed_documents
-                    and file_path.suffix.lower() == ".pdf"
-                    and should_apply_vlm_correction(
-                        enabled=bool(getattr(pipeline_effective, "vlm_correction_enabled", False)),
-                        pdf_quality=pdf_quality,
-                        min_table_score=float(getattr(pipeline_effective, "vlm_correction_min_table_score", 0.6) or 0.6),
-                    )
-                ):
-                    t0 = time.perf_counter()
-                    with metrics_span("ingest.vlm_correction"):
-                        corrected_docs, correction_meta = await apply_vlm_correction_async(
-                            documents=parsed_documents,
-                            file_path=file_path,
-                            max_pages=int(getattr(pipeline_effective, "vlm_correction_max_pages", 2) or 2),
-                        )
-                    _add_stage_duration("vlm_correction", (time.perf_counter() - t0) * 1000)
-                    parsed_documents = corrected_docs
-                    if bool(correction_meta.get("applied")):
-                        meta_vlm = dict(db_document.doc_metadata or {})
-                        meta_vlm["vlm_correction"] = correction_meta
-                        db_document.doc_metadata = meta_vlm
-                        db.commit()
-                        db.refresh(db_document)
-
-                # Parsed table segments (e.g. PDF parsers) -> Table Store sidecar (TAG).
-                if parsed_documents and file_path.suffix.lower() == ".pdf":
-                    table_sidecar_tables_imported = self._import_parsed_markdown_tables_to_store(
-                        db,
-                        db_document=db_document,
+            if parsed.documents:
+                t0 = time.perf_counter()
+                with metrics_span("ingest.inline_assets"):
+                    inline_result = inline_asset_stage.run(
+                        documents=parsed.documents,
                         tenant_id=tenant_id,
-                        documents=parsed_documents,
-                        pipeline_effective=pipeline_effective,
+                        dataset_id=dataset_id,
+                        document_id=document_id,
+                        origin_path=file_path,
+                        start_index=0,
+                        image_caption_enabled=bool(getattr(pipeline_effective, "image_caption_enabled", False)),
                     )
+                _add_stage_duration("inline_assets", (time.perf_counter() - t0) * 1000)
+                parsed_documents = inline_result.documents
+                for iid in inline_result.uploaded_img_ids:
+                    if isinstance(iid, str) and iid.strip():
+                        document_img_ids.add(iid)
+                _apply_inline_asset_audit_patch(db, db_document, inline_result)
+            else:
+                parsed_documents = None
 
-                # Best-effort cleanup for parser artifact directories (e.g., MagicPDF output).
-                self._cleanup_parser_artifacts(artifact_dirs, tenant_id=tenant_id)
+            if parsed_documents and bool(getattr(pipeline_effective, "cross_page_merge_enabled", False)):
+                t0 = time.perf_counter()
+                with metrics_span("ingest.cross_page_merge"):
+                    parsed_documents = merge_cross_page_documents(
+                        parsed_documents,
+                        max_page_gap=int(getattr(pipeline_effective, "cross_page_merge_max_page_gap", 1) or 1),
+                    )
+                _add_stage_duration("cross_page_merge", (time.perf_counter() - t0) * 1000)
 
-                await raise_if_cancelled()
+            if parsed.chunks is not None and parsed_documents and file_path.suffix.lower() == ".pdf":
+                try:
+                    joined_for_ro = "\n\n".join([(d.page_content or "") for d in parsed_documents])
+                    ro = score_reading_order(joined_for_ro)
+                    meta_patch = dict(db_document.doc_metadata or {})
+                    meta_patch["reading_order"] = ro
+                    db_document.doc_metadata = meta_patch
+                    db.commit()
+                    db.refresh(db_document)
+                except Exception as exc:
+                    logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
 
+            pdf_quality = (db_document.doc_metadata or {}).get("pdf_quality") if isinstance((db_document.doc_metadata or {}).get("pdf_quality"), dict) else None
+            if (
+                parsed_documents
+                and file_path.suffix.lower() == ".pdf"
+                and should_apply_vlm_correction(
+                    enabled=bool(getattr(pipeline_effective, "vlm_correction_enabled", False)),
+                    pdf_quality=pdf_quality,
+                    min_table_score=float(getattr(pipeline_effective, "vlm_correction_min_table_score", 0.6) or 0.6),
+                )
+            ):
+                t0 = time.perf_counter()
+                with metrics_span("ingest.vlm_correction"):
+                    corrected_docs, correction_meta = await apply_vlm_correction_async(
+                        documents=parsed_documents,
+                        file_path=file_path,
+                        max_pages=int(getattr(pipeline_effective, "vlm_correction_max_pages", 2) or 2),
+                    )
+                _add_stage_duration("vlm_correction", (time.perf_counter() - t0) * 1000)
+                parsed_documents = corrected_docs
+                if bool(correction_meta.get("applied")):
+                    meta_vlm = dict(db_document.doc_metadata or {})
+                    meta_vlm["vlm_correction"] = correction_meta
+                    db_document.doc_metadata = meta_vlm
+                    db.commit()
+                    db.refresh(db_document)
+
+            # Parsed table segments (e.g. PDF parsers) -> Table Store sidecar (TAG).
+            if parsed_documents and file_path.suffix.lower() == ".pdf":
+                table_sidecar_tables_imported = self._import_parsed_markdown_tables_to_store(
+                    db,
+                    db_document=db_document,
+                    tenant_id=tenant_id,
+                    documents=parsed_documents,
+                    pipeline_effective=pipeline_effective,
+                )
+
+            # Best-effort cleanup for parser artifact directories (e.g., MagicPDF output).
+            self._cleanup_parser_artifacts(artifact_dirs, tenant_id=tenant_id)
+
+            await raise_if_cancelled()
+
+            if parsed.chunks is not None:
                 t0 = time.perf_counter()
                 with metrics_span("ingest.normalize"):
                     parsed_chunks = normalize_stage.run(items=parsed.chunks)
@@ -3104,132 +3147,6 @@ class DocumentProcessorService:
                         logger.warning("Failed to record governance enrichment: %s", str(exc)[:200])
                     self._strip_doc_enrichment_fields(chunks)
             else:
-                # Collect images uploaded by the parser (e.g., MinerU ZIP mode returns images).
-                if parsed.documents:
-                    for doc in parsed.documents:
-                        images = (doc.metadata or {}).get("images")
-                        if isinstance(images, list):
-                            for item in images:
-                                img_id = item.get("img_id") if isinstance(item, dict) else None
-                                if isinstance(img_id, str) and img_id.strip():
-                                    document_img_ids.add(img_id)
-                        artifact_dir = (doc.metadata or {}).get("artifact_dir")
-                        if isinstance(artifact_dir, str) and artifact_dir.strip():
-                            artifact_dirs.add(artifact_dir.strip())
-                # Also collect artifact directories from integrated chunks (subprocess image materialization).
-                if parsed.chunks:
-                    for doc in parsed.chunks:
-                        artifact_dir = (doc.metadata or {}).get("artifact_dir")
-                        if isinstance(artifact_dir, str) and artifact_dir.strip():
-                            artifact_dirs.add(artifact_dir.strip())
-
-                # Inline image assets (non-integrated path: documents -> documents).
-                if parsed.documents:
-                    t0 = time.perf_counter()
-                    with metrics_span("ingest.inline_assets"):
-                        inline_result = inline_asset_stage.run(
-                            documents=parsed.documents,
-                            tenant_id=tenant_id,
-                            dataset_id=dataset_id,
-                            document_id=document_id,
-                            origin_path=file_path,
-                            start_index=0,
-                            image_caption_enabled=bool(getattr(pipeline_effective, "image_caption_enabled", False)),
-                        )
-                    _add_stage_duration("inline_assets", (time.perf_counter() - t0) * 1000)
-                    parsed_documents = inline_result.documents
-                    for iid in inline_result.uploaded_img_ids:
-                        if isinstance(iid, str) and iid.strip():
-                            document_img_ids.add(iid)
-                    # Persist optional enrichment audit (best-effort; useful for dashboards/debug).
-                    if (
-                        int(getattr(inline_result, "image_codes_added", 0) or 0) > 0
-                        or isinstance(getattr(inline_result, "image_code_audit", None), dict)
-                        or int(getattr(inline_result, "captions_added", 0) or 0) > 0
-                        or isinstance(getattr(inline_result, "caption_audit", None), dict)
-                        or int(getattr(inline_result, "formulas_added", 0) or 0) > 0
-                        or isinstance(getattr(inline_result, "formula_audit", None), dict)
-                        or int(getattr(inline_result, "charts_added", 0) or 0) > 0
-                        or isinstance(getattr(inline_result, "chart_audit", None), dict)
-                    ):
-                        try:
-                            meta_patch = dict(db_document.doc_metadata or {})
-                            meta_patch["image_codes_added"] = int(getattr(inline_result, "image_codes_added", 0) or 0)
-                            if isinstance(getattr(inline_result, "image_code_audit", None), dict):
-                                meta_patch["image_code_audit"] = dict(inline_result.image_code_audit or {})
-                            meta_patch["image_captions_added"] = int(getattr(inline_result, "captions_added", 0) or 0)
-                            if getattr(inline_result, "caption_backend", None):
-                                meta_patch["image_caption_backend"] = str(inline_result.caption_backend or "")
-                            if isinstance(getattr(inline_result, "caption_audit", None), dict):
-                                meta_patch["image_caption_audit"] = dict(inline_result.caption_audit or {})
-                            meta_patch["formula_ocr_added"] = int(getattr(inline_result, "formulas_added", 0) or 0)
-                            if getattr(inline_result, "formula_backend", None):
-                                meta_patch["formula_ocr_backend"] = str(inline_result.formula_backend or "")
-                            if isinstance(getattr(inline_result, "formula_audit", None), dict):
-                                meta_patch["formula_ocr_audit"] = dict(inline_result.formula_audit or {})
-                            meta_patch["chart_data_added"] = int(getattr(inline_result, "charts_added", 0) or 0)
-                            if getattr(inline_result, "chart_backend", None):
-                                meta_patch["chart_data_backend"] = str(inline_result.chart_backend or "")
-                            if isinstance(getattr(inline_result, "chart_audit", None), dict):
-                                meta_patch["chart_data_audit"] = dict(inline_result.chart_audit or {})
-                            db_document.doc_metadata = meta_patch
-                            db.commit()
-                            db.refresh(db_document)
-                        except Exception as exc:
-                            logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-                else:
-                    parsed_documents = None
-
-                if parsed_documents and bool(getattr(pipeline_effective, "cross_page_merge_enabled", False)):
-                    t0 = time.perf_counter()
-                    with metrics_span("ingest.cross_page_merge"):
-                        parsed_documents = merge_cross_page_documents(
-                            parsed_documents,
-                            max_page_gap=int(getattr(pipeline_effective, "cross_page_merge_max_page_gap", 1) or 1),
-                        )
-                    _add_stage_duration("cross_page_merge", (time.perf_counter() - t0) * 1000)
-
-                pdf_quality = (db_document.doc_metadata or {}).get("pdf_quality") if isinstance((db_document.doc_metadata or {}).get("pdf_quality"), dict) else None
-                if (
-                    parsed_documents
-                    and file_path.suffix.lower() == ".pdf"
-                    and should_apply_vlm_correction(
-                        enabled=bool(getattr(pipeline_effective, "vlm_correction_enabled", False)),
-                        pdf_quality=pdf_quality,
-                        min_table_score=float(getattr(pipeline_effective, "vlm_correction_min_table_score", 0.6) or 0.6),
-                    )
-                ):
-                    t0 = time.perf_counter()
-                    with metrics_span("ingest.vlm_correction"):
-                        corrected_docs, correction_meta = await apply_vlm_correction_async(
-                            documents=parsed_documents,
-                            file_path=file_path,
-                            max_pages=int(getattr(pipeline_effective, "vlm_correction_max_pages", 2) or 2),
-                        )
-                    _add_stage_duration("vlm_correction", (time.perf_counter() - t0) * 1000)
-                    parsed_documents = corrected_docs
-                    if bool(correction_meta.get("applied")):
-                        meta_vlm = dict(db_document.doc_metadata or {})
-                        meta_vlm["vlm_correction"] = correction_meta
-                        db_document.doc_metadata = meta_vlm
-                        db.commit()
-                        db.refresh(db_document)
-
-                # Parsed table segments (e.g. PDF parsers) -> Table Store sidecar (TAG).
-                if parsed_documents and file_path.suffix.lower() == ".pdf":
-                    table_sidecar_tables_imported = self._import_parsed_markdown_tables_to_store(
-                        db,
-                        db_document=db_document,
-                        tenant_id=tenant_id,
-                        documents=parsed_documents,
-                        pipeline_effective=pipeline_effective,
-                    )
-
-                # Best-effort cleanup for parser artifact directories (e.g., MagicPDF output).
-                self._cleanup_parser_artifacts(artifact_dirs, tenant_id=tenant_id)
-
-                await raise_if_cancelled()
-
                 t0 = time.perf_counter()
                 with metrics_span("ingest.normalize"):
                     parsed_documents = normalize_stage.run(items=parsed_documents or [])
@@ -3973,26 +3890,7 @@ class DocumentProcessorService:
         except DocumentCancelledError as e:
             logger.info("Document processing cancelled: tenant=%s document=%s (%s)", tenant_id, document_id, str(e)[:120])
             # Roll back any uncommitted DB work (e.g., flushed chunks) to avoid committing partial results.
-            try:
-                db.rollback()
-            except Exception as exc:
-                logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-            # Best-effort cleanup for vector/BM25 side effects (indexing is not transactional).
-            try:
-                meta = dict(getattr(db_document, "doc_metadata", None) or {})
-                active_hash = str(meta.get("active_pipeline_hash") or "").strip()
-                cur_hash = str(meta.get("pipeline_hash") or "").strip()
-                active_ready = bool(meta.get("active_pipeline_ready"))
-                if active_ready and active_hash and cur_hash and cur_hash != active_hash:
-                    Indexer(db).delete_chunk_indexes_for_doc_pipeline_key(
-                        tenant_id=tenant_id,
-                        document_id=document_id,
-                        doc_pipeline_key=f"{document_id}:{cur_hash}",
-                    )
-                else:
-                    Indexer(db).delete_chunk_indexes(tenant_id=tenant_id, document_id=document_id)
-            except Exception as exc:
-                logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
+            self._rollback_and_cleanup_indexes(db, db_document=db_document, tenant_id=tenant_id, document_id=document_id)
             await self._update_status(
                 db,
                 tenant_id,
@@ -4006,25 +3904,7 @@ class DocumentProcessorService:
             return {"status": "cancelled"}
         except asyncio.CancelledError:
             # arq Job.abort cancels the coroutine; ensure we stop the child parser process and persist status.
-            try:
-                db.rollback()
-            except Exception as exc:
-                logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-            try:
-                meta = dict(getattr(db_document, "doc_metadata", None) or {})
-                active_hash = str(meta.get("active_pipeline_hash") or "").strip()
-                cur_hash = str(meta.get("pipeline_hash") or "").strip()
-                active_ready = bool(meta.get("active_pipeline_ready"))
-                if active_ready and active_hash and cur_hash and cur_hash != active_hash:
-                    Indexer(db).delete_chunk_indexes_for_doc_pipeline_key(
-                        tenant_id=tenant_id,
-                        document_id=document_id,
-                        doc_pipeline_key=f"{document_id}:{cur_hash}",
-                    )
-                else:
-                    Indexer(db).delete_chunk_indexes(tenant_id=tenant_id, document_id=document_id)
-            except Exception as exc:
-                logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
+            self._rollback_and_cleanup_indexes(db, db_document=db_document, tenant_id=tenant_id, document_id=document_id)
             try:
                 await asyncio.shield(
                     self._update_status(
@@ -4101,25 +3981,7 @@ class DocumentProcessorService:
             # Error handling.
             logger.exception("Error processing document %s: %s", document_id, e)
             log_metrics({"event": "ingest.failed", "success": False, "error": str(e)[:200]})
-            try:
-                db.rollback()
-            except Exception as exc:
-                logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-            try:
-                meta = dict(getattr(db_document, "doc_metadata", None) or {})
-                active_hash = str(meta.get("active_pipeline_hash") or "").strip()
-                cur_hash = str(meta.get("pipeline_hash") or "").strip()
-                active_ready = bool(meta.get("active_pipeline_ready"))
-                if active_ready and active_hash and cur_hash and cur_hash != active_hash:
-                    Indexer(db).delete_chunk_indexes_for_doc_pipeline_key(
-                        tenant_id=tenant_id,
-                        document_id=document_id,
-                        doc_pipeline_key=f"{document_id}:{cur_hash}",
-                    )
-                else:
-                    Indexer(db).delete_chunk_indexes(tenant_id=tenant_id, document_id=document_id)
-            except Exception as exc:
-                logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
+            self._rollback_and_cleanup_indexes(db, db_document=db_document, tenant_id=tenant_id, document_id=document_id)
             await self._update_status(
                 db,
                 tenant_id,
@@ -4577,7 +4439,6 @@ class DocumentProcessorService:
             except Exception as exc:
                 _log_processor_fallback('_cleanup_parser_artifacts', exc)
                 # Best-effort only.
-                pass
 
     def _record_pipeline_effective(
         self,

@@ -113,13 +113,12 @@ def build_block_element(
         "source_element_id": source_element_id,
         "attributes": merged_attributes,
     }
-    confidence = _coerce_float(
-        merged_attributes.get("confidence")
-        if merged_attributes.get("confidence") is not None
-        else merged_attributes.get("element_confidence")
-        if merged_attributes.get("element_confidence") is not None
-        else merged_attributes.get("ocr_confidence")
-    )
+    confidence_value = merged_attributes.get("confidence")
+    if confidence_value is None:
+        confidence_value = merged_attributes.get("element_confidence")
+    if confidence_value is None:
+        confidence_value = merged_attributes.get("ocr_confidence")
+    confidence = _coerce_float(confidence_value)
     if confidence is not None:
         element["confidence"] = max(0.0, min(1.0, float(confidence)))
     return {key: value for key, value in element.items() if value not in (None, "", [])}
