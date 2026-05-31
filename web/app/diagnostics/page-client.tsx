@@ -131,6 +131,7 @@ const DIAGNOSTIC_DIMENSIONS = [
 
 type DiagnosticDimensionId = (typeof DIAGNOSTIC_DIMENSIONS)[number]['id']
 type MetricTone = 'slate' | 'green' | 'amber' | 'red' | 'blue' | 'purple'
+type BinaryStatusTone = Exclude<MetricTone, 'purple'>
 
 // --- Helper Functions ---
 
@@ -259,15 +260,244 @@ function metricSource(hasResult: boolean, source: string) {
   return hasResult ? source : '手动诊断'
 }
 
+function diagnosticString(value: unknown): string {
+  if (typeof value === 'string') return value.trim()
+  if (
+    typeof value === 'number' ||
+    typeof value === 'boolean' ||
+    typeof value === 'bigint'
+  ) {
+    return String(value)
+  }
+  return ''
+}
+
+function diagnosticRecordString(
+  value: Record<string, unknown>,
+  keys: string[]
+): string {
+  for (const key of keys) {
+    const label = diagnosticString(value[key])
+    if (label) return label
+  }
+  return ''
+}
+
+function firstDiagnosticString(...values: unknown[]): string {
+  for (const value of values) {
+    const label = diagnosticString(value)
+    if (label) return label
+  }
+  return ''
+}
+
 function dependencyStatus(value: unknown): string {
   if (!value || typeof value !== 'object') return 'unknown'
-  const status = String(
-    (value as Record<string, unknown>).status || ''
-  ).toLowerCase()
+  const record = value as Record<string, unknown>
+  const status = diagnosticRecordString(record, [
+    'status',
+    'state',
+    'value',
+    'label',
+  ]).toLowerCase()
   if (status) return status
-  if ((value as Record<string, unknown>).ok === true) return 'connected'
-  if ((value as Record<string, unknown>).ok === false) return 'disconnected'
+  if (record.ok === true) return 'connected'
+  if (record.ok === false) return 'disconnected'
   return 'unknown'
+}
+
+function driftResultLabel(
+  snapshot: Record<string, any> | null,
+  metric: number | null
+) {
+  if (!snapshot) return PENDING_RUN_LABEL
+  if (metric === null) return MISSING_RESULT_LABEL
+  return `${metric.toFixed(3)} 漂移率`
+}
+
+function perfGateResultStatus(result: Record<string, any> | null) {
+  if (!result) return PENDING_RUN_LABEL
+  return (
+    diagnosticRecordString(result, ['status', 'gate_status', 'result']) ||
+    '已运行'
+  )
+}
+
+function perfGateResultTone(
+  result: Record<string, any> | null,
+  status: string
+): MetricTone {
+  if (/pass|passed|ok|success|通过|已运行/i.test(status)) return 'green'
+  if (result) return 'amber'
+  return 'slate'
+}
+
+function okTone(
+  ok: boolean,
+  successTone: BinaryStatusTone = 'green',
+  failureTone: BinaryStatusTone = 'red'
+): BinaryStatusTone {
+  return ok ? successTone : failureTone
+}
+
+function serviceDependencyStatus(ok: boolean) {
+  return ok ? 'connected' : 'disconnected'
+}
+
+function systemStatusSummary(
+  healthOk: boolean,
+  readyOk: boolean
+): { label: string; tone: BinaryStatusTone } {
+  if (healthOk && readyOk) {
+    return { label: '正常', tone: 'green' }
+  }
+  return { label: '需要排查', tone: 'red' }
+}
+
+function selectedDocumentScopeLabel(
+  selectedCount: number,
+  loading: boolean,
+  hasDataset: boolean
+) {
+  if (selectedCount > 0) return `已选 ${selectedCount} 个文档`
+  if (loading) return '正在加载文档...'
+  if (hasDataset) return '当前数据集全部文档'
+  return '请先选择数据集'
+}
+
+function citationTone(count: number | null): MetricTone {
+  if (count === null) return 'slate'
+  if (count > 0) return 'green'
+  return 'amber'
+}
+
+function citationStatusLabel(hasResult: boolean, count: number | null) {
+  if (!hasResult) return PENDING_RUN_LABEL
+  if (count === null) return MISSING_RESULT_LABEL
+  return `${count.toLocaleString()} 条引用`
+}
+
+function executionPerfValue(
+  latencyMs: number | null,
+  perfStatus: string,
+  hasPerfResult: boolean,
+  hasProbeResult: boolean
+) {
+  if (latencyMs === null) {
+    if (hasPerfResult) return perfStatus
+    if (hasProbeResult) return MISSING_RESULT_LABEL
+    return PENDING_RUN_LABEL
+  }
+  return fmtMetric(latencyMs, 0, 'ms')
+}
+
+function executionPerfSource(latencyMs: number | null, hasPerfResult: boolean) {
+  if (latencyMs === null) {
+    return hasPerfResult ? 'perf-suite' : PENDING_RUN_LABEL
+  }
+  return 'metrics'
+}
+
+function executionPerfTone(
+  latencyMs: number | null,
+  fallbackTone: MetricTone
+): MetricTone {
+  if (latencyMs === null) return fallbackTone
+  if (latencyMs <= 1000) return 'green'
+  if (latencyMs <= 3000) return 'amber'
+  return 'red'
+}
+
+function diagnosticsRunState(hasResult: boolean) {
+  return hasResult
+    ? { status: 'completed', message: '诊断已执行完毕' }
+    : { status: 'not_run', message: '诊断尚未执行，请配置后运行' }
+}
+
+function manualDiagnosticsStatus(
+  running: boolean,
+  hasDiagnostics: boolean
+) {
+  if (running) return '执行中'
+  if (hasDiagnostics) return '已生成'
+  return PENDING_RUN_LABEL
+}
+
+function runningStatusLabel(running: boolean, value: string, runningLabel = '执行中') {
+  return running ? runningLabel : value
+}
+
+function healthStatusLabel(isPending: boolean, healthy: boolean) {
+  if (isPending) return '检查中'
+  return healthy ? '正常' : '异常'
+}
+
+function healthSummaryStatusLabel(isPending: boolean, value: string) {
+  return isPending ? '检查中' : value
+}
+
+function readyStatusLabel(
+  loading: boolean,
+  snapshot: Record<string, any> | null | undefined,
+  ready: boolean,
+  readyLabel: string,
+  errorLabel: string
+) {
+  if (loading && snapshot === null) return '检查中'
+  return ready ? readyLabel : errorLabel
+}
+
+function onlineQualityStatusLabel(loading: boolean, enabled?: boolean) {
+  if (loading) return '检查中'
+  return enabled ? '已启用' : '未启用'
+}
+
+function datasetSelectLabel(
+  loading: boolean,
+  selectedDataset: Dataset | null
+) {
+  if (loading) return '正在加载数据集...'
+  if (!selectedDataset) return '暂无可用数据集'
+  return `${datasetLabel(selectedDataset)} [${shortId(selectedDataset.id)}]`
+}
+
+function vectorBackendLabel(
+  readySnapshot: Record<string, any> | null,
+  healthPayload: Record<string, unknown> | null | undefined
+) {
+  return (
+    firstDiagnosticString(
+      readySnapshot?.vector?.backend,
+      healthPayload?.vector_backend
+    ) || 'milvus'
+  )
+}
+
+function driftMetricCardValue(
+  running: boolean,
+  snapshot: Record<string, any> | null,
+  metric: number | null
+) {
+  if (running) return '检查中'
+  if (snapshot) return fmtExecutedMetric(metric, 3)
+  return PENDING_RUN_LABEL
+}
+
+function diagnosticSummaryDetail(hasDiagnostics: boolean) {
+  return hasDiagnostics
+    ? '已有 RAG / Drift / Perf 结果'
+    : '需手动运行左侧诊断'
+}
+
+function resourceStatusClass(status: string) {
+  const normalized = status.toLowerCase()
+  if (['connected', 'ok', 'ready'].includes(normalized)) {
+    return 'border-emerald-100/70 bg-emerald-50 text-emerald-600'
+  }
+  if (['checking', 'pending'].includes(normalized)) {
+    return 'border-blue-100/70 bg-blue-50 text-blue-600'
+  }
+  return 'border-red-100/70 bg-red-50 text-red-500'
 }
 
 async function copyToClipboard(text = ''): Promise<void> {
@@ -761,9 +991,12 @@ export default function DiagnosticsPage() {
 
   const healthOk = Boolean(health.data?.payload?.ok)
   const readyOk = Boolean(readySnapshot?.ok)
-  const systemStatusLabel = healthOk && readyOk ? '正常' : '需要排查'
-  const systemStatusTone = healthOk && readyOk ? 'green' : 'red'
+  const systemStatus = systemStatusSummary(healthOk, readyOk)
   const serviceTime = fmtDateTime(meta.data?.time || health.data?.payload?.time)
+  const currentVectorBackend = vectorBackendLabel(
+    readySnapshot,
+    health.data?.payload
+  )
   const driftMetric = pickMetricNumberByPath(driftSnapshot, [
     'above_threshold.ratio',
     'above_threshold_ratio',
@@ -778,26 +1011,9 @@ export default function DiagnosticsPage() {
     'avg_drift',
     'mean_drift',
   ])
-  const driftStatusLabel = driftSnapshot
-    ? driftMetric === null
-      ? MISSING_RESULT_LABEL
-      : `${driftMetric.toFixed(3)} 漂移率`
-    : PENDING_RUN_LABEL
-  const perfGateStatus = perfSuiteResult
-    ? String(
-        perfSuiteResult.status ||
-          perfSuiteResult.gate_status ||
-          perfSuiteResult.result ||
-          '已运行'
-      )
-    : PENDING_RUN_LABEL
-  const perfGateTone: MetricTone = /pass|passed|ok|success|通过|已运行/i.test(
-    perfGateStatus
-  )
-    ? 'green'
-    : perfSuiteResult
-      ? 'amber'
-      : 'slate'
+  const driftStatusLabel = driftResultLabel(driftSnapshot, driftMetric)
+  const perfGateStatus = perfGateResultStatus(perfSuiteResult)
+  const perfGateTone = perfGateResultTone(perfSuiteResult, perfGateStatus)
   const dependencyItems = [
     {
       label: '检索库',
@@ -821,21 +1037,18 @@ export default function DiagnosticsPage() {
       label: 'Redis',
       status: dependencyStatus(depsSnapshot?.redis || readySnapshot?.redis),
     },
-    { label: '服务 API', status: healthOk ? 'connected' : 'disconnected' },
+    { label: '服务 API', status: serviceDependencyStatus(healthOk) },
   ]
   const selectedDataset =
     datasets.find((dataset) => dataset.id === activeDatasetId) || null
   const selectedDocuments = documents.filter((document) =>
     validSelectedDocumentIds.includes(document.id)
   )
-  const selectedDocumentLabel =
-    validSelectedDocumentIds.length > 0
-      ? `已选 ${validSelectedDocumentIds.length} 个文档`
-      : documentsLoading
-        ? '正在加载文档...'
-        : activeDatasetId
-          ? '当前数据集全部文档'
-          : '请先选择数据集'
+  const selectedDocumentLabel = selectedDocumentScopeLabel(
+    validSelectedDocumentIds.length,
+    documentsLoading,
+    Boolean(activeDatasetId)
+  )
 
   const toggleDocument = useCallback((documentId: string) => {
     if (documentId === ALL_DOCUMENTS_VALUE) {
@@ -914,11 +1127,8 @@ export default function DiagnosticsPage() {
     ? probeResult.citations.length
     : null
   const hasProbeResult = Boolean(probeResult)
-  const ragPreviewStatusLabel = hasProbeResult
-    ? citationCount === null
-      ? MISSING_RESULT_LABEL
-      : `${citationCount.toLocaleString()} 条引用`
-    : PENDING_RUN_LABEL
+  const ragPreviewStatusLabel = citationStatusLabel(hasProbeResult, citationCount)
+  const hasPerfSuiteResult = Boolean(perfSuiteResult)
   const dimensionStatuses: Record<
     DiagnosticDimensionId,
     { value: string; source: string; tone: MetricTone }
@@ -931,12 +1141,7 @@ export default function DiagnosticsPage() {
     retrieval_recall: {
       value: fmtCountOrMissing(hasProbeResult, citationCount, ' 条'),
       source: metricSource(hasProbeResult, 'citations'),
-      tone:
-        citationCount === null
-          ? 'slate'
-          : citationCount > 0
-            ? 'green'
-            : 'amber',
+      tone: citationTone(citationCount),
     },
     context_relevance: {
       value: fmtMetricOrMissing(hasProbeResult, contextScore),
@@ -964,43 +1169,26 @@ export default function DiagnosticsPage() {
       tone: promptTokenCount === null ? 'slate' : 'amber',
     },
     execution_perf: {
-      value:
-        latencyMs !== null
-          ? fmtMetric(latencyMs, 0, 'ms')
-          : perfSuiteResult
-            ? perfGateStatus
-            : hasProbeResult
-              ? MISSING_RESULT_LABEL
-              : PENDING_RUN_LABEL,
-      source:
-        latencyMs !== null
-          ? 'metrics'
-          : perfSuiteResult
-            ? 'perf-suite'
-            : PENDING_RUN_LABEL,
-      tone:
-        latencyMs !== null
-          ? latencyMs <= 1000
-            ? 'green'
-            : latencyMs <= 3000
-              ? 'amber'
-              : 'red'
-          : perfGateTone,
+      value: executionPerfValue(
+        latencyMs,
+        perfGateStatus,
+        hasPerfSuiteResult,
+        hasProbeResult
+      ),
+      source: executionPerfSource(latencyMs, hasPerfSuiteResult),
+      tone: executionPerfTone(latencyMs, perfGateTone),
     },
   }
 
   const backendSummaryJson = useMemo(
-    () =>
-      prettyJson({
-        status:
-          probeResult || driftSnapshot || perfSuiteResult
-            ? 'completed'
-            : 'not_run',
+    () => {
+      const runState = diagnosticsRunState(
+        Boolean(probeResult || driftSnapshot || perfSuiteResult)
+      )
+      return prettyJson({
+        status: runState.status,
         code: 0,
-        message:
-          probeResult || driftSnapshot || perfSuiteResult
-            ? '诊断已执行完毕'
-            : '诊断尚未执行，请配置后运行',
+        message: runState.message,
         data: {
           dataset_id: activeDatasetId || null,
           document_ids: validSelectedDocumentIds,
@@ -1016,7 +1204,8 @@ export default function DiagnosticsPage() {
           perf_gate: perfGateStatus,
         },
         timestamp: health.data?.payload?.time ?? null,
-      }),
+      })
+    },
     [
       activeDatasetId,
       validSelectedDocumentIds,
@@ -1033,12 +1222,10 @@ export default function DiagnosticsPage() {
   const hasManualDiagnostics = Boolean(
     probeResult || driftSnapshot || perfSuiteResult
   )
-  const manualDiagnosticsStatus =
-    probeRunning || driftRunning || perfSuiteRunning
-      ? '执行中'
-      : hasManualDiagnostics
-        ? '已生成'
-        : PENDING_RUN_LABEL
+  const manualDiagnosticsStatusLabel = manualDiagnosticsStatus(
+    probeRunning || driftRunning || perfSuiteRunning,
+    hasManualDiagnostics
+  )
 
   const backendRecommendations = ((onlineQuality as any)?.recommendations ??
     []) as string[]
@@ -1048,15 +1235,15 @@ export default function DiagnosticsPage() {
       <PageScaffold
         title="诊断中心"
         description="全面诊断系统健康状态、服务依赖与 RAG 质量，保障稳定可靠运行"
-	        icon={Activity}
-	        iconColor="text-blue-600"
-	        size="full"
-	        showHeader={false}
-	        bodyGutter="dense"
-	        bodyClassName="bg-slate-50/50 pt-3 pb-6"
-	      >
-	        <TooltipProvider delayDuration={120}>
-	          <div className="flex flex-col gap-3">
+          icon={Activity}
+          iconColor="text-blue-600"
+          size="full"
+          showHeader={false}
+          bodyGutter="dense"
+          bodyClassName="bg-slate-50/50 pt-3 pb-6"
+        >
+          <TooltipProvider delayDuration={120}>
+            <div className="flex flex-col gap-3">
           <PageHeader
             title="诊断中心"
             description="全面诊断系统健康状态、服务依赖与 RAG 质量，保障稳定可靠运行"
@@ -1098,9 +1285,9 @@ export default function DiagnosticsPage() {
             <TopHUDTile
               icon={ShieldCheck}
               label="系统健康"
-              value={health.isPending ? '检查中' : healthOk ? '正常' : '异常'}
+              value={healthStatusLabel(health.isPending, healthOk)}
               detail="STATUS_OK"
-              tone={healthOk ? 'green' : 'red'}
+              tone={okTone(healthOk)}
             />
             <TopHUDTile
               icon={Clock}
@@ -1112,26 +1299,23 @@ export default function DiagnosticsPage() {
             <TopHUDTile
               icon={Database}
               label="依赖就绪"
-              value={
-                readyLoading && !readySnapshot
-                  ? '检查中'
-                  : readyOk
-                    ? '全部就绪'
-                    : '异常'
-              }
+              value={readyStatusLabel(
+                readyLoading,
+                readySnapshot,
+                readyOk,
+                '全部就绪',
+                '异常'
+              )}
               detail="READY"
-              tone={readyOk ? 'blue' : 'red'}
+              tone={okTone(readyOk, 'blue')}
             />
             <TopHUDTile
               icon={Activity}
               label="在线评估"
-              value={
-                onlineQualityLoading
-                  ? '检查中'
-                  : onlineQuality?.enabled
-                    ? '已启用'
-                    : '未启用'
-              }
+              value={onlineQualityStatusLabel(
+                onlineQualityLoading,
+                onlineQuality?.enabled
+              )}
               detail="ONLINE_METRICS"
               tone="purple"
             />
@@ -1145,19 +1329,15 @@ export default function DiagnosticsPage() {
             <TopHUDTile
               icon={Timer}
               label="向量后端"
-              value={
-                readySnapshot?.vector?.backend ||
-	                health.data?.payload?.vector_backend ||
-	                'milvus'
-	              }
-	              detail="VECTOR_PROVIDER"
-	              tone="green"
-	            />
-	          </div>
+              value={currentVectorBackend}
+              detail="VECTOR_PROVIDER"
+              tone="green"
+            />
+            </div>
 
-	          <DiagnosticUseGuide />
+            <DiagnosticUseGuide />
 
-	          {/* Main Config Section */}
+            {/* Main Config Section */}
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
             {/* 1. 诊断配置 */}
             <div className={cn(CARD_BASE, 'lg:col-span-4')}>
@@ -1180,11 +1360,7 @@ export default function DiagnosticsPage() {
                       className="h-9 rounded-lg border-slate-200 bg-slate-50/50 text-[13px]"
                     >
                       <span className="truncate">
-                        {datasetsLoading
-                          ? '正在加载数据集...'
-                          : selectedDataset
-                            ? `${datasetLabel(selectedDataset)} [${shortId(selectedDataset.id)}]`
-                            : '暂无可用数据集'}
+                        {datasetSelectLabel(datasetsLoading, selectedDataset)}
                       </span>
                     </SelectTrigger>
                     <SelectContent>
@@ -1424,103 +1600,95 @@ export default function DiagnosticsPage() {
             </div>
           </div>
 
-	          {/* 4. 核心指标横条 */}
-	          <div>
-	            <div className="mb-3 flex items-center justify-between gap-3 px-2">
-	              <h3 className="m-0 flex items-center gap-2 text-[14px] font-semibold text-slate-950">
-	                <BarChart3 className="size-4 text-blue-500" /> 核心指标
-	                <MetricInfoTooltip label="核心指标说明" side="right">
-	                  这里不是自动生成的总报告。RAG
-	                  预览、漂移检查、性能门禁是三个独立探针，分别点击后只更新自己负责的指标。
-	                </MetricInfoTooltip>
-	              </h3>
-	              <p className="text-[11px] font-medium text-slate-400">
-	                先跑左侧按钮，再看对应指标
-	              </p>
-	            </div>
-	            <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
-	              <MainMetricCard
-	                icon={Search}
-	                label="检索相关性"
-	                value={fmtMetricOrMissing(hasProbeResult, retrievalScore)}
-	                help="点击“运行 RAG 预览”后生成。用于判断当前问题召回的片段和问题是否相关，低分通常要检查切块、embedding、Top K 或 reranker。"
-	                loading={probeRunning}
-	                tone={metricTone(retrievalScore)}
-	              />
-	              <MainMetricCard
-	                icon={CheckCircle2}
-	                label="召回引用"
-	                value={fmtCountOrMissing(hasProbeResult, citationCount)}
-	                help="点击“运行 RAG 预览”后生成。表示这次回答拿到了多少条可引用证据；为 0 时通常说明检索没找到可用上下文。"
-	                loading={probeRunning}
-	                tone={
-	                  citationCount === null
-	                    ? 'slate'
-	                    : citationCount > 0
-                      ? 'green'
-                      : 'amber'
-	                }
-	              />
-	              <MainMetricCard
-	                icon={Hash}
-	                label="提示词 token"
-	                value={fmtCountOrMissing(hasProbeResult, promptTokenCount)}
-	                help="点击“运行 RAG 预览”后生成。用于估算本次检索上下文和问题进入模型的 token 成本，过高会影响费用和响应速度。"
-	                loading={probeRunning}
-	                tone={promptTokenCount === null ? 'slate' : 'amber'}
-	              />
-	              <MainMetricCard
-	                icon={Timer}
-	                label="漂移率"
-	                value={
-	                  driftRunning
-	                    ? '检查中'
-	                    : driftSnapshot
-	                      ? fmtExecutedMetric(driftMetric, 3)
-	                      : PENDING_RUN_LABEL
-	                }
-	                help="点击“漂移检查”后生成。后端抽样比较当前 embedding 配置与已存向量；0 表示样本未发现漂移，比例升高说明可能需要重新嵌入。"
-	                loading={driftRunning}
-	                tone={metricTone(driftMetric)}
-	              />
-	              <MainMetricCard
-	                icon={ShieldCheck}
-	                label="性能门禁"
-	                value={perfSuiteRunning ? '执行中' : perfGateStatus}
-	                help="点击“性能门禁”后生成。用于快速判断后端诊断接口在当前迭代次数和超时设置下是否稳定通过。"
-	                loading={perfSuiteRunning}
-	                tone={perfGateTone}
-	              />
-	            </div>
-	          </div>
+          {/* 4. 核心指标横条 */}
+          <div>
+            <div className="mb-3 flex items-center justify-between gap-3 px-2">
+              <h3 className="m-0 flex items-center gap-2 text-[14px] font-semibold text-slate-950">
+                <BarChart3 className="size-4 text-blue-500" /> 核心指标
+                <MetricInfoTooltip label="核心指标说明" side="right">
+                  这里不是自动生成的总报告。RAG
+                  预览、漂移检查、性能门禁是三个独立探针，分别点击后只更新自己负责的指标。
+                </MetricInfoTooltip>
+              </h3>
+              <p className="text-[11px] font-medium text-slate-400">
+                先跑左侧按钮，再看对应指标
+              </p>
+            </div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
+              <MainMetricCard
+                icon={Search}
+                label="检索相关性"
+                value={fmtMetricOrMissing(hasProbeResult, retrievalScore)}
+                help="点击“运行 RAG 预览”后生成。用于判断当前问题召回的片段和问题是否相关，低分通常要检查切块、embedding、Top K 或 reranker。"
+                loading={probeRunning}
+                tone={metricTone(retrievalScore)}
+              />
+              <MainMetricCard
+                icon={CheckCircle2}
+                label="召回引用"
+                value={fmtCountOrMissing(hasProbeResult, citationCount)}
+                help="点击“运行 RAG 预览”后生成。表示这次回答拿到了多少条可引用证据；为 0 时通常说明检索没找到可用上下文。"
+                loading={probeRunning}
+                tone={citationTone(citationCount)}
+              />
+              <MainMetricCard
+                icon={Hash}
+                label="提示词 token"
+                value={fmtCountOrMissing(hasProbeResult, promptTokenCount)}
+                help="点击“运行 RAG 预览”后生成。用于估算本次检索上下文和问题进入模型的 token 成本，过高会影响费用和响应速度。"
+                loading={probeRunning}
+                tone={promptTokenCount === null ? 'slate' : 'amber'}
+              />
+              <MainMetricCard
+                icon={Timer}
+                label="漂移率"
+                value={driftMetricCardValue(
+                  driftRunning,
+                  driftSnapshot,
+                  driftMetric
+                )}
+                help="点击“漂移检查”后生成。后端抽样比较当前 embedding 配置与已存向量；0 表示样本未发现漂移，比例升高说明可能需要重新嵌入。"
+                loading={driftRunning}
+                tone={metricTone(driftMetric)}
+              />
+              <MainMetricCard
+                icon={ShieldCheck}
+                label="性能门禁"
+                value={runningStatusLabel(perfSuiteRunning, perfGateStatus)}
+                help="点击“性能门禁”后生成。用于快速判断后端诊断接口在当前迭代次数和超时设置下是否稳定通过。"
+                loading={perfSuiteRunning}
+                tone={perfGateTone}
+              />
+            </div>
+          </div>
 
-	          {/* 5. 底层分析网格 */}
-	          <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
-	            {/* 执行结果 */}
-	            <div className={cn(CARD_BASE, 'lg:col-span-3')}>
-	              <h3 className={SECTION_TITLE}>
-	                <LayoutGrid className="size-4 text-blue-500" /> 执行结果
-	                <MetricInfoTooltip label="执行结果说明" side="right">
-	                  每一行对应一个按钮。只点“漂移检查”时，RAG
-	                  预览和性能门禁保持待执行是正常的。
-	                </MetricInfoTooltip>
-	              </h3>
-	              <div className="space-y-2 pt-1">
+          {/* 5. 底层分析网格 */}
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
+            {/* 执行结果 */}
+            <div className={cn(CARD_BASE, 'lg:col-span-3')}>
+              <h3 className={SECTION_TITLE}>
+                <LayoutGrid className="size-4 text-blue-500" /> 执行结果
+                <MetricInfoTooltip label="执行结果说明" side="right">
+                  每一行对应一个按钮。只点“漂移检查”时，RAG
+                  预览和性能门禁保持待执行是正常的。
+                </MetricInfoTooltip>
+              </h3>
+              <div className="space-y-2 pt-1">
                 <ConclusionItem
                   label="RAG 预览"
-                  status={probeRunning ? '执行中' : ragPreviewStatusLabel}
+                  status={runningStatusLabel(probeRunning, ragPreviewStatusLabel)}
                 />
                 <ConclusionItem
                   label="漂移检查"
-                  status={driftRunning ? '执行中' : driftStatusLabel}
+                  status={runningStatusLabel(driftRunning, driftStatusLabel)}
                 />
                 <ConclusionItem label="性能门禁" status={perfGateStatus} />
                 <ConclusionItem
                   label="报告时间"
                   status={fmtDateTime(health.data?.payload?.time)}
                 />
-	              </div>
-	            </div>
+                </div>
+              </div>
 
             {/* 依赖资源 */}
             <div className={cn(CARD_BASE, 'lg:col-span-3')}>
@@ -1555,30 +1723,29 @@ export default function DiagnosticsPage() {
               <div className="space-y-2">
                 <DiagnosticsSummaryItem
                   label="系统健康"
-                  value={health.isPending ? '检查中' : systemStatusLabel}
+                  value={healthSummaryStatusLabel(
+                    health.isPending,
+                    systemStatus.label
+                  )}
                   detail={serviceTime}
-                  tone={systemStatusTone}
+                  tone={systemStatus.tone}
                 />
                 <DiagnosticsSummaryItem
                   label="依赖就绪"
-                  value={
-                    readyLoading && !readySnapshot
-                      ? '检查中'
-                      : readyOk
-                        ? '已就绪'
-                        : '需排查'
-                  }
+                  value={readyStatusLabel(
+                    readyLoading,
+                    readySnapshot,
+                    readyOk,
+                    '已就绪',
+                    '需排查'
+                  )}
                   detail={readySnapshot ? '/health/ready 已返回' : '等待就绪响应'}
-                  tone={readyOk ? 'blue' : 'red'}
+                  tone={okTone(readyOk, 'blue')}
                 />
                 <DiagnosticsSummaryItem
                   label="诊断任务"
-                  value={manualDiagnosticsStatus}
-                  detail={
-                    hasManualDiagnostics
-                      ? '已有 RAG / Drift / Perf 结果'
-                      : '需手动运行左侧诊断'
-                  }
+                  value={manualDiagnosticsStatusLabel}
+                  detail={diagnosticSummaryDetail(hasManualDiagnostics)}
                   tone={hasManualDiagnostics ? 'green' : 'slate'}
                 />
               </div>
@@ -1618,10 +1785,10 @@ export default function DiagnosticsPage() {
                 </div>
               )}
             </div>
-	          </div>
-	        </div>
-	      </TooltipProvider>
-	      </PageScaffold>
+            </div>
+          </div>
+        </TooltipProvider>
+        </PageScaffold>
     </AppFrame>
   )
 }
@@ -1644,8 +1811,6 @@ function ConclusionItem({ label, status }: Readonly<{ label: string; status: str
 
 function ResourceItem({ label, status }: Readonly<{ label: string; status: string }>) {
   const normalized = String(status || 'unknown').toLowerCase()
-  const isOk = ['connected', 'ok', 'ready'].includes(normalized)
-  const isChecking = ['checking', 'pending'].includes(normalized)
 
   return (
     <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 bg-card px-2.5 py-2">
@@ -1653,11 +1818,7 @@ function ResourceItem({ label, status }: Readonly<{ label: string; status: strin
       <span
         className={cn(
           'rounded border px-2 py-0.5 text-[9px] font-bold uppercase',
-          isOk
-            ? 'border-emerald-100/70 bg-emerald-50 text-emerald-600'
-            : isChecking
-              ? 'border-blue-100/70 bg-blue-50 text-blue-600'
-              : 'border-red-100/70 bg-red-50 text-red-500'
+          resourceStatusClass(normalized)
         )}
       >
         {status}
