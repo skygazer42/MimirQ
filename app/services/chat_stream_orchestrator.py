@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from typing import Any, AsyncIterator, Callable
 from uuid import UUID, uuid4
 
@@ -22,7 +23,13 @@ from app.services.chat_runtime import (
     format_stream_error_message,
     prepare_stream_chat_runtime,
 )
-from app.services.chat_stream_common import stream_cached_chat_events, stream_materialized_chat_events
+from app.services.chat_stream_common import (
+    ChatStreamPersistenceContext,
+    ChatStreamRuntimeContext,
+    MaterializedChatStreamInput,
+    stream_cached_chat_events,
+    stream_materialized_chat_events,
+)
 from app.services.chat_stream_graph import stream_graph_chat_session_events
 from app.services.chat_stream_langchain import stream_langchain_chat_session_events
 from app.services.metrics_logger import set_metrics_context
@@ -102,50 +109,59 @@ async def stream_chat_sse_events(
     metrics_data = stream_runtime.metrics_data
     structured_data = stream_runtime.structured_data
 
+    cancel_on_disconnect = bool(getattr(settings, "CHAT_STREAM_CANCEL_ON_DISCONNECT", True))
+    disconnect_check = http_request.is_disconnected if cancel_on_disconnect else None
+    materialized_runtime = ChatStreamRuntimeContext(
+        request_id=str(request_id),
+        disconnect_check=disconnect_check,
+        dataset_id_used=dataset_id_used,
+        dataset_rag_defaults_applied_fields=dataset_rag_defaults_applied_fields,
+        dataset_rag_config_template_defaults_applied_fields=dataset_rag_config_template_defaults_applied_fields,
+        rag_config_template_meta=rag_config_template_meta,
+        dataset_prompt_defaults_applied_fields=dataset_prompt_defaults_applied_fields,
+        tenant_qps_meta=tenant_qps_meta,
+        quota_meta=quota_meta,
+        retrieval_mode_default=effective_rag_config.retrieval_mode,
+        vector_backend_default=settings.VECTOR_BACKEND,
+        request_structured_output=bool(request.structured_output),
+        structured_data=structured_data,
+        structured_preset=request.structured_preset,
+    )
+
     if cache_hit:
-        cancel_on_disconnect = bool(getattr(settings, "CHAT_STREAM_CANCEL_ON_DISCONNECT", True))
-        disconnect_check = http_request.is_disconnected if cancel_on_disconnect else None
         async for cached_event in stream_cached_chat_events(
-            request_id=str(request_id),
-            disconnect_check=disconnect_check,
-            content=full_response,
-            citations=citations_data,
-            metrics=metrics_data,
-            dataset_id_used=dataset_id_used,
-            dataset_rag_defaults_applied_fields=dataset_rag_defaults_applied_fields,
-            dataset_rag_config_template_defaults_applied_fields=dataset_rag_config_template_defaults_applied_fields,
-            rag_config_template_meta=rag_config_template_meta,
-            dataset_prompt_defaults_applied_fields=dataset_prompt_defaults_applied_fields,
-            tenant_qps_meta=tenant_qps_meta,
-            quota_meta=quota_meta,
-            retrieval_mode_default=effective_rag_config.retrieval_mode,
-            vector_backend_default=settings.VECTOR_BACKEND,
-            request_structured_output=bool(request.structured_output),
-            structured_data=structured_data,
-            structured_preset=request.structured_preset,
-            db=db,
-            persist_in_background=persist_in_background,
-            spawn_background_task=spawn_background_task,
-            persist_options=ChatStreamPersistInput(
-                tenant_id=tenant_id,
-                conversation_id=conversation_id,
-                account_id=account_id,
-                assistant_message_id=assistant_message_id,
-                request_id=str(request_id),
-                question=request.message,
-                document_count=len(doc_ids_to_use),
+            stream_input=MaterializedChatStreamInput(
+                start_message="缓存命中，直接返回…",
                 content=full_response,
                 citations=citations_data,
                 metrics=metrics_data,
-                dataset_id_used=dataset_id_used,
-                cache_hit=True,
-                cache_key=cache_key,
-                cache_eligible=False,
-                structured_data=structured_data,
-                ip=client_ip,
-                user_agent=user_agent,
-                enable_summary_memory=enable_summary_memory,
-                enable_structured_memory=enable_structured_memory,
+            ),
+            runtime=materialized_runtime,
+            persistence=ChatStreamPersistenceContext(
+                db=db,
+                persist_in_background=persist_in_background,
+                spawn_background_task=spawn_background_task,
+                persist_options=ChatStreamPersistInput(
+                    tenant_id=tenant_id,
+                    conversation_id=conversation_id,
+                    account_id=account_id,
+                    assistant_message_id=assistant_message_id,
+                    request_id=str(request_id),
+                    question=request.message,
+                    document_count=len(doc_ids_to_use),
+                    content=full_response,
+                    citations=citations_data,
+                    metrics=metrics_data,
+                    dataset_id_used=dataset_id_used,
+                    cache_hit=True,
+                    cache_key=cache_key,
+                    cache_eligible=False,
+                    structured_data=structured_data,
+                    ip=client_ip,
+                    user_agent=user_agent,
+                    enable_summary_memory=enable_summary_memory,
+                    enable_structured_memory=enable_structured_memory,
+                ),
             ),
         ):
             yield f"data: {json.dumps(cached_event, ensure_ascii=False)}\n\n"
@@ -174,50 +190,39 @@ async def stream_chat_sse_events(
         if provider_error:
             fallback_metrics["generation_fallback_error"] = provider_error
         fallback_metrics.setdefault("generation_fallback_used", True)
-        cancel_on_disconnect = bool(getattr(settings, "CHAT_STREAM_CANCEL_ON_DISCONNECT", True))
-        disconnect_check = http_request.is_disconnected if cancel_on_disconnect else None
         async for fallback_event in stream_materialized_chat_events(
-            request_id=str(request_id),
-            start_message="模型服务不可用，已切换为引用抽取摘要…",
-            disconnect_check=disconnect_check,
-            content=chat_result.content,
-            citations=chat_result.citations,
-            metrics=fallback_metrics,
-            dataset_id_used=dataset_id_used,
-            dataset_rag_defaults_applied_fields=dataset_rag_defaults_applied_fields,
-            dataset_rag_config_template_defaults_applied_fields=dataset_rag_config_template_defaults_applied_fields,
-            rag_config_template_meta=rag_config_template_meta,
-            dataset_prompt_defaults_applied_fields=dataset_prompt_defaults_applied_fields,
-            tenant_qps_meta=tenant_qps_meta,
-            quota_meta=quota_meta,
-            retrieval_mode_default=effective_rag_config.retrieval_mode,
-            vector_backend_default=settings.VECTOR_BACKEND,
-            request_structured_output=bool(request.structured_output),
-            structured_data=chat_result.structured_data,
-            structured_preset=request.structured_preset,
-            db=db,
-            persist_in_background=persist_in_background,
-            spawn_background_task=spawn_background_task,
-            persist_options=ChatStreamPersistInput(
-                tenant_id=tenant_id,
-                conversation_id=conversation_id,
-                account_id=account_id,
-                assistant_message_id=assistant_message_id,
-                request_id=str(request_id),
-                question=request.message,
-                document_count=len(doc_ids_to_use),
+            stream_input=MaterializedChatStreamInput(
+                start_message="模型服务不可用，已切换为引用抽取摘要…",
                 content=chat_result.content,
                 citations=chat_result.citations,
                 metrics=fallback_metrics,
-                dataset_id_used=dataset_id_used,
-                cache_hit=False,
-                cache_key=None,
-                cache_eligible=False,
-                structured_data=chat_result.structured_data,
-                ip=client_ip,
-                user_agent=user_agent,
-                enable_summary_memory=enable_summary_memory,
-                enable_structured_memory=enable_structured_memory,
+            ),
+            runtime=replace(materialized_runtime, structured_data=chat_result.structured_data),
+            persistence=ChatStreamPersistenceContext(
+                db=db,
+                persist_in_background=persist_in_background,
+                spawn_background_task=spawn_background_task,
+                persist_options=ChatStreamPersistInput(
+                    tenant_id=tenant_id,
+                    conversation_id=conversation_id,
+                    account_id=account_id,
+                    assistant_message_id=assistant_message_id,
+                    request_id=str(request_id),
+                    question=request.message,
+                    document_count=len(doc_ids_to_use),
+                    content=chat_result.content,
+                    citations=chat_result.citations,
+                    metrics=fallback_metrics,
+                    dataset_id_used=dataset_id_used,
+                    cache_hit=False,
+                    cache_key=None,
+                    cache_eligible=False,
+                    structured_data=chat_result.structured_data,
+                    ip=client_ip,
+                    user_agent=user_agent,
+                    enable_summary_memory=enable_summary_memory,
+                    enable_structured_memory=enable_structured_memory,
+                ),
             ),
         ):
             yield f"data: {json.dumps(fallback_event, ensure_ascii=False)}\n\n"
