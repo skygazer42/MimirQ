@@ -17,7 +17,7 @@ function prettyJson(value: unknown) {
   try {
     return JSON.stringify(value, null, 2)
   } catch {
-    return String(value)
+    return Object.prototype.toString.call(value)
   }
 }
 
@@ -42,7 +42,10 @@ function formatResultSummary(payload: unknown) {
   if (payload == null) return '操作已完成。'
   if (Array.isArray(payload)) return `返回 ${payload.length} 条记录。`
   if (typeof payload === 'string') return payload.trim() || '操作已完成。'
-  if (typeof payload !== 'object') return String(payload)
+  if (typeof payload === 'number' || typeof payload === 'boolean' || typeof payload === 'bigint') {
+    return String(payload)
+  }
+  if (typeof payload !== 'object') return Object.prototype.toString.call(payload)
 
   const record = payload as Record<string, unknown>
   if (typeof record.message === 'string' && record.message.trim()) return record.message.trim()

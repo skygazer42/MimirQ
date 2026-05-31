@@ -37,7 +37,7 @@ type InlineCitationHandlers = Readonly<{
   onPrefetch: (href?: string) => void
 }>
 
-const INLINE_CITATION_HANDLERS = createContext<InlineCitationHandlers>({
+const InlineCitationHandlersContext = createContext<InlineCitationHandlers>({
   onClick: () => {},
   onPrefetch: () => {},
 })
@@ -215,7 +215,7 @@ function MessageMarkdownListItem({ children }: MessageMarkdownChildrenProps) {
 }
 
 function MessageMarkdownAnchor({ href, children }: MessageMarkdownLinkProps) {
-  const { onClick, onPrefetch } = useContext(INLINE_CITATION_HANDLERS)
+  const { onClick, onPrefetch } = useContext(InlineCitationHandlersContext)
   const inlineCitation = parseInlineCitationHref(href)
   if (inlineCitation) {
     return (
@@ -535,11 +535,11 @@ export const ChatMessageItem = memo(function ChatMessageItem({
     renderedContent = <CinematicTypewriter content={message.content} isStreaming={true} />
   } else {
     renderedContent = (
-      <INLINE_CITATION_HANDLERS.Provider value={inlineCitationHandlers}>
+      <InlineCitationHandlersContext.Provider value={inlineCitationHandlers}>
         <ReactMarkdown remarkPlugins={markdownPlugins} skipHtml components={markdownBaseComponents}>
           {message.content}
         </ReactMarkdown>
-      </INLINE_CITATION_HANDLERS.Provider>
+      </InlineCitationHandlersContext.Provider>
     )
   }
 
@@ -616,7 +616,6 @@ export const ChatMessageItem = memo(function ChatMessageItem({
   }, [expertAction, feedbackRecord?.id])
 
 	  return (
-      <>
 	    <motion.div
         layout={!reduceMotion && isStreaming}
         transition={streamingLayoutTransition}
@@ -1301,7 +1300,6 @@ export const ChatMessageItem = memo(function ChatMessageItem({
         </div>
       )}
     </motion.div>
-    </>
   )
 })
 

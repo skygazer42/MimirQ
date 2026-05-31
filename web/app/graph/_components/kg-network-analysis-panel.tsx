@@ -55,11 +55,19 @@ type PanelDragState = {
   startY: number
 } | null
 
-function endpointId(value: unknown): string {
+function primitiveEndpointString(value: unknown): string {
   if (typeof value === 'string') return value
-  if (value && typeof value === 'object' && 'id' in value)
-    return String((value as { id?: unknown }).id || '')
-  return String(value || '')
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    return String(value)
+  }
+  return ''
+}
+
+function endpointId(value: unknown): string {
+  if (value && typeof value === 'object' && 'id' in value) {
+    return primitiveEndpointString((value as { id?: unknown }).id)
+  }
+  return primitiveEndpointString(value)
 }
 
 function toNetworkEdges(links: GraphData['links']): KGNetworkEdge[] {

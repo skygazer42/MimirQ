@@ -15,8 +15,16 @@ export const RERANKER_PROVIDER_OPTIONS = [
   { key: 'none', label: '不使用重排' },
 ] as const
 
+function primitiveProviderString(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    return String(value)
+  }
+  return ''
+}
+
 export function normalizeRerankerProvider(value: unknown): string {
-  const provider = String(value || '').trim().toLowerCase().replaceAll('-', '_')
+  const provider = primitiveProviderString(value).trim().toLowerCase().replaceAll('-', '_')
   if (!provider) return 'llm'
   if (provider === 'parent_child') return 'pc'
   if (provider === 'bge_v2_m3') return 'local_bge_v2_m3'

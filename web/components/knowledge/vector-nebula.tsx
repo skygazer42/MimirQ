@@ -16,7 +16,7 @@ import { queryKeys } from "@/lib/query-keys"
 const THREE_CLOCK_DEPRECATION_WARNING = "THREE.THREE.Clock"
 
 function isThreeClockDeprecationWarning(args: unknown[]): boolean {
-  return args.some((arg) => String(arg || "").includes(THREE_CLOCK_DEPRECATION_WARNING))
+  return args.some((arg) => typeof arg === "string" && arg.includes(THREE_CLOCK_DEPRECATION_WARNING))
 }
 
 async function withSuppressedThreeClockWarning<T>(action: () => Promise<T>): Promise<T> {
