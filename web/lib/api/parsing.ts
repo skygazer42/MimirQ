@@ -118,14 +118,12 @@ export interface ParsingContentUpdateRequest {
   original_markdown_content?: string | null
 }
 
-const parsingContentStatsSchema = z
-  .object({
-    page_count: z.number().int().optional(),
-    table_count: z.number().int().optional(),
-    image_count: z.number().int().optional(),
-    block_count: z.number().int().optional(),
-  })
-  .passthrough()
+const parsingContentStatsSchema = z.looseObject({
+  page_count: z.number().int().optional(),
+  table_count: z.number().int().optional(),
+  image_count: z.number().int().optional(),
+  block_count: z.number().int().optional(),
+})
 
 const parsingPdfQualitySchema = z
   .object({
@@ -150,90 +148,78 @@ const parsingQualityGateSchema = z
 
 const parsingElementKindSchema = z.enum(['heading', 'paragraph', 'list', 'table', 'image', 'equation', 'seal', 'unknown'])
 
-const parsingElementSchema = z
-  .object({
-    id: z.string(),
-    kind: parsingElementKindSchema,
-    page: z.number().int().nullable().optional(),
-    pages: z.array(z.number().int()).nullable().optional(),
-    visual_kind: z.string().nullable().optional(),
-    text: z.string().nullable().optional(),
-    confidence: z.number().nullable().optional(),
-    source_backend: z.string().nullable().optional(),
-    source_element_id: z.string().nullable().optional(),
-    bbox: z
-      .object({
-        x0: z.number().int(),
-        y0: z.number().int(),
-        x1: z.number().int(),
-        y1: z.number().int(),
-      })
-      .nullable()
-      .optional(),
-    attributes: z.record(z.string(), z.unknown()).nullable().optional(),
-  })
-  .passthrough()
+const parsingElementSchema = z.looseObject({
+  id: z.string(),
+  kind: parsingElementKindSchema,
+  page: z.number().int().nullable().optional(),
+  pages: z.array(z.number().int()).nullable().optional(),
+  visual_kind: z.string().nullable().optional(),
+  text: z.string().nullable().optional(),
+  confidence: z.number().nullable().optional(),
+  source_backend: z.string().nullable().optional(),
+  source_element_id: z.string().nullable().optional(),
+  bbox: z
+    .object({
+      x0: z.number().int(),
+      y0: z.number().int(),
+      x1: z.number().int(),
+      y1: z.number().int(),
+    })
+    .nullable()
+    .optional(),
+  attributes: z.record(z.string(), z.unknown()).nullable().optional(),
+})
 
-const parsingExtractFieldSpecSchema = z
-  .object({
-    type: z.enum(['string']).optional(),
-    source_kind: z.string().nullable().optional(),
-    source_visual_kind: z.string().nullable().optional(),
-    aliases: z.array(z.string()).optional(),
-  })
-  .passthrough()
+const parsingExtractFieldSpecSchema = z.looseObject({
+  type: z.enum(['string']).optional(),
+  source_kind: z.string().nullable().optional(),
+  source_visual_kind: z.string().nullable().optional(),
+  aliases: z.array(z.string()).optional(),
+})
 
-const parsingExtractEvidenceSchema = z
-  .object({
-    element_id: z.string().nullable().optional(),
-    kind: parsingElementKindSchema.nullable().optional(),
-    page: z.number().int().nullable().optional(),
-    pages: z.array(z.number().int()).nullable().optional(),
-    visual_kind: z.string().nullable().optional(),
-    bbox: z
-      .object({
-        x0: z.number().int(),
-        y0: z.number().int(),
-        x1: z.number().int(),
-        y1: z.number().int(),
-      })
-      .nullable()
-      .optional(),
-    text: z.string().nullable().optional(),
-    score: z.number().nullable().optional(),
-  })
-  .passthrough()
+const parsingExtractEvidenceSchema = z.looseObject({
+  element_id: z.string().nullable().optional(),
+  kind: parsingElementKindSchema.nullable().optional(),
+  page: z.number().int().nullable().optional(),
+  pages: z.array(z.number().int()).nullable().optional(),
+  visual_kind: z.string().nullable().optional(),
+  bbox: z
+    .object({
+      x0: z.number().int(),
+      y0: z.number().int(),
+      x1: z.number().int(),
+      y1: z.number().int(),
+    })
+    .nullable()
+    .optional(),
+  text: z.string().nullable().optional(),
+  score: z.number().nullable().optional(),
+})
 
-const parsingExtractFieldResultSchema = z
-  .object({
-    value: z.string().nullable().optional(),
-    confidence: z.number().nullable().optional(),
-    evidence: z.array(parsingExtractEvidenceSchema),
-    strategy: z.string().nullable().optional(),
-  })
-  .passthrough()
+const parsingExtractFieldResultSchema = z.looseObject({
+  value: z.string().nullable().optional(),
+  confidence: z.number().nullable().optional(),
+  evidence: z.array(parsingExtractEvidenceSchema),
+  strategy: z.string().nullable().optional(),
+})
 
-const parsingExtractResponseSchema = z
-  .object({
-    document_id: z.string(),
-    mode: z.enum(['schema', 'prompt']),
-    result: z.record(z.string(), parsingExtractFieldResultSchema),
-  })
-  .passthrough()
+const parsingExtractResponseSchema = z.looseObject({
+  document_id: z.string(),
+  mode: z.enum(['schema', 'prompt']),
+  result: z.record(z.string(), parsingExtractFieldResultSchema),
+})
 
-const parsingContentResponseSchema = z
-  .object({
-    document_id: z.string(),
-    parser_backend: z.string(),
-    markdown_content: z.string(),
-    original_markdown_content: z.string(),
-    stats: parsingContentStatsSchema.nullable().optional(),
-    parse_duration_sec: z.number().nullable().optional(),
-    pdf_quality: parsingPdfQualitySchema,
-    quality_gate: parsingQualityGateSchema,
-    elements: z.array(parsingElementSchema).nullable().optional(),
-  })
-  .passthrough()
+const parsingContentResponseSchema = z.looseObject({
+  document_id: z.string(),
+  parser_backend: z.string(),
+  markdown_content: z.string(),
+  original_markdown_content: z.string(),
+  stats: parsingContentStatsSchema.nullable().optional(),
+  parse_duration_sec: z.number().nullable().optional(),
+  pdf_quality: parsingPdfQualitySchema,
+  quality_gate: parsingQualityGateSchema,
+  elements: z.array(parsingElementSchema).nullable().optional(),
+})
 
 export const parsingApi = {
   async listDocuments(params?: { skip?: number; limit?: number; status?: string }): Promise<{ total: number; items: Document[] }> {
