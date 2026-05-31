@@ -60,6 +60,9 @@ from app.services.chat_execution_runtime import (
     preflight_model_provider_fast as _preflight_model_provider_fast,
 )
 from app.services.chat_persistence import (
+    ChatResponseFinalizationInput as _ChatResponseFinalizationInput,
+)
+from app.services.chat_persistence import (
     finalize_chat_response_sync as _finalize_chat_response_sync,
 )
 from app.services.chat_response_cache import (
@@ -289,21 +292,23 @@ async def chat(
         "prompt_ab_experiment_key": (effective_prompt_ab_experiment_key or None),
     }
     cache_state = await _prepare_non_streaming_chat_cache_state(
-        db=db,
-        tenant_id=tenant_id,
-        account_id=str(account_id or ""),
-        dataset_id=cache_scope_dataset_id,
-        document_ids=doc_ids_to_use,
-        history=request.history,
-        enable_long_term_memory=bool(request.enable_long_term_memory),
-        long_term_messages=long_term_messages,
-        enable_structured_memory=bool(getattr(request, "enable_structured_memory", False)),
-        question=request.message,
-        rag_config=rag_cfg,
-        prompt_config=prompt_cfg,
-        structured_output=bool(request.structured_output),
-        structured_preset=request.structured_preset,
-        use_graph=bool(effective_rag_config.use_graph),
+        options=_ChatCacheLookupInput(
+            db=db,
+            tenant_id=tenant_id,
+            account_id=str(account_id or ""),
+            dataset_id=cache_scope_dataset_id,
+            document_ids=doc_ids_to_use,
+            history=request.history,
+            enable_long_term_memory=bool(request.enable_long_term_memory),
+            long_term_messages=long_term_messages,
+            enable_structured_memory=bool(getattr(request, "enable_structured_memory", False)),
+            question=request.message,
+            rag_config=rag_cfg,
+            prompt_config=prompt_cfg,
+            structured_output=bool(request.structured_output),
+            structured_preset=request.structured_preset,
+            use_graph=bool(effective_rag_config.use_graph),
+        ),
     )
     cache_feature_enabled = cache_state.cache_feature_enabled
     cache_key = cache_state.cache_key
@@ -481,32 +486,34 @@ async def chat(
         )
 
         metrics_data = _finalize_chat_response_sync(
-            db=db,
-            tenant_id=tenant_id,
-            conversation_id=conversation_id,
-            account_id=account_id,
-            assistant_message_id=assistant_message_id,
-            request_id=str(request_id),
-            question=request.message,
-            document_count=len(doc_ids_to_use),
-            full_response=full_response,
-            citations=citations_data,
-            metrics=metrics_data,
-            structured_data=structured_data,
-            dataset_id_used=dataset_id_used,
-            cache_eligible=cache_eligible,
-            cache_hit=cache_hit,
-            cache_key=cache_key,
-            singleflight_key=singleflight_key,
-            singleflight_leader=singleflight_leader,
-            request_enable_structured_memory=bool(
-                getattr(request, "enable_structured_memory", False)
+            options=_ChatResponseFinalizationInput(
+                db=db,
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                account_id=account_id,
+                assistant_message_id=assistant_message_id,
+                request_id=str(request_id),
+                question=request.message,
+                document_count=len(doc_ids_to_use),
+                full_response=full_response,
+                citations=citations_data,
+                metrics=metrics_data,
+                structured_data=structured_data,
+                dataset_id_used=dataset_id_used,
+                cache_eligible=cache_eligible,
+                cache_hit=cache_hit,
+                cache_key=cache_key,
+                singleflight_key=singleflight_key,
+                singleflight_leader=singleflight_leader,
+                request_enable_structured_memory=bool(
+                    getattr(request, "enable_structured_memory", False)
+                ),
+                ip=getattr(getattr(http_request, "client", None), "host", None),
+                user_agent=http_request.headers.get("user-agent"),
+                enable_online_eval=bool(effective_rag_config.use_graph)
+                or bool(cache_hit),
+                retrieval_mode_default=effective_rag_config.retrieval_mode,
             ),
-            ip=getattr(getattr(http_request, "client", None), "host", None),
-            user_agent=http_request.headers.get("user-agent"),
-            enable_online_eval=bool(effective_rag_config.use_graph)
-            or bool(cache_hit),
-            retrieval_mode_default=effective_rag_config.retrieval_mode,
         )
 
     except Exception as exc:  # noqa: BLE001

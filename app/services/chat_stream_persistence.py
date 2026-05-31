@@ -4,7 +4,6 @@ import asyncio
 import contextlib
 from datetime import UTC, datetime
 from typing import Any, Callable
-from uuid import UUID
 
 from sqlalchemy.orm import Session
 
@@ -43,21 +42,7 @@ def dispatch_chat_stream_persistence(
 
     persist_chat_stream_turn_sync(
         db=db,
-        tenant_id=options.tenant_id,
-        conversation_id=options.conversation_id,
-        account_id=options.account_id,
-        assistant_message_id=options.assistant_message_id,
-        request_id=options.request_id,
-        question=options.question,
-        document_count=options.document_count,
-        content=options.content,
-        citations=options.citations,
-        metrics=options.metrics,
-        dataset_id_used=options.dataset_id_used,
-        cache_hit=options.cache_hit,
-        ip=options.ip,
-        user_agent=options.user_agent,
-        enable_structured_memory=options.enable_structured_memory,
+        options=options,
     )
 
     should_update_summary = (
@@ -79,33 +64,19 @@ def dispatch_chat_stream_persistence(
 def persist_chat_stream_turn_sync(
     *,
     db: Session,
-    tenant_id: UUID,
-    conversation_id: UUID,
-    account_id: str,
-    assistant_message_id: UUID,
-    request_id: str,
-    question: str,
-    document_count: int,
-    content: str,
-    citations: list,
-    metrics: dict,
-    dataset_id_used: UUID | None,
-    cache_hit: bool,
-    ip: str | None,
-    user_agent: str | None,
-    enable_structured_memory: bool,
+    options: ChatStreamPersistInput,
 ) -> None:
     message_metadata = build_chat_message_metadata(
-        request_id=str(request_id),
-        original_question=question,
-        metrics=metrics,
-        citations=citations if isinstance(citations, list) else [],
+        request_id=str(options.request_id),
+        original_question=options.question,
+        metrics=options.metrics,
+        citations=options.citations if isinstance(options.citations, list) else [],
     )
-    if enable_structured_memory and bool(getattr(settings, "STRUCTURED_MEMORY_ENABLED", False)):
+    if options.enable_structured_memory and bool(getattr(settings, "STRUCTURED_MEMORY_ENABLED", False)):
         try:
             message_metadata["structured_memory"] = extract_structured_memory_for_turn(
-                user_text=str(question or ""),
-                assistant_text=str(content or ""),
+                user_text=str(options.question or ""),
+                assistant_text=str(options.content or ""),
                 max_entities=int(getattr(settings, "STRUCTURED_MEMORY_MAX_ENTITIES", 20) or 20),
                 max_facts=int(getattr(settings, "STRUCTURED_MEMORY_MAX_FACTS", 8) or 8),
             )
@@ -113,39 +84,39 @@ def persist_chat_stream_turn_sync(
             pass
 
     assistant_message = Message(
-        id=assistant_message_id,
-        tenant_id=tenant_id,
-        conversation_id=conversation_id,
+        id=options.assistant_message_id,
+        tenant_id=options.tenant_id,
+        conversation_id=options.conversation_id,
         role="assistant",
-        content=content or "",
-        citations=citations if isinstance(citations, list) else [],
-        token_count=num_tokens_from_string(content or ""),
+        content=options.content or "",
+        citations=options.citations if isinstance(options.citations, list) else [],
+        token_count=num_tokens_from_string(options.content or ""),
         message_metadata=message_metadata,
     )
     db.add(assistant_message)
 
     audit_log_event(
         db,
-        tenant_id=tenant_id,
-        actor_id=account_id,
+        tenant_id=options.tenant_id,
+        actor_id=options.account_id,
         action="chat.stream",
         resource_type="conversation",
-        resource_id=str(conversation_id),
-        request_id=str(request_id),
-        ip=ip,
-        user_agent=user_agent,
+        resource_id=str(options.conversation_id),
+        request_id=str(options.request_id),
+        ip=options.ip,
+        user_agent=options.user_agent,
         details=build_chat_audit_details(
-            question=question,
-            document_count=int(document_count or 0),
-            dataset_id=dataset_id_used,
-            cache_hit=cache_hit,
+            question=options.question,
+            document_count=int(options.document_count or 0),
+            dataset_id=options.dataset_id_used,
+            cache_hit=options.cache_hit,
         ),
     )
 
     _touch_conversation_after_turn(
         db=db,
-        tenant_id=tenant_id,
-        conversation_id=conversation_id,
+        tenant_id=options.tenant_id,
+        conversation_id=options.conversation_id,
     )
     db.commit()
 
