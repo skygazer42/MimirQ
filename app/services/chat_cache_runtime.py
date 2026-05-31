@@ -164,38 +164,10 @@ def prepare_chat_cache_lookup(
 
 async def prepare_non_streaming_chat_cache_state(
     *,
-    db: Session,
-    tenant_id: UUID,
-    account_id: str,
-    dataset_id: UUID | None,
-    document_ids: list[UUID],
-    history: list[Any],
-    enable_long_term_memory: bool,
-    long_term_messages: list[dict[str, Any]],
-    enable_structured_memory: bool,
-    question: str,
-    rag_config: dict[str, Any],
-    prompt_config: dict[str, Any],
-    structured_output: bool,
-    structured_preset: str | None,
-    use_graph: bool,
+    options: ChatCacheLookupInput,
 ) -> PreparedNonStreamingChatCacheState:
     cache_feature_enabled, cache_key, cache_skip_reason = prepare_chat_cache_lookup(
-        db=db,
-        tenant_id=tenant_id,
-        account_id=str(account_id or ""),
-        dataset_id=dataset_id,
-        document_ids=document_ids,
-        history=history,
-        enable_long_term_memory=enable_long_term_memory,
-        long_term_messages=long_term_messages,
-        enable_structured_memory=enable_structured_memory,
-        question=question,
-        rag_config=rag_config,
-        prompt_config=prompt_config,
-        structured_output=structured_output,
-        structured_preset=structured_preset,
-        use_graph=use_graph,
+        options=options,
     )
     cache_eligible = bool(cache_key)
     cached = get_cached_chat_response(cache_key) if cache_key else None
