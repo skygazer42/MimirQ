@@ -19,17 +19,14 @@ import { generateRequestId } from '@/lib/request-id'
 import { readSseDataStrings } from '@/lib/sse-reader'
 import { apiClient, openapiRequest } from '@/lib/api/core'
 
-const chatCitationSchema = z
-  .object({
+const chatCitationSchema = z.looseObject({
     document_id: z.string(),
     document_name: z.string(),
     chunk_content: z.string(),
     relevance_score: z.number(),
   })
-  .passthrough()
 
-const chatResponseSchema = z
-  .object({
+const chatResponseSchema = z.looseObject({
     conversation_id: z.string(),
     assistant_message_id: z.string(),
     request_id: z.string(),
@@ -45,7 +42,6 @@ const chatResponseSchema = z
     followup_questions: z.array(z.string()).optional(),
     structured_data: z.unknown().optional(),
   })
-  .passthrough()
 
 export const chatApi = {
   async createConversation(params?: {

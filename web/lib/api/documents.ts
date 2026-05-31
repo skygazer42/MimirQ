@@ -63,8 +63,7 @@ function resolveChunkPreviewStrategy(chunkStrategy?: string): string {
   return chunkStrategy || 'langchain_recursive'
 }
 
-const documentParsedContentResponseSchema: z.ZodType<DocumentParsedContentResponse> = z
-  .object({
+const documentParsedContentResponseSchema: z.ZodType<DocumentParsedContentResponse> = z.looseObject({
     document_id: z.string(),
     available: z.boolean(),
     markdown_content: z.string(),
@@ -74,7 +73,6 @@ const documentParsedContentResponseSchema: z.ZodType<DocumentParsedContentRespon
     original_markdown_truncated: z.boolean(),
     max_chars: z.number().int(),
   })
-  .passthrough()
 
 export const documentApi = {
   async upload(
