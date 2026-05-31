@@ -23,6 +23,7 @@ from app.core.constants import DEFAULT_OPENAI_API_BASE
 from app.core.env import is_production_env
 
 _DEFAULT_RAG_EVAL_SUMMARY_PATH = "tests/rag/evaluation/fixtures/rag_eval_summary.sample.json"
+_COMMA_OR_WHITESPACE_RE = r"[,\\s]+"
 
 try:
     from app.rag.retrieval.contract import (
@@ -2207,7 +2208,7 @@ class Settings(BaseSettings):
         # Security: SCIM provisioning auth guard (enterprise).
         if bool(getattr(self, "SCIM_ENABLED", False)):
             token_raw = str(getattr(self, "SCIM_BEARER_TOKEN", "") or "").strip()
-            tokens = [p.strip() for p in re.split(r"[,\\s]+", token_raw) if p.strip()]
+            tokens = [p.strip() for p in re.split(_COMMA_OR_WHITESPACE_RE, token_raw) if p.strip()]
             if not tokens:
                 raise ValueError("SCIM_BEARER_TOKEN required when SCIM_ENABLED=true")
             for tok in tokens:
@@ -2218,7 +2219,7 @@ class Settings(BaseSettings):
 
             allow_raw = str(getattr(self, "SCIM_IP_ALLOWLIST_CIDRS", "") or "").strip()
             if allow_raw:
-                cidrs = [p.strip() for p in re.split(r"[,\\s]+", allow_raw) if p.strip()]
+                cidrs = [p.strip() for p in re.split(_COMMA_OR_WHITESPACE_RE, allow_raw) if p.strip()]
                 if not cidrs:
                     raise ValueError("SCIM_IP_ALLOWLIST_CIDRS must be a comma/space-separated list of CIDRs")
                 for cidr in cidrs:
@@ -2230,7 +2231,7 @@ class Settings(BaseSettings):
         # Security: Dify external knowledge adapter auth guard.
         if bool(getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", False)):
             token_raw = str(getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", "") or "").strip()
-            tokens = [p.strip() for p in re.split(r"[,\\s]+", token_raw) if p.strip()]
+            tokens = [p.strip() for p in re.split(_COMMA_OR_WHITESPACE_RE, token_raw) if p.strip()]
             if not tokens:
                 raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_API_KEYS required when DIFY_EXTERNAL_KNOWLEDGE_ENABLED=true")
             for tok in tokens:

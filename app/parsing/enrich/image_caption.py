@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from urllib.parse import unquote
+_IMAGE_CAPTION_PREFIX = "Image caption:"
 
 # Match Markdown inline image: ![alt](src "optional title")
 _MD_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
@@ -94,7 +95,7 @@ def _extract_html_imgs(line: str) -> list[tuple[str, str]]:
 def add_image_captions(
     markdown: str,
     *,
-    prefix: str = "Image caption:",
+    prefix: str = _IMAGE_CAPTION_PREFIX,
     max_captions: int = 50,
     max_caption_chars: int = 200,
 ) -> tuple[str, int]:
@@ -177,7 +178,7 @@ def add_image_captions(
         if not caption_text:
             continue
 
-        prefix0 = str(prefix or "Image caption:").strip() or "Image caption:"
+        prefix0 = str(prefix or _IMAGE_CAPTION_PREFIX).strip() or _IMAGE_CAPTION_PREFIX
         # Preserve any prefix (blockquote/list indent) before the image token.
         lead = line[:token_start] if token_start is not None and token_start >= 0 else ""
         out.append(f"{lead}{prefix0} {caption_text}")

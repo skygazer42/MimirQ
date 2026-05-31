@@ -15,16 +15,17 @@ from app.services.document_permission_service import (
 )
 
 _leader_module = None
+_CONNECTORS_MODULE_NAME = "app.api.v1.connectors"
 
 
 def _resolve_acl_helper(name: str):  # noqa: ANN202
     local_helper = globals().get(name)
-    real_module = sys.modules.get("app.api.v1.connectors")
+    real_module = sys.modules.get(_CONNECTORS_MODULE_NAME)
     real_helper = getattr(real_module, name, None) if real_module is not None else None
     if (
         callable(real_helper)
         and real_helper is not local_helper
-        and str(getattr(real_helper, "__module__", "")) != "app.api.v1.connectors"
+        and str(getattr(real_helper, "__module__", "")) != _CONNECTORS_MODULE_NAME
     ):
         return real_helper
 
@@ -40,7 +41,7 @@ def _resolve_acl_helper(name: str):  # noqa: ANN202
         return real_helper
 
     preferred_modules = (
-        "app.api.v1.connectors",
+        _CONNECTORS_MODULE_NAME,
         "test_saved_state_connectors",
         "test_support_connectors_module",
     )

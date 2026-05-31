@@ -101,6 +101,7 @@ _OPENAPI_EXPORT_MODE = str(os.getenv("MIMIRQ_OPENAPI_EXPORT", "") or "").strip()
 _HEALTH_CACHE_TTL_SEC = max(0.0, float(getattr(settings, "HEALTH_CACHE_TTL_SEC", 2.0) or 2.0))
 _health_cache: dict[str, object] = {"ts": 0.0, "payload": None, "key": None}
 _DEV_LOCAL_CORS_PORTS = {3000, 3001, 3100}
+_DOCS_PATH = "/docs"
 
 
 def _health_cache_key() -> tuple[object, ...]:
@@ -407,7 +408,7 @@ app = FastAPI(
     title="MimirQ - Knowledge Base RAG System",
     description="Knowledge Base Management and RAG Conversation System",
     version="1.0.0",
-    docs_url="/docs" if bool(getattr(settings, "API_DOCS_ENABLED", True)) else None,
+    docs_url=_DOCS_PATH if bool(getattr(settings, "API_DOCS_ENABLED", True)) else None,
     redoc_url="/redoc" if bool(getattr(settings, "API_DOCS_ENABLED", True)) else None,
     openapi_url=(
         "/openapi.json"
@@ -521,7 +522,7 @@ if bool(getattr(settings, "PROMETHEUS_ENABLED", False)):
             "/health",
             "/api/v1/health",
             "/api/v1/health/ready",
-            "/docs",
+            _DOCS_PATH,
             "/openapi.json",
             "/redoc",
         ],
@@ -598,7 +599,7 @@ async def root():
     return {
         "message": "Welcome to MimirQ API",
         "version": "1.0.0",
-        "docs": "/docs"
+        "docs": _DOCS_PATH
     }
 
 

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.parsing.artifact_stats import POSITION_TAG_RE
+_READING_ORDER_SCHEMA = "mimirq.reading_order_score.v1"
 
 
 def _coerce_float(value: Any) -> float | None:
@@ -330,7 +331,7 @@ def _score_reading_order_markdown(markdown: str, *, max_blocks: int = 600, min_b
     blocks, tag_count = _extract_blocks(str(markdown or ""))
     if not blocks:
         return {
-            "schema": "mimirq.reading_order_score.v1",
+            "schema": _READING_ORDER_SCHEMA,
             "method": "position_tags",
             "score": None,
             "nid": None,
@@ -351,7 +352,7 @@ def _score_reading_order_markdown(markdown: str, *, max_blocks: int = 600, min_b
     if len(blocks) < int(min_blocks):
         pages = sorted({int(block.page) for block in blocks if int(block.page) > 0})
         return {
-            "schema": "mimirq.reading_order_score.v1",
+            "schema": _READING_ORDER_SCHEMA,
             "method": "position_tags",
             "score": None,
             "nid": None,
@@ -423,7 +424,7 @@ def _score_reading_order_markdown(markdown: str, *, max_blocks: int = 600, min_b
     column_pages = sum(1 for page in pages if page_is_two_col.get(int(page), False))
 
     return {
-        "schema": "mimirq.reading_order_score.v1",
+        "schema": _READING_ORDER_SCHEMA,
         "method": "position_tags",
         "score": round(float(score), 4),
         "nid": round(float(nid), 4),

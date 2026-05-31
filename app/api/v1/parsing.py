@@ -81,6 +81,7 @@ router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 # - Still reject path separators / control characters to prevent path traversal and header issues.
 
 _DETAIL_SOURCE_FILE_NOT_FOUND = "Source file not found"
+_VLM_CORRECTION_SCHEMA = "mimirq.vlm_correction.v1"
 
 POSITION_TAG_RE = re.compile(r"@@([0-9-]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)##")
 
@@ -1244,7 +1245,7 @@ async def parse_workspace_document(
                         if k in prev_evidence:
                             next_evidence[k] = prev_evidence.get(k)
                     if vlm_audit:
-                        next_evidence["vlm_correction"] = {"schema": "mimirq.vlm_correction.v1", **vlm_audit}
+                        next_evidence["vlm_correction"] = {"schema": _VLM_CORRECTION_SCHEMA, **vlm_audit}
                     gate = ParsingQualityGate(
                         grade=gate_after.grade,
                         reasons=list(gate_after.reasons or []),
@@ -1254,7 +1255,7 @@ async def parse_workspace_document(
                     # Keep a compact audit even when nothing changes.
                     if vlm_audit:
                         evidence = dict(gate.evidence or {})
-                        evidence["vlm_correction"] = {"schema": "mimirq.vlm_correction.v1", **vlm_audit}
+                        evidence["vlm_correction"] = {"schema": _VLM_CORRECTION_SCHEMA, **vlm_audit}
                         gate = ParsingQualityGate(grade=gate.grade, reasons=list(gate.reasons or []), evidence=evidence)
             except Exception:
                 vlm_audit = None
@@ -1340,7 +1341,7 @@ async def parse_workspace_document(
         if isinstance(cross_page_merge_stats, dict) and cross_page_merge_stats:
             next_meta["cross_page_merge"] = {"schema": "mimirq.cross_page_merge.v1", "enabled": True, **cross_page_merge_stats}
         if isinstance(vlm_audit, dict) and vlm_audit:
-            next_meta["vlm_correction"] = {"schema": "mimirq.vlm_correction.v1", **vlm_audit}
+            next_meta["vlm_correction"] = {"schema": _VLM_CORRECTION_SCHEMA, **vlm_audit}
         ro = None
         try:
             if file_ext == ".pdf":

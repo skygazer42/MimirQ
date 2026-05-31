@@ -12,6 +12,7 @@ import io
 from pathlib import Path
 
 from langchain_core.documents import Document
+_EMPTY_SHEET_MARKDOWN = "_Empty sheet._\n\n"
 
 
 def _safe_cell(value: object, *, max_chars: int) -> str:
@@ -94,7 +95,7 @@ class ExcelParser:
                 max_cols = max(0, int(max_cols))
 
                 if max_rows <= 0 or max_cols <= 0:
-                    out.write("_Empty sheet._\n\n")
+                    out.write(_EMPTY_SHEET_MARKDOWN)
                     continue
 
                 # Build a small cell grid.
@@ -136,7 +137,7 @@ class ExcelParser:
                     if _row_has_data(row):
                         last_row = i
                 if last_row <= 0:
-                    out.write("_Empty sheet._\n\n")
+                    out.write(_EMPTY_SHEET_MARKDOWN)
                     continue
                 grid = grid[:last_row]
 
@@ -164,7 +165,7 @@ class ExcelParser:
                 if rows_md:
                     out.write(_md_table(rows_md) + "\n\n")
                 else:
-                    out.write("_Empty sheet._\n\n")
+                    out.write(_EMPTY_SHEET_MARKDOWN)
 
                 # Best-effort truncation signal (dims may exceed our configured caps).
                 try:
