@@ -4,7 +4,7 @@ import uuid
 
 from langchain_core.documents import Document
 
-from app.parsing.processors.processor import ChunkAssetStage
+from app.parsing.processors.processor import ChunkAssetOptions, ChunkAssetStage
 from app.rag.retriever import HybridRetriever
 
 
@@ -48,12 +48,14 @@ def test_chunk_asset_stage_sets_prev_next_adjacency_metadata():  # noqa: ANN001
     res = stage.run(
         chunks=chunks,
         tenant_id=tenant_id,
-        dataset_id=dataset_id,
         document_id=document_id,
-        resolved_backend="docling",
-        resolved_chunk_strategy="auto",
-        image_caption_enabled=False,
-        image_ocr_enabled=False,
+        options=ChunkAssetOptions(
+            dataset_id=dataset_id,
+            resolved_backend="docling",
+            resolved_chunk_strategy="auto",
+            image_caption_enabled=False,
+            image_ocr_enabled=False,
+        ),
     )
 
     out = res.chunks

@@ -7,7 +7,7 @@ from PIL import Image as PILImage
 from PIL import ImageDraw
 
 from app.core.config import settings
-from app.parsing.processors.processor import ChunkAssetStage, DocumentProcessorService
+from app.parsing.processors.processor import ChunkAssetOptions, ChunkAssetStage, DocumentProcessorService
 
 
 def test_chunk_asset_stage_adds_ocr_text_for_image_chunk(monkeypatch):  # noqa: ANN001
@@ -44,12 +44,14 @@ def test_chunk_asset_stage_adds_ocr_text_for_image_chunk(monkeypatch):  # noqa: 
     out = stage.run(
         chunks=chunks,
         tenant_id=tenant_id,
-        dataset_id="ds",
         document_id=uuid4(),
-        resolved_backend="basic",
-        resolved_chunk_strategy="basic",
-        image_ocr_enabled=True,
-        image_ocr_max_chars=2000,
+        options=ChunkAssetOptions(
+            dataset_id="ds",
+            resolved_backend="basic",
+            resolved_chunk_strategy="basic",
+            image_ocr_enabled=True,
+            image_ocr_max_chars=2000,
+        ),
     )
 
     assert out.chunks[0].metadata.get("img_id") == "img-1"
@@ -96,12 +98,14 @@ def test_chunk_asset_stage_adds_decoded_image_code_text_for_image_chunk(monkeypa
     out = stage.run(
         chunks=chunks,
         tenant_id=tenant_id,
-        dataset_id="ds",
         document_id=uuid4(),
-        resolved_backend="basic",
-        resolved_chunk_strategy="basic",
-        image_ocr_enabled=True,
-        image_ocr_max_chars=2000,
+        options=ChunkAssetOptions(
+            dataset_id="ds",
+            resolved_backend="basic",
+            resolved_chunk_strategy="basic",
+            image_ocr_enabled=True,
+            image_ocr_max_chars=2000,
+        ),
     )
 
     assert out.chunks[0].metadata.get("img_id") == "img-qr"
@@ -316,12 +320,14 @@ def test_chunk_asset_stage_falls_back_to_pixel_visual_kind_for_image_chunk(monke
     out = stage.run(
         chunks=chunks,
         tenant_id=tenant_id,
-        dataset_id="ds",
         document_id=uuid4(),
-        resolved_backend="basic",
-        resolved_chunk_strategy="basic",
-        image_ocr_enabled=True,
-        image_ocr_max_chars=2000,
+        options=ChunkAssetOptions(
+            dataset_id="ds",
+            resolved_backend="basic",
+            resolved_chunk_strategy="basic",
+            image_ocr_enabled=True,
+            image_ocr_max_chars=2000,
+        ),
     )
 
     assert out.chunks[0].metadata.get("img_id") == "img-chart"
@@ -373,12 +379,14 @@ def test_chunk_asset_stage_infers_pixel_visual_kind_without_image_ocr(monkeypatc
     out = stage.run(
         chunks=chunks,
         tenant_id=tenant_id,
-        dataset_id="ds",
         document_id=uuid4(),
-        resolved_backend="basic",
-        resolved_chunk_strategy="basic",
-        image_ocr_enabled=False,
-        image_ocr_max_chars=2000,
+        options=ChunkAssetOptions(
+            dataset_id="ds",
+            resolved_backend="basic",
+            resolved_chunk_strategy="basic",
+            image_ocr_enabled=False,
+            image_ocr_max_chars=2000,
+        ),
     )
 
     assert out.chunks[0].metadata.get("img_id") == "img-diagram"

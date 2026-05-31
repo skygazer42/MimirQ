@@ -4,6 +4,7 @@ import contextlib
 import html
 import re
 import sys
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,36 @@ from app.models.connector import ConnectorRun, ConnectorRunDocument
 from app.models.document import Document as DBDocument
 
 JIRA_UPDATED_SOURCE = "connector:jira:updated"
+
+
+@dataclass(frozen=True)
+class JiraProjectIssueContext:
+    run: ConnectorRun
+    run_id: UUID
+    tenant_id: UUID
+    requested_by: str
+    base_url: str
+    project_key: str
+    cursor_last_modified: str
+    cursor_last_modified_ids: set[str]
+    effective_mode: str
+    include_comments: bool
+    max_comments_per_issue: int
+    include_attachments: bool
+    max_attachments_per_issue: int
+    max_total_attachments: int
+    include_linked_artifacts: bool
+    max_linked_artifacts_per_issue: int
+    max_total_linked_artifacts: int
+    parser_backend: str
+    chunk_strategy: str
+    pipeline: object
+    access: object
+    user_agent: object
+    auth_headers: dict[str, str]
+    enable_source_acl: bool
+    source_acl_mode: str
+    source_acl_fallback_mode: str
 
 
 def _resolve_connectors_attr(name: str):  # noqa: ANN202
@@ -1912,36 +1943,38 @@ def _persist_jira_project_skipped_boundary_duplicates(
 async def _process_jira_project_issue(
     db: Session,
     *,
-    run: ConnectorRun,
-    run_id: UUID,
-    tenant_id: UUID,
-    requested_by: str,
+    context: JiraProjectIssueContext,
     issue: object,
-    base_url: str,
-    project_key: str,
-    cursor_last_modified: str,
-    cursor_last_modified_ids: set[str],
-    effective_mode: str,
-    include_comments: bool,
-    max_comments_per_issue: int,
-    include_attachments: bool,
-    max_attachments_per_issue: int,
-    max_total_attachments: int,
-    include_linked_artifacts: bool,
-    max_linked_artifacts_per_issue: int,
-    max_total_linked_artifacts: int,
-    parser_backend: str,
-    chunk_strategy: str,
-    pipeline: object,
-    access: object,
-    user_agent: object,
-    auth_headers: dict[str, str],
-    enable_source_acl: bool,
-    source_acl_mode: str,
-    source_acl_fallback_mode: str,
     progress: dict[str, Any],
     observed_issue_urls: set[str],
 ) -> None:
+    run = context.run
+    run_id = context.run_id
+    tenant_id = context.tenant_id
+    requested_by = context.requested_by
+    base_url = context.base_url
+    project_key = context.project_key
+    cursor_last_modified = context.cursor_last_modified
+    cursor_last_modified_ids = context.cursor_last_modified_ids
+    effective_mode = context.effective_mode
+    include_comments = context.include_comments
+    max_comments_per_issue = context.max_comments_per_issue
+    include_attachments = context.include_attachments
+    max_attachments_per_issue = context.max_attachments_per_issue
+    max_total_attachments = context.max_total_attachments
+    include_linked_artifacts = context.include_linked_artifacts
+    max_linked_artifacts_per_issue = context.max_linked_artifacts_per_issue
+    max_total_linked_artifacts = context.max_total_linked_artifacts
+    parser_backend = context.parser_backend
+    chunk_strategy = context.chunk_strategy
+    pipeline = context.pipeline
+    access = context.access
+    user_agent = context.user_agent
+    auth_headers = context.auth_headers
+    enable_source_acl = context.enable_source_acl
+    source_acl_mode = context.source_acl_mode
+    source_acl_fallback_mode = context.source_acl_fallback_mode
+
     created = int(progress.get("created") or 0)
     failed = int(progress.get("failed") or 0)
     processed = int(progress.get("processed") or 0)
@@ -2361,6 +2394,34 @@ async def _process_jira_project_issues(
     observed_issue_urls: set[str] = set()
     listing_complete = False
     total_issues_available: int | None = None
+    issue_context = JiraProjectIssueContext(
+        run=run,
+        run_id=run_id,
+        tenant_id=tenant_id,
+        requested_by=requested_by,
+        base_url=base_url,
+        project_key=project_key,
+        cursor_last_modified=cursor_last_modified,
+        cursor_last_modified_ids=cursor_last_modified_ids,
+        effective_mode=effective_mode,
+        include_comments=include_comments,
+        max_comments_per_issue=max_comments_per_issue,
+        include_attachments=include_attachments,
+        max_attachments_per_issue=max_attachments_per_issue,
+        max_total_attachments=max_total_attachments,
+        include_linked_artifacts=include_linked_artifacts,
+        max_linked_artifacts_per_issue=max_linked_artifacts_per_issue,
+        max_total_linked_artifacts=max_total_linked_artifacts,
+        parser_backend=parser_backend,
+        chunk_strategy=chunk_strategy,
+        pipeline=pipeline,
+        access=access,
+        user_agent=user_agent,
+        auth_headers=auth_headers,
+        enable_source_acl=enable_source_acl,
+        source_acl_mode=source_acl_mode,
+        source_acl_fallback_mode=source_acl_fallback_mode,
+    )
 
     pool = _resolve_connectors_helper("get_http_client_pool")()
     start_at = 0
@@ -2396,33 +2457,8 @@ async def _process_jira_project_issues(
 
             await _resolve_connectors_helper("_process_jira_project_issue")(
                 db,
-                run=run,
-                run_id=run_id,
-                tenant_id=tenant_id,
-                requested_by=requested_by,
+                context=issue_context,
                 issue=issue,
-                base_url=base_url,
-                project_key=project_key,
-                cursor_last_modified=cursor_last_modified,
-                cursor_last_modified_ids=cursor_last_modified_ids,
-                effective_mode=effective_mode,
-                include_comments=include_comments,
-                max_comments_per_issue=max_comments_per_issue,
-                include_attachments=include_attachments,
-                max_attachments_per_issue=max_attachments_per_issue,
-                max_total_attachments=max_total_attachments,
-                include_linked_artifacts=include_linked_artifacts,
-                max_linked_artifacts_per_issue=max_linked_artifacts_per_issue,
-                max_total_linked_artifacts=max_total_linked_artifacts,
-                parser_backend=parser_backend,
-                chunk_strategy=chunk_strategy,
-                pipeline=pipeline,
-                access=access,
-                user_agent=user_agent,
-                auth_headers=auth_headers,
-                enable_source_acl=enable_source_acl,
-                source_acl_mode=source_acl_mode,
-                source_acl_fallback_mode=source_acl_fallback_mode,
                 progress=progress,
                 observed_issue_urls=observed_issue_urls,
             )

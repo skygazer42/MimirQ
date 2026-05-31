@@ -5,7 +5,7 @@ import uuid
 from langchain_core.documents import Document
 
 import app.parsing.enrich.image_understanding as iu
-from app.parsing.processors.processor import ChunkAssetStage
+from app.parsing.processors.processor import ChunkAssetOptions, ChunkAssetStage
 
 
 class _FakeProcessorSvc:
@@ -53,14 +53,16 @@ def test_image_and_ocr_chunks_get_roles_and_ocr_is_separate(monkeypatch):  # noq
     res = stage.run(
         chunks=chunks,
         tenant_id=tenant_id,
-        dataset_id=dataset_id,
         document_id=document_id,
-        resolved_backend="docling",
-        resolved_chunk_strategy="pdf_layout",
-        image_caption_enabled=False,
-        image_ocr_enabled=True,
-        image_ocr_max_chars=2000,
-        image_ocr_max_images=20,
+        options=ChunkAssetOptions(
+            dataset_id=dataset_id,
+            resolved_backend="docling",
+            resolved_chunk_strategy="pdf_layout",
+            image_caption_enabled=False,
+            image_ocr_enabled=True,
+            image_ocr_max_chars=2000,
+            image_ocr_max_images=20,
+        ),
     )
 
     out = res.chunks
@@ -95,14 +97,16 @@ def test_duplicate_ocr_chunks_are_deduped_by_hash(monkeypatch):  # noqa: ANN001
     res = stage.run(
         chunks=chunks,
         tenant_id=tenant_id,
-        dataset_id=dataset_id,
         document_id=document_id,
-        resolved_backend="docling",
-        resolved_chunk_strategy="pdf_layout",
-        image_caption_enabled=False,
-        image_ocr_enabled=True,
-        image_ocr_max_chars=2000,
-        image_ocr_max_images=20,
+        options=ChunkAssetOptions(
+            dataset_id=dataset_id,
+            resolved_backend="docling",
+            resolved_chunk_strategy="pdf_layout",
+            image_caption_enabled=False,
+            image_ocr_enabled=True,
+            image_ocr_max_chars=2000,
+            image_ocr_max_images=20,
+        ),
     )
 
     out = res.chunks
