@@ -112,6 +112,15 @@ type IssueRow = {
   target: string
 }
 type PipelineVersionDatum = DatasetReportPipelineVersion & { fill: string }
+type ReportExportParams = {
+  pipeline_hash?: string
+  connector_runs_limit: number
+  redact?: boolean
+}
+type ReportBlobExporter = (
+  datasetId: string,
+  params: ReportExportParams
+) => Promise<Blob>
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
@@ -120,6 +129,65 @@ function downloadBlob(blob: Blob, filename: string) {
   a.download = filename
   a.click()
   globalThis.window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+function reportPipelineSuffix(pipelineHash: string) {
+  const hash = pipelineHash.trim()
+  return hash ? `.${hash.slice(0, 8)}` : ''
+}
+
+function reportExportParams(
+  pipelineHash: string,
+  connectorRunsLimit: number,
+  redact?: boolean
+): ReportExportParams {
+  const params: ReportExportParams = {
+    connector_runs_limit: connectorRunsLimit,
+  }
+  const hash = pipelineHash.trim()
+  if (hash) params.pipeline_hash = hash
+  if (redact !== undefined) params.redact = redact
+  return params
+}
+
+async function exportReportBlobFile({
+  datasetId,
+  datasetName,
+  pipelineHash,
+  connectorRunsLimit,
+  redact,
+  setLoading,
+  getBlob,
+  filenameStem,
+  extension,
+  errorFallback,
+}: Readonly<{
+  datasetId: string
+  datasetName: string
+  pipelineHash: string
+  connectorRunsLimit: number
+  redact?: boolean
+  setLoading: (loading: boolean) => void
+  getBlob: ReportBlobExporter
+  filenameStem: string
+  extension: string
+  errorFallback: string
+}>) {
+  if (!datasetId) return
+  setLoading(true)
+  try {
+    const blob = await getBlob(
+      datasetId,
+      reportExportParams(pipelineHash, connectorRunsLimit, redact)
+    )
+    const safe = sanitizeFilename(datasetName || 'dataset')
+    downloadBlob(blob, `${safe}.${filenameStem}${reportPipelineSuffix(pipelineHash)}.${extension}`)
+  } catch (e: any) {
+    console.error(`${errorFallback}:`, e)
+    toast.error(formatApiError(e, errorFallback))
+  } finally {
+    setLoading(false)
+  }
 }
 
 function shortPipelineHash(hash: string) {
@@ -335,6 +403,96 @@ function ProgressRow({
       </div>
     </div>
   )
+}
+
+function useFlatReportFolders(folderTree: DatasetReport['folder_tree']) {
+  const [flatFolders, setFlatFolders] = useState<FlatFolderRow[] | null>(null)
+  const transformsWorkerRef = useRef<Worker | null>(null)
+  const transformsApiRef = useRef<Remote<ReportTransformsWorkerApi> | null>(
+    null
+  )
+  const transformsDisabledRef = useRef(false)
+  const flatFoldersSeqRef = useRef(0)
+
+  useEffect(() => {
+    return () => {
+      if (transformsWorkerRef.current) {
+        transformsWorkerRef.current.terminate()
+        transformsWorkerRef.current = null
+        transformsApiRef.current = null
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    const seq = ++flatFoldersSeqRef.current
+
+    if (!folderTree) {
+      setFlatFolders(null)
+      return
+    }
+
+    // Null => computed pending for this folder tree.
+    setFlatFolders(null)
+
+    const computeSync = () => {
+      try {
+        const rows = flattenFolderTree(folderTree)
+        if (flatFoldersSeqRef.current === seq) setFlatFolders(rows)
+      } catch (e) {
+        console.warn(
+          'Failed to flatten folder tree; falling back to empty list',
+          e
+        )
+        if (flatFoldersSeqRef.current === seq) setFlatFolders([])
+      }
+    }
+
+    if (transformsDisabledRef.current || typeof Worker === 'undefined') {
+      computeSync()
+      return
+    }
+
+    let cancelled = false
+    detachPromise(
+      (async () => {
+        try {
+          if (!transformsWorkerRef.current || !transformsApiRef.current) {
+            transformsWorkerRef.current = new Worker(
+              new URL(
+                '../../workers/report-transforms.worker.ts',
+                import.meta.url
+              ),
+              { type: 'module' }
+            )
+            transformsApiRef.current = wrap<ReportTransformsWorkerApi>(
+              transformsWorkerRef.current
+            )
+          }
+
+          const rows =
+            await transformsApiRef.current.flattenFolderTree(folderTree)
+          if (cancelled) return
+          if (flatFoldersSeqRef.current !== seq) return
+          setFlatFolders(rows)
+        } catch (e) {
+          // If the environment can't load a worker bundle (or Comlink fails), keep the page functional.
+          console.warn(
+            'Report transforms worker failed; falling back to main thread',
+            e
+          )
+          transformsDisabledRef.current = true
+          computeSync()
+        }
+      })()
+    )
+
+    return () => {
+      cancelled = true
+    }
+  }, [folderTree])
+
+  return flatFolders
 }
 
 function ReportMetricGrid({
@@ -891,14 +1049,6 @@ export default function ReportsCenterPage() {
   const [folderQuery, setFolderQuery] = useState<string>('')
   const [categoryQuery] = useState<string>('')
 
-  const [flatFolders, setFlatFolders] = useState<FlatFolderRow[] | null>(null)
-  const transformsWorkerRef = useRef<Worker | null>(null)
-  const transformsApiRef = useRef<Remote<ReportTransformsWorkerApi> | null>(
-    null
-  )
-  const transformsDisabledRef = useRef(false)
-  const flatFoldersSeqRef = useRef(0)
-
   const reportParams = useMemo(
     () => ({
       pipeline_hash: pipelineHash.trim() || undefined,
@@ -948,57 +1098,37 @@ export default function ReportsCenterPage() {
     setPipelineHash('')
   }, [datasetId, datasets])
 
-  useEffect(() => {
-    return () => {
-      if (transformsWorkerRef.current) {
-        transformsWorkerRef.current.terminate()
-        transformsWorkerRef.current = null
-        transformsApiRef.current = null
-      }
-    }
-  }, [])
-
-  const handleExportJson = useCallback(async () => {
-    if (!datasetId) return
-    setIsExportingJson(true)
-    try {
-      const blob = await reportApi.exportDatasetReportJson(datasetId, {
-        pipeline_hash: pipelineHash.trim() || undefined,
-        connector_runs_limit: connectorRunsLimit,
+  const handleExportJson = useCallback(() => {
+    detachPromise(
+      exportReportBlobFile({
+        datasetId,
+        datasetName: selectedDataset?.name || 'dataset',
+        pipelineHash,
+        connectorRunsLimit,
+        setLoading: setIsExportingJson,
+        getBlob: reportApi.exportDatasetReportJson,
+        filenameStem: 'report',
+        extension: 'json',
+        errorFallback: '导出 JSON 报告失败',
       })
-      const safe = sanitizeFilename(selectedDataset?.name || 'dataset')
-      const suffix = pipelineHash.trim()
-        ? `.${pipelineHash.trim().slice(0, 8)}`
-        : ''
-      downloadBlob(blob, `${safe}.report${suffix}.json`)
-    } catch (e: any) {
-      console.error('Export report json failed', e)
-      toast.error(formatApiError(e, '导出 JSON 报告失败'))
-    } finally {
-      setIsExportingJson(false)
-    }
+    )
   }, [connectorRunsLimit, datasetId, pipelineHash, selectedDataset?.name])
 
-  const handleExportHtml = useCallback(async () => {
-    if (!datasetId) return
-    setIsExportingHtml(true)
-    try {
-      const blob = await reportApi.exportDatasetReportHtml(datasetId, {
-        pipeline_hash: pipelineHash.trim() || undefined,
-        connector_runs_limit: connectorRunsLimit,
+  const handleExportHtml = useCallback(() => {
+    detachPromise(
+      exportReportBlobFile({
+        datasetId,
+        datasetName: selectedDataset?.name || 'dataset',
+        pipelineHash,
+        connectorRunsLimit,
         redact,
+        setLoading: setIsExportingHtml,
+        getBlob: reportApi.exportDatasetReportHtml,
+        filenameStem: 'report',
+        extension: 'html',
+        errorFallback: '导出 HTML 报告失败',
       })
-      const safe = sanitizeFilename(selectedDataset?.name || 'dataset')
-      const suffix = pipelineHash.trim()
-        ? `.${pipelineHash.trim().slice(0, 8)}`
-        : ''
-      downloadBlob(blob, `${safe}.report${suffix}.html`)
-    } catch (e: any) {
-      console.error('Export report html failed', e)
-      toast.error(formatApiError(e, '导出 HTML 报告失败'))
-    } finally {
-      setIsExportingHtml(false)
-    }
+    )
   }, [
     connectorRunsLimit,
     datasetId,
@@ -1007,26 +1137,21 @@ export default function ReportsCenterPage() {
     selectedDataset?.name,
   ])
 
-  const handleExportRagAuditHtml = useCallback(async () => {
-    if (!datasetId) return
-    setIsExportingRagAuditHtml(true)
-    try {
-      const blob = await reportApi.exportDatasetRagAuditHtml(datasetId, {
-        pipeline_hash: pipelineHash.trim() || undefined,
-        connector_runs_limit: connectorRunsLimit,
+  const handleExportRagAuditHtml = useCallback(() => {
+    detachPromise(
+      exportReportBlobFile({
+        datasetId,
+        datasetName: selectedDataset?.name || 'dataset',
+        pipelineHash,
+        connectorRunsLimit,
         redact,
+        setLoading: setIsExportingRagAuditHtml,
+        getBlob: reportApi.exportDatasetRagAuditHtml,
+        filenameStem: 'rag_audit',
+        extension: 'html',
+        errorFallback: '导出 RAG Audit 报告失败',
       })
-      const safe = sanitizeFilename(selectedDataset?.name || 'dataset')
-      const suffix = pipelineHash.trim()
-        ? `.${pipelineHash.trim().slice(0, 8)}`
-        : ''
-      downloadBlob(blob, `${safe}.rag_audit${suffix}.html`)
-    } catch (e: any) {
-      console.error('Export rag audit html failed', e)
-      toast.error(formatApiError(e, '导出 RAG Audit 报告失败'))
-    } finally {
-      setIsExportingRagAuditHtml(false)
-    }
+    )
   }, [
     connectorRunsLimit,
     datasetId,
@@ -1035,26 +1160,21 @@ export default function ReportsCenterPage() {
     selectedDataset?.name,
   ])
 
-  const handleExportBundleZip = useCallback(async () => {
-    if (!datasetId) return
-    setIsExportingBundle(true)
-    try {
-      const blob = await reportApi.exportDatasetReportBundleZip(datasetId, {
-        pipeline_hash: pipelineHash.trim() || undefined,
-        connector_runs_limit: connectorRunsLimit,
+  const handleExportBundleZip = useCallback(() => {
+    detachPromise(
+      exportReportBlobFile({
+        datasetId,
+        datasetName: selectedDataset?.name || 'dataset',
+        pipelineHash,
+        connectorRunsLimit,
         redact,
+        setLoading: setIsExportingBundle,
+        getBlob: reportApi.exportDatasetReportBundleZip,
+        filenameStem: 'report-bundle',
+        extension: 'zip',
+        errorFallback: '导出完整归档包失败',
       })
-      const safe = sanitizeFilename(selectedDataset?.name || 'dataset')
-      const suffix = pipelineHash.trim()
-        ? `.${pipelineHash.trim().slice(0, 8)}`
-        : ''
-      downloadBlob(blob, `${safe}.report-bundle${suffix}.zip`)
-    } catch (e: any) {
-      console.error('Export report bundle zip failed', e)
-      toast.error(formatApiError(e, '导出完整归档包失败'))
-    } finally {
-      setIsExportingBundle(false)
-    }
+    )
   }, [
     connectorRunsLimit,
     datasetId,
@@ -1081,6 +1201,7 @@ export default function ReportsCenterPage() {
   )
   const connectorRuns = report?.connectors || []
   const folderTree = report?.folder_tree || null
+  const flatFolders = useFlatReportFolders(folderTree)
   const governance = report?.governance_metrics || null
   const governanceAudit = report?.governance_audit || null
   const pipelineVersionOptions = useMemo(() => {
@@ -1103,74 +1224,6 @@ export default function ReportsCenterPage() {
   }, [pipelineVersions])
   const pipelineVersionSelectValue =
     pipelineHash.trim() || DEFAULT_PIPELINE_VERSION_VALUE
-
-  useEffect(() => {
-    const seq = ++flatFoldersSeqRef.current
-
-    if (!folderTree) {
-      setFlatFolders(null)
-      return
-    }
-
-    // Null => computed pending for this folder tree.
-    setFlatFolders(null)
-
-    const computeSync = () => {
-      try {
-        const rows = flattenFolderTree(folderTree)
-        if (flatFoldersSeqRef.current === seq) setFlatFolders(rows)
-      } catch (e) {
-        console.warn(
-          'Failed to flatten folder tree; falling back to empty list',
-          e
-        )
-        if (flatFoldersSeqRef.current === seq) setFlatFolders([])
-      }
-    }
-
-    if (transformsDisabledRef.current || typeof Worker === 'undefined') {
-      computeSync()
-      return
-    }
-
-    let cancelled = false
-    detachPromise(
-      (async () => {
-        try {
-          if (!transformsWorkerRef.current || !transformsApiRef.current) {
-            transformsWorkerRef.current = new Worker(
-              new URL(
-                '../../workers/report-transforms.worker.ts',
-                import.meta.url
-              ),
-              { type: 'module' }
-            )
-            transformsApiRef.current = wrap<ReportTransformsWorkerApi>(
-              transformsWorkerRef.current
-            )
-          }
-
-          const rows =
-            await transformsApiRef.current.flattenFolderTree(folderTree)
-          if (cancelled) return
-          if (flatFoldersSeqRef.current !== seq) return
-          setFlatFolders(rows)
-        } catch (e) {
-          // If the environment can't load a worker bundle (or Comlink fails), keep the page functional.
-          console.warn(
-            'Report transforms worker failed; falling back to main thread',
-            e
-          )
-          transformsDisabledRef.current = true
-          computeSync()
-        }
-      })()
-    )
-
-    return () => {
-      cancelled = true
-    }
-  }, [folderTree])
 
   const folderBarData = useMemo(() => {
     const rows = flatFolders ?? []
@@ -1807,7 +1860,7 @@ export default function ReportsCenterPage() {
                   <Button
                     variant="outline"
                     className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50 hover:text-slate-700"
-                    onClick={() => detachPromise(handleExportJson())}
+                    onClick={handleExportJson}
                     disabled={!datasetId || isExportingJson}
                     aria-label="导出 JSON"
                   >
@@ -1841,7 +1894,7 @@ export default function ReportsCenterPage() {
                   <Button
                     variant="outline"
                     className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50 hover:text-slate-700"
-                    onClick={() => detachPromise(handleExportRagAuditHtml())}
+                    onClick={handleExportRagAuditHtml}
                     disabled={!datasetId || isExportingRagAuditHtml}
                     aria-label="导出 RAG 审计报告"
                   >
@@ -1855,7 +1908,7 @@ export default function ReportsCenterPage() {
                   <Button
                     variant="outline"
                     className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50 hover:text-slate-700"
-                    onClick={() => detachPromise(handleExportBundleZip())}
+                    onClick={handleExportBundleZip}
                     disabled={!datasetId || isExportingBundle}
                     aria-label="导出数据包 ZIP"
                   >
@@ -1869,7 +1922,7 @@ export default function ReportsCenterPage() {
                   <Button
                     variant="outline"
                     className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50 hover:text-slate-700"
-                    onClick={() => detachPromise(handleExportHtml())}
+                    onClick={handleExportHtml}
                     disabled={!datasetId || isExportingHtml}
                     aria-label="导出 HTML"
                   >
