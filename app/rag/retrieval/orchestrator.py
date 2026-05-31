@@ -95,6 +95,7 @@ from app.services.router_prometheus_metrics import observe_router_layers
 
 _CHANNEL_BUDGET_POLICY_SCHEMA_V1 = "mimirq.channel_budget_policy.v1"
 logger = get_logger(__name__)
+_RETRIEVAL_ORCHESTRATOR_FALLBACK_LOG_MESSAGE = "Ignoring non-critical retrieval orchestrator fallback failure: %s"
 
 
 def _log_orchestrator_fallback(context: str, exc: BaseException) -> None:
@@ -2659,7 +2660,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                             strategy=hierarchy_family_aggregation,
                         )
                     except Exception as exc:
-                        logger.debug("Ignoring non-critical retrieval orchestrator fallback failure: %s", exc)
+                        logger.debug(_RETRIEVAL_ORCHESTRATOR_FALLBACK_LOG_MESSAGE, exc)
 
                 want_non_mq = max(0, int(top_k) - int(mq_diversify_budget))
                 want_mq = int(mq_diversify_budget)
@@ -2884,7 +2885,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                         if raw.get("hops") is not None:
                             out["hops"] = int(raw.get("hops") or 0)
                     except Exception as exc:
-                        logger.debug("Ignoring non-critical retrieval orchestrator fallback failure: %s", exc)
+                        logger.debug(_RETRIEVAL_ORCHESTRATOR_FALLBACK_LOG_MESSAGE, exc)
 
                     nodes_raw = raw.get("nodes")
                     if isinstance(nodes_raw, list) and nodes_raw:
@@ -2983,7 +2984,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                         try:
                             db.close()
                         except Exception as exc:
-                            logger.debug("Ignoring non-critical retrieval orchestrator fallback failure: %s", exc)
+                            logger.debug(_RETRIEVAL_ORCHESTRATOR_FALLBACK_LOG_MESSAGE, exc)
 
                 chunk_by_id: dict[UUID, Any] = {}
                 for ch in (rows or []):
@@ -3146,7 +3147,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             meta["kg_edge_conf_mid"] = mid
             meta["kg_edge_conf_high"] = high
     except Exception as exc:
-        logger.debug("Ignoring non-critical retrieval orchestrator fallback failure: %s", exc)
+        logger.debug(_RETRIEVAL_ORCHESTRATOR_FALLBACK_LOG_MESSAGE, exc)
 
     kg_chunk_boost_enabled = _coerce_optional_bool(
         state.get("enable_kg_chunk_boost"),
@@ -3421,7 +3422,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                                 try:
                                     set_cached_evidence_post_rerank_result(cache_key, rr)
                                 except Exception as exc:
-                                    logger.debug("Ignoring non-critical retrieval orchestrator fallback failure: %s", exc)
+                                    logger.debug(_RETRIEVAL_ORCHESTRATOR_FALLBACK_LOG_MESSAGE, exc)
                             elapsed_i = float(rr.elapsed_sec or (time.time() - rr_start))
                         else:
                             elapsed_i = 0.0
@@ -3575,7 +3576,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                                 try:
                                     set_cached_evidence_post_rerank_result(cache_key, rr)
                                 except Exception as exc:
-                                    logger.debug("Ignoring non-critical retrieval orchestrator fallback failure: %s", exc)
+                                    logger.debug(_RETRIEVAL_ORCHESTRATOR_FALLBACK_LOG_MESSAGE, exc)
                             post_rerank_elapsed = float(rr.elapsed_sec or (time.time() - rr_start))
                         else:
                             post_rerank_elapsed = 0.0
@@ -3750,7 +3751,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                     try:
                         db.close()
                     except Exception as exc:
-                        logger.debug("Ignoring non-critical retrieval orchestrator fallback failure: %s", exc)
+                        logger.debug(_RETRIEVAL_ORCHESTRATOR_FALLBACK_LOG_MESSAGE, exc)
 
             max_added = max(0, int(top_k) * (int(hierarchy_parent_depth) + (2 * int(hierarchy_sibling_window))))
             max_added = min(400, max_added or 120)
@@ -5477,7 +5478,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                 )
             metrics["hardcase_candidate"] = hc
     except Exception as exc:
-        logger.debug("Ignoring non-critical retrieval orchestrator fallback failure: %s", exc)
+        logger.debug(_RETRIEVAL_ORCHESTRATOR_FALLBACK_LOG_MESSAGE, exc)
 
     return {
         **state,

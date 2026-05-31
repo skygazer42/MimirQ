@@ -19,6 +19,7 @@ from app.rag.core.logging import get_logger
 
 _SCHEMA_V1 = "mimirq.observability.deps.v1"
 logger = get_logger(__name__)
+_DEPS_DIAGNOSTICS_FALLBACK_LOG_MESSAGE = "Ignoring non-critical deps diagnostics fallback failure: %s"
 
 
 def _now_utc_iso() -> str:
@@ -55,7 +56,7 @@ def _probe_postgres() -> dict[str, Any]:
             try:
                 db.close()
             except Exception as exc:
-                logger.debug("Ignoring non-critical deps diagnostics fallback failure: %s", exc)
+                logger.debug(_DEPS_DIAGNOSTICS_FALLBACK_LOG_MESSAGE, exc)
     except Exception as exc:  # noqa: BLE001
         status["error"] = str(exc)[:200]
     status["elapsed_ms"] = round((time.perf_counter() - t0) * 1000.0, 2)
@@ -144,7 +145,7 @@ def _probe_minio() -> dict[str, Any]:
         if v:
             out["version"] = f"client:{str(v).strip()[:40]}"
     except Exception as exc:
-        logger.debug("Ignoring non-critical deps diagnostics fallback failure: %s", exc)
+        logger.debug(_DEPS_DIAGNOSTICS_FALLBACK_LOG_MESSAGE, exc)
 
     return out
 
@@ -177,7 +178,7 @@ def _probe_milvus() -> dict[str, Any]:
         if v:
             status["version"] = str(v).strip()[:40]
     except Exception as exc:
-        logger.debug("Ignoring non-critical deps diagnostics fallback failure: %s", exc)
+        logger.debug(_DEPS_DIAGNOSTICS_FALLBACK_LOG_MESSAGE, exc)
 
     status["elapsed_ms"] = round((time.perf_counter() - t0) * 1000.0, 2)
     return status

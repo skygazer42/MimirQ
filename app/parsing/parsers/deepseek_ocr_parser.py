@@ -26,6 +26,7 @@ from app.rag.core.logging import get_logger
 
 logger = get_logger("parsing.deepseek_ocr")
 
+_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE = "Ignoring non-critical DeepSeek OCR fallback failure: %s"
 
 _TAG_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"<\|ref\|>.*?<\|/ref\|>", re.DOTALL),
@@ -170,7 +171,7 @@ class DeepSeekOCRParser:
                         try:
                             alias.write_bytes(raw)
                         except Exception as exc:
-                            logger.debug("Ignoring non-critical DeepSeek OCR fallback failure: %s", exc)
+                            logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
 
                 # Best-effort: also create a JPEG variant for non-JPEG formats.
                 if pillow_ok and ext not in {"jpg", "jpeg"}:
@@ -186,7 +187,7 @@ class DeepSeekOCRParser:
                             try:
                                 img_obj.close()
                             except Exception as exc:
-                                logger.debug("Ignoring non-critical DeepSeek OCR fallback failure: %s", exc)
+                                logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
 
                         # 1) Keep the original digest but `.jpg` extension (max compatibility with callers
                         #    that hash pre-conversion but still reference `.jpg`).
@@ -195,7 +196,7 @@ class DeepSeekOCRParser:
                             try:
                                 compat_path.write_bytes(jpg_bytes)
                             except Exception as exc:
-                                logger.debug("Ignoring non-critical DeepSeek OCR fallback failure: %s", exc)
+                                logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
 
                         # 2) Also save under the digest of the JPEG bytes.
                         digest_jpg = hashlib.sha256(jpg_bytes).hexdigest()
@@ -204,15 +205,15 @@ class DeepSeekOCRParser:
                             try:
                                 jpg_path.write_bytes(jpg_bytes)
                             except Exception as exc:
-                                logger.debug("Ignoring non-critical DeepSeek OCR fallback failure: %s", exc)
+                                logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
                         jpg_alias = images_dir / f"{digest_jpg}.jpeg"
                         if not jpg_alias.exists():
                             try:
                                 jpg_alias.write_bytes(jpg_bytes)
                             except Exception as exc:
-                                logger.debug("Ignoring non-critical DeepSeek OCR fallback failure: %s", exc)
+                                logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
                     except Exception as exc:
-                        logger.debug("Ignoring non-critical DeepSeek OCR fallback failure: %s", exc)
+                        logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
 
                 written += 1
                 if max_images and written >= max_images:
@@ -245,7 +246,7 @@ class DeepSeekOCRParser:
             try:
                 png_path.write_bytes(png_bytes)
             except Exception as exc:
-                logger.debug("Ignoring non-critical DeepSeek OCR fallback failure: %s", exc)
+                logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
 
         # 2) A JPEG variant saved under both (a) the PNG digest (compat) and (b) the JPEG digest.
         try:
@@ -258,13 +259,13 @@ class DeepSeekOCRParser:
             try:
                 jpg_path_compat.write_bytes(jpg_bytes)
             except Exception as exc:
-                logger.debug("Ignoring non-critical DeepSeek OCR fallback failure: %s", exc)
+                logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
         jpeg_path_compat = images_dir / f"{digest_png}.jpeg"
         if not jpeg_path_compat.exists():
             try:
                 jpeg_path_compat.write_bytes(jpg_bytes)
             except Exception as exc:
-                logger.debug("Ignoring non-critical DeepSeek OCR fallback failure: %s", exc)
+                logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
 
         try:
             digest_jpg = hashlib.sha256(jpg_bytes).hexdigest()
@@ -276,13 +277,13 @@ class DeepSeekOCRParser:
             try:
                 jpg_path.write_bytes(jpg_bytes)
             except Exception as exc:
-                logger.debug("Ignoring non-critical DeepSeek OCR fallback failure: %s", exc)
+                logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
         jpeg_path = images_dir / f"{digest_jpg}.jpeg"
         if not jpeg_path.exists():
             try:
                 jpeg_path.write_bytes(jpg_bytes)
             except Exception as exc:
-                logger.debug("Ignoring non-critical DeepSeek OCR fallback failure: %s", exc)
+                logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
 
     def _persist_named_page_images(
         self,
@@ -307,7 +308,7 @@ class DeepSeekOCRParser:
             try:
                 png_path.write_bytes(png_bytes)
             except Exception as exc:
-                logger.debug("Ignoring non-critical DeepSeek OCR fallback failure: %s", exc)
+                logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
 
         jpg_path = images_dir / f"page_{page_idx:04d}.jpg"
         if not jpg_path.exists():
@@ -319,9 +320,9 @@ class DeepSeekOCRParser:
                     try:
                         jpeg_alias.write_bytes(jpg_bytes)
                     except Exception as exc:
-                        logger.debug("Ignoring non-critical DeepSeek OCR fallback failure: %s", exc)
+                        logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
             except Exception as exc:
-                logger.debug("Ignoring non-critical DeepSeek OCR fallback failure: %s", exc)
+                logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
 
         return png_path, jpg_path
 
@@ -385,12 +386,12 @@ class DeepSeekOCRParser:
                         shutil.copyfile(page_jpg_path, dest)
                         return
                     except Exception as exc:
-                        logger.debug("Ignoring non-critical DeepSeek OCR fallback failure: %s", exc)
+                        logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
                 if page_jpg_bytes:
                     try:
                         dest.write_bytes(page_jpg_bytes)
                     except Exception as exc:
-                        logger.debug("Ignoring non-critical DeepSeek OCR fallback failure: %s", exc)
+                        logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
                 return
 
             if page_png_path and page_png_path.exists():
@@ -398,12 +399,12 @@ class DeepSeekOCRParser:
                     shutil.copyfile(page_png_path, dest)
                     return
                 except Exception as exc:
-                    logger.debug("Ignoring non-critical DeepSeek OCR fallback failure: %s", exc)
+                    logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
             if page_png_bytes:
                 try:
                     dest.write_bytes(page_png_bytes)
                 except Exception as exc:
-                    logger.debug("Ignoring non-critical DeepSeek OCR fallback failure: %s", exc)
+                    logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
 
         for ref in found:
             ref_stripped = ref.strip()
@@ -421,7 +422,7 @@ class DeepSeekOCRParser:
             try:
                 ref_path = unquote(ref_path)
             except Exception as exc:
-                logger.debug("Ignoring non-critical DeepSeek OCR fallback failure: %s", exc)
+                logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
 
             rel = ref_path.lstrip("/")
             if not rel.lower().startswith("images/"):
@@ -509,7 +510,7 @@ class DeepSeekOCRParser:
                         images_dir=images_dir,
                     )
                 except Exception as exc:
-                    logger.debug("Ignoring non-critical DeepSeek OCR fallback failure: %s", exc)
+                    logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
                 logger.info("[deepseek_ocr] page %s/%s (%s)", idx, total_pages, file_path.name)
                 fut = executor.submit(self._call_api, img_bytes, mime_type="image/png")
                 inflight[fut] = idx
@@ -543,7 +544,7 @@ class DeepSeekOCRParser:
                             page_jpg_bytes=page_jpg_bytes,
                         )
                     except Exception as exc:
-                        logger.debug("Ignoring non-critical DeepSeek OCR fallback failure: %s", exc)
+                        logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
                     results[idx] = text or ""
             else:
                 inflight: dict = {}
@@ -567,7 +568,7 @@ class DeepSeekOCRParser:
                                         page_jpg_path=jpg_path,
                                     )
                                 except Exception as exc:
-                                    logger.debug("Ignoring non-critical DeepSeek OCR fallback failure: %s", exc)
+                                    logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
                             except Exception as exc:  # noqa: BLE001
                                 errors.append(f"page {page_idx}: {str(exc)[:200]}")
 
@@ -590,7 +591,7 @@ class DeepSeekOCRParser:
                                         page_jpg_path=jpg_path,
                                     )
                                 except Exception as exc:
-                                    logger.debug("Ignoring non-critical DeepSeek OCR fallback failure: %s", exc)
+                                    logger.debug(_DEEPSEEK_OCR_FALLBACK_LOG_MESSAGE, exc)
                             except Exception as exc:  # noqa: BLE001
                                 errors.append(f"page {page_idx}: {str(exc)[:200]}")
 

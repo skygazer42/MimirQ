@@ -38,6 +38,7 @@ from app.services.evidence_drift_audit_service import audit_reference_sources_dr
 from app.services.index_audit_service import run_dataset_index_audit_internal
 
 logger = get_logger(__name__)
+_PERIODIC_AUDIT_FALLBACK_LOG_MESSAGE = "Ignoring non-critical periodic audit fallback failure: %s"
 SYSTEM_PERIODIC_AUDIT_ACTOR_ID = "system:periodic_audit"
 
 
@@ -350,7 +351,7 @@ def run_daily_index_audit_report(
         try:
             db.rollback()
         except Exception as exc:
-            logger.debug("Ignoring non-critical periodic audit fallback failure: %s", exc)
+            logger.debug(_PERIODIC_AUDIT_FALLBACK_LOG_MESSAGE, exc)
         summary["ok"] = False
         summary["dry_run"] = False
         summary["audit_write_error"] = True
@@ -453,7 +454,7 @@ def run_daily_embedding_drift_report(
         try:
             db.rollback()
         except Exception as exc:
-            logger.debug("Ignoring non-critical periodic audit fallback failure: %s", exc)
+            logger.debug(_PERIODIC_AUDIT_FALLBACK_LOG_MESSAGE, exc)
         summary["ok"] = False
         summary["dry_run"] = False
         summary["audit_write_error"] = True
@@ -606,7 +607,7 @@ def run_daily_evidence_drift_audit_report(
         try:
             db.rollback()
         except Exception as exc:
-            logger.debug("Ignoring non-critical periodic audit fallback failure: %s", exc)
+            logger.debug(_PERIODIC_AUDIT_FALLBACK_LOG_MESSAGE, exc)
         summary["ok"] = False
         summary["dry_run"] = False
         summary["audit_write_error"] = True
@@ -764,7 +765,7 @@ def run_daily_access_review_summary(
         try:
             db.rollback()
         except Exception as exc:
-            logger.debug("Ignoring non-critical periodic audit fallback failure: %s", exc)
+            logger.debug(_PERIODIC_AUDIT_FALLBACK_LOG_MESSAGE, exc)
         summary["ok"] = False
         summary["dry_run"] = False
         summary["audit_write_error"] = True

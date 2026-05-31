@@ -64,6 +64,7 @@ from app.services.parsing_extract_service import extract_parsing_fields
 from app.storage.object.minio import is_minio_uri, minio_service, parse_minio_uri
 
 logger = get_logger("api.parsing")
+_PARSING_ROUTER_FALLBACK_LOG_MESSAGE = "Ignoring non-critical parsing router fallback failure: %s"
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -533,7 +534,7 @@ def _build_pdf_fallback_candidates() -> list[str]:
                 if resolve_cli_command(cli) and resolve_magicpdf_models_dir(getattr(settings, "MAGIC_PDF_MODELS_DIR", "")):
                     candidates.append("magicpdf")
     except Exception as exc:
-        logger.debug("Ignoring non-critical parsing router fallback failure: %s", exc)
+        logger.debug(_PARSING_ROUTER_FALLBACK_LOG_MESSAGE, exc)
 
     if bool(getattr(settings, "MARKITDOWN_ENABLED", False)):
         candidates.append("markitdown")
@@ -1143,7 +1144,7 @@ async def parse_workspace_document(
                     evidence["matrix_score"] = float(best.get("matrix_score"))
                 gate = ParsingQualityGate(grade=gate.grade, reasons=list(gate.reasons or []), evidence=evidence)
             except Exception as exc:
-                logger.debug("Ignoring non-critical parsing router fallback failure: %s", exc)
+                logger.debug(_PARSING_ROUTER_FALLBACK_LOG_MESSAGE, exc)
 
             for it in fallback_attempts:
                 try:
@@ -1189,7 +1190,7 @@ async def parse_workspace_document(
                 }
                 gate = ParsingQualityGate(grade=gate.grade, reasons=list(gate.reasons or []), evidence=evidence)
             except Exception as exc:
-                logger.debug("Ignoring non-critical parsing router fallback failure: %s", exc)
+                logger.debug(_PARSING_ROUTER_FALLBACK_LOG_MESSAGE, exc)
 
         # Opt4: parse-then-correct (workspace preview; best-effort; off by default).
         vlm_audit = None
@@ -1426,7 +1427,7 @@ async def parse_workspace_document(
                 next_meta["parse_diagnostics"] = diagnostics
             doc.doc_metadata = next_meta
         except Exception as exc:
-            logger.debug("Ignoring non-critical parsing router fallback failure: %s", exc)
+            logger.debug(_PARSING_ROUTER_FALLBACK_LOG_MESSAGE, exc)
         db.commit()
         status_code = 400 if err_type == "ValueError" else 500
         prefix = "Invalid input" if status_code == 400 else "Failed to parse document"
@@ -1466,7 +1467,7 @@ async def parse_workspace_document(
                 next_meta["parse_diagnostics"] = diagnostics
             doc.doc_metadata = next_meta
         except Exception as exc:
-            logger.debug("Ignoring non-critical parsing router fallback failure: %s", exc)
+            logger.debug(_PARSING_ROUTER_FALLBACK_LOG_MESSAGE, exc)
         db.commit()
         detail_msg = "Failed to parse document" if is_production_env() else f"Failed to parse document: {msg}"
         raise HTTPException(

@@ -50,6 +50,7 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 logger = get_logger(__name__)
+_AUDIT_ROUTER_FALLBACK_LOG_MESSAGE = "Ignoring non-critical audit router fallback failure: %s"
 
 _SENSITIVE_DETAIL_KEYS = {
     "sql",
@@ -455,7 +456,7 @@ def purge_audit_logs(
         try:
             db.rollback()
         except Exception as exc:
-            logger.debug("Ignoring non-critical audit router fallback failure: %s", exc)
+            logger.debug(_AUDIT_ROUTER_FALLBACK_LOG_MESSAGE, exc)
 
     return AuditLogPurgeResponse(
         dry_run=bool(dry_run),
@@ -837,7 +838,7 @@ def export_access_graph_ndjson(
         try:
             db.rollback()
         except Exception as exc:
-            logger.debug("Ignoring non-critical audit router fallback failure: %s", exc)
+            logger.debug(_AUDIT_ROUTER_FALLBACK_LOG_MESSAGE, exc)
 
     headers: dict[str, str] = {
         "Cache-Control": "no-store",
@@ -995,6 +996,6 @@ def access_graph_summary(
         try:
             db.rollback()
         except Exception as exc:
-            logger.debug("Ignoring non-critical audit router fallback failure: %s", exc)
+            logger.debug(_AUDIT_ROUTER_FALLBACK_LOG_MESSAGE, exc)
 
     return payload

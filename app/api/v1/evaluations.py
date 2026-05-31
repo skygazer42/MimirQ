@@ -98,6 +98,7 @@ _DETAIL_KG_DISABLED = "KG is disabled (KG_ENABLED=false)"
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 logger = get_logger("api.evaluations")
+_EVALUATIONS_ROUTER_FALLBACK_LOG_MESSAGE = "Ignoring non-critical evaluations router fallback failure: %s"
 
 _REGRESSION_RUN_CONTROL_FIELDS = {
     "case_ids",
@@ -231,7 +232,7 @@ def _enrich_reference_source_payload(
         try:
             payload["chunk_index"] = int(chunk_index)
         except Exception as exc:
-            logger.debug("Ignoring non-critical evaluations router fallback failure: %s", exc)
+            logger.debug(_EVALUATIONS_ROUTER_FALLBACK_LOG_MESSAGE, exc)
 
     meta = chunk_meta if isinstance(chunk_meta, dict) else {}
     if not str(payload.get("doc_pipeline_key") or "").strip():
@@ -395,7 +396,7 @@ def _normalize_evidence_chain(raw: Any) -> list[dict[str, Any]]:
             try:
                 payload["chunk_index"] = int(item.get("chunk_index"))
             except Exception as exc:
-                logger.debug("Ignoring non-critical evaluations router fallback failure: %s", exc)
+                logger.debug(_EVALUATIONS_ROUTER_FALLBACK_LOG_MESSAGE, exc)
         if item.get("label") is not None:
             payload["label"] = str(item.get("label"))[:100]
         out.append(payload)
@@ -1430,7 +1431,7 @@ def purge_ragas_regression_runs(
         try:
             db.rollback()
         except Exception as exc:
-            logger.debug("Ignoring non-critical evaluations router fallback failure: %s", exc)
+            logger.debug(_EVALUATIONS_ROUTER_FALLBACK_LOG_MESSAGE, exc)
 
     return {
         "dry_run": bool(dry_run),
@@ -1718,7 +1719,7 @@ async def generate_test_cases_from_documents(
                             chunk_id=chunk0,
                         )
                 except Exception as exc:
-                    logger.debug("Ignoring non-critical evaluations router fallback failure: %s", exc)
+                    logger.debug(_EVALUATIONS_ROUTER_FALLBACK_LOG_MESSAGE, exc)
 
                 case = RagasRegressionCase(
                     tenant_id=tenant_id,
@@ -1899,7 +1900,7 @@ async def run_kg_search_diagnostics(
             try:
                 db.rollback()
             except Exception as exc:
-                logger.debug("Ignoring non-critical evaluations router fallback failure: %s", exc)
+                logger.debug(_EVALUATIONS_ROUTER_FALLBACK_LOG_MESSAGE, exc)
 
     return resp
 

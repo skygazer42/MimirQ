@@ -25,6 +25,7 @@ from app.services.audit_log_service import audit_log_event
 from app.services.evidence_drift_audit import classify_reference_source_drift
 
 logger = get_logger(__name__)
+_EVIDENCE_REPAIR_FALLBACK_LOG_MESSAGE = "Ignoring non-critical evidence repair fallback failure: %s"
 
 
 class EvidenceSuiteNotFoundError(RuntimeError):
@@ -406,7 +407,7 @@ def repair_evidence_suite_reference_sources_with_dataset(
                             try:
                                 q2 = q2.filter(DocumentChunk.doc_metadata["doc_pipeline_key"].astext == active_key)  # type: ignore[attr-defined]
                             except Exception as exc:
-                                logger.debug("Ignoring non-critical evidence repair fallback failure: %s", exc)
+                                logger.debug(_EVIDENCE_REPAIR_FALLBACK_LOG_MESSAGE, exc)
                         rows = q2.limit(20).all()
                         if rows:
                             # Pick the lowest chunk_index (stable) among matches.
@@ -436,7 +437,7 @@ def repair_evidence_suite_reference_sources_with_dataset(
                 try:
                     patched["chunk_index"] = int(new_chunk_row.get("chunk_index") or 0)
                 except Exception as exc:
-                    logger.debug("Ignoring non-critical evidence repair fallback failure: %s", exc)
+                    logger.debug(_EVIDENCE_REPAIR_FALLBACK_LOG_MESSAGE, exc)
                 cmeta = new_chunk_row.get("metadata") if isinstance(new_chunk_row.get("metadata"), dict) else {}
                 ph = str(cmeta.get("pipeline_hash") or "").strip()
                 if ph:
@@ -521,7 +522,7 @@ def repair_evidence_suite_reference_sources_with_dataset(
                 try:
                     db.rollback()
                 except Exception as exc:
-                    logger.debug("Ignoring non-critical evidence repair fallback failure: %s", exc)
+                    logger.debug(_EVIDENCE_REPAIR_FALLBACK_LOG_MESSAGE, exc)
 
     return {
         "suite_id": str(suite_id),

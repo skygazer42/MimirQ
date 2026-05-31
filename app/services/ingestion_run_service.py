@@ -18,6 +18,7 @@ from app.models.ingestion_run import IngestionRun, IngestionRunDocument
 from app.rag.core.logging import get_logger
 
 logger = get_logger(__name__)
+_INGESTION_RUN_FALLBACK_LOG_MESSAGE = "Ignoring non-critical ingestion-run fallback failure: %s"
 
 
 def _now_utc() -> datetime:
@@ -111,7 +112,7 @@ class IngestionRunService:
 
             observe_ingestion_run_created(kind=run.kind)
         except Exception as exc:
-            logger.debug("Ignoring non-critical ingestion-run fallback failure: %s", exc)
+            logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, exc)
         return run
 
     @staticmethod
@@ -225,7 +226,7 @@ class IngestionRunService:
                 kind, status, dur = finished_meta
                 observe_ingestion_run_finished(kind=kind, status=status, duration_sec=dur)
             except Exception as exc:
-                logger.debug("Ignoring non-critical ingestion-run fallback failure: %s", exc)
+                logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, exc)
 
     @staticmethod
     def on_document_status_update(
@@ -375,7 +376,7 @@ class IngestionRunService:
                             if ds is not None:
                                 ds.updated_at = now
                     except Exception as exc:
-                        logger.debug("Ignoring non-critical ingestion-run fallback failure: %s", exc)
+                        logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, exc)
 
             run.stats = stats
         try:
@@ -389,7 +390,7 @@ class IngestionRunService:
                 for kind, status, dur in finished_runs:
                     observe_ingestion_run_finished(kind=kind, status=status, duration_sec=dur)
             except Exception as exc:
-                logger.debug("Ignoring non-critical ingestion-run fallback failure: %s", exc)
+                logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, exc)
 
     @staticmethod
     def compare_runs(*, run_a: IngestionRun, run_b: IngestionRun) -> dict[str, Any]:

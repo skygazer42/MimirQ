@@ -31,6 +31,7 @@ from app.rag.core.logging import get_logger
 _METRICS_SCHEMA_VERSION = 1
 _HOSTNAME = socket.gethostname()
 logger = get_logger(__name__)
+_SERVICE_FALLBACK_LOG_MESSAGE = "Ignoring non-critical service fallback failure: %s"
 
 _ctx_request_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("metrics.request_id", default=None)
 _ctx_tenant_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("metrics.tenant_id", default=None)
@@ -145,7 +146,7 @@ def metrics_context(
             try:
                 var.reset(token)
             except Exception as exc:
-                logger.debug("Ignoring non-critical service fallback failure: %s", exc)
+                logger.debug(_SERVICE_FALLBACK_LOG_MESSAGE, exc)
 
 
 def _json_default(value: Any) -> Any:
@@ -170,14 +171,14 @@ def _json_default(value: Any) -> Any:
         try:
             return model_dump()
         except Exception as exc:
-            logger.debug("Ignoring non-critical service fallback failure: %s", exc)
+            logger.debug(_SERVICE_FALLBACK_LOG_MESSAGE, exc)
 
     to_dict = getattr(value, "dict", None)
     if callable(to_dict):
         try:
             return to_dict()
         except Exception as exc:
-            logger.debug("Ignoring non-critical service fallback failure: %s", exc)
+            logger.debug(_SERVICE_FALLBACK_LOG_MESSAGE, exc)
 
     return str(value)
 
@@ -250,7 +251,7 @@ def _safe_kg_path_provenance(raw: Any) -> dict[str, Any] | None:
         if raw.get("hops") is not None:
             out["hops"] = int(raw.get("hops") or 0)
     except Exception as exc:
-        logger.debug("Ignoring non-critical service fallback failure: %s", exc)
+        logger.debug(_SERVICE_FALLBACK_LOG_MESSAGE, exc)
 
     nodes_raw = raw.get("nodes")
     if isinstance(nodes_raw, list) and nodes_raw:
@@ -414,7 +415,7 @@ class _MetricsWriter:
         try:
             self._queue.put_nowait(None)
         except Exception as exc:
-            logger.debug("Ignoring non-critical service fallback failure: %s", exc)
+            logger.debug(_SERVICE_FALLBACK_LOG_MESSAGE, exc)
         if self._thread.is_alive():
             self._thread.join(timeout=2.0)
 
