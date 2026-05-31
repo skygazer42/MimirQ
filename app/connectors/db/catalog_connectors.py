@@ -71,7 +71,6 @@ class _BaseCatalogConnector(ConnectorBase):
         _ = kwargs
         if False:
             yield RawDocument(source_ref="unused", content="")
-        return
 
     def supported_file_types(self) -> list[str]:
         return ["json"]

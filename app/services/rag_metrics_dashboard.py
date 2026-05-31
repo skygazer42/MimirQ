@@ -782,7 +782,7 @@ def _detect_query_analytics_anomalies(
             current_error_kinds[kind[:30]] += 1
     top_error_kind = None
     if current_error_kinds:
-        top_error_kind = sorted(current_error_kinds.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
+        top_error_kind = min(current_error_kinds.items(), key=lambda kv: (-kv[1], kv[0]))[0]
 
     anomalies: list[dict[str, Any]] = []
 

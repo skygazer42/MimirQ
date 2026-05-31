@@ -534,13 +534,9 @@ class Settings(BaseSettings):
     # When enabled, skip preprocessing for high-quality PDFs (best-effort; requires pdf_quality score).
     PREPROCESS_SKIP_HIGH_QUALITY: bool = True
     PREPROCESS_SAMPLE_PAGES: int = 3
-    # Parsing post-processors (Opt2/4/6/8).
-    CROSS_PAGE_MERGE_ENABLED: bool = False
     # Parse-then-correct via external VLM backend.
-    VLM_CORRECTION_ENABLED: bool = False
     VLM_CORRECTION_API_URL: str = ""
     VLM_CORRECTION_TIMEOUT_SEC: int = 60
-    VLM_CORRECTION_MAX_PAGES: int = 3
     VLM_CORRECTION_MAX_CHARS: int = 40_000
     VLM_CORRECTION_MIN_TABLE_QUALITY: float = 0.6
     # Multi-parser competition matrix (Opt8) for workspace parsing selection.

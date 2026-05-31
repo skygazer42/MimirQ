@@ -140,7 +140,7 @@ class ToCHWImage:
     """
 
     def __init__(self, **kwargs):
-        pass
+        self.kwargs = dict(kwargs or {})
 
     def __call__(self, data):
         img = data['image']

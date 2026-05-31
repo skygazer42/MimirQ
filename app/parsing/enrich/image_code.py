@@ -202,7 +202,7 @@ def add_image_code_blocks(
         for alt, src in images:
             if codes_added >= max_images_i:
                 break
-            image_bytes, reason = _safe_read_local_image_bytes(
+            image_bytes, _ = _safe_read_local_image_bytes(
                 src=src,
                 origin_path=origin_path,
                 max_bytes=int(max_image_bytes or 0),

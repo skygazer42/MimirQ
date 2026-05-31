@@ -3354,9 +3354,13 @@ class DocumentProcessorService:
                     meta = c.metadata or {}
                     doc_type = str(meta.get("doc_type_kwd") or "").lower()
                     # Keep image/table chunks even if caption is short: they carry important assets.
-                    if doc_type in {"image", "table"} or meta.get("image") is not None:
-                        filtered.append(c)
-                    elif meta.get("img_id") or meta.get("image_id") or meta.get("image_url"):
+                    if (
+                        doc_type in {"image", "table"}
+                        or meta.get("image") is not None
+                        or meta.get("img_id")
+                        or meta.get("image_id")
+                        or meta.get("image_url")
+                    ):
                         filtered.append(c)
                 kept_short_fallback = False
                 if not filtered and original_chunks:
@@ -4827,7 +4831,7 @@ class DocumentProcessorService:
 
         language: str | None = None
         if lang_counts:
-            language = sorted(lang_counts.items(), key=lambda kv: (-kv[1], kv[0]))[0][0]
+            language = min(lang_counts.items(), key=lambda kv: (-kv[1], kv[0]))[0]
 
         enrichment: dict[str, object] = {}
         if title:

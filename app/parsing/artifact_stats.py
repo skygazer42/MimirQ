@@ -50,14 +50,9 @@ def count_position_tag_blocks(markdown: str) -> int:
     for match in POSITION_TAG_RE.finditer(markdown):
         text_chunk = markdown[last_index : match.start()]
         text = text_chunk.strip()
-        if text:
+        if text or not has_last_block:
             block_count += 1
             has_last_block = True
-        else:
-            # No text before this tag; it either belongs to the previous block or starts a new empty block.
-            if not has_last_block:
-                block_count += 1
-                has_last_block = True
 
         last_index = match.end()
 

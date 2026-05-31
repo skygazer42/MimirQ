@@ -148,7 +148,7 @@ class ParserFactory:
         ".jsonl",
         ".ndjson",
     }
-    SUPPORTED_NON_PDF_EXTENSIONS = PLAIN_TEXT_EXTENSIONS | {
+    SUPPORTED_NON_PDF_EXTENSIONS = PLAIN_TEXT_EXTENSIONS | IMAGE_EXTENSIONS | VIDEO_EXTENSIONS | AUDIO_EXTENSIONS | {
         ".doc",
         DOCX_EXTENSION,
         ".ppt",
@@ -165,7 +165,6 @@ class ParserFactory:
         RTF_EXTENSION,
         ODT_EXTENSION,
     }
-    SUPPORTED_NON_PDF_EXTENSIONS = SUPPORTED_NON_PDF_EXTENSIONS | IMAGE_EXTENSIONS | VIDEO_EXTENSIONS | AUDIO_EXTENSIONS
     # Non-PDF formats are primarily handled by general converters (MarkItDown/Pandoc),
     # but some advanced backends (e.g. DeepDoc/Docling) can also handle DOCX when enabled.
     SUPPORTED_NON_PDF_BACKENDS = {"auto", "markitdown", "pandoc", "excel", "docx", "pptx", "html", "csv", "json", "deepdoc", "docling", "email", "image", "audio", "video", "textin", "colpali"}

@@ -39,7 +39,7 @@ def create_pre_poc_dashboard_app(
 
         return StreamingResponse(gen(), media_type="text/event-stream")
 
-    @app.post("/open-file")
+    @app.post("/open-file", responses={501: {"description": "Not Implemented"}})
     def open_file_endpoint(body: OpenFileRequest) -> dict[str, Any]:
         if open_file is None:
             raise HTTPException(status_code=501, detail="open_file_not_configured")

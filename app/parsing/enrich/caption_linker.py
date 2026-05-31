@@ -76,7 +76,7 @@ def find_nearest_caption(
         candidates.append((gap, -overlap, raw))
     if not candidates:
         return None
-    _gap, _overlap, selected = sorted(candidates, key=lambda item: (item[0], item[1]))[0]
+    _gap, _overlap, selected = min(candidates, key=lambda item: (item[0], item[1]))
     return {
         "id": str(selected.get("id") or ""),
         "text": str(selected.get("text") or "").strip(),

@@ -1118,10 +1118,7 @@ class MilvusVectorStore:
                     continue
 
                 vector: list[float] | None = None
-                if isinstance(vec, list):
-                    if all(isinstance(v, (int, float)) for v in vec):
-                        vector = [float(v) for v in vec]
-                elif isinstance(vec, tuple):
+                if isinstance(vec, (list, tuple)):
                     if all(isinstance(v, (int, float)) for v in vec):
                         vector = [float(v) for v in vec]
                 elif hasattr(vec, "tolist"):

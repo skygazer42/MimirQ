@@ -149,7 +149,6 @@ class DocxParser:
 
                 header, body = infer_table_header(rows)
                 parts.append(build_markdown_table(header=header, rows=body))
-                continue
 
         content = "\n\n".join(p for p in parts if p)
         metadata = {

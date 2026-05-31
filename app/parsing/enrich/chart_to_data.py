@@ -305,7 +305,7 @@ def add_chart_data_blocks(
                 break
             if not _is_chart_candidate(alt=alt, src=src):
                 continue
-            image_bytes, reason = _safe_read_local_image_bytes(
+            image_bytes, _ = _safe_read_local_image_bytes(
                 src=src,
                 origin_path=origin_path,
                 max_bytes=int(max_image_bytes or 0),

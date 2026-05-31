@@ -51,7 +51,7 @@ def expand_document_siblings(
             if doc_key in expanded_docs:
                 continue
             rows = sorted(
-                list(document_chunks_by_doc.get(doc_key) or []),
+                document_chunks_by_doc.get(doc_key) or [],
                 key=lambda item: int(getattr(item, "chunk_index", 0) or 0),
             )
             for row in rows:

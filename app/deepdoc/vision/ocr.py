@@ -736,8 +736,7 @@ class OCR:
             sorted boxes(array) with shape [4, 2]
         """
         num_boxes = dt_boxes.shape[0]
-        sorted_boxes = sorted(dt_boxes, key=lambda x: (x[0][1], x[0][0]))
-        _boxes = list(sorted_boxes)
+        _boxes = sorted(dt_boxes, key=lambda x: (x[0][1], x[0][0]))
 
         for i in range(num_boxes - 1):
             for j in range(i, -1, -1):
