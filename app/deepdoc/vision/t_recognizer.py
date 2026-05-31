@@ -67,7 +67,7 @@ def main(args):
 
 def get_table_html(img, tb_cpns, ocr):
     boxes = ocr(np.array(img))
-    boxes = LayoutRecognizer.sort_Y_firstly(
+    boxes = LayoutRecognizer.sort_y_firstly(
         [{"x0": b[0][0], "x1": b[1][0],
           "top": b[0][1], "text": t[0],
           "bottom": b[-1][1],
@@ -78,10 +78,10 @@ def get_table_html(img, tb_cpns, ocr):
 
     def gather(kwd, fzy=10, ption=0.6):
         nonlocal boxes
-        eles = LayoutRecognizer.sort_Y_firstly(
+        eles = LayoutRecognizer.sort_y_firstly(
             [r for r in tb_cpns if re.match(kwd, r["label"])], fzy)
         eles = LayoutRecognizer.layouts_cleanup(boxes, eles, 5, ption)
-        return LayoutRecognizer.sort_Y_firstly(eles, 0)
+        return LayoutRecognizer.sort_y_firstly(eles, 0)
 
     headers = gather(r".*header$")
     rows = gather(r".* (row|header)")

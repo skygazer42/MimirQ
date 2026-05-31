@@ -413,7 +413,7 @@ class IntegratedPipelinePdfParser:
         return fea
 
     @staticmethod
-    def sort_X_by_page(arr, threashold):
+    def sort_x_by_page(arr, threashold):
         # Sort by page number, x coordinate, y coordinate
         arr = sorted(arr, key=lambda r: (r["page_number"], r["x0"], r["top"]))
         for i in range(len(arr) - 1):
@@ -490,10 +490,10 @@ class IntegratedPipelinePdfParser:
 
         def gather(kwd, fzy=10, ption=0.6):
             # Helper function: extract header, row, column label components
-            eles = Recognizer.sort_Y_firstly(
+            eles = Recognizer.sort_y_firstly(
                 [r for r in self.tb_cpns if re.match(kwd, r["label"])], fzy)
             eles = Recognizer.layouts_cleanup(self.boxes, eles, 5, ption)
-            return Recognizer.sort_Y_firstly(eles, 0)
+            return Recognizer.sort_y_firstly(eles, 0)
 
         # Extract header, row, merged cell, column info
         headers = gather(r".*header$")
@@ -553,7 +553,7 @@ class IntegratedPipelinePdfParser:
         bxs = [(line[0], line[1][0]) for line in bxs]
 
         # Convert boxes to standard format, sort by Y direction
-        bxs = Recognizer.sort_Y_firstly([
+        bxs = Recognizer.sort_y_firstly([
             {
                 "x0": b[0][0] / ZM,
                 "x1": b[1][0] / ZM,
@@ -567,7 +567,7 @@ class IntegratedPipelinePdfParser:
         ], self.mean_height[-1] / 3)
 
         # Merge each character into its corresponding box
-        for c in Recognizer.sort_Y_firstly(chars, self.mean_height[pagenum - 1] // 4):
+        for c in Recognizer.sort_y_firstly(chars, self.mean_height[pagenum - 1] // 4):
             ii = Recognizer.find_overlapped(c, bxs)
             if ii is None:
                 self.lefted_chars.append(c)
@@ -689,7 +689,7 @@ class IntegratedPipelinePdfParser:
 
     # Simple vertical merge of text blocks: merge upper and lower text blocks into paragraphs
     def _naive_vertical_merge(self):
-        bxs = Recognizer.sort_Y_firstly(
+        bxs = Recognizer.sort_y_firstly(
             self.boxes, np.median(
                 self.mean_height) / 3)
         i = 0
@@ -857,7 +857,7 @@ class IntegratedPipelinePdfParser:
                     t["layout_type"] = c["layout_type"]
             boxes.append(t)
 
-        self.boxes = Recognizer.sort_Y_firstly(boxes, 0)
+        self.boxes = Recognizer.sort_y_firstly(boxes, 0)
 
     def _filter_forpages(self):
         # Remove content boxes from irrelevant pages like "Table of Contents"
@@ -1129,7 +1129,7 @@ class IntegratedPipelinePdfParser:
         for k, bxs in tables.items():
             if not bxs:
                 continue
-            bxs = Recognizer.sort_Y_firstly(bxs, np.mean(
+            bxs = Recognizer.sort_y_firstly(bxs, np.mean(
                 [(b["bottom"] - b["top"]) / 2 for b in bxs]))
 
             poss = []
@@ -1633,6 +1633,9 @@ class VisionParser(IntegratedPipelinePdfParser):
             if docs:
                 all_docs.append(docs)
         return [(doc, "") for doc in all_docs], []
+
+
+IntegratedPipelinePdfParser.sort_X_by_page = staticmethod(IntegratedPipelinePdfParser.sort_x_by_page)
 
 
 if __name__ == "__main__":
