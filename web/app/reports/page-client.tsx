@@ -103,6 +103,10 @@ type DataPillTone = 'blue' | 'green' | 'amber' | 'rose' | 'violet' | 'slate'
 type ReportMetricDatum = { name: string; value: number }
 type CategoryMetricDatum = ReportMetricDatum & { depth: number }
 type CoverageRow = { label: string; value: number; max: number }
+type DatasetOption = Awaited<ReturnType<typeof datasetApi.list>>['items'][number]
+type PipelineVersionOption = { pipeline_hash: string; documents: number }
+type ReportFinding = DatasetReport['profile']['findings'][number]
+type ReportConnectorRun = DatasetReport['connectors'][number]
 type IssueRow = {
   id: string
   time: string
@@ -121,6 +125,7 @@ type ReportBlobExporter = (
   datasetId: string,
   params: ReportExportParams
 ) => Promise<Blob>
+type RefetchFn = () => unknown
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
@@ -148,6 +153,22 @@ function reportExportParams(
   if (hash) params.pipeline_hash = hash
   if (redact !== undefined) params.redact = redact
   return params
+}
+
+function selectedPipelineHashValue(value: string) {
+  if (value === DEFAULT_PIPELINE_VERSION_VALUE) return ''
+  return value
+}
+
+function refreshReportQueries(
+  datasetId: string,
+  refetchDatasets: RefetchFn,
+  refetchCategories: RefetchFn,
+  refetchReport: RefetchFn
+) {
+  refetchDatasets()
+  refetchCategories()
+  if (datasetId) refetchReport()
 }
 
 async function exportReportBlobFile({
@@ -188,6 +209,146 @@ async function exportReportBlobFile({
   } finally {
     setLoading(false)
   }
+}
+
+function downloadReportJsonPayload({
+  datasetName,
+  pipelineHash,
+  filenameStem,
+  payload,
+}: Readonly<{
+  datasetName: string
+  pipelineHash: string
+  filenameStem: string
+  payload: unknown
+}>) {
+  const safe = sanitizeFilename(datasetName || 'dataset')
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {
+    type: 'application/json;charset=utf-8',
+  })
+  downloadBlob(blob, `${safe}.${filenameStem}${reportPipelineSuffix(pipelineHash)}.json`)
+}
+
+function exportChartsJsonPayload({
+  datasetId,
+  report,
+  selectedDatasetName,
+  pipelineHash,
+  dropReasonsData,
+  rulePacksData,
+  govAuditCharData,
+  govAuditReductionHistData,
+  govAuditDensityHistData,
+  govAuditHeadingRatioHistData,
+  govAuditEffectsData,
+  folderQuery,
+  folderBarData,
+  categoryQuery,
+  categoryBarData,
+}: Readonly<{
+  datasetId: string
+  report: DatasetReport | null
+  selectedDatasetName?: string | null
+  pipelineHash: string
+  dropReasonsData: ReportMetricDatum[]
+  rulePacksData: ReportMetricDatum[]
+  govAuditCharData: ReportMetricDatum[]
+  govAuditReductionHistData: ReportMetricDatum[]
+  govAuditDensityHistData: ReportMetricDatum[]
+  govAuditHeadingRatioHistData: ReportMetricDatum[]
+  govAuditEffectsData: ReportMetricDatum[]
+  folderQuery: string
+  folderBarData: ReportMetricDatum[]
+  categoryQuery: string
+  categoryBarData: CategoryMetricDatum[]
+}>) {
+  if (!datasetId || !report) return
+  downloadReportJsonPayload({
+    datasetName: selectedDatasetName || report.dataset_name || 'dataset',
+    pipelineHash,
+    filenameStem: 'charts',
+    payload: {
+      schema: 'mimirq.report_charts.v1',
+      exported_at: new Date().toISOString(),
+      dataset: {
+        id: datasetId,
+        name: selectedDatasetName || report.dataset_name || null,
+      },
+      pipeline_hash: report.pipeline_hash || null,
+      governance: {
+        metrics: report.governance_metrics || null,
+        audit: report.governance_audit || null,
+        drop_reasons_top: dropReasonsData,
+        rule_packs_top: rulePacksData,
+        audit_chars: govAuditCharData,
+        audit_reduction_histogram: govAuditReductionHistData,
+        audit_density_histogram: govAuditDensityHistData,
+        audit_heading_ratio_histogram: govAuditHeadingRatioHistData,
+        audit_effects_top: govAuditEffectsData,
+      },
+      folders: {
+        query: folderQuery,
+        top: folderBarData,
+      },
+      categories: {
+        query: categoryQuery,
+        top: categoryBarData,
+      },
+    },
+  })
+}
+
+function exportCompleteReportJsonPayload({
+  datasetId,
+  report,
+  selectedDatasetName,
+  pipelineHash,
+  successDocs,
+  successRate,
+  failedRate,
+  sensitiveHits,
+  findingRows,
+  fieldCoverageRows,
+  topDocumentRows,
+  categoryBarData,
+  versionTotal,
+}: Readonly<{
+  datasetId: string
+  report: DatasetReport | null
+  selectedDatasetName?: string | null
+  pipelineHash: string
+  successDocs: number
+  successRate: string
+  failedRate: string
+  sensitiveHits: number
+  findingRows: ReportFinding[]
+  fieldCoverageRows: CoverageRow[]
+  topDocumentRows: ReportMetricDatum[]
+  categoryBarData: CategoryMetricDatum[]
+  versionTotal: number
+}>) {
+  if (!datasetId || !report) return
+  downloadReportJsonPayload({
+    datasetName: selectedDatasetName || report.dataset_name || 'dataset',
+    pipelineHash,
+    filenameStem: 'complete-report',
+    payload: {
+      schema: 'mimirq.dataset_report_complete.v1',
+      exported_at: new Date().toISOString(),
+      report,
+      derived: {
+        success_documents: successDocs,
+        success_rate: successRate,
+        failed_rate: failedRate,
+        sensitive_hits: sensitiveHits,
+        risk_findings: findingRows,
+        field_coverage: fieldCoverageRows,
+        top_documents: topDocumentRows,
+        category_top: categoryBarData,
+        pipeline_version_total: versionTotal,
+      },
+    },
+  })
 }
 
 function shortPipelineHash(hash: string) {
@@ -232,6 +393,16 @@ function reportDataSourceLabel(dataProvenance: DatasetReportDataProvenance | nul
   return '等待后端数据'
 }
 
+function reportDataSourceSub(dataProvenance: DatasetReportDataProvenance | null | undefined): string {
+  if (dataProvenance?.mocked === false) return '后端数据库 / API 实时聚合'
+  return '未返回来源证明'
+}
+
+function reportPipelineFilterLabel(pipelineHash: string): string {
+  if (pipelineHash) return shortPipelineHash(pipelineHash)
+  return '当前活动版本'
+}
+
 function findingSeverityLabel(severity: string | null | undefined): string {
   if (severity === 'error') return '错误'
   if (severity === 'warning') return '警告'
@@ -254,6 +425,108 @@ function reportPreviewEmptyDescription(datasetId: string, isLoadingReport: boole
   if (!datasetId) return '选择一个数据集后即可生成报告预览并导出。'
   if (isLoadingReport) return '正在拉取后端报告数据...'
   return '点击“重新生成报告”拉取最新后端报告。'
+}
+
+function successDocumentCount(
+  statusCounts: Record<string, number>,
+  totalDocs: number,
+  failed: number,
+  quarantined: number
+): number {
+  const completedDocs = safeNumber(
+    statusCounts.completed ?? statusCounts.ready ?? statusCounts.done
+  )
+  if (Object.keys(statusCounts).length > 0) return completedDocs
+  return Math.max(0, totalDocs - failed - quarantined)
+}
+
+function filterReportFindings(
+  findings: ReportFinding[],
+  showOnlyIssues: boolean
+): ReportFinding[] {
+  if (!showOnlyIssues) return findings
+  return findings.filter(
+    (item) =>
+      item.severity === 'warning' ||
+      item.severity === 'error' ||
+      safeNumber(item.count) > 0
+  )
+}
+
+function countFindingsByPattern(rows: ReportFinding[], pattern: RegExp): number {
+  return rows
+    .filter((item) => pattern.test(`${item.key} ${item.label}`))
+    .reduce((acc, item) => acc + safeNumber(item.count), 0)
+}
+
+function buildTopDocumentRows(
+  folderBarData: ReportMetricDatum[],
+  byFileType: Record<string, number> | undefined
+): ReportMetricDatum[] {
+  const rows =
+    folderBarData.length > 0
+      ? folderBarData
+      : Object.entries(byFileType || {}).map(([name, value]) => ({
+          name,
+          value: safeNumber(value),
+        }))
+  return rows
+    .slice()
+    .sort((a, b) => safeNumber(b.value) - safeNumber(a.value))
+    .slice(0, 3)
+}
+
+function buildIssueRows(
+  activeFindingRows: ReportFinding[],
+  connectorRuns: ReportConnectorRun[]
+): IssueRow[] {
+  return [
+    ...activeFindingRows.map((item) => ({
+      id: `finding-${item.key}`,
+      time: '质量扫描',
+      level: findingSeverityLabel(item.severity),
+      type: item.label || item.key,
+      description: item.description || `${item.label || item.key}：${item.count}`,
+      target: `${item.count}`,
+    })),
+    ...connectorRuns
+      .filter((item) => /fail|error|failed/i.test(String(item.status || '')))
+      .map((item) => ({
+        id: `connector-${item.id}`,
+        time: formatDate(item.created_at),
+        level: '错误',
+        type: '连接器运行',
+        description: item.error_message || item.status,
+        target: item.connector_id || '-',
+      })),
+  ].slice(0, 5)
+}
+
+function chunkStatsCoverage(report: DatasetReport | null, totalDocs: number): number {
+  const histogramCoverage = sumRecordValues(
+    Object.fromEntries(
+      (report?.profile?.chunk_count_histogram || []).map((bin, index) => [
+        `${bin.label || index}`,
+        safeNumber(bin.count),
+      ])
+    )
+  )
+  if (histogramCoverage) return histogramCoverage
+  if (
+    totalDocs > 0 &&
+    safeNumber(report?.profile?.chunk_count_percentiles?.p50) > 0
+  ) {
+    return totalDocs
+  }
+  return 0
+}
+
+function governanceAuditStatValue(
+  hasSamples: boolean,
+  value: number | undefined
+): string {
+  if (!hasSamples) return '未统计'
+  return String(value || 0)
 }
 
 function DataPill({
@@ -1034,6 +1307,438 @@ function ReportsDashboard({
   )
 }
 
+function LoadingButtonIcon({
+  loading,
+  icon: Icon,
+}: Readonly<{ loading: boolean; icon: LucideIcon }>) {
+  if (loading) {
+    return <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
+  }
+  return <Icon className="size-4" />
+}
+
+function ReportsHeaderPills({
+  selectedDatasetName,
+  datasetId,
+  totalDocs,
+  isLoadingReport,
+  report,
+  latestAuditTime,
+  dataSourceLabel,
+  dataSourceSub,
+  dataProvenance,
+}: Readonly<{
+  selectedDatasetName: string
+  datasetId: string
+  totalDocs: number
+  isLoadingReport: boolean
+  report: DatasetReport | null
+  latestAuditTime: string
+  dataSourceLabel: string
+  dataSourceSub: string
+  dataProvenance: DatasetReportDataProvenance | null
+}>) {
+  return (
+    <div className="flex flex-wrap overflow-hidden rounded-2xl border border-slate-200/80 bg-card/90 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
+      <DataPill
+        icon={Database}
+        label="数据集"
+        value={selectedDatasetName}
+        sub={datasetId ? shortPipelineHash(datasetId) : '未选择'}
+        tone="blue"
+      />
+      <DataPill
+        icon={FileSearch}
+        label="文档总数"
+        value={`${totalDocs} 篇文档`}
+        sub="后端 profile"
+        tone="blue"
+      />
+      <DataPill
+        icon={ShieldCheck}
+        label="报告状态"
+        value={reportStatusLabel(isLoadingReport, report)}
+        sub={report ? '后端报告已返回' : '等待生成报告'}
+        tone={report ? 'green' : 'slate'}
+      />
+      <DataPill
+        icon={Clock3}
+        label="报告生成"
+        value={latestAuditTime}
+        sub={report ? '后端生成时间' : '暂无'}
+        tone="slate"
+      />
+      <DataPill
+        icon={ShieldCheck}
+        label="数据来源"
+        value={dataSourceLabel}
+        sub={dataSourceSub}
+        tone={dataProvenance?.mocked === false ? 'green' : 'amber'}
+      />
+    </div>
+  )
+}
+
+function ReportsControlPanel({
+  datasetId,
+  datasets,
+  isLoadingDatasets,
+  pipelineVersionSelectValue,
+  pipelineVersionOptions,
+  connectorRunsLimit,
+  showOnlyIssues,
+  redact,
+  isExportingJson,
+  isExportingHtml,
+  isExportingRagAuditHtml,
+  isExportingBundle,
+  report,
+  isLoadingReport,
+  onDatasetChange,
+  onPipelineHashChange,
+  onConnectorRunsLimitChange,
+  onShowOnlyIssuesChange,
+  onRedactChange,
+  onExportJson,
+  onExportCompleteJson,
+  onExportChartsJson,
+  onExportRagAuditHtml,
+  onExportBundleZip,
+  onExportHtml,
+  onRegenerateReport,
+  onRefresh,
+}: Readonly<{
+  datasetId: string
+  datasets: DatasetOption[]
+  isLoadingDatasets: boolean
+  pipelineVersionSelectValue: string
+  pipelineVersionOptions: PipelineVersionOption[]
+  connectorRunsLimit: number
+  showOnlyIssues: boolean
+  redact: boolean
+  isExportingJson: boolean
+  isExportingHtml: boolean
+  isExportingRagAuditHtml: boolean
+  isExportingBundle: boolean
+  report: DatasetReport | null
+  isLoadingReport: boolean
+  onDatasetChange: (value: string) => void
+  onPipelineHashChange: (value: string) => void
+  onConnectorRunsLimitChange: (value: number) => void
+  onShowOnlyIssuesChange: (value: boolean) => void
+  onRedactChange: (value: boolean) => void
+  onExportJson: () => void
+  onExportCompleteJson: () => void
+  onExportChartsJson: () => void
+  onExportRagAuditHtml: () => void
+  onExportBundleZip: () => void
+  onExportHtml: () => void
+  onRegenerateReport: () => void
+  onRefresh: () => void
+}>) {
+  return (
+    <section className="space-y-4 rounded-2xl border border-slate-200/80 bg-card p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.95)]">
+      <div className="grid gap-3 xl:grid-cols-[1.25fr_1.1fr_0.9fr_auto] xl:items-end">
+        <div className="space-y-2">
+          <Label htmlFor="dataset-select">数据集</Label>
+          <Select value={datasetId} onValueChange={onDatasetChange}>
+            <SelectTrigger
+              id="dataset-select"
+              className="h-8 w-full border-slate-200/80 bg-card text-[12px]"
+            >
+              <SelectValue
+                placeholder={isLoadingDatasets ? '加载中...' : '请选择数据集'}
+              />
+            </SelectTrigger>
+            <SelectContent>
+              {datasets.map((ds) => (
+                <SelectItem key={ds.id} value={ds.id}>
+                  {ds.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="pipeline-hash">处理版本</Label>
+          <Select
+            value={pipelineVersionSelectValue}
+            onValueChange={onPipelineHashChange}
+          >
+            <SelectTrigger
+              id="pipeline-hash"
+              className="h-8 w-full border-slate-200/80 bg-card text-[12px]"
+            >
+              <SelectValue placeholder="选择或使用当前活动版本" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={DEFAULT_PIPELINE_VERSION_VALUE}>
+                当前活动版本（默认）
+              </SelectItem>
+              {pipelineVersionOptions.map((v) => (
+                <SelectItem key={v.pipeline_hash} value={v.pipeline_hash}>
+                  {shortPipelineHash(v.pipeline_hash)} · {v.documents} 个文档
+                </SelectItem>
+              ))}
+              {pipelineVersionOptions.length === 0 ? (
+                <SelectItem value="__mimirq_no_pipeline_versions__" disabled>
+                  暂无可选历史版本
+                </SelectItem>
+              ) : null}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="connector-limit">返回记录数量限制</Label>
+          <Select
+            value={String(connectorRunsLimit)}
+            onValueChange={(value) => onConnectorRunsLimitChange(Number(value || 20))}
+          >
+            <SelectTrigger
+              id="connector-limit"
+              className="h-8 w-full border-slate-200/80 bg-card text-[12px]"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="0">不包含</SelectItem>
+              <SelectItem value="10">限制 10 条</SelectItem>
+              <SelectItem value="20">限制 20 条（默认）</SelectItem>
+              <SelectItem value="50">限制 50 条</SelectItem>
+              <SelectItem value="100">限制 100 条</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex items-center gap-2 pb-1">
+          <Switch
+            id="only-issues-switch"
+            checked={showOnlyIssues}
+            onCheckedChange={onShowOnlyIssuesChange}
+          />
+          <Label
+            htmlFor="only-issues-switch"
+            className="whitespace-nowrap text-[12px]"
+          >
+            仅显示异常/失败
+          </Label>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200/80 pt-3">
+        <div className="flex items-center gap-2">
+          <Switch
+            id="redact-switch"
+            checked={redact}
+            onCheckedChange={onRedactChange}
+          />
+          <Label htmlFor="redact-switch" className="text-[12px]">
+            分享导出时隐藏敏感字段
+          </Label>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50 hover:text-slate-700"
+            onClick={onExportJson}
+            disabled={!datasetId || isExportingJson}
+            aria-label="导出 JSON"
+          >
+            <LoadingButtonIcon loading={isExportingJson} icon={Download} />
+            <span className="ml-2">导出 JSON</span>
+          </Button>
+          <Button
+            variant="outline"
+            className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50 hover:text-slate-700"
+            onClick={onExportCompleteJson}
+            disabled={!datasetId || !report}
+            aria-label="导出完整 JSON"
+          >
+            <Archive className="size-4" />
+            <span className="ml-2">导出完整 JSON</span>
+          </Button>
+          <Button
+            variant="outline"
+            className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50 hover:text-slate-700"
+            onClick={onExportChartsJson}
+            disabled={!datasetId || !report}
+            aria-label="导出 RAG 统计"
+          >
+            <BarChart3 className="size-4" />
+            <span className="ml-2">导出 RAG 统计</span>
+          </Button>
+          <Button
+            variant="outline"
+            className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50 hover:text-slate-700"
+            onClick={onExportRagAuditHtml}
+            disabled={!datasetId || isExportingRagAuditHtml}
+            aria-label="导出 RAG 审计报告"
+          >
+            <LoadingButtonIcon
+              loading={isExportingRagAuditHtml}
+              icon={Download}
+            />
+            <span className="ml-2">导出 RAG 审计</span>
+          </Button>
+          <Button
+            variant="outline"
+            className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50 hover:text-slate-700"
+            onClick={onExportBundleZip}
+            disabled={!datasetId || isExportingBundle}
+            aria-label="导出数据包 ZIP"
+          >
+            <LoadingButtonIcon loading={isExportingBundle} icon={Download} />
+            <span className="ml-2">导出数据包 ZIP</span>
+          </Button>
+          <Button
+            variant="outline"
+            className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50 hover:text-slate-700"
+            onClick={onExportHtml}
+            disabled={!datasetId || isExportingHtml}
+            aria-label="导出 HTML"
+          >
+            <LoadingButtonIcon loading={isExportingHtml} icon={Download} />
+            <span className="ml-2">导出 HTML</span>
+          </Button>
+          <Button
+            className="h-8 rounded-lg bg-blue-600 text-info-foreground shadow-[0_8px_20px_rgba(37,99,235,0.22)] hover:bg-blue-700"
+            onClick={onRegenerateReport}
+            disabled={!datasetId || isLoadingReport}
+            aria-label="重新生成报告"
+          >
+            <LoadingButtonIcon loading={isLoadingReport} icon={PlayCircle} />
+            <span className="ml-2">重新生成报告</span>
+          </Button>
+          <Button
+            variant="outline"
+            className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50 hover:text-slate-700"
+            onClick={onRefresh}
+            disabled={isLoadingDatasets}
+            aria-label="刷新"
+          >
+            <LoadingButtonIcon loading={isLoadingDatasets} icon={RefreshCw} />
+            <span className="ml-2">刷新</span>
+          </Button>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function ReportsResultSection({
+  report,
+  datasetId,
+  isLoadingReport,
+  totalDocs,
+  totalBytes,
+  successDocs,
+  successRate,
+  failed,
+  failedRate,
+  pipelineVersions,
+  pipelineVersionsWithFill,
+  pipelineFilterLabel,
+  latestAuditTime,
+  missingFindingCount,
+  duplicateFindingCount,
+  lowQualityFindingCount,
+  fieldCoverageRows,
+  fieldCoverageBadge,
+  topDocumentRows,
+  topDocumentMax,
+  onClearFolderQuery,
+  governanceAuditUrlValue,
+  governanceAuditUrlSub,
+  governanceAuditImageValue,
+  governanceAuditImageSub,
+  governanceAuditHasSamples,
+  sensitiveHits,
+  piiHits,
+  secretHits,
+  categoryBarData,
+  versionTotal,
+  issueRows,
+}: Readonly<{
+  report: DatasetReport | null
+  datasetId: string
+  isLoadingReport: boolean
+  totalDocs: number
+  totalBytes: number
+  successDocs: number
+  successRate: string
+  failed: number
+  failedRate: string
+  pipelineVersions: DatasetReportPipelineVersion[]
+  pipelineVersionsWithFill: PipelineVersionDatum[]
+  pipelineFilterLabel: string
+  latestAuditTime: string
+  missingFindingCount: number
+  duplicateFindingCount: number
+  lowQualityFindingCount: number
+  fieldCoverageRows: CoverageRow[]
+  fieldCoverageBadge: string
+  topDocumentRows: ReportMetricDatum[]
+  topDocumentMax: number
+  onClearFolderQuery: () => void
+  governanceAuditUrlValue: string
+  governanceAuditUrlSub: string
+  governanceAuditImageValue: string
+  governanceAuditImageSub: string
+  governanceAuditHasSamples: boolean
+  sensitiveHits: number
+  piiHits: number
+  secretHits: number
+  categoryBarData: CategoryMetricDatum[]
+  versionTotal: number
+  issueRows: IssueRow[]
+}>) {
+  if (!report) {
+    return (
+      <EmptyState
+        title={reportPreviewEmptyTitle(datasetId, isLoadingReport)}
+        description={reportPreviewEmptyDescription(datasetId, isLoadingReport)}
+      />
+    )
+  }
+
+  return (
+    <ReportsDashboard
+      totalDocs={totalDocs}
+      totalBytes={totalBytes}
+      successDocs={successDocs}
+      successRate={successRate}
+      failed={failed}
+      failedRate={failedRate}
+      pipelineVersions={pipelineVersions}
+      pipelineVersionsWithFill={pipelineVersionsWithFill}
+      pipelineFilterLabel={pipelineFilterLabel}
+      latestAuditTime={latestAuditTime}
+      missingFindingCount={missingFindingCount}
+      duplicateFindingCount={duplicateFindingCount}
+      lowQualityFindingCount={lowQualityFindingCount}
+      fieldCoverageRows={fieldCoverageRows}
+      fieldCoverageBadge={fieldCoverageBadge}
+      topDocumentRows={topDocumentRows}
+      topDocumentMax={topDocumentMax}
+      onClearFolderQuery={onClearFolderQuery}
+      governanceAuditUrlValue={governanceAuditUrlValue}
+      governanceAuditUrlSub={governanceAuditUrlSub}
+      governanceAuditImageValue={governanceAuditImageValue}
+      governanceAuditImageSub={governanceAuditImageSub}
+      governanceAuditHasSamples={governanceAuditHasSamples}
+      sensitiveHits={sensitiveHits}
+      piiHits={piiHits}
+      secretHits={secretHits}
+      categoryBarData={categoryBarData}
+      versionTotal={versionTotal}
+      issueRows={issueRows}
+    />
+  )
+}
+
 export default function ReportsCenterPage() {
   const [datasetId, setDatasetId] = useState<string>('')
   const [pipelineHash, setPipelineHash] = useState<string>('')
@@ -1097,6 +1802,25 @@ export default function ReportsCenterPage() {
     setDatasetId(datasets[0].id)
     setPipelineHash('')
   }, [datasetId, datasets])
+
+  const handleDatasetChange = useCallback((value: string) => {
+    setDatasetId(value)
+    setPipelineHash('')
+  }, [])
+  const handlePipelineHashChange = useCallback((value: string) => {
+    setPipelineHash(selectedPipelineHashValue(value))
+  }, [])
+  const handleRefresh = useCallback(() => {
+    refreshReportQueries(
+      datasetId,
+      datasetsQuery.refetch,
+      categoriesQuery.refetch,
+      reportQuery.refetch
+    )
+  }, [categoriesQuery.refetch, datasetId, datasetsQuery.refetch, reportQuery.refetch])
+  const handleClearFolderQuery = useCallback(() => {
+    setFolderQuery('')
+  }, [])
 
   const handleExportJson = useCallback(() => {
     detachPromise(
@@ -1372,13 +2096,12 @@ export default function ReportsCenterPage() {
   }, [governanceAudit])
 
   const statusCounts = report?.profile?.by_status || {}
-  const completedDocs = safeNumber(
-    statusCounts.completed ?? statusCounts.ready ?? statusCounts.done
+  const successDocs = successDocumentCount(
+    statusCounts,
+    totalDocs,
+    failed,
+    quarantined
   )
-  const hasStatusCounts = Object.keys(statusCounts).length > 0
-  const successDocs = hasStatusCounts
-    ? completedDocs
-    : Math.max(0, totalDocs - failed - quarantined)
   const successRate = formatPct(successDocs, totalDocs)
   const failedRate = formatPct(failed, totalDocs)
   const selectedDatasetName =
@@ -1388,39 +2111,30 @@ export default function ReportsCenterPage() {
     : '-'
   const dataProvenance = report?.data_provenance || null
   const dataSourceLabel = reportDataSourceLabel(dataProvenance)
-  const dataSourceSub =
-    dataProvenance?.mocked === false
-      ? '后端数据库 / API 实时聚合'
-      : '未返回来源证明'
+  const dataSourceSub = reportDataSourceSub(dataProvenance)
   const piiHits = sumRecordValues(report?.compliance?.pii_hits_total)
   const secretHits = sumRecordValues(report?.compliance?.secrets_hits_total)
   const sensitiveHits = piiHits + secretHits
-  const findingRows = (report?.profile?.findings || []).filter((item) =>
+  const findingRows = filterReportFindings(
+    report?.profile?.findings || [],
     showOnlyIssues
-      ? item.severity === 'warning' ||
-        item.severity === 'error' ||
-        safeNumber(item.count) > 0
-      : true
   )
-  const duplicateFindingCount = findingRows
-    .filter((item) => /duplicate|重复/i.test(`${item.key} ${item.label}`))
-    .reduce((acc, item) => acc + safeNumber(item.count), 0)
-  const missingFindingCount = findingRows
-    .filter((item) => /missing|缺失/i.test(`${item.key} ${item.label}`))
-    .reduce((acc, item) => acc + safeNumber(item.count), 0)
-  const lowQualityFindingCount = findingRows
-    .filter((item) => /quality|低质量|low/i.test(`${item.key} ${item.label}`))
-    .reduce((acc, item) => acc + safeNumber(item.count), 0)
-  const topDocumentRows = (
-    folderBarData.length > 0
-      ? folderBarData
-      : Object.entries(report?.profile?.by_file_type || {}).map(
-          ([name, value]) => ({ name, value: safeNumber(value) })
-        )
+  const duplicateFindingCount = countFindingsByPattern(
+    findingRows,
+    /duplicate|重复/i
   )
-    .slice()
-    .sort((a, b) => safeNumber(b.value) - safeNumber(a.value))
-    .slice(0, 3)
+  const missingFindingCount = countFindingsByPattern(
+    findingRows,
+    /missing|缺失/i
+  )
+  const lowQualityFindingCount = countFindingsByPattern(
+    findingRows,
+    /quality|低质量|low/i
+  )
+  const topDocumentRows = buildTopDocumentRows(
+    folderBarData,
+    report?.profile?.by_file_type
+  )
   const topDocumentMax = Math.max(
     1,
     ...topDocumentRows.map((item) => safeNumber(item.value))
@@ -1429,42 +2143,25 @@ export default function ReportsCenterPage() {
     (acc, item) => acc + safeNumber(item.documents),
     0
   )
+  const pipelineFilterLabel = reportPipelineFilterLabel(pipelineHash)
   const activeFindingRows = findingRows.filter(
     (item) => safeNumber(item.count) > 0
   )
-  const issueRows = [
-    ...activeFindingRows.map((item) => ({
-      id: `finding-${item.key}`,
-      time: '质量扫描',
-      level: findingSeverityLabel(item.severity),
-      type: item.label || item.key,
-      description:
-        item.description || `${item.label || item.key}：${item.count}`,
-      target: `${item.count}`,
-    })),
-    ...connectorRuns
-      .filter((item) => /fail|error|failed/i.test(String(item.status || '')))
-      .map((item) => ({
-        id: `connector-${item.id}`,
-        time: formatDate(item.created_at),
-        level: '错误',
-        type: '连接器运行',
-        description: item.error_message || item.status,
-        target: item.connector_id || '-',
-      })),
-  ].slice(0, 5)
+  const issueRows = buildIssueRows(activeFindingRows, connectorRuns)
   const governanceCoverageMax =
     safeNumber(governanceAudit?.used_documents) ||
     safeNumber(governance?.used_documents)
   const governanceAuditHasSamples =
     safeNumber(governanceAudit?.used_documents) > 0
   const governanceAuditUnavailableSub = '当前报告无治理审计样本'
-  const governanceAuditUrlValue = governanceAuditHasSamples
-    ? String(governanceAudit?.urls_changed_total || 0)
-    : '未统计'
-  const governanceAuditImageValue = governanceAuditHasSamples
-    ? String(governanceAudit?.images_removed_total || 0)
-    : '未统计'
+  const governanceAuditUrlValue = governanceAuditStatValue(
+    governanceAuditHasSamples,
+    governanceAudit?.urls_changed_total
+  )
+  const governanceAuditImageValue = governanceAuditStatValue(
+    governanceAuditHasSamples,
+    governanceAudit?.images_removed_total
+  )
   const governanceAuditUrlSub = governanceAuditHasSamples
     ? 'URL 规范化变更'
     : governanceAuditUnavailableSub
@@ -1472,19 +2169,7 @@ export default function ReportsCenterPage() {
     ? '治理审计图片移除'
     : governanceAuditUnavailableSub
   const hasGovernanceCoverage = governanceCoverageMax > 0
-  const chunkStatsCovered =
-    sumRecordValues(
-      Object.fromEntries(
-        (report?.profile?.chunk_count_histogram || []).map((bin, index) => [
-          `${bin.label || index}`,
-          safeNumber(bin.count),
-        ])
-      )
-    ) ||
-    (totalDocs > 0 &&
-    safeNumber(report?.profile?.chunk_count_percentiles?.p50) > 0
-      ? totalDocs
-      : 0)
+  const chunkStatsCovered = chunkStatsCoverage(report, totalDocs)
   const baseCoverageRows = [
     {
       label: '状态字段覆盖',
@@ -1566,45 +2251,23 @@ export default function ReportsCenterPage() {
   const fieldCoverageBadge = hasGovernanceCoverage ? '后端治理审计' : '后端基础画像'
 
   const handleExportChartsJson = useCallback(() => {
-    if (!datasetId || !report) return
-    const safe = sanitizeFilename(
-      selectedDataset?.name || report.dataset_name || 'dataset'
-    )
-    const suffix = pipelineHash.trim()
-      ? `.${pipelineHash.trim().slice(0, 8)}`
-      : ''
-    const payload = {
-      schema: 'mimirq.report_charts.v1',
-      exported_at: new Date().toISOString(),
-      dataset: {
-        id: datasetId,
-        name: selectedDataset?.name || report.dataset_name || null,
-      },
-      pipeline_hash: report.pipeline_hash || null,
-      governance: {
-        metrics: report.governance_metrics || null,
-        audit: report.governance_audit || null,
-        drop_reasons_top: dropReasonsData,
-        rule_packs_top: rulePacksData,
-        audit_chars: govAuditCharData,
-        audit_reduction_histogram: govAuditReductionHistData,
-        audit_density_histogram: govAuditDensityHistData,
-        audit_heading_ratio_histogram: govAuditHeadingRatioHistData,
-        audit_effects_top: govAuditEffectsData,
-      },
-      folders: {
-        query: folderQuery,
-        top: folderBarData,
-      },
-      categories: {
-        query: categoryQuery,
-        top: categoryBarData,
-      },
-    }
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {
-      type: 'application/json;charset=utf-8',
+    exportChartsJsonPayload({
+      datasetId,
+      report,
+      selectedDatasetName: selectedDataset?.name,
+      pipelineHash,
+      dropReasonsData,
+      rulePacksData,
+      govAuditCharData,
+      govAuditReductionHistData,
+      govAuditDensityHistData,
+      govAuditHeadingRatioHistData,
+      govAuditEffectsData,
+      folderQuery,
+      folderBarData,
+      categoryQuery,
+      categoryBarData,
     })
-    downloadBlob(blob, `${safe}.charts${suffix}.json`)
   }, [
     categoryBarData,
     categoryQuery,
@@ -1624,33 +2287,21 @@ export default function ReportsCenterPage() {
   ])
 
   const handleExportCompleteJson = useCallback(() => {
-    if (!datasetId || !report) return
-    const safe = sanitizeFilename(
-      selectedDataset?.name || report.dataset_name || 'dataset'
-    )
-    const suffix = pipelineHash.trim()
-      ? `.${pipelineHash.trim().slice(0, 8)}`
-      : ''
-    const payload = {
-      schema: 'mimirq.dataset_report_complete.v1',
-      exported_at: new Date().toISOString(),
+    exportCompleteReportJsonPayload({
+      datasetId,
       report,
-      derived: {
-        success_documents: successDocs,
-        success_rate: successRate,
-        failed_rate: failedRate,
-        sensitive_hits: sensitiveHits,
-        risk_findings: findingRows,
-        field_coverage: fieldCoverageRows,
-        top_documents: topDocumentRows,
-        category_top: categoryBarData,
-        pipeline_version_total: versionTotal,
-      },
-    }
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {
-      type: 'application/json;charset=utf-8',
+      selectedDatasetName: selectedDataset?.name,
+      pipelineHash,
+      successDocs,
+      successRate,
+      failedRate,
+      sensitiveHits,
+      findingRows,
+      fieldCoverageRows,
+      topDocumentRows,
+      categoryBarData,
+      versionTotal,
     })
-    downloadBlob(blob, `${safe}.complete-report${suffix}.json`)
   }, [
     categoryBarData,
     datasetId,
@@ -1693,324 +2344,84 @@ export default function ReportsCenterPage() {
               compact
               className="p-0"
             >
-            <div className="flex flex-wrap overflow-hidden rounded-2xl border border-slate-200/80 bg-card/90 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
-              <DataPill
-                icon={Database}
-                label="数据集"
-                value={selectedDatasetName}
-                sub={datasetId ? shortPipelineHash(datasetId) : '未选择'}
-                tone="blue"
+              <ReportsHeaderPills
+                selectedDatasetName={selectedDatasetName}
+                datasetId={datasetId}
+                totalDocs={totalDocs}
+                isLoadingReport={isLoadingReport}
+                report={report}
+                latestAuditTime={latestAuditTime}
+                dataSourceLabel={dataSourceLabel}
+                dataSourceSub={dataSourceSub}
+                dataProvenance={dataProvenance}
               />
-              <DataPill
-                icon={FileSearch}
-                label="文档总数"
-                value={`${totalDocs} 篇文档`}
-                sub="后端 profile"
-                tone="blue"
-              />
-              <DataPill
-                icon={ShieldCheck}
-                label="报告状态"
-                value={reportStatusLabel(isLoadingReport, report)}
-                sub={report ? '后端报告已返回' : '等待生成报告'}
-                tone={report ? 'green' : 'slate'}
-              />
-              <DataPill
-                icon={Clock3}
-                label="报告生成"
-                value={latestAuditTime}
-                sub={report ? '后端生成时间' : '暂无'}
-                tone="slate"
-              />
-              <DataPill
-                icon={ShieldCheck}
-                label="数据来源"
-                value={dataSourceLabel}
-                sub={dataSourceSub}
-                tone={dataProvenance?.mocked === false ? 'green' : 'amber'}
-              />
-            </div>
             </PageHeader>
           </div>
           <div className="space-y-3 p-3">
-            <section className="space-y-4 rounded-2xl border border-slate-200/80 bg-card p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.95)]">
-              <div className="grid gap-3 xl:grid-cols-[1.25fr_1.1fr_0.9fr_auto] xl:items-end">
-                <div className="space-y-2">
-                  <Label htmlFor="dataset-select">数据集</Label>
-                  <Select
-                    value={datasetId}
-                    onValueChange={(v) => {
-                      setDatasetId(v)
-                      setPipelineHash('')
-                    }}
-                  >
-                    <SelectTrigger
-                      id="dataset-select"
-                      className="h-8 w-full border-slate-200/80 bg-card text-[12px]"
-                    >
-                      <SelectValue
-                        placeholder={
-                          isLoadingDatasets ? '加载中...' : '请选择数据集'
-                        }
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {datasets.map((ds) => (
-                        <SelectItem key={ds.id} value={ds.id}>
-                          {ds.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+            <ReportsControlPanel
+              datasetId={datasetId}
+              datasets={datasets}
+              isLoadingDatasets={isLoadingDatasets}
+              pipelineVersionSelectValue={pipelineVersionSelectValue}
+              pipelineVersionOptions={pipelineVersionOptions}
+              connectorRunsLimit={connectorRunsLimit}
+              showOnlyIssues={showOnlyIssues}
+              redact={redact}
+              isExportingJson={isExportingJson}
+              isExportingHtml={isExportingHtml}
+              isExportingRagAuditHtml={isExportingRagAuditHtml}
+              isExportingBundle={isExportingBundle}
+              report={report}
+              isLoadingReport={isLoadingReport}
+              onDatasetChange={handleDatasetChange}
+              onPipelineHashChange={handlePipelineHashChange}
+              onConnectorRunsLimitChange={setConnectorRunsLimit}
+              onShowOnlyIssuesChange={setShowOnlyIssues}
+              onRedactChange={setRedact}
+              onExportJson={handleExportJson}
+              onExportCompleteJson={handleExportCompleteJson}
+              onExportChartsJson={handleExportChartsJson}
+              onExportRagAuditHtml={handleExportRagAuditHtml}
+              onExportBundleZip={handleExportBundleZip}
+              onExportHtml={handleExportHtml}
+              onRegenerateReport={reportQuery.refetch}
+              onRefresh={handleRefresh}
+            />
 
-                <div className="space-y-2">
-                  <Label htmlFor="pipeline-hash">处理版本</Label>
-                  <Select
-                    value={pipelineVersionSelectValue}
-                    onValueChange={(value) => {
-                      setPipelineHash(
-                        value === DEFAULT_PIPELINE_VERSION_VALUE ? '' : value
-                      )
-                    }}
-                  >
-                    <SelectTrigger
-                      id="pipeline-hash"
-                      className="h-8 w-full border-slate-200/80 bg-card text-[12px]"
-                    >
-                      <SelectValue placeholder="选择或使用当前活动版本" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={DEFAULT_PIPELINE_VERSION_VALUE}>
-                        当前活动版本（默认）
-                      </SelectItem>
-                      {pipelineVersionOptions.map((v) => (
-                        <SelectItem
-                          key={v.pipeline_hash}
-                          value={v.pipeline_hash}
-                        >
-                          {shortPipelineHash(v.pipeline_hash)} · {v.documents}{' '}
-                          个文档
-                        </SelectItem>
-                      ))}
-                      {pipelineVersionOptions.length === 0 ? (
-                        <SelectItem
-                          value="__mimirq_no_pipeline_versions__"
-                          disabled
-                        >
-                          暂无可选历史版本
-                        </SelectItem>
-                      ) : null}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="connector-limit">返回记录数量限制</Label>
-                  <Select
-                    value={String(connectorRunsLimit)}
-                    onValueChange={(v) =>
-                      setConnectorRunsLimit(Number(v || 20))
-                    }
-                  >
-                    <SelectTrigger
-                      id="connector-limit"
-                      className="h-8 w-full border-slate-200/80 bg-card text-[12px]"
-                    >
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="0">不包含</SelectItem>
-                      <SelectItem value="10">限制 10 条</SelectItem>
-                      <SelectItem value="20">限制 20 条（默认）</SelectItem>
-                      <SelectItem value="50">限制 50 条</SelectItem>
-                      <SelectItem value="100">限制 100 条</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex items-center gap-2 pb-1">
-                  <Switch
-                    id="only-issues-switch"
-                    checked={showOnlyIssues}
-                    onCheckedChange={setShowOnlyIssues}
-                  />
-                  <Label
-                    htmlFor="only-issues-switch"
-                    className="whitespace-nowrap text-[12px]"
-                  >
-                    仅显示异常/失败
-                  </Label>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200/80 pt-3">
-                <div className="flex items-center gap-2">
-                  <Switch
-                    id="redact-switch"
-                    checked={redact}
-                    onCheckedChange={setRedact}
-                  />
-                  <Label htmlFor="redact-switch" className="text-[12px]">
-                    分享导出时隐藏敏感字段
-                  </Label>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    variant="outline"
-                    className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50 hover:text-slate-700"
-                    onClick={handleExportJson}
-                    disabled={!datasetId || isExportingJson}
-                    aria-label="导出 JSON"
-                  >
-                    {isExportingJson ? (
-                      <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
-                    ) : (
-                      <Download className="size-4" />
-                    )}
-                    <span className="ml-2">导出 JSON</span>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50 hover:text-slate-700"
-                    onClick={handleExportCompleteJson}
-                    disabled={!datasetId || !report}
-                    aria-label="导出完整 JSON"
-                  >
-                    <Archive className="size-4" />
-                    <span className="ml-2">导出完整 JSON</span>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50 hover:text-slate-700"
-                    onClick={handleExportChartsJson}
-                    disabled={!datasetId || !report}
-                    aria-label="导出 RAG 统计"
-                  >
-                    <BarChart3 className="size-4" />
-                    <span className="ml-2">导出 RAG 统计</span>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50 hover:text-slate-700"
-                    onClick={handleExportRagAuditHtml}
-                    disabled={!datasetId || isExportingRagAuditHtml}
-                    aria-label="导出 RAG 审计报告"
-                  >
-                    {isExportingRagAuditHtml ? (
-                      <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
-                    ) : (
-                      <Download className="size-4" />
-                    )}
-                    <span className="ml-2">导出 RAG 审计</span>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50 hover:text-slate-700"
-                    onClick={handleExportBundleZip}
-                    disabled={!datasetId || isExportingBundle}
-                    aria-label="导出数据包 ZIP"
-                  >
-                    {isExportingBundle ? (
-                      <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
-                    ) : (
-                      <Download className="size-4" />
-                    )}
-                    <span className="ml-2">导出数据包 ZIP</span>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50 hover:text-slate-700"
-                    onClick={handleExportHtml}
-                    disabled={!datasetId || isExportingHtml}
-                    aria-label="导出 HTML"
-                  >
-                    {isExportingHtml ? (
-                      <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
-                    ) : (
-                      <Download className="size-4" />
-                    )}
-                    <span className="ml-2">导出 HTML</span>
-                  </Button>
-                  <Button
-                    className="h-8 rounded-lg bg-blue-600 text-info-foreground shadow-[0_8px_20px_rgba(37,99,235,0.22)] hover:bg-blue-700"
-                    onClick={() => reportQuery.refetch()}
-                    disabled={!datasetId || isLoadingReport}
-                    aria-label="重新生成报告"
-                  >
-                    {isLoadingReport ? (
-                      <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
-                    ) : (
-                      <PlayCircle className="size-4" />
-                    )}
-                    <span className="ml-2">重新生成报告</span>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50 hover:text-slate-700"
-                    onClick={() => {
-                      datasetsQuery.refetch()
-                      categoriesQuery.refetch()
-                      if (datasetId) reportQuery.refetch()
-                    }}
-                    disabled={isLoadingDatasets}
-                    aria-label="刷新"
-                  >
-                    {isLoadingDatasets ? (
-                      <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
-                    ) : (
-                      <RefreshCw className="size-4" />
-                    )}
-                    <span className="ml-2">刷新</span>
-                  </Button>
-                </div>
-              </div>
-            </section>
-
-            {report ? (
-              <ReportsDashboard
-                totalDocs={totalDocs}
-                totalBytes={totalBytes}
-                successDocs={successDocs}
-                successRate={successRate}
-                failed={failed}
-                failedRate={failedRate}
-                pipelineVersions={pipelineVersions}
-                pipelineVersionsWithFill={pipelineVersionsWithFill}
-                pipelineFilterLabel={
-                  pipelineHash ? shortPipelineHash(pipelineHash) : '当前活动版本'
-                }
-                latestAuditTime={latestAuditTime}
-                missingFindingCount={missingFindingCount}
-                duplicateFindingCount={duplicateFindingCount}
-                lowQualityFindingCount={lowQualityFindingCount}
-                fieldCoverageRows={fieldCoverageRows}
-                fieldCoverageBadge={fieldCoverageBadge}
-                topDocumentRows={topDocumentRows}
-                topDocumentMax={topDocumentMax}
-                onClearFolderQuery={() => setFolderQuery('')}
-                governanceAuditUrlValue={governanceAuditUrlValue}
-                governanceAuditUrlSub={governanceAuditUrlSub}
-                governanceAuditImageValue={governanceAuditImageValue}
-                governanceAuditImageSub={governanceAuditImageSub}
-                governanceAuditHasSamples={governanceAuditHasSamples}
-                sensitiveHits={sensitiveHits}
-                piiHits={piiHits}
-                secretHits={secretHits}
-                categoryBarData={categoryBarData}
-                versionTotal={versionTotal}
-                issueRows={issueRows}
-              />
-            ) : (
-              <EmptyState
-                title={reportPreviewEmptyTitle(datasetId, isLoadingReport)}
-                description={reportPreviewEmptyDescription(
-                  datasetId,
-                  isLoadingReport
-                )}
-              />
-            )}
+            <ReportsResultSection
+              report={report}
+              datasetId={datasetId}
+              isLoadingReport={isLoadingReport}
+              totalDocs={totalDocs}
+              totalBytes={totalBytes}
+              successDocs={successDocs}
+              successRate={successRate}
+              failed={failed}
+              failedRate={failedRate}
+              pipelineVersions={pipelineVersions}
+              pipelineVersionsWithFill={pipelineVersionsWithFill}
+              pipelineFilterLabel={pipelineFilterLabel}
+              latestAuditTime={latestAuditTime}
+              missingFindingCount={missingFindingCount}
+              duplicateFindingCount={duplicateFindingCount}
+              lowQualityFindingCount={lowQualityFindingCount}
+              fieldCoverageRows={fieldCoverageRows}
+              fieldCoverageBadge={fieldCoverageBadge}
+              topDocumentRows={topDocumentRows}
+              topDocumentMax={topDocumentMax}
+              onClearFolderQuery={handleClearFolderQuery}
+              governanceAuditUrlValue={governanceAuditUrlValue}
+              governanceAuditUrlSub={governanceAuditUrlSub}
+              governanceAuditImageValue={governanceAuditImageValue}
+              governanceAuditImageSub={governanceAuditImageSub}
+              governanceAuditHasSamples={governanceAuditHasSamples}
+              sensitiveHits={sensitiveHits}
+              piiHits={piiHits}
+              secretHits={secretHits}
+              categoryBarData={categoryBarData}
+              versionTotal={versionTotal}
+              issueRows={issueRows}
+            />
           </div>
         </div>
       </AnalysisPageShell>
