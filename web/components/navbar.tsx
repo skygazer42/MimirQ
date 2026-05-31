@@ -420,8 +420,9 @@ export function Navbar({
     if (globalThis.window === undefined) return
     if (globalThis.navigator?.webdriver) return
     const key = '__mimirq_routes_prefetched__'
-    if ((globalThis.window as any)[key]) return
-    ;(globalThis.window as any)[key] = true
+    const routeCache = globalThis.window as typeof globalThis.window & Record<string, boolean>
+    if (routeCache[key]) return
+    routeCache[key] = true
 
     const hrefs = visibleMenuItems.map((i) => i.href).filter(Boolean)
     const prefetchAll = () => {

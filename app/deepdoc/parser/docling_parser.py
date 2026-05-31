@@ -287,7 +287,7 @@ class DoclingParser(IntegratedPipelinePdfParser):
             poss.append(([int(p) - 1 for p in pn.split("-")], left, right, top, bottom))
         return poss
 
-    def crop(self, text: str, ZM: int = 1, need_position: bool = False):
+    def crop(self, text: str, _zoom: int = 1, need_position: bool = False):
         imgs = []
         poss = self.extract_positions(text)
         if not poss:

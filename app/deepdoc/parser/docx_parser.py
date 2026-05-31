@@ -35,7 +35,7 @@ class IntegratedPipelineDocxParser:
 
     def __compose_table_content(self, df):
 
-        def blockType(b):
+        def block_type(b):
             patt = [
                 ("^(20|19)\\d{2}[年/-]\\d{1,2}[月/-]\\d{1,2}日*$", "Dt"),
                 (r"^(20|19)\d{2}年$", "Dt"),
@@ -67,7 +67,7 @@ class IntegratedPipelineDocxParser:
 
         if len(df) < 2:
             return []
-        max_type = Counter([blockType(str(df.iloc[i, j])) for i in range(
+        max_type = Counter([block_type(str(df.iloc[i, j])) for i in range(
             1, len(df)) for j in range(len(df.iloc[i, :]))])
         max_type = max(max_type.items(), key=lambda x: x[1])[0]
 
@@ -75,7 +75,7 @@ class IntegratedPipelineDocxParser:
         hdrows = [0]  # header is not nessesarily appear in the first line
         if max_type == "Nu":
             for r in range(1, len(df)):
-                tys = Counter([blockType(str(df.iloc[r, j]))
+                tys = Counter([block_type(str(df.iloc[r, j]))
                                for j in range(len(df.iloc[r, :]))])
                 tys = max(tys.items(), key=lambda x: x[1])[0]
                 if tys != max_type:

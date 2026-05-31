@@ -51,7 +51,7 @@ function getSteps(t: ReturnType<typeof useTranslations<'CommonUi'>>): Step[] {
 function getCurrentStepIndex(pathname: string, steps: Step[]) {
   const p = pathname || '/'
   const idx = steps.findIndex((s) => s.match(p))
-  return idx >= 0 ? idx : 0
+  return Math.max(idx, 0)
 }
 
 export function IngestionWorkflowStepper({

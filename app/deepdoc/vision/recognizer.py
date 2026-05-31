@@ -150,7 +150,7 @@ class Recognizer:
 
     @staticmethod
     def layouts_cleanup(boxes, layouts, far=2, thr=0.7):
-        def notOverlapped(a, b):
+        def not_overlapped(a, b):
             return any([a["x1"] < b["x0"],
                         a["x0"] > b["x1"],
                         a["bottom"] < b["top"],
@@ -161,7 +161,7 @@ class Recognizer:
             j = i + 1
             while j < min(i + far, len(layouts)) \
                     and (layouts[i].get("type", "") != layouts[j].get("type", "")
-                         or notOverlapped(layouts[i], layouts[j])):
+                         or not_overlapped(layouts[i], layouts[j])):
                 j += 1
             if j >= min(i + far, len(layouts)):
                 i += 1
@@ -180,9 +180,9 @@ class Recognizer:
 
             area_i, area_i_1 = 0, 0
             for b in boxes:
-                if not notOverlapped(b, layouts[i]):
+                if not not_overlapped(b, layouts[i]):
                     area_i += Recognizer.overlapped_area(b, layouts[i], False)
-                if not notOverlapped(b, layouts[j]):
+                if not not_overlapped(b, layouts[j]):
                     area_i_1 += Recognizer.overlapped_area(b, layouts[j], False)
 
             if area_i > area_i_1:

@@ -237,11 +237,11 @@ function EmbeddedToggleCard({
   )
 }
 
-const REGRESSION_CORE_METRIC_KEYS = [
+const REGRESSION_CORE_METRIC_KEYS = new Set([
   'faithfulness',
   'response_relevancy',
   'context_precision',
-]
+])
 
 function RegressionMetricPicker({
   disabled = false,
@@ -256,10 +256,10 @@ function RegressionMetricPicker({
     metric.scopes.includes('regression')
   )
   const coreMetrics = regressionMetrics.filter((metric) =>
-    REGRESSION_CORE_METRIC_KEYS.includes(metric.key)
+    REGRESSION_CORE_METRIC_KEYS.has(metric.key)
   )
   const advancedMetrics = regressionMetrics.filter(
-    (metric) => !REGRESSION_CORE_METRIC_KEYS.includes(metric.key)
+    (metric) => !REGRESSION_CORE_METRIC_KEYS.has(metric.key)
   )
   const selectedAdvancedMetrics = advancedMetrics.filter((metric) =>
     metricKeys.includes(metric.key)
@@ -1486,9 +1486,9 @@ export function RegressionTestTab({
                                     ) : null}
                                     {quotes.length ? (
                                       <div className="mt-2 space-y-1">
-                                        {quotes.slice(0, 3).map((q, i) => (
+                                        {quotes.slice(0, 3).map((q) => (
                                           <div
-                                            key={i}
+                                            key={q}
                                             className="font-mono text-[11px] text-muted-foreground"
                                           >
                                             “{q}”

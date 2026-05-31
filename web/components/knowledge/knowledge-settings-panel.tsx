@@ -201,7 +201,7 @@ function inferEmbeddingBrand(
 function cloneSettingsConfig(
   config: KnowledgeSettingsConfig
 ): KnowledgeSettingsConfig {
-  return JSON.parse(JSON.stringify(config)) as KnowledgeSettingsConfig
+  return structuredClone(config)
 }
 
 function buildScopedSettingsConfig(
@@ -1528,8 +1528,8 @@ function TaskCard({
               </div>
               {(run.stats?.errors || [])
                 .slice(0, 2)
-                .map((err: any, i: number) => (
-                  <div key={i} className="mt-1 opacity-60 truncate">
+                .map((err: any) => (
+                  <div key={String(err.error ?? err.message ?? err.code ?? 'error')} className="mt-1 opacity-60 truncate">
                     ! {err.error}
                   </div>
                 ))}

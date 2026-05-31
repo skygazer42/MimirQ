@@ -335,7 +335,7 @@ class MinerUParser(IntegratedPipelinePdfParser):
 
         return "@@{}\t{:.1f}\t{:.1f}\t{:.1f}\t{:.1f}##".format("-".join([str(p) for p in pn]), x0, x1, top, bott)
 
-    def crop(self, text, ZM=1, need_position=False):
+    def crop(self, text, _zoom=1, need_position=False):
         imgs = []
         poss = self.extract_positions(text)
         if not poss:

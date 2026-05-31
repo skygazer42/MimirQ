@@ -544,16 +544,18 @@ class KieResize:
 
 class SRResize:
     def __init__(self,
-                 imgH=32,
-                 imgW=128,
+                 img_h=32,
+                 img_w=128,
                  down_sample_scale=4,
                  keep_ratio=False,
                  min_ratio=1,
                  mask=False,
                  infer_mode=False,
                  **kwargs):
-        self.imgH = imgH
-        self.imgW = imgW
+        img_h = kwargs.pop("imgH", img_h)
+        img_w = kwargs.pop("imgW", img_w)
+        self.img_h = img_h
+        self.img_w = img_w
         self.keep_ratio = keep_ratio
         self.min_ratio = min_ratio
         self.down_sample_scale = down_sample_scale
@@ -561,8 +563,8 @@ class SRResize:
         self.infer_mode = infer_mode
 
     def __call__(self, data):
-        img_h = self.imgH
-        img_w = self.imgW
+        img_h = self.img_h
+        img_w = self.img_w
         images_lr = data["image_lr"]
         transform2 = ResizeNormalize(
             (img_w // self.down_sample_scale, img_h // self.down_sample_scale))

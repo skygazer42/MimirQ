@@ -62,7 +62,7 @@ function isFormData(value: unknown): value is FormData {
 
 function toFormData(body: Record<string, unknown>): FormData {
   if (typeof FormData === 'undefined') {
-    throw new Error('[openapi-request] FormData is not available in this environment')
+    throw new TypeError('[openapi-request] FormData is not available in this environment')
   }
 
   const fd = new FormData()
