@@ -127,6 +127,86 @@ class AuditLogDeleteResponse(BaseModel):
     ids: list[UUID]
 
 
+class AuditLogFilterParams(BaseModel):
+    actor_id: str | None = None
+    action: str | None = None
+    resource_type: str | None = None
+    resource_id: str | None = None
+    request_id: str | None = None
+    since: datetime | None = None
+    until: datetime | None = None
+
+
+class AuditLogExportParams(BaseModel):
+    limit: int = 1000
+    after_created_at: datetime | None = None
+    after_id: UUID | None = None
+    include_sensitive: bool = False
+    gzip: bool = False
+
+
+class AuditLogPurgeParams(BaseModel):
+    retention_days: int = 90
+    max_delete: int = 100_000
+    dry_run: bool = True
+    purge_scope: Literal["retention", "filtered"] = "retention"
+
+
+def audit_log_filter_params(
+    actor_id: Annotated[str | None, Query(max_length=255)] = None,
+    action: Annotated[str | None, Query(max_length=128)] = None,
+    resource_type: Annotated[str | None, Query(max_length=64)] = None,
+    resource_id: Annotated[str | None, Query(max_length=255)] = None,
+    request_id: Annotated[str | None, Query(max_length=128)] = None,
+    since: Annotated[datetime | None, Query()] = None,
+    until: Annotated[datetime | None, Query()] = None,
+) -> AuditLogFilterParams:
+    return AuditLogFilterParams(
+        actor_id=actor_id,
+        action=action,
+        resource_type=resource_type,
+        resource_id=resource_id,
+        request_id=request_id,
+        since=since,
+        until=until,
+    )
+
+
+def audit_log_export_params(
+    limit: Annotated[int, Query(ge=1, le=10000)] = 1000,
+    after_created_at: Annotated[datetime | None, Query(description='Cursor: last seen created_at')] = None,
+    after_id: Annotated[UUID | None, Query(description='Cursor: last seen id (tie-breaker)')] = None,
+    include_sensitive: Annotated[
+        bool, Query(description='Include sensitive detail keys (admin/auditor only)')
+    ] = False,
+    gzip: Annotated[bool, Query(description='Return gzip-compressed NDJSON (Content-Encoding: gzip)')] = False,
+) -> AuditLogExportParams:
+    return AuditLogExportParams(
+        limit=limit,
+        after_created_at=after_created_at,
+        after_id=after_id,
+        include_sensitive=include_sensitive,
+        gzip=gzip,
+    )
+
+
+def audit_log_purge_params(
+    retention_days: Annotated[int, Query(ge=1, le=3650, description='Delete logs older than N days')] = 90,
+    max_delete: Annotated[int, Query(ge=1, le=1000000, description='Max rows to delete in this call')] = 100_000,
+    dry_run: Annotated[bool, Query(description='Plan only; do not delete rows')] = True,
+    purge_scope: Annotated[
+        Literal["retention", "filtered"],
+        Query(description='retention=older than N days; filtered=current explicit filters'),
+    ] = "retention",
+) -> AuditLogPurgeParams:
+    return AuditLogPurgeParams(
+        retention_days=retention_days,
+        max_delete=max_delete,
+        dry_run=dry_run,
+        purge_scope=purge_scope,
+    )
+
+
 def _sanitize_details(details: dict[str, Any], *, include_sensitive: bool) -> dict[str, Any]:
     if include_sensitive or not isinstance(details, dict):
         return dict(details or {})
@@ -241,20 +321,8 @@ def list_audit_logs(
 
 @router.get("/logs/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def export_audit_logs(
-    limit: Annotated[int, Query(ge=1, le=10000)] = 1000,
-    actor_id: Annotated[str | None, Query(max_length=255)] = None,
-    action: Annotated[str | None, Query(max_length=128)] = None,
-    resource_type: Annotated[str | None, Query(max_length=64)] = None,
-    resource_id: Annotated[str | None, Query(max_length=255)] = None,
-    request_id: Annotated[str | None, Query(max_length=128)] = None,
-    since: Annotated[datetime | None, Query()] = None,
-    until: Annotated[datetime | None, Query()] = None,
-    after_created_at: Annotated[datetime | None, Query(description='Cursor: last seen created_at')] = None,
-    after_id: Annotated[UUID | None, Query(description='Cursor: last seen id (tie-breaker)')] = None,
-    include_sensitive: Annotated[
-        bool, Query(description='Include sensitive detail keys (admin/auditor only)')
-    ] = False,
-    gzip: Annotated[bool, Query(description='Return gzip-compressed NDJSON (Content-Encoding: gzip)')] = False,
+    filters: Annotated[AuditLogFilterParams, Depends(audit_log_filter_params)],
+    export: Annotated[AuditLogExportParams, Depends(audit_log_export_params)],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -272,38 +340,38 @@ def export_audit_logs(
 
     q = db.query(AuditLog).filter(AuditLog.tenant_id == tenant_id)
 
-    if actor_id:
-        q = q.filter(AuditLog.actor_id == actor_id)
-    if action:
-        q = q.filter(AuditLog.action == action)
-    if resource_type:
-        q = q.filter(AuditLog.resource_type == resource_type)
-    if resource_id:
-        q = q.filter(AuditLog.resource_id == resource_id)
-    if request_id:
-        q = q.filter(AuditLog.request_id == request_id)
-    if since is not None:
-        q = q.filter(AuditLog.created_at >= since)
-    if until is not None:
-        q = q.filter(AuditLog.created_at <= until)
+    if filters.actor_id:
+        q = q.filter(AuditLog.actor_id == filters.actor_id)
+    if filters.action:
+        q = q.filter(AuditLog.action == filters.action)
+    if filters.resource_type:
+        q = q.filter(AuditLog.resource_type == filters.resource_type)
+    if filters.resource_id:
+        q = q.filter(AuditLog.resource_id == filters.resource_id)
+    if filters.request_id:
+        q = q.filter(AuditLog.request_id == filters.request_id)
+    if filters.since is not None:
+        q = q.filter(AuditLog.created_at >= filters.since)
+    if filters.until is not None:
+        q = q.filter(AuditLog.created_at <= filters.until)
 
-    if after_created_at is not None:
-        if after_id is not None:
+    if export.after_created_at is not None:
+        if export.after_id is not None:
             q = q.filter(
                 or_(
-                    AuditLog.created_at > after_created_at,
-                    and_(AuditLog.created_at == after_created_at, AuditLog.id > after_id),
+                    AuditLog.created_at > export.after_created_at,
+                    and_(AuditLog.created_at == export.after_created_at, AuditLog.id > export.after_id),
                 )
             )
         else:
-            q = q.filter(AuditLog.created_at > after_created_at)
+            q = q.filter(AuditLog.created_at > export.after_created_at)
 
-    rows = q.order_by(AuditLog.created_at.asc(), AuditLog.id.asc()).limit(limit).all()
+    rows = q.order_by(AuditLog.created_at.asc(), AuditLog.id.asc()).limit(export.limit).all()
 
     def _iter_lines() -> Iterator[bytes]:
         for row in rows:
             obj = AuditLogOut.model_validate(row)
-            obj.details = _sanitize_details(dict(obj.details or {}), include_sensitive=bool(include_sensitive))
+            obj.details = _sanitize_details(dict(obj.details or {}), include_sensitive=bool(export.include_sensitive))
             payload = obj.model_dump(mode="json")
             line = json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n"
             yield line.encode("utf-8")
@@ -312,7 +380,7 @@ def export_audit_logs(
     headers = {
         "Cache-Control": "no-store",
     }
-    if gzip:
+    if export.gzip:
         headers["Content-Encoding"] = "gzip"
         body_iter = _iter_gzip_chunks(body_iter)
 
@@ -325,20 +393,8 @@ def export_audit_logs(
 
 @router.post("/logs/purge", response_model=AuditLogPurgeResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def purge_audit_logs(
-    retention_days: Annotated[int, Query(ge=1, le=3650, description='Delete logs older than N days')] = 90,
-    max_delete: Annotated[int, Query(ge=1, le=1000000, description='Max rows to delete in this call')] = 100_000,
-    dry_run: Annotated[bool, Query(description='Plan only; do not delete rows')] = True,
-    purge_scope: Annotated[
-        Literal["retention", "filtered"],
-        Query(description='retention=older than N days; filtered=current explicit filters'),
-    ] = "retention",
-    actor_id: Annotated[str | None, Query(max_length=255)] = None,
-    action: Annotated[str | None, Query(max_length=128)] = None,
-    resource_type: Annotated[str | None, Query(max_length=64)] = None,
-    resource_id: Annotated[str | None, Query(max_length=255)] = None,
-    request_id: Annotated[str | None, Query(max_length=128)] = None,
-    since: Annotated[datetime | None, Query()] = None,
-    until: Annotated[datetime | None, Query()] = None,
+    params: Annotated[AuditLogPurgeParams, Depends(audit_log_purge_params)],
+    filters: Annotated[AuditLogFilterParams, Depends(audit_log_filter_params)],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -359,62 +415,64 @@ def purge_audit_logs(
     )
 
     now = datetime.now(UTC)
-    cutoff = now - timedelta(days=int(retention_days or 0))
+    cutoff = now - timedelta(days=int(params.retention_days or 0))
 
     filter_payload: dict[str, Any] = {
         k: v
         for k, v in {
-            "actor_id": actor_id,
-            "action": action,
-            "resource_type": resource_type,
-            "resource_id": resource_id,
-            "request_id": request_id,
-            "since": since.isoformat() if since is not None else None,
-            "until": until.isoformat() if until is not None else None,
+            "actor_id": filters.actor_id,
+            "action": filters.action,
+            "resource_type": filters.resource_type,
+            "resource_id": filters.resource_id,
+            "request_id": filters.request_id,
+            "since": filters.since.isoformat() if filters.since is not None else None,
+            "until": filters.until.isoformat() if filters.until is not None else None,
         }.items()
         if v not in (None, "")
     }
 
-    if purge_scope == "filtered" and not filter_payload:
+    if params.purge_scope == "filtered" and not filter_payload:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="At least one filter is required for filtered audit log purge",
         )
 
-    if purge_scope == "filtered":
+    if params.purge_scope == "filtered":
         eligible = int(
             plan_filtered_audit_log_purge(
                 db,
                 tenant_id=tenant_id,
-                max_delete=int(max_delete or 0),
-                actor_id=actor_id,
-                action=action,
-                resource_type=resource_type,
-                resource_id=resource_id,
-                request_id=request_id,
-                since=since,
-                until=until,
+                max_delete=int(params.max_delete or 0),
+                actor_id=filters.actor_id,
+                action=filters.action,
+                resource_type=filters.resource_type,
+                resource_id=filters.resource_id,
+                request_id=filters.request_id,
+                since=filters.since,
+                until=filters.until,
             )
             or 0
         )
     else:
-        eligible = int(plan_audit_log_purge(db, tenant_id=tenant_id, cutoff=cutoff, max_delete=int(max_delete or 0)) or 0)
+        eligible = int(
+            plan_audit_log_purge(db, tenant_id=tenant_id, cutoff=cutoff, max_delete=int(params.max_delete or 0)) or 0
+        )
 
     deleted = 0
-    if not bool(dry_run):
-        if purge_scope == "filtered":
+    if not bool(params.dry_run):
+        if params.purge_scope == "filtered":
             deleted = int(
                 purge_filtered_audit_log_rows(
                     db,
                     tenant_id=tenant_id,
-                    max_delete=int(max_delete or 0),
-                    actor_id=actor_id,
-                    action=action,
-                    resource_type=resource_type,
-                    resource_id=resource_id,
-                    request_id=request_id,
-                    since=since,
-                    until=until,
+                    max_delete=int(params.max_delete or 0),
+                    actor_id=filters.actor_id,
+                    action=filters.action,
+                    resource_type=filters.resource_type,
+                    resource_id=filters.resource_id,
+                    request_id=filters.request_id,
+                    since=filters.since,
+                    until=filters.until,
                     commit=True,
                 )
                 or 0
@@ -425,7 +483,7 @@ def purge_audit_logs(
                     db,
                     tenant_id=tenant_id,
                     cutoff=cutoff,
-                    max_delete=int(max_delete or 0),
+                    max_delete=int(params.max_delete or 0),
                     commit=True,
                 )
                 or 0
@@ -441,11 +499,11 @@ def purge_audit_logs(
             resource_type="audit_logs",
             resource_id=None,
             details={
-                "dry_run": bool(dry_run),
-                "purge_scope": str(purge_scope),
-                "retention_days": int(retention_days or 0),
+                "dry_run": bool(params.dry_run),
+                "purge_scope": str(params.purge_scope),
+                "retention_days": int(params.retention_days or 0),
                 "cutoff": cutoff.isoformat(),
-                "max_delete": int(max_delete or 0),
+                "max_delete": int(params.max_delete or 0),
                 "eligible": int(eligible or 0),
                 "deleted": int(deleted or 0),
                 "filters": filter_payload,
@@ -459,11 +517,11 @@ def purge_audit_logs(
             logger.debug(_AUDIT_ROUTER_FALLBACK_LOG_MESSAGE, exc)
 
     return AuditLogPurgeResponse(
-        dry_run=bool(dry_run),
-        scope=str(purge_scope),
-        retention_days=int(retention_days or 0),
+        dry_run=bool(params.dry_run),
+        scope=str(params.purge_scope),
+        retention_days=int(params.retention_days or 0),
         cutoff=cutoff,
-        max_delete=int(max_delete or 0),
+        max_delete=int(params.max_delete or 0),
         eligible=int(eligible or 0),
         deleted=int(deleted or 0),
         filters=filter_payload,
