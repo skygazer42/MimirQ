@@ -171,6 +171,24 @@ class ChunkAssetResult:
 
 
 @dataclass(frozen=True)
+class ChunkPostprocessStats:
+    merge_small_enabled: bool
+    merge_small_min_chars: int
+    merge_small_before: int
+    merge_small_after: int
+    merge_small_reduced: int
+    dedup_enabled: bool
+    dedup_dropped: int
+    max_chunks_per_document: int
+    max_chunks_strategy: str
+    truncated_from: int
+    truncated_to: int
+    truncated_dropped: int
+    truncated_asset_total: int
+    truncated_asset_kept: int
+
+
+@dataclass(frozen=True)
 class IndexResult:
     chunk_ids: list[UUID]
     total_characters: int
@@ -3565,20 +3583,22 @@ class DocumentProcessorService:
                     db,
                     tenant_id=tenant_id,
                     document_id=document_id,
-                    merge_small_enabled=bool(merge_small_min_chars > 0),
-                    merge_small_min_chars=int(merge_small_min_chars),
-                    merge_small_before=int(merge_small_before),
-                    merge_small_after=int(merge_small_after),
-                    merge_small_reduced=int(merge_small_reduced),
-                    dedup_enabled=dedup_enabled,
-                    dedup_dropped=dedup_dropped,
-                    max_chunks_per_document=max_chunks_per_document,
-                    max_chunks_strategy=truncated_strategy_used or truncation_strategy,
-                    truncated_from=truncated_from,
-                    truncated_to=truncated_to,
-                    truncated_dropped=truncated_dropped,
-                    truncated_asset_total=truncated_asset_total,
-                    truncated_asset_kept=truncated_asset_kept,
+                    stats=ChunkPostprocessStats(
+                        merge_small_enabled=bool(merge_small_min_chars > 0),
+                        merge_small_min_chars=int(merge_small_min_chars),
+                        merge_small_before=int(merge_small_before),
+                        merge_small_after=int(merge_small_after),
+                        merge_small_reduced=int(merge_small_reduced),
+                        dedup_enabled=dedup_enabled,
+                        dedup_dropped=dedup_dropped,
+                        max_chunks_per_document=max_chunks_per_document,
+                        max_chunks_strategy=truncated_strategy_used or truncation_strategy,
+                        truncated_from=truncated_from,
+                        truncated_to=truncated_to,
+                        truncated_dropped=truncated_dropped,
+                        truncated_asset_total=truncated_asset_total,
+                        truncated_asset_kept=truncated_asset_kept,
+                    ),
                 )
 
             if governance_stats is not None:
@@ -4912,20 +4932,7 @@ class DocumentProcessorService:
         *,
         tenant_id: UUID,
         document_id: UUID,
-        merge_small_enabled: bool,
-        merge_small_min_chars: int,
-        merge_small_before: int,
-        merge_small_after: int,
-        merge_small_reduced: int,
-        dedup_enabled: bool,
-        dedup_dropped: int,
-        max_chunks_per_document: int,
-        max_chunks_strategy: str,
-        truncated_from: int,
-        truncated_to: int,
-        truncated_dropped: int,
-        truncated_asset_total: int,
-        truncated_asset_kept: int,
+        stats: ChunkPostprocessStats,
     ) -> None:
         """Persist chunk postprocessing stats (dedup/truncation) on the document metadata."""
         db_doc = (
@@ -4938,21 +4945,21 @@ class DocumentProcessorService:
 
         metadata = dict(db_doc.doc_metadata or {})
         metadata["chunk_postprocess"] = {
-            "merge_small_enabled": bool(merge_small_enabled),
-            "merge_small_min_chars": int(merge_small_min_chars),
-            "merge_small_before": int(merge_small_before),
-            "merge_small_after": int(merge_small_after),
-            "merge_small_reduced": int(merge_small_reduced),
-            "dedup_enabled": bool(dedup_enabled),
-            "dedup_dropped": int(dedup_dropped),
-            "max_chunks_per_document": int(max_chunks_per_document),
-            "max_chunks_strategy": str(max_chunks_strategy or "").strip() or "head",
-            "truncated": bool(int(truncated_dropped) > 0),
-            "truncated_from": int(truncated_from),
-            "truncated_to": int(truncated_to),
-            "truncated_dropped": int(truncated_dropped),
-            "truncated_asset_total": int(truncated_asset_total),
-            "truncated_asset_kept": int(truncated_asset_kept),
+            "merge_small_enabled": bool(stats.merge_small_enabled),
+            "merge_small_min_chars": int(stats.merge_small_min_chars),
+            "merge_small_before": int(stats.merge_small_before),
+            "merge_small_after": int(stats.merge_small_after),
+            "merge_small_reduced": int(stats.merge_small_reduced),
+            "dedup_enabled": bool(stats.dedup_enabled),
+            "dedup_dropped": int(stats.dedup_dropped),
+            "max_chunks_per_document": int(stats.max_chunks_per_document),
+            "max_chunks_strategy": str(stats.max_chunks_strategy or "").strip() or "head",
+            "truncated": bool(int(stats.truncated_dropped) > 0),
+            "truncated_from": int(stats.truncated_from),
+            "truncated_to": int(stats.truncated_to),
+            "truncated_dropped": int(stats.truncated_dropped),
+            "truncated_asset_total": int(stats.truncated_asset_total),
+            "truncated_asset_kept": int(stats.truncated_asset_kept),
         }
         db_doc.doc_metadata = metadata
         db.commit()

@@ -23,7 +23,10 @@ from app.rag.evaluation.poc_runner.png_tasks import (
     get_png_export_task_result,
 )
 from app.rag.evaluation.poc_runner.query_pattern_miner import mine_query_patterns
-from app.rag.evaluation.poc_runner.reports.attribution_report import build_dataset_analysis_report
+from app.rag.evaluation.poc_runner.reports.attribution_report import (
+    DatasetAnalysisReportPayload,
+    build_dataset_analysis_report,
+)
 from app.rag.evaluation.poc_runner.reports.html_renderer import render_dataset_analysis_html
 from app.rag.evaluation.poc_runner.reports.png_renderer import render_dataset_analysis_png
 from app.rag.evaluation.poc_runner.reports.umap_scatter import build_umap_scatter
@@ -516,7 +519,7 @@ def export_dataset_analysis_html(
         category=category,
         limit=20,
     )
-    report = build_dataset_analysis_report(
+    report = build_dataset_analysis_report(DatasetAnalysisReportPayload(
         dataset_id=str(dataset_id),
         dataset_name=dataset_name,
         filters=bundle["meta"]["filters"],
@@ -531,7 +534,7 @@ def export_dataset_analysis_html(
         coverage_heatmap=bundle["coverage_heatmap"],
         umap_scatter=bundle["umap_scatter"],
         latency_breakdown=bundle["latency_breakdown"],
-    )
+    ))
     report["meta"]["definitions"] = bundle["meta"]["definitions"]
     return render_dataset_analysis_html(report)
 
@@ -616,7 +619,7 @@ def create_dataset_analysis_png_task(
                 category=category,
                 limit=20,
             )
-            report = build_dataset_analysis_report(
+            report = build_dataset_analysis_report(DatasetAnalysisReportPayload(
                 dataset_id=str(dataset_id),
                 dataset_name=dataset_name,
                 filters=bundle["meta"]["filters"],
@@ -631,7 +634,7 @@ def create_dataset_analysis_png_task(
                 coverage_heatmap=bundle["coverage_heatmap"],
                 umap_scatter=bundle["umap_scatter"],
                 latency_breakdown=bundle["latency_breakdown"],
-            )
+            ))
             report["meta"]["definitions"] = bundle["meta"]["definitions"]
             payload = render_dataset_analysis_png(report)
             complete_png_export_task(task["task_id"], payload)
