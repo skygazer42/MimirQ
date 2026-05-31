@@ -492,7 +492,7 @@ function diagnosticSummaryDetail(hasDiagnostics: boolean) {
 function stableTextKey(text: string) {
   let hash = 0
   for (const char of text) {
-    hash = Math.imul(hash, 31) + char.charCodeAt(0)
+    hash = Math.imul(hash, 31) + (char.codePointAt(0) ?? 0)
   }
   return `text-${Math.abs(hash).toString(36)}`
 }

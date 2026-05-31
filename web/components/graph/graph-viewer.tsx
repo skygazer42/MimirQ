@@ -66,6 +66,28 @@ type GraphEndpointObject = {
   z?: number
 }
 
+type GraphCanvasPalette = {
+  edgeLabelBg: string
+  edgeLabelHoverText: string
+  edgeLabelText: string
+}
+
+type LinkLabelRenderState = {
+  startNode: GraphEndpointObject
+  endNode: GraphEndpointObject
+  label: string
+  isPathLink: boolean
+  isHoveredLink: boolean
+  isAccent: boolean
+}
+
+type LinkLabelLayout = {
+  textPos: { x: number; y: number }
+  textAngle: number
+  textWidth: number
+  fontSize: number
+}
+
 function graphDisplayString(value: unknown): string {
   if (typeof value === 'string') return value.trim()
   if (
@@ -91,6 +113,10 @@ function graphEndpointId(endpoint: unknown): string {
     return firstGraphDisplayString((endpoint as GraphEndpointObject).id)
   }
   return firstGraphDisplayString(endpoint)
+}
+
+function isGraphEndpointObject(value: unknown): value is GraphEndpointObject {
+  return Boolean(value) && typeof value === 'object'
 }
 
 function getLinkKind(link: GraphLinkDatum): string {
@@ -374,6 +400,151 @@ function edgeLabelTextStyle(
   if (isPathLink) return '#ffffff'
   if (isHoveredLink) return hoverText
   return text
+}
+
+function normalizeReadableTextAngle(angle: number) {
+  if (angle > Math.PI / 2) return -(Math.PI - angle)
+  if (angle < -Math.PI / 2) return -(-Math.PI - angle)
+  return angle
+}
+
+function getLinkLabelRenderState({
+  link,
+  highlightedLinkIds,
+  hoveredLinkId,
+  allowEdgeLabels,
+  globalScale,
+  edgeLabelScale,
+}: {
+  link: GraphLinkDatum
+  highlightedLinkIds: ReadonlySet<string>
+  hoveredLinkId: string | null
+  allowEdgeLabels: boolean
+  globalScale: number
+  edgeLabelScale: number
+}): LinkLabelRenderState | null {
+  if (!isGraphEndpointObject(link.source) || !isGraphEndpointObject(link.target)) {
+    return null
+  }
+
+  const linkId = getStableLinkId(link)
+  const isPathLink = Boolean(
+    highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)
+  )
+  const isHoveredLink = hoveredLinkId !== null && linkId === hoveredLinkId
+  const isAccent = isPathLink || isHoveredLink
+  if (!allowEdgeLabels && !isAccent) return null
+  if (globalScale < edgeLabelScale && !isAccent) return null
+
+  const label = graphDisplayString(link.label)
+  if (!label) return null
+
+  return {
+    startNode: link.source,
+    endNode: link.target,
+    label,
+    isPathLink,
+    isHoveredLink,
+    isAccent,
+  }
+}
+
+function getLinkLabelLayout(
+  ctx: CanvasRenderingContext2D,
+  state: LinkLabelRenderState,
+  globalScale: number
+): LinkLabelLayout | null {
+  const x1 = state.startNode.x || 0
+  const y1 = state.startNode.y || 0
+  const x2 = state.endNode.x || 0
+  const y2 = state.endNode.y || 0
+  const relLink = { x: x2 - x1, y: y2 - y1 }
+  const maxTextLength = Math.hypot(relLink.x, relLink.y) - 8
+  const fontSize = state.isAccent ? 12 / globalScale : 11 / globalScale
+
+  ctx.font = `${state.isAccent ? 'bold ' : ''}${fontSize}px Sans-Serif`
+  const textWidth = ctx.measureText(state.label).width
+  if (textWidth > maxTextLength) return null
+
+  return {
+    textPos: { x: x1 + relLink.x / 2, y: y1 + relLink.y / 2 },
+    textAngle: normalizeReadableTextAngle(Math.atan2(relLink.y, relLink.x)),
+    textWidth,
+    fontSize,
+  }
+}
+
+function drawLinkLabelBadge(
+  ctx: CanvasRenderingContext2D,
+  state: LinkLabelRenderState,
+  layout: LinkLabelLayout,
+  globalScale: number,
+  canvasColors: GraphCanvasPalette
+) {
+  const padX = 4
+  const padY = 2
+  const rx = 3 / globalScale
+  const bx = -layout.textWidth / 2 - padX
+  const by = -layout.fontSize / 2 - padY
+  const bw = layout.textWidth + padX * 2
+  const bh = layout.fontSize + padY * 2
+
+  traceRoundRect(ctx, bx, by, bw, bh, rx)
+  ctx.fillStyle = edgeLabelFillStyle(
+    state.isPathLink,
+    state.isHoveredLink,
+    canvasColors.edgeLabelBg
+  )
+  ctx.fill()
+
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillStyle = edgeLabelTextStyle(
+    state.isPathLink,
+    state.isHoveredLink,
+    canvasColors.edgeLabelHoverText,
+    canvasColors.edgeLabelText
+  )
+  ctx.fillText(state.label, 0, 0)
+}
+
+function drawGraphLinkLabel({
+  link,
+  ctx,
+  globalScale,
+  allowEdgeLabels,
+  edgeLabelScale,
+  highlightedLinkIds,
+  hoveredLinkId,
+  canvasColors,
+}: {
+  link: GraphLinkDatum
+  ctx: CanvasRenderingContext2D
+  globalScale: number
+  allowEdgeLabels: boolean
+  edgeLabelScale: number
+  highlightedLinkIds: ReadonlySet<string>
+  hoveredLinkId: string | null
+  canvasColors: GraphCanvasPalette
+}) {
+  const state = getLinkLabelRenderState({
+    link,
+    highlightedLinkIds,
+    hoveredLinkId,
+    allowEdgeLabels,
+    globalScale,
+    edgeLabelScale,
+  })
+  if (!state) return
+
+  const layout = getLinkLabelLayout(ctx, state, globalScale)
+  if (!layout) return
+
+  ctx.save()
+  ctx.translate(layout.textPos.x, layout.textPos.y)
+  ctx.rotate(layout.textAngle)
+  drawLinkLabelBadge(ctx, state, layout, globalScale, canvasColors)
+  ctx.restore()
 }
 
 function getPrimaryCanvas(root: ParentNode | null): HTMLCanvasElement | null {
@@ -1178,87 +1349,16 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
               // Custom Link Label Painting
               linkCanvasObjectMode={() => 'after'}
               linkCanvasObject={(link: GraphLinkDatum, ctx: CanvasRenderingContext2D, globalScale: number) => {
-                const start = link.source
-                const end = link.target
-
-                if (typeof start !== 'object' || start == null || typeof end !== 'object' || end == null) return
-
-                const startNode = start as GraphEndpointObject
-                const endNode = end as GraphEndpointObject
-
-                const linkId = getStableLinkId(link)
-                const isPathLink = highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)
-                const isHoveredLink = hoveredLinkId != null && linkId === hoveredLinkId
-                const isAccent = isPathLink || isHoveredLink
-
-                if (!allowEdgeLabels && !isAccent) return
-                if (globalScale < edgeLabelScale && !isAccent) return
-
-                const label = graphDisplayString(link.label)
-                if (!label) return
-
-                const x1 = startNode.x || 0
-                const y1 = startNode.y || 0
-                const x2 = endNode.x || 0
-                const y2 = endNode.y || 0
-
-                const textPos = { x: x1 + (x2 - x1) / 2, y: y1 + (y2 - y1) / 2 }
-
-                const relLink = { x: x2 - x1, y: y2 - y1 }
-                const maxTextLength = Math.hypot(relLink.x, relLink.y) - 8
-
-                let textAngle = Math.atan2(relLink.y, relLink.x)
-                if (textAngle > Math.PI / 2) textAngle = -(Math.PI - textAngle)
-                if (textAngle < -Math.PI / 2) textAngle = -(-Math.PI - textAngle)
-
-                const fontSize = isAccent ? 12 / globalScale : 11 / globalScale
-                ctx.font = `${isAccent ? 'bold ' : ''}${fontSize}px Sans-Serif`
-
-                const textWidth = ctx.measureText(label).width
-                if (textWidth > maxTextLength) return
-
-                ctx.save()
-                ctx.translate(textPos.x, textPos.y)
-                ctx.rotate(textAngle)
-
-                const padX = 4
-                const padY = 2
-                const rx = 3 / globalScale
-                const bx = -textWidth / 2 - padX
-                const by = -fontSize / 2 - padY
-                const bw = textWidth + padX * 2
-                const bh = fontSize + padY * 2
-
-                ctx.beginPath()
-                ctx.moveTo(bx + rx, by)
-                ctx.lineTo(bx + bw - rx, by)
-                ctx.quadraticCurveTo(bx + bw, by, bx + bw, by + rx)
-                ctx.lineTo(bx + bw, by + bh - rx)
-                ctx.quadraticCurveTo(bx + bw, by + bh, bx + bw - rx, by + bh)
-                ctx.lineTo(bx + rx, by + bh)
-                ctx.quadraticCurveTo(bx, by + bh, bx, by + bh - rx)
-                ctx.lineTo(bx, by + rx)
-                ctx.quadraticCurveTo(bx, by, bx + rx, by)
-                ctx.closePath()
-
-                ctx.fillStyle = edgeLabelFillStyle(
-                  Boolean(isPathLink),
-                  isHoveredLink,
-                  canvasColors.edgeLabelBg
-                )
-                ctx.fill()
-
-                ctx.textAlign = 'center'
-                ctx.textBaseline = 'middle'
-                ctx.fillStyle = edgeLabelTextStyle(
-                  Boolean(isPathLink),
-                  isHoveredLink,
-                  canvasColors.edgeLabelHoverText,
-                  canvasColors.edgeLabelText
-                )
-                ctx.fillText(label, 0, 0)
-
-                ctx.restore()
+                drawGraphLinkLabel({
+                  link,
+                  ctx,
+                  globalScale,
+                  allowEdgeLabels,
+                  edgeLabelScale,
+                  highlightedLinkIds,
+                  hoveredLinkId,
+                  canvasColors,
+                })
               }}
             />
             {isLargeGraph && viewportLod ? (
