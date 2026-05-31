@@ -725,22 +725,10 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
   const copyToClipboard = useCallback(async (text: string) => {
     const content = text || ''
     try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(content)
-      } else {
-        const textarea = globalThis.window.document.createElement('textarea')
-        textarea.value = content
-        textarea.style.position = 'fixed'
-        textarea.style.left = '0'
-        textarea.style.top = '0'
-        textarea.style.opacity = '0'
-        globalThis.window.document.body.appendChild(textarea)
-        textarea.focus()
-        textarea.select()
-        const ok = globalThis.window.document.execCommand('copy')
-        globalThis.window.document.body.removeChild(textarea)
-        if (!ok) throw new Error('copy failed')
+      if (!navigator.clipboard?.writeText) {
+        throw new Error('Clipboard API unavailable')
       }
+      await navigator.clipboard.writeText(content)
       toast.success(t("toasts.copySuccess"))
     } catch (err) {
       console.error('Copy failed:', err)

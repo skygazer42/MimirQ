@@ -779,8 +779,6 @@ export function useSettingsPageState() {
 
     const handler = (event: BeforeUnloadEvent) => {
       event.preventDefault()
-      event.returnValue = ''
-      return ''
     }
 
     globalThis.window.addEventListener('beforeunload', handler)

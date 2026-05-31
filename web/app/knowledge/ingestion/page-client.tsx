@@ -1047,12 +1047,21 @@ async function renderReportHtmlToJpeg(html: string, filename: string) {
   document.body.appendChild(iframe)
 
   try {
+    const frameLoaded = new Promise<void>((resolve, reject) => {
+      const timeout = globalThis.window.setTimeout(() => {
+        reject(new Error('Report frame load timeout'))
+      }, 4000)
+      iframe.onload = () => {
+        globalThis.window.clearTimeout(timeout)
+        resolve()
+      }
+    })
+    iframe.srcdoc = html
+    await frameLoaded
+
     const frameDocument = iframe.contentDocument
     if (!frameDocument) throw new Error('Report frame unavailable')
 
-    frameDocument.open()
-    frameDocument.write(html)
-    frameDocument.close()
     await new Promise((resolve) => globalThis.window.setTimeout(resolve, 160))
     await frameDocument.fonts?.ready.catch(() => undefined)
     await waitForNextPaint()
@@ -4093,14 +4102,11 @@ export default function KnowledgeIngestionPageClient() {
       )
       toast.success('已导出 JPG 报告')
     } catch (error) {
-      const reportWindow = globalThis.window.open(
-        '',
-        '_blank',
-        'noopener,noreferrer'
-      )
+      const previewUrl = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }))
+      const reportWindow = globalThis.window.open(previewUrl, '_blank')
       if (reportWindow) {
-        reportWindow.document.write(html)
-        reportWindow.document.close()
+        reportWindow.opener = null
+        globalThis.window.setTimeout(() => URL.revokeObjectURL(previewUrl), 60_000)
         toast.error(
           error instanceof Error && error.message
             ? `JPG 生成失败，已回退到 HTML 预览：${error.message}`
@@ -4108,6 +4114,7 @@ export default function KnowledgeIngestionPageClient() {
         )
         return
       }
+      URL.revokeObjectURL(previewUrl)
 
       downloadTextFile(
         'ingestion-audit-report.html',
