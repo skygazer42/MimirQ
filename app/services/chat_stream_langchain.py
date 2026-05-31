@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 import json
 from dataclasses import replace
-from typing import Any, AsyncIterator, Awaitable, Callable
+from typing import Any, AsyncIterator, Awaitable, Callable, cast
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -203,12 +203,15 @@ async def stream_langchain_chat_session_events(
         db=db,
         persist_in_background=persist_in_background,
         spawn_background_task=spawn_background_task,
-        options=replace(
-            persist_options,
-            content=full_response,
-            citations=citations_data,
-            metrics=metrics_data,
-            structured_data=structured_data,
+        options=cast(
+            ChatStreamPersistInput,
+            replace(
+                persist_options,
+                content=full_response,
+                citations=citations_data,
+                metrics=metrics_data,
+                structured_data=structured_data,
+            ),
         ),
     )
 

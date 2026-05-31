@@ -63,7 +63,11 @@ def _checkpoint_values_to_json(values: dict | None) -> dict:
     return jsonable_encoder(data)
 
 
-@router.get("/conversations/{conversation_id}/summary", response_model=ConversationSummaryResponse)
+@router.get(
+    "/conversations/{conversation_id}/summary",
+    response_model=ConversationSummaryResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 async def get_conversation_summary_endpoint(
     conversation_id: UUID,
     *,
@@ -87,7 +91,11 @@ async def get_conversation_summary_endpoint(
     return {"available": bool(summary), "summary": summary}
 
 
-@router.post("/conversations/{conversation_id}/summary/update", response_model=ConversationSummaryUpdateResponse)
+@router.post(
+    "/conversations/{conversation_id}/summary/update",
+    response_model=ConversationSummaryUpdateResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 async def update_conversation_summary_endpoint(
     conversation_id: UUID,
     *,
@@ -109,7 +117,11 @@ async def update_conversation_summary_endpoint(
     return {"summary": summary}
 
 
-@router.delete("/conversations/{conversation_id}/summary", status_code=204)
+@router.delete(
+    "/conversations/{conversation_id}/summary",
+    status_code=204,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 async def delete_conversation_summary_endpoint(
     conversation_id: UUID,
     *,
@@ -128,7 +140,11 @@ async def delete_conversation_summary_endpoint(
     return None
 
 
-@router.get("/conversations/{conversation_id}/rag-traces", response_model=RagTraceListResponse)
+@router.get(
+    "/conversations/{conversation_id}/rag-traces",
+    response_model=RagTraceListResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 async def get_conversation_rag_traces(
     conversation_id: UUID,
     limit: Annotated[int, Query(ge=1, le=200)] = 20,
@@ -159,7 +175,11 @@ async def get_conversation_rag_traces(
     )
 
 
-@router.get("/conversations/{conversation_id}/checkpoints", response_model=CheckpointListResponse)
+@router.get(
+    "/conversations/{conversation_id}/checkpoints",
+    response_model=CheckpointListResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 async def list_conversation_checkpoints(
     conversation_id: UUID,
     limit: Annotated[int, Query(ge=1, le=200)] = 20,
@@ -205,7 +225,11 @@ async def list_conversation_checkpoints(
     return {"thread_id": thread_id, "items": items}
 
 
-@router.get("/conversations/{conversation_id}/checkpoints/{checkpoint_id}", response_model=CheckpointDetailResponse)
+@router.get(
+    "/conversations/{conversation_id}/checkpoints/{checkpoint_id}",
+    response_model=CheckpointDetailResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 async def get_conversation_checkpoint(
     conversation_id: UUID,
     checkpoint_id: str,
@@ -246,7 +270,11 @@ async def get_conversation_checkpoint(
     return jsonable_encoder(payload)
 
 
-@router.delete("/conversations/{conversation_id}/checkpoints", status_code=204)
+@router.delete(
+    "/conversations/{conversation_id}/checkpoints",
+    status_code=204,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 async def delete_conversation_checkpoints(
     conversation_id: UUID,
     *,

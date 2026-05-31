@@ -892,7 +892,7 @@ class IntegratedPipelinePdfParser:
             for j in range(i, min(i + 128, len(self.boxes))):
                 if not re.match(prefix, self.boxes[j]["text"]):
                     continue
-                for k in range(i, j):
+                for _ in range(i, j):
                     self.boxes.pop(i)
                 break
         if findit:
@@ -1175,7 +1175,6 @@ class IntegratedPipelinePdfParser:
         ]:
             if re.match(p, line):
                 return j
-        return
 
     def _line_tag(self, bx, ZM):
         pn = [bx["page_number"]]

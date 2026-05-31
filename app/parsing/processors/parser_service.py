@@ -51,9 +51,6 @@ def _rewrite_preview_image_refs(
 
 
 class DocumentParserService:
-    def __init__(self):
-        pass
-
     def _materialize_local_images_for_preview(self, documents: list[Document], tenant_id: UUID) -> list[dict]:
         """
         Rewrite local/relative image references in Markdown/HTML into preview-time

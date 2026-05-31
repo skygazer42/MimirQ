@@ -38,7 +38,7 @@ class CsvParser:
         delimiter = ","
         dialect: csv.Dialect = csv.excel
         try:
-            sniffed = csv.Sniffer().sniff(sample, delimiters=[",", "\t", ";", "|"])
+            sniffed = csv.Sniffer().sniff(sample, delimiters=",\t;|")
             dialect = sniffed
             delimiter = getattr(sniffed, "delimiter", ",") or ","
         except Exception:
@@ -100,4 +100,3 @@ class CsvParser:
             metadata["csv_columns"] = header
 
         return [Document(page_content=content, metadata=metadata)]
-

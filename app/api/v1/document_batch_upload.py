@@ -11,10 +11,21 @@ from app.core.database import get_db
 from app.services.dataset_service import EDIT_ROLES, DatasetService
 from app.services.mineru_service import mineru_service
 
-router = APIRouter()
+_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
+    400: {"description": "Bad Request"},
+    403: {"description": "Forbidden"},
+    404: {"description": "Not Found"},
+    500: {"description": "Internal Server Error"},
+}
+
+router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
-@router.post("/batch-upload/apply-urls", response_model=BatchUploadResponse)
+@router.post(
+    "/batch-upload/apply-urls",
+    response_model=BatchUploadResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 async def apply_batch_upload_urls(
     request: BatchUploadRequest,
     *,
@@ -49,7 +60,11 @@ async def apply_batch_upload_urls(
         raise HTTPException(status_code=500, detail=f"Failed to apply upload URLs: {str(e)}") from e
 
 
-@router.get("/batch-upload/status/{batch_id}", response_model=BatchTaskStatus)
+@router.get(
+    "/batch-upload/status/{batch_id}",
+    response_model=BatchTaskStatus,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 async def get_batch_task_status(
     batch_id: str,
     *,

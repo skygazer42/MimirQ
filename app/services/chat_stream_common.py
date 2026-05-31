@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import contextlib
 from dataclasses import replace
-from typing import Any, AsyncIterator, Awaitable, Callable
+from typing import Any, AsyncIterator, Awaitable, Callable, cast
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -167,12 +167,15 @@ async def stream_materialized_chat_events(
         db=db,
         persist_in_background=persist_in_background,
         spawn_background_task=spawn_background_task,
-        options=replace(
-            persist_options,
-            content=answer_text,
-            citations=citations_list,
-            metrics=final_metrics,
-            structured_data=structured_data,
+        options=cast(
+            ChatStreamPersistInput,
+            replace(
+                persist_options,
+                content=answer_text,
+                citations=citations_list,
+                metrics=final_metrics,
+                structured_data=structured_data,
+            ),
         ),
     )
 
