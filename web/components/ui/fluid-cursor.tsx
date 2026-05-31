@@ -31,14 +31,8 @@ export function FluidCursor() {
     update()
 
     // Keep in sync on hybrid devices / pointer changes.
-    try {
-      mq.addEventListener("change", update)
-      return () => mq.removeEventListener("change", update)
-    } catch {
-      // Safari < 14
-      mq.addListener(update)
-      return () => mq.removeListener(update)
-    }
+    mq.addEventListener("change", update)
+    return () => mq.removeEventListener("change", update)
   }, [enabled])
 
   useEffect(() => {

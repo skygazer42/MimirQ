@@ -30,14 +30,8 @@ export function Magnetic({ children, strength = 0.5 }: Readonly<MagneticProps>) 
     const update = () => setIsFinePointer(mq.matches)
     update()
 
-    try {
-      mq.addEventListener("change", update)
-      return () => mq.removeEventListener("change", update)
-    } catch {
-      // Safari < 14
-      mq.addListener(update)
-      return () => mq.removeListener(update)
-    }
+    mq.addEventListener("change", update)
+    return () => mq.removeEventListener("change", update)
   }, [])
 
   const handleMouseMove = (e: React.MouseEvent) => {
