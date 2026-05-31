@@ -804,7 +804,7 @@ export function IndustryRulesWorkbench() {
                         </td>
                       </tr>
                     ))}
-                    {!visibleGlossaryEntries.length ? (
+                    {visibleGlossaryEntries.length ? null : (
                       <tr>
                         <td
                           colSpan={4}
@@ -813,7 +813,7 @@ export function IndustryRulesWorkbench() {
                           当前规则集还没有可展示的术语，或搜索条件为空。
                         </td>
                       </tr>
-                    ) : null}
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -912,11 +912,11 @@ export function IndustryRulesWorkbench() {
                     </div>
                   </div>
                 ))}
-                {!patternEntries.length ? (
-                  <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-10 text-center text-[13px] text-slate-500">
-                    当前规则集没有问题模式。
-                  </div>
-                ) : null}
+                    {patternEntries.length ? null : (
+                      <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-10 text-center text-[13px] text-slate-500">
+                        当前规则集没有问题模式。
+                      </div>
+                    )}
               </div>
             </TabsContent>
 
@@ -1010,11 +1010,11 @@ export function IndustryRulesWorkbench() {
                     </div>
                   </div>
                 ))}
-                {!intentEntries.length ? (
+                {intentEntries.length ? null : (
                   <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-10 text-center text-[13px] text-slate-500">
                     当前规则集没有意图分类。
                   </div>
-                ) : null}
+                )}
               </div>
             </TabsContent>
           </Tabs>
@@ -1196,11 +1196,11 @@ export function IndustryRulesWorkbench() {
                   </div>
                 </div>
               ))}
-              {!visibleGlossarySuggestions.length ? (
+              {visibleGlossarySuggestions.length ? null : (
                 <div className="rounded-[12px] border border-dashed border-slate-200 px-4 py-10 text-center text-[13px] font-medium text-slate-600">
                   当前数据集暂无新的术语候选，或候选已被处理。
                 </div>
-              ) : null}
+              )}
             </div>
           </div>
 

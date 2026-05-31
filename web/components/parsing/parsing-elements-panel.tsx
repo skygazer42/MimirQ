@@ -121,14 +121,14 @@ export function ParsingElementsPanel({
  {elements.length} items
  </span>
  </div>
- {!isCollapsed ? (
+ {isCollapsed ? null : (
  <div className="mt-1 text-[12px] leading-5 text-muted-foreground/80">
  直接筛选并审阅印章、公式、表格、图片等结构元素。
  </div>
- ) : null}
+ )}
  </div>
  <div className="flex flex-wrap items-center justify-end gap-1.5">
- {!isCollapsed ? (
+ {isCollapsed ? null : (
  filterKinds.map((kind) => (
  <button
  key={kind}
@@ -147,7 +147,7 @@ export function ParsingElementsPanel({
  {kind === 'all' ? '全部' : kindLabel(kind)}
  </button>
  ))
- ) : null}
+ )}
  <button
  type="button"
  onClick={() => setIsCollapsed((current) => !current)}
@@ -178,7 +178,7 @@ export function ParsingElementsPanel({
  </div>
  ) : null}
 
- {!isCollapsed ? (
+ {isCollapsed ? null : (
  <div className="mt-3 grid gap-2 md:grid-cols-2">
  {visibleElements.map((element) => {
  const attributes = (element.attributes as Record<string, unknown> | null) ?? null
@@ -201,19 +201,19 @@ export function ParsingElementsPanel({
  <span className="text-[11px] font-medium text-foreground">{kindLabel(String(element.kind || 'paragraph'))}</span>
  {pageLabel ? <span className="font-mono text-[11px] text-muted-foreground">{pageLabel}</span> : null}
  <span className="font-mono text-[11px] text-muted-foreground">{element.id}</span>
- {typeof attributes?.source_content_type === 'string' ? (
- <span className="rounded-full border border-border/60 px-1.5 py-0.5 text-[11px] text-muted-foreground">
- {attributes.source_content_type}
- </span>
- ) : null}
- {visualKind ? (
- <span className="rounded-full border border-border/60 px-1.5 py-0.5 text-[11px] text-muted-foreground">
- {visualKind}
- </span>
- ) : null}
- {typeof element.confidence === 'number' ? (
- <span className="font-mono text-[11px] text-muted-foreground">{element.confidence.toFixed(2)}</span>
- ) : null}
+	 {typeof attributes?.source_content_type === 'string' ? (
+	 <span className="rounded-full border border-border/60 px-1.5 py-0.5 text-[11px] text-muted-foreground">
+	 {attributes.source_content_type}
+	 </span>
+	 ) : null}
+	 {visualKind ? (
+	 <span className="rounded-full border border-border/60 px-1.5 py-0.5 text-[11px] text-muted-foreground">
+	 {visualKind}
+	 </span>
+	 ) : null}
+	 {typeof element.confidence === 'number' ? (
+	 <span className="font-mono text-[11px] text-muted-foreground">{element.confidence.toFixed(2)}</span>
+	 ) : null}
  {crossPageLabel ? (
  <span className="rounded-full border border-border/60 px-1.5 py-0.5 text-[11px] text-muted-foreground">
  {crossPageLabel}
@@ -227,8 +227,8 @@ export function ParsingElementsPanel({
  </button>
  )
  })}
- </div>
- ) : null}
+	 </div>
+	 )}
  </div>
  )
 }
