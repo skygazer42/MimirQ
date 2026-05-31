@@ -185,7 +185,7 @@ _EXTRACTIVE_STOPWORDS = {
 def _question_terms(question: str) -> set[str]:
     terms = {
         token
-        for token in re.findall(r"[A-Za-z0-9][A-Za-z0-9_-]{1,}", str(question or "").lower())
+        for token in re.findall(r"[A-Za-z0-9][A-Za-z0-9_-]+", str(question or "").lower())
         if token not in _EXTRACTIVE_STOPWORDS and len(token) >= 3
     }
     return terms
@@ -212,7 +212,7 @@ def _select_relevant_snippet(*, question: str, content: Any, max_chars: int = 32
                 best_segment = cleaned
                 best_score = 0
             continue
-        seg_terms = set(re.findall(r"[A-Za-z0-9][A-Za-z0-9_-]{1,}", cleaned.lower()))
+        seg_terms = set(re.findall(r"[A-Za-z0-9][A-Za-z0-9_-]+", cleaned.lower()))
         score = len(seg_terms & terms)
         if score > best_score or (score == best_score and len(cleaned) < len(best_segment or cleaned + "x")):
             best_segment = cleaned

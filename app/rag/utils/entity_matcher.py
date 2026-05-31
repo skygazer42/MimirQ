@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import Iterable
 
-_ASCII_TOKEN_CHAR_RE = re.compile(r"[A-Za-z0-9_]")
+_ASCII_TOKEN_CHAR_RE = re.compile(r"\w", flags=re.ASCII)
 
 
 @dataclass(frozen=True)

@@ -18,9 +18,22 @@ import re
 _SQL_TABLE_INTENT_RE = re.compile(
     r"(?i)\b(select|where|group\s+by|order\s+by|limit|sum|avg|count|min|max|distinct|join)\b"
 )
-_TABLE_INTENT_RE = re.compile(
-    r"(?i)统计|汇总|求和|平均|最大|最小|排名|Top\s*\d+|前\s*\d+|多少|几条|筛选|过滤|分组|占比"
+_TABLE_INTENT_KEYWORDS = (
+    "统计",
+    "汇总",
+    "求和",
+    "平均",
+    "最大",
+    "最小",
+    "排名",
+    "多少",
+    "几条",
+    "筛选",
+    "过滤",
+    "分组",
+    "占比",
 )
+_RANKING_INTENT_RE = re.compile(r"(?i)Top\s*\d+|前\s*\d+")
 
 _IMAGE_EXT_RE = re.compile(r"(?i)\.(png|jpg|jpeg|gif|webp|bmp)\b")
 _MARKDOWN_IMAGE_RE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
@@ -61,7 +74,7 @@ def classify_query_modality(query: str) -> tuple[str, list[str]]:
         reasons.append("image_hint")
         return "image", reasons
 
-    if _TABLE_INTENT_RE.search(q):
+    if any(keyword in q for keyword in _TABLE_INTENT_KEYWORDS) or _RANKING_INTENT_RE.search(q):
         reasons.append("table_intent")
         return "table", reasons
 

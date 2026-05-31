@@ -118,7 +118,7 @@ def extract_pipe_tables(markdown: str) -> list[list[list[str]]]:
             if not (s.startswith("|") and s.endswith("|") and s.count("|") >= 2):
                 continue
             parts = [p.strip() for p in s.strip("|").split("|")]
-            if parts and all(re.fullmatch(r"[:\\-\\s]+", p or "") for p in parts):
+            if parts and all(re.fullmatch(r"[:\s-]+", p or "") for p in parts):
                 # separator line like | --- | --- |
                 continue
             rows.append(parts)

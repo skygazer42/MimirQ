@@ -5,7 +5,7 @@ Integrated from an upstream splitter implementation (vendored for stability).
 
 import re
 from collections.abc import Callable, Collection, Set
-from typing import Any, Literal, TypeVar, Union
+from typing import Any, Literal, TypeVar
 
 from app.rag.chunking.utils.splitters.text_splitter import RecursiveCharacterTextSplitter
 
@@ -27,8 +27,8 @@ class EnhanceRecursiveCharacterTextSplitter(RecursiveCharacterTextSplitter):
     def from_encoder(
         cls: type[TS],
         embedding_model_instance: Any = None,
-        allowed_special: Union[Literal["all"], Set[str]] = set(),
-        disallowed_special: Union[Literal["all"], Collection[str]] = "all",
+        allowed_special: Literal["all"] | Set[str] = set(),
+        disallowed_special: Literal["all"] | Collection[str] = "all",
         token_counting_fn: Callable[[str], int] | None = None,
         **kwargs: Any,
     ) -> TS:

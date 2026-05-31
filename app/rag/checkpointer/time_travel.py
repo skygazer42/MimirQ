@@ -8,7 +8,7 @@ Provides the following capabilities:
 """
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Union
+from typing import Any
 
 from langgraph.graph.state import CompiledStateGraph
 
@@ -245,7 +245,7 @@ class TimeTravel:
         *,
         continue_execution: bool = True,
         stream_mode: str | None = None,
-    ) -> Union[ForkResult, dict[str, Any]]:
+    ) -> ForkResult | dict[str, Any]:
         """
         Fork from a checkpoint with modified state.
 

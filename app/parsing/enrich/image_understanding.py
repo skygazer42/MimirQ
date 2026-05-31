@@ -256,7 +256,7 @@ def _decode_clean_ean13_from_pixels(image: PILImage.Image) -> str:
         bits.append("1" if dark_columns[center] else "0")
     bit_string = "".join(bits)
 
-    if bit_string[:3] != "101" or bit_string[45:50] != "01010" or bit_string[92:] != "101":
+    if not (bit_string.startswith("101") and bit_string[45:50] == "01010" and bit_string.endswith("101")):
         return ""
 
     left_digits: list[str] = []

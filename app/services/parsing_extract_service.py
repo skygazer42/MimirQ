@@ -35,7 +35,7 @@ def _field_aliases(field_name: str, spec: Mapping[str, Any] | None, prompt: str 
     aliases.extend(field_tokens)
 
     if prompt:
-        aliases.extend(token.strip() for token in re.findall(r"[A-Za-z0-9_]+|[\u4e00-\u9fff]{2,}", str(prompt)) if token.strip())
+        aliases.extend(token.strip() for token in re.findall(r"\w+|[\u4e00-\u9fff]{2,}", str(prompt), flags=re.ASCII) if token.strip())
 
     out: list[str] = []
     seen: set[str] = set()

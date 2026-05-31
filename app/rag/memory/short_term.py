@@ -13,7 +13,7 @@ Features:
 
 from collections.abc import Callable
 from functools import wraps
-from typing import Any, Union
+from typing import Any
 
 from langchain_core.messages import (
     AIMessage,
@@ -30,6 +30,7 @@ from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
 
 logger = get_logger("rag.memory.short_term")
+MessageLike = BaseMessage | dict[str, Any]
 
 
 # Configuration defaults
@@ -56,7 +57,7 @@ def _estimate_tokens(text: str) -> int:
     return int(cjk_count / 2 + non_cjk_count / 4)
 
 
-def _message_to_tokens(message: Union[BaseMessage, dict[str, Any]]) -> int:
+def _message_to_tokens(message: MessageLike) -> int:
     """Estimate tokens for a message."""
     if isinstance(message, BaseMessage):
         content = message.content or ""
@@ -74,14 +75,14 @@ def _message_to_tokens(message: Union[BaseMessage, dict[str, Any]]) -> int:
 
 
 def trim_messages(
-    messages: list[Union[BaseMessage, dict[str, Any]]],
+    messages: list[MessageLike],
     max_tokens: int = SHORT_TERM_MEMORY_MAX_TOKENS,
     strategy: str = "last",
     include_system: bool = True,
     allow_partial: bool = False,
     start_on: str | None = None,
     end_on: str | None = None,
-) -> list[Union[BaseMessage, dict[str, Any]]]:
+) -> list[MessageLike]:
     """
     Trim messages to fit within token limit.
 
@@ -192,7 +193,7 @@ def _fallback_trim(
 
 
 async def summarize_messages(
-    messages: list[Union[BaseMessage, dict[str, Any]]],
+    messages: list[MessageLike],
     llm: Any | None = None,
     max_summary_tokens: int = 500,
 ) -> str:
@@ -299,9 +300,9 @@ class ShortTermMemoryManager:
 
     def process(
         self,
-        messages: list[Union[BaseMessage, dict[str, Any]]],
+        messages: list[MessageLike],
         session_id: str | None = None,
-    ) -> list[Union[BaseMessage, dict[str, Any]]]:
+    ) -> list[MessageLike]:
         """
         Process messages: trim and optionally summarize.
 
@@ -358,9 +359,9 @@ class ShortTermMemoryManager:
 
     async def aprocess(
         self,
-        messages: list[Union[BaseMessage, dict[str, Any]]],
+        messages: list[MessageLike],
         session_id: str | None = None,
-    ) -> list[Union[BaseMessage, dict[str, Any]]]:
+    ) -> list[MessageLike]:
         """
         Async version of process().
         """
@@ -390,7 +391,7 @@ class ShortTermMemoryManager:
             include_system=self.include_system,
         )
 
-    def _simple_summary(self, messages: list[Union[BaseMessage, dict[str, Any]]]) -> str:
+    def _simple_summary(self, messages: list[MessageLike]) -> str:
         """Create a simple summary without LLM."""
         if not messages:
             return ""

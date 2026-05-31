@@ -7,7 +7,6 @@ import {
   Copy,
   Database,
   ExternalLink,
-  History,
   Loader2,
   RotateCcw,
   Search,

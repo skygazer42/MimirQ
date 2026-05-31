@@ -28,7 +28,7 @@ const POSITION_TAG_RE = /@@([0-9-]+)\s+([0-9.]+)\s+([0-9.]+)\s+([0-9.]+)\s+([0-9
 function parsePages(value: string): number[] {
   const parts = value
     .split('-')
-    .map((part) => Number(part))
+    .map(Number)
     .filter((num) => Number.isFinite(num) && num > 0)
   return parts.map((num) => num - 1)
 }

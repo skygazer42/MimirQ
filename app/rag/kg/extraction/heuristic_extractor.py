@@ -12,7 +12,7 @@ from app.rag.kg.utils import get_logger
 logger = get_logger("kg.extract.heuristic")
 
 _ACRONYM_OR_STANDARD_RE = re.compile(
-    r"\b(?:RFC\s?-?\d{3,5}|HTTP/[0-9.]+|[A-Z][A-Z0-9][A-Z0-9.+/_-]{1,})\b"
+    r"\b(?:RFC\s?-?\d{3,5}|HTTP/[0-9.]+|[A-Z][A-Z0-9][A-Z0-9.+/_-]+)\b"
 )
 _TITLE_PHRASE_RE = re.compile(
     r"\b[A-Z][A-Za-z0-9.+/_-]{2,}(?:\s+[A-Z][A-Za-z0-9.+/_-]{2,}){0,4}\b"

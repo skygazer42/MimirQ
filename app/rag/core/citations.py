@@ -17,10 +17,8 @@ from app.core.config import settings
 from app.rag.core.hashing import stable_json_hash
 from app.rag.core.logging import get_logger
 
-_QUERY_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]+|[\u4e00-\u9fff]{2,}")
-_POSITION_TAG_RE = re.compile(
-    r"@@([0-9]+(?:-[0-9]+)?)\s+([-+]?[0-9]+(?:\.[0-9]+)?)\s+([-+]?[0-9]+(?:\.[0-9]+)?)\s+([-+]?[0-9]+(?:\.[0-9]+)?)\s+([-+]?[0-9]+(?:\.[0-9]+)?)##"
-)
+_QUERY_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z\d_+-]+|[\u4e00-\u9fff]{2,}")
+_POSITION_TAG_RE = re.compile(r"@@([^#]+)##")
 _SENTENCE_BOUNDARIES = {"。", "！", "？", ".", "!", "?", "\n"}
 logger = get_logger(__name__)
 _CITATION_FALLBACK_LOG_MESSAGE = "Ignoring non-critical citation fallback failure: %s"
@@ -78,13 +76,16 @@ def _parse_position_tag_pages(raw_pages: str) -> int | None:
 
 
 def _position_tag_bbox_from_match(match: re.Match[str]) -> tuple[dict[str, int], int] | None:
-    page = _parse_position_tag_pages(match.group(1))
+    parts = match.group(1).split()
+    if len(parts) < 5:
+        return None
+    page = _parse_position_tag_pages(parts[0])
     bbox = _coerce_bbox(
         {
-            "x0": match.group(2),
-            "x1": match.group(3),
-            "y0": match.group(4),
-            "y1": match.group(5),
+            "x0": parts[1],
+            "x1": parts[2],
+            "y0": parts[3],
+            "y1": parts[4],
         }
     )
     if page is None or bbox is None:

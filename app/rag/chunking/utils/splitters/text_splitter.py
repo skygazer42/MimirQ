@@ -186,8 +186,8 @@ class TokenTextSplitter(TextSplitter):
         self,
         encoding_name: str = "gpt2",
         model_name: str | None = None,
-        allowed_special: Union[Literal["all"], Set[str]] | None = None,
-        disallowed_special: Union[Literal["all"], Collection[str]] = "all",
+        allowed_special: Literal["all"] | Set[str] | None = None,
+        disallowed_special: Literal["all"] | Collection[str] = "all",
         **kwargs: Any,
     ):
         """Create a new TokenTextSplitter."""
