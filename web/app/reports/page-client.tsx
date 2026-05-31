@@ -25,7 +25,6 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
   Pie,
   PieChart,
   Tooltip,
@@ -59,7 +58,11 @@ import { sanitizeFilename } from '@/lib/sanitize'
 import { cn, formatDate, formatFileSize, detachPromise } from '@/lib/utils'
 
 import type { FlatFolderRow } from '@/lib/report-transforms'
-import type { DatasetCategoryNode, DatasetReport } from '@/types'
+import type {
+  DatasetCategoryNode,
+  DatasetReport,
+  DatasetReportDataProvenance,
+} from '@/types'
 import type { ReportTransformsWorkerApi } from '@/workers/report-transforms.worker'
 
 const PIE_COLORS = [
@@ -132,6 +135,44 @@ function sumRecordValues(value: Record<string, number> | null | undefined) {
 function capCoverageValue(value: unknown, max: number) {
   if (max <= 0) return 0
   return Math.max(0, Math.min(max, safeNumber(value)))
+}
+
+function reportStatusLabel(isLoadingReport: boolean, report: DatasetReport | null | undefined): string {
+  if (isLoadingReport) return '生成中'
+  if (report) return '已生成'
+  return '待生成'
+}
+
+function reportDataSourceLabel(dataProvenance: DatasetReportDataProvenance | null | undefined): string {
+  if (dataProvenance?.mocked === false && dataProvenance.source === 'database') {
+    return '真实后端数据'
+  }
+  if (dataProvenance?.source) return String(dataProvenance.source)
+  return '等待后端数据'
+}
+
+function findingSeverityLabel(severity: string | null | undefined): string {
+  if (severity === 'error') return '错误'
+  if (severity === 'warning') return '警告'
+  return '信息'
+}
+
+function issueLevelClass(level: string): string {
+  if (level === '错误') return 'text-rose-600'
+  if (level === '警告') return 'text-amber-600'
+  return 'text-emerald-600'
+}
+
+function reportPreviewEmptyTitle(datasetId: string, isLoadingReport: boolean): string {
+  if (!datasetId) return '请选择数据集'
+  if (isLoadingReport) return '报告加载中...'
+  return '暂无预览'
+}
+
+function reportPreviewEmptyDescription(datasetId: string, isLoadingReport: boolean): string {
+  if (!datasetId) return '选择一个数据集后即可生成报告预览并导出。'
+  if (isLoadingReport) return '正在拉取后端报告数据...'
+  return '点击“重新生成报告”拉取最新后端报告。'
 }
 
 function DataPill({
@@ -478,6 +519,14 @@ export default function ReportsCenterPage() {
     () => report?.pipeline_versions ?? [],
     [report?.pipeline_versions]
   )
+  const pipelineVersionsWithFill = useMemo(
+    () =>
+      pipelineVersions.map((version, idx) => ({
+        ...version,
+        fill: PIE_COLORS[idx % PIE_COLORS.length],
+      })),
+    [pipelineVersions]
+  )
   const connectorRuns = report?.connectors || []
   const folderTree = report?.folder_tree || null
   const governance = report?.governance_metrics || null
@@ -733,12 +782,7 @@ export default function ReportsCenterPage() {
     ? formatDate(report.generated_at)
     : '-'
   const dataProvenance = report?.data_provenance || null
-  const dataSourceLabel =
-    dataProvenance?.mocked === false && dataProvenance?.source === 'database'
-      ? '真实后端数据'
-      : dataProvenance?.source
-        ? String(dataProvenance.source)
-        : '等待后端数据'
+  const dataSourceLabel = reportDataSourceLabel(dataProvenance)
   const dataSourceSub =
     dataProvenance?.mocked === false
       ? '后端数据库 / API 实时聚合'
@@ -787,12 +831,7 @@ export default function ReportsCenterPage() {
     ...activeFindingRows.map((item) => ({
       id: `finding-${item.key}`,
       time: '质量扫描',
-      level:
-        item.severity === 'error'
-          ? '错误'
-          : item.severity === 'warning'
-            ? '警告'
-            : '信息',
+      level: findingSeverityLabel(item.severity),
       type: item.label || item.key,
       description:
         item.description || `${item.label || item.key}：${item.count}`,
@@ -1067,9 +1106,7 @@ export default function ReportsCenterPage() {
               <DataPill
                 icon={ShieldCheck}
                 label="报告状态"
-                value={
-                  isLoadingReport ? '生成中' : report ? '已生成' : '待生成'
-                }
+                value={reportStatusLabel(isLoadingReport, report)}
                 sub={report ? '后端报告已返回' : '等待生成报告'}
                 tone={report ? 'green' : 'slate'}
               />
@@ -1572,19 +1609,12 @@ export default function ReportsCenterPage() {
                         >
                           <PieChart>
                             <Pie
-                              data={pipelineVersions}
+                              data={pipelineVersionsWithFill}
                               dataKey="documents"
                               nameKey="pipeline_hash"
                               innerRadius={54}
                               outerRadius={84}
-                            >
-                              {pipelineVersions.map((entry, idx) => (
-                                <Cell
-                                  key={entry.pipeline_hash}
-                                  fill={PIE_COLORS[idx % PIE_COLORS.length]}
-                                />
-                              ))}
-                            </Pie>
+                            />
                             <Tooltip
                               cursor={CHART_TOOLTIP_CURSOR}
                               contentStyle={CHART_TOOLTIP_STYLE}
@@ -1670,11 +1700,7 @@ export default function ReportsCenterPage() {
                             <span
                               className={cn(
                                 'font-medium',
-                                row.level === '错误'
-                                  ? 'text-rose-600'
-                                  : row.level === '警告'
-                                    ? 'text-amber-600'
-                                    : 'text-emerald-600'
+                                issueLevelClass(row.level)
                               )}
                             >
                               {row.level}
@@ -1695,20 +1721,11 @@ export default function ReportsCenterPage() {
               </section>
             ) : (
               <EmptyState
-                title={
-                  datasetId
-                    ? isLoadingReport
-                      ? '报告加载中...'
-                      : '暂无预览'
-                    : '请选择数据集'
-                }
-                description={
-                  datasetId
-                    ? isLoadingReport
-                      ? '正在拉取后端报告数据...'
-                      : '点击“重新生成报告”拉取最新后端报告。'
-                    : '选择一个数据集后即可生成报告预览并导出。'
-                }
+                title={reportPreviewEmptyTitle(datasetId, isLoadingReport)}
+                description={reportPreviewEmptyDescription(
+                  datasetId,
+                  isLoadingReport
+                )}
               />
             )}
           </div>
