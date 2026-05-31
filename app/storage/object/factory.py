@@ -19,6 +19,7 @@ _PROVIDER_ALIASES = {
     "tencent_cos": "cos",
 }
 _S3_COMPATIBLE_PROVIDERS = {"minio", "s3", "s3_compatible", "oss", "cos"}
+_DEFAULT_OBJECT_STORE_METRICS_LOG_PATH = "./logs/object_store_metrics.jsonl"
 
 
 def _normalize_region(region: str | None = None) -> str:
@@ -73,8 +74,8 @@ def _resolve_object_store_config(provider: str | None = None, *, region: str | N
         "use_ssl": bool(region_profile.get("use_ssl", getattr(settings, "OBJECT_STORAGE_USE_SSL", True))),
         "metrics_log_path": str(
             region_profile.get("metrics_log_path")
-            or getattr(settings, "OBJECT_STORAGE_METRICS_LOG_PATH", "./logs/object_store_metrics.jsonl")
-            or "./logs/object_store_metrics.jsonl"
+            or getattr(settings, "OBJECT_STORAGE_METRICS_LOG_PATH", _DEFAULT_OBJECT_STORE_METRICS_LOG_PATH)
+            or _DEFAULT_OBJECT_STORE_METRICS_LOG_PATH
         ),
         "documents_enabled": bool(
             region_profile.get("documents_enabled", getattr(settings, "OBJECT_STORAGE_DOCUMENTS_ENABLED", False))
@@ -92,7 +93,7 @@ def _build_s3_compatible_store(provider: str, *, config: Mapping[str, object] | 
         secret_key=str(cfg.get("secret_key") or "").strip(),
         bucket_name=str(cfg.get("bucket_name") or "").strip(),
         use_ssl=bool(cfg.get("use_ssl", True)),
-        metrics_log_path=str(cfg.get("metrics_log_path") or "./logs/object_store_metrics.jsonl"),
+        metrics_log_path=str(cfg.get("metrics_log_path") or _DEFAULT_OBJECT_STORE_METRICS_LOG_PATH),
         documents_enabled=bool(cfg.get("documents_enabled", False)),
     )
 

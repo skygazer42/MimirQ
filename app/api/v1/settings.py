@@ -46,6 +46,7 @@ _ENV_UPDATE_LOCK = threading.Lock()
 _MISSING_API_URL_MESSAGE = "missing api_url"
 _CONFIGURED_HEALTH_UNREACHABLE_MESSAGE = "configured (health_unreachable)"
 _MINERU_BACKENDS = {"pipeline", "vlm-http-client"}
+_SYSTEM_DIFY_ACCOUNT_ID = "system:dify"
 
 
 def _normalize_mineru_backend(value: Any) -> str:
@@ -469,7 +470,7 @@ class DifyExternalKnowledgeConfig(BaseModel):
     enabled: bool = False
     api_keys: str = ""
     tenant_id: str = ""
-    account_id: str = "system:dify"
+    account_id: str = _SYSTEM_DIFY_ACCOUNT_ID
     knowledge_map_json: str = ""
     top_k_max: int = Field(default=50, ge=1, le=200)
     endpoint_path: str = "/api/v1/integrations/dify/retrieval"
@@ -1103,7 +1104,7 @@ async def get_settings(
             enabled=bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", False)),
             api_keys=mask_secret(str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", "") or "")),
             tenant_id=str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", "") or ""),
-            account_id=str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "") or "system:dify"),
+            account_id=str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "") or _SYSTEM_DIFY_ACCOUNT_ID),
             knowledge_map_json=str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON", "") or ""),
             top_k_max=int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX", 50) or 50),
             endpoint_path="/api/v1/integrations/dify/retrieval",
@@ -1537,7 +1538,7 @@ async def update_settings(
             env_vars["DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID"] = tenant_id_text
             env_vars["DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID"] = _sanitize_env_value(
                 "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID",
-                df.account_id or "system:dify",
+                df.account_id or _SYSTEM_DIFY_ACCOUNT_ID,
             )
 
             knowledge_map_json = _sanitize_env_value(

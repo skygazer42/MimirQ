@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 from uuid import UUID
+_DOCUMENT_STRUCTURE_SCHEMA = "mimirq.document_structure.v1"
 
 
 def _as_dict(value: Any) -> dict[str, Any]:
@@ -157,7 +158,7 @@ def build_document_structure_from_chunks(
             current_node["family_key"] = family_key
 
     return {
-        "schema": "mimirq.document_structure.v1",
+        "schema": _DOCUMENT_STRUCTURE_SCHEMA,
         "document": {
             "document_id": document_id,
             "filename": str(getattr(document, "filename", "") or ""),
@@ -258,7 +259,7 @@ def load_document_structure(
     allowed = set(filter_allowed_document_ids(db, tenant_id, account_id, [document_id]))
     if document_id not in allowed:
         return {
-            "schema": "mimirq.document_structure.v1",
+            "schema": _DOCUMENT_STRUCTURE_SCHEMA,
             "document": {"document_id": str(document_id)},
             "nodes": [],
             "node_count": 0,
@@ -279,7 +280,7 @@ def load_document_structure(
     )
     if not document:
         return {
-            "schema": "mimirq.document_structure.v1",
+            "schema": _DOCUMENT_STRUCTURE_SCHEMA,
             "document": {"document_id": str(document_id)},
             "nodes": [],
             "node_count": 0,

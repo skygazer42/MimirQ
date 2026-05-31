@@ -6,6 +6,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.core.constants import UserRoles
+_TENANT_ROLE_DESCRIPTION = "owner|admin|auditor|editor|dataset_operator|viewer"
 
 
 class TenantMemberOut(BaseModel):
@@ -14,7 +15,7 @@ class TenantMemberOut(BaseModel):
     id: UUID
     tenant_id: UUID
     user_id: str | None = None
-    role: str = Field(default=UserRoles.VIEWER, description="owner|admin|auditor|editor|dataset_operator|viewer")
+    role: str = Field(default=UserRoles.VIEWER, description=_TENANT_ROLE_DESCRIPTION)
     is_active: bool = True
     is_current: bool = False
     created_at: datetime | None = None
@@ -37,7 +38,7 @@ class TenantMemberDeleteResponse(BaseModel):
 class TenantAccessOut(BaseModel):
     tenant_id: UUID
     account_id: str
-    role: str = Field(default=UserRoles.VIEWER, description="owner|admin|auditor|editor|dataset_operator|viewer")
+    role: str = Field(default=UserRoles.VIEWER, description=_TENANT_ROLE_DESCRIPTION)
     permissions: list[str] = Field(default_factory=list)
     navigation_user_visible_modules: list[str] = Field(default_factory=list)
     is_active: bool = True
@@ -45,7 +46,7 @@ class TenantAccessOut(BaseModel):
 
 
 class TenantMemberUpdateRequest(BaseModel):
-    role: str = Field(..., description="owner|admin|auditor|editor|dataset_operator|viewer")
+    role: str = Field(..., description=_TENANT_ROLE_DESCRIPTION)
 
     @field_validator("role", mode="before")
     @classmethod

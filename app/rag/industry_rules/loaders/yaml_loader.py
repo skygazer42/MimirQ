@@ -6,6 +6,7 @@ from typing import Any, Iterable
 import yaml
 
 from app.rag.industry_rules.schema import IndustryRuleset
+_GLOSSARY_FILENAME = "glossary.yaml"
 
 
 def _ruleset_root() -> Path:
@@ -68,7 +69,7 @@ def write_glossary_candidates(name: str, candidates: Iterable[Any]) -> dict[str,
     if not ruleset_name or not base.is_dir():
         raise FileNotFoundError(f"Unknown industry ruleset: {ruleset_name or '<empty>'}")
 
-    canonical = _normalize_glossary(_load_yaml(base / "glossary.yaml"))
+    canonical = _normalize_glossary(_load_yaml(base / _GLOSSARY_FILENAME))
     generated_path = base / "glossary.generated.yaml"
     generated = _normalize_glossary(_load_yaml(generated_path))
 
@@ -113,7 +114,7 @@ def replace_ruleset_glossary(name: str, glossary: Any) -> dict[str, Any]:
     if not ruleset_name or not base.is_dir():
         raise FileNotFoundError(f"Unknown industry ruleset: {ruleset_name or '<empty>'}")
     normalized = dict(sorted(_normalize_glossary(glossary).items()))
-    _write_yaml(base / "glossary.yaml", normalized)
+    _write_yaml(base / _GLOSSARY_FILENAME, normalized)
     return {"ruleset": ruleset_name, "section": "glossary", "updated_count": int(len(normalized))}
 
 
@@ -139,7 +140,7 @@ def replace_ruleset_intents(name: str, intents: Any) -> dict[str, Any]:
 
 def load_ruleset(name: str) -> IndustryRuleset:
     base = _ruleset_root() / str(name or "").strip()
-    glossary = _normalize_glossary(_load_yaml(base / "glossary.yaml"))
+    glossary = _normalize_glossary(_load_yaml(base / _GLOSSARY_FILENAME))
     generated_glossary = _normalize_glossary(_load_yaml(base / "glossary.generated.yaml"))
     patterns = _load_yaml(base / "patterns.yaml")
     intents = _load_yaml(base / "intents.yaml")

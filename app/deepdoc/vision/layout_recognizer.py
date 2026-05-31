@@ -25,6 +25,8 @@ from huggingface_hub import snapshot_download
 
 from .operators import nms
 from .recognizer import Recognizer
+_FIGURE_CAPTION_LABEL = "Figure caption"
+_TABLE_CAPTION_LABEL = "Table caption"
 
 
 def get_default_resource_dir():
@@ -43,9 +45,9 @@ class LayoutRecognizer(Recognizer):
         "Text",
         "Title",
         "Figure",
-        "Figure caption",
+        _FIGURE_CAPTION_LABEL,
         "Table",
-        "Table caption",
+        _TABLE_CAPTION_LABEL,
         "Header",
         "Footer",
         "Reference",
@@ -173,12 +175,12 @@ class LayoutRecognizer4YOLOv10(LayoutRecognizer):
         "Text",
         "Reference",
         "Figure",
-        "Figure caption",
+        _FIGURE_CAPTION_LABEL,
         "Table",
-        "Table caption",
-        "Table caption",
+        _TABLE_CAPTION_LABEL,
+        _TABLE_CAPTION_LABEL,
         "Equation",
-        "Figure caption",
+        _FIGURE_CAPTION_LABEL,
     ]
 
     def __init__(self, domain):

@@ -27,6 +27,7 @@ from app.core.config import settings
 from app.rag.core.logging import get_logger
 
 logger = get_logger("parsing.vlm_image_caption")
+_IMAGE_CAPTION_PREFIX = "Image caption:"
 
 
 # Match Markdown inline image: ![alt](src "optional title")
@@ -251,7 +252,7 @@ def add_vlm_image_captions(
     timeout_sec: float = 60.0,
     max_images: int = 20,
     max_image_bytes: int | None = None,
-    prefix: str = "Image caption:",
+    prefix: str = _IMAGE_CAPTION_PREFIX,
     max_caption_chars: int = 200,
 ) -> tuple[str, int, VLMImageCaptionAudit]:
     """
@@ -387,7 +388,7 @@ def add_vlm_image_captions(
         if not captions:
             continue
 
-        prefix0 = str(prefix or "Image caption:").strip() or "Image caption:"
+        prefix0 = str(prefix or _IMAGE_CAPTION_PREFIX).strip() or _IMAGE_CAPTION_PREFIX
         lead = line[:token_start] if token_start is not None and token_start >= 0 else ""
         caption_text = _clean_caption_text("; ".join(captions), max_chars=max_caption_chars)
         if caption_text:

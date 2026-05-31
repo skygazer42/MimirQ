@@ -23,6 +23,7 @@ from huggingface_hub import snapshot_download
 
 from ..src.model import rag_tokenizer
 from .recognizer import Recognizer
+_TABLE_COLUMN_LABEL = "table column"
 
 
 def get_default_resource_dir():
@@ -38,7 +39,7 @@ def get_default_resource_dir():
 class TableStructureRecognizer(Recognizer):
     labels = [
         "table",
-        "table column",
+        _TABLE_COLUMN_LABEL,
         "table row",
         "table column header",
         "table projected row header",
@@ -81,15 +82,15 @@ class TableStructureRecognizer(Recognizer):
                     if b["x1"] < right:
                         b["x1"] = right
 
-            top = [b["top"] for b in lts if b["label"] == "table column"]
-            bottom = [b["bottom"] for b in lts if b["label"] == "table column"]
+            top = [b["top"] for b in lts if b["label"] == _TABLE_COLUMN_LABEL]
+            bottom = [b["bottom"] for b in lts if b["label"] == _TABLE_COLUMN_LABEL]
             if not top:
                 res.append(lts)
                 continue
             top = np.median(top) if len(top) > 4 else np.min(top)
             bottom = np.median(bottom) if len(bottom) > 4 else np.max(bottom)
             for b in lts:
-                if b["label"] == "table column":
+                if b["label"] == _TABLE_COLUMN_LABEL:
                     if b["top"] > top:
                         b["top"] = top
                     if b["bottom"] < bottom:

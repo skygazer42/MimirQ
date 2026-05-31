@@ -28,6 +28,8 @@ from app.core.optional_deps import optional_import
 from app.rag.core.logging import get_logger
 
 logger = get_logger(__name__)
+_HTML_EXT = ".html"
+_SKIPPED_NOT_HTML_NOTE = "skipped (not html)"
 
 TEXT_LIKE_EXTS = {
     ".txt",
@@ -36,7 +38,7 @@ TEXT_LIKE_EXTS = {
     ".adoc",
     ".csv",
     ".json",
-    ".html",
+    _HTML_EXT,
     ".htm",
     ".xml",
     ".yaml",
@@ -356,31 +358,31 @@ def preprocess_file(
                 changed = True
         elif sid == "html.strip_scripts_styles":
             applied = True
-            if ext in {".html", ".htm"}:
+            if ext in {_HTML_EXT, ".htm"}:
                 new = _RE_SCRIPT_STYLE.sub("", text)
                 if new != text:
                     text = new
                     changed = True
             else:
-                note = "skipped (not html)"
+                note = _SKIPPED_NOT_HTML_NOTE
         elif sid == "html.strip_comments":
             applied = True
-            if ext in {".html", ".htm"}:
+            if ext in {_HTML_EXT, ".htm"}:
                 new = _RE_HTML_COMMENT.sub("", text)
                 if new != text:
                     text = new
                     changed = True
             else:
-                note = "skipped (not html)"
+                note = _SKIPPED_NOT_HTML_NOTE
         elif sid == "html.strip_boilerplate_tags":
             applied = True
-            if ext in {".html", ".htm"}:
+            if ext in {_HTML_EXT, ".htm"}:
                 new = _RE_HTML_BOILERPLATE_TAGS.sub("", text)
                 if new != text:
                     text = new
                     changed = True
             else:
-                note = "skipped (not html)"
+                note = _SKIPPED_NOT_HTML_NOTE
         else:
             # Unknown ids should have been rejected earlier; still keep safe.
             note = "skipped (unknown)"

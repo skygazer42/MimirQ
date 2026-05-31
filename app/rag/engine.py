@@ -95,6 +95,7 @@ logger = get_logger("rag.engine")
 _RAG_ENGINE_FALLBACK_LOG_MESSAGE = "Ignoring non-critical RAG engine fallback failure: %s"
 
 _UNABLE_TO_ANSWER_MESSAGE = "Unable to answer this question based on the available materials."
+_REDACTED_MASK = "[REDACTED]"
 
 
 @dataclass(frozen=True)
@@ -2308,7 +2309,7 @@ Requirements:
                     rail_result = apply_retrieval_rail(
                         docs,
                         mask_pii=bool(getattr(settings, "RAG_RETRIEVAL_RAIL_MASK_PII", False)),
-                        pii_mask=str(getattr(settings, "RAG_RETRIEVAL_RAIL_PII_MASK", "[REDACTED]") or "[REDACTED]"),
+                        pii_mask=str(getattr(settings, "RAG_RETRIEVAL_RAIL_PII_MASK", _REDACTED_MASK) or _REDACTED_MASK),
                     )
                     docs = list(rail_result.get("docs") or [])
                     meta = dict(rail_result.get("meta") or {})
@@ -2674,7 +2675,7 @@ Requirements:
                         rail_result = apply_retrieval_rail(
                             docs,
                             mask_pii=bool(getattr(settings, "RAG_RETRIEVAL_RAIL_MASK_PII", False)),
-                            pii_mask=str(getattr(settings, "RAG_RETRIEVAL_RAIL_PII_MASK", "[REDACTED]") or "[REDACTED]"),
+                            pii_mask=str(getattr(settings, "RAG_RETRIEVAL_RAIL_PII_MASK", _REDACTED_MASK) or _REDACTED_MASK),
                         )
                         docs = list(rail_result.get("docs") or [])
                         meta = dict(rail_result.get("meta") or {})

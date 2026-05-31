@@ -57,10 +57,11 @@ FINDING_KEYS: set[str] = {
 
 ARTIFACTS_NOT_AVAILABLE_DETAIL = "Artifacts not available"
 ARTIFACTS_NOT_FOUND_DETAIL = "Artifacts not found"
+_DEFAULT_UPLOAD_DIR = "./uploads"
 
 
 def _assert_artifact_path_under_tenant(*, tenant_id: UUID, path: Path) -> None:
-    upload_root = Path(getattr(settings, "UPLOAD_DIR", "./uploads") or "./uploads").resolve(strict=False)
+    upload_root = Path(getattr(settings, "UPLOAD_DIR", _DEFAULT_UPLOAD_DIR) or _DEFAULT_UPLOAD_DIR).resolve(strict=False)
     tenant_root = (upload_root / str(tenant_id)).resolve(strict=False)
     try:
         path.resolve(strict=False).relative_to(tenant_root)
@@ -88,7 +89,7 @@ def _precheck_sample_reviews_path_for_row(
         _assert_artifact_path_under_tenant(tenant_id=tenant_id, path=jsonl_path)
         return jsonl_path.resolve(strict=False).parent / "sample_reviews.json"
 
-    upload_root = Path(getattr(settings, "UPLOAD_DIR", "./uploads") or "./uploads").resolve(strict=False)
+    upload_root = Path(getattr(settings, "UPLOAD_DIR", _DEFAULT_UPLOAD_DIR) or _DEFAULT_UPLOAD_DIR).resolve(strict=False)
     path = upload_root / str(tenant_id) / "precheck" / str(row.id) / "sample_reviews.json"
     _assert_artifact_path_under_tenant(tenant_id=tenant_id, path=path)
     return path
