@@ -122,8 +122,7 @@ export interface RagConfigTemplateNewVersion {
   ab_weight?: number
 }
 
-const evidenceRetrieveResponseSchema = z
-  .object({
+const evidenceRetrieveResponseSchema = z.looseObject({
     query_for_retrieval: z.string(),
     citations: z.array(z.record(z.string(), z.unknown())),
     schema: z.string().default('mimirq.evidence.v1'),
@@ -135,7 +134,6 @@ const evidenceRetrieveResponseSchema = z
     evidence_capsule: z.record(z.string(), z.unknown()).nullable().optional(),
     query_debug: z.record(z.string(), z.unknown()).nullable().optional(),
   })
-  .passthrough()
 
 export const ragApi = {
   async retrievePreview(params: RetrievePreviewRequest): Promise<RetrievePreviewResponse> {
