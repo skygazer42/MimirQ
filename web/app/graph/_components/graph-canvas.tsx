@@ -50,6 +50,12 @@ function getSemanticNodeTone(seed: string) {
   return SEMANTIC_NODE_TONES[Math.abs(hash) % SEMANTIC_NODE_TONES.length]
 }
 
+function primitiveText(value: unknown, fallback = ''): string {
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  return fallback
+}
+
 function getCanvasBackdropStyle(isDark: boolean) {
   if (isDark) {
     return {
@@ -394,8 +400,8 @@ export function GraphCanvas({
         const meta = (nodeRecord.meta ?? {}) as Record<string, unknown>
         const nodeId =
           typeof nodeRecord.id === 'string' && nodeRecord.id.trim().length > 0 ? nodeRecord.id : `node-${index + 1}`
-        const type = String(meta.type ?? nodeRecord.type ?? 'unknown').trim() || 'unknown'
-        const kind = String(meta.kind ?? 'entity').trim() || 'entity'
+        const type = primitiveText(meta.type ?? nodeRecord.type, 'unknown').trim() || 'unknown'
+        const kind = primitiveText(meta.kind, 'entity').trim() || 'entity'
         return {
           id: nodeId,
           label: normalizeNodeLabel(nodeRecord, nodeId),
@@ -413,7 +419,7 @@ export function GraphCanvas({
         const meta = (linkRecord.meta ?? {}) as Record<string, unknown>
         const source = normalizeLinkEndpoint(linkRecord.source)
         const target = normalizeLinkEndpoint(linkRecord.target)
-        const relation = String(linkRecord.label ?? linkRecord.relation ?? meta.kind ?? '关联').trim() || '关联'
+        const relation = primitiveText(linkRecord.label ?? linkRecord.relation ?? meta.kind, '关联').trim() || '关联'
         return {
           id: `${source}-${target}-${index}`,
           source,

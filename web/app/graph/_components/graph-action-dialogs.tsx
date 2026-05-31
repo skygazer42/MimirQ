@@ -25,6 +25,12 @@ import type {
 
 import type { GraphNodeLike } from '../graph-page-utils'
 
+function primitiveText(value: unknown, fallback = '—'): string {
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  return fallback
+}
+
 type GraphDeleteNodeTarget = {
   id: string
   label: string
@@ -211,10 +217,10 @@ export function GraphActionDialogs({
                   <div className="text-xs text-muted-foreground">Loading preview…</div>
                 ) : mergePreview ? (
                   <div className="grid grid-cols-2 gap-2 text-[11px] text-muted-foreground">
-                    <div>source edges: {String(mergePreview.stats?.source_event_entity_edges ?? '—')}</div>
-                    <div>overlap: {String(mergePreview.stats?.overlap_events ?? '—')}</div>
-                    <div>relations: {String(mergePreview.stats?.source_relations ?? '—')}</div>
-                    <div>self removed: {String(mergePreview.stats?.self_relations_removed ?? '—')}</div>
+                    <div>source edges: {primitiveText(mergePreview.stats?.source_event_entity_edges)}</div>
+                    <div>overlap: {primitiveText(mergePreview.stats?.overlap_events)}</div>
+                    <div>relations: {primitiveText(mergePreview.stats?.source_relations)}</div>
+                    <div>self removed: {primitiveText(mergePreview.stats?.self_relations_removed)}</div>
                   </div>
                 ) : (
                   <div className="text-xs text-muted-foreground">No preview available</div>

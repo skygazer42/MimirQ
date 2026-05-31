@@ -56,6 +56,12 @@ function limitPositiveInt(raw: unknown, fallback: number, opts?: { min?: number;
   return Math.min(max, Math.max(min, n))
 }
 
+function primitiveText(value: unknown, fallback = ''): string {
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  return fallback
+}
+
 async function runWithConcurrency<T>(
   items: T[],
   concurrency: number,
@@ -250,9 +256,9 @@ export default function DatasetKGWorkbenchPage() {
 
     const nodeRecord = selectedNode as Record<string, unknown>
     const meta = (nodeRecord.meta ?? {}) as Record<string, unknown>
-    const label = String(nodeRecord.label ?? nodeRecord.name ?? selectedGraphNodeId).trim() || selectedGraphNodeId
-    const type = String(meta.type ?? nodeRecord.type ?? 'unknown').trim() || 'unknown'
-    const kind = String(meta.kind ?? nodeRecord.kind ?? 'entity').trim() || 'entity'
+    const label = primitiveText(nodeRecord.label ?? nodeRecord.name, selectedGraphNodeId).trim() || selectedGraphNodeId
+    const type = primitiveText(meta.type ?? nodeRecord.type, 'unknown').trim() || 'unknown'
+    const kind = primitiveText(meta.kind ?? nodeRecord.kind, 'entity').trim() || 'entity'
 
     let degree = 0
     for (const link of graphData.links) {

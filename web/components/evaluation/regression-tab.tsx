@@ -115,6 +115,12 @@ function safeRecord(value: unknown): Record<string, unknown> {
     : {}
 }
 
+function primitiveText(value: unknown, fallback = ''): string {
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  return fallback
+}
+
 function safeNumber(value: unknown): number {
   const numeric = Number(value)
   return Number.isFinite(numeric) ? numeric : 0
@@ -1285,18 +1291,19 @@ export function RegressionTestTab({
                               </tr>
                             </thead>
                             <tbody>
-                              {top.map((r) => {
+                              {top.map((r, index) => {
                                 const row = safeRecord(r)
+                                const bucketKey = primitiveText(row.key)
                                 return (
                                   <tr
-                                    key={String(row.key || '')}
+                                    key={bucketKey || `bucket-${index}`}
                                     className="border-b border-border/40"
                                   >
                                     <td className="py-1 pr-2 font-mono text-muted-foreground">
-                                      {String(row.key || '')}
+                                      {bucketKey}
                                     </td>
                                     <td className="py-1 pr-2 text-right tabular-nums">
-                                      {String(row.items ?? '—')}
+                                      {primitiveText(row.items, '—')}
                                     </td>
                                     <td className="py-1 pr-2 text-right tabular-nums">
                                       {typeof row.retrieval_recall === 'number'
@@ -1447,7 +1454,7 @@ export function RegressionTestTab({
                             <div className="mt-2 space-y-2 text-[11px] text-muted-foreground">
                               {modelUsed ? (
                                 <div className="font-mono text-[11px] text-muted-foreground">
-                                  model: {String(modelUsed)}
+                                  model: {primitiveText(modelUsed)}
                                 </div>
                               ) : null}
                               {parts.map(({ key, obj }) => {
