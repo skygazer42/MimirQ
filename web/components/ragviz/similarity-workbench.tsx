@@ -253,7 +253,7 @@ function heatmapPointCoordinate(
   return null
 }
 
-type SimilarityMainPanelProps = {
+type SimilarityMainPanelProps = Readonly<{
   primaryEntry: SimilarityMatrixEntry | null
   displayMatrix: number[][] | null
   displayLabels: DisplayLabels | null
@@ -264,7 +264,7 @@ type SimilarityMainPanelProps = {
   isDifferenceMode: boolean
   onDecisionChange: (candidateId: string, decision: DiagnosticDecision | null) => void
   onCellSelect: (cell: SelectedHeatmapCell) => void
-}
+}>
 
 function SimilarityMainPanel({
   primaryEntry,
@@ -311,13 +311,13 @@ function SimilarityMainPanel({
 function SimilarityDiagnosticsPanel({
   diagnostics,
   onDecisionChange,
-}: {
+}: Readonly<{
   diagnostics: SimilarityDiagnosticsResult | null
   onDecisionChange: (
     candidateId: string,
     decision: DiagnosticDecision | null
   ) => void
-}) {
+}>) {
   if (diagnostics) {
     return (
       <SimilarityDiagnosticsView
@@ -349,7 +349,7 @@ function SimilarityHeatmapPanel({
   colorScheme,
   isDifferenceMode,
   onCellSelect,
-}: {
+}: Readonly<{
   primaryEntry: SimilarityMatrixEntry
   displayMatrix: number[][]
   displayLabels: DisplayLabels
@@ -357,7 +357,7 @@ function SimilarityHeatmapPanel({
   colorScheme: ColorSchemeKey
   isDifferenceMode: boolean
   onCellSelect: (cell: SelectedHeatmapCell) => void
-}) {
+}>) {
   return (
     <div className="h-full overflow-auto p-4">
       <section className="flex min-h-[560px] flex-col overflow-hidden rounded-[28px] border border-sidebar-border/70 bg-card shadow-soft">

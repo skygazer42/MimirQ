@@ -107,6 +107,93 @@ type DiagnosticsDatasetOption = {
   id?: string
   name?: string | null
 }
+type DiagnosticsTone = 'muted' | 'neutral' | 'positive' | 'negative'
+type DiagnosticsAccent = 'neutral' | 'sky' | 'violet' | 'emerald' | 'amber'
+type DiagnosticsAccentClasses = {
+  surface: string
+  label: string
+  dot: string
+  value: string
+  caption: string
+}
+type DiagnosticsFailureCase = {
+  case_id: string
+  question: string
+  recall: number
+  mrr: number
+}
+type DiagnosticsFailureTab = 'failures' | 'distribution'
+type DiagnosticsRunCaseMetrics = ReturnType<typeof extractBaselineMetrics>
+type DiagnosticsRunCaseMapValue = {
+  question: string
+  metrics: DiagnosticsRunCaseMetrics
+}
+type DiagnosticsRunDiffRow = {
+  case_id: string
+  question: string
+  a_hit: boolean | null
+  b_hit: boolean | null
+  a_mrr: number | null
+  b_mrr: number | null
+  a_recall: number | null
+  b_recall: number | null
+  delta_recall: number | null
+  delta_mrr: number | null
+}
+
+const DIAGNOSTICS_ACCENT_CLASSES: Record<
+  DiagnosticsAccent,
+  DiagnosticsAccentClasses
+> = {
+  neutral: {
+    surface: 'border-border/70 bg-background',
+    label: 'text-muted-foreground',
+    dot: 'bg-muted-foreground/40',
+    value: 'text-foreground',
+    caption: 'text-muted-foreground',
+  },
+  sky: {
+    surface: 'border-border/70 bg-background',
+    label: 'text-sky-700',
+    dot: 'bg-sky-400',
+    value: 'text-foreground',
+    caption: 'text-muted-foreground',
+  },
+  violet: {
+    surface: 'border-border/70 bg-background',
+    label: 'text-violet-700',
+    dot: 'bg-violet-400',
+    value: 'text-foreground',
+    caption: 'text-muted-foreground',
+  },
+  emerald: {
+    surface: 'border-border/70 bg-background',
+    label: 'text-emerald-700',
+    dot: 'bg-emerald-400',
+    value: 'text-foreground',
+    caption: 'text-muted-foreground',
+  },
+  amber: {
+    surface: 'border-border/70 bg-background',
+    label: 'text-amber-700',
+    dot: 'bg-amber-400',
+    value: 'text-foreground',
+    caption: 'text-muted-foreground',
+  },
+}
+
+const DIAGNOSTICS_DIFF_METRIC_KEYS = [
+  'baseline_hit_rate',
+  'baseline_mrr',
+  'baseline_recall',
+  'baseline_ndcg',
+  'baseline_map',
+  'hardcase_hit_rate',
+  'hardcase_mrr',
+  'hardcase_recall',
+  'hardcase_ndcg',
+  'hardcase_map',
+]
 
 function prettyJson(value: unknown): string {
   try {
@@ -181,6 +268,165 @@ function caseKey(item: any): string | null {
   return s || null
 }
 
+function diagnosticsInlineToneClass(tone: DiagnosticsTone): string {
+  if (tone === 'positive') return 'text-emerald-700'
+  if (tone === 'negative') return 'text-rose-700'
+  if (tone === 'neutral') return 'text-foreground'
+  return 'text-muted-foreground'
+}
+
+function diagnosticsMetricValueClass(
+  tone: DiagnosticsTone,
+  fallback: string
+): string {
+  if (tone === 'positive') return 'text-emerald-700'
+  if (tone === 'negative') return 'text-rose-700'
+  if (tone === 'muted') return 'text-muted-foreground'
+  return fallback
+}
+
+function diagnosticsTabClass(isActive: boolean): string {
+  return isActive
+    ? 'border-primary text-primary'
+    : 'border-transparent text-muted-foreground'
+}
+
+function diagnosticsDeltaClass(delta: number): string {
+  if (delta > 0) return 'text-emerald-700'
+  if (delta < 0) return 'text-rose-700'
+  return 'text-muted-foreground'
+}
+
+function diagnosticsRunSummary(run: KGSearchDiagnosticsRunDetail['run']) {
+  return run?.summary && typeof run.summary === 'object' ? run.summary : {}
+}
+
+function diagnosticsMetricDelta(aValue: number | null, bValue: number | null) {
+  if (aValue === null || bValue === null) return null
+  return Number((bValue - aValue).toFixed(4))
+}
+
+function buildDiagnosticsSummaryDelta(
+  aSummary: Record<string, any>,
+  bSummary: Record<string, any>
+) {
+  const summaryDelta: Record<string, any> = {}
+  for (const key of DIAGNOSTICS_DIFF_METRIC_KEYS) {
+    const aValue = toNumber(aSummary[key])
+    const bValue = toNumber(bSummary[key])
+    if (aValue === null && bValue === null) continue
+    summaryDelta[key] = {
+      a: aValue,
+      b: bValue,
+      delta: diagnosticsMetricDelta(aValue, bValue),
+    }
+  }
+  return summaryDelta
+}
+
+function buildDiagnosticsCaseMap(
+  items: any[] | undefined
+): Map<string, DiagnosticsRunCaseMapValue> {
+  const byCase = new Map<string, DiagnosticsRunCaseMapValue>()
+  for (const item of items || []) {
+    const key = caseKey(item)
+    if (!key) continue
+    byCase.set(key, {
+      question: String(item?.question || ''),
+      metrics: extractBaselineMetrics(item),
+    })
+  }
+  return byCase
+}
+
+function buildDiagnosticsDiffRow(
+  key: string,
+  byCaseA: Map<string, DiagnosticsRunCaseMapValue>,
+  byCaseB: Map<string, DiagnosticsRunCaseMapValue>
+): DiagnosticsRunDiffRow {
+  const runCaseA = byCaseA.get(key)
+  const runCaseB = byCaseB.get(key)
+  const metricsA = runCaseA?.metrics
+  const metricsB = runCaseB?.metrics
+  const aRecall = metricsA?.recall ?? null
+  const bRecall = metricsB?.recall ?? null
+  const aMrr = metricsA?.mrr ?? null
+  const bMrr = metricsB?.mrr ?? null
+
+  return {
+    case_id: key,
+    question: runCaseA?.question || runCaseB?.question || '',
+    a_hit: metricsA ? Boolean(metricsA.hit_at_k) : null,
+    b_hit: metricsB ? Boolean(metricsB.hit_at_k) : null,
+    a_mrr: aMrr,
+    b_mrr: bMrr,
+    a_recall: aRecall,
+    b_recall: bRecall,
+    delta_recall: diagnosticsMetricDelta(aRecall, bRecall),
+    delta_mrr: diagnosticsMetricDelta(aMrr, bMrr),
+  }
+}
+
+function isChangedDiagnosticsDiffRow(row: DiagnosticsRunDiffRow): boolean {
+  return (
+    row.delta_recall !== null ||
+    row.delta_mrr !== null ||
+    (row.a_hit !== null && row.b_hit !== null && row.a_hit !== row.b_hit)
+  )
+}
+
+function compareDiagnosticsDiffRows(
+  left: DiagnosticsRunDiffRow,
+  right: DiagnosticsRunDiffRow
+) {
+  return Math.abs(right.delta_recall ?? 0) - Math.abs(left.delta_recall ?? 0)
+}
+
+function countDiagnosticsHitFlips(rows: DiagnosticsRunDiffRow[]) {
+  const flips = rows.filter(
+    (row) =>
+      row.a_hit !== null && row.b_hit !== null && row.a_hit !== row.b_hit
+  )
+  const improved = flips.filter(
+    (row) => row.a_hit === false && row.b_hit === true
+  ).length
+  const regressed = flips.filter(
+    (row) => row.a_hit === true && row.b_hit === false
+  ).length
+  return { flips, improved, regressed }
+}
+
+function buildKgDiagnosticsDiff(
+  detailA: KGSearchDiagnosticsRunDetail | null,
+  detailB: KGSearchDiagnosticsRunDetail | null
+) {
+  if (!detailA?.run || !detailB?.run) return null
+
+  const summaryDelta = buildDiagnosticsSummaryDelta(
+    diagnosticsRunSummary(detailA.run),
+    diagnosticsRunSummary(detailB.run)
+  )
+  const byCaseA = buildDiagnosticsCaseMap(detailA.items)
+  const byCaseB = buildDiagnosticsCaseMap(detailB.items)
+  const allKeys = new Set<string>([...byCaseA.keys(), ...byCaseB.keys()])
+  const rows = Array.from(allKeys, (key) =>
+    buildDiagnosticsDiffRow(key, byCaseA, byCaseB)
+  )
+  const changed = rows
+    .filter(isChangedDiagnosticsDiffRow)
+    .sort(compareDiagnosticsDiffRows)
+    .slice(0, 20)
+  const { flips, improved, regressed } = countDiagnosticsHitFlips(rows)
+
+  return {
+    run_a: detailA.run,
+    run_b: detailB.run,
+    summary_delta: summaryDelta,
+    changed_cases: changed,
+    hit_flips: { total: flips.length, improved, regressed },
+  }
+}
+
 function DiagnosticsInlineStat({
   label,
   value,
@@ -188,7 +434,7 @@ function DiagnosticsInlineStat({
 }: Readonly<{
   label: string
   value: ReactNode
-  tone?: 'muted' | 'neutral' | 'positive' | 'negative'
+  tone?: DiagnosticsTone
 }>) {
   return (
     <div className="flex items-center gap-2 rounded-full border border-border/70 bg-card/90 px-2.5 py-1">
@@ -198,13 +444,7 @@ function DiagnosticsInlineStat({
       <span
         className={cn(
           'font-mono text-[11px] tabular-nums',
-          tone === 'positive'
-            ? 'text-emerald-700'
-            : tone === 'negative'
-              ? 'text-rose-700'
-              : tone === 'neutral'
-                ? 'text-foreground'
-                : 'text-muted-foreground'
+          diagnosticsInlineToneClass(tone)
         )}
       >
         {value}
@@ -365,59 +605,12 @@ function DiagnosticsMetricTile({
   label: string
   value: ReactNode
   caption?: ReactNode
-  tone?: 'neutral' | 'positive' | 'negative' | 'muted'
-  accent?: 'neutral' | 'sky' | 'violet' | 'emerald' | 'amber'
+  tone?: DiagnosticsTone
+  accent?: DiagnosticsAccent
   icon?: ReactNode
 }>) {
-  const accentClasses =
-    accent === 'sky'
-      ? {
-          surface: 'border-border/70 bg-background',
-          label: 'text-sky-700',
-          dot: 'bg-sky-400',
-          value: 'text-foreground',
-          caption: 'text-muted-foreground',
-        }
-      : accent === 'violet'
-        ? {
-            surface: 'border-border/70 bg-background',
-            label: 'text-violet-700',
-            dot: 'bg-violet-400',
-            value: 'text-foreground',
-            caption: 'text-muted-foreground',
-          }
-        : accent === 'emerald'
-          ? {
-              surface: 'border-border/70 bg-background',
-              label: 'text-emerald-700',
-              dot: 'bg-emerald-400',
-              value: 'text-foreground',
-              caption: 'text-muted-foreground',
-            }
-          : accent === 'amber'
-            ? {
-                surface: 'border-border/70 bg-background',
-                label: 'text-amber-700',
-                dot: 'bg-amber-400',
-                value: 'text-foreground',
-                caption: 'text-muted-foreground',
-              }
-            : {
-                surface: 'border-border/70 bg-background',
-                label: 'text-muted-foreground',
-                dot: 'bg-muted-foreground/40',
-                value: 'text-foreground',
-                caption: 'text-muted-foreground',
-              }
-
-  const valueClass =
-    tone === 'positive'
-      ? 'text-emerald-700'
-      : tone === 'negative'
-        ? 'text-rose-700'
-        : tone === 'muted'
-          ? 'text-muted-foreground'
-          : accentClasses.value
+  const accentClasses = DIAGNOSTICS_ACCENT_CLASSES[accent]
+  const valueClass = diagnosticsMetricValueClass(tone, accentClasses.value)
   const isPending = value === '-'
 
   return (
@@ -697,14 +890,9 @@ function DiagnosticsFailuresPanel({
   activeTab,
   onTabChange,
 }: Readonly<{
-  failedCases: Array<{
-    case_id: string
-    question: string
-    recall: number
-    mrr: number
-  }>
-  activeTab: 'failures' | 'distribution'
-  onTabChange: (value: 'failures' | 'distribution') => void
+  failedCases: DiagnosticsFailureCase[]
+  activeTab: DiagnosticsFailureTab
+  onTabChange: (value: DiagnosticsFailureTab) => void
 }>) {
   return (
     <div className="rounded-xl border border-border/70 bg-background shadow-sm">
@@ -720,9 +908,7 @@ function DiagnosticsFailuresPanel({
             type="button"
             className={cn(
               'border-b-2 pb-2 text-[13px] font-medium transition-colors',
-              activeTab === 'failures'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground'
+              diagnosticsTabClass(activeTab === 'failures')
             )}
             onClick={() => onTabChange('failures')}
           >
@@ -732,9 +918,7 @@ function DiagnosticsFailuresPanel({
             type="button"
             className={cn(
               'border-b-2 pb-2 text-[13px] font-medium transition-colors',
-              activeTab === 'distribution'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground'
+              diagnosticsTabClass(activeTab === 'distribution')
             )}
             onClick={() => onTabChange('distribution')}
           >
@@ -744,42 +928,69 @@ function DiagnosticsFailuresPanel({
       </div>
 
       <div className="px-5 py-3.5">
-        {activeTab === 'failures' ? (
-          failedCases.length ? (
-            <div className="space-y-2">
-              {failedCases.map((item) => (
-                <div
-                  key={`${item.case_id}:${item.question}`}
-                  className="rounded-xl border border-border/70 bg-card/90 px-3.5 py-3"
-                >
-                  <div className="text-[11px] font-mono text-muted-foreground">
-                    {item.case_id || '--------'}
-                  </div>
-                  <div className="mt-1.5 text-[13px] leading-6 text-foreground">
-                    {item.question || '（无问题文本）'}
-                  </div>
-                  <div className="mt-2 text-[11px] tabular-nums text-muted-foreground">
-                    Recall {String(item.recall)} · MRR {String(item.mrr)}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <DiagnosticsEmptyState
-              title="暂无失败样本"
-              description="运行评测后，这里会显示失败样本详情，帮助你定位问题。"
-              icon={<CircleAlert className="h-8 w-8" aria-hidden="true" />}
-            />
-          )
-        ) : (
-          <DiagnosticsEmptyState
-            title="暂无错误分布"
-            description="执行评测后，这里会汇总常见错误类型和分布情况。"
-            icon={<Waypoints className="h-8 w-8" aria-hidden="true" />}
-          />
-        )}
+        <DiagnosticsFailuresPanelBody
+          activeTab={activeTab}
+          failedCases={failedCases}
+        />
       </div>
     </div>
+  )
+}
+
+function DiagnosticsFailureCaseList({
+  failedCases,
+}: Readonly<{
+  failedCases: DiagnosticsFailureCase[]
+}>) {
+  return (
+    <div className="space-y-2">
+      {failedCases.map((item) => (
+        <div
+          key={`${item.case_id}:${item.question}`}
+          className="rounded-xl border border-border/70 bg-card/90 px-3.5 py-3"
+        >
+          <div className="text-[11px] font-mono text-muted-foreground">
+            {item.case_id || '--------'}
+          </div>
+          <div className="mt-1.5 text-[13px] leading-6 text-foreground">
+            {item.question || '（无问题文本）'}
+          </div>
+          <div className="mt-2 text-[11px] tabular-nums text-muted-foreground">
+            Recall {String(item.recall)} · MRR {String(item.mrr)}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function DiagnosticsFailuresPanelBody({
+  activeTab,
+  failedCases,
+}: Readonly<{
+  activeTab: DiagnosticsFailureTab
+  failedCases: DiagnosticsFailureCase[]
+}>) {
+  if (activeTab === 'distribution') {
+    return (
+      <DiagnosticsEmptyState
+        title="暂无错误分布"
+        description="执行评测后，这里会汇总常见错误类型和分布情况。"
+        icon={<Waypoints className="h-8 w-8" aria-hidden="true" />}
+      />
+    )
+  }
+
+  if (failedCases.length > 0) {
+    return <DiagnosticsFailureCaseList failedCases={failedCases} />
+  }
+
+  return (
+    <DiagnosticsEmptyState
+      title="暂无失败样本"
+      description="运行评测后，这里会显示失败样本详情，帮助你定位问题。"
+      icon={<CircleAlert className="h-8 w-8" aria-hidden="true" />}
+    />
   )
 }
 
@@ -992,147 +1203,10 @@ export function KGDiagnosticsPage() {
     })
   }, [datasets])
 
-  const diff = useMemo(() => {
-    if (!detailA?.run || !detailB?.run) return null
-    const a = detailA
-    const b = detailB
-
-    const aSummary =
-      a.run?.summary && typeof a.run.summary === 'object' ? a.run.summary : {}
-    const bSummary =
-      b.run?.summary && typeof b.run.summary === 'object' ? b.run.summary : {}
-
-    const keys = [
-      'baseline_hit_rate',
-      'baseline_mrr',
-      'baseline_recall',
-      'baseline_ndcg',
-      'baseline_map',
-      'hardcase_hit_rate',
-      'hardcase_mrr',
-      'hardcase_recall',
-      'hardcase_ndcg',
-      'hardcase_map',
-    ]
-    const summaryDelta: Record<string, any> = {}
-    for (const key of keys) {
-      const av = toNumber(aSummary[key])
-      const bv = toNumber(bSummary[key])
-      if (av === null && bv === null) continue
-      summaryDelta[key] = {
-        a: av,
-        b: bv,
-        delta: av !== null && bv !== null ? Number((bv - av).toFixed(4)) : null,
-      }
-    }
-
-    const byCaseA = new Map<
-      string,
-      { question: string; metrics: ReturnType<typeof extractBaselineMetrics> }
-    >()
-    for (const item of a.items || []) {
-      const key = caseKey(item)
-      if (!key) continue
-      byCaseA.set(key, {
-        question: String(item?.question || ''),
-        metrics: extractBaselineMetrics(item),
-      })
-    }
-
-    const byCaseB = new Map<
-      string,
-      { question: string; metrics: ReturnType<typeof extractBaselineMetrics> }
-    >()
-    for (const item of b.items || []) {
-      const key = caseKey(item)
-      if (!key) continue
-      byCaseB.set(key, {
-        question: String(item?.question || ''),
-        metrics: extractBaselineMetrics(item),
-      })
-    }
-
-    const allKeys = new Set<string>([
-      ...Array.from(byCaseA.keys()),
-      ...Array.from(byCaseB.keys()),
-    ])
-    const rows: Array<{
-      case_id: string
-      question: string
-      a_hit: boolean | null
-      b_hit: boolean | null
-      a_mrr: number | null
-      b_mrr: number | null
-      a_recall: number | null
-      b_recall: number | null
-      delta_recall: number | null
-      delta_mrr: number | null
-    }> = []
-
-    for (const key of allKeys) {
-      const ra = byCaseA.get(key)
-      const rb = byCaseB.get(key)
-      const qa = ra?.question || ''
-      const qb = rb?.question || ''
-      const question = qa || qb
-      const ma = ra?.metrics
-      const mb = rb?.metrics
-      const a_hit = ma ? Boolean(ma.hit_at_k) : null
-      const b_hit = mb ? Boolean(mb.hit_at_k) : null
-      const a_mrr = ma ? ma.mrr : null
-      const b_mrr = mb ? mb.mrr : null
-      const a_recall = ma ? ma.recall : null
-      const b_recall = mb ? mb.recall : null
-      rows.push({
-        case_id: key,
-        question,
-        a_hit,
-        b_hit,
-        a_mrr,
-        b_mrr,
-        a_recall,
-        b_recall,
-        delta_recall:
-          a_recall !== null && b_recall !== null
-            ? Number((b_recall - a_recall).toFixed(4))
-            : null,
-        delta_mrr:
-          a_mrr !== null && b_mrr !== null
-            ? Number((b_mrr - a_mrr).toFixed(4))
-            : null,
-      })
-    }
-
-    const changed = rows
-      .filter(
-        (r) =>
-          r.delta_recall !== null ||
-          r.delta_mrr !== null ||
-          (r.a_hit !== null && r.b_hit !== null && r.a_hit !== r.b_hit)
-      )
-      .sort(
-        (x, y) => Math.abs(y.delta_recall ?? 0) - Math.abs(x.delta_recall ?? 0)
-      )
-      .slice(0, 20)
-
-    const flips = rows.filter(
-      (r) => r.a_hit !== null && r.b_hit !== null && r.a_hit !== r.b_hit
-    )
-    const improved = flips.filter(
-      (r) => r.a_hit === false && r.b_hit === true
-    ).length
-    const regressed = flips.filter(
-      (r) => r.a_hit === true && r.b_hit === false
-    ).length
-
-    return {
-      run_a: a.run,
-      run_b: b.run,
-      summary_delta: summaryDelta,
-      changed_cases: changed,
-      hit_flips: { total: flips.length, improved, regressed },
-    }
-  }, [detailA, detailB])
+  const diff = useMemo(
+    () => buildKgDiagnosticsDiff(detailA, detailB),
+    [detailA, detailB]
+  )
 
   const diffJson = useMemo(
     () => prettyJson(diff ?? { hint: t('compare.diffHint') }),
@@ -2194,11 +2268,7 @@ export function KGDiagnosticsPage() {
                                               <div
                                                 className={cn(
                                                   'mt-1 text-[11px] tabular-nums',
-                                                  delta > 0
-                                                    ? 'text-emerald-700'
-                                                    : delta < 0
-                                                      ? 'text-rose-700'
-                                                      : 'text-muted-foreground'
+                                                  diagnosticsDeltaClass(delta)
                                                 )}
                                               >
                                                 Δ {String(row.delta ?? '-')}
