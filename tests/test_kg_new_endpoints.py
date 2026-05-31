@@ -176,7 +176,7 @@ def test_compare_kg_snapshots_passes_dataset_scope(monkeypatch: pytest.MonkeyPat
 def test_export_kg_graph_graphml(monkeypatch: pytest.MonkeyPatch):
     import app.rag.kg.api.routes as routes_mod
     from app.core import config as config_mod
-    from app.rag.kg.api.routes import export_kg_graph
+    from app.rag.kg.api.routes import KGGraphExportFlags, KGGraphProjectionParams, export_kg_graph
     from app.rag.kg.schemas import KGGraphLink, KGGraphNode, KGGraphResponse
 
     monkeypatch.setattr(config_mod.settings, "KG_ENABLED", True, raising=False)
@@ -206,23 +206,24 @@ def test_export_kg_graph_graphml(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(routes_mod, "get_kg_graph", _fake_get_kg_graph, raising=True)
 
     resp = export_kg_graph(
-        document_ids=None,
-        max_events=10,
-        max_entities=10,
-        max_links=10,
-        include_entity_links=True,
-        include_relation_links=True,
-        min_shared_events=2,
-        max_entity_links=1000,
-        download=False,
-        gzip_output=False,
+        params=KGGraphProjectionParams(
+            document_ids=None,
+            max_events=10,
+            max_entities=10,
+            max_links=10,
+            include_entity_links=True,
+            include_relation_links=True,
+            min_shared_events=2,
+            max_entity_links=1000,
+        ),
+        flags=KGGraphExportFlags(download=False, gzip_output=False),
         tenant_id=UUID(int=1),
         account_id="u",
         db=object(),
     )
 
     assert resp.media_type == "application/graphml+xml"
-    assert called.get("include_relation_links") is True
+    assert called["params"].include_relation_links is True
     body = resp.body.decode("utf-8")
     assert "<graphml" in body
     assert 'key id="d0"' in body  # node label
@@ -233,7 +234,7 @@ def test_export_kg_graph_graphml(monkeypatch: pytest.MonkeyPatch):
 def test_export_kg_graph_graphml_gzip(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.rag.kg.api.routes as routes_mod
     from app.core import config as config_mod
-    from app.rag.kg.api.routes import export_kg_graph
+    from app.rag.kg.api.routes import KGGraphExportFlags, KGGraphProjectionParams, export_kg_graph
     from app.rag.kg.schemas import KGGraphResponse
 
     monkeypatch.setattr(config_mod.settings, "KG_ENABLED", True, raising=False)
@@ -245,16 +246,17 @@ def test_export_kg_graph_graphml_gzip(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
     resp = export_kg_graph(
-        document_ids=None,
-        max_events=10,
-        max_entities=10,
-        max_links=10,
-        include_entity_links=False,
-        include_relation_links=False,
-        min_shared_events=2,
-        max_entity_links=1000,
-        download=False,
-        gzip_output=True,
+        params=KGGraphProjectionParams(
+            document_ids=None,
+            max_events=10,
+            max_entities=10,
+            max_links=10,
+            include_entity_links=False,
+            include_relation_links=False,
+            min_shared_events=2,
+            max_entity_links=1000,
+        ),
+        flags=KGGraphExportFlags(download=False, gzip_output=True),
         tenant_id=UUID(int=1),
         account_id="u",
         db=object(),
@@ -433,7 +435,7 @@ def test_get_kg_event_detail_success(monkeypatch: pytest.MonkeyPatch):
 def test_get_kg_graph_includes_event_entity_provenance(monkeypatch: pytest.MonkeyPatch):
     import app.rag.kg.api.routes as routes_mod
     from app.core import config as config_mod
-    from app.rag.kg.api.routes import get_kg_graph
+    from app.rag.kg.api.routes import KGGraphProjectionParams, get_kg_graph
 
     monkeypatch.setattr(config_mod.settings, "KG_ENABLED", True, raising=False)
     monkeypatch.setattr(routes_mod, "_resolve_allowed_documents", lambda **_k: [UUID(int=2)], raising=True)
@@ -462,14 +464,16 @@ def test_get_kg_graph_includes_event_entity_provenance(monkeypatch: pytest.Monke
     )
 
     out = get_kg_graph(
-        document_ids=None,
-        max_events=10,
-        max_entities=10,
-        max_links=10,
-        include_entity_links=False,
-        include_relation_links=False,
-        min_shared_events=2,
-        max_entity_links=1000,
+        params=KGGraphProjectionParams(
+            document_ids=None,
+            max_events=10,
+            max_entities=10,
+            max_links=10,
+            include_entity_links=False,
+            include_relation_links=False,
+            min_shared_events=2,
+            max_entity_links=1000,
+        ),
         tenant_id=UUID(int=1),
         account_id="u",
         db=db,

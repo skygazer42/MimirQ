@@ -62,7 +62,7 @@ class _FakeSession:
 async def test_kg_extract_endpoint_passes_extract_toggles(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.rag.kg.api.routes as routes_mod
     from app.core import config as config_mod
-    from app.rag.kg.api.routes import run_kg_extraction_for_document
+    from app.rag.kg.api.routes import KGExtractionOptions, run_kg_extraction_for_document
 
     monkeypatch.setattr(config_mod.settings, "KG_ENABLED", True, raising=False)
 
@@ -84,14 +84,13 @@ async def test_kg_extract_endpoint_passes_extract_toggles(monkeypatch: pytest.Mo
     out = await run_kg_extraction_for_document(
         document_id=UUID(int=2),
         response=resp,
-        async_mode=False,
-        replace_existing=True,
-        prune_orphan_entities=True,
-        extract_relations=False,
-        extract_skills=True,
-        prompt_template_id=None,
-        prompt_template_key=None,
-        prompt_ab_experiment_key=None,
+        options=KGExtractionOptions(
+            async_mode=False,
+            replace_existing=True,
+            prune_orphan_entities=True,
+            extract_relations=False,
+            extract_skills=True,
+        ),
         tenant_id=UUID(int=3),
         account_id="u",
         db=db,
@@ -101,4 +100,3 @@ async def test_kg_extract_endpoint_passes_extract_toggles(monkeypatch: pytest.Mo
     assert out.event_count == 2
     assert called.get("extract_relations") is False
     assert called.get("extract_skills") is True
-

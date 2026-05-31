@@ -72,7 +72,7 @@ async def test_kg_extract_scopes_chunks_to_active_pipeline(monkeypatch: pytest.M
     default to the active_pipeline_hash so it doesn't mix versions.
     """
     from app.core import config as config_mod
-    from app.rag.kg.api.routes import run_kg_extraction_for_document
+    from app.rag.kg.api.routes import KGExtractionOptions, run_kg_extraction_for_document
 
     monkeypatch.setattr(config_mod.settings, "KG_ENABLED", True, raising=False)
 
@@ -102,14 +102,7 @@ async def test_kg_extract_scopes_chunks_to_active_pipeline(monkeypatch: pytest.M
     out = await run_kg_extraction_for_document(
         document_id=UUID(int=99),
         response=resp,
-        async_mode=False,
-        replace_existing=None,
-        prune_orphan_entities=None,
-        extract_relations=None,
-        extract_skills=None,
-        prompt_template_id=None,
-        prompt_template_key=None,
-        prompt_ab_experiment_key=None,
+        options=KGExtractionOptions(async_mode=False),
         tenant_id=UUID(int=123),
         account_id="u",
         db=db,
@@ -122,7 +115,7 @@ async def test_kg_extract_scopes_chunks_to_active_pipeline(monkeypatch: pytest.M
 @pytest.mark.asyncio
 async def test_kg_extract_async_job_id_uses_active_pipeline_hash(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.core import config as config_mod
-    from app.rag.kg.api.routes import run_kg_extraction_for_document
+    from app.rag.kg.api.routes import KGExtractionOptions, run_kg_extraction_for_document
 
     monkeypatch.setattr(config_mod.settings, "KG_ENABLED", True, raising=False)
     monkeypatch.setattr(config_mod.settings, "TASK_QUEUE_ENABLED", True, raising=False)
@@ -147,14 +140,7 @@ async def test_kg_extract_async_job_id_uses_active_pipeline_hash(monkeypatch: py
     resp = Response()
     out = await run_kg_extraction_for_document(
         document_id=UUID(int=2),
-        async_mode=True,
-        replace_existing=None,
-        prune_orphan_entities=None,
-        extract_relations=None,
-        extract_skills=None,
-        prompt_template_id=None,
-        prompt_template_key=None,
-        prompt_ab_experiment_key=None,
+        options=KGExtractionOptions(async_mode=True),
         tenant_id=UUID(int=3),
         account_id="u",
         response=resp,
@@ -167,7 +153,7 @@ async def test_kg_extract_async_job_id_uses_active_pipeline_hash(monkeypatch: py
 @pytest.mark.asyncio
 async def test_kg_extract_can_override_pipeline_hash(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.core import config as config_mod
-    from app.rag.kg.api.routes import run_kg_extraction_for_document
+    from app.rag.kg.api.routes import KGExtractionOptions, run_kg_extraction_for_document
 
     monkeypatch.setattr(config_mod.settings, "KG_ENABLED", True, raising=False)
 
@@ -197,15 +183,7 @@ async def test_kg_extract_can_override_pipeline_hash(monkeypatch: pytest.MonkeyP
     out = await run_kg_extraction_for_document(
         document_id=UUID(int=99),
         response=resp,
-        async_mode=False,
-        pipeline_hash=other_hash,
-        replace_existing=None,
-        prune_orphan_entities=None,
-        extract_relations=None,
-        extract_skills=None,
-        prompt_template_id=None,
-        prompt_template_key=None,
-        prompt_ab_experiment_key=None,
+        options=KGExtractionOptions(async_mode=False, pipeline_hash=other_hash),
         tenant_id=UUID(int=123),
         account_id="u",
         db=db,
@@ -218,7 +196,7 @@ async def test_kg_extract_can_override_pipeline_hash(monkeypatch: pytest.MonkeyP
 @pytest.mark.asyncio
 async def test_kg_extract_async_can_override_pipeline_hash(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.core import config as config_mod
-    from app.rag.kg.api.routes import run_kg_extraction_for_document
+    from app.rag.kg.api.routes import KGExtractionOptions, run_kg_extraction_for_document
 
     monkeypatch.setattr(config_mod.settings, "KG_ENABLED", True, raising=False)
     monkeypatch.setattr(config_mod.settings, "TASK_QUEUE_ENABLED", True, raising=False)
@@ -242,15 +220,7 @@ async def test_kg_extract_async_can_override_pipeline_hash(monkeypatch: pytest.M
     resp = Response()
     out = await run_kg_extraction_for_document(
         document_id=UUID(int=2),
-        async_mode=True,
-        pipeline_hash=other_hash,
-        replace_existing=None,
-        prune_orphan_entities=None,
-        extract_relations=None,
-        extract_skills=None,
-        prompt_template_id=None,
-        prompt_template_key=None,
-        prompt_ab_experiment_key=None,
+        options=KGExtractionOptions(async_mode=True, pipeline_hash=other_hash),
         tenant_id=UUID(int=3),
         account_id="u",
         response=resp,

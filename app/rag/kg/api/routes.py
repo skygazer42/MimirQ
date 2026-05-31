@@ -5,6 +5,7 @@ import hashlib
 import time
 import uuid
 import zlib
+from collections import Counter
 from datetime import UTC
 from typing import Annotated, Any
 from uuid import UUID
@@ -22,6 +23,7 @@ from app.models.document import DocumentChunk
 from app.rag.core.errors import ConfigError
 from app.rag.core.logging import get_logger
 from app.rag.kg.pipeline import extract_events, kg_search
+from app.rag.kg.provenance import build_event_entity_provenance
 from app.rag.kg.schemas import (
     KGDeleteResponse,
     KGEntityAliasCreateRequest,
@@ -81,6 +83,121 @@ KG_API_GRAPH_EXPAND_METRIC = "kg.api.graph_expand"
 KG_API_FALLBACK_LOG_MESSAGE = "Ignoring non-critical KG API fallback failure: %s"
 
 
+class KGGraphProjectionParams(BaseModel):
+    document_ids: list[UUID] | None = None
+    dataset_id: UUID | None = None
+    pipeline_hash: str | None = None
+    max_events: int | None = None
+    max_entities: int | None = None
+    max_links: int | None = None
+    include_entity_links: bool = False
+    include_relation_links: bool = False
+    min_shared_events: int | None = None
+    max_entity_links: int | None = None
+
+
+class KGGraphExportFlags(BaseModel):
+    download: bool = True
+    gzip_output: bool = False
+
+
+class KGExtractionOptions(BaseModel):
+    async_mode: bool = False
+    pipeline_hash: str | None = None
+    replace_existing: bool | None = None
+    prune_orphan_entities: bool | None = None
+    extract_relations: bool | None = None
+    extract_skills: bool | None = None
+    extraction_backend: str | None = None
+    prompt_template_id: UUID | None = None
+    prompt_template_key: str | None = None
+    prompt_ab_experiment_key: str | None = None
+
+
+def kg_graph_projection_params(
+    document_ids: Annotated[list[UUID] | None, Query()] = None,
+    dataset_id: Annotated[UUID | None, Query(description=DATASET_SCOPE_FILTER_DESC)] = None,
+    pipeline_hash: Annotated[
+        str | None,
+        Query(
+            min_length=1,
+            max_length=200,
+            description=PIPELINE_VERSION_FILTER_DESC,
+        ),
+    ] = None,
+    max_events: Annotated[int | None, Query(ge=1, le=2000)] = None,
+    max_entities: Annotated[int | None, Query(ge=1, le=5000)] = None,
+    max_links: Annotated[int | None, Query(ge=1, le=20000)] = None,
+    include_entity_links: Annotated[bool, Query(description=INCLUDE_ENTITY_LINKS_DESC)] = False,
+    include_relation_links: Annotated[bool, Query(description=INCLUDE_RELATION_LINKS_DESC)] = False,
+    min_shared_events: Annotated[int | None, Query(ge=1, le=100)] = None,
+    max_entity_links: Annotated[int | None, Query(ge=0, le=20000)] = None,
+) -> KGGraphProjectionParams:
+    return KGGraphProjectionParams(
+        document_ids=document_ids,
+        dataset_id=dataset_id,
+        pipeline_hash=pipeline_hash,
+        max_events=max_events,
+        max_entities=max_entities,
+        max_links=max_links,
+        include_entity_links=include_entity_links,
+        include_relation_links=include_relation_links,
+        min_shared_events=min_shared_events,
+        max_entity_links=max_entity_links,
+    )
+
+
+def kg_graph_export_flags(
+    download: Annotated[bool, Query()] = True,
+    gzip_output: Annotated[bool, Query(alias="gzip", description="Return gzipped GraphML")] = False,
+) -> KGGraphExportFlags:
+    return KGGraphExportFlags(
+        download=download,
+        gzip_output=gzip_output,
+    )
+
+
+def kg_extraction_options(
+    async_mode: Annotated[bool, Query(alias="async")] = False,
+    pipeline_hash: Annotated[
+        str | None,
+        Query(
+            min_length=1,
+            max_length=200,
+            description="Optional pipeline hash override (defaults to active pipeline)",
+        ),
+    ] = None,
+    replace_existing: Annotated[
+        bool | None, Query(description="Replace previously extracted events for this document")
+    ] = None,
+    prune_orphan_entities: Annotated[
+        bool | None, Query(description="Prune entities with no remaining event links")
+    ] = None,
+    extract_relations: Annotated[
+        bool | None, Query(description="Extract entity relations (triples) (override settings)")
+    ] = None,
+    extract_skills: Annotated[bool | None, Query(description="Extract Skill/SOP entities (override settings)")] = None,
+    extraction_backend: Annotated[
+        str | None, Query(description="Extraction backend override: llm, gliner, hybrid, heuristic")
+    ] = None,
+    prompt_template_id: Annotated[UUID | None, Query()] = None,
+    prompt_template_key: Annotated[str | None, Query()] = None,
+    prompt_ab_experiment_key: Annotated[str | None, Query()] = None,
+) -> KGExtractionOptions:
+    return KGExtractionOptions(
+        async_mode=async_mode,
+        pipeline_hash=pipeline_hash,
+        replace_existing=replace_existing,
+        prune_orphan_entities=prune_orphan_entities,
+        extract_relations=extract_relations,
+        extract_skills=extract_skills,
+        extraction_backend=extraction_backend,
+        prompt_template_id=prompt_template_id,
+        prompt_template_key=prompt_template_key,
+        prompt_ab_experiment_key=prompt_ab_experiment_key,
+    )
+
+
 def _log_kg_api_metric(event: str, **fields: object) -> None:
     if not bool(getattr(settings, "KG_API_METRICS_ENABLED", False)):
         return
@@ -99,6 +216,208 @@ def _stable_group_for(entity_type: str, *, buckets: int = 24) -> int:
     buckets_i = max(1, int(buckets))
     digest = zlib.crc32(key.encode("utf-8"))
     return int(digest % buckets_i) + 1
+
+
+def _kg_event_node(ev: Any, event_degree: Counter[str], *, center_id: UUID | None = None) -> dict[str, Any]:
+    ev_id = str(ev.id)
+    meta: dict[str, Any] = {
+        "kind": "event",
+        "document_id": str(ev.document_id) if ev.document_id else "",
+        "chunk_id": str(ev.chunk_id) if ev.chunk_id else "",
+    }
+    if center_id is not None:
+        meta["center"] = ev_id == str(center_id)
+    return {
+        "id": ev_id,
+        "label": (ev.title or "").strip() or ev_id,
+        "group": 0,
+        "val": max(1, int(event_degree.get(ev_id, 0))),
+        "meta": meta,
+    }
+
+
+def _kg_entity_node(ent: Any, entity_hit_count: Counter[str], *, center_id: UUID | None = None) -> dict[str, Any]:
+    ent_id = str(ent.id)
+    meta: dict[str, Any] = {
+        "kind": "entity",
+        "type": getattr(ent, "type", None),
+        "normalized_name": getattr(ent, "normalized_name", None),
+    }
+    if center_id is not None:
+        meta["center"] = ent_id == str(center_id)
+    return {
+        "id": ent_id,
+        "label": (ent.name or "").strip() or ent_id,
+        "group": _stable_group_for(getattr(ent, "type", "") or "unknown"),
+        "val": max(1, int(entity_hit_count.get(ent_id, 0))),
+        "meta": meta,
+    }
+
+
+def _kg_event_entity_link(assoc: Any, ent: Any) -> dict[str, Any]:
+    ent_id = str(ent.id)
+    raw_extra = getattr(assoc, "extra_data", None)
+    edge_meta = {"kind": "event_entity"}
+    edge_meta.update(
+        build_event_entity_provenance(
+            document_id=(raw_extra.get("document_id") if isinstance(raw_extra, dict) else None),
+            chunk_id=(raw_extra.get("chunk_id") if isinstance(raw_extra, dict) else None),
+            references=(raw_extra if isinstance(raw_extra, dict) else None),
+        )
+    )
+    return {
+        "source": str(assoc.event_id),
+        "target": ent_id,
+        "label": (assoc.role or "").strip() or getattr(ent, "type", "") or "mentions",
+        "weight": float(getattr(assoc, "weight", 1.0) or 1.0),
+        "meta": edge_meta,
+    }
+
+
+def _kg_relation_link(rel: Any) -> dict[str, Any] | None:
+    subj = str(getattr(rel, "subject_entity_id", "") or "")
+    obj = str(getattr(rel, "object_entity_id", "") or "")
+    if not subj or not obj:
+        return None
+    pred = str(getattr(rel, "predicate", "") or "").strip()
+    if not pred:
+        return None
+    conf_raw = getattr(rel, "confidence", None)
+    try:
+        conf = float(conf_raw) if conf_raw is not None else 1.0
+    except Exception:
+        conf = 1.0
+    return {
+        "source": subj,
+        "target": obj,
+        "label": pred,
+        "weight": max(0.0, conf),
+        "meta": {
+            "kind": "entity_relation",
+            "predicate": pred,
+            "confidence": conf,
+            "document_id": str(getattr(rel, "document_id", "") or ""),
+            "chunk_id": str(getattr(rel, "chunk_id", "") or ""),
+            "event_id": str(getattr(rel, "event_id", "") or ""),
+        },
+    }
+
+
+def _kg_event_degrees(db: Session, kg_event_entity_model: Any, event_ids: list[UUID]) -> Counter[str]:
+    from sqlalchemy import func
+
+    degree_rows = (
+        db.query(kg_event_entity_model.event_id, func.count(kg_event_entity_model.entity_id).label("cnt"))
+        .filter(kg_event_entity_model.event_id.in_(event_ids))
+        .group_by(kg_event_entity_model.event_id)
+        .all()
+    )
+    return Counter({str(ev_id): int(cnt or 0) for ev_id, cnt in degree_rows})
+
+
+def _kg_allowed_entities(
+    db: Session,
+    kg_event_entity_model: Any,
+    event_ids: list[UUID],
+    *,
+    max_entities: int,
+) -> tuple[list[UUID], set[str], Counter[str]]:
+    from sqlalchemy import func
+
+    ent_rows = (
+        db.query(kg_event_entity_model.entity_id, func.count(kg_event_entity_model.event_id).label("cnt"))
+        .filter(kg_event_entity_model.event_id.in_(event_ids))
+        .group_by(kg_event_entity_model.entity_id)
+        .order_by(func.count(kg_event_entity_model.event_id).desc())
+        .limit(int(max_entities))
+        .all()
+    )
+    allowed_entity_ids = [row[0] for row in ent_rows if row and row[0]]
+    return (
+        allowed_entity_ids,
+        {str(eid) for eid in allowed_entity_ids},
+        Counter({str(ent_id): int(cnt or 0) for ent_id, cnt in ent_rows}),
+    )
+
+
+def _kg_event_entity_rows(
+    db: Session,
+    kg_event_entity_model: Any,
+    kg_entity_model: Any,
+    event_ids: list[UUID],
+    allowed_entity_ids: list[UUID],
+) -> list[Any]:
+    return (
+        db.query(kg_event_entity_model, kg_entity_model)
+        .join(kg_entity_model, kg_entity_model.id == kg_event_entity_model.entity_id)
+        .filter(
+            kg_event_entity_model.event_id.in_(event_ids),
+            kg_event_entity_model.entity_id.in_(allowed_entity_ids),
+        )
+        .all()
+    )
+
+
+def _kg_entity_cooccurrence_counts(
+    rows: list[Any],
+    allowed_entity_id_strs: set[str],
+    *,
+    per_event_entity_cap: int,
+) -> Counter[tuple[str, str]]:
+    from itertools import combinations
+
+    event_to_entities: dict[str, set[str]] = {}
+    for assoc, ent in rows:
+        ent_id = str(ent.id)
+        if ent_id in allowed_entity_id_strs:
+            event_to_entities.setdefault(str(assoc.event_id), set()).add(ent_id)
+
+    co_counts: Counter[tuple[str, str]] = Counter()
+    for ent_ids in event_to_entities.values():
+        ids = sorted(ent_ids)
+        if len(ids) < 2:
+            continue
+        if per_event_entity_cap > 0 and len(ids) > per_event_entity_cap:
+            ids = ids[:per_event_entity_cap]
+        for a, b in combinations(ids, 2):
+            co_counts[(a, b)] += 1
+    return co_counts
+
+
+def _add_kg_entity_cooccurrence_links(
+    *,
+    links: list[dict[str, Any]],
+    rows: list[Any],
+    allowed_entity_id_strs: set[str],
+    max_links: int,
+    max_entity_links: int,
+    min_shared_events: int,
+) -> int:
+    per_event_entity_cap = int(getattr(settings, "KG_ENTITY_LINK_MAX_ENTITIES_PER_EVENT", 60) or 60)
+    per_event_entity_cap = max(0, min(per_event_entity_cap, 500))
+    co_counts = _kg_entity_cooccurrence_counts(
+        rows,
+        allowed_entity_id_strs,
+        per_event_entity_cap=per_event_entity_cap,
+    )
+
+    links_added = 0
+    remaining_budget = max(0, int(max_links) - len(links))
+    edge_limit = min(int(max_entity_links), remaining_budget)
+    for (a, b), cnt in co_counts.most_common(edge_limit):
+        if int(cnt) < int(min_shared_events) or len(links) >= int(max_links):
+            break
+        links.append(
+            {
+                "source": a,
+                "target": b,
+                "label": "co_occurs",
+                "weight": float(cnt),
+                "meta": {"kind": "entity_entity", "shared_events": int(cnt)},
+            }
+        )
+        links_added += 1
+    return links_added
 
 
 def _ensure_enabled():
@@ -339,23 +658,7 @@ def _resolve_allowed_documents(
 
 @router.get("/graph", response_model=KGGraphResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_kg_graph(
-    document_ids: Annotated[list[UUID] | None, Query()] = None,
-    dataset_id: Annotated[UUID | None, Query(description=DATASET_SCOPE_FILTER_DESC)] = None,
-    pipeline_hash: Annotated[
-        str | None,
-        Query(
-            min_length=1,
-            max_length=200,
-            description=PIPELINE_VERSION_FILTER_DESC,
-        ),
-    ] = None,
-    max_events: Annotated[int, Query(ge=1, le=2000)] = 200,
-    max_entities: Annotated[int, Query(ge=1, le=5000)] = 400,
-    max_links: Annotated[int, Query(ge=1, le=20000)] = 2000,
-    include_entity_links: Annotated[bool, Query(description=INCLUDE_ENTITY_LINKS_DESC)] = False,
-    include_relation_links: Annotated[bool, Query(description=INCLUDE_RELATION_LINKS_DESC)] = False,
-    min_shared_events: Annotated[int, Query(ge=1, le=100)] = 2,
-    max_entity_links: Annotated[int, Query(ge=0, le=20000)] = 1000,
+    params: Annotated[KGGraphProjectionParams, Depends(kg_graph_projection_params)],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -371,6 +674,17 @@ def get_kg_graph(
     """
     t0 = time.perf_counter()
     _ensure_enabled()
+
+    document_ids = params.document_ids
+    dataset_id = params.dataset_id
+    pipeline_hash = params.pipeline_hash
+    max_events = 200 if params.max_events is None else params.max_events
+    max_entities = 400 if params.max_entities is None else params.max_entities
+    max_links = 2000 if params.max_links is None else params.max_links
+    include_entity_links = params.include_entity_links
+    include_relation_links = params.include_relation_links
+    min_shared_events = 2 if params.min_shared_events is None else params.min_shared_events
+    max_entity_links = 1000 if params.max_entity_links is None else params.max_entity_links
 
     allowed_doc_ids: list[UUID]
     allowed_doc_ids = _resolve_allowed_documents(
@@ -394,12 +708,7 @@ def get_kg_graph(
         )
         return out
 
-    from collections import Counter
-
-    from sqlalchemy import func
-
     from app.rag.kg.models import KgEntity, KgEventEntity, KgRelation, KgSourceEvent
-    from app.rag.kg.provenance import build_event_entity_provenance
 
     events_q = db.query(KgSourceEvent).filter(
         KgSourceEvent.tenant_id == tenant_id,
@@ -422,51 +731,17 @@ def get_kg_graph(
         return out
 
     event_ids = [e.id for e in events]
-
-    # Compute event degrees across all edges (for node sizing).
-    event_degree: Counter[str] = Counter()
-    degree_rows = (
-        db.query(KgEventEntity.event_id, func.count(KgEventEntity.entity_id).label("cnt"))
-        .filter(KgEventEntity.event_id.in_(event_ids))
-        .group_by(KgEventEntity.event_id)
-        .all()
+    event_degree = _kg_event_degrees(db, KgEventEntity, event_ids)
+    allowed_entity_ids, allowed_entity_id_strs, entity_hit_count = _kg_allowed_entities(
+        db,
+        KgEventEntity,
+        event_ids,
+        max_entities=int(max_entities),
     )
-    for ev_id, cnt in degree_rows:
-        event_degree[str(ev_id)] = int(cnt or 0)
-
-    # Prefilter entities in SQL to reduce join row volume.
-    entity_hit_count: Counter[str] = Counter()
-    ent_rows = (
-        db.query(KgEventEntity.entity_id, func.count(KgEventEntity.event_id).label("cnt"))
-        .filter(KgEventEntity.event_id.in_(event_ids))
-        .group_by(KgEventEntity.entity_id)
-        .order_by(func.count(KgEventEntity.event_id).desc())
-        .limit(int(max_entities))
-        .all()
-    )
-    allowed_entity_ids = [row[0] for row in ent_rows if row and row[0]]
-    allowed_entity_id_strs = {str(eid) for eid in allowed_entity_ids}
-    for ent_id, cnt in ent_rows:
-        entity_hit_count[str(ent_id)] = int(cnt or 0)
 
     if not allowed_entity_ids:
         # Events exist but no entity links.
-        nodes = []
-        for ev in events:
-            eid = str(ev.id)
-            nodes.append(
-                {
-                    "id": eid,
-                    "label": (ev.title or "").strip() or eid,
-                    "group": 0,
-                    "val": max(1, int(event_degree.get(eid, 0))),
-                    "meta": {
-                        "kind": "event",
-                        "document_id": str(ev.document_id) if ev.document_id else "",
-                        "chunk_id": str(ev.chunk_id) if ev.chunk_id else "",
-                    },
-                }
-            )
+        nodes = [_kg_event_node(ev, event_degree) for ev in events]
         out = KGGraphResponse(nodes=nodes, links=[], stats={"events": len(events), "entities": 0, "links": 0})
         _log_kg_api_metric(
             KG_API_GRAPH_METRIC,
@@ -479,40 +754,14 @@ def get_kg_graph(
         )
         return out
 
-    # Fetch join rows only for the selected entity ids.
-    rows = (
-        db.query(KgEventEntity, KgEntity)
-        .join(KgEntity, KgEntity.id == KgEventEntity.entity_id)
-        .filter(
-            KgEventEntity.event_id.in_(event_ids),
-            KgEventEntity.entity_id.in_(allowed_entity_ids),
-        )
-        .all()
-    )
-
-    # Stable grouping for entity types (frontend coloring).
+    rows = _kg_event_entity_rows(db, KgEventEntity, KgEntity, event_ids, allowed_entity_ids)
 
     nodes: list[dict] = []
     links: list[dict] = []
 
-    # Event nodes
     for ev in events:
-        eid = str(ev.id)
-        nodes.append(
-            {
-                "id": eid,
-                "label": (ev.title or "").strip() or eid,
-                "group": 0,
-                "val": max(1, int(event_degree.get(eid, 0))),
-                "meta": {
-                    "kind": "event",
-                    "document_id": str(ev.document_id) if ev.document_id else "",
-                    "chunk_id": str(ev.chunk_id) if ev.chunk_id else "",
-                },
-            }
-        )
+        nodes.append(_kg_event_node(ev, event_degree))
 
-    # Entity nodes + links (capped)
     seen_entities: set[str] = set()
     for assoc, ent in rows:
         ent_id = str(ent.id)
@@ -521,41 +770,12 @@ def get_kg_graph(
 
         if ent_id not in seen_entities:
             seen_entities.add(ent_id)
-            nodes.append(
-                {
-                    "id": ent_id,
-                    "label": (ent.name or "").strip() or ent_id,
-                    "group": _stable_group_for(getattr(ent, "type", "") or "unknown"),
-                    "val": max(1, int(entity_hit_count.get(ent_id, 0))),
-                    "meta": {
-                        "kind": "entity",
-                        "type": getattr(ent, "type", None),
-                        "normalized_name": getattr(ent, "normalized_name", None),
-                    },
-                }
-            )
+            nodes.append(_kg_entity_node(ent, entity_hit_count))
 
         if len(links) >= int(max_links):
             continue
 
-        raw_extra = getattr(assoc, "extra_data", None)
-        edge_meta = {"kind": "event_entity"}
-        edge_meta.update(
-            build_event_entity_provenance(
-                document_id=(raw_extra.get("document_id") if isinstance(raw_extra, dict) else None),
-                chunk_id=(raw_extra.get("chunk_id") if isinstance(raw_extra, dict) else None),
-                references=(raw_extra if isinstance(raw_extra, dict) else None),
-            )
-        )
-        links.append(
-            {
-                "source": str(assoc.event_id),
-                "target": ent_id,
-                "label": (assoc.role or "").strip() or getattr(ent, "type", "") or "mentions",
-                "weight": float(getattr(assoc, "weight", 1.0) or 1.0),
-                "meta": edge_meta,
-            }
-        )
+        links.append(_kg_event_entity_link(assoc, ent))
 
     event_entity_links = len(links)
 
@@ -575,78 +795,22 @@ def get_kg_graph(
             for rel in rel_rows:
                 if len(links) >= int(max_links):
                     break
-                subj = str(getattr(rel, "subject_entity_id", "") or "")
-                obj = str(getattr(rel, "object_entity_id", "") or "")
-                if not subj or not obj:
+                link = _kg_relation_link(rel)
+                if link is None:
                     continue
-                pred = str(getattr(rel, "predicate", "") or "").strip()
-                if not pred:
-                    continue
-                conf_raw = getattr(rel, "confidence", None)
-                try:
-                    conf = float(conf_raw) if conf_raw is not None else 1.0
-                except Exception:
-                    conf = 1.0
-
-                links.append(
-                    {
-                        "source": subj,
-                        "target": obj,
-                        "label": pred,
-                        "weight": max(0.0, conf),
-                        "meta": {
-                            "kind": "entity_relation",
-                            "predicate": pred,
-                            "confidence": conf,
-                            "document_id": str(getattr(rel, "document_id", "") or ""),
-                            "chunk_id": str(getattr(rel, "chunk_id", "") or ""),
-                            "event_id": str(getattr(rel, "event_id", "") or ""),
-                        },
-                    }
-                )
+                links.append(link)
                 relation_links_added += 1
 
     entity_links_added = 0
     if bool(include_entity_links) and int(max_entity_links) > 0 and len(links) < int(max_links):
-        from itertools import combinations
-
-        per_event_entity_cap = int(getattr(settings, "KG_ENTITY_LINK_MAX_ENTITIES_PER_EVENT", 60) or 60)
-        per_event_entity_cap = max(0, min(per_event_entity_cap, 500))
-
-        event_to_entities: dict[str, set[str]] = {}
-        for assoc, ent in rows:
-            ent_id = str(ent.id)
-            if ent_id not in allowed_entity_id_strs:
-                continue
-            event_to_entities.setdefault(str(assoc.event_id), set()).add(ent_id)
-
-        co_counts: Counter[tuple[str, str]] = Counter()
-        for ent_ids in event_to_entities.values():
-            ids = sorted(ent_ids)
-            if len(ids) < 2:
-                continue
-            if per_event_entity_cap > 0 and len(ids) > per_event_entity_cap:
-                ids = ids[:per_event_entity_cap]
-            for a, b in combinations(ids, 2):
-                co_counts[(a, b)] += 1
-
-        remaining_budget = max(0, int(max_links) - len(links))
-        edge_limit = min(int(max_entity_links), remaining_budget)
-        for (a, b), cnt in co_counts.most_common(edge_limit):
-            if int(cnt) < int(min_shared_events):
-                break
-            if len(links) >= int(max_links):
-                break
-            links.append(
-                {
-                    "source": a,
-                    "target": b,
-                    "label": "co_occurs",
-                    "weight": float(cnt),
-                    "meta": {"kind": "entity_entity", "shared_events": int(cnt)},
-                }
-            )
-            entity_links_added += 1
+        entity_links_added = _add_kg_entity_cooccurrence_links(
+            links=links,
+            rows=rows,
+            allowed_entity_id_strs=allowed_entity_id_strs,
+            max_links=int(max_links),
+            max_entity_links=int(max_entity_links),
+            min_shared_events=int(min_shared_events),
+        )
 
     out = KGGraphResponse(
         nodes=nodes,
@@ -675,23 +839,7 @@ def get_kg_graph(
 @router.get("/graph/expand", response_model=KGGraphResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def expand_kg_graph(
     node_id: Annotated[UUID, Query(description="Center node id (KgSourceEvent.id or KgEntity.id)")],
-    document_ids: Annotated[list[UUID] | None, Query()] = None,
-    dataset_id: Annotated[UUID | None, Query(description=DATASET_SCOPE_FILTER_DESC)] = None,
-    pipeline_hash: Annotated[
-        str | None,
-        Query(
-            min_length=1,
-            max_length=200,
-            description=PIPELINE_VERSION_FILTER_DESC,
-        ),
-    ] = None,
-    max_events: Annotated[int, Query(ge=1, le=500)] = 50,
-    max_entities: Annotated[int, Query(ge=1, le=5000)] = 400,
-    max_links: Annotated[int, Query(ge=1, le=20000)] = 5000,
-    include_entity_links: Annotated[bool, Query(description=INCLUDE_ENTITY_LINKS_DESC)] = False,
-    include_relation_links: Annotated[bool, Query(description=INCLUDE_RELATION_LINKS_DESC)] = False,
-    min_shared_events: Annotated[int, Query(ge=1, le=100)] = 2,
-    max_entity_links: Annotated[int, Query(ge=0, le=20000)] = 2000,
+    params: Annotated[KGGraphProjectionParams, Depends(kg_graph_projection_params)],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -705,6 +853,17 @@ def expand_kg_graph(
     """
     t0 = time.perf_counter()
     _ensure_enabled()
+
+    document_ids = params.document_ids
+    dataset_id = params.dataset_id
+    pipeline_hash = params.pipeline_hash
+    max_events = 50 if params.max_events is None else params.max_events
+    max_entities = 400 if params.max_entities is None else params.max_entities
+    max_links = 5000 if params.max_links is None else params.max_links
+    include_entity_links = params.include_entity_links
+    include_relation_links = params.include_relation_links
+    min_shared_events = 2 if params.min_shared_events is None else params.min_shared_events
+    max_entity_links = 2000 if params.max_entity_links is None else params.max_entity_links
 
     allowed_doc_ids = _resolve_allowed_documents(
         document_ids=document_ids,
@@ -726,10 +885,7 @@ def expand_kg_graph(
         )
         return out
 
-    from collections import Counter
-
     from app.rag.kg.models import KgEntity, KgEventEntity, KgRelation, KgSourceEvent
-    from app.rag.kg.provenance import build_event_entity_provenance
 
     # Determine node kind: event (scoped by allowed documents) or entity (tenant-scoped).
     center_event_q = db.query(KgSourceEvent).filter(
@@ -834,54 +990,17 @@ def expand_kg_graph(
         )
         return out
 
-    from sqlalchemy import func
-
     event_ids = [e.id for e in events]
-
-    # Compute event degrees across all edges (for node sizing).
-    event_degree: Counter[str] = Counter()
-    degree_rows = (
-        db.query(KgEventEntity.event_id, func.count(KgEventEntity.entity_id).label("cnt"))
-        .filter(KgEventEntity.event_id.in_(event_ids))
-        .group_by(KgEventEntity.event_id)
-        .all()
+    event_degree = _kg_event_degrees(db, KgEventEntity, event_ids)
+    allowed_entity_ids, allowed_entity_id_strs, entity_hit_count = _kg_allowed_entities(
+        db,
+        KgEventEntity,
+        event_ids,
+        max_entities=int(max_entities),
     )
-    for ev_id, cnt in degree_rows:
-        event_degree[str(ev_id)] = int(cnt or 0)
-
-    # Prefilter entities in SQL to reduce join row volume.
-    entity_hit_count: Counter[str] = Counter()
-    ent_rows = (
-        db.query(KgEventEntity.entity_id, func.count(KgEventEntity.event_id).label("cnt"))
-        .filter(KgEventEntity.event_id.in_(event_ids))
-        .group_by(KgEventEntity.entity_id)
-        .order_by(func.count(KgEventEntity.event_id).desc())
-        .limit(int(max_entities))
-        .all()
-    )
-    allowed_entity_ids = [row[0] for row in ent_rows if row and row[0]]
-    allowed_entity_id_strs = {str(eid) for eid in allowed_entity_ids}
-    for ent_id, cnt in ent_rows:
-        entity_hit_count[str(ent_id)] = int(cnt or 0)
 
     if not allowed_entity_ids:
-        nodes = []
-        for ev in events:
-            ev_id = str(ev.id)
-            nodes.append(
-                {
-                    "id": ev_id,
-                    "label": (ev.title or "").strip() or ev_id,
-                    "group": 0,
-                    "val": max(1, int(event_degree.get(ev_id, 0))),
-                    "meta": {
-                        "kind": "event",
-                        "document_id": str(ev.document_id) if ev.document_id else "",
-                        "chunk_id": str(ev.chunk_id) if ev.chunk_id else "",
-                        "center": str(ev.id) == str(node_id),
-                    },
-                }
-            )
+        nodes = [_kg_event_node(ev, event_degree, center_id=node_id) for ev in events]
         out = KGGraphResponse(nodes=nodes, links=[], stats={"events": len(events), "entities": 0, "links": 0})
         _log_kg_api_metric(
             KG_API_GRAPH_EXPAND_METRIC,
@@ -894,38 +1013,13 @@ def expand_kg_graph(
         )
         return out
 
-    rows = (
-        db.query(KgEventEntity, KgEntity)
-        .join(KgEntity, KgEntity.id == KgEventEntity.entity_id)
-        .filter(
-            KgEventEntity.event_id.in_(event_ids),
-            KgEventEntity.entity_id.in_(allowed_entity_ids),
-        )
-        .all()
-    )
-
-    # Stable grouping by entity type for frontend coloring.
+    rows = _kg_event_entity_rows(db, KgEventEntity, KgEntity, event_ids, allowed_entity_ids)
 
     nodes: list[dict] = []
     links: list[dict] = []
 
-    # Event nodes
     for ev in events:
-        ev_id = str(ev.id)
-        nodes.append(
-            {
-                "id": ev_id,
-                "label": (ev.title or "").strip() or ev_id,
-                "group": 0,
-                "val": max(1, int(event_degree.get(ev_id, 0))),
-                "meta": {
-                    "kind": "event",
-                    "document_id": str(ev.document_id) if ev.document_id else "",
-                    "chunk_id": str(ev.chunk_id) if ev.chunk_id else "",
-                    "center": str(ev.id) == str(node_id),
-                },
-            }
-        )
+        nodes.append(_kg_event_node(ev, event_degree, center_id=node_id))
 
     seen_entities: set[str] = set()
     for assoc, ent in rows:
@@ -935,42 +1029,12 @@ def expand_kg_graph(
 
         if ent_id not in seen_entities:
             seen_entities.add(ent_id)
-            nodes.append(
-                {
-                    "id": ent_id,
-                    "label": (ent.name or "").strip() or ent_id,
-                    "group": _stable_group_for(getattr(ent, "type", "") or "unknown"),
-                    "val": max(1, int(entity_hit_count.get(ent_id, 0))),
-                    "meta": {
-                        "kind": "entity",
-                        "type": getattr(ent, "type", None),
-                        "normalized_name": getattr(ent, "normalized_name", None),
-                        "center": str(ent.id) == str(node_id),
-                    },
-                }
-            )
+            nodes.append(_kg_entity_node(ent, entity_hit_count, center_id=node_id))
 
         if len(links) >= int(max_links):
             continue
 
-        raw_extra = getattr(assoc, "extra_data", None)
-        edge_meta = {"kind": "event_entity"}
-        edge_meta.update(
-            build_event_entity_provenance(
-                document_id=(raw_extra.get("document_id") if isinstance(raw_extra, dict) else None),
-                chunk_id=(raw_extra.get("chunk_id") if isinstance(raw_extra, dict) else None),
-                references=(raw_extra if isinstance(raw_extra, dict) else None),
-            )
-        )
-        links.append(
-            {
-                "source": str(assoc.event_id),
-                "target": ent_id,
-                "label": (assoc.role or "").strip() or getattr(ent, "type", "") or "mentions",
-                "weight": float(getattr(assoc, "weight", 1.0) or 1.0),
-                "meta": edge_meta,
-            }
-        )
+        links.append(_kg_event_entity_link(assoc, ent))
 
     entity_links_added = 0
     relation_links_added = 0
@@ -990,77 +1054,21 @@ def expand_kg_graph(
             for rel in rel_rows:
                 if len(links) >= int(max_links):
                     break
-                subj = str(getattr(rel, "subject_entity_id", "") or "")
-                obj = str(getattr(rel, "object_entity_id", "") or "")
-                if not subj or not obj:
+                link = _kg_relation_link(rel)
+                if link is None:
                     continue
-                pred = str(getattr(rel, "predicate", "") or "").strip()
-                if not pred:
-                    continue
-                conf_raw = getattr(rel, "confidence", None)
-                try:
-                    conf = float(conf_raw) if conf_raw is not None else 1.0
-                except Exception:
-                    conf = 1.0
-
-                links.append(
-                    {
-                        "source": subj,
-                        "target": obj,
-                        "label": pred,
-                        "weight": max(0.0, conf),
-                        "meta": {
-                            "kind": "entity_relation",
-                            "predicate": pred,
-                            "confidence": conf,
-                            "document_id": str(getattr(rel, "document_id", "") or ""),
-                            "chunk_id": str(getattr(rel, "chunk_id", "") or ""),
-                            "event_id": str(getattr(rel, "event_id", "") or ""),
-                        },
-                    }
-                )
+                links.append(link)
                 relation_links_added += 1
 
     if bool(include_entity_links) and int(max_entity_links) > 0 and len(links) < int(max_links):
-        from itertools import combinations
-
-        per_event_entity_cap = int(getattr(settings, "KG_ENTITY_LINK_MAX_ENTITIES_PER_EVENT", 60) or 60)
-        per_event_entity_cap = max(0, min(per_event_entity_cap, 500))
-
-        event_to_entities: dict[str, set[str]] = {}
-        for assoc, ent in rows:
-            ent_id = str(ent.id)
-            if ent_id not in allowed_entity_id_strs:
-                continue
-            event_to_entities.setdefault(str(assoc.event_id), set()).add(ent_id)
-
-        co_counts: Counter[tuple[str, str]] = Counter()
-        for ent_ids in event_to_entities.values():
-            ids = sorted(ent_ids)
-            if len(ids) < 2:
-                continue
-            if per_event_entity_cap > 0 and len(ids) > per_event_entity_cap:
-                ids = ids[:per_event_entity_cap]
-            for a, b in combinations(ids, 2):
-                co_counts[(a, b)] += 1
-
-        remaining_budget = max(0, int(max_links) - len(links))
-        edge_limit = min(int(max_entity_links), remaining_budget)
-        for (a, b), cnt in co_counts.most_common(edge_limit):
-            if int(cnt) < int(min_shared_events):
-                break
-            if len(links) >= int(max_links):
-                break
-            links.append(
-                {
-                    "source": a,
-                    "target": b,
-                    "label": "co_occurs",
-                    "weight": float(cnt),
-                    "meta": {"kind": "entity_entity", "shared_events": int(cnt)},
-                }
-            )
-            entity_links_added += 1
+        entity_links_added = _add_kg_entity_cooccurrence_links(
+            links=links,
+            rows=rows,
+            allowed_entity_id_strs=allowed_entity_id_strs,
+            max_links=int(max_links),
+            max_entity_links=int(max_entity_links),
+            min_shared_events=int(min_shared_events),
+        )
 
     out = KGGraphResponse(
         nodes=nodes,
@@ -1747,25 +1755,8 @@ def compare_kg_snapshots(
 
 @router.get("/graph/export", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def export_kg_graph(
-    document_ids: Annotated[list[UUID] | None, Query()] = None,
-    dataset_id: Annotated[UUID | None, Query(description=DATASET_SCOPE_FILTER_DESC)] = None,
-    pipeline_hash: Annotated[
-        str | None,
-        Query(
-            min_length=1,
-            max_length=200,
-            description=PIPELINE_VERSION_FILTER_DESC,
-        ),
-    ] = None,
-    max_events: Annotated[int, Query(ge=1, le=2000)] = 200,
-    max_entities: Annotated[int, Query(ge=1, le=5000)] = 400,
-    max_links: Annotated[int, Query(ge=1, le=20000)] = 2000,
-    include_entity_links: Annotated[bool, Query(description=INCLUDE_ENTITY_LINKS_DESC)] = False,
-    include_relation_links: Annotated[bool, Query(description=INCLUDE_RELATION_LINKS_DESC)] = False,
-    min_shared_events: Annotated[int, Query(ge=1, le=100)] = 2,
-    max_entity_links: Annotated[int, Query(ge=0, le=20000)] = 1000,
-    download: Annotated[bool, Query()] = True,
-    gzip_output: Annotated[bool, Query(alias="gzip", description="Return gzipped GraphML")] = False,
+    params: Annotated[KGGraphProjectionParams, Depends(kg_graph_projection_params)],
+    flags: Annotated[KGGraphExportFlags, Depends(kg_graph_export_flags)],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1778,16 +1769,7 @@ def export_kg_graph(
     """
     t0 = time.perf_counter()
     graph = get_kg_graph(
-        document_ids=document_ids,
-        dataset_id=dataset_id,
-        pipeline_hash=pipeline_hash,
-        max_events=max_events,
-        max_entities=max_entities,
-        max_links=max_links,
-        include_entity_links=include_entity_links,
-        include_relation_links=include_relation_links,
-        min_shared_events=min_shared_events,
-        max_entity_links=max_entity_links,
+        params=params,
         tenant_id=tenant_id,
         account_id=account_id,
         db=db,
@@ -1857,13 +1839,13 @@ def export_kg_graph(
     payload = f'<?xml version="1.0" encoding="UTF-8"?>\n{xml_text}\n'
 
     headers = {}
-    if download:
-        ext = "graphml.gz" if gzip_output else "graphml"
+    if flags.download:
+        ext = "graphml.gz" if flags.gzip_output else "graphml"
         headers["Content-Disposition"] = f'attachment; filename="mimirq-kg-{tenant_id}.{ext}"'
 
     media_type = "application/graphml+xml"
     content: str | bytes = payload
-    if gzip_output:
+    if flags.gzip_output:
         headers["Content-Encoding"] = "gzip"
         content = gzip.compress(payload.encode("utf-8"), compresslevel=6)
 
@@ -1871,11 +1853,11 @@ def export_kg_graph(
     _log_kg_api_metric(
         "kg.api.graph_export",
         tenant_id=str(tenant_id),
-        docs_requested=(len(document_ids) if document_ids is not None else None),
+        docs_requested=(len(params.document_ids) if params.document_ids is not None else None),
         events=int(export_stats.get("events", 0) or 0),
         entities=int(export_stats.get("entities", 0) or 0),
         links=int(export_stats.get("links", 0) or 0),
-        gzip=bool(gzip_output),
+        gzip=bool(flags.gzip_output),
         bytes=len(content) if isinstance(content, (bytes, bytearray)) else len(content.encode("utf-8")),
         elapsed_sec=round(float(time.perf_counter() - t0), 3),
     )
@@ -3395,31 +3377,7 @@ def delete_kg_for_document(
 async def run_kg_extraction_for_document(
     document_id: UUID,
     response: Response,
-    async_mode: Annotated[bool, Query(alias="async")] = False,
-    pipeline_hash: Annotated[
-        str | None,
-        Query(
-            min_length=1,
-            max_length=200,
-            description="Optional pipeline hash override (defaults to active pipeline)",
-        ),
-    ] = None,
-    replace_existing: Annotated[
-        bool | None, Query(description="Replace previously extracted events for this document")
-    ] = None,
-    prune_orphan_entities: Annotated[
-        bool | None, Query(description="Prune entities with no remaining event links")
-    ] = None,
-    extract_relations: Annotated[
-        bool | None, Query(description="Extract entity relations (triples) (override settings)")
-    ] = None,
-    extract_skills: Annotated[bool | None, Query(description="Extract Skill/SOP entities (override settings)")] = None,
-    extraction_backend: Annotated[
-        str | None, Query(description="Extraction backend override: llm, gliner, hybrid, heuristic")
-    ] = None,
-    prompt_template_id: Annotated[UUID | None, Query()] = None,
-    prompt_template_key: Annotated[str | None, Query()] = None,
-    prompt_ab_experiment_key: Annotated[str | None, Query()] = None,
+    options: Annotated[KGExtractionOptions, Depends(kg_extraction_options)],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -3457,6 +3415,7 @@ async def run_kg_extraction_for_document(
     # version stored in document metadata.
     # NOTE: tests call this route handler directly (without FastAPI request parsing),
     # so `pipeline_hash` can be a `fastapi.Query` object. Treat non-strings as unset.
+    pipeline_hash = options.pipeline_hash
     explicit_ph = (pipeline_hash.strip() if isinstance(pipeline_hash, str) else "") or None
     selected_ph = explicit_ph or _doc_pipeline_hash(getattr(document, "doc_metadata", None) or {})
     if selected_ph:
@@ -3464,7 +3423,7 @@ async def run_kg_extraction_for_document(
         if scoped:
             chunks = scoped
 
-    eff_prompt_template_id = prompt_template_id
+    eff_prompt_template_id = options.prompt_template_id
     if eff_prompt_template_id is None:
         raw_tid = (getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_ID", "") or "").strip()
         if raw_tid:
@@ -3474,27 +3433,31 @@ async def run_kg_extraction_for_document(
                 eff_prompt_template_id = None
 
     eff_prompt_template_key = (
-        (prompt_template_key or "").strip()
+        (options.prompt_template_key or "").strip()
         or (getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_KEY", "") or "").strip()
         or None
     )
     eff_prompt_ab_experiment_key = (
-        (prompt_ab_experiment_key or "").strip()
+        (options.prompt_ab_experiment_key or "").strip()
         or (getattr(settings, "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY", "") or "").strip()
         or None
     )
 
-    eff_replace_existing = bool(settings.KG_EXTRACT_REPLACE_EXISTING if replace_existing is None else replace_existing)
+    eff_replace_existing = bool(
+        settings.KG_EXTRACT_REPLACE_EXISTING if options.replace_existing is None else options.replace_existing
+    )
     eff_prune_orphans = bool(
-        settings.KG_EXTRACT_PRUNE_ORPHAN_ENTITIES if prune_orphan_entities is None else prune_orphan_entities
+        settings.KG_EXTRACT_PRUNE_ORPHAN_ENTITIES
+        if options.prune_orphan_entities is None
+        else options.prune_orphan_entities
     )
     # Route handlers are sometimes invoked directly in unit tests; FastAPI `Query(...)` defaults
     # are not JSON-serializable and should not leak into downstream calls or audit logs.
-    eff_extract_relations: bool | None = extract_relations if isinstance(extract_relations, bool) else None
-    eff_extract_skills: bool | None = extract_skills if isinstance(extract_skills, bool) else None
+    eff_extract_relations: bool | None = options.extract_relations if isinstance(options.extract_relations, bool) else None
+    eff_extract_skills: bool | None = options.extract_skills if isinstance(options.extract_skills, bool) else None
 
     # If async=true, enqueue KG extraction (default remains synchronous for compatibility).
-    if bool(async_mode):
+    if bool(options.async_mode):
         if not bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
             raise HTTPException(status_code=400, detail="Task queue is disabled (TASK_QUEUE_ENABLED=false)")
         try:
@@ -3571,7 +3534,9 @@ async def run_kg_extraction_for_document(
             ab_user_key=account_id,
             extract_relations=eff_extract_relations,
             extract_skills=eff_extract_skills,
-            extraction_backend=(str(extraction_backend).strip() if isinstance(extraction_backend, str) else None),
+            extraction_backend=(
+                str(options.extraction_backend).strip() if isinstance(options.extraction_backend, str) else None
+            ),
             replace_existing=eff_replace_existing,
             prune_orphan_entities=eff_prune_orphans,
         )
