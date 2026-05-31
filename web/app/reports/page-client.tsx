@@ -62,6 +62,7 @@ import type {
   DatasetCategoryNode,
   DatasetReport,
   DatasetReportDataProvenance,
+  DatasetReportPipelineVersion,
 } from '@/types'
 import type { ReportTransformsWorkerApi } from '@/workers/report-transforms.worker'
 
@@ -99,6 +100,18 @@ const REPORT_TABLE_HEADER_CLASS =
   'text-[0.6875rem] font-medium uppercase tracking-[0.1em] text-slate-500'
 const REPORT_TABLE_ROW_CLASS = 'text-[0.8125rem] leading-5 text-slate-700'
 type DataPillTone = 'blue' | 'green' | 'amber' | 'rose' | 'violet' | 'slate'
+type ReportMetricDatum = { name: string; value: number }
+type CategoryMetricDatum = ReportMetricDatum & { depth: number }
+type CoverageRow = { label: string; value: number; max: number }
+type IssueRow = {
+  id: string
+  time: string
+  level: string
+  type: string
+  description: string
+  target: string
+}
+type PipelineVersionDatum = DatasetReportPipelineVersion & { fill: string }
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
@@ -321,6 +334,545 @@ function ProgressRow({
         {formatPct(value, max)}
       </div>
     </div>
+  )
+}
+
+function ReportMetricGrid({
+  totalDocs,
+  totalBytes,
+  successDocs,
+  successRate,
+  failed,
+  failedRate,
+  pipelineVersionsCount,
+  pipelineFilterLabel,
+  latestAuditTime,
+}: Readonly<{
+  totalDocs: number
+  totalBytes: number
+  successDocs: number
+  successRate: string
+  failed: number
+  failedRate: string
+  pipelineVersionsCount: number
+  pipelineFilterLabel: string
+  latestAuditTime: string
+}>) {
+  return (
+    <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <AuditMetricCard
+        icon={FileText}
+        label="文档总数"
+        value={String(totalDocs)}
+        sub="来自后端报告 profile.total_documents"
+        tone="blue"
+      />
+      <AuditMetricCard
+        icon={BarChart3}
+        label="总大小"
+        value={formatFileSize(Number(totalBytes || 0))}
+        sub="来自后端报告 profile.total_size_bytes"
+        tone="violet"
+      />
+      <AuditMetricCard
+        icon={CheckCircle2}
+        label="成功文档数"
+        value={String(successDocs)}
+        sub={`成功率 ${successRate}`}
+        tone="green"
+      />
+      <AuditMetricCard
+        icon={AlertTriangle}
+        label="失败文档数"
+        value={String(failed)}
+        sub={`失败率 ${failedRate}`}
+        tone="amber"
+      />
+      <AuditMetricCard
+        icon={Layers}
+        label="版本数"
+        value={String(pipelineVersionsCount)}
+        sub={`过滤：${pipelineFilterLabel}`}
+        tone="blue"
+      />
+      <AuditMetricCard
+        icon={Clock3}
+        label="报告生成"
+        value={latestAuditTime}
+        sub="本次报告生成时间"
+        tone="slate"
+      />
+    </div>
+  )
+}
+
+function RiskMetricPanel({
+  missingFindingCount,
+  duplicateFindingCount,
+  lowQualityFindingCount,
+  totalDocs,
+  failed,
+  failedRate,
+}: Readonly<{
+  missingFindingCount: number
+  duplicateFindingCount: number
+  lowQualityFindingCount: number
+  totalDocs: number
+  failed: number
+  failedRate: string
+}>) {
+  return (
+    <div className="rounded-2xl border border-slate-200/80 bg-card p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+      <div className={cn('mb-4', REPORT_PANEL_TITLE_CLASS)}>
+        边缘指标 / 风险指标
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+        <MiniRiskCard
+          label="缺失字段率"
+          value={formatPct(missingFindingCount, totalDocs)}
+          sub={`${missingFindingCount} 条后端 finding`}
+          tone={missingFindingCount ? 'amber' : 'blue'}
+        />
+        <MiniRiskCard
+          label="重复文档率"
+          value={formatPct(duplicateFindingCount, totalDocs)}
+          sub={`${duplicateFindingCount} 条后端 finding`}
+          tone={duplicateFindingCount ? 'violet' : 'blue'}
+        />
+        <MiniRiskCard
+          label="低置信度率"
+          value={formatPct(lowQualityFindingCount, totalDocs)}
+          sub={`${lowQualityFindingCount} 条质量 finding`}
+          tone={lowQualityFindingCount ? 'amber' : 'green'}
+        />
+        <MiniRiskCard
+          label="解析失败率"
+          value={failedRate}
+          sub={`${failed} 个失败文档`}
+          tone={failed ? 'rose' : 'green'}
+        />
+      </div>
+    </div>
+  )
+}
+
+function FieldCoveragePanel({
+  fieldCoverageRows,
+  fieldCoverageBadge,
+}: Readonly<{
+  fieldCoverageRows: CoverageRow[]
+  fieldCoverageBadge: string
+}>) {
+  return (
+    <div className="rounded-2xl border border-slate-200/80 bg-card p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className={REPORT_PANEL_TITLE_CLASS}>字段覆盖分布</div>
+        <Badge variant="outline" className="rounded-full text-[11px]">
+          {fieldCoverageBadge}
+        </Badge>
+      </div>
+      <div className="space-y-3">
+        {fieldCoverageRows.map((row) => (
+          <ProgressRow
+            key={row.label}
+            label={row.label}
+            value={row.value}
+            max={row.max}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function TopDocumentPanel({
+  topDocumentRows,
+  topDocumentMax,
+  onClearFolderQuery,
+}: Readonly<{
+  topDocumentRows: ReportMetricDatum[]
+  topDocumentMax: number
+  onClearFolderQuery: () => void
+}>) {
+  return (
+    <div className="rounded-2xl border border-slate-200/80 bg-card p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className={REPORT_PANEL_TITLE_CLASS}>文档分布 Top</div>
+        <Button
+          variant="link"
+          className="h-auto p-0 text-xs"
+          onClick={onClearFolderQuery}
+        >
+          查看全部
+        </Button>
+      </div>
+      {topDocumentRows.length === 0 ? (
+        <EmptyState
+          title="暂无分布数据"
+          description="后端报告未返回目录或文件类型分布。"
+        />
+      ) : (
+        <div className="space-y-3">
+          {topDocumentRows.map((row) => (
+            <div
+              key={row.name}
+              className={cn(
+                'grid grid-cols-[1fr_52px_100px] items-center gap-3',
+                REPORT_TABLE_ROW_CLASS
+              )}
+            >
+              <div className="truncate font-medium text-slate-700" title={row.name}>
+                {row.name}
+              </div>
+              <div className="tabular-nums text-slate-700">{row.value}</div>
+              <div className="h-2 rounded-full bg-slate-100">
+                <div
+                  className="h-full rounded-full bg-blue-500"
+                  style={{
+                    width: `${Math.max(3, (safeNumber(row.value) / topDocumentMax) * 100)}%`,
+                  }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ContentHealthPanel({
+  governanceAuditUrlValue,
+  governanceAuditUrlSub,
+  governanceAuditImageValue,
+  governanceAuditImageSub,
+  governanceAuditHasSamples,
+  sensitiveHits,
+  piiHits,
+  secretHits,
+  lowQualityFindingCount,
+}: Readonly<{
+  governanceAuditUrlValue: string
+  governanceAuditUrlSub: string
+  governanceAuditImageValue: string
+  governanceAuditImageSub: string
+  governanceAuditHasSamples: boolean
+  sensitiveHits: number
+  piiHits: number
+  secretHits: number
+  lowQualityFindingCount: number
+}>) {
+  return (
+    <div className="rounded-2xl border border-slate-200/80 bg-card p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+      <div className={cn('mb-4', REPORT_PANEL_TITLE_CLASS)}>
+        污染观察 / 内容健康
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+        <MiniRiskCard
+          label="可疑链接数"
+          value={governanceAuditUrlValue}
+          sub={governanceAuditUrlSub}
+          tone={governanceAuditHasSamples ? 'blue' : 'slate'}
+        />
+        <MiniRiskCard
+          label="外部附件数"
+          value={governanceAuditImageValue}
+          sub={governanceAuditImageSub}
+          tone={governanceAuditHasSamples ? 'green' : 'slate'}
+        />
+        <MiniRiskCard
+          label="敏感词命中"
+          value={String(sensitiveHits)}
+          sub={`PII ${piiHits} / Secret ${secretHits}`}
+          tone={sensitiveHits ? 'amber' : 'green'}
+        />
+        <MiniRiskCard
+          label="低质量片段数"
+          value={String(lowQualityFindingCount)}
+          sub="后端质量 finding"
+          tone={lowQualityFindingCount ? 'rose' : 'violet'}
+        />
+      </div>
+    </div>
+  )
+}
+
+function CategoryChartPanel({
+  categoryBarData,
+}: Readonly<{ categoryBarData: CategoryMetricDatum[] }>) {
+  return (
+    <div className="rounded-2xl border border-slate-200/80 bg-card p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+      <div className={cn('mb-4', REPORT_PANEL_TITLE_CLASS)}>知识分类统计</div>
+      {categoryBarData.length === 0 ? (
+        <EmptyState
+          title="暂无分类数据"
+          description="后端分类树没有可展示的计数。"
+        />
+      ) : (
+        <SafeResponsiveChart className="h-[260px]" minHeight={260}>
+          <BarChart
+            data={categoryBarData.slice(0, 8)}
+            margin={{ left: 8, right: 12, top: 8, bottom: 8 }}
+          >
+            <CartesianGrid
+              strokeDasharray="3 3"
+              stroke="#e2e8f0"
+              opacity={0.55}
+            />
+            <XAxis dataKey="name" />
+            <YAxis allowDecimals={false} />
+            <Tooltip
+              cursor={CHART_TOOLTIP_CURSOR}
+              contentStyle={CHART_TOOLTIP_STYLE}
+              labelStyle={CHART_TOOLTIP_LABEL_STYLE}
+            />
+            <Bar dataKey="value" radius={[7, 7, 0, 0]} fill="#2563eb" />
+          </BarChart>
+        </SafeResponsiveChart>
+      )}
+    </div>
+  )
+}
+
+function PipelineVersionsPanel({
+  pipelineVersions,
+  pipelineVersionsWithFill,
+  versionTotal,
+}: Readonly<{
+  pipelineVersions: DatasetReportPipelineVersion[]
+  pipelineVersionsWithFill: PipelineVersionDatum[]
+  versionTotal: number
+}>) {
+  return (
+    <div className="rounded-2xl border border-slate-200/80 bg-card p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+      <div className={cn('mb-4', REPORT_PANEL_TITLE_CLASS)}>
+        源状态版本分布 Top
+      </div>
+      {pipelineVersions.length === 0 ? (
+        <EmptyState
+          title="暂无版本数据"
+          description="后端报告未返回 pipeline_versions。"
+        />
+      ) : (
+        <div className="grid gap-3 lg:grid-cols-[1fr_1fr] xl:grid-cols-1 2xl:grid-cols-[1fr_1fr]">
+          <SafeResponsiveChart className="h-[210px]" minHeight={210}>
+            <PieChart>
+              <Pie
+                data={pipelineVersionsWithFill}
+                dataKey="documents"
+                nameKey="pipeline_hash"
+                innerRadius={54}
+                outerRadius={84}
+              />
+              <Tooltip
+                cursor={CHART_TOOLTIP_CURSOR}
+                contentStyle={CHART_TOOLTIP_STYLE}
+                labelStyle={CHART_TOOLTIP_LABEL_STYLE}
+              />
+            </PieChart>
+          </SafeResponsiveChart>
+          <div className="space-y-2 self-center">
+            {pipelineVersions.slice(0, 5).map((version, idx) => (
+              <div
+                key={version.pipeline_hash}
+                className={cn(
+                  'flex items-center justify-between gap-2',
+                  REPORT_TABLE_ROW_CLASS
+                )}
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <span
+                    className="size-2 rounded-full"
+                    style={{ background: PIE_COLORS[idx % PIE_COLORS.length] }}
+                  />
+                  <span
+                    className="truncate font-mono"
+                    title={version.pipeline_hash}
+                  >
+                    {shortPipelineHash(version.pipeline_hash)}
+                  </span>
+                </span>
+                <span className="tabular-nums text-slate-500">
+                  {version.documents} ({formatPct(version.documents, versionTotal)})
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function IssueRowsPanel({ issueRows }: Readonly<{ issueRows: IssueRow[] }>) {
+  return (
+    <div className="rounded-2xl border border-slate-200/80 bg-card p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className={REPORT_PANEL_TITLE_CLASS}>风险命中记录</div>
+        <Badge variant="outline" className="rounded-full text-[11px]">
+          仅显示命中项
+        </Badge>
+      </div>
+      {issueRows.length === 0 ? (
+        <EmptyState
+          title="暂无异常记录"
+          description="当前后端报告没有命中的失败连接器或风险 finding。"
+        />
+      ) : (
+        <div className="overflow-hidden rounded-xl border border-slate-100">
+          <div
+            className={cn(
+              'grid grid-cols-[120px_72px_120px_1fr_64px] bg-slate-50 px-3 py-2',
+              REPORT_TABLE_HEADER_CLASS
+            )}
+          >
+            <span>来源/时间</span>
+            <span>级别</span>
+            <span>类型</span>
+            <span>描述</span>
+            <span className="text-right">命中数</span>
+          </div>
+          {issueRows.map((row) => (
+            <div
+              key={row.id}
+              className={cn(
+                'grid grid-cols-[120px_72px_120px_1fr_64px] items-center border-t border-slate-100 px-3 py-3',
+                REPORT_TABLE_ROW_CLASS
+              )}
+            >
+              <span className="truncate">{row.time}</span>
+              <span className={cn('font-medium', issueLevelClass(row.level))}>
+                {row.level}
+              </span>
+              <span className="truncate">{row.type}</span>
+              <span className="truncate" title={row.description}>
+                {row.description}
+              </span>
+              <span className="text-right tabular-nums">{row.target}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ReportsDashboard({
+  totalDocs,
+  totalBytes,
+  successDocs,
+  successRate,
+  failed,
+  failedRate,
+  pipelineVersions,
+  pipelineVersionsWithFill,
+  pipelineFilterLabel,
+  latestAuditTime,
+  missingFindingCount,
+  duplicateFindingCount,
+  lowQualityFindingCount,
+  fieldCoverageRows,
+  fieldCoverageBadge,
+  topDocumentRows,
+  topDocumentMax,
+  onClearFolderQuery,
+  governanceAuditUrlValue,
+  governanceAuditUrlSub,
+  governanceAuditImageValue,
+  governanceAuditImageSub,
+  governanceAuditHasSamples,
+  sensitiveHits,
+  piiHits,
+  secretHits,
+  categoryBarData,
+  versionTotal,
+  issueRows,
+}: Readonly<{
+  totalDocs: number
+  totalBytes: number
+  successDocs: number
+  successRate: string
+  failed: number
+  failedRate: string
+  pipelineVersions: DatasetReportPipelineVersion[]
+  pipelineVersionsWithFill: PipelineVersionDatum[]
+  pipelineFilterLabel: string
+  latestAuditTime: string
+  missingFindingCount: number
+  duplicateFindingCount: number
+  lowQualityFindingCount: number
+  fieldCoverageRows: CoverageRow[]
+  fieldCoverageBadge: string
+  topDocumentRows: ReportMetricDatum[]
+  topDocumentMax: number
+  onClearFolderQuery: () => void
+  governanceAuditUrlValue: string
+  governanceAuditUrlSub: string
+  governanceAuditImageValue: string
+  governanceAuditImageSub: string
+  governanceAuditHasSamples: boolean
+  sensitiveHits: number
+  piiHits: number
+  secretHits: number
+  categoryBarData: CategoryMetricDatum[]
+  versionTotal: number
+  issueRows: IssueRow[]
+}>) {
+  return (
+    <section className="space-y-4">
+      <ReportMetricGrid
+        totalDocs={totalDocs}
+        totalBytes={totalBytes}
+        successDocs={successDocs}
+        successRate={successRate}
+        failed={failed}
+        failedRate={failedRate}
+        pipelineVersionsCount={pipelineVersions.length}
+        pipelineFilterLabel={pipelineFilterLabel}
+        latestAuditTime={latestAuditTime}
+      />
+
+      <div className="grid gap-4 xl:grid-cols-[1.05fr_1.2fr_1.05fr_0.95fr]">
+        <RiskMetricPanel
+          missingFindingCount={missingFindingCount}
+          duplicateFindingCount={duplicateFindingCount}
+          lowQualityFindingCount={lowQualityFindingCount}
+          totalDocs={totalDocs}
+          failed={failed}
+          failedRate={failedRate}
+        />
+        <FieldCoveragePanel
+          fieldCoverageRows={fieldCoverageRows}
+          fieldCoverageBadge={fieldCoverageBadge}
+        />
+        <TopDocumentPanel
+          topDocumentRows={topDocumentRows}
+          topDocumentMax={topDocumentMax}
+          onClearFolderQuery={onClearFolderQuery}
+        />
+        <ContentHealthPanel
+          governanceAuditUrlValue={governanceAuditUrlValue}
+          governanceAuditUrlSub={governanceAuditUrlSub}
+          governanceAuditImageValue={governanceAuditImageValue}
+          governanceAuditImageSub={governanceAuditImageSub}
+          governanceAuditHasSamples={governanceAuditHasSamples}
+          sensitiveHits={sensitiveHits}
+          piiHits={piiHits}
+          secretHits={secretHits}
+          lowQualityFindingCount={lowQualityFindingCount}
+        />
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[1.2fr_0.9fr_1.4fr]">
+        <CategoryChartPanel categoryBarData={categoryBarData} />
+        <PipelineVersionsPanel
+          pipelineVersions={pipelineVersions}
+          pipelineVersionsWithFill={pipelineVersionsWithFill}
+          versionTotal={versionTotal}
+        />
+        <IssueRowsPanel issueRows={issueRows} />
+      </div>
+    </section>
   )
 }
 
@@ -1364,361 +1916,39 @@ export default function ReportsCenterPage() {
             </section>
 
             {report ? (
-              <section className="space-y-4">
-                <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
-                  <AuditMetricCard
-                    icon={FileText}
-                    label="文档总数"
-                    value={String(totalDocs)}
-                    sub="来自后端报告 profile.total_documents"
-                    tone="blue"
-                  />
-                  <AuditMetricCard
-                    icon={BarChart3}
-                    label="总大小"
-                    value={formatFileSize(Number(totalBytes || 0))}
-                    sub="来自后端报告 profile.total_size_bytes"
-                    tone="violet"
-                  />
-                  <AuditMetricCard
-                    icon={CheckCircle2}
-                    label="成功文档数"
-                    value={String(successDocs)}
-                    sub={`成功率 ${successRate}`}
-                    tone="green"
-                  />
-                  <AuditMetricCard
-                    icon={AlertTriangle}
-                    label="失败文档数"
-                    value={String(failed)}
-                    sub={`失败率 ${failedRate}`}
-                    tone="amber"
-                  />
-                  <AuditMetricCard
-                    icon={Layers}
-                    label="版本数"
-                    value={String(pipelineVersions.length)}
-                    sub={`过滤：${pipelineHash ? shortPipelineHash(pipelineHash) : '当前活动版本'}`}
-                    tone="blue"
-                  />
-                  <AuditMetricCard
-                    icon={Clock3}
-                    label="报告生成"
-                    value={latestAuditTime}
-                    sub="本次报告生成时间"
-                    tone="slate"
-                  />
-                </div>
-
-                <div className="grid gap-4 xl:grid-cols-[1.05fr_1.2fr_1.05fr_0.95fr]">
-                  <div className="rounded-2xl border border-slate-200/80 bg-card p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
-                    <div className={cn('mb-4', REPORT_PANEL_TITLE_CLASS)}>
-                      边缘指标 / 风险指标
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-                      <MiniRiskCard
-                        label="缺失字段率"
-                        value={formatPct(missingFindingCount, totalDocs)}
-                        sub={`${missingFindingCount} 条后端 finding`}
-                        tone={missingFindingCount ? 'amber' : 'blue'}
-                      />
-                      <MiniRiskCard
-                        label="重复文档率"
-                        value={formatPct(duplicateFindingCount, totalDocs)}
-                        sub={`${duplicateFindingCount} 条后端 finding`}
-                        tone={duplicateFindingCount ? 'violet' : 'blue'}
-                      />
-                      <MiniRiskCard
-                        label="低置信度率"
-                        value={formatPct(lowQualityFindingCount, totalDocs)}
-                        sub={`${lowQualityFindingCount} 条质量 finding`}
-                        tone={lowQualityFindingCount ? 'amber' : 'green'}
-                      />
-                      <MiniRiskCard
-                        label="解析失败率"
-                        value={failedRate}
-                        sub={`${failed} 个失败文档`}
-                        tone={failed ? 'rose' : 'green'}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-slate-200/80 bg-card p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
-                    <div className="mb-4 flex items-center justify-between gap-3">
-                      <div className={REPORT_PANEL_TITLE_CLASS}>
-                        字段覆盖分布
-                      </div>
-                      <Badge
-                        variant="outline"
-                        className="rounded-full text-[11px]"
-                      >
-                        {fieldCoverageBadge}
-                      </Badge>
-                    </div>
-                    <div className="space-y-3">
-                      {fieldCoverageRows.map((row) => (
-                        <ProgressRow
-                          key={row.label}
-                          label={row.label}
-                          value={row.value}
-                          max={row.max}
-                        />
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-slate-200/80 bg-card p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
-                    <div className="mb-4 flex items-center justify-between gap-3">
-                      <div className={REPORT_PANEL_TITLE_CLASS}>
-                        文档分布 Top
-                      </div>
-                      <Button
-                        variant="link"
-                        className="h-auto p-0 text-xs"
-                        onClick={() => setFolderQuery('')}
-                      >
-                        查看全部
-                      </Button>
-                    </div>
-                    {topDocumentRows.length === 0 ? (
-                      <EmptyState
-                        title="暂无分布数据"
-                        description="后端报告未返回目录或文件类型分布。"
-                      />
-                    ) : (
-                      <div className="space-y-3">
-                        {topDocumentRows.map((row) => (
-                          <div
-                            key={row.name}
-                            className={cn(
-                              'grid grid-cols-[1fr_52px_100px] items-center gap-3',
-                              REPORT_TABLE_ROW_CLASS
-                            )}
-                          >
-                            <div
-                              className="truncate font-medium text-slate-700"
-                              title={row.name}
-                            >
-                              {row.name}
-                            </div>
-                            <div className="tabular-nums text-slate-700">
-                              {row.value}
-                            </div>
-                            <div className="h-2 rounded-full bg-slate-100">
-                              <div
-                                className="h-full rounded-full bg-blue-500"
-                                style={{
-                                  width: `${Math.max(3, (safeNumber(row.value) / topDocumentMax) * 100)}%`,
-                                }}
-                              />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="rounded-2xl border border-slate-200/80 bg-card p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
-                    <div className={cn('mb-4', REPORT_PANEL_TITLE_CLASS)}>
-                      污染观察 / 内容健康
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-                      <MiniRiskCard
-                        label="可疑链接数"
-                        value={governanceAuditUrlValue}
-                        sub={governanceAuditUrlSub}
-                        tone={governanceAuditHasSamples ? 'blue' : 'slate'}
-                      />
-                      <MiniRiskCard
-                        label="外部附件数"
-                        value={governanceAuditImageValue}
-                        sub={governanceAuditImageSub}
-                        tone={governanceAuditHasSamples ? 'green' : 'slate'}
-                      />
-                      <MiniRiskCard
-                        label="敏感词命中"
-                        value={String(sensitiveHits)}
-                        sub={`PII ${piiHits} / Secret ${secretHits}`}
-                        tone={sensitiveHits ? 'amber' : 'green'}
-                      />
-                      <MiniRiskCard
-                        label="低质量片段数"
-                        value={String(lowQualityFindingCount)}
-                        sub="后端质量 finding"
-                        tone={lowQualityFindingCount ? 'rose' : 'violet'}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid gap-4 xl:grid-cols-[1.2fr_0.9fr_1.4fr]">
-                  <div className="rounded-2xl border border-slate-200/80 bg-card p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
-                    <div className={cn('mb-4', REPORT_PANEL_TITLE_CLASS)}>
-                      知识分类统计
-                    </div>
-                    {categoryBarData.length === 0 ? (
-                      <EmptyState
-                        title="暂无分类数据"
-                        description="后端分类树没有可展示的计数。"
-                      />
-                    ) : (
-                      <SafeResponsiveChart
-                        className="h-[260px]"
-                        minHeight={260}
-                      >
-                        <BarChart
-                          data={categoryBarData.slice(0, 8)}
-                          margin={{ left: 8, right: 12, top: 8, bottom: 8 }}
-                        >
-                          <CartesianGrid
-                            strokeDasharray="3 3"
-                            stroke="#e2e8f0"
-                            opacity={0.55}
-                          />
-                          <XAxis dataKey="name" />
-                          <YAxis allowDecimals={false} />
-                          <Tooltip
-                            cursor={CHART_TOOLTIP_CURSOR}
-                            contentStyle={CHART_TOOLTIP_STYLE}
-                            labelStyle={CHART_TOOLTIP_LABEL_STYLE}
-                          />
-                          <Bar
-                            dataKey="value"
-                            radius={[7, 7, 0, 0]}
-                            fill="#2563eb"
-                          />
-                        </BarChart>
-                      </SafeResponsiveChart>
-                    )}
-                  </div>
-
-                  <div className="rounded-2xl border border-slate-200/80 bg-card p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
-                    <div className={cn('mb-4', REPORT_PANEL_TITLE_CLASS)}>
-                      源状态版本分布 Top
-                    </div>
-                    {pipelineVersions.length === 0 ? (
-                      <EmptyState
-                        title="暂无版本数据"
-                        description="后端报告未返回 pipeline_versions。"
-                      />
-                    ) : (
-                      <div className="grid gap-3 lg:grid-cols-[1fr_1fr] xl:grid-cols-1 2xl:grid-cols-[1fr_1fr]">
-                        <SafeResponsiveChart
-                          className="h-[210px]"
-                          minHeight={210}
-                        >
-                          <PieChart>
-                            <Pie
-                              data={pipelineVersionsWithFill}
-                              dataKey="documents"
-                              nameKey="pipeline_hash"
-                              innerRadius={54}
-                              outerRadius={84}
-                            />
-                            <Tooltip
-                              cursor={CHART_TOOLTIP_CURSOR}
-                              contentStyle={CHART_TOOLTIP_STYLE}
-                              labelStyle={CHART_TOOLTIP_LABEL_STYLE}
-                            />
-                          </PieChart>
-                        </SafeResponsiveChart>
-                        <div className="space-y-2 self-center">
-                          {pipelineVersions.slice(0, 5).map((version, idx) => (
-                            <div
-                              key={version.pipeline_hash}
-                              className={cn(
-                                'flex items-center justify-between gap-2',
-                                REPORT_TABLE_ROW_CLASS
-                              )}
-                            >
-                              <span className="flex min-w-0 items-center gap-2">
-                                <span
-                                  className="size-2 rounded-full"
-                                  style={{
-                                    background:
-                                      PIE_COLORS[idx % PIE_COLORS.length],
-                                  }}
-                                />
-                                <span
-                                  className="truncate font-mono"
-                                  title={version.pipeline_hash}
-                                >
-                                  {shortPipelineHash(version.pipeline_hash)}
-                                </span>
-                              </span>
-                              <span className="tabular-nums text-slate-500">
-                                {version.documents} (
-                                {formatPct(version.documents, versionTotal)})
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="rounded-2xl border border-slate-200/80 bg-card p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
-                    <div className="mb-4 flex items-center justify-between gap-3">
-                      <div className={REPORT_PANEL_TITLE_CLASS}>
-                        风险命中记录
-                      </div>
-                      <Badge
-                        variant="outline"
-                        className="rounded-full text-[11px]"
-                      >
-                        仅显示命中项
-                      </Badge>
-                    </div>
-                    {issueRows.length === 0 ? (
-                      <EmptyState
-                        title="暂无异常记录"
-                        description="当前后端报告没有命中的失败连接器或风险 finding。"
-                      />
-                    ) : (
-                      <div className="overflow-hidden rounded-xl border border-slate-100">
-                        <div
-                          className={cn(
-                            'grid grid-cols-[120px_72px_120px_1fr_64px] bg-slate-50 px-3 py-2',
-                            REPORT_TABLE_HEADER_CLASS
-                          )}
-                        >
-                          <span>来源/时间</span>
-                          <span>级别</span>
-                          <span>类型</span>
-                          <span>描述</span>
-                          <span className="text-right">命中数</span>
-                        </div>
-                        {issueRows.map((row) => (
-                          <div
-                            key={row.id}
-                            className={cn(
-                              'grid grid-cols-[120px_72px_120px_1fr_64px] items-center border-t border-slate-100 px-3 py-3',
-                              REPORT_TABLE_ROW_CLASS
-                            )}
-                          >
-                            <span className="truncate">{row.time}</span>
-                            <span
-                              className={cn(
-                                'font-medium',
-                                issueLevelClass(row.level)
-                              )}
-                            >
-                              {row.level}
-                            </span>
-                            <span className="truncate">{row.type}</span>
-                            <span className="truncate" title={row.description}>
-                              {row.description}
-                            </span>
-                            <span className="text-right tabular-nums">
-                              {row.target}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </section>
+              <ReportsDashboard
+                totalDocs={totalDocs}
+                totalBytes={totalBytes}
+                successDocs={successDocs}
+                successRate={successRate}
+                failed={failed}
+                failedRate={failedRate}
+                pipelineVersions={pipelineVersions}
+                pipelineVersionsWithFill={pipelineVersionsWithFill}
+                pipelineFilterLabel={
+                  pipelineHash ? shortPipelineHash(pipelineHash) : '当前活动版本'
+                }
+                latestAuditTime={latestAuditTime}
+                missingFindingCount={missingFindingCount}
+                duplicateFindingCount={duplicateFindingCount}
+                lowQualityFindingCount={lowQualityFindingCount}
+                fieldCoverageRows={fieldCoverageRows}
+                fieldCoverageBadge={fieldCoverageBadge}
+                topDocumentRows={topDocumentRows}
+                topDocumentMax={topDocumentMax}
+                onClearFolderQuery={() => setFolderQuery('')}
+                governanceAuditUrlValue={governanceAuditUrlValue}
+                governanceAuditUrlSub={governanceAuditUrlSub}
+                governanceAuditImageValue={governanceAuditImageValue}
+                governanceAuditImageSub={governanceAuditImageSub}
+                governanceAuditHasSamples={governanceAuditHasSamples}
+                sensitiveHits={sensitiveHits}
+                piiHits={piiHits}
+                secretHits={secretHits}
+                categoryBarData={categoryBarData}
+                versionTotal={versionTotal}
+                issueRows={issueRows}
+              />
             ) : (
               <EmptyState
                 title={reportPreviewEmptyTitle(datasetId, isLoadingReport)}
