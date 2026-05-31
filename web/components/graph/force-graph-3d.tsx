@@ -74,8 +74,14 @@ type GraphSpriteLike = Object3D & {
   position: { set: (x: number, y: number, z: number) => void }
 }
 
+function primitiveText(value: unknown, fallback = ""): string {
+  if (typeof value === "string") return value
+  if (typeof value === "number" || typeof value === "boolean") return String(value)
+  return fallback
+}
+
 function getLinkKind(link: GraphLinkDatum): string {
-  return String(link?.meta?.kind ?? link?.kind ?? "").trim()
+  return primitiveText(link?.meta?.kind ?? link?.kind).trim()
 }
 
 function getLinkConfidence(link: GraphLinkDatum): number | null {
@@ -278,10 +284,10 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
         if (isDimmed) return dimNodeColor
         if (node.color) return node.color
 
-        const kind = String(node?.meta?.kind ?? "").trim()
+        const kind = primitiveText(node?.meta?.kind).trim()
         if (kind === "event") return EVENT_COLOR
 
-        const type = String(node?.meta?.type ?? node?.type ?? "").trim()
+        const type = primitiveText(node?.meta?.type ?? node?.type).trim()
         if (type && typeColorMap.has(type)) return typeColorMap.get(type)!
 
         if (typeof node.group === "number" && node.group > 0) {

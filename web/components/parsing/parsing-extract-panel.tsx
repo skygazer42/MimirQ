@@ -18,11 +18,17 @@ type ParsingExtractPanelProps = {
  className?: string
 }
 
+function primitiveText(value: unknown, fallback = ''): string {
+ if (typeof value === 'string') return value
+ if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+ return fallback
+}
+
 function suggestDefaults(elements: ParsingElement[]) {
  const imageVisualKinds = new Set(
  elements
  .filter((item) => item.kind === 'image')
- .map((item) => String(item.visual_kind || (item.attributes as Record<string, unknown> | null)?.visual_kind || '').trim())
+ .map((item) => primitiveText(item.visual_kind || (item.attributes as Record<string, unknown> | null)?.visual_kind).trim())
  .filter(Boolean)
  )
  const hasSeal = elements.some((item) => item.kind === 'seal')
@@ -46,7 +52,7 @@ function suggestDefaults(elements: ParsingElement[]) {
  }
  }
  const hasChartImage = elements.some(
- (item) => item.kind === 'image' && String((item.attributes as Record<string, unknown> | null)?.visual_kind || '').trim() === 'chart'
+ (item) => item.kind === 'image' && primitiveText((item.attributes as Record<string, unknown> | null)?.visual_kind).trim() === 'chart'
  )
  if (hasChartImage) {
  return {
@@ -157,7 +163,7 @@ export function ParsingExtractPanel({
  const availableVisualKinds = useMemo(() => {
  const values = new Set<string>([''])
  for (const element of activeElements || []) {
- const visualKind = String(element.visual_kind || (element.attributes as Record<string, unknown> | null)?.visual_kind || '').trim()
+ const visualKind = primitiveText(element.visual_kind || (element.attributes as Record<string, unknown> | null)?.visual_kind).trim()
  if (visualKind) values.add(visualKind)
  }
  return Array.from(values)

@@ -22,8 +22,25 @@ function scoreValue(item: RegressionItem | undefined, metricKeys: string[]): num
   return values.reduce((sum, value) => sum + value, 0) / values.length
 }
 
+function serializableText(value: unknown): string {
+  if (value == null) return ''
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return ''
+  }
+}
+
+function primitiveText(value: unknown, fallback = '-'): string {
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  return fallback
+}
+
 function csvEscape(value: unknown): string {
-  const text = String(value ?? '')
+  const text = serializableText(value)
   return `"${text.replaceAll('"', '""')}"`
 }
 
@@ -161,7 +178,7 @@ export function AblationCaseDrilldown({
                 <div>
                   <div className="mb-1 font-medium text-slate-700">Base answer</div>
                   <div className="line-clamp-5 rounded-lg bg-background p-2 text-slate-600">
-                    {row.base_response || (row.metric_diffs.length ? row.metric_diffs.map((item) => `${item.key}: ${item.before ?? '-'} -> ${item.after ?? '-'}`).join(' / ') : '-')}
+                    {row.base_response || (row.metric_diffs.length ? row.metric_diffs.map((item) => `${item.key}: ${primitiveText(item.before)} -> ${primitiveText(item.after)}`).join(' / ') : '-')}
                   </div>
                 </div>
                 <div>
