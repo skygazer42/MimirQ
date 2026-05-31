@@ -373,7 +373,7 @@ function RegressionMetricOption({
         <span className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.12em] text-slate-500">
           {metric.kind}
         </span>
-        {!compact ? (
+        {compact ? null : (
           <>
             <span className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[9px] font-medium text-slate-500">
               {metric.category}
@@ -382,7 +382,7 @@ function RegressionMetricOption({
               {metric.cost}
             </span>
           </>
-        ) : null}
+        )}
       </span>
       <span
         className={cn(
@@ -713,7 +713,7 @@ export function RegressionTestTab({
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Inline header (when embedded in a parent PageScaffold) */}
-      {!embedded ? (
+      {embedded ? null : (
         <header className="px-8 py-6 border-b border-border bg-card">
           <div className="flex items-center justify-between mb-3">
             <div>
@@ -845,7 +845,7 @@ export function RegressionTestTab({
             </div>
           </div>
         </header>
-      ) : null}
+      )}
 
       {/* 主内容区 */}
       <div
@@ -951,12 +951,12 @@ export function RegressionTestTab({
                       ))}
                     </SelectContent>
                   </Select>
-                  {!datasets.length ? (
+                  {datasets.length ? null : (
                     <div className="mt-2 text-[11px] leading-4 text-muted-foreground">
                       未加载到数据集。可查看历史 runs，创建 Golden
                       样本前需先选择数据集。
                     </div>
-                  ) : null}
+                  )}
                 </div>
 
                 <div className="mt-2 flex flex-wrap items-center gap-1.5">

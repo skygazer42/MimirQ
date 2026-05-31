@@ -212,15 +212,15 @@ export function QuerysetHealthTab({
 
   return (
     <div className={cn('space-y-2.5', embedded ? '' : 'p-5')}>
-      {!embedded ? (
-        <div className="flex items-start justify-between gap-2.5">
+      {embedded ? (
+        <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold text-foreground">
+            <div className="text-base font-semibold text-foreground">
               检索集健康度
-            </h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              检索基准集健康度：趋势 + 差异 + 退化标记
-            </p>
+            </div>
+            <div className="mt-0.5 text-[12px] text-muted-foreground">
+              趋势 + 差异 + 退化标记
+            </div>
           </div>
           <Button
             variant="outline"
@@ -239,14 +239,14 @@ export function QuerysetHealthTab({
           </Button>
         </div>
       ) : (
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-start justify-between gap-2.5">
           <div>
-            <div className="text-base font-semibold text-foreground">
+            <h2 className="text-lg font-semibold text-foreground">
               检索集健康度
-            </div>
-            <div className="mt-0.5 text-[12px] text-muted-foreground">
-              趋势 + 差异 + 退化标记
-            </div>
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              检索基准集健康度：趋势 + 差异 + 退化标记
+            </p>
           </div>
           <Button
             variant="outline"
@@ -401,7 +401,7 @@ export function QuerysetHealthTab({
                 />
               </LineChart>
             </SafeResponsiveChart>
-            {!hasQualityChartData ? <QuerysetChartEmptyState /> : null}
+            {hasQualityChartData ? null : <QuerysetChartEmptyState />}
           </div>
         </Panel>
 
@@ -455,7 +455,7 @@ export function QuerysetHealthTab({
                 />
               </LineChart>
             </SafeResponsiveChart>
-            {!hasRiskChartData ? <QuerysetChartEmptyState /> : null}
+            {hasRiskChartData ? null : <QuerysetChartEmptyState />}
           </div>
         </Panel>
       </div>

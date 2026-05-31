@@ -953,7 +953,7 @@ export function KnowledgeDocumentsPanel({
                       </p>
 
                       <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-                        {!isDatasetEmpty ? (
+                        {isDatasetEmpty ? null : (
                           <Button
                             type="button"
                             variant="outline"
@@ -964,7 +964,7 @@ export function KnowledgeDocumentsPanel({
                             <RotateCcw className="mr-2 size-3.5" />
                             清空所有筛选
                           </Button>
-                        ) : null}
+                        )}
 
                         {selectedDatasetId && onSwitchToAllDatasets ? (
                           <Button
@@ -1465,15 +1465,15 @@ function DocumentCard({
 
   // 计算质量百分比和颜色
   const qualityPercent =
-    parseScore !== null ? Math.round(parseScore * 100) : null
+    parseScore === null ? null : Math.round(parseScore * 100)
   const qualityColor =
-    qualityPercent !== null
-      ? qualityPercent > 80
+    qualityPercent === null
+      ? 'text-muted-foreground/20'
+      : qualityPercent > 80
         ? 'text-success'
         : qualityPercent > 50
           ? 'text-warning'
           : 'text-rose'
-      : 'text-muted-foreground/20'
 
   return (
     <Panel

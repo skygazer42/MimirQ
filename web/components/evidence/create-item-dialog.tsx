@@ -211,11 +211,10 @@ export function CreateItemDialog({
               <Panel className="p-3">
                 <ScrollArea className="h-[320px] pr-2">
                   <div className="space-y-2">
-                    {!hasRetrieveResult ? (
-                      <div className="text-sm text-muted-foreground text-pretty">运行检索后在此勾选 Ground Truth 引用。</div>
-                    ) : retrieveRanked.length === 0 ? (
-                      <div className="text-sm text-muted-foreground text-pretty">无 citations。</div>
-                    ) : (
+                    {hasRetrieveResult ? (
+                      retrieveRanked.length === 0 ? (
+                        <div className="text-sm text-muted-foreground text-pretty">无 citations。</div>
+                      ) : (
                       retrieveRanked.map((ranked) => {
                         const citation = ranked.citation
                         const assistScore = ranked.score
@@ -279,6 +278,9 @@ export function CreateItemDialog({
                           </div>
                         )
                       })
+                      )
+                    ) : (
+                      <div className="text-sm text-muted-foreground text-pretty">运行检索后在此勾选 Ground Truth 引用。</div>
                     )}
                   </div>
                 </ScrollArea>
@@ -317,11 +319,10 @@ export function CreateItemDialog({
               <Panel className="p-3">
                 <ScrollArea className="h-[320px] pr-2">
                   <div className="space-y-2">
-                    {!hasImportPack ? (
-                      <div className="text-sm text-muted-foreground text-pretty">导入后在此勾选 Ground Truth 引用。</div>
-                    ) : importCitations.length === 0 ? (
-                      <div className="text-sm text-muted-foreground text-pretty">pack 中没有 citations。</div>
-                    ) : (
+                    {hasImportPack ? (
+                      importCitations.length === 0 ? (
+                        <div className="text-sm text-muted-foreground text-pretty">pack 中没有 citations。</div>
+                      ) : (
                       importCitations.map((citation) => {
                         const chunkId = String(citation.chunk_id || '')
                         const checked = !!chunkId && importSelectedChunkIds.includes(chunkId)
@@ -362,6 +363,9 @@ export function CreateItemDialog({
                           </div>
                         )
                       })
+                      )
+                    ) : (
+                      <div className="text-sm text-muted-foreground text-pretty">导入后在此勾选 Ground Truth 引用。</div>
                     )}
                   </div>
                 </ScrollArea>

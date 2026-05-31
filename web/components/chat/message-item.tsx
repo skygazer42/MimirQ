@@ -1031,9 +1031,9 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                           {idx + 1}
                         </span>
                         <span className="max-w-[180px] truncate font-medium">{citation.document_name}</span>
-                        {citation.page_number != null ? (
+                        {citation.page_number == null ? null : (
                           <span className="text-muted-foreground">P.{citation.page_number}</span>
-                        ) : null}
+                        )}
                       </button>
                     )
                   })}
@@ -1213,7 +1213,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                   用 1-5 星记录这条回答是否有帮助。
                 </div>
               </div>
-              <span className="text-[11px] text-muted-foreground">{rating != null ? `${rating} / 5` : '展开评分'}</span>
+              <span className="text-[11px] text-muted-foreground">{rating == null ? '展开评分' : `${rating} / 5`}</span>
             </summary>
             <div className="flex flex-col gap-3 border-t border-border/50 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="text-xs text-muted-foreground">

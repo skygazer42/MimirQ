@@ -336,12 +336,12 @@ export function TopBar() {
 
     updateSettings({
       ...(nextStrategy ? { strategy: nextStrategy } : {}),
-      ...(nextSize !== undefined
-        ? { chunkSize: Math.max(50, Math.min(4000, Math.trunc(nextSize))) }
-        : {}),
-      ...(nextOverlap !== undefined
-        ? { chunkOverlap: Math.max(0, Math.min(1000, Math.trunc(nextOverlap))) }
-        : {}),
+      ...(nextSize === undefined
+        ? {}
+        : { chunkSize: Math.max(50, Math.min(4000, Math.trunc(nextSize))) }),
+      ...(nextOverlap === undefined
+        ? {}
+        : { chunkOverlap: Math.max(0, Math.min(1000, Math.trunc(nextOverlap))) }),
     })
 
     const separatorPresetValue = getStringValue(parsed, 'separator_preset')

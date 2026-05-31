@@ -835,7 +835,7 @@ function PromptsPageContent() {
                                 <Eye className="mr-1 size-3" />
                                 预览
                               </Button>
-                              {!template.is_system ? (
+                              {template.is_system ? null : (
                                 <Button
                                   size="sm"
                                   variant="outline"
@@ -845,7 +845,7 @@ function PromptsPageContent() {
                                   <Edit className="mr-1 size-3" />
                                   编辑
                                 </Button>
-                              ) : null}
+                              )}
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -868,7 +868,7 @@ function PromptsPageContent() {
                                 )}
                                 {template.is_active ? '停用' : '启用'}
                               </Button>
-                              {!template.is_system ? (
+                              {template.is_system ? null : (
                                 <Button
                                   size="sm"
                                   variant="outline"
@@ -880,7 +880,7 @@ function PromptsPageContent() {
                                   <Trash2 className="mr-1 size-3" />
                                   删除
                                 </Button>
-                              ) : null}
+                              )}
                             </div>
                           </div>
                         ))}
