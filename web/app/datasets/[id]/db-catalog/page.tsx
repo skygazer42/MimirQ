@@ -137,12 +137,12 @@ export default function DatasetDbCatalogPage() {
   )
   const latestRun = useMemo<ConnectorRunOut | null>(() => {
     const runs = latestRunQuery.data?.items || []
-    const catalogRuns = runs.filter((run) =>
+    const catalogRun = runs.find((run) =>
       ['mysql_catalog', 'sqlserver_catalog'].includes(
         String(run.connector_id || '').toLowerCase()
       )
     )
-    return catalogRuns[0] || null
+    return catalogRun || null
   }, [latestRunQuery.data?.items])
   const latestRunLoading = latestRunQuery.isFetching
   const isLoading = datasetQuery.isFetching || catalogTablesQuery.isFetching

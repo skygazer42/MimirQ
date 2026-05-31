@@ -1,8 +1,6 @@
 """Engine config models."""
 
 from pathlib import Path
-from typing import Union
-
 from pydantic import BaseModel, Field
 
 from app.core.config import settings
@@ -45,7 +43,7 @@ class TaskConfig(BaseModel):
     source_name: str | None = Field(default=None, description="Source name")
     background: str | None = Field(default=None, description="Global background info")
 
-    load: Union[ConversationLoadConfig, DocumentLoadConfig] | None = Field(
+    load: ConversationLoadConfig | DocumentLoadConfig | None = Field(
         default=None, description="Load stage config"
     )
     extract: ExtractBaseConfig | None = Field(default=None, description="Extract stage config")

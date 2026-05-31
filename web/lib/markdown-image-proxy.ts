@@ -20,7 +20,7 @@ function isPrivateIpv4(hostname: string): boolean {
   const parts = hostname.split('.')
   if (parts.length !== 4) return false
 
-  const octets = parts.map((part) => Number(part))
+  const octets = parts.map(Number)
   if (octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) return false
 
   const [first, second] = octets

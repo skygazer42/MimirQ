@@ -5,7 +5,7 @@ from typing import Any
 
 from app.rag.core.faithfulness import compute_faithfulness_score
 
-_QUESTION_TOKEN_RE = re.compile(r"[A-Za-z0-9_]+")
+_QUESTION_TOKEN_RE = re.compile(r"\w+", flags=re.ASCII)
 _QUESTION_STOPWORDS = {
     "what",
     "how",

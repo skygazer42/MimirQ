@@ -16,7 +16,7 @@ Usage:
 
 
 from dataclasses import dataclass, field
-from typing import Any, Union
+from typing import Any
 
 
 @dataclass
@@ -58,7 +58,7 @@ class Command:
     """
 
     update: dict[str, Any] = field(default_factory=dict)
-    goto: Union[str, list[str]] | None = None
+    goto: str | list[str] | None = None
     resume: Any | None = None
     send: list["Send"] | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -200,7 +200,7 @@ def interrupt(
 
     Example:
         @task
-        def review_answer(state: Dict[str, Any]) -> Union[Command, Interrupt]:
+        def review_answer(state: Dict[str, Any]) -> Command | Interrupt:
             if state.get("requires_review"):
                 return interrupt(
                     value={"answer": state["answer"]},
@@ -232,7 +232,7 @@ class CommandProcessor:
         self.is_interrupted: bool = False
         self.interrupt_value: Interrupt | None = None
 
-    def process(self, result: Union[Command, Interrupt, dict[str, Any]]) -> dict[str, Any]:
+    def process(self, result: Command | Interrupt | dict[str, Any]) -> dict[str, Any]:
         """
         Process a node result and update state.
 
@@ -294,4 +294,4 @@ class CommandProcessor:
 
 
 # Type aliases for cleaner signatures
-NodeReturn = Union[Command, Interrupt, dict[str, Any]]
+NodeReturn = Command | Interrupt | dict[str, Any]

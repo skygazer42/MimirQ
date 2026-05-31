@@ -45,7 +45,6 @@ import {
   BarChart3,
   ChevronDown,
   CheckCircle2,
-  Clock3,
   CircleDollarSign,
   Database,
   Filter,

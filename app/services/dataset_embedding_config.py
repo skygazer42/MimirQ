@@ -28,7 +28,7 @@ def _clean(value: Any) -> str:
 
 
 def _safe_collection_suffix(value: str) -> str:
-    suffix = re.sub(r"[^A-Za-z0-9_]+", "_", value).strip("_")
+    suffix = re.sub(r"\W+", "_", value, flags=re.ASCII).strip("_")
     return suffix[:48] or "default"
 
 

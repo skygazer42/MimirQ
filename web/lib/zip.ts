@@ -21,7 +21,7 @@ export async function extractZipFiles(zipFile: File): Promise<ExtractedZipFile[]
     if (path.endsWith('.DS_Store')) continue
 
     const blob = await entry.async('blob')
-    const baseName = path.split('/').filter(Boolean).pop() || path
+    const baseName = path.split('/').findLast(Boolean) || path
     extracted.push({
       file: new File([blob], baseName, { type: blob.type }),
       path,
@@ -30,4 +30,3 @@ export async function extractZipFiles(zipFile: File): Promise<ExtractedZipFile[]
 
   return extracted
 }
-

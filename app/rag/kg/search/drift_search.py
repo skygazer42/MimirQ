@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-_TOKEN_RE = re.compile(r"[A-Za-z0-9_]+|[\u4e00-\u9fff]{2,}")
+_TOKEN_RE = re.compile(r"\w+|[\u4e00-\u9fff]{2,}", flags=re.ASCII)
 
 
 def _tokenize(text: str) -> set[str]:
