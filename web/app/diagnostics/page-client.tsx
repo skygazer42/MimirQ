@@ -489,6 +489,27 @@ function diagnosticSummaryDetail(hasDiagnostics: boolean) {
     : '需手动运行左侧诊断'
 }
 
+function stableTextKey(text: string) {
+  let hash = 0
+  for (const char of text) {
+    hash = Math.imul(hash, 31) + char.charCodeAt(0)
+  }
+  return `text-${Math.abs(hash).toString(36)}`
+}
+
+function recommendationItems(recommendations: string[]) {
+  const seen = new Map<string, number>()
+  return recommendations.map((text) => {
+    const baseKey = stableTextKey(text)
+    const duplicateIndex = seen.get(baseKey) ?? 0
+    seen.set(baseKey, duplicateIndex + 1)
+    return {
+      key: duplicateIndex === 0 ? baseKey : `${baseKey}-${duplicateIndex}`,
+      text,
+    }
+  })
+}
+
 function resourceStatusClass(status: string) {
   const normalized = status.toLowerCase()
   if (['connected', 'ok', 'ready'].includes(normalized)) {
@@ -1229,6 +1250,7 @@ export default function DiagnosticsPage() {
 
   const backendRecommendations = ((onlineQuality as any)?.recommendations ??
     []) as string[]
+  const backendRecommendationItems = recommendationItems(backendRecommendations)
 
   return (
     <AppFrame>
@@ -1760,14 +1782,14 @@ export default function DiagnosticsPage() {
               <h3 className={SECTION_TITLE}>
                 <Zap className="size-4 text-blue-500" /> 后端建议
               </h3>
-              {backendRecommendations.length > 0 ? (
+              {backendRecommendationItems.length > 0 ? (
                 <div className="space-y-2">
-                  {backendRecommendations.map((r: string, i: number) => (
+                  {backendRecommendationItems.map((recommendation) => (
                     <p
-                      key={i}
+                      key={recommendation.key}
                       className="rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2 text-[12px] leading-relaxed text-slate-600"
                     >
-                      {r}
+                      {recommendation.text}
                     </p>
                   ))}
                 </div>

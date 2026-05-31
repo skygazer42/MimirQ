@@ -66,8 +66,35 @@ type GraphEndpointObject = {
   z?: number
 }
 
+function graphDisplayString(value: unknown): string {
+  if (typeof value === 'string') return value.trim()
+  if (
+    typeof value === 'number' ||
+    typeof value === 'boolean' ||
+    typeof value === 'bigint'
+  ) {
+    return String(value)
+  }
+  return ''
+}
+
+function firstGraphDisplayString(...values: unknown[]): string {
+  for (const value of values) {
+    const label = graphDisplayString(value)
+    if (label) return label
+  }
+  return ''
+}
+
+function graphEndpointId(endpoint: unknown): string {
+  if (endpoint && typeof endpoint === 'object' && 'id' in endpoint) {
+    return firstGraphDisplayString((endpoint as GraphEndpointObject).id)
+  }
+  return firstGraphDisplayString(endpoint)
+}
+
 function getLinkKind(link: GraphLinkDatum): string {
-  return String(link?.meta?.kind ?? link?.kind ?? '').trim()
+  return firstGraphDisplayString(link?.meta?.kind, link?.kind)
 }
 
 function getLinkConfidence(link: GraphLinkDatum): number | null {
@@ -163,7 +190,7 @@ export function mixHexColors(color: string, target: string, amount: number): str
 }
 
 export function truncateGraphLabel(value: unknown, maxLength = 22): string {
-  const text = String(value ?? '').trim()
+  const text = graphDisplayString(value)
   if (!text) return ''
   if (text.length <= maxLength) return text
   return `${text.slice(0, Math.max(1, maxLength - 1))}\u2026`
@@ -202,14 +229,151 @@ function hashTypeToIndex(type: string): number {
 export function buildTypeColorMap(nodes: readonly any[]): Map<string, string> {
   const map = new Map<string, string>()
   for (const node of nodes) {
-    const kind = String(node?.meta?.kind ?? '').trim()
+    const kind = graphDisplayString(node?.meta?.kind)
     if (kind === 'event') continue
-    const type = String(node?.meta?.type ?? node?.type ?? '').trim() || 'unknown'
+    const type = firstGraphDisplayString(node?.meta?.type, node?.type) || 'unknown'
     if (!map.has(type)) {
       map.set(type, NODE_COLOR_PALETTE[hashTypeToIndex(type)])
     }
   }
   return map
+}
+
+function graphCursorStyle(
+  isPanning: boolean,
+  hoveredNodeId: string | null,
+  hoveredLinkId: string | null
+) {
+  if (isPanning) return 'grabbing'
+  if (hoveredNodeId || hoveredLinkId) return 'pointer'
+  return 'grab'
+}
+
+function graphNodeKind(node: GraphNodeDatum): string {
+  return graphDisplayString(node?.meta?.kind)
+}
+
+function graphNodeType(node: GraphNodeDatum): string {
+  return firstGraphDisplayString(node?.meta?.type, node?.type)
+}
+
+function linkEndpointIds(link: GraphLinkDatum) {
+  return {
+    sourceId: graphEndpointId(link.source),
+    targetId: graphEndpointId(link.target),
+  }
+}
+
+function endpointMatchesSelected(link: GraphLinkDatum, selectedNodeId: string) {
+  const { sourceId, targetId } = linkEndpointIds(link)
+  return sourceId === selectedNodeId || targetId === selectedNodeId
+}
+
+function endpointsAreHighlighted(
+  link: GraphLinkDatum,
+  highlightedNodeIds: ReadonlySet<string>
+) {
+  const { sourceId, targetId } = linkEndpointIds(link)
+  return highlightedNodeIds.has(sourceId) && highlightedNodeIds.has(targetId)
+}
+
+function nodeShellAlpha(isSelected: boolean, isHovered: boolean) {
+  if (isSelected) return 0.22
+  if (isHovered) return 0.16
+  return 0.1
+}
+
+function nodeStrokeAlpha(
+  isHighlighted: boolean,
+  isHovered: boolean,
+  isDark: boolean
+) {
+  if (isHighlighted || isHovered) return 0.7
+  return isDark ? 0.42 : 0.32
+}
+
+function nodeStrokeStyle({
+  isPathNode,
+  color,
+  isSelected,
+  isHighlighted,
+  isHovered,
+  isDark,
+}: {
+  isPathNode: boolean
+  color: string
+  isSelected: boolean
+  isHighlighted: boolean
+  isHovered: boolean
+  isDark: boolean
+}) {
+  if (isPathNode) return '#f59e0b'
+  const alpha = isSelected ? 0.88 : nodeStrokeAlpha(isHighlighted, isHovered, isDark)
+  return withAlpha(color, alpha)
+}
+
+function nodeStrokeWidth(
+  isSelected: boolean,
+  isHighlighted: boolean,
+  isHovered: boolean,
+  globalScale: number
+) {
+  if (isSelected) return 1.9 / globalScale
+  if (isHighlighted || isHovered) return 1.45 / globalScale
+  return 1.1 / globalScale
+}
+
+function nodeLabelCardFill(
+  emphasis: boolean,
+  color: string,
+  isDark: boolean
+) {
+  if (!emphasis) {
+    return isDark ? 'rgba(2, 6, 23, 0.78)' : 'rgba(255, 254, 249, 0.86)'
+  }
+  return withAlpha(
+    mixHexColors(color, isDark ? '#0f172a' : '#fffef9', isDark ? 0.74 : 0.84),
+    isDark ? 0.92 : 0.9
+  )
+}
+
+function labelLeaderEndX(
+  labelDirection: number,
+  cardX: number,
+  cardWidth: number,
+  globalScale: number
+) {
+  if (labelDirection === 1) return cardX - 2 / globalScale
+  return cardX + cardWidth + 2 / globalScale
+}
+
+function pathAwareStroke(
+  isPathNode: boolean,
+  pathColor: string,
+  fallbackColor: string
+) {
+  return isPathNode ? pathColor : fallbackColor
+}
+
+function edgeLabelFillStyle(
+  isPathLink: boolean,
+  isHoveredLink: boolean,
+  fallback: string
+) {
+  if (isPathLink) return '#f59e0b'
+  if (isHoveredLink) return 'rgba(56, 189, 248, 0.15)'
+  return fallback
+}
+
+function edgeLabelTextStyle(
+  isPathLink: boolean,
+  isHoveredLink: boolean,
+  hoverText: string,
+  text: string
+) {
+  if (isPathLink) return '#ffffff'
+  if (isHoveredLink) return hoverText
+  return text
 }
 
 function getPrimaryCanvas(root: ParentNode | null): HTMLCanvasElement | null {
@@ -422,7 +586,11 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
   const cooldownTicks = isLargeGraph ? 50 : 100
   const cooldownTime = isLargeGraph ? 4000 : 8000
   const graphRenderResetKey = `${sanitizedData.nodes.length}:${sanitizedData.links.length}:${layoutMode}`
-  const graphCursor = isCanvasPanning ? 'grabbing' : (hoveredNodeId || hoveredLinkId ? 'pointer' : 'grab')
+  const graphCursor = graphCursorStyle(
+    isCanvasPanning,
+    hoveredNodeId,
+    hoveredLinkId
+  )
   const viewportPinnedNodeIds = useMemo(() => {
     const pinned = new Set<string>(highlightedNodeIds)
     if (selectedNodeId) pinned.add(selectedNodeId)
@@ -683,10 +851,10 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
 
     if (node.color) return node.color
 
-    const kind = String(node?.meta?.kind ?? '').trim()
+    const kind = graphNodeKind(node)
     if (kind === 'event') return EVENT_COLOR
 
-    const type = String(node?.meta?.type ?? node?.type ?? '').trim()
+    const type = graphNodeType(node)
     if (type && typeColorMap.has(type)) return typeColorMap.get(type)!
 
     if (typeof node.group === 'number' && node.group > 0) {
@@ -772,17 +940,13 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
                      return '#38bdf8'
                   }
                   if (highlightedNodeIds.size > 0) {
-                    const sourceId = String(typeof link.source === 'object' ? link.source?.id ?? '' : link.source ?? '')
-                    const targetId = String(typeof link.target === 'object' ? link.target?.id ?? '' : link.target ?? '')
-                    if (highlightedNodeIds.has(sourceId) && highlightedNodeIds.has(targetId)) {
+                    if (endpointsAreHighlighted(link, highlightedNodeIds)) {
                       return activeLineColor
                     }
                     return canvasColors.linkDim
                   }
                   if (selectedNodeId && !isLargeGraph) {
-                    const sourceId = String(typeof link.source === 'object' ? link.source?.id ?? '' : link.source ?? '')
-                    const targetId = String(typeof link.target === 'object' ? link.target?.id ?? '' : link.target ?? '')
-                    if (sourceId === selectedNodeId || targetId === selectedNodeId) {
+                    if (endpointMatchesSelected(link, selectedNodeId)) {
                       return activeLineColor
                     }
                     return canvasColors.linkDim
@@ -802,9 +966,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
                   }
                   if (highlightedNodeIds.size > 0) return 1
                   if (selectedNodeId && !isLargeGraph) {
-                    const sourceId = typeof link.source === 'object' ? link.source?.id : link.source
-                    const targetId = typeof link.target === 'object' ? link.target?.id : link.target
-                    if (sourceId === selectedNodeId || targetId === selectedNodeId) return Math.max(2.5, baseWidth + 0.6)
+                    if (endpointMatchesSelected(link, selectedNodeId)) return Math.max(2.5, baseWidth + 0.6)
                     return 0.5
                   }
                   return Math.min(3.2, Math.max(isLargeGraph ? 0.45 : 0.8, baseWidth * 0.82))
@@ -894,16 +1056,26 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
                 ctx.arc(nx, ny, shellRadius, 0, 2 * Math.PI, false)
                 ctx.fillStyle = withAlpha(
                   mixHexColors(color, isDark ? '#0f172a' : '#fffef9', isDark ? 0.45 : 0.22),
-                  isSelected ? 0.22 : isHovered ? 0.16 : 0.1
+                  nodeShellAlpha(isSelected, isHovered)
                 )
                 ctx.fill()
 
                 ctx.beginPath()
                 ctx.arc(nx, ny, shellRadius, 0, 2 * Math.PI, false)
-                ctx.strokeStyle = isPathNode
-                  ? '#f59e0b'
-                  : withAlpha(color, isSelected ? 0.88 : isHighlighted || isHovered ? 0.7 : isDark ? 0.42 : 0.32)
-                ctx.lineWidth = (isSelected ? 1.9 : isHighlighted || isHovered ? 1.45 : 1.1) / globalScale
+                ctx.strokeStyle = nodeStrokeStyle({
+                  isPathNode,
+                  color,
+                  isSelected,
+                  isHighlighted,
+                  isHovered,
+                  isDark,
+                })
+                ctx.lineWidth = nodeStrokeWidth(
+                  isSelected,
+                  isHighlighted,
+                  isHovered,
+                  globalScale
+                )
                 ctx.stroke()
 
                 const coreGradient = ctx.createRadialGradient(
@@ -954,9 +1126,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
                   const padY = 3 / globalScale
                   const leaderGap = 5 / globalScale
                   const cardRadius = 5 / globalScale
-                  const cardFill = emphasis
-                    ? withAlpha(mixHexColors(color, isDark ? '#0f172a' : '#fffef9', isDark ? 0.74 : 0.84), isDark ? 0.92 : 0.9)
-                    : (isDark ? 'rgba(2, 6, 23, 0.78)' : 'rgba(255, 254, 249, 0.86)')
+                  const cardFill = nodeLabelCardFill(emphasis, color, isDark)
 
                   ctx.font = `${emphasis ? '600 ' : ''}${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
                   ctx.textAlign = labelDirection === 1 ? 'left' : 'right'
@@ -968,23 +1138,32 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
                   const anchorX = nx + labelDirection * (shellRadius + leaderGap)
                   const cardX = labelDirection === 1 ? anchorX : anchorX - cardWidth
                   const cardY = ny - cardHeight / 2
-                  const leaderEndX = labelDirection === 1 ? cardX - 2 / globalScale : cardX + cardWidth + 2 / globalScale
+                  const leaderEndX = labelLeaderEndX(
+                    labelDirection,
+                    cardX,
+                    cardWidth,
+                    globalScale
+                  )
 
                   ctx.beginPath()
                   ctx.moveTo(nx + labelDirection * (shellRadius - 0.3 / globalScale), ny)
                   ctx.lineTo(leaderEndX, ny)
-                  ctx.strokeStyle = isPathNode
-                    ? '#f59e0b'
-                    : withAlpha(color, emphasis ? 0.56 : 0.28)
+                  ctx.strokeStyle = pathAwareStroke(
+                    isPathNode,
+                    '#f59e0b',
+                    withAlpha(color, emphasis ? 0.56 : 0.28)
+                  )
                   ctx.lineWidth = 1 / globalScale
                   ctx.stroke()
 
                   traceRoundRect(ctx, cardX, cardY, cardWidth, cardHeight, cardRadius)
                   ctx.fillStyle = cardFill
                   ctx.fill()
-                  ctx.strokeStyle = isPathNode
-                    ? withAlpha('#f59e0b', 0.72)
-                    : withAlpha(color, emphasis ? 0.42 : 0.22)
+                  ctx.strokeStyle = pathAwareStroke(
+                    isPathNode,
+                    withAlpha('#f59e0b', 0.72),
+                    withAlpha(color, emphasis ? 0.42 : 0.22)
+                  )
                   ctx.lineWidth = 1 / globalScale
                   ctx.stroke()
 
@@ -1015,7 +1194,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
                 if (!allowEdgeLabels && !isAccent) return
                 if (globalScale < edgeLabelScale && !isAccent) return
 
-                const label = String(link.label ?? '')
+                const label = graphDisplayString(link.label)
                 if (!label) return
 
                 const x1 = startNode.x || 0
@@ -1026,7 +1205,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
                 const textPos = { x: x1 + (x2 - x1) / 2, y: y1 + (y2 - y1) / 2 }
 
                 const relLink = { x: x2 - x1, y: y2 - y1 }
-                const maxTextLength = Math.sqrt(relLink.x ** 2 + relLink.y ** 2) - 8
+                const maxTextLength = Math.hypot(relLink.x, relLink.y) - 8
 
                 let textAngle = Math.atan2(relLink.y, relLink.x)
                 if (textAngle > Math.PI / 2) textAngle = -(Math.PI - textAngle)
@@ -1062,18 +1241,21 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
                 ctx.quadraticCurveTo(bx, by, bx + rx, by)
                 ctx.closePath()
 
-                if (isPathLink) {
-                  ctx.fillStyle = '#f59e0b'
-                } else if (isHoveredLink) {
-                  ctx.fillStyle = 'rgba(56, 189, 248, 0.15)'
-                } else {
-                  ctx.fillStyle = canvasColors.edgeLabelBg
-                }
+                ctx.fillStyle = edgeLabelFillStyle(
+                  Boolean(isPathLink),
+                  isHoveredLink,
+                  canvasColors.edgeLabelBg
+                )
                 ctx.fill()
 
                 ctx.textAlign = 'center'
                 ctx.textBaseline = 'middle'
-                ctx.fillStyle = isPathLink ? '#ffffff' : isHoveredLink ? canvasColors.edgeLabelHoverText : canvasColors.edgeLabelText
+                ctx.fillStyle = edgeLabelTextStyle(
+                  Boolean(isPathLink),
+                  isHoveredLink,
+                  canvasColors.edgeLabelHoverText,
+                  canvasColors.edgeLabelText
+                )
                 ctx.fillText(label, 0, 0)
 
                 ctx.restore()
