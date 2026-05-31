@@ -23,6 +23,9 @@ MAX_PROFILE_RULE_PATTERN = 600
 MAX_PROFILE_RULE_REPL = 2000
 
 DEFAULT_GOVERNANCE_SECRETS_MASK = "[SECRET]"
+DEFAULT_GOVERNANCE_PII_MASK = "[REDACTED]"
+LEGAL_COMPLIANCE_PROFILE_KEY = "builtin:legal_compliance"
+WIKI_LONGFORM_PROFILE_KEY = "builtin:wiki_longform"
 
 
 def validate_profile_key(key: str | None) -> str | None:
@@ -239,7 +242,7 @@ def get_builtin_governance_profiles() -> list[BuiltinGovernanceProfile]:
             ),
         ),
         BuiltinGovernanceProfile(
-            key="builtin:legal_compliance",
+            key=LEGAL_COMPLIANCE_PROFILE_KEY,
             name="合规脱敏（PII/密钥）",
             description="适用于可能包含邮箱/电话/Token 的文档：启用 PII 匿名化与密钥脱敏。",
             payload=_p(
@@ -248,7 +251,7 @@ def get_builtin_governance_profiles() -> list[BuiltinGovernanceProfile]:
                     "governance_enabled": True,
                     "governance_pii_anonymize": True,
                     "governance_pii_mode": "mask",
-                    "governance_pii_mask": "[REDACTED]",
+                    "governance_pii_mask": DEFAULT_GOVERNANCE_PII_MASK,
                     "governance_secrets_redact": True,
                     "governance_secrets_mode": "mask",
                     "governance_secrets_mask": DEFAULT_GOVERNANCE_SECRETS_MASK,
@@ -256,7 +259,7 @@ def get_builtin_governance_profiles() -> list[BuiltinGovernanceProfile]:
             ),
         ),
         BuiltinGovernanceProfile(
-            key="builtin:wiki_longform",
+            key=WIKI_LONGFORM_PROFILE_KEY,
             name="长文/Wiki（去重+参考文献）",
             description="适用于 Wiki/手册：去重重复段落、裁剪末尾 References（保守）。",
             payload=_p(
@@ -392,7 +395,7 @@ def get_builtin_governance_profiles() -> list[BuiltinGovernanceProfile]:
                     "governance_remove_common_lines": True,
                     "governance_pii_anonymize": True,
                     "governance_pii_mode": "mask",
-                    "governance_pii_mask": "[REDACTED]",
+                    "governance_pii_mask": DEFAULT_GOVERNANCE_PII_MASK,
                     # 0 means "any hit triggers quarantine" (best-effort heuristics).
                     "governance_pii_max_hits": 0,
                     "governance_secrets_redact": True,
@@ -487,7 +490,7 @@ def get_builtin_governance_profiles() -> list[BuiltinGovernanceProfile]:
                     "governance_enabled": True,
                     "governance_pii_anonymize": True,
                     "governance_pii_mode": "mask",
-                    "governance_pii_mask": "[REDACTED]",
+                    "governance_pii_mask": DEFAULT_GOVERNANCE_PII_MASK,
                     "governance_secrets_redact": True,
                     "governance_secrets_mode": "mask",
                     "governance_secrets_mask": DEFAULT_GOVERNANCE_SECRETS_MASK,
@@ -499,7 +502,7 @@ def get_builtin_governance_profiles() -> list[BuiltinGovernanceProfile]:
                         "pdf_watermark",
                     ],
                 },
-                extends="builtin:legal_compliance",
+                extends=LEGAL_COMPLIANCE_PROFILE_KEY,
             ),
         ),
         BuiltinGovernanceProfile(
@@ -535,7 +538,7 @@ def get_builtin_governance_profiles() -> list[BuiltinGovernanceProfile]:
                     "governance_enabled": True,
                     "governance_pii_anonymize": True,
                     "governance_pii_mode": "mask",
-                    "governance_pii_mask": "[REDACTED]",
+                    "governance_pii_mask": DEFAULT_GOVERNANCE_PII_MASK,
                     "governance_secrets_redact": True,
                     "governance_secrets_mode": "mask",
                     "governance_secrets_mask": DEFAULT_GOVERNANCE_SECRETS_MASK,
@@ -547,7 +550,7 @@ def get_builtin_governance_profiles() -> list[BuiltinGovernanceProfile]:
                         "pdf_header_footer_cn",
                     ],
                 },
-                extends="builtin:legal_compliance",
+                extends=LEGAL_COMPLIANCE_PROFILE_KEY,
             ),
         ),
         BuiltinGovernanceProfile(
@@ -606,7 +609,7 @@ def get_builtin_governance_profiles() -> list[BuiltinGovernanceProfile]:
                     "governance_enabled": True,
                     "governance_pii_anonymize": True,
                     "governance_pii_mode": "mask",
-                    "governance_pii_mask": "[REDACTED]",
+                    "governance_pii_mask": DEFAULT_GOVERNANCE_PII_MASK,
                     "governance_unwrap_lines": True,
                     "governance_remove_common_lines": True,
                     "governance_drop_duplicate_paragraphs": True,
@@ -617,7 +620,7 @@ def get_builtin_governance_profiles() -> list[BuiltinGovernanceProfile]:
                         "pdf_header_footer_cn",
                     ],
                 },
-                extends="builtin:legal_compliance",
+                extends=LEGAL_COMPLIANCE_PROFILE_KEY,
             ),
         ),
         # ---------- E. 企业 Wiki / 文档平台 ----------
@@ -644,7 +647,7 @@ def get_builtin_governance_profiles() -> list[BuiltinGovernanceProfile]:
                         "email_disclaimer",
                     ],
                 },
-                extends="builtin:wiki_longform",
+                extends=WIKI_LONGFORM_PROFILE_KEY,
             ),
         ),
         BuiltinGovernanceProfile(
@@ -669,7 +672,7 @@ def get_builtin_governance_profiles() -> list[BuiltinGovernanceProfile]:
                         "markdown_export_noise",
                     ],
                 },
-                extends="builtin:wiki_longform",
+                extends=WIKI_LONGFORM_PROFILE_KEY,
             ),
         ),
         BuiltinGovernanceProfile(
@@ -691,7 +694,7 @@ def get_builtin_governance_profiles() -> list[BuiltinGovernanceProfile]:
                         "markdown_export_noise",
                     ],
                 },
-                extends="builtin:wiki_longform",
+                extends=WIKI_LONGFORM_PROFILE_KEY,
             ),
         ),
         BuiltinGovernanceProfile(
@@ -714,7 +717,7 @@ def get_builtin_governance_profiles() -> list[BuiltinGovernanceProfile]:
                         "web_navigation",
                     ],
                 },
-                extends="builtin:wiki_longform",
+                extends=WIKI_LONGFORM_PROFILE_KEY,
             ),
         ),
     ]

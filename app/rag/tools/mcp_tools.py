@@ -36,6 +36,12 @@ logger = get_logger("rag.tools.mcp_tools")
 
 _NO_DOCUMENT_ACCESS_ERROR = "No document access"
 _NUMBER_TOO_LARGE_ERROR = "Number too large"
+_DATASET_ID_REQUIRED_ERROR = "dataset_id is required"
+_DOCUMENT_NOT_FOUND_ERROR = "Document not found"
+_DOCUMENT_STRUCTURE_SCHEMA = "mimirq.document_structure.v1"
+_DATASET_ID_UUID_DESCRIPTION = "Dataset ID (UUID)"
+_DOCUMENT_ID_UUID_DESCRIPTION = "Document ID (UUID)"
+_ACL_ACCOUNT_ID_DESCRIPTION = "Optional account/user id for ACL trimming"
 
 # Configuration
 MCP_ENABLED = getattr(settings, "MCP_ENABLED", False)
@@ -106,7 +112,7 @@ async def search_documents(
                 "query": query,
                 "count": 0,
                 "results": [],
-                "error": "dataset_id is required",
+                "error": _DATASET_ID_REQUIRED_ERROR,
             }
         try:
             dataset_uuid = UUID(str(dataset_id))
@@ -173,7 +179,7 @@ def _get_document_content_sync(
                 "document_id": document_id,
                 "content": "",
                 "page": page,
-                "error": "dataset_id is required",
+                "error": _DATASET_ID_REQUIRED_ERROR,
             }
         try:
             ds_uuid = UUID(str(dataset_id))
@@ -226,7 +232,7 @@ def _get_document_content_sync(
                     "document_id": document_id,
                     "content": "",
                     "page": page,
-                    "error": "Document not found",
+                    "error": _DOCUMENT_NOT_FOUND_ERROR,
                 }
 
             # Fail closed: the caller must operate within the dataset scope they searched.
@@ -235,7 +241,7 @@ def _get_document_content_sync(
                     "document_id": document_id,
                     "content": "",
                     "page": page,
-                    "error": "Document not found",
+                    "error": _DOCUMENT_NOT_FOUND_ERROR,
                 }
 
             # Best-effort document-level ACL trimming when account_id is provided.
@@ -396,7 +402,7 @@ def _get_document_sync(
         from app.models.document import Document as DBDocument
 
         if dataset_id is None or not str(dataset_id).strip():
-            return {"document_id": document_id, "error": "dataset_id is required"}
+            return {"document_id": document_id, "error": _DATASET_ID_REQUIRED_ERROR}
         try:
             ds_uuid = UUID(str(dataset_id))
             doc_uuid = UUID(str(document_id))
@@ -416,7 +422,7 @@ def _get_document_sync(
                 .first()
             )
             if not document:
-                return {"document_id": document_id, "error": "Document not found"}
+                return {"document_id": document_id, "error": _DOCUMENT_NOT_FOUND_ERROR}
 
             mode = str(getattr(document, "access_mode", "") or "").strip().lower()
             owner = str(getattr(document, "owner_id", "") or "").strip()
@@ -472,14 +478,19 @@ def _get_document_structure_sync(
         from app.rag.retrieval.document_structure import load_document_structure
 
         if dataset_id is None or not str(dataset_id).strip():
-            return {"schema": "mimirq.document_structure.v1", "document": {"document_id": document_id}, "nodes": [], "error": "dataset_id is required"}
+            return {
+                "schema": _DOCUMENT_STRUCTURE_SCHEMA,
+                "document": {"document_id": document_id},
+                "nodes": [],
+                "error": _DATASET_ID_REQUIRED_ERROR,
+            }
         try:
             ds_uuid = UUID(str(dataset_id))
             doc_uuid = UUID(str(document_id))
             tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or "").strip())
         except Exception:
             return {
-                "schema": "mimirq.document_structure.v1",
+                "schema": _DOCUMENT_STRUCTURE_SCHEMA,
                 "document": {"document_id": document_id},
                 "nodes": [],
                 "error": "dataset_id/document_id/DEFAULT_TENANT_ID must be UUIDs",
@@ -496,7 +507,7 @@ def _get_document_structure_sync(
             )
     except Exception as e:
         logger.exception("Failed to get document structure: %s", e)
-        return {"schema": "mimirq.document_structure.v1", "document": {"document_id": document_id}, "nodes": [], "error": str(e)}
+        return {"schema": _DOCUMENT_STRUCTURE_SCHEMA, "document": {"document_id": document_id}, "nodes": [], "error": str(e)}
 
 
 async def get_document_structure(
@@ -1114,7 +1125,7 @@ def register_default_tools(registry: MCPToolRegistry | None = None) -> MCPToolRe
         parameters=[
             ToolParameter(name="query", type="string", description="Search query", required=True),
             ToolParameter(name="top_k", type="integer", description="Number of results", default=5),
-            ToolParameter(name="dataset_id", type="string", description="Dataset ID (UUID)", required=True),
+            ToolParameter(name="dataset_id", type="string", description=_DATASET_ID_UUID_DESCRIPTION, required=True),
             ToolParameter(name="filter", type="object", description="Optional metadata filter", default=None),
         ],
     )
@@ -1124,10 +1135,10 @@ def register_default_tools(registry: MCPToolRegistry | None = None) -> MCPToolRe
         func=get_document_content,
         description="Get full content of a document (assembled from chunks)",
         parameters=[
-            ToolParameter(name="document_id", type="string", description="Document ID (UUID)", required=True),
-            ToolParameter(name="dataset_id", type="string", description="Dataset ID (UUID)", required=True),
+            ToolParameter(name="document_id", type="string", description=_DOCUMENT_ID_UUID_DESCRIPTION, required=True),
+            ToolParameter(name="dataset_id", type="string", description=_DATASET_ID_UUID_DESCRIPTION, required=True),
             ToolParameter(name="page", type="integer", description="Optional page number", default=None),
-            ToolParameter(name="account_id", type="string", description="Optional account/user id for ACL trimming", default=None),
+            ToolParameter(name="account_id", type="string", description=_ACL_ACCOUNT_ID_DESCRIPTION, default=None),
             ToolParameter(name="max_chars", type="integer", description="Max characters to return", default=50000),
         ],
     )
@@ -1137,9 +1148,9 @@ def register_default_tools(registry: MCPToolRegistry | None = None) -> MCPToolRe
         func=get_document,
         description="Get bounded document metadata",
         parameters=[
-            ToolParameter(name="document_id", type="string", description="Document ID (UUID)", required=True),
-            ToolParameter(name="dataset_id", type="string", description="Dataset ID (UUID)", required=True),
-            ToolParameter(name="account_id", type="string", description="Optional account/user id for ACL trimming", default=None),
+            ToolParameter(name="document_id", type="string", description=_DOCUMENT_ID_UUID_DESCRIPTION, required=True),
+            ToolParameter(name="dataset_id", type="string", description=_DATASET_ID_UUID_DESCRIPTION, required=True),
+            ToolParameter(name="account_id", type="string", description=_ACL_ACCOUNT_ID_DESCRIPTION, default=None),
         ],
     )
 
@@ -1148,9 +1159,9 @@ def register_default_tools(registry: MCPToolRegistry | None = None) -> MCPToolRe
         func=get_document_structure,
         description="Get document section structure from existing hierarchy metadata",
         parameters=[
-            ToolParameter(name="document_id", type="string", description="Document ID (UUID)", required=True),
-            ToolParameter(name="dataset_id", type="string", description="Dataset ID (UUID)", required=True),
-            ToolParameter(name="account_id", type="string", description="Optional account/user id for ACL trimming", default=None),
+            ToolParameter(name="document_id", type="string", description=_DOCUMENT_ID_UUID_DESCRIPTION, required=True),
+            ToolParameter(name="dataset_id", type="string", description=_DATASET_ID_UUID_DESCRIPTION, required=True),
+            ToolParameter(name="account_id", type="string", description=_ACL_ACCOUNT_ID_DESCRIPTION, default=None),
             ToolParameter(name="max_nodes", type="integer", description="Max structure nodes", default=200),
         ],
     )
@@ -1160,10 +1171,10 @@ def register_default_tools(registry: MCPToolRegistry | None = None) -> MCPToolRe
         func=get_page_content,
         description="Get page or page-range content for document-structure navigation",
         parameters=[
-            ToolParameter(name="document_id", type="string", description="Document ID (UUID)", required=True),
+            ToolParameter(name="document_id", type="string", description=_DOCUMENT_ID_UUID_DESCRIPTION, required=True),
             ToolParameter(name="pages", type="string", description="Page selector, e.g. '3', '5-7', or '3,8'", required=True),
-            ToolParameter(name="dataset_id", type="string", description="Dataset ID (UUID)", required=True),
-            ToolParameter(name="account_id", type="string", description="Optional account/user id for ACL trimming", default=None),
+            ToolParameter(name="dataset_id", type="string", description=_DATASET_ID_UUID_DESCRIPTION, required=True),
+            ToolParameter(name="account_id", type="string", description=_ACL_ACCOUNT_ID_DESCRIPTION, default=None),
             ToolParameter(name="max_chars", type="integer", description="Max characters to return", default=50000),
         ],
     )

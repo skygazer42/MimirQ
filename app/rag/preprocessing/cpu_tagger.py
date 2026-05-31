@@ -12,6 +12,7 @@ from app.rag.preprocessing.secrets import find_secret_matches
 DocumentTagType = Literal["topic", "category", "domain", "industry", "doc_type", "sensitivity", "quality", "keyword"]
 SpanAnnotationType = Literal["entity", "keyword", "sensitive", "custom"]
 
+_TRIM_PUNCTUATION_CHARS = " \t\r\n，,。.;；:："
 _TAG_LABELS: dict[str, str] = {
     "topic": "主题",
     "category": "分类",
@@ -82,7 +83,7 @@ def _append_doc_tag(
     value: str,
     confidence: float,
 ) -> None:
-    normalized = str(value or "").strip(" \t\r\n，,。.;；:：")
+    normalized = str(value or "").strip(_TRIM_PUNCTUATION_CHARS)
     if not normalized:
         return
     key = (tag_type, normalized.casefold())
@@ -107,7 +108,7 @@ def _append_span(
     label: str,
     confidence: float,
 ) -> None:
-    normalized = str(text or "").strip(" \t\r\n，,。.;；:：")
+    normalized = str(text or "").strip(_TRIM_PUNCTUATION_CHARS)
     if len(normalized) < 2:
         return
     key = (annotation_type, normalized.casefold(), label.casefold())
@@ -144,13 +145,13 @@ def _looks_sensitive_or_noise(token: str) -> bool:
 
 
 def _trim_action_phrase(value: str) -> str:
-    text = str(value or "").strip(" \t\r\n，,。.;；:：")
+    text = str(value or "").strip(_TRIM_PUNCTUATION_CHARS)
     marker_start = None
     for match in _ACTION_MARKER_RE.finditer(text):
         marker_start = int(match.start())
     if marker_start is not None:
         text = text[marker_start:]
-    return text.strip(" \t\r\n，,。.;；:：")
+    return text.strip(_TRIM_PUNCTUATION_CHARS)
 
 
 def _classify_document(text: str, tags: list[CPUDocumentTag]) -> None:
@@ -229,7 +230,7 @@ def extract_cpu_tags(
         break
 
     for match in _RISK_RE.finditer(source):
-        phrase = str(match.group(0) or "").strip(" \t\r\n，,。.;；:：")
+        phrase = str(match.group(0) or "").strip(_TRIM_PUNCTUATION_CHARS)
         _append_doc_tag(document_tags, tag_type="quality", value=phrase, confidence=0.74)
         _append_span(spans, text=phrase, annotation_type="custom", label="风险线索", confidence=0.8)
         break

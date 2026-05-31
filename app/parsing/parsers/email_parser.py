@@ -31,6 +31,8 @@ logger = get_logger("parsing.email")
 _RE_SCRIPT_STYLE = re.compile(r"(?is)<(script|style)\b[^>]*>.*?</\1\s*>")
 _RE_TAGS = re.compile(r"(?is)<[^>]+>")
 _RE_WS = re.compile(r"\s+")
+_MIME_TEXT_PLAIN = "text/plain"
+_MIME_TEXT_HTML = "text/html"
 
 
 def _collapse_ws(text: str) -> str:
@@ -115,20 +117,20 @@ def _extract_body(msg: Message) -> tuple[str, dict[str, Any]]:
         if not isinstance(payload, str) or not payload.strip():
             continue
 
-        if ctype == "text/plain":
+        if ctype == _MIME_TEXT_PLAIN:
             plain_parts.append(payload)
-        elif ctype == "text/html":
+        elif ctype == _MIME_TEXT_HTML:
             html_parts.append(payload)
 
     body = ""
     used = "none"
     if plain_parts:
         body = "\n\n".join([p.strip() for p in plain_parts if p.strip()]).strip()
-        used = "text/plain"
+        used = _MIME_TEXT_PLAIN
     elif html_parts:
         merged = "\n\n".join([h.strip() for h in html_parts if h.strip()]).strip()
         body = _strip_html(merged)
-        used = "text/html"
+        used = _MIME_TEXT_HTML
 
     meta = {"body_content_type": used, "warnings": warnings[:20]}
     return body, meta
@@ -183,13 +185,13 @@ class EmailParser:
                 date = str(getattr(msg, "date", "") or "").strip()
 
                 body = str(getattr(msg, "body", "") or "").strip()
-                body_content_type = "text/plain" if body else "none"
+                body_content_type = _MIME_TEXT_PLAIN if body else "none"
                 warnings: list[str] = []
                 if not body:
                     html_body = str(getattr(msg, "htmlBody", "") or getattr(msg, "html", "") or "").strip()
                     if html_body:
                         body = _strip_html(html_body)
-                        body_content_type = "text/html"
+                        body_content_type = _MIME_TEXT_HTML
             except Exception as exc:  # noqa: BLE001
                 raise RuntimeError(f"Failed to parse .msg: {exc.__class__.__name__}: {str(exc)[:200]}") from exc
             finally:
