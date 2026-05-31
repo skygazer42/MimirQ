@@ -71,7 +71,9 @@ function toOptionalBoolean(value: unknown): boolean | undefined {
 
 function toMetricLabel(value: unknown): string {
   if (value == null) return '-'
-  const text = String(value).trim()
+  const text = typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
+    ? String(value).trim()
+    : ''
   return text || '-'
 }
 

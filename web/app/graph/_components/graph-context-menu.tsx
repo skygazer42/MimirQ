@@ -184,7 +184,11 @@ export function GraphContextMenu({
                     {predicate || 'Relationship'}
                   </div>
                   <div className="truncate font-mono text-[11px] text-muted-foreground">
-                    {String(link?.id || link?.meta?.id || '')}
+                    {typeof link?.id === 'string' || typeof link?.id === 'number'
+                      ? String(link.id)
+                      : typeof link?.meta?.id === 'string' || typeof link?.meta?.id === 'number'
+                        ? String(link.meta.id)
+                        : ''}
                   </div>
                 </div>
                 <div className="p-1">

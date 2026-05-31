@@ -266,7 +266,9 @@ export function useGraphPageActions({
       const target = node ?? selectedNode
       const documentId = target?.meta?.document_id || target?.source
       if (documentId) {
-        toast(`源文档：${documentId}`)
+        const documentLabel =
+          typeof documentId === 'string' || typeof documentId === 'number' ? String(documentId) : ''
+        toast(documentLabel ? `源文档：${documentLabel}` : '未找到源文档信息')
         return
       }
       toast('未找到源文档信息')

@@ -237,7 +237,7 @@ function normalizeBackendCandidate(value: unknown): string {
 function mapBackendStatusToGovernanceStatus(
   status: unknown
 ): ParsedFileData['status'] {
-  const normalized = String(status || '').toLowerCase()
+  const normalized = typeof status === 'string' ? status.toLowerCase() : ''
   if (
     ['completed', 'complete', 'ready', 'parsed', 'done', 'success'].includes(
       normalized

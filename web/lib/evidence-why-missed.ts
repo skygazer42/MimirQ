@@ -174,7 +174,10 @@ export function buildWhyMissedReport(args: {
     const docId = getRecordString(refRecord, 'document_id')
     const chunkIndex = getRecordInt(refRecord, 'chunk_index')
     const rawLabel = refRecord?.label
-    const label = typeof rawLabel === 'string' ? rawLabel : rawLabel == null ? null : String(rawLabel)
+    const label =
+      typeof rawLabel === 'string' || typeof rawLabel === 'number' || typeof rawLabel === 'boolean'
+        ? String(rawLabel)
+        : null
 
     const driftDetail = chunkId ? driftByChunkId.get(chunkId) : undefined
     const cite = chunkId ? citationByChunkId.get(chunkId) : undefined
@@ -226,7 +229,7 @@ export function buildWhyMissedReport(args: {
         : undefined,
       drift: driftDetail
         ? {
-            reason: String(driftDetail.reason || 'drift'),
+            reason: typeof driftDetail.reason === 'string' ? driftDetail.reason : 'drift',
             expected: driftDetail.expected,
             observed: driftDetail.observed,
           }

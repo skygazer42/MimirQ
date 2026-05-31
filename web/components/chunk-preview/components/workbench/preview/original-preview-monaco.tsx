@@ -222,7 +222,7 @@ export function OriginalPreviewMonaco(props: Readonly<{
       const startPos = offsetToPosition(lineStarts, start)
       const endPos = offsetToPosition(lineStarts, end)
       const meta = (chunk.metadata || {})
-      const role = String(meta.chunk_role || '')
+      const role = typeof meta.chunk_role === 'string' ? meta.chunk_role : ''
       const isChild = role === 'child'
       const disabled = Boolean(chunkOverrides?.[chunk.index]?.disabled)
 

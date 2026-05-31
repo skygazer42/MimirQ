@@ -179,7 +179,16 @@ export function getBulkActionAvailability(documents: Document[]): BulkActionAvai
 }
 
 function escapeCsvCell(value: unknown): string {
-  const raw = value == null ? '' : String(value)
+  const raw = (() => {
+    if (value == null) return ''
+    if (typeof value === 'string') return value
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+    try {
+      return JSON.stringify(value)
+    } catch {
+      return ''
+    }
+  })()
   return /[",\n]/.test(raw) ? `"${raw.replaceAll('"', '""')}"` : raw
 }
 
@@ -559,7 +568,8 @@ export function buildPdfDispositionBreakdown(documents: Document[]): Array<{ lab
 
   for (const doc of documents) {
     if (String(doc.file_type || '').toLowerCase() !== 'pdf') continue
-    const profile = String(doc.metadata?.audit_profile || '').toLowerCase()
+    const rawProfile = doc.metadata?.audit_profile
+    const profile = typeof rawProfile === 'string' ? rawProfile.toLowerCase() : ''
     if (profile === 'scan_pdf') counts.OCR += 1
     else if (profile === 'mixed_pdf') counts.Mixed += 1
     else counts.Native += 1

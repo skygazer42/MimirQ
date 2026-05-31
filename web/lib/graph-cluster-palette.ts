@@ -16,6 +16,12 @@ function getPaletteOffset(seed: string | null | undefined, size: number): number
   return hashString32(String(seed)) % size
 }
 
+function primitiveText(value: unknown, fallback = ''): string {
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  return fallback
+}
+
 export function applyClusterPalette(args: {
   graphRenderData: GraphData
   paletteSeed?: string | null
@@ -34,7 +40,7 @@ export function applyClusterPalette(args: {
 
     const record = node as Record<string, unknown>
     const meta = (record.meta ?? {}) as Record<string, unknown>
-    const kind = String(meta.kind ?? record.kind ?? '').trim().toLowerCase()
+    const kind = primitiveText(meta.kind ?? record.kind).trim().toLowerCase()
     if (kind === 'event' || kind === 'trace' || kind === 'step' || kind === 'citation') return node
 
     const nodeId = String(node.id || '').trim()

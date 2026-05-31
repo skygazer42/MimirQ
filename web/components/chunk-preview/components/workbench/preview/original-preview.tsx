@@ -258,7 +258,7 @@ export function OriginalPreview() {
 
     // Parent-child: when selecting a child, also highlight its parent range (if provided).
     const meta = (chunk.metadata || {})
-    const role = String(meta.chunk_role || '')
+    const role = typeof meta.chunk_role === 'string' ? meta.chunk_role : ''
     const parentStartRaw = meta.parent_start_char ?? meta.parent_start_index ?? meta.parent_start
     const parentEndRaw = meta.parent_end_char ?? meta.parent_end_index ?? meta.parent_end
     const parentStart = role === 'child' && parentStartRaw != null ? Number(parentStartRaw) : Number.NaN

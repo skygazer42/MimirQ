@@ -126,11 +126,12 @@ export function coerceBoundedInt(
 }
 
 export function getScopedDocumentId(item: GraphDatasetDocumentSummary): string {
-  return String(item.id || '').trim()
+  return typeof item.id === 'string' || typeof item.id === 'number' ? String(item.id).trim() : ''
 }
 
 export function isPendingScopedDocument(item: GraphDatasetDocumentSummary): boolean {
-  const status = String(item.status || '').trim().toLowerCase()
+  const status =
+    typeof item.status === 'string' || typeof item.status === 'number' ? String(item.status).trim().toLowerCase() : ''
   return status === 'pending' || status === 'processing'
 }
 

@@ -20,7 +20,7 @@ export function computeCoverageHeatmapBins(
   // otherwise the parent range can dominate the entire document.
   let analysis = chunks
   if (String(options?.strategy || '').trim().toLowerCase() === 'parent_child') {
-    const filtered = (chunks || []).filter((c) => String(c.metadata?.chunk_role || '') !== 'parent')
+    const filtered = (chunks || []).filter((c) => c.metadata?.chunk_role !== 'parent')
     if (filtered.length > 0) analysis = filtered
   }
 

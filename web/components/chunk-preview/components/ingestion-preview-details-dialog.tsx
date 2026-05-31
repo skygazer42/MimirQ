@@ -612,7 +612,8 @@ export function IngestionPreviewDetailsDialog({
                     }
                     const snapshotValue = isJsonObject(exp) && 'snapshot' in exp ? exp.snapshot ?? exp : exp
                     const snapshotRecord = isJsonObject(snapshotValue) ? snapshotValue : null
-                    const rawName = String(snapshotRecord?.filename || 'ingestion-preview')
+                    const filename = snapshotRecord?.filename
+                    const rawName = (typeof filename === 'string' ? filename : 'ingestion-preview')
                       .trim()
                        .replaceAll(/[^a-zA-Z0-9_.-]+/g, '_')
                        .slice(0, 64)
