@@ -1284,14 +1284,14 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
       range,
       {
         previewAnchor:
-          lastOpenedTraceCitationTarget.pageNumber != null
-            ? { pageNumber: lastOpenedTraceCitationTarget.pageNumber }
-            : undefined,
+          lastOpenedTraceCitationTarget.pageNumber == null
+            ? undefined
+            : { pageNumber: lastOpenedTraceCitationTarget.pageNumber },
       }
     )
 
     const pageLabel =
-      lastOpenedTraceCitationTarget.pageNumber != null ? ` · P.${lastOpenedTraceCitationTarget.pageNumber}` : ''
+      lastOpenedTraceCitationTarget.pageNumber == null ? '' : ` · P.${lastOpenedTraceCitationTarget.pageNumber}`
     toast.message(t("panel.toasts.reopenedRecentEvidence"), {
       description: `${lastOpenedTraceCitationTarget.label || lastOpenedTraceCitationTarget.documentId}${pageLabel}`,
     })
@@ -1993,7 +1993,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                           >
                             <span className="font-semibold">{summary.label}</span>
                             <span className="ml-2 font-mono">{summary.matchCount}</span>
-                            {summary.candidateCount != null ? <span className="ml-2 text-[11px]">cand {summary.candidateCount}</span> : null}
+                            {summary.candidateCount == null ? null : <span className="ml-2 text-[11px]">cand {summary.candidateCount}</span>}
                           </button>
                         ))}
                       </div>

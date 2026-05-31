@@ -24,11 +24,11 @@ export function EChart({
       const chart = echarts.getInstanceByDom(hostRef.current) ?? echarts.init(hostRef.current, undefined, { renderer: 'svg' })
       chart.setOption(option, true)
 
-      const observer = typeof ResizeObserver !== 'undefined'
-        ? new ResizeObserver(() => {
+      const observer = typeof ResizeObserver === 'undefined'
+        ? null
+        : new ResizeObserver(() => {
             chart.resize()
           })
-        : null
 
       observer?.observe(hostRef.current)
 

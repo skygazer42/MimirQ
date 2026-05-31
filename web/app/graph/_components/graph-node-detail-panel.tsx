@@ -352,8 +352,8 @@ export function GraphNodeDetailPanel({
     { label: 'ID', value: selectedNode?.id == null ? '' : String(selectedNode.id), className: 'border-[#c8edf1]/80 bg-[rgba(204,254,255,0.74)] text-info' },
     nodeKind ? { label: '类别', value: getKindLabel(nodeKind), className: getKindBadgeClasses(nodeKind) } : null,
     nodeType ? { label: '类型', value: nodeType, className: 'border-[#d9defd]/80 bg-[rgba(238,240,255,0.76)] text-indigo-700' } : null,
-    selectedNode?.group != null ? { label: '组', value: String(selectedNode.group), className: 'border-[#d3efdf]/80 bg-[rgba(223,255,236,0.74)] text-emerald-700' } : null,
-    selectedNode?.val != null ? { label: '权重', value: String(selectedNode.val), className: 'border-[#efe5c9]/80 bg-[rgba(255,244,214,0.76)] text-amber-700' } : null,
+    selectedNode?.group == null ? null : { label: '组', value: String(selectedNode.group), className: 'border-[#d3efdf]/80 bg-[rgba(223,255,236,0.74)] text-emerald-700' },
+    selectedNode?.val == null ? null : { label: '权重', value: String(selectedNode.val), className: 'border-[#efe5c9]/80 bg-[rgba(255,244,214,0.76)] text-amber-700' },
   ].filter(Boolean) as Array<{ label: string; value: string; className: string }>
 
   const detailEntries = selectedNode

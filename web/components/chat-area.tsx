@@ -1391,7 +1391,7 @@ export function ChatArea({
             ) : null}
           </div>
 
-          {!isWelcomeState ? (
+          {isWelcomeState ? null : (
             <p className="text-[11px] text-center text-muted-foreground/75">
               {t.rich('composerHelpText', {
                 slash: renderComposerSlash,
@@ -1399,7 +1399,7 @@ export function ChatArea({
                 shiftEnter: renderComposerEnter,
               })}
             </p>
-          ) : null}
+          )}
         </div>
       </div>
 
