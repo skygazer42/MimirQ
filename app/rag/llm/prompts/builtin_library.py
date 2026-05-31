@@ -22,6 +22,13 @@ class BuiltinPromptTemplate:
 
 
 _FORMAL_VERSION = 2
+_CONTEXT_XML_SLOT = "<context>\n{context}\n</context>"
+_CONTEXT_PLACEHOLDER = "{context}"
+_CONTEXTS_PLACEHOLDER = "{contexts}"
+_QUESTION_PLACEHOLDER = "{question}"
+_ANSWER_PLACEHOLDER = "{answer}"
+_CHUNK_LABEL = "chunk 内容"
+_CHUNK_PLACEHOLDER = "{chunk}"
 
 
 def _tags(*values: str) -> list[str]:
@@ -31,10 +38,10 @@ def _tags(*values: str) -> list[str]:
 _RAG_ANSWER_CLAUDE_XML_ZH = render_formal_xml_prompt(
     role="企业知识库检索增强问答助手",
     objective="仅基于检索上下文回答用户问题，输出可审计、可追溯、可拒答的企业答案。",
-    documents_slot="<context>\n{context}\n</context>",
+    documents_slot=_CONTEXT_XML_SLOT,
     task_sections=[
         ("history", "{history}"),
-        ("question", "{question}"),
+        ("question", _QUESTION_PLACEHOLDER),
         ("output_format", "{format_instructions}"),
     ],
     output_contract=(
@@ -95,7 +102,7 @@ Output:
   ]
 }
 """,
-    input_sections=[("Real Data", "{context}")],
+    input_sections=[("Real Data", _CONTEXT_PLACEHOLDER)],
     output_schema="""{
   "type": "object",
   "required": ["entities", "relations", "events"],
@@ -159,9 +166,9 @@ _JUDGE_FAITHFULNESS_RAGAS_ZH = render_formal_json_prompt(
         "若回答引用不存在、引用不支持结论或引用错位，标为 not_found 或 contradicted。",
     ],
     input_sections=[
-        ("问题", "{question}"),
-        ("上下文", "{contexts}"),
-        ("回答", "{answer}"),
+        ("问题", _QUESTION_PLACEHOLDER),
+        ("上下文", _CONTEXTS_PLACEHOLDER),
+        ("回答", _ANSWER_PLACEHOLDER),
     ],
     output_schema="""{
   "type": "object",
@@ -262,7 +269,7 @@ Output:
 """,
     input_sections=[
         ("历史对话(可为空)", "{history}"),
-        ("用户问题", "{question}"),
+        ("用户问题", _QUESTION_PLACEHOLDER),
     ],
     output_schema="""{
   "type": "object",
@@ -299,7 +306,7 @@ Output:
   "hypothetical_passage": "公司在新能源汽车领域持续加大研发投入。报告期内，新能源车业务研发支出约占公司整体研发预算的 X%，较上一年度同比增长。研发方向主要集中在动力电池、电控系统和智能驾驶辅助等核心技术。研发人员数量较上年净增 Y 人，占研发团队总数的 Z% 以上。"
 }
 """,
-    input_sections=[("问题", "{question}")],
+    input_sections=[("问题", _QUESTION_PLACEHOLDER)],
     output_schema="""{
   "type": "object",
   "required": ["hypothetical_passage"],
@@ -332,7 +339,7 @@ Output:
   "original_question": "2024 年第三季度公司新能源车型在中国市场销量同比下降的具体原因是什么？"
 }
 """,
-    input_sections=[("问题", "{question}")],
+    input_sections=[("问题", _QUESTION_PLACEHOLDER)],
     output_schema="""{
   "type": "object",
   "required": ["step_back_question", "original_question"],
@@ -370,7 +377,7 @@ Output:
 }
 """,
     input_sections=[
-        ("问题", "{question}"),
+        ("问题", _QUESTION_PLACEHOLDER),
         ("生成数量", "{n}"),
     ],
     output_schema="""{
@@ -411,7 +418,7 @@ Output:
   "reason": "需要先定位子公司清单，再筛选最赚钱的，最后查研发投入"
 }
 """,
-    input_sections=[("问题", "{question}")],
+    input_sections=[("问题", _QUESTION_PLACEHOLDER)],
     output_schema="""{
   "type": "object",
   "required": ["sub_questions", "reason"],
@@ -452,8 +459,8 @@ _RAG_CONTEXT_COMPRESS_ZH = render_formal_json_prompt(
         "不对内容做事实判断，只做相关性筛选。",
     ],
     input_sections=[
-        ("问题", "{question}"),
-        ("候选上下文片段(JSON 数组)", "{context}"),
+        ("问题", _QUESTION_PLACEHOLDER),
+        ("候选上下文片段(JSON 数组)", _CONTEXT_PLACEHOLDER),
     ],
     output_schema="""{
   "type": "object",
@@ -501,7 +508,7 @@ Output:
   "reason": "单一数值查询，单跳即可命中财报"
 }
 """,
-    input_sections=[("问题", "{question}")],
+    input_sections=[("问题", _QUESTION_PLACEHOLDER)],
     output_schema="""{
   "type": "object",
   "required": ["intent", "complexity_score", "suggested_strategy", "reason"],
@@ -538,9 +545,9 @@ _RAG_SELF_CRITIQUE_ZH = render_formal_json_prompt(
         "不修改草稿答案；只评估。",
     ],
     input_sections=[
-        ("问题", "{question}"),
+        ("问题", _QUESTION_PLACEHOLDER),
         ("草稿答案", "{draft_answer}"),
-        ("检索上下文", "{context}"),
+        ("检索上下文", _CONTEXT_PLACEHOLDER),
     ],
     output_schema="""{
   "type": "object",
@@ -570,7 +577,7 @@ _RAG_CRAG_CRITIC_ZH = render_formal_json_prompt(
         "若 overall = incorrect，suggested_action = fallback_web_search。",
     ],
     input_sections=[
-        ("问题", "{question}"),
+        ("问题", _QUESTION_PLACEHOLDER),
         ("候选片段(JSON 数组)", "{retrieved_chunks}"),
     ],
     output_schema="""{
@@ -608,9 +615,9 @@ _RAG_CRAG_CRITIC_ZH = render_formal_json_prompt(
 _RAG_ANSWER_EXTRACTIVE_ZH = render_formal_xml_prompt(
     role="抽取式答案生成器(先证据后结论)",
     objective="基于检索上下文先列出关键证据片段，再得出简短结论；适合需要可审计、可追溯的企业场景。",
-    documents_slot="<context>\n{context}\n</context>",
+    documents_slot=_CONTEXT_XML_SLOT,
     task_sections=[
-        ("question", "{question}"),
+        ("question", _QUESTION_PLACEHOLDER),
         (
             "output_structure",
             "1. 先输出 <evidence> 区块：逐条列出支持答案的原文片段，每条附 <source>。\n"
@@ -651,10 +658,10 @@ _RAG_ANSWER_SUMMARY_ZH = render_formal_xml_prompt(
 _RAG_ANSWER_COMPARE_ZH = render_formal_xml_prompt(
     role="跨实体对比答案生成器",
     objective="对多个实体(公司/产品/方案/法规版本)在指定维度上做结构化对比，输出可视化友好的表格式答案(IBM Champion 8 维难点中的跨实体比较)。",
-    documents_slot="<context>\n{context}\n</context>",
+    documents_slot=_CONTEXT_XML_SLOT,
     task_sections=[
         ("entities", "{entities}"),
-        ("question", "{question}"),
+        ("question", _QUESTION_PLACEHOLDER),
         (
             "task",
             "1. 先识别问题涉及的对比维度(如\"营收\"、\"研发投入\"、\"市占率\")。\n"
@@ -675,9 +682,9 @@ _RAG_ANSWER_COMPARE_ZH = render_formal_xml_prompt(
 _RAG_ANSWER_REFUSE_CHECK_ZH = render_formal_xml_prompt(
     role="拒答策略自检器",
     objective="在最终答案输出前做一次 safety + grounding 双检查，若需要拒答则按规范输出拒答理由(Anthropic safety + Refusal Policy)。",
-    documents_slot="<context>\n{context}\n</context>",
+    documents_slot=_CONTEXT_XML_SLOT,
     task_sections=[
-        ("question", "{question}"),
+        ("question", _QUESTION_PLACEHOLDER),
         ("draft_answer", "{draft_answer}"),
         (
             "checks",
@@ -867,7 +874,7 @@ Output:
 }
 """,
     input_sections=[
-        ("问题", "{question}"),
+        ("问题", _QUESTION_PLACEHOLDER),
         ("路径三元组(JSON 数组)", "{path_triples}"),
     ],
     output_schema="""{
@@ -919,7 +926,7 @@ Output:
 }
 """,
     input_sections=[
-        ("chunk 内容", "{chunk}"),
+        (_CHUNK_LABEL, _CHUNK_PLACEHOLDER),
         ("文档摘要", "{document_summary}"),
     ],
     output_schema="""{
@@ -957,7 +964,7 @@ Output:
   "noise": false
 }
 """,
-    input_sections=[("chunk 内容", "{chunk}")],
+    input_sections=[(_CHUNK_LABEL, _CHUNK_PLACEHOLDER)],
     output_schema="""{
   "type": "object",
   "required": ["summary", "keywords", "hypothetical_questions", "noise"],
@@ -982,7 +989,7 @@ _CHUNK_QUESTION_SEED_ZH = render_formal_json_prompt(
         "refusal 类问题：问题超出 chunk 范围，ground_truth 写\"根据现有资料无法回答\"。",
     ],
     input_sections=[
-        ("chunk 内容", "{chunk}"),
+        (_CHUNK_LABEL, _CHUNK_PLACEHOLDER),
         ("生成数量", "{n}"),
     ],
     output_schema="""{
@@ -1025,8 +1032,8 @@ _JUDGE_ANSWER_RELEVANCE_RAGAS_ZH = render_formal_json_prompt(
         "完全不切题(score < 0.3) 须说明哪段答案偏题。",
     ],
     input_sections=[
-        ("问题", "{question}"),
-        ("回答", "{answer}"),
+        ("问题", _QUESTION_PLACEHOLDER),
+        ("回答", _ANSWER_PLACEHOLDER),
     ],
     output_schema="""{
   "type": "object",
@@ -1072,9 +1079,9 @@ _JUDGE_CONTEXT_PRECISION_RAGAS_ZH = render_formal_json_prompt(
         "相关性判断必须基于 ground_truth 中的关键事实，而不是问题字面。",
     ],
     input_sections=[
-        ("问题", "{question}"),
+        ("问题", _QUESTION_PLACEHOLDER),
         ("Ground Truth", "{ground_truth}"),
-        ("检索上下文(JSON 数组，按检索顺序)", "{contexts}"),
+        ("检索上下文(JSON 数组，按检索顺序)", _CONTEXTS_PLACEHOLDER),
     ],
     output_schema="""{
   "type": "object",
@@ -1110,8 +1117,8 @@ _JUDGE_CONTEXT_RECALL_RAGAS_ZH = render_formal_json_prompt(
         "覆盖判断必须基于逐字证据，不得基于推理或常识。",
     ],
     input_sections=[
-        ("Ground Truth Answer", "{answer}"),
-        ("检索上下文(JSON 数组)", "{contexts}"),
+        ("Ground Truth Answer", _ANSWER_PLACEHOLDER),
+        ("检索上下文(JSON 数组)", _CONTEXTS_PLACEHOLDER),
     ],
     output_schema="""{
   "type": "object",
@@ -1150,8 +1157,8 @@ _JUDGE_CITATION_CORRECTNESS_ZH = render_formal_json_prompt(
         "若答案中无任何引用，total_citations = 0 且 score = null。",
     ],
     input_sections=[
-        ("回答(含引用)", "{answer}"),
-        ("检索上下文(JSON 数组，含 id/file/page)", "{contexts}"),
+        ("回答(含引用)", _ANSWER_PLACEHOLDER),
+        ("检索上下文(JSON 数组，含 id/file/page)", _CONTEXTS_PLACEHOLDER),
         ("引用清单(JSON)", "{citations}"),
     ],
     output_schema="""{
@@ -1194,8 +1201,8 @@ _JUDGE_ATOMIC_FACT_ZH = render_formal_json_prompt(
         "score = supported / total_atomic_facts；若 total = 0，score = 0。",
     ],
     input_sections=[
-        ("回答", "{answer}"),
-        ("检索上下文", "{contexts}"),
+        ("回答", _ANSWER_PLACEHOLDER),
+        ("检索上下文", _CONTEXTS_PLACEHOLDER),
     ],
     output_schema="""{
   "type": "object",
@@ -1230,9 +1237,9 @@ _JUDGE_ATOMIC_FACT_ZH = render_formal_json_prompt(
 _VERTICAL_FINANCE_ANNUAL_REPORT_ZH = render_formal_xml_prompt(
     role="A 股年报问答专家",
     objective="基于上市公司年报/季报回答用户问题，强调财务口径辨析、时态精确性和数据可追溯(IBM Champion 8 维难点 + 一表多义口径)。",
-    documents_slot="<context>\n{context}\n</context>",
+    documents_slot=_CONTEXT_XML_SLOT,
     task_sections=[
-        ("question", "{question}"),
+        ("question", _QUESTION_PLACEHOLDER),
         (
             "domain_guardrails",
             "1. 时态辨析：明确报告期(2024H1 / 2024 年度 / 截止 X 月 X 日)，避免混淆同比/环比。\n"

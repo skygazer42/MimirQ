@@ -141,6 +141,9 @@ GOVERNANCE_PROFILE_NOT_FOUND_DETAIL = "Governance profile not found"
 REDACTED_MASK = "[REDACTED]"
 SECRET_MASK = "[SECRET]"
 _AUTO_TAGGER_LLM_TIMEOUT_S = 3.0
+_TRIM_PUNCTUATION_CHARS = " \t\r\n，,。.;；:："
+_TOPIC_KEYWORD_LABEL = "主题关键词"
+_PIPELINE_FALLBACK_LOG_MESSAGE = "Ignoring non-critical pipeline fallback failure: %s"
 
 _ZH_ENTITY_RE = re.compile(
     r"[\u4e00-\u9fffA-Za-z0-9（）()·]{2,40}"
@@ -215,7 +218,7 @@ def _trim_entity_span(raw: str) -> tuple[str, int]:
     post-trim keeps matches like "项目由星海智能有限公司" usable without pretending
     to be a full NER model.
     """
-    text = str(raw or "").strip(" \t\r\n，,。.;；:：")
+    text = str(raw or "").strip(_TRIM_PUNCTUATION_CHARS)
     offset = raw.find(text) if text else 0
     if not text:
         return "", max(0, offset)
@@ -227,7 +230,7 @@ def _trim_entity_span(raw: str) -> tuple[str, int]:
             best_idx = idx
     if best_idx >= 0:
         offset += best_idx + 1
-        text = text[best_idx + 1 :].strip(" \t\r\n，,。.;；:：")
+        text = text[best_idx + 1 :].strip(_TRIM_PUNCTUATION_CHARS)
     return text, max(0, offset)
 
 
@@ -264,9 +267,9 @@ def _annotation_overlaps(item: AutoAnnotationItem, other: AutoAnnotationItem) ->
 def _trim_match_span(source_text: str, start: int, end: int) -> tuple[int, int]:
     left = int(start)
     right = int(end)
-    while left < right and source_text[left] in " \t\r\n，,。.;；:：":
+    while left < right and source_text[left] in _TRIM_PUNCTUATION_CHARS:
         left += 1
-    while right > left and source_text[right - 1] in " \t\r\n，,。.;；:：":
+    while right > left and source_text[right - 1] in _TRIM_PUNCTUATION_CHARS:
         right -= 1
     return left, right
 
@@ -413,7 +416,7 @@ def _derive_document_tags_from_annotations(items: list[AutoAnnotationItem], *, m
     for item in items:
         tag_type = None
         label = ""
-        if str(item.type) == "keyword" and str(item.label) == "主题关键词":
+        if str(item.type) == "keyword" and str(item.label) == _TOPIC_KEYWORD_LABEL:
             tag_type = "topic"
             label = "主题"
         elif str(item.type) == "custom" and str(item.label) in {"动作项", "风险线索"}:
@@ -498,7 +501,7 @@ def _collect_focus_keyword_annotations(
             AutoAnnotationItem(
                 text=item.text,
                 type="keyword",
-                label="主题关键词",
+                label=_TOPIC_KEYWORD_LABEL,
                 start=item.start,
                 end=item.end,
                 confidence=max(float(item.confidence), 0.72),
@@ -519,7 +522,7 @@ def _collect_domain_focus_terms(text: str, *, max_items: int, blocked: list[Auto
                 start=start,
                 end=end,
                 annotation_type="keyword",
-                label="主题关键词",
+                label=_TOPIC_KEYWORD_LABEL,
                 confidence=0.78,
                 source="keyword",
             )
@@ -2409,7 +2412,7 @@ async def clean_preview(
             text = para.text
             paragraphs_dropped = int(getattr(para, "paragraphs_dropped", 0) or 0)
         except Exception as exc:
-            logger.debug("Ignoring non-critical pipeline fallback failure: %s", exc)
+            logger.debug(_PIPELINE_FALLBACK_LOG_MESSAGE, exc)
 
     if body.trim_references:
         try:
@@ -2417,7 +2420,7 @@ async def clean_preview(
             text = ref.text
             references_removed_lines = int(getattr(ref, "removed_lines", 0) or 0)
         except Exception as exc:
-            logger.debug("Ignoring non-critical pipeline fallback failure: %s", exc)
+            logger.debug(_PIPELINE_FALLBACK_LOG_MESSAGE, exc)
 
     if body.normalize_urls:
         try:
@@ -2425,7 +2428,7 @@ async def clean_preview(
             text = url.text
             urls_changed = int(getattr(url, "urls_changed", 0) or 0)
         except Exception as exc:
-            logger.debug("Ignoring non-critical pipeline fallback failure: %s", exc)
+            logger.debug(_PIPELINE_FALLBACK_LOG_MESSAGE, exc)
 
     if body.drop_outline_only:
         decision = drop_if_outline_only(
@@ -3148,4 +3151,4 @@ async def upload_zip_with_images(
             if temp_zip_path.exists():
                 temp_zip_path.unlink()
         except Exception as exc:
-            logger.debug("Ignoring non-critical pipeline fallback failure: %s", exc)
+            logger.debug(_PIPELINE_FALLBACK_LOG_MESSAGE, exc)

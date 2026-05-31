@@ -37,6 +37,8 @@ from app.rag.core.logging import get_logger
 logger = get_logger("services.mineru")
 
 OCTET_STREAM = "application/octet-stream"
+UNKNOWN_ERROR = "Unknown error"
+MINERU_FALLBACK_LOG_MESSAGE = "Ignoring non-critical MinerU fallback failure: %s"
 
 
 def _normalize_local_backend(value: Any) -> str:
@@ -135,7 +137,7 @@ class MinerUService:
 
     @staticmethod
     def _raise_batch_results_error(message: Any) -> None:
-        detail = str(message or "Unknown error").strip() or "Unknown error"
+        detail = str(message or UNKNOWN_ERROR).strip() or UNKNOWN_ERROR
         normalized = detail.lower()
         if "task not found" in normalized or "not found or expire" in normalized or "not found or expired" in normalized:
             raise LookupError(detail)
@@ -180,7 +182,7 @@ class MinerUService:
             try:
                 await resp.aclose()
             except Exception as exc:
-                logger.debug("Ignoring non-critical MinerU fallback failure: %s", exc)
+                logger.debug(MINERU_FALLBACK_LOG_MESSAGE, exc)
 
     @staticmethod
     def _run_coroutine_sync(factory: Callable[[], Any]) -> Any:
@@ -211,7 +213,7 @@ class MinerUService:
             batch_id = result["data"]["batch_id"]
             upload_url = result["data"]["file_urls"][0]
             return {"batch_id": batch_id, "upload_url": upload_url, "data_id": data_id}
-        raise RuntimeError(f"Apply upload URL failed: {result.get('msg', 'Unknown error')}")
+        raise RuntimeError(f"Apply upload URL failed: {result.get('msg', UNKNOWN_ERROR)}")
 
     def apply_upload_url(self, filename: str, data_id: str) -> dict[str, Any]:
         """
@@ -299,7 +301,7 @@ class MinerUService:
             try:
                 await resp.aclose()
             except Exception as exc:
-                logger.debug("Ignoring non-critical MinerU fallback failure: %s", exc)
+                logger.debug(MINERU_FALLBACK_LOG_MESSAGE, exc)
             return ok
         except Exception as exc:  # noqa: BLE001
             logger.exception("Upload file failed: %s", str(exc)[:200])
@@ -322,7 +324,7 @@ class MinerUService:
         if result.get("code") == 0:
             data = result.get("data") or {}
             return self._normalize_batch_status(data)
-        self._raise_batch_results_error(result.get("msg", "Unknown error"))
+        self._raise_batch_results_error(result.get("msg", UNKNOWN_ERROR))
 
     def get_task_status(self, batch_id: str) -> dict[str, Any]:
         """
@@ -433,7 +435,7 @@ class MinerUService:
         result = await self._arequest_json("GET", url, headers=self._get_headers())
         if result.get("code") == 0:
             return result.get("data") or {}
-        self._raise_batch_results_error(result.get("msg", "Unknown error"))
+        self._raise_batch_results_error(result.get("msg", UNKNOWN_ERROR))
 
     def get_batch_results(self, batch_id: str) -> dict[str, Any]:
         """Fetch raw MinerU batch results (sync)."""
@@ -483,7 +485,7 @@ class MinerUService:
             if state == "done":
                 return item or {}
             if state == "failed":
-                err = (item or {}).get("err_msg") or "Unknown error"
+                err = (item or {}).get("err_msg") or UNKNOWN_ERROR
                 raise RuntimeError(f"Task {batch_id} failed: {err}")
 
             # Exponential backoff with jitter (best-effort)
@@ -523,7 +525,7 @@ class MinerUService:
             try:
                 await resp.aclose()
             except Exception as exc:
-                logger.debug("Ignoring non-critical MinerU fallback failure: %s", exc)
+                logger.debug(MINERU_FALLBACK_LOG_MESSAGE, exc)
 
     def download_result(self, result_url: str) -> str:
         """
@@ -547,7 +549,7 @@ class MinerUService:
             try:
                 await resp.aclose()
             except Exception as exc:
-                logger.debug("Ignoring non-critical MinerU fallback failure: %s", exc)
+                logger.debug(MINERU_FALLBACK_LOG_MESSAGE, exc)
 
     def download_result_zip(self, zip_url: str) -> bytes:
         """Download parse result ZIP bytes (sync)."""
@@ -752,7 +754,7 @@ class MinerUService:
             try:
                 zf.close()
             except Exception as exc:
-                logger.debug("Ignoring non-critical MinerU fallback failure: %s", exc)
+                logger.debug(MINERU_FALLBACK_LOG_MESSAGE, exc)
 
     def _documents_from_zip_bytes(
         self,
@@ -787,7 +789,7 @@ class MinerUService:
                     try:
                         tmp_zip_path.unlink()
                     except Exception as exc:
-                        logger.debug("Ignoring non-critical MinerU fallback failure: %s", exc)
+                        logger.debug(MINERU_FALLBACK_LOG_MESSAGE, exc)
         else:
             markdown_content = self._extract_markdown_from_zip_bytes(zip_bytes)
             if tenant_id:
@@ -879,7 +881,7 @@ class MinerUService:
                     try:
                         tmp_zip_path.unlink()
                     except Exception as exc:
-                        logger.debug("Ignoring non-critical MinerU fallback failure: %s", exc)
+                        logger.debug(MINERU_FALLBACK_LOG_MESSAGE, exc)
         else:
             markdown_content = self._extract_markdown_from_zip_bytes(zip_bytes)
             if tenant_id:
@@ -970,7 +972,7 @@ class MinerUService:
                 try:
                     await resp.aclose()
                 except Exception as exc:
-                    logger.debug("Ignoring non-critical MinerU fallback failure: %s", exc)
+                    logger.debug(MINERU_FALLBACK_LOG_MESSAGE, exc)
 
             if ("zip" not in content_type.lower()) and (OCTET_STREAM not in content_type.lower()):
                 raise RuntimeError(f"MinerU returned unexpected content type: {content_type}")
