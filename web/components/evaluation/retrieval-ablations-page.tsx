@@ -71,7 +71,9 @@ import {
 import { sanitizeFilename } from '@/lib/sanitize'
 import type {
   Dataset,
+  RagasRegressionRunDiffResponse,
   RegressionAblationGridValue,
+  RegressionRunMetricDiff,
   RegressionRun,
   RegressionRunCreate,
 } from '@/types'
@@ -897,6 +899,563 @@ function JsonCodeViewer({ code }: Readonly<{ code: string }>) {
   )
 }
 
+type AblationDiffScoreDisplay = {
+  base: string
+  target: string
+  delta: string
+  usedKeys: string[]
+}
+
+type AblationParamDiffRow = {
+  key: string
+  before: string
+  after: string
+  changed: boolean
+}
+
+function AblationMetricDeltaCell({
+  value,
+}: Readonly<{ value: unknown }>) {
+  const delta = toNumber(value)
+  const label = delta === null ? compactValue(value, 24) : delta.toFixed(4)
+
+  return (
+    <div
+      className={cn(
+        'text-right font-mono text-[11px]',
+        ablationDeltaClass(delta)
+      )}
+    >
+      {label}
+    </div>
+  )
+}
+
+function AblationOverviewTab({
+  diff,
+  diffScoreFmt,
+  diffDeltaClass,
+  metricDiffRows,
+}: Readonly<{
+  diff: RagasRegressionRunDiffResponse | null
+  diffScoreFmt: AblationDiffScoreDisplay
+  diffDeltaClass: string
+  metricDiffRows: RegressionRunMetricDiff[]
+}>) {
+  if (!diff) return <AblationDiffEmptyState />
+
+  return (
+    <div className="px-5 py-3">
+      <div className="overflow-hidden border border-border/70">
+        <div className="grid border-b border-border/70 sm:grid-cols-3">
+          <div className="bg-card px-3 py-2.5 sm:border-r sm:border-border/70">
+            <div className="text-[11px] tracking-[0.08em] text-muted-foreground">
+              基线得分
+            </div>
+            <div className="mt-1 font-mono text-[13px] font-semibold text-foreground">
+              {diffScoreFmt.base}
+            </div>
+          </div>
+          <div className="bg-card px-3 py-2.5 sm:border-r sm:border-border/70">
+            <div className="text-[11px] tracking-[0.08em] text-muted-foreground">
+              候选得分
+            </div>
+            <div className="mt-1 font-mono text-[13px] font-semibold text-foreground">
+              {diffScoreFmt.target}
+            </div>
+          </div>
+          <div className="bg-card px-3 py-2.5">
+            <div className="text-[11px] tracking-[0.08em] text-muted-foreground">
+              指标变化
+            </div>
+            <div
+              className={cn(
+                'mt-1 font-mono text-[13px] font-semibold',
+                diffDeltaClass
+              )}
+            >
+              {diffScoreFmt.delta}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-[minmax(120px,1fr)_minmax(88px,0.8fr)_minmax(88px,0.8fr)_minmax(88px,0.8fr)] border-b border-border/70 bg-card px-3 py-2 text-[11px] tracking-[0.08em] text-muted-foreground">
+          <div>指标</div>
+          <div className="text-right">基线</div>
+          <div className="text-right">候选</div>
+          <div className="text-right">变化</div>
+        </div>
+        {metricDiffRows.length ? (
+          metricDiffRows.map((row) => (
+            <div
+              key={row.key}
+              className="grid grid-cols-[minmax(120px,1fr)_minmax(88px,0.8fr)_minmax(88px,0.8fr)_minmax(88px,0.8fr)] border-b border-border/60 px-3 py-2 text-xs last:border-b-0"
+            >
+              <div className="truncate font-mono text-[11px] text-foreground">
+                {row.key}
+              </div>
+              <div className="text-right font-mono text-[11px] text-muted-foreground">
+                {compactValue(row.before, 24)}
+              </div>
+              <div className="text-right font-mono text-[11px] text-muted-foreground">
+                {compactValue(row.after, 24)}
+              </div>
+              <AblationMetricDeltaCell value={row.delta} />
+            </div>
+          ))
+        ) : (
+          <div className="px-3 py-4 text-xs text-muted-foreground">
+            没有可展示的指标差异。
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function AblationConfigTab({
+  diff,
+  paramDiffRows,
+}: Readonly<{
+  diff: RagasRegressionRunDiffResponse | null
+  paramDiffRows: AblationParamDiffRow[]
+}>) {
+  if (!diff) {
+    return (
+      <div className="px-5 py-10 text-center text-[12px] text-muted-foreground">
+        生成差异对比后可查看参数差异。
+      </div>
+    )
+  }
+
+  return (
+    <div className="mx-5 my-3 overflow-hidden border border-border/70">
+      <div className="grid grid-cols-[minmax(140px,180px)_minmax(0,1fr)_minmax(0,1fr)] border-b border-border/70 bg-card px-3 py-2 text-[11px] tracking-[0.08em] text-muted-foreground">
+        <div>参数</div>
+        <div>基线</div>
+        <div>候选</div>
+      </div>
+      {paramDiffRows.length ? (
+        paramDiffRows.map((row) => (
+          <div
+            key={row.key}
+            className="grid grid-cols-[minmax(140px,180px)_minmax(0,1fr)_minmax(0,1fr)] border-b border-border/60 bg-card px-3 py-2 text-xs last:border-b-0"
+          >
+            <div
+              className={cn(
+                'truncate font-mono text-[11px]',
+                row.changed ? 'font-semibold text-foreground' : 'text-foreground'
+              )}
+            >
+              {row.key}
+            </div>
+            <div className="truncate font-mono text-[11px] text-muted-foreground">
+              {row.before}
+            </div>
+            <div
+              className={cn(
+                'truncate font-mono text-[11px]',
+                row.changed ? 'text-foreground' : 'text-muted-foreground'
+              )}
+            >
+              {row.after}
+            </div>
+          </div>
+        ))
+      ) : (
+        <div className="px-3 py-4 text-xs text-muted-foreground">
+          没有可展示的参数差异。
+        </div>
+      )}
+    </div>
+  )
+}
+
+function AblationDeepDiveTab({
+  datasetId,
+  runGridBatch,
+  refetchPanels,
+  diff,
+  runsByDataset,
+  selectedBaseRunId,
+  selectedTargetRunId,
+  leaderboardMetricKey,
+  deepDiveMetricKeys,
+}: Readonly<{
+  datasetId: string
+  runGridBatch: (
+    grid: Record<string, RegressionAblationGridValue[]>,
+    maxCombinations: number
+  ) => Promise<void>
+  refetchPanels: () => Promise<void>
+  diff: RagasRegressionRunDiffResponse | null
+  runsByDataset: RegressionRun[]
+  selectedBaseRunId: string
+  selectedTargetRunId: string
+  leaderboardMetricKey: string
+  deepDiveMetricKeys: string[]
+}>) {
+  return (
+    <div className="space-y-4 px-5 py-4">
+      <AblationGridPanel
+        disabled={!datasetId.trim()}
+        onRunGrid={runGridBatch}
+        onBatchComplete={refetchPanels}
+      />
+      <AblationStatisticsPanel diff={diff} />
+      <AblationComparisonMatrix
+        runs={runsByDataset}
+        baseRunId={selectedBaseRunId}
+        metricKeys={deepDiveMetricKeys}
+      />
+      <div className="grid gap-4 xl:grid-cols-2">
+        <AblationParetoPanel
+          runs={runsByDataset}
+          metricKey={leaderboardMetricKey}
+        />
+        <AblationParameterImpactPanel
+          runs={runsByDataset}
+          metricKey={leaderboardMetricKey}
+        />
+      </div>
+      <AblationSliceDiffPanel diff={diff} />
+      <AblationCaseDrilldown
+        baseRunId={selectedBaseRunId}
+        targetRunId={selectedTargetRunId}
+        metricKeys={deepDiveMetricKeys}
+        caseDiffs={diff?.case_diffs ?? []}
+      />
+    </div>
+  )
+}
+
+function AblationRawTab({ diffJson }: Readonly<{ diffJson: string }>) {
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex items-center justify-between border-b border-border/70 px-5 py-2.5">
+        <div className="text-[11px] tracking-[0.12em] text-muted-foreground">
+          对比数据
+        </div>
+        <Database className="h-4 w-4 text-primary" />
+      </div>
+      <JsonCodeViewer code={diffJson} />
+    </div>
+  )
+}
+
+function AblationComparisonWorkspace({
+  leaderboardCollapsed,
+  leftSidebarCollapsed,
+  setLeaderboardCollapsed,
+  runsSelectionHint,
+  diffDeltaClass,
+  diffDeltaValue,
+  runsLoading,
+  selectedBaseRunId,
+  selectedTargetRunId,
+  setSelectedBaseRunId,
+  setSelectedTargetRunId,
+  runsSelectDisabled,
+  runsByDataset,
+  selectedBaseRun,
+  selectedTargetRun,
+  diffDeltaTone,
+  diffLoading,
+  canGenerateDiff,
+  computeDiff,
+  diff,
+  exportDiffHtml,
+  diffScoreFmt,
+  metricDiffRows,
+  paramDiffRows,
+  datasetId,
+  runGridBatch,
+  refetchPanels,
+  leaderboardMetricKey,
+  deepDiveMetricKeys,
+  diffJson,
+}: Readonly<{
+  leaderboardCollapsed: boolean
+  leftSidebarCollapsed: boolean
+  setLeaderboardCollapsed: (value: boolean) => void
+  runsSelectionHint: string
+  diffDeltaClass: string
+  diffDeltaValue: string
+  runsLoading: boolean
+  selectedBaseRunId: string
+  selectedTargetRunId: string
+  setSelectedBaseRunId: (value: string) => void
+  setSelectedTargetRunId: (value: string) => void
+  runsSelectDisabled: boolean
+  runsByDataset: RegressionRun[]
+  selectedBaseRun: RegressionRun | null
+  selectedTargetRun: RegressionRun | null
+  diffDeltaTone: AblationInlineTone
+  diffLoading: boolean
+  canGenerateDiff: boolean
+  computeDiff: () => Promise<void>
+  diff: RagasRegressionRunDiffResponse | null
+  exportDiffHtml: () => Promise<void>
+  diffScoreFmt: AblationDiffScoreDisplay
+  metricDiffRows: RegressionRunMetricDiff[]
+  paramDiffRows: AblationParamDiffRow[]
+  datasetId: string
+  runGridBatch: (
+    grid: Record<string, RegressionAblationGridValue[]>,
+    maxCombinations: number
+  ) => Promise<void>
+  refetchPanels: () => Promise<void>
+  leaderboardMetricKey: string
+  deepDiveMetricKeys: string[]
+  diffJson: string
+}>) {
+  const basePlaceholder = runsLoading ? '加载中...' : '选择基线运行'
+  const targetPlaceholder = runsLoading ? '加载中...' : '选择候选运行'
+  const baseRunLabel = selectedBaseRun?.id ? String(selectedBaseRun.id) : ''
+  const targetRunLabel = selectedTargetRun?.id
+    ? String(selectedTargetRun.id)
+    : ''
+
+  return (
+    <section className="relative order-2 min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-card shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
+      {leaderboardCollapsed ? (
+        <button
+          type="button"
+          className={cn(
+            'focus-ring absolute right-0 z-20 translate-x-1/2 rounded-full border border-border/70 bg-card p-1 text-muted-foreground shadow-sm transition-colors hover:bg-slate-50 hover:text-foreground',
+            leftSidebarCollapsed ? 'top-12' : 'top-3'
+          )}
+          onClick={() => setLeaderboardCollapsed(false)}
+          aria-label="展开排行榜"
+          title="展开排行榜"
+        >
+          <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
+        </button>
+      ) : null}
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="flex min-h-[58px] items-center justify-between gap-3 border-b border-slate-200 bg-card px-4 py-3">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <div className="truncate text-[15px] font-semibold text-slate-950">
+              差异对比工作区
+            </div>
+            <AblationInfoTooltip label="查看运行记录选择说明" side="bottom">
+              {runsSelectionHint}
+            </AblationInfoTooltip>
+          </div>
+          <div className="flex items-center gap-1.5 text-[11px]">
+            <span className="text-muted-foreground">指标变化</span>
+            <span
+              className={cn('font-mono font-semibold', diffDeltaClass)}
+            >
+              {diffDeltaValue}
+            </span>
+          </div>
+        </div>
+
+        <div className="border-b border-slate-200 bg-card px-4 py-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label className="text-[12px] text-slate-500">选择基线运行</Label>
+              <Select
+                value={selectedBaseRunId}
+                onValueChange={setSelectedBaseRunId}
+                disabled={runsSelectDisabled}
+              >
+                <SelectTrigger className="h-10 rounded-xl border-slate-200 bg-card text-[13px]">
+                  <SelectValue placeholder={basePlaceholder} />
+                </SelectTrigger>
+                <SelectContent>
+                  {runsByDataset.map((run) => (
+                    <SelectItem key={run.id} value={run.id}>
+                      {runSelectText(run)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-[12px] text-slate-500">选择候选运行</Label>
+              <Select
+                value={selectedTargetRunId}
+                onValueChange={setSelectedTargetRunId}
+                disabled={runsSelectDisabled}
+              >
+                <SelectTrigger className="h-10 rounded-xl border-slate-200 bg-card text-[13px]">
+                  <SelectValue placeholder={targetPlaceholder} />
+                </SelectTrigger>
+                <SelectContent>
+                  {runsByDataset.map((run) => (
+                    <SelectItem key={run.id} value={run.id}>
+                      {runSelectText(run)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="mt-2.5 flex items-center justify-between">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <AblationInlineStat
+                label="基线"
+                value={shortId(baseRunLabel)}
+                tone="sky"
+              />
+              <AblationInlineStat
+                label="候选"
+                value={shortId(targetRunLabel)}
+                tone="neutral"
+              />
+              <AblationInlineStat
+                label="变化"
+                value={diffDeltaValue}
+                tone={diffDeltaTone}
+              />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Button
+                className="h-9 gap-1.5 rounded-xl bg-info px-4 text-[13px] text-primary-foreground shadow-[0_10px_24px_rgba(14,165,233,0.22)] hover:bg-info/90"
+                disabled={diffLoading || !canGenerateDiff}
+                onClick={() => detachPromise(computeDiff())}
+              >
+                <GitCompare className="h-3.5 w-3.5" />
+                生成对比
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="h-9 gap-1.5 rounded-xl border-slate-200 bg-card px-3 text-[13px] text-slate-900 hover:bg-slate-50"
+                  >
+                    导出
+                    <MoreHorizontal className="h-3.5 w-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-40">
+                  <DropdownMenuItem
+                    disabled={!selectedBaseRunId}
+                    onSelect={() =>
+                      detachPromise(
+                        exportRegressionRunBundle(selectedBaseRunId, 'base')
+                      )
+                    }
+                  >
+                    导出基线
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={!selectedTargetRunId}
+                    onSelect={() =>
+                      detachPromise(
+                        exportRegressionRunBundle(
+                          selectedTargetRunId,
+                          'target'
+                        )
+                      )
+                    }
+                  >
+                    导出候选
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={!diff}
+                    onSelect={() =>
+                      downloadJson(
+                        diff,
+                        sanitizeFilename('regression-run-diff.json')
+                      )
+                    }
+                  >
+                    导出数据
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={!canGenerateDiff}
+                    onSelect={() => detachPromise(exportDiffHtml())}
+                  >
+                    导出页面
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+        </div>
+
+        <Tabs defaultValue="overview" className="flex min-h-0 flex-1 flex-col">
+          <div className="border-b border-slate-200 px-4">
+            <TabsList className="h-10 justify-start gap-5 rounded-none border-none bg-transparent p-0">
+              <TabsTrigger
+                value="overview"
+                className="h-10 rounded-none border-b-2 border-transparent px-0 text-[13px] data-[state=active]:border-primary data-[state=active]:bg-transparent"
+              >
+                概览
+              </TabsTrigger>
+              <TabsTrigger
+                value="config"
+                className="h-10 rounded-none border-b-2 border-transparent px-0 text-[13px] data-[state=active]:border-primary data-[state=active]:bg-transparent"
+              >
+                配置差异
+              </TabsTrigger>
+              <TabsTrigger
+                value="deep-dive"
+                className="h-10 rounded-none border-b-2 border-transparent px-0 text-[13px] data-[state=active]:border-primary data-[state=active]:bg-transparent"
+              >
+                深度分析
+              </TabsTrigger>
+              <TabsTrigger
+                value="raw"
+                className="h-10 rounded-none border-b-2 border-transparent px-0 text-[13px] data-[state=active]:border-primary data-[state=active]:bg-transparent"
+              >
+                原始数据
+              </TabsTrigger>
+            </TabsList>
+          </div>
+
+          <TabsContent
+            value="overview"
+            className="mt-0 min-h-0 flex-1 overflow-auto"
+          >
+            <AblationOverviewTab
+              diff={diff}
+              diffScoreFmt={diffScoreFmt}
+              diffDeltaClass={diffDeltaClass}
+              metricDiffRows={metricDiffRows}
+            />
+          </TabsContent>
+
+          <TabsContent
+            value="config"
+            className="mt-0 min-h-0 flex-1 overflow-auto"
+          >
+            <AblationConfigTab diff={diff} paramDiffRows={paramDiffRows} />
+          </TabsContent>
+
+          <TabsContent
+            value="deep-dive"
+            className="mt-0 min-h-0 flex-1 overflow-auto bg-slate-50/70"
+          >
+            <AblationDeepDiveTab
+              datasetId={datasetId}
+              runGridBatch={runGridBatch}
+              refetchPanels={refetchPanels}
+              diff={diff}
+              runsByDataset={runsByDataset}
+              selectedBaseRunId={selectedBaseRunId}
+              selectedTargetRunId={selectedTargetRunId}
+              leaderboardMetricKey={leaderboardMetricKey}
+              deepDiveMetricKeys={deepDiveMetricKeys}
+            />
+          </TabsContent>
+
+          <TabsContent
+            value="raw"
+            className="mt-0 min-h-0 flex-1 overflow-hidden"
+          >
+            <AblationRawTab diffJson={diffJson} />
+          </TabsContent>
+        </Tabs>
+      </div>
+    </section>
+  )
+}
+
 export function RetrievalAblationsPage() {
   const [datasetId, setDatasetId] = useState('')
 
@@ -1127,8 +1686,9 @@ export function RetrievalAblationsPage() {
     await exportRegressionDiffHtml(selectedBaseRunId, selectedTargetRunId)
   }
 
-  async function exportRunBundle(runId: string, label: string): Promise<void> {
-    await exportRegressionRunBundle(runId, label)
+  async function refetchAblationPanels(): Promise<void> {
+    await runsQuery.refetch()
+    await leaderboardQuery.refetch()
   }
 
   const leaderboardItems = leaderboardQuery.data?.items
@@ -1791,421 +2351,38 @@ export function RetrievalAblationsPage() {
                 </section>
               ) : null}
 
-              <section className="relative order-2 min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-card shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
-                {leaderboardCollapsed ? (
-                  <button
-                    type="button"
-                    className={cn(
-                      'focus-ring absolute right-0 z-20 translate-x-1/2 rounded-full border border-border/70 bg-card p-1 text-muted-foreground shadow-sm transition-colors hover:bg-slate-50 hover:text-foreground',
-                      leftSidebarCollapsed ? 'top-12' : 'top-3'
-                    )}
-                    onClick={() => setLeaderboardCollapsed(false)}
-                    aria-label="展开排行榜"
-                    title="展开排行榜"
-                  >
-                    <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
-                  </button>
-                ) : null}
-                <div className="flex h-full min-h-0 flex-col">
-                  <div className="flex min-h-[58px] items-center justify-between gap-3 border-b border-slate-200 bg-card px-4 py-3">
-                    <div className="flex min-w-0 items-center gap-1.5">
-                      <div className="truncate text-[15px] font-semibold text-slate-950">
-                        差异对比工作区
-                      </div>
-                      <AblationInfoTooltip
-                        label="查看运行记录选择说明"
-                        side="bottom"
-                      >
-                        {runsSelectionHint}
-                      </AblationInfoTooltip>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-[11px]">
-                      <span className="text-muted-foreground">指标变化</span>
-                      <span
-                        className={cn(
-                          'font-mono font-semibold',
-                          diffDeltaClass
-                        )}
-                      >
-                        {diffDeltaValue}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="border-b border-slate-200 bg-card px-4 py-3">
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1">
-                        <Label className="text-[12px] text-slate-500">
-                          选择基线运行
-                        </Label>
-                        <Select
-                          value={selectedBaseRunId}
-                          onValueChange={setSelectedBaseRunId}
-                          disabled={runsSelectDisabled}
-                        >
-                          <SelectTrigger className="h-10 rounded-xl border-slate-200 bg-card text-[13px]">
-                            <SelectValue
-                              placeholder={
-                                runsLoading ? '加载中...' : '选择基线运行'
-                              }
-                            />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {runsByDataset.map((run) => (
-                              <SelectItem key={run.id} value={run.id}>
-                                {runSelectText(run)}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-1">
-                        <Label className="text-[12px] text-slate-500">
-                          选择候选运行
-                        </Label>
-                        <Select
-                          value={selectedTargetRunId}
-                          onValueChange={setSelectedTargetRunId}
-                          disabled={runsSelectDisabled}
-                        >
-                          <SelectTrigger className="h-10 rounded-xl border-slate-200 bg-card text-[13px]">
-                            <SelectValue
-                              placeholder={
-                                runsLoading ? '加载中...' : '选择候选运行'
-                              }
-                            />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {runsByDataset.map((run) => (
-                              <SelectItem key={run.id} value={run.id}>
-                                {runSelectText(run)}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-
-                    <div className="mt-2.5 flex items-center justify-between">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <AblationInlineStat
-                          label="基线"
-                          value={shortId(
-                            selectedBaseRun?.id
-                              ? String(selectedBaseRun.id)
-                              : ''
-                          )}
-                          tone="sky"
-                        />
-                        <AblationInlineStat
-                          label="候选"
-                          value={shortId(
-                            selectedTargetRun?.id
-                              ? String(selectedTargetRun.id)
-                              : ''
-                          )}
-                          tone="neutral"
-                        />
-                        <AblationInlineStat
-                          label="变化"
-                          value={diffDeltaValue}
-                          tone={diffDeltaTone}
-                        />
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <Button
-                          className="h-9 gap-1.5 rounded-xl bg-info px-4 text-[13px] text-primary-foreground shadow-[0_10px_24px_rgba(14,165,233,0.22)] hover:bg-info/90"
-                          disabled={diffLoading || !canGenerateDiff}
-                          onClick={() => detachPromise(computeDiff())}
-                        >
-                          <GitCompare className="h-3.5 w-3.5" />
-                          生成对比
-                        </Button>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="outline"
-                              className="h-9 gap-1.5 rounded-xl border-slate-200 bg-card px-3 text-[13px] text-slate-900 hover:bg-slate-50"
-                            >
-                              导出
-                              <MoreHorizontal className="h-3.5 w-3.5" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-40">
-                            <DropdownMenuItem
-                              disabled={!selectedBaseRunId}
-                              onSelect={() =>
-                                detachPromise(
-                                  exportRunBundle(selectedBaseRunId, 'base')
-                                )
-                              }
-                            >
-                              导出基线
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              disabled={!selectedTargetRunId}
-                              onSelect={() =>
-                                detachPromise(
-                                  exportRunBundle(selectedTargetRunId, 'target')
-                                )
-                              }
-                            >
-                              导出候选
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              disabled={!diff}
-                              onSelect={() =>
-                                downloadJson(
-                                  diff,
-                                  sanitizeFilename('regression-run-diff.json')
-                                )
-                              }
-                            >
-                              导出数据
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              disabled={!canGenerateDiff}
-                              onSelect={() => detachPromise(exportDiffHtml())}
-                            >
-                              导出页面
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </div>
-                  </div>
-
-                  <Tabs
-                    defaultValue="overview"
-                    className="flex min-h-0 flex-1 flex-col"
-                  >
-                    <div className="border-b border-slate-200 px-4">
-                      <TabsList className="h-10 justify-start gap-5 rounded-none border-none bg-transparent p-0">
-                        <TabsTrigger
-                          value="overview"
-                          className="h-10 rounded-none border-b-2 border-transparent px-0 text-[13px] data-[state=active]:border-primary data-[state=active]:bg-transparent"
-                        >
-                          概览
-                        </TabsTrigger>
-                        <TabsTrigger
-                          value="config"
-                          className="h-10 rounded-none border-b-2 border-transparent px-0 text-[13px] data-[state=active]:border-primary data-[state=active]:bg-transparent"
-                        >
-                          配置差异
-                        </TabsTrigger>
-                        <TabsTrigger
-                          value="deep-dive"
-                          className="h-10 rounded-none border-b-2 border-transparent px-0 text-[13px] data-[state=active]:border-primary data-[state=active]:bg-transparent"
-                        >
-                          深度分析
-                        </TabsTrigger>
-                        <TabsTrigger
-                          value="raw"
-                          className="h-10 rounded-none border-b-2 border-transparent px-0 text-[13px] data-[state=active]:border-primary data-[state=active]:bg-transparent"
-                        >
-                          原始数据
-                        </TabsTrigger>
-                      </TabsList>
-                    </div>
-
-                    <TabsContent
-                      value="overview"
-                      className="mt-0 min-h-0 flex-1 overflow-auto"
-                    >
-                      {diff ? (
-                        <div className="px-5 py-3">
-                          <div className="overflow-hidden border border-border/70">
-                            <div className="grid border-b border-border/70 sm:grid-cols-3">
-                              <div className="bg-card px-3 py-2.5 sm:border-r sm:border-border/70">
-                                <div className="text-[11px] tracking-[0.08em] text-muted-foreground">
-                                  基线得分
-                                </div>
-                                <div className="mt-1 font-mono text-[13px] font-semibold text-foreground">
-                                  {diffScoreFmt.base}
-                                </div>
-                              </div>
-                              <div className="bg-card px-3 py-2.5 sm:border-r sm:border-border/70">
-                                <div className="text-[11px] tracking-[0.08em] text-muted-foreground">
-                                  候选得分
-                                </div>
-                                <div className="mt-1 font-mono text-[13px] font-semibold text-foreground">
-                                  {diffScoreFmt.target}
-                                </div>
-                              </div>
-                              <div className="bg-card px-3 py-2.5">
-                                <div className="text-[11px] tracking-[0.08em] text-muted-foreground">
-                                  指标变化
-                                </div>
-                                <div
-                                  className={cn(
-                                    'mt-1 font-mono text-[13px] font-semibold',
-                                    diffDeltaClass
-                                  )}
-                                >
-                                  {diffScoreFmt.delta}
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="grid grid-cols-[minmax(120px,1fr)_minmax(88px,0.8fr)_minmax(88px,0.8fr)_minmax(88px,0.8fr)] border-b border-border/70 bg-card px-3 py-2 text-[11px] tracking-[0.08em] text-muted-foreground">
-                              <div>指标</div>
-                              <div className="text-right">基线</div>
-                              <div className="text-right">候选</div>
-                              <div className="text-right">变化</div>
-                            </div>
-                            {metricDiffRows.length ? (
-                              metricDiffRows.map((row) => {
-                                const delta = toNumber(row.delta)
-                                return (
-                                  <div
-                                    key={row.key}
-                                    className="grid grid-cols-[minmax(120px,1fr)_minmax(88px,0.8fr)_minmax(88px,0.8fr)_minmax(88px,0.8fr)] border-b border-border/60 px-3 py-2 text-xs last:border-b-0"
-                                  >
-                                    <div className="truncate font-mono text-[11px] text-foreground">
-                                      {row.key}
-                                    </div>
-                                    <div className="text-right font-mono text-[11px] text-muted-foreground">
-                                      {compactValue(row.before, 24)}
-                                    </div>
-                                    <div className="text-right font-mono text-[11px] text-muted-foreground">
-                                      {compactValue(row.after, 24)}
-                                    </div>
-                                    <div
-                                      className={cn(
-                                        'text-right font-mono text-[11px]',
-                                        ablationDeltaClass(delta)
-                                      )}
-                                    >
-                                      {delta === null
-                                        ? compactValue(row.delta, 24)
-                                        : delta.toFixed(4)}
-                                    </div>
-                                  </div>
-                                )
-                              })
-                            ) : (
-                              <div className="px-3 py-4 text-xs text-muted-foreground">
-                                没有可展示的指标差异。
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ) : (
-                        <AblationDiffEmptyState />
-                      )}
-                    </TabsContent>
-
-                    <TabsContent
-                      value="config"
-                      className="mt-0 min-h-0 flex-1 overflow-auto"
-                    >
-                      {diff ? (
-                        <div className="mx-5 my-3 overflow-hidden border border-border/70">
-                          <div className="grid grid-cols-[minmax(140px,180px)_minmax(0,1fr)_minmax(0,1fr)] border-b border-border/70 bg-card px-3 py-2 text-[11px] tracking-[0.08em] text-muted-foreground">
-                            <div>参数</div>
-                            <div>基线</div>
-                            <div>候选</div>
-                          </div>
-                          {paramDiffRows.length ? (
-                            paramDiffRows.map((row) => (
-                              <div
-                                key={row.key}
-                                className="grid grid-cols-[minmax(140px,180px)_minmax(0,1fr)_minmax(0,1fr)] border-b border-border/60 bg-card px-3 py-2 text-xs last:border-b-0"
-                              >
-                                <div
-                                  className={cn(
-                                    'truncate font-mono text-[11px]',
-                                    row.changed
-                                      ? 'font-semibold text-foreground'
-                                      : 'text-foreground'
-                                  )}
-                                >
-                                  {row.key}
-                                </div>
-                                <div className="truncate font-mono text-[11px] text-muted-foreground">
-                                  {row.before}
-                                </div>
-                                <div
-                                  className={cn(
-                                    'truncate font-mono text-[11px]',
-                                    row.changed
-                                      ? 'text-foreground'
-                                      : 'text-muted-foreground'
-                                  )}
-                                >
-                                  {row.after}
-                                </div>
-                              </div>
-                            ))
-                          ) : (
-                            <div className="px-3 py-4 text-xs text-muted-foreground">
-                              没有可展示的参数差异。
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="px-5 py-10 text-center text-[12px] text-muted-foreground">
-                          生成差异对比后可查看参数差异。
-                        </div>
-                      )}
-                    </TabsContent>
-
-                    <TabsContent
-                      value="deep-dive"
-                      className="mt-0 min-h-0 flex-1 overflow-auto bg-slate-50/70"
-                    >
-                      <div className="space-y-4 px-5 py-4">
-                        <AblationGridPanel
-                          disabled={!datasetId.trim()}
-                          onRunGrid={runGridBatch}
-                          onBatchComplete={async () => {
-                            await runsQuery.refetch()
-                            await leaderboardQuery.refetch()
-                          }}
-                        />
-                        <AblationStatisticsPanel diff={diff} />
-                        <AblationComparisonMatrix
-                          runs={runsByDataset}
-                          baseRunId={selectedBaseRunId}
-                          metricKeys={deepDiveMetricKeys}
-                        />
-                        <div className="grid gap-4 xl:grid-cols-2">
-                          <AblationParetoPanel
-                            runs={runsByDataset}
-                            metricKey={leaderboardMetricKey}
-                          />
-                          <AblationParameterImpactPanel
-                            runs={runsByDataset}
-                            metricKey={leaderboardMetricKey}
-                          />
-                        </div>
-                        <AblationSliceDiffPanel diff={diff} />
-                        <AblationCaseDrilldown
-                          baseRunId={selectedBaseRunId}
-                          targetRunId={selectedTargetRunId}
-                          metricKeys={deepDiveMetricKeys}
-                          caseDiffs={diff?.case_diffs ?? []}
-                        />
-                      </div>
-                    </TabsContent>
-
-                    <TabsContent
-                      value="raw"
-                      className="mt-0 min-h-0 flex-1 overflow-hidden"
-                    >
-                      <div className="flex h-full min-h-0 flex-col">
-                        <div className="flex items-center justify-between border-b border-border/70 px-5 py-2.5">
-                         <div className="text-[11px] tracking-[0.12em] text-muted-foreground">
-                            对比数据
-                          </div>
-                          <Database className="h-4 w-4 text-primary" />
-                        </div>
-                        <JsonCodeViewer code={diffJson} />
-                      </div>
-                    </TabsContent>
-                  </Tabs>
-                </div>
-              </section>
+              <AblationComparisonWorkspace
+                leaderboardCollapsed={leaderboardCollapsed}
+                leftSidebarCollapsed={leftSidebarCollapsed}
+                setLeaderboardCollapsed={setLeaderboardCollapsed}
+                runsSelectionHint={runsSelectionHint}
+                diffDeltaClass={diffDeltaClass}
+                diffDeltaValue={diffDeltaValue}
+                runsLoading={runsLoading}
+                selectedBaseRunId={selectedBaseRunId}
+                selectedTargetRunId={selectedTargetRunId}
+                setSelectedBaseRunId={setSelectedBaseRunId}
+                setSelectedTargetRunId={setSelectedTargetRunId}
+                runsSelectDisabled={runsSelectDisabled}
+                runsByDataset={runsByDataset}
+                selectedBaseRun={selectedBaseRun}
+                selectedTargetRun={selectedTargetRun}
+                diffDeltaTone={diffDeltaTone}
+                diffLoading={diffLoading}
+                canGenerateDiff={canGenerateDiff}
+                computeDiff={computeDiff}
+                diff={diff}
+                exportDiffHtml={exportDiffHtml}
+                diffScoreFmt={diffScoreFmt}
+                metricDiffRows={metricDiffRows}
+                paramDiffRows={paramDiffRows}
+                datasetId={datasetId}
+                runGridBatch={runGridBatch}
+                refetchPanels={refetchAblationPanels}
+                leaderboardMetricKey={leaderboardMetricKey}
+                deepDiveMetricKeys={deepDiveMetricKeys}
+                diffJson={diffJson}
+              />
             </div>
           </div>
         </div>
