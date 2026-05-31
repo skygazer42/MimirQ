@@ -116,6 +116,26 @@ function isPlotlyLike(value: unknown): value is PlotlyLike {
   return typeof maybe.react === 'function' && typeof maybe.purge === 'function'
 }
 
+function similarityDisplayString(value: unknown): string {
+  if (typeof value === 'string') return value.trim()
+  if (
+    typeof value === 'number' ||
+    typeof value === 'boolean' ||
+    typeof value === 'bigint'
+  ) {
+    return String(value)
+  }
+  return ''
+}
+
+function firstSimilarityDisplayString(...values: unknown[]): string {
+  for (const value of values) {
+    const text = similarityDisplayString(value)
+    if (text) return text
+  }
+  return ''
+}
+
 function isSimilarityMatrixResult(
   value: unknown
 ): value is RagvizSimilarityMatrixResult {
@@ -151,8 +171,83 @@ function isVisualConfig(value: unknown): value is VisualConfig {
 function getErrorMessage(error: unknown, fallback = '操作失败'): string {
   if (error instanceof Error && error.message.trim())
     return error.message.trim()
-  const text = String(error || '').trim()
+  const text = similarityDisplayString(error)
   return text || fallback
+}
+
+function importedPayloadEntries(raw: unknown): unknown[] {
+  if (!raw) return []
+  if (Array.isArray(raw)) return raw
+  if (isRecord(raw) && Array.isArray(raw.entries)) return raw.entries
+  return [raw]
+}
+
+function collectionLabel(
+  explicitLabel: unknown,
+  collectionId: string,
+  fallback: string
+) {
+  return firstSimilarityDisplayString(explicitLabel, collectionId, fallback)
+}
+
+function metricToneClass(tone?: string) {
+  return tone === 'danger' ? 'text-destructive' : 'text-foreground'
+}
+
+function emptyMatrixSwatchClass(index: number) {
+  if (index % 4 === 0) return 'bg-blue-500/80'
+  if (index % 3 === 0) return 'bg-blue-400/55'
+  return 'bg-blue-200/80'
+}
+
+function emptyMatrixCellClass(index: number) {
+  if (index % 9 === 0) return 'bg-blue-500/70'
+  if (index % 5 === 0) return 'bg-blue-300/75'
+  return 'bg-blue-100'
+}
+
+function diagnosticCandidateStatusClass(isDisabled: boolean, isMarked: boolean) {
+  if (isDisabled) return 'border-border bg-muted text-muted-foreground'
+  if (isMarked) {
+    return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-200'
+  }
+  return 'border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-900/40 dark:bg-orange-900/20 dark:text-orange-200'
+}
+
+function diagnosticCandidateStatusLabel(isDisabled: boolean, isMarked: boolean) {
+  if (isDisabled) return '已禁用'
+  if (isMarked) return '待审'
+  return '待处理'
+}
+
+function pickPlotlyModule(modUnknown: unknown): PlotlyLike | null {
+  const mod = isRecord(modUnknown) ? modUnknown : null
+  if (isPlotlyLike(mod?.default)) return mod.default
+  if (isPlotlyLike(modUnknown)) return modUnknown
+  return null
+}
+
+function uniqueLabelRaw(item: Record<string, unknown>, field: string) {
+  if (!field) return ''
+  return similarityDisplayString(item[field])
+}
+
+function heatmapPointPair(point: PlotlyClickPoint): number[] | null {
+  if (Array.isArray(point.pointNumber)) return point.pointNumber
+  if (Array.isArray(point.pointIndex)) return point.pointIndex
+  return null
+}
+
+function heatmapPointCoordinate(
+  directValue: unknown,
+  pair: number[] | null,
+  pairIndex: number
+) {
+  if (typeof directValue === 'number') return directValue
+  if (Array.isArray(pair) && typeof pair[pairIndex] === 'number') {
+    return pair[pairIndex]
+  }
+  return null
 }
 
 export function RagvizSimilarityWorkbench() {
@@ -369,30 +464,25 @@ export function RagvizSimilarityWorkbench() {
   }
 
   const parseImportedPayload = (raw: unknown): SimilarityMatrixEntry[] => {
-    if (!raw) return []
-    const entries = Array.isArray(raw)
-      ? raw
-      : isRecord(raw) && Array.isArray(raw.entries)
-        ? raw.entries
-        : [raw]
+    const entries = importedPayloadEntries(raw)
     const out: SimilarityMatrixEntry[] = []
     for (const entry of entries) {
       if (!isRecord(entry)) continue
       const result = entry.result
       if (!isSimilarityMatrixResult(result)) continue
       const metadata = isRecord(result.metadata) ? result.metadata : null
-      const xCollectionId = String(
-        entry.xCollectionId || entry.xCollection || metadata?.x_collection || ''
+      const xCollectionId = firstSimilarityDisplayString(
+        entry.xCollectionId,
+        entry.xCollection,
+        metadata?.x_collection
       )
-      const yCollectionId = String(
-        entry.yCollectionId || entry.yCollection || metadata?.y_collection || ''
+      const yCollectionId = firstSimilarityDisplayString(
+        entry.yCollectionId,
+        entry.yCollection,
+        metadata?.y_collection
       )
-      const xCollectionLabel = String(
-        entry.xCollectionLabel || xCollectionId || 'X'
-      )
-      const yCollectionLabel = String(
-        entry.yCollectionLabel || yCollectionId || 'Y'
-      )
+      const xCollectionLabel = collectionLabel(entry.xCollectionLabel, xCollectionId, 'X')
+      const yCollectionLabel = collectionLabel(entry.yCollectionLabel, yCollectionId, 'Y')
       const visualConfig: VisualConfig = isVisualConfig(entry.visualConfig)
         ? entry.visualConfig
         : createDefaultVisualConfig(
@@ -1618,9 +1708,7 @@ export function RagvizSimilarityWorkbench() {
                     <div
                       className={cn(
                         'mt-1 text-2xl font-semibold tabular-nums',
-                        metric.tone === 'danger'
-                          ? 'text-destructive'
-                          : 'text-foreground'
+                        metricToneClass(metric.tone)
                       )}
                     >
                       {metric.value}
@@ -2275,11 +2363,7 @@ function SimilarityEmptyState() {
                 key={`empty-matrix-swatch-${barIndex}`}
                 className={cn(
                   'h-4 rounded-[4px]',
-                  barIndex % 4 === 0
-                    ? 'bg-blue-500/80'
-                    : barIndex % 3 === 0
-                      ? 'bg-blue-400/55'
-                      : 'bg-blue-200/80'
+                  emptyMatrixSwatchClass(barIndex)
                 )}
               />
             ))}
@@ -2332,11 +2416,7 @@ function SimilarityEmptyState() {
                   key={`empty-matrix-cell-${cellIndex}`}
                   className={cn(
                     'h-4 rounded-[3px]',
-                    cellIndex % 9 === 0
-                      ? 'bg-blue-500/70'
-                      : cellIndex % 5 === 0
-                        ? 'bg-blue-300/75'
-                        : 'bg-blue-100'
+                    emptyMatrixCellClass(cellIndex)
                   )}
                 />
               ))}
@@ -2527,14 +2607,10 @@ function SimilarityDiagnosticsView({
                       <span
                         className={cn(
                           'rounded-full border px-2 py-0.5 text-[11px]',
-                          isDisabled
-                            ? 'border-border bg-muted text-muted-foreground'
-                            : isMarked
-                              ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-200'
-                              : 'border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-900/40 dark:bg-orange-900/20 dark:text-orange-200'
+                          diagnosticCandidateStatusClass(isDisabled, isMarked)
                         )}
                       >
-                        {isDisabled ? '已禁用' : isMarked ? '待审' : '待处理'}
+                        {diagnosticCandidateStatusLabel(isDisabled, isMarked)}
                       </span>
                     </div>
 
@@ -2987,7 +3063,7 @@ function generateUniqueLabels(
 ) {
   const counts = new Map<string, number>()
   return items.map((item) => {
-    const raw = String((item && field ? item[field] : '') ?? '').trim()
+    const raw = uniqueLabelRaw(item, field)
     const key = raw || '(empty)'
     const next = (counts.get(key) || 0) + 1
     counts.set(key, next)
@@ -3021,12 +3097,7 @@ function PlotlyHeatmap({
     ;(async () => {
       try {
         const modUnknown: unknown = await import('plotly.js-dist-min')
-        const mod = isRecord(modUnknown) ? modUnknown : null
-        const plotlyModule = isPlotlyLike(mod?.default)
-          ? mod.default
-          : isPlotlyLike(modUnknown)
-            ? modUnknown
-            : null
+        const plotlyModule = pickPlotlyModule(modUnknown)
         if (!cancelled) {
           setPlotly(plotlyModule)
           setPlotlyLoadState(plotlyModule ? 'ready' : 'error')
@@ -3147,39 +3218,64 @@ function computeThresholdMask(
   )
 }
 
-function computeTopKMask(matrix: number[][], topK: number, axis: 'x' | 'y') {
+function matrixDimensions(matrix: readonly { length: number }[]) {
   const rows = matrix.length
   const cols = rows > 0 ? matrix[0]?.length || 0 : 0
+  return { rows, cols }
+}
+
+function createBooleanMatrix(rows: number, cols: number, value: boolean) {
+  return Array.from({ length: rows }, () =>
+    Array.from({ length: cols }, () => value)
+  )
+}
+
+function finiteRowScores(row: number[]) {
+  return row
+    .map((v, j) => ({ j, v }))
+    .filter((x) => Number.isFinite(x.v))
+    .sort((a, b) => b.v - a.v)
+}
+
+function applyTopKByRow(matrix: number[][], mask: boolean[][], k: number) {
+  for (let i = 0; i < matrix.length; i++) {
+    for (const { j } of finiteRowScores(matrix[i]).slice(0, k)) {
+      mask[i][j] = true
+    }
+  }
+}
+
+function finiteColumnScores(matrix: number[][], columnIndex: number) {
+  const scored = []
+  for (let i = 0; i < matrix.length; i++) {
+    const v = matrix[i][columnIndex]
+    if (Number.isFinite(v)) scored.push({ i, v })
+  }
+  return scored.sort((a, b) => b.v - a.v)
+}
+
+function applyTopKByColumn(
+  matrix: number[][],
+  mask: boolean[][],
+  cols: number,
+  k: number
+) {
+  for (let j = 0; j < cols; j++) {
+    for (const { i } of finiteColumnScores(matrix, j).slice(0, k)) {
+      mask[i][j] = true
+    }
+  }
+}
+
+function computeTopKMask(matrix: number[][], topK: number, axis: 'x' | 'y') {
+  const { rows, cols } = matrixDimensions(matrix)
   if (rows === 0 || cols === 0) return []
-  if (!topK || topK <= 0) return matrix.map((row) => row.map(() => true))
+  if (!topK || topK <= 0) return createBooleanMatrix(rows, cols, true)
 
   const k = axis === 'x' ? Math.min(topK, cols) : Math.min(topK, rows)
-  const mask: boolean[][] = Array.from({ length: rows }, () =>
-    Array.from({ length: cols }, () => false)
-  )
-
-  if (axis === 'x') {
-    for (let i = 0; i < rows; i++) {
-      const scored = matrix[i]
-        .map((v, j) => ({ j, v }))
-        .filter((x) => Number.isFinite(x.v))
-        .sort((a, b) => b.v - a.v)
-        .slice(0, k)
-      for (const { j } of scored) mask[i][j] = true
-    }
-    return mask
-  }
-
-  for (let j = 0; j < cols; j++) {
-    const scored = []
-    for (let i = 0; i < rows; i++) {
-      const v = matrix[i][j]
-      if (!Number.isFinite(v)) continue
-      scored.push({ i, v })
-    }
-    scored.sort((a, b) => b.v - a.v)
-    for (const { i } of scored.slice(0, k)) mask[i][j] = true
-  }
+  const mask = createBooleanMatrix(rows, cols, false)
+  if (axis === 'x') applyTopKByRow(matrix, mask, k)
+  if (axis === 'y') applyTopKByColumn(matrix, mask, cols, k)
   return mask
 }
 
@@ -3248,55 +3344,80 @@ type NormalModeStats = {
   topKAxis: 'x' | 'y' | 'none'
 }
 
+function countTrueCells(mask: boolean[][], rows: number, cols: number) {
+  let count = 0
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j < cols; j++) {
+      if (mask[i][j]) count++
+    }
+  }
+  return count
+}
+
+function countTrueDiagonal(mask: boolean[][], diagonalTotalCount: number) {
+  let count = 0
+  for (let i = 0; i < diagonalTotalCount; i++) {
+    if (mask[i][i]) count++
+  }
+  return count
+}
+
+function rowHasTrue(mask: boolean[][], rowIndex: number, cols: number) {
+  for (let j = 0; j < cols; j++) {
+    if (mask[rowIndex][j]) return true
+  }
+  return false
+}
+
+function columnHasTrue(mask: boolean[][], columnIndex: number, rows: number) {
+  for (let i = 0; i < rows; i++) {
+    if (mask[i][columnIndex]) return true
+  }
+  return false
+}
+
+function countRowsWithoutMatch(mask: boolean[][], rows: number, cols: number) {
+  let count = 0
+  for (let i = 0; i < rows; i++) {
+    if (!rowHasTrue(mask, i, cols)) count++
+  }
+  return count
+}
+
+function countColumnsWithoutMatch(mask: boolean[][], rows: number, cols: number) {
+  let count = 0
+  for (let j = 0; j < cols; j++) {
+    if (!columnHasTrue(mask, j, rows)) count++
+  }
+  return count
+}
+
+function missingMatchCountByAxis(
+  mask: boolean[][],
+  rows: number,
+  cols: number,
+  topKAxis: 'x' | 'y' | 'none'
+) {
+  if (topKAxis === 'x') return countRowsWithoutMatch(mask, rows, cols)
+  if (topKAxis === 'y') return countColumnsWithoutMatch(mask, rows, cols)
+  return 0
+}
+
 function calculateNormalModeStatistics(
   finalMask: boolean[][],
   topKAxis: 'x' | 'y' | 'none'
 ): NormalModeStats {
-  const rows = finalMask.length
-  const cols = rows > 0 ? finalMask[0]?.length || 0 : 0
+  const { rows, cols } = matrixDimensions(finalMask)
   const totalCount = rows * cols
 
-  let currentDisplayCount = 0
-  for (let i = 0; i < rows; i++) {
-    for (let j = 0; j < cols; j++) if (finalMask[i][j]) currentDisplayCount++
-  }
-
   const diagonalTotalCount = Math.min(rows, cols)
-  let diagonalTrueCount = 0
-  for (let i = 0; i < diagonalTotalCount; i++)
-    if (finalMask[i][i]) diagonalTrueCount++
-
-  let missingMatchCount = 0
-  if (topKAxis === 'x') {
-    for (let i = 0; i < rows; i++) {
-      let hasTrue = false
-      for (let j = 0; j < cols; j++) {
-        if (finalMask[i][j]) {
-          hasTrue = true
-          break
-        }
-      }
-      if (!hasTrue) missingMatchCount++
-    }
-  } else if (topKAxis === 'y') {
-    for (let j = 0; j < cols; j++) {
-      let hasTrue = false
-      for (let i = 0; i < rows; i++) {
-        if (finalMask[i][j]) {
-          hasTrue = true
-          break
-        }
-      }
-      if (!hasTrue) missingMatchCount++
-    }
-  }
 
   return {
     totalCount,
-    currentDisplayCount,
-    diagonalTrueCount,
+    currentDisplayCount: countTrueCells(finalMask, rows, cols),
+    diagonalTrueCount: countTrueDiagonal(finalMask, diagonalTotalCount),
     diagonalTotalCount,
-    missingMatchCount,
+    missingMatchCount: missingMatchCountByAxis(finalMask, rows, cols, topKAxis),
     topKAxis,
   }
 }
@@ -3361,24 +3482,9 @@ function resolveHeatmapPoint(
   const point = event.points?.[0]
   if (!point) return null
 
-  const pair = Array.isArray(point.pointNumber)
-    ? point.pointNumber
-    : Array.isArray(point.pointIndex)
-      ? point.pointIndex
-      : null
-
-  const rowIndex =
-    typeof point.i === 'number'
-      ? point.i
-      : Array.isArray(pair) && typeof pair[0] === 'number'
-        ? pair[0]
-        : null
-  const colIndex =
-    typeof point.j === 'number'
-      ? point.j
-      : Array.isArray(pair) && typeof pair[1] === 'number'
-        ? pair[1]
-        : null
+  const pair = heatmapPointPair(point)
+  const rowIndex = heatmapPointCoordinate(point.i, pair, 0)
+  const colIndex = heatmapPointCoordinate(point.j, pair, 1)
 
   if (rowIndex === null || colIndex === null) return null
   return { rowIndex, colIndex }
