@@ -158,10 +158,10 @@ export function useGraphPageActions({
   const toggleFullscreen = useCallback(async () => {
     if (typeof document === 'undefined') return
     try {
-      if (!document.fullscreenElement) {
-        await graphViewportRef.current?.requestFullscreen?.()
-      } else {
+      if (document.fullscreenElement) {
         await document.exitFullscreen?.()
+      } else {
+        await graphViewportRef.current?.requestFullscreen?.()
       }
     } catch {
       toast.error('全屏切换失败')

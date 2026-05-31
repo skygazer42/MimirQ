@@ -504,7 +504,7 @@ function RunRecordCard({
           <span>指标：{metrics}</span>
         </div>
       </div>
-      {progress !== null ? (
+      {progress === null ? null : (
         <div className="mt-3 flex items-center gap-2">
           <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
             <div
@@ -516,7 +516,7 @@ function RunRecordCard({
             {progress}%
           </span>
         </div>
-      ) : null}
+      )}
       {run.status === 'failed' && run.error_message ? (
         <div className="mt-2 line-clamp-1 text-[11px] font-medium text-rose-600">
           错误：{run.error_message}

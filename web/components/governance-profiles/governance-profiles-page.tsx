@@ -575,7 +575,7 @@ export function GovernanceProfilesPage() {
                             <Download className="mr-2 h-4 w-4" />
                             导出入库策略
                           </DropdownMenuItem>
-                          {!p.is_system ? (
+                          {p.is_system ? null : (
                             <>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
@@ -586,7 +586,7 @@ export function GovernanceProfilesPage() {
                                 删除
                               </DropdownMenuItem>
                             </>
-                          ) : null}
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
@@ -621,7 +621,7 @@ export function GovernanceProfilesPage() {
             }
             icon={ShieldCheck}
           >
-            {!loading ? (
+            {loading ? null : (
               <Button
                 size="sm"
                 className="bg-info text-info-foreground hover:bg-info/90 dark:bg-info/85 dark:hover:bg-info"
@@ -635,7 +635,7 @@ export function GovernanceProfilesPage() {
                 <Plus className="h-4 w-4" />
                 新建治理配置
               </Button>
-            ) : null}
+            )}
           </EmptyState>
         )}
       </PageScaffold>

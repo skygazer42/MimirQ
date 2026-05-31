@@ -216,7 +216,7 @@ export function useGraphInteractionModes({
             const idxInGraph = graph.links.indexOf(link)
             const linkId =
               rawId ||
-              (linkIndex !== undefined ? `link-${linkIndex}` : idxInGraph >= 0 ? `link-${idxInGraph}` : null)
+              (linkIndex === undefined ? (idxInGraph >= 0 ? `link-${idxInGraph}` : null) : `link-${linkIndex}`)
 
             if (linkId) {
               setHighlightedLinkIds((prev) => new Set([...Array.from(prev), String(linkId)]))

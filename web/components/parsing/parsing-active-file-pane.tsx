@@ -1209,7 +1209,7 @@ export function ParsingActiveFilePane({
  </div>
  </div>
  )}
- {!isEditing ? (
+ {isEditing ? null : (
  <div className="border-t border-border/60 bg-card">
  <ParsingExtractPanel
  documentId={activeFile.libraryId || null}
@@ -1219,7 +1219,7 @@ export function ParsingActiveFilePane({
  />
  <ParsingElementsPanel elements={activeElements} onSelectElement={handleSelectElement} />
  </div>
- ) : null}
+ )}
  </div>
  ) : null}
  </div>

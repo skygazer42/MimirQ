@@ -351,7 +351,7 @@ export function ParsingSidebarPane({
         </div>
       </div>
 
-      {!collapsed ? (
+      {collapsed ? null : (
         <div className="relative border-b border-border/60">
           <div
             aria-hidden
@@ -427,7 +427,7 @@ export function ParsingSidebarPane({
             </Select>
           </div>
         </div>
-      ) : null}
+      )}
 
       <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar bg-background/35 px-3 py-3 dark:bg-card">
         {isLibraryLoaded ? (

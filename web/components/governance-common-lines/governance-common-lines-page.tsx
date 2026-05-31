@@ -1056,7 +1056,7 @@ export function GovernanceCommonLinesPage() {
                   </p>
                 </div>
 
-                {!resp ? (
+                {resp ? null : (
                   <div className="px-10 pb-12">
                     <div className="mx-auto mb-10 h-px max-w-5xl border-t border-dashed border-border/70" />
                     <div className="mx-auto grid max-w-5xl grid-cols-1 items-center gap-4 md:grid-cols-[1fr_auto_1fr_auto_1fr]">
@@ -1087,7 +1087,7 @@ export function GovernanceCommonLinesPage() {
                       })}
                     </div>
                   </div>
-                ) : null}
+                )}
               </div>
             )}
           </div>

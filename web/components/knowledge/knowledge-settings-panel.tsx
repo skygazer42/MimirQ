@@ -437,7 +437,7 @@ export function KnowledgeSettingsPanel({
               : 'xl:grid-cols-[206px_minmax(0,1fr)]'
           )}
         >
-          {!settingsSidebarCollapsed ? (
+          {settingsSidebarCollapsed ? null : (
             <div className="space-y-2 xl:sticky xl:top-0 xl:self-start">
               <Panel
                 padding="none"
@@ -665,7 +665,7 @@ export function KnowledgeSettingsPanel({
               ) : null}
               </Panel>
             </div>
-          ) : null}
+          )}
 
           <div className="space-y-2.5 xl:h-full xl:max-h-full xl:min-h-0 xl:overflow-y-auto xl:pr-1 xl:no-scrollbar">
             <Panel

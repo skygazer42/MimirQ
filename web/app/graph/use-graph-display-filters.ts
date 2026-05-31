@@ -240,7 +240,7 @@ export function useGraphDisplayFilters({
     lastProjectionTraceKeyRef.current = traceKey
 
     const page =
-      globalThis.window !== undefined ? globalThis.window.location?.pathname || '/graph' : '/graph'
+      globalThis.window === undefined ? '/graph' : globalThis.window.location?.pathname || '/graph'
 
     void import('@/lib/frontend-trace')
       .then(({ reportFrontendTrace }) =>

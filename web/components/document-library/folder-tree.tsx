@@ -661,7 +661,7 @@ export function DocumentFolderTree({
                   </span>
                 ) : null}
                 {isParsing ? (
-                  <span className="shrink-0 text-primary" title={progress != null ? `处理中 ${Math.round(progress)}%` : '处理中'}>
+                  <span className="shrink-0 text-primary" title={progress == null ? '处理中' : `处理中 ${Math.round(progress)}%`}>
                     <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" />
                   </span>
                 ) : null}

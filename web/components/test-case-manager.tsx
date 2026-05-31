@@ -742,16 +742,16 @@ export function TestCaseManager({
       </div>
     )
   } else if (filteredCases.length === 0) {
-    const emptyTitle = !datasetId
-      ? '先选择数据集'
-      : searchQuery || goldenOnly
+    const emptyTitle = datasetId
+      ? searchQuery || goldenOnly
         ? '没有匹配的评测样本'
         : '暂无 Golden 评测样本'
-    const emptyDescription = !datasetId
-      ? 'Golden 评测集绑定到数据集，选择知识库后才能创建标准问答和标准证据。'
-      : searchQuery || goldenOnly
+      : '先选择数据集'
+    const emptyDescription = datasetId
+      ? searchQuery || goldenOnly
         ? '当前筛选条件没有命中样本，可以清空筛选或新增一条可复用标准问答。'
         : '为当前数据集添加标准问题、标准答案和标准证据，用它作为评估 RAG pipeline 的固定标尺。'
+      : 'Golden 评测集绑定到数据集，选择知识库后才能创建标准问答和标准证据。'
 
     caseListContent = (
       <div
