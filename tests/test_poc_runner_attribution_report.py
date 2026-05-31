@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from app.rag.evaluation.poc_runner.reports.attribution_report import build_dataset_analysis_report
+from app.rag.evaluation.poc_runner.reports.attribution_report import (
+    DatasetAnalysisReportPayload,
+    build_dataset_analysis_report,
+)
 
 
 def test_build_dataset_analysis_report_combines_metrics_examples_and_heatmap() -> None:
-    report = build_dataset_analysis_report(
+    report = build_dataset_analysis_report(DatasetAnalysisReportPayload(
         dataset_id="ds-1",
         dataset_name="Dataset One",
         filters={"dataset_id": "ds-1"},
@@ -19,7 +22,7 @@ def test_build_dataset_analysis_report_combines_metrics_examples_and_heatmap() -
         coverage_heatmap={"rows": [{"filename": "manual-a.pdf", "retrieval_hit_count": 3, "negative_feedback_count": 2}]},
         umap_scatter={"schema": "mimirq.dataset_analysis.umap_scatter.v1", "points": [{"x": 0.0, "y": 1.0}]},
         latency_breakdown={"schema": "mimirq.poc.latency_decomposer.v1", "summary": {"avg_wait_in_queue_ms": 1200}},
-    )
+    ))
 
     assert report["meta"]["dataset_id"] == "ds-1"
     assert report["meta"]["dataset_name"] == "Dataset One"
