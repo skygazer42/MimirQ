@@ -95,11 +95,54 @@ type RegressionRunLeaderboard = {
   items?: RegressionLeaderboardRow[]
 }
 
+type AblationInlineTone = 'neutral' | 'sky' | 'amber' | 'violet' | 'emerald'
+
+const ABLATION_INLINE_TONE_CLASSES: Record<
+  AblationInlineTone,
+  { surface: string; label: string; value: string }
+> = {
+  neutral: {
+    surface: 'border-border/70 bg-card',
+    label: 'text-muted-foreground',
+    value: 'text-foreground',
+  },
+  sky: {
+    surface: 'border-sky-200/80 bg-sky-50/85',
+    label: 'text-sky-700',
+    value: 'text-sky-900',
+  },
+  amber: {
+    surface: 'border-amber-200/80 bg-amber-50/85',
+    label: 'text-amber-700',
+    value: 'text-amber-900',
+  },
+  violet: {
+    surface: 'border-violet-200/80 bg-violet-50/85',
+    label: 'text-violet-700',
+    value: 'text-violet-900',
+  },
+  emerald: {
+    surface: 'border-emerald-200/80 bg-emerald-50/85',
+    label: 'text-emerald-700',
+    value: 'text-emerald-900',
+  },
+}
+
+const JSON_TOKEN_PATTERN = new RegExp(
+  [
+    '("(?:\\\\.|[^"\\\\])*")(\\s*:)?',
+    '\\b-?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?\\b',
+    '\\b(?:true|false|null)\\b',
+    '[{}\\[\\],:]',
+  ].join('|'),
+  'g'
+)
+
 function prettyJson(value: unknown): string {
   try {
     return JSON.stringify(value, null, 2)
   } catch {
-    return String(value)
+    return '无法序列化的 JSON'
   }
 }
 
@@ -184,7 +227,7 @@ function leaderboardMetricLabel(key: string): string {
 }
 
 function datasetPermissionLabel(value: unknown): string {
-  const text = String(value || '').trim()
+  const text = toTrimmedPrimitiveString(value)
   if (!text) return '权限未配置'
   if (text === 'all_team_members') return '全员可见'
   if (text === 'only_me') return '仅自己可见'
@@ -283,11 +326,28 @@ function compactValue(value: unknown, maxLen = 72): string {
     try {
       return JSON.stringify(value)
     } catch {
-      return String(value)
+      return '无法序列化'
     }
   })()
   if (!raw) return '-'
   return raw.length > maxLen ? `${raw.slice(0, maxLen - 1)}…` : raw
+}
+
+function ablationDeltaClass(value: number | null): string {
+  if (value !== null && value > 0) return 'text-emerald-600'
+  if (value !== null && value < 0) return 'text-rose-600'
+  return 'text-foreground'
+}
+
+function ablationDeltaTone(value: number | null): AblationInlineTone {
+  if (value !== null && value > 0) return 'emerald'
+  if (value !== null && value < 0) return 'amber'
+  return 'neutral'
+}
+
+function formatAblationDelta(value: number | null): string {
+  if (value === null) return '-'
+  return value.toFixed(4)
 }
 
 function AblationInlineStat({
@@ -297,38 +357,9 @@ function AblationInlineStat({
 }: Readonly<{
   label: string
   value: ReactNode
-  tone?: 'neutral' | 'sky' | 'amber' | 'violet' | 'emerald'
+  tone?: AblationInlineTone
 }>) {
-  const toneClasses =
-    tone === 'sky'
-      ? {
-          surface: 'border-sky-200/80 bg-sky-50/85',
-          label: 'text-sky-700',
-          value: 'text-sky-900',
-        }
-      : tone === 'amber'
-        ? {
-            surface: 'border-amber-200/80 bg-amber-50/85',
-            label: 'text-amber-700',
-            value: 'text-amber-900',
-          }
-        : tone === 'violet'
-          ? {
-              surface: 'border-violet-200/80 bg-violet-50/85',
-              label: 'text-violet-700',
-              value: 'text-violet-900',
-            }
-          : tone === 'emerald'
-            ? {
-                surface: 'border-emerald-200/80 bg-emerald-50/85',
-                label: 'text-emerald-700',
-                value: 'text-emerald-900',
-              }
-            : {
-                surface: 'border-border/70 bg-card',
-                label: 'text-muted-foreground',
-                value: 'text-foreground',
-              }
+  const toneClasses = ABLATION_INLINE_TONE_CLASSES[tone]
 
   return (
     <div
@@ -563,11 +594,10 @@ function tokenizeJsonLine(
   line: string
 ): Array<{ text: string; kind: JsonTokenKind }> {
   const tokens: Array<{ text: string; kind: JsonTokenKind }> = []
-  const pattern =
-    /("(?:\\.|[^"\\])*")(\s*:)?|\b-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b|\btrue\b|\bfalse\b|\bnull\b|[{}\[\],:]/g
+  JSON_TOKEN_PATTERN.lastIndex = 0
 
   let lastIndex = 0
-  let match = pattern.exec(line)
+  let match = JSON_TOKEN_PATTERN.exec(line)
   while (match) {
     if (match.index > lastIndex) {
       tokens.push({ text: line.slice(lastIndex, match.index), kind: 'plain' })
@@ -588,8 +618,8 @@ function tokenizeJsonLine(
       tokens.push({ text: raw, kind: 'punctuation' })
     }
 
-    lastIndex = pattern.lastIndex
-    match = pattern.exec(line)
+    lastIndex = JSON_TOKEN_PATTERN.lastIndex
+    match = JSON_TOKEN_PATTERN.exec(line)
   }
 
   if (lastIndex < line.length) {
@@ -664,6 +694,8 @@ export function RetrievalAblationsPage() {
   >('target')
   const [leftSidebarCollapsed, setLeftSidebarCollapsed] = useState(false)
   const [leaderboardCollapsed, setLeaderboardCollapsed] = useState(false)
+  const leftSidebarExpanded = leftSidebarCollapsed === false
+  const leaderboardExpanded = leaderboardCollapsed === false
 
   const [leaderboardMetricKey, setLeaderboardMetricKey] =
     useState<string>('retrieval_mrr')
@@ -1014,6 +1046,9 @@ export function RetrievalAblationsPage() {
     []
   )
   const diffDelta = toNumber(diffScore?.delta)
+  const diffDeltaClass = ablationDeltaClass(diffDelta)
+  const diffDeltaValue = formatAblationDelta(diffDelta)
+  const diffDeltaTone = ablationDeltaTone(diffDelta)
   const metricDiffRows = useMemo(
     () => (Array.isArray(diff?.metric_diffs) ? diff.metric_diffs : []),
     [diff]
@@ -1032,13 +1067,13 @@ export function RetrievalAblationsPage() {
   }, [diff])
   const workspaceGridClassName = cn(
     'relative grid h-full min-h-[760px] gap-4',
-    !leftSidebarCollapsed &&
-      !leaderboardCollapsed &&
+    leftSidebarExpanded &&
+      leaderboardExpanded &&
       'grid-cols-[390px_minmax(0,1fr)_360px]',
     leftSidebarCollapsed &&
-      !leaderboardCollapsed &&
+      leaderboardExpanded &&
       'grid-cols-[minmax(0,1fr)_360px]',
-    !leftSidebarCollapsed &&
+    leftSidebarExpanded &&
       leaderboardCollapsed &&
       'grid-cols-[390px_minmax(0,1fr)]',
     leftSidebarCollapsed && leaderboardCollapsed && 'grid-cols-[minmax(0,1fr)]'
@@ -1086,7 +1121,7 @@ export function RetrievalAblationsPage() {
 
         <div className="min-h-0 flex-1 overflow-auto p-4">
           <div className={workspaceGridClassName}>
-            {!leftSidebarCollapsed ? (
+            {leftSidebarExpanded ? (
               <aside className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-card shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
                 <div className="shrink-0 border-b border-slate-200 bg-card px-4 py-3">
                   <div className="flex items-center justify-between gap-2">
@@ -1471,7 +1506,7 @@ export function RetrievalAblationsPage() {
                   <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
                 </button>
               ) : null}
-              {!leaderboardCollapsed ? (
+              {leaderboardExpanded ? (
                 <section className="order-3 flex min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-card shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
                   <div className="flex h-full min-h-0 flex-col">
                     <div className="flex min-h-[58px] items-center justify-between gap-3 border-b border-slate-200 bg-card px-4 py-3">
@@ -1667,14 +1702,10 @@ export function RetrievalAblationsPage() {
                       <span
                         className={cn(
                           'font-mono font-semibold',
-                          diffDelta !== null && diffDelta > 0
-                            ? 'text-emerald-600'
-                            : diffDelta !== null && diffDelta < 0
-                              ? 'text-rose-600'
-                              : 'text-foreground'
+                          diffDeltaClass
                         )}
                       >
-                        {diffDelta === null ? '-' : diffDelta.toFixed(4)}
+                        {diffDeltaValue}
                       </span>
                     </div>
                   </div>
@@ -1755,16 +1786,8 @@ export function RetrievalAblationsPage() {
                         />
                         <AblationInlineStat
                           label="变化"
-                          value={
-                            diffDelta === null ? '-' : diffDelta.toFixed(4)
-                          }
-                          tone={
-                            diffDelta !== null && diffDelta > 0
-                              ? 'emerald'
-                              : diffDelta !== null && diffDelta < 0
-                                ? 'amber'
-                                : 'neutral'
-                          }
+                          value={diffDeltaValue}
+                          tone={diffDeltaTone}
                         />
                       </div>
                       <div className="flex items-center gap-1.5">
@@ -1867,9 +1890,7 @@ export function RetrievalAblationsPage() {
                       value="overview"
                       className="mt-0 min-h-0 flex-1 overflow-auto"
                     >
-                      {!diff ? (
-                        <AblationDiffEmptyState />
-                      ) : (
+                      {diff ? (
                         <div className="px-5 py-3">
                           <div className="overflow-hidden border border-border/70">
                             <div className="grid border-b border-border/70 sm:grid-cols-3">
@@ -1896,11 +1917,7 @@ export function RetrievalAblationsPage() {
                                 <div
                                   className={cn(
                                     'mt-1 font-mono text-[13px] font-semibold',
-                                    diffDelta !== null && diffDelta > 0
-                                      ? 'text-emerald-600'
-                                      : diffDelta !== null && diffDelta < 0
-                                        ? 'text-rose-600'
-                                        : 'text-foreground'
+                                    diffDeltaClass
                                   )}
                                 >
                                   {diffScoreFmt.delta}
@@ -1934,11 +1951,7 @@ export function RetrievalAblationsPage() {
                                     <div
                                       className={cn(
                                         'text-right font-mono text-[11px]',
-                                        delta !== null && delta > 0
-                                          ? 'text-emerald-600'
-                                          : delta !== null && delta < 0
-                                            ? 'text-rose-600'
-                                            : 'text-foreground'
+                                        ablationDeltaClass(delta)
                                       )}
                                     >
                                       {delta === null
@@ -1955,6 +1968,8 @@ export function RetrievalAblationsPage() {
                             )}
                           </div>
                         </div>
+                      ) : (
+                        <AblationDiffEmptyState />
                       )}
                     </TabsContent>
 
@@ -1962,11 +1977,7 @@ export function RetrievalAblationsPage() {
                       value="config"
                       className="mt-0 min-h-0 flex-1 overflow-auto"
                     >
-                      {!diff ? (
-                        <div className="px-5 py-10 text-center text-[12px] text-muted-foreground">
-                          生成差异对比后可查看参数差异。
-                        </div>
-                      ) : (
+                      {diff ? (
                         <div className="mx-5 my-3 overflow-hidden border border-border/70">
                           <div className="grid grid-cols-[minmax(140px,180px)_minmax(0,1fr)_minmax(0,1fr)] border-b border-border/70 bg-card px-3 py-2 text-[11px] tracking-[0.08em] text-muted-foreground">
                             <div>参数</div>
@@ -2009,6 +2020,10 @@ export function RetrievalAblationsPage() {
                               没有可展示的参数差异。
                             </div>
                           )}
+                        </div>
+                      ) : (
+                        <div className="px-5 py-10 text-center text-[12px] text-muted-foreground">
+                          生成差异对比后可查看参数差异。
                         </div>
                       )}
                     </TabsContent>
