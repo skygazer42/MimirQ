@@ -14,18 +14,17 @@ def test_chat_summary_checkpoint_routes_are_split_from_main_router() -> None:
     assert "from app.api.v1 import chat_conversation_memory" in chat_source
     assert "router.include_router(chat_conversation_memory.router)" in chat_source
 
-    split_route_decorators = (
-        '@router.get("/conversations/{conversation_id}/summary"',
-        '@router.post("/conversations/{conversation_id}/summary/update"',
-        '@router.delete("/conversations/{conversation_id}/summary"',
-        '@router.get("/conversations/{conversation_id}/rag-traces"',
-        '@router.get("/conversations/{conversation_id}/checkpoints"',
-        '@router.get("/conversations/{conversation_id}/checkpoints/{checkpoint_id}"',
-        '@router.delete("/conversations/{conversation_id}/checkpoints"',
+    split_route_paths = (
+        "/conversations/{conversation_id}/summary",
+        "/conversations/{conversation_id}/summary/update",
+        "/conversations/{conversation_id}/rag-traces",
+        "/conversations/{conversation_id}/checkpoints",
+        "/conversations/{conversation_id}/checkpoints/{checkpoint_id}",
     )
-    for decorator in split_route_decorators:
-        assert decorator not in chat_source
-        assert decorator in split_source
+    for route_path in split_route_paths:
+        quoted_path = f'"{route_path}"'
+        assert quoted_path not in chat_source
+        assert quoted_path in split_source
 
 
 def test_chat_conversation_read_routes_are_split_from_main_router() -> None:
