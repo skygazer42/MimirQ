@@ -34,8 +34,8 @@ export function mapBackendStatusToLibraryStatus(status?: string): FileStatus {
 }
 
 export function getLibraryStatusBadge(
-  status: FileStatus = 'pending',
-  t: ParsingWorkbenchTranslationGetter
+  t: ParsingWorkbenchTranslationGetter,
+  status: FileStatus = 'pending'
 ): LibraryStatusBadge {
   switch (status) {
     case 'parsed':

@@ -10,7 +10,7 @@ import {
 } from "@/lib/theme-surface"
 
 const useIsomorphicLayoutEffect =
-  typeof globalThis.window === "undefined" ? React.useEffect : React.useLayoutEffect
+  globalThis.window === undefined ? React.useEffect : React.useLayoutEffect
 
 export function ThemeAppearanceProvider() {
   useIsomorphicLayoutEffect(() => {

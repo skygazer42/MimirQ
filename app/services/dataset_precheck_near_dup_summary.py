@@ -58,8 +58,7 @@ def summarize_near_dup_payload(payload: Any | None) -> dict[str, Any]:
                 s = str(m or "").strip()
                 if s:
                     members.append(s)
-        for m in members:
-            affected.add(m)
+        affected.update(members)
         largest = max(largest, len(members))
 
         kc = str(c.get("keep_candidate") or "").strip()
@@ -87,4 +86,3 @@ def summarize_near_dup_payload(payload: Any | None) -> dict[str, Any]:
 
 
 __all__ = ["summarize_near_dup_payload"]
-

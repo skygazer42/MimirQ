@@ -281,7 +281,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
   const [error, setError] = useState<string | null>(null)
   const [createdDocumentId, setCreatedDocumentId] = useState<string | null>(null)
 
-  const [datasetId, setDatasetIdState] = useState<string>('')
+  const [datasetId, setDatasetId] = useState<string>('')
   const [scopeSyncLoading, setScopeSyncLoading] = useState(false)
   const [scopeSyncError, setScopeSyncError] = useState<string | null>(null)
 
@@ -425,7 +425,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     const inbound = (searchParams.get('dataset_id') || '').trim()
     const saved = (globalThis.window.localStorage.getItem(STORAGE_DATASET_ID_KEY) || '').trim()
     const next = inbound || saved
-    if (next) setDatasetIdState(next)
+    if (next) setDatasetId(next)
     datasetScopeLoadedRef.current = true
   }, [searchParams])
 
@@ -1566,9 +1566,9 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     setShowSettingsPanel((prev) => !prev)
   }, [])
 
-  const setDatasetId = useCallback((value: string) => {
+  const selectDatasetId = useCallback((value: string) => {
     const nextDatasetId = (value || '').trim()
-    setDatasetIdState(nextDatasetId)
+    setDatasetId(nextDatasetId)
     setPreviewData(null)
     setChunkOverrides({})
     setSelectedIngestFileIds(new Set())
@@ -1586,7 +1586,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
   }, [router, searchParams])
 
   // 组装 Context Value
-  const value: ChunkPreviewContextType = {
+  const value = useMemo<ChunkPreviewContextType>(() => ({
     // State
     fileList,
     currentFileIndex,
@@ -1636,7 +1636,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     removeFile,
     clearFiles,
     setCurrentFileIndex: selectFile,
-    setDatasetId,
+    setDatasetId: selectDatasetId,
     setIsDragging,
     setHoveredChunkIndex,
     setSelectedChunkIndex,
@@ -1672,7 +1672,85 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     chunkStrategy,
     setChunkStrategy,
     onClose,
-  }
+  }), [
+    addFiles,
+    autoPreviewEnabled,
+    cacheHit,
+    cancelPreview,
+    chunkOverrides,
+    chunkOverlap,
+    chunkSize,
+    chunkStrategy,
+    clearAllChunkOverrides,
+    clearChunkOverride,
+    clearFiles,
+    clearRunHistory,
+    createdDocumentId,
+    currentFileIndex,
+    currentFileItem,
+    datasetId,
+    error,
+    file,
+    fileList,
+    getCachedPreview,
+    handleDragLeave,
+    handleDragOver,
+    handleDrop,
+    hoveredChunkIndex,
+    includeOriginalText,
+    isDragging,
+    isLoading,
+    isPreviewDirty,
+    isSubmitting,
+    keepSeparator,
+    lastPreviewAt,
+    lastPreviewDurationMs,
+    loadExample,
+    maxChunks,
+    onClose,
+    originalTextMaxChars,
+    parentChildMinChildSize,
+    parentChildRatio,
+    parserBackend,
+    previewData,
+    processedStatus,
+    removeFile,
+    reset,
+    runHistory,
+    runPreview,
+    scopeSyncError,
+    scopeSyncLoading,
+    selectDatasetId,
+    selectFile,
+    selectedChunkIndex,
+    selectedIngestFileIds,
+    separatorCustom,
+    separatorMaxChunkSize,
+    separatorPreset,
+    setChunkStrategy,
+    setChunksDisabled,
+    setHoveredChunkIndex,
+    setIsDragging,
+    setOriginalPanelVisible,
+    setParserBackend,
+    setSelectedChunkIndex,
+    showOriginalPanel,
+    showSettingsPanel,
+    submitChunks,
+    submitSelectedFiles,
+    submitSuccess,
+    toggleAutoPreview,
+    toggleChunkDisabled,
+    toggleIngestFileSelection,
+    toggleOriginalPanel,
+    toggleSettingsPanel,
+    updateChunkOverride,
+    updateParentChildSettings,
+    updatePerfSettings,
+    updateSeparatorSettings,
+    updateSettings,
+    useParseCache,
+  ])
 
   return <ChunkPreviewContext.Provider value={value}>{children}</ChunkPreviewContext.Provider>
 }

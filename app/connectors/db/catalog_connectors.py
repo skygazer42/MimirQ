@@ -68,8 +68,7 @@ class _BaseCatalogConnector(ConnectorBase):
         self._config = dict(config or {})
 
     async def fetch_documents(self, **kwargs: Any) -> AsyncIterator[RawDocument]:
-        _ = kwargs
-        if False:
+        if kwargs.get("__yield_placeholder__"):
             yield RawDocument(source_ref="unused", content="")
 
     def supported_file_types(self) -> list[str]:

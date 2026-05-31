@@ -813,45 +813,85 @@ function buildSideBySideDiffRows(
   return rows
 }
 
-function tokenizeJsonLine(
-  line: string
-): Array<{ text: string; kind: JsonTokenKind }> {
+function readJsonStringEnd(line: string, startIndex: number) {
+  let index = startIndex + 1
+  while (index < line.length) {
+    const char = line[index]
+    if (char === '\\') {
+      index += 2
+      continue
+    }
+    if (char === '"') return index + 1
+    index += 1
+  }
+  return line.length
+}
+
+function readJsonKeySuffix(line: string, startIndex: number) {
+  let index = startIndex
+  while (index < line.length && /\s/.test(line[index])) index += 1
+  return line[index] === ':' ? index + 1 : startIndex
+}
+
+const JSON_NUMBER_TOKEN_PATTERN = /-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/y
+const JSON_LITERAL_TOKEN_PATTERN = /true|false|null/y
+
+function tokenizeJsonLine(line: string): Array<{ text: string; kind: JsonTokenKind }> {
   const tokens: Array<{ text: string; kind: JsonTokenKind }> = []
-  const pattern =
-    /("(?:\\.|[^"\\])*")(\s*:)?|\b-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b|\btrue\b|\bfalse\b|\bnull\b|[{}\[\],:]/g
+  let index = 0
 
-  let lastIndex = 0
-  let match: RegExpExecArray | null = pattern.exec(line)
-  while (match) {
-    if (match.index > lastIndex) {
-      tokens.push({ text: line.slice(lastIndex, match.index), kind: 'plain' })
+  while (index < line.length) {
+    const char = line[index]
+
+    if (char === '"') {
+      const stringEnd = readJsonStringEnd(line, index)
+      const suffixEnd = readJsonKeySuffix(line, stringEnd)
+      const hasKeySuffix = suffixEnd > stringEnd
+      tokens.push({ text: line.slice(index, stringEnd), kind: hasKeySuffix ? 'key' : 'string' })
+      if (hasKeySuffix) tokens.push({ text: line.slice(stringEnd, suffixEnd), kind: 'punctuation' })
+      index = suffixEnd
+      continue
     }
 
-    const raw = match[0] ?? ''
-    if (match[1]) {
-      const suffix = match[2] ?? ''
-      tokens.push({ text: match[1], kind: suffix ? 'key' : 'string' })
-      if (suffix) tokens.push({ text: suffix, kind: 'punctuation' })
-    } else if (raw === 'true' || raw === 'false') {
-      tokens.push({ text: raw, kind: 'boolean' })
-    } else if (raw === 'null') {
-      tokens.push({ text: raw, kind: 'null' })
-    } else if (/^-?\d/.test(raw)) {
+    JSON_NUMBER_TOKEN_PATTERN.lastIndex = index
+    const numberMatch = JSON_NUMBER_TOKEN_PATTERN.exec(line)
+    if (numberMatch) {
+      const raw = numberMatch[0]
       tokens.push({ text: raw, kind: 'number' })
-    } else {
-      tokens.push({ text: raw, kind: 'punctuation' })
+      index += raw.length
+      continue
     }
 
-    lastIndex = pattern.lastIndex
-    match = pattern.exec(line)
+    JSON_LITERAL_TOKEN_PATTERN.lastIndex = index
+    const literalMatch = JSON_LITERAL_TOKEN_PATTERN.exec(line)
+    if (literalMatch) {
+      const raw = literalMatch[0]
+      tokens.push({ text: raw, kind: raw === 'null' ? 'null' : 'boolean' })
+      index += raw.length
+      continue
+    }
+
+    if ('{}[],:'.includes(char)) {
+      tokens.push({ text: char, kind: 'punctuation' })
+      index += 1
+    } else {
+      tokens.push({ text: char, kind: 'plain' })
+      index += 1
+    }
   }
 
-  if (lastIndex < line.length) {
-    tokens.push({ text: line.slice(lastIndex), kind: 'plain' })
+  const mergedTokens: typeof tokens = []
+  for (const token of tokens) {
+    const previous = mergedTokens.at(-1)
+    if (previous?.kind === 'plain' && token.kind === 'plain') {
+      previous.text += token.text
+    } else {
+      mergedTokens.push({ ...token })
+    }
   }
 
-  if (tokens.length === 0) return [{ text: line, kind: 'plain' }]
-  return tokens
+  if (mergedTokens.length === 0) return [{ text: line, kind: 'plain' }]
+  return mergedTokens
 }
 
 function toneClassForDelta(value: number) {

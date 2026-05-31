@@ -1416,7 +1416,7 @@ class IntegratedPipelinePdfParser:
                 "".join([b["text"] for b in _evenly_sample(bxes, min(30, len(bxes)))]),
             )
 
-        logging.debug("Is it English:", self.is_english)
+        logging.debug("Is it English: %s", self.is_english)
 
         self.page_cum_height = np.cumsum(self.page_cum_height)
         assert len(self.page_cum_height) == len(self.page_images) + 1

@@ -351,7 +351,7 @@ class RagTokenizer:
     def merge_(self, tks):
         # if split chars is part of token
         res = []
-        tks = re.sub(r"[ ]+", " ", tks).split()
+        tks = re.sub(r" +", " ", tks).split()
         s = 0
         while True:
             if s >= len(tks):

@@ -124,7 +124,7 @@ function randomDelay(minMs: number, maxMs: number) {
 }
 
 function isAsciiWordChar(char: string) {
-  return /[A-Za-z0-9_]/.test(char)
+  return /\w/.test(char)
 }
 
 function isWhitespace(char: string) {

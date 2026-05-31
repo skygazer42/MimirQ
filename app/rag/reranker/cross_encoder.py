@@ -83,7 +83,7 @@ class CrossEncoderReranker(BaseReranker):
                 model = self._construct_model()
                 self._model = model
                 self._load_exception = None
-            except BaseException as exc:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001
                 self._load_exception = exc
 
         thread = threading.Thread(
