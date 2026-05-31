@@ -1,7 +1,6 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import type { MutableRefObject } from 'react'
 
 import { Skeleton } from '@/components/ui/skeleton'
 
@@ -23,7 +22,7 @@ const ForceGraph2D = dynamic(() => import('react-force-graph-2d'), {
 
 type ForceGraph2DWrapperProps = Readonly<
   {
-    graphRef?: MutableRefObject<any>
+    graphRef?: { current: any }
   } & Record<string, unknown>
 >
 
