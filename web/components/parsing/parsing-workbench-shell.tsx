@@ -234,6 +234,72 @@ function countMarkdownLines(markdown: string, pattern: RegExp) {
     .length
 }
 
+function parsingStatusLabel(
+  activeFile: ParsedFile | null,
+  selectedStatus: string | null,
+  activeLibraryStatusBadge: ReturnType<typeof getLibraryStatusBadge> | null,
+  activeLibraryFile: ParsedFileData | null
+) {
+  if (activeFile) {
+    if (selectedStatus === 'parsed') return '已解析'
+    if (selectedStatus === 'parsing') return '解析中'
+    if (selectedStatus === 'error') return '失败'
+    return '待解析'
+  }
+  if (activeLibraryStatusBadge?.label) return activeLibraryStatusBadge.label
+  if (activeLibraryFile) return '已解析'
+  return '未选择'
+}
+
+function parsingStatusIcon(isError: boolean, isParsing: boolean) {
+  if (isError) return <AlertCircle className="size-3.5" />
+  if (isParsing) return <Clock3 className="size-3.5" />
+  return <CheckCircle2 className="size-3.5" />
+}
+
+function parsingStatusToneClass(
+  isError: boolean,
+  isPending: boolean,
+  isParsing: boolean
+) {
+  if (isError) return 'border-destructive/25 bg-destructive/[0.08] text-destructive'
+  if (isPending) return 'border-warning/25 bg-warning/[0.10] text-warning'
+  if (isParsing) return 'border-info/25 bg-info/[0.08] text-info'
+  return 'border-success/25 bg-success/[0.08] text-success'
+}
+
+function parsingRunActionLabel(status: string | null) {
+  if (status === 'error') return '重试'
+  return '开始'
+}
+
+function parsingGovernanceButtonClass(canSubmitToGovernance: boolean) {
+  if (canSubmitToGovernance) {
+    return 'border-info/25 bg-[linear-gradient(90deg,hsl(var(--info)),hsl(var(--primary)))] text-info-foreground shadow-[0_12px_24px_-20px_hsl(var(--info)/0.85)] hover:brightness-105'
+  }
+  return 'border-info/20 bg-info/[0.10] text-info/70'
+}
+
+function parsingInspectorToggleIcon(inspectorCollapsed: boolean) {
+  if (inspectorCollapsed) return <PanelRightOpen className="size-3.5" />
+  return <PanelRightClose className="size-3.5" />
+}
+
+function parsingInspectorWidth(inspectorCollapsed: boolean, inspectorWidth: number) {
+  if (inspectorCollapsed) return COLLAPSED_PARSING_INSPECTOR_HOTZONE_WIDTH
+  return inspectorWidth
+}
+
+function parsingInspectorToggleLabel(inspectorCollapsed: boolean) {
+  if (inspectorCollapsed) return '展开解析信息侧栏'
+  return '收起解析信息侧栏'
+}
+
+function parsingInspectorToggleOffsetClass(inspectorCollapsed: boolean) {
+  if (inspectorCollapsed) return 'left-0'
+  return 'left-[-0.875rem]'
+}
+
 function ParsingInspectorCard({
   title,
   icon: Icon,
@@ -432,15 +498,12 @@ function ParsingInspectorPanel({
     activeLibraryFile?.parser ||
     getParserLabel(parserBackend)
   const selectedStatus = activeFile?.status || activeLibraryFile?.status || null
-  const statusLabel = activeFile
-    ? selectedStatus === 'parsed'
-      ? '已解析'
-      : selectedStatus === 'parsing'
-        ? '解析中'
-        : selectedStatus === 'error'
-          ? '失败'
-          : '待解析'
-    : activeLibraryStatusBadge?.label || (activeLibraryFile ? '已解析' : '未选择')
+  const statusLabel = parsingStatusLabel(
+    activeFile,
+    selectedStatus,
+    activeLibraryStatusBadge,
+    activeLibraryFile
+  )
   const markdown = activeMarkdown || activeLibraryFile?.markdownContent || ''
   const overview = [
     {
@@ -476,14 +539,8 @@ function ParsingInspectorPanel({
   const isError = selectedStatus === 'error'
   const isParsing = selectedStatus === 'parsing'
   const isPending = selectedStatus === 'pending'
-  const StatusIcon = isError ? AlertCircle : isParsing ? Clock3 : CheckCircle2
-  const statusToneClass = isError
-    ? 'border-destructive/25 bg-destructive/[0.08] text-destructive'
-    : isPending
-      ? 'border-warning/25 bg-warning/[0.10] text-warning'
-      : isParsing
-        ? 'border-info/25 bg-info/[0.08] text-info'
-        : 'border-success/25 bg-success/[0.08] text-success'
+  const statusIcon = parsingStatusIcon(isError, isParsing)
+  const statusToneClass = parsingStatusToneClass(isError, isPending, isParsing)
   const fileInfoRows = [
     ['文件类型', getFileExtension(selectedName)],
     ['文件大小', formatFileSize(selectedSize)],
@@ -501,7 +558,7 @@ function ParsingInspectorPanel({
           onClick={() => onParseFile(activeFile.id)}
         >
           <RotateCcw className="size-3.5" />
-          {activeFile.status === 'error' ? '重试' : '开始'}
+          {parsingRunActionLabel(activeFile.status)}
         </Button>
       ) : null}
       {activeLibraryFile && !activeFile ? (
@@ -555,9 +612,7 @@ function ParsingInspectorPanel({
         size="sm"
         className={cn(
           'col-span-2 h-8 gap-1.5 rounded-xl border text-[12px] font-semibold shadow-none disabled:opacity-100',
-          canSubmitToGovernance
-            ? 'border-info/25 bg-[linear-gradient(90deg,hsl(var(--info)),hsl(var(--primary)))] text-info-foreground shadow-[0_12px_24px_-20px_hsl(var(--info)/0.85)] hover:brightness-105'
-            : 'border-info/20 bg-info/[0.10] text-info/70'
+          parsingGovernanceButtonClass(canSubmitToGovernance)
         )}
         disabled={!canSubmitToGovernance}
         onClick={onSubmitToGovernance}
@@ -617,7 +672,7 @@ function ParsingInspectorPanel({
                 </div>
               </div>
               <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] font-semibold ${statusToneClass}`}>
-                <StatusIcon className="size-3.5" />
+                {statusIcon}
                 {statusLabel}
               </span>
             </summary>
@@ -778,6 +833,7 @@ function ResizableParsingInspectorRail({
     DEFAULT_PARSING_INSPECTOR_WIDTH
   )
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false)
+  const inspectorExpanded = inspectorCollapsed === false
   const resizeStateRef = useRef<{
     currentWidth: number
     startWidth: number
@@ -882,25 +938,25 @@ function ResizableParsingInspectorRail({
     <aside
       data-testid="parsing-static-inspector"
       className="group/inspector relative hidden min-h-0 shrink-0 overflow-visible transition-[width] duration-200 ease-out motion-reduce:transition-none xl:flex"
-      style={{ width: inspectorCollapsed ? COLLAPSED_PARSING_INSPECTOR_HOTZONE_WIDTH : inspectorWidth }}
+      style={{ width: parsingInspectorWidth(inspectorCollapsed, inspectorWidth) }}
     >
       <Button
         type="button"
         variant="ghost"
         size="icon"
-        aria-label={inspectorCollapsed ? '展开解析信息侧栏' : '收起解析信息侧栏'}
-        title={inspectorCollapsed ? '展开解析信息侧栏' : '收起解析信息侧栏'}
+        aria-label={parsingInspectorToggleLabel(inspectorCollapsed)}
+        title={parsingInspectorToggleLabel(inspectorCollapsed)}
         className={cn(
           'absolute top-3 z-30 size-8 rounded-xl border border-border/60 bg-card/95 text-muted-foreground shadow-[0_14px_28px_-22px_rgba(15,23,42,0.50)] backdrop-blur-sm transition-[left,opacity,background-color,color,box-shadow] duration-200 hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-info/35',
           'opacity-0 hover:opacity-100 focus-visible:opacity-100',
-          inspectorCollapsed ? 'left-0' : 'left-[-0.875rem]'
+          parsingInspectorToggleOffsetClass(inspectorCollapsed)
         )}
         onClick={() => setInspectorCollapsed((collapsed) => !collapsed)}
       >
-        {inspectorCollapsed ? <PanelRightOpen className="size-3.5" /> : <PanelRightClose className="size-3.5" />}
+        {parsingInspectorToggleIcon(inspectorCollapsed)}
       </Button>
 
-      {!inspectorCollapsed ? (
+      {inspectorExpanded ? (
         <div
           role="slider"
           aria-label="调整解析信息宽度"

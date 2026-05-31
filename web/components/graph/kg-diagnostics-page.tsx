@@ -436,6 +436,45 @@ function resolveInitialDiagnosticsDatasetId(
   return firstDatasetId || current
 }
 
+function diagnosticsRecordOrNull(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : null
+}
+
+function diagnosticsDatasetPlaceholder(
+  datasetsLoading: boolean,
+  t: (key: string) => string
+): string {
+  if (datasetsLoading) return '加载中...'
+  return t('runConfig.datasetPlaceholder')
+}
+
+function diagnosticsEnabledLabel(
+  enabled: boolean,
+  t: (key: string) => string
+): string {
+  if (enabled) return t('workspace.enabled')
+  return t('workspace.disabled')
+}
+
+function diagnosticsPersistTone(persistRun: boolean): DiagnosticsTone {
+  if (persistRun) return 'neutral'
+  return 'muted'
+}
+
+function diagnosticsPersistValue(persistRun: boolean): string {
+  if (persistRun) return '开启'
+  return '关闭'
+}
+
+function diagnosticsRunButtonLabel(
+  running: boolean,
+  t: (key: string) => string
+): string {
+  const label = t('page.actions.run')
+  if (running) return `${label}…`
+  return label
+}
+
 function DiagnosticsInlineStat({
   label,
   value,
@@ -1324,10 +1363,7 @@ export function KGDiagnosticsPage() {
     }
   }
 
-  const summary =
-    runResp?.summary && typeof runResp.summary === 'object'
-      ? runResp.summary
-      : null
+  const summary = diagnosticsRecordOrNull(runResp?.summary)
   const runItems = useMemo(
     () => (Array.isArray(runResp?.items) ? runResp.items : []),
     [runResp?.items]
@@ -1341,10 +1377,7 @@ export function KGDiagnosticsPage() {
     )
   }, [datasetId, datasets])
   const datasetLabel = selectedDataset?.name || datasetId.trim() || '未选择'
-  const qualityObject =
-    qualityReport && typeof qualityReport === 'object'
-      ? (qualityReport as Record<string, unknown>)
-      : null
+  const qualityObject = diagnosticsRecordOrNull(qualityReport)
   const qualityHighlights = useMemo(() => {
     if (!qualityObject) return []
     return Object.entries(qualityObject)
@@ -1421,11 +1454,10 @@ export function KGDiagnosticsPage() {
                       className="h-auto min-h-0 border-0 bg-transparent px-0 py-0 text-right text-[13px] font-medium shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 [&>svg]:ml-2 [&>svg]:h-3.5 [&>svg]:w-3.5"
                     >
                       <SelectValue
-                        placeholder={
-                          datasetsLoading
-                            ? '加载中...'
-                            : t('runConfig.datasetPlaceholder')
-                        }
+                        placeholder={diagnosticsDatasetPlaceholder(
+                          datasetsLoading,
+                          t
+                        )}
                       />
                     </SelectTrigger>
                     <SelectContent>
@@ -1718,11 +1750,7 @@ export function KGDiagnosticsPage() {
                             checked={autoExtractKg}
                             onCheckedChange={setAutoExtractKg}
                             tone="sky"
-                            stateLabel={
-                              autoExtractKg
-                                ? t('workspace.enabled')
-                                : t('workspace.disabled')
-                            }
+                            stateLabel={diagnosticsEnabledLabel(autoExtractKg, t)}
                           />
                           <DiagnosticsToggleCard
                             title={t('runConfig.persistRun')}
@@ -1731,11 +1759,7 @@ export function KGDiagnosticsPage() {
                             checked={persistRun}
                             onCheckedChange={setPersistRun}
                             tone="emerald"
-                            stateLabel={
-                              persistRun
-                                ? t('workspace.enabled')
-                                : t('workspace.disabled')
-                            }
+                            stateLabel={diagnosticsEnabledLabel(persistRun, t)}
                           />
                         </div>
                       </DiagnosticsSection>
@@ -1748,8 +1772,8 @@ export function KGDiagnosticsPage() {
                       <DiagnosticsInlineStat label="TOP-K" value={k} />
                       <DiagnosticsInlineStat
                         label="保存"
-                        value={persistRun ? '开启' : '关闭'}
-                        tone={persistRun ? 'neutral' : 'muted'}
+                        value={diagnosticsPersistValue(persistRun)}
+                        tone={diagnosticsPersistTone(persistRun)}
                       />
                     </div>
 
@@ -1759,9 +1783,7 @@ export function KGDiagnosticsPage() {
                       disabled={running}
                     >
                       <PlayCircle className="mr-2 h-4 w-4" aria-hidden="true" />
-                      {running
-                        ? `${t('page.actions.run')}…`
-                        : t('page.actions.run')}
+                      {diagnosticsRunButtonLabel(running, t)}
                     </Button>
 
                     <div className="mt-2 grid grid-cols-2 gap-2">
