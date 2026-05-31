@@ -53,6 +53,15 @@ function TraceRow({ label, value, mono }: Readonly<{ label: string; value: strin
   )
 }
 
+function traceValue(value: unknown): string {
+  if (value == null || value === '') return '-'
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    return String(value)
+  }
+  return '-'
+}
+
 export function DocumentDetailSummaryCards({
   parserLabel,
   parserBackend,
@@ -88,12 +97,12 @@ export function DocumentDetailSummaryCards({
           </div>
         </div>
         <div className="mt-3 space-y-1.5">
-          <TraceRow label="parser_backend" value={String(parserBackend || '-')} mono />
-          <TraceRow label="requested" value={String(requestedParserBackend || '-')} mono />
-          <TraceRow label="char_count" value={String(analyticsRaw?.char_count ?? '-')} mono />
-          <TraceRow label="page_count" value={String(analyticsRaw?.page_count ?? '-')} mono />
-          <TraceRow label="table_count" value={String(analyticsRaw?.table_count ?? '-')} mono />
-          <TraceRow label="image_count" value={String(analyticsRaw?.image_count ?? '-')} mono />
+          <TraceRow label="parser_backend" value={traceValue(parserBackend)} mono />
+          <TraceRow label="requested" value={traceValue(requestedParserBackend)} mono />
+          <TraceRow label="char_count" value={traceValue(analyticsRaw?.char_count)} mono />
+          <TraceRow label="page_count" value={traceValue(analyticsRaw?.page_count)} mono />
+          <TraceRow label="table_count" value={traceValue(analyticsRaw?.table_count)} mono />
+          <TraceRow label="image_count" value={traceValue(analyticsRaw?.image_count)} mono />
         </div>
       </Panel>
 
@@ -117,9 +126,9 @@ export function DocumentDetailSummaryCards({
           ) : null}
         </div>
         <div className="mt-3 space-y-1.5">
-          <TraceRow label="rules_applied" value={String(governanceRulesApplied ?? '-')} mono />
-          <TraceRow label="changed_docs" value={String(governanceChangedDocuments ?? '-')} mono />
-          <TraceRow label="dropped_docs" value={String(governanceDroppedDocuments ?? '-')} mono />
+          <TraceRow label="rules_applied" value={traceValue(governanceRulesApplied)} mono />
+          <TraceRow label="changed_docs" value={traceValue(governanceChangedDocuments)} mono />
+          <TraceRow label="dropped_docs" value={traceValue(governanceDroppedDocuments)} mono />
           <TraceRow
             label="rule_packs"
             value={governanceRulePacks.length ? governanceRulePacks.slice(0, 4).join(', ') : '-'}
@@ -150,11 +159,11 @@ export function DocumentDetailSummaryCards({
           ) : null}
         </div>
         <div className="mt-3 space-y-1.5">
-          <TraceRow label="viewing_pipeline_hash" value={String(viewingPipelineHash || '-')} mono />
-          <TraceRow label="active_pipeline_hash" value={String(activePipelineHash || '-')} mono />
-          <TraceRow label="last_pipeline_hash" value={String(lastPipelineHash || '-')} mono />
-          <TraceRow label="chunk_size" value={String(pipelineEffective?.chunk_size ?? '-')} mono />
-          <TraceRow label="chunk_overlap" value={String(pipelineEffective?.chunk_overlap ?? '-')} mono />
+          <TraceRow label="viewing_pipeline_hash" value={traceValue(viewingPipelineHash)} mono />
+          <TraceRow label="active_pipeline_hash" value={traceValue(activePipelineHash)} mono />
+          <TraceRow label="last_pipeline_hash" value={traceValue(lastPipelineHash)} mono />
+          <TraceRow label="chunk_size" value={traceValue(pipelineEffective?.chunk_size)} mono />
+          <TraceRow label="chunk_overlap" value={traceValue(pipelineEffective?.chunk_overlap)} mono />
           <TraceRow label="vector_enabled" value={pipelineEffective?.chunk_vector_enabled ? 'true' : 'false'} mono />
           <TraceRow label="bm25_enabled" value={pipelineEffective?.bm25_index_enabled ? 'true' : 'false'} mono />
         </div>

@@ -17,9 +17,17 @@ type GraphLinkDetailPanelProps = Readonly<{
 
 function getEndpointLabel(endpoint: GraphLinkLike['source']): string {
   if (typeof endpoint === 'object' && endpoint) {
-    return String(endpoint.label ?? endpoint.id ?? '')
+    return primitiveString(endpoint.label ?? endpoint.id)
   }
-  return String(endpoint ?? '')
+  return primitiveString(endpoint)
+}
+
+function primitiveString(value: unknown): string {
+  if (typeof value === 'string') return value.trim()
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    return String(value).trim()
+  }
+  return ''
 }
 
 export function GraphLinkDetailPanel({
@@ -46,16 +54,16 @@ export function GraphLinkDetailPanel({
           const srcId = getGraphLinkEndpointId(srcObj)
           const tgtId = getGraphLinkEndpointId(tgtObj)
           const isSelfLoop = Boolean(srcId) && srcId === tgtId
-          const kind = String(selectedLink?.meta?.kind ?? selectedLink?.kind ?? '').trim()
-          const predicate = String(selectedLink?.meta?.predicate ?? selectedLink?.predicate ?? selectedLink?.label ?? '').trim()
+          const kind = primitiveString(selectedLink?.meta?.kind ?? selectedLink?.kind)
+          const predicate = primitiveString(selectedLink?.meta?.predicate ?? selectedLink?.predicate ?? selectedLink?.label)
           const confidence = selectedLink?.meta?.confidence ?? selectedLink?.confidence ?? selectedLink?.weight
           const confNum = Number(confidence)
           const confStr = Number.isFinite(confNum) ? confNum.toFixed(3) : null
-          const docId = String(selectedLink?.meta?.document_id ?? '').trim()
-          const chunkId = String(selectedLink?.meta?.chunk_id ?? '').trim()
-          const eventId = String(selectedLink?.meta?.event_id ?? '').trim()
-          const page = String(selectedLink?.meta?.page ?? selectedLink?.meta?.page_number ?? '').trim()
-          const sharedEvents = String(selectedLink?.meta?.shared_events ?? '').trim()
+          const docId = primitiveString(selectedLink?.meta?.document_id)
+          const chunkId = primitiveString(selectedLink?.meta?.chunk_id)
+          const eventId = primitiveString(selectedLink?.meta?.event_id)
+          const page = primitiveString(selectedLink?.meta?.page ?? selectedLink?.meta?.page_number)
+          const sharedEvents = primitiveString(selectedLink?.meta?.shared_events)
 
           const selfLoopLinks = isSelfLoop
             ? graphLinks.filter((link) => {
@@ -131,17 +139,17 @@ export function GraphLinkDetailPanel({
                       {selfLoopGroupExpanded ? (
                         <div className="mt-3 space-y-2">
                           {selfLoopLinks.slice(0, 12).map((link, idx) => {
-                            const edgeId = String(link?.id ?? link?.meta?.id ?? '').trim()
-                            const edgeKind = String(link?.meta?.kind ?? link?.kind ?? '').trim()
-                            const edgePredicate = String(link?.meta?.predicate ?? link?.predicate ?? link?.label ?? '').trim()
-                            const createdAt = String(link?.meta?.created_at ?? link?.meta?.created ?? '').trim()
+                            const edgeId = primitiveString(link?.id ?? link?.meta?.id)
+                            const edgeKind = primitiveString(link?.meta?.kind ?? link?.kind)
+                            const edgePredicate = primitiveString(link?.meta?.predicate ?? link?.predicate ?? link?.label)
+                            const createdAt = primitiveString(link?.meta?.created_at ?? link?.meta?.created)
                             const episodesRaw = link?.meta?.episodes ?? link?.meta?.episode_ids ?? link?.meta?.episode_count
                             const episodes = Array.isArray(episodesRaw)
                               ? String(episodesRaw.length)
                               : episodesRaw == null
                                 ? ''
-                                : String(episodesRaw)
-                            const fact = String(link?.meta?.fact ?? link?.meta?.quote ?? link?.meta?.text ?? '').trim()
+                                : primitiveString(episodesRaw)
+                            const fact = primitiveString(link?.meta?.fact ?? link?.meta?.quote ?? link?.meta?.text)
                             const secondary = [edgeKind, edgePredicate].filter(Boolean).join(' · ')
 
                             return (
