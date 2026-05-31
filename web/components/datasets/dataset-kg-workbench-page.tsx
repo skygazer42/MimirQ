@@ -1027,11 +1027,11 @@ export default function DatasetKGWorkbenchPage() {
                     selectedNodeId={selectedGraphNodeId}
                     onBackgroundClick={() => setSelectedGraphNodeId(null)}
                   />
-                ) : !graphLoading ? (
+                ) : graphLoading ? null : (
                   <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
                     先点击“加载预览”拉取 KG 图数据
                   </div>
-                ) : null}
+                )}
                 {graphLoading ? (
                   <div className="absolute inset-0 z-10 bg-background/80 backdrop-blur-sm">
                     <GraphPreviewSkeleton />

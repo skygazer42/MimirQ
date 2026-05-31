@@ -107,7 +107,7 @@ function withStore<T>(
 }
 
 const textEncoder =
-  typeof TextEncoder !== 'undefined' ? new TextEncoder() : null
+  typeof TextEncoder === 'undefined' ? null : new TextEncoder()
 
 function measureStringBytes(value: string | undefined | null): number {
   if (!value) return 0

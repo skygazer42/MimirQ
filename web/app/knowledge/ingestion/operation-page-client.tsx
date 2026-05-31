@@ -1192,11 +1192,11 @@ function SourceConfiguration({
   if (source === 'object') {
     return (
       <div className={cn(CONFIG_BOX_CLASS, 'grid gap-2 p-2 md:grid-cols-2 xl:grid-cols-4')}>
-        {!urlIngestEnabled ? (
+        {urlIngestEnabled ? null : (
           <div className="md:col-span-2 xl:col-span-4 rounded-[1rem] border border-amber-100 bg-amber-50/70 px-3 py-2 text-xs text-amber-700">
             URL 导入未启用：对象存储需要后端通过 presigned URL 拉取文件，请先开启 URL_INGEST_ENABLED。
           </div>
-        ) : null}
+        )}
         <FieldBlock label="Bucket（可选）">
           <Input
             className={cn('h-9', CONFIG_INPUT_CLASS)}

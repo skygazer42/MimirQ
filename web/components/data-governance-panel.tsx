@@ -2081,7 +2081,7 @@ export function DataGovernancePanel() {
                               </div>
                             </div>
                           </button>
-                          {file.source !== 'knowledge_base' ? (
+                          {file.source === 'knowledge_base' ? null : (
                             <button
                               type="button"
                               onClick={() => {
@@ -2099,7 +2099,7 @@ export function DataGovernancePanel() {
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
-                          ) : null}
+                          )}
                           {isReadyForChunk ? (
                             <button
                               type="button"

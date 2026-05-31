@@ -367,17 +367,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
       )}
     >
       <div className={cn('flex flex-col gap-3.5', compact ? 'p-3.5' : 'p-4')}>
-        {!compact ? (
-          <div className="flex flex-col items-center text-center">
-            <SemanticRetrievalMark />
-            <div className="mt-2.5 text-[24px] font-semibold tracking-[-0.045em] text-foreground">
-              语义检索测试
-            </div>
-            <p className="mt-1.5 max-w-2xl text-[12px] leading-5 text-muted-foreground/74">
-              输入复杂问题或长 Prompt，验证 RAG 的召回质量和测试指标。
-            </p>
-          </div>
-        ) : (
+        {compact ? (
           <div className="flex items-center justify-between gap-4">
             <div className="min-w-0">
               <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground/68">
@@ -397,6 +387,16 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
               <RotateCcw className="mr-2 size-3.5" />
               重新检索
             </Button>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center text-center">
+            <SemanticRetrievalMark />
+            <div className="mt-2.5 text-[24px] font-semibold tracking-[-0.045em] text-foreground">
+              语义检索测试
+            </div>
+            <p className="mt-1.5 max-w-2xl text-[12px] leading-5 text-muted-foreground/74">
+              输入复杂问题或长 Prompt，验证 RAG 的召回质量和测试指标。
+            </p>
           </div>
         )}
 

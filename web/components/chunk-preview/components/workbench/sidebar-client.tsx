@@ -1340,7 +1340,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
               ))}
             </div>
 
-            {!hideChunkSizeControl ? (
+            {hideChunkSizeControl ? null : (
               <div className="space-y-2.5 rounded-xl border border-border/50 bg-background/75 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]">
                 <div className="flex items-center justify-between gap-2">
                   <label className="text-[11px] font-medium text-muted-foreground">{chunkSizeLabel}</label>
@@ -1401,7 +1401,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                   ))}
                 </div>
               </div>
-            ) : null}
+            )}
 
             {showOverlapControl ? (
               <div className="space-y-2.5 rounded-xl border border-border/50 bg-background/75 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]">

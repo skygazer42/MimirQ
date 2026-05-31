@@ -138,7 +138,7 @@ export function applyChunkOverridesToPreview(
       content,
       metadata: exportMetadata,
       length: content.length,
-      tokens_est: override.content !== undefined ? undefined : chunk.tokens_est,
+      tokens_est: override.content === undefined ? chunk.tokens_est : undefined,
     })
     return acc
   }, [])
