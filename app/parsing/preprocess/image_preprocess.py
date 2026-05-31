@@ -52,7 +52,7 @@ def _handwriting_warning(note: str) -> str | None:
         return "handwriting_cleanup_model_unavailable"
     if normalized == "missing_api_url":
         return "handwriting_cleanup_api_url_missing"
-    if normalized.startswith("http_") or normalized.startswith("http_failed:") or normalized.startswith("write_failed:"):
+    if normalized.startswith(("http_", "write_failed:")):
         return "handwriting_cleanup_backend_failed"
     if normalized.startswith("heuristic_failed:"):
         return "handwriting_cleanup_backend_failed"
@@ -71,9 +71,9 @@ def _watermark_warning(note: str) -> str | None:
         return "watermark_api_url_missing"
     if normalized in {"no_mask_boxes", "unsupported_input_type"}:
         return None
-    if normalized.startswith("http_") or normalized.startswith("watermark_http_"):
+    if normalized.startswith(("http_", "watermark_http_")):
         return "watermark_backend_failed"
-    if normalized.startswith("onnx_") or normalized.startswith("watermark_write_failed:") or normalized.startswith("watermark_empty_response"):
+    if normalized.startswith(("onnx_", "watermark_write_failed:", "watermark_empty_response")):
         return "watermark_backend_failed"
     return None
 
@@ -209,6 +209,7 @@ def _preprocess_pdf_pages_via_raster(
                 document_id=f"{document_id or input_path.stem}-page-{page_index + 1}",
                 pdf_quality={"score": 0.0, "is_scanned": True, "page_count": 1},
             )
+            warnings.extend(f"pagewise:{warning}" for warning in (result.warnings or []))
             page_img_path = Path(result.output_path)
             with Image.open(page_img_path) as processed:
                 buf = BytesIO()

@@ -62,6 +62,8 @@ def _rewrite_preview_images_to_minio(
     500 when preview content contains images; MinIO-backed image normalization can
     be added later without changing this call site.
     """
+    del tenant_id, dataset_id, document_id, images_dir, local_id_to_img_id, digest_to_img_id
+
     if not isinstance(content, str) or not content:
         return content, [], start_index
     if MINIO_IMAGE_REF_RE.search(content) or PREVIEW_IMAGE_REF_RE.search(content) or DATA_IMAGE_PREFIX in content.lower():

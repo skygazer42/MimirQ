@@ -228,7 +228,7 @@ def _parse_fallback_specs(raw: str) -> list[dict[str, Any]]:
     text = str(raw or "").strip()
     if not text:
         return []
-    if text.startswith("{") or text.startswith("["):
+    if text.startswith(("{", "[")):
         try:
             parsed = json.loads(text)
         except json.JSONDecodeError:

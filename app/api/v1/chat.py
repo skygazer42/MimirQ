@@ -454,11 +454,16 @@ async def chat(
             hit=cache_hit,
             skip_reason=None if cache_hit else cache_skip_reason,
         )
+        singleflight_role = None
+        if singleflight_hit:
+            singleflight_role = "follower"
+        elif singleflight_leader:
+            singleflight_role = "leader"
         metrics_data = _annotate_chat_singleflight_metrics(
             metrics_data,
             enabled=bool(getattr(settings, "CHAT_RESPONSE_SINGLEFLIGHT_ENABLED", False)),
             hit=singleflight_hit,
-            role=("follower" if singleflight_hit else ("leader" if singleflight_leader else None)),
+            role=singleflight_role,
         )
 
         metrics_data = _apply_chat_runtime_metrics_context(

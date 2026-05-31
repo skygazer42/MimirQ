@@ -447,6 +447,7 @@ class MinerUService:
         *,
         data_id: str | None = None,
         filename: str | None = None,
+        timeout: int = 600,
         poll_interval: int = 5,
         max_interval: int = 30,
         backoff_factor: float = 1.5,
@@ -464,7 +465,6 @@ class MinerUService:
         Returns:
             The matched extract_result item.
         """
-        timeout = 600
         start_time = time.monotonic()
         current_interval = max(1, int(poll_interval))
 
@@ -511,6 +511,7 @@ class MinerUService:
                 batch_id,
                 data_id=data_id,
                 filename=filename,
+                timeout=timeout,
                 poll_interval=poll_interval,
             )
         )

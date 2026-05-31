@@ -589,6 +589,8 @@ def create_dataset_analysis_png_task(
     feedback_polarity: str | None = None,
     category: str | None = None,
 ) -> dict[str, Any]:
+    del db  # background task owns its own session
+
     task = create_png_export_task(
         dataset_id=str(dataset_id),
         filters=_base_filters_dict(

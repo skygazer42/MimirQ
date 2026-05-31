@@ -50,7 +50,7 @@ def _guess_mime_type(image_bytes: bytes) -> str:
     if image_bytes.startswith(b"\xff\xd8\xff"):
         return _DEFAULT_IMAGE_MIME_TYPE
     # GIF: GIF87a / GIF89a
-    if image_bytes.startswith(b"GIF87a") or image_bytes.startswith(b"GIF89a"):
+    if image_bytes.startswith((b"GIF87a", b"GIF89a")):
         return "image/gif"
     # WebP: RIFF....WEBP
     if len(image_bytes) >= 12 and image_bytes[:4] == b"RIFF" and image_bytes[8:12] == b"WEBP":

@@ -201,7 +201,12 @@ def evaluate_parse_quality_gate(
         (parse_score is not None and float(parse_score) < float(fail_parse_score))
         or (flags["ocr_low_confidence"] and flags["parse_score_low"])
     )
-    grade = "fail" if hard_fail else ("warn" if any(flags.values()) else "pass")
+    if hard_fail:
+        grade = "fail"
+    elif any(flags.values()):
+        grade = "warn"
+    else:
+        grade = "pass"
     needs_review = grade != "pass"
     actions = {
         "parser_fallback_recommended": bool(

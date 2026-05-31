@@ -26,6 +26,30 @@ def _get_pil_image():  # noqa: ANN202
     return optional_import("PIL.Image", feature="parse_preview_inline_images", pip_name="Pillow")
 
 
+def _rewrite_preview_image_refs(
+    content: str,
+    md_pat: re.Pattern[str],
+    html_pat: re.Pattern[str],
+    replacements: dict[str, str],
+) -> str:
+    def _md_repl(match: re.Match[str]) -> str:
+        raw = match.group(1) or ""
+        new = replacements.get(raw.strip())
+        if not new:
+            return match.group(0)
+        return match.group(0).replace(raw, new, 1)
+
+    def _html_repl(match: re.Match[str]) -> str:
+        raw = match.group(1) or ""
+        new = replacements.get(raw.strip())
+        if not new:
+            return match.group(0)
+        return match.group(0).replace(raw, new, 1)
+
+    rewritten = md_pat.sub(_md_repl, content)
+    return html_pat.sub(_html_repl, rewritten or "")
+
+
 class DocumentParserService:
     def __init__(self):
         pass
@@ -220,24 +244,7 @@ class DocumentParserService:
             if not replacements:
                 continue
 
-            def _md_repl(m: re.Match) -> str:
-                raw = m.group(1) or ""
-                key = raw.strip()
-                new = replacements.get(key)
-                if not new:
-                    return m.group(0)
-                return m.group(0).replace(raw, new, 1)
-
-            def _html_repl(m: re.Match) -> str:
-                raw = m.group(1) or ""
-                key = raw.strip()
-                new = replacements.get(key)
-                if not new:
-                    return m.group(0)
-                return m.group(0).replace(raw, new, 1)
-
-            doc.page_content = md_pat.sub(_md_repl, content)
-            doc.page_content = html_pat.sub(_html_repl, doc.page_content or "")
+            doc.page_content = _rewrite_preview_image_refs(content, md_pat, html_pat, replacements)
 
         return saved_images
 

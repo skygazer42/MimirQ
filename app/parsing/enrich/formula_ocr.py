@@ -332,7 +332,7 @@ def add_formula_latex_blocks(
             if cand:
                 next_non_empty = cand
                 break
-        if next_non_empty.startswith("$$") or next_non_empty.startswith("$"):
+        if next_non_empty.startswith("$"):
             continue
 
         images = _extract_md_images(line) + _extract_html_imgs(line)

@@ -72,7 +72,8 @@ def compress_plaid_vectors(
     assignments: list[int] = []
     cluster_sizes = [0 for _ in centroids]
     for vector in vectors:
-        best_idx = min(range(len(centroids)), key=lambda idx: (_sq_l2(vector, centroids[idx]), idx))
+        distances = [(_sq_l2(vector, centroid), idx) for idx, centroid in enumerate(centroids)]
+        best_idx = min(distances)[1]
         assignments.append(int(best_idx))
         cluster_sizes[best_idx] += 1
 

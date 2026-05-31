@@ -106,7 +106,7 @@ def _looks_like_on_wrote_line(line: str) -> bool:
     # Chinese common quote header: 在 ... 写道:
     if s.startswith("在") and ("写道" in s):
         tail = s.rstrip()
-        return tail.endswith("写道") or tail.endswith("写道:") or tail.endswith("写道：")
+        return tail.endswith(("写道", "写道:", "写道："))
 
     return False
 

@@ -188,10 +188,17 @@ def expand_ranked_chunk_results(
     if pending_score_neighbors:
         expanded.extend(pending_score_neighbors)
 
+    if len(strategies_used) > 1:
+        strategy = "mixed"
+    elif strategies_used:
+        strategy = next(iter(strategies_used))
+    else:
+        strategy = "none"
+
     meta = {
         "enabled": True,
         "framework": "context_expansion",
-        "strategy": "mixed" if len(strategies_used) > 1 else (next(iter(strategies_used)) if strategies_used else "none"),
+        "strategy": strategy,
         "strategies_used": sorted(strategies_used),
         "window": int(window_i),
         "score_driven": bool(score_driven),
