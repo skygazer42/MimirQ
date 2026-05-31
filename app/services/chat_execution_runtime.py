@@ -25,6 +25,25 @@ class ExecutedGraphChatOnceResult:
     structured_data: object | None
 
 
+@dataclass(frozen=True)
+class ChatExecutionContext:
+    db: Session
+    tenant_id: UUID
+    account_id: str
+    request: Any
+    conversation_id: UUID | None
+    request_id: str
+    doc_ids_to_use: list[UUID]
+    history_for_llm: list[dict[str, Any]]
+    scope_dataset_id: UUID | None
+    dataset_id_used: UUID | None
+    effective_rag_config: Any
+    effective_prompt_template_id: UUID | None
+    effective_prompt_template_key: str | None
+    effective_prompt_ab_experiment_key: str | None
+    rag_config_template_meta: dict[str, Any] | None
+
+
 _MODEL_PROVIDER_UNAVAILABLE_MARKERS = (
     "arrearage",
     "overdue-payment",
@@ -623,24 +642,26 @@ def execute_extractive_fallback_once(
 
 def execute_graph_chat_once(
     *,
-    db: Session,
-    tenant_id: UUID,
-    account_id: str,
-    request: Any,
-    conversation_id: UUID | None,
-    request_id: str,
-    doc_ids_to_use: list[UUID],
-    history_for_llm: list[dict[str, Any]],
-    scope_dataset_id: UUID | None,
-    dataset_id_used: UUID | None,
-    effective_rag_config: Any,
-    effective_prompt_template_id: UUID | None,
-    effective_prompt_template_key: str | None,
-    effective_prompt_ab_experiment_key: str | None,
-    rag_config_template_meta: dict[str, Any] | None,
+    context: ChatExecutionContext,
 ) -> ExecutedGraphChatOnceResult:
     from app.rag.core.text import parse_json_from_text
     from app.rag.pipelines.langgraph import build_rag_state, rag_workflow
+
+    db = context.db
+    tenant_id = context.tenant_id
+    account_id = context.account_id
+    request = context.request
+    conversation_id = context.conversation_id
+    request_id = context.request_id
+    doc_ids_to_use = context.doc_ids_to_use
+    history_for_llm = context.history_for_llm
+    scope_dataset_id = context.scope_dataset_id
+    dataset_id_used = context.dataset_id_used
+    effective_rag_config = context.effective_rag_config
+    effective_prompt_template_id = context.effective_prompt_template_id
+    effective_prompt_template_key = context.effective_prompt_template_key
+    effective_prompt_ab_experiment_key = context.effective_prompt_ab_experiment_key
+    rag_config_template_meta = context.rag_config_template_meta
 
     thread_id = str(conversation_id) if conversation_id else f"rag-{request_id}"
     runtime_context = {
@@ -824,22 +845,24 @@ def execute_graph_chat_once(
 async def execute_langchain_chat_once(
     *,
     engine: Any,
-    db: Session,
-    tenant_id: UUID,
-    account_id: str,
-    request: Any,
-    conversation_id: UUID | None,
-    request_id: str,
-    doc_ids_to_use: list[UUID],
-    history_for_llm: list[dict[str, Any]],
-    scope_dataset_id: UUID | None,
-    dataset_id_used: UUID | None,
-    effective_rag_config: Any,
-    effective_prompt_template_id: UUID | None,
-    effective_prompt_template_key: str | None,
-    effective_prompt_ab_experiment_key: str | None,
-    rag_config_template_meta: dict[str, Any] | None,
+    context: ChatExecutionContext,
 ) -> ExecutedGraphChatOnceResult:
+    db = context.db
+    tenant_id = context.tenant_id
+    account_id = context.account_id
+    request = context.request
+    conversation_id = context.conversation_id
+    request_id = context.request_id
+    doc_ids_to_use = context.doc_ids_to_use
+    history_for_llm = context.history_for_llm
+    scope_dataset_id = context.scope_dataset_id
+    dataset_id_used = context.dataset_id_used
+    effective_rag_config = context.effective_rag_config
+    effective_prompt_template_id = context.effective_prompt_template_id
+    effective_prompt_template_key = context.effective_prompt_template_key
+    effective_prompt_ab_experiment_key = context.effective_prompt_ab_experiment_key
+    rag_config_template_meta = context.rag_config_template_meta
+
     citations_data: list[Any] = []
     full_response_parts: list[str] = []
     done_data: dict[str, Any] = {}

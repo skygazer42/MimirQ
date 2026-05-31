@@ -416,7 +416,7 @@ def test_graph_chat_passes_generation_max_tokens_to_rag_state(monkeypatch) -> No
 
     import app.rag.pipelines.langgraph as langgraph_mod
     from app.api.schemas.chat import ChatRAGConfig
-    from app.services.chat_execution_runtime import execute_graph_chat_once
+    from app.services.chat_execution_runtime import ChatExecutionContext, execute_graph_chat_once
 
     captured: dict = {}
 
@@ -436,21 +436,23 @@ def test_graph_chat_passes_generation_max_tokens_to_rag_state(monkeypatch) -> No
     monkeypatch.setattr(langgraph_mod, "rag_workflow", _FakeWorkflow(), raising=True)
 
     result = execute_graph_chat_once(
-        db=object(),
-        tenant_id=UUID(int=1),
-        account_id="demo",
-        request=SimpleNamespace(message="q", structured_output=False, structured_preset=None),
-        conversation_id=None,
-        request_id="req-1",
-        doc_ids_to_use=[],
-        history_for_llm=[],
-        scope_dataset_id=UUID(int=2),
-        dataset_id_used=None,
-        effective_rag_config=ChatRAGConfig(max_tokens=333, top_k=3, retrieval_mode="hybrid"),
-        effective_prompt_template_id=None,
-        effective_prompt_template_key=None,
-        effective_prompt_ab_experiment_key=None,
-        rag_config_template_meta=None,
+        context=ChatExecutionContext(
+            db=object(),
+            tenant_id=UUID(int=1),
+            account_id="demo",
+            request=SimpleNamespace(message="q", structured_output=False, structured_preset=None),
+            conversation_id=None,
+            request_id="req-1",
+            doc_ids_to_use=[],
+            history_for_llm=[],
+            scope_dataset_id=UUID(int=2),
+            dataset_id_used=None,
+            effective_rag_config=ChatRAGConfig(max_tokens=333, top_k=3, retrieval_mode="hybrid"),
+            effective_prompt_template_id=None,
+            effective_prompt_template_key=None,
+            effective_prompt_ab_experiment_key=None,
+            rag_config_template_meta=None,
+        ),
     )
 
     assert captured["max_tokens"] == 333
@@ -498,7 +500,7 @@ def test_dynamic_route_skips_stale_provider_alias(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_langchain_chat_raises_stream_error_event() -> None:
-    from app.services.chat_execution_runtime import execute_langchain_chat_once
+    from app.services.chat_execution_runtime import ChatExecutionContext, execute_langchain_chat_once
 
     class _Config(SimpleNamespace):
         def __getattr__(self, _name: str):  # noqa: ANN001, ANN204
@@ -515,28 +517,30 @@ async def test_langchain_chat_raises_stream_error_event() -> None:
     with pytest.raises(RuntimeError, match="Model does not exist"):
         await execute_langchain_chat_once(
             engine=_Engine(),
-            db=object(),
-            tenant_id=UUID(int=1),
-            account_id="demo",
-            request=SimpleNamespace(message="test", structured_output=False, structured_preset=None),
-            conversation_id=None,
-            request_id="req",
-            doc_ids_to_use=[],
-            history_for_llm=[],
-            scope_dataset_id=None,
-            dataset_id_used=None,
-            effective_rag_config=_Config(
-                top_k=6,
-                score_threshold=0.0,
-                retrieval_mode="hybrid",
-                enable_reranker=False,
-                reranker_provider=None,
-                reranker_top_n=20,
+            context=ChatExecutionContext(
+                db=object(),
+                tenant_id=UUID(int=1),
+                account_id="demo",
+                request=SimpleNamespace(message="test", structured_output=False, structured_preset=None),
+                conversation_id=None,
+                request_id="req",
+                doc_ids_to_use=[],
+                history_for_llm=[],
+                scope_dataset_id=None,
+                dataset_id_used=None,
+                effective_rag_config=_Config(
+                    top_k=6,
+                    score_threshold=0.0,
+                    retrieval_mode="hybrid",
+                    enable_reranker=False,
+                    reranker_provider=None,
+                    reranker_top_n=20,
+                ),
+                effective_prompt_template_id=None,
+                effective_prompt_template_key=None,
+                effective_prompt_ab_experiment_key=None,
+                rag_config_template_meta=None,
             ),
-            effective_prompt_template_id=None,
-            effective_prompt_template_key=None,
-            effective_prompt_ab_experiment_key=None,
-            rag_config_template_meta=None,
         )
 
 

@@ -3,13 +3,11 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import Any, AsyncIterator, Awaitable, Callable, cast
-from uuid import UUID
-
-from sqlalchemy.orm import Session
 
 from app.core.stream_events import StreamEmitter, bind_stream_emitter, reset_stream_emitter
+from app.services.chat_execution_runtime import ChatExecutionContext
 from app.services.chat_runtime import (
     ChatStreamPersistInput,
     annotate_chat_cache_metrics,
@@ -19,60 +17,43 @@ from app.services.chat_runtime import (
 from app.services.chat_stream_persistence import dispatch_chat_stream_persistence
 
 
+@dataclass(frozen=True)
+class LangChainChatStreamSessionInput:
+    execution: ChatExecutionContext
+    cache_feature_enabled: bool
+    cache_hit: bool
+    cache_skip_reason: str | None
+    cache_eligible: bool
+    cache_key: str | None
+    dataset_rag_defaults_applied_fields: list[str] | None
+    dataset_rag_config_template_defaults_applied_fields: list[str] | None
+    dataset_prompt_defaults_applied_fields: list[str] | None
+    tenant_qps_meta: dict[str, Any] | None
+    quota_meta: dict[str, Any] | None
+    heartbeat_sec: float
+    disconnect_check: Callable[[], Awaitable[bool]] | None
+    persist_in_background: bool
+    spawn_background_task: Callable[[Any], None]
+    persist_options: ChatStreamPersistInput
+
+
 async def stream_langchain_chat_session_events(
     *,
     engine: Any,
-    db: Session,
-    tenant_id: UUID,
-    account_id: str,
-    request: Any,
-    conversation_id: UUID | None,
-    request_id: str,
-    doc_ids_to_use: list[UUID],
-    history_for_llm: list[dict[str, Any]],
-    scope_dataset_id: UUID | None,
-    dataset_id_used: UUID | None,
-    effective_rag_config: Any,
-    effective_prompt_template_id: UUID | None,
-    effective_prompt_template_key: str | None,
-    effective_prompt_ab_experiment_key: str | None,
-    rag_config_template_meta: dict[str, Any] | None,
-    cache_feature_enabled: bool,
-    cache_hit: bool,
-    cache_skip_reason: str | None,
-    cache_eligible: bool,
-    cache_key: str | None,
-    dataset_rag_defaults_applied_fields: list[str] | None = None,
-    dataset_rag_config_template_defaults_applied_fields: list[str] | None = None,
-    dataset_prompt_defaults_applied_fields: list[str] | None = None,
-    tenant_qps_meta: dict[str, Any] | None = None,
-    quota_meta: dict[str, Any] | None = None,
-    heartbeat_sec: float,
-    disconnect_check: Callable[[], Awaitable[bool]] | None = None,
-    persist_in_background: bool,
-    spawn_background_task: Callable[[Any], None],
-    persist_options: ChatStreamPersistInput,
+    options: LangChainChatStreamSessionInput,
 ) -> AsyncIterator[str]:
+    context = options.execution
+    db = context.db
+    request_id = context.request_id
+    dataset_id_used = context.dataset_id_used
+    rag_config_template_meta = context.rag_config_template_meta
+
     q: asyncio.Queue[dict | None] = asyncio.Queue()
     producer_task = asyncio.create_task(
         produce_langchain_stream_events(
             engine=engine,
             queue=q,
-            request=request,
-            history_for_llm=history_for_llm,
-            conversation_id=conversation_id,
-            doc_ids_to_use=doc_ids_to_use,
-            effective_rag_config=effective_rag_config,
-            tenant_id=tenant_id,
-            account_id=account_id,
-            dataset_id_used=dataset_id_used,
-            scope_dataset_id=scope_dataset_id,
-            effective_prompt_template_id=effective_prompt_template_id,
-            effective_prompt_template_key=effective_prompt_template_key,
-            effective_prompt_ab_experiment_key=effective_prompt_ab_experiment_key,
-            rag_config_template_meta=rag_config_template_meta,
-            db=db,
-            request_id=str(request_id),
+            context=context,
         )
     )
     disconnected = False
@@ -82,9 +63,9 @@ async def stream_langchain_chat_session_events(
     structured_data: object | None = None
 
     while True:
-        if disconnect_check is not None:
+        if options.disconnect_check is not None:
             try:
-                if await disconnect_check():
+                if await options.disconnect_check():
                     disconnected = True
                     producer_task.cancel()
                     break
@@ -93,8 +74,8 @@ async def stream_langchain_chat_session_events(
 
         try:
             ev = (
-                await asyncio.wait_for(q.get(), timeout=heartbeat_sec)
-                if heartbeat_sec > 0
+                await asyncio.wait_for(q.get(), timeout=options.heartbeat_sec)
+                if options.heartbeat_sec > 0
                 else await q.get()
             )
         except asyncio.TimeoutError:
@@ -116,7 +97,7 @@ async def stream_langchain_chat_session_events(
         if event.get("type") == "done":
             if isinstance(event.get("data"), dict):
                 event["data"]["assistant_message_id"] = str(
-                    persist_options.assistant_message_id
+                    options.persist_options.assistant_message_id
                 )
                 metrics_data = event["data"].get("metrics", {})  # type: ignore[assignment]
                 structured_data = event["data"].get("structured_data")
@@ -125,26 +106,26 @@ async def stream_langchain_chat_session_events(
             if isinstance(metrics_data, dict):
                 metrics_data = annotate_chat_cache_metrics(
                     metrics_data,
-                    enabled=cache_feature_enabled,
-                    hit=cache_hit,
-                    skip_reason=None if cache_hit else cache_skip_reason,
+                    enabled=options.cache_feature_enabled,
+                    hit=options.cache_hit,
+                    skip_reason=None if options.cache_hit else options.cache_skip_reason,
                 )
             else:
                 metrics_data = annotate_chat_cache_metrics(
                     {},
-                    enabled=cache_feature_enabled,
-                    hit=cache_hit,
-                    skip_reason=None if cache_hit else cache_skip_reason,
+                    enabled=options.cache_feature_enabled,
+                    hit=options.cache_hit,
+                    skip_reason=None if options.cache_hit else options.cache_skip_reason,
                 )
             metrics_data = apply_chat_runtime_metrics_context(
                 metrics_data if isinstance(metrics_data, dict) else {},
                 dataset_id_used=dataset_id_used,
-                dataset_rag_defaults_applied_fields=dataset_rag_defaults_applied_fields,
-                dataset_rag_config_template_defaults_applied_fields=dataset_rag_config_template_defaults_applied_fields,
+                dataset_rag_defaults_applied_fields=options.dataset_rag_defaults_applied_fields,
+                dataset_rag_config_template_defaults_applied_fields=options.dataset_rag_config_template_defaults_applied_fields,
                 rag_config_template_meta=rag_config_template_meta,
-                dataset_prompt_defaults_applied_fields=dataset_prompt_defaults_applied_fields,
-                tenant_qps_meta=tenant_qps_meta,
-                quota_meta=quota_meta,
+                dataset_prompt_defaults_applied_fields=options.dataset_prompt_defaults_applied_fields,
+                tenant_qps_meta=options.tenant_qps_meta,
+                quota_meta=options.quota_meta,
             )
             if isinstance(event.get("data"), dict):
                 event["data"]["metrics"] = dict(metrics_data)
@@ -166,22 +147,22 @@ async def stream_langchain_chat_session_events(
     if isinstance(metrics_data, dict):
         metrics_data = annotate_chat_cache_metrics(
             metrics_data,
-            enabled=cache_feature_enabled,
-            hit=cache_hit,
-            skip_reason=None if cache_hit else cache_skip_reason,
+            enabled=options.cache_feature_enabled,
+            hit=options.cache_hit,
+            skip_reason=None if options.cache_hit else options.cache_skip_reason,
         )
     else:
         metrics_data = annotate_chat_cache_metrics(
             {},
-            enabled=cache_feature_enabled,
-            hit=cache_hit,
-            skip_reason=None if cache_hit else cache_skip_reason,
+            enabled=options.cache_feature_enabled,
+            hit=options.cache_hit,
+            skip_reason=None if options.cache_hit else options.cache_skip_reason,
         )
 
     store_chat_response_cache_if_needed(
-        cache_eligible=cache_eligible,
-        cache_hit=cache_hit,
-        cache_key=cache_key,
+        cache_eligible=options.cache_eligible,
+        cache_hit=options.cache_hit,
+        cache_key=options.cache_key,
         content=full_response,
         citations=citations_data,
         metrics=metrics_data,
@@ -191,22 +172,22 @@ async def stream_langchain_chat_session_events(
     metrics_data = apply_chat_runtime_metrics_context(
         metrics_data if isinstance(metrics_data, dict) else {},
         dataset_id_used=dataset_id_used,
-        dataset_rag_defaults_applied_fields=dataset_rag_defaults_applied_fields,
-        dataset_rag_config_template_defaults_applied_fields=dataset_rag_config_template_defaults_applied_fields,
+        dataset_rag_defaults_applied_fields=options.dataset_rag_defaults_applied_fields,
+        dataset_rag_config_template_defaults_applied_fields=options.dataset_rag_config_template_defaults_applied_fields,
         rag_config_template_meta=rag_config_template_meta,
-        dataset_prompt_defaults_applied_fields=dataset_prompt_defaults_applied_fields,
-        tenant_qps_meta=tenant_qps_meta,
-        quota_meta=quota_meta,
+        dataset_prompt_defaults_applied_fields=options.dataset_prompt_defaults_applied_fields,
+        tenant_qps_meta=options.tenant_qps_meta,
+        quota_meta=options.quota_meta,
     )
 
     dispatch_chat_stream_persistence(
         db=db,
-        persist_in_background=persist_in_background,
-        spawn_background_task=spawn_background_task,
+        persist_in_background=options.persist_in_background,
+        spawn_background_task=options.spawn_background_task,
         options=cast(
             ChatStreamPersistInput,
             replace(
-                persist_options,
+                options.persist_options,
                 content=full_response,
                 citations=citations_data,
                 metrics=metrics_data,
@@ -220,22 +201,24 @@ async def produce_langchain_stream_events(
     *,
     engine: Any,
     queue: "asyncio.Queue[dict | None]",
-    request: Any,
-    history_for_llm: list[dict[str, Any]],
-    conversation_id: UUID | None,
-    doc_ids_to_use: list[UUID],
-    effective_rag_config: Any,
-    tenant_id: UUID,
-    account_id: str,
-    dataset_id_used: UUID | None,
-    scope_dataset_id: UUID | None,
-    effective_prompt_template_id: UUID | None,
-    effective_prompt_template_key: str | None,
-    effective_prompt_ab_experiment_key: str | None,
-    rag_config_template_meta: dict[str, Any] | None,
-    db: Session,
-    request_id: str,
+    context: ChatExecutionContext,
 ) -> None:
+    db = context.db
+    tenant_id = context.tenant_id
+    account_id = context.account_id
+    request = context.request
+    conversation_id = context.conversation_id
+    request_id = context.request_id
+    doc_ids_to_use = context.doc_ids_to_use
+    history_for_llm = context.history_for_llm
+    scope_dataset_id = context.scope_dataset_id
+    dataset_id_used = context.dataset_id_used
+    effective_rag_config = context.effective_rag_config
+    effective_prompt_template_id = context.effective_prompt_template_id
+    effective_prompt_template_key = context.effective_prompt_template_key
+    effective_prompt_ab_experiment_key = context.effective_prompt_ab_experiment_key
+    rag_config_template_meta = context.rag_config_template_meta
+
     stream_emitter_token = bind_stream_emitter(StreamEmitter(queue=queue, loop=asyncio.get_running_loop()))
     try:
         async for ev in engine.stream_chat(
