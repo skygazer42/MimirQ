@@ -2026,46 +2026,46 @@ export default function QuarantineQueuePage() {
 
                   {hasActiveFilters ? (
                     <div className="mt-3 flex flex-wrap gap-1.5">
-                      {reviewState !== 'all' ? (
+                      {reviewState === 'all' ? null : (
                         <Badge
                           variant="secondary"
                           className="rounded-full px-2.5 py-1 text-[11px] font-medium"
                         >
                           {reviewState === 'pending' ? '仅待审核' : '仅已处理'}
                         </Badge>
-                      ) : null}
-                      {selectedReason !== 'all' ? (
+                      )}
+                      {selectedReason === 'all' ? null : (
                         <Badge
                           variant="secondary"
                           className="rounded-full px-2.5 py-1 text-[11px] font-medium"
                         >
                           原因: {reasonLabel(selectedReason)}
                         </Badge>
-                      ) : null}
-                      {selectedDataset !== 'all' ? (
+                      )}
+                      {selectedDataset === 'all' ? null : (
                         <Badge
                           variant="secondary"
                           className="rounded-full px-2.5 py-1 text-[11px] font-medium"
                         >
                           数据集: {datasetLabelById[selectedDataset] || selectedDataset}
                         </Badge>
-                      ) : null}
-                      {selectedSource !== 'all' ? (
+                      )}
+                      {selectedSource === 'all' ? null : (
                         <Badge
                           variant="secondary"
                           className="rounded-full px-2.5 py-1 text-[11px] font-medium"
                         >
                           来源: {selectedSource}
                         </Badge>
-                      ) : null}
-                      {selectedSeverity !== 'all' ? (
+                      )}
+                      {selectedSeverity === 'all' ? null : (
                         <Badge
                           variant="secondary"
                           className="rounded-full px-2.5 py-1 text-[11px] font-medium"
                         >
                           疑似度: {selectedSeverity}
                         </Badge>
-                      ) : null}
+                      )}
                       {search.trim() ? (
                         <Badge
                           variant="secondary"

@@ -54,7 +54,7 @@ export function readSurfaceTheme(storage?: StorageReader | null): SurfaceThemeKe
 }
 
 export function applySurfaceTheme(theme: SurfaceThemeKey, root?: HTMLElement | null) {
-  const target = root || (typeof document !== 'undefined' ? document.documentElement : null)
+  const target = root ?? (typeof document === 'undefined' ? null : document.documentElement)
   if (!target) return
   target.dataset.surfaceTheme = normalizeSurfaceTheme(theme)
 }
@@ -92,7 +92,7 @@ export function readThemeColor(
 }
 
 export function applyThemeColor(color: string, root?: HTMLElement | null) {
-  const target = root || (typeof document !== 'undefined' ? document.documentElement : null)
+  const target = root ?? (typeof document === 'undefined' ? null : document.documentElement)
   if (!target || !chroma.valid(color)) return
 
   const primary = chroma(color)
