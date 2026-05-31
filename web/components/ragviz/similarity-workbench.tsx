@@ -46,6 +46,9 @@ type RightTopPanel = 'statistics' | null
 type RightBottomPanel = 'filters' | null
 type JsonRecord = Record<string, unknown>
 type SelectedHeatmapCell = { rowIndex: number; colIndex: number }
+type SimilarityTopKAxis = 'x' | 'y' | 'none'
+type DisplayLabels = { xLabels: string[]; yLabels: string[] }
+type SimilarityDisplayMatrix = Array<Array<number | null>>
 
 type PlotlyTrace = {
   type: 'heatmap'
@@ -248,6 +251,145 @@ function heatmapPointCoordinate(
     return pair[pairIndex]
   }
   return null
+}
+
+type SimilarityMainPanelProps = {
+  primaryEntry: SimilarityMatrixEntry | null
+  displayMatrix: number[][] | null
+  displayLabels: DisplayLabels | null
+  mainView: MainViewMode
+  diagnostics: SimilarityDiagnosticsResult | null
+  maskedMatrix: SimilarityDisplayMatrix | null
+  colorScheme: ColorSchemeKey
+  isDifferenceMode: boolean
+  onDecisionChange: (candidateId: string, decision: DiagnosticDecision | null) => void
+  onCellSelect: (cell: SelectedHeatmapCell) => void
+}
+
+function SimilarityMainPanel({
+  primaryEntry,
+  displayMatrix,
+  displayLabels,
+  mainView,
+  diagnostics,
+  maskedMatrix,
+  colorScheme,
+  isDifferenceMode,
+  onDecisionChange,
+  onCellSelect,
+}: SimilarityMainPanelProps) {
+  if (!primaryEntry || !displayMatrix || !displayLabels) {
+    return (
+      <div className="flex h-full items-start justify-center px-8 pb-14 pt-0">
+        <SimilarityEmptyState />
+      </div>
+    )
+  }
+
+  if (mainView === 'diagnostics') {
+    return (
+      <SimilarityDiagnosticsPanel
+        diagnostics={diagnostics}
+        onDecisionChange={onDecisionChange}
+      />
+    )
+  }
+
+  return (
+    <SimilarityHeatmapPanel
+      primaryEntry={primaryEntry}
+      displayMatrix={displayMatrix}
+      displayLabels={displayLabels}
+      maskedMatrix={maskedMatrix}
+      colorScheme={colorScheme}
+      isDifferenceMode={isDifferenceMode}
+      onCellSelect={onCellSelect}
+    />
+  )
+}
+
+function SimilarityDiagnosticsPanel({
+  diagnostics,
+  onDecisionChange,
+}: {
+  diagnostics: SimilarityDiagnosticsResult | null
+  onDecisionChange: (
+    candidateId: string,
+    decision: DiagnosticDecision | null
+  ) => void
+}) {
+  if (diagnostics) {
+    return (
+      <SimilarityDiagnosticsView
+        diagnostics={diagnostics}
+        onDecisionChange={onDecisionChange}
+      />
+    )
+  }
+
+  return (
+    <div className="flex h-full items-center justify-center px-6">
+      <div className="rounded-2xl border border-dashed border-sidebar-border/60 bg-muted/30 px-6 py-8 text-center">
+        <div className="text-sm font-semibold text-foreground">
+          向量诊断暂不可用
+        </div>
+        <p className="mt-2 text-sm text-muted-foreground">
+          当前处于差值模式，3D 投影预览和异常点标注只在单个主图矩阵上启用。
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function SimilarityHeatmapPanel({
+  primaryEntry,
+  displayMatrix,
+  displayLabels,
+  maskedMatrix,
+  colorScheme,
+  isDifferenceMode,
+  onCellSelect,
+}: {
+  primaryEntry: SimilarityMatrixEntry
+  displayMatrix: number[][]
+  displayLabels: DisplayLabels
+  maskedMatrix: SimilarityDisplayMatrix | null
+  colorScheme: ColorSchemeKey
+  isDifferenceMode: boolean
+  onCellSelect: (cell: SelectedHeatmapCell) => void
+}) {
+  return (
+    <div className="h-full overflow-auto p-4">
+      <section className="flex min-h-[560px] flex-col overflow-hidden rounded-[28px] border border-sidebar-border/70 bg-card shadow-soft">
+        <div className="flex items-center justify-between gap-3 border-b border-sidebar-border/70 px-4 py-3">
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold text-foreground">
+              {primaryEntry.xCollectionLabel}（X 轴）
+            </div>
+            <div className="mt-0.5 text-[11px] text-muted-foreground">
+              {displayLabels.xLabels.length} 项 × {displayLabels.yLabels.length} 项
+            </div>
+          </div>
+          <div className="rounded-full border border-border/70 bg-muted/40 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+            点击单元格查看右侧统计
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 p-3">
+          <PlotlyHeatmap
+            matrix={maskedMatrix ?? displayMatrix}
+            xLabels={displayLabels.xLabels}
+            yLabels={displayLabels.yLabels}
+            colorScheme={colorScheme}
+            isDifference={isDifferenceMode}
+            onCellSelect={onCellSelect}
+          />
+        </div>
+
+        <HeatmapScaleLegend isDifference={isDifferenceMode} />
+      </section>
+    </div>
+  )
 }
 
 export function RagvizSimilarityWorkbench() {
@@ -754,7 +896,7 @@ export function RagvizSimilarityWorkbench() {
     })
   }
 
-  const topKAxisForStats: 'x' | 'y' | 'none' = useMemo(() => {
+  const topKAxisForStats: SimilarityTopKAxis = useMemo(() => {
     const topK = uiTopK
     if (!topK?.value) return 'none'
     return topK.axis
@@ -1719,64 +1861,18 @@ export function RagvizSimilarityWorkbench() {
             ) : null}
           </div>
           <div className="flex-1 overflow-hidden">
-            {primaryEntry && displayMatrix && displayLabels ? (
-              mainView === 'diagnostics' ? (
-                diagnostics ? (
-                  <SimilarityDiagnosticsView
-                    diagnostics={diagnostics}
-                    onDecisionChange={setDiagnosticDecision}
-                  />
-                ) : (
-                  <div className="flex h-full items-center justify-center px-6">
-                    <div className="rounded-2xl border border-dashed border-sidebar-border/60 bg-muted/30 px-6 py-8 text-center">
-                      <div className="text-sm font-semibold text-foreground">
-                        向量诊断暂不可用
-                      </div>
-                      <p className="mt-2 text-sm text-muted-foreground">
-                        当前处于差值模式，3D
-                        投影预览和异常点标注只在单个主图矩阵上启用。
-                      </p>
-                    </div>
-                  </div>
-                )
-              ) : (
-                <div className="h-full overflow-auto p-4">
-                  <section className="flex min-h-[560px] flex-col overflow-hidden rounded-[28px] border border-sidebar-border/70 bg-card shadow-soft">
-                    <div className="flex items-center justify-between gap-3 border-b border-sidebar-border/70 px-4 py-3">
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold text-foreground">
-                          {primaryEntry.xCollectionLabel}（X 轴）
-                        </div>
-                        <div className="mt-0.5 text-[11px] text-muted-foreground">
-                          {displayLabels.xLabels.length} 项 ×{' '}
-                          {displayLabels.yLabels.length} 项
-                        </div>
-                      </div>
-                      <div className="rounded-full border border-border/70 bg-muted/40 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
-                        点击单元格查看右侧统计
-                      </div>
-                    </div>
-
-                    <div className="min-h-0 flex-1 p-3">
-                      <PlotlyHeatmap
-                        matrix={maskedMatrix || displayMatrix}
-                        xLabels={displayLabels.xLabels}
-                        yLabels={displayLabels.yLabels}
-                        colorScheme={colorScheme}
-                        isDifference={isDifferenceMode}
-                        onCellSelect={handleHeatmapCellSelect}
-                      />
-                    </div>
-
-                    <HeatmapScaleLegend isDifference={isDifferenceMode} />
-                  </section>
-                </div>
-              )
-            ) : (
-              <div className="flex h-full items-start justify-center px-8 pb-14 pt-0">
-                <SimilarityEmptyState />
-              </div>
-            )}
+            <SimilarityMainPanel
+              primaryEntry={primaryEntry}
+              displayMatrix={displayMatrix}
+              displayLabels={displayLabels}
+              mainView={mainView}
+              diagnostics={diagnostics}
+              maskedMatrix={maskedMatrix}
+              colorScheme={colorScheme}
+              isDifferenceMode={isDifferenceMode}
+              onDecisionChange={setDiagnosticDecision}
+              onCellSelect={handleHeatmapCellSelect}
+            />
           </div>
         </div>
       </div>
@@ -3341,7 +3437,7 @@ type NormalModeStats = {
   diagonalTrueCount: number
   diagonalTotalCount: number
   missingMatchCount: number
-  topKAxis: 'x' | 'y' | 'none'
+  topKAxis: SimilarityTopKAxis
 }
 
 function countTrueCells(mask: boolean[][], rows: number, cols: number) {
@@ -3396,7 +3492,7 @@ function missingMatchCountByAxis(
   mask: boolean[][],
   rows: number,
   cols: number,
-  topKAxis: 'x' | 'y' | 'none'
+  topKAxis: SimilarityTopKAxis
 ) {
   if (topKAxis === 'x') return countRowsWithoutMatch(mask, rows, cols)
   if (topKAxis === 'y') return countColumnsWithoutMatch(mask, rows, cols)
@@ -3405,7 +3501,7 @@ function missingMatchCountByAxis(
 
 function calculateNormalModeStatistics(
   finalMask: boolean[][],
-  topKAxis: 'x' | 'y' | 'none'
+  topKAxis: SimilarityTopKAxis
 ): NormalModeStats {
   const { rows, cols } = matrixDimensions(finalMask)
   const totalCount = rows * cols
