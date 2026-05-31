@@ -163,7 +163,7 @@ class TableStructureRecognizer(Recognizer):
 
         rowh = [b["R_bott"] - b["R_top"] for b in boxes if "R" in b]
         rowh = np.min(rowh) if rowh else 0
-        boxes = Recognizer.sort_R_firstly(boxes, rowh / 2)
+        boxes = Recognizer.sort_r_firstly(boxes, rowh / 2)
         boxes[0]["rn"] = 0
         rows = [[boxes[0]]]
         btm = boxes[0]["bottom"]
@@ -184,9 +184,9 @@ class TableStructureRecognizer(Recognizer):
         colwm = np.min(colwm) if colwm else 0
         crosspage = len({b["page_number"] for b in boxes}) > 1
         if crosspage:
-            boxes = Recognizer.sort_X_firstly(boxes, colwm / 2)
+            boxes = Recognizer.sort_x_firstly(boxes, colwm / 2)
         else:
-            boxes = Recognizer.sort_C_firstly(boxes, colwm / 2)
+            boxes = Recognizer.sort_c_firstly(boxes, colwm / 2)
         boxes[0]["cn"] = 0
         cols = [[boxes[0]]]
         right = boxes[0]["x1"]
@@ -377,7 +377,7 @@ class TableStructureRecognizer(Recognizer):
                     h = min(np.min([c["bottom"] - c["top"]
                                     for c in arr]) / 2, 10)
                     txt = " ".join([c["text"]
-                                    for c in Recognizer.sort_Y_firstly(arr, h)])
+                                    for c in Recognizer.sort_y_firstly(arr, h)])
                 txts.append(txt)
                 sp = ""
                 if arr[0].get("colspan"):

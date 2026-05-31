@@ -91,7 +91,7 @@ class LayoutRecognizer(Recognizer):
                     "top": b["bbox"][1] / scale_factor, "bottom": b["bbox"][-1] / scale_factor,
                     "page_number": pn,
                     } for b in lts if float(b["score"]) >= 0.4 or b["type"] not in self.garbage_layouts]
-            lts = self.sort_Y_firstly(lts, np.mean(
+            lts = self.sort_y_firstly(lts, np.mean(
                 [lt["bottom"] - lt["top"] for lt in lts]) / 2)
             lts = self.layouts_cleanup(bxs, lts)
             page_layout.append(lts)

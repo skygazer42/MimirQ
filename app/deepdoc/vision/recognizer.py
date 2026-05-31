@@ -67,7 +67,7 @@ class Recognizer:
         self.label_list = label_list
 
     @staticmethod
-    def sort_Y_firstly(arr, threashold):
+    def sort_y_firstly(arr, threashold):
         def cmp(c1, c2):
             diff = c1["top"] - c2["top"]
             if abs(diff) < threashold:
@@ -78,7 +78,7 @@ class Recognizer:
         return arr
 
     @staticmethod
-    def sort_X_firstly(arr, threashold):
+    def sort_x_firstly(arr, threashold):
         def cmp(c1, c2):
             diff = c1["x0"] - c2["x0"]
             if abs(diff) < threashold:
@@ -89,10 +89,10 @@ class Recognizer:
         return arr
 
     @staticmethod
-    def sort_C_firstly(arr, thr=0):
+    def sort_c_firstly(arr, thr=0):
         # sort using y1 first and then x1
         # sorted(arr, key=lambda r: (r["x0"], r["top"]))
-        arr = Recognizer.sort_X_firstly(arr, thr)
+        arr = Recognizer.sort_x_firstly(arr, thr)
         for i in range(len(arr) - 1):
             for j in range(i, -1, -1):
                 # restore the order using th
@@ -109,10 +109,10 @@ class Recognizer:
         return arr
 
     @staticmethod
-    def sort_R_firstly(arr, thr=0):
+    def sort_r_firstly(arr, thr=0):
         # sort using y1 first and then x1
         # sorted(arr, key=lambda r: (r["top"], r["x0"]))
-        arr = Recognizer.sort_Y_firstly(arr, thr)
+        arr = Recognizer.sort_y_firstly(arr, thr)
         for i in range(len(arr) - 1):
             for j in range(i, -1, -1):
                 if "R" not in arr[j] or "R" not in arr[j + 1]:
@@ -447,3 +447,9 @@ class Recognizer:
         # seeit.save_results(image_list, res, self.label_list, threshold=thr)
 
         return res
+
+
+Recognizer.sort_Y_firstly = staticmethod(Recognizer.sort_y_firstly)
+Recognizer.sort_X_firstly = staticmethod(Recognizer.sort_x_firstly)
+Recognizer.sort_C_firstly = staticmethod(Recognizer.sort_c_firstly)
+Recognizer.sort_R_firstly = staticmethod(Recognizer.sort_r_firstly)
