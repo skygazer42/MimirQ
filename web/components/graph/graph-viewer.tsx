@@ -70,6 +70,8 @@ type GraphCanvasPalette = {
   edgeLabelBg: string
   edgeLabelHoverText: string
   edgeLabelText: string
+  labelDim: string
+  labelFill: string
 }
 
 type LinkLabelRenderState = {
@@ -86,6 +88,27 @@ type LinkLabelLayout = {
   textAngle: number
   textWidth: number
   fontSize: number
+}
+
+type GraphNodeRenderState = {
+  node: GraphNodeDatum
+  label: string
+  fontSize: number
+  color: string
+  degree: number
+  coreRadius: number
+  shellRadius: number
+  nx: number
+  ny: number
+  labelDirection: number
+  isHighlighted: boolean
+  isPathNode: boolean
+  isSelected: boolean
+  isHovered: boolean
+  isDimmed: boolean
+  emphasis: boolean
+  isDark: boolean
+  globalScale: number
 }
 
 function graphDisplayString(value: unknown): string {
@@ -309,6 +332,143 @@ function nodeShellAlpha(isSelected: boolean, isHovered: boolean) {
   return 0.1
 }
 
+function nodeHighlightFontSize(
+  isHighlighted: boolean,
+  isSelected: boolean,
+  isHovered: boolean,
+  globalScale: number
+) {
+  if (isHighlighted || isSelected || isHovered) return 11.5 / globalScale
+  return 10.5 / globalScale
+}
+
+function nodeDegreeBonus(degree: number, isLargeGraph: boolean) {
+  if (isLargeGraph) return Math.min(degree * 0.08, 0.7)
+  return Math.min(degree * 0.18, 1.8)
+}
+
+function nodeRadii({
+  degree,
+  isLargeGraph,
+  isHighlighted,
+  isSelected,
+  isHovered,
+}: {
+  degree: number
+  isLargeGraph: boolean
+  isHighlighted: boolean
+  isSelected: boolean
+  isHovered: boolean
+}) {
+  const baseRadius = isLargeGraph ? 2.7 : 3.2
+  let coreRadius = baseRadius + nodeDegreeBonus(degree, isLargeGraph)
+  if (isHighlighted || isSelected) coreRadius += 0.9
+  if (isHovered) coreRadius += 0.45
+  return {
+    coreRadius,
+    shellRadius: coreRadius + (isLargeGraph ? 1.05 : 1.55),
+  }
+}
+
+function shouldDimNode({
+  hasHighlightedNodes,
+  hasHighlightedLinks,
+  isHighlighted,
+  selectedNodeId,
+  isLargeGraph,
+  isSelected,
+  isNeighbor,
+}: {
+  hasHighlightedNodes: boolean
+  hasHighlightedLinks: boolean
+  isHighlighted: boolean
+  selectedNodeId: string | null
+  isLargeGraph: boolean
+  isSelected: boolean
+  isNeighbor: boolean
+}) {
+  const dimmedByPath = (hasHighlightedNodes || hasHighlightedLinks) && !isHighlighted
+  const dimmedBySelection = Boolean(
+    selectedNodeId && !isLargeGraph && !isSelected && !isNeighbor
+  )
+  return dimmedByPath || dimmedBySelection
+}
+
+function createNodeRenderState({
+  node,
+  globalScale,
+  highlightedNodeIds,
+  highlightedLinkIds,
+  selectedNodeId,
+  neighborSet,
+  hoveredNodeId,
+  isLargeGraph,
+  isDark,
+  color,
+  degree,
+}: {
+  node: GraphNodeDatum
+  globalScale: number
+  highlightedNodeIds: ReadonlySet<string>
+  highlightedLinkIds: ReadonlySet<string>
+  selectedNodeId: string | null
+  neighborSet: ReadonlySet<string> | null
+  hoveredNodeId: string | null
+  isLargeGraph: boolean
+  isDark: boolean
+  color: string
+  degree: number
+}): GraphNodeRenderState {
+  const isHighlighted = highlightedNodeIds.size > 0 && highlightedNodeIds.has(node.id)
+  const isPathNode = highlightedLinkIds.size > 0 && highlightedNodeIds.has(node.id)
+  const isSelected = selectedNodeId === node.id
+  const isNeighbor = Boolean(neighborSet?.has(node.id))
+  const isHovered = hoveredNodeId === node.id && !isLargeGraph
+  const { coreRadius, shellRadius } = nodeRadii({
+    degree,
+    isLargeGraph,
+    isHighlighted,
+    isSelected,
+    isHovered,
+  })
+  const nx = node.x || 0
+  const ny = node.y || 0
+
+  return {
+    node,
+    label: truncateGraphLabel(node.label || node.id, 24),
+    fontSize: nodeHighlightFontSize(
+      isHighlighted,
+      isSelected,
+      isHovered,
+      globalScale
+    ),
+    color,
+    degree,
+    coreRadius,
+    shellRadius,
+    nx,
+    ny,
+    labelDirection: nx >= 0 ? 1 : -1,
+    isHighlighted,
+    isPathNode,
+    isSelected,
+    isHovered,
+    isDimmed: shouldDimNode({
+      hasHighlightedNodes: highlightedNodeIds.size > 0,
+      hasHighlightedLinks: highlightedLinkIds.size > 0,
+      isHighlighted,
+      selectedNodeId,
+      isLargeGraph,
+      isSelected,
+      isNeighbor,
+    }),
+    emphasis: isSelected || isHighlighted || isHovered,
+    isDark,
+    globalScale,
+  }
+}
+
 function nodeStrokeAlpha(
   isHighlighted: boolean,
   isHovered: boolean,
@@ -361,6 +521,216 @@ function nodeLabelCardFill(
     mixHexColors(color, isDark ? '#0f172a' : '#fffef9', isDark ? 0.74 : 0.84),
     isDark ? 0.92 : 0.9
   )
+}
+
+function drawNodeGlow(ctx: CanvasRenderingContext2D, state: GraphNodeRenderState) {
+  if (!state.emphasis) return
+  if (!state.isHovered && !state.isSelected) return
+
+  ctx.save()
+  const glowRadius = state.shellRadius + (state.isSelected ? 7 : 5.5)
+  const glow = ctx.createRadialGradient(
+    state.nx,
+    state.ny,
+    state.coreRadius * 0.5,
+    state.nx,
+    state.ny,
+    glowRadius
+  )
+  glow.addColorStop(0, withAlpha(state.color, state.isSelected ? 0.22 : 0.16))
+  glow.addColorStop(1, withAlpha(state.color, 0))
+  ctx.beginPath()
+  ctx.arc(state.nx, state.ny, glowRadius, 0, 2 * Math.PI)
+  ctx.fillStyle = glow
+  ctx.globalAlpha = state.isSelected ? 0.7 : 0.5
+  ctx.fill()
+  ctx.restore()
+  ctx.globalAlpha = state.isDimmed ? 0.36 : 1
+}
+
+function drawNodeShell(ctx: CanvasRenderingContext2D, state: GraphNodeRenderState) {
+  ctx.beginPath()
+  ctx.arc(state.nx, state.ny, state.shellRadius, 0, 2 * Math.PI, false)
+  ctx.fillStyle = withAlpha(
+    mixHexColors(
+      state.color,
+      state.isDark ? '#0f172a' : '#fffef9',
+      state.isDark ? 0.45 : 0.22
+    ),
+    nodeShellAlpha(state.isSelected, state.isHovered)
+  )
+  ctx.fill()
+
+  ctx.beginPath()
+  ctx.arc(state.nx, state.ny, state.shellRadius, 0, 2 * Math.PI, false)
+  ctx.strokeStyle = nodeStrokeStyle({
+    isPathNode: state.isPathNode,
+    color: state.color,
+    isSelected: state.isSelected,
+    isHighlighted: state.isHighlighted,
+    isHovered: state.isHovered,
+    isDark: state.isDark,
+  })
+  ctx.lineWidth = nodeStrokeWidth(
+    state.isSelected,
+    state.isHighlighted,
+    state.isHovered,
+    state.globalScale
+  )
+  ctx.stroke()
+}
+
+function drawNodeCore(ctx: CanvasRenderingContext2D, state: GraphNodeRenderState) {
+  const coreGradient = ctx.createRadialGradient(
+    state.nx - state.coreRadius * 0.45,
+    state.ny - state.coreRadius * 0.55,
+    Math.max(0.25, state.coreRadius * 0.15),
+    state.nx,
+    state.ny,
+    state.coreRadius
+  )
+  coreGradient.addColorStop(
+    0,
+    mixHexColors(state.color, '#ffffff', state.isDark ? 0.1 : 0.42)
+  )
+  coreGradient.addColorStop(
+    0.5,
+    mixHexColors(state.color, '#ffffff', state.isDark ? 0.03 : 0.2)
+  )
+  coreGradient.addColorStop(
+    1,
+    mixHexColors(
+      state.color,
+      state.isDark ? '#020617' : '#dbeafe',
+      state.isDark ? 0.18 : 0.08
+    )
+  )
+
+  ctx.beginPath()
+  ctx.arc(state.nx, state.ny, state.coreRadius, 0, 2 * Math.PI, false)
+  ctx.fillStyle = coreGradient
+  ctx.fill()
+
+  ctx.beginPath()
+  ctx.arc(state.nx, state.ny, state.coreRadius, 0, 2 * Math.PI, false)
+  ctx.strokeStyle = withAlpha('#ffffff', state.isDark ? 0.16 : 0.72)
+  ctx.lineWidth = 0.9 / state.globalScale
+  ctx.stroke()
+
+  ctx.beginPath()
+  ctx.arc(
+    state.nx - state.coreRadius * 0.34,
+    state.ny - state.coreRadius * 0.4,
+    Math.max(0.42 / state.globalScale, state.coreRadius * 0.2),
+    0,
+    2 * Math.PI,
+    false
+  )
+  ctx.fillStyle = withAlpha('#ffffff', state.isDark ? 0.18 : 0.58)
+  ctx.fill()
+}
+
+function shouldShowNodeLabel(
+  state: GraphNodeRenderState,
+  viewportLodTier: GraphViewportLod['tier'] | 'detail',
+  isLargeGraph: boolean
+) {
+  if (state.emphasis) return true
+  if (viewportLodTier !== 'detail' && isLargeGraph) return false
+  if (state.globalScale > 1.7) return true
+  if (state.degree >= 4 && state.globalScale > 1.2) return true
+  return state.degree >= 7 && state.globalScale > 1.02
+}
+
+function drawNodeLabel({
+  ctx,
+  state,
+  canvasColors,
+}: {
+  ctx: CanvasRenderingContext2D
+  state: GraphNodeRenderState
+  canvasColors: GraphCanvasPalette
+}) {
+  const padX = 6 / state.globalScale
+  const padY = 3 / state.globalScale
+  const leaderGap = 5 / state.globalScale
+  const cardRadius = 5 / state.globalScale
+  const cardFill = nodeLabelCardFill(
+    state.emphasis,
+    state.color,
+    state.isDark
+  )
+
+  ctx.font = `${state.emphasis ? '600 ' : ''}${state.fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
+  ctx.textAlign = state.labelDirection === 1 ? 'left' : 'right'
+  ctx.textBaseline = 'middle'
+
+  const labelWidth = ctx.measureText(state.label).width
+  const cardWidth = labelWidth + padX * 2
+  const cardHeight = state.fontSize + padY * 2
+  const anchorX = state.nx + state.labelDirection * (state.shellRadius + leaderGap)
+  const cardX =
+    state.labelDirection === 1 ? anchorX : anchorX - cardWidth
+  const cardY = state.ny - cardHeight / 2
+  const leaderEndX = labelLeaderEndX(
+    state.labelDirection,
+    cardX,
+    cardWidth,
+    state.globalScale
+  )
+
+  ctx.beginPath()
+  ctx.moveTo(
+    state.nx + state.labelDirection * (state.shellRadius - 0.3 / state.globalScale),
+    state.ny
+  )
+  ctx.lineTo(leaderEndX, state.ny)
+  ctx.strokeStyle = pathAwareStroke(
+    state.isPathNode,
+    '#f59e0b',
+    withAlpha(state.color, state.emphasis ? 0.56 : 0.28)
+  )
+  ctx.lineWidth = 1 / state.globalScale
+  ctx.stroke()
+
+  traceRoundRect(ctx, cardX, cardY, cardWidth, cardHeight, cardRadius)
+  ctx.fillStyle = cardFill
+  ctx.fill()
+  ctx.strokeStyle = pathAwareStroke(
+    state.isPathNode,
+    withAlpha('#f59e0b', 0.72),
+    withAlpha(state.color, state.emphasis ? 0.42 : 0.22)
+  )
+  ctx.lineWidth = 1 / state.globalScale
+  ctx.stroke()
+
+  ctx.fillStyle = state.isDimmed ? canvasColors.labelDim : canvasColors.labelFill
+  const textX =
+    state.labelDirection === 1 ? cardX + padX : cardX + cardWidth - padX
+  ctx.fillText(state.label, textX, state.ny)
+}
+
+function drawGraphNode({
+  ctx,
+  state,
+  canvasColors,
+  viewportLodTier,
+  isLargeGraph,
+}: {
+  ctx: CanvasRenderingContext2D
+  state: GraphNodeRenderState
+  canvasColors: GraphCanvasPalette
+  viewportLodTier: GraphViewportLod['tier'] | 'detail'
+  isLargeGraph: boolean
+}) {
+  ctx.globalAlpha = state.isDimmed ? 0.36 : 1
+  drawNodeGlow(ctx, state)
+  drawNodeShell(ctx, state)
+  drawNodeCore(ctx, state)
+  if (shouldShowNodeLabel(state, viewportLodTier, isLargeGraph)) {
+    drawNodeLabel({ ctx, state, canvasColors })
+  }
+  ctx.globalAlpha = 1
 }
 
 function labelLeaderEndX(
@@ -1178,172 +1548,27 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
               
               // Custom Node Painting
               nodeCanvasObject={(node: GraphNodeDatum, ctx: CanvasRenderingContext2D, globalScale: number) => {
-                const isHighlighted = highlightedNodeIds.size > 0 && highlightedNodeIds.has(node.id)
-                const isPathNode = highlightedLinkIds.size > 0 && highlightedNodeIds.has(node.id)
-                const isSelected = selectedNodeId === node.id
-                const isNeighbor = neighborSet ? neighborSet.has(node.id) : false
-                const isDimmed = (
-                  ((highlightedNodeIds.size > 0 || highlightedLinkIds.size > 0) && !isHighlighted)
-                  || (selectedNodeId && !isLargeGraph && !isSelected && !isNeighbor)
-                )
-                const isHovered = hoveredNodeId === node.id && !isLargeGraph
-
-                const rawLabel = node.label || node.id
-                const label = truncateGraphLabel(rawLabel, 24)
-                const fontSize = (isHighlighted || isSelected || isHovered) ? 11.5 / globalScale : 10.5 / globalScale
-
-                const color = getNodeColor(node)
                 const degree = nodeDegreeMap.get(String(node.id)) || 0
-                const baseRadius = isLargeGraph ? 2.7 : 3.2
-                const degreeBonus = isLargeGraph ? Math.min(degree * 0.08, 0.7) : Math.min(degree * 0.18, 1.8)
-                let coreRadius = baseRadius + degreeBonus
-                if (isHighlighted || isSelected) coreRadius += 0.9
-                if (isHovered) coreRadius += 0.45
-                const shellRadius = coreRadius + (isLargeGraph ? 1.05 : 1.55)
-
-                const nx = node.x || 0
-                const ny = node.y || 0
-                const emphasis = isSelected || isHighlighted || isHovered
-                const labelDirection = nx >= 0 ? 1 : -1
-
-                ctx.globalAlpha = isDimmed ? 0.36 : 1
-
-                if ((isHovered || isSelected) && !isLargeGraph) {
-                  ctx.save()
-                  const glowRadius = shellRadius + (isSelected ? 7 : 5.5)
-                  const glow = ctx.createRadialGradient(nx, ny, coreRadius * 0.5, nx, ny, glowRadius)
-                  glow.addColorStop(0, withAlpha(color, isSelected ? 0.22 : 0.16))
-                  glow.addColorStop(1, withAlpha(color, 0))
-                  ctx.beginPath()
-                  ctx.arc(nx, ny, glowRadius, 0, 2 * Math.PI)
-                  ctx.fillStyle = glow
-                  ctx.globalAlpha = isSelected ? 0.7 : 0.5
-                  ctx.fill()
-                  ctx.restore()
-                  ctx.globalAlpha = isDimmed ? 0.36 : 1
-                }
-
-                ctx.beginPath()
-                ctx.arc(nx, ny, shellRadius, 0, 2 * Math.PI, false)
-                ctx.fillStyle = withAlpha(
-                  mixHexColors(color, isDark ? '#0f172a' : '#fffef9', isDark ? 0.45 : 0.22),
-                  nodeShellAlpha(isSelected, isHovered)
-                )
-                ctx.fill()
-
-                ctx.beginPath()
-                ctx.arc(nx, ny, shellRadius, 0, 2 * Math.PI, false)
-                ctx.strokeStyle = nodeStrokeStyle({
-                  isPathNode,
-                  color,
-                  isSelected,
-                  isHighlighted,
-                  isHovered,
+                const state = createNodeRenderState({
+                  node,
+                  globalScale,
+                  highlightedNodeIds,
+                  highlightedLinkIds,
+                  selectedNodeId,
+                  neighborSet,
+                  hoveredNodeId,
+                  isLargeGraph,
                   isDark,
+                  color: getNodeColor(node),
+                  degree,
                 })
-                ctx.lineWidth = nodeStrokeWidth(
-                  isSelected,
-                  isHighlighted,
-                  isHovered,
-                  globalScale
-                )
-                ctx.stroke()
-
-                const coreGradient = ctx.createRadialGradient(
-                  nx - coreRadius * 0.45,
-                  ny - coreRadius * 0.55,
-                  Math.max(0.25, coreRadius * 0.15),
-                  nx,
-                  ny,
-                  coreRadius
-                )
-                coreGradient.addColorStop(0, mixHexColors(color, '#ffffff', isDark ? 0.1 : 0.42))
-                coreGradient.addColorStop(0.5, mixHexColors(color, '#ffffff', isDark ? 0.03 : 0.2))
-                coreGradient.addColorStop(1, mixHexColors(color, isDark ? '#020617' : '#dbeafe', isDark ? 0.18 : 0.08))
-
-                ctx.beginPath()
-                ctx.arc(nx, ny, coreRadius, 0, 2 * Math.PI, false)
-                ctx.fillStyle = coreGradient
-                ctx.fill()
-
-                ctx.beginPath()
-                ctx.arc(nx, ny, coreRadius, 0, 2 * Math.PI, false)
-                ctx.strokeStyle = withAlpha('#ffffff', isDark ? 0.16 : 0.72)
-                ctx.lineWidth = 0.9 / globalScale
-                ctx.stroke()
-
-                ctx.beginPath()
-                ctx.arc(
-                  nx - coreRadius * 0.34,
-                  ny - coreRadius * 0.4,
-                  Math.max(0.42 / globalScale, coreRadius * 0.2),
-                  0,
-                  2 * Math.PI,
-                  false
-                )
-                ctx.fillStyle = withAlpha('#ffffff', isDark ? 0.18 : 0.58)
-                ctx.fill()
-
-                const shouldShowLabel =
-                  emphasis
-                  || ((viewportLodTier === 'detail' || !isLargeGraph) && (
-                    globalScale > 1.7
-                    || (degree >= 4 && globalScale > 1.2)
-                    || (degree >= 7 && globalScale > 1.02)
-                  ))
-
-                if (shouldShowLabel) {
-                  const padX = 6 / globalScale
-                  const padY = 3 / globalScale
-                  const leaderGap = 5 / globalScale
-                  const cardRadius = 5 / globalScale
-                  const cardFill = nodeLabelCardFill(emphasis, color, isDark)
-
-                  ctx.font = `${emphasis ? '600 ' : ''}${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
-                  ctx.textAlign = labelDirection === 1 ? 'left' : 'right'
-                  ctx.textBaseline = 'middle'
-
-                  const labelWidth = ctx.measureText(label).width
-                  const cardWidth = labelWidth + padX * 2
-                  const cardHeight = fontSize + padY * 2
-                  const anchorX = nx + labelDirection * (shellRadius + leaderGap)
-                  const cardX = labelDirection === 1 ? anchorX : anchorX - cardWidth
-                  const cardY = ny - cardHeight / 2
-                  const leaderEndX = labelLeaderEndX(
-                    labelDirection,
-                    cardX,
-                    cardWidth,
-                    globalScale
-                  )
-
-                  ctx.beginPath()
-                  ctx.moveTo(nx + labelDirection * (shellRadius - 0.3 / globalScale), ny)
-                  ctx.lineTo(leaderEndX, ny)
-                  ctx.strokeStyle = pathAwareStroke(
-                    isPathNode,
-                    '#f59e0b',
-                    withAlpha(color, emphasis ? 0.56 : 0.28)
-                  )
-                  ctx.lineWidth = 1 / globalScale
-                  ctx.stroke()
-
-                  traceRoundRect(ctx, cardX, cardY, cardWidth, cardHeight, cardRadius)
-                  ctx.fillStyle = cardFill
-                  ctx.fill()
-                  ctx.strokeStyle = pathAwareStroke(
-                    isPathNode,
-                    withAlpha('#f59e0b', 0.72),
-                    withAlpha(color, emphasis ? 0.42 : 0.22)
-                  )
-                  ctx.lineWidth = 1 / globalScale
-                  ctx.stroke()
-
-                  ctx.fillStyle = isDimmed ? canvasColors.labelDim : canvasColors.labelFill
-                  const textX = labelDirection === 1 ? cardX + padX : cardX + cardWidth - padX
-                  ctx.fillText(label, textX, ny)
-                }
-
-                ctx.globalAlpha = 1
+                drawGraphNode({
+                  ctx,
+                  state,
+                  canvasColors,
+                  viewportLodTier,
+                  isLargeGraph,
+                })
               }}
 
               // Custom Link Label Painting
