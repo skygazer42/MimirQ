@@ -47,7 +47,6 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
   Tooltip,
   XAxis,
   YAxis,
@@ -2292,6 +2291,10 @@ function SnapshotAuditPanel({
   const chartRows = includeZeroDeltas
     ? deltaRows
     : deltaRows.filter((row) => row.delta !== 0)
+  const chartRowsWithFill = chartRows.map((row) => ({
+    ...row,
+    fill: deltaFill(row.delta),
+  }))
   const shownDriftRows = compactRows
     ? typeDriftRows.slice(0, 14)
     : typeDriftRows
@@ -2361,7 +2364,7 @@ function SnapshotAuditPanel({
           <div className="px-3 py-2">
             <SafeResponsiveChart className="h-[280px]" minHeight={280}>
               <BarChart
-                data={chartRows}
+                data={chartRowsWithFill}
                 margin={{ top: 8, right: 10, left: -16, bottom: 0 }}
               >
                 <CartesianGrid
@@ -2385,14 +2388,7 @@ function SnapshotAuditPanel({
                   cursor={{ fill: 'rgba(148, 163, 184, 0.08)' }}
                   content={<SnapshotChartTooltip />}
                 />
-                <Bar dataKey="delta" radius={[6, 6, 0, 0]}>
-                  {chartRows.map((row) => (
-                    <Cell
-                      key={`delta:${row.key}`}
-                      fill={deltaFill(row.delta)}
-                    />
-                  ))}
-                </Bar>
+                <Bar dataKey="delta" radius={[6, 6, 0, 0]} />
               </BarChart>
             </SafeResponsiveChart>
           </div>

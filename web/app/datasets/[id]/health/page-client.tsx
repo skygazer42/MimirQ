@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { Activity, ArrowLeft, BarChart3, Download, FileSearch, RefreshCw, Settings2, ShieldAlert } from 'lucide-react'
-import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, Tooltip, XAxis, YAxis } from 'recharts'
+import { Bar, BarChart, CartesianGrid, Pie, PieChart, Tooltip, XAxis, YAxis } from 'recharts'
 
 import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
@@ -88,10 +88,11 @@ export default function DatasetHealthPage() {
 
   const statusChartData = useMemo(() => {
     const m = ingestion?.by_status || profile?.by_status || {}
-    return Object.entries(m)
+    const entries = Object.entries(m)
       .map(([name, value]) => ({ name, value: Number(value || 0) }))
       .filter((x) => x.value > 0)
       .sort((a, b) => b.value - a.value)
+    return entries.map((entry, idx) => ({ ...entry, fill: PIE_COLORS[idx % PIE_COLORS.length] }))
   }, [ingestion?.by_status, profile?.by_status])
 
   const fileTypeChartData = useMemo(() => {
@@ -105,7 +106,7 @@ export default function DatasetHealthPage() {
     const rest = entries.slice(10)
     const other = rest.reduce((acc, x) => acc + x.value, 0)
     if (other > 0) top.push({ name: '其他', value: other })
-    return top
+    return top.map((entry, idx) => ({ ...entry, fill: PIE_COLORS[idx % PIE_COLORS.length] }))
   }, [profile?.by_file_type])
 
   const piiTotal = useMemo(() => sumRecordValues(profile?.pii_hits_total), [profile?.pii_hits_total])
@@ -353,11 +354,7 @@ export default function DatasetHealthPage() {
                       <XAxis dataKey="name" tick={{ fontSize: 12 }} />
                       <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
                       <Tooltip />
-                      <Bar dataKey="value" radius={[8, 8, 0, 0]}>
-                        {statusChartData.map((entry, idx) => (
-                          <Cell key={String(entry.name ?? 'status')} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
-                        ))}
-                      </Bar>
+                      <Bar dataKey="value" radius={[8, 8, 0, 0]} />
                     </BarChart>
                   </SafeResponsiveChart>
               ) : (
@@ -375,11 +372,7 @@ export default function DatasetHealthPage() {
               {fileTypeChartData.length ? (
                 <SafeResponsiveChart>
                     <PieChart>
-                      <Pie data={fileTypeChartData} dataKey="value" nameKey="name" outerRadius={110} label>
-                        {fileTypeChartData.map((entry, idx) => (
-                          <Cell key={String(entry.name ?? 'file-type')} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
-                        ))}
-                      </Pie>
+                      <Pie data={fileTypeChartData} dataKey="value" nameKey="name" outerRadius={110} label />
                       <Tooltip />
                     </PieChart>
                   </SafeResponsiveChart>

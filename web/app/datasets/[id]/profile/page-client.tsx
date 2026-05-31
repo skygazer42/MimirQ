@@ -21,7 +21,6 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
   Pie,
   PieChart,
   Tooltip,
@@ -377,7 +376,7 @@ export default function DatasetProfilePage() {
     const rest = entries.slice(10)
     const other = rest.reduce((acc, x) => acc + x.value, 0)
     if (other > 0) top.push({ name: '其他', value: other })
-    return top
+    return top.map((entry, idx) => ({ ...entry, fill: PIE_COLORS[idx % PIE_COLORS.length] }))
   }, [summary])
 
   const statusChartData = useMemo(() => {
@@ -420,6 +419,7 @@ export default function DatasetProfilePage() {
       .map(([name, value]) => ({ name, value: Number(value || 0) }))
       .filter((x) => x.value > 0)
       .sort((a, b) => order.indexOf(a.name) - order.indexOf(b.name))
+      .map((entry, idx) => ({ ...entry, fill: PIE_COLORS[idx % PIE_COLORS.length] }))
   }, [summary])
 
   const directoryChartData = useMemo(() => {
@@ -471,9 +471,9 @@ export default function DatasetProfilePage() {
     const s = summary?.pdf_scan
     if (!s) return []
     return [
-      { name: 'scanned', value: Number(s.scanned || 0) },
-      { name: 'text', value: Number(s.not_scanned || 0) },
-      { name: 'unknown', value: Number(s.unknown || 0) },
+      { name: 'scanned', value: Number(s.scanned || 0), fill: '#fb7185' },
+      { name: 'text', value: Number(s.not_scanned || 0), fill: '#38bdf8' },
+      { name: 'unknown', value: Number(s.unknown || 0), fill: '#94a3b8' },
     ]
   }, [summary])
 
@@ -862,11 +862,7 @@ export default function DatasetProfilePage() {
                       innerRadius={55}
                       outerRadius={95}
                       paddingAngle={2}
-                    >
-                      {fileTypeChartData.map((entry, idx) => (
-                        <Cell key={String(entry.name ?? 'file-type')} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
-                      ))}
-                    </Pie>
+                    />
                   </PieChart>
                 </SafeResponsiveChart>
             </Panel>
@@ -908,11 +904,7 @@ export default function DatasetProfilePage() {
               <SafeResponsiveChart>
                   <PieChart>
                     <Tooltip />
-                    <Pie data={pdfScanData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={95} paddingAngle={2}>
-                      {pdfScanData.map((entry, idx) => (
-                        <Cell key={String(entry.name ?? 'pdf-scan')} fill={['#fb7185', '#38bdf8', '#94a3b8'][idx % 3]} />
-                      ))}
-                    </Pie>
+                    <Pie data={pdfScanData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={95} paddingAngle={2} />
                   </PieChart>
                 </SafeResponsiveChart>
             </Panel>
@@ -1159,11 +1151,7 @@ export default function DatasetProfilePage() {
                         innerRadius={55}
                         outerRadius={95}
                         paddingAngle={2}
-                      >
-                        {languageMixChartData.map((entry, idx) => (
-                          <Cell key={String(entry.name ?? 'language')} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
-                        ))}
-                      </Pie>
+                      />
                     </PieChart>
                   </SafeResponsiveChart>
               ) : (
@@ -1183,15 +1171,16 @@ export default function DatasetProfilePage() {
                       <XAxis dataKey="name" fontSize={12} interval={0} />
                       <YAxis allowDecimals={false} fontSize={12} />
                       <Tooltip />
-                      <Bar dataKey="value" fill="hsl(var(--chart-5))" radius={[6, 6, 0, 0]}>
-                        {directoryChartData.map((entry) => (
-                          <Cell
-                            key={String(entry.key ?? entry.name ?? 'directory')}
-                            cursor={entry.key === '__other__' ? 'default' : 'pointer'}
-                            onClick={() => (entry.key === '__other__' ? null : detachPromise(openBucket('directory', String(entry.key || 'root'))))}
-                          />
-                        ))}
-                      </Bar>
+                      <Bar
+                        dataKey="value"
+                        fill="hsl(var(--chart-5))"
+                        radius={[6, 6, 0, 0]}
+                        cursor="pointer"
+                        onClick={(entry) => {
+                          const key = String(entry?.key || 'root')
+                          if (key !== '__other__') detachPromise(openBucket('directory', key))
+                        }}
+                      />
                     </BarChart>
                   </SafeResponsiveChart>
               ) : (
@@ -1211,15 +1200,13 @@ export default function DatasetProfilePage() {
                       <XAxis dataKey="name" fontSize={12} interval={0} />
                       <YAxis allowDecimals={false} fontSize={12} />
                       <Tooltip />
-                      <Bar dataKey="value" fill="hsl(var(--chart-2))" radius={[6, 6, 0, 0]}>
-                        {qualityBucketChartData.map((entry) => (
-                          <Cell
-                            key={String(entry.key ?? entry.name ?? 'quality')}
-                            cursor="pointer"
-                            onClick={() => detachPromise(openBucket('quality_bucket', String(entry.key || 'unknown')))}
-                          />
-                        ))}
-                      </Bar>
+                      <Bar
+                        dataKey="value"
+                        fill="hsl(var(--chart-2))"
+                        radius={[6, 6, 0, 0]}
+                        cursor="pointer"
+                        onClick={(entry) => detachPromise(openBucket('quality_bucket', String(entry?.key || 'unknown')))}
+                      />
                     </BarChart>
                   </SafeResponsiveChart>
               ) : (

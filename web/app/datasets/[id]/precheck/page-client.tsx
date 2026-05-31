@@ -9,7 +9,6 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
   Pie,
   PieChart,
   Tooltip,
@@ -523,7 +522,7 @@ export default function DatasetPrecheckPage() {
     const rest = entries.slice(10)
     const other = rest.reduce((acc, x) => acc + x.value, 0)
     if (other > 0) top.push({ name: '其他', value: other })
-    return top
+    return top.map((entry, idx) => ({ ...entry, fill: PIE_COLORS[idx % PIE_COLORS.length] }))
   }, [summary])
 
   const lengthHistogramData = useMemo(() => {
@@ -538,9 +537,9 @@ export default function DatasetPrecheckPage() {
     const s = summary?.pdf_scan
     if (!s) return []
     return [
-      { name: 'scanned', value: Number(s.scanned || 0) },
-      { name: 'text', value: Number(s.not_scanned || 0) },
-      { name: 'unknown', value: Number(s.unknown || 0) },
+      { name: 'scanned', value: Number(s.scanned || 0), fill: '#fb7185' },
+      { name: 'text', value: Number(s.not_scanned || 0), fill: '#38bdf8' },
+      { name: 'unknown', value: Number(s.unknown || 0), fill: '#94a3b8' },
     ]
   }, [summary])
 
@@ -907,11 +906,7 @@ export default function DatasetPrecheckPage() {
               <SafeResponsiveChart>
                   <PieChart>
                     <Tooltip />
-                    <Pie data={fileTypeChartData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={95} paddingAngle={2}>
-                      {fileTypeChartData.map((entry, idx) => (
-                        <Cell key={String(entry.name ?? 'file-type')} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
-                      ))}
-                    </Pie>
+                    <Pie data={fileTypeChartData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={95} paddingAngle={2} />
                   </PieChart>
                 </SafeResponsiveChart>
             </Panel>
@@ -938,11 +933,7 @@ export default function DatasetPrecheckPage() {
               <SafeResponsiveChart>
                   <PieChart>
                     <Tooltip />
-                    <Pie data={pdfScanData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={95} paddingAngle={2}>
-                      {pdfScanData.map((entry, idx) => (
-                        <Cell key={String(entry.name ?? 'pdf-scan')} fill={['#fb7185', '#38bdf8', '#94a3b8'][idx % 3]} />
-                      ))}
-                    </Pie>
+                    <Pie data={pdfScanData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={95} paddingAngle={2} />
                   </PieChart>
                 </SafeResponsiveChart>
             </Panel>
