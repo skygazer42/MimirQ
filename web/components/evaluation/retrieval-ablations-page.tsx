@@ -130,10 +130,10 @@ const ABLATION_INLINE_TONE_CLASSES: Record<
 
 const JSON_TOKEN_PATTERN = new RegExp(
   [
-    '("(?:\\\\.|[^"\\\\])*")(\\s*:)?',
-    '\\b-?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?\\b',
-    '\\b(?:true|false|null)\\b',
-    '[{}\\[\\],:]',
+    String.raw`("(?:\\.|[^"\\])*")(\s*:)?`,
+    String.raw`\b-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b`,
+    String.raw`\b(?:true|false|null)\b`,
+    String.raw`[{}\[\],:]`,
   ].join('|'),
   'g'
 )
@@ -350,6 +350,34 @@ function formatAblationDelta(value: number | null): string {
   return value.toFixed(4)
 }
 
+function ablationWorkspaceGridClassName(
+  leftExpanded: boolean,
+  leaderboardExpanded: boolean
+): string {
+  if (leftExpanded && leaderboardExpanded) {
+    return cn(
+      'relative grid h-full min-h-[760px] gap-4',
+      'grid-cols-[390px_minmax(0,1fr)_360px]'
+    )
+  }
+  if (leftExpanded === false && leaderboardExpanded) {
+    return cn(
+      'relative grid h-full min-h-[760px] gap-4',
+      'grid-cols-[minmax(0,1fr)_360px]'
+    )
+  }
+  if (leftExpanded && leaderboardExpanded === false) {
+    return cn(
+      'relative grid h-full min-h-[760px] gap-4',
+      'grid-cols-[390px_minmax(0,1fr)]'
+    )
+  }
+  return cn(
+    'relative grid h-full min-h-[760px] gap-4',
+    'grid-cols-[minmax(0,1fr)]'
+  )
+}
+
 function AblationInlineStat({
   label,
   value,
@@ -433,7 +461,7 @@ function AblationSection({
           </Button>
         ) : null}
       </div>
-      {!collapsed ? <div className="mt-3">{children}</div> : null}
+      {collapsed ? null : <div className="mt-3">{children}</div>}
     </section>
   )
 }
@@ -583,6 +611,8 @@ type JsonTokenKind =
   | 'null'
   | 'punctuation'
 
+type JsonToken = { text: string; kind: JsonTokenKind }
+
 function splitCodeLines(value: string): string[] {
   const normalized = String(value ?? '').replaceAll('\r', '')
   const lines = normalized.split('\n')
@@ -590,10 +620,28 @@ function splitCodeLines(value: string): string[] {
   return lines.length ? lines : ['']
 }
 
-function tokenizeJsonLine(
-  line: string
-): Array<{ text: string; kind: JsonTokenKind }> {
-  const tokens: Array<{ text: string; kind: JsonTokenKind }> = []
+function jsonTokenKindFromRaw(raw: string): JsonTokenKind {
+  if (raw === 'true' || raw === 'false') return 'boolean'
+  if (raw === 'null') return 'null'
+  if (/^-?\d/.test(raw)) return 'number'
+  return 'punctuation'
+}
+
+function appendJsonToken(tokens: JsonToken[], match: RegExpExecArray): void {
+  const raw = match[0] ?? ''
+  const quotedText = match[1]
+  if (!quotedText) {
+    tokens.push({ text: raw, kind: jsonTokenKindFromRaw(raw) })
+    return
+  }
+
+  const suffix = match[2] ?? ''
+  tokens.push({ text: quotedText, kind: suffix ? 'key' : 'string' })
+  if (suffix) tokens.push({ text: suffix, kind: 'punctuation' })
+}
+
+function tokenizeJsonLine(line: string): JsonToken[] {
+  const tokens: JsonToken[] = []
   JSON_TOKEN_PATTERN.lastIndex = 0
 
   let lastIndex = 0
@@ -603,21 +651,7 @@ function tokenizeJsonLine(
       tokens.push({ text: line.slice(lastIndex, match.index), kind: 'plain' })
     }
 
-    const raw = match[0] ?? ''
-    if (match[1]) {
-      const suffix = match[2] ?? ''
-      tokens.push({ text: match[1], kind: suffix ? 'key' : 'string' })
-      if (suffix) tokens.push({ text: suffix, kind: 'punctuation' })
-    } else if (raw === 'true' || raw === 'false') {
-      tokens.push({ text: raw, kind: 'boolean' })
-    } else if (raw === 'null') {
-      tokens.push({ text: raw, kind: 'null' })
-    } else if (/^-?\d/.test(raw)) {
-      tokens.push({ text: raw, kind: 'number' })
-    } else {
-      tokens.push({ text: raw, kind: 'punctuation' })
-    }
-
+    appendJsonToken(tokens, match)
     lastIndex = JSON_TOKEN_PATTERN.lastIndex
     match = JSON_TOKEN_PATTERN.exec(line)
   }
@@ -1065,18 +1099,9 @@ export function RetrievalAblationsPage() {
       return { key, before, after, changed: before !== after }
     })
   }, [diff])
-  const workspaceGridClassName = cn(
-    'relative grid h-full min-h-[760px] gap-4',
-    leftSidebarExpanded &&
-      leaderboardExpanded &&
-      'grid-cols-[390px_minmax(0,1fr)_360px]',
-    leftSidebarCollapsed &&
-      leaderboardExpanded &&
-      'grid-cols-[minmax(0,1fr)_360px]',
-    leftSidebarExpanded &&
-      leaderboardCollapsed &&
-      'grid-cols-[390px_minmax(0,1fr)]',
-    leftSidebarCollapsed && leaderboardCollapsed && 'grid-cols-[minmax(0,1fr)]'
+  const workspaceGridClassName = ablationWorkspaceGridClassName(
+    leftSidebarExpanded,
+    leaderboardExpanded
   )
 
   return (
