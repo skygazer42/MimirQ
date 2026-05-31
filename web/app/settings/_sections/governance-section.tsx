@@ -33,6 +33,7 @@ const RTBF_CURRENT_ACCOUNT_VALUE = '__current_account__'
 const RTBF_MANUAL_ACCOUNT_VALUE = '__manual_account__'
 
 type RtbfTone = 'idle' | 'info' | 'success' | 'danger'
+type RtbfSubjectSource = 'current' | 'member' | 'manual'
 
 type RtbfResultView = {
   title: string
@@ -77,7 +78,7 @@ function formatRtbfRaw(value: unknown): string | null {
   try {
     return JSON.stringify(value, null, 2)
   } catch {
-    return String(value)
+    return '无法序列化的响应'
   }
 }
 
@@ -87,6 +88,77 @@ function rtbfNoteCopy(value: string): string {
     return '当前后端未启用状态持久化，只返回受理状态；完整执行结果以请求返回为准'
   }
   return value
+}
+
+function rtbfResultTitle(
+  errors: number,
+  isStatusOnly: boolean,
+  dryRun: boolean,
+  statusLabel: string
+): string {
+  if (errors > 0) return 'RTBF 执行存在错误'
+  if (isStatusOnly) return `状态查询：${statusLabel}`
+  if (dryRun) return '安全预演完成'
+  return '级联删除已执行'
+}
+
+function rtbfResultDescription(
+  note: string,
+  message: string,
+  dryRun: boolean,
+  eligible: number,
+  deleted: number
+): string {
+  if (note) return note
+  if (message) return message
+  if (dryRun) return `本次只评估影响范围，命中 ${eligible} 个候选文档，未执行删除`
+  return `本次已执行级联删除，删除 ${deleted}/${eligible} 个候选文档`
+}
+
+function rtbfResultTone(errors: number, isStatusOnly: boolean): RtbfTone {
+  if (errors > 0) return 'danger'
+  if (isStatusOnly) return 'info'
+  return 'success'
+}
+
+function rtbfResultBadge(
+  errors: number,
+  dryRun: boolean,
+  statusLabel: string
+): string {
+  if (errors > 0) return '需排查'
+  if (dryRun) return '安全预演'
+  return statusLabel || '已执行'
+}
+
+function selectedRtbfSubjectValue(
+  source: RtbfSubjectSource,
+  selectedMember: TenantMember | null
+): string {
+  if (source === 'current') return RTBF_CURRENT_ACCOUNT_VALUE
+  if (source === 'member' && selectedMember) {
+    return String(selectedMember.user_id || '').trim()
+  }
+  return RTBF_MANUAL_ACCOUNT_VALUE
+}
+
+function rtbfSubjectSourceLabel(source: RtbfSubjectSource): string {
+  if (source === 'current') return '当前账号自动绑定'
+  if (source === 'member') return '成员列表选择'
+  return '手动覆盖'
+}
+
+function rtbfModeButtonClass(isActive: boolean, tone: 'info' | 'destructive') {
+  if (isActive && tone === 'info') {
+    return 'border-info/30 bg-info/10 text-info shadow-[0_8px_22px_hsl(var(--info)/0.08)]'
+  }
+  if (isActive && tone === 'destructive') {
+    return 'border-destructive/35 bg-destructive/10 text-destructive shadow-[0_8px_22px_hsl(var(--destructive)/0.08)]'
+  }
+  if (tone === 'info') {
+    return 'border-border/60 bg-background/70 text-muted-foreground hover:border-info/25 hover:bg-info/5 hover:text-foreground/78'
+  }
+  return 'border-border/60 bg-background/70 text-muted-foreground hover:border-destructive/25 hover:bg-destructive/5 hover:text-foreground/78'
 }
 
 function buildRtbfResultView(value: unknown): RtbfResultView {
@@ -120,10 +192,8 @@ function buildRtbfResultView(value: unknown): RtbfResultView {
   const note = rtbfNoteCopy(stringValue(record.note, ''))
   const message = stringValue(record.message, '')
   const isStatusOnly = Boolean(ticketId && status && !('eligible' in record))
-  const title = errors > 0 ? 'RTBF 执行存在错误' : isStatusOnly ? `状态查询：${statusLabel}` : dryRun ? '安全预演完成' : '级联删除已执行'
-  const description = note || message || (dryRun
-    ? `本次只评估影响范围，命中 ${eligible} 个候选文档，未执行删除`
-    : `本次已执行级联删除，删除 ${deleted}/${eligible} 个候选文档`)
+  const title = rtbfResultTitle(errors, isStatusOnly, dryRun, statusLabel)
+  const description = rtbfResultDescription(note, message, dryRun, eligible, deleted)
 
   if (isStatusOnly) {
     return {
@@ -144,8 +214,8 @@ function buildRtbfResultView(value: unknown): RtbfResultView {
   return {
     title,
     description,
-    tone: errors > 0 ? 'danger' : isStatusOnly ? 'info' : 'success',
-    badge: errors > 0 ? '需排查' : isStatusOnly ? statusLabel || '已查询' : dryRun ? '安全预演' : '已执行',
+    tone: rtbfResultTone(errors, isStatusOnly),
+    badge: rtbfResultBadge(errors, dryRun, statusLabel),
     metrics: [
       { label: '候选文档', value: String(eligible || documents || 0), hint: subject ? `账号 ${subject}` : '按账号匹配' },
       { label: '已删除', value: String(deleted), hint: dryRun ? '安全预演未删除' : '实际删除数' },
@@ -239,7 +309,8 @@ export function GovernanceSection({
   const [rtbfMaxRetries, setRtbfMaxRetries] = useState(1)
   const [rtbfRunningKey, setRtbfRunningKey] = useState<string | null>(null)
   const [rtbfResult, setRtbfResult] = useState<unknown>(null)
-  const [rtbfSubjectSource, setRtbfSubjectSource] = useState<'current' | 'member' | 'manual'>('current')
+  const [rtbfSubjectSource, setRtbfSubjectSource] =
+    useState<RtbfSubjectSource>('current')
 
   const currentAccessQuery = useQuery({
     queryKey: queryKeys.access.current,
@@ -277,16 +348,12 @@ export function GovernanceSection({
     () => members.find((member) => String(member.user_id || '').trim() === rtbfAccountId.trim()) || null,
     [members, rtbfAccountId]
   )
-  const selectedSubjectValue = rtbfSubjectSource === 'current'
-    ? RTBF_CURRENT_ACCOUNT_VALUE
-    : rtbfSubjectSource === 'member' && selectedMember
-      ? String(selectedMember.user_id || '').trim()
-      : RTBF_MANUAL_ACCOUNT_VALUE
-  const subjectSourceLabel = rtbfSubjectSource === 'current'
-    ? '当前账号自动绑定'
-    : rtbfSubjectSource === 'member'
-      ? '成员列表选择'
-      : '手动覆盖'
+  const selectedSubjectValue = selectedRtbfSubjectValue(
+    rtbfSubjectSource,
+    selectedMember
+  )
+  const subjectSourceLabel = rtbfSubjectSourceLabel(rtbfSubjectSource)
+  const isDeleteMode = rtbfDryRun === false
 
   useEffect(() => {
     if (rtbfSubjectSource !== 'current') return
@@ -403,9 +470,7 @@ export function GovernanceSection({
               onClick={() => setRtbfDryRun(true)}
               className={cn(
                 'rounded-xl border px-3 py-2 text-left transition-colors',
-                rtbfDryRun
-                  ? 'border-info/30 bg-info/10 text-info shadow-[0_8px_22px_hsl(var(--info)/0.08)]'
-                  : 'border-border/60 bg-background/70 text-muted-foreground hover:border-info/25 hover:bg-info/5 hover:text-foreground/78'
+                rtbfModeButtonClass(rtbfDryRun, 'info')
               )}
               aria-pressed={rtbfDryRun}
             >
@@ -417,11 +482,9 @@ export function GovernanceSection({
               onClick={() => setRtbfDryRun(false)}
               className={cn(
                 'rounded-xl border px-3 py-2 text-left transition-colors',
-                !rtbfDryRun
-                  ? 'border-destructive/35 bg-destructive/10 text-destructive shadow-[0_8px_22px_hsl(var(--destructive)/0.08)]'
-                  : 'border-border/60 bg-background/70 text-muted-foreground hover:border-destructive/25 hover:bg-destructive/5 hover:text-foreground/78'
+                rtbfModeButtonClass(isDeleteMode, 'destructive')
               )}
-              aria-pressed={!rtbfDryRun}
+              aria-pressed={isDeleteMode}
             >
               <div className="text-[12px] font-medium">执行删除</div>
               <div className="mt-0.5 text-[11px] leading-4 opacity-80">只在预演结果确认后使用，会调用后端级联删除并刷新相关缓存</div>

@@ -427,6 +427,15 @@ function buildKgDiagnosticsDiff(
   }
 }
 
+function resolveInitialDiagnosticsDatasetId(
+  current: string,
+  datasets: DiagnosticsDatasetOption[]
+): string {
+  if (current.trim()) return current
+  const firstDatasetId = String(datasets[0]?.id || '').trim()
+  return firstDatasetId || current
+}
+
 function DiagnosticsInlineStat({
   label,
   value,
@@ -1195,12 +1204,9 @@ export function KGDiagnosticsPage() {
   )
 
   useEffect(() => {
-    if (!datasets.length) return
-    setDatasetId((current) => {
-      if (current.trim()) return current
-      const firstDatasetId = String(datasets[0]?.id || '').trim()
-      return firstDatasetId || current
-    })
+    setDatasetId((current) =>
+      resolveInitialDiagnosticsDatasetId(current, datasets)
+    )
   }, [datasets])
 
   const diff = useMemo(
