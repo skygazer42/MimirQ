@@ -260,7 +260,7 @@ function shortId(value: unknown, keep: number = 8): string {
 }
 
 function normalizeApiBase(value: unknown): string {
-  return String(value || '').trim().toLowerCase()
+  return trimmedPrimitiveString(value).toLowerCase()
 }
 
 function providerHasModel(provider: ModelProvider, modelName: string): boolean {

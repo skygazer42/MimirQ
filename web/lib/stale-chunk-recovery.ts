@@ -10,18 +10,25 @@ const STALE_CHUNK_PATTERNS = [
   /dynamically imported module/i,
 ]
 
+function primitiveErrorText(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    return String(value)
+  }
+  return ''
+}
+
 function getErrorText(error: unknown): string {
   if (error instanceof Error) {
-    const digest =
-      'digest' in error ? String((error as Error & { digest?: unknown }).digest || '') : ''
+    const digest = 'digest' in error ? primitiveErrorText((error as Error & { digest?: unknown }).digest) : ''
     return [error.name, error.message, error.stack, digest].filter(Boolean).join('\n')
   }
   if (typeof error === 'string') return error
-  if (!error || typeof error !== 'object') return String(error || '')
+  if (!error || typeof error !== 'object') return primitiveErrorText(error)
   try {
     return JSON.stringify(error)
   } catch {
-    return String(error)
+    return Object.prototype.toString.call(error)
   }
 }
 

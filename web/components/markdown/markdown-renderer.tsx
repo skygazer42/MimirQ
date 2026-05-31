@@ -75,13 +75,13 @@ type MarkdownRendererRuntime = Readonly<{
   scrollContainerSelector?: string
 }>
 
-const MARKDOWN_RENDERER_RUNTIME = createContext<MarkdownRendererRuntime>({
+const MarkdownRendererRuntimeContext = createContext<MarkdownRendererRuntime>({
   enableTocAnchors: true,
   headings: [],
 })
 
 function useMarkdownRendererRuntime() {
-  return useContext(MARKDOWN_RENDERER_RUNTIME)
+  return useContext(MarkdownRendererRuntimeContext)
 }
 
 function MarkdownHeadingComponent({
@@ -313,7 +313,7 @@ function MarkdownRendererContent({
 
   return (
     <div className={className}>
-      <MARKDOWN_RENDERER_RUNTIME.Provider value={runtime}>
+      <MarkdownRendererRuntimeContext.Provider value={runtime}>
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
           rehypePlugins={[rehypeRaw, [rehypeSanitize, MARKDOWN_SANITIZE_SCHEMA]]}
@@ -321,7 +321,7 @@ function MarkdownRendererContent({
         >
           {text}
         </ReactMarkdown>
-      </MARKDOWN_RENDERER_RUNTIME.Provider>
+      </MarkdownRendererRuntimeContext.Provider>
     </div>
   )
 }
