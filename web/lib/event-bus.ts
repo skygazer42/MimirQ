@@ -13,7 +13,7 @@ type AppEventMap = {
 type EventHandler<EventMap extends Record<string, unknown>, K extends keyof EventMap> = (payload: EventMap[K]) => void
 
 class EventBus<EventMap extends Record<string, unknown>> {
-  private handlers = new Map<keyof EventMap, Set<unknown>>()
+  private readonly handlers = new Map<keyof EventMap, Set<unknown>>()
 
   on<K extends keyof EventMap>(event: K, handler: EventHandler<EventMap, K>) {
     const listeners = this.handlers.get(event) ?? new Set<unknown>()

@@ -438,7 +438,7 @@ class IntegratedPipelinePdfParser:
                     return False
         return True
 
-    def _table_transformer_job(self, ZM):
+    def _table_transformer_job(self, zoom):
         # Table structure recognition processing flow
         logging.debug("Table processing...")
         imgs, pos = [], []  # Store cropped images and corresponding coordinates
@@ -455,10 +455,10 @@ class IntegratedPipelinePdfParser:
                 # Crop image region based on margin and convert to pixel coordinates
                 left, top, right, bott = tb["x0"] - MARGIN, tb["top"] - MARGIN,\
                                          tb["x1"] + MARGIN, tb["bottom"] + MARGIN
-                left *= ZM
-                top *= ZM
-                right *= ZM
-                bott *= ZM
+                left *= zoom
+                top *= zoom
+                right *= zoom
+                bott *= zoom
                 pos.append((left, top))  # Save position offset (for later restoration)
                 imgs.append(self.page_images[p].crop((left, top, right, bott)))  # Crop image
 
@@ -480,7 +480,7 @@ class IntegratedPipelinePdfParser:
                     it["top"] = (it["top"] + poss[j][1])
                     it["bottom"] = (it["bottom"] + poss[j][1])
                     for n in ["x0", "x1", "top", "bottom"]:
-                        it[n] /= ZM  # Restore to standard coordinates
+                        it[n] /= zoom  # Restore to standard coordinates
                     it["top"] += self.page_cum_height[i]
                     it["bottom"] += self.page_cum_height[i]
                     it["pn"] = i  # Page number
@@ -535,7 +535,7 @@ class IntegratedPipelinePdfParser:
                 b["H_right"] = spans[ii]["x1"]
                 b["SP"] = ii
 
-    def __ocr(self, pagenum, img, chars, ZM=3, device_id: int | None = None):
+    def __ocr(self, pagenum, img, chars, zoom=3, device_id: int | None = None):
         # Start timing
         start = timer()
         # Use OCR module to detect text boxes in the image (detection phase)
@@ -555,12 +555,12 @@ class IntegratedPipelinePdfParser:
         # Convert boxes to standard format, sort by Y direction
         bxs = Recognizer.sort_y_firstly([
             {
-                "x0": b[0][0] / ZM,
-                "x1": b[1][0] / ZM,
-                "top": b[0][1] / ZM,
+                "x0": b[0][0] / zoom,
+                "x1": b[1][0] / zoom,
+                "top": b[0][1] / zoom,
                 "text": "",
                 "txt": t,
-                "bottom": b[-1][1] / ZM,
+                "bottom": b[-1][1] / zoom,
                 "page_number": pagenum
             }
             for b, t in bxs if b[0][0] <= b[1][0] and b[0][1] <= b[-1][1]
@@ -579,7 +579,7 @@ class IntegratedPipelinePdfParser:
                 continue
             # Merge spaces
             if c["text"] == " " and bxs[ii]["text"]:
-                if re.match(r"[0-9a-zA-Zа-яА-Я,.?;:!%%]", bxs[ii]["text"][-1]):
+                if re.match(r"[0-9a-zA-Zа-яА-Я,.?;:!%]", bxs[ii]["text"][-1]):
                     bxs[ii]["text"] += " "
             else:
                 bxs[ii]["text"] += c["text"]
@@ -593,7 +593,7 @@ class IntegratedPipelinePdfParser:
         for b in bxs:
             if not b["text"]:
                 # Crop image from box for subsequent text recognition
-                left, right, top, bott = b["x0"] * ZM, b["x1"] * ZM, b["top"] * ZM, b["bottom"] * ZM
+                left, right, top, bott = b["x0"] * zoom, b["x1"] * zoom, b["top"] * zoom, b["bottom"] * zoom
                 b["box_image"] = self.ocr.get_rotate_crop_image(
                     img_np,
                     np.array([[left, top], [right, top], [right, bott], [left, bott]], dtype=np.float32)
@@ -620,11 +620,11 @@ class IntegratedPipelinePdfParser:
         # Add current page's boxes to total box collection
         self._store_ocr_boxes(pagenum - 1, bxs)
 
-    def _layouts_rec(self, ZM, drop=True):
+    def _layouts_rec(self, zoom, drop=True):
         # Layout recognition: identify layout type (text, image, table, etc.) for each box
         assert len(self.page_images) == len(self.boxes)
         self.boxes, self.page_layout = self.layouter(
-            self.page_images, self.boxes, ZM, drop=drop)
+            self.page_images, self.boxes, zoom, drop=drop)
         # Cumulative height offset: unify box y coordinates to global coordinates
         for i in range(len(self.boxes)):
             self.boxes[i]["top"] +=\
@@ -698,7 +698,7 @@ class IntegratedPipelinePdfParser:
             b_ = bxs[i + 1]
             # Remove page number rows and other useless info (page numbers typically occupy a single row)
             if b["page_number"] < b_["page_number"] and re.match(
-                    r"[0-9  •一—-]+$", b["text"]):
+                    r"[0-9 •一—-]+$", b["text"]):
                 bxs.pop(i)
                 continue
             if not b["text"].strip():
@@ -937,7 +937,7 @@ class IntegratedPipelinePdfParser:
             b_["top"] = b["top"]
             self.boxes.pop(i)
 
-    def _extract_table_figure(self, need_image, ZM, return_html, need_position, separate_tables_figures=False):
+    def _extract_table_figure(self, need_image, zoom, return_html, need_position, separate_tables_figures=False):
         tables = {}
         figures = {}
         # extract figure and table boxes
@@ -1053,7 +1053,7 @@ class IntegratedPipelinePdfParser:
             self.boxes.pop(i)
 
         def cropout(bxs, ltype, poss):
-            nonlocal ZM
+            nonlocal zoom
             pn = {b["page_number"] - 1 for b in bxs}
             if len(pn) < 2:
                 pn = next(iter(pn))
@@ -1079,8 +1079,8 @@ class IntegratedPipelinePdfParser:
                     right = left + 1
                 poss.append((pn + self.page_from, left, right, top, bott))
                 return self.page_images[pn]\
-                    .crop((left * ZM, top * ZM,
-                           right * ZM, bott * ZM))
+                    .crop((left * zoom, top * zoom,
+                           right * zoom, bott * zoom))
             pn = {}
             for b in bxs:
                 p = b["page_number"] - 1
@@ -1155,7 +1155,7 @@ class IntegratedPipelinePdfParser:
         if len(line) <= 2:
             return
         # If the entire line contains only numbers, spaces, punctuation, etc., consider it not a structured heading, return False
-        if re.match(r"[0-9 ().,%%+/-]+$", line):
+        if re.match(r"[0-9 ().,%+/-]+$", line):
             return False
         # Define a set of regex patterns and their corresponding labels for recognizing structured heading formats
         for p, j in [
@@ -1176,15 +1176,15 @@ class IntegratedPipelinePdfParser:
             if re.match(p, line):
                 return j
 
-    def _line_tag(self, bx, ZM):
+    def _line_tag(self, bx, zoom):
         pn = [bx["page_number"]]
         top = bx["top"] - self.page_cum_height[pn[0] - 1]
         bott = bx["bottom"] - self.page_cum_height[pn[0] - 1]
         page_images_cnt = len(self.page_images)
         if pn[-1] - 1 >= page_images_cnt:
             return ""
-        while bott * ZM > self.page_images[pn[-1] - 1].size[1]:
-            bott -= self.page_images[pn[-1] - 1].size[1] / ZM
+        while bott * zoom > self.page_images[pn[-1] - 1].size[1]:
+            bott -= self.page_images[pn[-1] - 1].size[1] / zoom
             pn.append(pn[-1] + 1)
             if pn[-1] - 1 >= page_images_cnt:
                 return ""
@@ -1193,7 +1193,7 @@ class IntegratedPipelinePdfParser:
             .format("-".join([str(p) for p in pn]),
                     bx["x0"], bx["x1"], top, bott)
 
-    def __filterout_scraps(self, boxes, ZM):
+    def __filterout_scraps(self, boxes, zoom):
 
         def width(b):
             return b["x1"] - b["x0"]
@@ -1205,7 +1205,7 @@ class IntegratedPipelinePdfParser:
             if b.get("layout_type"):
                 return True
             if width(
-                    b) > self.page_images[b["page_number"] - 1].size[0] / ZM / 3:
+                    b) > self.page_images[b["page_number"] - 1].size[0] / zoom / 3:
                 return True
             if b["bottom"] - b["top"] > self.mean_height[b["page_number"] - 1]:
                 return True
@@ -1215,7 +1215,7 @@ class IntegratedPipelinePdfParser:
         while boxes:
             lines = []
             widths = []
-            pw = self.page_images[boxes[0]["page_number"] - 1].size[0] / ZM
+            pw = self.page_images[boxes[0]["page_number"] - 1].size[0] / zoom
             mh = self.mean_height[boxes[0]["page_number"] - 1]
             mj = self.proj_match(
                 boxes[0]["text"]) or boxes[0].get(
@@ -1258,7 +1258,7 @@ class IntegratedPipelinePdfParser:
             mw = np.mean(widths)
             if mj or mw / pw >= 0.35 or mw > 200:
                 res.append(
-                    "\n".join([c["text"] + self._line_tag(c, ZM) for c in lines]))
+                    "\n".join([c["text"] + self._line_tag(c, zoom) for c in lines]))
             else:
                 logging.debug("REMOVED: " +
                               "<<".join([c["text"] for c in lines]))
@@ -1409,8 +1409,7 @@ class IntegratedPipelinePdfParser:
         logging.info(f"__images__ {len(self.page_images)} pages cost {timer() - start}s")
         self.boxes = [page_boxes or [] for page_boxes in self.boxes]
 
-        if not self.is_english and not any(
-                c for c in self.page_chars) and self.boxes:
+        if not self.is_english and not any(self.page_chars) and self.boxes:
             bxes = [b for bxs in self.boxes for b in bxs]
             self.is_english = re.search(
                 r"[\na-zA-Z0-9,/¸;:'\[\]\(\)!@#$%^&*\"?<>._-]{30,}",
@@ -1449,7 +1448,7 @@ class IntegratedPipelinePdfParser:
     def remove_tag(txt):
         return re.sub(r"@@[\t0-9.-]+?##", "", txt or "")
 
-    def crop(self, text, ZM=3, need_position=False):
+    def crop(self, text, zoom=3, need_position=False):
         # Crop corresponding regions from images based on @@...## tags in text
         imgs = []
         poss = []
@@ -1472,37 +1471,37 @@ class IntegratedPipelinePdfParser:
         poss.insert(0, ([pos[0][0]], pos[1], pos[2], max(
             0, pos[3] - 120), max(pos[3] - GAP, 0)))
         pos = poss[-1]
-        poss.append(([pos[0][-1]], pos[1], pos[2], min(self.page_images[pos[0][-1]].size[1] / ZM, pos[4] + GAP),
-                     min(self.page_images[pos[0][-1]].size[1] / ZM, pos[4] + 120)))
+        poss.append(([pos[0][-1]], pos[1], pos[2], min(self.page_images[pos[0][-1]].size[1] / zoom, pos[4] + GAP),
+                     min(self.page_images[pos[0][-1]].size[1] / zoom, pos[4] + 120)))
 
         positions = []
         for ii, (pns, left, right, top, bottom) in enumerate(poss):
             right = left + max_width
-            bottom *= ZM
+            bottom *= zoom
             for pn in pns[1:]:
                 bottom += self.page_images[pn - 1].size[1]
             imgs.append(
-                self.page_images[pns[0]].crop((left * ZM, top * ZM,
+                self.page_images[pns[0]].crop((left * zoom, top * zoom,
                                                right *
-                                               ZM, min(
+                                               zoom, min(
                     bottom, self.page_images[pns[0]].size[1])
                                                ))
             )
             if 0 < ii < len(poss) - 1:
                 positions.append((pns[0] + self.page_from, left, right, top, min(
-                    bottom, self.page_images[pns[0]].size[1]) / ZM))
+                    bottom, self.page_images[pns[0]].size[1]) / zoom))
             bottom -= self.page_images[pns[0]].size[1]
             for pn in pns[1:]:
                 imgs.append(
-                    self.page_images[pn].crop((left * ZM, 0,
-                                               right * ZM,
+                    self.page_images[pn].crop((left * zoom, 0,
+                                               right * zoom,
                                                min(bottom,
                                                    self.page_images[pn].size[1])
                                                ))
                 )
                 if 0 < ii < len(poss) - 1:
                     positions.append((pn + self.page_from, left, right, 0, min(
-                        bottom, self.page_images[pn].size[1]) / ZM))
+                        bottom, self.page_images[pn].size[1]) / zoom))
                 bottom -= self.page_images[pn].size[1]
 
         if not imgs:
@@ -1531,19 +1530,19 @@ class IntegratedPipelinePdfParser:
             return pic, positions
         return pic
 
-    def get_position(self, bx, ZM):
+    def get_position(self, bx, zoom):
         poss = []
         pn = bx["page_number"]
         top = bx["top"] - self.page_cum_height[pn - 1]
         bott = bx["bottom"] - self.page_cum_height[pn - 1]
         poss.append((pn, bx["x0"], bx["x1"], top, min(
-            bott, self.page_images[pn - 1].size[1] / ZM)))
-        while bott * ZM > self.page_images[pn - 1].size[1]:
-            bott -= self.page_images[pn - 1].size[1] / ZM
+            bott, self.page_images[pn - 1].size[1] / zoom)))
+        while bott * zoom > self.page_images[pn - 1].size[1]:
+            bott -= self.page_images[pn - 1].size[1] / zoom
             top = 0
             pn += 1
             poss.append((pn, bx["x0"], bx["x1"], top, min(
-                bott, self.page_images[pn - 1].size[1] / ZM)))
+                bott, self.page_images[pn - 1].size[1] / zoom)))
         return poss
 
 

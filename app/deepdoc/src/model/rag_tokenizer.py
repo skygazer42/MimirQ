@@ -574,7 +574,7 @@ def is_alphabet(s):
         return False
 
 
-def naiveQie(txt):
+def naive_qie(txt):
     tks = []
     for t in txt.split():
         if tks and re.match(r".*[a-zA-Z]$", tks[-1]
@@ -582,6 +582,9 @@ def naiveQie(txt):
             tks.append(" ")
         tks.append(t)
     return tks
+
+
+naiveQie = naive_qie
 
 
 RagTokenizer.loadDict_ = RagTokenizer.load_dict_

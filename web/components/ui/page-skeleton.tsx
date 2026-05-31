@@ -1,6 +1,11 @@
 import { cn } from "@/lib/utils"
 import { Skeleton } from "@/components/ui/skeleton"
 
+const DEFAULT_STAT_SKELETON_KEYS = ["stat-a", "stat-b", "stat-c"] as const
+const DENSE_STAT_SKELETON_KEYS = ["stat-a", "stat-b", "stat-c", "stat-d"] as const
+const DEFAULT_CONTENT_SKELETON_KEYS = ["content-a", "content-b", "content-c", "content-d"] as const
+const DENSE_CONTENT_SKELETON_KEYS = ["content-a", "content-b", "content-c", "content-d", "content-e", "content-f"] as const
+
 type PageSkeletonProps = {
   density?: "default" | "system-dense"
   className?: string
@@ -22,15 +27,15 @@ export function PageSkeleton({ density = "default", className }: Readonly<PageSk
 
       {/* Stats row skeleton */}
       <div className={cn("grid gap-3", isDense ? "grid-cols-4" : "grid-cols-3")}>
-        {Array.from({ length: isDense ? 4 : 3 }).map((_, i) => (
-          <Skeleton key={i} className={cn(isDense ? "h-16 rounded-lg" : "h-20 rounded-xl")} />
+        {(isDense ? DENSE_STAT_SKELETON_KEYS : DEFAULT_STAT_SKELETON_KEYS).map((key) => (
+          <Skeleton key={key} className={cn(isDense ? "h-16 rounded-lg" : "h-20 rounded-xl")} />
         ))}
       </div>
 
       {/* Content skeleton */}
       <div className="space-y-3">
-        {Array.from({ length: isDense ? 6 : 4 }).map((_, i) => (
-          <Skeleton key={i} className={cn(isDense ? "h-10 rounded-lg" : "h-14 rounded-xl")} />
+        {(isDense ? DENSE_CONTENT_SKELETON_KEYS : DEFAULT_CONTENT_SKELETON_KEYS).map((key) => (
+          <Skeleton key={key} className={cn(isDense ? "h-10 rounded-lg" : "h-14 rounded-xl")} />
         ))}
       </div>
     </div>

@@ -97,7 +97,7 @@ class LayoutRecognizer(Recognizer):
             page_layout.append(lts)
 
             # Tag layout type, layouts are ready
-            def findLayout(ty):
+            def find_layout(ty):
                 nonlocal bxs, lts, self
                 lts_ = [lt for lt in lts if lt["type"] == ty]
                 i = 0
@@ -137,7 +137,7 @@ class LayoutRecognizer(Recognizer):
 
             for lt in ["footer", "header", "reference", "figure caption",
                        "table caption", "title", "table", "text", "figure", "equation"]:
-                findLayout(lt)
+                find_layout(lt)
 
             # add box to figure layouts which has not text box
             for i, lt in enumerate(

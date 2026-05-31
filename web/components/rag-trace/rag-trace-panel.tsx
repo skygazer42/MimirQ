@@ -897,7 +897,7 @@ export function RagTracePipelineTimeline({
 }: Readonly<{
   steps: PipelineTimelineStep[]
   selectedKey?: string | null
-  onSelectStep?: ((key: string) => void) | undefined
+  onSelectStep?: (key: string) => void
   emptyLabel?: string
 }>) {
   return (

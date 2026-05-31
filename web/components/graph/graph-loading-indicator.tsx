@@ -38,7 +38,7 @@ export function GraphLoadingIndicator({
   return (
     <div role="status" aria-live="polite" className={cn('flex flex-col items-center justify-center gap-3 text-center', className)}>
       <div className="graph-loader-stage relative h-[72px] w-[122px]" aria-hidden="true">
-        {ORB_SPECS.map((orb, index) => {
+        {ORB_SPECS.map((orb) => {
           const orbStyle: CSSProperties = {
             left: orb.left,
             animationDelay: orb.delay,
@@ -50,7 +50,7 @@ export function GraphLoadingIndicator({
           }
 
           return (
-            <div key={`orb-${index}`} className="contents">
+            <div key={`orb-${orb.left}-${orb.delay}`} className="contents">
               <span className="graph-loader-orb" style={orbStyle} />
               <span className="graph-loader-shadow" style={shadowStyle} />
             </div>

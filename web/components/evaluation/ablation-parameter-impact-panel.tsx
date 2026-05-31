@@ -111,7 +111,7 @@ function buildImpactRows(runs: RegressionRun[], metricKey: string): ImpactRow[] 
         count: bucket.count,
       }))
       if (buckets.length < 2) return null
-      const sorted = buckets.sort((a, b) => b.mean - a.mean)
+      const sorted = buckets.toSorted((a, b) => b.mean - a.mean)
       const best = sorted[0]
       const worst = sorted.at(-1)
       const worstMetric = worst?.mean ?? 0

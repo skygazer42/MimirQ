@@ -447,7 +447,6 @@ class MinerUService:
         *,
         data_id: str | None = None,
         filename: str | None = None,
-        timeout: int = 600,
         poll_interval: int = 5,
         max_interval: int = 30,
         backoff_factor: float = 1.5,
@@ -465,13 +464,9 @@ class MinerUService:
         Returns:
             The matched extract_result item.
         """
-        start_time = time.monotonic()
         current_interval = max(1, int(poll_interval))
 
         while True:
-            if time.monotonic() - start_time > timeout:
-                raise TimeoutError(f"Task {batch_id} timeout after {timeout} seconds")
-
             batch = await self.aget_batch_results(batch_id)
             extract_result = batch.get("extract_result") or []
             if not isinstance(extract_result, list):
@@ -506,14 +501,22 @@ class MinerUService:
         timeout: int = 600,
         poll_interval: int = 5,
     ) -> dict[str, Any]:
+        async def _run_with_timeout() -> dict[str, Any]:
+            try:
+                return await asyncio.wait_for(
+                    self.await_for_completion(
+                        batch_id,
+                        data_id=data_id,
+                        filename=filename,
+                        poll_interval=poll_interval,
+                    ),
+                    timeout=timeout,
+                )
+            except TimeoutError as exc:
+                raise TimeoutError(f"Task {batch_id} timeout after {timeout} seconds") from exc
+
         return self._run_coroutine_sync(
-            lambda: self.await_for_completion(
-                batch_id,
-                data_id=data_id,
-                filename=filename,
-                timeout=timeout,
-                poll_interval=poll_interval,
-            )
+            _run_with_timeout
         )
 
     async def adownload_result(self, result_url: str) -> str:

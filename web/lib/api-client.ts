@@ -1,5 +1,3 @@
-import { apiClient } from '@/lib/api/core'
-
 export { apiClient, coerceRetryAfterSeconds, formatRateLimitLogMessage } from '@/lib/api/core'
 
 export { authApi } from '@/lib/api/auth'
@@ -124,4 +122,4 @@ export type {
   TestLLMResponse,
 } from '@/lib/api/settings'
 
-export default apiClient
+export { default } from '@/lib/api/core'

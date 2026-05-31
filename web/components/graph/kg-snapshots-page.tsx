@@ -2252,9 +2252,9 @@ function SnapshotDiffView({
               </div>
             </div>
 
-            {rows.map((row, index) => (
+            {rows.map((row) => (
               <div
-                key={`diff-row:${index}`}
+                key={`${row.left.lineNumber ?? 'x'}:${row.right.lineNumber ?? 'x'}:${row.left.status}:${row.right.status}:${row.left.text}:${row.right.text}`}
                 className="grid grid-cols-[52px_minmax(0,1fr)_52px_minmax(0,1fr)]"
               >
                 <JsonDiffCell cell={row.left} side="left" />

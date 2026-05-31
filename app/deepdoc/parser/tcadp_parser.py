@@ -56,15 +56,15 @@ class TencentCloudAPIClient:
         self.cred = credential.Credential(secret_id, secret_key)
 
         # Instantiate an http option
-        self.httpProfile = HttpProfile()
-        self.httpProfile.endpoint = "lkeap.tencentcloudapi.com"
+        self.http_profile = HttpProfile()
+        self.http_profile.endpoint = "lkeap.tencentcloudapi.com"
 
         # Instantiate a client option
-        self.clientProfile = ClientProfile()
-        self.clientProfile.httpProfile = self.httpProfile
+        self.client_profile = ClientProfile()
+        setattr(self.client_profile, "httpProfile", self.http_profile)
 
         # Instantiate the client object
-        self.client = lkeap_client.LkeapClient(self.cred, region, self.clientProfile)
+        self.client = lkeap_client.LkeapClient(self.cred, region, self.client_profile)
 
     def reconstruct_document_sse(self, file_type, file_url=None, file_base64=None, file_start_page=1, file_end_page=1000, config=None):
         """Call document parsing API using official SDK"""

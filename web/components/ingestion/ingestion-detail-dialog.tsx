@@ -26,7 +26,7 @@ function displayPrimitive(value: unknown, fallback: string = '-'): string {
 
 function inferStage(doc: Document): string {
   const raw = (doc.current_stage || '').toLowerCase()
-  if (STAGE_KEYS.some((key) => key === raw)) return raw
+  if (STAGE_KEYS.includes(raw as (typeof STAGE_KEYS)[number])) return raw
   if (doc.status === 'pending') return 'queued'
   if (doc.status === 'processing') return 'parsing'
   if (doc.status === 'completed') return 'completed'

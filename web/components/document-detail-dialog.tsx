@@ -64,7 +64,7 @@ type LifecycleValidationKey =
   | 'validation.reviewDueAt'
 type AccessModeFormValue = FormDataEntryValue | string | null | undefined
 
-function formString(value: FormDataEntryValue | string | null | undefined, fallback = ''): string {
+function formString(value: AccessModeFormValue, fallback = ''): string {
   return typeof value === 'string' ? value : fallback
 }
 
@@ -726,8 +726,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
     getItemKey: (idx) => timelineItems[idx]?.id ?? idx,
   })
 
-  const copyToClipboard = useCallback(async (text: string) => {
-    const content = text || ''
+  const copyToClipboard = useCallback(async (content = '') => {
     try {
       if (!navigator.clipboard?.writeText) {
         throw new Error('Clipboard API unavailable')
