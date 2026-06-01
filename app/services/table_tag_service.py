@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import re
+from dataclasses import dataclass
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -50,6 +51,28 @@ _GENERIC_NON_KEY_COLUMNS = {
     "region",
     "category",
 }
+
+
+def _table_column_names(columns: list[dict[str, Any]]) -> list[str]:
+    return [
+        str(column.get("name") or "").strip()
+        for column in (columns or [])
+        if isinstance(column, dict) and str(column.get("name") or "").strip()
+    ]
+
+
+def _column_is_numeric(column: dict[str, Any]) -> bool:
+    dtype = str(column.get("dtype") or "").lower()
+    return any(hint in dtype for hint in ("int", "float", "double", "decimal", "number", "numeric", "real"))
+
+
+def _iter_named_columns(columns: list[dict[str, Any]]):
+    for column in columns or []:
+        if not isinstance(column, dict):
+            continue
+        name = str(column.get("name") or "").strip()
+        if name:
+            yield column, name
 
 
 def _build_llm(*, temperature: float = 0.0) -> ChatOpenAI:
@@ -163,6 +186,83 @@ def _extract_quoted_literals(question: str, *, max_values: int = 8) -> list[str]
     return _unique_keep_order(out)
 
 
+def _schema_link_matches(terms: list[str], *, col_names: list[str], table_names: list[str]) -> tuple[list[str], list[str]]:
+    matched_columns: list[str] = []
+    matched_tables: list[str] = []
+    for term in terms:
+        matched_columns.extend(column for column in col_names if _match_text(column, term))
+        matched_tables.extend(table for table in table_names if _match_text(table, term))
+    return _unique_keep_order(matched_columns), _unique_keep_order(matched_tables)
+
+
+def _schema_sample_values(sample_rows: list[dict[str, Any]] | None) -> list[str]:
+    sample_values: list[str] = []
+    for row in (sample_rows or [])[:12]:
+        if not isinstance(row, dict):
+            continue
+        for value in list(row.values())[:40]:
+            if value is None:
+                continue
+            text = str(value).strip()
+            if not text:
+                continue
+            sample_values.append(text)
+            if len(sample_values) >= 400:
+                break
+        if len(sample_values) >= 400:
+            break
+    return _unique_keep_order(sample_values)
+
+
+def _schema_value_candidates(question: str, terms: list[str]) -> list[str]:
+    value_candidates = _extract_quoted_literals(question, max_values=8)
+    skip_terms = {"count", "sum", "avg", "group", "order", "where", "limit"}
+    for term in terms:
+        if term.isascii() and len(term) < 3 and not term.isupper():
+            continue
+        if term not in value_candidates and term not in skip_terms:
+            value_candidates.append(term)
+    return _unique_keep_order(value_candidates)[:12]
+
+
+def _schema_matched_values(question: str, *, sample_values: list[str], terms: list[str]) -> list[str]:
+    quoted = _extract_quoted_literals(question, max_values=8)
+    matched_values: list[str] = []
+    for candidate in _schema_value_candidates(question, terms):
+        if sample_values and any(_match_text(value, candidate) for value in sample_values):
+            matched_values.append(candidate)
+            continue
+        if candidate in quoted:
+            matched_values.append(candidate)
+    return _unique_keep_order(matched_values)
+
+
+def _schema_link_strategy(
+    *,
+    matched_columns: list[str],
+    matched_tables: list[str],
+    matched_values: list[str],
+) -> tuple[str, str]:
+    if matched_columns and matched_values:
+        return "column_value_overlap", "matched_columns_and_values"
+    if matched_columns:
+        return "column_overlap", "matched_columns"
+    if matched_tables and matched_values:
+        return "table_value_overlap", "matched_tables_and_values"
+    if matched_tables:
+        return "table_overlap", "matched_tables"
+    if matched_values:
+        return "value_overlap", "matched_values"
+    return "none", "no_schema_overlap"
+
+
+def _has_table_intent(question: str) -> bool:
+    q_fold = question.casefold()
+    ascii_intents = ("select", "where", "group by", "order by", "limit", "sum", "avg", "count", "min", "max", "top", "前")
+    zh_intents = ("统计", "汇总", "求和", "平均", "最大", "最小", "筛选", "过滤", "分组", "多少", "几条")
+    return any(key in q_fold for key in ascii_intents) or any(key in question for key in zh_intents)
+
+
 def score_schema_link_diagnostics(
     *,
     question: str,
@@ -178,91 +278,24 @@ def score_schema_link_diagnostics(
     score, strategy, and reason.
     """
     q = " ".join((question or "").strip().split())
-    col_names = [
-        str(c.get("name") or "").strip()
-        for c in (columns or [])
-        if isinstance(c, dict) and str(c.get("name") or "").strip()
-    ]
+    col_names = _table_column_names(columns)
     table_names = _unique_keep_order([str(sql_table or "").strip(), *list(table_aliases or [])])
     terms = _extract_schema_terms(q, max_terms=20)
 
-    matched_columns: list[str] = []
-    matched_tables: list[str] = []
-    for t in terms:
-        for cn in col_names:
-            if _match_text(cn, t):
-                matched_columns.append(cn)
-        for tn in table_names:
-            if _match_text(tn, t):
-                matched_tables.append(tn)
-
-    matched_columns = _unique_keep_order(matched_columns)
-    matched_tables = _unique_keep_order(matched_tables)
-
-    sample_values: list[str] = []
-    for row in (sample_rows or [])[:12]:
-        if not isinstance(row, dict):
-            continue
-        for v in list(row.values())[:40]:
-            if v is None:
-                continue
-            s = str(v).strip()
-            if not s:
-                continue
-            sample_values.append(s)
-            if len(sample_values) >= 400:
-                break
-        if len(sample_values) >= 400:
-            break
-    sample_values = _unique_keep_order(sample_values)
-
-    value_candidates = _extract_quoted_literals(q, max_values=8)
-    for t in terms:
-        # Keep short ASCII tokens only when clearly informative (all-caps codes like US/EU).
-        if t.isascii() and len(t) < 3 and not t.isupper():
-            continue
-        if t not in value_candidates and t not in {"count", "sum", "avg", "group", "order", "where", "limit"}:
-            value_candidates.append(t)
-    value_candidates = _unique_keep_order(value_candidates)[:12]
-
-    matched_values: list[str] = []
-    for cand in value_candidates:
-        if sample_values and any(_match_text(v, cand) for v in sample_values):
-            matched_values.append(cand)
-            continue
-        # Even without sample rows, quoted literals are useful filter hints.
-        if cand in _extract_quoted_literals(q, max_values=8):
-            matched_values.append(cand)
-    matched_values = _unique_keep_order(matched_values)
+    matched_columns, matched_tables = _schema_link_matches(terms, col_names=col_names, table_names=table_names)
+    matched_values = _schema_matched_values(q, sample_values=_schema_sample_values(sample_rows), terms=terms)
 
     raw_score = int(len(matched_columns) * 3 + len(matched_tables) * 2 + len(matched_values))
     score = round(min(float(raw_score) / 10.0, 1.0), 3)
 
-    strategy = "none"
-    reason = "no_schema_overlap"
-    if matched_columns and matched_values:
-        strategy = "column_value_overlap"
-        reason = "matched_columns_and_values"
-    elif matched_columns:
-        strategy = "column_overlap"
-        reason = "matched_columns"
-    elif matched_tables and matched_values:
-        strategy = "table_value_overlap"
-        reason = "matched_tables_and_values"
-    elif matched_tables:
-        strategy = "table_overlap"
-        reason = "matched_tables"
-    elif matched_values:
-        strategy = "value_overlap"
-        reason = "matched_values"
+    strategy, reason = _schema_link_strategy(
+        matched_columns=matched_columns,
+        matched_tables=matched_tables,
+        matched_values=matched_values,
+    )
 
     if strategy == "none":
-        q_fold = q.casefold()
-        has_table_intent = any(
-            k in q_fold
-            for k in ("select", "where", "group by", "order by", "limit", "sum", "avg", "count", "min", "max", "top", "前")
-        ) or any(k in q for k in ("统计", "汇总", "求和", "平均", "最大", "最小", "筛选", "过滤", "分组", "多少", "几条"))
-        if has_table_intent and (col_names or table_names):
+        if _has_table_intent(q) and (col_names or table_names):
             strategy = "intent_hint"
             reason = "table_intent_without_explicit_match"
             raw_score = max(raw_score, 1)
@@ -335,7 +368,73 @@ def _is_likely_key_column(col_name: str) -> bool:
     return False
 
 
-def _pick_best_relationship_between(
+@dataclass(frozen=True)
+class _RelationshipSide:
+    table: str
+    column: str
+    norm: str
+    bases: set[str]
+
+
+def _relationship_candidate(
+    *,
+    left: _RelationshipSide,
+    right: _RelationshipSide,
+    confidence: float,
+    reason: str,
+) -> dict[str, Any]:
+    return {
+        "left_table": left.table,
+        "left_column": left.column,
+        "right_table": right.table,
+        "right_column": right.column,
+        "confidence": confidence,
+        "reason": reason,
+    }
+
+
+def _same_key_relationship(left: _RelationshipSide, right: _RelationshipSide) -> dict[str, Any] | None:
+    if left.norm == right.norm and _is_likely_key_column(left.norm):
+        return _relationship_candidate(
+            left=left,
+            right=right,
+            confidence=0.96,
+            reason="same_key_name",
+        )
+    return None
+
+
+def _fk_relationship(fk_side: _RelationshipSide, id_side: _RelationshipSide) -> dict[str, Any] | None:
+    if not fk_side.norm.endswith("_id"):
+        return None
+    base = fk_side.norm[: -len("_id")]
+    if not base or id_side.norm not in {"id", f"{base}_id"}:
+        return None
+    confidence = 0.95 if base in id_side.bases else 0.90
+    reason = "fk_to_table_id" if base in id_side.bases else "fk_to_id"
+    return _relationship_candidate(
+        left=fk_side,
+        right=id_side,
+        confidence=confidence,
+        reason=reason,
+    )
+
+
+def _relationship_candidates_for_columns(left: _RelationshipSide, right: _RelationshipSide) -> list[dict[str, Any]]:
+    if not left.norm or not right.norm:
+        return []
+    if left.norm == right.norm and left.norm in _GENERIC_NON_KEY_COLUMNS:
+        return []
+
+    candidates = [
+        _same_key_relationship(left, right),
+        _fk_relationship(left, right),
+        _fk_relationship(right, left),
+    ]
+    return [candidate for candidate in candidates if candidate is not None]
+
+
+def _pick_best_relationship_between(  # noqa: PLR0913 - pairwise relationship boundary mirrors two table schemas.
     *,
     left_table: str,
     left_aliases: list[str] | None,
@@ -344,16 +443,8 @@ def _pick_best_relationship_between(
     right_aliases: list[str] | None,
     right_columns: list[dict[str, Any]],
 ) -> dict[str, Any] | None:
-    left_col_names = [
-        str(c.get("name") or "").strip()
-        for c in (left_columns or [])
-        if isinstance(c, dict) and str(c.get("name") or "").strip()
-    ]
-    right_col_names = [
-        str(c.get("name") or "").strip()
-        for c in (right_columns or [])
-        if isinstance(c, dict) and str(c.get("name") or "").strip()
-    ]
+    left_col_names = _table_column_names(left_columns)
+    right_col_names = _table_column_names(right_columns)
     if not left_col_names or not right_col_names:
         return None
 
@@ -361,77 +452,13 @@ def _pick_best_relationship_between(
     right_bases = _alias_bases(right_table, right_aliases)
 
     best: dict[str, Any] | None = None
-
-    def _update(candidate: dict[str, Any]) -> None:
-        nonlocal best
-        if best is None or float(candidate.get("confidence") or 0.0) > float(best.get("confidence") or 0.0):
-            best = candidate
-
     for l_raw in left_col_names:
         for r_raw in right_col_names:
-            ln = _normalize_ident(l_raw)
-            rn = _normalize_ident(r_raw)
-            if not ln or not rn:
-                continue
-
-            # 1) Exact key column overlap (id / order_id / user_id, etc.).
-            if ln == rn and _is_likely_key_column(ln):
-                _update(
-                    {
-                        "left_table": left_table,
-                        "left_column": l_raw,
-                        "right_table": right_table,
-                        "right_column": r_raw,
-                        "confidence": 0.96,
-                        "reason": "same_key_name",
-                    }
-                )
-                continue
-
-            # Ignore generic non-key overlaps (status/name/type/etc.).
-            if ln == rn and ln in _GENERIC_NON_KEY_COLUMNS:
-                continue
-
-            # 2) FK -> id pattern (left fk points to right table).
-            if ln.endswith("_id"):
-                base = ln[: -len("_id")]
-                if base and rn in {"id", f"{base}_id"}:
-                    conf = 0.90
-                    reason = "fk_to_id"
-                    if base in right_bases:
-                        conf = 0.95
-                        reason = "fk_to_table_id"
-                    _update(
-                        {
-                            "left_table": left_table,
-                            "left_column": l_raw,
-                            "right_table": right_table,
-                            "right_column": r_raw,
-                            "confidence": conf,
-                            "reason": reason,
-                        }
-                    )
-                    continue
-
-            # 3) FK -> id pattern in reverse orientation (right fk points to left table).
-            if rn.endswith("_id"):
-                base = rn[: -len("_id")]
-                if base and ln in {"id", f"{base}_id"}:
-                    conf = 0.90
-                    reason = "fk_to_id"
-                    if base in left_bases:
-                        conf = 0.95
-                        reason = "fk_to_table_id"
-                    _update(
-                        {
-                            "left_table": right_table,
-                            "left_column": r_raw,
-                            "right_table": left_table,
-                            "right_column": l_raw,
-                            "confidence": conf,
-                            "reason": reason,
-                        }
-                    )
+            left = _RelationshipSide(table=left_table, column=l_raw, norm=_normalize_ident(l_raw), bases=left_bases)
+            right = _RelationshipSide(table=right_table, column=r_raw, norm=_normalize_ident(r_raw), bases=right_bases)
+            for candidate in _relationship_candidates_for_columns(left, right):
+                if best is None or float(candidate.get("confidence") or 0.0) > float(best.get("confidence") or 0.0):
+                    best = candidate
 
     return best
 
