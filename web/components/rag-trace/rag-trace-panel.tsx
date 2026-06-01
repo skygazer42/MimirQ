@@ -410,20 +410,34 @@ function getRagTraceCitationChannelScore(
   citation: RagTraceCitation,
   channel: Exclude<RagTraceCitationChannelFilter, 'all'>
 ): number | null {
-  const raw =
-    channel === 'vector'
-      ? citation.vector_score
-      : channel === 'bm25'
-        ? citation.bm25_score
-        : channel === 'lexical_db'
-          ? citation.lexical_score
-          : channel === 'sparse'
-            ? citation.sparse_score
-            : citation.colbert_score
+  const raw = getRagTraceCitationChannelRawScore(citation, channel)
 
   if (raw == null) return null
   const score = Number(raw)
   return Number.isFinite(score) ? score : null
+}
+
+function getRagTraceCitationChannelRawScore(
+  citation: RagTraceCitation,
+  channel: Exclude<RagTraceCitationChannelFilter, 'all'>
+) {
+  if (channel === 'vector') return citation.vector_score
+  if (channel === 'bm25') return citation.bm25_score
+  if (channel === 'lexical_db') return citation.lexical_score
+  if (channel === 'sparse') return citation.sparse_score
+  return citation.colbert_score
+}
+
+function getTraceConfigMatchLabel(value: boolean | null): string {
+  if (value === false) return 'cfg changed'
+  if (value === true) return 'same cfg'
+  return 'cfg ?'
+}
+
+function getTraceRankDeltaLabel(rankDelta: number): string {
+  if (rankDelta > 0) return `↑${rankDelta}`
+  if (rankDelta < 0) return `↓${Math.abs(rankDelta)}`
+  return '—'
 }
 
 function getRagTraceChannelBox(
@@ -1635,11 +1649,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                                   <div className="flex items-center gap-2 text-xs font-medium text-foreground">
                                     <span className="font-mono">{shortHash(candidate.requestId, { head: 10, tail: 6 })}</span>
                                     <Badge variant="soft" className="text-[11px]">
-                                      {candidate.sameRetrievalConfig === false
-                                        ? 'cfg changed'
-                                        : candidate.sameRetrievalConfig === true
-                                          ? 'same cfg'
-                                          : 'cfg ?'}
+                                      {getTraceConfigMatchLabel(candidate.sameRetrievalConfig)}
                                     </Badge>
                                   </div>
                                   <div className="mt-1 text-[11px] text-muted-foreground">
@@ -1762,7 +1772,8 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                             onOpenCitation={openTraceCitation}
                           />
                         </Panel>
-                      ) : diffOtherRequestId.trim() ? (
+                      ) : null}
+                      {!localCitationDiff && diffOtherRequestId.trim() ? (
                         <div className="rounded-xl border border-dashed border-sidebar-border/60 bg-sidebar/45 px-3 py-3 text-xs text-muted-foreground">
                           {t("panel.evidenceDrift.missingLocalSummary")}
                         </div>
@@ -2179,8 +2190,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                             {simulatedCitationRows.slice(0, 4).map((row) => {
                               const docId = String(row.citation.document_id || '').trim()
                               const chunkId = String(row.citation.chunk_id || '').trim() || undefined
-                              const deltaLabel =
-                                row.rankDelta > 0 ? `↑${row.rankDelta}` : row.rankDelta < 0 ? `↓${Math.abs(row.rankDelta)}` : '—'
+                              const deltaLabel = getTraceRankDeltaLabel(row.rankDelta)
                               const label = getTraceCitationLabel(row.citation, docId || `citation-${row.rank}`)
                               return (
                                 <div

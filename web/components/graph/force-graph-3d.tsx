@@ -101,6 +101,49 @@ const GRAPH_3D_LABEL_TEXT_HEIGHT = 2.6
 const GRAPH_3D_LABEL_Y_OFFSET = 5.8
 const GRAPH_3D_LABEL_X_OFFSET = 6.2
 
+function getGraphCursor({
+  isCanvasPanning,
+  hasHoverTarget,
+}: {
+  isCanvasPanning: boolean
+  hasHoverTarget: boolean
+}): string {
+  if (isCanvasPanning) return "grabbing"
+  if (hasHoverTarget) return "pointer"
+  return "grab"
+}
+
+function getGraphLabelTextColor({
+  isDimmed,
+  isDark,
+  mutedFgColor,
+}: {
+  isDimmed: boolean
+  isDark: boolean
+  mutedFgColor: string
+}): string {
+  if (isDimmed) return mutedFgColor
+  return isDark ? "#e5eefc" : "#334155"
+}
+
+function getGraphLabelBackgroundColor({
+  emphasis,
+  color,
+  isDark,
+  labelBgColor,
+}: {
+  emphasis: boolean
+  color: string
+  isDark: boolean
+  labelBgColor: string
+}): string {
+  if (!emphasis) return labelBgColor
+  const canvasColor = isDark ? "#0f172a" : "#fffef9"
+  const mixWeight = isDark ? 0.74 : 0.84
+  const alpha = isDark ? 0.92 : 0.9
+  return withAlpha(mixHexColors(color, canvasColor, mixWeight), alpha)
+}
+
 function getPrimaryCanvas(root: ParentNode | null): HTMLCanvasElement | null {
   if (!root) return null
   const canvases = Array.from(root.querySelectorAll("canvas")) as HTMLCanvasElement[]
@@ -202,7 +245,10 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
     const hoverLinkColor = getCssHslColor("--primary", isDark ? "#38bdf8" : "#0284c7")
     const labelBgColor = isDark ? "rgba(2, 6, 23, 0.84)" : "rgba(255, 254, 249, 0.92)"
     const labelStrokeColor = isDark ? "rgba(15, 23, 42, 0.72)" : "rgba(255, 255, 255, 0.96)"
-    const graphCursor = isCanvasPanning ? "grabbing" : (hoveredNodeId || hoveredLinkId ? "pointer" : "grab")
+    const graphCursor = getGraphCursor({
+      isCanvasPanning,
+      hasHoverTarget: Boolean(hoveredNodeId || hoveredLinkId),
+    })
     const isLargeGraph = data.nodes.length > 180 || data.links.length > 360
     const useCustomNodeObjects = !isLargeGraph && data.nodes.length <= 36
     const allowLinkLabelSprites =
@@ -575,13 +621,20 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
           const group = new Group()
 
           const label = new SpriteText(truncateGraphLabel(node.label ?? node.id, 24))
-          label.color = isDimmed ? mutedFgColor : (isDark ? "#e5eefc" : "#334155")
+          label.color = getGraphLabelTextColor({
+            isDimmed,
+            isDark,
+            mutedFgColor,
+          })
           label.textHeight = emphasis ? GRAPH_3D_LABEL_TEXT_HEIGHT + 0.15 : GRAPH_3D_LABEL_TEXT_HEIGHT
           label.fontFace = "-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
           label.fontWeight = emphasis ? "700" : "600"
-          label.backgroundColor = emphasis
-            ? withAlpha(mixHexColors(color, isDark ? "#0f172a" : "#fffef9", isDark ? 0.74 : 0.84), isDark ? 0.92 : 0.9)
-            : labelBgColor
+          label.backgroundColor = getGraphLabelBackgroundColor({
+            emphasis,
+            color,
+            isDark,
+            labelBgColor,
+          })
           label.borderColor = withAlpha(color, emphasis ? 0.72 : 0.38)
           label.borderWidth = 0.85
           label.borderRadius = 4
