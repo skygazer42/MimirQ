@@ -16,7 +16,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { type SyntheticEvent, useCallback, useState } from 'react'
+import { type Key, type ReactNode, type SyntheticEvent, useCallback, useState } from 'react'
 import { toast } from 'sonner'
 import { motion, AnimatePresence } from 'framer-motion'
 
@@ -70,7 +70,19 @@ import { getFileTypeMeta } from '@/components/knowledge/file-type'
 type ViewMode = 'grid' | 'list'
 type DocSortKey = 'created_at' | 'filename' | 'file_size'
 type DocSortDir = 'asc' | 'desc'
-type TranslateFn = (key: string, values?: Record<string, any>) => string
+type TranslateValue = string | number | Date
+type TranslateFn = (key: string, values?: Record<string, TranslateValue>) => string
+type VirtualRowLike = {
+  key: Key
+  index: number
+  start: number
+  end: number
+}
+type VirtualizerLike = {
+  getVirtualItems: () => VirtualRowLike[]
+  getTotalSize: () => number
+  measureElement: (node: Element | null) => void
+}
 
 type KnowledgeDocumentsPanelProps = {
   isLoading: boolean
@@ -86,7 +98,7 @@ type KnowledgeDocumentsPanelProps = {
   hasActiveFilters?: boolean
   onSwitchToAllDatasets?: () => void
 
-  scopeSummary?: React.ReactNode
+  scopeSummary?: ReactNode
 
   docFilter: string
   setDocFilter: (value: string) => void
@@ -100,8 +112,8 @@ type KnowledgeDocumentsPanelProps = {
   viewMode: ViewMode
   docGridColumns: number
   docGridRowCount: number
-  docsGridVirtualizer: any
-  docsTableVirtualizer: any
+  docsGridVirtualizer: VirtualizerLike
+  docsTableVirtualizer: VirtualizerLike
   page: number
   pageSize: number
   pageCount: number
@@ -212,6 +224,10 @@ function getDocumentTagSummary(tags: string[]) {
   if (!tags.length) return '-'
   const visible = tags.slice(0, 2).join(' / ')
   return tags.length > 2 ? `${visible} +${tags.length - 2}` : visible
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
 }
 
 const contextualRevealClassName = [
@@ -325,7 +341,7 @@ export function KnowledgeDocumentsPanel({
       await deleteDocument(doc.id)
       toast.success(t('toasts.deleteSuccess'))
       setSingleDeleteDoc(null)
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Delete document failed:', err)
       setSingleDeleteError(formatApiError(err, t('singleDelete.errorFallback')))
     } finally {
@@ -1015,7 +1031,7 @@ export function KnowledgeDocumentsPanel({
                       position: 'relative',
                     }}
                   >
-                    {docsGridVirtualRows.map((virtualRow: any) => {
+                    {docsGridVirtualRows.map((virtualRow) => {
                       const cols = Math.max(1, docGridColumns)
                       const startIndex = virtualRow.index * cols
                       const rowDocs = filteredDocuments.slice(
@@ -1127,7 +1143,7 @@ export function KnowledgeDocumentsPanel({
                           </tr>
                         ) : null}
 
-                        {docsTableVirtualRows.map((virtualRow: any) => {
+                        {docsTableVirtualRows.map((virtualRow) => {
                           const doc = filteredDocuments[virtualRow.index]
                           if (!doc) return null
                           const badge = getStatusBadge(doc.status, t)
@@ -1465,7 +1481,9 @@ function DocumentCard({
   const userTags = getUserTagsFromDocument(doc)
   const fileType = getFileTypeMeta(doc)
   const TypeIcon = fileType.icon
-  const parseScoreRaw = (doc.metadata as any)?.parse_quality?.score
+  const metadata = isRecord(doc.metadata) ? doc.metadata : {}
+  const parseQuality = isRecord(metadata.parse_quality) ? metadata.parse_quality : {}
+  const parseScoreRaw = parseQuality.score
   const parseScore =
     typeof parseScoreRaw === 'number' && Number.isFinite(parseScoreRaw)
       ? parseScoreRaw

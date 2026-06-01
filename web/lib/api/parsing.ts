@@ -108,7 +108,7 @@ export interface ParsingContentResponse {
   quality_gate?: {
     grade: 'pass' | 'warn' | 'fail'
     reasons: string[]
-    evidence?: Record<string, any>
+    evidence?: Record<string, unknown>
   } | null
   elements?: ParsingElement[] | null
 }
@@ -221,6 +221,9 @@ const parsingContentResponseSchema = z.looseObject({
   elements: z.array(parsingElementSchema).nullable().optional(),
 })
 
+const parsingContentResponseTypedSchema = parsingContentResponseSchema as unknown as z.ZodType<ParsingContentResponse>
+const parsingExtractResponseTypedSchema = parsingExtractResponseSchema as unknown as z.ZodType<ParsingExtractResponse>
+
 export const parsingApi = {
   async listDocuments(params?: { skip?: number; limit?: number; status?: string }): Promise<{ total: number; items: Document[] }> {
     const { data } = await apiClient.get('/parsing/documents', { params })
@@ -245,7 +248,12 @@ export const parsingApi = {
       signal?: AbortSignal
     }
   ): Promise<ParsingContentResponse> {
-    const params: Record<string, any> = {}
+    const params: {
+      parser_backend?: string
+      image_caption_enabled?: boolean
+      image_ocr_enabled?: boolean
+      vlm_correction_enabled?: boolean
+    } = {}
     if (options?.parser_backend) params.parser_backend = options.parser_backend
     if (typeof options?.image_caption_enabled === 'boolean') params.image_caption_enabled = options.image_caption_enabled
     if (typeof options?.image_ocr_enabled === 'boolean') params.image_ocr_enabled = options.image_ocr_enabled
@@ -258,7 +266,7 @@ export const parsingApi = {
       query: Object.keys(params).length ? params : undefined,
       signal: options?.signal,
       timeoutMs: API_LONG_TIMEOUT_MS,
-      responseSchema: parsingContentResponseSchema as any,
+      responseSchema: parsingContentResponseTypedSchema,
       responseSchemaName: 'ParsingContentResponse',
     })
     return data as ParsingContentResponse
@@ -269,7 +277,7 @@ export const parsingApi = {
       path: '/api/v1/parsing/documents/{document_id}/content',
       method: 'get',
       pathParams: { document_id: documentId },
-      responseSchema: parsingContentResponseSchema as any,
+      responseSchema: parsingContentResponseTypedSchema,
       responseSchemaName: 'ParsingContentResponse',
     })
     return data as ParsingContentResponse
@@ -281,7 +289,7 @@ export const parsingApi = {
       method: 'patch',
       pathParams: { document_id: documentId },
       body: payload,
-      responseSchema: parsingContentResponseSchema as any,
+      responseSchema: parsingContentResponseTypedSchema,
       responseSchemaName: 'ParsingContentResponse',
     })
     return data as ParsingContentResponse
@@ -300,7 +308,7 @@ export const parsingApi = {
       method: 'post',
       pathParams: { document_id: documentId },
       body: requestBody,
-      responseSchema: parsingExtractResponseSchema as any,
+      responseSchema: parsingExtractResponseTypedSchema,
       responseSchemaName: 'ParsingExtractResponse',
       timeoutMs: API_LONG_TIMEOUT_MS,
     })
