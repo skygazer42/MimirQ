@@ -1,4 +1,4 @@
-import type { AxiosInstance, AxiosRequestConfig } from 'axios'
+import type { AxiosInstance, AxiosRequestConfig, Method } from 'axios'
 import type { ZodType } from 'zod'
 
 import type {
@@ -58,6 +58,14 @@ function renderPathTemplate(pathTemplate: string, params?: Record<string, unknow
 
 function isFormData(value: unknown): value is FormData {
   return typeof FormData !== 'undefined' && value instanceof FormData
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function optionalRecord(value: unknown): Record<string, unknown> | undefined {
+  return isRecord(value) ? value : undefined
 }
 
 function toFormData(body: Record<string, unknown>): FormData {
@@ -184,21 +192,25 @@ export function createOpenApiAxiosClient(apiClient: AxiosInstance) {
       throw new Error(`[openapi-request] unsupported method: ${String(args.method)}`)
     }
 
-    const url = renderPathTemplate(String(args.path), args.pathParams as any)
+    const url = renderPathTemplate(String(args.path), optionalRecord(args.pathParams))
 
-    const contentType: OpenApiContentType = (args as any).contentType || 'application/json'
-    let data = (args as any).body
+    const requestArgs = args as OpenApiAxiosRequestArgs<P, M> & {
+      contentType?: OpenApiContentType
+      body?: unknown
+    }
+    const contentType: OpenApiContentType = requestArgs.contentType || 'application/json'
+    let data = requestArgs.body
 
-    if (contentType === 'multipart/form-data' && data && !isFormData(data)) {
+    if (contentType === 'multipart/form-data' && isRecord(data) && !isFormData(data)) {
       data = toFormData(data)
     }
 
     const res = await apiClient.request({
       url,
-      method: method as any,
-      params: args.query as any,
+      method: method as Method,
+      params: args.query,
       data,
-      headers: args.headers as any,
+      headers: args.headers as AxiosRequestConfig['headers'],
       signal: args.signal,
       timeout: args.timeoutMs,
       ...args.axios,

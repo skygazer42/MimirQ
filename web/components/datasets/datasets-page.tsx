@@ -56,6 +56,15 @@ type DatasetFormState = {
   pipelineOptions: DocumentPipelineOptions
 }
 
+type DatasetSavePayload = {
+  name: string
+  description?: string
+  permission: PermissionEnum
+  partial_member_list: string[] | null
+  partial_group_list: string[] | null
+  pipeline?: DocumentPipelineOptions
+}
+
 const PERMISSION_CONFIG: Record<PermissionEnum, {
   label: string
   className: string
@@ -469,10 +478,12 @@ export default function DatasetsPage() {
   }, [updateDatasetListCache])
 
   const buildPayload = (mode: 'create' | 'update') => {
-    const payload: any = {
+    const payload: DatasetSavePayload = {
       name: form.name.trim(),
       description: form.description.trim() || undefined,
       permission: form.permission,
+      partial_member_list: null,
+      partial_group_list: null,
     }
     if (form.permission === 'partial_members') {
       payload.partial_member_list = parseMembers(form.partialMembersText)
@@ -497,7 +508,7 @@ export default function DatasetsPage() {
       setCreateOpen(false)
       resetForm()
       await refreshDatasets()
-    } catch (e: any) {
+    } catch (e: unknown) {
       toast.error(formatApiError(e, '创建失败'))
     }
   }
@@ -525,7 +536,7 @@ export default function DatasetsPage() {
       setEditing(null)
       resetForm()
       await refreshDatasets()
-    } catch (e: any) {
+    } catch (e: unknown) {
       toast.error(formatApiError(e, '更新失败'))
     }
   }
@@ -556,7 +567,7 @@ export default function DatasetsPage() {
         total: Math.max(0, Number(current.total || 0) - 1),
       }))
       await refreshDatasets()
-    } catch (e: any) {
+    } catch (e: unknown) {
       const message = formatApiError(e, '删除失败')
       const isNonEmptyDataset = /Dataset is not empty|still reference this dataset|数据集内仍有/.test(message)
       if (isNonEmptyDataset) {
@@ -583,7 +594,7 @@ export default function DatasetsPage() {
       })
       replaceDataset(updated)
       toast.success(nextEnabled ? '已启用默认管线' : '已关闭默认管线')
-    } catch (e: any) {
+    } catch (e: unknown) {
       toast.error(formatApiError(e, nextEnabled ? '启用默认管线失败' : '关闭默认管线失败'))
     } finally {
       setPipelineTogglePendingId((current) => (current === dataset.id ? null : current))
@@ -602,7 +613,7 @@ export default function DatasetsPage() {
       const updated = await datasetApi.update(dataset.id, { permission: nextPermission })
       replaceDataset(updated)
       toast.success(nextPermission === 'only_me' ? '已切换为仅自己' : '已切换为全员可见')
-    } catch (e: any) {
+    } catch (e: unknown) {
       toast.error(formatApiError(e, '更新访问权限失败'))
     } finally {
       setPermissionUpdatePendingId((current) => (current === dataset.id ? null : current))

@@ -29,6 +29,10 @@ function safeNumber(value: unknown): number | null {
   return value
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
 function pct(value: number | null | undefined, digits = 1): string {
   const v = typeof value === 'number' && Number.isFinite(value) ? value : null
   if (v === null) return '—'
@@ -49,7 +53,8 @@ function fmt(value: unknown): string {
 }
 
 function parseQualityScore(card: DocumentHealthCard | null): number | null {
-  const score = (card?.parsing?.parse_quality as any)?.score
+  const parseQuality = isRecord(card?.parsing?.parse_quality) ? card.parsing.parse_quality : {}
+  const score = parseQuality.score
   return safeNumber(score)
 }
 
@@ -83,6 +88,8 @@ export default function DocumentHealthPage({ documentId }: Readonly<{ documentId
   const error = healthQuery.error ? formatApiError(healthQuery.error, '加载失败') : null
 
   const qualityScore = useMemo(() => parseQualityScore(data), [data])
+  const kgSummary = isRecord(data?.kg?.summary) ? data.kg.summary : {}
+  const kgComponents = isRecord(data?.kg?.components) ? data.kg.components : {}
   const qualityBadge = useMemo(() => {
     if (qualityScore === null) return null
     if (qualityScore < 0.35) return { label: '解析质量偏低', tone: 'bad' as const }
@@ -256,24 +263,24 @@ export default function DocumentHealthPage({ documentId }: Readonly<{ documentId
               <div className="text-sm font-semibold text-foreground">KG</div>
               <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
                 <div className="text-muted-foreground">Events</div>
-                <div className="font-mono tabular-nums">{fmt((data.kg as any)?.summary?.events)}</div>
+                <div className="font-mono tabular-nums">{fmt(kgSummary.events)}</div>
                 <div className="text-muted-foreground">Entities</div>
-                <div className="font-mono tabular-nums">{fmt((data.kg as any)?.summary?.entities)}</div>
+                <div className="font-mono tabular-nums">{fmt(kgSummary.entities)}</div>
                 <div className="text-muted-foreground">Relations</div>
-                <div className="font-mono tabular-nums">{fmt((data.kg as any)?.summary?.relations)}</div>
+                <div className="font-mono tabular-nums">{fmt(kgSummary.relations)}</div>
                 <div className="text-muted-foreground">Isolated ratio</div>
                 <div className="font-mono tabular-nums">
                   {(() => {
-                    const r = safeNumber((data.kg as any)?.summary?.isolated_entity_ratio)
+                    const r = safeNumber(kgSummary.isolated_entity_ratio)
                     return r === null ? '—' : pct(r, 2)
                   })()}
                 </div>
                 <div className="text-muted-foreground">Components</div>
-                <div className="font-mono tabular-nums">{fmt((data.kg as any)?.components?.components)}</div>
+                <div className="font-mono tabular-nums">{fmt(kgComponents.components)}</div>
                 <div className="text-muted-foreground">Largest comp.</div>
                 <div className="font-mono tabular-nums">
                   {(() => {
-                    const r = safeNumber((data.kg as any)?.components?.largest_component_ratio)
+                    const r = safeNumber(kgComponents.largest_component_ratio)
                     return r === null ? '—' : pct(r, 2)
                   })()}
                 </div>
