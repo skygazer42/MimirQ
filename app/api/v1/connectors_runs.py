@@ -30,6 +30,53 @@ from app.models.connector import ConnectorRun
 
 router = APIRouter(responses=connectors_module._DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
+_URL_INGEST_CONNECTOR_IDS = frozenset(
+    {
+        "url_batch",
+        "web_crawl",
+        "github_repo",
+        "drive_files",
+        "minio_bucket",
+        "confluence_space",
+        "jira_project",
+    }
+)
+_DB_CATALOG_CONNECTOR_IDS = frozenset({"mysql_catalog", "sqlserver_catalog"})
+_CONNECTOR_CONFIG_MODELS: dict[str, Any] = {
+    "url_batch": UrlBatchConnectorConfig,
+    "web_crawl": WebCrawlConnectorConfig,
+    "github_repo": GitHubRepoConnectorConfig,
+    "drive_files": DriveFilesConnectorConfig,
+    "minio_bucket": MinioBucketConnectorConfig,
+    "confluence_space": ConfluenceSpaceConnectorConfig,
+    "jira_project": JiraProjectConnectorConfig,
+    "mysql_catalog": MySQLCatalogConnectorConfig,
+    "sqlserver_catalog": SQLServerCatalogConnectorConfig,
+}
+_CONNECTOR_RUN_DISPATCHER_NAMES = {
+    "url_batch": "_execute_url_batch_run",
+    "web_crawl": "_execute_web_crawl_run",
+    "github_repo": "_execute_github_repo_run",
+    "drive_files": "_execute_drive_files_run",
+    "minio_bucket": "_execute_minio_bucket_run",
+    "confluence_space": "_execute_confluence_space_run",
+    "jira_project": "_execute_jira_project_run",
+    "mysql_catalog": "_execute_db_catalog_run",
+    "sqlserver_catalog": "_execute_db_catalog_run",
+}
+
+
+class ConnectorRunListParams:
+    def __init__(
+        self,
+        skip: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int, Query(ge=1, le=200)] = 20,
+        dataset_id: UUID | None = None,
+    ) -> None:
+        self.skip = skip
+        self.limit = limit
+        self.dataset_id = dataset_id
+
 
 def _extract_failed_urls(stats: dict) -> list[str]:
     urls: list[str] = []
@@ -63,6 +110,67 @@ def _assert_connector_run_dataset_writable(db: Session, *, run: ConnectorRun, te
         return
     dataset = connectors_module.DatasetService.get_dataset(db, tenant_id, run.dataset_id)
     connectors_module.DatasetService.assert_dataset_writable(db, dataset, account_id)
+
+
+def _connector_run_dispatcher(connector_id: str) -> Any:
+    dispatcher_name = _CONNECTOR_RUN_DISPATCHER_NAMES.get(connector_id)
+    if not dispatcher_name:
+        raise HTTPException(status_code=400, detail=connectors_module.UNSUPPORTED_CONNECTOR_ID_DETAIL)
+    return getattr(connectors_module, dispatcher_name)
+
+
+def _validate_connector_run_enabled(connector_id: str) -> None:
+    if connector_id not in _CONNECTOR_CONFIG_MODELS:
+        raise HTTPException(status_code=400, detail=connectors_module.UNSUPPORTED_CONNECTOR_ID_DETAIL)
+    if connector_id in _URL_INGEST_CONNECTOR_IDS and not bool(getattr(connectors_module.settings, "URL_INGEST_ENABLED", False)):
+        raise HTTPException(status_code=400, detail=connectors_module.URL_INGEST_DISABLED_DETAIL)
+    if connector_id in _DB_CATALOG_CONNECTOR_IDS and not bool(getattr(connectors_module.settings, "DB_CATALOG_ENABLED", False)):
+        raise HTTPException(status_code=400, detail="DB catalog ingestion is disabled")
+
+
+def _validate_and_encrypt_run_config(connector_id: str, raw_config: dict[str, Any] | None) -> tuple[Any, dict[str, Any]]:
+    config_model = _CONNECTOR_CONFIG_MODELS.get(connector_id)
+    if config_model is None:
+        raise HTTPException(status_code=400, detail=connectors_module.UNSUPPORTED_CONNECTOR_ID_DETAIL)
+    cfg = config_model.model_validate(raw_config or {})
+    cfg_dict = cfg.model_dump(mode="json", exclude_none=True)
+    return cfg, connectors_module.encrypt_connector_config_secrets(cfg_dict)
+
+
+def _connector_run_group_ids_to_check(cfg: Any) -> list[UUID]:
+    group_ids: list[UUID] = []
+    access = getattr(cfg, "access", None)
+    group_ids.extend(list(getattr(access, "partial_group_list", None) or []))
+    source_acl = getattr(cfg, "source_acl", None)
+    for rule in getattr(source_acl, "group_mappings", None) or []:
+        group_id = getattr(rule, "group_id", None)
+        if group_id:
+            group_ids.append(group_id)
+    return group_ids
+
+
+def _assert_connector_run_groups_exist(db: Session, *, tenant_id: UUID, cfg: Any) -> None:
+    group_ids = _connector_run_group_ids_to_check(cfg)
+    if not group_ids:
+        return
+    missing = connectors_module._unknown_tenant_groups(db, tenant_id=tenant_id, group_ids=group_ids)
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Unknown tenant groups: {', '.join(missing[:20])}")
+
+
+def _create_pending_connector_run(
+    db: Session,
+    *,
+    values: dict[str, Any],
+) -> ConnectorRun:
+    run_values = dict(values)
+    run_values.setdefault("status", "pending")
+    run_values.setdefault("stats", {})
+    run = ConnectorRun(**run_values)
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+    return run
 
 
 def _build_retry_failed_run_config(
@@ -113,6 +221,32 @@ def _persist_connector_run_task_id(db: Session, *, run: ConnectorRun, task_id: s
     db.refresh(run)
 
 
+async def _enqueue_or_schedule_connector_run(
+    db: Session,
+    *,
+    background_tasks: BackgroundTasks,
+    run: ConnectorRun,
+    tenant_id: UUID,
+    requested_by: str,
+) -> ConnectorRunOut:
+    task_id = await _enqueue_connector_run_if_enabled(
+        tenant_id=tenant_id,
+        run_id=run.id,
+        requested_by=requested_by,
+    )
+    if task_id:
+        _persist_connector_run_task_id(db, run=run, task_id=task_id)
+    else:
+        _schedule_connector_run_dispatch(
+            background_tasks=background_tasks,
+            connector_id=str(run.connector_id or "").strip(),
+            run_id=run.id,
+            tenant_id=tenant_id,
+            requested_by=requested_by,
+        )
+    return connectors_module._run_out(run)
+
+
 def _schedule_connector_run_dispatch(
     *,
     background_tasks: BackgroundTasks,
@@ -121,47 +255,12 @@ def _schedule_connector_run_dispatch(
     tenant_id: UUID,
     requested_by: str,
 ) -> None:
-    if connector_id == "url_batch":
-        background_tasks.add_task(
-            connectors_module._execute_url_batch_run,
-            run_id=run_id,
-            tenant_id=tenant_id,
-            requested_by=requested_by,
-        )
-        return
-    if connector_id == "web_crawl":
-        background_tasks.add_task(
-            connectors_module._execute_web_crawl_run,
-            run_id=run_id,
-            tenant_id=tenant_id,
-            requested_by=requested_by,
-        )
-        return
-    if connector_id == "github_repo":
-        background_tasks.add_task(
-            connectors_module._execute_github_repo_run,
-            run_id=run_id,
-            tenant_id=tenant_id,
-            requested_by=requested_by,
-        )
-        return
-    if connector_id == "drive_files":
-        background_tasks.add_task(
-            connectors_module._execute_drive_files_run,
-            run_id=run_id,
-            tenant_id=tenant_id,
-            requested_by=requested_by,
-        )
-        return
-    if connector_id == "minio_bucket":
-        background_tasks.add_task(
-            connectors_module._execute_minio_bucket_run,
-            run_id=run_id,
-            tenant_id=tenant_id,
-            requested_by=requested_by,
-        )
-        return
-    raise HTTPException(status_code=400, detail=connectors_module.UNSUPPORTED_CONNECTOR_ID_DETAIL)
+    background_tasks.add_task(
+        _connector_run_dispatcher(connector_id),
+        run_id=run_id,
+        tenant_id=tenant_id,
+        requested_by=requested_by,
+    )
 
 
 def _connector_run_has_abortable_task(*, task_queue_enabled: bool, task_id: object) -> bool:
@@ -205,6 +304,112 @@ async def _abort_connector_run_task_if_possible(run: ConnectorRun) -> None:
         await job.abort(timeout=0.2)
 
 
+def _non_negative_int(value: Any) -> int:
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _compact_string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item or "").strip() for item in value if str(item or "").strip()]
+
+
+def _get_resumable_connector_definition(connector_id: str) -> Any:
+    connector_definition = connectors_module.get_connector_definition(connector_id)
+    if connector_definition is None or not getattr(connector_definition, "supports_resume", False):
+        raise HTTPException(status_code=400, detail=f"Resume is not supported for {connector_id or 'this connector'}")
+    return connector_definition
+
+
+def _build_url_batch_resume_run_config(
+    *,
+    run_id: UUID,
+    base_cfg: dict[str, Any],
+    stats: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    cursor = _non_negative_int(stats.get("cursor", stats.get("processed_urls", 0)))
+    urls = _compact_string_list(base_cfg.get("urls"))
+    remaining = urls[cursor:] if cursor < len(urls) else []
+    if not remaining:
+        raise HTTPException(status_code=400, detail="No remaining URLs to resume")
+
+    new_cfg = dict(base_cfg)
+    new_cfg["urls"] = remaining
+    return new_cfg, {"resume_of": str(run_id), "resume_cursor": int(cursor)}
+
+
+def _stateful_resume_total_key(connector_definition: Any) -> str | None:
+    return next((key for key in getattr(connector_definition, "state_keys", []) if key != "cursor"), None)
+
+
+def _stateful_resume_has_no_remaining_items(
+    *,
+    connector_definition: Any,
+    stats: dict[str, Any],
+    resume_state: dict[str, Any],
+    cursor: int,
+) -> bool:
+    total_key = _stateful_resume_total_key(connector_definition)
+    has_incremental_manifest = bool(connectors_module.normalize_source_manifest(resume_state.get("source_manifest")))
+    if not total_key or has_incremental_manifest:
+        return False
+    total_items = _non_negative_int(stats.get(total_key))
+    return total_items > 0 and cursor >= total_items
+
+
+def _build_stateful_resume_run_config(
+    *,
+    run_id: UUID,
+    connector_id: str,
+    connector_definition: Any,
+    base_cfg: dict[str, Any],
+    stats: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    existing_state = base_cfg.get("_state") if isinstance(base_cfg.get("_state"), dict) else {}
+    resume_state = connectors_module.build_persisted_state(
+        connector_id=connector_id,
+        existing_state=dict(existing_state or {}),
+        stats=stats,
+        run_id=run_id,
+    )
+    cursor = connectors_module.get_resume_cursor(resume_state)
+    if _stateful_resume_has_no_remaining_items(
+        connector_definition=connector_definition,
+        stats=stats,
+        resume_state=resume_state,
+        cursor=cursor,
+    ):
+        raise HTTPException(status_code=400, detail="No remaining items to resume")
+    if not resume_state:
+        raise HTTPException(status_code=400, detail="No saved resume state found")
+
+    new_cfg = dict(base_cfg)
+    new_cfg["_state"] = resume_state
+    return new_cfg, {"resume_of": str(run_id), "resume_cursor": int(cursor)}
+
+
+def _build_resume_run_config(
+    *,
+    run: ConnectorRun,
+    connector_id: str,
+    connector_definition: Any,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    base_cfg = dict(run.config or {})
+    stats = dict(run.stats or {})
+    if connector_id == "url_batch":
+        return _build_url_batch_resume_run_config(run_id=run.id, base_cfg=base_cfg, stats=stats)
+    return _build_stateful_resume_run_config(
+        run_id=run.id,
+        connector_id=connector_id,
+        connector_definition=connector_definition,
+        base_cfg=base_cfg,
+        stats=stats,
+    )
+
+
 @router.post("/runs", response_model=ConnectorRunOut, status_code=201, responses=connectors_module._DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def create_connector_run(
     payload: ConnectorRunCreateRequest,
@@ -215,115 +420,40 @@ async def create_connector_run(
     db: Annotated[Session, Depends(get_db)],
 ):
     """
-    Create a connector run (currently supports url_batch).
+    Create a connector run.
 
     Requires dataset write permission.
     """
     connector_id = str(payload.connector_id or "").strip()
-    url_connectors = {"url_batch", "web_crawl", "github_repo", "drive_files", "minio_bucket", "confluence_space", "jira_project"}
-    db_catalog_connectors = {"mysql_catalog", "sqlserver_catalog"}
-
-    if connector_id in url_connectors and not bool(getattr(connectors_module.settings, "URL_INGEST_ENABLED", False)):
-        raise HTTPException(status_code=400, detail=connectors_module.URL_INGEST_DISABLED_DETAIL)
-    if connector_id in db_catalog_connectors and not bool(getattr(connectors_module.settings, "DB_CATALOG_ENABLED", False)):
-        raise HTTPException(status_code=400, detail="DB catalog ingestion is disabled")
+    _validate_connector_run_enabled(connector_id)
 
     connectors_module.DatasetService.ensure_member(db, tenant_id, account_id)
     dataset = connectors_module._resolve_writable_dataset(db, tenant_id, account_id, payload.dataset_id)
+    cfg, cfg_dict = _validate_and_encrypt_run_config(connector_id, payload.config)
+    _assert_connector_run_groups_exist(db, tenant_id=tenant_id, cfg=cfg)
 
-    if connector_id == "url_batch":
-        cfg = UrlBatchConnectorConfig.model_validate(payload.config or {})
-        cfg_dict = connectors_module.encrypt_connector_config_secrets(cfg.model_dump(mode="json", exclude_none=True))
-    elif connector_id == "web_crawl":
-        cfg = WebCrawlConnectorConfig.model_validate(payload.config or {})
-        cfg_dict = connectors_module.encrypt_connector_config_secrets(cfg.model_dump(mode="json", exclude_none=True))
-    elif connector_id == "github_repo":
-        cfg = GitHubRepoConnectorConfig.model_validate(payload.config or {})
-        cfg_dict = connectors_module.encrypt_connector_config_secrets(cfg.model_dump(mode="json", exclude_none=True))
-    elif connector_id == "drive_files":
-        cfg = DriveFilesConnectorConfig.model_validate(payload.config or {})
-        cfg_dict = connectors_module.encrypt_connector_config_secrets(cfg.model_dump(mode="json", exclude_none=True))
-    elif connector_id == "minio_bucket":
-        cfg = MinioBucketConnectorConfig.model_validate(payload.config or {})
-        cfg_dict = connectors_module.encrypt_connector_config_secrets(cfg.model_dump(mode="json", exclude_none=True))
-    elif connector_id == "confluence_space":
-        cfg = ConfluenceSpaceConnectorConfig.model_validate(payload.config or {})
-        cfg_dict = connectors_module.encrypt_connector_config_secrets(cfg.model_dump(mode="json", exclude_none=True))
-    elif connector_id == "jira_project":
-        cfg = JiraProjectConnectorConfig.model_validate(payload.config or {})
-        cfg_dict = connectors_module.encrypt_connector_config_secrets(cfg.model_dump(mode="json", exclude_none=True))
-    elif connector_id == "mysql_catalog":
-        cfg = MySQLCatalogConnectorConfig.model_validate(payload.config or {})
-        cfg_dict = connectors_module.encrypt_connector_config_secrets(cfg.model_dump(mode="json", exclude_none=True))
-    elif connector_id == "sqlserver_catalog":
-        cfg = SQLServerCatalogConnectorConfig.model_validate(payload.config or {})
-        cfg_dict = connectors_module.encrypt_connector_config_secrets(cfg.model_dump(mode="json", exclude_none=True))
-    else:
-        raise HTTPException(status_code=400, detail=connectors_module.UNSUPPORTED_CONNECTOR_ID_DETAIL)
-
-    group_ids_to_check: list[UUID] = []
-    access = getattr(cfg, "access", None)
-    group_ids_to_check.extend(list(getattr(access, "partial_group_list", None) or []))
-    source_acl = getattr(cfg, "source_acl", None)
-    for rule in getattr(source_acl, "group_mappings", None) or []:
-        group_id = getattr(rule, "group_id", None)
-        if group_id:
-            group_ids_to_check.append(group_id)
-
-    if group_ids_to_check:
-        missing = connectors_module._unknown_tenant_groups(db, tenant_id=tenant_id, group_ids=group_ids_to_check)
-        if missing:
-            raise HTTPException(status_code=400, detail=f"Unknown tenant groups: {', '.join(missing[:20])}")
-
-    run = ConnectorRun(
-        tenant_id=tenant_id,
-        dataset_id=dataset.id,
-        connector_id=connector_id,
-        requested_by=account_id,
-        status="pending",
-        config=cfg_dict,
-        stats={},
+    run = _create_pending_connector_run(
+        db,
+        values={
+            "tenant_id": tenant_id,
+            "dataset_id": dataset.id,
+            "connector_id": connector_id,
+            "requested_by": account_id,
+            "config": cfg_dict,
+        },
     )
-    db.add(run)
-    db.commit()
-    db.refresh(run)
-
-    task_id = await _enqueue_connector_run_if_enabled(
+    return await _enqueue_or_schedule_connector_run(
+        db,
+        background_tasks=background_tasks,
+        run=run,
         tenant_id=tenant_id,
-        run_id=run.id,
         requested_by=account_id,
     )
-    if task_id:
-        _persist_connector_run_task_id(db, run=run, task_id=task_id)
-        return connectors_module._run_out(run)
-
-    if connector_id == "url_batch":
-        background_tasks.add_task(connectors_module._execute_url_batch_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
-    elif connector_id == "web_crawl":
-        background_tasks.add_task(connectors_module._execute_web_crawl_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
-    elif connector_id == "github_repo":
-        background_tasks.add_task(connectors_module._execute_github_repo_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
-    elif connector_id == "drive_files":
-        background_tasks.add_task(connectors_module._execute_drive_files_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
-    elif connector_id == "minio_bucket":
-        background_tasks.add_task(connectors_module._execute_minio_bucket_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
-    elif connector_id == "confluence_space":
-        background_tasks.add_task(connectors_module._execute_confluence_space_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
-    elif connector_id == "jira_project":
-        background_tasks.add_task(connectors_module._execute_jira_project_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
-    elif connector_id in {"mysql_catalog", "sqlserver_catalog"}:
-        background_tasks.add_task(connectors_module._execute_db_catalog_run, run_id=run.id, tenant_id=tenant_id, requested_by=account_id)
-    else:
-        raise HTTPException(status_code=400, detail=connectors_module.UNSUPPORTED_CONNECTOR_ID_DETAIL)
-
-    return connectors_module._run_out(run)
 
 
 @router.get("/runs", response_model=ConnectorRunListResponse, responses=connectors_module._DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_connector_runs(
-    skip: Annotated[int, Query(ge=0)] = 0,
-    limit: Annotated[int, Query(ge=1, le=200)] = 20,
-    dataset_id: UUID | None = None,
+    params: Annotated[ConnectorRunListParams, Depends()],
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -333,21 +463,21 @@ def list_connector_runs(
     connectors_module.DatasetService.ensure_member(db, tenant_id, account_id)
 
     query = db.query(ConnectorRun).filter(ConnectorRun.tenant_id == tenant_id)
-    if dataset_id:
-        dataset = connectors_module.DatasetService.get_dataset(db, tenant_id, dataset_id)
+    if params.dataset_id:
+        dataset = connectors_module.DatasetService.get_dataset(db, tenant_id, params.dataset_id)
         connectors_module.DatasetService.assert_dataset_writable(db, dataset, account_id)
-        query = query.filter(ConnectorRun.dataset_id == dataset_id)
+        query = query.filter(ConnectorRun.dataset_id == params.dataset_id)
 
     total = int(query.count())
     runs = (
         query.options(selectinload(ConnectorRun.documents))
         .order_by(ConnectorRun.created_at.desc())
-        .offset(skip)
-        .limit(limit)
+        .offset(params.skip)
+        .limit(params.limit)
         .all()
     )
 
-    if not dataset_id:
+    if not params.dataset_id:
         allowed: list[ConnectorRun] = []
         for run in runs:
             if not run.dataset_id:
@@ -438,36 +568,24 @@ async def retry_failed_connector_run(
         failed_urls=failed_urls,
     )
 
-    new_run = ConnectorRun(
-        tenant_id=tenant_id,
-        dataset_id=run.dataset_id,
-        connector_id=new_connector_id,
-        requested_by=account_id,
-        status="pending",
-        config=new_cfg,
-        stats={"retry_of": str(run.id), "retry_kind": "failed_only"},
+    new_run = _create_pending_connector_run(
+        db,
+        values={
+            "tenant_id": tenant_id,
+            "dataset_id": run.dataset_id,
+            "connector_id": new_connector_id,
+            "requested_by": account_id,
+            "config": new_cfg,
+            "stats": {"retry_of": str(run.id), "retry_kind": "failed_only"},
+        },
     )
-    db.add(new_run)
-    db.commit()
-    db.refresh(new_run)
-
-    task_id = await _enqueue_connector_run_if_enabled(
-        tenant_id=tenant_id,
-        run_id=new_run.id,
-        requested_by=account_id,
-    )
-    if task_id:
-        _persist_connector_run_task_id(db, run=new_run, task_id=task_id)
-        return connectors_module._run_out(new_run)
-
-    _schedule_connector_run_dispatch(
+    return await _enqueue_or_schedule_connector_run(
+        db,
         background_tasks=background_tasks,
-        connector_id=new_connector_id,
-        run_id=new_run.id,
+        run=new_run,
         tenant_id=tenant_id,
         requested_by=account_id,
     )
-    return connectors_module._run_out(new_run)
 
 
 @router.post("/runs/{run_id}/resume", response_model=ConnectorRunOut, status_code=201, responses=connectors_module._DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -494,82 +612,31 @@ async def resume_connector_run(
     _assert_connector_run_dataset_writable(db, run=run, tenant_id=tenant_id, account_id=account_id)
 
     connector_id = str(run.connector_id or "").strip()
-    connector_definition = connectors_module.get_connector_definition(connector_id)
-    if connector_definition is None or not connector_definition.supports_resume:
-        raise HTTPException(status_code=400, detail=f"Resume is not supported for {connector_id or 'this connector'}")
-
-    base_cfg = dict(run.config or {})
-    stats = dict(run.stats or {})
-    new_cfg = dict(base_cfg)
-    resume_stats: dict[str, Any] = {"resume_of": str(run.id)}
-
-    if connector_id == "url_batch":
-        cursor_raw = stats.get("cursor", stats.get("processed_urls", 0))
-        try:
-            cursor = max(0, int(cursor_raw or 0))
-        except Exception:
-            cursor = 0
-
-        urls = base_cfg.get("urls") if isinstance(base_cfg.get("urls"), list) else []
-        urls = [str(url or "").strip() for url in urls if str(url or "").strip()]
-        remaining = urls[cursor:] if cursor < len(urls) else []
-        if not remaining:
-            raise HTTPException(status_code=400, detail="No remaining URLs to resume")
-        new_cfg["urls"] = remaining
-        resume_stats["resume_cursor"] = int(cursor)
-    else:
-        existing_state = base_cfg.get("_state") if isinstance(base_cfg.get("_state"), dict) else {}
-        resume_state = connectors_module.build_persisted_state(
-            connector_id=connector_id,
-            existing_state=dict(existing_state or {}),
-            stats=stats,
-            run_id=run.id,
-        )
-        cursor = connectors_module.get_resume_cursor(resume_state)
-        total_key = next((key for key in connector_definition.state_keys if key != "cursor"), None)
-        has_incremental_manifest = bool(connectors_module.normalize_source_manifest(resume_state.get("source_manifest")))
-        if total_key and not has_incremental_manifest:
-            try:
-                total_items = max(0, int(stats.get(total_key) or 0))
-            except Exception:
-                total_items = 0
-            if total_items > 0 and cursor >= total_items:
-                raise HTTPException(status_code=400, detail="No remaining items to resume")
-        if not resume_state:
-            raise HTTPException(status_code=400, detail="No saved resume state found")
-        new_cfg["_state"] = resume_state
-        resume_stats["resume_cursor"] = int(cursor)
-
-    new_run = ConnectorRun(
-        tenant_id=tenant_id,
-        dataset_id=run.dataset_id,
+    connector_definition = _get_resumable_connector_definition(connector_id)
+    new_cfg, resume_stats = _build_resume_run_config(
+        run=run,
         connector_id=connector_id,
-        requested_by=account_id,
-        status="pending",
-        config=new_cfg,
-        stats=resume_stats,
+        connector_definition=connector_definition,
     )
-    db.add(new_run)
-    db.commit()
-    db.refresh(new_run)
 
-    task_id = await _enqueue_connector_run_if_enabled(
-        tenant_id=tenant_id,
-        run_id=new_run.id,
-        requested_by=account_id,
+    new_run = _create_pending_connector_run(
+        db,
+        values={
+            "tenant_id": tenant_id,
+            "dataset_id": run.dataset_id,
+            "connector_id": connector_id,
+            "requested_by": account_id,
+            "config": new_cfg,
+            "stats": resume_stats,
+        },
     )
-    if task_id:
-        _persist_connector_run_task_id(db, run=new_run, task_id=task_id)
-        return connectors_module._run_out(new_run)
-
-    _schedule_connector_run_dispatch(
+    return await _enqueue_or_schedule_connector_run(
+        db,
         background_tasks=background_tasks,
-        connector_id=connector_id,
-        run_id=new_run.id,
+        run=new_run,
         tenant_id=tenant_id,
         requested_by=account_id,
     )
-    return connectors_module._run_out(new_run)
 
 
 @router.post("/runs/{run_id}/cancel", response_model=ConnectorRunOut, responses=connectors_module._DEFAULT_HTTP_EXCEPTION_RESPONSES)

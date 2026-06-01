@@ -363,6 +363,31 @@ class ConfluenceSpaceConnectorConfig(BaseModel):
         return self
 
 
+def _normalized_jira_custom_field(raw: object) -> str | None:
+    if raw is None:
+        return None
+    key = str(raw or "").strip().lower()
+    if not key or len(key) > 80:
+        return None
+    if not re.fullmatch(r"customfield_\d+", key):
+        return None
+    return key
+
+
+def _normalize_jira_custom_fields(raw_fields: list[str] | None) -> list[str]:
+    seen: set[str] = set()
+    normalized: list[str] = []
+    for raw in raw_fields or []:
+        key = _normalized_jira_custom_field(raw)
+        if key is None or key in seen:
+            continue
+        seen.add(key)
+        normalized.append(key)
+        if len(normalized) >= 30:
+            break
+    return normalized
+
+
 class JiraProjectConnectorConfig(BaseModel):
     """Config for `jira_project` connector (list issues in a Jira project -> ingest rendered issue HTML)."""
 
@@ -409,28 +434,7 @@ class JiraProjectConnectorConfig(BaseModel):
         if self.jql is not None:
             jql = str(self.jql or "").strip()
             self.jql = jql or None
-        if self.custom_fields is None:
-            self.custom_fields = []
-
-        cf_seen: set[str] = set()
-        cf_norm: list[str] = []
-        for raw in self.custom_fields or []:
-            if raw is None:
-                continue
-            key = str(raw or "").strip().lower()
-            if not key:
-                continue
-            if len(key) > 80:
-                continue
-            if not re.fullmatch(r"customfield_\d+", key):
-                continue
-            if key in cf_seen:
-                continue
-            cf_seen.add(key)
-            cf_norm.append(key)
-            if len(cf_norm) >= 30:
-                break
-        self.custom_fields = cf_norm
+        self.custom_fields = _normalize_jira_custom_fields(self.custom_fields)
 
         if not self.base_url:
             raise ValueError("base_url is required")

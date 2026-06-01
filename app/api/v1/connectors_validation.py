@@ -127,6 +127,62 @@ def _validate_connector_schema(connector_id: str, config: dict[str, Any]) -> tup
     return cfg_obj, cfg_dict
 
 
+async def _check_ingest_url_candidates(
+    *,
+    urls: list[Any],
+    invalid_code: str,
+    check_error_code: str,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    checked: list[dict[str, Any]] = []
+    ok = 0
+    warnings: list[dict[str, Any]] = []
+
+    for raw in urls[:3]:
+        url = str(raw or "").strip()
+        if not url:
+            continue
+        try:
+            normalized = await validate_url_for_ingest(url)
+            checked.append({"url": url, "ok": True, "normalized_url": normalized})
+            ok += 1
+        except HTTPException as exc:
+            error = str(getattr(exc, "detail", "") or "")[:200]
+            checked.append({"url": url, "ok": False, "error": error})
+            warnings.append({"code": invalid_code, "url": url, "error": error})
+        except Exception as exc:  # noqa: BLE001
+            error = _safe_error_str(exc)
+            checked.append({"url": url, "ok": False, "error": error})
+            warnings.append({"code": check_error_code, "url": url, "error": error})
+
+    return {"checked": checked, "ok": ok == len(checked) if checked else True}, warnings
+
+
+async def _url_ingest_connectivity_check(*, cfg: Any) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    return await _check_ingest_url_candidates(
+        urls=list(getattr(cfg, "urls", None) or []),
+        invalid_code="url_invalid",
+        check_error_code="url_check_error",
+    )
+
+
+async def _web_crawl_connectivity_check(*, cfg: Any) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    return await _check_ingest_url_candidates(
+        urls=list(getattr(cfg, "start_urls", None) or []),
+        invalid_code="start_url_invalid",
+        check_error_code="start_url_check_error",
+    )
+
+
+def _jira_project_connectivity_check(cfg: Any) -> dict[str, Any]:
+    base_url = str(getattr(cfg, "base_url", "") or "").strip()
+    project_key = str(getattr(cfg, "project_key", "") or "").strip()
+    return {
+        "ok": bool(base_url and project_key),
+        "base_url": base_url,
+        "project_key": project_key,
+    }
+
+
 async def _best_effort_connectivity_checks(*, connector_id: str, cfg: Any) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """
     Run bounded, best-effort connectivity checks.
@@ -136,64 +192,24 @@ async def _best_effort_connectivity_checks(*, connector_id: str, cfg: Any) -> tu
     - No redirects (SSRF defense-in-depth)
     - Fail-open (warnings) unless schema is invalid
     """
-    checks: dict[str, Any] = {}
-    warnings: list[dict[str, Any]] = []
-
     cid = str(connector_id or "").strip()
     if cid == "url_batch":
-        urls = list(getattr(cfg, "urls", None) or [])
-        checked: list[dict[str, Any]] = []
-        ok = 0
-        for raw in urls[:3]:
-            url = str(raw or "").strip()
-            if not url:
-                continue
-            try:
-                normalized = await validate_url_for_ingest(url)
-                checked.append({"url": url, "ok": True, "normalized_url": normalized})
-                ok += 1
-            except HTTPException as exc:
-                checked.append({"url": url, "ok": False, "error": str(getattr(exc, "detail", "") or "")[:200]})
-                warnings.append({"code": "url_invalid", "url": url, "error": str(getattr(exc, "detail", "") or "")[:200]})
-            except Exception as exc:  # noqa: BLE001
-                checked.append({"url": url, "ok": False, "error": _safe_error_str(exc)})
-                warnings.append({"code": "url_check_error", "url": url, "error": _safe_error_str(exc)})
-        checks["url_ingest"] = {"checked": checked, "ok": ok == len(checked) if checked else True}
+        url_check, warnings = await _url_ingest_connectivity_check(cfg=cfg)
+        return {"url_ingest": url_check}, warnings
 
-    elif cid == "web_crawl":
-        start_urls = list(getattr(cfg, "start_urls", None) or [])
-        checked: list[dict[str, Any]] = []
-        ok = 0
-        for raw in start_urls[:3]:
-            url = str(raw or "").strip()
-            if not url:
-                continue
-            try:
-                normalized = await validate_url_for_ingest(url)
-                checked.append({"url": url, "ok": True, "normalized_url": normalized})
-                ok += 1
-            except HTTPException as exc:
-                checked.append({"url": url, "ok": False, "error": str(getattr(exc, "detail", "") or "")[:200]})
-                warnings.append({"code": "start_url_invalid", "url": url, "error": str(getattr(exc, "detail", "") or "")[:200]})
-            except Exception as exc:  # noqa: BLE001
-                checked.append({"url": url, "ok": False, "error": _safe_error_str(exc)})
-                warnings.append({"code": "start_url_check_error", "url": url, "error": _safe_error_str(exc)})
-        checks["url_ingest"] = {"checked": checked, "ok": ok == len(checked) if checked else True}
+    if cid == "web_crawl":
+        url_check, warnings = await _web_crawl_connectivity_check(cfg=cfg)
+        return {"url_ingest": url_check}, warnings
 
-    elif cid == "jira_project":
-        checks["jira_project"] = {
-            "ok": bool(str(getattr(cfg, "base_url", "") or "").strip() and str(getattr(cfg, "project_key", "") or "").strip()),
-            "base_url": str(getattr(cfg, "base_url", "") or "").strip(),
-            "project_key": str(getattr(cfg, "project_key", "") or "").strip(),
-        }
+    if cid == "jira_project":
+        return {"jira_project": _jira_project_connectivity_check(cfg)}, []
 
-    elif cid in _DB_CONNECTOR_IDS:
+    if cid in _DB_CONNECTOR_IDS:
         # Patchable helper for unit tests; best-effort, fail-open warnings.
         db_check, db_warn = await _check_db_connectivity_best_effort(connector_id=cid, cfg=cfg)
-        checks["db_connectivity"] = db_check
-        warnings.extend(db_warn)
+        return {"db_connectivity": db_check}, db_warn
 
-    return checks, warnings
+    return {}, []
 
 
 async def _check_db_connectivity_best_effort(*, connector_id: str, cfg: Any) -> tuple[dict[str, Any], list[dict[str, Any]]]:
