@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
@@ -99,6 +99,101 @@ class AgenticToolInvocation:
     name: str
     arguments: dict[str, Any]
     rationale: str | None = None
+
+
+@dataclass(frozen=True)
+class AgenticStreamRequest:
+    question: str
+    history: list[dict[str, Any]] | None = None
+    conversation_id: UUID | None = None
+    document_ids: list[UUID] | None = None
+    tenant_id: UUID | None = None
+    account_id: str | None = None
+    dataset_id: UUID | None = None
+    top_k: int = 5
+    score_threshold: float = 0.7
+    retrieval_mode: str = "hybrid"
+    retrieval_profile: str | None = None
+    structured_output: bool = False
+    structured_preset: str | None = None
+    prompt_template_id: UUID | None = None
+    prompt_template_key: str | None = None
+    prompt_ab_experiment_key: str | None = None
+    ab_user_key: str | None = None
+    request_id: str | None = None
+    db: Any | None = None
+    state_overrides: dict[str, Any] | None = None
+
+
+_AGENTIC_STREAM_REQUEST_KEYS = {
+    "question",
+    "history",
+    "conversation_id",
+    "document_ids",
+    "tenant_id",
+    "account_id",
+    "dataset_id",
+    "top_k",
+    "score_threshold",
+    "retrieval_mode",
+    "retrieval_profile",
+    "structured_output",
+    "structured_preset",
+    "prompt_template_id",
+    "prompt_template_key",
+    "prompt_ab_experiment_key",
+    "ab_user_key",
+    "request_id",
+    "db",
+    "state_overrides",
+}
+
+
+def resolve_agentic_stream_request(
+    *,
+    request: AgenticStreamRequest | None,
+    legacy_overrides: dict[str, Any],
+) -> AgenticStreamRequest:
+    if request is None:
+        state_overrides = {
+            key: value for key, value in legacy_overrides.items() if key not in _AGENTIC_STREAM_REQUEST_KEYS
+        }
+        return AgenticStreamRequest(
+            question=str(legacy_overrides.get("question") or ""),
+            history=legacy_overrides.get("history"),
+            conversation_id=legacy_overrides.get("conversation_id"),
+            document_ids=legacy_overrides.get("document_ids"),
+            tenant_id=legacy_overrides.get("tenant_id"),
+            account_id=legacy_overrides.get("account_id"),
+            dataset_id=legacy_overrides.get("dataset_id"),
+            top_k=int(legacy_overrides.get("top_k", 5) or 5),
+            score_threshold=float(legacy_overrides.get("score_threshold", 0.7) or 0.7),
+            retrieval_mode=str(legacy_overrides.get("retrieval_mode") or "hybrid"),
+            retrieval_profile=legacy_overrides.get("retrieval_profile"),
+            structured_output=bool(legacy_overrides.get("structured_output", False)),
+            structured_preset=legacy_overrides.get("structured_preset"),
+            prompt_template_id=legacy_overrides.get("prompt_template_id"),
+            prompt_template_key=legacy_overrides.get("prompt_template_key"),
+            prompt_ab_experiment_key=legacy_overrides.get("prompt_ab_experiment_key"),
+            ab_user_key=legacy_overrides.get("ab_user_key"),
+            request_id=legacy_overrides.get("request_id"),
+            db=legacy_overrides.get("db"),
+            state_overrides=state_overrides or None,
+        )
+    if not legacy_overrides:
+        return request
+    updated_fields: dict[str, Any] = {}
+    state_overrides = dict(request.state_overrides or {})
+    for key, value in legacy_overrides.items():
+        if key in _AGENTIC_STREAM_REQUEST_KEYS:
+            updated_fields[key] = value
+        else:
+            state_overrides[key] = value
+    if state_overrides != dict(request.state_overrides or {}):
+        updated_fields["state_overrides"] = state_overrides
+    if not updated_fields:
+        return request
+    return replace(request, **updated_fields)
 
 
 def get_agentic_tool_registry() -> Any:
@@ -289,29 +384,32 @@ class AgenticRAGRunner:
     async def stream(
         self,
         *,
-        question: str,
-        history: list[dict[str, str]] | None = None,
-        conversation_id: UUID | None = None,
-        document_ids: list[UUID] | None = None,
-        tenant_id: UUID | None = None,
-        account_id: str | None = None,
-        dataset_id: UUID | None = None,
-        top_k: int = 5,
-        score_threshold: float = 0.7,
-        retrieval_mode: str = "hybrid",
-        retrieval_profile: str | None = None,
-        structured_output: bool = False,
-        structured_preset: str | None = None,
-        prompt_template_id: UUID | None = None,
-        prompt_template_key: str | None = None,
-        prompt_ab_experiment_key: str | None = None,
-        ab_user_key: str | None = None,
-        request_id: str | None = None,
-        db: Any | None = None,
+        request: AgenticStreamRequest | None = None,
         **_kwargs: Any,
     ):
+        stream_request = resolve_agentic_stream_request(
+            request=request,
+            legacy_overrides=_kwargs,
+        )
         t_start = time.time()
-        history = history or []
+        question = stream_request.question
+        history = list(stream_request.history or [])
+        conversation_id = stream_request.conversation_id
+        document_ids = stream_request.document_ids
+        tenant_id = stream_request.tenant_id
+        account_id = stream_request.account_id
+        dataset_id = stream_request.dataset_id
+        top_k = stream_request.top_k
+        score_threshold = stream_request.score_threshold
+        retrieval_mode = stream_request.retrieval_mode
+        retrieval_profile = stream_request.retrieval_profile
+        structured_output = stream_request.structured_output
+        structured_preset = stream_request.structured_preset
+        prompt_template_id = stream_request.prompt_template_id
+        prompt_template_key = stream_request.prompt_template_key
+        prompt_ab_experiment_key = stream_request.prompt_ab_experiment_key
+        ab_user_key = stream_request.ab_user_key
+        db = stream_request.db
         complexity_score = self._engine._score_question_complexity(question, history)
         threshold = float(getattr(settings, "RAG_AGENTIC_COMPLEXITY_THRESHOLD", 250.0) or 250.0)
         llm, model_route, routing_reason = self._engine._select_llm(question, history)
@@ -320,32 +418,15 @@ class AgenticRAGRunner:
 
         if bool(getattr(settings, "RAG_MULTI_AGENT_ENABLED", False)) and len(plan_steps) > 1:
             runner = get_multi_agent_runner(engine=self._engine)
-            async for event in runner.stream(
-                question=question,
-                history=history,
-                conversation_id=conversation_id,
-                document_ids=document_ids,
-                tenant_id=tenant_id,
-                account_id=account_id,
-                dataset_id=dataset_id,
-                top_k=top_k,
-                score_threshold=score_threshold,
-                retrieval_mode=retrieval_mode,
-                retrieval_profile=retrieval_profile,
-                structured_output=structured_output,
-                structured_preset=structured_preset,
-                prompt_template_id=prompt_template_id,
-                prompt_template_key=prompt_template_key,
-                prompt_ab_experiment_key=prompt_ab_experiment_key,
-                ab_user_key=ab_user_key,
-                request_id=request_id,
-                db=db,
-                **_kwargs,
-            ):
+            async for event in runner.stream(request=stream_request):
                 yield event
             return
 
-        base_state_kwargs = {key: value for key, value in _kwargs.items() if key in _RAG_STATE_BUILD_KEYS}
+        base_state_kwargs = {
+            key: value
+            for key, value in (stream_request.state_overrides or {}).items()
+            if key in _RAG_STATE_BUILD_KEYS
+        }
         base_state_kwargs.update(
             {
                 "question": question,
