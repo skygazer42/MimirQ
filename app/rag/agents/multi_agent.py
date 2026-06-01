@@ -5,7 +5,6 @@ import threading
 import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
-from uuid import UUID
 
 from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
@@ -13,6 +12,7 @@ from langchain_core.prompts import ChatPromptTemplate
 
 from app.core.config import settings
 from app.core.token_utils import num_tokens_from_string
+from app.rag.agents.rag_agent import AgenticStreamRequest, resolve_agentic_stream_request
 from app.rag.core.citations import build_citations_from_docs
 from app.rag.core.text import heuristic_decompose_query, parse_json_from_text
 from app.rag.pipelines.langgraph import _build_context, _build_history_text, build_rag_state
@@ -171,35 +171,43 @@ class MultiAgentRAGRunner:
     async def stream(
         self,
         *,
-        question: str,
-        history: list[dict[str, str]] | None = None,
-        conversation_id: UUID | None = None,
-        document_ids: list[UUID] | None = None,
-        tenant_id: UUID | None = None,
-        account_id: str | None = None,
-        dataset_id: UUID | None = None,
-        top_k: int = 5,
-        score_threshold: float = 0.7,
-        retrieval_mode: str = "hybrid",
-        retrieval_profile: str | None = None,
-        structured_output: bool = False,
-        structured_preset: str | None = None,
-        prompt_template_id: UUID | None = None,
-        prompt_template_key: str | None = None,
-        prompt_ab_experiment_key: str | None = None,
-        ab_user_key: str | None = None,
-        request_id: str | None = None,
-        db: Any | None = None,
+        request: AgenticStreamRequest | None = None,
         **_kwargs: Any,
     ):
+        stream_request = resolve_agentic_stream_request(
+            request=request,
+            legacy_overrides=_kwargs,
+        )
         t_start = time.time()
-        history = history or []
+        question = stream_request.question
+        history = list(stream_request.history or [])
+        conversation_id = stream_request.conversation_id
+        document_ids = stream_request.document_ids
+        tenant_id = stream_request.tenant_id
+        account_id = stream_request.account_id
+        dataset_id = stream_request.dataset_id
+        top_k = stream_request.top_k
+        score_threshold = stream_request.score_threshold
+        retrieval_mode = stream_request.retrieval_mode
+        retrieval_profile = stream_request.retrieval_profile
+        structured_output = stream_request.structured_output
+        structured_preset = stream_request.structured_preset
+        prompt_template_id = stream_request.prompt_template_id
+        prompt_template_key = stream_request.prompt_template_key
+        prompt_ab_experiment_key = stream_request.prompt_ab_experiment_key
+        ab_user_key = stream_request.ab_user_key
+        request_id = stream_request.request_id
+        db = stream_request.db
         complexity_score = self._engine._score_question_complexity(question, history)
         threshold = float(getattr(settings, "RAG_AGENTIC_COMPLEXITY_THRESHOLD", 250.0) or 250.0)
         llm, model_route, routing_reason = self._engine._select_llm(question, history)
         max_sub_questions = max(1, int(getattr(settings, "RAG_MULTI_AGENT_MAX_SUB_AGENTS", 4) or 4))
 
-        base_state_kwargs = {key: value for key, value in _kwargs.items() if key in _RAG_STATE_BUILD_KEYS}
+        base_state_kwargs = {
+            key: value
+            for key, value in (stream_request.state_overrides or {}).items()
+            if key in _RAG_STATE_BUILD_KEYS
+        }
         base_state_kwargs.update(
             {
                 "question": question,

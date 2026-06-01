@@ -349,7 +349,9 @@ async def test_agentic_runner_delegates_to_multi_agent_runner_when_enabled(
 
     class _DummyMultiRunner:
         async def stream(self, **kwargs):  # noqa: ANN003
-            yield {"type": "route", "data": {"route": "multi_agent", "question": kwargs["question"]}}
+            request = kwargs.get("request")
+            question = getattr(request, "question", None) or kwargs.get("question")
+            yield {"type": "route", "data": {"route": "multi_agent", "question": question}}
             yield {"type": "done", "data": {"metrics": {"agentic_used": True, "delegated": True}}}
 
     monkeypatch.setattr(runner, "_plan", _fake_plan, raising=True)
