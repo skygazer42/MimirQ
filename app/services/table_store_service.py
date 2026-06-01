@@ -184,16 +184,16 @@ def _sanitize_dataframe(df: "pd.DataFrame") -> "pd.DataFrame":
     """
     try:
         cols = list(getattr(df, "columns", []) or [])
-    except Exception:
+    except Exception as exc:
+        logger.debug(_TABLE_STORE_FALLBACK_LOG_MESSAGE, exc)
         cols = []
 
     seen: dict[str, int] = {}
     new_cols = [_sanitize_column_name(c, idx=i, seen=seen) for i, c in enumerate(cols)]
     try:
         df.columns = new_cols
-    except Exception:
-        # Best-effort only.
-        pass
+    except Exception as exc:
+        logger.debug(_TABLE_STORE_FALLBACK_LOG_MESSAGE, exc)
     return df
 
 
@@ -248,9 +248,9 @@ def import_table_document(
     try:
         if out_path.exists():
             out_path.unlink()
-    except Exception:
+    except Exception as exc:
         # If unlink fails (e.g. concurrent reader), we will overwrite per table below.
-        pass
+        logger.debug(_TABLE_STORE_FALLBACK_LOG_MESSAGE, exc)
     if out_path.exists():
         # If we failed to remove the DB file, ensure we don't keep stale `sheet_*` tables
         # from previous ingests (e.g. when sheet count shrinks).

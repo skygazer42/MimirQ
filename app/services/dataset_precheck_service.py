@@ -27,8 +27,11 @@ from app.api.schemas.dataset_precheck import (
 from app.core.config import settings
 from app.models.dataset import Dataset
 from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
+from app.rag.core.logging import get_logger
 from app.services.dataset_precheck_scan_runner import _build_samples_payload
 from app.services.dataset_service import DatasetService
+
+logger = get_logger(__name__)
 
 FINDING_KEYS: set[str] = {
     "parse_failed",
@@ -300,8 +303,8 @@ def load_precheck_samples_from_row(
                     obj = json.loads(p.read_text(encoding="utf-8"))
                     if isinstance(obj, dict):
                         return obj
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring unreadable persisted precheck samples artifact: %s", exc)
 
     # Build on demand from JSONL.
     jsonl_raw = str(artifacts.get("files_jsonl") or "").strip()

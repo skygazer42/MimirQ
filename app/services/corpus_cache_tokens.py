@@ -18,7 +18,10 @@ from sqlalchemy.orm import Session
 from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
 from app.rag.core.hashing import stable_hash
+from app.rag.core.logging import get_logger
 from app.rag.rerank_result_cache import clear_evidence_post_rerank_cache
+
+logger = get_logger(__name__)
 
 
 def _as_iso(value: Any) -> str | None:
@@ -151,8 +154,8 @@ def invalidate_dataset_cache_namespace(
         flush = getattr(db, "flush", None)
         if callable(flush):
             flush()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Ignoring corpus cache namespace flush failure: %s", exc)
 
     current_token = resolve_corpus_cache_token(
         db,

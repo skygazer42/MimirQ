@@ -132,8 +132,8 @@ def _estimate_xlsx_shape(path: Path, *, max_sheets: int = 20) -> tuple[int, int,
         try:
             if wb is not None:
                 wb.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring workbook close failure during table routing: %s", exc)
 
 
 def decide_table_route(

@@ -39,6 +39,7 @@ from app.models.document import Document as DBDocument
 from app.models.document import DocumentParsedContent, DocumentPermission
 from app.models.group_permissions import DocumentGroupPermission
 from app.models.tenant_group import TenantGroupMember
+from app.rag.core.logging import get_logger
 from app.rag.preprocessing.pii_anonymizer import anonymize_pii
 from app.rag.preprocessing.secrets import redact_secrets
 from app.services.dataset_profile_utils import (
@@ -60,6 +61,8 @@ from app.services.dataset_profile_utils import (
     safe_int,
 )
 from app.services.dataset_service import DatasetService
+
+logger = get_logger(__name__)
 
 # Best-effort in-process cache for profile summaries (read-heavy dashboards).
 # Note: must include account_id due to document-level ACL (security trimming).
@@ -507,8 +510,8 @@ def aggregate_profile_from_rows(
                         avg_tok = int(max(1, tot // max(1, cnt)))
                 if avg_tok > 0:
                     avg_chunk_tokens.append(int(avg_tok))
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring malformed chunking token stats: %s", exc)
 
             hist = chunking_stats_tokens.get("histogram")
             if isinstance(hist, list) and hist:
