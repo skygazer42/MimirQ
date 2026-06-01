@@ -23,6 +23,7 @@ import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { datasetApi, pipelineApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { INGESTION_FALLBACK_CHUNK_STRATEGY_VALUES } from '@/lib/chunk-strategies'
+import { reportClientError } from '@/lib/client-logging'
 import { PARSER_BACKEND_REGISTRY_OPTIONS } from '@/lib/parser-options'
 import { queryKeys } from '@/lib/query-keys'
 import { randomBase36Id } from '@/lib/secure-random'
@@ -700,7 +701,7 @@ export default function DatasetIngestionPolicyPage() {
   useEffect(() => {
     const error = datasetQuery.error || policyQuery.error
     if (!error) return
-    console.error('Failed to load dataset ingestion policy', error)
+    reportClientError('Failed to load dataset ingestion policy', error)
     toast.error(formatApiError(error, '加载入库策略失败'))
   }, [datasetQuery.error, datasetQuery.errorUpdatedAt, policyQuery.error, policyQuery.errorUpdatedAt])
 
@@ -725,7 +726,7 @@ export default function DatasetIngestionPolicyPage() {
     if (!datasetId) return
     const result = await refetchVersions()
     if (result.error) {
-      console.error('Failed to load ingestion policy versions', result.error)
+      reportClientError('Failed to load ingestion policy versions', result.error)
       toast.error(formatApiError(result.error, '加载版本历史失败'))
     }
   }, [datasetId, refetchVersions])
@@ -746,7 +747,7 @@ export default function DatasetIngestionPolicyPage() {
         toast.success('已回滚入库策略')
         await Promise.all([refreshIngestionPolicy(), refreshVersions()])
       } catch (e: unknown) {
-        console.error('Failed to rollback ingestion policy', e)
+        reportClientError('Failed to rollback ingestion policy', e)
         toast.error(formatApiError(e, '回滚失败'))
       } finally {
         setRollbackingVersionId(null)
@@ -853,7 +854,7 @@ export default function DatasetIngestionPolicyPage() {
       toast.success('已保存入库策略')
       await refreshIngestionPolicy()
     } catch (e: unknown) {
-      console.error('Failed to save ingestion policy', e)
+      reportClientError('Failed to save ingestion policy', e)
       toast.error(formatApiError(e, '保存失败（请检查规则ID/扩展名/正则/patch JSON）'))
     } finally {
       setSaving(false)
@@ -867,7 +868,7 @@ export default function DatasetIngestionPolicyPage() {
       const safe = (dataset?.name || datasetId).replaceAll(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)
       downloadBlob(blob, `${safe}.ingestion-policy.json`)
     } catch (e: unknown) {
-      console.error('Failed to export ingestion policy', e)
+      reportClientError('Failed to export ingestion policy', e)
       toast.error(formatApiError(e, '导出失败'))
     }
   }, [datasetId, dataset])
@@ -879,7 +880,7 @@ export default function DatasetIngestionPolicyPage() {
       toast.success(`导入成功：规则 ${res.rule_count}`)
       await refreshIngestionPolicy()
     } catch (e: unknown) {
-      console.error('Failed to import ingestion policy', e)
+      reportClientError('Failed to import ingestion policy', e)
       toast.error(formatApiError(e, '导入失败（请检查脚本格式/正则是否安全）'))
     } finally {
       if (importInputRef.current) importInputRef.current.value = ''
@@ -895,7 +896,7 @@ export default function DatasetIngestionPolicyPage() {
       setPreview(res)
       toast.success('预览已生成')
     } catch (e: unknown) {
-      console.error('Failed to run ingestion preview', e)
+      reportClientError('Failed to run ingestion preview', e)
       toast.error(formatApiError(e, '预览失败'))
     } finally {
       setPreviewing(false)

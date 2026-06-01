@@ -28,6 +28,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button'
 import { documentApi, feedbackApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { reportClientError } from '@/lib/client-logging'
 import { toast } from 'sonner'
 
 const INLINE_CITATION_HREF_PREFIX = 'mimirq-citation://'
@@ -387,7 +388,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
     try {
       await navigator.clipboard.writeText(text)
     } catch (error) {
-      console.error('clipboard.writeText failed:', error)
+      reportClientError('Failed to copy chat message to clipboard', error)
       toast.error('复制失败，请检查浏览器剪贴板权限')
       return
     }

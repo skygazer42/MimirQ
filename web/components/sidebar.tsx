@@ -18,6 +18,7 @@ import { Magnetic } from '@/components/ui/magnetic'
 import { TiltCard } from '@/components/ui/tilt-card'
 import { FileTypeIcon } from '@/components/ui/file-type-icon'
 import { Button } from '@/components/ui/button'
+import { reportClientError } from '@/lib/client-logging'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -61,7 +62,7 @@ export function Sidebar({ variant = 'app' }: SidebarProps = {}) {
     try {
       await uploadDocuments(Array.from(files), { maxRetries: 1, maxConcurrent: 5 })
     } catch (error) {
-      console.error('Upload failed:', error)
+      reportClientError('Sidebar document upload failed', error)
     }
     e.target.value = ''
   }

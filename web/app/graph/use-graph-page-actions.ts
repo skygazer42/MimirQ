@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 
 import { useRouter } from '@/i18n/navigation'
 import { kgApi } from '@/lib/api/graph'
+import { reportClientError } from '@/lib/client-logging'
 import { sanitizeFilename } from '@/lib/sanitize'
 
 import {
@@ -224,7 +225,7 @@ export function useGraphPageActions({
       await navigator.clipboard.writeText(value)
       toast.success(`已复制 ${label}`)
     } catch (error) {
-      console.error('clipboard.writeText failed:', error)
+      reportClientError('Failed to copy graph value to clipboard', error)
       toast.error('复制失败（浏览器权限限制）')
     }
   }, [])
@@ -382,7 +383,7 @@ export function useGraphPageActions({
       URL.revokeObjectURL(url)
       toast.success('已导出 GraphML')
     } catch (error) {
-      console.error('Export GraphML failed:', error)
+      reportClientError('Failed to export GraphML', error)
       toast.error('导出 GraphML 失败')
     } finally {
       setIsLoading(false)

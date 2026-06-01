@@ -24,6 +24,7 @@ import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import { datasetCategoryApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { reportClientError } from '@/lib/client-logging'
 import { queryKeys } from '@/lib/query-keys'
 
 import type { DatasetCategoryCreate, DatasetCategoryNode } from '@/types'
@@ -208,7 +209,7 @@ export function DatasetCategoryTree({ selectedId, onSelect, className }: Readonl
 
   useEffect(() => {
     if (!categoryTreeQuery.error) return
-    console.error('Failed to load dataset categories', categoryTreeQuery.error)
+    reportClientError('Failed to load dataset categories', categoryTreeQuery.error)
     toast.error(formatApiError(categoryTreeQuery.error, '加载分类失败'))
   }, [categoryTreeQuery.error])
 

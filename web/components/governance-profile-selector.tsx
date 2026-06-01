@@ -10,6 +10,7 @@ import { pipelineApi } from '@/lib/api'
 import type { DocumentPipelineOptions } from '@/types'
 import { toast } from 'sonner'
 import { formatApiError } from '@/lib/api-errors'
+import { reportClientError } from '@/lib/client-logging'
 import { queryKeys } from '@/lib/query-keys'
 
 type Props = {
@@ -43,7 +44,7 @@ export function GovernanceProfileSelector({ className, compact, onApplyPatch }: 
         const res = await pipelineApi.listGovernanceProfiles({ include_builtin: true, limit: 200 })
         return res.items || []
       } catch (e) {
-        console.error('Failed to load governance profiles', e)
+        reportClientError('Failed to load governance profiles', e)
         toast.error(formatApiError(e, '加载治理预设失败'))
         return []
       }
@@ -57,7 +58,7 @@ export function GovernanceProfileSelector({ className, compact, onApplyPatch }: 
       try {
         return await pipelineApi.getGovernanceProfileResolved(selectedRef)
       } catch (e) {
-        console.error('Failed to load governance profile detail', e)
+        reportClientError('Failed to load governance profile detail', e)
         toast.error(formatApiError(e, '加载治理预设详情失败'))
         return null
       }
@@ -115,7 +116,7 @@ export function GovernanceProfileSelector({ className, compact, onApplyPatch }: 
         queryKey: queryKeys.governance.profiles({ include_builtin: true, limit: 200 }),
       })
     } catch (e) {
-      console.error('Failed to import governance profiles', e)
+      reportClientError('Failed to import governance profiles', e)
       toast.error(formatApiError(e, '导入失败（请检查脚本格式/正则是否安全）'))
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = ''
@@ -132,7 +133,7 @@ export function GovernanceProfileSelector({ className, compact, onApplyPatch }: 
       const safe = (selectedSummary?.name || selectedRef).replaceAll(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)
       downloadBlob(blob, `${safe}.governance-profile.json`)
     } catch (e) {
-      console.error('Failed to export governance profile', e)
+      reportClientError('Failed to export governance profile', e)
       toast.error(formatApiError(e, '导出失败'))
     }
   }, [selectedRef, selectedSummary])

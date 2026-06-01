@@ -19,6 +19,7 @@ import {
   computePdfPreviewData,
   type PdfPreviewComputationResult,
 } from '@/lib/pdf-preview-computation'
+import { reportClientWarning } from '@/lib/client-logging'
 import { detachPromise } from '@/lib/utils'
 import type { PdfPreviewWorkerApi } from '@/workers/pdf-preview.worker'
 
@@ -101,7 +102,7 @@ export function PdfPreview() {
     }
 
     const handleMainThreadFailure = (error: unknown) => {
-      console.warn('PDF preview preprocessing failed', error)
+      reportClientWarning('PDF preview preprocessing failed', error)
       if (cancelled || pdfPreviewSeqRef.current !== seq) return
       setPdfPreparationError(t('pdfPreview.errors.preparationFailedDescription'))
       setPdfComputation(null)
@@ -140,7 +141,7 @@ export function PdfPreview() {
         const result = await api.computePdfPreviewData({ rawOriginal, previewChunks })
         applyResult(result)
       } catch (error) {
-        console.warn('PDF preview worker failed; falling back to main thread', error)
+        reportClientWarning('PDF preview worker failed; falling back to main thread', error)
         pdfPreviewWorkerDisabledRef.current = true
         computeOnMainThread()
       }

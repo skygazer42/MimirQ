@@ -46,6 +46,7 @@ import { SafeResponsiveChart } from '@/components/ui/safe-responsive-chart'
 
 import { datasetApi, documentApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { reportClientError } from '@/lib/client-logging'
 import { queryKeys } from '@/lib/query-keys'
 import { cn, formatFileSize, formatDate, detachPromise } from '@/lib/utils'
 import { useRouter } from '@/i18n/navigation'
@@ -347,21 +348,21 @@ export default function DatasetProfilePage() {
   useEffect(() => {
     const firstError = datasetQuery.error || summaryQuery.error
     if (!firstError) return
-    console.error('Failed to load dataset profile', firstError)
+    reportClientError('Failed to load dataset profile', firstError)
     toast.error(formatApiError(firstError, '加载数据画像失败'))
   }, [datasetQuery.error, summaryQuery.error])
 
   useEffect(() => {
     const error = findingDocumentsQuery.error
     if (!error) return
-    console.error('Failed to load finding documents', error)
+    reportClientError('Failed to load finding documents', error)
     toast.error(formatApiError(error, '加载清单失败'))
   }, [findingDocumentsQuery.error, findingDocumentsQuery.errorUpdatedAt])
 
   useEffect(() => {
     const error = bucketDocumentsQuery.error
     if (!error) return
-    console.error('Failed to load bucket documents', error)
+    reportClientError('Failed to load bucket documents', error)
     toast.error(formatApiError(error, '加载清单失败'))
   }, [bucketDocumentsQuery.error, bucketDocumentsQuery.errorUpdatedAt])
 
@@ -608,7 +609,7 @@ export default function DatasetProfilePage() {
         stopPolling()
         detachPromise(refreshProfileOverview())
       } catch (e) {
-        console.error('Failed to poll scan run', e)
+        reportClientError('Failed to poll dataset profile scan run', e)
         setScanRunning(false)
         stopPolling()
       }
@@ -643,7 +644,7 @@ export default function DatasetProfilePage() {
       }
       toast.success('已启动深度扫描')
     } catch (e) {
-      console.error('Failed to start scan', e)
+      reportClientError('Failed to start dataset profile scan', e)
       toast.error(formatApiError(e, '启动扫描失败'))
       setScanRunning(false)
     }
@@ -658,7 +659,7 @@ export default function DatasetProfilePage() {
       downloadBlob(blob, `${safe}.profile.json`)
       toast.success('已导出 JSON 报告')
     } catch (e) {
-      console.error('Failed to export profile', e)
+      reportClientError('Failed to export dataset profile JSON', e)
       toast.error(formatApiError(e, '导出失败'))
     } finally {
       setIsExportingJson(false)
@@ -674,7 +675,7 @@ export default function DatasetProfilePage() {
       downloadBlob(blob, `${safe}.profile.html`)
       toast.success('已导出 HTML 报告')
     } catch (e) {
-      console.error('Failed to export profile html', e)
+      reportClientError('Failed to export dataset profile HTML', e)
       toast.error(formatApiError(e, '导出失败'))
     } finally {
       setIsExportingHtml(false)

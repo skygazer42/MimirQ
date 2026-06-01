@@ -38,6 +38,7 @@ import { chatApi } from '@/lib/api'
 import { queryKeys } from '@/lib/query-keys'
 import { cn } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
+import { reportClientError } from '@/lib/client-logging'
 import { toast } from 'sonner'
 import type { Conversation, Message } from '@/types'
 
@@ -201,7 +202,7 @@ function HistoryPageContent({
 
   useEffect(() => {
     if (!conversationsQuery.error) return
-    console.error('Failed to load conversations:', conversationsQuery.error)
+    reportClientError('Failed to load conversations', conversationsQuery.error)
     toast.error(formatApiError(conversationsQuery.error, t('loadConversationListFailed')))
   }, [conversationsQuery.error, t])
 
@@ -219,7 +220,7 @@ function HistoryPageContent({
   useEffect(() => {
     if (!selectedConversationId) return
     if (messagesQuery.error) {
-      console.error('Failed to load messages:', messagesQuery.error)
+      reportClientError('Failed to load conversation messages', messagesQuery.error)
       toast.error(formatApiError(messagesQuery.error, t('loadConversationMessagesFailed')))
       return
     }
@@ -264,7 +265,7 @@ function HistoryPageContent({
         router.push('/history', { scroll: false })
       }
     } catch (error) {
-      console.error('Failed to delete conversation:', error)
+      reportClientError('Failed to delete conversation', error)
     } finally {
       setShowDeleteConfirm(null)
     }
@@ -348,7 +349,7 @@ function HistoryPageContent({
     try {
       await messagesQuery.fetchPreviousPage()
     } catch (error) {
-      console.error('Failed to load older messages:', error)
+      reportClientError('Failed to load older messages', error)
       toast.error(formatApiError(error, t('loadOlderMessagesFailed')))
     }
   }, [selectedConversation, hasMoreMessages, isLoadingMessages, isLoadingOlder, oldestMessageId, messagesQuery, t])

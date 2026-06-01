@@ -10,6 +10,7 @@ import { getCssHslColor, getCssHslaColor } from '@/lib/css-vars'
 import { decorateLinksForDisplay } from '@/lib/graph-edge-display'
 import { buildGraphLinkProvenanceTooltipHtml } from '@/lib/graph-provenance'
 import { buildGraphViewportLod, type GraphViewportLod, type GraphViewportRect } from '@/lib/graph-viewport-lod'
+import { reportClientError } from '@/lib/client-logging'
 import { GraphMinimap } from './graph-minimap'
 import { Loader2 } from 'lucide-react'
 
@@ -995,7 +996,7 @@ class GraphRenderBoundary extends Component<GraphRenderBoundaryProps, GraphRende
   }
 
   componentDidCatch(error: unknown) {
-    console.error('Graph rendering failed:', error)
+    reportClientError('Graph rendering failed', error)
   }
 
   componentDidUpdate(previousProps: GraphRenderBoundaryProps) {

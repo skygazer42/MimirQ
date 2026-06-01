@@ -4,6 +4,7 @@ import type { Dispatch, SetStateAction } from 'react'
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef } from 'react'
 
 import type { GraphData } from '@/lib/graph-parser'
+import { reportClientWarning } from '@/lib/client-logging'
 
 import {
   GraphConfBucket,
@@ -260,7 +261,7 @@ export function useGraphDisplayFilters({
         )
       )
       .catch((error) => {
-        console.warn('Failed to report graph projection trace', error)
+        reportClientWarning('Failed to report graph projection trace', error)
       })
   }, [
     activeGraphFilterCount,

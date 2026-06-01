@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input'
 import { Panel } from '@/components/ui/panel'
 import { datasetApi, datasetCategoryApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { reportClientError } from '@/lib/client-logging'
 import { flattenDatasetCategoryTree } from '@/lib/dataset-categories'
 import { queryKeys } from '@/lib/query-keys'
 import { cn } from '@/lib/utils'
@@ -56,7 +57,7 @@ export function DatasetCategoryMultiSelect({ datasetId, className }: Readonly<{ 
   useEffect(() => {
     const error = categoryTreeQuery.error || assignedCategoriesQuery.error
     if (!error) return
-    console.error('Failed to load dataset categories', error)
+    reportClientError('Failed to load dataset categories', error)
     toast.error(formatApiError(error, '加载分类失败'))
   }, [assignedCategoriesQuery.error, categoryTreeQuery.error])
 
@@ -100,7 +101,7 @@ export function DatasetCategoryMultiSelect({ datasetId, className }: Readonly<{ 
       toast.success('分类已更新')
       setOpen(false)
     } catch (e: unknown) {
-      console.error('Failed to set dataset categories', e)
+      reportClientError('Failed to set dataset categories', e)
       toast.error(formatApiError(e, '更新分类失败'))
     }
   }

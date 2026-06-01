@@ -24,6 +24,7 @@ import { IconButton } from '@/components/ui/icon-button'
 import { StatusBadge, type StatusBadgeStatus } from '@/components/ui/status-badge'
 import { documentApi, kgApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { reportClientError, reportClientWarning } from '@/lib/client-logging'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
 import { buildTagsPatch, getUserTagsFromDocument, normalizeTags } from '@/lib/document-user-tags'
 import { getParserLabel } from '@/lib/parser-options'
@@ -286,7 +287,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       try {
         return await documentApi.getAccess(initialDocument.id)
       } catch (err) {
-        console.warn('Load document access error:', err)
+        reportClientWarning('Load document access error', err)
         return null
       }
     },
@@ -437,7 +438,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       toast.success(t("toasts.tagsUpdated"))
       return 'saved'
     } catch (err) {
-      console.error('Update document tags failed:', err)
+      reportClientError('Update document tags failed', err)
       const msg = formatApiError(err, t('errors.saveTagsFailed'))
       setTagsError(msg)
       setTagsDraft(nextTags)
@@ -464,7 +465,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       setEditingChunkContent('')
       toast.success(t('toasts.chunkSaved'))
     } catch (err) {
-      console.error('Update chunk failed:', err)
+      reportClientError('Update chunk failed', err)
       toast.error(formatApiError(err, t('errors.saveChunkFailed')))
     } finally {
       setChunkOpWorkingId((prev) => (prev === chunkId ? null : prev))
@@ -482,7 +483,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
         setChunks((prev) => prev.map((c) => (c.id === chunk.id ? updated : c)))
         toast.success(chunk.disabled_at ? t('toasts.chunkEnabled') : t('toasts.chunkDisabled'))
       } catch (err) {
-        console.error('Toggle chunk disabled failed:', err)
+        reportClientError('Toggle chunk disabled failed', err)
         toast.error(formatApiError(err, t('errors.chunkOperationFailed')))
       } finally {
         setChunkOpWorkingId((prev) => (prev === chunk.id ? null : prev))
@@ -502,7 +503,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
         })
         toast.success(t('toasts.chunkReembedded', { count: res.reembedded }))
       } catch (err) {
-        console.error('Re-embed chunk failed:', err)
+        reportClientError('Re-embed chunk failed', err)
         toast.error(formatApiError(err, t('errors.reembedFailed')))
       } finally {
         setChunkOpWorkingId((prev) => (prev === chunk.id ? null : prev))
@@ -600,7 +601,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       ])
       return 'saved'
     } catch (err) {
-      console.error('Update document lifecycle metadata failed:', err)
+      reportClientError('Update document lifecycle metadata failed', err)
       const msg = formatApiError(err, t('errors.saveLifecycleFailed'))
       setLifecycleError(msg)
       toast.error(msg)
@@ -635,7 +636,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       setChunks(res.items || [])
       setChunksTotal(Number(res.total || 0))
     } catch (err) {
-      console.error('Load document chunks error:', err)
+      reportClientError('Load document chunks error', err)
       setChunkError(formatApiError(err, t('errors.loadChunksFailed')))
     } finally {
       setIsLoadingChunks(false)
@@ -652,7 +653,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       setChunks((prev) => [...prev, ...(res.items || [])])
       setChunksTotal(Number(res.total || 0))
     } catch (err) {
-      console.error('Load more chunks error:', err)
+      reportClientError('Load more chunks error', err)
       setChunkError(formatApiError(err, t('errors.loadMoreChunksFailed')))
     } finally {
       setIsLoadingChunks(false)
@@ -758,7 +759,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       await navigator.clipboard.writeText(content)
       toast.success(t("toasts.copySuccess"))
     } catch (err) {
-      console.error('Copy failed:', err)
+      reportClientError('Copy failed', err)
       toast.error(t("errors.copyFailed"))
     }
   }, [t])
@@ -781,7 +782,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
         ])
         await reloadChunks()
       } catch (err) {
-        console.error('Activate document version failed:', err)
+        reportClientError('Activate document version failed', err)
         toast.error(formatApiError(err, t('errors.activateVersionFailed')))
       } finally {
         setIsVersionWorking(false)
@@ -811,7 +812,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
         ])
         await reloadChunks()
       } catch (err) {
-        console.error('Delete document version failed:', err)
+        reportClientError('Delete document version failed', err)
         toast.error(formatApiError(err, t('errors.deleteVersionFailed')))
       } finally {
         setIsVersionWorking(false)
@@ -827,7 +828,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       await kgApi.extract(displayDoc.id, { async: true, replace_existing: true, prune_orphan_entities: true })
       toast.success(t('toasts.kgExtractStarted'))
     } catch (err) {
-      console.error('KG extract failed:', err)
+      reportClientError('KG extract failed', err)
       toast.error(formatApiError(err, t('errors.kgExtractFailed')))
     } finally {
       setIsKgWorking(false)
@@ -841,7 +842,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       const res = await kgApi.deleteDocumentKG(displayDoc.id, { prune_orphan_entities: true })
       toast.success(t('toasts.kgDeleted', { events: res.events_deleted, entities: res.entities_pruned }))
     } catch (err) {
-      console.error('KG delete failed:', err)
+      reportClientError('KG delete failed', err)
       toast.error(formatApiError(err, t('errors.kgDeleteFailed')))
     } finally {
       setIsKgWorking(false)
@@ -856,7 +857,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       downloadBlob(blob, `${safeFilename(displayDoc.filename, displayDoc.id)}.clean.docx`)
       toast.success('已下载清洗 DOCX')
     } catch (err) {
-      console.error('Download clean DOCX failed:', err)
+      reportClientError('Download clean DOCX failed', err)
       toast.error(formatApiError(err, '下载清洗 DOCX 失败'))
     } finally {
       setIsCleanDocxDownloading(false)
@@ -911,7 +912,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       setAccessDialogOpen(false)
       return 'saved'
     } catch (err) {
-      console.error('Update document access failed:', err)
+      reportClientError('Update document access failed', err)
       toast.error(formatApiError(err, t('errors.updateAccessFailed')))
       return 'failed'
     }

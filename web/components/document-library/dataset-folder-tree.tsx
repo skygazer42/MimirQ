@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { documentApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { reportClientError } from '@/lib/client-logging'
 import { queryKeys } from '@/lib/query-keys'
 
 import type { DocumentFolderNode } from '@/types'
@@ -212,7 +213,7 @@ export function DatasetFolderTree({
 
   useEffect(() => {
     if (!folderTreeQuery.error) return
-    console.error('Failed to load dataset folder tree', folderTreeQuery.error)
+    reportClientError('Failed to load dataset folder tree', folderTreeQuery.error)
     toast.error(formatApiError(folderTreeQuery.error, t('loadFailed')))
   }, [folderTreeQuery.error, t])
 

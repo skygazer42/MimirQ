@@ -22,6 +22,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { pipelineApi } from '@/lib/api'
+import { reportClientWarning } from '@/lib/client-logging'
 import { cn } from '@/lib/utils'
 import type { AutoAnnotationRequest, AutoDocumentTag } from '@/types'
 
@@ -341,7 +342,7 @@ export function DataAnnotator({ content, annotations = [], onAnnotate, onDocumen
         toast.info(t('auto.noCandidates'))
       }
     } catch (err) {
-      console.warn('Auto annotation failed:', err)
+      reportClientWarning('Auto annotation failed', err)
       toast.error(t('auto.failed'))
     } finally {
       setIsAutoTagging(false)

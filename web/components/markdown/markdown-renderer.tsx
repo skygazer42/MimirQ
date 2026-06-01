@@ -11,6 +11,7 @@ import type { Options as RehypeSanitizeOptions } from 'rehype-sanitize'
 import { AuthImage } from '@/components/auth-image'
 import { cn } from '@/lib/utils'
 import { extractMarkdownHeadings, flashElementId, scrollToElementId } from '@/lib/markdown'
+import { reportClientError } from '@/lib/client-logging'
 import type { MarkdownHeading } from '@/lib/markdown'
 import { resolveMarkdownImageSrc, sanitizeMarkdownHref } from './markdown-safety'
 
@@ -290,7 +291,7 @@ class MarkdownRenderBoundary extends Component<MarkdownRenderBoundaryProps, Mark
   }
 
   componentDidCatch(error: unknown) {
-    console.error('Markdown rendering failed:', error)
+    reportClientError('Markdown rendering failed', error)
   }
 
   componentDidUpdate(previousProps: MarkdownRenderBoundaryProps) {

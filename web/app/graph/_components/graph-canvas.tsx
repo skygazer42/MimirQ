@@ -23,6 +23,7 @@ import type { KnowledgeGraph3DRef } from '@/components/graph/force-graph-3d'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { reportClientWarning } from '@/lib/client-logging'
 import type { GraphClusterResult } from '@/lib/graph-clustering'
 import type { GraphData } from '@/lib/graph-parser'
 import { detachPromise } from '@/lib/utils'
@@ -120,7 +121,7 @@ function reportGraphCanvasTrace(payload: {
       )
     )
     .catch((error) => {
-      console.warn('Failed to report graph canvas trace', error)
+      reportClientWarning('Failed to report graph canvas trace', error)
     })
 }
 
@@ -287,7 +288,7 @@ export function GraphCanvas({
           })
         }
       } catch (e) {
-        console.warn('Failed to compute graph clusters; falling back to null', e)
+        reportClientWarning('Failed to compute graph clusters; falling back to null', e)
         if (clusteringSeqRef.current === seq) {
           setClusterResult(null)
         }
@@ -336,7 +337,7 @@ export function GraphCanvas({
           })
         }
       } catch (e) {
-        console.warn('Graph clustering worker failed; falling back to main thread', e)
+        reportClientWarning('Graph clustering worker failed; falling back to main thread', e)
         clusteringDisabledRef.current = true
         detachPromise(computeOnMainThread())
       }

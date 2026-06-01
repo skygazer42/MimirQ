@@ -18,6 +18,7 @@ import { SafeResponsiveChart } from '@/components/ui/safe-responsive-chart'
 
 import { datasetApi } from '@/lib/api/datasets'
 import { formatApiError } from '@/lib/api-errors'
+import { reportClientError } from '@/lib/client-logging'
 import { datasetHealthToMarkdown } from '@/lib/dataset-health-export'
 import { queryKeys } from '@/lib/query-keys'
 import { sanitizeFilename } from '@/lib/sanitize'
@@ -79,7 +80,7 @@ export default function DatasetHealthPage() {
 
   useEffect(() => {
     if (!loadError) return
-    console.error('Failed to load dataset health', loadError)
+    reportClientError('Failed to load dataset health', loadError)
     toast.error(formatApiError(loadError, '加载健康概览失败'))
   }, [loadError])
 

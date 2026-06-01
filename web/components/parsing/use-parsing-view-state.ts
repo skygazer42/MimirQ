@@ -6,6 +6,7 @@ import { useEffect, useMemo, type Dispatch, type SetStateAction } from 'react'
 import { toast } from 'sonner'
 
 import { datasetApi, documentApi, parsingApi } from '@/lib/api'
+import { reportClientWarning } from '@/lib/client-logging'
 import { getDocContentFromCache, getDocSourceFromCache } from '@/lib/doc-content-cache'
 import { extractMarkdownHeadings } from '@/lib/markdown'
 import { getParserLabel } from '@/lib/parser-options'
@@ -271,7 +272,7 @@ export function useParsingViewState({
           name: dataset.name || String(dataset.id),
         }))
       } catch (err) {
-        console.warn('Failed to sync datasets for parsing workspace:', err)
+        reportClientWarning('Failed to sync datasets for parsing workspace', err)
         return []
       }
     },
@@ -297,15 +298,18 @@ export function useParsingViewState({
       ])
 
       if (parsingResult.status === 'rejected' && knowledgeResult.status === 'rejected') {
-        console.warn('Failed to sync parsing and knowledge documents:', parsingResult.reason, knowledgeResult.reason)
+        reportClientWarning(
+          'Failed to sync parsing and knowledge documents',
+          new AggregateError([parsingResult.reason, knowledgeResult.reason], 'Parsing workspace sync failed')
+        )
         return null
       }
 
       if (parsingResult.status === 'rejected') {
-        console.warn('Failed to sync parsing library from server:', parsingResult.reason)
+        reportClientWarning('Failed to sync parsing library from server', parsingResult.reason)
       }
       if (knowledgeResult.status === 'rejected') {
-        console.warn('Failed to sync knowledge documents into parsing workspace:', knowledgeResult.reason)
+        reportClientWarning('Failed to sync knowledge documents into parsing workspace', knowledgeResult.reason)
       }
 
       const current = useParsedFiles.getState().files || []
@@ -324,7 +328,7 @@ export function useParsingViewState({
             ),
         ]
       } catch (err) {
-        console.warn('Failed to sync parsing library from server:', err)
+        reportClientWarning('Failed to sync parsing library from server', err)
         return null
       }
     },

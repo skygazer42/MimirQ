@@ -17,6 +17,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useRouter } from '@/i18n/navigation'
 import { formatApiError } from '@/lib/api-errors'
 import { datasetApi } from '@/lib/api'
+import { reportClientError } from '@/lib/client-logging'
 import { queryKeys } from '@/lib/query-keys'
 import { cn } from '@/lib/utils'
 
@@ -117,7 +118,7 @@ export default function DatasetTablesPage() {
       const sheetName = `sheet_${full.sheet_index || 0}`
       setQuerySql(`SELECT * FROM "${sheetName}" LIMIT 20`)
     } catch (e: unknown) {
-      console.error('Failed to load table detail', e)
+      reportClientError('Failed to load dataset table detail', e)
       toast.error(formatApiError(e, '加载表格详情失败'))
     }
   }
@@ -130,7 +131,7 @@ export default function DatasetTablesPage() {
       const res = await datasetApi.queryTable(datasetId, selected.table_id, { sql: querySql })
       setQueryRes(res)
     } catch (e: unknown) {
-      console.error('Query failed', e)
+      reportClientError('Dataset table SQL query failed', e)
       toast.error(formatApiError(e, '查询失败（只允许 SELECT/WITH SELECT）'))
     } finally {
       setQueryRunning(false)
@@ -146,7 +147,7 @@ export default function DatasetTablesPage() {
       const res = await datasetApi.askTable(datasetId, selected.table_id, { question: question.trim() })
       setAskRes(res)
     } catch (e: unknown) {
-      console.error('Ask failed', e)
+      reportClientError('Dataset table question answering failed', e)
       toast.error(formatApiError(e, 'TAG 问答失败（需要开启 TABLE_NL2SQL_ENABLED）'))
     } finally {
       setAskRunning(false)
@@ -162,7 +163,7 @@ export default function DatasetTablesPage() {
       const res = await datasetApi.lotusSemFilter(datasetId, selected.table_id, { user_instruction: semFilterInstruction.trim(), strategy: 'cot' })
       setSemFilterRes(res)
     } catch (e: unknown) {
-      console.error('Sem filter failed', e)
+      reportClientError('Dataset table semantic filter failed', e)
       toast.error(formatApiError(e, '语义过滤失败（需要开启 TABLE_LOTUS_ENABLED 或 TABLE_NL2SQL_ENABLED）'))
     } finally {
       setSemFilterRunning(false)

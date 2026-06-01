@@ -67,6 +67,7 @@ import { DataCleaner } from '@/components/data-governance/data-cleaner'
 import { DataAnnotator } from '@/components/data-governance/data-annotator'
 import { DataClassifier } from '@/components/data-governance/data-classifier'
 import { datasetApi, documentApi, parsingApi } from '@/lib/api'
+import { reportClientError, reportClientWarning } from '@/lib/client-logging'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { MarkdownRenderer } from '@/components/markdown/markdown-renderer'
 
@@ -515,13 +516,13 @@ export function DataGovernancePanel() {
       ])
 
       if (parsingResult.status === 'rejected') {
-        console.warn(
+        reportClientWarning(
           'Failed to sync parsing documents for governance:',
           parsingResult.reason
         )
       }
       if (knowledgeResult.status === 'rejected') {
-        console.warn(
+        reportClientWarning(
           'Failed to sync knowledge documents for governance:',
           knowledgeResult.reason
         )
@@ -993,7 +994,7 @@ export function DataGovernancePanel() {
                 addedInZip += 1
               }
             } catch (e) {
-              console.error('Failed to extract zip:', e)
+              reportClientError('Failed to extract governance ZIP upload', e)
               toast.error(t('toasts.zipExtractFailed', { filename: file.name }))
             }
 
@@ -1076,7 +1077,7 @@ export function DataGovernancePanel() {
       } catch (error) {
         if (controller.signal.aborted || uploadAbortRef.current !== controller)
           return
-        console.error('Failed to parse file:', error)
+        reportClientError('Failed to parse governance file', error)
         toast.error(t('toasts.parseFailed'))
       } finally {
         if (uploadAbortRef.current === controller) {
