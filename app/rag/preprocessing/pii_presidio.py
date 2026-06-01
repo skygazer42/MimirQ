@@ -26,10 +26,7 @@ def _append_unique(items: list[dict[str, Any]], entry: dict[str, Any]) -> None:
     items.append(entry)
 
 
-def analyze_pii_text(text: str) -> dict[str, Any]:
-    raw = str(text or "")
-    entities: list[dict[str, Any]] = []
-
+def _append_detected_pii_entities(raw: str, entities: list[dict[str, Any]]) -> None:
     for match in find_pii_matches(raw, max_matches=100):
         entity_type = _KIND_MAP.get(match.kind)
         if not entity_type:
@@ -45,6 +42,8 @@ def analyze_pii_text(text: str) -> dict[str, Any]:
             },
         )
 
+
+def _append_cn_plate_entities(raw: str, entities: list[dict[str, Any]]) -> None:
     for found in _CN_PLATE_RE.finditer(raw):
         _append_unique(
             entities,
@@ -57,6 +56,8 @@ def analyze_pii_text(text: str) -> dict[str, Any]:
             },
         )
 
+
+def _append_cn_social_security_entities(raw: str, entities: list[dict[str, Any]]) -> None:
     for label in _CN_SOCIAL_SECURITY_LABELS:
         offset = 0
         while True:
@@ -85,6 +86,15 @@ def analyze_pii_text(text: str) -> dict[str, Any]:
                     },
                 )
             offset = label_start + len(label)
+
+
+def analyze_pii_text(text: str) -> dict[str, Any]:
+    raw = str(text or "")
+    entities: list[dict[str, Any]] = []
+
+    _append_detected_pii_entities(raw, entities)
+    _append_cn_plate_entities(raw, entities)
+    _append_cn_social_security_entities(raw, entities)
 
     entities.sort(key=lambda item: (int(item["start"]), int(item["end"]), str(item["entity_type"])))
     return {

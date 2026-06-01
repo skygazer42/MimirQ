@@ -64,28 +64,32 @@ def _extract_heading(text: str) -> str | None:
     return None
 
 
+def _trim_table_edge_pipes(text: str) -> str:
+    trimmed = str(text or "").strip()
+    if trimmed.startswith("|"):
+        trimmed = trimmed[1:]
+    if trimmed.endswith("|"):
+        trimmed = trimmed[:-1]
+    return trimmed
+
+
+def _is_table_separator_cell(cell: str) -> bool:
+    core = str(cell or "").strip()
+    if not core:
+        return False
+    if core.startswith(":"):
+        core = core[1:]
+    if core.endswith(":"):
+        core = core[:-1]
+    return len(core) >= 3 and all(ch == "-" for ch in core)
+
+
 def _is_table_separator(line: str) -> bool:
     text = str(line or "").strip()
     if not text or "-" not in text:
         return False
-    if text.startswith("|"):
-        text = text[1:]
-    if text.endswith("|"):
-        text = text[:-1]
-    cells = [cell.strip() for cell in text.split("|")]
-    if len(cells) < 2:
-        return False
-    for cell in cells:
-        if not cell:
-            return False
-        core = cell
-        if core.startswith(":"):
-            core = core[1:]
-        if core.endswith(":"):
-            core = core[:-1]
-        if len(core) < 3 or any(ch != "-" for ch in core):
-            return False
-    return True
+    cells = [cell.strip() for cell in _trim_table_edge_pipes(text).split("|")]
+    return len(cells) >= 2 and all(_is_table_separator_cell(cell) for cell in cells)
 
 
 def _strip_bullet_prefix(line: str) -> str:

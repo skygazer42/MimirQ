@@ -26,6 +26,24 @@ def _metric_card_rows(metrics: dict[str, Any]) -> list[dict[str, Any]]:
     return rows
 
 
+def _report_meta(payload: DatasetAnalysisReportPayload) -> dict[str, Any]:
+    return {
+        "dataset_id": str(payload.dataset_id or ""),
+        "dataset_name": str(payload.dataset_name or ""),
+        "filters": dict(payload.filters or {}),
+        "generated_at": _iso_now(),
+        "scope_summary": dict(payload.scope_summary or {}),
+        "schema_version": _REPORT_SCHEMA,
+    }
+
+
+def _feedback_coverage(metrics: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "key": "feedback_coverage_rate",
+        "value": dict(metrics or {}).get("feedback_coverage_rate"),
+    }
+
+
 @dataclass(frozen=True)
 class DatasetAnalysisReportPayload:
     dataset_id: str
@@ -45,21 +63,12 @@ class DatasetAnalysisReportPayload:
 
 
 def build_dataset_analysis_report(payload: DatasetAnalysisReportPayload) -> dict[str, Any]:
+    metrics = dict(payload.metrics or {})
     return {
-        "meta": {
-            "dataset_id": str(payload.dataset_id or ""),
-            "dataset_name": str(payload.dataset_name or ""),
-            "filters": dict(payload.filters or {}),
-            "generated_at": _iso_now(),
-            "scope_summary": dict(payload.scope_summary or {}),
-            "schema_version": _REPORT_SCHEMA,
-        },
-        "metrics": dict(payload.metrics or {}),
-        "metric_cards": _metric_card_rows(dict(payload.metrics or {})),
-        "feedback_coverage": {
-            "key": "feedback_coverage_rate",
-            "value": dict(payload.metrics or {}).get("feedback_coverage_rate"),
-        },
+        "meta": _report_meta(payload),
+        "metrics": metrics,
+        "metric_cards": _metric_card_rows(metrics),
+        "feedback_coverage": _feedback_coverage(metrics),
         "counts": dict(payload.counts or {}),
         "ratios": dict(payload.ratios or {}),
         "top_examples": dict(payload.top_examples or {}),

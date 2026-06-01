@@ -13,7 +13,7 @@ import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Callable
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -667,6 +667,24 @@ def _initial_manual_vector_status() -> dict[str, Any]:
     }
 
 
+def _collect_row_embedding_jobs(
+    *,
+    rows: list[Any],
+    enabled: bool,
+    vector_attr: str,
+    render_text: Callable[[Any], str],
+    kind: str,
+) -> list[EmbeddingJob]:
+    if not enabled:
+        return []
+    jobs: list[EmbeddingJob] = []
+    for row in rows:
+        text = "" if getattr(row, vector_attr, None) else render_text(row)
+        if text:
+            jobs.append((kind, row, vector_attr, text))
+    return jobs
+
+
 def _collect_manual_embedding_jobs(
     *,
     events: list[KgSourceEvent],
@@ -674,18 +692,19 @@ def _collect_manual_embedding_jobs(
     event_enabled: bool,
     entity_enabled: bool,
 ) -> list[EmbeddingJob]:
-    jobs: list[EmbeddingJob] = []
-    if event_enabled:
-        for event in events:
-            text = "" if getattr(event, "content_vector", None) else _manual_event_embedding_text(event)
-            if text:
-                jobs.append(("event", event, "content_vector", text))
-    if entity_enabled:
-        for entity in entities:
-            text = "" if getattr(entity, "vector", None) else _manual_entity_embedding_text(entity)
-            if text:
-                jobs.append(("entity", entity, "vector", text))
-    return jobs
+    return _collect_row_embedding_jobs(
+        rows=events,
+        enabled=event_enabled,
+        vector_attr="content_vector",
+        render_text=_manual_event_embedding_text,
+        kind="event",
+    ) + _collect_row_embedding_jobs(
+        rows=entities,
+        enabled=entity_enabled,
+        vector_attr="vector",
+        render_text=_manual_entity_embedding_text,
+        kind="entity",
+    )
 
 
 def _flush_if_supported(db: Session) -> None:
