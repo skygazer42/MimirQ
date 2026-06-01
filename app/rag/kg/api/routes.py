@@ -7,7 +7,7 @@ import uuid
 import zlib
 from collections import Counter
 from dataclasses import dataclass
-from datetime import UTC
+from datetime import UTC, datetime
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -745,15 +745,23 @@ def _resolve_allowed_documents(
     )
 
 
+def _kg_limit_value(value: int | None, default: int) -> int:
+    return default if value is None else value
+
+
 def _kg_graph_limits(params: KGGraphProjectionParams, *, expand: bool = False) -> KGGraphProjectionLimits:
+    default_max_events = 50 if expand else 200
+    default_max_links = 5000 if expand else 2000
+    default_max_entity_links = 2000 if expand else 1000
+
     return KGGraphProjectionLimits(
-        max_events=(50 if params.max_events is None else params.max_events) if expand else (200 if params.max_events is None else params.max_events),
-        max_entities=400 if params.max_entities is None else params.max_entities,
-        max_links=(5000 if params.max_links is None else params.max_links) if expand else (2000 if params.max_links is None else params.max_links),
+        max_events=_kg_limit_value(params.max_events, default_max_events),
+        max_entities=_kg_limit_value(params.max_entities, 400),
+        max_links=_kg_limit_value(params.max_links, default_max_links),
         include_entity_links=bool(params.include_entity_links),
         include_relation_links=bool(params.include_relation_links),
-        min_shared_events=2 if params.min_shared_events is None else params.min_shared_events,
-        max_entity_links=(2000 if params.max_entity_links is None else params.max_entity_links) if expand else (1000 if params.max_entity_links is None else params.max_entity_links),
+        min_shared_events=_kg_limit_value(params.min_shared_events, 2),
+        max_entity_links=_kg_limit_value(params.max_entity_links, default_max_entity_links),
     )
 
 
@@ -3543,6 +3551,36 @@ def _restore_updated_relations(
     return restored
 
 
+def _limited_optional_str(value: Any, limit: int) -> str | None:
+    return str(value)[:limit] if value else None
+
+
+def _dict_or_none(value: Any) -> dict[str, Any] | None:
+    return value if isinstance(value, dict) else None
+
+
+def _restored_relation_row_payload(*, row: dict[str, Any], tenant_id: UUID, source_id: UUID) -> dict[str, Any]:
+    now = datetime.now(UTC).replace(tzinfo=None)
+    return {
+        "id": _uuid_or_none(row.get("id")),
+        "tenant_id": tenant_id,
+        "pipeline_hash": _limited_optional_str(row.get("pipeline_hash"), 200),
+        "document_id": _uuid_or_none(row.get("document_id")),
+        "chunk_id": _uuid_or_none(row.get("chunk_id")),
+        "event_id": _uuid_or_none(row.get("event_id")),
+        "subject_entity_id": _uuid_or_none(row.get("subject_entity_id")) or source_id,
+        "predicate": str(row.get("predicate") or "").strip() or "related_to",
+        "predicate_raw": _limited_optional_str(row.get("predicate_raw"), 200),
+        "object_entity_id": _uuid_or_none(row.get("object_entity_id")) or source_id,
+        "confidence": float(row.get("confidence", 0.5) or 0.5),
+        "qualifiers": _dict_or_none(row.get("qualifiers")),
+        "references": _dict_or_none(row.get("references")),
+        "extra_data": _dict_or_none(row.get("extra_data")),
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
 def _restore_deleted_relation_rows(
     db: Session,
     relation_model: Any,
@@ -3551,33 +3589,13 @@ def _restore_deleted_relation_rows(
     source_id: UUID,
     rows: list[dict[str, Any]],
 ) -> int:
-    from datetime import datetime
-
     restored = 0
     for row in rows:
         relation_id = _uuid_or_none(row.get("id"))
         if relation_id is None:
             continue
-        db.add(
-            relation_model(
-                id=relation_id,
-                tenant_id=tenant_id,
-                pipeline_hash=(str(row.get("pipeline_hash"))[:200] if row.get("pipeline_hash") else None),
-                document_id=_uuid_or_none(row.get("document_id")),
-                chunk_id=_uuid_or_none(row.get("chunk_id")),
-                event_id=_uuid_or_none(row.get("event_id")),
-                subject_entity_id=_uuid_or_none(row.get("subject_entity_id")) or source_id,
-                predicate=str(row.get("predicate") or "").strip() or "related_to",
-                predicate_raw=(str(row.get("predicate_raw"))[:200] if row.get("predicate_raw") else None),
-                object_entity_id=_uuid_or_none(row.get("object_entity_id")) or source_id,
-                confidence=float(row.get("confidence", 0.5) or 0.5),
-                qualifiers=(row.get("qualifiers") if isinstance(row.get("qualifiers"), dict) else None),
-                references=(row.get("references") if isinstance(row.get("references"), dict) else None),
-                extra_data=(row.get("extra_data") if isinstance(row.get("extra_data"), dict) else None),
-                created_at=datetime.now(UTC).replace(tzinfo=None),
-                updated_at=datetime.now(UTC).replace(tzinfo=None),
-            )
-        )
+        payload = _restored_relation_row_payload(row=row, tenant_id=tenant_id, source_id=source_id)
+        db.add(relation_model(**payload))
         restored += 1
     return restored
 
