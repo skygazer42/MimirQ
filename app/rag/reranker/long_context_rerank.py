@@ -3,9 +3,12 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from typing import Any
 
+from app.rag.core.logging import get_logger
 from app.rag.preprocessing.tokenization import tokenize_for_bm25
 from app.rag.reranker.base import BaseReranker
 from app.rag.reranker.types import RerankCandidate, RerankResult
+
+logger = get_logger(__name__)
 
 
 def rerank_long_context_candidates(
@@ -63,8 +66,8 @@ def _default_long_context_scorer(query: str, docs: list[RerankCandidate]) -> dic
         if chunk_index is not None:
             try:
                 score += max(0.0, 0.05 - min(0.05, float(int(chunk_index)) * 0.001))
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring long-context chunk index score adjustment failure: %s", exc)
         score += max(0.0, 0.01 - float(idx) * 0.0001)
         out[doc_id] = round(float(score), 6)
     return out

@@ -3,6 +3,10 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
+from app.rag.core.logging import get_logger
+
+logger = get_logger(__name__)
+
 _DOCUMENT_STRUCTURE_SCHEMA = "mimirq.document_structure.v1"
 
 
@@ -148,8 +152,8 @@ def build_document_structure_from_chunks(
             _append_unique(current_node["chunk_ids"], chunk_id)
         try:
             _append_unique(current_node["chunk_indexes"], int(getattr(chunk, "chunk_index", 0)))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring document structure chunk index append failure: %s", exc)
 
         node_key = _clean_text(meta.get("hierarchy_node_key") or meta.get("node_key"), max_len=200)
         if node_key:

@@ -13,6 +13,10 @@ from pathlib import Path
 
 from langchain_core.documents import Document
 
+from app.rag.core.logging import get_logger
+
+logger = get_logger(__name__)
+
 _EMPTY_SHEET_MARKDOWN = "_Empty sheet._\n\n"
 
 
@@ -174,8 +178,8 @@ class ExcelParser:
                         (self.max_rows > 0 and int(getattr(ws, "max_row", 0) or 0) > self.max_rows)
                         or (self.max_cols > 0 and int(getattr(ws, "max_column", 0) or 0) > self.max_cols)
                     )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring Excel truncation metadata failure: %s", exc)
 
             metadata = {
                 "source": str(file_path.name),
@@ -189,8 +193,8 @@ class ExcelParser:
         finally:
             try:
                 wb.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring Excel workbook close failure: %s", exc)
 
     def _parse_via_pandas(self, file_path: Path) -> list[Document]:
         import pandas as pd  # type: ignore

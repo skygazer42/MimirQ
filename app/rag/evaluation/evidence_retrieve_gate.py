@@ -18,7 +18,10 @@ import math
 from collections.abc import Iterable
 from typing import Any
 
+from app.rag.core.logging import get_logger
 from app.rag.evaluation.regression_sample_builder import build_regression_sample
+
+logger = get_logger(__name__)
 
 
 def compute_retrieval_item_meta(
@@ -170,8 +173,8 @@ def build_retrieval_gate_summary(items_meta: list[dict[str, Any]]) -> dict[str, 
         try:
             if raw_score is not None:
                 parse_risk_scores.append(float(raw_score))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring retrieval gate parse-risk score coercion failure: %s", exc)
     parse_cases_total = int(len(parse_risk_levels))
     parse_risk_high_cases = int(sum(1 for lvl in parse_risk_levels if lvl == "high"))
     parse_risk_medium_cases = int(sum(1 for lvl in parse_risk_levels if lvl == "medium"))

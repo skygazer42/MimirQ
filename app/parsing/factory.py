@@ -1081,8 +1081,8 @@ class ParserFactory:
             # after previous parser initialization.
             try:
                 importlib.import_module("fitz")
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("[pdf] Ignoring PyMuPDF lazy import probe failure: %s", exc)
         return self._basic_pdf_parser
 
     def _get_cached_parser(

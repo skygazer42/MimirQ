@@ -4,6 +4,9 @@ from datetime import UTC, datetime
 from typing import Any
 
 from app.rag.core.hashing import stable_json_hash, stable_json_hmac
+from app.rag.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 EVIDENCE_CAPSULE_SCHEMA_V1 = "mimirq.evidence_capsule.v1"
 EVIDENCE_CAPSULE_SIGNATURE_SCHEMA_V1 = "mimirq.evidence_capsule_signature.v1"
@@ -238,8 +241,8 @@ def build_evidence_capsule(
             sig = sign_evidence_capsule(payload, secret=secret, key_id=key_id)
             if isinstance(sig, dict):
                 payload["signature"] = sig
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Ignoring evidence capsule signature attachment failure: %s", exc)
     return payload
 
 

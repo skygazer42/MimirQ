@@ -17,6 +17,10 @@ from typing import Any
 
 from PIL import Image, ImageOps
 
+from app.rag.core.logging import get_logger
+
+logger = get_logger(__name__)
+
 
 def fix_exif_orientation(*, input_path: Path, output_path: Path) -> tuple[bool, str, dict[str, Any]]:
     """
@@ -103,9 +107,8 @@ def normalize_pdf_rotation(
         try:
             if doc is not None:
                 doc.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring PDF rotation document close failure: %s", exc)
 
 
 __all__ = ["fix_exif_orientation", "normalize_pdf_rotation"]
-

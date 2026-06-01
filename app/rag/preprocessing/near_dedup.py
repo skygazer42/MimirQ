@@ -19,7 +19,10 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
+from app.rag.core.logging import get_logger
 from app.rag.preprocessing.simhash import hamming_distance64
+
+logger = get_logger(__name__)
 
 INDEX_VERSION = 1
 
@@ -71,8 +74,8 @@ def _file_lock(lock_path: Path) -> Iterator[None]:
             finally:
                 try:
                     fcntl.flock(f.fileno(), fcntl.LOCK_UN)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring near-dedup file lock release failure: %s", exc)
     except Exception:
         yield
 

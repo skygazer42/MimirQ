@@ -680,8 +680,8 @@ def _generate_node(state: RAGState) -> RAGState:
                     and not str(scrubbed.get("answer") or "").strip()
                 ):
                     scrubbed["answer"] = _UNABLE_TO_ANSWER_MESSAGE
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring structured abstain answer fallback patch failure: %s", exc)
 
             answer = json.dumps(scrubbed, ensure_ascii=False, separators=(",", ":"))
 
@@ -1557,8 +1557,8 @@ def build_rag_state(
                 mf = dict(metadata_filter or {})
                 mf["doc_pipeline_key"] = {"$in": set(active_keys)}
                 metadata_filter = mf
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring active pipeline metadata filter synthesis failure: %s", exc)
 
     profile_applied = apply_retrieval_profile_overrides(
         profile=retrieval_profile,

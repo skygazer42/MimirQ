@@ -20,6 +20,9 @@ from urllib.parse import unquote, urlparse
 from PIL import Image as PILImage
 
 from app.parsing.enrich.image_understanding import decode_image_codes, infer_visual_kind_from_pixels
+from app.rag.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 _MD_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 _HTML_IMG_TAG_RE = re.compile(r"<img\b[^>]*>", re.IGNORECASE)
@@ -222,8 +225,8 @@ def add_image_code_blocks(
             finally:
                 try:
                     image.close()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring local image code close failure: %s", exc)
             if not isinstance(code_info, dict):
                 code_info = {}
             code_text = str(code_info.get("text") or "").strip()

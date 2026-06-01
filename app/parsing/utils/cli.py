@@ -12,6 +12,10 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from app.rag.core.logging import get_logger
+
+logger = get_logger(__name__)
+
 
 def resolve_cli_command(command: str) -> str | None:
     """
@@ -59,8 +63,8 @@ def resolve_cli_command(command: str) -> str | None:
     for d in candidate_dirs:
         try:
             d = d.resolve()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring CLI candidate directory resolve failure: %s", exc)
         key = str(d)
         if key in seen:
             continue

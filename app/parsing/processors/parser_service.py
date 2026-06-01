@@ -18,6 +18,9 @@ from app.core.optional_deps import optional_import
 from app.parsing.backends import normalize_parser_backend
 from app.parsing.factory import parser_factory
 from app.parsing.routing import route_pdf_backend
+from app.rag.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 @lru_cache(maxsize=1)
@@ -202,8 +205,8 @@ class DocumentParserService:
                         try:
                             if getattr(img, "mode", None) != "RGB":
                                 img = img.convert("RGB")
-                        except Exception:
-                            pass
+                        except Exception as exc:
+                            logger.debug("Ignoring preview image mode normalization failure: %s", exc)
                         out = BytesIO()  # type: ignore[call-arg]
                         img.save(out, format="JPEG", quality=85, optimize=True)
                         image_bytes = out.getvalue()

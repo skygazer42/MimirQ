@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from app.rag.core.logging import get_logger
 from app.rag.reranker.cross_encoder import CrossEncoderReranker
+
+logger = get_logger(__name__)
 
 
 def _resolve_device() -> str:
@@ -11,8 +14,8 @@ def _resolve_device() -> str:
             return "mps"
         if bool(torch.cuda.is_available()):
             return "cuda"
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Ignoring local BGE device detection failure: %s", exc)
     return "cpu"
 
 

@@ -14,12 +14,15 @@ from app.core.config import settings
 from app.core.token_utils import num_tokens_from_string
 from app.rag.agents.rag_agent import AgenticStreamRequest, resolve_agentic_stream_request
 from app.rag.core.citations import build_citations_from_docs
+from app.rag.core.logging import get_logger
 from app.rag.core.text import heuristic_decompose_query, parse_json_from_text
 from app.rag.pipelines.langgraph import _build_context, _build_history_text, build_rag_state
 from app.rag.retrieval.orchestrator import run_retrieval
 
 if TYPE_CHECKING:
     from app.rag.engine import RAGEngine
+
+logger = get_logger(__name__)
 
 _UNABLE_TO_ANSWER_MESSAGE = "Unable to answer this question based on the available materials."
 _RAG_STATE_BUILD_KEYS = {
@@ -136,8 +139,8 @@ class MultiAgentRAGRunner:
                         break
                 if steps:
                     return steps
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring multi-agent LLM decomposition failure: %s", exc)
 
         heuristic_steps = heuristic_decompose_query(question, max_subquestions=max_sub_questions)
         if heuristic_steps:

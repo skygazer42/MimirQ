@@ -23,8 +23,11 @@ from langchain_core.documents import Document
 
 from app.core.config import settings
 from app.deepdoc.parser.docling_parser import DoclingParser as DeepDocDoclingParser
+from app.rag.core.logging import get_logger
 
 from .base_parser import BaseAdvancedParser
+
+logger = get_logger(__name__)
 
 # Configuration
 DOCLING_ENABLED = getattr(settings, "DOCLING_ENABLED", False)
@@ -77,8 +80,8 @@ def _apply_element_hints(meta: dict[str, Any], *, text: str) -> dict[str, Any]:
                         "y1": int(first[4]),
                     },
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring Docling element position hint failure: %s", exc)
     if out.get("element_page") is None:
         raw_page = out.get("page")
         if isinstance(raw_page, (int, float)) and not isinstance(raw_page, bool):

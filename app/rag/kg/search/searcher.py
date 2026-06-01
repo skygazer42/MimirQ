@@ -6,6 +6,7 @@ import time
 from typing import Any
 
 from app.core.config import settings
+from app.rag.core.logging import get_logger
 from app.rag.kg.community import build_community_reports, lazy_summarize
 from app.rag.kg.search.cache import build_kg_community_summary_cache_key, kg_community_summary_cache
 from app.rag.kg.search.config import RerankStrategy, ReturnType, SearchConfig
@@ -16,6 +17,8 @@ from app.rag.llm.factory import create_llm_client
 from app.rag.reranker.kg import get_kg_reranker
 from app.rag.reranker.types import RerankCandidate
 from app.services.metrics_logger import log_metrics
+
+logger = get_logger(__name__)
 
 
 class KGSearcher:
@@ -426,8 +429,8 @@ class KGSearcher:
                             "elapsed_sec": float(community_meta.get("elapsed_sec") or 0.0),
                         }
                     )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring KG community metrics log failure: %s", exc)
 
         stats.setdefault("community", community_meta)
         rendered_events = attach_path_renderings(

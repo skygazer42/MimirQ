@@ -232,8 +232,8 @@ class ZipImageProcessor:
                     rel_md_str = rel_md.as_posix()
                     if rel_md_str not in rel_keys:
                         rel_keys.append(rel_md_str)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    ZipImageProcessor._logger.debug("Ignoring ZIP image markdown-relative key failure: %s", exc)
 
                 if img_file.name not in rel_keys:
                     rel_keys.append(img_file.name)

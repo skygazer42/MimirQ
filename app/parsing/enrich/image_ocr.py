@@ -23,6 +23,9 @@ from app.parsing.enrich.image_code import (
     _safe_read_local_image_bytes,
 )
 from app.parsing.enrich.image_understanding import ocr_image
+from app.rag.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,8 +136,8 @@ def add_image_ocr_blocks(
             finally:
                 try:
                     image.close()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring local image OCR close failure: %s", exc)
             if not text:
                 continue
             images_succeeded += 1

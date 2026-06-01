@@ -33,6 +33,9 @@ except Exception:  # pragma: no cover
         return metadata
 
 from app.core.config import settings
+from app.rag.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class SqliteSaver(BaseCheckpointSaver[str]):
@@ -77,8 +80,8 @@ class SqliteSaver(BaseCheckpointSaver[str]):
         try:
             conn.execute("PRAGMA journal_mode=WAL;")
             conn.execute("PRAGMA synchronous=NORMAL;")
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring SQLite checkpointer PRAGMA setup failure: %s", exc)
         self._local.conn = conn
         return conn
 
