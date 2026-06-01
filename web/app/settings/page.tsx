@@ -98,6 +98,31 @@ const SETTINGS_METRIC_TONE_CLASS: Record<SettingsMetricTone, string> = {
   slate: 'bg-muted text-muted-foreground',
 }
 
+function getSaveStatusLabel(
+  saving: boolean,
+  saveMessageType?: string
+): string {
+  if (saving) return '保存中'
+  if (saveMessageType === 'success') return '最近成功'
+  if (saveMessageType === 'error') return '最近失败'
+  return '空闲'
+}
+
+function getSaveStatusTone(saveMessageType?: string): SettingsMetricTone {
+  if (saveMessageType === 'success') return 'green'
+  return 'indigo'
+}
+
+function getSaveStatusValueClassName(
+  saving: boolean,
+  saveMessageType?: string
+): string {
+  if (saveMessageType === 'error') return 'text-destructive'
+  if (saving) return 'text-warning'
+  if (saveMessageType === 'success') return 'text-success'
+  return 'text-foreground'
+}
+
 function SettingsMetricStrip({
   items,
 }: Readonly<{ items: readonly SettingsMetricItem[] }>) {
@@ -467,23 +492,13 @@ function SettingsPageContent() {
     },
     {
       label: '保存状态',
-      value: state.saving
-        ? '保存中'
-        : state.saveMessage?.type === 'success'
-          ? '最近成功'
-          : state.saveMessage?.type === 'error'
-            ? '最近失败'
-            : '空闲',
+      value: getSaveStatusLabel(state.saving, state.saveMessage?.type),
       icon: ShieldCheck,
-      tone: state.saveMessage?.type === 'success' ? 'green' : 'indigo',
-      valueClassName:
-        state.saveMessage?.type === 'error'
-          ? 'text-destructive'
-          : state.saving
-            ? 'text-warning'
-            : state.saveMessage?.type === 'success'
-              ? 'text-success'
-              : 'text-foreground',
+      tone: getSaveStatusTone(state.saveMessage?.type),
+      valueClassName: getSaveStatusValueClassName(
+        state.saving,
+        state.saveMessage?.type
+      ),
     },
     {
       label: '最近更新',

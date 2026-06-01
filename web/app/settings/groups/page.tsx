@@ -93,6 +93,27 @@ const SUMMARY_TONE_CLASS: Record<SummaryTone, string> = {
   slate: 'bg-slate-100 text-slate-500',
 }
 
+function getCreateStatusLabel(creating: boolean, createOpen: boolean): string {
+  if (creating) return '创建中'
+  if (createOpen) return '待创建'
+  return '空闲'
+}
+
+function getListStatusLabel(loading: boolean, groupCount: number): string {
+  if (loading) return '加载中'
+  if (groupCount > 0) return '已就绪'
+  return '无数据'
+}
+
+function getListStatusValueClassName(
+  loading: boolean,
+  groupCount: number
+): string {
+  if (loading) return 'text-amber-600'
+  if (groupCount > 0) return 'text-emerald-600'
+  return 'text-slate-950'
+}
+
 export default function SettingsGroupsPage() {
   return (
     <TenantPermissionGate
@@ -248,13 +269,14 @@ function SettingsGroupsPageContent() {
     const start = (page - 1) * pageSize
     return filtered.slice(start, start + pageSize)
   }, [filtered, page, pageSize])
+  const hasVisibleGroups = visibleGroups.length > 0
   const summaryItems = useMemo<SummaryItem[]>(
     () => [
       { label: '组总数', value: groups.length, icon: Users, tone: 'indigo' },
       { label: '筛选后', value: filtered.length, icon: Filter, tone: 'blue' },
       {
         label: '创建状态',
-        value: creating ? '创建中' : createOpen ? '待创建' : '空闲',
+        value: getCreateStatusLabel(creating, createOpen),
         icon: CheckCircle2,
         tone: 'green',
         valueClassName:
@@ -262,14 +284,10 @@ function SettingsGroupsPageContent() {
       },
       {
         label: '列表状态',
-        value: loading ? '加载中' : groups.length ? '已就绪' : '无数据',
+        value: getListStatusLabel(loading, groups.length),
         icon: Database,
         tone: 'slate',
-        valueClassName: loading
-          ? 'text-amber-600'
-          : groups.length
-            ? 'text-emerald-600'
-            : 'text-slate-950',
+        valueClassName: getListStatusValueClassName(loading, groups.length),
       },
     ],
     [groups.length, filtered.length, creating, createOpen, loading]
@@ -475,8 +493,8 @@ function SettingsGroupsPageContent() {
             </div>
 
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-              {visibleGroups.length ? (
-                visibleGroups.map((g) => {
+	              {hasVisibleGroups ? (
+	                visibleGroups.map((g) => {
                   const gid = String(g.id || '').trim()
                   const deleting = Boolean(deletingId && deletingId === gid)
                   return (
@@ -557,12 +575,14 @@ function SettingsGroupsPageContent() {
                     </div>
                   )
                 })
-              ) : loading ? (
-                <div className="flex min-h-[360px] flex-1 items-center justify-center text-[13px] text-slate-500">
-                  加载中…
-                </div>
-              ) : (
-                <div className="flex min-h-[360px] flex-1 flex-col items-center justify-center border-t border-slate-100 px-6 text-center">
+	              ) : null}
+	              {!hasVisibleGroups && loading ? (
+	                <div className="flex min-h-[360px] flex-1 items-center justify-center text-[13px] text-slate-500">
+	                  加载中…
+	                </div>
+	              ) : null}
+	              {!hasVisibleGroups && !loading ? (
+	                <div className="flex min-h-[360px] flex-1 flex-col items-center justify-center border-t border-slate-100 px-6 text-center">
                   <div className="relative mb-4 flex size-[72px] items-center justify-center rounded-[22px] bg-blue-50 text-blue-500 shadow-inner">
                     <UsersRound className="size-9" />
                     <span className="absolute -right-1 top-2 size-2 rounded-full bg-blue-300" />
@@ -581,9 +601,9 @@ function SettingsGroupsPageContent() {
                   >
                     <Plus className="size-4" />
                     新建组
-                  </Button>
-                </div>
-              )}
+	                  </Button>
+	                </div>
+	              ) : null}
             </div>
 
             <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-[13px] text-slate-500">
