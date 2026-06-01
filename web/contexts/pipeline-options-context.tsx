@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import type { DocumentPipelineOptions } from '@/types'
 import { validateChunkStrategyParams } from '@/lib/chunk-strategy-params'
+import { readClientStorage, writeClientStorage } from '@/lib/client-storage'
 
 const STORAGE_KEY = 'mimirq_pipeline_options'
 
@@ -88,6 +89,12 @@ type PipelineOptionsContextValue = {
 
 const PipelineOptionsContext = createContext<PipelineOptionsContextValue | null>(null)
 
+type UnknownRecord = Record<string, unknown>
+
+const isRecord = (value: unknown): value is UnknownRecord => (
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+)
+
 const toBool = (value: unknown): boolean | undefined => {
   if (typeof value === 'boolean') return value
   return undefined
@@ -132,19 +139,19 @@ const normalizeRegexRules = (value: unknown): Array<{ pattern: string; repl: str
   if (!Array.isArray(value)) return []
   const out: Array<{ pattern: string; repl: string; flags: number }> = []
   for (const item of value) {
-    if (!item || typeof item !== 'object') continue
-    const pattern = typeof (item).pattern === 'string' ? String((item).pattern).trim() : ''
+    if (!isRecord(item)) continue
+    const pattern = typeof item.pattern === 'string' ? item.pattern.trim() : ''
     if (!pattern) continue
-    const repl = typeof (item).repl === 'string' ? String((item).repl) : ''
-    const flags = typeof (item).flags === 'number' ? (item).flags : 0
+    const repl = typeof item.repl === 'string' ? item.repl : ''
+    const flags = typeof item.flags === 'number' ? item.flags : 0
     out.push({ pattern, repl, flags })
     if (out.length >= 60) break
   }
   return out
 }
 
-const normalizeOptions = (raw: any): DocumentPipelineOptions => {
-  if (!raw || typeof raw !== 'object') return { ...DEFAULT_OPTIONS }
+const normalizeOptions = (raw: unknown): DocumentPipelineOptions => {
+  if (!isRecord(raw)) return { ...DEFAULT_OPTIONS }
   const validatedStrategyParams = validateChunkStrategyParams(raw.chunk_strategy_params)
   const chunkStrategyParams = validatedStrategyParams.ok ? validatedStrategyParams.value : undefined
   return {
@@ -213,11 +220,12 @@ const normalizeOptions = (raw: any): DocumentPipelineOptions => {
   }
 }
 
-const normalizeState = (raw: any): PipelineOptionsState => {
-  const enabled = typeof raw?.enabled === 'boolean' ? raw.enabled : false
+const normalizeState = (raw: unknown): PipelineOptionsState => {
+  const record = isRecord(raw) ? raw : {}
+  const enabled = typeof record.enabled === 'boolean' ? record.enabled : false
   return {
     enabled,
-    options: normalizeOptions(raw?.options),
+    options: normalizeOptions(record.options),
   }
 }
 
@@ -228,8 +236,7 @@ export function PipelineOptionsProvider({ children }: Readonly<{ children: React
   })
 
   useEffect(() => {
-    if (globalThis.window === undefined) return
-    const stored = globalThis.window.localStorage.getItem(STORAGE_KEY)
+    const stored = readClientStorage(STORAGE_KEY)
     if (!stored) return
     try {
       const parsed = JSON.parse(stored)
@@ -240,8 +247,7 @@ export function PipelineOptionsProvider({ children }: Readonly<{ children: React
   }, [])
 
   useEffect(() => {
-    if (globalThis.window === undefined) return
-    globalThis.window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+    writeClientStorage(STORAGE_KEY, JSON.stringify(state))
   }, [state])
 
   useEffect(() => {
@@ -281,7 +287,7 @@ export function PipelineOptionsProvider({ children }: Readonly<{ children: React
     importJson: (jsonText: string) => {
       const raw = (jsonText || '').trim()
       if (!raw) return { ok: false, error: 'Empty JSON' }
-      let parsed: any
+      let parsed: unknown
       try {
         parsed = JSON.parse(raw)
       } catch {
@@ -292,10 +298,10 @@ export function PipelineOptionsProvider({ children }: Readonly<{ children: React
       // - { enabled, options }
       // - { ...options }
       try {
-        if (parsed && typeof parsed === 'object' && ('options' in parsed || 'enabled' in parsed)) {
+        if (isRecord(parsed) && ('options' in parsed || 'enabled' in parsed)) {
           const enabled =
-            typeof (parsed).enabled === 'boolean' ? Boolean((parsed).enabled) : state.enabled
-          const optionsRaw = (parsed).options ?? {}
+            typeof parsed.enabled === 'boolean' ? parsed.enabled : state.enabled
+          const optionsRaw = parsed.options ?? {}
           setState({ enabled, options: normalizeOptions(optionsRaw) })
           return { ok: true }
         }

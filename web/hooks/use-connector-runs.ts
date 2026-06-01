@@ -10,6 +10,7 @@ import { toast } from 'sonner'
 import type { ConnectorRunOut } from '@/types'
 import { connectorApi } from '@/lib/api/connectors'
 import { formatApiError } from '@/lib/api-errors'
+import { reportClientWarning } from '@/lib/client-logging'
 import { detachPromise } from '@/lib/utils'
 import { queryKeys } from '@/lib/query-keys'
 
@@ -84,7 +85,7 @@ export function useConnectorRuns({ selectedDatasetId, limit = 20, loadDocuments 
           },
         })
       } catch (err) {
-        console.warn('Load connector runs failed:', err)
+        reportClientWarning('Load connector runs failed', err)
       }
     },
     [limit, queryClient, selectedDatasetId]

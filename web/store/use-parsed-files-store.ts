@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { deleteDocContentFromCache, deleteDocSourceFromCache, saveDocContentToCache } from '@/lib/doc-content-cache'
+import { getClientStorage } from '@/lib/client-storage'
 import { collectFolderDescendantIds } from '@/lib/folder-tree-index'
 import { generateRequestId } from '@/lib/request-id'
 import { detachPromise } from '@/lib/utils'
@@ -134,6 +135,40 @@ const noopStorage = {
   removeItem: (_name: string) => {},
 }
 
+type UnknownRecord = Record<string, unknown>
+
+function isRecord(value: unknown): value is UnknownRecord {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isPresent<T>(value: T | null): value is T {
+  return value !== null
+}
+
+function normalizePersistedFile(value: unknown): ParsedFileData | null {
+  if (!isRecord(value)) return null
+  const markdownContent = typeof value.markdownContent === 'string' ? value.markdownContent : ''
+  const originalMarkdownContent =
+    typeof value.originalMarkdownContent === 'string' ? value.originalMarkdownContent : markdownContent
+  return {
+    ...(value as Partial<ParsedFileData>),
+    markdownContent,
+    originalMarkdownContent,
+    folderId: typeof value.folderId === 'string' && value.folderId ? value.folderId : ROOT_FOLDER_ID,
+  } as ParsedFileData
+}
+
+function normalizePersistedFolder(value: unknown): FolderNode | null {
+  if (!isRecord(value)) return null
+  if (typeof value.id !== 'string' || typeof value.name !== 'string' || typeof value.parentId !== 'string') return null
+  return {
+    id: value.id,
+    name: value.name,
+    parentId: value.parentId || ROOT_FOLDER_ID,
+    createdAt: typeof value.createdAt === 'string' ? value.createdAt : new Date().toISOString(),
+  }
+}
+
 export const useParsedFiles = create<ParsedFilesState>()(
   persist(
     (set, get) => ({
@@ -255,7 +290,7 @@ export const useParsedFiles = create<ParsedFilesState>()(
       clearAll: () => {
         set({ files: [], folders: [], activeFolderId: ROOT_FOLDER_ID })
         if (globalThis.window !== undefined) {
-          // We don't enumerate all ids here; best-effort keeps localStorage clean, but cache may remain.
+          // We don't enumerate all ids here; best-effort keeps browser storage clean, but cache may remain.
           // Users can clear site data if needed.
         }
       },
@@ -340,11 +375,11 @@ export const useParsedFiles = create<ParsedFilesState>()(
     }),
     {
       name: 'mimirq_parsed_files',
-      storage: createJSONStorage(() => (globalThis.window === undefined ? noopStorage : localStorage)),
+      storage: createJSONStorage(() => getClientStorage() ?? noopStorage),
       partialize: (state) => ({
         files: state.files.map((f) => ({
           ...f,
-          markdownContent: '', // Exclude large content from localStorage to prevent 5MB limit crash
+          markdownContent: '', // Exclude large content from persisted JSON to prevent quota crashes.
           originalMarkdownContent: '',
         })),
         folders: state.folders,
@@ -355,61 +390,29 @@ export const useParsedFiles = create<ParsedFilesState>()(
           state?.setLoaded(true)
         }
       },
-      migrate: (persistedState: any, version) => {
+      migrate: (persistedState: unknown, _version) => {
         // Handle migration from legacy React State hook (raw array)
         if (Array.isArray(persistedState)) {
-           const migrated = persistedState
-            .filter((f) => f && typeof f === 'object')
-            .map((f: any) => {
-              const markdownContent = typeof f.markdownContent === 'string' ? f.markdownContent : ''
-              const originalMarkdownContent =
-                typeof f.originalMarkdownContent === 'string' ? f.originalMarkdownContent : markdownContent
-              return {
-                ...f,
-                markdownContent,
-                originalMarkdownContent,
-                folderId: typeof f.folderId === 'string' && f.folderId ? f.folderId : ROOT_FOLDER_ID,
-              } as ParsedFileData
-            })
-           return {
-             files: migrated,
-             folders: [],
-             activeFolderId: ROOT_FOLDER_ID,
-             isLoaded: true
-           } as any
+          const migrated = persistedState.map(normalizePersistedFile).filter(isPresent)
+          return {
+            files: migrated,
+            folders: [],
+            activeFolderId: ROOT_FOLDER_ID,
+            isLoaded: true,
+          }
         }
 
-        const normalized = persistedState && typeof persistedState === 'object' ? persistedState : {}
+        const normalized = isRecord(persistedState) ? persistedState : {}
         const normalizedFiles = Array.isArray(normalized.files)
-          ? normalized.files
-              .filter((f: any) => f && typeof f === 'object')
-              .map((f: any) => {
-                const markdownContent = typeof f.markdownContent === 'string' ? f.markdownContent : ''
-                const originalMarkdownContent =
-                  typeof f.originalMarkdownContent === 'string' ? f.originalMarkdownContent : markdownContent
-                return {
-                  ...f,
-                  markdownContent,
-                  originalMarkdownContent,
-                  folderId: typeof f.folderId === 'string' && f.folderId ? f.folderId : ROOT_FOLDER_ID,
-                } as ParsedFileData
-              })
+          ? normalized.files.map(normalizePersistedFile).filter(isPresent)
           : []
 
         const normalizedFolders = Array.isArray(normalized.folders)
-          ? normalized.folders
-              .filter((f: any) => f && typeof f === 'object')
-              .filter((f: any) => typeof f.id === 'string' && typeof f.name === 'string' && typeof f.parentId === 'string')
-              .map((f: any) => ({
-                id: f.id,
-                name: f.name,
-                parentId: f.parentId || ROOT_FOLDER_ID,
-                createdAt: typeof f.createdAt === 'string' ? f.createdAt : new Date().toISOString(),
-              }))
+          ? normalized.folders.map(normalizePersistedFolder).filter(isPresent)
           : []
 
         return {
-          ...normalized,
+          ...(normalized as Partial<ParsedFilesState>),
           files: normalizedFiles,
           folders: normalizedFolders,
           activeFolderId: typeof normalized.activeFolderId === 'string' && normalized.activeFolderId ? normalized.activeFolderId : ROOT_FOLDER_ID,

@@ -5,6 +5,7 @@ import { useMutation } from '@tanstack/react-query'
 
 import { documentApi } from '@/lib/api/documents'
 import { formatApiError } from '@/lib/api-errors'
+import { reportClientError } from '@/lib/client-logging'
 import type {
   Document,
   DocumentBatchUploadFailure,
@@ -84,7 +85,7 @@ export function useDocumentUpload({
     },
     onError: (err) => {
       setActionError(formatApiError(err, 'Failed to upload document'))
-      console.error('Upload error:', err)
+      reportClientError('Upload document failed', err)
     },
   })
 
@@ -161,7 +162,7 @@ export function useDocumentUpload({
     },
     onError: (err) => {
       setActionError(formatApiError(err, 'Failed to upload documents'))
-      console.error('Batch upload error:', err)
+      reportClientError('Batch upload documents failed', err)
     },
   })
 
@@ -188,7 +189,7 @@ export function useDocumentUpload({
     },
     onError: (err) => {
       setActionError(formatApiError(err, 'Failed to upload document from URL'))
-      console.error('Upload from URL error:', err)
+      reportClientError('Upload document from URL failed', err)
     },
   })
 

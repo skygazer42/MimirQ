@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { documentApi } from '@/lib/api/documents'
 import { formatApiError } from '@/lib/api-errors'
+import { reportClientError } from '@/lib/client-logging'
 import { queryKeys } from '@/lib/query-keys'
 
 import type { DocumentListParams, DocumentListResponse, UpdateCachedDocuments } from './use-document-shared'
@@ -93,7 +94,7 @@ export function useDocumentList({
         })
       } catch (err) {
         setActionError(formatApiError(err, 'Failed to load documents'))
-        console.error('Load documents error:', err)
+        reportClientError('Load documents failed', err)
       }
     },
     [queryClient, setActionError]

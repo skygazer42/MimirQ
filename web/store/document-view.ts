@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 
+import { getClientStorage } from '@/lib/client-storage'
 import type { DocumentPreviewAnchor } from '@/lib/document-preview-anchor'
 import { sanitizeDocumentPreviewAnchor } from '@/lib/document-preview-anchor'
 
@@ -353,7 +354,7 @@ export const useDocumentView = create<DocumentViewState>()(
     }),
     {
       name: STORAGE_KEY,
-      storage: createJSONStorage(() => (globalThis.window === undefined ? noopStorage : globalThis.window.localStorage)),
+      storage: createJSONStorage(() => getClientStorage() ?? noopStorage),
       partialize: (state) => ({
         isOpen: state.isOpen,
         documentId: state.documentId,

@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
+import { readClientStorage, writeClientStorage } from '@/lib/client-storage'
 
 const STORAGE_KEY = 'mimirq_chunk_strategy'
 
@@ -17,8 +18,7 @@ export function ChunkStrategyProvider({ children }: Readonly<{ children: React.R
   const { capabilities, chunkStrategyAvailable } = usePipelineCapabilities()
 
   useEffect(() => {
-    if (globalThis.window === undefined) return
-    const stored = globalThis.window.localStorage.getItem(STORAGE_KEY)
+    const stored = readClientStorage(STORAGE_KEY)
     if (stored) {
       setChunkStrategy(stored)
     }
@@ -36,9 +36,7 @@ export function ChunkStrategyProvider({ children }: Readonly<{ children: React.R
   const persistChunkStrategy = useCallback((value: string) => {
     const next = (value || '').trim().toLowerCase() || 'langchain_recursive'
     setChunkStrategy(next)
-    if (globalThis.window !== undefined) {
-      globalThis.window.localStorage.setItem(STORAGE_KEY, next)
-    }
+    writeClientStorage(STORAGE_KEY, next)
   }, [])
 
   useEffect(() => {

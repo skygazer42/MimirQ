@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Citation, Message, StreamEvent } from '@/types'
 import { API_LONG_TIMEOUT_MS, API_TIMEOUT_MS } from '@/lib/env'
 import { chatApi } from '@/lib/api'
+import { reportClientError, reportClientWarning } from '@/lib/client-logging'
 
 import {
   buildChatRequest,
@@ -46,7 +47,7 @@ function parseStreamEvent(jsonStr: string): StreamEvent | null {
   try {
     return JSON.parse(jsonStr) as StreamEvent
   } catch (err) {
-    console.error('Failed to parse SSE event:', err)
+    reportClientError('Failed to parse SSE event', err)
     return null
   }
 }
@@ -272,7 +273,7 @@ export function useChatStream({
           if ((streamErr as { name?: string })?.name === 'AbortError') throw streamErr
 
           if (sawDone) {
-            console.warn('SSE closed after done', streamErr)
+            reportClientWarning('SSE closed after done', streamErr)
           } else if (streamAccepted && !streamError) {
             const recoveredMessage = await recoverStreamedAssistantMessage({
               conversationId: String(activeConversationIdRef.current || ''),
@@ -290,7 +291,7 @@ export function useChatStream({
               throw new Error('Chat stream interrupted before completion and could not be recovered')
             }
           } else {
-            console.warn('SSE unavailable; falling back to non-streaming chat', streamErr)
+            reportClientWarning('SSE unavailable; falling back to non-streaming chat', streamErr)
             globalThis.window.clearTimeout(timeoutId)
             timeoutId = globalThis.window.setTimeout(() => {
               didTimeout = true
@@ -322,11 +323,9 @@ export function useChatStream({
         if (isAbort) {
           if (didTimeout) {
             onError?.('Request timed out')
-          } else {
-            console.log('Request aborted')
           }
         } else {
-          console.error('Chat error:', err)
+          reportClientError('Chat request failed', err)
           onError?.(maybeError?.message || 'Failed to send message')
         }
       } finally {
