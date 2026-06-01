@@ -210,36 +210,53 @@ def _question_terms(question: str) -> set[str]:
     return terms
 
 
-def _select_relevant_snippet(*, question: str, content: Any, max_chars: int = 320) -> str:
-    raw = str(content or "")
-    if not raw.strip():
-        return ""
+def _snippet_candidates(raw: str) -> list[str]:
+    return [seg.strip() for seg in re.split(r"(?:\n{2,}|(?<=[。！？!?])\s+)", raw) if seg and seg.strip()]
 
-    terms = _question_terms(question)
-    candidates = [seg.strip() for seg in re.split(r"(?:\n{2,}|(?<=[。！？!?])\s+)", raw) if seg and seg.strip()]
-    if not candidates:
-        return _clean_snippet(raw, max_chars=max_chars)
 
+def _cleaned_segment_score(*, cleaned: str, terms: set[str]) -> int:
+    if not terms:
+        return 0
+    seg_terms = set(re.findall(r"[A-Za-z0-9][A-Za-z0-9_-]+", cleaned.lower()))
+    return len(seg_terms & terms)
+
+
+def _prefer_cleaned_segment(*, cleaned: str, score: int, best_segment: str, best_score: int) -> bool:
+    return score > best_score or (score == best_score and len(cleaned) < len(best_segment or cleaned + "x"))
+
+
+def _best_snippet_candidate(*, candidates: list[str], terms: set[str], max_chars: int) -> str:
     best_segment = ""
     best_score = -1
     for segment in candidates:
         cleaned = _clean_snippet(segment, max_chars=max_chars)
         if not cleaned:
             continue
-        if not terms:
-            if best_score < 0:
-                best_segment = cleaned
-                best_score = 0
-            continue
-        seg_terms = set(re.findall(r"[A-Za-z0-9][A-Za-z0-9_-]+", cleaned.lower()))
-        score = len(seg_terms & terms)
-        if score > best_score or (score == best_score and len(cleaned) < len(best_segment or cleaned + "x")):
+        score = _cleaned_segment_score(cleaned=cleaned, terms=terms)
+        if _prefer_cleaned_segment(
+            cleaned=cleaned,
+            score=score,
+            best_segment=best_segment,
+            best_score=best_score,
+        ):
             best_segment = cleaned
             best_score = score
+    return best_segment
 
-    if best_segment:
-        return best_segment
-    return _clean_snippet(raw, max_chars=max_chars)
+
+def _select_relevant_snippet(*, question: str, content: Any, max_chars: int = 320) -> str:
+    raw = str(content or "")
+    if not raw.strip():
+        return ""
+
+    terms = _question_terms(question)
+    candidates = _snippet_candidates(raw)
+    if not candidates:
+        return _clean_snippet(raw, max_chars=max_chars)
+    return _best_snippet_candidate(candidates=candidates, terms=terms, max_chars=max_chars) or _clean_snippet(
+        raw,
+        max_chars=max_chars,
+    )
 
 
 def _citation_metadata(citation: dict[str, Any]) -> dict[str, Any]:
@@ -314,6 +331,80 @@ def _extractive_direct_answer(*, question: str, citations: list[dict[str, Any]])
     return ""
 
 
+def _extractive_evidence_lines(
+    *,
+    question: str,
+    citations: list[dict[str, Any]],
+    max_items: int,
+) -> list[str]:
+    usable: list[str] = []
+    for idx, citation in enumerate(citations[: max(1, max_items)], start=1):
+        if not isinstance(citation, dict):
+            continue
+        doc_name = _citation_document_name(citation, index=idx)
+        snippet = _select_relevant_snippet(question=question, content=_citation_content(citation))
+        if snippet:
+            usable.append(f"{idx}. {doc_name}: {snippet}")
+    return usable
+
+
+def _extractive_no_evidence_message(*, explicit_mode: bool) -> str:
+    if explicit_mode:
+        return (
+            "已按抽取式回答模式检索知识库，但没有找到可用于回答的引用证据。"
+            "请检查当前数据集是否已经完成入库和索引。"
+        )
+    return (
+        "模型服务当前不可用，系统已尝试检索知识库，但没有找到可用于回答的引用证据。"
+        "请稍后重试，或检查当前数据集是否已经完成入库和索引。"
+    )
+
+
+def _append_unique_evidence_row(
+    *,
+    rows: list[dict[str, Any]],
+    seen: set[tuple[str, str]],
+    max_items: int,
+    doc_name: Any,
+    content: Any,
+    row: dict[str, Any],
+) -> bool:
+    key = (str(doc_name), str(content))
+    if key in seen or not str(content).strip():
+        return False
+    seen.add(key)
+    rows.append(row)
+    return len(rows) >= max_items
+
+
+def _doc_evidence_row(doc: Any) -> tuple[Any, Any, dict[str, Any]]:
+    meta = getattr(doc, "metadata", None) or {}
+    doc_name = meta.get("document_name") or meta.get("filename") or meta.get("source") or "文档"
+    content = getattr(doc, "page_content", None) or ""
+    return doc_name, content, {"document_name": doc_name, "chunk_content": content}
+
+
+def _citation_evidence_row(citation: dict[str, Any]) -> tuple[Any, Any, dict[str, Any]]:
+    meta = citation.get("metadata")
+    meta = meta if isinstance(meta, dict) else {}
+    doc_name = (
+        citation.get("document_name")
+        or citation.get("filename")
+        or citation.get("source")
+        or meta.get("document_name")
+        or meta.get("source")
+        or "引用"
+    )
+    content = (
+        citation.get("chunk_content")
+        or citation.get("content")
+        or citation.get("text")
+        or meta.get("chunk_content")
+        or ""
+    )
+    return doc_name, content, dict(citation)
+
+
 def build_extractive_fallback_answer(
     *,
     question: str,
@@ -323,27 +414,14 @@ def build_extractive_fallback_answer(
     direct_answer_override: str | None = None,
 ) -> str:
     """Build a deterministic answer from retrieved evidence when generation is unavailable."""
-    usable: list[str] = []
-    for idx, citation in enumerate(citations[: max(1, max_items)], start=1):
-        if not isinstance(citation, dict):
-            continue
-        doc_name = _citation_document_name(citation, index=idx)
-        snippet = _select_relevant_snippet(question=question, content=_citation_content(citation))
-        if not snippet:
-            continue
-        usable.append(f"{idx}. {doc_name}: {snippet}")
-
     explicit_mode = reason == "explicit_extractive_answer_mode"
+    usable = _extractive_evidence_lines(
+        question=question,
+        citations=citations,
+        max_items=max_items,
+    )
     if not usable:
-        if explicit_mode:
-            return (
-                "已按抽取式回答模式检索知识库，但没有找到可用于回答的引用证据。"
-                "请检查当前数据集是否已经完成入库和索引。"
-            )
-        return (
-            "模型服务当前不可用，系统已尝试检索知识库，但没有找到可用于回答的引用证据。"
-            "请稍后重试，或检查当前数据集是否已经完成入库和索引。"
-        )
+        return _extractive_no_evidence_message(explicit_mode=explicit_mode)
 
     question_text = _clean_snippet(question, max_chars=180)
     evidence_lines = "\n".join(usable)
@@ -374,49 +452,45 @@ def _answer_evidence_from_retrieval(
     seen: set[tuple[str, str]] = set()
 
     for doc in docs or []:
-        meta = getattr(doc, "metadata", None) or {}
-        doc_name = (
-            meta.get("document_name")
-            or meta.get("filename")
-            or meta.get("source")
-            or "文档"
-        )
-        content = getattr(doc, "page_content", None) or ""
-        key = (str(doc_name), str(content))
-        if key in seen or not str(content).strip():
-            continue
-        seen.add(key)
-        rows.append({"document_name": doc_name, "chunk_content": content})
-        if len(rows) >= max_items:
+        doc_name, content, row = _doc_evidence_row(doc)
+        if _append_unique_evidence_row(
+            rows=rows,
+            seen=seen,
+            max_items=max_items,
+            doc_name=doc_name,
+            content=content,
+            row=row,
+        ):
             return rows
 
     for citation in citations or []:
         if not isinstance(citation, dict):
             continue
-        doc_name = (
-            citation.get("document_name")
-            or citation.get("filename")
-            or citation.get("source")
-            or citation.get("metadata", {}).get("document_name")
-            or citation.get("metadata", {}).get("source")
-            or "引用"
-        )
-        content = (
-            citation.get("chunk_content")
-            or citation.get("content")
-            or citation.get("text")
-            or citation.get("metadata", {}).get("chunk_content")
-            or ""
-        )
-        key = (str(doc_name), str(content))
-        if key in seen or not str(content).strip():
-            continue
-        seen.add(key)
-        rows.append(dict(citation))
-        if len(rows) >= max_items:
+        doc_name, content, row = _citation_evidence_row(citation)
+        if _append_unique_evidence_row(
+            rows=rows,
+            seen=seen,
+            max_items=max_items,
+            doc_name=doc_name,
+            content=content,
+            row=row,
+        ):
             break
 
     return rows
+
+
+def _citation_document_id(citation: dict[str, Any]) -> UUID | None:
+    raw_doc_id = citation.get("document_id") or citation.get("doc_id")
+    if raw_doc_id is None:
+        meta = _citation_metadata(citation)
+        raw_doc_id = meta.get("document_id") or meta.get("doc_id")
+    if raw_doc_id is None:
+        return None
+    try:
+        return UUID(str(raw_doc_id))
+    except Exception:
+        return None
 
 
 def _source_identification_answer_from_citations(
@@ -437,17 +511,8 @@ def _source_identification_answer_from_citations(
     first = citations[0]
     if not isinstance(first, dict):
         return None
-    raw_doc_id = first.get("document_id") or first.get("doc_id")
-    if raw_doc_id is None:
-        meta = first.get("metadata")
-        if isinstance(meta, dict):
-            raw_doc_id = meta.get("document_id") or meta.get("doc_id")
-    if raw_doc_id is None:
-        return None
-
-    try:
-        doc_id = UUID(str(raw_doc_id))
-    except Exception:
+    doc_id = _citation_document_id(first)
+    if doc_id is None:
         return None
 
     try:
