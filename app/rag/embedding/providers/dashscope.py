@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import httpx
 
+from app.core.config import settings
 from app.rag.embedding.base import BaseEmbeddingModel
 from app.rag.embedding.utils import logger
 
@@ -76,10 +77,11 @@ class DashScopeEmbedding(BaseEmbeddingModel):
     async def aencode(self, message: str | list[str]) -> list[list[float]]:
         """Asynchronously encode text(s) to embeddings."""
         payload = self._build_payload(message)
-        async with httpx.AsyncClient() as client:
+        timeout = float(getattr(settings, "EMBEDDING_API_TIMEOUT_SEC", 60.0) or 60.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
             try:
                 response = await client.post(
-                    self.base_url, json=payload, headers=self.headers, timeout=60
+                    self.base_url, json=payload, headers=self.headers
                 )
                 response.raise_for_status()
                 result = response.json()

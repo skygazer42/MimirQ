@@ -180,12 +180,12 @@ async def _call_caption_backend_async(
       - JSON {"caption": "..."} OR {"text": "..."} OR
       - raw text body (treated as caption)
     """
-    async with httpx.AsyncClient() as client:
+    timeout = float(timeout_sec)
+    async with httpx.AsyncClient(timeout=timeout) as client:
         try:
             resp = await client.post(
                 str(api_url).strip(),
                 files={"file": (filename or "image", image_bytes, "application/octet-stream")},
-                timeout=float(timeout_sec),
             )
         except Exception as exc:  # noqa: BLE001
             return "", f"http_failed:{exc.__class__.__name__}"

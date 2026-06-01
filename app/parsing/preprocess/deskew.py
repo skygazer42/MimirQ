@@ -33,11 +33,11 @@ async def _deskew_via_http_async(
 ) -> tuple[bool, str]:
     try:
         file_bytes = input_path.read_bytes()
-        async with httpx.AsyncClient() as client:
+        timeout = float(timeout_sec)
+        async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.post(
                 str(url).strip(),
                 files={"file": (input_path.name, file_bytes, "application/octet-stream")},
-                timeout=float(timeout_sec),
             )
     except Exception as exc:  # noqa: BLE001
         return False, f"deskew_http_failed:{exc.__class__.__name__}"

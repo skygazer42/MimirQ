@@ -181,12 +181,12 @@ async def _call_chart_backend_async(
     filename: str,
     timeout_sec: float,
 ) -> tuple[dict[str, Any] | None, str]:
-    async with httpx.AsyncClient() as client:
+    timeout = float(timeout_sec)
+    async with httpx.AsyncClient(timeout=timeout) as client:
         try:
             resp = await client.post(
                 str(api_url).strip(),
                 files={"file": (filename or "chart.png", image_bytes, "application/octet-stream")},
-                timeout=float(timeout_sec),
             )
         except Exception as exc:  # noqa: BLE001
             return None, f"http_failed:{exc.__class__.__name__}"

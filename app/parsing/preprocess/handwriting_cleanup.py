@@ -40,11 +40,11 @@ async def _cleanup_handwriting_via_http_async(
 ) -> tuple[bool, str, dict[str, Any]]:
     try:
         file_bytes = input_path.read_bytes()
-        async with httpx.AsyncClient() as client:
+        timeout = float(timeout_sec)
+        async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(
                 target_url,
                 files={"file": (input_path.name, file_bytes, "application/octet-stream")},
-                timeout=float(timeout_sec),
             )
     except Exception as exc:  # noqa: BLE001
         return False, f"http_failed:{exc.__class__.__name__}", info

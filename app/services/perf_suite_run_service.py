@@ -129,7 +129,8 @@ def run_minimal_perf_suite_report(
     ]
 
     case_results: list[dict[str, Any]] = []
-    with httpx.Client(trust_env=False) as client:
+    client_timeout = timeout if timeout > 0.0 else None
+    with httpx.Client(trust_env=False, timeout=client_timeout) as client:
         for case in cases:
             case_results.append(
                 _run_case(
@@ -184,4 +185,3 @@ __all__ = [
     "run_minimal_perf_suite_report",
     "run_minimal_perf_suite_report_and_diff",
 ]
-
