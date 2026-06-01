@@ -26,6 +26,11 @@ def _git_diff_clean(path: Path) -> bool:
     return result.returncode == 0
 
 
+def _git_diff(path: Path) -> str:
+    result = _run(["git", "diff", "--", str(path)])
+    return result.stdout.strip()
+
+
 def main() -> int:
     repo_root = Path(__file__).resolve().parent.parent
     required = [
@@ -55,6 +60,13 @@ def main() -> int:
         joined = ", ".join(dirty)
         print(f"[openapi-check] FAIL: OpenAPI artifacts differ: {joined}")
         print("[openapi-check] Run `make openapi-types` and commit changes.")
+        for rel_path in dirty:
+            diff = _git_diff(Path(rel_path))
+            if diff:
+                print(f"[openapi-check] Diff for {rel_path}:")
+                print(diff[:20_000])
+                if len(diff) > 20_000:
+                    print("[openapi-check] ...diff truncated...")
         return 1
 
     # Schema sanity: empty `type: object` schemas generate `Record<string, never>` in openapi-typescript,
