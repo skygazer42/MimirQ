@@ -63,6 +63,7 @@ from app.api.schemas.pipeline import (
     PipelineChunkPreviewResponse,
     ZipWithImagesResponse,
 )
+from app.api.utils.response_headers import download_response_headers
 from app.api.utils.upload import save_upload_file
 from app.core.config import settings
 from app.core.database import get_db
@@ -2464,7 +2465,7 @@ async def export_governance_profile(
     return Response(
         content=content,
         media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename=\"{filename}\"'},
+        headers=download_response_headers(filename),
     )
 
 
@@ -2505,7 +2506,7 @@ async def export_governance_profile_ingestion_policy(
     return Response(
         content=content,
         media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename=\"{filename}\"'},
+        headers=download_response_headers(filename),
     )
 
 

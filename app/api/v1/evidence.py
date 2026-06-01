@@ -46,6 +46,7 @@ from app.api.schemas.evidence_repair import (
     EvidenceReferenceRepairRequest,
     EvidenceReferenceRepairResponse,
 )
+from app.api.utils.response_headers import download_response_headers
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.chat import Conversation, Message
@@ -1634,10 +1635,7 @@ async def export_training_dataset(
     return Response(
         content=content,
         media_type=media_type,
-        headers={
-            "Cache-Control": "no-store",
-            "Content-Disposition": f'attachment; filename="{filename}"',
-        },
+        headers=download_response_headers(filename),
     )
 
 
@@ -1910,8 +1908,5 @@ async def export_evidence_suite_ltr_training_bundle(
     return Response(
         content=raw,
         media_type="application/zip",
-        headers={
-            "Cache-Control": "no-store",
-            "Content-Disposition": f'attachment; filename="{filename}"',
-        },
+        headers=download_response_headers(filename),
     )
