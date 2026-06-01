@@ -74,6 +74,7 @@ import { cn, detachPromise } from '@/lib/utils'
 import type {
   Dataset,
   Document,
+  KGGraphLink,
   KGGraphNode,
   KGGraphResponse,
 } from '@/types'
@@ -381,8 +382,9 @@ function getLinkEndpointId(value: unknown): string {
 
 function getNodeMetaValue(node: KGGraphNode, ...keys: string[]): unknown {
   const meta = node.meta && typeof node.meta === 'object' ? node.meta : {}
+  const nodeRecord = node as unknown as Record<string, unknown>
   for (const key of keys) {
-    const direct = (node as any)[key]
+    const direct = nodeRecord[key]
     if (direct != null && direct !== '') return direct
     const metaValue = (meta as Record<string, unknown>)[key]
     if (metaValue != null && metaValue !== '') return metaValue
@@ -439,6 +441,18 @@ function getNodeType(node: KGGraphNode): string {
     firstDisplayString(getNodeMetaValue(node, 'type', 'entity_type', 'kind', 'node_type')) ||
     '节点'
   )
+}
+
+function getLinkValue(link: KGGraphLink, ...keys: string[]): unknown {
+  const linkRecord = link as unknown as Record<string, unknown>
+  const meta = link.meta && typeof link.meta === 'object' ? link.meta : {}
+  for (const key of keys) {
+    const direct = linkRecord[key]
+    if (direct != null && direct !== '') return direct
+    const metaValue = (meta as Record<string, unknown>)[key]
+    if (metaValue != null && metaValue !== '') return metaValue
+  }
+  return undefined
 }
 
 function toneForNodeType(type: string): SnapshotStudioNode['tone'] {
@@ -592,10 +606,7 @@ function buildSnapshotStudioGraphFromKgGraph(graph: KGGraphResponse | null): {
       if (!source || !target || !nodeById.has(source) || !nodeById.has(target))
         return null
       const label = String(
-        (link as any).label ||
-          (link as any).predicate ||
-          (link as any).relation ||
-          (link as any).type ||
+        getLinkValue(link, 'label', 'predicate', 'relation', 'type') ||
           '关联'
       )
       return {
@@ -603,9 +614,7 @@ function buildSnapshotStudioGraphFromKgGraph(graph: KGGraphResponse | null): {
         target,
         label,
         strength: strengthForWeight(
-          (link as any).weight ??
-            (link as any).confidence ??
-            (link as any).score
+          getLinkValue(link, 'weight', 'confidence', 'score')
         ),
       } satisfies SnapshotStudioLink
     })
@@ -2604,9 +2613,10 @@ export function KGSnapshotsPage() {
           }
           const reportHash = String(report?.pipeline_hash || '').trim()
           if (reportHash) {
+            const profile = report?.profile && typeof report.profile === 'object' ? report.profile : {}
             mergePipelineCandidate(candidateMap, {
               hash: reportHash,
-              documents: Number((report as any)?.profile?.document_count ?? 0) || 0,
+              documents: Number((profile as Record<string, unknown>).document_count ?? 0) || 0,
               source: 'report',
               active: true,
             })

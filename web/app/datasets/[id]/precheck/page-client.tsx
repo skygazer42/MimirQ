@@ -85,7 +85,7 @@ function findingBadgeVariant(sev: string): 'secondary' | 'outline' | 'soft' | 'd
 export default function DatasetPrecheckPage() {
   const router = useRouter()
   const params = useParams()
-  const datasetId = asDatasetId((params as any)?.id)
+  const datasetId = asDatasetId((params as Record<string, unknown>)?.id)
 
   const [selectedRun, setSelectedRun] = useState<DatasetPrecheckScanRunOut | null>(null)
   const [summary, setSummary] = useState<DatasetPrecheckSummary | null>(null)
@@ -328,7 +328,7 @@ export default function DatasetPrecheckPage() {
         } else if (next.error_message) {
           toast.error(`预检扫描失败：${next.error_message}`)
         }
-      } catch (e: any) {
+      } catch (e: unknown) {
         console.error('Failed to poll precheck run', e)
         setScanRunning(false)
         stopPolling()
@@ -423,7 +423,7 @@ export default function DatasetPrecheckPage() {
         setScanRunning(false)
       }
       toast.success('已启动预检扫描')
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('Failed to start precheck scan', e)
       toast.error(formatApiError(e, '启动预检扫描失败'))
       setScanRunning(false)
@@ -437,7 +437,7 @@ export default function DatasetPrecheckPage() {
       const run = await datasetApi.cancelPrecheckScan(datasetId, selectedRun.id)
       setSelectedRun(run)
       toast.success('已请求取消')
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('Failed to cancel precheck scan', e)
       toast.error(formatApiError(e, '取消失败'))
     } finally {
@@ -463,7 +463,7 @@ export default function DatasetPrecheckPage() {
         replace: !!policyApplyReplace,
       })
       toast.success(`已应用入库策略（rules=${res.rule_count}）`)
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('Failed to apply ingestion policy', e)
       toast.error(formatApiError(e, '应用失败'))
     } finally {
@@ -479,7 +479,7 @@ export default function DatasetPrecheckPage() {
       const safe = String(dataset?.name || 'dataset').replaceAll(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)
       downloadBlob(blob, `${safe}.precheck.json`)
       toast.success('已导出 JSON 报告')
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('Failed to export precheck json', e)
       toast.error(formatApiError(e, '导出失败'))
     } finally {
@@ -495,7 +495,7 @@ export default function DatasetPrecheckPage() {
       const safe = String(dataset?.name || 'dataset').replaceAll(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)
       downloadBlob(blob, `${safe}.precheck.html`)
       toast.success('已导出 HTML 报告')
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('Failed to export precheck html', e)
       toast.error(formatApiError(e, '导出失败'))
     } finally {
@@ -503,7 +503,7 @@ export default function DatasetPrecheckPage() {
     }
   }, [datasetId, dataset?.name, selectedRun?.id])
 
-  const downloadJsonObject = useCallback((obj: any, filename: string) => {
+  const downloadJsonObject = useCallback((obj: unknown, filename: string) => {
     try {
       const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' })
       downloadBlob(blob, filename)

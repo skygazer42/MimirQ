@@ -527,6 +527,14 @@ function parseExtensions(text: string): string[] {
     .map((s) => (s.startsWith('.') ? s : `.${s}`))
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
 type RuleDraft = {
   id: string
   name: string
@@ -560,10 +568,14 @@ function ruleToDraft(rule: IngestionRule): RuleDraft {
 }
 
 function draftToRule(d: RuleDraft): IngestionRule {
-  let patch: Record<string, any> | undefined
+  let patch: Record<string, unknown> | undefined
   const raw = (d.pipelinePatchJson || '').trim()
   if (raw) {
-    patch = JSON.parse(raw)
+    const parsed: unknown = JSON.parse(raw)
+    if (!isRecord(parsed)) {
+      throw new Error('pipeline patch must be a JSON object')
+    }
+    patch = parsed
   }
   return {
     id: d.id.trim(),
@@ -733,7 +745,7 @@ export default function DatasetIngestionPolicyPage() {
         await datasetApi.rollbackIngestionPolicy(datasetId, { version_id: id })
         toast.success('已回滚入库策略')
         await Promise.all([refreshIngestionPolicy(), refreshVersions()])
-      } catch (e: any) {
+      } catch (e: unknown) {
         console.error('Failed to rollback ingestion policy', e)
         toast.error(formatApiError(e, '回滚失败'))
       } finally {
@@ -780,8 +792,8 @@ export default function DatasetIngestionPolicyPage() {
       else newRules.splice(editingIndex, 1, rule)
       setPolicy({ version: '1', rules: newRules })
       setEditorOpen(false)
-    } catch (e: any) {
-      toast.error(`规则保存失败：${String(e?.message || e)}`)
+    } catch (e: unknown) {
+      toast.error(`规则保存失败：${errorMessage(e)}`)
     }
   }, [draft, editingIndex, policy])
 
@@ -840,7 +852,7 @@ export default function DatasetIngestionPolicyPage() {
       await datasetApi.updateIngestionPolicy(datasetId, policy)
       toast.success('已保存入库策略')
       await refreshIngestionPolicy()
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('Failed to save ingestion policy', e)
       toast.error(formatApiError(e, '保存失败（请检查规则ID/扩展名/正则/patch JSON）'))
     } finally {
@@ -854,7 +866,7 @@ export default function DatasetIngestionPolicyPage() {
       const blob = await datasetApi.exportIngestionPolicy(datasetId)
       const safe = (dataset?.name || datasetId).replaceAll(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)
       downloadBlob(blob, `${safe}.ingestion-policy.json`)
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('Failed to export ingestion policy', e)
       toast.error(formatApiError(e, '导出失败'))
     }
@@ -866,7 +878,7 @@ export default function DatasetIngestionPolicyPage() {
       const res = await datasetApi.importIngestionPolicy(datasetId, file, true)
       toast.success(`导入成功：规则 ${res.rule_count}`)
       await refreshIngestionPolicy()
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('Failed to import ingestion policy', e)
       toast.error(formatApiError(e, '导入失败（请检查脚本格式/正则是否安全）'))
     } finally {
@@ -882,7 +894,7 @@ export default function DatasetIngestionPolicyPage() {
       const res = await pipelineApi.ingestionPreview(previewFile, { dataset_id: datasetId, diff_max_lines: 2000 })
       setPreview(res)
       toast.success('预览已生成')
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('Failed to run ingestion preview', e)
       toast.error(formatApiError(e, '预览失败'))
     } finally {
