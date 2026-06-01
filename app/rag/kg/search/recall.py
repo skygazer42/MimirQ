@@ -557,6 +557,7 @@ class RecallSearcher:
                         try:
                             ent_uuid = UUID(str(ent_id))
                         except Exception:
+                            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                             continue
                         if ent_uuid in allowed_entity_ids:
                             filtered_entities.append(ent)

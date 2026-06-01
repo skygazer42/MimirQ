@@ -9,6 +9,7 @@ Provides:
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable
 from typing import Any
 from uuid import UUID
@@ -302,6 +303,7 @@ class DatasetCategoryService:
             try:
                 cid2 = UUID(str(cid))
             except Exception:
+                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                 continue
             if cid2 in seen:
                 continue

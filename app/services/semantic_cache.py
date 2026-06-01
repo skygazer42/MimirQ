@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import time
 from typing import Any
 
@@ -277,6 +278,7 @@ def get_cached_semantic_payload(
         try:
             payload = json.loads(raw)
         except Exception:  # noqa: BLE001
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if not isinstance(payload, list):
             continue

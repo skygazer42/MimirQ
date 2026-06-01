@@ -7,6 +7,7 @@ Goal:
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -88,6 +89,7 @@ def _aggregate_governance_metrics(
                 try:
                     drop_reasons_total[key] = drop_reasons_total.get(key, 0) + int(v or 0)
                 except Exception:
+                    logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                     continue
 
         packs = meta.get("governance_rule_packs")
@@ -551,6 +553,7 @@ def _aggregate_must_recall_summary(
             try:
                 return max(0, int(summary.get(key) or 0))
             except Exception:
+                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                 continue
         return None
 
@@ -604,6 +607,7 @@ def _aggregate_hierarchy_recall_summary(
             try:
                 v = float(raw)
             except Exception:
+                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                 continue
             v = min(1.0, max(0.0, v))
             return round(v, 6)
@@ -849,6 +853,7 @@ class ReportService:
                                 if int(refs.get("page") or 0) > 0:
                                     cnt += 1
                             except Exception:
+                                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                                 continue
                         events_with_page_ref = int(cnt)
                     except Exception:
@@ -905,6 +910,7 @@ class ReportService:
                                 if int(extra.get("page") or 0) > 0:
                                     cnt2 += 1
                             except Exception:
+                                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                                 continue
                         links_with_page_ref = int(cnt2)
                     except Exception:
@@ -992,6 +998,7 @@ class ReportService:
                                 }
                             )
                         except Exception:
+                            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                             continue
                 except Exception:
                     documents_with_kg_extracted_at = 0

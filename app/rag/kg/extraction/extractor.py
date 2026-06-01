@@ -4,6 +4,7 @@ Event extractor coordinating LLM + embeddings + persistence.
 
 import asyncio
 import hashlib
+import logging
 import time
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -2744,6 +2745,7 @@ class EventExtractor:
                     try:
                         meta[str(key)] = int(val or 0)
                     except Exception:
+                        logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                         continue
                 doc.doc_metadata = meta
             session.commit()

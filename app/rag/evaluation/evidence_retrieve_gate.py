@@ -14,6 +14,7 @@ This module provides small, deterministic helpers:
 
 from __future__ import annotations
 
+import logging
 import math
 from collections.abc import Iterable
 from typing import Any
@@ -110,6 +111,7 @@ def _mean(values: Iterable[float | None]) -> float | None:
         try:
             fv = float(v)
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if math.isnan(fv):
             continue

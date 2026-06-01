@@ -8,6 +8,7 @@ This is intentionally conservative:
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any
 
@@ -907,6 +908,7 @@ def _extract_question_limit(question: str, *, default_limit: int) -> int:
         try:
             n = int(m.group(1))
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if n > 0:
             return max(1, n)

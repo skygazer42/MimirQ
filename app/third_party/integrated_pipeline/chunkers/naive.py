@@ -233,6 +233,7 @@ class Docx(DocxParser):
                 else:
                     res_img = concat_img(res_img, image)
             except Exception:
+                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                 continue
 
         return res_img

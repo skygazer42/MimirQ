@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import logging
 import uuid
 from typing import Annotated
 from uuid import UUID
@@ -383,6 +384,7 @@ async def activate_document_version(
             try:
                 total_chars += int(metadata.get("content_len") or 0)
             except Exception:
+                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                 continue
     except Exception:
         total_chars = 0

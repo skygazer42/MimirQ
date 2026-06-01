@@ -16,6 +16,7 @@ from __future__ import annotations
 import gzip
 import hashlib
 import json
+import logging
 import re
 import threading
 from collections import Counter
@@ -219,6 +220,7 @@ def _coerce_sparse_vector(obj: Any) -> SparseVector:
             try:
                 weights[str(k)] = float(v)
             except Exception:
+                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                 continue
         return SparseVector(weights=weights)
     return SparseVector(weights={})
@@ -348,6 +350,7 @@ class SpladeSparseEncoder:
                     try:
                         score = float(val)
                     except Exception:
+                        logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                         continue
                     if score <= self._min_w:
                         continue

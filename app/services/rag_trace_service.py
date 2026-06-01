@@ -9,6 +9,7 @@ and should stay PII-safe by construction.
 from __future__ import annotations
 
 import json
+import logging
 import time
 from collections.abc import Iterable
 from pathlib import Path
@@ -580,6 +581,7 @@ def _parse_jsonl_dicts(text: str) -> list[dict[str, Any]]:
         try:
             obj = json.loads(line)
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if isinstance(obj, dict):
             records.append(obj)
@@ -814,6 +816,7 @@ def _max_float(values: Iterable[float | None]) -> float | None:
         try:
             fv = float(v)
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if best is None or fv > best:
             best = fv
@@ -948,6 +951,7 @@ def _normalize_trace_items(records: list[dict[str, Any]]) -> list[RagTrace]:
         try:
             items.append(normalize_rag_trace_record(record))
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
     return items
 

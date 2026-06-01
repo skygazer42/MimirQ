@@ -8,6 +8,7 @@ Sources (priority order):
 
 from __future__ import annotations
 
+import logging
 import math
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -144,6 +145,7 @@ def _build_window_from_metrics_jsonl(*, tenant_id: str | None, window_minutes: i
             try:
                 error_count += int(v or 0)
             except Exception:
+                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                 continue
 
     error_rate = (float(error_count) / float(summary.rag_trace_count)) if summary.rag_trace_count else None

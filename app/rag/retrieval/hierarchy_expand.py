@@ -13,6 +13,7 @@ Use-cases:
 from __future__ import annotations
 
 import hashlib
+import logging
 from collections.abc import Callable, Iterable
 from typing import Any
 
@@ -66,6 +67,7 @@ def _score(meta: dict[str, Any]) -> float:
         try:
             return float(v or 0.0)
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
     return 0.0
 

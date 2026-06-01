@@ -20,6 +20,7 @@ import asyncio
 import base64
 import io
 import json
+import logging
 import uuid
 from collections.abc import AsyncGenerator, Iterable
 from pathlib import Path
@@ -105,6 +106,7 @@ def _load_image_bytes_from_local_sync(*, tenant_id: UUID, image_id: str, max_byt
                 data = f.read(int(max_bytes) if int(max_bytes or 0) > 0 else -1)
             return data or None
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
     return None
 
@@ -386,6 +388,7 @@ async def stream_vision_chat_completions_tokens(
             try:
                 evt = json.loads(data_s)
             except Exception:
+                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                 continue
             if not isinstance(evt, dict):
                 continue

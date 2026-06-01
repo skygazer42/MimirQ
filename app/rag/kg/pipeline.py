@@ -3,6 +3,7 @@ Facade to run KG extraction + search inside the existing backend.
 KG module can be toggled via settings.KG_ENABLED (env: KG_ENABLED).
 """
 
+import logging
 import threading
 from collections.abc import Iterable, Sequence
 from typing import Any
@@ -39,6 +40,7 @@ def _resolve_doc_pipeline_fingerprint(*, tenant_id: UUID, document_ids: list[str
         try:
             doc_uuids.append(UUID(str(d)))
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
     if not doc_uuids:
         return None

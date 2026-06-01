@@ -7,6 +7,7 @@ Both modes support advanced PDF parsing (tables, images, formulas, etc.)
 """
 import asyncio
 import io
+import logging
 import re
 import tempfile
 import time
@@ -726,6 +727,7 @@ class MinerUService:
                     try:
                         binary = zf.read(member)
                     except Exception:
+                        logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                         continue
                     if not binary or len(binary) > max_bytes:
                         continue
@@ -738,6 +740,7 @@ class MinerUService:
                     try:
                         out_path.write_bytes(binary)
                     except Exception:
+                        logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                         continue
 
                     cached_id_by_norm[norm] = img_id

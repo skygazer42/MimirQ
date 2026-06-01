@@ -13,6 +13,7 @@ Design principles:
 from __future__ import annotations
 
 import json
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -68,6 +69,7 @@ def _iter_jsonl(path: Path):  # noqa: ANN202
             try:
                 obj = json.loads(s)
             except Exception:
+                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                 continue
             if isinstance(obj, dict):
                 yield obj

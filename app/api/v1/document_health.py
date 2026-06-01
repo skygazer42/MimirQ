@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Annotated, Any
@@ -127,6 +128,7 @@ async def get_document_health_card(
         try:
             ranges.append((int(start), int(end)))
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
 
     coverage = compute_chunk_coverage_metrics_from_ranges(

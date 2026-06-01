@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import logging
 import shutil
 import uuid
 from dataclasses import asdict, dataclass
@@ -294,6 +295,7 @@ async def preview_document(
                         continue
                     path.relative_to(tenant_root)
                 except Exception:
+                    logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                     continue
                 with contextlib.suppress(Exception):
                     shutil.rmtree(path, ignore_errors=True)

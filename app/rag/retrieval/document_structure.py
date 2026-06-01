@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 from uuid import UUID
 
@@ -337,6 +338,7 @@ def load_structures_for_citations(
         try:
             doc_id = UUID(str(raw))
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if doc_id in seen:
             continue

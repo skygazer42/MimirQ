@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any, Callable, Mapping, Sequence
 
 
@@ -18,6 +19,7 @@ def _best_score(rows: Sequence[dict[str, Any]] | None) -> float | None:
         try:
             score = float(item.get("score"))
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if best is None or score > best:
             best = score

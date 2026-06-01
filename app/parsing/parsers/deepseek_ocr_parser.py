@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import logging
 import re
 import shutil
 import threading
@@ -148,6 +149,7 @@ class DeepSeekOCRParser:
                 try:
                     extracted = doc.extract_image(xref) or {}
                 except Exception:
+                    logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                     continue
                 raw = extracted.get("image")
                 if not raw:
@@ -162,6 +164,7 @@ class DeepSeekOCRParser:
                     try:
                         raw_path.write_bytes(raw)
                     except Exception:
+                        logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                         continue
 
                 # Alias for jpg/jpeg to cover both reference styles.
@@ -440,6 +443,7 @@ class DeepSeekOCRParser:
             try:
                 dest_path.relative_to(images_dir_resolved)
             except Exception:
+                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                 continue
             if dest_path.exists():
                 continue
@@ -447,6 +451,7 @@ class DeepSeekOCRParser:
             try:
                 dest_path.parent.mkdir(parents=True, exist_ok=True)
             except Exception:
+                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                 continue
 
             prefer = "jpg" if ext in {".jpg", ".jpeg"} else "png"

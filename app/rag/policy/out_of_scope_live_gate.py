@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any, Callable, Mapping, Sequence
 from uuid import UUID
 
@@ -24,6 +25,7 @@ def _normalize_vector_hits(rows: Sequence[dict[str, Any]] | None) -> list[dict[s
         try:
             out.append({"score": float(score or 0.0)})
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
     return out
 

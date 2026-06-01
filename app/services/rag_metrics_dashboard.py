@@ -15,6 +15,7 @@ from __future__ import annotations
 import gzip
 import hashlib
 import json
+import logging
 import math
 import time
 from collections import defaultdict
@@ -57,6 +58,7 @@ def _mean(values: Iterable[float]) -> float | None:
         try:
             fv = float(v)
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         vals.append(fv)
     if not vals:
@@ -70,6 +72,7 @@ def _stddev(values: Iterable[float]) -> float | None:
         try:
             fv = float(v)
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if not math.isfinite(fv):
             continue
@@ -170,6 +173,7 @@ def _parse_jsonl_records(text: str) -> list[dict[str, Any]]:
         try:
             obj = json.loads(line)
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if isinstance(obj, dict):
             records.append(obj)

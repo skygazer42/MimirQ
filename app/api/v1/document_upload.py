@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import json
+import logging
 import uuid
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
@@ -802,6 +803,7 @@ async def upload_documents_batch(
                             documents_module.shutil.copy2(src, dst)
                             linked_any = True
                         except Exception:
+                            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                             continue
 
                 if linked_any:

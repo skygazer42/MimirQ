@@ -4,6 +4,7 @@ Pipeline configuration service.
 Provides parsing, building, and resolution for pipeline configuration.
 """
 
+import logging
 import re
 from dataclasses import asdict
 from typing import Any
@@ -140,6 +141,7 @@ def _sanitize_regex_rules(value: Any) -> list[dict] | None:
         try:
             flags_int = int(flags)
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if flags_int < 0 or (flags_int & ~_ALLOWED_RE_FLAG_BITS):
             continue

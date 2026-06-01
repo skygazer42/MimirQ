@@ -104,6 +104,7 @@ class PptxParser:
                         prefix = ("  " * level) + "- " if text else ""
                         parts.append(f"{prefix}{text}" if prefix else text)
                 except Exception:
+                    logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                     continue
 
             content = "\n".join([p for p in (parts or []) if p]).strip()

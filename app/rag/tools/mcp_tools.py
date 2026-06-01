@@ -16,6 +16,7 @@ Usage:
 import ast
 import asyncio
 import contextlib
+import logging
 import math
 import re
 from collections.abc import Iterator
@@ -546,6 +547,7 @@ def _parse_pages_selector(pages: Any) -> list[int]:
                 start = int(left.strip())
                 end = int(right.strip())
             except Exception:
+                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                 continue
             if start <= 0 or end <= 0:
                 continue
@@ -555,6 +557,7 @@ def _parse_pages_selector(pages: Any) -> list[int]:
         try:
             value = int(token)
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if value > 0:
             out.append(value)
