@@ -235,8 +235,8 @@ def _build_shadow_embedding_text(
             )
             if prefix:
                 embed_text = prefix + "\n" + raw_body
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring contextual embedding prefix build failure: %s", exc)
 
     if bool(meta.get("embedding_context_prefix_enabled")):
         embed_text = _build_embedding_text(embed_text, meta)
@@ -417,8 +417,8 @@ def run_shadow_collection_backfill(
                 chunks_q = chunks_q.filter(
                     DocumentChunk.doc_metadata["pipeline_hash"].astext == active_hash  # type: ignore[attr-defined]
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring pipeline hash JSONB filter fallback failure: %s", exc)
 
         chunks_q = chunks_q.order_by(DocumentChunk.chunk_index.asc())
         if int(chunk_limit_per_document or 0) > 0:

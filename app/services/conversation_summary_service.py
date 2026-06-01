@@ -14,8 +14,11 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.chat import Message
 from app.models.conversation_summary import ConversationSummary
+from app.rag.core.logging import get_logger
 from app.rag.engine import get_rag_engine
 from app.rag.memory.short_term import summarize_messages
+
+logger = get_logger(__name__)
 
 
 def get_conversation_summary(
@@ -130,9 +133,8 @@ async def update_conversation_summary(
     # Best-effort timestamps for non-Postgres backends.
     try:
         row.updated_at = datetime.now(UTC)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Ignoring conversation summary timestamp update failure: %s", exc)
 
     db.commit()
     return summary
-

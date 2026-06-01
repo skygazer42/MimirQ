@@ -7,6 +7,10 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 
+from app.rag.core.logging import get_logger
+
+logger = get_logger(__name__)
+
 
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
@@ -280,8 +284,8 @@ def build_pipeline_version_snapshot(
     }
     try:
         from app.core.config import settings
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Ignoring settings import failure while building index provenance: %s", exc)
     else:
         index_obj["vector_backend"] = str(getattr(settings, "VECTOR_BACKEND", None) or "") or None
     index_hash = canonical_json_sha256(index_obj)

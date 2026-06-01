@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from app.core.config import settings
+from app.rag.core.logging import get_logger
 from app.rag.trace_schema import (
     RagTrace,
     RagTraceCitation,
@@ -24,6 +25,8 @@ from app.rag.trace_schema import (
     RagTraceRetrievalQuery,
     RagTraceStep,
 )
+
+logger = get_logger(__name__)
 
 
 def _to_int(v: Any) -> int | None:
@@ -740,8 +743,8 @@ def _safe_kg_path_provenance(raw: Any) -> dict[str, Any] | None:
     try:
         if raw.get("hops") is not None:
             out["hops"] = int(raw.get("hops") or 0)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Ignoring malformed KG provenance hop count: %s", exc)
 
     nodes = _safe_kg_provenance_entries(raw.get("nodes"), item_builder=_safe_kg_provenance_node)
     if nodes:

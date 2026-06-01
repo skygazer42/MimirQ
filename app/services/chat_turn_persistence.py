@@ -9,10 +9,13 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.token_utils import num_tokens_from_string
 from app.models.chat import Message
+from app.rag.core.logging import get_logger
 from app.services.audit_log_service import audit_log_event, build_chat_audit_details
 from app.services.chat_memory_runtime import _touch_conversation_after_turn
 from app.services.conversation_summary_service import update_conversation_summary
 from app.services.structured_memory_service import extract_structured_memory_for_turn
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -97,8 +100,8 @@ async def auto_update_summary_background(*, tenant_id: UUID, conversation_id: UU
         finally:
             try:
                 db2.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring summary update session close failure: %s", exc)
     except Exception:
         return
 
@@ -122,8 +125,8 @@ def persist_chat_turn_sync(
                 max_entities=int(getattr(settings, "STRUCTURED_MEMORY_MAX_ENTITIES", 20) or 20),
                 max_facts=int(getattr(settings, "STRUCTURED_MEMORY_MAX_FACTS", 8) or 8),
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring structured memory extraction failure for chat turn: %s", exc)
 
     assistant_message = Message(
         id=options.assistant_message_id,

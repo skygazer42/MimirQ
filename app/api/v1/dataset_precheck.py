@@ -37,6 +37,7 @@ from app.api.schemas.ingestion_policy import IngestionPolicyImportResponse
 from app.api.utils.response_headers import download_response_headers
 from app.core.database import SessionLocal, get_db
 from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
+from app.rag.core.logging import get_logger
 from app.services.dataset_precheck_diff import diff_precheck_summaries
 from app.services.dataset_precheck_ingestion_suggestion import (
     apply_ingestion_policy_suggestion,
@@ -58,6 +59,8 @@ from app.services.dataset_precheck_service import (
 from app.services.ingestion_policy import parse_ingestion_policy_from_metadata
 from app.services.report_html import render_precheck_html
 from app.tasks.queue import enqueue_dataset_precheck_scan
+
+logger = get_logger(__name__)
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -124,8 +127,8 @@ def _run_precheck_scan_background(
                 row.status = "failed"
                 row.error_message = str(exc)[:200]
                 db.commit()
-        except Exception:
-            pass
+        except Exception as update_exc:
+            logger.debug("Ignoring precheck background failure status update failure: %s", update_exc)
     finally:
         db.close()
 

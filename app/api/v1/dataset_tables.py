@@ -29,6 +29,7 @@ from app.api.schemas.table_store import (
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.document import Document as DBDocument
+from app.rag.core.logging import get_logger
 from app.rag.preprocessing.pii_anonymizer import anonymize_pii
 from app.rag.preprocessing.secrets import redact_secrets
 from app.services.audit_log_service import audit_log_event
@@ -54,6 +55,8 @@ from app.services.table_tag_service import (
     generate_sql_for_table_with_metadata,
     tag_enabled,
 )
+
+logger = get_logger(__name__)
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -210,11 +213,13 @@ def _audit_fls_redaction(
             resource_id=str(resource_id or "")[:255] if resource_id else None,
             details=payload,
         )
-    except Exception:
+    except Exception as exc:
+        logger.debug("Ignoring FLS redaction audit write failure: %s", exc)
         return
     try:
         db.commit()
-    except Exception:
+    except Exception as exc:
+        logger.debug("Ignoring FLS redaction audit commit failure: %s", exc)
         return
 
 
@@ -954,8 +959,8 @@ def lotus_sem_filter_dataset_table(
                         for c, mask in mask_map.items():
                             if c in df.columns:  # type: ignore[operator]
                                 df[c] = str(mask)  # type: ignore[index]
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Ignoring LOTUS table FLS mask preparation failure: %s", exc)
             finally:
                 conn.close()
         except Exception as exc:  # noqa: BLE001
