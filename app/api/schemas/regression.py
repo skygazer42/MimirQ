@@ -17,6 +17,29 @@ from app.rag.core.text import normalize_retrieval_mode
 from .base import OrmModel
 
 HIERARCHY_FAMILY_AGGREGATION_VALUES = ("frequency", "score", "combined")
+FUSION_OVERRIDE_CHANNELS = {"vector", "bm25", "lexical", "sparse"}
+
+
+def _require_fusion_override_object(raw: Any, *, field_name: str) -> dict | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError(f"{field_name} must be an object")
+    bad = [str(k) for k in raw if str(k) not in FUSION_OVERRIDE_CHANNELS]
+    if bad:
+        raise ValueError(f"{field_name} keys must be among: {sorted(FUSION_OVERRIDE_CHANNELS)}")
+    return raw
+
+
+def _validate_numeric_fusion_override(raw: Any, *, field_name: str, caster: type, max_value: float) -> None:
+    values = _require_fusion_override_object(raw, field_name=field_name)
+    if values is None:
+        return
+    for value in values.values():
+        coerced = caster(value)
+        if coerced < 0 or coerced > max_value:
+            upper = int(max_value) if float(max_value).is_integer() else max_value
+            raise ValueError(f"{field_name} values must be in [0,{upper}]")
 
 
 class ReferenceSource(BaseModel):
@@ -313,41 +336,9 @@ class RagasRegressionRunCreateRequest(BaseModel):
 
     @model_validator(mode="after")
     def _validate_fusion_overrides(self):
-        allowed = {"vector", "bm25", "lexical", "sparse"}
-
-        if self.fusion_budgets is not None:
-            if not isinstance(self.fusion_budgets, dict):
-                raise ValueError("fusion_budgets must be an object")
-            bad = [str(k) for k in self.fusion_budgets.keys() if str(k) not in allowed]
-            if bad:
-                raise ValueError(f"fusion_budgets keys must be among: {sorted(allowed)}")
-            for value in self.fusion_budgets.values():
-                iv = int(value)
-                if iv < 0 or iv > 1000:
-                    raise ValueError("fusion_budgets values must be in [0,1000]")
-
-        if self.fusion_min_scores is not None:
-            if not isinstance(self.fusion_min_scores, dict):
-                raise ValueError("fusion_min_scores must be an object")
-            bad = [str(k) for k in self.fusion_min_scores.keys() if str(k) not in allowed]
-            if bad:
-                raise ValueError(f"fusion_min_scores keys must be among: {sorted(allowed)}")
-            for value in self.fusion_min_scores.values():
-                fv = float(value)
-                if fv < 0.0 or fv > 1.0:
-                    raise ValueError("fusion_min_scores values must be in [0,1]")
-
-        if self.fusion_weights is not None:
-            if not isinstance(self.fusion_weights, dict):
-                raise ValueError("fusion_weights must be an object")
-            bad = [str(k) for k in self.fusion_weights.keys() if str(k) not in allowed]
-            if bad:
-                raise ValueError(f"fusion_weights keys must be among: {sorted(allowed)}")
-            for value in self.fusion_weights.values():
-                fv = float(value)
-                if fv < 0.0 or fv > 10.0:
-                    raise ValueError("fusion_weights values must be in [0,10]")
-
+        _validate_numeric_fusion_override(self.fusion_budgets, field_name="fusion_budgets", caster=int, max_value=1000)
+        _validate_numeric_fusion_override(self.fusion_min_scores, field_name="fusion_min_scores", caster=float, max_value=1)
+        _validate_numeric_fusion_override(self.fusion_weights, field_name="fusion_weights", caster=float, max_value=10)
         return self
 
 
