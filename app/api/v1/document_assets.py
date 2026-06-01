@@ -5,13 +5,13 @@ import mimetypes
 import uuid
 from pathlib import Path
 from typing import Annotated, Any
-from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
+from app.api.utils.response_headers import set_content_disposition
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.dataset import Dataset
@@ -190,8 +190,7 @@ async def download_document(
             media_type = "application/octet-stream"
 
         disposition = "inline" if inline else "attachment"
-        safe_name = (document.filename or "document").replace("\n", " ").replace("\r", " ")
-        headers["Content-Disposition"] = f"{disposition}; filename*=UTF-8''{quote(safe_name)}"
+        set_content_disposition(headers, document.filename or "document", disposition=disposition)
 
         return StreamingResponse(
             docs_mod.minio_service.iter_object_bytes(object_name=ref.object_name, offset=offset, length=length),

@@ -3,7 +3,6 @@ from __future__ import annotations
 import uuid
 from pathlib import Path
 from typing import Annotated
-from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -13,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.document import DocumentParsedContentResponse
+from app.api.utils.response_headers import file_response_headers
 from app.core.database import get_db
 from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
@@ -143,11 +143,7 @@ async def download_document_clean_docx(
         if str(first.get("type") or "").strip().lower() == "heading" and str(first.get("text") or "").strip() == title:
             blocks = blocks[1:]
     payload = render_clean_docx_bytes(title=title, blocks=blocks)
-    ascii_filename = "clean.docx"
-    encoded_filename = quote(f"{title}_Clean.docx")
-    headers = {
-        "Content-Disposition": f"inline; filename=\"{ascii_filename}\"; filename*=UTF-8''{encoded_filename}",
-    }
+    headers = file_response_headers(f"{title}_Clean.docx", disposition="inline", cache_control=None)
     return StreamingResponse(
         iter([payload]),
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
