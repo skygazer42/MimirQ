@@ -6,11 +6,155 @@ from typing import Any
 
 from app.core.config import settings
 from app.rag.kg.loading.processor import DocumentProcessor
-from app.rag.kg.provenance import build_kg_path_provenance
 from app.rag.kg.repository import EventRepository, get_session
 from app.rag.kg.search.config import SearchConfig
+from app.rag.kg.search.ranking.features import (
+    base_event_extras,
+    clamped_hop,
+    event_id,
+    event_search_text,
+    exact_phrase_metadata,
+    kg_path_metadata,
+    phrase_score,
+    shared_key_entity_count,
+)
 from app.rag.kg.search.utils import cosine_similarity, format_events
-from app.rag.retrieval.query_phrase_match import query_phrase_match
+
+
+def _key_weight_map(key_final: list[dict[str, Any]]) -> dict[Any, Any]:
+    return {item.get("entity_id"): item.get("weight", 0.0) for item in key_final}
+
+
+def _key_entity_ids(key_final: list[dict[str, Any]]) -> set[str]:
+    return {str(item.get("entity_id") or "").strip() for item in key_final or [] if item.get("entity_id")}
+
+
+def _entity_weight(entity_id_value: str, key_weights: dict[Any, Any], default: float = 0.1) -> float:
+    return float(key_weights.get(entity_id_value, default) or default)
+
+
+def _entity_to_events(assoc_map: dict[str, list[Any]], graph_ids: set[str]) -> dict[str, list[str]]:
+    entity_to_events: dict[str, list[str]] = {}
+    for item_id, entities in (assoc_map or {}).items():
+        if item_id not in graph_ids:
+            continue
+        for entity in entities or []:
+            entity_id_value = str(getattr(entity, "id", "") or "")
+            if entity_id_value:
+                entity_to_events.setdefault(entity_id_value, []).append(item_id)
+    return entity_to_events
+
+
+def _build_shared_entity_graph(
+    *,
+    events: list[Any],
+    assoc_map: dict[str, list[Any]],
+    key_weights: dict[Any, Any],
+) -> dict[str, dict[str, float]]:
+    graph: dict[str, dict[str, float]] = {event_id(event): {} for event in events}
+    graph_ids = set(graph)
+    ordered_entities = sorted(
+        _entity_to_events(assoc_map, graph_ids).items(),
+        key=lambda item: (-_entity_weight(item[0], key_weights), item[0]),
+    )
+    for entity_id_value, event_list in ordered_entities:
+        if len(event_list) < 2:
+            continue
+        weight = _entity_weight(entity_id_value, key_weights)
+        unique_events = sorted(set(event_list))
+        for index, left in enumerate(unique_events):
+            for right in unique_events[index + 1 :]:
+                graph[left][right] = float(graph[left].get(right, 0.0) or 0.0) + weight
+                graph[right][left] = float(graph[right].get(left, 0.0) or 0.0) + weight
+    return graph
+
+
+def _base_scores(
+    *,
+    events: list[Any],
+    event_scores: dict[str, float],
+    query_vec: list[float],
+    assoc_map: dict[str, list[Any]],
+    key_weights: dict[Any, Any],
+    query: str,
+    phrase_boost_weight: float,
+) -> dict[str, float]:
+    scores: dict[str, float] = {**event_scores}
+    for event in events:
+        item_id = event_id(event)
+        similarity = cosine_similarity(query_vec, getattr(event, "content_vector", None) or [])
+        entities = assoc_map.get(item_id, [])
+        boost = sum(key_weights.get(str(getattr(entity, "id", "") or ""), 0.0) for entity in entities)
+        phrase_boost = phrase_score(query, event_search_text(event)) * phrase_boost_weight
+        recall_score = event_scores.get(item_id, 0.0)
+        scores[item_id] = 0.5 * recall_score + 0.3 * similarity + 0.2 * boost + phrase_boost
+    return scores
+
+
+def _extras_by_event(
+    *,
+    events: list[Any],
+    assoc_map: dict[str, list[Any]],
+    key_entity_ids: set[str],
+    event_hops: dict[str, int] | None,
+    query: str,
+) -> dict[str, dict[str, Any]]:
+    extras: dict[str, dict[str, Any]] = {}
+    for event in events:
+        item_id = event_id(event)
+        if not item_id:
+            continue
+        entities = assoc_map.get(item_id, []) if isinstance(assoc_map, dict) else []
+        extra = base_event_extras(
+            event,
+            hop=clamped_hop(event_hops, item_id),
+            shared=shared_key_entity_count(entities, key_entity_ids),
+        )
+        extra.update(exact_phrase_metadata(query, event))
+        extra.update(kg_path_metadata(entities, key_entity_ids))
+        extras[item_id] = extra
+    return extras
+
+
+def _outbound_weight_sums(graph: dict[str, dict[str, float]], nodes: list[str]) -> dict[str, float]:
+    return {node: float(sum(graph.get(node, {}).values()) or 1.0) for node in nodes}
+
+
+def _teleport_scores(damping: float, base_scores: dict[str, float], nodes: list[str]) -> dict[str, float]:
+    return {node: (1.0 - float(damping)) * float(base_scores.get(node, 0.0) or 0.0) for node in nodes}
+
+
+def _apply_pagerank_edges(
+    *,
+    new_scores: dict[str, float],
+    edges: dict[str, float],
+    scale: float,
+) -> None:
+    for destination, weight in edges.items():
+        current = float(new_scores.get(destination, 0.0) or 0.0)
+        new_scores[destination] = current + scale * float(weight or 0.0)
+
+
+def _pagerank_iteration(
+    *,
+    nodes: list[str],
+    graph: dict[str, dict[str, float]],
+    scores: dict[str, float],
+    out_sum: dict[str, float],
+    teleport: dict[str, float],
+    damping: float,
+) -> dict[str, float]:
+    new_scores = dict(teleport)
+    for source in nodes:
+        edges = graph.get(source) or {}
+        if not edges:
+            continue
+        denominator = float(out_sum.get(source, 1.0) or 1.0)
+        if math.isclose(denominator, 0.0, abs_tol=1e-12):
+            continue
+        scale = float(damping) * (float(scores.get(source, 0.0) or 0.0) / denominator)
+        _apply_pagerank_edges(new_scores=new_scores, edges=edges, scale=scale)
+    return new_scores
 
 
 class RerankPageRankSearcher:
@@ -41,100 +185,33 @@ class RerankPageRankSearcher:
                 return {"events": [], "clues": [], "stats": {}}
 
             query_vec = query_vector if query_vector is not None else await self.processor.generate_embedding(config.query)
-            key_weight_map = {k.get("entity_id"): k.get("weight", 0.0) for k in key_final}
-            key_entity_ids = {str(k.get("entity_id") or "").strip() for k in (key_final or []) if k.get("entity_id")}
-
-            # prepare adjacency via shared entities
+            key_weights = _key_weight_map(key_final)
+            key_entity_ids = _key_entity_ids(key_final)
             assoc_map = repo.get_entities_for_events(event_ids, tenant_id=config.tenant_id)
-
-            base_scores: dict[str, float] = {**event_scores}
             phrase_boost_weight = max(0.0, float(getattr(settings, "KG_SEARCH_EXACT_PHRASE_RERANK_BOOST", 0.25) or 0.0))
-            for ev in events:
-                sim = cosine_similarity(query_vec, ev.content_vector or [])
-                ents = assoc_map.get(str(ev.id), [])
-                boost = sum(key_weight_map.get(str(e.id), 0.0) for e in ents)
-                phrase = query_phrase_match(
-                    config.query,
-                    f"{getattr(ev, 'title', '') or ''} {getattr(ev, 'summary', '') or ''} {getattr(ev, 'content', '') or ''}",
-                )
-                phrase_boost = float(phrase.get("score", 0.0) or 0.0) * phrase_boost_weight
-                # merge recall score if present
-                recall_score = event_scores.get(str(ev.id), 0.0)
-                base_scores[str(ev.id)] = 0.5 * recall_score + 0.3 * sim + 0.2 * boost + phrase_boost
-
-            graph: dict[str, dict[str, float]] = {str(ev.id): {} for ev in events}
-
-            # Build event-event edges by shared entities (faster than O(n^2) set intersections).
-            entity_to_events: dict[str, list[str]] = {}
-            for ev_id, ents in (assoc_map or {}).items():
-                if ev_id not in graph:
-                    continue
-                for ent in (ents or []):
-                    ent_id = str(getattr(ent, "id", "") or "")
-                    if not ent_id:
-                        continue
-                    entity_to_events.setdefault(ent_id, []).append(ev_id)
-
-            # Process entities by weight (key entities first) so edge budget keeps high-signal edges.
-            entities_ordered = sorted(
-                entity_to_events.items(),
-                key=lambda kv: (-float(key_weight_map.get(kv[0], 0.1) or 0.1), kv[0]),
+            base_scores = _base_scores(
+                events=events,
+                event_scores=event_scores,
+                query_vec=query_vec,
+                assoc_map=assoc_map,
+                key_weights=key_weights,
+                query=config.query,
+                phrase_boost_weight=phrase_boost_weight,
             )
-
-            for ent_id, ev_list in entities_ordered:
-                if not ev_list or len(ev_list) < 2:
-                    continue
-
-                w_ent = float(key_weight_map.get(ent_id, 0.1) or 0.1)
-                ev_list = sorted(set(ev_list))
-                for i, a in enumerate(ev_list):
-                    for b in ev_list[i + 1 :]:
-                        graph[a][b] = float(graph[a].get(b, 0.0) or 0.0) + w_ent
-                        graph[b][a] = float(graph[b].get(a, 0.0) or 0.0) + w_ent
-
+            graph = _build_shared_entity_graph(events=events, assoc_map=assoc_map, key_weights=key_weights)
             scores = self._pagerank(
                 graph,
                 damping=config.rerank.pagerank_damping_factor,
                 max_iter=config.rerank.pagerank_max_iterations,
                 base_scores=base_scores,
             )
-
-            extras: dict[str, dict[str, Any]] = {}
-            for ev in events:
-                ev_id = str(getattr(ev, "id", "") or "")
-                if not ev_id:
-                    continue
-                hop = 1
-                if event_hops is not None:
-                    try:
-                        hop = int(event_hops.get(ev_id, 1) or 1)
-                    except Exception:
-                        hop = 1
-                hop = max(1, min(hop, 5))
-
-                shared = 0
-                ents = assoc_map.get(ev_id, []) if isinstance(assoc_map, dict) else []
-                for ent in ents or []:
-                    ent_id = str(getattr(ent, "id", "") or "")
-                    if ent_id and ent_id in key_entity_ids:
-                        shared += 1
-                shared = max(0, min(shared, 5))
-
-                extras[ev_id] = {
-                    "kg_path_length": int(hop),
-                    "kg_shared_events": int(shared),
-                    "kg_evidence_anchored": bool(getattr(ev, "chunk_id", None)),
-                }
-                phrase = query_phrase_match(
-                    config.query,
-                    f"{getattr(ev, 'title', '') or ''} {getattr(ev, 'summary', '') or ''} {getattr(ev, 'content', '') or ''}",
-                )
-                if float(phrase.get("score", 0.0) or 0.0) > 0.0:
-                    extras[ev_id]["kg_exact_phrase_score"] = float(phrase.get("score", 0.0) or 0.0)
-                    extras[ev_id]["kg_exact_phrase_matches"] = list(phrase.get("matched_phrases") or [])[:4]
-                path = build_kg_path_provenance(entities=ents, key_entity_ids=key_entity_ids, max_entities=4)
-                if path:
-                    extras[ev_id]["kg_path"] = path
+            extras = _extras_by_event(
+                events=events,
+                assoc_map=assoc_map,
+                key_entity_ids=key_entity_ids,
+                event_hops=event_hops,
+                query=config.query,
+            )
 
             results = format_events(events, scores, config.rerank.max_results, extra_by_event_id=extras)
 
@@ -157,21 +234,16 @@ class RerankPageRankSearcher:
         if not nodes:
             return {}
         scores = dict.fromkeys(nodes, 1.0)
-        out_sum = {n: float(sum(graph.get(n, {}).values()) or 1.0) for n in nodes}
-        teleport = {n: (1.0 - float(damping)) * float(base_scores.get(n, 0.0) or 0.0) for n in nodes}
+        out_sum = _outbound_weight_sums(graph, nodes)
+        teleport = _teleport_scores(damping, base_scores, nodes)
 
         for _ in range(int(max_iter)):
-            new_scores = dict(teleport)
-            for src in nodes:
-                edges = graph.get(src) or {}
-                if not edges:
-                    continue
-                src_score = float(scores.get(src, 0.0) or 0.0)
-                denom = float(out_sum.get(src, 1.0) or 1.0)
-                if math.isclose(denom, 0.0, abs_tol=1e-12):
-                    continue
-                scale = float(damping) * (src_score / denom)
-                for dst, w in edges.items():
-                    new_scores[dst] = float(new_scores.get(dst, 0.0) or 0.0) + scale * float(w or 0.0)
-            scores = new_scores
+            scores = _pagerank_iteration(
+                nodes=nodes,
+                graph=graph,
+                scores=scores,
+                out_sum=out_sum,
+                teleport=teleport,
+                damping=damping,
+            )
         return scores
