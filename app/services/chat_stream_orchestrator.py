@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
-from typing import Any, AsyncIterator, Callable
+from typing import Any, AsyncIterator, Callable, cast
 from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
@@ -215,7 +215,10 @@ async def stream_chat_sse_events(
                 citations=chat_result.citations,
                 metrics=fallback_metrics,
             ),
-            runtime=replace(materialized_runtime, structured_data=chat_result.structured_data),
+            runtime=cast(
+                ChatStreamRuntimeContext,
+                replace(materialized_runtime, structured_data=chat_result.structured_data),
+            ),
             persistence=ChatStreamPersistenceContext(
                 db=db,
                 persist_in_background=persist_in_background,

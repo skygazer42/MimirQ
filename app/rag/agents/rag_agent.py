@@ -4,7 +4,7 @@ import re
 import threading
 import time
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID
 
 from langchain_core.documents import Document
@@ -193,7 +193,7 @@ def resolve_agentic_stream_request(
         updated_fields["state_overrides"] = state_overrides
     if not updated_fields:
         return request
-    return replace(request, **updated_fields)
+    return cast(AgenticStreamRequest, replace(request, **updated_fields))
 
 
 def get_agentic_tool_registry() -> Any:
