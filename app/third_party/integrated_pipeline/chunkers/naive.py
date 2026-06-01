@@ -566,8 +566,8 @@ class Markdown(MarkdownParser):
                 if (src, line_no) not in seen:
                     urls.append({"url": src, "line": line_no})
                     seen.add((src, line_no))
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.debug("Failed to extract image URLs from markdown text: %s", exc)
 
         return urls
 

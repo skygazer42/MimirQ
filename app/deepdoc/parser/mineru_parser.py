@@ -642,13 +642,13 @@ class MinerUParser(IntegratedPipelinePdfParser):
                 try:
                     temp_pdf.unlink()
                     temp_pdf.parent.rmdir()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    self.logger.debug("[MinerU] Failed to clean temporary PDF %s: %s", temp_pdf, exc)
             if delete_output and created_tmp_dir and out_dir.exists():
                 try:
                     shutil.rmtree(out_dir)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    self.logger.debug("[MinerU] Failed to remove temporary output %s: %s", out_dir, exc)
 
 
 if __name__ == "__main__":

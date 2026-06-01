@@ -96,13 +96,13 @@ def find_codec(blob):
         try:
             blob[:1024].decode(c)
             return c
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.debug("Codec %s failed sample decode: %s", c, exc)
         try:
             blob.decode(c)
             return c
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.debug("Codec %s failed full decode: %s", c, exc)
 
     return "utf-8"
 
