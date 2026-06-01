@@ -124,6 +124,179 @@ export function SuiteDashboardDialog({
 }: Readonly<SuiteDashboardDialogProps>) {
   const throughput = dashboard?.throughput
   const coverage = dashboard?.coverage
+  const suiteDescription = selectedSuite ? (
+    <>
+      Suite <span className="font-mono">{String(selectedSuite.id).slice(0, 8)}</span> 路{' '}
+      <span className="font-medium">{selectedSuite.name}</span>
+    </>
+  ) : (
+    '请选择一个 Suite'
+  )
+  const generatedSummary = dashboard ? (
+    <div className="text-xs text-muted-foreground font-mono tabular-nums">
+      generated {String(dashboard.generated_at || '').slice(0, 19).replaceAll('T', ' ')}
+    </div>
+  ) : null
+
+  let throughputSection: ReactNode
+  if (throughput) {
+    throughputSection = (
+      <div>
+        <div className="mb-2 text-xs font-medium text-muted-foreground">Throughput (last {throughput.window_days}d)</div>
+        <div className="flex flex-wrap gap-2 text-xs">
+          <Badge variant="outline" className="font-mono tabular-nums">
+            created {throughput.last_window?.created ?? 0}
+          </Badge>
+          <Badge variant="secondary" className="font-mono tabular-nums">
+            reviewed {throughput.last_window?.reviewed ?? 0}
+          </Badge>
+          <Badge variant="soft" className="font-mono tabular-nums">
+            approved {throughput.last_window?.approved ?? 0}
+          </Badge>
+        </div>
+
+        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+          <Panel className="p-3">
+            <div className="mb-1 text-xs font-medium text-muted-foreground">draft → reviewed</div>
+            <div className="text-xs text-muted-foreground font-mono tabular-nums">
+              n {throughput.draft_to_reviewed?.count ?? 0}
+            </div>
+            <div className="mt-1 text-xs font-mono tabular-nums">
+              p50 {formatDurationSec(throughput.draft_to_reviewed?.p50_sec ?? 0)} · p90{' '}
+              {formatDurationSec(throughput.draft_to_reviewed?.p90_sec ?? 0)} · mean{' '}
+              {formatDurationSec(throughput.draft_to_reviewed?.mean_sec ?? 0)}
+            </div>
+          </Panel>
+
+          <Panel className="p-3">
+            <div className="mb-1 text-xs font-medium text-muted-foreground">reviewed → approved</div>
+            <div className="text-xs text-muted-foreground font-mono tabular-nums">
+              n {throughput.reviewed_to_approved?.count ?? 0}
+            </div>
+            <div className="mt-1 text-xs font-mono tabular-nums">
+              p50 {formatDurationSec(throughput.reviewed_to_approved?.p50_sec ?? 0)} · p90{' '}
+              {formatDurationSec(throughput.reviewed_to_approved?.p90_sec ?? 0)} · mean{' '}
+              {formatDurationSec(throughput.reviewed_to_approved?.mean_sec ?? 0)}
+            </div>
+          </Panel>
+
+          <Panel className="p-3">
+            <div className="mb-1 text-xs font-medium text-muted-foreground">draft → approved</div>
+            <div className="text-xs text-muted-foreground font-mono tabular-nums">
+              n {throughput.draft_to_approved?.count ?? 0}
+            </div>
+            <div className="mt-1 text-xs font-mono tabular-nums">
+              p50 {formatDurationSec(throughput.draft_to_approved?.p50_sec ?? 0)} · p90{' '}
+              {formatDurationSec(throughput.draft_to_approved?.p90_sec ?? 0)} · mean{' '}
+              {formatDurationSec(throughput.draft_to_approved?.mean_sec ?? 0)}
+            </div>
+          </Panel>
+        </div>
+      </div>
+    )
+  } else {
+    throughputSection = <div className="text-sm text-muted-foreground text-pretty">No throughput data.</div>
+  }
+
+  let coverageSection: ReactNode
+  if (coverage) {
+    coverageSection = (
+      <>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <Panel className="p-3">
+            <div className="mb-2 text-xs font-medium text-muted-foreground">Language coverage</div>
+            <div className="space-y-1">
+              {(coverage.language || []).map((bucket) => (
+                <div key={`lang:${bucket.key}`} className="flex items-center justify-between gap-3 text-xs">
+                  <div className="min-w-0 truncate font-mono">{bucket.key}</div>
+                  <div className="flex items-center gap-3 font-mono tabular-nums text-muted-foreground">
+                    <span>refs {bucket.references}</span>
+                    <span>items {bucket.items}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Panel>
+
+          <Panel className="p-3">
+            <div className="mb-2 text-xs font-medium text-muted-foreground">File type coverage</div>
+            <div className="space-y-1">
+              {(coverage.file_type || []).map((bucket) => (
+                <div key={`ft:${bucket.key}`} className="flex items-center justify-between gap-3 text-xs">
+                  <div className="min-w-0 truncate font-mono">{bucket.key}</div>
+                  <div className="flex items-center gap-3 font-mono tabular-nums text-muted-foreground">
+                    <span>refs {bucket.references}</span>
+                    <span>items {bucket.items}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Panel>
+
+          <Panel className="p-3">
+            <div className="mb-2 text-xs font-medium text-muted-foreground">Quality bucket coverage</div>
+            <div className="space-y-1">
+              {(coverage.quality_bucket || []).map((bucket) => (
+                <div key={`qb:${bucket.key}`} className="flex items-center justify-between gap-3 text-xs">
+                  <div className="min-w-0 truncate font-mono">{bucket.key}</div>
+                  <div className="flex items-center gap-3 font-mono tabular-nums text-muted-foreground">
+                    <span>refs {bucket.references}</span>
+                    <span>items {bucket.items}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Panel>
+
+          <Panel className="p-3">
+            <div className="mb-2 text-xs font-medium text-muted-foreground">Channel (hit_type) coverage</div>
+            <div className="space-y-1">
+              {(coverage.channel || []).map((bucket) => (
+                <div key={`ch:${bucket.key}`} className="flex items-center justify-between gap-3 text-xs">
+                  <div className="min-w-0 truncate font-mono">{bucket.key}</div>
+                  <div className="flex items-center gap-3 font-mono tabular-nums text-muted-foreground">
+                    <span>refs {bucket.references}</span>
+                    <span>items {bucket.items}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Panel>
+        </div>
+
+        <Panel className="p-3">
+          <div className="mb-2 text-xs font-medium text-muted-foreground">Heatmap: language × file_type (unique items)</div>
+          {coverage.heatmaps?.language_x_file_type ? (
+            <div className="overflow-x-auto">{renderLanguageXFileTypeHeatmap(coverage.heatmaps.language_x_file_type)}</div>
+          ) : (
+            <div className="text-xs text-muted-foreground">No heatmap data.</div>
+          )}
+        </Panel>
+      </>
+    )
+  } else {
+    coverageSection = <div className="text-sm text-muted-foreground text-pretty">No coverage data.</div>
+  }
+
+  let dashboardContent: ReactNode
+  if (loading) {
+    dashboardContent = (
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+        loading…
+      </div>
+    )
+  } else if (dashboard) {
+    dashboardContent = (
+      <>
+        {throughputSection}
+        <Separator />
+        {coverageSection}
+      </>
+    )
+  } else {
+    dashboardContent = <div className="text-sm text-muted-foreground text-pretty">No dashboard data.</div>
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -131,14 +304,7 @@ export function SuiteDashboardDialog({
         <DialogHeader>
           <DialogTitle>Suite Dashboard</DialogTitle>
           <DialogDescription className="text-pretty">
-            {selectedSuite ? (
-              <>
-                Suite <span className="font-mono">{String(selectedSuite.id).slice(0, 8)}</span> 路{' '}
-                <span className="font-medium">{selectedSuite.name}</span>
-              </>
-            ) : (
-              '请选择一个 Suite'
-            )}
+            {suiteDescription}
           </DialogDescription>
         </DialogHeader>
 
@@ -153,11 +319,7 @@ export function SuiteDashboardDialog({
           </div>
 
           <div className="flex items-center gap-2 sm:ml-auto">
-            {dashboard ? (
-              <div className="text-xs text-muted-foreground font-mono tabular-nums">
-                generated {String(dashboard.generated_at || '').slice(0, 19).replaceAll('T', ' ')}
-              </div>
-            ) : null}
+            {generatedSummary}
             <Button variant="outline" size="sm" className="gap-2" onClick={onRefresh} disabled={!selectedSuiteId || loading}>
               <RefreshCw className={cn('size-4', loading ? 'animate-spin motion-reduce:animate-none' : '')} aria-hidden="true" />
               refresh
@@ -169,152 +331,7 @@ export function SuiteDashboardDialog({
 
         <ScrollArea className="max-h-[70vh] pr-3">
           <div className="space-y-4">
-            {loading ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
-                loading…
-              </div>
-            ) : dashboard ? (
-              <>
-                {throughput ? (
-                  <div>
-                    <div className="mb-2 text-xs font-medium text-muted-foreground">Throughput (last {throughput.window_days}d)</div>
-                    <div className="flex flex-wrap gap-2 text-xs">
-                      <Badge variant="outline" className="font-mono tabular-nums">
-                        created {throughput.last_window?.created ?? 0}
-                      </Badge>
-                      <Badge variant="secondary" className="font-mono tabular-nums">
-                        reviewed {throughput.last_window?.reviewed ?? 0}
-                      </Badge>
-                      <Badge variant="soft" className="font-mono tabular-nums">
-                        approved {throughput.last_window?.approved ?? 0}
-                      </Badge>
-                    </div>
-
-                    <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
-                      <Panel className="p-3">
-                        <div className="mb-1 text-xs font-medium text-muted-foreground">draft → reviewed</div>
-                        <div className="text-xs text-muted-foreground font-mono tabular-nums">
-                          n {throughput.draft_to_reviewed?.count ?? 0}
-                        </div>
-                        <div className="mt-1 text-xs font-mono tabular-nums">
-                          p50 {formatDurationSec(throughput.draft_to_reviewed?.p50_sec ?? 0)} · p90{' '}
-                          {formatDurationSec(throughput.draft_to_reviewed?.p90_sec ?? 0)} · mean{' '}
-                          {formatDurationSec(throughput.draft_to_reviewed?.mean_sec ?? 0)}
-                        </div>
-                      </Panel>
-
-                      <Panel className="p-3">
-                        <div className="mb-1 text-xs font-medium text-muted-foreground">reviewed → approved</div>
-                        <div className="text-xs text-muted-foreground font-mono tabular-nums">
-                          n {throughput.reviewed_to_approved?.count ?? 0}
-                        </div>
-                        <div className="mt-1 text-xs font-mono tabular-nums">
-                          p50 {formatDurationSec(throughput.reviewed_to_approved?.p50_sec ?? 0)} · p90{' '}
-                          {formatDurationSec(throughput.reviewed_to_approved?.p90_sec ?? 0)} · mean{' '}
-                          {formatDurationSec(throughput.reviewed_to_approved?.mean_sec ?? 0)}
-                        </div>
-                      </Panel>
-
-                      <Panel className="p-3">
-                        <div className="mb-1 text-xs font-medium text-muted-foreground">draft → approved</div>
-                        <div className="text-xs text-muted-foreground font-mono tabular-nums">
-                          n {throughput.draft_to_approved?.count ?? 0}
-                        </div>
-                        <div className="mt-1 text-xs font-mono tabular-nums">
-                          p50 {formatDurationSec(throughput.draft_to_approved?.p50_sec ?? 0)} · p90{' '}
-                          {formatDurationSec(throughput.draft_to_approved?.p90_sec ?? 0)} · mean{' '}
-                          {formatDurationSec(throughput.draft_to_approved?.mean_sec ?? 0)}
-                        </div>
-                      </Panel>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-sm text-muted-foreground text-pretty">No throughput data.</div>
-                )}
-
-                <Separator />
-
-                {coverage ? (
-                  <>
-                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                      <Panel className="p-3">
-                        <div className="mb-2 text-xs font-medium text-muted-foreground">Language coverage</div>
-                        <div className="space-y-1">
-                          {(coverage.language || []).map((bucket) => (
-                            <div key={`lang:${bucket.key}`} className="flex items-center justify-between gap-3 text-xs">
-                              <div className="min-w-0 truncate font-mono">{bucket.key}</div>
-                              <div className="flex items-center gap-3 font-mono tabular-nums text-muted-foreground">
-                                <span>refs {bucket.references}</span>
-                                <span>items {bucket.items}</span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </Panel>
-
-                      <Panel className="p-3">
-                        <div className="mb-2 text-xs font-medium text-muted-foreground">File type coverage</div>
-                        <div className="space-y-1">
-                          {(coverage.file_type || []).map((bucket) => (
-                            <div key={`ft:${bucket.key}`} className="flex items-center justify-between gap-3 text-xs">
-                              <div className="min-w-0 truncate font-mono">{bucket.key}</div>
-                              <div className="flex items-center gap-3 font-mono tabular-nums text-muted-foreground">
-                                <span>refs {bucket.references}</span>
-                                <span>items {bucket.items}</span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </Panel>
-
-                      <Panel className="p-3">
-                        <div className="mb-2 text-xs font-medium text-muted-foreground">Quality bucket coverage</div>
-                        <div className="space-y-1">
-                          {(coverage.quality_bucket || []).map((bucket) => (
-                            <div key={`qb:${bucket.key}`} className="flex items-center justify-between gap-3 text-xs">
-                              <div className="min-w-0 truncate font-mono">{bucket.key}</div>
-                              <div className="flex items-center gap-3 font-mono tabular-nums text-muted-foreground">
-                                <span>refs {bucket.references}</span>
-                                <span>items {bucket.items}</span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </Panel>
-
-                      <Panel className="p-3">
-                        <div className="mb-2 text-xs font-medium text-muted-foreground">Channel (hit_type) coverage</div>
-                        <div className="space-y-1">
-                          {(coverage.channel || []).map((bucket) => (
-                            <div key={`ch:${bucket.key}`} className="flex items-center justify-between gap-3 text-xs">
-                              <div className="min-w-0 truncate font-mono">{bucket.key}</div>
-                              <div className="flex items-center gap-3 font-mono tabular-nums text-muted-foreground">
-                                <span>refs {bucket.references}</span>
-                                <span>items {bucket.items}</span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </Panel>
-                    </div>
-
-                    <Panel className="p-3">
-                      <div className="mb-2 text-xs font-medium text-muted-foreground">Heatmap: language × file_type (unique items)</div>
-                      {coverage.heatmaps?.language_x_file_type ? (
-                        <div className="overflow-x-auto">{renderLanguageXFileTypeHeatmap(coverage.heatmaps.language_x_file_type)}</div>
-                      ) : (
-                        <div className="text-xs text-muted-foreground">No heatmap data.</div>
-                      )}
-                    </Panel>
-                  </>
-                ) : (
-                  <div className="text-sm text-muted-foreground text-pretty">No coverage data.</div>
-                )}
-              </>
-            ) : (
-              <div className="text-sm text-muted-foreground text-pretty">No dashboard data.</div>
-            )}
+            {dashboardContent}
           </div>
         </ScrollArea>
       </DialogContent>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import Image from 'next/image'
 import { User, Mail, Lock, ArrowRight, Loader2, Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -17,6 +17,30 @@ import { cn, detachPromise } from '@/lib/utils'
 
 type Mode = 'login' | 'register'
 
+function getAuthSsoProviderLabel(provider?: { id?: string; name?: string }): string {
+    if (provider?.name) return `Continue with ${provider.name}`
+    if (provider?.id) return `Continue with ${provider.id}`
+    return 'Continue with SSO'
+}
+
+function getAuthSubmitContent(isSubmitting: boolean, mode: Mode): ReactNode {
+    if (isSubmitting) {
+        return (
+            <>
+                <Loader2 className="mr-2 size-4 animate-spin motion-reduce:animate-none" />
+                处理中...
+            </>
+        )
+    }
+
+    return (
+        <>
+            {mode === 'login' ? '登 录' : '创建账户'}
+            <ArrowRight className="ml-2 size-4 opacity-70" />
+        </>
+    )
+}
+
 export default function AuthPage() {
     const router = useRouter()
     const oidcProviders = getOidcPublicProvidersFromEnv()
@@ -32,6 +56,59 @@ export default function AuthPage() {
     const [error, setError] = useState<ApiErrorInfo | null>(null)
 
     const isSsoSubmitting = ssoProviderWorkingId !== null
+    let ssoSectionContent: ReactNode = null
+    if (oidcProviders.length > 1) {
+        ssoSectionContent = (
+            <div className="space-y-2">
+                <div className="text-xs text-muted-foreground">选择 SSO 提供方</div>
+                {oidcProviders.map((provider) => {
+                    const label = getAuthSsoProviderLabel(provider)
+                    const working = ssoProviderWorkingId === provider.id
+                    return (
+                        <Button
+                            key={provider.id}
+                            type="button"
+                            variant="secondary"
+                            className="w-full h-11 rounded-xl justify-between"
+                            disabled={isSubmitting || isSsoSubmitting}
+                            onClick={() => detachPromise(handleSso(provider.id))}
+                        >
+                            <span className="inline-flex items-center">
+                                {working ? (
+                                    <Loader2 className="mr-2 size-4 animate-spin motion-reduce:animate-none" />
+                                ) : null}
+                                {working ? 'Signing in…' : label}
+                            </span>
+                            <ArrowRight className="ml-2 size-4 opacity-70" aria-hidden="true" />
+                        </Button>
+                    )
+                })}
+            </div>
+        )
+    } else if (oidcProviders.length === 1) {
+        const provider = oidcProviders[0]
+        ssoSectionContent = (
+            <Button
+                type="button"
+                variant="secondary"
+                className="w-full h-11 rounded-xl"
+                disabled={isSubmitting || isSsoSubmitting}
+                onClick={() => detachPromise(handleSso(provider?.id || 'default'))}
+            >
+                {isSsoSubmitting ? (
+                    <>
+                        <Loader2 className="mr-2 size-4 animate-spin motion-reduce:animate-none" />
+                        Signing in...
+                    </>
+                ) : (
+                    <>
+                        {getAuthSsoProviderLabel(provider)}
+                        <ArrowRight className="ml-2 size-4 opacity-70" aria-hidden="true" />
+                    </>
+                )}
+            </Button>
+        )
+    }
 
     const handleSso = async (providerId: string) => {
         setError(null)
@@ -99,53 +176,7 @@ export default function AuthPage() {
 	                <div className="rounded-3xl border border-border bg-card p-8 shadow-strong">
 	                    {oidcEnabled && (
 	                        <div className="mb-7 space-y-3">
-                              {oidcProviders.length > 1 ? (
-                                <div className="space-y-2">
-                                  <div className="text-xs text-muted-foreground">选择 SSO 提供方</div>
-                                  {oidcProviders.map((p) => {
-                                    const label = p.name ? `Continue with ${p.name}` : `Continue with ${p.id}`
-                                    const working = ssoProviderWorkingId === p.id
-                                    return (
-                                      <Button
-                                        key={p.id}
-                                        type="button"
-                                        variant="secondary"
-                                        className="w-full h-11 rounded-xl justify-between"
-                                        disabled={isSubmitting || isSsoSubmitting}
-                                        onClick={() => detachPromise(handleSso(p.id))}
-                                      >
-                                        <span className="inline-flex items-center">
-                                          {working ? (
-                                            <Loader2 className="mr-2 size-4 animate-spin motion-reduce:animate-none" />
-                                          ) : null}
-                                          {working ? 'Signing in…' : label}
-                                        </span>
-                                        <ArrowRight className="ml-2 size-4 opacity-70" aria-hidden="true" />
-                                      </Button>
-                                    )
-                                  })}
-                                </div>
-                              ) : (
-                                <Button
-                                  type="button"
-                                  variant="secondary"
-                                  className="w-full h-11 rounded-xl"
-                                  disabled={isSubmitting || isSsoSubmitting}
-                                  onClick={() => detachPromise(handleSso(oidcProviders[0]?.id || 'default'))}
-                                >
-                                  {isSsoSubmitting ? (
-                                    <>
-                                      <Loader2 className="mr-2 size-4 animate-spin motion-reduce:animate-none" />
-                                      Signing in...
-                                    </>
-                                  ) : (
-                                    <>
-                                      {oidcProviders[0]?.name ? `Continue with ${oidcProviders[0]?.name}` : 'Continue with SSO'}
-                                      <ArrowRight className="ml-2 size-4 opacity-70" aria-hidden="true" />
-                                    </>
-                                  )}
-                                </Button>
-                              )}
+                              {ssoSectionContent}
 	                            <div className="flex items-center gap-3 text-xs text-muted-foreground">
 	                                <div className="h-px flex-1 bg-border/60" />
 	                                <span>or</span>
@@ -300,17 +331,7 @@ export default function AuthPage() {
                             className="w-full h-11 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-xl transition-colors duration-200 motion-reduce:transition-none"
                             disabled={isSubmitting}
                         >
-	                            {isSubmitting ? (
-	                                <>
-	                                    <Loader2 className="mr-2 size-4 animate-spin motion-reduce:animate-none" />
-	                                    处理中...
-	                                </>
-	                            ) : (
-                                <>
-                                    {mode === 'login' ? '登 录' : '创建账户'}
-                                    <ArrowRight className="ml-2 size-4 opacity-70" />
-                                </>
-                            )}
+	                            {getAuthSubmitContent(isSubmitting, mode)}
                         </Button>
                     </form>
                 </div>
