@@ -5522,30 +5522,43 @@ class HybridRetriever(BaseRetriever):
         content = str(result.get("content") or "")
         return f"content:{stable_hash(content)}"
 
-    def _resolve_family_collapse_key(self, meta: dict[str, Any], *, result: dict[str, Any] | None = None) -> str:
-        for key in ("hierarchy_family_key", "parent_id", "parent_node_id"):
+    @staticmethod
+    def _first_metadata_value(meta: dict[str, Any], keys: tuple[str, ...]) -> str:
+        for key in keys:
             value = str(meta.get(key) or "").strip()
             if value:
                 return value
+        return ""
+
+    @staticmethod
+    def _document_chunk_family_key(meta: dict[str, Any]) -> str:
+        doc_id = meta.get("document_id")
+        chunk_index = meta.get("chunk_index")
+        return f"{doc_id}:{chunk_index}" if doc_id is not None and chunk_index is not None else ""
+
+    @staticmethod
+    def _result_chunk_family_key(meta: dict[str, Any], result: dict[str, Any] | None) -> str:
+        if result is None:
+            return ""
+        chunk_id = result.get("chunk_id") or meta.get("chunk_id")
+        return str(chunk_id).strip() if chunk_id else ""
+
+    def _resolve_family_collapse_key(self, meta: dict[str, Any], *, result: dict[str, Any] | None = None) -> str:
+        key = self._first_metadata_value(meta, ("hierarchy_family_key", "parent_id", "parent_node_id"))
+        if key:
+            return key
 
         role = str(meta.get("chunk_role") or "").strip().lower()
         if role == "parent":
-            for key in ("hierarchy_node_key", "chunk_key"):
-                value = str(meta.get(key) or "").strip()
-                if value:
-                    return value
+            key = self._first_metadata_value(meta, ("hierarchy_node_key", "chunk_key"))
+            if key:
+                return key
 
-        doc_id = meta.get("document_id")
-        chunk_index = meta.get("chunk_index")
-        if doc_id is not None and chunk_index is not None:
-            return f"{doc_id}:{chunk_index}"
+        key = self._document_chunk_family_key(meta)
+        if key:
+            return key
 
-        if result is not None:
-            chunk_id = result.get("chunk_id") or meta.get("chunk_id")
-            if chunk_id:
-                return str(chunk_id).strip()
-
-        return ""
+        return self._result_chunk_family_key(meta, result)
 
     def _should_apply_hierarchy_family_collapse(self) -> bool:
         if not bool(self.enable_hierarchy_recall):
@@ -5554,25 +5567,46 @@ class HybridRetriever(BaseRetriever):
             return False
         return bool(is_recall_first_profile(self.retrieval_profile))
 
+    def _init_family_collapse_stats(
+        self,
+        stats: dict[str, Any] | None,
+        *,
+        enabled: bool,
+        input_count: int,
+    ) -> None:
+        if stats is None:
+            return
+        stats.clear()
+        stats["enabled"] = bool(enabled)
+        stats["retrieval_profile"] = str(self.retrieval_profile or "").strip().lower() or None
+        stats["input_results"] = int(input_count)
+
+    @staticmethod
+    def _set_family_collapse_stats(
+        stats: dict[str, Any] | None,
+        *,
+        output_count: int,
+        collapsed: int,
+        distinct_families: int | None = None,
+    ) -> None:
+        if stats is None:
+            return
+        stats["output_results"] = int(output_count)
+        stats["collapsed_results"] = int(collapsed)
+        if distinct_families is not None:
+            stats["distinct_families"] = int(distinct_families)
+
     def _collapse_results_by_family(
         self,
         results: list[dict[str, Any]],
         *,
         stats: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
-        if stats is not None:
-            stats.clear()
-
         enabled = self._should_apply_hierarchy_family_collapse()
-        if stats is not None:
-            stats["enabled"] = bool(enabled)
-            stats["retrieval_profile"] = str(self.retrieval_profile or "").strip().lower() or None
-            stats["input_results"] = len(results or [])
+        self._init_family_collapse_stats(stats, enabled=enabled, input_count=len(results or []))
 
         if not enabled or not results:
-            if stats is not None:
-                stats["output_results"] = len(results or [])
-                stats["collapsed_results"] = 0
+            self._set_family_collapse_stats(stats, output_count=len(results or []), collapsed=0)
             return results
 
         out: list[dict[str, Any]] = []
@@ -5588,11 +5622,12 @@ class HybridRetriever(BaseRetriever):
                 seen_keys.add(family_key)
             out.append(r)
 
-        if stats is not None:
-            stats["output_results"] = len(out)
-            stats["collapsed_results"] = int(collapsed)
-            stats["distinct_families"] = len(seen_keys)
-
+        self._set_family_collapse_stats(
+            stats,
+            output_count=len(out),
+            collapsed=collapsed,
+            distinct_families=len(seen_keys),
+        )
         return out
 
     def _get_doc_id(self, result: dict[str, Any]) -> str:
@@ -5604,29 +5639,26 @@ class HybridRetriever(BaseRetriever):
         return match_metadata_filter(meta, filter_spec)
 
     @staticmethod
+    def _normalize_similarity_token(token: Any) -> str | None:
+        tok = str(token).strip()
+        if not tok or len(tok) < 2:
+            return None
+        if tok.isascii():
+            tok = tok.casefold()
+            if tok.isdigit():
+                return None
+        return None if tok in STOPWORDS else tok
+
+    @staticmethod
     def _tokenize_for_similarity(text: str) -> set[str]:
         raw = (text or "").strip()
         if not raw:
             return set()
         tokens: list[str] = []
         for token in jieba.cut_for_search(raw):
-            tok = str(token).strip()
-            if not tok:
-                continue
-            if tok.isascii():
-                if len(tok) < 2:
-                    continue
-                tok = tok.casefold()
-                if tok.isdigit():
-                    continue
-                if tok in STOPWORDS:
-                    continue
-            else:
-                if len(tok) < 2:
-                    continue
-                if tok in STOPWORDS:
-                    continue
-            tokens.append(tok)
+            tok = HybridRetriever._normalize_similarity_token(token)
+            if tok is not None:
+                tokens.append(tok)
         return set(tokens)
 
     @staticmethod
@@ -5642,104 +5674,122 @@ class HybridRetriever(BaseRetriever):
         norm = re.sub(r"\s+", " ", (text or "").strip())
         return norm.casefold()
 
-    def _deduplicate_results(self, results: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        if not results or not bool(self.dedup_enabled):
-            return results
+    @staticmethod
+    def _bounded_similarity_settings(threshold: float, max_compare: int) -> tuple[float, int]:
+        return max(0.0, min(float(threshold or 0.0), 1.0)), max(0, int(max_compare or 0))
 
-        threshold = float(self.dedup_jaccard_threshold or 0.0)
-        threshold = max(0.0, min(threshold, 1.0))
-        max_compare = int(self.dedup_max_compare or 0)
-        max_compare = max(0, max_compare)
-
+    @staticmethod
+    def _resolve_near_dedup_runtime() -> tuple[bool, int, int, Any | None]:
         near_enabled = bool(getattr(settings, "RETRIEVAL_NEAR_DEDUP_ENABLED", False))
         near_thr = max(0, int(getattr(settings, "RETRIEVAL_NEAR_DEDUP_HAMMING_THRESHOLD", 0) or 0))
         near_max_compare = max(0, int(getattr(settings, "RETRIEVAL_NEAR_DEDUP_MAX_COMPARE", 0) or 0))
+        distance_func = None
         if near_enabled:
             try:
                 from app.rag.preprocessing.simhash import hamming_distance64  # noqa: WPS433
+
+                distance_func = hamming_distance64
             except (TypeError, ValueError, AttributeError):
                 near_enabled = False
+        return near_enabled, near_thr, near_max_compare, distance_func
 
-        seen_chunk_ids: set[str] = set()
-        seen_content_hashes: set[str] = set()
-        seen_fingerprints: set[str] = set()
-        kept: list[dict[str, Any]] = []
-        kept_tokens_by_doc: dict[str, list[set[str]]] = {}
-        kept_simhashes: list[int] = []
-        dropped_near = 0
-        dropped_content_hash = 0
+    @staticmethod
+    def _simhash64_from_meta(meta: dict[str, Any]) -> int | None:
+        sh_hex = str(meta.get("simhash64") or "").strip().lower()
+        if not sh_hex:
+            return None
+        try:
+            return int(sh_hex, 16) & ((1 << 64) - 1)
+        except (TypeError, ValueError, AttributeError):
+            return None
 
-        for r in results:
-            meta = r.get("metadata") or {}
-            cid = r.get("chunk_id") or meta.get("chunk_id")
-            if cid:
-                scid = str(cid)
-                if scid in seen_chunk_ids:
-                    continue
-                seen_chunk_ids.add(scid)
+    @staticmethod
+    def _is_seen_chunk_id(result: dict[str, Any], meta: dict[str, Any], seen_chunk_ids: set[str]) -> bool:
+        cid = result.get("chunk_id") or meta.get("chunk_id")
+        if not cid:
+            return False
+        scid = str(cid)
+        if scid in seen_chunk_ids:
+            return True
+        seen_chunk_ids.add(scid)
+        return False
 
-            content = (r.get("content") or "").strip()
-            if not content:
-                continue
+    @staticmethod
+    def _is_seen_content_hash(meta: dict[str, Any], seen_content_hashes: set[str]) -> bool:
+        content_hash = meta.get("content_hash")
+        if content_hash is None:
+            return False
+        normalized = str(content_hash).strip()
+        if not normalized:
+            return False
+        if normalized in seen_content_hashes:
+            return True
+        seen_content_hashes.add(normalized)
+        return False
 
-            # Wave19-T068: content-based dedup across modalities.
-            #
-            # Prefer a stable ingestion-time content hash (when present) to avoid:
-            # - modality duplication (e.g., OCR text vs extracted text),
-            # - expensive tokenization work when exact duplicates exist.
-            ch = meta.get("content_hash")
-            if ch is not None:
-                sch = str(ch).strip()
-                if sch:
-                    if sch in seen_content_hashes:
-                        dropped_content_hash += 1
-                        continue
-                    seen_content_hashes.add(sch)
+    @staticmethod
+    def _is_near_duplicate_simhash(
+        meta: dict[str, Any],
+        *,
+        near_enabled: bool,
+        near_thr: int,
+        near_max_compare: int,
+        kept_simhashes: list[int],
+        distance_func: Any | None,
+    ) -> bool:
+        if not near_enabled or distance_func is None:
+            return False
+        simhash = HybridRetriever._simhash64_from_meta(meta)
+        if simhash is None:
+            return False
+        compare_simhashes = kept_simhashes
+        if near_max_compare and len(compare_simhashes) > near_max_compare:
+            compare_simhashes = compare_simhashes[-near_max_compare:]
+        return any(distance_func(simhash, prev) <= near_thr for prev in compare_simhashes)
 
-            fp = self._fingerprint(content)
-            if fp in seen_fingerprints:
-                continue
-            seen_fingerprints.add(fp)
+    @staticmethod
+    def _remember_near_simhash(meta: dict[str, Any], *, near_enabled: bool, kept_simhashes: list[int]) -> None:
+        if not near_enabled:
+            return
+        sh_hex = str(meta.get("simhash64") or "").strip().lower()
+        if not sh_hex:
+            return
+        try:
+            kept_simhashes.append(int(sh_hex, 16) & ((1 << 64) - 1))
+        except Exception as exc:
+            logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
 
-            if near_enabled:
-                sh_hex = str(meta.get("simhash64") or "").strip().lower()
-                if sh_hex:
-                    try:
-                        sh_int = int(sh_hex, 16) & ((1 << 64) - 1)
-                    except (TypeError, ValueError, AttributeError):
-                        sh_int = None
-                    if sh_int is not None:
-                        compare_simhashes = kept_simhashes
-                        if near_max_compare and len(compare_simhashes) > near_max_compare:
-                            compare_simhashes = compare_simhashes[-near_max_compare:]
-                        is_dup = any(hamming_distance64(sh_int, prev) <= near_thr for prev in compare_simhashes)
-                        if is_dup:
-                            dropped_near += 1
-                            continue
+    def _is_jaccard_duplicate(
+        self,
+        *,
+        content: str,
+        doc_id: str,
+        threshold: float,
+        max_compare: int,
+        kept_tokens_by_doc: dict[str, list[set[str]]],
+    ) -> bool:
+        if threshold <= 0.0 or not doc_id:
+            return False
+        tokens = self._tokenize_for_similarity(content)
+        if not tokens:
+            return False
+        compare_sets = kept_tokens_by_doc.get(doc_id) or []
+        if max_compare and len(compare_sets) > max_compare:
+            compare_sets = compare_sets[-max_compare:]
+        if any(self._jaccard(tokens, prev) >= threshold for prev in compare_sets if prev):
+            return True
+        kept_tokens_by_doc.setdefault(doc_id, []).append(tokens)
+        return False
 
-            doc_id = self._get_doc_id(r)
-            if threshold > 0.0 and doc_id:
-                tokens = self._tokenize_for_similarity(content)
-                if tokens:
-                    compare_sets = kept_tokens_by_doc.get(doc_id) or []
-                    if max_compare and len(compare_sets) > max_compare:
-                        compare_sets = compare_sets[-max_compare:]
-                    is_dup = any(self._jaccard(tokens, prev) >= threshold for prev in compare_sets if prev)
-                    if is_dup:
-                        continue
-                    kept_tokens_by_doc.setdefault(doc_id, []).append(tokens)
-
-            kept.append(r)
-            if near_enabled:
-                sh_hex = str(meta.get("simhash64") or "").strip().lower()
-                if sh_hex:
-                    try:
-                        kept_simhashes.append(int(sh_hex, 16) & ((1 << 64) - 1))
-                    except Exception as exc:
-                        logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
-
-        # Best-effort: expose dedup controls/impact in retriever_debug.channels for diagnostics.
-        # Important: emit near-dedup fields even when disabled to avoid "hidden filtering" ambiguity.
+    def _record_dedup_metrics(
+        self,
+        *,
+        near_enabled: bool,
+        near_thr: int,
+        near_max_compare: int,
+        dropped_near: int,
+        dropped_content_hash: int,
+    ) -> None:
         try:
             if isinstance(self._last_channel_metrics, dict):
                 dedup_meta = self._last_channel_metrics.get("dedup")
@@ -5754,7 +5804,251 @@ class HybridRetriever(BaseRetriever):
         except Exception as exc:
             logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
 
+    def _deduplicate_results(self, results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if not results or not bool(self.dedup_enabled):
+            return results
+
+        threshold, max_compare = self._bounded_similarity_settings(self.dedup_jaccard_threshold, self.dedup_max_compare)
+        near_enabled, near_thr, near_max_compare, distance_func = self._resolve_near_dedup_runtime()
+        seen_chunk_ids: set[str] = set()
+        seen_content_hashes: set[str] = set()
+        seen_fingerprints: set[str] = set()
+        kept: list[dict[str, Any]] = []
+        kept_tokens_by_doc: dict[str, list[set[str]]] = {}
+        kept_simhashes: list[int] = []
+        dropped_near = 0
+        dropped_content_hash = 0
+
+        for r in results:
+            meta = r.get("metadata") or {}
+            if self._is_seen_chunk_id(r, meta, seen_chunk_ids):
+                continue
+
+            content = (r.get("content") or "").strip()
+            if not content:
+                continue
+
+            if self._is_seen_content_hash(meta, seen_content_hashes):
+                dropped_content_hash += 1
+                continue
+
+            fp = self._fingerprint(content)
+            if fp in seen_fingerprints:
+                continue
+            seen_fingerprints.add(fp)
+
+            if self._is_near_duplicate_simhash(
+                meta,
+                near_enabled=near_enabled,
+                near_thr=near_thr,
+                near_max_compare=near_max_compare,
+                kept_simhashes=kept_simhashes,
+                distance_func=distance_func,
+            ):
+                dropped_near += 1
+                continue
+
+            doc_id = self._get_doc_id(r)
+            if self._is_jaccard_duplicate(
+                content=content,
+                doc_id=doc_id,
+                threshold=threshold,
+                max_compare=max_compare,
+                kept_tokens_by_doc=kept_tokens_by_doc,
+            ):
+                continue
+
+            kept.append(r)
+            self._remember_near_simhash(meta, near_enabled=near_enabled, kept_simhashes=kept_simhashes)
+
+        self._record_dedup_metrics(
+            near_enabled=near_enabled,
+            near_thr=near_thr,
+            near_max_compare=near_max_compare,
+            dropped_near=dropped_near,
+            dropped_content_hash=dropped_content_hash,
+        )
         return kept
+
+    def _diversity_page_key(self, result: dict[str, Any]) -> tuple[str, int] | None:
+        meta = result.get("metadata") or {}
+        doc_id = self._get_doc_id(result)
+        if not doc_id:
+            return None
+        raw = meta.get("page_number")
+        if raw is None:
+            raw = meta.get("page")
+        if raw is None:
+            return None
+        try:
+            return (doc_id, int(raw))
+        except (TypeError, ValueError, AttributeError):
+            return None
+
+    def _diversity_top_stats(
+        self,
+        results: list[dict[str, Any]],
+        *,
+        top_k: int,
+    ) -> tuple[set[str], set[str], set[tuple[str, int]]]:
+        pre_top = (results or [])[: max(0, int(top_k or 0))]
+        pre_keys = {self._result_key(r) for r in pre_top}
+        pre_docs = {did for did in (self._get_doc_id(r) for r in pre_top) if did}
+        pre_pages = {pk for pk in (self._diversity_page_key(r) for r in pre_top) if pk is not None}
+        return pre_keys, pre_docs, pre_pages
+
+    @staticmethod
+    def _init_document_diversity_stats(
+        stats: dict[str, Any] | None,
+        *,
+        max_per_doc: int,
+        max_per_page: int,
+        min_docs: int,
+        pre_docs_count: int,
+        pre_pages_count: int,
+    ) -> None:
+        if stats is not None:
+            stats.clear()
+            stats.update(
+                {
+                    "max_chunks_per_doc": int(max_per_doc),
+                    "max_chunks_per_page": int(max_per_page),
+                    "min_distinct_docs": int(min_docs),
+                    "pre_unique_docs": int(pre_docs_count),
+                    "pre_unique_pages": int(pre_pages_count),
+                }
+            )
+
+    @staticmethod
+    def _set_document_diversity_output_stats(
+        stats: dict[str, Any] | None,
+        *,
+        post_docs_count: int,
+        post_pages_count: int,
+        moved_out: int,
+        moved_in: int,
+    ) -> None:
+        if stats is None:
+            return
+        stats.update(
+            {
+                "post_unique_docs": int(post_docs_count),
+                "post_unique_pages": int(post_pages_count),
+                "moved_out": int(moved_out),
+                "moved_in": int(moved_in),
+            }
+        )
+
+    def _document_diversity_groups(self, results: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+        groups: dict[str, list[dict[str, Any]]] = {}
+        for r in results:
+            groups.setdefault(self._get_doc_id(r), []).append(r)
+        return groups
+
+    @staticmethod
+    def _document_diversity_must_have(
+        groups: dict[str, list[dict[str, Any]]],
+        *,
+        min_docs: int,
+        top_k: int,
+    ) -> list[dict[str, Any]]:
+        if min_docs <= 0:
+            return []
+        firsts = [items[0] for items in groups.values() if items]
+        firsts.sort(key=lambda x: float(x.get("score", 0.0) or 0.0), reverse=True)
+        return firsts[: max(0, min(min_docs, len(firsts), top_k))]
+
+    def _remember_document_diversity_selection(
+        self,
+        result: dict[str, Any],
+        *,
+        selected: list[dict[str, Any]],
+        used_keys: set[str],
+        per_doc: Counter,
+        per_page: Counter,
+    ) -> None:
+        used_keys.add(self._result_key(result))
+        selected.append(result)
+        per_doc[self._get_doc_id(result)] += 1
+        page_key = self._diversity_page_key(result)
+        if page_key is not None:
+            per_page[page_key] += 1
+
+    def _document_diversity_candidate_allowed(
+        self,
+        result: dict[str, Any],
+        *,
+        max_per_doc: int,
+        max_per_page: int,
+        per_doc: Counter,
+        per_page: Counter,
+    ) -> bool:
+        doc_id = self._get_doc_id(result)
+        if max_per_doc > 0 and per_doc[doc_id] >= max_per_doc:
+            return False
+        page_key = self._diversity_page_key(result)
+        return not (max_per_page > 0 and page_key is not None and per_page[page_key] >= max_per_page)
+
+    def _select_document_diversity_results(
+        self,
+        results: list[dict[str, Any]],
+        *,
+        top_k: int,
+        max_per_doc: int,
+        max_per_page: int,
+        min_docs: int,
+    ) -> tuple[list[dict[str, Any]], set[str]]:
+        groups = self._document_diversity_groups(results)
+        must_have = self._document_diversity_must_have(groups, min_docs=min_docs, top_k=top_k)
+        selected: list[dict[str, Any]] = []
+        used_keys: set[str] = set()
+        per_doc: Counter = Counter()
+        per_page: Counter = Counter()
+
+        for result in must_have:
+            key = self._result_key(result)
+            if key not in used_keys:
+                self._remember_document_diversity_selection(
+                    result,
+                    selected=selected,
+                    used_keys=used_keys,
+                    per_doc=per_doc,
+                    per_page=per_page,
+                )
+
+        overflow: list[dict[str, Any]] = []
+        for result in results:
+            if len(selected) >= top_k:
+                break
+            key = self._result_key(result)
+            if key in used_keys:
+                continue
+            if not self._document_diversity_candidate_allowed(
+                result,
+                max_per_doc=max_per_doc,
+                max_per_page=max_per_page,
+                per_doc=per_doc,
+                per_page=per_page,
+            ):
+                overflow.append(result)
+                continue
+            self._remember_document_diversity_selection(
+                result,
+                selected=selected,
+                used_keys=used_keys,
+                per_doc=per_doc,
+                per_page=per_page,
+            )
+
+        if len(selected) < top_k and overflow:
+            for result in overflow:
+                if len(selected) >= top_k:
+                    break
+                key = self._result_key(result)
+                if key not in used_keys:
+                    used_keys.add(key)
+                    selected.append(result)
+        return selected, used_keys
 
     def _apply_document_diversity(
         self,
@@ -5766,121 +6060,43 @@ class HybridRetriever(BaseRetriever):
         max_per_doc = int(self.max_chunks_per_doc or 0)
         max_per_page = int(getattr(self, "max_chunks_per_page", 0) or 0)
         min_docs = int(self.min_distinct_docs or 0)
-
-        def _page_key(r: dict[str, Any]) -> tuple[str, int] | None:
-            meta = r.get("metadata") or {}
-            doc_id = self._get_doc_id(r)
-            if not doc_id:
-                return None
-            raw = meta.get("page_number")
-            if raw is None:
-                raw = meta.get("page")
-            if raw is None:
-                return None
-            try:
-                page = int(raw)
-            except (TypeError, ValueError, AttributeError):
-                return None
-            return (doc_id, page)
-
-        k_cap = max(0, int(top_k or 0))
-        pre_top = (results or [])[:k_cap]
-        pre_keys = {self._result_key(r) for r in pre_top}
-        pre_docs = {did for did in (self._get_doc_id(r) for r in pre_top) if did}
-        pre_pages = {pk for pk in (_page_key(r) for r in pre_top) if pk is not None}
-
-        if stats is not None:
-            stats.clear()
-            stats.update(
-                {
-                    "max_chunks_per_doc": int(max_per_doc),
-                    "max_chunks_per_page": int(max_per_page),
-                    "min_distinct_docs": int(min_docs),
-                    "pre_unique_docs": int(len(pre_docs)),
-                    "pre_unique_pages": int(len(pre_pages)),
-                }
-            )
+        pre_keys, pre_docs, pre_pages = self._diversity_top_stats(results, top_k=top_k)
+        self._init_document_diversity_stats(
+            stats,
+            max_per_doc=max_per_doc,
+            max_per_page=max_per_page,
+            min_docs=min_docs,
+            pre_docs_count=len(pre_docs),
+            pre_pages_count=len(pre_pages),
+        )
 
         if not results:
-            if stats is not None:
-                stats.update(
-                    {
-                        "post_unique_docs": 0,
-                        "post_unique_pages": 0,
-                        "moved_out": 0,
-                        "moved_in": 0,
-                    }
-                )
+            self._set_document_diversity_output_stats(
+                stats,
+                post_docs_count=0,
+                post_pages_count=0,
+                moved_out=0,
+                moved_in=0,
+            )
             return results
 
         if max_per_doc <= 0 and max_per_page <= 0 and min_docs <= 0:
-            if stats is not None:
-                stats.update(
-                    {
-                        "post_unique_docs": int(len(pre_docs)),
-                        "post_unique_pages": int(len(pre_pages)),
-                        "moved_out": 0,
-                        "moved_in": 0,
-                    }
-                )
+            self._set_document_diversity_output_stats(
+                stats,
+                post_docs_count=len(pre_docs),
+                post_pages_count=len(pre_pages),
+                moved_out=0,
+                moved_in=0,
+            )
             return results
 
-        groups: dict[str, list[dict[str, Any]]] = {}
-        for r in results:
-            groups.setdefault(self._get_doc_id(r), []).append(r)
-
-        must_have: list[dict[str, Any]] = []
-        if min_docs > 0:
-            firsts = [items[0] for items in groups.values() if items]
-            firsts.sort(key=lambda x: float(x.get("score", 0.0) or 0.0), reverse=True)
-            must_have = firsts[: max(0, min(min_docs, len(firsts), top_k))]
-
-        selected: list[dict[str, Any]] = []
-        used_keys: set[str] = set()
-        per_doc = Counter()
-        per_page = Counter()
-        for r in must_have:
-            k = self._result_key(r)
-            if k in used_keys:
-                continue
-            used_keys.add(k)
-            selected.append(r)
-            doc_id = self._get_doc_id(r)
-            per_doc[doc_id] += 1
-            pk = _page_key(r)
-            if pk is not None:
-                per_page[pk] += 1
-
-        overflow: list[dict[str, Any]] = []
-        for r in results:
-            if len(selected) >= top_k:
-                break
-            k = self._result_key(r)
-            if k in used_keys:
-                continue
-            doc_id = self._get_doc_id(r)
-            if max_per_doc > 0 and per_doc[doc_id] >= max_per_doc:
-                overflow.append(r)
-                continue
-            pk = _page_key(r)
-            if max_per_page > 0 and pk is not None and per_page[pk] >= max_per_page:
-                overflow.append(r)
-                continue
-            used_keys.add(k)
-            selected.append(r)
-            per_doc[doc_id] += 1
-            if pk is not None:
-                per_page[pk] += 1
-
-        if len(selected) < top_k and overflow:
-            for r in overflow:
-                if len(selected) >= top_k:
-                    break
-                k = self._result_key(r)
-                if k in used_keys:
-                    continue
-                used_keys.add(k)
-                selected.append(r)
+        selected, used_keys = self._select_document_diversity_results(
+            results,
+            top_k=top_k,
+            max_per_doc=max_per_doc,
+            max_per_page=max_per_page,
+            min_docs=min_docs,
+        )
 
         if len(selected) >= len(results):
             out_all = selected
@@ -5889,17 +6105,16 @@ class HybridRetriever(BaseRetriever):
             out_all = selected + rest
 
         if stats is not None:
-            post_top = out_all[:k_cap]
+            post_top = out_all[: max(0, int(top_k or 0))]
             post_keys = {self._result_key(r) for r in post_top}
             post_docs = {did for did in (self._get_doc_id(r) for r in post_top) if did}
-            post_pages = {pk for pk in (_page_key(r) for r in post_top) if pk is not None}
-            stats.update(
-                {
-                    "post_unique_docs": int(len(post_docs)),
-                    "post_unique_pages": int(len(post_pages)),
-                    "moved_out": int(len(pre_keys - post_keys)),
-                    "moved_in": int(len(post_keys - pre_keys)),
-                }
+            post_pages = {pk for pk in (self._diversity_page_key(r) for r in post_top) if pk is not None}
+            self._set_document_diversity_output_stats(
+                stats,
+                post_docs_count=len(post_docs),
+                post_pages_count=len(post_pages),
+                moved_out=len(pre_keys - post_keys),
+                moved_in=len(post_keys - pre_keys),
             )
 
         return out_all
@@ -6716,6 +6931,44 @@ class HybridRetriever(BaseRetriever):
         reranked.sort(key=lambda x: x["score"], reverse=True)
         return reranked
 
+    def _mmr_doc_similarity(
+        self,
+        tokens_map: dict[int, set[str]],
+        doc_a: dict[str, Any],
+        doc_b: dict[str, Any],
+    ) -> float:
+        return self._jaccard(tokens_map.get(id(doc_a), set()), tokens_map.get(id(doc_b), set()))
+
+    def _mmr_diversity_penalty(
+        self,
+        doc: dict[str, Any],
+        selected: list[dict[str, Any]],
+        tokens_map: dict[int, set[str]],
+    ) -> float:
+        if not selected:
+            return 0.0
+        similarities = [self._mmr_doc_similarity(tokens_map, doc, selected_doc) for selected_doc in selected]
+        return max(similarities) if similarities else 0.0
+
+    def _best_mmr_candidate(
+        self,
+        candidates: list[dict[str, Any]],
+        selected: list[dict[str, Any]],
+        *,
+        tokens_map: dict[int, set[str]],
+        lambda_mult: float,
+    ) -> tuple[int, dict[str, Any]] | None:
+        best: tuple[int, dict[str, Any]] | None = None
+        best_score = -1e9
+        for index, doc in enumerate(candidates):
+            relevance = float(doc.get("score", 0.0))
+            diversity_penalty = self._mmr_diversity_penalty(doc, selected, tokens_map)
+            mmr_score = lambda_mult * relevance - (1 - lambda_mult) * diversity_penalty
+            if mmr_score > best_score:
+                best_score = mmr_score
+                best = (index, doc)
+        return best
+
     def _mmr_rerank(
         self,
         documents: list[dict[str, Any]],
@@ -6737,29 +6990,13 @@ class HybridRetriever(BaseRetriever):
         # Pre-cache tokens to avoid multiple tokenizations
         tokens_map = {id(doc): self._tokenize_for_similarity(doc.get("content", "")) for doc in candidates}
 
-        def doc_similarity(doc_a: dict[str, Any], doc_b: dict[str, Any]) -> float:
-            tokens_a = tokens_map.get(id(doc_a), set())
-            tokens_b = tokens_map.get(id(doc_b), set())
-            if not tokens_a or not tokens_b:
-                return 0.0
-            inter = tokens_a & tokens_b
-            union = tokens_a | tokens_b
-            return len(inter) / len(union) if union else 0.0
-
         while candidates and len(selected) < top_k:
-            best = None
-            best_score = -1e9
-            for i, doc in enumerate(candidates):
-                relevance = float(doc.get("score", 0.0))
-                diversity_penalty = 0.0
-                if selected:
-                    sel_sims = [doc_similarity(doc, s) for s in selected]
-                    diversity_penalty = max(sel_sims) if sel_sims else 0.0
-                mmr_score = lambda_mult * relevance - (1 - lambda_mult) * diversity_penalty
-                if mmr_score > best_score:
-                    best_score = mmr_score
-                    best = (i, doc)
-
+            best = self._best_mmr_candidate(
+                candidates,
+                selected,
+                tokens_map=tokens_map,
+                lambda_mult=lambda_mult,
+            )
             if best is None:
                 break
             idx, doc = best
