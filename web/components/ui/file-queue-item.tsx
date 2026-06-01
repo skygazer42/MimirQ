@@ -33,6 +33,47 @@ const FILE_TYPE_CONFIG: Record<
   md: { icon: FileText, color: 'text-accent', bg: 'bg-accent/10' },
 }
 
+function getFileQueueGovernanceStatusLabel(
+  governanceStatus?: FileQueueItemData['governanceStatus']
+): string {
+  if (governanceStatus === 'ready') return '待提交'
+  if (governanceStatus === 'submitted') return '已提交'
+  return ''
+}
+
+function getFileQueueGovernanceStatusClass(
+  governanceStatus?: FileQueueItemData['governanceStatus']
+): string {
+  if (governanceStatus === 'ready') {
+    return 'border-warning/25 bg-warning/[0.10] text-warning'
+  }
+  return 'border-success/25 bg-success/[0.08] text-success'
+}
+
+function getFileQueueParsingLabel(
+  progress: number | null | undefined,
+  progressPct: number,
+  label: string
+): string {
+  if (progress == null) return label
+  return `${label} ${progressPct}%`
+}
+
+function getFileQueueSelectionLabel(isSelected: boolean): string {
+  if (isSelected) return '取消选择待提交文档'
+  return '选择待提交文档'
+}
+
+function getFileQueueSelectionClass(isSelected: boolean): string {
+  if (isSelected) return 'border-primary bg-primary text-primary-foreground'
+  return 'border-border/70 bg-background text-transparent hover:border-primary/50 hover:text-primary/40'
+}
+
+function getFileQueueRowClass(isActive: boolean): string {
+  if (isActive) return 'bg-primary/[0.055] shadow-none'
+  return 'bg-background/60 hover:bg-muted/35'
+}
+
 export type FileStatus = 'pending' | 'parsing' | 'parsed' | 'error'
 
 export interface FileQueueItemData {
@@ -85,8 +126,27 @@ export function FileQueueItem({
       ? 0
       : Math.max(0, Math.min(100, Number(file.progress)))
   const parsedSummary = [file.parser, file.chunkStrategyLabel].filter(Boolean).join(' · ')
-  const governanceStatusLabel =
-    file.governanceStatus === 'ready' ? '待提交' : file.governanceStatus === 'submitted' ? '已提交' : ''
+  const governanceStatusLabel = getFileQueueGovernanceStatusLabel(file.governanceStatus)
+  let selectionButton: React.ReactNode = null
+  if (isSelectable) {
+    selectionButton = (
+      <button
+        type="button"
+        aria-pressed={isSelected}
+        aria-label={getFileQueueSelectionLabel(isSelected)}
+        className={cn(
+          'mt-1 flex size-5 shrink-0 items-center justify-center rounded-full border transition-colors focus-ring',
+          getFileQueueSelectionClass(isSelected)
+        )}
+        onClick={(event) => {
+          event.stopPropagation()
+          onToggleSelected?.()
+        }}
+      >
+        <CheckCircle className="size-3.5" />
+      </button>
+    )
+  }
 
   const getStatusContent = () => {
     switch (file.status) {
@@ -102,7 +162,7 @@ export function FileQueueItem({
           <div className="space-y-1.5">
             <div className="flex items-center gap-1.5 text-[11px] text-info">
               <Loader2 className="size-3 animate-spin motion-reduce:animate-none" />
-              <span>{t("fileQueueItem.parsing")} {file.progress == null ? '' : `${progressPct}%`}</span>
+              <span>{getFileQueueParsingLabel(file.progress, progressPct, t("fileQueueItem.parsing"))}</span>
             </div>
             {file.progress !== undefined && (
               <Progress value={progressPct} className="h-1.5" />
@@ -122,15 +182,13 @@ export function FileQueueItem({
               </span>
             ) : null}
             {governanceStatusLabel ? (
-              <span
-                className={cn(
-                  'shrink-0 rounded-full border px-1.5 py-0.5 font-medium',
-                  file.governanceStatus === 'ready'
-                    ? 'border-warning/25 bg-warning/[0.10] text-warning'
-                    : 'border-success/25 bg-success/[0.08] text-success'
-                )}
-              >
-                {governanceStatusLabel}
+                <span
+                  className={cn(
+                    'shrink-0 rounded-full border px-1.5 py-0.5 font-medium',
+                    getFileQueueGovernanceStatusClass(file.governanceStatus)
+                  )}
+                >
+                  {governanceStatusLabel}
               </span>
             ) : null}
             {typeof file.duration === 'number' && Number.isFinite(file.duration) ? (
@@ -195,31 +253,11 @@ export function FileQueueItem({
     <div
       className={cn(
         'group cursor-pointer rounded-md border border-transparent px-2.5 py-2 transition-colors duration-150 motion-reduce:transition-none',
-        isActive
-          ? 'bg-primary/[0.055] shadow-none'
-          : 'bg-background/60 hover:bg-muted/35'
+        getFileQueueRowClass(isActive)
       )}
     >
       <div className="flex items-start gap-2">
-        {isSelectable ? (
-          <button
-            type="button"
-            aria-pressed={isSelected}
-            aria-label={isSelected ? '取消选择待提交文档' : '选择待提交文档'}
-            className={cn(
-              'mt-1 flex size-5 shrink-0 items-center justify-center rounded-full border transition-colors focus-ring',
-              isSelected
-                ? 'border-primary bg-primary text-primary-foreground'
-                : 'border-border/70 bg-background text-transparent hover:border-primary/50 hover:text-primary/40'
-            )}
-            onClick={(event) => {
-              event.stopPropagation()
-              onToggleSelected?.()
-            }}
-          >
-            <CheckCircle className="size-3.5" />
-          </button>
-        ) : null}
+        {selectionButton}
 
         {onClick ? (
           <button

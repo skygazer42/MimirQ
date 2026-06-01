@@ -39,6 +39,18 @@ type TextTabPanelProps = {
   onGoToPreview: () => void
 }
 
+function getTextTabRetrieveButtonLabel(retrieveLoading: boolean): React.ReactNode {
+  if (retrieveLoading) {
+    return (
+      <span className="inline-flex items-center gap-2">
+        <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
+        检索中…
+      </span>
+    )
+  }
+  return "检索"
+}
+
 export function TextTabPanel({
   textMode,
   highlightChunkId,
@@ -70,6 +82,98 @@ export function TextTabPanel({
   onGoToChunks,
   onGoToPreview,
 }: Readonly<TextTabPanelProps>) {
+  const previewChunks = textMode === "cleaned" ? textChunkItems : []
+  const previewActiveChunkIndex = textMode === "cleaned" ? textActiveChunkIndex : null
+  const previewActiveRange = textMode === "cleaned" ? highlightRange ?? null : null
+
+  let retrieveResultsPanel: React.ReactNode = null
+  if (retrieveCitations.length) {
+    retrieveResultsPanel = (
+      <div className="max-h-[220px] overflow-auto rounded-xl border border-border/60 bg-background/60 p-3">
+        <div className="mb-2 text-xs font-semibold text-foreground">检索命中</div>
+        <div className="space-y-2">
+          {retrieveCitations.slice(0, 6).map((citation) => {
+            const hasChunk = Boolean(citation.chunk_id)
+            return (
+              <button
+                key={`${String(citation.document_id || "")}:${String(citation.chunk_id || "")}:${String(citation.page_number ?? "")}`}
+                type="button"
+                className={cn(
+                  "w-full rounded-lg border border-border bg-background px-3 py-2 text-left",
+                  "transition-colors hover:border-primary/30 hover:bg-muted/30",
+                )}
+                disabled={!hasChunk}
+                onClick={() => {
+                  if (!citation.chunk_id) return
+                  onSelectRetrieveChunk(citation.chunk_id)
+                }}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-[11px] text-muted-foreground">
+                    score <span className="font-mono">{Number(citation.relevance_score || 0).toFixed(4)}</span>
+                    {typeof citation.page_number === "number" ? <span className="ml-2">P.{citation.page_number}</span> : null}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">{hasChunk ? "点击定位" : "无 chunk_id"}</div>
+                </div>
+                <div className="mt-1 line-clamp-3 whitespace-pre-wrap font-mono text-xs leading-relaxed text-foreground/90">
+                  {citation.chunk_content || ""}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
+  let textPanelContent: React.ReactNode
+  if (parsedContentLoading && !parsedContent) {
+    textPanelContent = (
+      <div className="flex h-full items-center justify-center text-muted-foreground">
+        <Loader2 className="size-8 animate-spin motion-reduce:animate-none" />
+      </div>
+    )
+  } else if (parsedContent?.available && textValue) {
+    textPanelContent = (
+      <OriginalPreviewMonaco
+        text={textValue}
+        chunks={previewChunks}
+        activeChunkIndex={previewActiveChunkIndex}
+        activeRange={previewActiveRange}
+        highlightParentRange={highlightParentRange}
+        initialScrollTop={initialScrollTop}
+        onScrollTopChange={onTextScrollTopChange}
+        onSelectChunkIndex={onSelectChunkIndex}
+      />
+    )
+  } else {
+    textPanelContent = (
+      <div className="flex h-full items-center justify-center p-6">
+        <div className="w-full max-w-md rounded-xl border border-border bg-background p-6 shadow-sm">
+          <div className="flex items-start gap-3">
+            <div className="rounded-lg bg-primary/10 p-2">
+              <FileText className="size-5 text-primary" />
+            </div>
+            <div className="flex-1">
+              <h4 className="text-sm font-semibold">未持久化解析文本</h4>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                当前文档未开启 <span className="font-mono">persist_parsed_content</span>，因此无法在此处高亮定位切片位置。你可以在上传/流水线配置中开启该选项后重新入库，或继续使用「智能切片」查看内容。
+              </p>
+              <div className="mt-4 flex items-center gap-2">
+                <Button size="sm" variant="outline" onClick={onGoToChunks}>
+                  查看切片
+                </Button>
+                <Button size="sm" variant="outline" onClick={onGoToPreview}>
+                  返回原文
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="flex h-full flex-col overflow-hidden bg-muted/20 dark:bg-muted/10">
       <div className="border-b border-border bg-background p-4">
@@ -117,14 +221,7 @@ export function TextTabPanel({
             />
             <div className="flex items-center justify-end gap-2">
               <Button type="button" size="sm" variant="outline" disabled={!retrieveQuery.trim() || retrieveLoading} onClick={onRunRetrieve}>
-                {retrieveLoading ? (
-                  <span className="inline-flex items-center gap-2">
-                    <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
-                    检索中…
-                  </span>
-                ) : (
-                  "检索"
-                )}
+                {getTextTabRetrieveButtonLabel(retrieveLoading)}
               </Button>
               {retrieveCitations.length ? (
                 <Button type="button" size="sm" variant="outline" onClick={onClearRetrieve}>
@@ -138,42 +235,7 @@ export function TextTabPanel({
             <div className="rounded-lg border border-destructive/25 bg-destructive/10 px-2 py-1 text-[11px] text-destructive">{retrieveError}</div>
           ) : null}
 
-          {retrieveCitations.length ? (
-            <div className="max-h-[220px] overflow-auto rounded-xl border border-border/60 bg-background/60 p-3">
-              <div className="mb-2 text-xs font-semibold text-foreground">检索命中</div>
-              <div className="space-y-2">
-                {retrieveCitations.slice(0, 6).map((citation) => {
-                  const hasChunk = Boolean(citation.chunk_id)
-                  return (
-                    <button
-                      key={`${String(citation.document_id || "")}:${String(citation.chunk_id || "")}:${String(citation.page_number ?? "")}`}
-                      type="button"
-                      className={cn(
-                        "w-full rounded-lg border border-border bg-background px-3 py-2 text-left",
-                        "transition-colors hover:border-primary/30 hover:bg-muted/30",
-                      )}
-                      disabled={!hasChunk}
-                      onClick={() => {
-                        if (!citation.chunk_id) return
-                        onSelectRetrieveChunk(citation.chunk_id)
-                      }}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="text-[11px] text-muted-foreground">
-                          score <span className="font-mono">{Number(citation.relevance_score || 0).toFixed(4)}</span>
-                          {typeof citation.page_number === "number" ? <span className="ml-2">P.{citation.page_number}</span> : null}
-                        </div>
-                        <div className="text-[11px] text-muted-foreground">{hasChunk ? "点击定位" : "无 chunk_id"}</div>
-                      </div>
-                      <div className="mt-1 line-clamp-3 whitespace-pre-wrap font-mono text-xs leading-relaxed text-foreground/90">
-                        {citation.chunk_content || ""}
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          ) : null}
+          {retrieveResultsPanel}
 
           {textMode === "original" ? (
             <div className="text-[11px] text-muted-foreground">提示：切片的 start/end 偏移通常基于「清洗后」文本；在「原始解析」视图中高亮定位可能不准确。</div>
@@ -192,46 +254,7 @@ export function TextTabPanel({
       </div>
 
       <div className="flex-1 overflow-hidden p-4">
-        {parsedContentLoading && !parsedContent ? (
-          <div className="flex h-full items-center justify-center text-muted-foreground">
-            <Loader2 className="size-8 animate-spin motion-reduce:animate-none" />
-          </div>
-        ) : parsedContent?.available && textValue ? (
-          <OriginalPreviewMonaco
-            text={textValue}
-            chunks={textMode === "cleaned" ? textChunkItems : []}
-            activeChunkIndex={textMode === "cleaned" ? textActiveChunkIndex : null}
-            activeRange={textMode === "cleaned" ? highlightRange ?? null : null}
-            highlightParentRange={highlightParentRange}
-            initialScrollTop={initialScrollTop}
-            onScrollTopChange={onTextScrollTopChange}
-            onSelectChunkIndex={onSelectChunkIndex}
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center p-6">
-            <div className="w-full max-w-md rounded-xl border border-border bg-background p-6 shadow-sm">
-              <div className="flex items-start gap-3">
-                <div className="rounded-lg bg-primary/10 p-2">
-                  <FileText className="size-5 text-primary" />
-                </div>
-                <div className="flex-1">
-                  <h4 className="text-sm font-semibold">未持久化解析文本</h4>
-                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                    当前文档未开启 <span className="font-mono">persist_parsed_content</span>，因此无法在此处高亮定位切片位置。你可以在上传/流水线配置中开启该选项后重新入库，或继续使用「智能切片」查看内容。
-                  </p>
-                  <div className="mt-4 flex items-center gap-2">
-                    <Button size="sm" variant="outline" onClick={onGoToChunks}>
-                      查看切片
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={onGoToPreview}>
-                      返回原文
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        {textPanelContent}
       </div>
     </div>
   )
