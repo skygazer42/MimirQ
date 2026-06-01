@@ -9,7 +9,10 @@ import threading
 from typing import Any
 
 from app.core.config import settings
+from app.rag.core.logging import get_logger
 from app.rag.reranker.base import BaseReranker
+
+logger = get_logger(__name__)
 
 _api_reranker_lock = threading.Lock()
 _api_reranker_cache: dict[str, BaseReranker] = {}
@@ -315,8 +318,8 @@ def get_reranker(
                     settings.LTR_MODEL_MANIFEST_PATH = str(man_p)
                 if spec_v:
                     settings.LTR_FEATURE_SPEC_VERSION = int(spec_v)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring LTR active model registry lookup failure: %s", exc)
 
         if not model_path:
             raise ValueError("LTR reranker requires model_path (pass model_path=... or set LTR_MODEL_PATH)")

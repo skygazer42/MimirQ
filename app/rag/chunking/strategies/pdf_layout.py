@@ -30,6 +30,9 @@ from langchain_core.documents import Document
 
 from app.rag.chunking.base import BaseChunker
 from app.rag.chunking.strategies.recursive import LangChainRecursiveChunker
+from app.rag.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 # Keep the same tag shape used by the parsing workspace and chunk-preview API.
 POSITION_TAG_RE = re.compile(r"@@([0-9-]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)##")
@@ -326,8 +329,8 @@ class PDFLayoutChunker(BaseChunker):
                         if isinstance(pages, list) and pages:
                             meta.setdefault("page", int(pages[0]))
                             meta.setdefault("page_number", int(pages[0]))
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Ignoring PDF layout page metadata hint failure: %s", exc)
 
                 out.append(Document(page_content=cleaned, metadata=meta))
 

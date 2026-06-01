@@ -14,6 +14,10 @@ import time
 from typing import Any
 from uuid import UUID
 
+from app.rag.core.logging import get_logger
+
+logger = get_logger(__name__)
+
 # Broad, multilingual temporal/freshness hints.
 #
 # Note: these are *hints*, not guarantees. We keep the detector conservative
@@ -240,8 +244,8 @@ def fetch_document_updated_ts(
     finally:
         try:
             db.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring temporal metadata session close failure: %s", exc)
 
 
 __all__ = [
@@ -249,4 +253,3 @@ __all__ = [
     "detect_temporal_intent",
     "fetch_document_updated_ts",
 ]
-

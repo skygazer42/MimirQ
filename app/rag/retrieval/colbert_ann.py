@@ -27,6 +27,10 @@ from typing import Any, Protocol
 
 import numpy as np
 
+from app.rag.core.logging import get_logger
+
+logger = get_logger(__name__)
+
 _INDEX_SCHEMA_V1 = "mimirq.colbert_ann_index.v1"
 _TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]+|[\u4e00-\u9fff]{2,}")
 VALID_COLBERT_PROVIDERS = frozenset({"deterministic", "hf"})
@@ -402,8 +406,8 @@ class ColbertAnnIndexStore:
 
         try:
             np.savez_compressed(npz_path, vectors=vecs, doc_ids=np.asarray(ids, dtype=str))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring ColBERT ANN vector index write failure: %s", exc)
         try:
             meta = {
                 "schema": _INDEX_SCHEMA_V1,
@@ -413,8 +417,8 @@ class ColbertAnnIndexStore:
                 "dim": int(vecs.shape[1]) if vecs.ndim == 2 else 0,
             }
             meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring ColBERT ANN metadata write failure: %s", exc)
 
         return npz_path, meta_path
 

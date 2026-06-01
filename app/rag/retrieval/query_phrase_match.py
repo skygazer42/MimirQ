@@ -4,7 +4,10 @@ import re
 import unicodedata
 from typing import Any
 
+from app.rag.core.logging import get_logger
 from app.rag.preprocessing.stopwords import STOPWORDS
+
+logger = get_logger(__name__)
 
 _TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_+./:-]{1,64}|[\u4e00-\u9fff]{2,32}", flags=re.UNICODE)
 _SPACE_RE = re.compile(r"\s+")
@@ -48,8 +51,8 @@ def _normalize_text(value: Any) -> str:
         return ""
     try:
         raw = unicodedata.normalize("NFKC", raw)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Ignoring query phrase unicode normalization failure: %s", exc)
     raw = _SEPARATOR_RE.sub(" ", raw)
     return _SPACE_RE.sub(" ", raw.casefold()).strip()
 

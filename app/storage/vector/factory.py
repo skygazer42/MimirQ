@@ -447,8 +447,8 @@ class FAISSVectorStore(BaseVectorStore):
         if ids_to_delete and hasattr(store, "delete"):
             try:
                 store.delete(ids_to_delete)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring FAISS delete-by-document-id failure: %s", exc)
 
         # Persist (overwrite save).
         if self.persist_path:

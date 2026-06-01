@@ -11,6 +11,9 @@ from dataclasses import dataclass
 from langchain_core.documents import Document
 
 from app.rag.chunking.base import BaseChunker
+from app.rag.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class SemanticSentenceChunker(BaseChunker):
@@ -172,8 +175,8 @@ class SemanticSentenceChunker(BaseChunker):
                             merged[-1] = self._Unit(text=raw[start:end], start=start, end=end, kind="text")
                             i += 1
                             continue
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Ignoring semantic chunk numeric-run merge failure: %s", exc)
 
                 merged.append(cur)
                 i += 1

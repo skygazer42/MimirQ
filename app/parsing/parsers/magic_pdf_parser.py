@@ -398,8 +398,8 @@ class MagicPDFParser:
                 # because the upstream CLI sometimes exits with code 0 on failures.
                 try:
                     (artifact_root / "magic-pdf.log").write_text(stdout_text, encoding="utf-8", errors="ignore")
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("[magicpdf] ignoring CLI failure log write error: %s", exc)
                 raise RuntimeError(f"MagicPDF did not produce a markdown output file. Output:\n{out[:4000]}")
             raise RuntimeError("MagicPDF did not produce a markdown output file")
 

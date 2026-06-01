@@ -3,6 +3,10 @@ from __future__ import annotations
 import re
 from urllib.parse import unquote
 
+from app.rag.core.logging import get_logger
+
+logger = get_logger(__name__)
+
 _IMAGE_CAPTION_PREFIX = "Image caption:"
 
 # Match Markdown inline image: ![alt](src "optional title")
@@ -62,8 +66,8 @@ def _filename_from_src(src: str) -> str:
         return ""
     try:
         name = unquote(name)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Ignoring image caption filename decode failure: %s", exc)
     return name
 
 

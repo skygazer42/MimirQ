@@ -8,6 +8,10 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from app.rag.core.logging import get_logger
+
+logger = get_logger(__name__)
+
 
 @dataclass(frozen=True)
 class ParseCacheEntry:
@@ -61,8 +65,8 @@ class LocalParseCacheStore:
         if int(ttl_sec or 0) > 0 and age_sec > int(ttl_sec):
             try:
                 path.unlink(missing_ok=True)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring stale parse cache unlink failure: %s", exc)
             return None, None
 
         return entry, int(age_sec * 1000.0)

@@ -4,6 +4,9 @@ from pathlib import Path
 from typing import Any
 
 from app.parsing.factory import ParserFactory
+from app.rag.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def _empty_pdf_text_sample() -> dict[str, Any]:
@@ -71,8 +74,8 @@ def sample_pdf_text_pages(
     finally:
         try:
             doc.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring PDF diagnostics document close failure: %s", exc)
 
 
 def _filter_available_backends(file_ext: str, *, parser_factory: ParserFactory) -> list[str]:

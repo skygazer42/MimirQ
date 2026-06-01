@@ -188,8 +188,8 @@ class CrossEncoderReranker(BaseReranker):
             if hasattr(batch_scores, "tolist"):
                 try:
                     batch_scores = batch_scores.tolist()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring cross-encoder score tolist normalization failure: %s", exc)
             if not isinstance(batch_scores, list):
                 batch_scores = list(batch_scores)  # type: ignore[arg-type]
             scores.extend([_as_float(s) for s in batch_scores])

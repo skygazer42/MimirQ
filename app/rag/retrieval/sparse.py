@@ -24,6 +24,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
+from app.rag.core.logging import get_logger
+
+logger = get_logger(__name__)
+
 _TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]+|\d+|[\u4e00-\u9fff]{2,}")
 _INDEX_SCHEMA_V1 = "mimirq.sparse_index.v1"
 VALID_SPARSE_PROVIDERS = frozenset({"deterministic", "splade"})
@@ -326,8 +330,8 @@ class SpladeSparseEncoder:
                 if special_ids:
                     try:
                         weights[:, special_ids] = 0.0
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("Ignoring SPLADE special-token zeroing failure: %s", exc)
 
                 top_k = self._top_k if self._top_k > 0 else int(weights.shape[1])
                 top_k = min(int(weights.shape[1]), int(top_k))
@@ -518,8 +522,8 @@ class SparseIndexStore:
         try:
             data = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
             path.write_bytes(gzip.compress(data))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring sparse index write failure: %s", exc)
         return path
 
 
