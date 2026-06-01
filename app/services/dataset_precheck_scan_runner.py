@@ -1093,9 +1093,9 @@ def run_dataset_precheck_scan(
             db.refresh(run)
             if str(getattr(run, "status", "") or "").lower() == "cancelled":
                 cancelled = True
-        except Exception:
+        except Exception as exc:
             # Best-effort: ignore refresh failures.
-            pass
+            logger.debug(_PRECHECK_RUNNER_FALLBACK_LOG_MESSAGE, exc)
 
     # Aggregation accumulators.
     by_type: dict[str, int] = {}

@@ -7,6 +7,7 @@ For debugging and validating:
 """
 
 
+import logging
 import time
 from typing import Annotated, Any
 from uuid import UUID
@@ -28,6 +29,8 @@ from app.services.rag_config_template_defaults import merge_rag_config_template_
 from app.services.rag_config_template_resolver import build_rag_config_patch_hash, resolve_rag_config_template
 from app.services.rag_defaults import merge_rag_config_with_dataset_defaults
 from app.services.rag_runtime_limiter import run_blocking_retrieval_call
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -970,9 +973,9 @@ async def retrieve_evidence(
     if body.seed is not None:
         try:
             state["seed"] = int(body.seed)
-        except Exception:
+        except Exception as exc:
             # Best-effort only: seed must never break requests.
-            pass
+            logger.debug("Ignoring invalid retrieval preview seed %r: %s", body.seed, exc)
     # Best-effort: allow retrieval-only orchestrator to load extra evidence from DB (e.g. KG chunk injection).
     state["db"] = db
 
@@ -1201,9 +1204,9 @@ async def retrieve_evidence(
             citations_count=(len(citations) if isinstance(citations, list) else 0),
             top_relevance_score=float(top_rel or 0.0),
         )
-    except Exception:
+    except Exception as exc:
         # Metrics are best-effort; never fail the API due to observability.
-        pass
+        logger.debug("Failed to record retrieval preview metrics: %s", exc)
 
     # Stable, versioned retrieval trace (separate from metrics/query_debug).
     retrieval_trace_payload: dict[str, Any] | None = None

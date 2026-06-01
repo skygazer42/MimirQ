@@ -633,9 +633,9 @@ class MinIOService:
                 record["error"] = error
             with self._metrics_path.open("a", encoding="utf-8") as f:
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
-        except Exception:
+        except Exception as exc:
             # Monitoring should not affect the main flow.
-            pass
+            logger.debug("Failed to append MinIO metrics record: %s", exc)
 
 
 # Global instance

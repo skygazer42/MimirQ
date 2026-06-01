@@ -106,9 +106,9 @@ class MinerUParser(BaseAdvancedParser):
                     document_id=str(document_id) if document_id else None,
                     tenant_id=str(tenant_id) if tenant_id else None,
                 )
-            except Exception:
+            except Exception as exc:
                 # Best-effort: fall back to DeepDoc adapter below.
-                pass
+                self._logger.debug("Local MinerU preview parse failed; falling back to DeepDoc adapter: %s", exc)
 
         # 2) If we don't have a local API server configured, fall back to online MinerU API when possible.
         if not self._api and getattr(settings, "MINERU_API_TOKEN", ""):

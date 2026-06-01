@@ -1894,9 +1894,9 @@ async def run_kg_search_diagnostics(
 
             try:
                 resp.run_id = run.id
-            except Exception:
+            except Exception as exc:
                 # Best-effort: if response is immutable for any reason, skip run_id propagation.
-                pass
+                logger.debug("Failed to attach KG diagnostics run_id to response: %s", exc)
         except Exception as exc:
             logger.warning("Failed to persist KG diagnostics run snapshot: %s", str(exc)[:200])
             try:

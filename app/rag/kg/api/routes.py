@@ -294,9 +294,9 @@ def _log_kg_api_metric(event: str, **fields: object) -> None:
         payload: dict[str, object] = {"event": event}
         payload.update({k: v for k, v in fields.items() if v is not None})
         log_metrics(payload)
-    except Exception:
+    except Exception as exc:
         # Best-effort only; metrics must never break the API.
-        pass
+        logger.debug("Failed to emit KG API metric %s: %s", event, exc)
 
 
 def _stable_group_for(entity_type: str, *, buckets: int = 24) -> int:

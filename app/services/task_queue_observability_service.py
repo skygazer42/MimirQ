@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import logging
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -25,6 +26,8 @@ from prometheus_client import Gauge
 
 from app.core.config import settings
 from app.core.optional_deps import optional_import
+
+logger = logging.getLogger(__name__)
 
 TASK_QUEUE_OBSERVABILITY_SCHEMA_V1 = "mimirq.task_queue_observability.v1"
 
@@ -359,9 +362,9 @@ async def refresh_task_queue_observability_snapshot(*, source: str) -> TaskQueue
             TASK_QUEUE_OBSERVABILITY_LAST_REFRESH_DURATION_SECONDS.labels(queue=q).set(
                 max(0.0, float(time.perf_counter() - t0))
             )
-        except Exception:
+        except Exception as exc:
             # Never fail the refresh due to metrics errors.
-            pass
+            logger.debug("Failed to update task queue observability gauges: %s", exc)
 
     async with _snapshot_lock:
         global _latest_snapshot, _latest_snapshot_ts
@@ -398,9 +401,9 @@ async def _poller_loop(stop_event: asyncio.Event) -> None:
     while not stop_event.is_set():
         try:
             await refresh_task_queue_observability_snapshot(source="poller")
-        except Exception:
+        except Exception as exc:
             # Fail open and keep looping.
-            pass
+            logger.debug("Task queue observability poll iteration failed; continuing: %s", exc)
 
         try:
             await asyncio.wait_for(stop_event.wait(), timeout=float(interval))

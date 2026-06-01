@@ -2,6 +2,7 @@
 Expand stage: multi-hop entity -> event expansion.
 """
 import asyncio
+import logging
 from dataclasses import dataclass
 from typing import Any
 
@@ -12,6 +13,8 @@ from app.rag.kg.search.recall import RecallResult
 from app.rag.kg.search.relation_scoring import relation_multiplier
 from app.rag.kg.search.tracker import Tracker
 from app.rag.kg.search.utils import confidence_bucket
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -232,9 +235,9 @@ class ExpandSearcher:
                                     objs = entity_repo.get_entities_by_ids(neighbor_ids, tenant_id=tenant_id)
                                     non_skill = {str(o.id) for o in (objs or []) if str(getattr(o, "type", "") or "") not in skill_types}
                                     sorted_neighbors = [(eid, w) for eid, w in sorted_neighbors if eid in non_skill]
-                                except Exception:
+                                except Exception as exc:
                                     # Best-effort: if filtering fails, keep original neighbors.
-                                    pass
+                                    logger.debug("Failed to filter KG expansion skill-like neighbors: %s", exc)
                             for ent_id, w in sorted_neighbors:
                                 if ent_id not in seed_set:
                                     seed_set.add(ent_id)

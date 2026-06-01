@@ -210,9 +210,9 @@ class IngestionRunService:
                     stats["pipeline_hash_docs"] = dist
 
                 run.stats = stats
-            except Exception:
+            except Exception as exc:
                 # Stats update is best-effort; keep the mapping row.
-                pass
+                logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, exc)
 
         try:
             db.commit()

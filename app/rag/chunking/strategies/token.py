@@ -4,12 +4,15 @@ LangChain TokenTextSplitter wrapper.
 Splits text by token count using tiktoken encoding.
 """
 
+import logging
 
 from langchain_core.documents import Document
 from langchain_text_splitters import TokenTextSplitter
 
 from app.core.token_utils import estimate_tokens
 from app.rag.chunking.base import BaseChunker
+
+logger = logging.getLogger(__name__)
 
 
 class LangChainTokenChunker(BaseChunker):
@@ -70,9 +73,9 @@ class LangChainTokenChunker(BaseChunker):
         if splitter is not None:
             try:
                 return splitter.split_text(text)
-            except Exception:
+            except Exception as exc:
                 # tiktoken/network/proxy issues -> heuristic fallback.
-                pass
+                logger.debug("TokenTextSplitter failed; using heuristic token splitter: %s", exc)
         return self._split_text_fallback(text)
 
     def split_documents(self, documents: list[Document]) -> list[Document]:

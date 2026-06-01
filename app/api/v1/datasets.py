@@ -941,9 +941,9 @@ def list_datasets(
                 .subquery()
             )
             query = query.filter(Dataset.id.in_(ds_ids_subq))
-        except Exception:
+        except Exception as exc:
             # Keep list endpoint resilient; treat as "no category filter".
-            pass
+            logger.debug("Dataset category filter failed; listing without category filter: %s", exc)
     total = query.count()
     datasets = query.order_by(Dataset.created_at.desc()).offset(skip).limit(limit).all()
 

@@ -1822,9 +1822,9 @@ async def export_evidence_suite_ltr_training_bundle(
                 hn["tags"] = list(getattr(it, "tags", []) or [])
                 hard_lines.append(json.dumps(hn, ensure_ascii=False, separators=(",", ":"), default=str))
                 hard_total += 1
-        except Exception:
+        except Exception as exc:
             # Hard negatives are best-effort; training rows are the primary export.
-            pass
+            logger.debug("Failed to export hard negative row; continuing training export: %s", exc)
 
     manifest: dict[str, Any] = {
         "schema": "mimirq.ltr_training_export.v1",
