@@ -325,7 +325,181 @@ CHUNK_OVERLAP_LESS_THAN_SIZE_DETAIL = 'chunk_overlap must be less than chunk_siz
 MANUAL_FILE_PATH_PREFIX = 'manual://'
 IMAGE_FILE_EXT_JPEG = '.jpeg'
 IMAGE_FILE_EXT_WEBP = '.webp'
+PREVIEW_IMAGE_EXTENSIONS = [".png", ".jpg", IMAGE_FILE_EXT_JPEG, IMAGE_FILE_EXT_WEBP, ".gif", ".bmp"]
 CHUNK_PATCH_OPERATION = 'chunk.patch'
+
+
+def _existing_minio_image_refs(text: str) -> list[str]:
+    existing: list[str] = []
+    for match in MINIO_IMAGE_REF_RE.finditer(text):
+        value = (match.group(1) or "").strip()
+        if value and value not in existing:
+            existing.append(value)
+    return existing
+
+
+def _preview_image_matches(text: str) -> list[re.Match[str]]:
+    if "/api/v1/documents/image/" not in text:
+        return []
+    matches = list(PREVIEW_IMAGE_REF_RE.finditer(text))
+    max_inline_images = max(0, int(getattr(settings, "MAX_INLINE_IMAGES", 0) or 0))
+    return matches[:max_inline_images] if max_inline_images and len(matches) > max_inline_images else matches
+
+
+def _preview_image_max_bytes() -> int:
+    max_bytes = int(getattr(settings, "MAX_INLINE_IMAGE_BYTES", 10_000_000) or 10_000_000)
+    return max(1_000_000, max_bytes)
+
+
+def _preview_local_image_id(raw_id: str | None) -> str | None:
+    if not raw_id:
+        return None
+    try:
+        return uuid.UUID(raw_id).hex
+    except ValueError:
+        return None
+
+
+def _find_preview_image_path(images_dir: Path, local_id: str) -> Path | None:
+    for ext in PREVIEW_IMAGE_EXTENSIONS:
+        candidate = images_dir / f"{local_id}{ext}"
+        if candidate.exists() and candidate.is_file():
+            return candidate
+
+    try:
+        for candidate in images_dir.glob(f"{local_id}.*"):
+            if candidate.suffix.lower() in PREVIEW_IMAGE_EXTENSIONS and candidate.exists() and candidate.is_file():
+                return candidate
+    except OSError:
+        return None
+    return None
+
+
+def _read_preview_image_bytes(img_path: Path, max_bytes: int) -> bytes | None:
+    try:
+        if img_path.stat().st_size > max_bytes:
+            return None
+        raw = img_path.read_bytes()
+    except OSError:
+        return None
+    if not raw or len(raw) > max_bytes:
+        return None
+    return raw
+
+
+def _convert_preview_image_to_jpeg(local_id: str, raw: bytes) -> bytes | None:
+    from io import BytesIO
+
+    try:
+        from PIL import Image as PILImage  # type: ignore[import-untyped]
+    except ImportError:
+        logger.warning("Pillow not available; skipping preview image upload to MinIO")
+        return None
+
+    img = None
+    converted = None
+    try:
+        img = PILImage.open(BytesIO(raw))
+        if img.mode in ("RGBA", "P"):
+            converted = img.convert("RGB")
+            out_img = converted
+        else:
+            out_img = img
+        out = BytesIO()
+        out_img.save(out, format="JPEG", quality=85, optimize=True)
+        return out.getvalue()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed converting preview image %s to JPEG: %s", local_id, str(exc)[:200])
+        return None
+    finally:
+        for to_close in (converted, img):
+            if to_close is None:
+                continue
+            with contextlib.suppress(Exception):
+                to_close.close()
+
+
+def _upload_preview_image_to_minio(
+    *,
+    image_bytes: bytes,
+    tenant_id: str,
+    dataset_id: str,
+    document_id: str,
+    digest_to_img_id: dict[str, str],
+    start_index: int,
+) -> tuple[str | None, int]:
+    digest = hashlib.sha256(image_bytes).hexdigest()
+    img_id = digest_to_img_id.get(digest)
+    if img_id:
+        return img_id, start_index
+
+    chunk_key = f"asset{start_index}"
+    start_index += 1
+    try:
+        img_id = minio_service.upload_image(
+            image_data=image_bytes,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            document_id=document_id,
+            chunk_key=chunk_key,
+            extension="jpg",
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Preview image upload to MinIO failed; skipping image: %s", str(exc)[:200])
+        return None, start_index
+    digest_to_img_id[digest] = img_id
+    return img_id, start_index
+
+
+def _replace_preview_ref(match: re.Match[str], local_id_to_img_id: dict[str, str]) -> str:
+    local_id = _preview_local_image_id(match.group(1))
+    if not local_id:
+        return match.group(0)
+    img_id = local_id_to_img_id.get(local_id)
+    if not img_id:
+        return match.group(0)
+    return f"/api/v1/documents/image-url/{img_id}"
+
+
+def _resolve_preview_image_ref(
+    *,
+    local_id: str,
+    images_dir: Path,
+    max_bytes: int,
+    local_id_to_img_id: dict[str, str],
+    digest_to_img_id: dict[str, str],
+    tenant_id: str,
+    dataset_id: str,
+    document_id: str,
+    start_index: int,
+) -> tuple[str | None, int]:
+    img_id = local_id_to_img_id.get(local_id)
+    if img_id:
+        return img_id, start_index
+
+    img_path = _find_preview_image_path(images_dir, local_id)
+    if img_path is None:
+        return None, start_index
+
+    raw = _read_preview_image_bytes(img_path, max_bytes)
+    if raw is None:
+        return None, start_index
+
+    image_bytes = _convert_preview_image_to_jpeg(local_id, raw)
+    if image_bytes is None:
+        return None, start_index
+
+    img_id, start_index = _upload_preview_image_to_minio(
+        image_bytes=image_bytes,
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        document_id=document_id,
+        digest_to_img_id=digest_to_img_id,
+        start_index=start_index,
+    )
+    if img_id:
+        local_id_to_img_id[local_id] = img_id
+    return img_id, start_index
 
 
 def _rewrite_preview_images_to_minio(
@@ -351,124 +525,40 @@ def _rewrite_preview_images_to_minio(
     if not isinstance(text, str) or not text:
         return text, [], start_index
 
-    existing: list[str] = []
-    for match in MINIO_IMAGE_REF_RE.finditer(text):
-        value = (match.group(1) or "").strip()
-        if value and value not in existing:
-            existing.append(value)
+    existing = _existing_minio_image_refs(text)
     if existing:
         return text, existing, start_index
 
-    if "/api/v1/documents/image/" not in text:
-        return text, [], start_index
-
-    matches = list(PREVIEW_IMAGE_REF_RE.finditer(text))
+    matches = _preview_image_matches(text)
     if not matches:
         return text, [], start_index
 
-    max_inline_images = max(0, int(getattr(settings, "MAX_INLINE_IMAGES", 0) or 0))
-    if max_inline_images and len(matches) > max_inline_images:
-        matches = matches[:max_inline_images]
-
-    image_exts = [".png", ".jpg", IMAGE_FILE_EXT_JPEG, IMAGE_FILE_EXT_WEBP, ".gif", ".bmp"]
-    max_bytes = int(getattr(settings, "MAX_INLINE_IMAGE_BYTES", 10_000_000) or 10_000_000)
-    max_bytes = max(1_000_000, max_bytes)
-
+    max_bytes = _preview_image_max_bytes()
     referenced_img_ids: list[str] = []
     seen_local_ids: set[str] = set()
 
     for match in matches:
-        raw_id = match.group(1)
-        if not raw_id:
-            continue
-        try:
-            local_id = uuid.UUID(raw_id).hex
-        except ValueError:
+        local_id = _preview_local_image_id(match.group(1))
+        if not local_id:
             continue
 
         if local_id in seen_local_ids:
             continue
         seen_local_ids.add(local_id)
 
-        img_id = local_id_to_img_id.get(local_id)
+        img_id, start_index = _resolve_preview_image_ref(
+            local_id=local_id,
+            images_dir=images_dir,
+            max_bytes=max_bytes,
+            local_id_to_img_id=local_id_to_img_id,
+            digest_to_img_id=digest_to_img_id,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            document_id=document_id,
+            start_index=start_index,
+        )
         if not img_id:
-            img_path: Path | None = None
-            for ext in image_exts:
-                candidate = images_dir / f"{local_id}{ext}"
-                if candidate.exists() and candidate.is_file():
-                    img_path = candidate
-                    break
-            if img_path is None:
-                try:
-                    for candidate in images_dir.glob(f"{local_id}.*"):
-                        if candidate.suffix.lower() in image_exts and candidate.exists() and candidate.is_file():
-                            img_path = candidate
-                            break
-                except OSError:
-                    img_path = None
-
-            if img_path is None:
-                continue
-
-            try:
-                if img_path.stat().st_size > max_bytes:
-                    continue
-                raw = img_path.read_bytes()
-            except OSError:
-                continue
-            if not raw or len(raw) > max_bytes:
-                continue
-
-            from io import BytesIO
-
-            try:
-                from PIL import Image as PILImage  # type: ignore[import-untyped]
-            except ImportError:
-                logger.warning("Pillow not available; skipping preview image upload to MinIO")
-                continue
-
-            img = None
-            converted = None
-            try:
-                img = PILImage.open(BytesIO(raw))
-                if img.mode in ("RGBA", "P"):
-                    converted = img.convert("RGB")
-                    out_img = converted
-                else:
-                    out_img = img
-                out = BytesIO()
-                out_img.save(out, format="JPEG", quality=85, optimize=True)
-                image_bytes = out.getvalue()
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Failed converting preview image %s to JPEG: %s", local_id, str(exc)[:200])
-                continue
-            finally:
-                for to_close in (converted, img):
-                    if to_close is None:
-                        continue
-                    with contextlib.suppress(Exception):
-                        to_close.close()
-
-            digest = hashlib.sha256(image_bytes).hexdigest()
-            img_id = digest_to_img_id.get(digest)
-            if not img_id:
-                chunk_key = f"asset{start_index}"
-                start_index += 1
-                try:
-                    img_id = minio_service.upload_image(
-                        image_data=image_bytes,
-                        tenant_id=tenant_id,
-                        dataset_id=dataset_id,
-                        document_id=document_id,
-                        chunk_key=chunk_key,
-                        extension="jpg",
-                    )
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning("Preview image upload to MinIO failed; skipping image: %s", str(exc)[:200])
-                    continue
-                digest_to_img_id[digest] = img_id
-
-            local_id_to_img_id[local_id] = img_id
+            continue
 
         if img_id and img_id not in referenced_img_ids:
             referenced_img_ids.append(img_id)
@@ -476,20 +566,7 @@ def _rewrite_preview_images_to_minio(
     if not referenced_img_ids:
         return text, [], start_index
 
-    def _replace_preview_ref(match: re.Match[str]) -> str:
-        raw_id = match.group(1)
-        if not raw_id:
-            return match.group(0)
-        try:
-            local_id = uuid.UUID(raw_id).hex
-        except ValueError:
-            return match.group(0)
-        img_id = local_id_to_img_id.get(local_id)
-        if not img_id:
-            return match.group(0)
-        return f"/api/v1/documents/image-url/{img_id}"
-
-    return PREVIEW_IMAGE_REF_RE.sub(_replace_preview_ref, text), referenced_img_ids, start_index
+    return PREVIEW_IMAGE_REF_RE.sub(lambda match: _replace_preview_ref(match, local_id_to_img_id), text), referenced_img_ids, start_index
 
 
 def _asset_cache_control(*, token_in_url: bool, max_age: int) -> str:
@@ -507,6 +584,23 @@ def _parse_uuid(value: str) -> UUID:
         raise HTTPException(status_code=400, detail="Invalid tenant id") from exc
 
 
+def _asset_request_header_account(request, *, is_production: bool) -> str | None:
+    account_id = (request.headers.get("x-user-id") or "").strip() or None
+    if is_production and not account_id:
+        raise HTTPException(status_code=401, detail="X-User-ID header required")
+    return account_id
+
+
+def _asset_request_authorization(request) -> str:
+    authorization = (request.headers.get("authorization") or "").strip()
+    token = (request.query_params.get("token") or request.query_params.get("access_token") or "").strip()
+    if not authorization and token:
+        authorization = token if token.lower().startswith("bearer ") else f"Bearer {token}"
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return authorization
+
+
 async def _resolve_account_id_for_asset_request(request, *, tenant_id: UUID | None = None) -> str | None:
     """
     Resolve account id for asset endpoints that may be requested by <img src>.
@@ -518,18 +612,9 @@ async def _resolve_account_id_for_asset_request(request, *, tenant_id: UUID | No
     auth_mode = (getattr(settings, "AUTH_MODE", "jwt") or "jwt").lower()
 
     if auth_mode == "header":
-        account_id = (request.headers.get("x-user-id") or "").strip() or None
-        if is_production and not account_id:
-            raise HTTPException(status_code=401, detail="X-User-ID header required")
-        return account_id
+        return _asset_request_header_account(request, is_production=is_production)
 
-    authorization = (request.headers.get("authorization") or "").strip()
-    token = (request.query_params.get("token") or request.query_params.get("access_token") or "").strip()
-    if not authorization and token:
-        authorization = token if token.lower().startswith("bearer ") else f"Bearer {token}"
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Authentication required")
-
+    authorization = _asset_request_authorization(request)
     tenant_value = str(tenant_id).strip() if tenant_id is not None else None
     try:
         return await get_current_account_id_from_headers(
@@ -647,6 +732,21 @@ def _decode_escaped_input_preview(value: str) -> str:
         return raw
 
 
+def _sanitize_timeline_detail_value(value: Any) -> Any:
+    if isinstance(value, str):
+        vv = value.strip()
+        return vv[:400] + "..." if len(vv) > 400 else vv
+
+    if value is None or isinstance(value, (int, float, bool)):
+        return value
+
+    try:
+        dumped = json.dumps(value, ensure_ascii=True, default=str)
+    except Exception:
+        return "<redacted>"
+    return "<redacted>" if len(dumped) > 800 else value
+
+
 def _sanitize_timeline_details(details: Any) -> dict[str, Any]:
     """
     Best-effort PII-minimal details projection for user-facing timelines.
@@ -664,28 +764,7 @@ def _sanitize_timeline_details(details: Any) -> dict[str, Any]:
         lowered = key.lower()
         if lowered in _TIMELINE_REDACT_KEYS:
             continue
-
-        # Bound large strings/objects to avoid leaking raw content.
-        if isinstance(v, str):
-            vv = v.strip()
-            if len(vv) > 400:
-                out[key] = vv[:400] + "..."
-            else:
-                out[key] = vv
-            continue
-
-        if v is None or isinstance(v, (int, float, bool)):
-            out[key] = v
-            continue
-
-        try:
-            dumped = json.dumps(v, ensure_ascii=True, default=str)
-            if len(dumped) > 800:
-                out[key] = "<redacted>"
-            else:
-                out[key] = v
-        except Exception:
-            out[key] = "<redacted>"
+        out[key] = _sanitize_timeline_detail_value(v)
 
     return out
 
@@ -765,17 +844,20 @@ def _resolve_writable_dataset(
     )
 
 
-def _apply_user_metadata_patch(*, current: dict, patch: dict, replace: bool) -> dict:
+def _merge_user_metadata_patch(*, current: dict, patch: dict, replace: bool) -> dict:
     if replace:
-        next_user = dict(patch or {})
-    else:
-        next_user = dict(current or {})
-        for key, value in (patch or {}).items():
-            if value is None:
-                next_user.pop(key, None)
-            else:
-                next_user[key] = value
+        return dict(patch or {})
 
+    next_user = dict(current or {})
+    for key, value in (patch or {}).items():
+        if value is None:
+            next_user.pop(key, None)
+        else:
+            next_user[key] = value
+    return next_user
+
+
+def _normalize_user_metadata_tags(next_user: dict, *, replace: bool) -> None:
     tags = next_user.get("tags")
     if isinstance(tags, str):
         tags = [t.strip() for t in tags.split(",")]
@@ -797,6 +879,8 @@ def _apply_user_metadata_patch(*, current: dict, patch: dict, replace: bool) -> 
     elif tags is None and "tags" in next_user and not replace:
         next_user.pop("tags", None)
 
+
+def _normalize_user_metadata_notes(next_user: dict) -> None:
     notes = next_user.get("notes")
     if isinstance(notes, str):
         val = notes.strip()
@@ -805,6 +889,11 @@ def _apply_user_metadata_patch(*, current: dict, patch: dict, replace: bool) -> 
         else:
             next_user["notes"] = val[:20_000]
 
+
+def _apply_user_metadata_patch(*, current: dict, patch: dict, replace: bool) -> dict:
+    next_user = _merge_user_metadata_patch(current=current, patch=patch, replace=replace)
+    _normalize_user_metadata_tags(next_user, replace=replace)
+    _normalize_user_metadata_notes(next_user)
     return next_user
 
 
@@ -812,23 +901,19 @@ _WINDOWS_DRIVE_LETTER_RE = re.compile(r"^[a-zA-Z]:$")
 _UPLOAD_SOURCE_PATH_MAX_LEN = 500
 
 
-def _normalize_upload_path_parts(filename: str) -> list[str]:
-    raw = str(filename or "")
-    if not raw:
-        return []
+def _assert_upload_filename_has_no_control_chars(raw: str) -> None:
     if "\x7f" in raw or any(ord(ch) < 32 for ch in raw):
         raise HTTPException(status_code=400, detail=FILENAME_INVALID_CHARS_DETAIL)
 
-    cleaned = raw.replace("\\", "/").strip()
-    if not cleaned:
-        return []
 
+def _split_upload_path_parts(cleaned: str) -> list[str]:
     parts = [p.strip() for p in cleaned.split("/") if p.strip() and p.strip() != "."]
     if parts and _WINDOWS_DRIVE_LETTER_RE.fullmatch(parts[0]):
-        parts = parts[1:]
-    if not parts:
-        return []
+        return parts[1:]
+    return parts
 
+
+def _collapse_upload_path_parts(parts: list[str]) -> list[str]:
     stack: list[str] = []
     for p in parts:
         if p == "..":
@@ -836,11 +921,30 @@ def _normalize_upload_path_parts(filename: str) -> list[str]:
                 stack.pop()
             continue
         stack.append(p)
-
-    if len(stack) == 2 and stack[0].lower() == "fakepath":
-        stack = [stack[1]]
-
     return stack
+
+
+def _drop_fakepath_prefix(parts: list[str]) -> list[str]:
+    if len(parts) == 2 and parts[0].lower() == "fakepath":
+        return [parts[1]]
+    return parts
+
+
+def _normalize_upload_path_parts(filename: str) -> list[str]:
+    raw = str(filename or "")
+    if not raw:
+        return []
+    _assert_upload_filename_has_no_control_chars(raw)
+
+    cleaned = raw.replace("\\", "/").strip()
+    if not cleaned:
+        return []
+
+    parts = _split_upload_path_parts(cleaned)
+    if not parts:
+        return []
+
+    return _drop_fakepath_prefix(_collapse_upload_path_parts(parts))
 
 
 def _normalize_upload_key(filename: str) -> str:
@@ -971,6 +1075,54 @@ def _validate_chunk_params(chunk_size: int, chunk_overlap: int) -> None:
         )
 
 
+def _is_dataset_owner(dataset: Dataset | None, account_id: str) -> bool:
+    return dataset is not None and str(getattr(dataset, "owner_id", "") or "") == account_id
+
+
+def _document_acl_mode(document: DBDocument) -> str:
+    return (str(getattr(document, "access_mode", "") or "")).strip().lower()
+
+
+def _is_document_owner(document: DBDocument, account_id: str) -> bool:
+    owner_id = (str(getattr(document, "owner_id", "") or "")).strip()
+    return bool(owner_id and owner_id == account_id)
+
+
+def _document_partial_member_exists(db: Session, *, tenant_id: UUID, account_id: str, document: DBDocument) -> bool:
+    return (
+        db.query(DocumentPermission)
+        .filter(
+            DocumentPermission.tenant_id == tenant_id,
+            DocumentPermission.document_id == document.id,
+            DocumentPermission.account_id == account_id,
+        )
+        .first()
+        is not None
+    )
+
+
+def _document_partial_group_allowed(db: Session, *, tenant_id: UUID, account_id: str, document: DBDocument) -> bool:
+    group_ids = TenantGroupService.resolve_account_group_ids(db, tenant_id=tenant_id, account_id=account_id)
+    if not group_ids:
+        return False
+
+    allowlist_groups = DocumentGroupPermissionService.get_document_partial_group_list(
+        db,
+        tenant_id,
+        document.id,
+    )
+    if not allowlist_groups:
+        return False
+    allowed = set(allowlist_groups)
+    return any(gid in allowed for gid in group_ids)
+
+
+def _document_partial_access_allowed(db: Session, *, tenant_id: UUID, account_id: str, document: DBDocument) -> bool:
+    if _document_partial_member_exists(db, tenant_id=tenant_id, account_id=account_id, document=document):
+        return True
+    return _document_partial_group_allowed(db, tenant_id=tenant_id, account_id=account_id, document=document)
+
+
 def _assert_document_acl_readable(
     db: Session,
     *,
@@ -989,45 +1141,22 @@ def _assert_document_acl_readable(
         return
 
     # Dataset owner bypass for management.
-    if dataset is not None and str(getattr(dataset, "owner_id", "") or "") == account_id:
+    if _is_dataset_owner(dataset, account_id):
         return
 
-    mode = (str(getattr(document, "access_mode", "") or "")).strip().lower()
+    mode = _document_acl_mode(document)
     if not mode or mode in {"inherit", "all_team_members"}:
         return
 
-    owner_id = (str(getattr(document, "owner_id", "") or "")).strip()
-    if owner_id and owner_id == account_id:
+    if _is_document_owner(document, account_id):
         return
 
     if mode == "only_me":
         raise HTTPException(status_code=403, detail=NO_DOCUMENT_ACCESS_DETAIL)
 
     if mode == "partial_members":
-        exists = (
-            db.query(DocumentPermission)
-            .filter(
-                DocumentPermission.tenant_id == tenant_id,
-                DocumentPermission.document_id == document.id,
-                DocumentPermission.account_id == account_id,
-            )
-            .first()
-        )
-        if exists:
+        if _document_partial_access_allowed(db, tenant_id=tenant_id, account_id=account_id, document=document):
             return
-
-        # Group allowlist (fail-closed): allow if the account is a member of any allowed group.
-        group_ids = TenantGroupService.resolve_account_group_ids(db, tenant_id=tenant_id, account_id=account_id)
-        if group_ids:
-            allowlist_groups = DocumentGroupPermissionService.get_document_partial_group_list(
-                db,
-                tenant_id,
-                document.id,
-            )
-            if allowlist_groups:
-                allowed = set(allowlist_groups)
-                if any(gid in allowed for gid in group_ids):
-                    return
 
         raise HTTPException(status_code=403, detail=NO_DOCUMENT_ACCESS_DETAIL)
 
@@ -1171,6 +1300,790 @@ class LocalHtmlIngestRequest(BaseModel):
     pipeline: DocumentPipelineOptions | None = None
 
 
+@dataclass
+class ResolvedDocumentIngestionPolicy:
+    parser_backend_choice: str
+    chunk_strategy_choice: str
+    pipeline_options: PipelineOptions
+    ingestion_meta: dict[str, Any] | None
+
+
+@dataclass
+class ResolvedDocumentPipeline:
+    parser_backend: str
+    chunk_strategy: str
+
+
+@dataclass
+class UrlIngestFile:
+    file_id: UUID
+    final_path: Path
+    file_ext: str
+    downloaded: Any
+    content_type: str
+    fetched_at_iso: str
+
+
+@dataclass
+class LocalHtmlIngestFile:
+    file_id: UUID
+    file_path: Path
+    file_ext: str
+    filename: str
+    file_size: int
+    fetched_at_iso: str
+
+
+@dataclass
+class UrlSourceMetadata:
+    final_url: str
+    normalized_requested: str | None
+    normalized_final: str | None
+    canonical_url: str | None
+    normalized_canonical: str | None
+    normalized_url: str | None
+    last_modified_at: str
+    last_modified_source: str
+    last_modified_raw: str | None
+    etag: str | None
+
+
+@dataclass
+class PreparedDocumentIngestion:
+    policy: ResolvedDocumentIngestionPolicy
+    pipeline: ResolvedDocumentPipeline
+
+
+def _ext_from_filename(name: str | None) -> str | None:
+    if not name:
+        return None
+    ext = Path(str(name)).suffix.lower()
+    return ext if ext else None
+
+
+def _ext_from_content_type(content_type: str) -> str | None:
+    if not content_type:
+        return None
+    if content_type in {"text/html"}:
+        return HTML_FILE_EXTENSION
+    if content_type in {"text/plain"}:
+        return ".txt"
+    if content_type in {"text/markdown", "text/x-markdown"}:
+        return ".md"
+    if content_type in {"application/pdf"}:
+        return ".pdf"
+    if content_type in {"application/json"}:
+        return ".json"
+    if content_type in {"text/xml", "application/xml", "application/rss+xml", "application/atom+xml"}:
+        return ".xml"
+    return None
+
+
+def _assert_allowed_file_ext(file_ext: str) -> str:
+    file_ext = file_ext.lower()
+    if file_ext not in settings.allowed_extensions_list:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type. Allowed: {settings.allowed_extensions_list}")
+    return file_ext
+
+
+def _resolve_url_file_ext(*, filename: str | None, url: str, content_type: str) -> str:
+    file_ext = _ext_from_filename(filename)
+    if not file_ext:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(url)
+        file_ext = _ext_from_filename(Path(parsed.path).name)
+    if not file_ext:
+        file_ext = _ext_from_content_type(content_type)
+    if not file_ext:
+        if content_type.startswith("text/"):
+            file_ext = ".txt"
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported content-type: {content_type or 'unknown'}")
+    return _assert_allowed_file_ext(file_ext)
+
+
+def _resolve_local_html_file_ext(safe_name: str) -> str:
+    file_ext = Path(safe_name).suffix.lower() or HTML_FILE_EXTENSION
+    if file_ext == ".htm":
+        file_ext = HTML_FILE_EXTENSION
+    if not file_ext.startswith("."):
+        file_ext = "." + file_ext
+    return _assert_allowed_file_ext(file_ext)
+
+
+def _finalize_url_download(temp_path: Path, final_path: Path) -> None:
+    try:
+        temp_path.replace(final_path)
+    except Exception:
+        try:
+            shutil.move(str(temp_path), str(final_path))
+        except Exception as exc:  # noqa: BLE001
+            with contextlib.suppress(OSError):
+                temp_path.unlink(missing_ok=True)
+            raise HTTPException(status_code=500, detail=f"failed to finalize downloaded file: {str(exc)[:120]}") from exc
+
+
+def _read_html_prefix(path: Path) -> str:
+    with path.open("rb") as f:
+        return f.read(200_000).decode("utf-8", "ignore")
+
+
+async def _extract_url_canonical_metadata(
+    *,
+    content_type: str,
+    final_path: Path,
+    url_final: str,
+) -> tuple[str | None, str | None]:
+    if not content_type or "html" not in content_type:
+        return None, None
+
+    try:
+        html_prefix = await asyncio.to_thread(_read_html_prefix, final_path)
+        url_canonical = extract_canonical_url(html_prefix, base_url=url_final)
+        url_normalized_canonical = normalize_url_for_dedup(url_canonical) if url_canonical else None
+        return url_canonical, url_normalized_canonical
+    except Exception:
+        return None, None
+
+
+def _document_pipeline_options(pipeline: DocumentPipelineOptions | None) -> PipelineOptions:
+    return PipelineOptions(**(pipeline.model_dump(exclude_none=True) if pipeline else {}))
+
+
+def _normalized_dataset_default(value: Any) -> str | None:
+    if isinstance(value, str) and value.strip():
+        return value.strip().lower()
+    return None
+
+
+def _dataset_pipeline_defaults(dataset: Dataset | None) -> tuple[str, str]:
+    dataset_default_pb = None
+    dataset_default_cs = None
+    if dataset is not None:
+        ds_meta = getattr(dataset, "dataset_metadata", None)
+        if isinstance(ds_meta, dict):
+            dataset_default_pb = _normalized_dataset_default(ds_meta.get("default_parser_backend"))
+            dataset_default_cs = _normalized_dataset_default(ds_meta.get("default_chunk_strategy"))
+
+    default_pb_eff = dataset_default_pb or str(getattr(settings, "DEFAULT_PARSER_BACKEND", "auto") or "auto").strip().lower() or "auto"
+    default_cs_eff = dataset_default_cs or str(getattr(settings, "DEFAULT_CHUNK_STRATEGY", "langchain_recursive") or "langchain_recursive").strip().lower() or "langchain_recursive"
+    return default_pb_eff, default_cs_eff
+
+
+def _rule_backend_choices(
+    *,
+    matched_rule: Any,
+    parser_backend_choice: str,
+    chunk_strategy_choice: str,
+    default_pb_eff: str,
+    default_cs_eff: str,
+) -> tuple[str, str]:
+    req_pb = (parser_backend_choice or "").strip().lower()
+    if req_pb in {"", "auto", default_pb_eff} and matched_rule.parser_backend:
+        parser_backend_choice = str(matched_rule.parser_backend)
+
+    req_cs = (chunk_strategy_choice or "").strip().lower()
+    if req_cs in {"", default_cs_eff} and matched_rule.chunk_strategy:
+        chunk_strategy_choice = str(matched_rule.chunk_strategy)
+
+    return parser_backend_choice, chunk_strategy_choice
+
+
+def _rule_preprocess_steps(matched_rule: Any) -> list[dict[str, Any]]:
+    pp = getattr(matched_rule, "preprocess", None)
+    steps = getattr(pp, "steps", None) if pp is not None and bool(getattr(pp, "enabled", True)) else None
+    if not isinstance(steps, list) or not steps:
+        return []
+    return [
+        {
+            "id": str(getattr(s, "id", "") or "").strip(),
+            "params": dict(getattr(s, "params", {}) or {}),
+        }
+        for s in steps
+    ]
+
+
+def _rule_pipeline_patch(db: Session, *, tenant_id: UUID, matched_rule: Any) -> tuple[PipelineOptions, str | None]:
+    patch_dict: dict[str, Any] = {}
+    profile_ref = getattr(matched_rule, "governance_profile_ref", None)
+    normalized_profile_ref = profile_ref.strip() if isinstance(profile_ref, str) and profile_ref.strip() else None
+    if normalized_profile_ref:
+        try:
+            resolved = resolve_governance_profile_ref(db=db, tenant_id=tenant_id, profile_ref=normalized_profile_ref)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"Invalid governance_profile_ref: {str(exc)[:120]}") from exc
+        patch_dict.update(dict(resolved.pipeline_patch or {}))
+        if resolved.regex_rules:
+            patch_dict["governance_regex_rules"] = list(resolved.regex_rules)
+
+    patch_dict.update(dict(getattr(matched_rule, "pipeline_patch", None) or {}))
+    policy_patch = PipelineOptions(**patch_dict) if patch_dict else PipelineOptions()
+    return policy_patch, normalized_profile_ref
+
+
+def _policy_from_dataset(dataset: Dataset | None):
+    dataset_meta = (getattr(dataset, "dataset_metadata", None) or {}) if dataset is not None else {}
+    return parse_ingestion_policy_from_metadata(dataset_meta if isinstance(dataset_meta, dict) else {})  # type: ignore[arg-type]
+
+
+def _resolve_document_ingestion_policy(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    dataset: Dataset,
+    filename: str,
+    file_ext: str,
+    requested_parser_backend: str,
+    requested_chunk_strategy: str,
+    pipeline: DocumentPipelineOptions | None,
+    source_url: str | None,
+) -> ResolvedDocumentIngestionPolicy:
+    pipeline_options = _document_pipeline_options(pipeline)
+    policy = _policy_from_dataset(dataset)
+    matched_rule = match_ingestion_rule(policy, filename=filename, file_ext=file_ext)
+    default_pb_eff, default_cs_eff = _dataset_pipeline_defaults(dataset)
+
+    parser_backend_choice = str(requested_parser_backend or default_pb_eff)
+    chunk_strategy_choice = str(requested_chunk_strategy or default_cs_eff)
+    policy_patch = PipelineOptions()
+    ingestion_meta: dict[str, Any] | None = None
+
+    if matched_rule is not None:
+        parser_backend_choice, chunk_strategy_choice = _rule_backend_choices(
+            matched_rule=matched_rule,
+            parser_backend_choice=parser_backend_choice,
+            chunk_strategy_choice=chunk_strategy_choice,
+            default_pb_eff=default_pb_eff,
+            default_cs_eff=default_cs_eff,
+        )
+        preprocess_steps = _rule_preprocess_steps(matched_rule)
+        policy_patch, profile_ref = _rule_pipeline_patch(db, tenant_id=tenant_id, matched_rule=matched_rule)
+        ingestion_meta = {
+            "version": str(getattr(policy, "version", "1") if policy is not None else "1"),
+            "rule": {"id": matched_rule.id, "name": matched_rule.name},
+            "preprocess": {"enabled": bool(preprocess_steps), "steps": preprocess_steps},
+            "governance_profile_ref": profile_ref,
+            "source_url": source_url,
+        }
+
+    return ResolvedDocumentIngestionPolicy(
+        parser_backend_choice=parser_backend_choice,
+        chunk_strategy_choice=chunk_strategy_choice,
+        pipeline_options=merge_pipeline_options(policy_patch, pipeline_options),
+        ingestion_meta=ingestion_meta,
+    )
+
+
+def _resolve_document_pipeline(
+    *,
+    file_ext: str,
+    parser_backend_choice: str,
+    chunk_strategy_choice: str,
+    preserve_pdf_auto: bool,
+) -> ResolvedDocumentPipeline:
+    try:
+        requested_parser_backend = (parser_backend_choice or "").strip().lower()
+        if preserve_pdf_auto and file_ext == ".pdf" and requested_parser_backend in {"", "auto"}:
+            resolved_parser_backend = "auto"
+        else:
+            resolved_parser_backend = parser_factory.resolve_backend(file_ext, parser_backend_choice)
+        resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy_choice)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return ResolvedDocumentPipeline(parser_backend=resolved_parser_backend, chunk_strategy=resolved_chunk_strategy)
+
+
+def _validate_pipeline_effective_for_strategy(
+    *,
+    dataset: Dataset,
+    pipeline_options: PipelineOptions,
+    resolved_chunk_strategy: str,
+) -> None:
+    pipeline_effective = resolve_pipeline_effective(
+        dataset_metadata=(getattr(dataset, "dataset_metadata", None) or {}),
+        document_metadata={},
+        request_overrides=pipeline_options,
+    )
+    if resolved_chunk_strategy not in chunker_factory.INTEGRATED_PIPELINE_STRATEGIES:
+        _validate_chunk_params(pipeline_effective.chunk_size, pipeline_effective.chunk_overlap)
+
+
+def _create_ingestion_run_if_missing(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    dataset: Dataset,
+    account_id: str,
+    ingestion_run_id: UUID | None,
+    ingestion_kind: str | None,
+    default_kind: str,
+    config: dict[str, Any],
+) -> UUID | None:
+    if ingestion_run_id is not None:
+        return ingestion_run_id
+    try:
+        ingestion_kind_norm = str(ingestion_kind or default_kind).strip() or default_kind
+        ingestion_run = IngestionRunService.create_run(
+            db,
+            tenant_id=tenant_id,
+            dataset_id=getattr(dataset, "id", None),
+            requested_by=account_id,
+            kind=ingestion_kind_norm,
+            config=config,
+            expected_documents=1,
+        )
+        return ingestion_run.id
+    except Exception:
+        return None
+
+
+def _finalize_document_metadata(
+    doc_metadata: dict[str, Any],
+    *,
+    pipeline_options: PipelineOptions,
+    ingestion_meta: dict[str, Any] | None,
+    ingestion_run_id: UUID | None,
+    ingestion_kind: str | None,
+    default_kind: str,
+) -> tuple[dict[str, Any], str]:
+    upsert_pipeline_metadata(doc_metadata, options=pipeline_options)
+    if ingestion_meta:
+        doc_metadata["ingestion"] = ingestion_meta
+
+    pipeline_hash = _compute_pipeline_hash(doc_metadata)
+    doc_metadata["pipeline_hash"] = pipeline_hash
+    doc_metadata.setdefault("active_pipeline_hash", pipeline_hash)
+    doc_metadata.setdefault("active_pipeline_ready", False)
+    if ingestion_run_id is not None:
+        doc_metadata.setdefault("created_by_run_id", str(ingestion_run_id))
+        doc_metadata["last_ingestion_run_id"] = str(ingestion_run_id)
+        doc_metadata["last_ingestion_kind"] = str(ingestion_kind or default_kind)
+    return doc_metadata, pipeline_hash
+
+
+def _enforce_url_upload_quota(db: Session, *, tenant_id: UUID, additional_bytes: int, final_path: Path) -> None:
+    try:
+        from app.services.tenant_quota_service import enforce_tenant_upload_quotas
+
+        enforce_tenant_upload_quotas(
+            db,
+            tenant_id=tenant_id,
+            additional_docs=1,
+            additional_bytes=additional_bytes,
+        )
+    except HTTPException:
+        with contextlib.suppress(OSError):
+            final_path.unlink(missing_ok=True)
+        raise
+
+
+def _create_pending_document_record(
+    *,
+    db: Session,
+    file_id: UUID,
+    tenant_id: UUID,
+    dataset: Dataset,
+    filename: str,
+    file_ext: str,
+    file_size: int,
+    file_path: Path,
+    account_id: str,
+    doc_metadata: dict[str, Any],
+) -> DBDocument:
+    db_document = DBDocument(
+        id=file_id,
+        tenant_id=tenant_id,
+        dataset_id=dataset.id,
+        filename=filename,
+        file_type=file_ext.lstrip("."),
+        file_size=file_size,
+        file_path=str(file_path),
+        owner_id=account_id,
+        access_mode=None,
+        status="pending",
+        processing_progress=0,
+        doc_metadata=doc_metadata,
+    )
+    db.add(db_document)
+    db.commit()
+    db.refresh(db_document)
+    return db_document
+
+
+def _add_document_to_ingestion_run(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    ingestion_run_id: UUID | None,
+    db_document: DBDocument,
+    source_ref: str | None,
+    doc_metadata: dict[str, Any],
+) -> None:
+    if ingestion_run_id is None:
+        return
+    with contextlib.suppress(Exception):
+        IngestionRunService.add_document(
+            db,
+            tenant_id=tenant_id,
+            run_id=ingestion_run_id,
+            document_id=db_document.id,
+            source_ref=source_ref,
+            initial_status=str(getattr(db_document, "status", "") or "pending"),
+            doc_meta=dict(doc_metadata),
+        )
+
+
+async def _schedule_document_processing(
+    *,
+    db: Session,
+    background_tasks: BackgroundTasks | None,
+    tenant_id: UUID,
+    document_id: UUID,
+    file_path: Path,
+    requested_by: str,
+    pipeline_hash: str,
+    parser_backend: str,
+    chunk_strategy: str,
+    db_document: DBDocument,
+) -> None:
+    job_id = f"doc:{tenant_id}:{document_id}:{pipeline_hash}"
+    task_id = await enqueue_document_processing(
+        tenant_id=tenant_id,
+        document_id=document_id,
+        requested_by=requested_by,
+        job_id=job_id,
+    )
+    if task_id:
+        meta = dict(db_document.doc_metadata or {})
+        meta["task_id"] = task_id
+        db_document.doc_metadata = meta
+        db.commit()
+        db.refresh(db_document)
+        return
+
+    if background_tasks is not None:
+        background_tasks.add_task(
+            run_document_processing_limited,
+            file_path,
+            document_id,
+            tenant_id,
+            parser_backend,
+            chunk_strategy,
+        )
+        return
+
+    await document_processor.process_document(
+        file_path=file_path,
+        document_id=document_id,
+        tenant_id=tenant_id,
+        parser_backend=parser_backend,
+        chunk_strategy=chunk_strategy,
+        db=db,
+    )
+
+
+async def _download_url_ingest_file(*, url: str, body: UrlUploadRequest, tenant_id: UUID) -> UrlIngestFile:
+    upload_dir = Path(settings.UPLOAD_DIR) / str(tenant_id)
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    file_id = uuid.uuid4()
+    temp_path = upload_dir / f"{file_id}.urltmp"
+    downloaded = await download_url_to_path(
+        url,
+        temp_path,
+        max_bytes=int(getattr(settings, "URL_INGEST_MAX_BYTES", 0) or settings.MAX_FILE_SIZE),
+        timeout_sec=float(getattr(settings, "URL_INGEST_TIMEOUT_SEC", 30.0) or 30.0),
+        follow_redirects=bool(getattr(settings, "URL_INGEST_FOLLOW_REDIRECTS", False)),
+        user_agent=(body.user_agent or None),
+        extra_headers=(body.fetch_headers or None),
+    )
+
+    content_type = (downloaded.content_type or "").split(";", 1)[0].strip().lower()
+    file_ext = _resolve_url_file_ext(filename=body.filename, url=url, content_type=content_type)
+    final_path = upload_dir / f"{file_id}{file_ext}"
+    _finalize_url_download(temp_path, final_path)
+    return UrlIngestFile(
+        file_id=file_id,
+        final_path=final_path,
+        file_ext=file_ext,
+        downloaded=downloaded,
+        content_type=content_type,
+        fetched_at_iso=datetime.now(UTC).isoformat(),
+    )
+
+
+def _write_local_html_ingest_file(*, body: LocalHtmlIngestRequest, tenant_id: UUID) -> LocalHtmlIngestFile:
+    upload_dir = Path(settings.UPLOAD_DIR) / str(tenant_id)
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    data = str(body.html or "").encode("utf-8", "ignore")
+    if int(getattr(settings, "MAX_FILE_SIZE", 0) or 0) > 0 and len(data) > int(settings.MAX_FILE_SIZE):
+        raise HTTPException(status_code=400, detail="File too large")
+
+    safe_name = _sanitize_filename(body.filename or "confluence-page.html")
+    file_ext = _resolve_local_html_file_ext(safe_name)
+    file_id = uuid.uuid4()
+    file_path = upload_dir / f"{file_id}{file_ext}"
+    try:
+        file_path.write_bytes(data)
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"failed to write html file: {str(exc)[:120]}") from exc
+
+    return LocalHtmlIngestFile(
+        file_id=file_id,
+        file_path=file_path,
+        file_ext=file_ext,
+        filename=safe_name,
+        file_size=int(len(data)),
+        fetched_at_iso=datetime.now(UTC).isoformat(),
+    )
+
+
+async def _url_source_metadata(*, url: str, ingest_file: UrlIngestFile) -> UrlSourceMetadata:
+    downloaded = ingest_file.downloaded
+    last_modified_raw = str(getattr(downloaded, "last_modified", "") or "").strip() or None
+    last_modified_norm = _normalize_datetime_utc_iso(last_modified_raw) if last_modified_raw else None
+    etag_raw = str(getattr(downloaded, "etag", "") or "").strip() or None
+    if etag_raw and len(etag_raw) > 500:
+        etag_raw = etag_raw[:500]
+
+    url_final = str(getattr(downloaded, "final_url", "") or url).strip() or url
+    url_normalized_requested = normalize_url_for_dedup(url)
+    url_normalized_final = normalize_url_for_dedup(url_final)
+    url_canonical, url_normalized_canonical = await _extract_url_canonical_metadata(
+        content_type=ingest_file.content_type,
+        final_path=ingest_file.final_path,
+        url_final=url_final,
+    )
+    url_normalized = url_normalized_canonical or url_normalized_final or url_normalized_requested
+    return UrlSourceMetadata(
+        final_url=url_final,
+        normalized_requested=url_normalized_requested,
+        normalized_final=url_normalized_final,
+        canonical_url=url_canonical,
+        normalized_canonical=url_normalized_canonical,
+        normalized_url=url_normalized,
+        last_modified_at=last_modified_norm or ingest_file.fetched_at_iso,
+        last_modified_source="http:last-modified" if last_modified_norm else "fallback:fetched_at",
+        last_modified_raw=last_modified_raw,
+        etag=etag_raw,
+    )
+
+
+def _prepare_document_ingestion(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    dataset: Dataset,
+    filename: str,
+    file_ext: str,
+    requested_parser_backend: str,
+    requested_chunk_strategy: str,
+    pipeline: DocumentPipelineOptions | None,
+    source_url: str | None,
+    preserve_pdf_auto: bool,
+) -> PreparedDocumentIngestion:
+    ingestion_policy = _resolve_document_ingestion_policy(
+        db=db,
+        tenant_id=tenant_id,
+        dataset=dataset,
+        filename=filename,
+        file_ext=file_ext,
+        requested_parser_backend=requested_parser_backend,
+        requested_chunk_strategy=requested_chunk_strategy,
+        pipeline=pipeline,
+        source_url=source_url,
+    )
+    resolved_pipeline = _resolve_document_pipeline(
+        file_ext=file_ext,
+        parser_backend_choice=ingestion_policy.parser_backend_choice,
+        chunk_strategy_choice=ingestion_policy.chunk_strategy_choice,
+        preserve_pdf_auto=preserve_pdf_auto,
+    )
+    _validate_pipeline_effective_for_strategy(
+        dataset=dataset,
+        pipeline_options=ingestion_policy.pipeline_options,
+        resolved_chunk_strategy=resolved_pipeline.chunk_strategy,
+    )
+    return PreparedDocumentIngestion(policy=ingestion_policy, pipeline=resolved_pipeline)
+
+
+def _create_url_ingestion_run(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    dataset: Dataset,
+    account_id: str,
+    ingestion_run_id: UUID | None,
+    ingestion_kind: str | None,
+    body: UrlUploadRequest,
+    url: str,
+    source: UrlSourceMetadata,
+    pipeline: ResolvedDocumentPipeline,
+) -> UUID | None:
+    run_cfg = {
+        "source_url": url,
+        "url_final_url": source.final_url or None,
+        "url_canonical_url": source.canonical_url,
+        "parser_backend_requested": str(body.parser_backend or "")[:80],
+        "chunk_strategy_requested": str(body.chunk_strategy or "")[:80],
+        "parser_backend": str(pipeline.parser_backend or "")[:80],
+        "chunk_strategy": str(pipeline.chunk_strategy or "")[:80],
+    }
+    return _create_ingestion_run_if_missing(
+        db=db,
+        tenant_id=tenant_id,
+        dataset=dataset,
+        account_id=account_id,
+        ingestion_run_id=ingestion_run_id,
+        ingestion_kind=ingestion_kind,
+        default_kind="upload_url",
+        config=run_cfg,
+    )
+
+
+def _create_local_html_ingestion_run(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    dataset: Dataset,
+    account_id: str,
+    ingestion_run_id: UUID | None,
+    ingestion_kind: str | None,
+    body: LocalHtmlIngestRequest,
+    source_url: str | None,
+    content_type: str,
+    pipeline: ResolvedDocumentPipeline,
+) -> UUID | None:
+    run_cfg = {
+        "source_url": source_url,
+        "content_type": content_type,
+        "parser_backend_requested": str(body.parser_backend or "")[:80],
+        "chunk_strategy_requested": str(body.chunk_strategy or "")[:80],
+        "parser_backend": str(pipeline.parser_backend or "")[:80],
+        "chunk_strategy": str(pipeline.chunk_strategy or "")[:80],
+    }
+    return _create_ingestion_run_if_missing(
+        db=db,
+        tenant_id=tenant_id,
+        dataset=dataset,
+        account_id=account_id,
+        ingestion_run_id=ingestion_run_id,
+        ingestion_kind=ingestion_kind,
+        default_kind="connector_html",
+        config=run_cfg,
+    )
+
+
+def _build_url_document_metadata(
+    *,
+    body: UrlUploadRequest,
+    url: str,
+    ingest_file: UrlIngestFile,
+    source: UrlSourceMetadata,
+    pipeline: ResolvedDocumentPipeline,
+) -> dict[str, Any]:
+    return {
+        "parser_backend": pipeline.parser_backend,
+        "parser_backend_requested": str(body.parser_backend or "").lower(),
+        "chunk_strategy": pipeline.chunk_strategy,
+        "chunk_strategy_requested": str(body.chunk_strategy or "").lower(),
+        "source_url": url,
+        "source_fetched_at": ingest_file.fetched_at_iso,
+        "source_last_modified_at": source.last_modified_at,
+        "source_last_modified_source": source.last_modified_source,
+        "source_last_modified_raw": source.last_modified_raw,
+        "source_etag": source.etag,
+        "url_content_type": ingest_file.content_type or None,
+        "url_final_url": source.final_url or None,
+        "url_canonical_url": source.canonical_url,
+        "url_normalized_url": source.normalized_url or None,
+        "url_normalized_requested": source.normalized_requested or None,
+        "url_normalized_final": source.normalized_final or None,
+        "url_normalized_canonical": source.normalized_canonical,
+    }
+
+
+def _build_local_html_document_metadata(
+    *,
+    body: LocalHtmlIngestRequest,
+    source_url: str | None,
+    url_normalized: str | None,
+    fetched_at_iso: str,
+    content_type: str,
+    pipeline: ResolvedDocumentPipeline,
+) -> dict[str, Any]:
+    return {
+        "parser_backend": pipeline.parser_backend,
+        "parser_backend_requested": str(body.parser_backend or "").lower(),
+        "chunk_strategy": pipeline.chunk_strategy,
+        "chunk_strategy_requested": str(body.chunk_strategy or "").lower(),
+        "source_url": source_url,
+        "source_fetched_at": fetched_at_iso,
+        "source_last_modified_at": fetched_at_iso,
+        "source_last_modified_source": "fallback:fetched_at",
+        "source_last_modified_raw": None,
+        "source_etag": None,
+        "url_content_type": content_type,
+        "url_final_url": source_url,
+        "url_normalized_url": url_normalized or None,
+    }
+
+
+async def _persist_and_process_ingested_document(
+    *,
+    db: Session,
+    background_tasks: BackgroundTasks | None,
+    tenant_id: UUID,
+    account_id: str,
+    dataset: Dataset,
+    file_id: UUID,
+    filename: str,
+    file_ext: str,
+    file_size: int,
+    file_path: Path,
+    source_ref: str | None,
+    doc_metadata: dict[str, Any],
+    pipeline_hash: str,
+    pipeline: ResolvedDocumentPipeline,
+    ingestion_run_id: UUID | None,
+) -> DBDocument:
+    db_document = _create_pending_document_record(
+        db=db,
+        file_id=file_id,
+        tenant_id=tenant_id,
+        dataset=dataset,
+        filename=filename,
+        file_ext=file_ext,
+        file_size=file_size,
+        file_path=file_path,
+        account_id=account_id,
+        doc_metadata=doc_metadata,
+    )
+    _add_document_to_ingestion_run(
+        db=db,
+        tenant_id=tenant_id,
+        ingestion_run_id=ingestion_run_id,
+        db_document=db_document,
+        source_ref=source_ref,
+        doc_metadata=doc_metadata,
+    )
+    await _schedule_document_processing(
+        db=db,
+        background_tasks=background_tasks,
+        tenant_id=tenant_id,
+        document_id=file_id,
+        file_path=file_path,
+        requested_by=account_id,
+        pipeline_hash=pipeline_hash,
+        parser_backend=pipeline.parser_backend,
+        chunk_strategy=pipeline.chunk_strategy,
+        db_document=db_document,
+    )
+    return db_document
+
+
 async def _ingest_url_upload_request(
     *,
     background_tasks: BackgroundTasks | None,
@@ -1191,343 +2104,99 @@ async def _ingest_url_upload_request(
         raise HTTPException(status_code=400, detail="URL ingestion is disabled")
 
     url = await validate_url_for_ingest(str(body.url or ""))
-
-    # 1) Resolve dataset permission.
     dataset = _resolve_writable_dataset(db, tenant_id, account_id, body.dataset_id)
-
-    # 2) Download to a temp path first, then decide extension (URL may not include it).
-    upload_dir = Path(settings.UPLOAD_DIR) / str(tenant_id)
-    upload_dir.mkdir(parents=True, exist_ok=True)
-    file_id = uuid.uuid4()
-    temp_path = upload_dir / f"{file_id}.urltmp"
-
-    downloaded = await download_url_to_path(
-        url,
-        temp_path,
-        max_bytes=int(getattr(settings, "URL_INGEST_MAX_BYTES", 0) or settings.MAX_FILE_SIZE),
-        timeout_sec=float(getattr(settings, "URL_INGEST_TIMEOUT_SEC", 30.0) or 30.0),
-        follow_redirects=bool(getattr(settings, "URL_INGEST_FOLLOW_REDIRECTS", False)),
-        user_agent=(body.user_agent or None),
-        extra_headers=(body.fetch_headers or None),
-    )
-
-    fetched_at_iso = datetime.now(UTC).isoformat()
-    last_modified_raw = str(getattr(downloaded, "last_modified", "") or "").strip() or None
-    last_modified_norm = _normalize_datetime_utc_iso(last_modified_raw) if last_modified_raw else None
-    etag_raw = str(getattr(downloaded, "etag", "") or "").strip() or None
-    if etag_raw and len(etag_raw) > 500:
-        etag_raw = etag_raw[:500]
-
-    # Staleness signal: prefer origin last_modified; fallback to fetch timestamp when unknown.
-    source_last_modified_at = last_modified_norm or fetched_at_iso
-    source_last_modified_source = "http:last-modified" if last_modified_norm else "fallback:fetched_at"
-
-    content_type = (downloaded.content_type or "").split(";", 1)[0].strip().lower()
-
-    # 3) Determine file extension.
-    def _ext_from_filename(name: str | None) -> str | None:
-        if not name:
-            return None
-        ext = Path(str(name)).suffix.lower()
-        return ext if ext else None
-
-    def _ext_from_content_type(ct: str) -> str | None:
-        if not ct:
-            return None
-        if ct in {"text/html"}:
-            return HTML_FILE_EXTENSION
-        if ct in {"text/plain"}:
-            return ".txt"
-        if ct in {"text/markdown", "text/x-markdown"}:
-            return ".md"
-        if ct in {"application/pdf"}:
-            return ".pdf"
-        if ct in {"application/json"}:
-            return ".json"
-        if ct in {"text/xml", "application/xml", "application/rss+xml", "application/atom+xml"}:
-            return ".xml"
-        return None
-
-    file_ext = _ext_from_filename(body.filename)
-    if not file_ext:
-        from urllib.parse import urlparse
-
-        parsed = urlparse(url)
-        file_ext = _ext_from_filename(Path(parsed.path).name)
-    if not file_ext:
-        file_ext = _ext_from_content_type(content_type)
-    if not file_ext:
-        if content_type.startswith("text/"):
-            file_ext = ".txt"
-        else:
-            raise HTTPException(status_code=400, detail=f"Unsupported content-type: {content_type or 'unknown'}")
-
-    file_ext = file_ext.lower()
-    if file_ext not in settings.allowed_extensions_list:
-        raise HTTPException(status_code=400, detail=f"Unsupported file type. Allowed: {settings.allowed_extensions_list}")
-
-    final_path = upload_dir / f"{file_id}{file_ext}"
-    try:
-        temp_path.replace(final_path)
-    except Exception:
-        try:
-            shutil.move(str(temp_path), str(final_path))
-        except Exception as exc:  # noqa: BLE001
-            with contextlib.suppress(OSError):
-                temp_path.unlink(missing_ok=True)
-            raise HTTPException(status_code=500, detail=f"failed to finalize downloaded file: {str(exc)[:120]}") from exc
-
-    url_final = str(getattr(downloaded, "final_url", "") or url).strip() or url
-    url_normalized_requested = normalize_url_for_dedup(url)
-    url_normalized_final = normalize_url_for_dedup(url_final)
-    url_canonical: str | None = None
-    url_normalized_canonical: str | None = None
-
-    if content_type and "html" in content_type:
-        def _read_html_prefix(path: Path) -> str:
-            with path.open("rb") as f:
-                return f.read(200_000).decode("utf-8", "ignore")
-
-        try:
-            html_prefix = await asyncio.to_thread(_read_html_prefix, final_path)
-            url_canonical = extract_canonical_url(html_prefix, base_url=url_final)
-            url_normalized_canonical = normalize_url_for_dedup(url_canonical) if url_canonical else None
-        except Exception:
-            url_canonical = None
-            url_normalized_canonical = None
-
-    url_normalized = url_normalized_canonical or url_normalized_final or url_normalized_requested
-
-    # 4) Resolve ingestion policy (optional) based on the inferred filename/ext.
-    safe_name = _sanitize_filename(body.filename or Path(final_path).name)
-
-    pipeline_options = PipelineOptions(**(body.pipeline.model_dump(exclude_none=True) if body.pipeline else {}))
-
-    dataset_meta = (getattr(dataset, "dataset_metadata", None) or {}) if dataset is not None else {}
-    policy = parse_ingestion_policy_from_metadata(dataset_meta if isinstance(dataset_meta, dict) else {})  # type: ignore[arg-type]
-    matched_rule = match_ingestion_rule(policy, filename=safe_name, file_ext=file_ext)
-
-    dataset_default_pb = None
-    dataset_default_cs = None
-    if dataset is not None:
-        ds_meta = getattr(dataset, "dataset_metadata", None)
-        if isinstance(ds_meta, dict):
-            raw_pb = ds_meta.get("default_parser_backend")
-            raw_cs = ds_meta.get("default_chunk_strategy")
-            if isinstance(raw_pb, str) and raw_pb.strip():
-                dataset_default_pb = raw_pb.strip().lower()
-            if isinstance(raw_cs, str) and raw_cs.strip():
-                dataset_default_cs = raw_cs.strip().lower()
-
-    default_pb_eff = dataset_default_pb or str(getattr(settings, "DEFAULT_PARSER_BACKEND", "auto") or "auto").strip().lower() or "auto"
-    default_cs_eff = dataset_default_cs or str(getattr(settings, "DEFAULT_CHUNK_STRATEGY", "langchain_recursive") or "langchain_recursive").strip().lower() or "langchain_recursive"
-
-    parser_backend_choice = str(body.parser_backend or default_pb_eff)
-    chunk_strategy_choice = str(body.chunk_strategy or default_cs_eff)
-    policy_patch = PipelineOptions()
-    ingestion_meta: dict[str, Any] | None = None
-
-    if matched_rule is not None:
-        default_pb = default_pb_eff
-        req_pb = (parser_backend_choice or "").strip().lower()
-        if req_pb in {"", "auto", default_pb} and matched_rule.parser_backend:
-            parser_backend_choice = str(matched_rule.parser_backend)
-
-        default_cs = default_cs_eff
-        req_cs = (chunk_strategy_choice or "").strip().lower()
-        if req_cs in {"", default_cs} and matched_rule.chunk_strategy:
-            chunk_strategy_choice = str(matched_rule.chunk_strategy)
-
-        preprocess_steps: list[dict[str, Any]] = []
-        pp = getattr(matched_rule, "preprocess", None)
-        steps = getattr(pp, "steps", None) if pp is not None and bool(getattr(pp, "enabled", True)) else None
-        if isinstance(steps, list) and steps:
-            preprocess_steps = [
-                {
-                    "id": str(getattr(s, "id", "") or "").strip(),
-                    "params": dict(getattr(s, "params", {}) or {}),
-                }
-                for s in steps
-            ]
-
-        patch_dict: dict[str, Any] = {}
-        profile_ref = getattr(matched_rule, "governance_profile_ref", None)
-        if isinstance(profile_ref, str) and profile_ref.strip():
-            try:
-                resolved = resolve_governance_profile_ref(db=db, tenant_id=tenant_id, profile_ref=profile_ref.strip())
-            except ValueError as exc:
-                raise HTTPException(status_code=400, detail=f"Invalid governance_profile_ref: {str(exc)[:120]}") from exc
-            patch_dict.update(dict(resolved.pipeline_patch or {}))
-            if resolved.regex_rules:
-                patch_dict["governance_regex_rules"] = list(resolved.regex_rules)
-
-        patch_dict.update(dict(getattr(matched_rule, "pipeline_patch", None) or {}))
-        if patch_dict:
-            policy_patch = PipelineOptions(**patch_dict)
-
-        ingestion_meta = {
-            "version": str(getattr(policy, "version", "1") if policy is not None else "1"),
-            "rule": {"id": matched_rule.id, "name": matched_rule.name},
-            "preprocess": {"enabled": bool(preprocess_steps), "steps": preprocess_steps},
-            "governance_profile_ref": (profile_ref.strip() if isinstance(profile_ref, str) and profile_ref.strip() else None),
-            "source_url": url,
-        }
-
-    pipeline_options = merge_pipeline_options(policy_patch, pipeline_options)
-
-    try:
-        requested_parser_backend = (parser_backend_choice or "").strip().lower()
-        if file_ext == ".pdf" and requested_parser_backend in {"", "auto"}:
-            resolved_parser_backend = "auto"
-        else:
-            resolved_parser_backend = parser_factory.resolve_backend(file_ext, parser_backend_choice)
-        resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy_choice)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    pipeline_effective = resolve_pipeline_effective(
-        dataset_metadata=(getattr(dataset, "dataset_metadata", None) or {}),
-        document_metadata={},
-        request_overrides=pipeline_options,
-    )
-    if resolved_chunk_strategy not in chunker_factory.INTEGRATED_PIPELINE_STRATEGIES:
-        _validate_chunk_params(pipeline_effective.chunk_size, pipeline_effective.chunk_overlap)
-
-    if ingestion_run_id is None:
-        try:
-            ingestion_kind_norm = str(ingestion_kind or "upload_url").strip() or "upload_url"
-            run_cfg = {
-                "source_url": url,
-                "url_final_url": url_final or None,
-                "url_canonical_url": url_canonical,
-                "parser_backend_requested": str(body.parser_backend or "")[:80],
-                "chunk_strategy_requested": str(body.chunk_strategy or "")[:80],
-                "parser_backend": str(resolved_parser_backend or "")[:80],
-                "chunk_strategy": str(resolved_chunk_strategy or "")[:80],
-            }
-            ingestion_run = IngestionRunService.create_run(
-                db,
-                tenant_id=tenant_id,
-                dataset_id=getattr(dataset, "id", None),
-                requested_by=account_id,
-                kind=ingestion_kind_norm,
-                config=run_cfg,
-                expected_documents=1,
-            )
-            ingestion_run_id = ingestion_run.id
-        except Exception:
-            ingestion_run_id = None
-
-    doc_metadata = {
-        "parser_backend": resolved_parser_backend,
-        "parser_backend_requested": str(body.parser_backend or "").lower(),
-        "chunk_strategy": resolved_chunk_strategy,
-        "chunk_strategy_requested": str(body.chunk_strategy or "").lower(),
-        "source_url": url,
-        "source_fetched_at": fetched_at_iso,
-        "source_last_modified_at": source_last_modified_at,
-        "source_last_modified_source": source_last_modified_source,
-        "source_last_modified_raw": last_modified_raw,
-        "source_etag": etag_raw,
-        "url_content_type": content_type or None,
-        "url_final_url": url_final or None,
-        "url_canonical_url": url_canonical,
-        "url_normalized_url": url_normalized or None,
-        "url_normalized_requested": url_normalized_requested or None,
-        "url_normalized_final": url_normalized_final or None,
-        "url_normalized_canonical": url_normalized_canonical,
-    }
-    upsert_pipeline_metadata(doc_metadata, options=pipeline_options)
-    if ingestion_meta:
-        doc_metadata["ingestion"] = ingestion_meta
-
-    pipeline_hash = _compute_pipeline_hash(doc_metadata)
-    doc_metadata["pipeline_hash"] = pipeline_hash
-    doc_metadata.setdefault("active_pipeline_hash", pipeline_hash)
-    doc_metadata.setdefault("active_pipeline_ready", False)
-    if ingestion_run_id is not None:
-        doc_metadata.setdefault("created_by_run_id", str(ingestion_run_id))
-        doc_metadata["last_ingestion_run_id"] = str(ingestion_run_id)
-        doc_metadata["last_ingestion_kind"] = str(ingestion_kind or "upload_url")
-
-    try:
-        from app.services.tenant_quota_service import enforce_tenant_upload_quotas
-
-        enforce_tenant_upload_quotas(
-            db,
-            tenant_id=tenant_id,
-            additional_docs=1,
-            additional_bytes=int(getattr(downloaded, "size_bytes", 0) or 0),
-        )
-    except HTTPException:
-        with contextlib.suppress(OSError):
-            final_path.unlink(missing_ok=True)
-        raise
-
-    db_document = DBDocument(
-        id=file_id,
+    ingest_file = await _download_url_ingest_file(url=url, body=body, tenant_id=tenant_id)
+    source = await _url_source_metadata(url=url, ingest_file=ingest_file)
+    safe_name = _sanitize_filename(body.filename or Path(ingest_file.final_path).name)
+    prepared = _prepare_document_ingestion(
+        db=db,
         tenant_id=tenant_id,
-        dataset_id=dataset.id,
+        dataset=dataset,
         filename=safe_name,
-        file_type=file_ext.lstrip("."),
-        file_size=int(downloaded.size_bytes),
-        file_path=str(final_path),
-        owner_id=account_id,
-        access_mode=None,
-        status="pending",
-        processing_progress=0,
-        doc_metadata=doc_metadata,
+        file_ext=ingest_file.file_ext,
+        requested_parser_backend=body.parser_backend,
+        requested_chunk_strategy=body.chunk_strategy,
+        pipeline=body.pipeline,
+        source_url=url,
+        preserve_pdf_auto=True,
     )
-
-    db.add(db_document)
-    db.commit()
-    db.refresh(db_document)
-    if ingestion_run_id is not None:
-        with contextlib.suppress(Exception):
-            IngestionRunService.add_document(
-                db,
-                tenant_id=tenant_id,
-                run_id=ingestion_run_id,
-                document_id=db_document.id,
-                source_ref=url,
-                initial_status=str(getattr(db_document, "status", "") or "pending"),
-                doc_meta=dict(doc_metadata),
-            )
-
-    job_id = f"doc:{tenant_id}:{file_id}:{pipeline_hash}"
-    task_id = await enqueue_document_processing(
+    ingestion_run_id = _create_url_ingestion_run(
+        db=db,
         tenant_id=tenant_id,
-        document_id=file_id,
-        requested_by=account_id,
-        job_id=job_id,
+        dataset=dataset,
+        account_id=account_id,
+        ingestion_run_id=ingestion_run_id,
+        ingestion_kind=ingestion_kind,
+        body=body,
+        url=url,
+        source=source,
+        pipeline=prepared.pipeline,
     )
-    if task_id:
-        meta = dict(db_document.doc_metadata or {})
-        meta["task_id"] = task_id
-        db_document.doc_metadata = meta
-        db.commit()
-        db.refresh(db_document)
-    else:
-        if background_tasks is not None:
-            background_tasks.add_task(
-                run_document_processing_limited,
-                final_path,
-                file_id,
-                tenant_id,
-                resolved_parser_backend,
-                resolved_chunk_strategy,
-            )
-        else:
-            await document_processor.process_document(
-                file_path=final_path,
-                document_id=file_id,
-                tenant_id=tenant_id,
-                parser_backend=resolved_parser_backend,
-                chunk_strategy=resolved_chunk_strategy,
-                db=db,
-            )
 
-    return db_document
+    doc_metadata = _build_url_document_metadata(
+        body=body,
+        url=url,
+        ingest_file=ingest_file,
+        source=source,
+        pipeline=prepared.pipeline,
+    )
+    doc_metadata, pipeline_hash = _finalize_document_metadata(
+        doc_metadata,
+        pipeline_options=prepared.policy.pipeline_options,
+        ingestion_meta=prepared.policy.ingestion_meta,
+        ingestion_run_id=ingestion_run_id,
+        ingestion_kind=ingestion_kind,
+        default_kind="upload_url",
+    )
+
+    file_size = int(ingest_file.downloaded.size_bytes)
+    _enforce_url_upload_quota(db, tenant_id=tenant_id, additional_bytes=file_size, final_path=ingest_file.final_path)
+
+    return await _persist_and_process_ingested_document(
+        db=db,
+        background_tasks=background_tasks,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset=dataset,
+        file_id=ingest_file.file_id,
+        filename=safe_name,
+        file_ext=ingest_file.file_ext,
+        file_size=file_size,
+        file_path=ingest_file.final_path,
+        source_ref=url,
+        doc_metadata=doc_metadata,
+        pipeline_hash=pipeline_hash,
+        pipeline=prepared.pipeline,
+        ingestion_run_id=ingestion_run_id,
+    )
+
+
+def _duplicate_document_query(db: Session, *, tenant_id: UUID, dataset_id: UUID):
+    return (
+        db.query(DBDocument)
+        .filter(
+            DBDocument.tenant_id == tenant_id,
+            DBDocument.dataset_id == dataset_id,
+            DBDocument.archived_at.is_(None),
+        )
+        .order_by(DBDocument.updated_at.desc(), DBDocument.created_at.desc())
+    )
+
+
+def _scan_duplicate_documents(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    max_scan: int,
+    predicate: Any,
+) -> DBDocument | None:
+    docs = _duplicate_document_query(db, tenant_id=tenant_id, dataset_id=dataset_id).limit(max(1, int(max_scan or 5000))).all()
+    for doc in docs or []:
+        meta = dict(getattr(doc, "doc_metadata", None) or {})
+        if predicate(meta):
+            return doc
+    return None
 
 
 def _find_duplicate_document(
@@ -1548,37 +2217,22 @@ def _find_duplicate_document(
 
     try:
         return (
-            db.query(DBDocument)
-            .filter(
-                DBDocument.tenant_id == tenant_id,
-                DBDocument.dataset_id == dataset_id,
-                DBDocument.archived_at.is_(None),
-            )
+            _duplicate_document_query(db, tenant_id=tenant_id, dataset_id=dataset_id)
             .filter(DBDocument.doc_metadata["file_sha256"].astext == sha)  # type: ignore[attr-defined]
             .filter(DBDocument.doc_metadata["pipeline_hash"].astext == ph)  # type: ignore[attr-defined]
-            .order_by(DBDocument.updated_at.desc(), DBDocument.created_at.desc())
             .first()
         )
     except Exception:
-        docs = (
-            db.query(DBDocument)
-            .filter(
-                DBDocument.tenant_id == tenant_id,
-                DBDocument.dataset_id == dataset_id,
-                DBDocument.archived_at.is_(None),
-            )
-            .order_by(DBDocument.updated_at.desc(), DBDocument.created_at.desc())
-            .limit(max(1, int(max_scan or 5000)))
-            .all()
+        return _scan_duplicate_documents(
+            db,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            max_scan=max_scan,
+            predicate=lambda meta: (
+                str(meta.get("file_sha256") or "").strip().lower() == sha
+                and str(meta.get("pipeline_hash") or "").strip() == ph
+            ),
         )
-        for doc in docs or []:
-            meta = dict(getattr(doc, "doc_metadata", None) or {})
-            if str(meta.get("file_sha256") or "").strip().lower() != sha:
-                continue
-            if str(meta.get("pipeline_hash") or "").strip() != ph:
-                continue
-            return doc
-    return None
 
 
 def _find_duplicate_document_by_sha(
@@ -1597,34 +2251,18 @@ def _find_duplicate_document_by_sha(
 
     try:
         return (
-            db.query(DBDocument)
-            .filter(
-                DBDocument.tenant_id == tenant_id,
-                DBDocument.dataset_id == dataset_id,
-                DBDocument.archived_at.is_(None),
-            )
+            _duplicate_document_query(db, tenant_id=tenant_id, dataset_id=dataset_id)
             .filter(DBDocument.doc_metadata["file_sha256"].astext == sha)  # type: ignore[attr-defined]
-            .order_by(DBDocument.updated_at.desc(), DBDocument.created_at.desc())
             .first()
         )
     except Exception:
-        docs = (
-            db.query(DBDocument)
-            .filter(
-                DBDocument.tenant_id == tenant_id,
-                DBDocument.dataset_id == dataset_id,
-                DBDocument.archived_at.is_(None),
-            )
-            .order_by(DBDocument.updated_at.desc(), DBDocument.created_at.desc())
-            .limit(max(1, int(max_scan or 5000)))
-            .all()
+        return _scan_duplicate_documents(
+            db,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            max_scan=max_scan,
+            predicate=lambda meta: str(meta.get("file_sha256") or "").strip().lower() == sha,
         )
-        for doc in docs or []:
-            meta = dict(getattr(doc, "doc_metadata", None) or {})
-            if str(meta.get("file_sha256") or "").strip().lower() != sha:
-                continue
-            return doc
-    return None
 
 
 @dataclass
@@ -1690,253 +2328,71 @@ async def _ingest_local_html_request(
     if not bool(getattr(settings, "URL_INGEST_ENABLED", False)):
         raise HTTPException(status_code=400, detail="URL ingestion is disabled")
 
-    # 1) Resolve dataset permission.
     dataset = _resolve_writable_dataset(db, tenant_id, account_id, body.dataset_id)
-
-    # 2) Validate + write file.
-    upload_dir = Path(settings.UPLOAD_DIR) / str(tenant_id)
-    upload_dir.mkdir(parents=True, exist_ok=True)
-
-    raw_html = str(body.html or "")
-    data = raw_html.encode("utf-8", "ignore")
-    if int(getattr(settings, "MAX_FILE_SIZE", 0) or 0) > 0 and len(data) > int(settings.MAX_FILE_SIZE):
-        raise HTTPException(status_code=400, detail="File too large")
-
-    safe_name = _sanitize_filename(body.filename or "confluence-page.html")
-    file_ext = Path(safe_name).suffix.lower() or HTML_FILE_EXTENSION
-    if file_ext == ".htm":
-        file_ext = HTML_FILE_EXTENSION
-    if not file_ext.startswith("."):
-        file_ext = "." + file_ext
-    if file_ext not in settings.allowed_extensions_list:
-        raise HTTPException(status_code=400, detail=f"Unsupported file type. Allowed: {settings.allowed_extensions_list}")
-
-    file_id = uuid.uuid4()
-    file_path = upload_dir / f"{file_id}{file_ext}"
-    try:
-        file_path.write_bytes(data)
-    except OSError as exc:
-        raise HTTPException(status_code=500, detail=f"failed to write html file: {str(exc)[:120]}") from exc
-
-    file_size = int(len(data))
+    ingest_file = _write_local_html_ingest_file(body=body, tenant_id=tenant_id)
     content_type = "text/html"
     source_url = (str(body.source_url or "").strip() or None)
     url_normalized = normalize_url_for_dedup(source_url) if source_url else None
-    fetched_at_iso = datetime.now(UTC).isoformat()
 
-    # 3) Resolve ingestion policy (best-effort) based on filename/ext.
-    pipeline_options = PipelineOptions(**(body.pipeline.model_dump(exclude_none=True) if body.pipeline else {}))
-
-    dataset_meta = (getattr(dataset, "dataset_metadata", None) or {}) if dataset is not None else {}
-    policy = parse_ingestion_policy_from_metadata(dataset_meta if isinstance(dataset_meta, dict) else {})  # type: ignore[arg-type]
-    matched_rule = match_ingestion_rule(policy, filename=safe_name, file_ext=file_ext)
-
-    dataset_default_pb = None
-    dataset_default_cs = None
-    if dataset is not None:
-        ds_meta = getattr(dataset, "dataset_metadata", None)
-        if isinstance(ds_meta, dict):
-            raw_pb = ds_meta.get("default_parser_backend")
-            raw_cs = ds_meta.get("default_chunk_strategy")
-            if isinstance(raw_pb, str) and raw_pb.strip():
-                dataset_default_pb = raw_pb.strip().lower()
-            if isinstance(raw_cs, str) and raw_cs.strip():
-                dataset_default_cs = raw_cs.strip().lower()
-
-    default_pb_eff = dataset_default_pb or str(getattr(settings, "DEFAULT_PARSER_BACKEND", "auto") or "auto").strip().lower() or "auto"
-    default_cs_eff = (
-        dataset_default_cs
-        or str(getattr(settings, "DEFAULT_CHUNK_STRATEGY", "langchain_recursive") or "langchain_recursive").strip().lower()
-        or "langchain_recursive"
-    )
-
-    parser_backend_choice = str(body.parser_backend or default_pb_eff)
-    chunk_strategy_choice = str(body.chunk_strategy or default_cs_eff)
-    policy_patch = PipelineOptions()
-    ingestion_meta: dict[str, Any] | None = None
-
-    if matched_rule is not None:
-        default_pb = default_pb_eff
-        req_pb = (parser_backend_choice or "").strip().lower()
-        if req_pb in {"", "auto", default_pb} and matched_rule.parser_backend:
-            parser_backend_choice = str(matched_rule.parser_backend)
-
-        default_cs = default_cs_eff
-        req_cs = (chunk_strategy_choice or "").strip().lower()
-        if req_cs in {"", default_cs} and matched_rule.chunk_strategy:
-            chunk_strategy_choice = str(matched_rule.chunk_strategy)
-
-        preprocess_steps: list[dict[str, Any]] = []
-        pp = getattr(matched_rule, "preprocess", None)
-        steps = getattr(pp, "steps", None) if pp is not None and bool(getattr(pp, "enabled", True)) else None
-        if isinstance(steps, list) and steps:
-            preprocess_steps = [
-                {
-                    "id": str(getattr(s, "id", "") or "").strip(),
-                    "params": dict(getattr(s, "params", {}) or {}),
-                }
-                for s in steps
-            ]
-
-        patch_dict: dict[str, Any] = {}
-        profile_ref = getattr(matched_rule, "governance_profile_ref", None)
-        if isinstance(profile_ref, str) and profile_ref.strip():
-            try:
-                resolved = resolve_governance_profile_ref(db=db, tenant_id=tenant_id, profile_ref=profile_ref.strip())
-            except ValueError as exc:
-                raise HTTPException(status_code=400, detail=f"Invalid governance_profile_ref: {str(exc)[:120]}") from exc
-            patch_dict.update(dict(resolved.pipeline_patch or {}))
-            if resolved.regex_rules:
-                patch_dict["governance_regex_rules"] = list(resolved.regex_rules)
-
-        patch_dict.update(dict(getattr(matched_rule, "pipeline_patch", None) or {}))
-        if patch_dict:
-            policy_patch = PipelineOptions(**patch_dict)
-
-        ingestion_meta = {
-            "version": str(getattr(policy, "version", "1") if policy is not None else "1"),
-            "rule": {"id": matched_rule.id, "name": matched_rule.name},
-            "preprocess": {"enabled": bool(preprocess_steps), "steps": preprocess_steps},
-            "governance_profile_ref": (profile_ref.strip() if isinstance(profile_ref, str) and profile_ref.strip() else None),
-            "source_url": source_url,
-        }
-
-    pipeline_options = merge_pipeline_options(policy_patch, pipeline_options)
-
-    # 4) Resolve backend/strategy after policy application.
-    try:
-        resolved_parser_backend = parser_factory.resolve_backend(file_ext, parser_backend_choice)
-        resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy_choice)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    pipeline_effective = resolve_pipeline_effective(
-        dataset_metadata=(getattr(dataset, "dataset_metadata", None) or {}),
-        document_metadata={},
-        request_overrides=pipeline_options,
-    )
-    if resolved_chunk_strategy not in chunker_factory.INTEGRATED_PIPELINE_STRATEGIES:
-        _validate_chunk_params(pipeline_effective.chunk_size, pipeline_effective.chunk_overlap)
-
-    # 5) Unified ingestion run manifest (best-effort; creates a run when missing).
-    if ingestion_run_id is None:
-        try:
-            ingestion_kind_norm = str(ingestion_kind or "connector_html").strip() or "connector_html"
-            run_cfg = {
-                "source_url": source_url,
-                "content_type": content_type,
-                "parser_backend_requested": str(body.parser_backend or "")[:80],
-                "chunk_strategy_requested": str(body.chunk_strategy or "")[:80],
-                "parser_backend": str(resolved_parser_backend or "")[:80],
-                "chunk_strategy": str(resolved_chunk_strategy or "")[:80],
-            }
-            ingestion_run = IngestionRunService.create_run(
-                db,
-                tenant_id=tenant_id,
-                dataset_id=getattr(dataset, "id", None),
-                requested_by=account_id,
-                kind=ingestion_kind_norm,
-                config=run_cfg,
-                expected_documents=1,
-            )
-            ingestion_run_id = ingestion_run.id
-        except Exception:
-            ingestion_run_id = None
-
-    # 6) Create document record.
-    doc_metadata = {
-        "parser_backend": resolved_parser_backend,
-        "parser_backend_requested": str(body.parser_backend or "").lower(),
-        "chunk_strategy": resolved_chunk_strategy,
-        "chunk_strategy_requested": str(body.chunk_strategy or "").lower(),
-        "source_url": source_url,
-        "source_fetched_at": fetched_at_iso,
-        "source_last_modified_at": fetched_at_iso,
-        "source_last_modified_source": "fallback:fetched_at",
-        "source_last_modified_raw": None,
-        "source_etag": None,
-        "url_content_type": content_type,
-        "url_final_url": source_url,
-        "url_normalized_url": url_normalized or None,
-    }
-    upsert_pipeline_metadata(doc_metadata, options=pipeline_options)
-    if ingestion_meta:
-        doc_metadata["ingestion"] = ingestion_meta
-
-    pipeline_hash = _compute_pipeline_hash(doc_metadata)
-    doc_metadata["pipeline_hash"] = pipeline_hash
-    doc_metadata.setdefault("active_pipeline_hash", pipeline_hash)
-    doc_metadata.setdefault("active_pipeline_ready", False)
-    if ingestion_run_id is not None:
-        doc_metadata.setdefault("created_by_run_id", str(ingestion_run_id))
-        doc_metadata["last_ingestion_run_id"] = str(ingestion_run_id)
-        doc_metadata["last_ingestion_kind"] = str(ingestion_kind or "connector_html")
-
-    db_document = DBDocument(
-        id=file_id,
+    prepared = _prepare_document_ingestion(
+        db=db,
         tenant_id=tenant_id,
-        dataset_id=dataset.id,
-        filename=safe_name,
-        file_type=file_ext.lstrip("."),
-        file_size=file_size,
-        file_path=str(file_path),
-        owner_id=account_id,
-        access_mode=None,  # inherit dataset permission by default
-        status="pending",
-        processing_progress=0,
+        dataset=dataset,
+        filename=ingest_file.filename,
+        file_ext=ingest_file.file_ext,
+        requested_parser_backend=body.parser_backend,
+        requested_chunk_strategy=body.chunk_strategy,
+        pipeline=body.pipeline,
+        source_url=source_url,
+        preserve_pdf_auto=False,
+    )
+    ingestion_run_id = _create_local_html_ingestion_run(
+        db=db,
+        tenant_id=tenant_id,
+        dataset=dataset,
+        account_id=account_id,
+        ingestion_run_id=ingestion_run_id,
+        ingestion_kind=ingestion_kind,
+        body=body,
+        source_url=source_url,
+        content_type=content_type,
+        pipeline=prepared.pipeline,
+    )
+
+    doc_metadata = _build_local_html_document_metadata(
+        body=body,
+        source_url=source_url,
+        url_normalized=url_normalized,
+        fetched_at_iso=ingest_file.fetched_at_iso,
+        content_type=content_type,
+        pipeline=prepared.pipeline,
+    )
+    doc_metadata, pipeline_hash = _finalize_document_metadata(
+        doc_metadata,
+        pipeline_options=prepared.policy.pipeline_options,
+        ingestion_meta=prepared.policy.ingestion_meta,
+        ingestion_run_id=ingestion_run_id,
+        ingestion_kind=ingestion_kind,
+        default_kind="connector_html",
+    )
+
+    return await _persist_and_process_ingested_document(
+        db=db,
+        background_tasks=background_tasks,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset=dataset,
+        file_id=ingest_file.file_id,
+        filename=ingest_file.filename,
+        file_ext=ingest_file.file_ext,
+        file_size=ingest_file.file_size,
+        file_path=ingest_file.file_path,
+        source_ref=(source_url or ingest_file.filename)[:1000] if (source_url or ingest_file.filename) else None,
         doc_metadata=doc_metadata,
+        pipeline_hash=pipeline_hash,
+        pipeline=prepared.pipeline,
+        ingestion_run_id=ingestion_run_id,
     )
-
-    db.add(db_document)
-    db.commit()
-    db.refresh(db_document)
-    if ingestion_run_id is not None:
-        with contextlib.suppress(Exception):
-            IngestionRunService.add_document(
-                db,
-                tenant_id=tenant_id,
-                run_id=ingestion_run_id,
-                document_id=db_document.id,
-                source_ref=(source_url or safe_name)[:1000] if (source_url or safe_name) else None,
-                initial_status=str(getattr(db_document, "status", "") or "pending"),
-                doc_meta=dict(doc_metadata),
-            )
-
-    # 7) Process document: enqueue if available; otherwise run/attach to background_tasks.
-    job_id = f"doc:{tenant_id}:{file_id}:{pipeline_hash}"
-    task_id = await enqueue_document_processing(
-        tenant_id=tenant_id,
-        document_id=file_id,
-        requested_by=account_id,
-        job_id=job_id,
-    )
-    if task_id:
-        meta = dict(db_document.doc_metadata or {})
-        meta["task_id"] = task_id
-        db_document.doc_metadata = meta
-        db.commit()
-        db.refresh(db_document)
-    else:
-        if background_tasks is not None:
-            background_tasks.add_task(
-                run_document_processing_limited,
-                file_path,
-                file_id,
-                tenant_id,
-                resolved_parser_backend,
-                resolved_chunk_strategy,
-            )
-        else:
-            await document_processor.process_document(
-                file_path=file_path,
-                document_id=file_id,
-                tenant_id=tenant_id,
-                parser_backend=resolved_parser_backend,
-                chunk_strategy=resolved_chunk_strategy,
-                db=db,
-            )
-
-    return db_document
 
 
 document_upload = importlib.import_module("app.api.v1.document_upload")
@@ -1995,6 +2451,14 @@ def _build_index_channel_result(
     return out
 
 
+def _index_channel_status(value: dict[str, Any] | None) -> str:
+    return str((value or {}).get("status") or "skipped").strip().lower()
+
+
+def _index_drift_marker_rows(drift_markers: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    return [dict(marker) for marker in (drift_markers or []) if isinstance(marker, dict)][:20]
+
+
 def _build_chunk_index_operation_result(
     *,
     operation: str,
@@ -2004,9 +2468,9 @@ def _build_chunk_index_operation_result(
     kg: dict[str, Any] | None = None,
     drift_markers: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    vector_status = str((vector or {}).get("status") or "skipped").strip().lower()
-    bm25_status = str((bm25 or {}).get("status") or "skipped").strip().lower()
-    kg_status = str((kg or {}).get("status") or "skipped").strip().lower() if isinstance(kg, dict) else "skipped"
+    vector_status = _index_channel_status(vector)
+    bm25_status = _index_channel_status(bm25)
+    kg_status = _index_channel_status(kg) if isinstance(kg, dict) else "skipped"
     success = all(st in {"ok", "skipped"} for st in (vector_status, bm25_status, kg_status))
     return {
         "schema": "mimirq.index_operation_result.v1",
@@ -2016,7 +2480,7 @@ def _build_chunk_index_operation_result(
         "vector": dict(vector or {}),
         "bm25": dict(bm25 or {}),
         "kg": (dict(kg or {}) if isinstance(kg, dict) else None),
-        "drift_markers": [dict(m) for m in (drift_markers or []) if isinstance(m, dict)][:20],
+        "drift_markers": _index_drift_marker_rows(drift_markers),
     }
 
 
@@ -2182,6 +2646,247 @@ reembed_document_chunks = document_chunks_write.reembed_document_chunks
 router.include_router(document_chunks_write.router)
 
 
+def _get_document_for_delete(db: Session, *, tenant_id: UUID, document_id: uuid.UUID) -> DBDocument:
+    document = (
+        db.query(DBDocument)
+        .filter(
+            DBDocument.id == document_id,
+            DBDocument.tenant_id == tenant_id,
+        )
+        .first()
+    )
+    if not document:
+        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
+    return document
+
+
+def _assert_document_delete_permission(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    document: DBDocument,
+    enforce_permissions: bool,
+) -> None:
+    if enforce_permissions and document.dataset_id:
+        ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
+        DatasetService.assert_dataset_writable(db, ds, account_id)
+
+
+def _cancel_processing_document(db: Session, document: DBDocument) -> None:
+    if str(document.status or "").lower() not in {"pending", "processing"}:
+        return
+    doc_meta = dict(document.doc_metadata or {})
+    doc_meta["cancel_requested"] = True
+    document.doc_metadata = doc_meta
+    document.status = "cancelled"
+    document.processing_progress = 0
+    document.current_stage = "cancelled"
+    document.error_message = "cancelled"
+    db.commit()
+    db.refresh(document)
+
+
+def _document_task_ids(document: DBDocument) -> list[str]:
+    doc_meta = document.doc_metadata or {}
+    task_ids: list[str] = []
+    for key in ("task_id", "kg_task_id"):
+        value = doc_meta.get(key) if isinstance(doc_meta, dict) else None
+        if isinstance(value, str) and value.strip():
+            task_ids.append(value.strip())
+    return task_ids
+
+
+async def _abort_document_tasks_before_delete(*, document_id: uuid.UUID, task_ids: list[str]) -> None:
+    if not bool(getattr(settings, "TASK_QUEUE_ENABLED", False)) or not task_ids:
+        return
+    try:
+        from arq.jobs import Job
+
+        from app.tasks.queue import get_queue
+
+        q = await get_queue()
+        if q is None:
+            return
+        queue_name = getattr(settings, "TASK_QUEUE_NAME", "mimirq")
+        for task_id in task_ids:
+            job = Job(task_id, q, _queue_name=queue_name)
+            with contextlib.suppress(TimeoutError, asyncio.TimeoutError):
+                await job.abort(timeout=0.2)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "Failed to abort document tasks before delete: doc=%s tasks=%s err=%s",
+            document_id,
+            task_ids,
+            str(exc)[:200],
+        )
+
+
+def _add_document_metadata_img_ids(img_ids: set[str], document: DBDocument) -> None:
+    doc_meta = document.doc_metadata or {}
+    doc_img_ids = doc_meta.get("img_ids") if isinstance(doc_meta, dict) else None
+    if not isinstance(doc_img_ids, list):
+        return
+    for value in doc_img_ids:
+        if isinstance(value, str) and value.strip():
+            img_ids.add(value)
+
+
+def _add_chunk_metadata_img_ids(db: Session, *, tenant_id: UUID, document_id: uuid.UUID, img_ids: set[str]) -> None:
+    chunks = (
+        db.query(DocumentChunk)
+        .filter(DocumentChunk.document_id == document_id, DocumentChunk.tenant_id == tenant_id)
+        .all()
+    )
+    for chunk in chunks:
+        img_id = chunk.doc_metadata.get("img_id") if chunk.doc_metadata else None
+        if isinstance(img_id, str) and img_id.strip():
+            img_ids.add(img_id)
+
+
+def _delete_document_minio_images(db: Session, *, tenant_id: UUID, document_id: uuid.UUID, document: DBDocument) -> None:
+    if not settings.MINIO_ENABLED:
+        return
+    img_ids: set[str] = set()
+    _add_document_metadata_img_ids(img_ids, document)
+    _add_chunk_metadata_img_ids(db, tenant_id=tenant_id, document_id=document_id, img_ids=img_ids)
+    for img_id in sorted(img_ids):
+        try:
+            minio_service.delete_image(img_id, extension="jpg")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to delete image %s from object storage: %s", img_id, exc)
+
+
+def _delete_document_table_store(*, tenant_id: UUID, document_id: uuid.UUID, document: DBDocument) -> None:
+    if document.dataset_id is None or str(document.file_type or "").lower() not in {"csv", "xls", "xlsx"}:
+        return
+    try:
+        from app.services.table_store import table_store_path
+
+        db_path = table_store_path(tenant_id=tenant_id, dataset_id=document.dataset_id, document_id=document.id)
+        if db_path.exists():
+            db_path.unlink(missing_ok=True)
+        with contextlib.suppress(Exception):
+            db_path.parent.rmdir()
+        with contextlib.suppress(Exception):
+            db_path.parent.parent.rmdir()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to delete table store file for document %s: %s", document_id, str(exc)[:200])
+
+
+def _delete_minio_document_object(*, raw_path: str, tenant_id: UUID, document: DBDocument) -> None:
+    if not bool(getattr(settings, "MINIO_ENABLED", False)):
+        return
+    try:
+        ref = parse_minio_uri(raw_path)
+        if ref.bucket != str(getattr(settings, "MINIO_BUCKET_NAME", "")):
+            return
+        dataset_id = str(document.dataset_id) if document.dataset_id else str(tenant_id)
+        expected_object = minio_service.build_document_object_name(
+            tenant_id=str(tenant_id),
+            dataset_id=dataset_id,
+            document_id=str(document.id),
+            extension=f".{(document.file_type or '').lower()}",
+        )
+        if ref.object_name == expected_object:
+            minio_service.delete_object(object_name=ref.object_name)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to delete document from object storage: %s", exc)
+
+
+def _delete_local_document_file(*, raw_path: str, tenant_id: UUID) -> None:
+    file_path = Path(raw_path)
+    if not file_path.exists() or not file_path.is_file():
+        return
+
+    from app.services.path_safety import resolve_under_base
+
+    tenant_root = Path(settings.UPLOAD_DIR) / str(tenant_id)
+    safe = resolve_under_base(file_path, base=tenant_root)
+    if safe is None:
+        logger.warning("Skipping unsafe document file delete: %s", raw_path)
+        return
+    safe.unlink(missing_ok=True)
+
+
+def _delete_document_file(*, tenant_id: UUID, document: DBDocument) -> None:
+    try:
+        raw_path = str(document.file_path or "").strip()
+        if not raw_path or raw_path.startswith(MANUAL_FILE_PATH_PREFIX):
+            return
+        if is_minio_uri(raw_path):
+            _delete_minio_document_object(raw_path=raw_path, tenant_id=tenant_id, document=document)
+            return
+        _delete_local_document_file(raw_path=raw_path, tenant_id=tenant_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to delete file: %s", exc)
+
+
+def _touch_dataset_updated_after_delete(db: Session, *, tenant_id: UUID, document: DBDocument) -> None:
+    if getattr(document, "dataset_id", None) is None:
+        return
+    try:
+        from app.models.dataset import Dataset as DBDataset  # noqa: WPS433
+
+        ds = (
+            db.query(DBDataset)
+            .filter(
+                DBDataset.tenant_id == tenant_id,
+                DBDataset.id == document.dataset_id,
+            )
+            .first()
+        )
+        if ds is not None:
+            ds.updated_at = datetime.now(UTC)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Failed touching dataset.updated_at after delete: %s", str(exc)[:200])
+
+
+def _delete_document_record(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    document_id: uuid.UUID,
+    document: DBDocument,
+) -> None:
+    db.delete(document)
+    audit_log_event(
+        db,
+        tenant_id=tenant_id,
+        actor_id=account_id,
+        action="document.delete",
+        resource_type="document",
+        resource_id=str(document_id),
+        details={
+            "dataset_id": str(document.dataset_id) if getattr(document, "dataset_id", None) else None,
+            "file_type": str(getattr(document, "file_type", "") or ""),
+            "file_size": int(getattr(document, "file_size", 0) or 0),
+        },
+    )
+    db.commit()
+
+
+def _cleanup_document_kg_artifacts(db: Session, *, tenant_id: UUID, document_id: uuid.UUID) -> None:
+    try:
+        from app.rag.kg.models import KgRelation
+
+        db.query(KgRelation).filter(
+            KgRelation.tenant_id == tenant_id,
+            KgRelation.document_id == document_id,
+        ).delete(synchronize_session=False)
+        Indexer(db).delete_event_indexes(
+            tenant_id=tenant_id,
+            document_id=document_id,
+            commit=False,
+            prune_orphan_entities=True,
+        )
+        db.commit()
+    except Exception:
+        with contextlib.suppress(Exception):
+            db.rollback()
+
+
 async def _delete_document_lifecycle(
     *,
     document_id: uuid.UUID,
@@ -2200,217 +2905,29 @@ async def _delete_document_lifecycle(
     """
     if bool(enforce_membership):
         DatasetService.ensure_member(db, tenant_id, account_id)
-    document = (
-        db.query(DBDocument)
-        .filter(
-            DBDocument.id == document_id,
-            DBDocument.tenant_id == tenant_id,
-        )
-        .first()
-    )
-
-    if not document:
-        raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
-
-    if enforce_permissions and document.dataset_id:
-        ds = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
-        DatasetService.assert_dataset_writable(db, ds, account_id)
-
-    # If the document is still being processed, mark it cancelled first so any
-    # running worker can observe it and stop as soon as possible.
-    if str(document.status or "").lower() in {"pending", "processing"}:
-        doc_meta = dict(document.doc_metadata or {})
-        doc_meta["cancel_requested"] = True
-        document.doc_metadata = doc_meta
-        document.status = "cancelled"
-        document.processing_progress = 0
-        document.current_stage = "cancelled"
-        document.error_message = "cancelled"
-        db.commit()
-        db.refresh(document)
-
-    # Best-effort: abort any queued/running jobs for this document before deleting.
-    doc_meta = document.doc_metadata or {}
-    task_ids: list[str] = []
-    for key in ("task_id", "kg_task_id"):
-        v = doc_meta.get(key) if isinstance(doc_meta, dict) else None
-        if isinstance(v, str) and v.strip():
-            task_ids.append(v.strip())
-
-    if bool(getattr(settings, "TASK_QUEUE_ENABLED", False)) and task_ids:
-        try:
-            from arq.jobs import Job
-
-            from app.tasks.queue import get_queue
-
-            q = await get_queue()
-            if q is not None:
-                queue_name = getattr(settings, "TASK_QUEUE_NAME", "mimirq")
-                for task_id in task_ids:
-                    job = Job(task_id, q, _queue_name=queue_name)
-                    with contextlib.suppress(TimeoutError, asyncio.TimeoutError):
-                        await job.abort(timeout=0.2)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(
-                "Failed to abort document tasks before delete: doc=%s tasks=%s err=%s",
-                document_id,
-                task_ids,
-                str(exc)[:200],
-            )
-
-    # 1. Delete images in MinIO (if enabled).
-    if settings.MINIO_ENABLED:
-        img_ids: set[str] = set()
-
-        # Prefer document-level aggregated list (avoid missing ZIP/embedded images, etc.).
-        doc_meta = document.doc_metadata or {}
-        doc_img_ids = doc_meta.get("img_ids")
-        if isinstance(doc_img_ids, list):
-            for v in doc_img_ids:
-                if isinstance(v, str) and v.strip():
-                    img_ids.add(v)
-
-        # Compatibility: delete per chunk (older data may lack documents.metadata.img_ids).
-        chunks = (
-            db.query(DocumentChunk)
-            .filter(DocumentChunk.document_id == document_id, DocumentChunk.tenant_id == tenant_id)
-            .all()
-        )
-        for chunk in chunks:
-            img_id = chunk.doc_metadata.get("img_id") if chunk.doc_metadata else None
-            if isinstance(img_id, str) and img_id.strip():
-                img_ids.add(img_id)
-
-        for img_id in sorted(img_ids):
-            try:
-                minio_service.delete_image(img_id, extension="jpg")
-            except Exception as e:
-                logger.warning("Failed to delete image %s from object storage: %s", img_id, e)
-
-    # 2. Delete vectors from vector store (backend-dependent).
-    Indexer(db).delete_chunk_indexes(tenant_id=tenant_id, document_id=document_id)
-
-    # 2.5 Delete structured table store (TAG) sqlite file (best-effort).
-    #
-    # Storage layout is deterministic and tenant/dataset scoped:
-    #   {TABLE_STORE_DIR}/{tenant_id}/{dataset_id}/{document_id}.sqlite3
-    if document.dataset_id is not None and str(document.file_type or "").lower() in {"csv", "xls", "xlsx"}:
-        try:
-            from app.services.table_store import table_store_path
-
-            db_path = table_store_path(tenant_id=tenant_id, dataset_id=document.dataset_id, document_id=document.id)
-            if db_path.exists():
-                db_path.unlink(missing_ok=True)
-            # Best-effort: remove empty parent dirs.
-            with contextlib.suppress(Exception):
-                db_path.parent.rmdir()
-            with contextlib.suppress(Exception):
-                db_path.parent.parent.rmdir()
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Failed to delete table store file for document %s: %s", document_id, str(exc)[:200])
-
-    # 3. Delete local file.
-    try:
-        raw_path = str(document.file_path or "").strip()
-        if raw_path and not raw_path.startswith(MANUAL_FILE_PATH_PREFIX):
-            if is_minio_uri(raw_path):
-                if bool(getattr(settings, "MINIO_ENABLED", False)):
-                    try:
-                        ref = parse_minio_uri(raw_path)
-                        if ref.bucket == str(getattr(settings, "MINIO_BUCKET_NAME", "")):
-                            dataset_id = str(document.dataset_id) if document.dataset_id else str(tenant_id)
-                            expected_object = minio_service.build_document_object_name(
-                                tenant_id=str(tenant_id),
-                                dataset_id=dataset_id,
-                                document_id=str(document.id),
-                                extension=f".{(document.file_type or '').lower()}",
-                            )
-                            if ref.object_name == expected_object:
-                                minio_service.delete_object(object_name=ref.object_name)
-                    except Exception as e:
-                        logger.warning("Failed to delete document from object storage: %s", e)
-            else:
-                file_path = Path(raw_path)
-                if file_path.exists() and file_path.is_file():
-                    # Prevent path traversal / unsafe paths in DB: only allow deletes under uploads/{tenant_id}/
-                    upload_root = Path(settings.UPLOAD_DIR)
-                    tenant_root = upload_root / str(tenant_id)
-                    from app.services.path_safety import resolve_under_base
-
-                    safe = resolve_under_base(file_path, base=tenant_root)
-                    if safe is None:
-                        logger.warning("Skipping unsafe document file delete: %s", raw_path)
-                    else:
-                        safe.unlink(missing_ok=True)
-    except Exception as e:
-        logger.warning("Failed to delete file: %s", e)
-
-    # 4. Delete DB record (cascade chunks).
-    # Touch dataset.updated_at so API instances can invalidate dataset-scoped retrieval caches
-    # (BM25/sparse/ColBERT in-memory + persisted indexes) after deletes.
-    #
-    # This is important for correctness: without it, stale in-memory indices can keep returning
-    # deleted chunks until the next ingestion run touches the dataset.
-    if getattr(document, "dataset_id", None) is not None:
-        try:
-            from datetime import datetime
-
-            from app.models.dataset import Dataset as DBDataset  # noqa: WPS433
-
-            ds = (
-                db.query(DBDataset)
-                .filter(
-                    DBDataset.tenant_id == tenant_id,
-                    DBDataset.id == document.dataset_id,
-                )
-                .first()
-            )
-            if ds is not None:
-                ds.updated_at = datetime.now(UTC)
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("Failed touching dataset.updated_at after delete: %s", str(exc)[:200])
-
-    db.delete(document)
-    audit_log_event(
+    document = _get_document_for_delete(db, tenant_id=tenant_id, document_id=document_id)
+    _assert_document_delete_permission(
         db,
         tenant_id=tenant_id,
-        actor_id=account_id,
-        action="document.delete",
-        resource_type="document",
-        resource_id=str(document_id),
-        details={
-            "dataset_id": str(document.dataset_id) if getattr(document, "dataset_id", None) else None,
-            "file_type": str(getattr(document, "file_type", "") or ""),
-            "file_size": int(getattr(document, "file_size", 0) or 0),
-        },
+        account_id=account_id,
+        document=document,
+        enforce_permissions=enforce_permissions,
     )
-    db.commit()
-
-    # Best-effort: cleanup KG artifacts derived from this document.
-    #
-    # Notes:
-    # - KG tables are not FK-linked to `documents`, so we must delete them explicitly.
-    # - Do this after committing the primary delete so KG cleanup failures cannot roll back the main lifecycle op.
-    try:
-        from app.rag.kg.models import KgRelation
-
-        db.query(KgRelation).filter(
-            KgRelation.tenant_id == tenant_id,
-            KgRelation.document_id == document_id,
-        ).delete(synchronize_session=False)
-
-        Indexer(db).delete_event_indexes(
-            tenant_id=tenant_id,
-            document_id=document_id,
-            commit=False,
-            prune_orphan_entities=True,
-        )
-        db.commit()
-    except Exception:
-        with contextlib.suppress(Exception):
-            db.rollback()
-
-    # 5. Remove chunks from BM25 index (in-memory).
+    _cancel_processing_document(db, document)
+    await _abort_document_tasks_before_delete(document_id=document_id, task_ids=_document_task_ids(document))
+    _delete_document_minio_images(db, tenant_id=tenant_id, document_id=document_id, document=document)
+    Indexer(db).delete_chunk_indexes(tenant_id=tenant_id, document_id=document_id)
+    _delete_document_table_store(tenant_id=tenant_id, document_id=document_id, document=document)
+    _delete_document_file(tenant_id=tenant_id, document=document)
+    _touch_dataset_updated_after_delete(db, tenant_id=tenant_id, document=document)
+    _delete_document_record(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        document_id=document_id,
+        document=document,
+    )
+    _cleanup_document_kg_artifacts(db, tenant_id=tenant_id, document_id=document_id)
     return None
 
 document_chunk_preview = importlib.import_module("app.api.v1.document_chunk_preview")

@@ -21,11 +21,7 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
-@router.post(
-    "/batch-upload/apply-urls",
-    response_model=BatchUploadResponse,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
+@router.post("/batch-upload/apply-urls", response_model=BatchUploadResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def apply_batch_upload_urls(
     request: BatchUploadRequest,
     *,
@@ -60,11 +56,7 @@ async def apply_batch_upload_urls(
         raise HTTPException(status_code=500, detail=f"Failed to apply upload URLs: {str(e)}") from e
 
 
-@router.get(
-    "/batch-upload/status/{batch_id}",
-    response_model=BatchTaskStatus,
-    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
-)
+@router.get("/batch-upload/status/{batch_id}", response_model=BatchTaskStatus, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_batch_task_status(
     batch_id: str,
     *,
