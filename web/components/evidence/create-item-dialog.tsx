@@ -1,6 +1,6 @@
 'use client'
 
-import type { RefObject } from 'react'
+import type { ReactNode, RefObject } from 'react'
 import { FileUp, Loader2, Search } from 'lucide-react'
 
 import type { Citation } from '@/types'
@@ -106,6 +106,149 @@ export function CreateItemDialog({
   onToggleImportChunk,
   onCreateItem,
 }: Readonly<CreateItemDialogProps>) {
+  let retrieveListContent: ReactNode
+  if (!hasRetrieveResult) {
+    retrieveListContent = (
+      <div className="text-sm text-muted-foreground text-pretty">运行检索后在此勾选 Ground Truth 引用。</div>
+    )
+  } else if (retrieveRanked.length === 0) {
+    retrieveListContent = (
+      <div className="text-sm text-muted-foreground text-pretty">无 citations。</div>
+    )
+  } else {
+    retrieveListContent = (
+      <>
+        {retrieveRanked.map((ranked) => {
+          const citation = ranked.citation
+          const assistScore = ranked.score
+          const hits = ranked.hits || []
+          const chunkId = String(citation.chunk_id || '')
+          const checked = !!chunkId && selectedChunkIds.includes(chunkId)
+          return (
+            <div key={chunkId || `${citation.document_id}:${citation.chunk_index}`} className="rounded-lg border border-border/60 p-2">
+              <div className="flex items-start gap-2">
+                <Checkbox
+                  checked={checked}
+                  onCheckedChange={() => onToggleRetrieveChunk(chunkId)}
+                  aria-label="选择该引用"
+                  disabled={!chunkId}
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-xs font-mono text-foreground">
+                        {citation.document_name || String(citation.document_id).slice(0, 8)}
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground font-mono tabular-nums">
+                        score {citationScoreLabel(citation)}
+                        {typeof citation.page_number === 'number' ? ` · P.${citation.page_number}` : null}
+                        {typeof citation.chunk_index === 'number' ? ` · #${citation.chunk_index}` : null}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {assistScore > 0 ? (
+                        <Badge variant="secondary" className="font-mono text-[11px] tabular-nums">
+                          hit {assistScore}
+                        </Badge>
+                      ) : null}
+                      {chunkId ? (
+                        <Badge variant="outline" className="font-mono text-[11px]">
+                          {chunkId.slice(0, 8)}
+                        </Badge>
+                      ) : (
+                        <Badge variant="destructive" className="font-mono text-[11px]">
+                          missing chunk_id
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                  <div className="mt-2 line-clamp-3 text-xs text-muted-foreground text-pretty">{citation.chunk_content}</div>
+                  {hits.length ? (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {hits.slice(0, 4).map((hit) => (
+                        <Badge
+                          key={`hit:${chunkId || String(citation.document_id)}:${hit}`}
+                          variant="outline"
+                          className="text-[11px] font-mono"
+                        >
+                          {hit}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </>
+    )
+  }
+
+  const importPackSummary = hasImportPack ? (
+    <div className="truncate text-xs text-muted-foreground font-mono">
+      pack version {importPackVersionLabel} · citations {importCitations.length}
+    </div>
+  ) : (
+    <div className="text-xs text-muted-foreground text-pretty">上传 Evidence Pack（来自检索预览导出）。</div>
+  )
+
+  let importListContent: ReactNode
+  if (!hasImportPack) {
+    importListContent = (
+      <div className="text-sm text-muted-foreground text-pretty">导入后在此勾选 Ground Truth 引用。</div>
+    )
+  } else if (importCitations.length === 0) {
+    importListContent = (
+      <div className="text-sm text-muted-foreground text-pretty">pack 中没有 citations。</div>
+    )
+  } else {
+    importListContent = (
+      <>
+        {importCitations.map((citation) => {
+          const chunkId = String(citation.chunk_id || '')
+          const checked = !!chunkId && importSelectedChunkIds.includes(chunkId)
+          return (
+            <div key={chunkId || `${citation.document_id}:${citation.chunk_index}`} className="rounded-lg border border-border/60 p-2">
+              <div className="flex items-start gap-2">
+                <Checkbox
+                  checked={checked}
+                  onCheckedChange={() => onToggleImportChunk(chunkId)}
+                  aria-label="选择该引用"
+                  disabled={!chunkId}
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-xs font-mono text-foreground">
+                        {citation.document_name || String(citation.document_id).slice(0, 8)}
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground font-mono tabular-nums">
+                        score {citationScoreLabel(citation)}
+                        {typeof citation.page_number === 'number' ? ` · P.${citation.page_number}` : null}
+                        {typeof citation.chunk_index === 'number' ? ` · #${citation.chunk_index}` : null}
+                      </div>
+                    </div>
+                    {chunkId ? (
+                      <Badge variant="outline" className="font-mono text-[11px]">
+                        {chunkId.slice(0, 8)}
+                      </Badge>
+                    ) : (
+                      <Badge variant="destructive" className="font-mono text-[11px]">
+                        missing chunk_id
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="mt-2 line-clamp-3 text-xs text-muted-foreground text-pretty">{citation.chunk_content}</div>
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </>
+    )
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl">
@@ -211,77 +354,7 @@ export function CreateItemDialog({
               <Panel className="p-3">
                 <ScrollArea className="h-[320px] pr-2">
                   <div className="space-y-2">
-                    {hasRetrieveResult ? (
-                      retrieveRanked.length === 0 ? (
-                        <div className="text-sm text-muted-foreground text-pretty">无 citations。</div>
-                      ) : (
-                      retrieveRanked.map((ranked) => {
-                        const citation = ranked.citation
-                        const assistScore = ranked.score
-                        const hits = ranked.hits || []
-                        const chunkId = String(citation.chunk_id || '')
-                        const checked = !!chunkId && selectedChunkIds.includes(chunkId)
-                        return (
-                          <div key={chunkId || `${citation.document_id}:${citation.chunk_index}`} className="rounded-lg border border-border/60 p-2">
-                            <div className="flex items-start gap-2">
-                              <Checkbox
-                                checked={checked}
-                                onCheckedChange={() => onToggleRetrieveChunk(chunkId)}
-                                aria-label="选择该引用"
-                                disabled={!chunkId}
-                              />
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-start justify-between gap-3">
-                                  <div className="min-w-0">
-                                    <div className="truncate text-xs font-mono text-foreground">
-                                      {citation.document_name || String(citation.document_id).slice(0, 8)}
-                                    </div>
-                                    <div className="mt-1 text-xs text-muted-foreground font-mono tabular-nums">
-                                      score {citationScoreLabel(citation)}
-                                      {typeof citation.page_number === 'number' ? ` · P.${citation.page_number}` : null}
-                                      {typeof citation.chunk_index === 'number' ? ` · #${citation.chunk_index}` : null}
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    {assistScore > 0 ? (
-                                      <Badge variant="secondary" className="font-mono text-[11px] tabular-nums">
-                                        hit {assistScore}
-                                      </Badge>
-                                    ) : null}
-                                    {chunkId ? (
-                                      <Badge variant="outline" className="font-mono text-[11px]">
-                                        {chunkId.slice(0, 8)}
-                                      </Badge>
-                                    ) : (
-                                      <Badge variant="destructive" className="font-mono text-[11px]">
-                                        missing chunk_id
-                                      </Badge>
-                                    )}
-                                  </div>
-                                </div>
-                                <div className="mt-2 line-clamp-3 text-xs text-muted-foreground text-pretty">{citation.chunk_content}</div>
-                                {hits.length ? (
-                                  <div className="mt-2 flex flex-wrap gap-1">
-                                    {hits.slice(0, 4).map((hit) => (
-                                      <Badge
-                                        key={`hit:${chunkId || String(citation.document_id)}:${hit}`}
-                                        variant="outline"
-                                        className="text-[11px] font-mono"
-                                      >
-                                        {hit}
-                                      </Badge>
-                                    ))}
-                                  </div>
-                                ) : null}
-                              </div>
-                            </div>
-                          </div>
-                        )
-                      })
-                      )
-                    ) : (
-                      <div className="text-sm text-muted-foreground text-pretty">运行检索后在此勾选 Ground Truth 引用。</div>
-                    )}
+                    {retrieveListContent}
                   </div>
                 </ScrollArea>
               </Panel>
@@ -303,13 +376,7 @@ export function CreateItemDialog({
                   <FileUp className="size-4" aria-hidden="true" />
                   选择 JSON
                 </Button>
-                {hasImportPack ? (
-                  <div className="truncate text-xs text-muted-foreground font-mono">
-                    pack version {importPackVersionLabel} · citations {importCitations.length}
-                  </div>
-                ) : (
-                  <div className="text-xs text-muted-foreground text-pretty">上传 Evidence Pack（来自检索预览导出）。</div>
-                )}
+                {importPackSummary}
 
                 <div className="ml-auto text-xs text-muted-foreground font-mono tabular-nums">已选 {importSelectedChunkIds.length}</div>
               </div>
@@ -319,54 +386,7 @@ export function CreateItemDialog({
               <Panel className="p-3">
                 <ScrollArea className="h-[320px] pr-2">
                   <div className="space-y-2">
-                    {hasImportPack ? (
-                      importCitations.length === 0 ? (
-                        <div className="text-sm text-muted-foreground text-pretty">pack 中没有 citations。</div>
-                      ) : (
-                      importCitations.map((citation) => {
-                        const chunkId = String(citation.chunk_id || '')
-                        const checked = !!chunkId && importSelectedChunkIds.includes(chunkId)
-                        return (
-                          <div key={chunkId || `${citation.document_id}:${citation.chunk_index}`} className="rounded-lg border border-border/60 p-2">
-                            <div className="flex items-start gap-2">
-                              <Checkbox
-                                checked={checked}
-                                onCheckedChange={() => onToggleImportChunk(chunkId)}
-                                aria-label="选择该引用"
-                                disabled={!chunkId}
-                              />
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-start justify-between gap-3">
-                                  <div className="min-w-0">
-                                    <div className="truncate text-xs font-mono text-foreground">
-                                      {citation.document_name || String(citation.document_id).slice(0, 8)}
-                                    </div>
-                                    <div className="mt-1 text-xs text-muted-foreground font-mono tabular-nums">
-                                      score {citationScoreLabel(citation)}
-                                      {typeof citation.page_number === 'number' ? ` · P.${citation.page_number}` : null}
-                                      {typeof citation.chunk_index === 'number' ? ` · #${citation.chunk_index}` : null}
-                                    </div>
-                                  </div>
-                                  {chunkId ? (
-                                    <Badge variant="outline" className="font-mono text-[11px]">
-                                      {chunkId.slice(0, 8)}
-                                    </Badge>
-                                  ) : (
-                                    <Badge variant="destructive" className="font-mono text-[11px]">
-                                      missing chunk_id
-                                    </Badge>
-                                  )}
-                                </div>
-                                <div className="mt-2 line-clamp-3 text-xs text-muted-foreground text-pretty">{citation.chunk_content}</div>
-                              </div>
-                            </div>
-                          </div>
-                        )
-                      })
-                      )
-                    ) : (
-                      <div className="text-sm text-muted-foreground text-pretty">导入后在此勾选 Ground Truth 引用。</div>
-                    )}
+                    {importListContent}
                   </div>
                 </ScrollArea>
               </Panel>
