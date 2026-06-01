@@ -1741,54 +1741,68 @@ def _extract_preview_keywords(text: str, body: CleanPreviewRequest) -> list[str]
         return None
 
 
+@dataclass
+class _CleanPreviewResponseContext:
+    baseline_text: str
+    body: CleanPreviewRequest
+    clean_result: Any
+    rule_stats: list[dict[str, object]]
+    pii_hits: dict[str, int] | None
+    secrets_hits: dict[str, int] | None
+    frontmatter: dict[str, Any] | None
+    title: str | None
+    tags: list[str] | None
+    urls_changed: int
+    paragraphs_dropped: int
+    references_removed_lines: int
+    analysis_opts: dict[str, object]
+    language: str | None = None
+    language_confidence: float | None = None
+    keywords: list[str] | None = None
+
+
 def _build_clean_preview_response(
+    context: _CleanPreviewResponseContext,
     *,
-    baseline_text: str,
     markdown: str,
-    body: CleanPreviewRequest,
-    clean_result: Any,
-    rule_stats: list[dict[str, object]],
     dropped: bool,
     drop_reason: str | None,
-    pii_hits: dict[str, int] | None,
-    secrets_hits: dict[str, int] | None,
-    frontmatter: dict[str, Any] | None,
-    title: str | None,
-    tags: list[str] | None,
-    urls_changed: int,
-    paragraphs_dropped: int,
-    references_removed_lines: int,
-    analysis_opts: dict[str, object],
-    language: str | None = None,
-    language_confidence: float | None = None,
-    keywords: list[str] | None = None,
 ) -> CleanPreviewResponse:
     diff_unified, diff_truncated = (None, False)
-    if body.include_diff:
-        diff_unified, diff_truncated = _unified_diff_text(baseline_text, markdown, max_lines=body.diff_max_lines)
-    added, removed, changed_lines = _line_diff_stats(baseline_text, markdown)
-    issues_out, suggested_patch = _analyze_governance_preview(baseline_text, markdown, body, analysis_opts)
+    if context.body.include_diff:
+        diff_unified, diff_truncated = _unified_diff_text(
+            context.baseline_text,
+            markdown,
+            max_lines=context.body.diff_max_lines,
+        )
+    added, removed, changed_lines = _line_diff_stats(context.baseline_text, markdown)
+    issues_out, suggested_patch = _analyze_governance_preview(
+        context.baseline_text,
+        markdown,
+        context.body,
+        context.analysis_opts,
+    )
     return CleanPreviewResponse(
         markdown=markdown,
-        applied_rules=clean_result.applied_rules,
-        changed=bool(dropped or markdown != baseline_text),
-        rule_stats=rule_stats,
+        applied_rules=context.clean_result.applied_rules,
+        changed=bool(dropped or markdown != context.baseline_text),
+        rule_stats=context.rule_stats,
         dropped=dropped,
         drop_reason=drop_reason,
-        pii_hits=pii_hits,
-        secrets_hits=secrets_hits,
-        frontmatter=frontmatter,
-        title=title,
-        tags=tags,
-        language=language,
-        language_confidence=language_confidence,
-        keywords=keywords,
-        urls_changed=int(urls_changed),
-        paragraphs_dropped=int(paragraphs_dropped),
-        references_removed_lines=int(references_removed_lines),
-        input_chars=len(baseline_text),
+        pii_hits=context.pii_hits,
+        secrets_hits=context.secrets_hits,
+        frontmatter=context.frontmatter,
+        title=context.title,
+        tags=context.tags,
+        language=context.language,
+        language_confidence=context.language_confidence,
+        keywords=context.keywords,
+        urls_changed=int(context.urls_changed),
+        paragraphs_dropped=int(context.paragraphs_dropped),
+        references_removed_lines=int(context.references_removed_lines),
+        input_chars=len(context.baseline_text),
         output_chars=len(markdown or ""),
-        input_lines=len((baseline_text or "").splitlines()),
+        input_lines=len((context.baseline_text or "").splitlines()),
         output_lines=len((markdown or "").splitlines()),
         added_lines=added,
         removed_lines=removed,
@@ -2968,51 +2982,39 @@ async def clean_preview(
     text = _apply_preview_format_transforms(result.markdown, body)
     text, pii_hits, secrets_hits = _apply_preview_sensitive_redaction(text, body)
     text, paragraphs_dropped, references_removed_lines, urls_changed = _apply_preview_cleanup_stats(text, body)
-
-    drop_reason = _preview_drop_reason(text, body)
-    if drop_reason is not None:
-        return _build_clean_preview_response(
-            baseline_text=baseline_text,
-            markdown="",
-            body=body,
-            clean_result=result,
-            rule_stats=rule_stats,
-            dropped=True,
-            drop_reason=drop_reason,
-            pii_hits=pii_hits,
-            secrets_hits=secrets_hits,
-            frontmatter=frontmatter,
-            title=title,
-            tags=tags,
-            urls_changed=urls_changed,
-            paragraphs_dropped=paragraphs_dropped,
-            references_removed_lines=references_removed_lines,
-            analysis_opts=analysis_opts,
-        )
-
-    title = _extract_preview_title(text, title)
-    language, language_confidence = _detect_preview_language(text, body)
-    keywords = _extract_preview_keywords(text, body)
-    return _build_clean_preview_response(
+    response_context = _CleanPreviewResponseContext(
         baseline_text=baseline_text,
-        markdown=text,
         body=body,
         clean_result=result,
         rule_stats=rule_stats,
-        dropped=False,
-        drop_reason=None,
         pii_hits=pii_hits,
         secrets_hits=secrets_hits,
         frontmatter=frontmatter,
         title=title,
         tags=tags,
-        language=language,
-        language_confidence=language_confidence,
-        keywords=keywords,
         urls_changed=urls_changed,
         paragraphs_dropped=paragraphs_dropped,
         references_removed_lines=references_removed_lines,
         analysis_opts=analysis_opts,
+    )
+
+    drop_reason = _preview_drop_reason(text, body)
+    if drop_reason is not None:
+        return _build_clean_preview_response(
+            response_context,
+            markdown="",
+            dropped=True,
+            drop_reason=drop_reason,
+        )
+
+    response_context.title = _extract_preview_title(text, title)
+    response_context.language, response_context.language_confidence = _detect_preview_language(text, body)
+    response_context.keywords = _extract_preview_keywords(text, body)
+    return _build_clean_preview_response(
+        response_context,
+        markdown=text,
+        dropped=False,
+        drop_reason=None,
     )
 
 
