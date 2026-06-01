@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { PanelRightClose, PanelRightOpen } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
+import { readClientStorage, writeClientStorage } from '@/lib/client-storage'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 
@@ -32,7 +33,7 @@ function readStoredParsingLeftPanelWidth() {
   }
 
   const storedWidth = Number.parseInt(
-    globalThis.window.localStorage.getItem(PARSING_LEFT_PANEL_WIDTH_KEY) || '',
+    readClientStorage(PARSING_LEFT_PANEL_WIDTH_KEY) || '',
     10
   )
   return Number.isFinite(storedWidth)
@@ -65,7 +66,7 @@ export function ParsingLeftPanel({
       return
     }
 
-    globalThis.window.localStorage.setItem(
+    writeClientStorage(
       PARSING_LEFT_PANEL_WIDTH_KEY,
       String(clampParsingLeftPanelWidth(width))
     )

@@ -45,6 +45,7 @@ import {
   WorkbenchScaffold,
 } from '@/components/workbench'
 import type { ParsingElement } from '@/lib/api/parsing'
+import { readClientStorage, writeClientStorage } from '@/lib/client-storage'
 import { getParserLabel } from '@/lib/parser-options'
 import { resolveParserBackendForFilename } from '@/lib/parser-compat'
 import { UPLOAD_ACCEPT, UPLOAD_ACCEPT_WITH_ZIP } from '@/lib/upload-extensions'
@@ -198,7 +199,7 @@ function readStoredParsingInspectorWidth() {
   }
 
   const storedWidth = Number.parseInt(
-    globalThis.window.localStorage.getItem(PARSING_INSPECTOR_WIDTH_KEY) || '',
+    readClientStorage(PARSING_INSPECTOR_WIDTH_KEY) || '',
     10
   )
   return Number.isFinite(storedWidth)
@@ -828,7 +829,7 @@ function ResizableParsingInspectorRail({
       return
     }
 
-    globalThis.window.localStorage.setItem(
+    writeClientStorage(
       PARSING_INSPECTOR_WIDTH_KEY,
       String(clampParsingInspectorWidth(width))
     )

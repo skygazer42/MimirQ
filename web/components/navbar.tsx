@@ -43,6 +43,7 @@ import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Link, usePathname, useRouter } from '@/i18n/navigation'
+import { readClientStorage, writeClientStorage } from '@/lib/client-storage'
 import { cn } from '@/lib/utils'
 import { ModeToggle } from '@/components/mode-toggle'
 import { useAuth } from '@/hooks/use-auth'
@@ -207,7 +208,7 @@ function loadOpenSections(): Record<SectionId, boolean> {
   if (globalThis.window === undefined) return createInitialOpenSections()
 
   try {
-    const raw = globalThis.window.localStorage.getItem(OPEN_SECTIONS_STORAGE_KEY)
+    const raw = readClientStorage(OPEN_SECTIONS_STORAGE_KEY)
     if (!raw) return createInitialOpenSections()
     return sanitizeOpenSections(JSON.parse(raw))
   } catch {
@@ -407,11 +408,7 @@ export function Navbar({
   useEffect(() => {
     if (!hasHydratedOpenSections) return
     if (globalThis.window === undefined) return
-    try {
-      globalThis.window.localStorage.setItem(OPEN_SECTIONS_STORAGE_KEY, JSON.stringify(openSections))
-    } catch {
-      // ignore unavailable or quota-limited storage
-    }
+    writeClientStorage(OPEN_SECTIONS_STORAGE_KEY, JSON.stringify(openSections))
   }, [hasHydratedOpenSections, openSections])
 
   // Dev UX: warm up route chunks in the background so first-click navigation feels snappier.

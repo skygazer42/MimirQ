@@ -14,6 +14,7 @@ import type {
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/ui/page-header'
 import { PageLoading } from '@/components/ui/page-loading'
+import { readClientStorage, writeClientStorage } from '@/lib/client-storage'
 import { cn, detachPromise } from '@/lib/utils'
 import { queryKeys } from '@/lib/query-keys'
 import { buildSimilarityDiagnostics } from '@/components/ragviz/similarity-diagnostics'
@@ -1195,7 +1196,7 @@ export function RagvizSimilarityWorkbench() {
         isLeftSidebarCollapsed,
         isRightSidebarCollapsed,
       }
-      localStorage.setItem(
+      writeClientStorage(
         'ragviz_similarity_layout_v2',
         JSON.stringify(payload)
       )
@@ -1213,7 +1214,7 @@ export function RagvizSimilarityWorkbench() {
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem('ragviz_similarity_layout_v2')
+      const raw = readClientStorage('ragviz_similarity_layout_v2')
       if (!raw) return
       const parsed = JSON.parse(raw)
       if (typeof parsed.leftWidth === 'number') setLeftWidth(parsed.leftWidth)
