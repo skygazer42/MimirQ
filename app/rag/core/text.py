@@ -64,6 +64,21 @@ _DECOMPOSE_LEADING_FILLER_RE = re.compile(
 _DECOMPOSE_TRAILING_PUNCT = " \t\r\n,，;；:：.!?。！？"
 
 
+def _append_word_fragment(out: list[str], buf: list[str]) -> None:
+    if buf:
+        out.append(" ".join(buf))
+        buf.clear()
+
+
+def _is_as_well_as(tokens: list[str], index: int) -> bool:
+    return (
+        index + 2 < len(tokens)
+        and tokens[index].casefold() == "as"
+        and tokens[index + 1].casefold() == "well"
+        and tokens[index + 2].casefold() == "as"
+    )
+
+
 def _extract_json_fence(text: str) -> str | None:
     """
     Extract the first triple-backtick code fence content, limited to:
@@ -119,31 +134,67 @@ def _split_on_en_conjunctions(text: str) -> list[str]:
         low = t.casefold()
 
         # "as well as" is treated as a conjunction splitter.
-        if (
-            low == "as"
-            and i + 2 < len(tokens)
-            and tokens[i + 1].casefold() == "well"
-            and tokens[i + 2].casefold() == "as"
-        ):
-            if buf:
-                out.append(" ".join(buf))
-                buf = []
+        if low == "as" and _is_as_well_as(tokens, i):
+            _append_word_fragment(out, buf)
             i += 3
             continue
 
         if low in _DECOMPOSE_CONJ_SPLIT_EN_TOKENS:
-            if buf:
-                out.append(" ".join(buf))
-                buf = []
+            _append_word_fragment(out, buf)
             i += 1
             continue
 
         buf.append(t)
         i += 1
 
-    if buf:
-        out.append(" ".join(buf))
+    _append_word_fragment(out, buf)
     return out or ([text] if text else [])
+
+
+def _clean_decomposed_fragment(text: str) -> str:
+    cleaned = (text or "").strip()
+    if not cleaned:
+        return ""
+    cleaned = re.sub(r"^[-*•]\s+", "", cleaned)
+    cleaned = re.sub(r"^\d+\s*[.)]\s+", "", cleaned)
+    cleaned = cleaned.strip().strip('"').strip("'").strip()
+    cleaned = _DECOMPOSE_LEADING_FILLER_RE.sub("", cleaned).strip()
+    cleaned = cleaned.strip(_DECOMPOSE_TRAILING_PUNCT).strip()
+    return " ".join(cleaned.split())
+
+
+def _decomposition_fragments(raw: str) -> list[str]:
+    fragments: list[str] = []
+    for chunk in [c.strip() for c in _DECOMPOSE_STRONG_SPLIT_RE.split(raw) if c.strip()]:
+        for frag_en in _split_on_en_conjunctions(chunk):
+            for frag in _DECOMPOSE_CONJ_SPLIT_CN_RE.split(frag_en):
+                cleaned = _clean_decomposed_fragment(frag)
+                if cleaned:
+                    fragments.append(cleaned)
+    return fragments
+
+
+def _is_useful_decomposed_fragment(fragment: str) -> bool:
+    tokens = _QUERY_TOKEN_RE.findall(fragment)
+    return not (len(fragment) < 8 and len(tokens) < 2)
+
+
+def _bounded_unique_fragments(fragments: list[str], *, max_items: int) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for frag in fragments:
+        if not _is_useful_decomposed_fragment(frag):
+            continue
+        key = frag.casefold() if frag.isascii() else frag
+        if key in seen:
+            continue
+        seen.add(key)
+        if len(frag) > 500:
+            frag = frag[:500] + "..."
+        out.append(frag)
+        if len(out) >= max_items:
+            break
+    return out
 
 
 def heuristic_decompose_query(query: str, *, max_subquestions: int = 3) -> list[str]:
@@ -160,64 +211,12 @@ def heuristic_decompose_query(query: str, *, max_subquestions: int = 3) -> list[
     if not raw or max_subquestions <= 0:
         return []
 
-    def _clean_fragment(text: str) -> str:
-        t = (text or "").strip()
-        if not t:
-            return ""
-        # Strip common list prefixes.
-        t = re.sub(r"^[-*•]\s+", "", t)
-        t = re.sub(r"^\d+\s*[.)]\s+", "", t)
-        t = t.strip().strip('"').strip("'").strip()
-        t = _DECOMPOSE_LEADING_FILLER_RE.sub("", t).strip()
-        # Light punctuation trimming on both ends.
-        t = t.strip(_DECOMPOSE_TRAILING_PUNCT).strip()
-        # Normalize whitespace.
-        t = " ".join(t.split())
-        return t
-
-    # 1) Strong splits (sentence/question boundaries)
-    chunks = [c.strip() for c in _DECOMPOSE_STRONG_SPLIT_RE.split(raw) if c.strip()]
-    if not chunks:
-        return []
-
-    # 2) Conjunction splits within each chunk.
-    fragments: list[str] = []
-    for ch in chunks:
-        for frag_en in _split_on_en_conjunctions(ch):
-            for frag in _DECOMPOSE_CONJ_SPLIT_CN_RE.split(frag_en):
-                cleaned = _clean_fragment(frag)
-                if cleaned:
-                    fragments.append(cleaned)
-
-    if not fragments:
-        return []
-
-    raw_norm = " ".join(raw.split())
-    out: list[str] = []
-    seen: set[str] = set()
-
-    for frag in fragments:
-        # Filter "tiny" fragments that tend to be unhelpful for retrieval.
-        tokens = _QUERY_TOKEN_RE.findall(frag)
-        if len(frag) < 8 and len(tokens) < 2:
-            continue
-
-        key = frag.casefold() if frag.isascii() else frag
-        if key in seen:
-            continue
-        seen.add(key)
-
-        if len(frag) > 500:
-            frag = frag[:500] + "..."
-        out.append(frag)
-        if len(out) >= max_subquestions:
-            break
-
+    out = _bounded_unique_fragments(_decomposition_fragments(raw), max_items=max_subquestions)
     if not out:
         return []
 
     # Avoid returning a single "decomposed" fragment that is identical to input.
-    if len(out) == 1 and out[0] == raw_norm:
+    if len(out) == 1 and out[0] == " ".join(raw.split()):
         return []
 
     return out
@@ -246,6 +245,105 @@ def _extract_string_items_from_lines(text: str, *, max_items: int = 12) -> list[
     return items
 
 
+def _json_candidates(raw: str) -> list[tuple[str, str]]:
+    candidates: list[tuple[str, str]] = []
+    inner = _extract_json_fence(raw)
+    if inner:
+        candidates.append(("code_fence", inner))
+    candidates.append(("raw", raw))
+
+    obj_start = raw.find("{")
+    obj_end = raw.rfind("}")
+    if obj_start != -1 and obj_end != -1 and obj_end > obj_start:
+        candidates.append(("first_last_brace", raw[obj_start : obj_end + 1].strip()))
+
+    arr_start = raw.find("[")
+    arr_end = raw.rfind("]")
+    if arr_start != -1 and arr_end != -1 and arr_end > arr_start:
+        candidates.append(("first_last_bracket", raw[arr_start : arr_end + 1].strip()))
+    return candidates
+
+
+def _wrapped_json_array(data: dict[str, Any], *, method: str) -> tuple[Any | None, dict[str, Any] | None]:
+    for key in ("items", "queries", "data", "results"):
+        value = data.get(key)
+        if isinstance(value, list):
+            return value, {"ok": True, "method": f"{method}:wrapped:{key}", "error": None}
+    list_values = [value for value in data.values() if isinstance(value, list)]
+    if len(list_values) == 1:
+        return list_values[0], {"ok": True, "method": f"{method}:wrapped:single_list", "error": None}
+    return None, None
+
+
+def _accept_json_candidate(data: Any, *, expected: Literal["any", "array", "object"], method: str) -> tuple[Any | None, dict[str, Any] | None, str | None]:
+    if expected == "any":
+        return data, {"ok": True, "method": method, "error": None}, None
+    if expected == "object":
+        if isinstance(data, dict):
+            return data, {"ok": True, "method": method, "error": None}, None
+        return None, None, f"expected_object_got_{type(data).__name__}"
+    if isinstance(data, list):
+        return data, {"ok": True, "method": method, "error": None}, None
+    if isinstance(data, dict):
+        wrapped, meta = _wrapped_json_array(data, method=method)
+        if meta is not None:
+            return wrapped, meta, None
+    return None, None, f"expected_array_got_{type(data).__name__}"
+
+
+def _truncate_with_ellipsis(text: str, *, max_chars: int) -> str:
+    return (text[:max_chars] + "...") if max_chars and len(text) > max_chars else text
+
+
+def _query_terms(query: str, *, max_terms: int) -> list[str]:
+    terms: list[str] = []
+    for match in _QUERY_TOKEN_RE.finditer(query or ""):
+        token = (match.group(0) or "").strip()
+        if not token:
+            continue
+        normalized = token.casefold() if token.isascii() else token
+        if normalized in terms:
+            continue
+        terms.append(normalized)
+        if max_terms and len(terms) >= max_terms:
+            break
+    return terms
+
+
+def _evidence_sentences(text: str, *, min_sentence_chars: int) -> list[str]:
+    sentences: list[str] = []
+    for match in _SENTENCE_RE.finditer(text):
+        sentence = (match.group(0) or "").strip()
+        if not sentence:
+            continue
+        if min_sentence_chars and len(sentence) < min_sentence_chars:
+            continue
+        sentences.append(sentence)
+    return sentences
+
+
+def _term_matches_sentence(term: str, sentence: str, folded_sentence: str) -> bool:
+    return term.casefold() in folded_sentence if term.isascii() else term in sentence
+
+
+def _sentence_relevance_score(sentence: str, terms: list[str]) -> int:
+    folded = sentence.casefold()
+    return sum(1 for term in terms if term and _term_matches_sentence(str(term), sentence, folded))
+
+
+def _pick_evidence_sentences(sentences: list[str], *, terms: list[str], max_sentences: int) -> list[str]:
+    ranked: list[tuple[int, int, int]] = []
+    for idx, sentence in enumerate(sentences):
+        score = _sentence_relevance_score(sentence, terms)
+        if score > 0:
+            ranked.append((score, len(sentence), idx))
+    if not ranked:
+        return sentences[:max_sentences]
+    ranked.sort(key=lambda item: (-item[0], item[1], item[2]))
+    picked_idx = sorted([idx for _, _, idx in ranked[:max_sentences]])
+    return [sentences[index] for index in picked_idx]
+
+
 def parse_json_from_text(
     text: str,
     *,
@@ -260,52 +358,16 @@ def parse_json_from_text(
     if not raw:
         return None, {"ok": False, "method": None, "error": "empty"}
 
-    candidates: list[tuple[str, str]] = []
-
-    inner = _extract_json_fence(raw)
-    if inner:
-        candidates.append(("code_fence", inner))
-
-    candidates.append(("raw", raw))
-
-    obj_start = raw.find("{")
-    obj_end = raw.rfind("}")
-    if obj_start != -1 and obj_end != -1 and obj_end > obj_start:
-        candidates.append(("first_last_brace", raw[obj_start : obj_end + 1].strip()))
-
-    arr_start = raw.find("[")
-    arr_end = raw.rfind("]")
-    if arr_start != -1 and arr_end != -1 and arr_end > arr_start:
-        candidates.append(("first_last_bracket", raw[arr_start : arr_end + 1].strip()))
-
     last_error: str | None = None
-    for method, candidate in candidates:
+    for method, candidate in _json_candidates(raw):
         if not candidate:
             continue
         try:
             data = json.loads(candidate)
-            if expected == "any":
-                return data, {"ok": True, "method": method, "error": None}
-            if expected == "object":
-                if isinstance(data, dict):
-                    return data, {"ok": True, "method": method, "error": None}
-                last_error = f"expected_object_got_{type(data).__name__}"
-                continue
-            if expected == "array":
-                if isinstance(data, list):
-                    return data, {"ok": True, "method": method, "error": None}
-                if isinstance(data, dict):
-                    # Common LLM wrapper formats: {"items":[...]} / {"queries":[...]}.
-                    for k in ("items", "queries", "data", "results"):
-                        v = data.get(k)
-                        if isinstance(v, list):
-                            return v, {"ok": True, "method": f"{method}:wrapped:{k}", "error": None}
-                    # Fall back: if there's exactly one list value, unwrap it.
-                    list_values = [v for v in data.values() if isinstance(v, list)]
-                    if len(list_values) == 1:
-                        return list_values[0], {"ok": True, "method": f"{method}:wrapped:single_list", "error": None}
-                last_error = f"expected_array_got_{type(data).__name__}"
-                continue
+            accepted, meta, error = _accept_json_candidate(data, expected=expected, method=method)
+            if meta is not None:
+                return accepted, meta
+            last_error = error
         except ValueError as exc:
             last_error = str(exc)[:200]
             continue
@@ -344,62 +406,21 @@ def extract_evidence_text(
     if max_chars and len(raw) <= max_chars:
         return raw
     if max_sentences <= 0:
-        return (raw[:max_chars] + "...") if max_chars and len(raw) > max_chars else raw
+        return _truncate_with_ellipsis(raw, max_chars=max_chars)
 
     q = (query or "").strip()
     if not q:
-        return (raw[:max_chars] + "...") if max_chars and len(raw) > max_chars else raw
+        return _truncate_with_ellipsis(raw, max_chars=max_chars)
 
-    terms: list[str] = []
-    for m in _QUERY_TOKEN_RE.finditer(q):
-        t = (m.group(0) or "").strip()
-        if not t:
-            continue
-        t_norm = t.casefold() if t.isascii() else t
-        if t_norm in terms:
-            continue
-        terms.append(t_norm)
-        if max_terms and len(terms) >= max_terms:
-            break
-
+    terms = _query_terms(q, max_terms=max_terms)
     if not terms:
-        return (raw[:max_chars] + "...") if max_chars and len(raw) > max_chars else raw
+        return _truncate_with_ellipsis(raw, max_chars=max_chars)
 
-    sentences: list[str] = []
-    for m in _SENTENCE_RE.finditer(raw):
-        s = (m.group(0) or "").strip()
-        if not s:
-            continue
-        if min_sentence_chars and len(s) < min_sentence_chars:
-            continue
-        sentences.append(s)
-
+    sentences = _evidence_sentences(raw, min_sentence_chars=min_sentence_chars)
     if not sentences:
-        return (raw[:max_chars] + "...") if max_chars and len(raw) > max_chars else raw
+        return _truncate_with_ellipsis(raw, max_chars=max_chars)
 
-    ranked: list[tuple[int, int, int]] = []
-    for idx, s in enumerate(sentences):
-        score = 0
-        folded = s.casefold()
-        for t in terms:
-            if not t:
-                continue
-            if str(t).isascii():
-                if str(t).casefold() in folded:
-                    score += 1
-            else:
-                if str(t) in s:
-                    score += 1
-        if score > 0:
-            ranked.append((score, len(s), idx))
-
-    if ranked:
-        ranked.sort(key=lambda x: (-x[0], x[1], x[2]))
-        picked_idx = sorted([idx for _, _, idx in ranked[:max_sentences]])
-        picked = [sentences[i] for i in picked_idx]
-    else:
-        picked = sentences[:max_sentences]
-
+    picked = _pick_evidence_sentences(sentences, terms=terms, max_sentences=max_sentences)
     out = "\n".join(picked).strip()
     if max_chars and len(out) > max_chars:
         out = out[:max_chars] + "..."
@@ -527,6 +548,46 @@ _EN_STOPWORDS = {
 }
 
 
+def _parse_claim_list_item(raw: str) -> str | None:
+    text = (raw or "").lstrip()
+    if not text:
+        return None
+
+    if text[0] in ("-", "*", "•"):
+        if len(text) < 2 or not text[1].isspace():
+            return None
+        return text[1:].strip() or None
+
+    index = 0
+    while index < len(text) and text[index].isdigit():
+        index += 1
+    while index < len(text) and text[index].isspace():
+        index += 1
+    if index <= 0 or index >= len(text) or text[index] not in (".", ")"):
+        return None
+    index += 1
+    if index >= len(text) or not text[index].isspace():
+        return None
+    return text[index:].strip() or None
+
+
+def _flush_claim_paragraph(paragraph_lines: list[str], claims: list[str], *, max_claims: int) -> bool:
+    if not paragraph_lines:
+        return False
+    paragraph = " ".join([line.strip() for line in paragraph_lines if line.strip()]).strip()
+    paragraph_lines.clear()
+    if not paragraph:
+        return False
+    for match in _SENTENCE_RE.finditer(paragraph):
+        sentence = (match.group(0) or "").strip()
+        if not sentence:
+            continue
+        claims.append(sentence)
+        if len(claims) >= max_claims:
+            return True
+    return False
+
+
 def split_into_claims(text: str, *, max_claims: int = 24) -> list[str]:
     """
     Split assistant answers into simple atomic claims for post-processing.
@@ -544,65 +605,16 @@ def split_into_claims(text: str, *, max_claims: int = 24) -> list[str]:
     claims: list[str] = []
     paragraph_lines: list[str] = []
 
-    def _parse_list_item(raw: str) -> str | None:
-        s = (raw or "").lstrip()
-        if not s:
-            return None
-
-        # Bullets: - / * / •
-        if s[0] in ("-", "*", "•"):
-            i = 1
-            if i >= len(s) or not s[i].isspace():
-                return None
-            while i < len(s) and s[i].isspace():
-                i += 1
-            item = s[i:].strip()
-            return item or None
-
-        # Ordered list: 1. / 1)
-        i = 0
-        while i < len(s) and s[i].isdigit():
-            i += 1
-        if i == 0:
-            return None
-        while i < len(s) and s[i].isspace():
-            i += 1
-        if i >= len(s) or s[i] not in (".", ")"):
-            return None
-        i += 1
-        if i >= len(s) or not s[i].isspace():
-            return None
-        while i < len(s) and s[i].isspace():
-            i += 1
-        item = s[i:].strip()
-        return item or None
-
-    def _flush_paragraph() -> bool:
-        if not paragraph_lines:
-            return False
-        paragraph = " ".join([ln.strip() for ln in paragraph_lines if ln.strip()]).strip()
-        paragraph_lines.clear()
-        if not paragraph:
-            return False
-        for m in _SENTENCE_RE.finditer(paragraph):
-            s = (m.group(0) or "").strip()
-            if not s:
-                continue
-            claims.append(s)
-            if len(claims) >= max_claims:
-                return True
-        return False
-
     for raw_line in (text or "").splitlines():
         line = (raw_line or "").strip()
         if not line:
-            if _flush_paragraph():
+            if _flush_claim_paragraph(paragraph_lines, claims, max_claims=max_claims):
                 break
             continue
 
-        item = _parse_list_item(raw_line)
+        item = _parse_claim_list_item(raw_line)
         if item:
-            if _flush_paragraph():
+            if _flush_claim_paragraph(paragraph_lines, claims, max_claims=max_claims):
                 break
             claims.append(item)
             if len(claims) >= max_claims:
@@ -612,7 +624,7 @@ def split_into_claims(text: str, *, max_claims: int = 24) -> list[str]:
         paragraph_lines.append(line)
 
     if len(claims) < max_claims:
-        _flush_paragraph()
+        _flush_claim_paragraph(paragraph_lines, claims, max_claims=max_claims)
 
     return [c for c in claims if c.strip()][:max_claims]
 
@@ -712,6 +724,148 @@ def is_claim_supported(
     return bool(result.supported)
 
 
+def _visible_evidence_skip_keys() -> set[str]:
+    return {
+        "citations",
+        "document_id",
+        "chunk_id",
+        "page_number",
+        "page",
+        "relevance_score",
+        "retrieval_score",
+        "vector_score",
+        "bm25_score",
+        "keyword_score",
+        "rerank_score",
+        "reranker_provider",
+        "rerank_model_used",
+    }
+
+
+def _visible_evidence_meta(*, max_claims: int, max_depth: int, max_items: int) -> dict[str, Any]:
+    return {
+        "strings_scrubbed": 0,
+        "strings_changed": 0,
+        "claims_total": 0,
+        "claims_removed": 0,
+        "claim_check_removed_reasons": [],
+        "max_claims": max_claims,
+        "max_depth": max_depth,
+        "max_items": max_items,
+    }
+
+
+def _append_removed_claim_reason(meta: dict[str, Any], claim: str, verification_result: Any) -> None:
+    reasons = meta.get("claim_check_removed_reasons")
+    if not isinstance(reasons, list) or len(reasons) >= 64:
+        return
+    diagnostics = verification_result.diagnostics if isinstance(verification_result.diagnostics, dict) else {}
+    contradiction = diagnostics.get("contradiction_type")
+    reasons.append(
+        {
+            "claim": str(claim or "")[:300],
+            "reason_code": str(diagnostics.get("reason_code") or diagnostics.get("reason") or "unsupported")[:120],
+            "contradiction_type": str(contradiction)[:120] if contradiction is not None else None,
+        }
+    )
+
+
+def _scrub_visible_evidence_string(
+    raw: str,
+    *,
+    evidence_text: str,
+    remaining_claims: int,
+    meta: dict[str, Any],
+    verifier_mode: str,
+    verifier_enable_contradiction_check: bool,
+    use_nli_fallback: bool,
+    nli_provider: str | None,
+    nli_model_name: str | None,
+    nli_timeout_sec: float | None,
+) -> tuple[str, int]:
+    text = str(raw or "")
+    if not text.strip() or remaining_claims <= 0:
+        return text, 0
+
+    claims = split_into_claims(text, max_claims=remaining_claims)
+    meta["claims_total"] = int(meta.get("claims_total", 0) or 0) + len(claims)
+
+    kept: list[str] = []
+    removed = 0
+    for claim in claims:
+        verification = verify_claim_with_fallback(
+            claim,
+            evidence_text,
+            verifier_mode=verifier_mode,
+            verifier_enable_contradiction_check=verifier_enable_contradiction_check,
+            use_nli_fallback=bool(use_nli_fallback),
+            nli_provider=nli_provider,
+            nli_model_name=nli_model_name,
+            nli_timeout_sec=nli_timeout_sec,
+        )
+        if bool(verification.supported):
+            kept.append(claim)
+            continue
+        removed += 1
+        _append_removed_claim_reason(meta, claim, verification)
+    if removed:
+        meta["claims_removed"] = int(meta.get("claims_removed", 0) or 0) + removed
+    return "\n".join(kept).strip(), len(claims)
+
+
+def _walk_visible_evidence_dict(obj: dict[Any, Any], state: dict[str, Any], *, depth: int) -> dict[Any, Any]:
+    skip_keys = state["skip_keys"]
+    out: dict[Any, Any] = {}
+    for key, value in obj.items():
+        key_str = str(key)
+        out[key] = value if key_str in skip_keys else _walk_visible_evidence(value, state, depth=depth - 1, parent_key=key_str)
+    return out
+
+
+def _walk_visible_evidence_list(obj: list[Any], state: dict[str, Any], *, depth: int, parent_key: str | None) -> list[Any]:
+    out: list[Any] = []
+    for item in obj:
+        value = _walk_visible_evidence(item, state, depth=depth - 1, parent_key=parent_key)
+        if isinstance(value, str) and not value.strip():
+            continue
+        out.append(value)
+    return out
+
+
+def _walk_visible_evidence(obj: Any, state: dict[str, Any], *, depth: int, parent_key: str | None) -> Any:
+    if int(state["visited_items"]) >= int(state["max_items"]):
+        return obj
+    state["visited_items"] = int(state["visited_items"]) + 1
+
+    if depth <= 0:
+        return obj
+    if isinstance(obj, dict):
+        return _walk_visible_evidence_dict(obj, state, depth=depth)
+    if isinstance(obj, list):
+        return _walk_visible_evidence_list(obj, state, depth=depth, parent_key=parent_key)
+    if not isinstance(obj, str):
+        return obj
+
+    meta = state["meta"]
+    meta["strings_scrubbed"] = int(meta.get("strings_scrubbed", 0) or 0) + 1
+    cleaned, consumed = _scrub_visible_evidence_string(
+        obj,
+        evidence_text=state["evidence_text"],
+        remaining_claims=int(state["remaining_claims"]),
+        meta=meta,
+        verifier_mode=state["verifier_mode"],
+        verifier_enable_contradiction_check=bool(state["verifier_enable_contradiction_check"]),
+        use_nli_fallback=bool(state["use_nli_fallback"]),
+        nli_provider=state["nli_provider"],
+        nli_model_name=state["nli_model_name"],
+        nli_timeout_sec=state["nli_timeout_sec"],
+    )
+    state["remaining_claims"] = int(state["remaining_claims"]) - int(consumed)
+    if cleaned != obj:
+        meta["strings_changed"] = int(meta.get("strings_changed", 0) or 0) + 1
+    return cleaned
+
+
 def scrub_structured_output_visible_evidence_only(
     data: Any,
     *,
@@ -740,129 +894,48 @@ def scrub_structured_output_visible_evidence_only(
     max_claims = max(1, int(max_claims or 0))
     max_depth = max(1, int(max_depth or 0))
     max_items = max(1, int(max_items or 0))
-
-    # Keys that should not be treated as natural-language claims.
-    skip_keys = {
-        "citations",
-        "document_id",
-        "chunk_id",
-        "page_number",
-        "page",
-        "relevance_score",
-        "retrieval_score",
-        "vector_score",
-        "bm25_score",
-        "keyword_score",
-        "rerank_score",
-        "reranker_provider",
-        "rerank_model_used",
-    }
-
-    meta: dict[str, Any] = {
-        "strings_scrubbed": 0,
-        "strings_changed": 0,
-        "claims_total": 0,
-        "claims_removed": 0,
-        "claim_check_removed_reasons": [],
-        "max_claims": max_claims,
-        "max_depth": max_depth,
+    meta = _visible_evidence_meta(max_claims=max_claims, max_depth=max_depth, max_items=max_items)
+    state: dict[str, Any] = {
+        "evidence_text": evidence_text,
         "max_items": max_items,
+        "meta": meta,
+        "nli_model_name": nli_model_name,
+        "nli_provider": nli_provider,
+        "nli_timeout_sec": nli_timeout_sec,
+        "remaining_claims": max_claims,
+        "skip_keys": _visible_evidence_skip_keys(),
+        "use_nli_fallback": bool(use_nli_fallback),
+        "verifier_enable_contradiction_check": bool(verifier_enable_contradiction_check),
+        "verifier_mode": verifier_mode,
+        "visited_items": 0,
     }
-
-    remaining_claims = max_claims
-    visited_items = 0
-
-    def _scrub_str(s: str) -> str:
-        nonlocal remaining_claims
-        raw = str(s or "")
-        if not raw.strip():
-            return raw
-        if remaining_claims <= 0:
-            return raw
-
-        claims = split_into_claims(raw, max_claims=remaining_claims)
-        remaining_claims -= len(claims)
-        meta["claims_total"] = int(meta.get("claims_total", 0) or 0) + len(claims)
-
-        kept: list[str] = []
-        removed = 0
-        for c in claims:
-            vr = verify_claim_with_fallback(
-                c,
-                evidence_text,
-                verifier_mode=verifier_mode,
-                verifier_enable_contradiction_check=verifier_enable_contradiction_check,
-                use_nli_fallback=bool(use_nli_fallback),
-                nli_provider=nli_provider,
-                nli_model_name=nli_model_name,
-                nli_timeout_sec=nli_timeout_sec,
-            )
-            if bool(vr.supported):
-                kept.append(c)
-            else:
-                removed += 1
-                reasons = meta.get("claim_check_removed_reasons")
-                if isinstance(reasons, list) and len(reasons) < 64:
-                    diag = vr.diagnostics if isinstance(vr.diagnostics, dict) else {}
-                    reasons.append(
-                        {
-                            "claim": str(c or "")[:300],
-                            "reason_code": str(diag.get("reason_code") or diag.get("reason") or "unsupported")[:120],
-                            "contradiction_type": (
-                                str(diag.get("contradiction_type"))[:120]
-                                if diag.get("contradiction_type") is not None
-                                else None
-                            ),
-                        }
-                    )
-        if removed:
-            meta["claims_removed"] = int(meta.get("claims_removed", 0) or 0) + removed
-
-        cleaned = "\n".join(kept).strip()
-        return cleaned
-
-    def _walk(obj: Any, *, depth: int, parent_key: str | None) -> Any:
-        nonlocal visited_items
-        if visited_items >= max_items:
-            return obj
-        visited_items += 1
-
-        if depth <= 0:
-            return obj
-
-        if isinstance(obj, dict):
-            out: dict[Any, Any] = {}
-            for k, v in obj.items():
-                ks = str(k)
-                if ks in skip_keys:
-                    out[k] = v
-                    continue
-                out[k] = _walk(v, depth=depth - 1, parent_key=ks)
-            return out
-
-        if isinstance(obj, list):
-            out_list: list[Any] = []
-            for it in obj:
-                v2 = _walk(it, depth=depth - 1, parent_key=parent_key)
-                # Drop empty strings from arrays (common for bullets/qa pairs after scrubbing).
-                if isinstance(v2, str) and not v2.strip():
-                    continue
-                out_list.append(v2)
-            return out_list
-
-        if isinstance(obj, str):
-            meta["strings_scrubbed"] = int(meta.get("strings_scrubbed", 0) or 0) + 1
-            cleaned = _scrub_str(obj)
-            if cleaned != obj:
-                meta["strings_changed"] = int(meta.get("strings_changed", 0) or 0) + 1
-            return cleaned
-
-        return obj
-
-    scrubbed = _walk(data, depth=max_depth, parent_key=None)
-    meta["visited_items"] = visited_items
-    meta["claims_remaining"] = remaining_claims
+    scrubbed = _walk_visible_evidence(data, state, depth=max_depth, parent_key=None)
+    meta["visited_items"] = int(state["visited_items"])
+    meta["claims_remaining"] = int(state["remaining_claims"])
     return scrubbed, meta
+
+
+def _abstain_followup_options(citations: list[dict[str, Any]] | None, *, max_options: int) -> list[dict[str, Any]]:
+    options: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for citation in (citations or []) if isinstance(citations, list) else []:
+        if not isinstance(citation, dict):
+            continue
+        document_id = citation.get("document_id")
+        name = citation.get("document_name") or citation.get("source")
+        key = str(document_id or name or "").strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        options.append(
+            {
+                "document_id": str(document_id) if document_id is not None else None,
+                "document_name": str(name) if name is not None else None,
+            }
+        )
+        if max_options and len(options) >= max_options:
+            break
+    return options
 
 
 def build_abstain_followup(
@@ -878,27 +951,7 @@ def build_abstain_followup(
     - Do not do any extra network/model calls.
     """
     max_options = max(0, int(max_options or 0))
-
-    options: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for c in (citations or []) if isinstance(citations, list) else []:
-        if not isinstance(c, dict):
-            continue
-        did = c.get("document_id")
-        name = c.get("document_name") or c.get("source")
-        key = str(did or name or "").strip()
-        if not key or key in seen:
-            continue
-        seen.add(key)
-        options.append(
-            {
-                "document_id": str(did) if did is not None else None,
-                "document_name": str(name) if name is not None else None,
-            }
-        )
-        if max_options and len(options) >= max_options:
-            break
-
+    options = _abstain_followup_options(citations, max_options=max_options)
     r = str(reason or "").strip()
     if r == "citations_lt_min":
         return {
@@ -927,6 +980,24 @@ def build_abstain_answer_message(reason: str | None) -> str:
     return "Unable to answer this question based on the available materials."
 
 
+def _followup_questions_from_options(raw_options: Any, *, limit: int) -> list[str]:
+    followups: list[str] = []
+    seen: set[str] = set()
+    if not isinstance(raw_options, list):
+        return followups
+    for option in raw_options:
+        if not isinstance(option, dict):
+            continue
+        label = str(option.get("document_name") or option.get("document_id") or "").strip()
+        if not label or label in seen:
+            continue
+        seen.add(label)
+        followups.append(f'Ask specifically about "{label}".')
+        if limit and len(followups) >= limit:
+            break
+    return followups
+
+
 def derive_followup_questions(
     abstain_followup: dict[str, Any] | None,
     *,
@@ -937,46 +1008,25 @@ def derive_followup_questions(
         return []
 
     limit = max(0, int(max_questions or 0))
-    raw_options = abstain_followup.get("options")
     question = str(abstain_followup.get("question") or "").strip()
-
-    followups: list[str] = []
-    seen: set[str] = set()
-    if isinstance(raw_options, list):
-        for option in raw_options:
-            if not isinstance(option, dict):
-                continue
-            label = str(option.get("document_name") or option.get("document_id") or "").strip()
-            if not label or label in seen:
-                continue
-            seen.add(label)
-            followups.append(f'Ask specifically about "{label}".')
-            if limit and len(followups) >= limit:
-                return followups
-
+    followups = _followup_questions_from_options(abstain_followup.get("options"), limit=limit)
     if followups:
         return followups
 
     return [question] if question else []
 
 
-def extract_followup_questions_from_answer(
-    answer: str | None,
-    *,
-    max_items: int = 3,
-) -> tuple[str, list[str]]:
-    """Extract repeated <followup> tags from an answer and return clean body + questions."""
-    raw = str(answer or "")
+def _extract_followup_tags(raw: str, *, max_items: int) -> tuple[list[str], list[str], bool]:
     open_tag = "<followup>"
     close_tag = "</followup>"
     lower = raw.lower()
     limit = max(0, int(max_items or 0))
-
     questions: list[str] = []
     seen: set[str] = set()
     cleaned_parts: list[str] = []
     cursor = 0
     found_tag = False
+
     while True:
         start = lower.find(open_tag, cursor)
         if start == -1:
@@ -997,9 +1047,10 @@ def extract_followup_questions_from_answer(
             questions.append(question)
         cursor = end + len(close_tag)
 
-    if not found_tag:
-        return raw, []
+    return cleaned_parts, questions, found_tag
 
+
+def _normalize_followup_body(cleaned_parts: list[str]) -> str:
     normalized_lines: list[str] = []
     pending_blank = False
     for line in "".join(cleaned_parts).splitlines():
@@ -1011,6 +1062,18 @@ def extract_followup_questions_from_answer(
             pending_blank = False
         else:
             pending_blank = True
+    return "\n".join(normalized_lines).strip()
 
-    cleaned = "\n".join(normalized_lines).strip()
-    return cleaned, questions
+
+def extract_followup_questions_from_answer(
+    answer: str | None,
+    *,
+    max_items: int = 3,
+) -> tuple[str, list[str]]:
+    """Extract repeated <followup> tags from an answer and return clean body + questions."""
+    raw = str(answer or "")
+    cleaned_parts, questions, found_tag = _extract_followup_tags(raw, max_items=max_items)
+    if not found_tag:
+        return raw, []
+
+    return _normalize_followup_body(cleaned_parts), questions
