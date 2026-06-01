@@ -155,17 +155,15 @@ class ZipImageProcessor:
                 "image_count": count
             }
         """
-        temp_dir = None
-        try:
+        with tempfile.TemporaryDirectory(prefix="zip_extract_") as temp_dir:
             # 1. Create temp directory and extract.
-            temp_dir = tempfile.mkdtemp(prefix="zip_extract_")
             temp_path = Path(temp_dir)
-            
+
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                 ZipImageProcessor._safe_extract(zip_ref, temp_path)
 
             ZipImageProcessor._logger.info("[zip] extracted to %s", temp_path)
-            
+
             # 2. Find Markdown file.
             markdown_files = list(temp_path.rglob("*.md"))
             if not markdown_files:
@@ -175,13 +173,13 @@ class ZipImageProcessor:
                     "images": [],
                     "image_count": 0
                 }
-            
+
             # Use the first Markdown file found.
             md_file = ZipImageProcessor._choose_markdown_file(markdown_files)
             markdown_content = md_file.read_text(encoding="utf-8", errors="ignore")
-            
+
             ZipImageProcessor._logger.info("[zip] markdown=%s", md_file)
-            
+
             # 3. Find all image files.
             # Convert to JPEG for upload (save storage, simplify access).
             image_extensions = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp'}
@@ -194,7 +192,7 @@ class ZipImageProcessor:
                     continue
                 if path.suffix.lower() in image_extensions:
                     image_files.append(path)
-            
+
             if not image_files:
                 ZipImageProcessor._logger.info("[zip] no images found in archive")
                 return {
@@ -202,7 +200,7 @@ class ZipImageProcessor:
                     "images": [],
                     "image_count": 0
                 }
-            
+
             ZipImageProcessor._logger.info("[zip] images=%s", len(image_files))
 
             max_images = max(0, int(getattr(settings, "ZIP_MAX_IMAGES", 0) or 0))
@@ -217,7 +215,7 @@ class ZipImageProcessor:
             # 4. Upload images to MinIO and build mapping.
             image_mapping = {}  # {original relative path: img_id}
             uploaded_images = []
-            
+
             for idx, img_file in enumerate(image_files):
                 # Compute relative paths to match Markdown reference habits.
                 rel_keys: list[str] = []
@@ -239,7 +237,7 @@ class ZipImageProcessor:
 
                 if img_file.name not in rel_keys:
                     rel_keys.append(img_file.name)
-                
+
                 # Upload to MinIO.
                 if settings.MINIO_ENABLED:
                     try:
@@ -265,25 +263,25 @@ class ZipImageProcessor:
                             chunk_key=chunk_id,
                             extension="jpg",
                         )
-                        
+
                         # Build access URL.
                         url = f"/api/v1/documents/image-url/{img_id}"
-                        
+
                         for key in rel_keys:
                             normalized = ZipImageProcessor._normalize_ref_path(key)
                             if normalized:
                                 image_mapping[normalized] = {"img_id": img_id, "url": url}
-                        
+
                         uploaded_images.append({
                             "img_id": img_id,
                             "original_path": rel_root_str,
                             "url": url
                         })
-                        
+
                         ZipImageProcessor._logger.debug("[zip] uploaded image %s -> %s", rel_root_str, img_id)
                     except Exception as e:
                         ZipImageProcessor._logger.warning("[zip] failed uploading image %s: %s", img_file, e)
-            
+
             # 5. Replace image refs in Markdown.
             if image_mapping:
                 markdown_content = ZipImageProcessor._replace_image_refs(
@@ -291,17 +289,12 @@ class ZipImageProcessor:
                     image_mapping
                 )
                 ZipImageProcessor._logger.info("[zip] replaced %s image refs", len(image_mapping))
-            
+
             return {
                 "markdown": markdown_content,
                 "images": uploaded_images,
                 "image_count": len(uploaded_images)
             }
-            
-        finally:
-            # Clean up temp directory.
-            if temp_dir and Path(temp_dir).exists():
-                shutil.rmtree(temp_dir, ignore_errors=True)
 
     @staticmethod
     def _replace_image_refs(

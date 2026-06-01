@@ -117,21 +117,14 @@ def _ocr_lines_for_mask(image: Image.Image) -> list[dict[str, Any]]:
     except Exception:
         return []
 
-    tmp_path: Path | None = None
     try:
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-            tmp_path = Path(tmp.name)
-        image.save(tmp_path)
-        engine = RapidOCR(det_box_thresh=0.2)
-        result, _ = engine(str(tmp_path))
+        with tempfile.TemporaryDirectory(prefix="watermark_ocr_") as tmp_dir:
+            tmp_path = Path(tmp_dir) / "sample.png"
+            image.save(tmp_path)
+            engine = RapidOCR(det_box_thresh=0.2)
+            result, _ = engine(str(tmp_path))
     except Exception:
         result = []
-    finally:
-        try:
-            if tmp_path is not None and tmp_path.exists():
-                tmp_path.unlink()
-        except Exception as exc:
-            logger.debug("Ignoring non-critical watermark preprocess fallback failure: %s", exc)
 
     out: list[dict[str, Any]] = []
     for line in result or []:
