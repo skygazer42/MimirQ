@@ -44,8 +44,8 @@ function downloadTextFile(filename: string, content: string, mime = 'text/plain;
   globalThis.window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-function sumRecordValues(m: Record<string, any> | undefined | null): number {
-  return Object.values(m || {}).reduce((acc: number, v: any) => acc + Number(v || 0), 0)
+function sumRecordValues(m: Record<string, unknown> | undefined | null): number {
+  return Object.values(m || {}).reduce<number>((acc, v) => acc + Number(v || 0), 0)
 }
 
 function suggestionBadgeVariant(sev: 'info' | 'warning' | 'error'): 'outline' | 'soft' | 'destructive' {
@@ -57,7 +57,7 @@ function suggestionBadgeVariant(sev: 'info' | 'warning' | 'error'): 'outline' | 
 export default function DatasetHealthPage() {
   const router = useRouter()
   const params = useParams()
-  const datasetId = asDatasetId((params as any)?.id)
+  const datasetId = asDatasetId((params as Record<string, unknown>)?.id)
 
   const datasetQuery = useQuery({
     queryKey: queryKeys.datasets.detail(datasetId),
@@ -180,8 +180,8 @@ export default function DatasetHealthPage() {
       exported_at: new Date().toISOString(),
       dataset: dataset
         ? {
-            id: (dataset as any).id ?? datasetId,
-            name: (dataset as any).name ?? null,
+            id: dataset.id ?? datasetId,
+            name: dataset.name ?? null,
           }
         : { id: datasetId, name: null },
       health,
@@ -259,18 +259,19 @@ export default function DatasetHealthPage() {
               variant="outline"
               className="gap-2"
               disabled={!exportPayload}
-              onClick={() => {
-                if (!exportPayload) return
-                const filenameBase = sanitizeFilename(dataset?.name || datasetId || 'dataset')
-                const md = datasetHealthToMarkdown({
-                  datasetId: datasetId || '',
-                  datasetName: dataset?.name || null,
-                  exportedAt: exportPayload.exported_at,
-                  generatedAt: (health as any)?.generated_at ?? null,
-                  profile: (health as any)?.profile ?? null,
-                  ingestion: (health as any)?.ingestion ?? null,
-                  suggestions,
-                })
+	              onClick={() => {
+	                if (!exportPayload) return
+	                const exportedHealth = exportPayload.health
+	                const filenameBase = sanitizeFilename(dataset?.name || datasetId || 'dataset')
+	                const md = datasetHealthToMarkdown({
+	                  datasetId: datasetId || '',
+	                  datasetName: dataset?.name || null,
+	                  exportedAt: exportPayload.exported_at,
+	                  generatedAt: exportedHealth.generated_at ?? null,
+	                  profile: exportedHealth.profile ?? null,
+	                  ingestion: exportedHealth.ingestion ?? null,
+	                  suggestions,
+	                })
                 downloadTextFile(`${filenameBase}.health.md`, md, 'text/markdown;charset=utf-8')
                 toast.success('已导出 health.md')
               }}

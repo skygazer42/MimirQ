@@ -35,10 +35,47 @@ import type {
 const ENGINE_OPTIONS: ReadonlyArray<'all' | 'mysql' | 'sqlserver'> = ['all', 'mysql', 'sqlserver']
 const DB_CATALOG_LIST_LIMIT = 200
 
+type DbCatalogSyncConfig = {
+  host: string
+  port: number
+  database: string
+  username: string
+  password: string
+  max_tables: number
+  profile_enabled: boolean
+  include_tables: string[]
+  include_schemas?: string[]
+}
+
+type SchemaColumnChange = {
+  table?: unknown
+  column?: unknown
+  old?: Record<string, unknown>
+  new?: Record<string, unknown>
+}
+
 function asDatasetId(raw: unknown): string | null {
   if (typeof raw === 'string' && raw.trim()) return raw
   if (Array.isArray(raw) && typeof raw[0] === 'string') return raw[0]
   return null
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function stringItems(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+}
+
+function columnChangeItems(value: unknown): SchemaColumnChange[] {
+  if (!Array.isArray(value)) return []
+  return value.filter(isRecord).map((item) => ({
+    table: item.table,
+    column: item.column,
+    old: isRecord(item.old) ? item.old : {},
+    new: isRecord(item.new) ? item.new : {},
+  }))
 }
 
 function formatQualifiedName(t: DbCatalogTableSummary | DbCatalogTableDetail): string {
@@ -69,7 +106,7 @@ export default function DatasetDbCatalogPage() {
   const queryClient = useQueryClient()
   const router = useRouter()
   const params = useParams()
-  const datasetId = asDatasetId((params as any)?.id)
+  const datasetId = asDatasetId((params as Record<string, unknown>)?.id)
 
   const [engine, setEngine] = useState<'all' | 'mysql' | 'sqlserver'>('all')
   const [query, setQuery] = useState('')
@@ -214,7 +251,7 @@ export default function DatasetDbCatalogPage() {
       return
     }
 
-    const cfg: any = {
+    const cfg: DbCatalogSyncConfig = {
       host,
       port: (() => {
     if (Number.isFinite(syncPort)) {
@@ -243,8 +280,8 @@ export default function DatasetDbCatalogPage() {
     try {
       const run = await connectorApi.createRun({
         connector_id: syncConnectorId,
-        dataset_id: datasetId,
-        config: cfg,
+      dataset_id: datasetId,
+      config: cfg,
       })
       queryClient.setQueryData<ConnectorRunListResponse | undefined>(
         latestRunQueryKey,
@@ -266,7 +303,7 @@ export default function DatasetDbCatalogPage() {
         refreshCatalogList()
         refetchLatestRun()
       }, 1500)
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('Failed to create DB catalog run', e)
       setSyncError(formatApiError(e, '创建同步任务失败'))
     } finally {
@@ -432,10 +469,10 @@ export default function DatasetDbCatalogPage() {
                     </div>
 
                     {(() => {
-                      const stats: any = latestRun.stats || {}
-                      const result: any = stats.result || {}
-                      const schemaDoc: any = stats.schema_doc || {}
-                      const diff: any = schemaDoc.schema_diff || {}
+                      const stats = isRecord(latestRun.stats) ? latestRun.stats : {}
+                      const result = isRecord(stats.result) ? stats.result : {}
+                      const schemaDoc = isRecord(stats.schema_doc) ? stats.schema_doc : {}
+                      const diff = isRecord(schemaDoc.schema_diff) ? schemaDoc.schema_diff : {}
 
                       const ageSecRaw = schemaDoc.catalog_age_sec
                       const ageSec = typeof ageSecRaw === 'number' && Number.isFinite(ageSecRaw) ? ageSecRaw : null
@@ -459,16 +496,21 @@ export default function DatasetDbCatalogPage() {
                       const cols = Number(result.columns_upserted ?? schemaDoc.columns ?? 0)
                       const profiles = Number(result.profiles_written ?? schemaDoc.tables_with_profiles ?? 0)
 
-                      const ta = Number(diff?.tables_added?.count ?? 0)
-                      const tr = Number(diff?.tables_removed?.count ?? 0)
-                      const ca = Number(diff?.columns_added?.count ?? 0)
-                      const cr = Number(diff?.columns_removed?.count ?? 0)
-                      const cc = Number(diff?.columns_changed?.count ?? 0)
-                      const taItems: string[] = Array.isArray(diff?.tables_added?.items) ? diff.tables_added.items : []
-                      const trItems: string[] = Array.isArray(diff?.tables_removed?.items) ? diff.tables_removed.items : []
-                      const caItems: string[] = Array.isArray(diff?.columns_added?.items) ? diff.columns_added.items : []
-                      const crItems: string[] = Array.isArray(diff?.columns_removed?.items) ? diff.columns_removed.items : []
-                      const ccItems: any[] = Array.isArray(diff?.columns_changed?.items) ? diff.columns_changed.items : []
+                      const tablesAdded = isRecord(diff.tables_added) ? diff.tables_added : {}
+                      const tablesRemoved = isRecord(diff.tables_removed) ? diff.tables_removed : {}
+                      const columnsAdded = isRecord(diff.columns_added) ? diff.columns_added : {}
+                      const columnsRemoved = isRecord(diff.columns_removed) ? diff.columns_removed : {}
+                      const columnsChanged = isRecord(diff.columns_changed) ? diff.columns_changed : {}
+                      const ta = Number(tablesAdded.count ?? 0)
+                      const tr = Number(tablesRemoved.count ?? 0)
+                      const ca = Number(columnsAdded.count ?? 0)
+                      const cr = Number(columnsRemoved.count ?? 0)
+                      const cc = Number(columnsChanged.count ?? 0)
+                      const taItems = stringItems(tablesAdded.items)
+                      const trItems = stringItems(tablesRemoved.items)
+                      const caItems = stringItems(columnsAdded.items)
+                      const crItems = stringItems(columnsRemoved.items)
+                      const ccItems = columnChangeItems(columnsChanged.items)
 
                       return (
                         <>
