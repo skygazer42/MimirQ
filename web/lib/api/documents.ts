@@ -44,6 +44,7 @@ import type {
   DocumentVersionList,
   IngestDeadLetterList,
   IngestDeadLetterReplayResponse,
+  JsonObject,
   ManualChunk,
 } from '@/types'
 import { z } from 'zod'
@@ -58,6 +59,14 @@ import {
   type ChunkPreviewRequestParams,
   type DocumentLifecycleFilter,
 } from '@/lib/api/document-helpers'
+
+type FileWithRelativePath = File & {
+  webkitRelativePath?: string
+}
+
+function uploadFilename(file: File): string {
+  return String((file as FileWithRelativePath).webkitRelativePath || file.name)
+}
 
 function resolveChunkPreviewStrategy(chunkStrategy?: string): string {
   return chunkStrategy || 'langchain_recursive'
@@ -82,12 +91,12 @@ export const documentApi = {
       chunk_strategy?: string
       dataset_id?: string
       pipeline?: DocumentPipelineOptions
-      user_metadata?: Record<string, any>
+      user_metadata?: JsonObject
     } = {}
   ): Promise<Document> {
     const resolvedParser = resolveParserBackendForFilename(file.name, options.parser_backend)
     const formData = new FormData()
-    const uploadName = (file as any).webkitRelativePath || file.name
+    const uploadName = uploadFilename(file)
     formData.append('file', file, uploadName)
     formData.append('parser_backend', resolvedParser.backend || 'auto')
     formData.append('chunk_strategy', options.chunk_strategy || 'langchain_recursive')
@@ -135,13 +144,13 @@ export const documentApi = {
       precheck_only?: boolean
       pipeline?: DocumentPipelineOptions
       max_concurrent?: number
-      user_metadata_map?: Record<string, Record<string, any>>
+      user_metadata_map?: Record<string, JsonObject>
     } = {}
   ): Promise<DocumentBatchUploadResponse> {
     const resolvedParser = resolveParserBackendForFiles(files, options.parser_backend)
     const formData = new FormData()
     for (const file of files) {
-      const uploadName = (file as any).webkitRelativePath || file.name
+      const uploadName = uploadFilename(file)
       formData.append('files', file, uploadName)
     }
     formData.append('parser_backend', resolvedParser.backend || 'auto')
@@ -656,7 +665,7 @@ export const documentApi = {
     file_size: number
     chunks: ManualChunk[]
     dataset_id?: string
-    metadata?: Record<string, any>
+    metadata?: JsonObject
     pipeline?: DocumentPipelineOptions
   }): Promise<Document> {
     return openapiRequest({
