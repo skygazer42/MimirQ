@@ -30,6 +30,25 @@ function primitiveString(value: unknown): string {
   return ''
 }
 
+function getGraphLinkKindLabel(kind: string): string {
+  if (kind === 'entity_relation') return 'Relation (triple)'
+  if (kind === 'event_entity') return 'Evidence (event → entity)'
+  if (kind === 'entity_entity') return 'Co-occurrence (entity ↔ entity)'
+  return kind || 'Link'
+}
+
+function getGraphLinkEpisodesLabel(episodesRaw: unknown): string {
+  if (Array.isArray(episodesRaw)) return String(episodesRaw.length)
+  if (episodesRaw == null) return ''
+  return primitiveString(episodesRaw)
+}
+
+function getGraphLinkConfidenceColor(confNum: number): string {
+  if (confNum >= 0.8) return '#22c55e'
+  if (confNum >= 0.5) return '#f59e0b'
+  return '#ef4444'
+}
+
 export function GraphLinkDetailPanel({
   open,
   selectedLink,
@@ -74,14 +93,7 @@ export function GraphLinkDetailPanel({
             : []
           const showSelfLoopGroup = isSelfLoop && selfLoopLinks.length > 1
 
-          const kindLabel =
-            kind === 'entity_relation'
-              ? 'Relation (triple)'
-              : kind === 'event_entity'
-                ? 'Evidence (event → entity)'
-                : kind === 'entity_entity'
-                  ? 'Co-occurrence (entity ↔ entity)'
-                  : kind || 'Link'
+          const kindLabel = getGraphLinkKindLabel(kind)
 
           return (
             <>
@@ -144,11 +156,7 @@ export function GraphLinkDetailPanel({
                             const edgePredicate = primitiveString(link?.meta?.predicate ?? link?.predicate ?? link?.label)
                             const createdAt = primitiveString(link?.meta?.created_at ?? link?.meta?.created)
                             const episodesRaw = link?.meta?.episodes ?? link?.meta?.episode_ids ?? link?.meta?.episode_count
-                            const episodes = Array.isArray(episodesRaw)
-                              ? String(episodesRaw.length)
-                              : episodesRaw == null
-                                ? ''
-                                : primitiveString(episodesRaw)
+                            const episodes = getGraphLinkEpisodesLabel(episodesRaw)
                             const fact = primitiveString(link?.meta?.fact ?? link?.meta?.quote ?? link?.meta?.text)
                             const secondary = [edgeKind, edgePredicate].filter(Boolean).join(' · ')
 
@@ -222,7 +230,7 @@ export function GraphLinkDetailPanel({
                             className="h-full rounded-full"
                             style={{
                               width: `${Math.round(confNum * 100)}%`,
-                              backgroundColor: confNum >= 0.8 ? '#22c55e' : confNum >= 0.5 ? '#f59e0b' : '#ef4444',
+                              backgroundColor: getGraphLinkConfidenceColor(confNum),
                             }}
                           />
                         </div>

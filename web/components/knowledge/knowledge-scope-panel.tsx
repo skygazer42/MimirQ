@@ -48,6 +48,25 @@ type KnowledgeScopePanelProps = {
   quarantinedDocsValue: DocCountValue
 }
 
+function getDocStatusRatio(
+  key: DocStatusFilter,
+  count: number,
+  totalDocs: DocCountValue
+): number {
+  if (key === 'all') return 1
+  const total = Number(totalDocs || 0)
+  if (total <= 0) return 0
+  return Math.max(0, Math.min(1, count / total))
+}
+
+function getDocStatusRatioClassName(key: DocStatusFilter): string {
+  if (key === 'completed') return 'bg-success/70'
+  if (key === 'processing') return 'bg-info/70'
+  if (key === 'failed') return 'bg-destructive/75'
+  if (key === 'quarantined') return 'bg-warning/75'
+  return 'bg-primary/55'
+}
+
 export function KnowledgeScopePanel({
   className,
   surface = 'pane',
@@ -85,16 +104,7 @@ export function KnowledgeScopePanel({
     { key: 'quarantined', count: quarantinedDocsValue },
   ] satisfies Array<{ key: DocStatusFilter; count: DocCountValue }>).map((item) => {
     const count = Number(item.count || 0)
-    const ratio =
-      item.key === 'all'
-        ? 1
-        : Math.max(
-            0,
-            Math.min(
-              1,
-              Number(totalDocs || 0) > 0 ? count / Number(totalDocs || 0) : 0
-            )
-          )
+    const ratio = getDocStatusRatio(item.key, count, totalDocs)
 
     return {
       ...item,
@@ -102,16 +112,7 @@ export function KnowledgeScopePanel({
       ratio,
       showRatioBar:
         item.key !== 'all' && count > 0 && Number(totalDocs || 0) > 0,
-      ratioClassName:
-        item.key === 'completed'
-          ? 'bg-success/70'
-          : item.key === 'processing'
-            ? 'bg-info/70'
-            : item.key === 'failed'
-              ? 'bg-destructive/75'
-              : item.key === 'quarantined'
-                ? 'bg-warning/75'
-                : 'bg-primary/55',
+      ratioClassName: getDocStatusRatioClassName(item.key),
       countElement: (
         <span
           className={cn(
