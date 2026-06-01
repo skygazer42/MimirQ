@@ -212,27 +212,59 @@ class IndexResult:
     db_chunks: list[DocumentChunk]
 
 
+def _asset_metadata(item: Any) -> dict[str, Any]:
+    meta = getattr(item, "metadata", None)
+    return meta if isinstance(meta, dict) else {}
+
+
+def _collect_artifact_dir_from_meta(meta: dict[str, Any], artifact_dirs: set[str]) -> None:
+    artifact_dir = meta.get("artifact_dir")
+    if isinstance(artifact_dir, str) and artifact_dir.strip():
+        artifact_dirs.add(artifact_dir.strip())
+
+
+def _collect_image_ids_from_meta(meta: dict[str, Any], document_img_ids: set[str]) -> None:
+    images = meta.get("images")
+    if not isinstance(images, list):
+        return
+    for item in images:
+        img_id = item.get("img_id") if isinstance(item, dict) else None
+        if isinstance(img_id, str) and img_id.strip():
+            document_img_ids.add(img_id)
+
+
+def _collect_item_asset_refs(
+    items: list[Any] | None,
+    *,
+    document_img_ids: set[str],
+    artifact_dirs: set[str],
+    collect_images: bool,
+) -> None:
+    for item in items or []:
+        meta = _asset_metadata(item)
+        _collect_artifact_dir_from_meta(meta, artifact_dirs)
+        if collect_images:
+            _collect_image_ids_from_meta(meta, document_img_ids)
+
+
 def _collect_parser_asset_refs(
     parsed: ParseResult,
     *,
     document_img_ids: set[str],
     artifact_dirs: set[str],
 ) -> None:
-    for doc in parsed.documents or []:
-        images = (doc.metadata or {}).get("images")
-        if isinstance(images, list):
-            for item in images:
-                img_id = item.get("img_id") if isinstance(item, dict) else None
-                if isinstance(img_id, str) and img_id.strip():
-                    document_img_ids.add(img_id)
-        artifact_dir = (doc.metadata or {}).get("artifact_dir")
-        if isinstance(artifact_dir, str) and artifact_dir.strip():
-            artifact_dirs.add(artifact_dir.strip())
-
-    for doc in parsed.chunks or []:
-        artifact_dir = (doc.metadata or {}).get("artifact_dir")
-        if isinstance(artifact_dir, str) and artifact_dir.strip():
-            artifact_dirs.add(artifact_dir.strip())
+    _collect_item_asset_refs(
+        parsed.documents,
+        document_img_ids=document_img_ids,
+        artifact_dirs=artifact_dirs,
+        collect_images=True,
+    )
+    _collect_item_asset_refs(
+        parsed.chunks,
+        document_img_ids=document_img_ids,
+        artifact_dirs=artifact_dirs,
+        collect_images=False,
+    )
 
 
 def _inline_asset_audit_needed(inline_result: InlineAssetResult) -> bool:
@@ -258,24 +290,20 @@ def _apply_inline_asset_audit_patch(
 
     try:
         meta_patch = dict(db_document.doc_metadata or {})
-        meta_patch["image_codes_added"] = int(getattr(inline_result, "image_codes_added", 0) or 0)
-        if isinstance(getattr(inline_result, "image_code_audit", None), dict):
-            meta_patch["image_code_audit"] = dict(inline_result.image_code_audit or {})
-        meta_patch["image_captions_added"] = int(getattr(inline_result, "captions_added", 0) or 0)
-        if getattr(inline_result, "caption_backend", None):
-            meta_patch["image_caption_backend"] = str(inline_result.caption_backend or "")
-        if isinstance(getattr(inline_result, "caption_audit", None), dict):
-            meta_patch["image_caption_audit"] = dict(inline_result.caption_audit or {})
-        meta_patch["formula_ocr_added"] = int(getattr(inline_result, "formulas_added", 0) or 0)
-        if getattr(inline_result, "formula_backend", None):
-            meta_patch["formula_ocr_backend"] = str(inline_result.formula_backend or "")
-        if isinstance(getattr(inline_result, "formula_audit", None), dict):
-            meta_patch["formula_ocr_audit"] = dict(inline_result.formula_audit or {})
-        meta_patch["chart_data_added"] = int(getattr(inline_result, "charts_added", 0) or 0)
-        if getattr(inline_result, "chart_backend", None):
-            meta_patch["chart_data_backend"] = str(inline_result.chart_backend or "")
-        if isinstance(getattr(inline_result, "chart_audit", None), dict):
-            meta_patch["chart_data_audit"] = dict(inline_result.chart_audit or {})
+        field_specs = (
+            ("image_codes_added", "image_codes_added", None, None, "image_code_audit", "image_code_audit"),
+            ("image_captions_added", "captions_added", "image_caption_backend", "caption_backend", "image_caption_audit", "caption_audit"),
+            ("formula_ocr_added", "formulas_added", "formula_ocr_backend", "formula_backend", "formula_ocr_audit", "formula_audit"),
+            ("chart_data_added", "charts_added", "chart_data_backend", "chart_backend", "chart_data_audit", "chart_audit"),
+        )
+        for count_key, count_attr, backend_key, backend_attr, audit_key, audit_attr in field_specs:
+            meta_patch[count_key] = int(getattr(inline_result, count_attr, 0) or 0)
+            backend_value = getattr(inline_result, backend_attr, None) if backend_attr else None
+            if backend_key and backend_value:
+                meta_patch[backend_key] = str(backend_value or "")
+            audit_value = getattr(inline_result, audit_attr, None)
+            if isinstance(audit_value, dict):
+                meta_patch[audit_key] = dict(audit_value or {})
         db_document.doc_metadata = meta_patch
         db.commit()
         db.refresh(db_document)
