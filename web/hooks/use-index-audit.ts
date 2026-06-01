@@ -10,6 +10,7 @@ import { toast } from 'sonner'
 import type { IndexAuditResponse } from '@/types'
 import { observabilityApi } from '@/lib/api/observability'
 import { formatApiError } from '@/lib/api-errors'
+import { reportClientError } from '@/lib/client-logging'
 import { queryKeys } from '@/lib/query-keys'
 
 type UseIndexAuditOptions = {
@@ -42,7 +43,7 @@ export function useIndexAudit({ selectedDatasetId }: UseIndexAuditOptions) {
 
     const result = await refetch()
     if (result.error) {
-      console.error('Index audit failed:', result.error)
+      reportClientError('Index audit failed', result.error)
       toast.error(formatApiError(result.error, 'Index Audit 失败'))
       return
     }

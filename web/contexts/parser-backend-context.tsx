@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
+import { readClientStorage, writeClientStorage } from '@/lib/client-storage'
 import { normalizeParserBackendName } from '@/lib/parser-compat'
 
 const STORAGE_KEY = 'mimirq_parser_backend'
@@ -18,8 +19,7 @@ export function ParserBackendProvider({ children }: Readonly<{ children: React.R
   const { capabilities, parserBackendAvailable } = usePipelineCapabilities()
 
   useEffect(() => {
-    if (globalThis.window === undefined) return
-    const stored = globalThis.window.localStorage.getItem(STORAGE_KEY)
+    const stored = readClientStorage(STORAGE_KEY)
     if (stored) {
       setParserBackend(normalizeParserBackendName(stored))
     }
@@ -36,9 +36,7 @@ export function ParserBackendProvider({ children }: Readonly<{ children: React.R
   const persistParserBackend = useCallback((value: string) => {
     const next = normalizeParserBackendName(value)
     setParserBackend(next)
-    if (globalThis.window !== undefined) {
-      globalThis.window.localStorage.setItem(STORAGE_KEY, next)
-    }
+    writeClientStorage(STORAGE_KEY, next)
   }, [])
 
   useEffect(() => {

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 
 import { documentApi } from '@/lib/api/documents'
+import { reportClientError } from '@/lib/client-logging'
 
 import {
   isTerminalDocumentStatus,
@@ -64,7 +65,7 @@ export function useDocumentPolling({ updateCachedDocuments }: UseDocumentPolling
             return
           }
         } catch (err) {
-          console.error('Poll status error:', err)
+          reportClientError('Poll document status failed', err)
           pollTimersRef.current.delete(documentId)
           return
         }

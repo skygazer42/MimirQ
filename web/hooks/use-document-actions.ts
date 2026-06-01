@@ -5,6 +5,7 @@ import { useMutation } from '@tanstack/react-query'
 
 import { documentApi } from '@/lib/api/documents'
 import { formatApiError } from '@/lib/api-errors'
+import { reportClientError } from '@/lib/client-logging'
 
 import { mergePolledDocument, type UpdateCachedDocuments } from './use-document-shared'
 
@@ -41,7 +42,7 @@ export function useDocumentActions({
     },
     onError: (err) => {
       setActionError(formatApiError(err, 'Failed to cancel document'))
-      console.error('Cancel error:', err)
+      reportClientError('Cancel document failed', err)
     },
   })
 
@@ -65,7 +66,7 @@ export function useDocumentActions({
     },
     onError: (err) => {
       setActionError(formatApiError(err, 'Failed to delete document'))
-      console.error('Delete error:', err)
+      reportClientError('Delete document failed', err)
     },
   })
 
