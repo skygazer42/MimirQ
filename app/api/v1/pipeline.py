@@ -9,6 +9,8 @@ import re
 import shutil
 import uuid
 import zipfile
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass, field
 from difflib import SequenceMatcher, unified_diff
 from pathlib import Path
 from typing import Annotated, Any
@@ -144,6 +146,14 @@ _AUTO_TAGGER_LLM_TIMEOUT_S = 3.0
 _TRIM_PUNCTUATION_CHARS = " \t\r\n，,。.;；:："
 _TOPIC_KEYWORD_LABEL = "主题关键词"
 _PIPELINE_FALLBACK_LOG_MESSAGE = "Ignoring non-critical pipeline fallback failure: %s"
+_AUTO_PROVIDER_ALIASES = {
+    "entity": ("regex",),
+    "regex_entity": ("regex",),
+    "sensitive": ("pii", "secret"),
+}
+_SENSITIVE_PROVIDER_SOURCES = {"pii", "secret"}
+_FOCUS_SENTENCE_TERMS = ("知识库", "数据治理", "检索", "入库", "流程", "质量", "风险", "建议", "核心")
+_FRONTMATTER_TAG_KEYS = ("tags", "tag", "categories", "category", "keywords")
 
 _ZH_ENTITY_RE = re.compile(
     r"[\u4e00-\u9fffA-Za-z0-9（）()·]{2,40}"
@@ -208,6 +218,17 @@ _DOMAIN_FOCUS_TERMS = (
     "治理",
 )
 _ACTION_MARKER_RE = re.compile(r"(建议|需要|应当|必须|后续|下一步|待|TODO|完善|优化|修复)")
+
+
+@dataclass
+class _AutoAnnotationDraft:
+    candidates: list[AutoAnnotationItem] = field(default_factory=list)
+    document_tags: list[AutoDocumentTag] = field(default_factory=list)
+    keyword_provider: str | None = None
+    warnings: list[str] = field(default_factory=list)
+    providers_used: list[str] = field(default_factory=list)
+    strategy: str = "rules"
+    summary: str | None = None
 
 
 def _trim_entity_span(raw: str) -> tuple[str, int]:
@@ -340,32 +361,35 @@ def _dedupe_auto_annotations(items: list[AutoAnnotationItem], *, max_items: int)
     return out
 
 
+def _add_auto_annotation_provider(providers: set[str], raw_provider: object) -> None:
+    provider = str(raw_provider or "").strip().lower()
+    if not provider:
+        return
+    providers.update(_AUTO_PROVIDER_ALIASES.get(provider, (provider,)))
+
+
+def _default_auto_annotation_providers(body: AutoAnnotationRequest) -> set[str]:
+    providers = set()
+    if str(body.mode or "document_focus").strip().lower() == "document_focus":
+        providers.add("cpu")
+    if body.enable_llm or body.enable_llm_topics:
+        providers.add("llm")
+    if body.enable_keywords:
+        providers.add("keyword")
+    if body.enable_entities:
+        providers.add("regex")
+    if body.enable_sensitive:
+        providers.update(_SENSITIVE_PROVIDER_SOURCES)
+    return providers
+
+
 def _normalize_auto_annotation_providers(body: AutoAnnotationRequest) -> set[str]:
     if body.providers is None:
-        providers: set[str] = set()
-        if str(body.mode or "document_focus").strip().lower() == "document_focus":
-            providers.add("cpu")
-        if body.enable_llm or body.enable_llm_topics:
-            providers.add("llm")
-        if body.enable_keywords:
-            providers.add("keyword")
-        if body.enable_entities:
-            providers.add("regex")
-        if body.enable_sensitive:
-            providers.update({"pii", "secret"})
-        return providers
+        return _default_auto_annotation_providers(body)
 
-    providers = set()
+    providers: set[str] = set()
     for raw_provider in body.providers:
-        provider = str(raw_provider or "").strip().lower()
-        if not provider:
-            continue
-        if provider in {"entity", "regex_entity"}:
-            providers.add("regex")
-        elif provider == "sensitive":
-            providers.update({"pii", "secret"})
-        else:
-            providers.add(provider)
+        _add_auto_annotation_provider(providers, raw_provider)
     return providers
 
 
@@ -617,6 +641,33 @@ def _collect_entity_annotations(text: str, *, max_items: int) -> list[AutoAnnota
     return out
 
 
+def _gliner_entity_confidence(entity: dict[str, Any]) -> float:
+    try:
+        confidence = float(entity.get("score") or 0.78)
+    except Exception:
+        confidence = 0.78
+    return min(0.99, max(0.0, confidence))
+
+
+def _make_gliner_entity_annotation(text: str, entity: dict[str, Any]) -> AutoAnnotationItem | None:
+    quote = str(entity.get("evidence_quote") or entity.get("name") or "").strip()
+    if not quote:
+        return None
+
+    label = str(entity.get("type") or "entity").strip() or "entity"
+    for start, end in _find_keyword_offsets(text, quote, limit=1):
+        return _make_auto_annotation(
+            source_text=text,
+            start=start,
+            end=end,
+            annotation_type="entity",
+            label=label,
+            confidence=_gliner_entity_confidence(entity),
+            source="gliner",
+        )
+    return None
+
+
 async def _collect_gliner_entity_annotations(text: str, *, max_items: int) -> list[AutoAnnotationItem]:
     try:
         from app.rag.kg.extraction.gliner_extractor import GLiNERExtractor
@@ -636,30 +687,118 @@ async def _collect_gliner_entity_annotations(text: str, *, max_items: int) -> li
 
     out: list[AutoAnnotationItem] = []
     for entity in entities:
-        quote = str(entity.get("evidence_quote") or entity.get("name") or "").strip()
-        if not quote:
-            continue
-        label = str(entity.get("type") or "entity").strip() or "entity"
-        try:
-            confidence = float(entity.get("score") or 0.78)
-        except Exception:
-            confidence = 0.78
-        for start, end in _find_keyword_offsets(text, quote, limit=1):
+        item = _make_gliner_entity_annotation(text, entity)
+        if item is not None:
+            out.append(item)
+        if len(out) >= max_items:
+            break
+    return out
+
+
+def _append_sensitive_match_annotations(
+    text: str,
+    out: list[AutoAnnotationItem],
+    matches: Iterable[Any],
+    *,
+    max_items: int,
+    source: str,
+    confidence: float,
+) -> bool:
+    for match in matches:
+        item = _make_auto_annotation(
+            source_text=text,
+            start=int(match.start),
+            end=int(match.end),
+            annotation_type="sensitive",
+            label=str(match.kind),
+            confidence=confidence,
+            source=source,
+        )
+        if item is not None:
+            out.append(item)
+        if len(out) >= max_items:
+            return True
+    return False
+
+
+def _append_focus_rule_candidates(
+    text: str,
+    candidates: list[AutoAnnotationItem],
+    blocked: list[AutoAnnotationItem],
+    *,
+    max_items: int,
+) -> None:
+    for label, annotation_type, pattern, confidence in _FOCUS_RULES:
+        for match in pattern.finditer(text):
+            start, end = _trim_focus_rule_span(text, label, int(match.start()), int(match.end()))
             item = _make_auto_annotation(
                 source_text=text,
                 start=start,
                 end=end,
-                annotation_type="entity",
+                annotation_type=annotation_type,
                 label=label,
-                confidence=min(0.99, max(0.0, confidence)),
-                source="gliner",
+                confidence=confidence,
+                source="rule_focus",
             )
-            if item is not None:
-                out.append(item)
-            break
-        if len(out) >= max_items:
-            break
-    return out
+            if item is None or any(_annotation_overlaps(item, blocked_item) for blocked_item in blocked):
+                continue
+            candidates.append(item)
+            if len(candidates) >= max_items:
+                return
+
+
+def _focus_sentence_has_signal(sentence: str) -> bool:
+    return any(key in sentence for key in _FOCUS_SENTENCE_TERMS)
+
+
+def _append_focus_sentence_candidate(
+    text: str,
+    candidates: list[AutoAnnotationItem],
+    blocked: list[AutoAnnotationItem],
+) -> None:
+    for match in _FOCUS_SENTENCE_RE.finditer(text):
+        sentence = (match.group(0) or "").strip()
+        if not sentence or not _focus_sentence_has_signal(sentence):
+            continue
+        start, end = _trim_match_span(text, int(match.start()), int(match.end()))
+        item = _make_auto_annotation(
+            source_text=text,
+            start=start,
+            end=end,
+            annotation_type="custom",
+            label="文档重点",
+            confidence=0.7,
+            source="rule_focus",
+        )
+        if item is not None and not any(_annotation_overlaps(item, blocked_item) for blocked_item in blocked):
+            candidates.append(item)
+            return
+
+
+def _extend_focus_entity_candidates(
+    text: str,
+    candidates: list[AutoAnnotationItem],
+    blocked: list[AutoAnnotationItem],
+    *,
+    max_items: int,
+) -> None:
+    entity_items = _collect_entity_annotations(text, max_items=max_items - len(candidates))
+    for item in entity_items:
+        if any(_annotation_overlaps(item, blocked_item) for blocked_item in blocked + candidates):
+            continue
+        candidates.append(
+            AutoAnnotationItem(
+                text=item.text,
+                type="entity",
+                label="关键实体",
+                start=item.start,
+                end=item.end,
+                confidence=item.confidence,
+                source=item.source,
+            )
+        )
+        if len(candidates) >= max_items:
+            return
 
 
 def _collect_sensitive_annotations(
@@ -668,44 +807,30 @@ def _collect_sensitive_annotations(
     max_items: int,
     providers: set[str] | None = None,
 ) -> list[AutoAnnotationItem]:
-    provider_set = providers or {"pii", "secret"}
+    provider_set = providers or _SENSITIVE_PROVIDER_SOURCES
     out: list[AutoAnnotationItem] = []
-    if "pii" in provider_set:
-        for match in find_pii_matches(text, max_matches=max_items):
-            item = _make_auto_annotation(
-                source_text=text,
-                start=int(match.start),
-                end=int(match.end),
-                annotation_type="sensitive",
-                label=str(match.kind),
-                confidence=0.95,
-                source="pii",
-            )
-            if item is not None:
-                out.append(item)
-            if len(out) >= max_items:
-                return out
+    if "pii" in provider_set and _append_sensitive_match_annotations(
+        text,
+        out,
+        find_pii_matches(text, max_matches=max_items),
+        max_items=max_items,
+        source="pii",
+        confidence=0.95,
+    ):
+        return out
 
     remaining = max_items - len(out)
-    if remaining <= 0:
-        return out
-    if "secret" not in provider_set:
+    if remaining <= 0 or "secret" not in provider_set:
         return out
 
-    for match in find_secret_matches(text, max_matches=remaining):
-        item = _make_auto_annotation(
-            source_text=text,
-            start=int(match.start),
-            end=int(match.end),
-            annotation_type="sensitive",
-            label=str(match.kind),
-            confidence=0.98,
-            source="secret",
-        )
-        if item is not None:
-            out.append(item)
-        if len(out) >= max_items:
-            return out
+    _append_sensitive_match_annotations(
+        text,
+        out,
+        find_secret_matches(text, max_matches=remaining),
+        max_items=max_items,
+        source="secret",
+        confidence=0.98,
+    )
     return out
 
 
@@ -723,44 +848,12 @@ def _collect_rule_focus_annotations(
     # Keep sensitive values out of default document-focus suggestions.
     blocked = _collect_sensitive_annotations(text, max_items=100)
 
-    for label, annotation_type, pattern, confidence in _FOCUS_RULES:
-        for match in pattern.finditer(text):
-            start, end = _trim_focus_rule_span(text, label, int(match.start()), int(match.end()))
-            item = _make_auto_annotation(
-                source_text=text,
-                start=start,
-                end=end,
-                annotation_type=annotation_type,
-                label=label,
-                confidence=confidence,
-                source="rule_focus",
-            )
-            if item is None or any(_annotation_overlaps(item, blocked_item) for blocked_item in blocked):
-                continue
-            candidates.append(item)
-            if len(candidates) >= max_items:
-                return None, candidates
+    _append_focus_rule_candidates(text, candidates, blocked, max_items=max_items)
+    if len(candidates) >= max_items:
+        return None, candidates
 
     if not candidates:
-        for match in _FOCUS_SENTENCE_RE.finditer(text):
-            sentence = (match.group(0) or "").strip()
-            if not sentence:
-                continue
-            if not any(key in sentence for key in ("知识库", "数据治理", "检索", "入库", "流程", "质量", "风险", "建议", "核心")):
-                continue
-            start, end = _trim_match_span(text, int(match.start()), int(match.end()))
-            item = _make_auto_annotation(
-                source_text=text,
-                start=start,
-                end=end,
-                annotation_type="custom",
-                label="文档重点",
-                confidence=0.7,
-                source="rule_focus",
-            )
-            if item is not None and not any(_annotation_overlaps(item, blocked_item) for blocked_item in blocked):
-                candidates.append(item)
-                break
+        _append_focus_sentence_candidate(text, candidates, blocked)
 
     keyword_provider_used: str | None = None
     if enable_keywords and len(candidates) < max_items:
@@ -782,23 +875,7 @@ def _collect_rule_focus_annotations(
         candidates.extend(keyword_items)
 
     if enable_entities and len(candidates) < max_items:
-        entity_items = _collect_entity_annotations(text, max_items=max_items - len(candidates))
-        for item in entity_items:
-            if any(_annotation_overlaps(item, blocked_item) for blocked_item in blocked + candidates):
-                continue
-            candidates.append(
-                AutoAnnotationItem(
-                    text=item.text,
-                    type="entity",
-                    label="关键实体",
-                    start=item.start,
-                    end=item.end,
-                    confidence=item.confidence,
-                    source=item.source,
-                )
-            )
-            if len(candidates) >= max_items:
-                break
+        _extend_focus_entity_candidates(text, candidates, blocked, max_items=max_items)
 
     return keyword_provider_used, candidates
 
@@ -841,21 +918,187 @@ def _collect_cpu_focus_annotations(
     return result.summary, document_tags, annotations
 
 
-def _collect_common_lines_texts(
-    *,
-    db: Session,
-    tenant_id: UUID,
-    account_id: str,
-    dataset_id: UUID,
-    limit_docs: int,
-    use_original: bool,
-) -> tuple[int, list[str]]:
-    """
-    Collect a bounded list of parsed markdown texts for common-lines learning.
+def _remaining_auto_slots(draft: _AutoAnnotationDraft, max_items: int) -> int:
+    return max(0, max_items - len(draft.candidates))
 
-    Returns (total_with_parsed_content_in_dataset, texts[]).
-    """
-    # Count eligible docs (best-effort; does not enforce document ACL).
+
+def _collect_cpu_auto_provider(draft: _AutoAnnotationDraft, scan_text: str, body: AutoAnnotationRequest, max_items: int) -> None:
+    cpu_summary, cpu_tags, cpu_items = _collect_cpu_focus_annotations(
+        scan_text,
+        keyword_provider=str(body.keyword_provider or "simple"),
+        keyword_top_k=int(body.keyword_top_k or 12),
+        max_items=max_items,
+    )
+    if cpu_summary and draft.summary is None:
+        draft.summary = cpu_summary
+    draft.document_tags.extend(cpu_tags)
+    draft.candidates.extend(cpu_items)
+    if cpu_items:
+        _append_provider_used(draft.providers_used, "cpu")
+
+
+async def _collect_llm_auto_provider(draft: _AutoAnnotationDraft, scan_text: str, body: AutoAnnotationRequest, max_items: int) -> None:
+    try:
+        llm_summary, llm_tags, llm_items = await asyncio.wait_for(
+            _collect_llm_focus_annotations(
+                scan_text,
+                max_items=max_items,
+                max_chars=max(1, min(int(body.max_chars or 20_000), 200_000)),
+                model=body.llm_model,
+            ),
+            timeout=_AUTO_TAGGER_LLM_TIMEOUT_S,
+        )
+    except Exception:
+        draft.warnings.append("LLM focus extraction unavailable; used rules fallback.")
+        return
+
+    if llm_summary:
+        draft.summary = llm_summary
+    draft.document_tags.extend(llm_tags)
+    draft.candidates.extend(llm_items)
+    if llm_summary or llm_tags or llm_items:
+        _append_provider_used(draft.providers_used, "llm")
+        draft.strategy = "hybrid" if "cpu" in draft.providers_used else "llm"
+
+
+def _collect_document_focus_rule_fallback(
+    draft: _AutoAnnotationDraft,
+    scan_text: str,
+    body: AutoAnnotationRequest,
+    providers: set[str],
+    max_items: int,
+) -> None:
+    if _remaining_auto_slots(draft, max_items) <= 0:
+        return
+    if draft.candidates and not any(provider in providers for provider in {"keyword", "regex"}):
+        return
+
+    draft.keyword_provider, rule_items = _collect_rule_focus_annotations(
+        scan_text,
+        enable_keywords="keyword" in providers,
+        enable_entities="regex" in providers,
+        keyword_provider=str(body.keyword_provider or "simple"),
+        keyword_top_k=int(body.keyword_top_k or 12),
+        max_items=_remaining_auto_slots(draft, max_items),
+    )
+    draft.candidates.extend(rule_items)
+    if not rule_items:
+        return
+    if any(str(item.source) == "keyword" for item in rule_items):
+        _append_provider_used(draft.providers_used, "keyword")
+    if any(str(item.source) == "regex_entity" for item in rule_items):
+        _append_provider_used(draft.providers_used, "regex")
+    if any(str(item.source) == "rule_focus" for item in rule_items):
+        _append_provider_used(draft.providers_used, "rule_focus")
+    draft.strategy = "hybrid" if draft.strategy == "llm" else "rules"
+
+
+async def _collect_gliner_auto_provider(draft: _AutoAnnotationDraft, scan_text: str, max_items: int) -> list[AutoAnnotationItem]:
+    if _remaining_auto_slots(draft, max_items) <= 0:
+        return []
+    gliner_items = await _collect_gliner_entity_annotations(scan_text, max_items=_remaining_auto_slots(draft, max_items))
+    draft.candidates.extend(gliner_items)
+    if gliner_items:
+        _append_provider_used(draft.providers_used, "gliner")
+    return gliner_items
+
+
+def _collect_sensitive_auto_provider(
+    draft: _AutoAnnotationDraft,
+    scan_text: str,
+    providers: set[str],
+    max_items: int,
+) -> list[AutoAnnotationItem]:
+    sensitive_providers = providers & _SENSITIVE_PROVIDER_SOURCES
+    if not sensitive_providers or _remaining_auto_slots(draft, max_items) <= 0:
+        return []
+    sensitive_items = _collect_sensitive_annotations(
+        scan_text,
+        max_items=_remaining_auto_slots(draft, max_items),
+        providers=sensitive_providers,
+    )
+    draft.candidates.extend(sensitive_items)
+    for source in {str(item.source) for item in sensitive_items}:
+        _append_provider_used(draft.providers_used, source)
+    return sensitive_items
+
+
+def _collect_regex_auto_provider(draft: _AutoAnnotationDraft, scan_text: str, max_items: int) -> None:
+    if _remaining_auto_slots(draft, max_items) <= 0:
+        return
+    entity_items = _collect_entity_annotations(scan_text, max_items=_remaining_auto_slots(draft, max_items))
+    draft.candidates.extend(entity_items)
+    if entity_items:
+        _append_provider_used(draft.providers_used, "regex")
+
+
+def _collect_keyword_auto_provider(draft: _AutoAnnotationDraft, scan_text: str, body: AutoAnnotationRequest, max_items: int) -> None:
+    if _remaining_auto_slots(draft, max_items) <= 0:
+        return
+    draft.keyword_provider, keyword_items = _collect_keyword_annotations(
+        scan_text,
+        provider=str(body.keyword_provider or "simple"),
+        top_k=int(body.keyword_top_k or 12),
+        max_items=_remaining_auto_slots(draft, max_items),
+    )
+    draft.candidates.extend(keyword_items)
+    if keyword_items:
+        _append_provider_used(draft.providers_used, "keyword")
+
+
+async def _collect_document_focus_annotations(
+    draft: _AutoAnnotationDraft,
+    scan_text: str,
+    body: AutoAnnotationRequest,
+    providers: set[str],
+    max_items: int,
+) -> None:
+    if "cpu" in providers:
+        _collect_cpu_auto_provider(draft, scan_text, body, max_items)
+    if "llm" in providers:
+        await _collect_llm_auto_provider(draft, scan_text, body, max_items)
+
+    _collect_document_focus_rule_fallback(draft, scan_text, body, providers, max_items)
+
+    if "gliner" in providers:
+        gliner_items = await _collect_gliner_auto_provider(draft, scan_text, max_items)
+        if gliner_items:
+            draft.strategy = "hybrid" if draft.strategy == "llm" else "rules"
+
+    if providers & _SENSITIVE_PROVIDER_SOURCES and _remaining_auto_slots(draft, max_items) > 0:
+        _collect_sensitive_auto_provider(draft, scan_text, providers, max_items)
+        draft.strategy = "hybrid" if draft.candidates else draft.strategy
+
+
+async def _collect_compliance_annotations(
+    draft: _AutoAnnotationDraft,
+    scan_text: str,
+    body: AutoAnnotationRequest,
+    providers: set[str],
+    max_items: int,
+) -> None:
+    _collect_sensitive_auto_provider(draft, scan_text, providers, max_items)
+    if "gliner" in providers:
+        await _collect_gliner_auto_provider(draft, scan_text, max_items)
+    if "regex" in providers:
+        _collect_regex_auto_provider(draft, scan_text, max_items)
+    if "keyword" in providers:
+        _collect_keyword_auto_provider(draft, scan_text, body, max_items)
+    draft.strategy = "rules"
+
+
+def _finalize_auto_annotation_keyword_provider(
+    keyword_provider: str | None,
+    body: AutoAnnotationRequest,
+    providers: set[str],
+) -> str | None:
+    if keyword_provider is not None or "keyword" not in providers:
+        return keyword_provider
+    provider = str(body.keyword_provider or "simple").strip().lower() or "simple"
+    return "simple" if provider == "auto" else provider
+
+
+def _count_dataset_parsed_content(db: Session, tenant_id: UUID, dataset_id: UUID) -> int:
     total = (
         db.query(func.count(DocumentParsedContent.document_id))
         .join(
@@ -872,11 +1115,11 @@ def _collect_common_lines_texts(
         )
         .scalar()
     )
-    total_with_content = int(total or 0)
+    return int(total or 0)
 
-    # Pull a small batch of latest docs with parsed content, then enforce document ACL.
-    # We over-fetch to avoid ending up with too few after ACL filtering.
-    raw_doc_rows = (
+
+def _candidate_common_line_doc_ids(db: Session, tenant_id: UUID, dataset_id: UUID) -> list[UUID]:
+    rows = (
         db.query(DBDocument.id)
         .join(
             DocumentParsedContent,
@@ -893,8 +1136,17 @@ def _collect_common_lines_texts(
         .limit(200)
         .all()
     )
-    raw_doc_ids = [row[0] for row in raw_doc_rows if row and row[0]]
+    return [row[0] for row in rows if row and row[0]]
 
+
+def _allowed_common_line_doc_ids(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    raw_doc_ids: list[UUID],
+    limit_docs: int,
+) -> list[UUID]:
     allowed_ids, _missing = get_allowed_document_id_sets(
         db,
         tenant_id=tenant_id,
@@ -902,11 +1154,14 @@ def _collect_common_lines_texts(
         doc_ids=raw_doc_ids,
         check_member=False,
     )
-    allowed_ordered = [doc_id for doc_id in raw_doc_ids if doc_id in allowed_ids][: int(limit_docs or 20)]
+    return [doc_id for doc_id in raw_doc_ids if doc_id in allowed_ids][: int(limit_docs or 20)]
 
-    if not allowed_ordered:
-        return total_with_content, []
 
+def _parsed_content_by_doc_id(
+    db: Session,
+    tenant_id: UUID,
+    doc_ids: list[UUID],
+) -> dict[UUID, tuple[str, str]]:
     rows = (
         db.query(
             DocumentParsedContent.document_id,
@@ -915,23 +1170,56 @@ def _collect_common_lines_texts(
         )
         .filter(
             DocumentParsedContent.tenant_id == tenant_id,
-            DocumentParsedContent.document_id.in_(allowed_ordered),
+            DocumentParsedContent.document_id.in_(doc_ids),
         )
         .all()
     )
-    by_id: dict[UUID, tuple[str, str]] = {}
-    for doc_id, original, cleaned in rows:
-        by_id[doc_id] = (str(original or ""), str(cleaned or ""))
+    return {doc_id: (str(original or ""), str(cleaned or "")) for doc_id, original, cleaned in rows}
 
+
+def _select_common_line_text(original: str, cleaned: str, *, use_original: bool) -> str:
+    if use_original and original.strip():
+        return original
+    if cleaned.strip():
+        return cleaned
+    return original
+
+
+def _collect_common_lines_texts(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    dataset_id: UUID,
+    limit_docs: int,
+    use_original: bool,
+) -> tuple[int, list[str]]:
+    """
+    Collect a bounded list of parsed markdown texts for common-lines learning.
+
+    Returns (total_with_parsed_content_in_dataset, texts[]).
+    """
+    # Count eligible docs (best-effort; does not enforce document ACL).
+    total_with_content = _count_dataset_parsed_content(db, tenant_id, dataset_id)
+
+    # Pull a small batch of latest docs with parsed content, then enforce document ACL.
+    # We over-fetch to avoid ending up with too few after ACL filtering.
+    raw_doc_ids = _candidate_common_line_doc_ids(db, tenant_id, dataset_id)
+    allowed_ordered = _allowed_common_line_doc_ids(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        raw_doc_ids=raw_doc_ids,
+        limit_docs=limit_docs,
+    )
+    if not allowed_ordered:
+        return total_with_content, []
+
+    by_id = _parsed_content_by_doc_id(db, tenant_id, allowed_ordered)
     texts: list[str] = []
     for doc_id in allowed_ordered:
         original, cleaned = by_id.get(doc_id, ("", ""))
-        if use_original and original.strip():
-            text = original
-        elif cleaned.strip():
-            text = cleaned
-        else:
-            text = original
+        text = _select_common_line_text(original, cleaned, use_original=use_original)
         if not text.strip():
             continue
         texts.append(text)
@@ -1027,6 +1315,117 @@ def _resolve_custom_profile_row(
     return row
 
 
+@dataclass
+class _GovernanceProfileImportRecord:
+    name: str
+    key: str | None
+    description: str | None
+    payload: GovernanceProfilePayload
+
+
+async def _read_governance_profile_import_json(file: UploadFile) -> object:
+    max_bytes = 256 * 1024
+    raw = await file.read(max_bytes + 1)
+    if len(raw) > max_bytes:
+        raise HTTPException(status_code=413, detail=f"Profile script too large (max={max_bytes} bytes)")
+    try:
+        return json.loads(raw.decode("utf-8"))
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid JSON file") from exc
+
+
+def _raw_governance_profile_import_items(data: object) -> list[object]:
+    if isinstance(data, dict) and isinstance(data.get("profiles"), list):
+        return list(data.get("profiles") or [])
+    return [data]
+
+
+def _reject_unknown_import_keys(item: dict[str, object], allowed: set[str], *, label: str) -> None:
+    unknown_keys = set(item.keys()) - allowed
+    if unknown_keys:
+        unknown_sorted = ", ".join(sorted(map(str, unknown_keys))[:20])
+        raise HTTPException(status_code=400, detail=f"Unknown {label} fields: {unknown_sorted}")
+
+
+def _normalize_governance_profile_import_record(item: object) -> _GovernanceProfileImportRecord:
+    if not isinstance(item, dict):
+        raise HTTPException(status_code=400, detail="Invalid profile item (expected object)")
+
+    _reject_unknown_import_keys(item, {"name", "description", "key", "payload"}, label="profile")
+    name = str(item.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Profile name is required")
+
+    try:
+        key = validate_profile_key(item.get("key"))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    payload_raw = item.get("payload")
+    if not isinstance(payload_raw, dict):
+        raise HTTPException(status_code=400, detail="payload is required and must be an object")
+
+    _reject_unknown_import_keys(
+        payload_raw,
+        {"version", "extends", "input_formats", "pipeline_patch", "regex_rules", "processing_scripts"},
+        label="payload",
+    )
+    try:
+        payload = GovernanceProfilePayload(**payload_raw)
+        payload = validate_and_normalize_payload(payload)
+    except RegexRulesValidationError as exc:
+        raise HTTPException(status_code=400, detail=exc.to_detail()) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid payload: {str(exc)[:200]}") from exc
+
+    description = item.get("description")
+    desc = str(description or "").strip()[:2000] if description is not None else None
+    return _GovernanceProfileImportRecord(name=name, key=key, description=desc, payload=payload)
+
+
+def _find_existing_governance_profile(
+    db: Session,
+    tenant_id: UUID,
+    key: str | None,
+) -> DBGovernanceProfile | None:
+    if not key:
+        return None
+    return (
+        db.query(DBGovernanceProfile)
+        .filter(DBGovernanceProfile.tenant_id == tenant_id, DBGovernanceProfile.key == key)
+        .first()
+    )
+
+
+def _upsert_governance_profile_import_record(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    record: _GovernanceProfileImportRecord,
+    overwrite: bool,
+) -> tuple[int, int, GovernanceProfileSummary]:
+    existing = _find_existing_governance_profile(db, tenant_id, record.key)
+    if existing is not None:
+        if not overwrite:
+            raise HTTPException(status_code=409, detail=f"Profile key already exists: {record.key}")
+        existing.name = record.name[:200]
+        existing.description = record.description
+        existing.payload = record.payload.model_dump()
+        return 0, 1, _profile_summary_from_row(existing)
+
+    row = DBGovernanceProfile(
+        tenant_id=tenant_id,
+        key=record.key,
+        name=record.name[:200],
+        description=record.description,
+        is_system=False,
+        payload=record.payload.model_dump(),
+    )
+    db.add(row)
+    db.flush()
+    return 1, 0, _profile_summary_from_row(row)
+
+
 def _governance_analysis_options(body: CleanPreviewRequest | GovernanceAnalyzeRequest) -> dict[str, object]:
     return {
         "remove_control_chars": bool(body.remove_control_chars),
@@ -1043,6 +1442,362 @@ def _governance_analysis_options(body: CleanPreviewRequest | GovernanceAnalyzeRe
         "drop_low_density": bool(body.drop_low_density),
         "drop_low_density_threshold": float(body.drop_low_density_threshold or 0.0),
     }
+
+
+def _remove_images_mode(body: CleanPreviewRequest | GovernanceAnalyzeRequest) -> str:
+    return str(body.remove_images or "none").strip().lower()
+
+
+def _extract_governance_input_text(body: CleanPreviewRequest | GovernanceAnalyzeRequest) -> str:
+    raw_input = body.markdown or ""
+    if body.input_format != "html":
+        return raw_input
+
+    html = raw_input
+    if _remove_images_mode(body) in {"decorative", "all"}:
+        html = strip_images(html, mode=_remove_images_mode(body)).text  # type: ignore[arg-type]
+    extracted = extract_text_from_html(html, xpath=body.html_xpath)
+    if body.html_xpath and extracted.xpath_error and extracted.xpath_error.startswith("xpath_failed:"):
+        raise HTTPException(status_code=400, detail=f"Invalid XPath: {extracted.xpath_error}")
+    return extracted.text or ""
+
+
+def _governance_issue_models(raw_issues: list[Any]) -> list[GovernanceIssue]:
+    out: list[GovernanceIssue] = []
+    for it in raw_issues:
+        out.append(
+            GovernanceIssue(
+                code=str(it.code),
+                severity=it.severity,  # type: ignore[arg-type]
+                message=str(it.message),
+                count=int(getattr(it, "count", 0) or 0),
+                samples=list(getattr(it, "samples", None) or []),
+                suggested_pipeline_patch=dict(getattr(it, "suggested_pipeline_patch", None) or {}),
+            )
+        )
+    return out
+
+
+def _analyze_governance_preview(
+    baseline_text: str,
+    after_text: str,
+    body: CleanPreviewRequest | GovernanceAnalyzeRequest,
+    analysis_opts: dict[str, object],
+) -> tuple[list[GovernanceIssue], dict[str, object]]:
+    issues, patch = analyze_governance(
+        baseline_text,
+        after_text,
+        input_format=str(body.input_format or "markdown"),
+        options=analysis_opts,
+    )
+    return _governance_issue_models(issues), dict(patch or {})
+
+
+def _normalize_frontmatter_tags(raw_tags: object) -> list[str] | None:
+    if isinstance(raw_tags, list):
+        cleaned: list[str] = []
+        seen: set[str] = set()
+        for item in raw_tags:
+            if item is None:
+                continue
+            value = str(item).strip()
+            key = value.casefold()
+            if not value or key in seen:
+                continue
+            seen.add(key)
+            cleaned.append(value[:64])
+        return cleaned[:50] or None
+
+    if isinstance(raw_tags, str) and raw_tags.strip():
+        parts = [part.strip() for part in raw_tags.replace(";", ",").split(",") if part.strip()]
+        return parts[:50] or None
+    return None
+
+
+def _extract_clean_preview_frontmatter(
+    input_text: str,
+    body: CleanPreviewRequest,
+) -> tuple[str, dict[str, Any] | None, str | None, list[str] | None]:
+    if not (body.extract_frontmatter or body.strip_frontmatter):
+        return input_text, None, None, None
+
+    try:
+        fm = extract_markdown_frontmatter(input_text, strip=bool(body.strip_frontmatter))
+    except Exception:
+        fm = None
+    if fm is None:
+        return input_text, None, None, None
+
+    data = getattr(fm, "data", None)
+    frontmatter = dict(data) if isinstance(data, dict) and data else None
+    title = None
+    tags = None
+    if frontmatter:
+        raw_title = frontmatter.get("title")
+        if isinstance(raw_title, str) and raw_title.strip():
+            title = raw_title.strip()[:200]
+        raw_tags = next((frontmatter.get(key) for key in _FRONTMATTER_TAG_KEYS if frontmatter.get(key)), None)
+        tags = _normalize_frontmatter_tags(raw_tags)
+
+    if body.strip_frontmatter:
+        input_text = getattr(fm, "stripped_text", input_text) or ""
+    return input_text, frontmatter, title, tags
+
+
+def _append_clean_preview_rules(
+    rules: list[RegexRule],
+    rule_meta: list[dict[str, object]],
+    new_rules: Iterable[RegexRule],
+    *,
+    source: str,
+    pack: str | None,
+) -> None:
+    for rule in new_rules:
+        rules.append(rule)
+        rule_meta.append({"source": source, "pack": pack})
+
+
+def _selected_rule_pack_keys(raw_packs: Iterable[object]) -> list[str]:
+    seen: set[str] = set()
+    keys: list[str] = []
+    for raw in raw_packs:
+        if not isinstance(raw, str):
+            continue
+        key = raw.strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        keys.append(key)
+    return keys
+
+
+def _build_clean_preview_rules(body: CleanPreviewRequest) -> tuple[list[RegexRule], list[dict[str, object]]]:
+    rules: list[RegexRule] = []
+    rule_meta: list[dict[str, object]] = []
+    if body.use_default_rules:
+        _append_clean_preview_rules(rules, rule_meta, DEFAULT_MARKDOWN_RULES, source="default", pack=None)
+
+    for key in _selected_rule_pack_keys(body.rule_packs or []):
+        pack = GOVERNANCE_RULE_PACKS.get(key)
+        if pack:
+            _append_clean_preview_rules(rules, rule_meta, pack, source="pack", pack=key)
+
+    try:
+        custom_rules_norm = validate_regex_rules(body.rules)
+    except RegexRulesValidationError as exc:
+        raise HTTPException(status_code=400, detail=exc.to_detail()) from exc
+
+    custom_rules = [RegexRule(pattern=r["pattern"], repl=r["repl"], flags=r["flags"]) for r in (custom_rules_norm or [])]
+    _append_clean_preview_rules(rules, rule_meta, custom_rules, source="custom", pack=None)
+    return rules, rule_meta
+
+
+def _clean_preview_rule_stats(
+    rules: list[RegexRule],
+    rule_meta: list[dict[str, object]],
+    rule_hits: list[int],
+) -> list[dict[str, object]]:
+    rule_stats: list[dict[str, object]] = []
+    for i, rule in enumerate(rules or []):
+        meta = rule_meta[i] if i < len(rule_meta) and isinstance(rule_meta[i], dict) else {}
+        rule_stats.append(
+            {
+                "index": i,
+                "pattern": str(getattr(rule, "pattern", "") or ""),
+                "repl": (getattr(rule, "repl", "") if isinstance(getattr(rule, "repl", ""), str) else ""),
+                "flags": int(getattr(rule, "flags", 0) or 0),
+                "hits": int(rule_hits[i] if i < len(rule_hits) else 0),
+                "source": str(meta.get("source") or "") or None,
+                "pack": str(meta.get("pack") or "") or None,
+            }
+        )
+    return rule_stats
+
+
+def _apply_preview_format_transforms(text: str, body: CleanPreviewRequest) -> str:
+    if body.normalize_tables:
+        text = normalize_markdown_tables(text).text
+    if body.strip_code_line_numbers:
+        text = strip_fenced_code_line_numbers(text).text
+    if body.remove_boilerplate:
+        text = remove_markdown_boilerplate(text).text
+    if _remove_images_mode(body) in {"decorative", "all"}:
+        text = strip_images(text, mode=_remove_images_mode(body)).text  # type: ignore[arg-type]
+    return text
+
+
+def _apply_preview_sensitive_redaction(
+    text: str,
+    body: CleanPreviewRequest,
+) -> tuple[str, dict[str, int] | None, dict[str, int] | None]:
+    pii_hits: dict[str, int] | None = None
+    secrets_hits: dict[str, int] | None = None
+    if body.pii_anonymize:
+        pii = anonymize_pii(text, enabled=True, mode=str(body.pii_mode or "mask"), mask=str(body.pii_mask or REDACTED_MASK))  # type: ignore[arg-type]
+        text = pii.text
+        pii_hits = pii.hits or {}
+    if body.secrets_redact:
+        sec = redact_secrets(text, enabled=True, mode=str(body.secrets_mode or "mask"), mask=str(body.secrets_mask or SECRET_MASK))  # type: ignore[arg-type]
+        text = sec.text
+        secrets_hits = sec.hits or {}
+    return text, pii_hits, secrets_hits
+
+
+def _try_drop_duplicate_paragraphs(text: str, body: CleanPreviewRequest) -> tuple[str, int]:
+    if not body.drop_duplicate_paragraphs:
+        return text, 0
+    try:
+        para = drop_duplicate_paragraphs(
+            text,
+            min_occurrences=int(body.drop_duplicate_paragraphs_min_occurrences or 0),
+            min_paragraph_chars=int(body.drop_duplicate_paragraphs_min_chars or 0),
+            max_paragraph_chars=int(body.drop_duplicate_paragraphs_max_chars or 0),
+        )
+        return para.text, int(getattr(para, "paragraphs_dropped", 0) or 0)
+    except Exception as exc:
+        logger.debug(_PIPELINE_FALLBACK_LOG_MESSAGE, exc)
+        return text, 0
+
+
+def _try_trim_references(text: str, body: CleanPreviewRequest) -> tuple[str, int]:
+    if not body.trim_references:
+        return text, 0
+    try:
+        ref = trim_references_section(text)
+        return ref.text, int(getattr(ref, "removed_lines", 0) or 0)
+    except Exception as exc:
+        logger.debug(_PIPELINE_FALLBACK_LOG_MESSAGE, exc)
+        return text, 0
+
+
+def _try_normalize_urls(text: str, body: CleanPreviewRequest) -> tuple[str, int]:
+    if not body.normalize_urls:
+        return text, 0
+    try:
+        url = normalize_urls(text, strip_tracking=bool(body.normalize_urls_strip_tracking))
+        return url.text, int(getattr(url, "urls_changed", 0) or 0)
+    except Exception as exc:
+        logger.debug(_PIPELINE_FALLBACK_LOG_MESSAGE, exc)
+        return text, 0
+
+
+def _apply_preview_cleanup_stats(text: str, body: CleanPreviewRequest) -> tuple[str, int, int, int]:
+    text, paragraphs_dropped = _try_drop_duplicate_paragraphs(text, body)
+    text, references_removed_lines = _try_trim_references(text, body)
+    text, urls_changed = _try_normalize_urls(text, body)
+    return text, paragraphs_dropped, references_removed_lines, urls_changed
+
+
+def _preview_drop_reason(text: str, body: CleanPreviewRequest) -> str | None:
+    if body.drop_outline_only:
+        decision = drop_if_outline_only(
+            text,
+            min_content_chars=int(body.drop_outline_min_content_chars or 0),
+            max_heading_ratio=float(body.drop_outline_max_heading_ratio or 0.0),
+        )
+        if decision.dropped:
+            return decision.reason or "outline_only"
+    if body.drop_low_density:
+        decision = drop_if_low_density(text, threshold=float(body.drop_low_density_threshold or 0.0))
+        if decision.dropped:
+            return decision.reason or "low_density"
+    return None
+
+
+def _extract_preview_title(text: str, current_title: str | None) -> str | None:
+    if current_title is not None:
+        return current_title
+    try:
+        return extract_markdown_title(text)
+    except Exception:
+        return None
+
+
+def _detect_preview_language(text: str, body: CleanPreviewRequest) -> tuple[str | None, float | None]:
+    if not body.detect_language:
+        return None, None
+    try:
+        lang = detect_language(text, min_chars=int(body.language_min_chars or 0))
+        language = str(getattr(lang, "language", "") or "").strip() or None
+        confidence = float(getattr(lang, "confidence", 0.0) or 0.0)
+        return language, confidence
+    except Exception:
+        return None, None
+
+
+def _extract_preview_keywords(text: str, body: CleanPreviewRequest) -> list[str] | None:
+    if not body.extract_keywords:
+        return None
+    try:
+        max_chars = max(0, int(body.keywords_max_chars or 0))
+        snippet = text[:max_chars] if max_chars > 0 else text
+        keywords = extract_keywords_preview(
+            snippet,
+            provider=str(body.keywords_provider or "auto"),
+            top_k=int(body.keywords_top_k or 10),
+        )
+        return list(keywords) if keywords else None
+    except Exception:
+        return None
+
+
+def _build_clean_preview_response(
+    *,
+    baseline_text: str,
+    markdown: str,
+    body: CleanPreviewRequest,
+    clean_result: Any,
+    rule_stats: list[dict[str, object]],
+    dropped: bool,
+    drop_reason: str | None,
+    pii_hits: dict[str, int] | None,
+    secrets_hits: dict[str, int] | None,
+    frontmatter: dict[str, Any] | None,
+    title: str | None,
+    tags: list[str] | None,
+    urls_changed: int,
+    paragraphs_dropped: int,
+    references_removed_lines: int,
+    analysis_opts: dict[str, object],
+    language: str | None = None,
+    language_confidence: float | None = None,
+    keywords: list[str] | None = None,
+) -> CleanPreviewResponse:
+    diff_unified, diff_truncated = (None, False)
+    if body.include_diff:
+        diff_unified, diff_truncated = _unified_diff_text(baseline_text, markdown, max_lines=body.diff_max_lines)
+    added, removed, changed_lines = _line_diff_stats(baseline_text, markdown)
+    issues_out, suggested_patch = _analyze_governance_preview(baseline_text, markdown, body, analysis_opts)
+    return CleanPreviewResponse(
+        markdown=markdown,
+        applied_rules=clean_result.applied_rules,
+        changed=bool(dropped or markdown != baseline_text),
+        rule_stats=rule_stats,
+        dropped=dropped,
+        drop_reason=drop_reason,
+        pii_hits=pii_hits,
+        secrets_hits=secrets_hits,
+        frontmatter=frontmatter,
+        title=title,
+        tags=tags,
+        language=language,
+        language_confidence=language_confidence,
+        keywords=keywords,
+        urls_changed=int(urls_changed),
+        paragraphs_dropped=int(paragraphs_dropped),
+        references_removed_lines=int(references_removed_lines),
+        input_chars=len(baseline_text),
+        output_chars=len(markdown or ""),
+        input_lines=len((baseline_text or "").splitlines()),
+        output_lines=len((markdown or "").splitlines()),
+        added_lines=added,
+        removed_lines=removed,
+        changed_lines=changed_lines,
+        diff_unified=diff_unified,
+        diff_truncated=bool(diff_truncated),
+        issues=issues_out,
+        suggested_pipeline_patch=suggested_patch,
+    )
 
 
 def _line_diff_stats(before: str, after: str) -> tuple[int, int, int]:
@@ -1067,6 +1822,7 @@ def _line_diff_stats(before: str, after: str) -> tuple[int, int, int]:
             # Count replaced region as changed (best-effort).
             changed += max(i2 - i1, j2 - j1)
     return added, removed, changed
+
 
 def _unified_diff_text(before: str, after: str, *, max_lines: int) -> tuple[str | None, bool]:
     """
@@ -1096,6 +1852,284 @@ def _unified_diff_text(before: str, after: str, *, max_lines: int) -> tuple[str 
     return "\n".join(diff_lines), False
 
 
+def _dependency_backend_availability(
+    *,
+    enabled_setting: str,
+    enable_note: str,
+    module: str,
+    attr: str | None = None,
+    package_name: str,
+) -> tuple[bool, str | None]:
+    if not bool(getattr(settings, enabled_setting, False)):
+        return False, enable_note
+    ok, err = check_dependency(module, attr=attr)
+    return ok, None if ok else f"{package_name} not installed: {err}"
+
+
+def _enabled_api_backend_availability(
+    *,
+    enabled_setting: str,
+    api_url_setting: str,
+    enable_note: str,
+    api_url_note: str,
+) -> tuple[bool, str | None]:
+    enabled = bool(getattr(settings, enabled_setting, False))
+    api_url = bool((getattr(settings, api_url_setting, "") or "").strip())
+    if not enabled:
+        return False, enable_note
+    if not api_url:
+        return False, api_url_note
+    return True, None
+
+
+def _mineru_backend_availability() -> tuple[bool, str | None]:
+    available = bool(settings.MINERU_ENABLED and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL))
+    if available:
+        return True, None
+    return False, "Set MINERU_ENABLED=true and configure MINERU_API_TOKEN or MINERU_LOCAL_SERVER_URL."
+
+
+def _deepseek_ocr_backend_availability() -> tuple[bool, str | None]:
+    enabled = bool(getattr(settings, "DEEPSEEK_OCR_ENABLED", False))
+    api_key = bool((getattr(settings, "SILICONFLOW_API_KEY", "") or "").strip())
+    if not enabled:
+        return False, "Set DEEPSEEK_OCR_ENABLED=true."
+    if not api_key:
+        return False, "Configure SILICONFLOW_API_KEY."
+    return True, None
+
+
+def _qianfan_ocr_backend_availability() -> tuple[bool, str | None]:
+    return _enabled_api_backend_availability(
+        enabled_setting="QIANFAN_OCR_ENABLED",
+        api_url_setting="QIANFAN_OCR_API_URL",
+        enable_note="Set QIANFAN_OCR_ENABLED=true.",
+        api_url_note="Configure QIANFAN_OCR_API_URL (e.g., http://localhost:2090/convert).",
+    )
+
+
+def _textin_backend_availability() -> tuple[bool, str | None]:
+    enabled = bool(getattr(settings, "TEXTIN_ENABLED", False))
+    api_url = bool((getattr(settings, "TEXTIN_API_URL", "") or "").strip())
+    app_id = bool((getattr(settings, "TEXTIN_APP_ID", "") or "").strip())
+    secret_code = bool((getattr(settings, "TEXTIN_SECRET_CODE", "") or "").strip())
+    if not enabled:
+        return False, "Set TEXTIN_ENABLED=true."
+    if not api_url:
+        return False, "Configure TEXTIN_API_URL."
+    if not app_id:
+        return False, "Configure TEXTIN_APP_ID."
+    if not secret_code:
+        return False, "Configure TEXTIN_SECRET_CODE."
+    return True, None
+
+
+def _etl4llm_backend_availability() -> tuple[bool, str | None]:
+    return _enabled_api_backend_availability(
+        enabled_setting="ETL4LLM_ENABLED",
+        api_url_setting="ETL4LLM_API_URL",
+        enable_note="Set ETL4LLM_ENABLED=true.",
+        api_url_note="Configure ETL4LLM_API_URL (e.g., http://localhost:10001/v1/etl4llm/predict).",
+    )
+
+
+def _marker_backend_availability() -> tuple[bool, str | None]:
+    return _enabled_api_backend_availability(
+        enabled_setting="MARKER_ENABLED",
+        api_url_setting="MARKER_API_URL",
+        enable_note="Set MARKER_ENABLED=true.",
+        api_url_note="Configure MARKER_API_URL (e.g., http://localhost:2080/convert).",
+    )
+
+
+def _paddle_vl_backend_availability() -> tuple[bool, str | None]:
+    return _enabled_api_backend_availability(
+        enabled_setting="PADDLE_VL_ENABLED",
+        api_url_setting="PADDLE_VL_API_URL",
+        enable_note="Set PADDLE_VL_ENABLED=true.",
+        api_url_note="Configure PADDLE_VL_API_URL (e.g., http://localhost:9030/convert).",
+    )
+
+
+def _olmocr_backend_availability() -> tuple[bool, str | None]:
+    return _enabled_api_backend_availability(
+        enabled_setting="OLMOCR_ENABLED",
+        api_url_setting="OLMOCR_API_URL",
+        enable_note="Set OLMOCR_ENABLED=true.",
+        api_url_note="Configure OLMOCR_API_URL (e.g., http://localhost:2085/convert).",
+    )
+
+
+def _magicpdf_backend_availability() -> tuple[bool, str | None]:
+    if not bool(getattr(settings, "MAGIC_PDF_ENABLED", False)):
+        return False, "MAGIC_PDF_ENABLED=false"
+    if magicpdf_service_configured(getattr(settings, "MAGIC_PDF_API_URL", "")):
+        return True, None
+    cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
+    if not resolve_cli_command(cli):
+        return False, f"MagicPDF CLI not found: {cli} (try activating the env or set MAGIC_PDF_CLI to full path)"
+    models_dir = resolve_magicpdf_models_dir(getattr(settings, "MAGIC_PDF_MODELS_DIR", ""))
+    if not models_dir:
+        return False, "MagicPDF models not found: mount PDF-Extract-Kit cache or set MAGIC_PDF_MODELS_DIR"
+    return True, None
+
+
+_PARSER_BACKEND_CHECKS: dict[str, Callable[[], tuple[bool, str | None]]] = {
+    "mineru": _mineru_backend_availability,
+    "deepdoc": lambda: (True, None)
+    if bool(getattr(settings, "DEEPDOC_ENABLED", False))
+    else (False, "Set DEEPDOC_ENABLED=true."),
+    "deepseek_ocr": _deepseek_ocr_backend_availability,
+    "qianfan_ocr": _qianfan_ocr_backend_availability,
+    "textin": _textin_backend_availability,
+    "markitdown": lambda: _dependency_backend_availability(
+        enabled_setting="MARKITDOWN_ENABLED",
+        enable_note="Set MARKITDOWN_ENABLED=true.",
+        module="markitdown",
+        attr="MarkItDown",
+        package_name="markitdown",
+    ),
+    "docling": lambda: _dependency_backend_availability(
+        enabled_setting="DOCLING_ENABLED",
+        enable_note="Set DOCLING_ENABLED=true.",
+        module="docling.document_converter",
+        attr="DocumentConverter",
+        package_name="docling",
+    ),
+    "etl4llm": _etl4llm_backend_availability,
+    "marker": _marker_backend_availability,
+    "paddle_vl": _paddle_vl_backend_availability,
+    "olmocr": _olmocr_backend_availability,
+    "magicpdf": _magicpdf_backend_availability,
+}
+
+
+def _pipeline_parser_backend_info(name: str) -> ParserBackendInfo:
+    backend = (name or "").strip().lower()
+    if backend == "auto":
+        return ParserBackendInfo(name=backend, available=True, notes="Auto routes to the best enabled backend.")
+    if backend == "basic":
+        return ParserBackendInfo(name=backend, available=True, notes=None)
+
+    check = _PARSER_BACKEND_CHECKS.get(backend)
+    if check is None:
+        return ParserBackendInfo(name=backend, available=False, notes="Unknown backend")
+    available, notes = check()
+    return ParserBackendInfo(name=backend, available=bool(available), notes=notes)
+
+
+_AUTO_CHUNK_STRATEGY_NOTE = (
+    "Auto-selects a chunker per document (git_commit_log/diff/patch/subtitles/logs/stacktrace/http_trace/"
+    "terraform_plan/xml/junit_xml/sitemap_xml/maven_pom/xml_feed/openapi/github_actions/docker_compose/gitlab_ci/"
+    "ansible_playbook/yaml/toml/sql/terraform/nginx/dockerfile/makefile/kv-config/jsonl/graphql/proto/api/"
+    "changelog/csv/spreadsheet/chat/email/jira/postmortem/qa/qa_markdown/prd/sop/glossary/meeting_minutes/"
+    "timeline/resume/slides/laws/paper/book/outline/transcript/rst/asciidoc/latex/org/wiki/html/markdown_table/"
+    "markdown_frontmatter/markdown/json/plain text)."
+)
+_MANUSCRIPT_CHUNK_STRATEGY_NOTE = (
+    "Preset for manuscript-like documents (git_commit_log/diff/patch/subtitles/logs/stacktrace/http_trace/"
+    "terraform_plan/xml/junit_xml/sitemap_xml/maven_pom/xml_feed/openapi/github_actions/docker_compose/gitlab_ci/"
+    "ansible_playbook/yaml/toml/sql/terraform/nginx/dockerfile/makefile/kv-config/jsonl/graphql/proto/api/"
+    "changelog/csv/spreadsheet/chat/email/jira/postmortem/qa/qa_markdown/prd/sop/glossary/meeting_minutes/"
+    "timeline/resume/slides/laws/paper/book/outline/transcript/rst/asciidoc/latex/org/wiki/html/markdown_table/"
+    "markdown_frontmatter/markdown/...)."
+)
+_CHUNK_STRATEGY_NOTES = {
+    "auto": _AUTO_CHUNK_STRATEGY_NOTE,
+    "manuscript": _MANUSCRIPT_CHUNK_STRATEGY_NOTE,
+    "pdf_layout": "PDF layout-aware chunking. Requires parsers that emit position tags like @@page\\tl\\tr\\tt\\tb##; strips tags from chunk text and records bbox/column metadata.",
+    "outline": "Numbered-outline aware chunking (keeps section heading context).",
+    "transcript": "Transcript/dialogue aware chunking (keeps speaker turns together).",
+    "qa_pairs": "FAQ / Q&A aware chunking (keeps Q/A pairs together).",
+    "paper": "Academic paper/report aware chunking (splits by common paper sections).",
+    "book_structured": "Book chapter/part aware chunking (keeps chapter context).",
+    "laws_structured": "Legal/policy aware chunking (splits by articles/clauses).",
+    "email_thread": "Email thread aware chunking (keeps whole messages together).",
+    "sop_steps": "SOP/procedure aware chunking (splits by Step/步骤 headings).",
+    "glossary": "Glossary/dictionary aware chunking (splits by term-definition entries).",
+    "resume_structured": "Resume/CV section-aware chunking (splits by common resume headings).",
+    "presentation_slides": "Slide-aware chunking (splits by separators/markers like '---' or 'Slide 1').",
+    "csv_rows": "CSV row-aware chunking (groups 'row N:' blocks; best with CsvParser output).",
+    "spreadsheet_sheet": "Spreadsheet sheet-aware chunking (splits by '## Sheet:' sections; best with ExcelParser output).",
+    "markdown_table": "Markdown table-aware chunking (avoids splitting rows; splits large tables at row boundaries).",
+    "chat_history": "Timestamped chat history chunking (keeps whole messages together with message-level overlap).",
+    "changelog": "Changelog/release-notes aware chunking (splits by release headings like '## [1.2.3] - 2024-01-01').",
+    "log_events": "Log-events aware chunking (keeps multi-line log entries together; entry-level overlap).",
+    "subtitles": "Subtitles aware chunking (SRT/VTT-like; splits by timecode cues).",
+    "api_reference": "API reference aware chunking (splits by endpoint signatures like 'GET /path').",
+    "diff_patch": "Diff/patch aware chunking (splits by file blocks and @@ hunks).",
+    "git_commit_log": "Git commit-log aware chunking (splits by 'commit <sha>' blocks; preserves commit context even with patches).",
+    "kv_config": "Key-value config aware chunking (groups KEY=VALUE entries; supports INI sections).",
+    "qa_markdown": "Markdown Q/A aware chunking (supports bullets/headings like '**Q:**' / '### Q:').",
+    "meeting_minutes": "Meeting-minutes aware chunking (splits by common sections like agenda/actions/decisions).",
+    "timeline_events": "Timeline/date-event aware chunking (keeps dated events together).",
+    "html_sections": "HTML heading-aware chunking (splits by <h1>-<h6> tags).",
+    "rst_sections": "reStructuredText section-aware chunking (splits by underlined headings).",
+    "asciidoc_sections": "AsciiDoc section-aware chunking (splits by '=' heading lines).",
+    "latex_sections": "LaTeX section-aware chunking (splits by \\section/\\chapter commands).",
+    "orgmode_sections": "Org-mode section-aware chunking (splits by '*' heading lines).",
+    "mediawiki_sections": "MediaWiki section-aware chunking (splits by '== Heading ==' lines).",
+    "yaml_manifest": "YAML manifest aware chunking (splits by '---' documents; extracts kind/name when present).",
+    "toml_config": "TOML config aware chunking (splits by [tables] and groups key/value entries).",
+    "sql_schema": "SQL schema/DDL aware chunking (splits by CREATE/ALTER statements).",
+    "stacktrace": "Stacktrace aware chunking (groups traceback blocks; for timestamped logs prefer log_events).",
+    "http_trace": "HTTP trace aware chunking (splits by HTTP request blocks; keeps request+response together).",
+    "terraform_plan": "Terraform plan output aware chunking (splits by '# ... will be ...' change headers).",
+    "xml_feed": "XML feed (RSS/Atom) item-aware chunking (splits by <item>/<entry> blocks).",
+    "junit_xml": "JUnit XML report aware chunking (splits by <testcase> blocks; preserves offsets).",
+    "sitemap_xml": "Sitemap XML aware chunking (splits by <url>/<sitemap> entry blocks).",
+    "maven_pom": "Maven POM XML aware chunking (chunks <dependency>/<plugin> records; preserves offsets).",
+    "openapi_spec": "OpenAPI/Swagger spec aware chunking (splits by per-path blocks under `paths:`).",
+    "github_actions": "GitHub Actions workflow aware chunking (splits by job blocks under `jobs:`).",
+    "docker_compose": "Docker Compose YAML aware chunking (splits by service blocks under `services:`).",
+    "gitlab_ci": "GitLab CI YAML aware chunking (splits by top-level job/config blocks).",
+    "ansible_playbook": "Ansible playbook aware chunking (splits by top-level plays; preserves offsets).",
+    "dockerfile": "Dockerfile aware chunking (splits by FROM stages and instruction blocks).",
+    "makefile": "Makefile aware chunking (splits by target blocks and recipes).",
+    "nginx_config": "Nginx config aware chunking (splits by server blocks; brace-aware).",
+    "terraform_hcl": "Terraform/HCL block-aware chunking (splits by resource/module/variable blocks; brace-aware).",
+    "graphql_schema": "GraphQL schema aware chunking (splits by top-level type/input/enum/interface/union/scalar/directive/schema definitions).",
+    "proto_schema": "Protocol Buffers schema aware chunking (splits by message/enum/service blocks; brace-aware).",
+    "jira_ticket": "Jira/issue-ticket aware chunking (splits by common fields like Summary/Description/Steps/Expected/Actual).",
+    "prd_spec": "PRD/spec aware chunking (splits by common sections like Background/Goals/Scope/Requirements/Acceptance/Risks).",
+    "postmortem_report": "Incident postmortem/RCA aware chunking (splits by common sections like Summary/Impact/Timeline/Root Cause/Action Items).",
+    "jsonl_records": "JSONL/NDJSON record-aware chunking (groups whole JSON records per line; preserves offsets).",
+    "markdown_frontmatter": "Markdown frontmatter aware chunking (keeps YAML frontmatter, then chunks the body).",
+    "sentence_window": "Sentence window chunking with sentence-level overlap.",
+}
+
+
+def _llama_index_chunk_availability() -> tuple[bool, str | None]:
+    if not bool(getattr(settings, "LLAMA_INDEX_ENABLED", False)):
+        return False, "Set LLAMA_INDEX_ENABLED=true."
+    ok, err = check_dependency("llama_index.core")
+    return ok, None if ok else f"llama-index-core not installed: {err}"
+
+
+def _integrated_pipeline_chunk_note() -> str:
+    vision_enabled = bool(getattr(settings, "VISION_LLM_ENABLED", False))
+    vision_key_ok = bool(((getattr(settings, "VISION_LLM_API_KEY", "") or getattr(settings, "LLM_API_KEY", "") or "").strip()))
+    vision_model = (getattr(settings, "VISION_LLM_MODEL", "") or "").strip()
+    if vision_enabled and vision_key_ok:
+        return f"Integrated pipeline (parse+chunk). Vision enrichment enabled (model={vision_model or 'configured'})."
+    if vision_enabled and not vision_key_ok:
+        return "Integrated pipeline (parse+chunk). Vision enrichment enabled but missing API key (set MIMIRQ_VISION_LLM_API_KEY or LLM_API_KEY)."
+    return "Integrated pipeline (parse+chunk). Vision enrichment disabled by default (set MIMIRQ_VISION_LLM_ENABLED=true to enable)."
+
+
+def _pipeline_chunk_strategy_info(name: str) -> ChunkStrategyInfo:
+    strategy = (name or "").strip().lower()
+    available = True
+    notes = _CHUNK_STRATEGY_NOTES.get(strategy)
+    if strategy.startswith("llama_index"):
+        available, notes = _llama_index_chunk_availability()
+    elif strategy in chunker_factory.INTEGRATED_PIPELINE_STRATEGIES:
+        notes = _integrated_pipeline_chunk_note()
+    elif strategy == "markdown":
+        notes = "Alias of markdown_header."
+    return ChunkStrategyInfo(name=strategy, available=bool(available), notes=decorate_chunk_strategy_note(strategy, notes))
+
+
 @router.get("/capabilities", response_model=PipelineCapabilitiesResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_pipeline_capabilities(
     *,
@@ -1113,348 +2147,11 @@ async def get_pipeline_capabilities(
     default_parser_backend = normalize_parser_backend(getattr(settings, "DEFAULT_PARSER_BACKEND", "auto") or "auto") or "auto"
     default_chunk_strategy = (getattr(settings, "DEFAULT_CHUNK_STRATEGY", "langchain_recursive") or "langchain_recursive").strip().lower()
 
-    def magicpdf_available() -> tuple[bool, str | None]:
-        if not bool(getattr(settings, "MAGIC_PDF_ENABLED", False)):
-            return False, "MAGIC_PDF_ENABLED=false"
-        if magicpdf_service_configured(getattr(settings, "MAGIC_PDF_API_URL", "")):
-            return True, None
-        cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
-        if not resolve_cli_command(cli):
-            return False, f"MagicPDF CLI not found: {cli} (try activating the env or set MAGIC_PDF_CLI to full path)"
-        models_dir = resolve_magicpdf_models_dir(getattr(settings, "MAGIC_PDF_MODELS_DIR", ""))
-        if not models_dir:
-            return False, "MagicPDF models not found: mount PDF-Extract-Kit cache or set MAGIC_PDF_MODELS_DIR"
-        return True, None
+    pdf_backends = [_pipeline_parser_backend_info(name) for name in sorted(ParserFactory.SUPPORTED_PDF_BACKENDS)]
 
-    pdf_backends: list[ParserBackendInfo] = []
-    for name in sorted(ParserFactory.SUPPORTED_PDF_BACKENDS):
-        b = (name or "").strip().lower()
-        available = False
-        notes: str | None = None
-
-        if b == "auto":
-            available = True
-            notes = "Auto routes to the best enabled backend."
-        elif b == "basic":
-            available = True
-        elif b == "mineru":
-            available = bool(settings.MINERU_ENABLED and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL))
-            if not available:
-                notes = "Set MINERU_ENABLED=true and configure MINERU_API_TOKEN or MINERU_LOCAL_SERVER_URL."
-        elif b == "deepdoc":
-            available = bool(getattr(settings, "DEEPDOC_ENABLED", False))
-            if not available:
-                notes = "Set DEEPDOC_ENABLED=true."
-        elif b == "deepseek_ocr":
-            enabled = bool(getattr(settings, "DEEPSEEK_OCR_ENABLED", False))
-            api_key = bool((getattr(settings, "SILICONFLOW_API_KEY", "") or "").strip())
-            available = bool(enabled and api_key)
-            if not enabled:
-                notes = "Set DEEPSEEK_OCR_ENABLED=true."
-            elif not api_key:
-                notes = "Configure SILICONFLOW_API_KEY."
-        elif b == "qianfan_ocr":
-            enabled = bool(getattr(settings, "QIANFAN_OCR_ENABLED", False))
-            api_url = bool((getattr(settings, "QIANFAN_OCR_API_URL", "") or "").strip())
-            available = bool(enabled and api_url)
-            if not enabled:
-                notes = "Set QIANFAN_OCR_ENABLED=true."
-            elif not api_url:
-                notes = "Configure QIANFAN_OCR_API_URL (e.g., http://localhost:2090/convert)."
-        elif b == "textin":
-            enabled = bool(getattr(settings, "TEXTIN_ENABLED", False))
-            api_url = bool((getattr(settings, "TEXTIN_API_URL", "") or "").strip())
-            app_id = bool((getattr(settings, "TEXTIN_APP_ID", "") or "").strip())
-            secret_code = bool((getattr(settings, "TEXTIN_SECRET_CODE", "") or "").strip())
-            available = bool(enabled and api_url and app_id and secret_code)
-            if not enabled:
-                notes = "Set TEXTIN_ENABLED=true."
-            elif not api_url:
-                notes = "Configure TEXTIN_API_URL."
-            elif not app_id:
-                notes = "Configure TEXTIN_APP_ID."
-            elif not secret_code:
-                notes = "Configure TEXTIN_SECRET_CODE."
-        elif b == "markitdown":
-            if not bool(getattr(settings, "MARKITDOWN_ENABLED", False)):
-                available = False
-                notes = "Set MARKITDOWN_ENABLED=true."
-            else:
-                ok, err = check_dependency("markitdown", attr="MarkItDown")
-                available = ok
-                if not ok:
-                    notes = f"markitdown not installed: {err}"
-        elif b == "docling":
-            if not bool(getattr(settings, "DOCLING_ENABLED", False)):
-                available = False
-                notes = "Set DOCLING_ENABLED=true."
-            else:
-                ok, err = check_dependency("docling.document_converter", attr="DocumentConverter")
-                available = ok
-                if not ok:
-                    notes = f"docling not installed: {err}"
-        elif b == "etl4llm":
-            enabled = bool(getattr(settings, "ETL4LLM_ENABLED", False))
-            api_url = bool((getattr(settings, "ETL4LLM_API_URL", "") or "").strip())
-            available = bool(enabled and api_url)
-            if not enabled:
-                notes = "Set ETL4LLM_ENABLED=true."
-            elif not api_url:
-                notes = "Configure ETL4LLM_API_URL (e.g., http://localhost:10001/v1/etl4llm/predict)."
-        elif b == "marker":
-            enabled = bool(getattr(settings, "MARKER_ENABLED", False))
-            api_url = bool((getattr(settings, "MARKER_API_URL", "") or "").strip())
-            available = bool(enabled and api_url)
-            if not enabled:
-                notes = "Set MARKER_ENABLED=true."
-            elif not api_url:
-                notes = "Configure MARKER_API_URL (e.g., http://localhost:2080/convert)."
-        elif b == "paddle_vl":
-            enabled = bool(getattr(settings, "PADDLE_VL_ENABLED", False))
-            api_url = bool((getattr(settings, "PADDLE_VL_API_URL", "") or "").strip())
-            available = bool(enabled and api_url)
-            if not enabled:
-                notes = "Set PADDLE_VL_ENABLED=true."
-            elif not api_url:
-                notes = "Configure PADDLE_VL_API_URL (e.g., http://localhost:9030/convert)."
-        elif b == "olmocr":
-            enabled = bool(getattr(settings, "OLMOCR_ENABLED", False))
-            api_url = bool((getattr(settings, "OLMOCR_API_URL", "") or "").strip())
-            available = bool(enabled and api_url)
-            if not enabled:
-                notes = "Set OLMOCR_ENABLED=true."
-            elif not api_url:
-                notes = "Configure OLMOCR_API_URL (e.g., http://localhost:2085/convert)."
-        elif b == "magicpdf":
-            available, notes = magicpdf_available()
-        else:  # pragma: no cover
-            available = False
-            notes = "Unknown backend"
-
-        pdf_backends.append(ParserBackendInfo(name=b, available=bool(available), notes=notes))
-
-    chunk_strategies: list[ChunkStrategyInfo] = []
     # Expose all strategies known to the backend (frontends may choose a subset).
     all_strats = set(chunker_factory.SUPPORTED_STRATEGIES.keys()) | set(chunker_factory.INTEGRATED_PIPELINE_STRATEGIES)
-    for name in sorted(all_strats):
-        s = (name or "").strip().lower()
-        available = True
-        notes: str | None = None
-        if s == "auto":
-            available = True
-            notes = "Auto-selects a chunker per document (git_commit_log/diff/patch/subtitles/logs/stacktrace/http_trace/terraform_plan/xml/junit_xml/sitemap_xml/maven_pom/xml_feed/openapi/github_actions/docker_compose/gitlab_ci/ansible_playbook/yaml/toml/sql/terraform/nginx/dockerfile/makefile/kv-config/jsonl/graphql/proto/api/changelog/csv/spreadsheet/chat/email/jira/postmortem/qa/qa_markdown/prd/sop/glossary/meeting_minutes/timeline/resume/slides/laws/paper/book/outline/transcript/rst/asciidoc/latex/org/wiki/html/markdown_table/markdown_frontmatter/markdown/json/plain text)."
-        elif s == "manuscript":
-            available = True
-            notes = "Preset for manuscript-like documents (git_commit_log/diff/patch/subtitles/logs/stacktrace/http_trace/terraform_plan/xml/junit_xml/sitemap_xml/maven_pom/xml_feed/openapi/github_actions/docker_compose/gitlab_ci/ansible_playbook/yaml/toml/sql/terraform/nginx/dockerfile/makefile/kv-config/jsonl/graphql/proto/api/changelog/csv/spreadsheet/chat/email/jira/postmortem/qa/qa_markdown/prd/sop/glossary/meeting_minutes/timeline/resume/slides/laws/paper/book/outline/transcript/rst/asciidoc/latex/org/wiki/html/markdown_table/markdown_frontmatter/markdown/...)."
-        elif s == "pdf_layout":
-            available = True
-            notes = "PDF layout-aware chunking. Requires parsers that emit position tags like @@page\\tl\\tr\\tt\\tb##; strips tags from chunk text and records bbox/column metadata."
-        elif s == "outline":
-            available = True
-            notes = "Numbered-outline aware chunking (keeps section heading context)."
-        elif s == "transcript":
-            available = True
-            notes = "Transcript/dialogue aware chunking (keeps speaker turns together)."
-        elif s == "qa_pairs":
-            available = True
-            notes = "FAQ / Q&A aware chunking (keeps Q/A pairs together)."
-        elif s == "paper":
-            available = True
-            notes = "Academic paper/report aware chunking (splits by common paper sections)."
-        elif s == "book_structured":
-            available = True
-            notes = "Book chapter/part aware chunking (keeps chapter context)."
-        elif s == "laws_structured":
-            available = True
-            notes = "Legal/policy aware chunking (splits by articles/clauses)."
-        elif s == "email_thread":
-            available = True
-            notes = "Email thread aware chunking (keeps whole messages together)."
-        elif s == "sop_steps":
-            available = True
-            notes = "SOP/procedure aware chunking (splits by Step/步骤 headings)."
-        elif s == "glossary":
-            available = True
-            notes = "Glossary/dictionary aware chunking (splits by term-definition entries)."
-        elif s == "resume_structured":
-            available = True
-            notes = "Resume/CV section-aware chunking (splits by common resume headings)."
-        elif s == "presentation_slides":
-            available = True
-            notes = "Slide-aware chunking (splits by separators/markers like '---' or 'Slide 1')."
-        elif s == "csv_rows":
-            available = True
-            notes = "CSV row-aware chunking (groups 'row N:' blocks; best with CsvParser output)."
-        elif s == "spreadsheet_sheet":
-            available = True
-            notes = "Spreadsheet sheet-aware chunking (splits by '## Sheet:' sections; best with ExcelParser output)."
-        elif s == "markdown_table":
-            available = True
-            notes = "Markdown table-aware chunking (avoids splitting rows; splits large tables at row boundaries)."
-        elif s == "chat_history":
-            available = True
-            notes = "Timestamped chat history chunking (keeps whole messages together with message-level overlap)."
-        elif s == "changelog":
-            available = True
-            notes = "Changelog/release-notes aware chunking (splits by release headings like '## [1.2.3] - 2024-01-01')."
-        elif s == "log_events":
-            available = True
-            notes = "Log-events aware chunking (keeps multi-line log entries together; entry-level overlap)."
-        elif s == "subtitles":
-            available = True
-            notes = "Subtitles aware chunking (SRT/VTT-like; splits by timecode cues)."
-        elif s == "api_reference":
-            available = True
-            notes = "API reference aware chunking (splits by endpoint signatures like 'GET /path')."
-        elif s == "diff_patch":
-            available = True
-            notes = "Diff/patch aware chunking (splits by file blocks and @@ hunks)."
-        elif s == "git_commit_log":
-            available = True
-            notes = "Git commit-log aware chunking (splits by 'commit <sha>' blocks; preserves commit context even with patches)."
-        elif s == "kv_config":
-            available = True
-            notes = "Key-value config aware chunking (groups KEY=VALUE entries; supports INI sections)."
-        elif s == "qa_markdown":
-            available = True
-            notes = "Markdown Q/A aware chunking (supports bullets/headings like '**Q:**' / '### Q:')."
-        elif s == "meeting_minutes":
-            available = True
-            notes = "Meeting-minutes aware chunking (splits by common sections like agenda/actions/decisions)."
-        elif s == "timeline_events":
-            available = True
-            notes = "Timeline/date-event aware chunking (keeps dated events together)."
-        elif s == "html_sections":
-            available = True
-            notes = "HTML heading-aware chunking (splits by <h1>-<h6> tags)."
-        elif s == "rst_sections":
-            available = True
-            notes = "reStructuredText section-aware chunking (splits by underlined headings)."
-        elif s == "asciidoc_sections":
-            available = True
-            notes = "AsciiDoc section-aware chunking (splits by '=' heading lines)."
-        elif s == "latex_sections":
-            available = True
-            notes = "LaTeX section-aware chunking (splits by \\section/\\chapter commands)."
-        elif s == "orgmode_sections":
-            available = True
-            notes = "Org-mode section-aware chunking (splits by '*' heading lines)."
-        elif s == "mediawiki_sections":
-            available = True
-            notes = "MediaWiki section-aware chunking (splits by '== Heading ==' lines)."
-        elif s == "yaml_manifest":
-            available = True
-            notes = "YAML manifest aware chunking (splits by '---' documents; extracts kind/name when present)."
-        elif s == "toml_config":
-            available = True
-            notes = "TOML config aware chunking (splits by [tables] and groups key/value entries)."
-        elif s == "sql_schema":
-            available = True
-            notes = "SQL schema/DDL aware chunking (splits by CREATE/ALTER statements)."
-        elif s == "stacktrace":
-            available = True
-            notes = "Stacktrace aware chunking (groups traceback blocks; for timestamped logs prefer log_events)."
-        elif s == "http_trace":
-            available = True
-            notes = "HTTP trace aware chunking (splits by HTTP request blocks; keeps request+response together)."
-        elif s == "terraform_plan":
-            available = True
-            notes = "Terraform plan output aware chunking (splits by '# ... will be ...' change headers)."
-        elif s == "xml_feed":
-            available = True
-            notes = "XML feed (RSS/Atom) item-aware chunking (splits by <item>/<entry> blocks)."
-        elif s == "junit_xml":
-            available = True
-            notes = "JUnit XML report aware chunking (splits by <testcase> blocks; preserves offsets)."
-        elif s == "sitemap_xml":
-            available = True
-            notes = "Sitemap XML aware chunking (splits by <url>/<sitemap> entry blocks)."
-        elif s == "maven_pom":
-            available = True
-            notes = "Maven POM XML aware chunking (chunks <dependency>/<plugin> records; preserves offsets)."
-        elif s == "openapi_spec":
-            available = True
-            notes = "OpenAPI/Swagger spec aware chunking (splits by per-path blocks under `paths:`)."
-        elif s == "github_actions":
-            available = True
-            notes = "GitHub Actions workflow aware chunking (splits by job blocks under `jobs:`)."
-        elif s == "docker_compose":
-            available = True
-            notes = "Docker Compose YAML aware chunking (splits by service blocks under `services:`)."
-        elif s == "gitlab_ci":
-            available = True
-            notes = "GitLab CI YAML aware chunking (splits by top-level job/config blocks)."
-        elif s == "ansible_playbook":
-            available = True
-            notes = "Ansible playbook aware chunking (splits by top-level plays; preserves offsets)."
-        elif s == "dockerfile":
-            available = True
-            notes = "Dockerfile aware chunking (splits by FROM stages and instruction blocks)."
-        elif s == "makefile":
-            available = True
-            notes = "Makefile aware chunking (splits by target blocks and recipes)."
-        elif s == "nginx_config":
-            available = True
-            notes = "Nginx config aware chunking (splits by server blocks; brace-aware)."
-        elif s == "terraform_hcl":
-            available = True
-            notes = "Terraform/HCL block-aware chunking (splits by resource/module/variable blocks; brace-aware)."
-        elif s == "graphql_schema":
-            available = True
-            notes = "GraphQL schema aware chunking (splits by top-level type/input/enum/interface/union/scalar/directive/schema definitions)."
-        elif s == "proto_schema":
-            available = True
-            notes = "Protocol Buffers schema aware chunking (splits by message/enum/service blocks; brace-aware)."
-        elif s == "jira_ticket":
-            available = True
-            notes = "Jira/issue-ticket aware chunking (splits by common fields like Summary/Description/Steps/Expected/Actual)."
-        elif s == "prd_spec":
-            available = True
-            notes = "PRD/spec aware chunking (splits by common sections like Background/Goals/Scope/Requirements/Acceptance/Risks)."
-        elif s == "postmortem_report":
-            available = True
-            notes = "Incident postmortem/RCA aware chunking (splits by common sections like Summary/Impact/Timeline/Root Cause/Action Items)."
-        elif s == "jsonl_records":
-            available = True
-            notes = "JSONL/NDJSON record-aware chunking (groups whole JSON records per line; preserves offsets)."
-        elif s == "markdown_frontmatter":
-            available = True
-            notes = "Markdown frontmatter aware chunking (keeps YAML frontmatter, then chunks the body)."
-        elif s == "sentence_window":
-            available = True
-            notes = "Sentence window chunking with sentence-level overlap."
-        if s.startswith("llama_index"):
-            if not bool(getattr(settings, "LLAMA_INDEX_ENABLED", False)):
-                available = False
-                notes = "Set LLAMA_INDEX_ENABLED=true."
-            else:
-                ok, err = check_dependency("llama_index.core")
-                available = ok
-                if not ok:
-                    notes = f"llama-index-core not installed: {err}"
-        elif s in chunker_factory.INTEGRATED_PIPELINE_STRATEGIES:
-            available = True
-            vision_enabled = bool(getattr(settings, "VISION_LLM_ENABLED", False))
-            vision_key_ok = bool(
-                (
-                    (getattr(settings, "VISION_LLM_API_KEY", "") or getattr(settings, "LLM_API_KEY", "") or "")
-                    .strip()
-                )
-            )
-            vision_model = (getattr(settings, "VISION_LLM_MODEL", "") or "").strip()
-
-            if vision_enabled and vision_key_ok:
-                notes = f"Integrated pipeline (parse+chunk). Vision enrichment enabled (model={vision_model or 'configured'})."
-            elif vision_enabled and not vision_key_ok:
-                notes = "Integrated pipeline (parse+chunk). Vision enrichment enabled but missing API key (set MIMIRQ_VISION_LLM_API_KEY or LLM_API_KEY)."
-            else:
-                notes = "Integrated pipeline (parse+chunk). Vision enrichment disabled by default (set MIMIRQ_VISION_LLM_ENABLED=true to enable)."
-        elif s == "markdown":
-            available = True
-            notes = "Alias of markdown_header."
-
-        notes = decorate_chunk_strategy_note(s, notes)
-        chunk_strategies.append(ChunkStrategyInfo(name=s, available=bool(available), notes=notes))
+    chunk_strategies = [_pipeline_chunk_strategy_info(name) for name in sorted(all_strats)]
 
     return PipelineCapabilitiesResponse(
         default_parser_backend=default_parser_backend,
@@ -1707,100 +2404,21 @@ async def import_governance_profiles(
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    max_bytes = 256 * 1024
-    raw = await file.read(max_bytes + 1)
-    if len(raw) > max_bytes:
-        raise HTTPException(status_code=413, detail=f"Profile script too large (max={max_bytes} bytes)")
-
-    try:
-        data = json.loads(raw.decode("utf-8"))
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=400, detail="Invalid JSON file") from exc
-
-    if isinstance(data, dict) and isinstance(data.get("profiles"), list):
-        raw_profiles = data.get("profiles") or []
-    else:
-        raw_profiles = [data]
-
+    raw_profiles = _raw_governance_profile_import_items(await _read_governance_profile_import_json(file))
     created = 0
     updated = 0
     out_items: list[GovernanceProfileSummary] = []
-
     for item in raw_profiles:
-        if not isinstance(item, dict):
-            raise HTTPException(status_code=400, detail="Invalid profile item (expected object)")
-
-        unknown_item_keys = set(item.keys()) - {"name", "description", "key", "payload"}
-        if unknown_item_keys:
-            unknown_sorted = ", ".join(sorted(map(str, unknown_item_keys))[:20])
-            raise HTTPException(status_code=400, detail=f"Unknown profile fields: {unknown_sorted}")
-
-        name = str(item.get("name") or "").strip()
-        if not name:
-            raise HTTPException(status_code=400, detail="Profile name is required")
-
-        raw_key = item.get("key")
-        try:
-            key = validate_profile_key(raw_key)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-        payload_raw = item.get("payload")
-        if not isinstance(payload_raw, dict):
-            raise HTTPException(status_code=400, detail="payload is required and must be an object")
-
-        unknown_payload_keys = set(payload_raw.keys()) - {
-            "version",
-            "extends",
-            "input_formats",
-            "pipeline_patch",
-            "regex_rules",
-            "processing_scripts",
-        }
-        if unknown_payload_keys:
-            unknown_sorted = ", ".join(sorted(map(str, unknown_payload_keys))[:20])
-            raise HTTPException(status_code=400, detail=f"Unknown payload fields: {unknown_sorted}")
-
-        try:
-            payload = GovernanceProfilePayload(**payload_raw)
-            payload = validate_and_normalize_payload(payload)
-        except RegexRulesValidationError as exc:
-            raise HTTPException(status_code=400, detail=exc.to_detail()) from exc
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=f"Invalid payload: {str(exc)[:200]}") from exc
-
-        description = item.get("description")
-        desc = str(description or "").strip()[:2000] if description is not None else None
-
-        existing = None
-        if key:
-            existing = (
-                db.query(DBGovernanceProfile)
-                .filter(DBGovernanceProfile.tenant_id == tenant_id, DBGovernanceProfile.key == key)
-                .first()
-            )
-
-        if existing is not None:
-            if not overwrite:
-                raise HTTPException(status_code=409, detail=f"Profile key already exists: {key}")
-            existing.name = name[:200]
-            existing.description = desc
-            existing.payload = payload.model_dump()
-            updated += 1
-            out_items.append(_profile_summary_from_row(existing))
-        else:
-            row = DBGovernanceProfile(
-                tenant_id=tenant_id,
-                key=key,
-                name=name[:200],
-                description=desc,
-                is_system=False,
-                payload=payload.model_dump(),
-            )
-            db.add(row)
-            db.flush()
-            created += 1
-            out_items.append(_profile_summary_from_row(row))
+        record = _normalize_governance_profile_import_record(item)
+        created_delta, updated_delta, summary = _upsert_governance_profile_import_record(
+            db=db,
+            tenant_id=tenant_id,
+            record=record,
+            overwrite=bool(overwrite),
+        )
+        created += created_delta
+        updated += updated_delta
+        out_items.append(summary)
 
     db.commit()
     return GovernanceProfileImportResponse(created=created, updated=updated, items=out_items)
@@ -1931,6 +2549,253 @@ async def parse_preview(
         shutil.rmtree(run_dir, ignore_errors=True)
 
 
+@dataclass
+class _IngestionPreviewConfig:
+    base_parser_backend: str
+    base_chunk_strategy: str
+    parser_backend_choice: str
+    chunk_strategy_choice: str
+    preprocess_steps: list[dict[str, object]] = field(default_factory=list)
+    governance_profile_ref: str | None = None
+    patch_dict: dict[str, object] = field(default_factory=dict)
+
+
+def _empty_preprocess_summary() -> dict[str, object]:
+    return {"changed": False, "size_before": 0, "size_after": 0, "steps": [], "warnings": []}
+
+
+def _dataset_metadata_dict(dataset: object) -> dict[str, object]:
+    dataset_meta = getattr(dataset, "dataset_metadata", None)
+    return dataset_meta if isinstance(dataset_meta, dict) else {}
+
+
+def _ingestion_preview_defaults(
+    parser_backend: str | None,
+    chunk_strategy: str | None,
+) -> tuple[str, str, str, str]:
+    default_pb = (getattr(settings, "DEFAULT_PARSER_BACKEND", "auto") or "auto").strip().lower() or "auto"
+    default_cs = (getattr(settings, "DEFAULT_CHUNK_STRATEGY", "langchain_recursive") or "langchain_recursive").strip().lower()
+    base_pb = (parser_backend or default_pb).strip().lower() or default_pb
+    base_cs = (chunk_strategy or default_cs).strip().lower() or default_cs
+    return default_pb, default_cs, base_pb, base_cs
+
+
+def _ingestion_rule_preprocess_steps(matched_rule: object | None) -> list[dict[str, object]]:
+    preprocess = getattr(matched_rule, "preprocess", None) if matched_rule is not None else None
+    steps = getattr(preprocess, "steps", None) if preprocess is not None and bool(getattr(preprocess, "enabled", True)) else None
+    if not isinstance(steps, list) or not steps:
+        return []
+    return [
+        {
+            "id": str(getattr(step, "id", "") or "").strip(),
+            "params": dict(getattr(step, "params", {}) or {}),
+        }
+        for step in steps
+    ]
+
+
+def _profile_pipeline_patch_for_ingestion(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    profile_ref: str,
+) -> dict[str, object]:
+    prof = _resolve_profile_ref(db=db, tenant_id=tenant_id, profile_ref=profile_ref)
+    patch_dict = dict(prof.payload.pipeline_patch or {})
+    rules = [rule.model_dump() for rule in (prof.payload.regex_rules or [])]
+    if rules:
+        patch_dict["governance_regex_rules"] = rules
+    return patch_dict
+
+
+def _resolve_ingestion_preview_config(
+    *,
+    matched_rule: object | None,
+    parser_backend: str | None,
+    chunk_strategy: str | None,
+    db: Session,
+    tenant_id: UUID,
+) -> _IngestionPreviewConfig:
+    default_pb, default_cs, base_pb, base_cs = _ingestion_preview_defaults(parser_backend, chunk_strategy)
+    config = _IngestionPreviewConfig(
+        base_parser_backend=base_pb,
+        base_chunk_strategy=base_cs,
+        parser_backend_choice=base_pb,
+        chunk_strategy_choice=base_cs,
+    )
+    if matched_rule is None:
+        return config
+
+    if base_pb in {"", "auto", default_pb} and matched_rule.parser_backend:
+        config.parser_backend_choice = str(matched_rule.parser_backend)
+    if base_cs in {"", default_cs} and matched_rule.chunk_strategy:
+        config.chunk_strategy_choice = str(matched_rule.chunk_strategy)
+
+    config.preprocess_steps = _ingestion_rule_preprocess_steps(matched_rule)
+    governance_profile_ref = getattr(matched_rule, "governance_profile_ref", None)
+    if isinstance(governance_profile_ref, str) and governance_profile_ref.strip():
+        config.governance_profile_ref = governance_profile_ref.strip()
+        config.patch_dict.update(_profile_pipeline_patch_for_ingestion(db=db, tenant_id=tenant_id, profile_ref=config.governance_profile_ref))
+    config.patch_dict.update(dict(getattr(matched_rule, "pipeline_patch", None) or {}))
+    return config
+
+
+def _preprocess_ingestion_preview_file(
+    temp_path: Path,
+    preprocess_steps: list[dict[str, object]],
+) -> tuple[Path, dict[str, object]]:
+    if not preprocess_steps:
+        return temp_path, _empty_preprocess_summary()
+
+    pre = preprocess_file(input_path=temp_path, steps=preprocess_steps)
+    summary = {
+        "changed": bool(pre.changed),
+        "size_before": int(pre.size_before),
+        "size_after": int(pre.size_after),
+        "steps": [
+            {
+                "id": step.id,
+                "applied": bool(step.applied),
+                "changed": bool(step.changed),
+                "note": step.note,
+                "bytes_before": int(getattr(step, "bytes_before", 0) or 0),
+                "bytes_after": int(getattr(step, "bytes_after", 0) or 0),
+                "elapsed_ms": int(getattr(step, "elapsed_ms", 0) or 0),
+            }
+            for step in (pre.steps or [])
+        ],
+        "warnings": list(pre.warnings or []),
+    }
+    parse_path = Path(str(pre.output_path)) if bool(pre.changed) else temp_path
+    return parse_path, summary
+
+
+def _effective_bool(effective: object, name: str, default: bool) -> bool:
+    return bool(getattr(effective, name, default))
+
+
+def _effective_int(effective: object, name: str, default: int) -> int:
+    return int(getattr(effective, name, default) or default)
+
+
+def _effective_float(effective: object, name: str, default: float) -> float:
+    return float(getattr(effective, name, default) or default)
+
+
+def _effective_str(effective: object, name: str, default: str) -> str:
+    return str(getattr(effective, name, default) or default)
+
+
+def _build_ingestion_clean_preview_request(
+    *,
+    parsed: dict[str, object],
+    effective: object,
+    diff_max_lines: int,
+) -> CleanPreviewRequest:
+    return CleanPreviewRequest(
+        markdown=str(parsed.get("markdown") or ""),
+        rules=[CleanRegexRuleModel(**r) for r in (getattr(effective, "governance_regex_rules", None) or [])],
+        use_default_rules=True,
+        include_diff=True,
+        diff_max_lines=int(diff_max_lines or 0),
+        input_format="markdown",
+        html_xpath=None,
+        normalize_line_endings=True,
+        trim_trailing_spaces=True,
+        collapse_blank_lines=True,
+        max_blank_lines=_effective_int(effective, "governance_max_blank_lines", 1),
+        remove_control_chars=True,
+        remove_toc_lines=_effective_bool(effective, "governance_remove_toc_lines", True),
+        remove_noise_lines=_effective_bool(effective, "governance_remove_noise_lines", True),
+        remove_common_lines=_effective_bool(effective, "governance_remove_common_lines", True),
+        unwrap_lines=_effective_bool(effective, "governance_unwrap_lines", True),
+        remove_boilerplate=_effective_bool(effective, "governance_remove_boilerplate", False),
+        remove_images=_effective_str(effective, "governance_remove_images", "none"),  # type: ignore[arg-type]
+        extract_frontmatter=_effective_bool(effective, "governance_extract_frontmatter", False),
+        strip_frontmatter=_effective_bool(effective, "governance_strip_frontmatter", False),
+        detect_language=_effective_bool(effective, "governance_detect_language", False),
+        language_min_chars=_effective_int(effective, "governance_language_min_chars", 40),
+        normalize_urls=_effective_bool(effective, "governance_normalize_urls", False),
+        normalize_urls_strip_tracking=_effective_bool(effective, "governance_normalize_urls_strip_tracking", True),
+        drop_duplicate_paragraphs=_effective_bool(effective, "governance_drop_duplicate_paragraphs", False),
+        drop_duplicate_paragraphs_min_occurrences=_effective_int(effective, "governance_drop_duplicate_paragraphs_min_occurrences", 3),
+        drop_duplicate_paragraphs_min_chars=_effective_int(effective, "governance_drop_duplicate_paragraphs_min_chars", 40),
+        drop_duplicate_paragraphs_max_chars=_effective_int(effective, "governance_drop_duplicate_paragraphs_max_chars", 1200),
+        trim_references=_effective_bool(effective, "governance_trim_references", False),
+        extract_keywords=_effective_bool(effective, "governance_extract_keywords", False),
+        keywords_provider=_effective_str(effective, "governance_keywords_provider", "auto"),
+        keywords_top_k=_effective_int(effective, "governance_keywords_top_k", 10),
+        keywords_max_chars=_effective_int(effective, "governance_keywords_max_chars", 20000),
+        normalize_tables=_effective_bool(effective, "governance_normalize_tables", False),
+        strip_code_line_numbers=_effective_bool(effective, "governance_strip_code_line_numbers", False),
+        pii_anonymize=_effective_bool(effective, "governance_pii_anonymize", False),
+        pii_mode=_effective_str(effective, "governance_pii_mode", "mask"),  # type: ignore[arg-type]
+        pii_mask=_effective_str(effective, "governance_pii_mask", REDACTED_MASK),
+        secrets_redact=_effective_bool(effective, "governance_secrets_redact", False),
+        secrets_mode=_effective_str(effective, "governance_secrets_mode", "mask"),  # type: ignore[arg-type]
+        secrets_mask=_effective_str(effective, "governance_secrets_mask", SECRET_MASK),
+        drop_outline_only=_effective_bool(effective, "governance_drop_outline_only", False),
+        drop_outline_min_content_chars=_effective_int(effective, "governance_drop_outline_min_content_chars", 200),
+        drop_outline_max_heading_ratio=_effective_float(effective, "governance_drop_outline_max_heading_ratio", 0.85),
+        drop_low_density=_effective_bool(effective, "governance_drop_low_density", False),
+        drop_low_density_threshold=_effective_float(effective, "governance_drop_low_density_threshold", 0.12),
+        unwrap_max_line_length=_effective_int(effective, "governance_unwrap_max_line_length", 120),
+        noise_min_chars=_effective_int(effective, "governance_noise_min_chars", 2),
+        noise_ratio_threshold=_effective_float(effective, "governance_noise_ratio_threshold", 0.2),
+        common_lines_min_occurrences=_effective_int(effective, "governance_common_lines_min_docs", 3),
+    )
+
+
+def _ingestion_preview_rule_output(
+    matched_rule: object | None,
+    config: _IngestionPreviewConfig,
+) -> dict[str, object]:
+    return {
+        "matched": matched_rule is not None,
+        "rule_id": getattr(matched_rule, "id", None) if matched_rule is not None else None,
+        "rule_name": getattr(matched_rule, "name", None) if matched_rule is not None else None,
+        "governance_profile_ref": config.governance_profile_ref,
+        "preprocess_steps": config.preprocess_steps,
+        "parser_backend": str(config.parser_backend_choice or "auto"),
+        "chunk_strategy": str(config.chunk_strategy_choice or ""),
+    }
+
+
+def _ingestion_preview_explain(
+    *,
+    dataset_id: UUID,
+    file: UploadFile,
+    file_ext: str,
+    config: _IngestionPreviewConfig,
+    rule_out: dict[str, object],
+    pre_summary: dict[str, object],
+    parsed: dict[str, object],
+) -> dict[str, object]:
+    filename = str(getattr(file, "filename", "") or "")
+    return {
+        "dataset_id": str(dataset_id),
+        "filename": filename,
+        "file_type": str(file_ext or ""),
+        "requested": {
+            "parser_backend": str(config.base_parser_backend or ""),
+            "chunk_strategy": str(config.base_chunk_strategy or ""),
+        },
+        "rule": rule_out,
+        "snapshot": {
+            "dataset_id": str(dataset_id),
+            "filename": filename,
+            "file_type": str(file_ext or ""),
+            "rule": rule_out,
+            "preprocess": dict(pre_summary),
+            "pipeline_patch": dict(config.patch_dict),
+            "parser_backend": str(config.parser_backend_choice or "auto"),
+            "chunk_strategy": str(config.chunk_strategy_choice or ""),
+            "parse_backend": str(parsed.get("backend") or ""),
+            "pdf_quality": parsed.get("pdf_quality"),
+        },
+    }
+
+
 @router.post("/ingestion-preview", response_model=IngestionPreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def ingestion_preview(
     request: Request,
@@ -1966,81 +2831,25 @@ async def ingestion_preview(
     run_dir.mkdir(parents=True, exist_ok=True)
     temp_path = run_dir / f"input{file_ext}"
 
-    pre_summary: dict[str, object] = {"changed": False, "size_before": 0, "size_after": 0, "steps": [], "warnings": []}
-
     try:
         await save_upload_file(file, temp_path, max_bytes=settings.MAX_FILE_SIZE)
 
-        dataset_meta = getattr(dataset, "dataset_metadata", None)
-        dataset_meta = dataset_meta if isinstance(dataset_meta, dict) else {}
+        dataset_meta = _dataset_metadata_dict(dataset)
         policy = parse_ingestion_policy_from_metadata(dataset_meta) or None
         matched_rule = match_ingestion_rule(policy, filename=file.filename, file_ext=file_ext)
-
-        default_pb = (getattr(settings, "DEFAULT_PARSER_BACKEND", "auto") or "auto").strip().lower() or "auto"
-        default_cs = (getattr(settings, "DEFAULT_CHUNK_STRATEGY", "langchain_recursive") or "langchain_recursive").strip().lower()
-
-        base_pb = (parser_backend or default_pb).strip().lower() or default_pb
-        base_cs = (chunk_strategy or default_cs).strip().lower() or default_cs
-
-        parser_backend_choice = base_pb
-        chunk_strategy_choice = base_cs
-        preprocess_steps: list[dict] = []
-        governance_profile_ref: str | None = None
-        patch_dict: dict[str, object] = {}
-
-        if matched_rule is not None:
-            if base_pb in {"", "auto", default_pb} and matched_rule.parser_backend:
-                parser_backend_choice = str(matched_rule.parser_backend)
-            if base_cs in {"", default_cs} and matched_rule.chunk_strategy:
-                chunk_strategy_choice = str(matched_rule.chunk_strategy)
-
-            pp = getattr(matched_rule, "preprocess", None)
-            steps = getattr(pp, "steps", None) if pp is not None and bool(getattr(pp, "enabled", True)) else None
-            if isinstance(steps, list) and steps:
-                preprocess_steps = [
-                    {
-                        "id": str(getattr(s, "id", "") or "").strip(),
-                        "params": dict(getattr(s, "params", {}) or {}),
-                    }
-                    for s in steps
-                ]
-
-            governance_profile_ref = getattr(matched_rule, "governance_profile_ref", None)
-            if isinstance(governance_profile_ref, str) and governance_profile_ref.strip():
-                prof = _resolve_profile_ref(db=db, tenant_id=tenant_id, profile_ref=governance_profile_ref.strip())
-                patch_dict.update(dict(prof.payload.pipeline_patch or {}))
-                rules = [r.model_dump() for r in (prof.payload.regex_rules or [])]
-                if rules:
-                    patch_dict["governance_regex_rules"] = rules
-            patch_dict.update(dict(getattr(matched_rule, "pipeline_patch", None) or {}))
+        config = _resolve_ingestion_preview_config(
+            matched_rule=matched_rule,
+            parser_backend=parser_backend,
+            chunk_strategy=chunk_strategy,
+            db=db,
+            tenant_id=tenant_id,
+        )
 
         # Preprocess file (before parsing).
-        parse_path = temp_path
-        if preprocess_steps:
-            pre = preprocess_file(input_path=temp_path, steps=preprocess_steps)
-            pre_summary = {
-                "changed": bool(pre.changed),
-                "size_before": int(pre.size_before),
-                "size_after": int(pre.size_after),
-                "steps": [
-                    {
-                        "id": s.id,
-                        "applied": bool(s.applied),
-                        "changed": bool(s.changed),
-                        "note": s.note,
-                        "bytes_before": int(getattr(s, "bytes_before", 0) or 0),
-                        "bytes_after": int(getattr(s, "bytes_after", 0) or 0),
-                        "elapsed_ms": int(getattr(s, "elapsed_ms", 0) or 0),
-                    }
-                    for s in (pre.steps or [])
-                ],
-                "warnings": list(pre.warnings or []),
-            }
-            if bool(pre.changed):
-                parse_path = Path(str(pre.output_path))
+        parse_path, pre_summary = _preprocess_ingestion_preview_file(temp_path, config.preprocess_steps)
 
         # Compute effective governance options (dataset defaults + rule/profile patches).
-        patch_opts = PipelineOptions(**patch_dict) if patch_dict else PipelineOptions()
+        patch_opts = PipelineOptions(**config.patch_dict) if config.patch_dict else PipelineOptions()
         effective = resolve_pipeline_effective(dataset_metadata=dataset_meta, document_metadata={}, request_overrides=patch_opts)
 
         # Parse preview via subprocess worker.
@@ -2050,100 +2859,25 @@ async def ingestion_preview(
                 "action": "pipeline_parse_preview",
                 "tenant_id": str(tenant_id),
                 "file_path": str(parse_path),
-                "parser_backend": parser_backend_choice,
+                "parser_backend": config.parser_backend_choice,
             },
             disconnect_check=request.is_disconnected,
             timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
         )
 
         # Governance clean preview (issues + diff).
-        clean_body = CleanPreviewRequest(
-            markdown=str(parsed.get("markdown") or ""),
-            rules=[CleanRegexRuleModel(**r) for r in (getattr(effective, "governance_regex_rules", None) or [])],
-            use_default_rules=True,
-            include_diff=True,
-            diff_max_lines=int(diff_max_lines or 0),
-            input_format="markdown",
-            html_xpath=None,
-            normalize_line_endings=True,
-            trim_trailing_spaces=True,
-            collapse_blank_lines=True,
-            max_blank_lines=int(getattr(effective, "governance_max_blank_lines", 1) or 1),
-            remove_control_chars=True,
-            remove_toc_lines=bool(getattr(effective, "governance_remove_toc_lines", True)),
-            remove_noise_lines=bool(getattr(effective, "governance_remove_noise_lines", True)),
-            remove_common_lines=bool(getattr(effective, "governance_remove_common_lines", True)),
-            unwrap_lines=bool(getattr(effective, "governance_unwrap_lines", True)),
-            remove_boilerplate=bool(getattr(effective, "governance_remove_boilerplate", False)),
-            remove_images=str(getattr(effective, "governance_remove_images", "none") or "none"),  # type: ignore[arg-type]
-            extract_frontmatter=bool(getattr(effective, "governance_extract_frontmatter", False)),
-            strip_frontmatter=bool(getattr(effective, "governance_strip_frontmatter", False)),
-            detect_language=bool(getattr(effective, "governance_detect_language", False)),
-            language_min_chars=int(getattr(effective, "governance_language_min_chars", 40) or 40),
-            normalize_urls=bool(getattr(effective, "governance_normalize_urls", False)),
-            normalize_urls_strip_tracking=bool(getattr(effective, "governance_normalize_urls_strip_tracking", True)),
-            drop_duplicate_paragraphs=bool(getattr(effective, "governance_drop_duplicate_paragraphs", False)),
-            drop_duplicate_paragraphs_min_occurrences=int(getattr(effective, "governance_drop_duplicate_paragraphs_min_occurrences", 3) or 3),
-            drop_duplicate_paragraphs_min_chars=int(getattr(effective, "governance_drop_duplicate_paragraphs_min_chars", 40) or 40),
-            drop_duplicate_paragraphs_max_chars=int(getattr(effective, "governance_drop_duplicate_paragraphs_max_chars", 1200) or 1200),
-            trim_references=bool(getattr(effective, "governance_trim_references", False)),
-            extract_keywords=bool(getattr(effective, "governance_extract_keywords", False)),
-            keywords_provider=str(getattr(effective, "governance_keywords_provider", "auto") or "auto"),
-            keywords_top_k=int(getattr(effective, "governance_keywords_top_k", 10) or 10),
-            keywords_max_chars=int(getattr(effective, "governance_keywords_max_chars", 20000) or 20000),
-            normalize_tables=bool(getattr(effective, "governance_normalize_tables", False)),
-            strip_code_line_numbers=bool(getattr(effective, "governance_strip_code_line_numbers", False)),
-            pii_anonymize=bool(getattr(effective, "governance_pii_anonymize", False)),
-            pii_mode=str(getattr(effective, "governance_pii_mode", "mask") or "mask"),  # type: ignore[arg-type]
-            pii_mask=str(getattr(effective, "governance_pii_mask", REDACTED_MASK) or REDACTED_MASK),
-            secrets_redact=bool(getattr(effective, "governance_secrets_redact", False)),
-            secrets_mode=str(getattr(effective, "governance_secrets_mode", "mask") or "mask"),  # type: ignore[arg-type]
-            secrets_mask=str(getattr(effective, "governance_secrets_mask", SECRET_MASK) or SECRET_MASK),
-            drop_outline_only=bool(getattr(effective, "governance_drop_outline_only", False)),
-            drop_outline_min_content_chars=int(getattr(effective, "governance_drop_outline_min_content_chars", 200) or 200),
-            drop_outline_max_heading_ratio=float(getattr(effective, "governance_drop_outline_max_heading_ratio", 0.85) or 0.85),
-            drop_low_density=bool(getattr(effective, "governance_drop_low_density", False)),
-            drop_low_density_threshold=float(getattr(effective, "governance_drop_low_density_threshold", 0.12) or 0.12),
-            unwrap_max_line_length=int(getattr(effective, "governance_unwrap_max_line_length", 120) or 120),
-            noise_min_chars=int(getattr(effective, "governance_noise_min_chars", 2) or 2),
-            noise_ratio_threshold=float(getattr(effective, "governance_noise_ratio_threshold", 0.2) or 0.2),
-            common_lines_min_occurrences=int(getattr(effective, "governance_common_lines_min_docs", 3) or 3),
-        )
+        clean_body = _build_ingestion_clean_preview_request(parsed=parsed, effective=effective, diff_max_lines=diff_max_lines)
         cleaned = await clean_preview(body=clean_body, tenant_id=tenant_id, account_id=account_id, db=db)
-
-        rule_out = {
-            "matched": matched_rule is not None,
-            "rule_id": matched_rule.id if matched_rule is not None else None,
-            "rule_name": matched_rule.name if matched_rule is not None else None,
-            "governance_profile_ref": governance_profile_ref.strip() if isinstance(governance_profile_ref, str) and governance_profile_ref.strip() else None,
-            "preprocess_steps": preprocess_steps,
-            "parser_backend": str(parser_backend_choice or "auto"),
-            "chunk_strategy": str(chunk_strategy_choice or ""),
-        }
-
-        explain = {
-            "dataset_id": str(dataset_id),
-            "filename": str(getattr(file, "filename", "") or ""),
-            "file_type": str(file_ext or ""),
-            "requested": {
-                "parser_backend": str(base_pb or ""),
-                "chunk_strategy": str(base_cs or ""),
-            },
-            "rule": rule_out,
-            # Best-effort config snapshot (intended for export/audit; avoids embedding large markdown).
-            "snapshot": {
-                "dataset_id": str(dataset_id),
-                "filename": str(getattr(file, "filename", "") or ""),
-                "file_type": str(file_ext or ""),
-                "rule": rule_out,
-                "preprocess": dict(pre_summary),
-                "pipeline_patch": dict(patch_dict),
-                "parser_backend": str(parser_backend_choice or "auto"),
-                "chunk_strategy": str(chunk_strategy_choice or ""),
-                "parse_backend": str(parsed.get("backend") or ""),
-                "pdf_quality": parsed.get("pdf_quality"),
-            },
-        }
+        rule_out = _ingestion_preview_rule_output(matched_rule, config)
+        explain = _ingestion_preview_explain(
+            dataset_id=dataset_id,
+            file=file,
+            file_ext=file_ext,
+            config=config,
+            rule_out=rule_out,
+            pre_summary=pre_summary,
+            parsed=parsed,
+        )
 
         return {
             "rule": rule_out,
@@ -2191,124 +2925,12 @@ async def clean_preview(
     Preview governance-style cleaning for Markdown (no persistence) to compare before/after.
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
-    raw_input = body.markdown or ""
-
-    input_text = raw_input
-    if body.input_format == "html":
-        html = raw_input
-        # Optional image stripping before XPath extraction.
-        if str(body.remove_images or "none").strip().lower() in {"decorative", "all"}:
-            html = strip_images(html, mode=str(body.remove_images).strip().lower()).text  # type: ignore[arg-type]
-        extracted = extract_text_from_html(html, xpath=body.html_xpath)
-        if body.html_xpath and extracted.xpath_error and extracted.xpath_error.startswith("xpath_failed:"):
-            raise HTTPException(status_code=400, detail=f"Invalid XPath: {extracted.xpath_error}")
-        input_text = extracted.text or ""
-
-    frontmatter: dict | None = None
-    title: str | None = None
-    tags: list[str] | None = None
-    if body.extract_frontmatter or body.strip_frontmatter:
-        try:
-            fm = extract_markdown_frontmatter(input_text, strip=bool(body.strip_frontmatter))
-        except Exception:
-            fm = None
-        if fm is not None:
-            data = getattr(fm, "data", None)
-            if isinstance(data, dict) and data:
-                frontmatter = dict(data)
-                raw_title = frontmatter.get("title")
-                if isinstance(raw_title, str) and raw_title.strip():
-                    title = raw_title.strip()[:200]
-                raw_tags = (
-                    frontmatter.get("tags")
-                    or frontmatter.get("tag")
-                    or frontmatter.get("categories")
-                    or frontmatter.get("category")
-                    or frontmatter.get("keywords")
-                )
-                if isinstance(raw_tags, list):
-                    cleaned: list[str] = []
-                    seen: set[str] = set()
-                    for item in raw_tags:
-                        if item is None:
-                            continue
-                        s = str(item).strip()
-                        if not s:
-                            continue
-                        key = s.casefold()
-                        if key in seen:
-                            continue
-                        seen.add(key)
-                        cleaned.append(s[:64])
-                    if cleaned:
-                        tags = cleaned[:50]
-                elif isinstance(raw_tags, str) and raw_tags.strip():
-                    parts = [p.strip() for p in raw_tags.replace(";", ",").split(",") if p.strip()]
-                    if parts:
-                        tags = parts[:50]
-
-            if body.strip_frontmatter:
-                input_text = getattr(fm, "stripped_text", input_text) or ""
-
+    input_text = _extract_governance_input_text(body)
+    input_text, frontmatter, title, tags = _extract_clean_preview_frontmatter(input_text, body)
     baseline_text = input_text or ""
 
     analysis_opts = _governance_analysis_options(body)
-
-    def _analyze(after_text: str) -> tuple[list[GovernanceIssue], dict[str, object]]:
-        issues, patch = analyze_governance(
-            baseline_text,
-            after_text,
-            input_format=str(body.input_format or "markdown"),
-            options=analysis_opts,
-        )
-        out: list[GovernanceIssue] = []
-        for it in issues:
-            out.append(
-                GovernanceIssue(
-                    code=str(it.code),
-                    severity=it.severity,  # type: ignore[arg-type]
-                    message=str(it.message),
-                    count=int(getattr(it, "count", 0) or 0),
-                    samples=list(getattr(it, "samples", None) or []),
-                    suggested_pipeline_patch=dict(getattr(it, "suggested_pipeline_patch", None) or {}),
-                )
-            )
-        return out, dict(patch or {})
-
-    # Build rules with lightweight attribution so the UI can show which pack/default/custom produced a hit.
-    rules: list[RegexRule] = []
-    rule_meta: list[dict] = []
-
-    base_rules = list(DEFAULT_MARKDOWN_RULES) if body.use_default_rules else []
-    for r in base_rules:
-        rules.append(r)
-        rule_meta.append({"source": "default", "pack": None})
-
-    if getattr(body, "rule_packs", None):
-        seen: set[str] = set()
-        for raw in (body.rule_packs or []):
-            if not isinstance(raw, str):
-                continue
-            key = raw.strip().lower()
-            if not key or key in seen:
-                continue
-            seen.add(key)
-            pack = GOVERNANCE_RULE_PACKS.get(key)
-            if not pack:
-                continue
-            for r in pack:
-                rules.append(r)
-                rule_meta.append({"source": "pack", "pack": key})
-
-    try:
-        custom_rules_norm = validate_regex_rules(body.rules)
-    except RegexRulesValidationError as exc:
-        raise HTTPException(status_code=400, detail=exc.to_detail()) from exc
-
-    custom_rules = [RegexRule(pattern=r["pattern"], repl=r["repl"], flags=r["flags"]) for r in (custom_rules_norm or [])]
-    for r in custom_rules:
-        rules.append(r)
-        rule_meta.append({"source": "custom", "pack": None})
+    rules, rule_meta = _build_clean_preview_rules(body)
     common_lines = (
         build_repeated_line_signatures(
             baseline_text,
@@ -2341,196 +2963,41 @@ async def clean_preview(
         raise HTTPException(status_code=400, detail=exc.to_detail()) from exc
 
     rule_hits = list(getattr(result, "rule_hits", None) or [])
-    rule_stats = []
-    for i, r in enumerate(rules or []):
-        meta = rule_meta[i] if i < len(rule_meta) and isinstance(rule_meta[i], dict) else {}
-        rule_stats.append(
-            {
-                "index": i,
-                "pattern": str(getattr(r, "pattern", "") or ""),
-                "repl": (getattr(r, "repl", "") if isinstance(getattr(r, "repl", ""), str) else ""),
-                "flags": int(getattr(r, "flags", 0) or 0),
-                "hits": int(rule_hits[i] if i < len(rule_hits) else 0),
-                "source": str(meta.get("source") or "") or None,
-                "pack": str(meta.get("pack") or "") or None,
-            }
+    rule_stats = _clean_preview_rule_stats(rules, rule_meta, rule_hits)
+
+    text = _apply_preview_format_transforms(result.markdown, body)
+    text, pii_hits, secrets_hits = _apply_preview_sensitive_redaction(text, body)
+    text, paragraphs_dropped, references_removed_lines, urls_changed = _apply_preview_cleanup_stats(text, body)
+
+    drop_reason = _preview_drop_reason(text, body)
+    if drop_reason is not None:
+        return _build_clean_preview_response(
+            baseline_text=baseline_text,
+            markdown="",
+            body=body,
+            clean_result=result,
+            rule_stats=rule_stats,
+            dropped=True,
+            drop_reason=drop_reason,
+            pii_hits=pii_hits,
+            secrets_hits=secrets_hits,
+            frontmatter=frontmatter,
+            title=title,
+            tags=tags,
+            urls_changed=urls_changed,
+            paragraphs_dropped=paragraphs_dropped,
+            references_removed_lines=references_removed_lines,
+            analysis_opts=analysis_opts,
         )
 
-    text = result.markdown
-
-    if body.normalize_tables:
-        text = normalize_markdown_tables(text).text
-
-    if body.strip_code_line_numbers:
-        text = strip_fenced_code_line_numbers(text).text
-
-    if body.remove_boilerplate:
-        text = remove_markdown_boilerplate(text).text
-
-    if str(body.remove_images or "none").strip().lower() in {"decorative", "all"}:
-        text = strip_images(text, mode=str(body.remove_images).strip().lower()).text  # type: ignore[arg-type]
-
-    pii_hits: dict[str, int] | None = None
-    secrets_hits: dict[str, int] | None = None
-    if body.pii_anonymize:
-        pii = anonymize_pii(text, enabled=True, mode=str(body.pii_mode or "mask"), mask=str(body.pii_mask or REDACTED_MASK))  # type: ignore[arg-type]
-        text = pii.text
-        pii_hits = pii.hits or {}
-
-    if body.secrets_redact:
-        sec = redact_secrets(text, enabled=True, mode=str(body.secrets_mode or "mask"), mask=str(body.secrets_mask or SECRET_MASK))  # type: ignore[arg-type]
-        text = sec.text
-        secrets_hits = sec.hits or {}
-
-    paragraphs_dropped = 0
-    references_removed_lines = 0
-    urls_changed = 0
-
-    if body.drop_duplicate_paragraphs:
-        try:
-            para = drop_duplicate_paragraphs(
-                text,
-                min_occurrences=int(body.drop_duplicate_paragraphs_min_occurrences or 0),
-                min_paragraph_chars=int(body.drop_duplicate_paragraphs_min_chars or 0),
-                max_paragraph_chars=int(body.drop_duplicate_paragraphs_max_chars or 0),
-            )
-            text = para.text
-            paragraphs_dropped = int(getattr(para, "paragraphs_dropped", 0) or 0)
-        except Exception as exc:
-            logger.debug(_PIPELINE_FALLBACK_LOG_MESSAGE, exc)
-
-    if body.trim_references:
-        try:
-            ref = trim_references_section(text)
-            text = ref.text
-            references_removed_lines = int(getattr(ref, "removed_lines", 0) or 0)
-        except Exception as exc:
-            logger.debug(_PIPELINE_FALLBACK_LOG_MESSAGE, exc)
-
-    if body.normalize_urls:
-        try:
-            url = normalize_urls(text, strip_tracking=bool(body.normalize_urls_strip_tracking))
-            text = url.text
-            urls_changed = int(getattr(url, "urls_changed", 0) or 0)
-        except Exception as exc:
-            logger.debug(_PIPELINE_FALLBACK_LOG_MESSAGE, exc)
-
-    if body.drop_outline_only:
-        decision = drop_if_outline_only(
-            text,
-            min_content_chars=int(body.drop_outline_min_content_chars or 0),
-            max_heading_ratio=float(body.drop_outline_max_heading_ratio or 0.0),
-        )
-        if decision.dropped:
-            added, removed, changed_lines = _line_diff_stats(baseline_text, "")
-            diff_unified, diff_truncated = (None, False)
-            if body.include_diff:
-                diff_unified, diff_truncated = _unified_diff_text(baseline_text, "", max_lines=body.diff_max_lines)
-            issues_out, suggested_patch = _analyze("")
-            return CleanPreviewResponse(
-                markdown="",
-                applied_rules=result.applied_rules,
-                changed=True,
-                rule_stats=rule_stats,
-                dropped=True,
-                drop_reason=decision.reason or "outline_only",
-                pii_hits=pii_hits,
-                secrets_hits=secrets_hits,
-                frontmatter=frontmatter,
-                title=title,
-                tags=tags,
-                urls_changed=int(urls_changed),
-                paragraphs_dropped=int(paragraphs_dropped),
-                references_removed_lines=int(references_removed_lines),
-                input_chars=len(baseline_text),
-                output_chars=0,
-                input_lines=len((baseline_text or "").splitlines()),
-                output_lines=0,
-                added_lines=added,
-                removed_lines=removed,
-                changed_lines=changed_lines,
-                diff_unified=diff_unified,
-                diff_truncated=bool(diff_truncated),
-                issues=issues_out,
-                suggested_pipeline_patch=suggested_patch,
-            )
-
-    if body.drop_low_density:
-        decision = drop_if_low_density(text, threshold=float(body.drop_low_density_threshold or 0.0))
-        if decision.dropped:
-            added, removed, changed_lines = _line_diff_stats(baseline_text, "")
-            diff_unified, diff_truncated = (None, False)
-            if body.include_diff:
-                diff_unified, diff_truncated = _unified_diff_text(baseline_text, "", max_lines=body.diff_max_lines)
-            issues_out, suggested_patch = _analyze("")
-            return CleanPreviewResponse(
-                markdown="",
-                applied_rules=result.applied_rules,
-                changed=True,
-                rule_stats=rule_stats,
-                dropped=True,
-                drop_reason=decision.reason or "low_density",
-                pii_hits=pii_hits,
-                secrets_hits=secrets_hits,
-                frontmatter=frontmatter,
-                title=title,
-                tags=tags,
-                urls_changed=int(urls_changed),
-                paragraphs_dropped=int(paragraphs_dropped),
-                references_removed_lines=int(references_removed_lines),
-                input_chars=len(baseline_text),
-                output_chars=0,
-                input_lines=len((baseline_text or "").splitlines()),
-                output_lines=0,
-                added_lines=added,
-                removed_lines=removed,
-                changed_lines=changed_lines,
-                diff_unified=diff_unified,
-                diff_truncated=bool(diff_truncated),
-                issues=issues_out,
-                suggested_pipeline_patch=suggested_patch,
-            )
-
-    if title is None:
-        try:
-            title = extract_markdown_title(text)
-        except Exception:
-            title = None
-
-    language: str | None = None
-    language_confidence: float | None = None
-    if body.detect_language:
-        try:
-            lang = detect_language(text, min_chars=int(body.language_min_chars or 0))
-            language = str(getattr(lang, "language", "") or "").strip() or None
-            language_confidence = float(getattr(lang, "confidence", 0.0) or 0.0)
-        except Exception:
-            language = None
-            language_confidence = None
-
-    keywords: list[str] | None = None
-    if body.extract_keywords:
-        try:
-            max_chars = max(0, int(body.keywords_max_chars or 0))
-            snippet = text[:max_chars] if max_chars > 0 else text
-            kws = extract_keywords_preview(
-                snippet,
-                provider=str(body.keywords_provider or "auto"),
-                top_k=int(body.keywords_top_k or 10),
-            )
-            keywords = list(kws) if kws else None
-        except Exception:
-            keywords = None
-
-    diff_unified, diff_truncated = (None, False)
-    if body.include_diff:
-        diff_unified, diff_truncated = _unified_diff_text(baseline_text, text, max_lines=body.diff_max_lines)
-    added, removed, changed_lines = _line_diff_stats(baseline_text, text)
-    issues_out, suggested_patch = _analyze(text)
-    return CleanPreviewResponse(
+    title = _extract_preview_title(text, title)
+    language, language_confidence = _detect_preview_language(text, body)
+    keywords = _extract_preview_keywords(text, body)
+    return _build_clean_preview_response(
+        baseline_text=baseline_text,
         markdown=text,
-        applied_rules=result.applied_rules,
-        changed=bool(text != baseline_text),
+        body=body,
+        clean_result=result,
         rule_stats=rule_stats,
         dropped=False,
         drop_reason=None,
@@ -2542,20 +3009,10 @@ async def clean_preview(
         language=language,
         language_confidence=language_confidence,
         keywords=keywords,
-        urls_changed=int(urls_changed),
-        paragraphs_dropped=int(paragraphs_dropped),
-        references_removed_lines=int(references_removed_lines),
-        input_chars=len(baseline_text),
-        output_chars=len(text or ""),
-        input_lines=len((baseline_text or "").splitlines()),
-        output_lines=len((text or "").splitlines()),
-        added_lines=added,
-        removed_lines=removed,
-        changed_lines=changed_lines,
-        diff_unified=diff_unified,
-        diff_truncated=bool(diff_truncated),
-        issues=issues_out,
-        suggested_pipeline_patch=suggested_patch,
+        urls_changed=urls_changed,
+        paragraphs_dropped=paragraphs_dropped,
+        references_removed_lines=references_removed_lines,
+        analysis_opts=analysis_opts,
     )
 
 
@@ -2633,39 +3090,10 @@ async def governance_analyze(
     """
     DatasetService.ensure_member(db, tenant_id, account_id)
 
-    raw_input = body.markdown or ""
-    input_text = raw_input
-    if body.input_format == "html":
-        html = raw_input
-        if str(body.remove_images or "none").strip().lower() in {"decorative", "all"}:
-            html = strip_images(html, mode=str(body.remove_images).strip().lower()).text  # type: ignore[arg-type]
-        extracted = extract_text_from_html(html, xpath=body.html_xpath)
-        if body.html_xpath and extracted.xpath_error and extracted.xpath_error.startswith("xpath_failed:"):
-            raise HTTPException(status_code=400, detail=f"Invalid XPath: {extracted.xpath_error}")
-        input_text = extracted.text or ""
-
+    input_text = _extract_governance_input_text(body)
     analysis_opts = _governance_analysis_options(body)
-
-    issues, patch = analyze_governance(
-        input_text or "",
-        "",
-        input_format=str(body.input_format or "markdown"),
-        options=analysis_opts,
-    )
-    out_issues: list[GovernanceIssue] = []
-    for it in issues:
-        out_issues.append(
-            GovernanceIssue(
-                code=str(it.code),
-                severity=it.severity,  # type: ignore[arg-type]
-                message=str(it.message),
-                count=int(getattr(it, "count", 0) or 0),
-                samples=list(getattr(it, "samples", None) or []),
-                suggested_pipeline_patch=dict(getattr(it, "suggested_pipeline_patch", None) or {}),
-            )
-        )
-
     base = input_text or ""
+    out_issues, patch = _analyze_governance_preview(base, "", body, analysis_opts)
     return GovernanceAnalyzeResponse(
         input_chars=len(base),
         input_lines=len(base.splitlines()),
@@ -2755,153 +3183,152 @@ async def auto_annotations(
     scan_text = source[:max_chars]
     max_items = max(1, min(int(body.max_annotations or 80), 500))
 
-    candidates: list[AutoAnnotationItem] = []
-    document_tags: list[AutoDocumentTag] = []
-    keyword_provider: str | None = None
-    warnings: list[str] = []
-    providers_used: list[str] = []
-    strategy = "rules"
     mode = str(body.mode or "document_focus").strip().lower()
     providers = _normalize_auto_annotation_providers(body)
-    summary: str | None = None
+    draft = _AutoAnnotationDraft()
 
     try:
         if mode == "document_focus":
-            if "cpu" in providers:
-                cpu_summary, cpu_tags, cpu_items = _collect_cpu_focus_annotations(
-                    scan_text,
-                    keyword_provider=str(body.keyword_provider or "simple"),
-                    keyword_top_k=int(body.keyword_top_k or 12),
-                    max_items=max_items,
-                )
-                if cpu_summary and summary is None:
-                    summary = cpu_summary
-                if cpu_tags:
-                    document_tags.extend(cpu_tags)
-                if cpu_items:
-                    candidates.extend(cpu_items)
-                    _append_provider_used(providers_used, "cpu")
-
-            if "llm" in providers:
-                try:
-                    llm_summary, llm_tags, llm_items = await asyncio.wait_for(
-                        _collect_llm_focus_annotations(
-                            scan_text,
-                            max_items=max_items,
-                            max_chars=max_chars,
-                            model=body.llm_model,
-                        ),
-                        timeout=_AUTO_TAGGER_LLM_TIMEOUT_S,
-                    )
-                    if llm_summary:
-                        summary = llm_summary
-                    if llm_tags:
-                        document_tags.extend(llm_tags)
-                    if llm_items:
-                        candidates.extend(llm_items)
-                    if llm_summary or llm_tags or llm_items:
-                        _append_provider_used(providers_used, "llm")
-                        strategy = "hybrid" if "cpu" in providers_used else "llm"
-                except Exception:  # noqa: BLE001
-                    warnings.append("LLM focus extraction unavailable; used rules fallback.")
-
-            use_rule_fallback = not candidates or any(provider in providers for provider in {"keyword", "regex"})
-            if len(candidates) < max_items and use_rule_fallback:
-                keyword_provider, rule_items = _collect_rule_focus_annotations(
-                    scan_text,
-                    enable_keywords="keyword" in providers,
-                    enable_entities="regex" in providers,
-                    keyword_provider=str(body.keyword_provider or "simple"),
-                    keyword_top_k=int(body.keyword_top_k or 12),
-                    max_items=max_items - len(candidates),
-                )
-                if rule_items:
-                    candidates.extend(rule_items)
-                    if any(str(item.source) == "keyword" for item in rule_items):
-                        _append_provider_used(providers_used, "keyword")
-                    if any(str(item.source) == "regex_entity" for item in rule_items):
-                        _append_provider_used(providers_used, "regex")
-                    if any(str(item.source) == "rule_focus" for item in rule_items):
-                        _append_provider_used(providers_used, "rule_focus")
-                    strategy = "hybrid" if strategy == "llm" else "rules"
-
-            if "gliner" in providers and len(candidates) < max_items:
-                gliner_items = await _collect_gliner_entity_annotations(scan_text, max_items=max_items - len(candidates))
-                if gliner_items:
-                    candidates.extend(gliner_items)
-                    _append_provider_used(providers_used, "gliner")
-                    strategy = "hybrid" if strategy == "llm" else "rules"
-
-            sensitive_providers = providers & {"pii", "secret"}
-            if sensitive_providers and len(candidates) < max_items:
-                sensitive_items = _collect_sensitive_annotations(
-                    scan_text,
-                    max_items=max_items - len(candidates),
-                    providers=sensitive_providers,
-                )
-                candidates.extend(sensitive_items)
-                for source in {str(item.source) for item in sensitive_items}:
-                    _append_provider_used(providers_used, source)
-                strategy = "hybrid" if candidates else strategy
+            await _collect_document_focus_annotations(draft, scan_text, body, providers, max_items)
         else:
-            sensitive_providers = providers & {"pii", "secret"}
-            if sensitive_providers:
-                sensitive_items = _collect_sensitive_annotations(
-                    scan_text,
-                    max_items=max_items,
-                    providers=sensitive_providers,
-                )
-                candidates.extend(sensitive_items)
-                for source in {str(item.source) for item in sensitive_items}:
-                    _append_provider_used(providers_used, source)
-
-            if "gliner" in providers and len(candidates) < max_items:
-                gliner_items = await _collect_gliner_entity_annotations(scan_text, max_items=max_items - len(candidates))
-                candidates.extend(gliner_items)
-                if gliner_items:
-                    _append_provider_used(providers_used, "gliner")
-
-            if "regex" in providers and len(candidates) < max_items:
-                entity_items = _collect_entity_annotations(scan_text, max_items=max_items - len(candidates))
-                candidates.extend(entity_items)
-                if entity_items:
-                    _append_provider_used(providers_used, "regex")
-
-            if "keyword" in providers and len(candidates) < max_items:
-                keyword_provider, keyword_items = _collect_keyword_annotations(
-                    scan_text,
-                    provider=str(body.keyword_provider or "simple"),
-                    top_k=int(body.keyword_top_k or 12),
-                    max_items=max_items - len(candidates),
-                )
-                candidates.extend(keyword_items)
-                if keyword_items:
-                    _append_provider_used(providers_used, "keyword")
-            strategy = "rules"
+            await _collect_compliance_annotations(draft, scan_text, body, providers, max_items)
     except Exception as exc:  # pragma: no cover
         raise HTTPException(status_code=500, detail=f"Auto annotation failed: {str(exc)}") from exc
 
-    if keyword_provider is None and "keyword" in providers:
-        keyword_provider = (str(body.keyword_provider or "simple").strip().lower() or "simple")
-        if keyword_provider == "auto":
-            keyword_provider = "simple"
+    keyword_provider = _finalize_auto_annotation_keyword_provider(draft.keyword_provider, body, providers)
 
-    annotations = _dedupe_auto_annotations(candidates, max_items=max_items)
-    if not document_tags:
-        document_tags.extend(_derive_document_tags_from_annotations(annotations, max_items=max_items))
-    document_tags = _dedupe_auto_document_tags(document_tags, max_items=max_items)
+    annotations = _dedupe_auto_annotations(draft.candidates, max_items=max_items)
+    if not draft.document_tags:
+        draft.document_tags.extend(_derive_document_tags_from_annotations(annotations, max_items=max_items))
+    document_tags = _dedupe_auto_document_tags(draft.document_tags, max_items=max_items)
     return AutoAnnotationResponse(
         annotations=annotations,
         document_tags=document_tags,
-        summary=summary,
+        summary=draft.summary,
         text_chars=total_chars,
         scanned_chars=len(scan_text),
         truncated=total_chars > len(scan_text),
         keyword_provider=keyword_provider,
-        strategy=strategy,  # type: ignore[arg-type]
-        providers_used=providers_used,
-        warnings=warnings,
+        strategy=draft.strategy,  # type: ignore[arg-type]
+        providers_used=draft.providers_used,
+        warnings=draft.warnings,
     )
+
+
+@dataclass
+class _LLMCleanPromptSelection:
+    system_prompt: str
+    prompt_template_id: str | None = None
+    template_key: str | None = None
+    ab_experiment_key: str | None = None
+    ab_variant: str | None = None
+
+
+def _default_llm_clean_system_prompt() -> str:
+    return (
+        "You are a 'Markdown data governance cleaner'.\n"
+        "Goal: Clean up noise and formatting issues from parsing/copying, but do not change semantics or fabricate content.\n"
+        "Requirements:\n"
+        "1) Preserve heading/list/table/code block structure; do not modify code block content.\n"
+        "2) Remove obvious headers/footers/page numbers/TOC markers/repeated short lines/control characters/zero-width characters.\n"
+        "3) Normalize whitespace: merge excess blank lines, remove trailing spaces, merge 'soft line breaks' when necessary.\n"
+        "4) Do not translate or rewrite; only clean and normalize.\n"
+        "Output: Return strict JSON with fields: markdown/changes/warnings.\n"
+    )
+
+
+def _resolve_llm_clean_prompt_selection(
+    *,
+    body: LLMCleanPreviewRequest,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+) -> _LLMCleanPromptSelection:
+    selection = _LLMCleanPromptSelection(system_prompt=_default_llm_clean_system_prompt())
+    if not (body.prompt_template_id or body.template_key or body.ab_experiment_key):
+        return selection
+
+    chosen = resolve_prompt_template(
+        db=db,
+        tenant_id=tenant_id,
+        prompt_template_id=body.prompt_template_id,
+        template_key=body.template_key,
+        ab_experiment_key=body.ab_experiment_key,
+        ab_user_key=body.ab_user_key or account_id,
+    )
+    if not chosen:
+        raise HTTPException(status_code=404, detail="PromptTemplate not found or inactive")
+
+    selection.system_prompt = str(chosen.content or "").strip() or selection.system_prompt
+    selection.prompt_template_id = str(chosen.id)
+    selection.template_key = getattr(chosen, "template_key", None)
+    selection.ab_experiment_key = getattr(chosen, "ab_experiment_key", None)
+    selection.ab_variant = getattr(chosen, "ab_variant", None)
+    chosen.usage_count += 1
+    db.commit()
+    return selection
+
+
+def _llm_clean_model_config(body: LLMCleanPreviewRequest) -> dict[str, object] | None:
+    model_config: dict[str, object] = {}
+    if body.model:
+        model_config["model"] = body.model
+    if body.temperature is not None:
+        model_config["temperature"] = body.temperature
+    return model_config or None
+
+
+async def _request_llm_clean_preview(
+    *,
+    markdown: str,
+    body: LLMCleanPreviewRequest,
+    system_prompt: str,
+) -> dict[str, Any]:
+    try:
+        llm = await create_llm_client(scenario="governance_cleaning", model_config=_llm_clean_model_config(body))
+        return await llm.chat_with_schema(
+            [
+                LLMMessage(role=LLMRole.SYSTEM, content=system_prompt),
+                LLMMessage(
+                    role=LLMRole.HUMAN,
+                    content=f"Input Markdown:\n```markdown\n{markdown}\n```",
+                ),
+            ],
+            response_schema={
+                "markdown": "string",
+                "changes": ["string"],
+                "warnings": ["string"],
+            },
+            temperature=body.temperature,
+            max_tokens=body.max_tokens,
+        )
+    except ConfigError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"LLM request failed: {str(exc)[:200]}") from exc
+
+
+def _parse_llm_clean_response(resp: object, fallback_markdown: str) -> tuple[str, list[str]]:
+    warnings: list[str] = []
+    cleaned = ""
+    if isinstance(resp, dict):
+        markdown = resp.get("markdown")
+        if isinstance(markdown, str):
+            cleaned = markdown
+        else:
+            raw = resp.get("raw")
+            if isinstance(raw, str) and raw.strip():
+                cleaned = raw.strip()
+                warnings.append("LLM did not return JSON schema; falling back to raw text.")
+
+        warn_val = resp.get("warnings")
+        if isinstance(warn_val, list):
+            warnings.extend([str(item).strip() for item in warn_val if str(item).strip()])
+
+    if not cleaned.strip():
+        cleaned = fallback_markdown
+        warnings.append("LLM returned empty; falling back to original text.")
+    return cleaned, warnings
 
 
 @router.post("/llm-clean-preview", response_model=LLMCleanPreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -2928,99 +3355,18 @@ async def llm_clean_preview(
             detail=f"Markdown too large for LLM preview (len={len(markdown)} > max_chars={body.max_chars}).",
         )
 
-    system_prompt = (
-        "You are a 'Markdown data governance cleaner'.\n"
-        "Goal: Clean up noise and formatting issues from parsing/copying, but do not change semantics or fabricate content.\n"
-        "Requirements:\n"
-        "1) Preserve heading/list/table/code block structure; do not modify code block content.\n"
-        "2) Remove obvious headers/footers/page numbers/TOC markers/repeated short lines/control characters/zero-width characters.\n"
-        "3) Normalize whitespace: merge excess blank lines, remove trailing spaces, merge 'soft line breaks' when necessary.\n"
-        "4) Do not translate or rewrite; only clean and normalize.\n"
-        "Output: Return strict JSON with fields: markdown/changes/warnings.\n"
-    )
-    selected_prompt_template_id: str | None = None
-    selected_prompt_template_key: str | None = None
-    selected_prompt_ab_experiment_key: str | None = None
-    selected_prompt_ab_variant: str | None = None
-
-    if body.prompt_template_id or body.template_key or body.ab_experiment_key:
-        chosen = resolve_prompt_template(
-            db=db,
-            tenant_id=tenant_id,
-            prompt_template_id=body.prompt_template_id,
-            template_key=body.template_key,
-            ab_experiment_key=body.ab_experiment_key,
-            ab_user_key=body.ab_user_key or account_id,
-        )
-
-        if not chosen:
-            raise HTTPException(status_code=404, detail="PromptTemplate not found or inactive")
-
-        system_prompt = str(chosen.content or "").strip() or system_prompt
-        selected_prompt_template_id = str(chosen.id)
-        selected_prompt_template_key = getattr(chosen, "template_key", None)
-        selected_prompt_ab_experiment_key = getattr(chosen, "ab_experiment_key", None)
-        selected_prompt_ab_variant = getattr(chosen, "ab_variant", None)
-        chosen.usage_count += 1
-        db.commit()
-
-    model_config = {}
-    if body.model:
-        model_config["model"] = body.model
-    if body.temperature is not None:
-        model_config["temperature"] = body.temperature
-
-    try:
-        llm = await create_llm_client(scenario="governance_cleaning", model_config=model_config or None)
-        resp = await llm.chat_with_schema(
-            [
-                LLMMessage(role=LLMRole.SYSTEM, content=system_prompt),
-                LLMMessage(
-                    role=LLMRole.HUMAN,
-                    content=f"Input Markdown:\n```markdown\n{markdown}\n```",
-                ),
-            ],
-            response_schema={
-                "markdown": "string",
-                "changes": ["string"],
-                "warnings": ["string"],
-            },
-            temperature=body.temperature,
-            max_tokens=body.max_tokens,
-        )
-    except ConfigError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"LLM request failed: {str(exc)[:200]}") from exc
-
-    warnings: list[str] = []
-    cleaned = ""
-    if isinstance(resp, dict):
-        val = resp.get("markdown")
-        if isinstance(val, str):
-            cleaned = val
-        else:
-            raw = resp.get("raw")
-            if isinstance(raw, str) and raw.strip():
-                cleaned = raw.strip()
-                warnings.append("LLM did not return JSON schema; falling back to raw text.")
-
-        warn_val = resp.get("warnings")
-        if isinstance(warn_val, list):
-            warnings.extend([str(w).strip() for w in warn_val if str(w).strip()])
-
-    if not cleaned.strip():
-        cleaned = markdown
-        warnings.append("LLM returned empty; falling back to original text.")
+    prompt_selection = _resolve_llm_clean_prompt_selection(body=body, db=db, tenant_id=tenant_id, account_id=account_id)
+    resp = await _request_llm_clean_preview(markdown=markdown, body=body, system_prompt=prompt_selection.system_prompt)
+    cleaned, warnings = _parse_llm_clean_response(resp, markdown)
 
     return LLMCleanPreviewResponse(
         markdown=cleaned,
         changed=(cleaned != markdown),
         model_used=body.model or settings.LLM_MODEL,
-        prompt_template_id=selected_prompt_template_id,
-        template_key=selected_prompt_template_key,
-        ab_experiment_key=selected_prompt_ab_experiment_key,
-        ab_variant=selected_prompt_ab_variant,
+        prompt_template_id=prompt_selection.prompt_template_id,
+        template_key=prompt_selection.template_key,
+        ab_experiment_key=prompt_selection.ab_experiment_key,
+        ab_variant=prompt_selection.ab_variant,
         warnings=warnings,
     )
 
