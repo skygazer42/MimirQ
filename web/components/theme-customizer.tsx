@@ -5,6 +5,7 @@ import { Moon, Sun, Settings2, RefreshCw } from "lucide-react"
 import { useTranslations } from 'next-intl'
 import { useTheme } from "next-themes"
 
+import { getClientStorage, writeClientStorage } from "@/lib/client-storage"
 import { cn } from "@/lib/utils"
 import {
   applySurfaceTheme,
@@ -56,10 +57,11 @@ export function ThemeCustomizer({ trigger }: Readonly<ThemeCustomizerProps> = {}
   )
 
   React.useEffect(() => {
-    if (globalThis.window !== undefined) {
-      const nextSurfaceTheme = readSurfaceTheme(globalThis.window.localStorage)
+    const storage = getClientStorage()
+    if (storage) {
+      const nextSurfaceTheme = readSurfaceTheme(storage)
       setSurfaceTheme(nextSurfaceTheme)
-      setColor(readThemeColor(globalThis.window.localStorage, nextSurfaceTheme))
+      setColor(readThemeColor(storage, nextSurfaceTheme))
     }
     setMounted(true)
   }, [])
@@ -70,8 +72,8 @@ export function ThemeCustomizer({ trigger }: Readonly<ThemeCustomizerProps> = {}
     applySurfaceTheme(surfaceTheme)
     applyThemeColor(color)
     if (globalThis.window !== undefined) {
-      globalThis.window.localStorage.setItem(SURFACE_THEME_STORAGE_KEY, surfaceTheme)
-      globalThis.window.localStorage.setItem(THEME_COLOR_STORAGE_KEY, color)
+      writeClientStorage(SURFACE_THEME_STORAGE_KEY, surfaceTheme)
+      writeClientStorage(THEME_COLOR_STORAGE_KEY, color)
       notifyThemeAppearanceChanged()
     }
   }, [color, mounted, surfaceTheme])

@@ -43,6 +43,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { connectorApi, datasetApi, documentApi, settingsApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { readClientStorage } from '@/lib/client-storage'
 import { cn, formatDate, formatFileSize } from '@/lib/utils'
 import type { ConnectorRunOut, Dataset, DatasetIngestionStats, DocumentBatchUploadResponse, DocumentPipelineOptions } from '@/types'
 
@@ -149,7 +150,7 @@ const TABLE_ROW_CLASS = 'border-t border-border/50'
 function loadDraft(): DraftState {
   if (globalThis.window === undefined) return DEFAULT_DRAFT
   try {
-    const raw = globalThis.window.localStorage.getItem(DRAFT_KEY)
+    const raw = readClientStorage(DRAFT_KEY)
     if (!raw) return DEFAULT_DRAFT
     const parsed = JSON.parse(raw) as Partial<DraftState>
     return { ...DEFAULT_DRAFT, ...parsed }

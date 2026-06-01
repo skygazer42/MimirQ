@@ -42,6 +42,7 @@ import { computeRoleIndices, roughEstimateTokens } from '@/components/chunk-prev
 import { getChunkSectionPath } from '@/components/chunk-preview/utils/sections'
 import { buildChunkSearchIndex, searchChunkIndex, type ChunkSearchResult } from '@/components/chunk-preview/utils/retrieval-search'
 import { rerankChunkSearchResults, type RerankedChunkSearchResult } from '@/components/chunk-preview/utils/reranker-sim'
+import { writeClientStorage } from '@/lib/client-storage'
 import {
   ORIGINAL_PREVIEW_MODE_STORAGE_KEY,
   getStoredOriginalPreviewMode,
@@ -175,7 +176,7 @@ export function ChunkList() {
 
   const openDockedPdfPreview = useCallback(() => {
     if (globalThis.window !== undefined) {
-      globalThis.window.localStorage.setItem(ORIGINAL_PREVIEW_MODE_STORAGE_KEY, 'pdf')
+      writeClientStorage(ORIGINAL_PREVIEW_MODE_STORAGE_KEY, 'pdf')
     }
     setOriginalPanelVisible(true)
     scrollRef.current?.focus()

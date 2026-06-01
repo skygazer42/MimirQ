@@ -2,6 +2,7 @@
 
 import { Activity } from 'lucide-react'
 
+import { readClientStorage, writeClientStorage } from '@/lib/client-storage'
 import { cn } from '@/lib/utils'
 
 import type { VelocityUnit } from './monitor-utils'
@@ -10,13 +11,13 @@ export const VELOCITY_STORAGE_KEY = 'mimirq.ingestion.velocityUnit'
 
 export function readStoredVelocityUnit(): VelocityUnit {
   if (globalThis.window === undefined) return 'docs'
-  const value = globalThis.window.localStorage.getItem(VELOCITY_STORAGE_KEY)
+  const value = readClientStorage(VELOCITY_STORAGE_KEY)
   return value === 'bytes' ? 'bytes' : 'docs'
 }
 
 export function persistVelocityUnit(unit: VelocityUnit) {
   if (globalThis.window === undefined) return
-  globalThis.window.localStorage.setItem(VELOCITY_STORAGE_KEY, unit)
+  writeClientStorage(VELOCITY_STORAGE_KEY, unit)
 }
 
 function formatValue(value: number | null, unit: VelocityUnit): string {

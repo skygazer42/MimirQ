@@ -9,6 +9,7 @@ import { toast } from 'sonner'
 
 import { chatApi, healthApi, metaApi, observabilityApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { readClientStorage, writeClientStorage } from '@/lib/client-storage'
 import { getDocumentPreviewAnchorFromCitation } from '@/lib/document-preview-anchor'
 import { prefetchDocumentView } from '@/lib/document-view-prefetch'
 import { queryKeys } from '@/lib/query-keys'
@@ -637,7 +638,7 @@ function readStoredTraceCitationTargets(): Record<string, StoredTraceCitationTar
   if (globalThis.window === undefined) return {}
 
   try {
-    const raw = globalThis.window.localStorage.getItem(RAG_TRACE_LAST_TARGETS_STORAGE_KEY)
+    const raw = readClientStorage(RAG_TRACE_LAST_TARGETS_STORAGE_KEY)
     if (!raw) return {}
     const parsed = JSON.parse(raw) as Record<string, Partial<StoredTraceCitationTarget>> | null
     if (!parsed || typeof parsed !== 'object') return {}
@@ -674,12 +675,7 @@ function readStoredTraceCitationTargets(): Record<string, StoredTraceCitationTar
 
 function writeStoredTraceCitationTargets(targets: Record<string, StoredTraceCitationTarget>) {
   if (globalThis.window === undefined) return
-
-  try {
-    globalThis.window.localStorage.setItem(RAG_TRACE_LAST_TARGETS_STORAGE_KEY, JSON.stringify(targets))
-  } catch {
-    // best-effort persistence only
-  }
+  writeClientStorage(RAG_TRACE_LAST_TARGETS_STORAGE_KEY, JSON.stringify(targets))
 }
 
 export type PipelineTimelineStep = {

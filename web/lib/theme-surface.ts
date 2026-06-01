@@ -1,4 +1,5 @@
 import chroma, { type Color } from 'chroma-js'
+import { getClientStorage } from './client-storage'
 
 export type SurfaceThemeKey = 'ocean' | 'classic' | 'earth'
 
@@ -140,7 +141,7 @@ export function notifyThemeAppearanceChanged(
 }
 
 export function applyStoredThemeAppearance(
-  storage: StorageReader | null = globalThis.window?.localStorage ?? null,
+  storage: StorageReader | null = getClientStorage(),
   root?: HTMLElement | null,
   eventTarget?: ThemeEventTarget | null,
   options: ApplyThemeAppearanceOptions = {}

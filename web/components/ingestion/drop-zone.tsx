@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { datasetApi, documentApi } from '@/lib/api'
+import { readClientStorage, writeClientStorage } from '@/lib/client-storage'
 import type { Dataset } from '@/types'
 
 export type DropZoneHandle = {
@@ -29,12 +30,12 @@ const PARSER_STORAGE_KEY = 'mimirq.ingestion.dropParserBackend'
 
 function readStoredParserBackend() {
   if (globalThis.window === undefined) return 'auto'
-  return globalThis.window.localStorage.getItem(PARSER_STORAGE_KEY) || 'auto'
+  return readClientStorage(PARSER_STORAGE_KEY) || 'auto'
 }
 
 function persistParserBackend(value: string) {
   if (globalThis.window === undefined) return
-  globalThis.window.localStorage.setItem(PARSER_STORAGE_KEY, value)
+  writeClientStorage(PARSER_STORAGE_KEY, value)
 }
 
 export const DropZone = React.forwardRef<DropZoneHandle, {

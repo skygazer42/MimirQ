@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Panel } from '@/components/ui/panel'
 import { scimApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { readClientStorage } from '@/lib/client-storage'
 import { cn, detachPromise } from '@/lib/utils'
 
 export function ScimProvisioningPanel() {
@@ -18,8 +19,7 @@ export function ScimProvisioningPanel() {
   const [busy, setBusy] = useState<string | null>(null)
 
   useEffect(() => {
-    const storedTenant =
-      globalThis.window.localStorage.getItem('mimirq_tenant_id')
+    const storedTenant = readClientStorage('mimirq_tenant_id')
     if (storedTenant) setTenantId(storedTenant)
   }, [])
 

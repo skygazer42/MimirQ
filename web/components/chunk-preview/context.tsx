@@ -10,6 +10,7 @@ import { toast } from 'sonner'
 import { useRouter } from '@/i18n/navigation'
 import { documentApi, parsingApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { readClientStorage, removeClientStorage, writeClientStorage } from '@/lib/client-storage'
 import { generateRequestId } from '@/lib/request-id'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
@@ -423,7 +424,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     if (globalThis.window === undefined) return
     if (datasetScopeLoadedRef.current) return
     const inbound = (searchParams.get('dataset_id') || '').trim()
-    const saved = (globalThis.window.localStorage.getItem(STORAGE_DATASET_ID_KEY) || '').trim()
+    const saved = (readClientStorage(STORAGE_DATASET_ID_KEY) || '').trim()
     const next = inbound || saved
     if (next) setDatasetId(next)
     datasetScopeLoadedRef.current = true
@@ -431,13 +432,13 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
 
   useEffect(() => {
     if (globalThis.window === undefined) return
-    if (datasetId) globalThis.window.localStorage.setItem(STORAGE_DATASET_ID_KEY, datasetId)
-    else globalThis.window.localStorage.removeItem(STORAGE_DATASET_ID_KEY)
+    if (datasetId) writeClientStorage(STORAGE_DATASET_ID_KEY, datasetId)
+    else removeClientStorage(STORAGE_DATASET_ID_KEY)
   }, [datasetId])
 
   useEffect(() => {
     if (globalThis.window === undefined) return
-    const raw = (globalThis.window.localStorage.getItem(STORAGE_SEPARATOR_SETTINGS_KEY) || '').trim()
+    const raw = (readClientStorage(STORAGE_SEPARATOR_SETTINGS_KEY) || '').trim()
     if (!raw) {
       separatorSettingsLoadedRef.current = true
       return
@@ -458,7 +459,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
   // Load parent-child strategy settings (best-effort).
   useEffect(() => {
     if (globalThis.window === undefined) return
-    const raw = (globalThis.window.localStorage.getItem(STORAGE_PARENT_CHILD_SETTINGS_KEY) || '').trim()
+    const raw = (readClientStorage(STORAGE_PARENT_CHILD_SETTINGS_KEY) || '').trim()
     if (!raw) {
       parentChildSettingsLoadedRef.current = true
       return
@@ -486,7 +487,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
       parentChildRatio,
       parentChildMinChildSize,
     })
-    globalThis.window.localStorage.setItem(STORAGE_PARENT_CHILD_SETTINGS_KEY, payload)
+    writeClientStorage(STORAGE_PARENT_CHILD_SETTINGS_KEY, payload)
   }, [parentChildRatio, parentChildMinChildSize])
 
   useEffect(() => {
@@ -498,13 +499,13 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
       keepSeparator,
       separatorMaxChunkSize,
     })
-    globalThis.window.localStorage.setItem(STORAGE_SEPARATOR_SETTINGS_KEY, payload)
+    writeClientStorage(STORAGE_SEPARATOR_SETTINGS_KEY, payload)
   }, [separatorPreset, separatorCustom, keepSeparator, separatorMaxChunkSize])
 
   // Load preview perf settings (best-effort).
   useEffect(() => {
     if (globalThis.window === undefined) return
-    const raw = (globalThis.window.localStorage.getItem(STORAGE_PERF_SETTINGS_KEY) || '').trim()
+    const raw = (readClientStorage(STORAGE_PERF_SETTINGS_KEY) || '').trim()
     if (!raw) return
     try {
       const data = JSON.parse(raw)
@@ -530,7 +531,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
       maxChunks,
       useParseCache,
     })
-    globalThis.window.localStorage.setItem(STORAGE_PERF_SETTINGS_KEY, payload)
+    writeClientStorage(STORAGE_PERF_SETTINGS_KEY, payload)
   }, [includeOriginalText, originalTextMaxChars, maxChunks, useParseCache])
 
   // Keep currentFileIndex valid when fileList changes.
@@ -539,7 +540,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
       setCurrentFileIndex(0)
       focusFileLoadedRef.current = false
       if (globalThis.window !== undefined) {
-        globalThis.window.localStorage.removeItem(STORAGE_FOCUS_FILE_ID_KEY)
+        removeClientStorage(STORAGE_FOCUS_FILE_ID_KEY)
       }
       return
     }
@@ -560,7 +561,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
   useEffect(() => {
     if (globalThis.window === undefined) return
     if (!currentFileItem?.id) return
-    globalThis.window.localStorage.setItem(STORAGE_FOCUS_FILE_ID_KEY, currentFileItem.id)
+    writeClientStorage(STORAGE_FOCUS_FILE_ID_KEY, currentFileItem.id)
   }, [currentFileItem?.id])
 
   // Restore focused file after fileList is initialized.
@@ -568,7 +569,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     if (globalThis.window === undefined) return
     if (focusFileLoadedRef.current) return
     if (fileList.length === 0) return
-    const saved = (globalThis.window.localStorage.getItem(STORAGE_FOCUS_FILE_ID_KEY) || '').trim()
+    const saved = (readClientStorage(STORAGE_FOCUS_FILE_ID_KEY) || '').trim()
     if (saved) {
       const idx = fileList.findIndex((f) => f.id === saved)
       if (idx >= 0) setCurrentFileIndex(idx)

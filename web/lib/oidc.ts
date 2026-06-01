@@ -2,6 +2,7 @@
 
 import type { AuthResponse, AuthToken, UserProfile } from '@/types'
 import { setAuthSession } from '@/lib/auth-storage'
+import { readClientStorage, removeClientStorage, writeClientStorage } from '@/lib/client-storage'
 import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { generateOauthState, generatePkceCodeVerifier, pkceChallengeFromVerifier, tryDecodeJwtPayload } from '@/lib/oidc-pkce'
 import { getOidcPublicProvidersFromEnv, resolveOidcPublicProvider } from '@/lib/oidc-providers'
@@ -86,27 +87,15 @@ function txStorageKey(state: string): string {
 }
 
 function sessionSet(key: string, value: string) {
-  try {
-    globalThis.window.sessionStorage.setItem(key, value)
-  } catch {
-    // ignore
-  }
+  writeClientStorage(key, value, 'session')
 }
 
 function sessionGet(key: string): string | null {
-  try {
-    return globalThis.window.sessionStorage.getItem(key)
-  } catch {
-    return null
-  }
+  return readClientStorage(key, 'session')
 }
 
 function sessionDel(key: string) {
-  try {
-    globalThis.window.sessionStorage.removeItem(key)
-  } catch {
-    // ignore
-  }
+  removeClientStorage(key, 'session')
 }
 
 let cachedDiscovery: { issuer: string; value: OidcDiscovery } | null = null
@@ -322,7 +311,7 @@ export async function completeOidcLogin(params: { code: string; state: string })
     throw new Error('oidc_missing_access_token')
   }
 
-  // Important: Do NOT store refresh_token in localStorage.
+  // Important: Do NOT persist the refresh token in browser storage.
   const token: AuthToken = {
     access_token: accessToken,
     token_type: normalizeTokenType(data?.token_type),
