@@ -33,6 +33,80 @@ def _normalize_publication_status(value: object) -> str:
     return "published"
 
 
+def _clean_chunk_strategy_value(key: str, value: Any) -> tuple[str, Any] | None:
+    if not isinstance(key, str):
+        raise ValueError("chunk_strategy_params keys must be strings")
+    cleaned_key = key.strip()
+    if not cleaned_key:
+        return None
+    if len(cleaned_key) > 80:
+        raise ValueError("chunk_strategy_params key too long (max=80)")
+    if value is None or isinstance(value, (bool, int, float)):
+        return cleaned_key, value
+    if isinstance(value, str):
+        if len(value) > 500:
+            raise ValueError("chunk_strategy_params string value too long (max=500)")
+        return cleaned_key, value
+    raise ValueError("chunk_strategy_params values must be JSON primitives")
+
+
+def _clean_chunk_strategy_params(raw: Any) -> dict[str, Any] | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError("chunk_strategy_params must be an object")
+    if len(raw) > 30:
+        raise ValueError("chunk_strategy_params has too many keys (max=30)")
+
+    cleaned: dict[str, Any] = {}
+    for key, value in raw.items():
+        pair = _clean_chunk_strategy_value(key, value)
+        if pair is not None:
+            cleaned[pair[0]] = pair[1]
+    return cleaned or None
+
+
+def _dedupe_member_ids(raw_members: list[str] | None) -> list[str] | None:
+    if raw_members is None:
+        return None
+    seen: set[str] = set()
+    normalized: list[str] = []
+    for raw in raw_members:
+        member_id = str(raw or "").strip()
+        if not member_id or member_id in seen:
+            continue
+        if len(member_id) > 255:
+            raise ValueError("partial_member_list member id too long (max=255)")
+        seen.add(member_id)
+        normalized.append(member_id)
+        if len(normalized) >= 200:
+            break
+    return normalized
+
+
+def _dedupe_group_ids(raw_groups: list[UUID] | None) -> list[UUID] | None:
+    if raw_groups is None:
+        return None
+    seen: set[UUID] = set()
+    normalized: list[UUID] = []
+    for raw in raw_groups:
+        try:
+            group_id = UUID(str(raw))
+        except Exception as exc:
+            raise ValueError("partial_group_list contains invalid UUID") from exc
+        if group_id in seen:
+            continue
+        seen.add(group_id)
+        normalized.append(group_id)
+        if len(normalized) >= 200:
+            break
+    return normalized
+
+
+def _metadata_text_value(meta: dict[str, Any], key: str) -> str | None:
+    return str(meta.get(key) or "").strip() or None
+
+
 class GovernanceRegexRule(BaseModel):
     """Declarative regex cleanup rule (no executable code)."""
 
@@ -226,36 +300,7 @@ class DocumentPipelineOptions(BaseModel):
         - API clients (pipeline JSON / patch)
         - dataset ingestion policy pipeline_patch
         """
-        raw = self.chunk_strategy_params
-        if raw is None:
-            return self
-        if not isinstance(raw, dict):
-            raise ValueError("chunk_strategy_params must be an object")
-        if len(raw) > 30:
-            raise ValueError("chunk_strategy_params has too many keys (max=30)")
-
-        cleaned: dict[str, Any] = {}
-        for k, v in raw.items():
-            if not isinstance(k, str):
-                raise ValueError("chunk_strategy_params keys must be strings")
-            key = k.strip()
-            if not key:
-                continue
-            if len(key) > 80:
-                raise ValueError("chunk_strategy_params key too long (max=80)")
-
-            # Keep values primitive-only (no nested objects/lists).
-            if v is None or isinstance(v, (bool, int, float)):
-                cleaned[key] = v
-                continue
-            if isinstance(v, str):
-                if len(v) > 500:
-                    raise ValueError("chunk_strategy_params string value too long (max=500)")
-                cleaned[key] = v
-                continue
-            raise ValueError("chunk_strategy_params values must be JSON primitives")
-
-        self.chunk_strategy_params = cleaned or None
+        self.chunk_strategy_params = _clean_chunk_strategy_params(self.chunk_strategy_params)
         return self
 
 
@@ -280,39 +325,8 @@ class DocumentAccessUpdateRequest(BaseModel):
 
     @model_validator(mode="after")
     def _normalize(self) -> "DocumentAccessUpdateRequest":
-        # Normalize member ids (trim/dedupe).
-        if self.partial_member_list is not None:
-            seen: set[str] = set()
-            normalized: list[str] = []
-            for raw in self.partial_member_list:
-                mid = str(raw or "").strip()
-                if not mid or mid in seen:
-                    continue
-                seen.add(mid)
-                if len(mid) > 255:
-                    raise ValueError("partial_member_list member id too long (max=255)")
-                normalized.append(mid)
-                if len(normalized) >= 200:
-                    break
-            self.partial_member_list = normalized
-
-        if self.partial_group_list is not None:
-            seen_g: set[UUID] = set()
-            normalized_g: list[UUID] = []
-            for raw in self.partial_group_list:
-                try:
-                    gid = UUID(str(raw))
-                except Exception as exc:
-                    raise ValueError("partial_group_list contains invalid UUID") from exc
-                if gid in seen_g:
-                    continue
-                seen_g.add(gid)
-                normalized_g.append(gid)
-                if len(normalized_g) >= 200:
-                    break
-            self.partial_group_list = normalized_g
-
-        # Non-partial modes ignore allowlist (server will clear).
+        self.partial_member_list = _dedupe_member_ids(self.partial_member_list)
+        self.partial_group_list = _dedupe_group_ids(self.partial_group_list)
         if self.mode != "partial_members":
             self.partial_member_list = None
             self.partial_group_list = None
@@ -725,6 +739,59 @@ class PipelineEffectiveSnapshot(BaseModel):
     entity_vector_enabled: bool = False
 
 
+def _active_pipeline_hash_from_metadata(meta: dict[str, Any]) -> str | None:
+    try:
+        from app.core.pipeline_versions import get_active_pipeline_hash
+    except ImportError:
+        return _metadata_text_value(meta, "active_pipeline_hash") or _metadata_text_value(meta, "pipeline_hash")
+    return get_active_pipeline_hash(meta)
+
+
+def _pipeline_effective_from_metadata(meta: dict[str, Any]) -> PipelineEffectiveSnapshot:
+    effective_raw = meta.get("pipeline_effective") if isinstance(meta.get("pipeline_effective"), dict) else {}
+    try:
+        return PipelineEffectiveSnapshot.model_validate(effective_raw)
+    except (TypeError, ValueError):
+        return PipelineEffectiveSnapshot()
+
+
+def _governance_rule_packs_from_metadata(meta: dict[str, Any]) -> list[str]:
+    raw_rule_packs = meta.get("governance_rule_packs")
+    if not isinstance(raw_rule_packs, list):
+        return []
+    rule_packs: list[str] = []
+    for item in raw_rule_packs:
+        if not isinstance(item, str):
+            continue
+        value = item.strip()
+        if value:
+            rule_packs.append(value[:64])
+        if len(rule_packs) >= 20:
+            break
+    return rule_packs
+
+
+def _analytics_payload_from_metadata(meta: dict[str, Any]) -> dict[str, Any]:
+    raw_analytics = meta.get("document_analytics_raw")
+    if isinstance(raw_analytics, dict):
+        return raw_analytics
+    return {key: meta.get(key) for key in ("page_count", "table_count", "image_count", "block_count") if key in meta}
+
+
+def _analytics_from_metadata(meta: dict[str, Any]) -> DocumentAnalyticsSchema:
+    try:
+        return DocumentAnalyticsSchema.model_validate(_analytics_payload_from_metadata(meta))
+    except (TypeError, ValueError):
+        return DocumentAnalyticsSchema()
+
+
+def _parsed_text_quality_from_metadata(meta: dict[str, Any]) -> dict[str, Any]:
+    text_quality = meta.get("parsed_text_quality")
+    if not isinstance(text_quality, dict):
+        return {}
+    return {str(k): v for k, v in text_quality.items() if k is not None}
+
+
 class DocumentPipelineProvenance(BaseModel):
     """Stable, UI-facing pipeline provenance snapshot for a document."""
 
@@ -743,74 +810,21 @@ class DocumentPipelineProvenance(BaseModel):
     @classmethod
     def from_metadata(cls, meta: dict[str, Any] | None) -> "DocumentPipelineProvenance":
         m = meta if isinstance(meta, dict) else {}
-
-        try:
-            from app.core.pipeline_versions import get_active_pipeline_hash
-        except ImportError:
-            active_hash = str(m.get("active_pipeline_hash") or m.get("pipeline_hash") or "").strip() or None
-        else:
-            active_hash = get_active_pipeline_hash(m)
-
-        pipeline_hash = str(m.get("pipeline_hash") or "").strip() or None
-
-        parser_backend = str(m.get("parser_backend") or "").strip() or None
-        parser_backend_requested = str(m.get("parser_backend_requested") or "").strip() or None
-        chunk_strategy = str(m.get("chunk_strategy") or "").strip() or None
-        chunk_strategy_requested = str(m.get("chunk_strategy_requested") or "").strip() or None
-
-        effective_raw = m.get("pipeline_effective") if isinstance(m.get("pipeline_effective"), dict) else {}
-        try:
-            effective = PipelineEffectiveSnapshot.model_validate(effective_raw)
-        except (TypeError, ValueError):
-            effective = PipelineEffectiveSnapshot()
-
-        rule_packs: list[str] = []
-        raw_rule_packs = m.get("governance_rule_packs")
-        if isinstance(raw_rule_packs, list):
-            for item in raw_rule_packs:
-                if not isinstance(item, str):
-                    continue
-                val = item.strip()
-                if not val:
-                    continue
-                rule_packs.append(val[:64])
-                if len(rule_packs) >= 20:
-                    break
-
-        analytics_payload: dict[str, Any] = {}
-        raw_analytics = m.get("document_analytics_raw")
-        if isinstance(raw_analytics, dict):
-            analytics_payload = raw_analytics
-        else:
-            # Fallback: best-effort from artifact stats keys stored at top-level.
-            for key in ("page_count", "table_count", "image_count", "block_count"):
-                if key in m:
-                    analytics_payload[key] = m.get(key)
-
-        try:
-            analytics = DocumentAnalyticsSchema.model_validate(analytics_payload)
-        except (TypeError, ValueError):
-            analytics = DocumentAnalyticsSchema()
-
-        text_quality = m.get("parsed_text_quality")
-        text_quality_dict: dict[str, Any] = {}
-        if isinstance(text_quality, dict):
-            text_quality_dict = {str(k): v for k, v in text_quality.items() if k is not None}
-
+        effective = _pipeline_effective_from_metadata(m)
         governance_enabled = bool(m.get("governance_enabled") or getattr(effective, "governance_enabled", False))
 
         return cls(
-            active_pipeline_hash=active_hash,
-            pipeline_hash=pipeline_hash,
-            parser_backend=parser_backend,
-            parser_backend_requested=parser_backend_requested,
-            chunk_strategy=chunk_strategy,
-            chunk_strategy_requested=chunk_strategy_requested,
+            active_pipeline_hash=_active_pipeline_hash_from_metadata(m),
+            pipeline_hash=_metadata_text_value(m, "pipeline_hash"),
+            parser_backend=_metadata_text_value(m, "parser_backend"),
+            parser_backend_requested=_metadata_text_value(m, "parser_backend_requested"),
+            chunk_strategy=_metadata_text_value(m, "chunk_strategy"),
+            chunk_strategy_requested=_metadata_text_value(m, "chunk_strategy_requested"),
             governance_enabled=governance_enabled,
-            governance_rule_packs=rule_packs,
+            governance_rule_packs=_governance_rule_packs_from_metadata(m),
             pipeline_effective=effective,
-            analytics_raw=analytics,
-            parsed_text_quality=text_quality_dict,
+            analytics_raw=_analytics_from_metadata(m),
+            parsed_text_quality=_parsed_text_quality_from_metadata(m),
         )
 
 
