@@ -8,7 +8,6 @@ rows into the existing KG storage model with document-level provenance.
 from __future__ import annotations
 
 import hashlib
-import logging
 import re
 import uuid
 from dataclasses import dataclass, field
@@ -22,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.models.dataset import Dataset, DatasetPermissionEnum
 from app.models.document import Document, DocumentChunk
+from app.rag.core.logging import get_logger
 from app.rag.kg.models import KgEntity, KgEntityAlias, KgEventEntity, KgRelation, KgSourceEvent
 from app.rag.kg.schemas import (
     KGManualEntityInput,
@@ -40,7 +40,7 @@ from app.services.dataset_embedding_config import create_embeddings_for_runtime
 from app.services.dataset_service import DatasetService
 from app.services.indexer import Indexer
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 MANUAL_KG_NAMESPACE = uuid.UUID("f69d7ee1-a4d5-45f4-89e1-bfd23315f4a9")
 MANUAL_KG_FORMAT = "mimirq_manual_kg_v1"
