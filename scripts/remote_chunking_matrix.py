@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import sys
 import time
@@ -57,6 +58,9 @@ def maybe_copy_or_download_long_pdf(target_dir: Path) -> Path:
     target = target_dir / "rfc9000-quic.pdf"
     if LONG_PDF_FALLBACK.exists():
         shutil.copy2(LONG_PDF_FALLBACK, target)
+        return target
+    if str(os.getenv("MIMIRQ_REMOTE_FIXTURE_DOWNLOADS", "") or "").strip().lower() not in {"1", "true", "yes", "on"}:
+        shutil.copy2(SMALL_PDF_FIXTURE, target)
         return target
     from urllib.request import Request, urlopen
 
