@@ -10,6 +10,43 @@ def _tokenize(text: str) -> set[str]:
     return {str(token).casefold() for token in _TOKEN_RE.findall(str(text or "").strip()) if str(token).strip()}
 
 
+def _score_reports(query_tokens: set[str], community_reports: list[dict[str, Any]]) -> list[tuple[float, dict[str, Any]]]:
+    scored: list[tuple[float, dict[str, Any]]] = []
+    for report in community_reports or []:
+        if isinstance(report, dict):
+            summary = str(report.get("summary") or "").strip()
+            scored.append((float(len(query_tokens & _tokenize(summary))), dict(report)))
+    return sorted(scored, key=lambda item: (-item[0], str((item[1] or {}).get("community_id") or "")))
+
+
+def _selected_reports(scored: list[tuple[float, dict[str, Any]]], top_k: int) -> list[dict[str, Any]]:
+    return [report for _score, report in scored[: max(1, int(top_k or 1))]]
+
+
+def _fallback_reason_codes(scored: list[tuple[float, dict[str, Any]]], selected: list[dict[str, Any]]) -> list[str]:
+    selected_scores = scored[: len(selected)]
+    if selected and all(score <= 0.0 for score, _report in selected_scores):
+        return ["fallback_first_community"]
+    return []
+
+
+def _append_unique_id(target: list[str], seen: set[str], value: Any) -> None:
+    item_id = str(value or "").strip()
+    if item_id and item_id not in seen:
+        seen.add(item_id)
+        target.append(item_id)
+
+
+def _collect_report_ids(selected: list[dict[str, Any]], key: str, candidates: tuple[str, ...]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for report in selected:
+        for item in report.get(key) or []:
+            if isinstance(item, dict):
+                _append_unique_id(out, seen, next((item.get(candidate) for candidate in candidates if item.get(candidate)), ""))
+    return out
+
+
 def run_drift_search(
     *,
     query: str,
@@ -17,48 +54,15 @@ def run_drift_search(
     top_k: int = 3,
 ) -> dict[str, Any]:
     query_tokens = _tokenize(str(query or ""))
-    scored: list[tuple[float, dict[str, Any]]] = []
-    for report in community_reports or []:
-        if not isinstance(report, dict):
-            continue
-        summary = str(report.get("summary") or "").strip()
-        overlap = len(query_tokens & _tokenize(summary))
-        scored.append((float(overlap), dict(report)))
-
-    scored.sort(key=lambda item: (-item[0], str((item[1] or {}).get("community_id") or "")))
-    limit = max(1, int(top_k or 1))
-    selected = [report for _score, report in scored[:limit]]
-
-    reason_codes: list[str] = []
-    if selected and all(score <= 0.0 for score, _report in scored[:limit]):
-        reason_codes.append("fallback_first_community")
-
-    entity_ids: list[str] = []
-    seen_entities: set[str] = set()
-    event_ids: list[str] = []
-    seen_events: set[str] = set()
-    for report in selected:
-        for entity in report.get("entities") or []:
-            if not isinstance(entity, dict):
-                continue
-            entity_id = str(entity.get("entity_id") or entity.get("id") or "").strip()
-            if entity_id and entity_id not in seen_entities:
-                seen_entities.add(entity_id)
-                entity_ids.append(entity_id)
-        for event in report.get("events") or []:
-            if not isinstance(event, dict):
-                continue
-            event_id = str(event.get("id") or event.get("event_id") or "").strip()
-            if event_id and event_id not in seen_events:
-                seen_events.add(event_id)
-                event_ids.append(event_id)
+    scored = _score_reports(query_tokens, community_reports)
+    selected = _selected_reports(scored, top_k)
 
     return {
         "schema": "mimirq.kg_drift_search.v1",
         "selected_communities": selected,
-        "expanded_entity_ids": entity_ids,
-        "expanded_event_ids": event_ids,
-        "reason_codes": reason_codes,
+        "expanded_entity_ids": _collect_report_ids(selected, "entities", ("entity_id", "id")),
+        "expanded_event_ids": _collect_report_ids(selected, "events", ("id", "event_id")),
+        "reason_codes": _fallback_reason_codes(scored, selected),
     }
 
 
