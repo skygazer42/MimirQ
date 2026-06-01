@@ -121,6 +121,48 @@ def _split_sentences(line: str) -> list[str]:
     return parts or [text]
 
 
+def _normalized_entity_candidate(parser: EntityValueParser, value: str) -> tuple[str, str] | None:
+    raw = _collapse_spaces(value).strip(" \t\r\n.,;:()[]{}<>")
+    raw = _LEADING_ENTITY_STOP_RE.sub("", raw).strip()
+    if not raw:
+        return None
+    normalized = parser.normalize_name(raw)
+    if not normalized or normalized in _STOP_PHRASES:
+        return None
+    if len(normalized) < 2 or normalized.isdigit():
+        return None
+    # Avoid turning long sentence fragments into graph nodes.
+    if len(raw) > 80 or len(raw.split()) > 6:
+        return None
+    return normalized, raw
+
+
+def _iter_line_fact_parts(raw_line: str) -> list[str]:
+    line = str(raw_line or "").strip()
+    if not line or _line_heading(line) or _is_table_separator(line):
+        return []
+    line = _strip_bullet_prefix(line).strip()
+    if not line:
+        return []
+
+    parts: list[str] = []
+    for raw_part in _split_sentences(line):
+        part = _collapse_spaces(raw_part).strip(" \t\r\n-|")
+        if not part:
+            continue
+        if len(part) < 16 and not _ACRONYM_OR_STANDARD_RE.search(part):
+            continue
+        parts.append(part)
+    return parts
+
+
+def _iter_fact_parts(text: str) -> list[str]:
+    parts: list[str] = []
+    for raw_line in str(text or "").replace("\r\n", "\n").replace("\r", "\n").splitlines():
+        parts.extend(_iter_line_fact_parts(raw_line))
+    return parts
+
+
 class HeuristicExtractor:
     """Dependency-free KG extractor for local/preflight graph construction.
 
@@ -154,20 +196,10 @@ class HeuristicExtractor:
         candidates: OrderedDict[str, str] = OrderedDict()
         for regex in (_ACRONYM_OR_STANDARD_RE, _TITLE_PHRASE_RE, _CJK_TERM_RE):
             for match in regex.finditer(clean):
-                raw = _collapse_spaces(match.group(0)).strip(" \t\r\n.,;:()[]{}<>")
-                raw = _LEADING_ENTITY_STOP_RE.sub("", raw).strip()
-                if not raw:
+                candidate = _normalized_entity_candidate(self._parser, match.group(0))
+                if candidate is None:
                     continue
-                normalized = self._parser.normalize_name(raw)
-                if not normalized or normalized in _STOP_PHRASES:
-                    continue
-                if len(normalized) < 2:
-                    continue
-                if normalized.isdigit():
-                    continue
-                # Avoid turning long sentence fragments into graph nodes.
-                if len(raw) > 80 or len(raw.split()) > 6:
-                    continue
+                normalized, raw = candidate
                 candidates.setdefault(normalized, raw)
                 if len(candidates) >= max_entities:
                     break
@@ -217,6 +249,30 @@ class HeuristicExtractor:
             return clean[:120]
         return self._event_title(text, chunk=chunk)
 
+    def _fact_rows_from_parts(
+        self,
+        parts: list[str],
+        *,
+        max_events: int,
+        max_entities_per_event: int,
+    ) -> list[tuple[str, list[dict[str, Any]]]]:
+        rows: list[tuple[str, list[dict[str, Any]]]] = []
+        seen: set[str] = set()
+        entity_limit = max(1, int(max_entities_per_event or 30))
+        row_limit = max(1, int(max_events or 1))
+        for part in parts:
+            key = part.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            entities = self._candidate_entities(part, max_entities=entity_limit)
+            if not entities:
+                continue
+            rows.append((part, entities))
+            if len(rows) >= row_limit:
+                break
+        return rows
+
     def _event_fact_candidates(
         self,
         text: str,
@@ -224,43 +280,18 @@ class HeuristicExtractor:
         max_events: int,
         max_entities_per_event: int,
     ) -> list[tuple[str, list[dict[str, Any]]]]:
-        parts: list[str] = []
-        for raw_line in str(text or "").replace("\r\n", "\n").replace("\r", "\n").splitlines():
-            line = raw_line.strip()
-            if not line:
-                continue
-            if _line_heading(line) or _is_table_separator(line):
-                continue
-            line = _strip_bullet_prefix(line).strip()
-            if not line:
-                continue
-            for raw_part in _split_sentences(line):
-                part = _collapse_spaces(raw_part).strip(" \t\r\n-|")
-                if not part:
-                    continue
-                if len(part) < 16 and not _ACRONYM_OR_STANDARD_RE.search(part):
-                    continue
-                parts.append(part)
+        parts = _iter_fact_parts(text)
 
         if not parts:
             clean = _collapse_spaces(str(text or ""))
             if clean:
                 parts.append(clean)
 
-        rows: list[tuple[str, list[dict[str, Any]]]] = []
-        seen: set[str] = set()
-        for part in parts:
-            key = part.casefold()
-            if key in seen:
-                continue
-            seen.add(key)
-            entities = self._candidate_entities(part, max_entities=max(1, int(max_entities_per_event or 30)))
-            if not entities:
-                continue
-            rows.append((part, entities))
-            if len(rows) >= max(1, int(max_events or 1)):
-                break
-
+        rows = self._fact_rows_from_parts(
+            parts,
+            max_events=max_events,
+            max_entities_per_event=max_entities_per_event,
+        )
         if not rows:
             entities = self._candidate_entities(text, max_entities=max(1, int(max_entities_per_event or 30)))
             if entities:

@@ -57,6 +57,23 @@ def _append_cn_plate_entities(raw: str, entities: list[dict[str, Any]]) -> None:
         )
 
 
+def _skip_whitespace(raw: str, cursor: int) -> int:
+    while cursor < len(raw) and raw[cursor].isspace():
+        cursor += 1
+    return cursor
+
+
+def _social_security_span_after_label(raw: str, *, label: str, label_start: int) -> tuple[int, int] | None:
+    cursor = _skip_whitespace(raw, label_start + len(label))
+    if cursor < len(raw) and raw[cursor] in {":", "："}:
+        cursor += 1
+    cursor = _skip_whitespace(raw, cursor)
+    end = cursor
+    while end < len(raw) and raw[end].isdigit() and end - cursor < 12:
+        end += 1
+    return (cursor, end) if 8 <= end - cursor <= 12 else None
+
+
 def _append_cn_social_security_entities(raw: str, entities: list[dict[str, Any]]) -> None:
     for label in _CN_SOCIAL_SECURITY_LABELS:
         offset = 0
@@ -64,17 +81,9 @@ def _append_cn_social_security_entities(raw: str, entities: list[dict[str, Any]]
             label_start = raw.find(label, offset)
             if label_start == -1:
                 break
-            cursor = label_start + len(label)
-            while cursor < len(raw) and raw[cursor].isspace():
-                cursor += 1
-            if cursor < len(raw) and raw[cursor] in {":", "："}:
-                cursor += 1
-            while cursor < len(raw) and raw[cursor].isspace():
-                cursor += 1
-            end = cursor
-            while end < len(raw) and raw[end].isdigit() and end - cursor < 12:
-                end += 1
-            if 8 <= end - cursor <= 12:
+            span = _social_security_span_after_label(raw, label=label, label_start=label_start)
+            if span is not None:
+                cursor, end = span
                 _append_unique(
                     entities,
                     {
