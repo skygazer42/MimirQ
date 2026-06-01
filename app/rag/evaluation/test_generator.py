@@ -5,6 +5,7 @@ Generates test questions from documents or conversation history for RAGAS regres
 """
 import re
 from collections import Counter
+from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
@@ -29,12 +30,26 @@ from app.services.prompt_resolver import resolve_prompt_template
 logger = get_logger("rag.evaluation.test_generator")
 
 
+_DEFAULT_DOCUMENT_QUESTION_TYPES = ["factual", "multi_hop", "comparison"]
+_ALLOWED_QUESTION_TYPES = {"factual", "multi_hop", "comparison", "conditional", "unanswerable"}
+
+
 class GeneratedQuestion(BaseModel):
     """Generated question."""
     question: str = Field(description="Question content")
     expected_answer: str | None = Field(default=None, description="Expected answer (optional)")
     context: str | None = Field(default=None, description="Question source context")
     metadata: dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
+
+
+@dataclass(frozen=True)
+class TestGeneratorPromptSelection:
+    prompt_template_text: str
+    prompt_variables: list[str]
+    prompt_template_id: str | None
+    prompt_template_key: str | None
+    prompt_ab_experiment_key: str | None
+    prompt_ab_variant: str | None
 
 
 # Prompt template for generating questions.
@@ -155,6 +170,123 @@ def _normalize_testgen_result_rows(result: Any) -> list[dict[str, Any]]:
     return normalized
 
 
+def _normalize_question_types(question_types: list[str] | None) -> list[str]:
+    raw_types = question_types if question_types is not None else _DEFAULT_DOCUMENT_QUESTION_TYPES
+    normalized_types: list[str] = []
+    for raw_type in raw_types or []:
+        key = str(raw_type or "").strip().lower()
+        if not key:
+            continue
+        if key == "reasoning":
+            key = "multi_hop"
+        if key not in _ALLOWED_QUESTION_TYPES or key in normalized_types:
+            continue
+        normalized_types.append(key)
+    return normalized_types or ["factual"]
+
+
+def _resolve_document_scope_ids(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    dataset_id: UUID | None,
+    document_ids: list[UUID] | None,
+) -> list[UUID]:
+    if document_ids:
+        return filter_allowed_document_ids(db, tenant_id, account_id, document_ids)
+    if dataset_id:
+        from app.services.dataset_service import DatasetService
+
+        DatasetService.ensure_member(db, tenant_id, account_id)
+        query = db.query(DBDocument).filter(
+            DBDocument.tenant_id == tenant_id,
+            DBDocument.dataset_id == dataset_id,
+            DBDocument.status == "completed",
+        )
+        return [doc.id for doc in query.all()]
+    from app.services.document_access import list_accessible_document_ids
+
+    return list_accessible_document_ids(db, tenant_id, account_id)
+
+
+def _resolve_testgen_prompt_selection(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    prompt_template_id: UUID | None,
+    prompt_template_key: str | None,
+    prompt_ab_experiment_key: str | None,
+) -> TestGeneratorPromptSelection:
+    selected_template = None
+    if prompt_template_id or (prompt_template_key or "").strip() or (prompt_ab_experiment_key or "").strip():
+        try:
+            selected_template = resolve_prompt_template(
+                db=db,
+                tenant_id=tenant_id,
+                prompt_template_id=prompt_template_id,
+                template_key=prompt_template_key,
+                ab_experiment_key=prompt_ab_experiment_key,
+                ab_user_key=account_id,
+            )
+        except Exception as exc:
+            logger.warning("Failed to resolve test generator prompt template: %s", exc)
+            selected_template = None
+    prompt_template_text = (
+        str(getattr(selected_template, "content", "") or "").strip()
+        if selected_template is not None
+        else GENERATE_QUESTIONS_FROM_TEXT_PROMPT
+    )
+    prompt_variables = list(getattr(selected_template, "variables", None) or [])
+    if not prompt_variables:
+        prompt_variables = ["text", "num_questions", "question_types"]
+    return TestGeneratorPromptSelection(
+        prompt_template_text=prompt_template_text,
+        prompt_variables=prompt_variables,
+        prompt_template_id=(str(getattr(selected_template, "id", "") or "") or None) if selected_template is not None else None,
+        prompt_template_key=(str(getattr(selected_template, "template_key", "") or "").strip() or None) if selected_template is not None else None,
+        prompt_ab_experiment_key=(
+            str(getattr(selected_template, "ab_experiment_key", "") or "").strip() or None
+        ) if selected_template is not None else None,
+        prompt_ab_variant=(str(getattr(selected_template, "ab_variant", "") or "").strip() or None) if selected_template is not None else None,
+    )
+
+
+def _generated_question_from_row(
+    *,
+    row: dict[str, Any],
+    chunk: DocumentChunk,
+    normalized_types: list[str],
+    prompt_selection: TestGeneratorPromptSelection,
+) -> GeneratedQuestion:
+    question_type = str(row.get("question_type") or "factual").strip().lower() or "factual"
+    if question_type == "reasoning":
+        question_type = "multi_hop"
+    if question_type not in _ALLOWED_QUESTION_TYPES:
+        question_type = normalized_types[0]
+    expected_refusal = bool(row.get("expected_refusal")) or question_type == "unanswerable"
+    return GeneratedQuestion(
+        question=row.get("question", ""),
+        expected_answer=(None if expected_refusal else row.get("expected_answer")),
+        context=chunk.content[:500],
+        metadata={
+            "source_type": "document",
+            "source_id": str(chunk.document_id),
+            "chunk_id": str(chunk.id),
+            "question_type": question_type,
+            "expected_refusal": expected_refusal,
+            "reference_chunk_ids": [str(chunk.id)],
+            "evidence_quotes": list(row.get("evidence_quotes") or []),
+            "expected_chunks": list(row.get("expected_chunks") or []),
+            "prompt_template_id": prompt_selection.prompt_template_id,
+            "prompt_template_key": prompt_selection.prompt_template_key,
+            "prompt_ab_experiment_key": prompt_selection.prompt_ab_experiment_key,
+            "prompt_ab_variant": prompt_selection.prompt_ab_variant,
+        },
+    )
+
+
 def _calculate_text_diversity_scores(texts: list[str]) -> list[float]:
     """
     Calculate text diversity scores (simplified TF-IDF).
@@ -273,39 +405,14 @@ def generate_questions_from_documents(
     Returns:
         Generated question list.
     """
-    allowed_types = {"factual", "multi_hop", "comparison", "conditional", "unanswerable"}
-    if question_types is None:
-        question_types = ["factual", "multi_hop", "comparison"]
-
-    normalized_types: list[str] = []
-    for raw_type in question_types or []:
-        key = str(raw_type or "").strip().lower()
-        if not key:
-            continue
-        if key == "reasoning":
-            key = "multi_hop"
-        if key not in allowed_types or key in normalized_types:
-            continue
-        normalized_types.append(key)
-    if not normalized_types:
-        normalized_types = ["factual"]
-
-    if document_ids:
-        allowed_doc_ids = filter_allowed_document_ids(db, tenant_id, account_id, document_ids)
-    elif dataset_id:
-        from app.services.dataset_service import DatasetService
-
-        DatasetService.ensure_member(db, tenant_id, account_id)
-        query = db.query(DBDocument).filter(
-            DBDocument.tenant_id == tenant_id,
-            DBDocument.dataset_id == dataset_id,
-            DBDocument.status == "completed",
-        )
-        allowed_doc_ids = [doc.id for doc in query.all()]
-    else:
-        from app.services.document_access import list_accessible_document_ids
-
-        allowed_doc_ids = list_accessible_document_ids(db, tenant_id, account_id)
+    normalized_types = _normalize_question_types(question_types)
+    allowed_doc_ids = _resolve_document_scope_ids(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_id=dataset_id,
+        document_ids=document_ids,
+    )
 
     if not allowed_doc_ids:
         return []
@@ -338,41 +445,18 @@ def generate_questions_from_documents(
         )
 
         parser = JsonOutputParser()
-        selected_template = None
-        selected_prompt_template_id: str | None = None
-        selected_prompt_template_key: str | None = None
-        selected_prompt_ab_experiment_key: str | None = None
-        selected_prompt_ab_variant: str | None = None
-        if prompt_template_id or (prompt_template_key or "").strip() or (prompt_ab_experiment_key or "").strip():
-            try:
-                selected_template = resolve_prompt_template(
-                    db=db,
-                    tenant_id=tenant_id,
-                    prompt_template_id=prompt_template_id,
-                    template_key=prompt_template_key,
-                    ab_experiment_key=prompt_ab_experiment_key,
-                    ab_user_key=account_id,
-                )
-            except Exception as exc:
-                logger.warning("Failed to resolve test generator prompt template: %s", exc)
-                selected_template = None
-        prompt_template_text = (
-            str(getattr(selected_template, "content", "") or "").strip()
-            if selected_template is not None
-            else GENERATE_QUESTIONS_FROM_TEXT_PROMPT
+        prompt_selection = _resolve_testgen_prompt_selection(
+            db=db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            prompt_template_id=prompt_template_id,
+            prompt_template_key=prompt_template_key,
+            prompt_ab_experiment_key=prompt_ab_experiment_key,
         )
-        prompt_variables = list(getattr(selected_template, "variables", None) or [])
-        if not prompt_variables:
-            prompt_variables = ["text", "num_questions", "question_types"]
-        if selected_template is not None:
-            selected_prompt_template_id = str(getattr(selected_template, "id", "") or "") or None
-            selected_prompt_template_key = str(getattr(selected_template, "template_key", "") or "").strip() or None
-            selected_prompt_ab_experiment_key = str(getattr(selected_template, "ab_experiment_key", "") or "").strip() or None
-            selected_prompt_ab_variant = str(getattr(selected_template, "ab_variant", "") or "").strip() or None
 
         prompt = PromptTemplate(
-            template=prompt_template_text,
-            input_variables=prompt_variables,
+            template=prompt_selection.prompt_template_text,
+            input_variables=prompt_selection.prompt_variables,
         )
         chain = prompt | llm | parser
 
@@ -385,39 +469,20 @@ def generate_questions_from_documents(
                     num_questions=questions_per_chunk,
                     normalized_types=normalized_types,
                     existing_questions=[item.question for item in all_questions if str(item.question or "").strip()],
-                    prompt_variables=prompt_variables,
+                    prompt_variables=prompt_selection.prompt_variables,
                 )
                 result = chain.invoke(
                     prompt_inputs
                 )
                 for q in _normalize_testgen_result_rows(result):
-                        q_type = str(q.get("question_type") or "factual").strip().lower() or "factual"
-                        if q_type == "reasoning":
-                            q_type = "multi_hop"
-                        if q_type not in allowed_types:
-                            q_type = normalized_types[0]
-                        expected_refusal = bool(q.get("expected_refusal")) or q_type == "unanswerable"
-                        all_questions.append(
-                            GeneratedQuestion(
-                                question=q.get("question", ""),
-                                expected_answer=(None if expected_refusal else q.get("expected_answer")),
-                                context=chunk.content[:500],
-                                metadata={
-                                    "source_type": "document",
-                                    "source_id": str(chunk.document_id),
-                                    "chunk_id": str(chunk.id),
-                                    "question_type": q_type,
-                                    "expected_refusal": expected_refusal,
-                                    "reference_chunk_ids": [str(chunk.id)],
-                                    "evidence_quotes": list(q.get("evidence_quotes") or []),
-                                    "expected_chunks": list(q.get("expected_chunks") or []),
-                                    "prompt_template_id": selected_prompt_template_id,
-                                    "prompt_template_key": selected_prompt_template_key,
-                                    "prompt_ab_experiment_key": selected_prompt_ab_experiment_key,
-                                    "prompt_ab_variant": selected_prompt_ab_variant,
-                                },
-                            )
+                    all_questions.append(
+                        _generated_question_from_row(
+                            row=q,
+                            chunk=chunk,
+                            normalized_types=normalized_types,
+                            prompt_selection=prompt_selection,
                         )
+                    )
             except Exception as e:
                 logger.warning("Failed to generate questions: %s", e)
                 continue
