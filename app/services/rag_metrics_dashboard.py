@@ -19,7 +19,7 @@ import math
 import time
 from collections import defaultdict
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -85,41 +85,83 @@ def _stddev(values: Iterable[float]) -> float | None:
     return math.sqrt(max(0.0, var))
 
 
-def _read_jsonl_tail(path: Path, *, max_bytes: int) -> tuple[list[dict[str, Any]], bool]:
-    """
-    Return: (records, truncated)
-    `truncated=true` means we did not read the entire file, so results might be incomplete.
-    """
-    max_bytes = max(1, int(max_bytes or 0))
+def _safe_dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _record_event(record: dict[str, Any]) -> str:
+    return str(record.get("event") or "")
+
+
+def _record_ts_ms(record: dict[str, Any]) -> int:
     try:
-        st = path.stat()
-        size = int(st.st_size)
+        return int(record.get("ts_ms") or 0)
     except Exception:
-        return [], False
+        return 0
 
-    start = max(0, size - max_bytes)
-    truncated = start > 0
 
+def _safe_int_value(value: Any, *, default: int = 0) -> int:
     try:
-        raw = b""
+        return int(value if value is not None else default)
+    except Exception as exc:
+        logger.debug(_METRICS_DASHBOARD_FALLBACK_LOG_MESSAGE, exc)
+        return default
+
+
+def _safe_non_negative_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        fv = float(value)
+    except Exception as exc:
+        logger.debug(_METRICS_DASHBOARD_FALLBACK_LOG_MESSAGE, exc)
+        return None
+    if fv < 0:
+        return None
+    return fv
+
+
+def _increment_limited_count(counter: dict[str, int], value: Any, *, limit: int) -> None:
+    key = str(value or "").strip()
+    if key:
+        counter[key[:limit]] += 1
+
+
+def _tail_read_plan(path: Path, *, max_bytes: int) -> tuple[int, bool] | None:
+    try:
+        size = int(path.stat().st_size)
+    except Exception:
+        return None
+    start = max(0, size - max_bytes)
+    return start, start > 0
+
+
+def _read_tail_bytes(path: Path, *, start: int) -> bytes | None:
+    try:
         with path.open("rb") as f:
             if start:
                 f.seek(start)
-            raw = f.read()
+            return f.read()
     except Exception:
-        return [], truncated
+        return None
 
+
+def _drop_partial_first_line(raw: bytes, *, start: int) -> bytes:
     if start:
-        # Drop partial first line when reading from the middle.
         nl = raw.find(b"\n")
         if nl >= 0:
-            raw = raw[nl + 1 :]
+            return raw[nl + 1 :]
+    return raw
 
+
+def _decode_tail_bytes(raw: bytes) -> str | None:
     try:
-        text = raw.decode("utf-8", errors="replace")
+        return raw.decode("utf-8", errors="replace")
     except Exception:
-        return [], truncated
+        return None
 
+
+def _parse_jsonl_records(text: str) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     for line in text.splitlines():
         line = (line or "").strip()
@@ -131,7 +173,95 @@ def _read_jsonl_tail(path: Path, *, max_bytes: int) -> tuple[list[dict[str, Any]
             continue
         if isinstance(obj, dict):
             records.append(obj)
-    return records, truncated
+    return records
+
+
+def _read_jsonl_tail(path: Path, *, max_bytes: int) -> tuple[list[dict[str, Any]], bool]:
+    """
+    Return: (records, truncated)
+    `truncated=true` means we did not read the entire file, so results might be incomplete.
+    """
+    max_bytes = max(1, int(max_bytes or 0))
+    plan = _tail_read_plan(path, max_bytes=max_bytes)
+    if plan is None:
+        return [], False
+
+    start, truncated = plan
+    raw = _read_tail_bytes(path, start=start)
+    if raw is None:
+        return [], truncated
+
+    text = _decode_tail_bytes(_drop_partial_first_line(raw, start=start))
+    if text is None:
+        return [], truncated
+    return _parse_jsonl_records(text), truncated
+
+
+@dataclass(frozen=True)
+class _MetricsRecordWindow:
+    path: str
+    records: list[dict[str, Any]]
+    truncated: bool
+
+
+def _metrics_log_path_str() -> str:
+    return str(getattr(settings, "METRICS_LOG_PATH", DEFAULT_METRICS_LOG_PATH) or DEFAULT_METRICS_LOG_PATH)
+
+
+def _normalize_window_minutes(window_minutes: int) -> int:
+    return max(1, int(window_minutes or 0))
+
+
+def _cutoff_ms_for_window(window_minutes: int) -> int:
+    return int(time.time() * 1000) - (_normalize_window_minutes(window_minutes) * 60 * 1000)
+
+
+def _matches_tenant(record: dict[str, Any], tenant_key: str | None) -> bool:
+    if not tenant_key:
+        return True
+    rid = record.get("tenant_id")
+    return not rid or str(rid) == tenant_key
+
+
+def _filter_records_for_window(
+    raw_records: list[dict[str, Any]],
+    *,
+    tenant_id: str | None,
+    cutoff_ms: int,
+) -> list[dict[str, Any]]:
+    tenant_key = str(tenant_id) if tenant_id else None
+    records: list[dict[str, Any]] = []
+    for record in raw_records:
+        ts_ms = _record_ts_ms(record)
+        if ts_ms and ts_ms < cutoff_ms:
+            continue
+        if _matches_tenant(record, tenant_key):
+            records.append(record)
+    return records
+
+
+def _earliest_record_ts_ms(records: list[dict[str, Any]]) -> int | None:
+    timestamps = [ts_ms for record in records if (ts_ms := _record_ts_ms(record))]
+    return min(timestamps) if timestamps else None
+
+
+def _is_window_truncated(*, truncated_by_tail: bool, records: list[dict[str, Any]], cutoff_ms: int) -> bool:
+    earliest_ts_ms = _earliest_record_ts_ms(records)
+    return bool(truncated_by_tail and earliest_ts_ms is not None and earliest_ts_ms > cutoff_ms)
+
+
+def _load_metrics_record_window(
+    *,
+    tenant_id: str | None,
+    window_minutes: int,
+    max_bytes: int,
+) -> _MetricsRecordWindow:
+    path_str = _metrics_log_path_str()
+    raw_records, truncated_by_tail = _read_jsonl_tail(Path(path_str), max_bytes=int(max_bytes or 0))
+    cutoff_ms = _cutoff_ms_for_window(window_minutes)
+    records = _filter_records_for_window(raw_records, tenant_id=tenant_id, cutoff_ms=cutoff_ms)
+    truncated = _is_window_truncated(truncated_by_tail=truncated_by_tail, records=records, cutoff_ms=cutoff_ms)
+    return _MetricsRecordWindow(path=path_str, records=records, truncated=truncated)
 
 
 @dataclass(frozen=True)
@@ -161,6 +291,199 @@ class RagMetricsSummary:
     timeseries: dict[str, list[Any]]
 
 
+@dataclass
+class _RagMetricsAccumulator:
+    retrieval_elapsed: list[float] = field(default_factory=list)
+    rerank_elapsed: list[float] = field(default_factory=list)
+    citations_counts: list[int] = field(default_factory=list)
+    retrieval_mode_counts: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    hit_type_counts: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    error_counts: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    overfetch_ratios: list[float] = field(default_factory=list)
+    overfetch_count: int = 0
+    filtered_acl_total: int = 0
+    retrieval_candidate_cache_hit_count: int = 0
+    retrieval_candidate_cache_store_ok_count: int = 0
+    retrieval_candidate_cache_backend_counts: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    retrieval_candidate_cache_skip_reason_counts: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    retrieval_rerank_skip_reason_counts: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    bucket: dict[int, dict[str, Any]] = field(default_factory=dict)
+    rag_trace_count: int = 0
+    reranker_api_count: int = 0
+
+
+def _metric_minute_ms(record: dict[str, Any]) -> int:
+    ts_ms = _record_ts_ms(record)
+    return (ts_ms // 60_000) * 60_000 if ts_ms else 0
+
+
+def _rag_metrics_bucket(state: _RagMetricsAccumulator, minute_ms: int) -> dict[str, Any] | None:
+    if not minute_ms:
+        return None
+    return state.bucket.setdefault(
+        minute_ms,
+        {"ts_ms": minute_ms, "rag_trace": 0, "reranker_api": 0, "retrieval_elapsed_sum": 0.0},
+    )
+
+
+def _collect_overfetch_stats(state: _RagMetricsAccumulator, debug: dict[str, Any]) -> None:
+    if not bool(debug.get("overfetch_enabled")):
+        return
+    state.overfetch_count += 1
+    req = _safe_int_value(debug.get("requested_k"))
+    search = _safe_int_value(debug.get("search_k"))
+    if req > 0 and search > 0:
+        state.overfetch_ratios.append(search / req)
+
+
+def _collect_cache_channel_stats(state: _RagMetricsAccumulator, cache_meta: dict[str, Any]) -> None:
+    if bool(cache_meta.get("hit")):
+        state.retrieval_candidate_cache_hit_count += 1
+    if bool(cache_meta.get("store_ok")):
+        state.retrieval_candidate_cache_store_ok_count += 1
+    backend = str(cache_meta.get("backend") or "").strip().lower()
+    if backend:
+        state.retrieval_candidate_cache_backend_counts[backend] += 1
+    _increment_limited_count(
+        state.retrieval_candidate_cache_skip_reason_counts,
+        cache_meta.get("skip_reason"),
+        limit=80,
+    )
+
+
+def _collect_retriever_debug_stats(state: _RagMetricsAccumulator, debug: dict[str, Any]) -> None:
+    _collect_overfetch_stats(state, debug)
+    state.filtered_acl_total += _safe_int_value(_safe_dict(debug.get("enrich_pass1")).get("filtered_acl"))
+
+    channels = _safe_dict(debug.get("channels"))
+    cache_meta = _safe_dict(channels.get("cache"))
+    if cache_meta:
+        _collect_cache_channel_stats(state, cache_meta)
+
+    rerank_meta = _safe_dict(channels.get("rerank"))
+    if rerank_meta:
+        _increment_limited_count(state.retrieval_rerank_skip_reason_counts, rerank_meta.get("skip_reason"), limit=80)
+
+
+def _collect_per_query_debug_stats(state: _RagMetricsAccumulator, retrieval: dict[str, Any]) -> None:
+    per_query = retrieval.get("per_query")
+    if not isinstance(per_query, list):
+        return
+    for query_record in per_query:
+        debug = _safe_dict(query_record).get("retriever_debug")
+        if isinstance(debug, dict):
+            _collect_retriever_debug_stats(state, debug)
+
+
+def _collect_citation_metrics(
+    state: _RagMetricsAccumulator,
+    citations: Any,
+    bucket_entry: dict[str, Any] | None,
+) -> None:
+    if not isinstance(citations, list):
+        return
+    state.citations_counts.append(len(citations))
+    for citation in citations:
+        citation_dict = _safe_dict(citation)
+        if not citation_dict:
+            continue
+        _increment_limited_count(state.hit_type_counts, citation_dict.get("hit_type"), limit=120)
+
+        retrieval_elapsed = _safe_non_negative_float(citation_dict.get("retrieval_elapsed_sec"))
+        if retrieval_elapsed is not None:
+            state.retrieval_elapsed.append(retrieval_elapsed)
+            if bucket_entry is not None:
+                bucket_entry["retrieval_elapsed_sum"] += retrieval_elapsed
+
+        rerank_elapsed = _safe_non_negative_float(citation_dict.get("rerank_elapsed_sec"))
+        if rerank_elapsed is not None:
+            state.rerank_elapsed.append(rerank_elapsed)
+
+
+def _collect_retrieval_error_counts(state: _RagMetricsAccumulator, retrieval: dict[str, Any]) -> None:
+    errors = retrieval.get("errors")
+    if not isinstance(errors, list):
+        return
+    for error in errors:
+        _increment_limited_count(state.error_counts, error, limit=80)
+
+
+def _accumulate_rag_trace_metrics(
+    state: _RagMetricsAccumulator,
+    record: dict[str, Any],
+    bucket_entry: dict[str, Any] | None,
+) -> None:
+    state.rag_trace_count += 1
+    if bucket_entry is not None:
+        bucket_entry["rag_trace"] += 1
+
+    retrieval = _safe_dict(record.get("retrieval"))
+    _increment_limited_count(state.retrieval_mode_counts, retrieval.get("mode"), limit=120)
+    _collect_per_query_debug_stats(state, retrieval)
+    _collect_citation_metrics(state, record.get("citations"), bucket_entry)
+    _collect_retrieval_error_counts(state, retrieval)
+
+
+def _accumulate_rag_metrics_record(state: _RagMetricsAccumulator, record: dict[str, Any]) -> None:
+    event = _record_event(record)
+    bucket_entry = _rag_metrics_bucket(state, _metric_minute_ms(record))
+    if event == "rag_trace":
+        _accumulate_rag_trace_metrics(state, record, bucket_entry)
+    elif event == "reranker_api":
+        state.reranker_api_count += 1
+        if bucket_entry is not None:
+            bucket_entry["reranker_api"] += 1
+        if record.get("error"):
+            state.error_counts["reranker_api_error"] += 1
+
+
+def _rag_metrics_timeseries(bucket: dict[int, dict[str, Any]]) -> dict[str, list[Any]]:
+    ts_keys = sorted(k for k in bucket.keys() if k)
+    return {
+        "ts_ms": list(ts_keys),
+        "rag_trace": [int(bucket[k]["rag_trace"]) for k in ts_keys],
+        "reranker_api": [int(bucket[k]["reranker_api"]) for k in ts_keys],
+        "retrieval_avg_elapsed_sec": [
+            (bucket[k]["retrieval_elapsed_sum"] / bucket[k]["rag_trace"]) if bucket[k]["rag_trace"] else None
+            for k in ts_keys
+        ],
+    }
+
+
+def _build_rag_metrics_summary(
+    *,
+    enabled: bool,
+    record_window: _MetricsRecordWindow,
+    window_minutes: int,
+    state: _RagMetricsAccumulator,
+) -> RagMetricsSummary:
+    return RagMetricsSummary(
+        enabled=enabled,
+        path=record_window.path,
+        window_minutes=int(window_minutes),
+        truncated=bool(record_window.truncated),
+        record_count=len(record_window.records),
+        rag_trace_count=int(state.rag_trace_count),
+        reranker_api_count=int(state.reranker_api_count),
+        retrieval_avg_elapsed_sec=_mean(state.retrieval_elapsed),
+        retrieval_p95_elapsed_sec=_percentile(state.retrieval_elapsed, 95.0),
+        rerank_avg_elapsed_sec=_mean(state.rerank_elapsed),
+        citations_avg_count=_mean(state.citations_counts),
+        retriever_overfetch_count=int(state.overfetch_count),
+        retriever_overfetch_avg_ratio=_mean(state.overfetch_ratios),
+        retriever_filtered_acl_total=int(state.filtered_acl_total),
+        retrieval_candidate_cache_hit_count=int(state.retrieval_candidate_cache_hit_count),
+        retrieval_candidate_cache_store_ok_count=int(state.retrieval_candidate_cache_store_ok_count),
+        retrieval_candidate_cache_backend_counts=dict(state.retrieval_candidate_cache_backend_counts),
+        retrieval_candidate_cache_skip_reason_counts=dict(state.retrieval_candidate_cache_skip_reason_counts),
+        retrieval_rerank_skip_reason_counts=dict(state.retrieval_rerank_skip_reason_counts),
+        retrieval_mode_counts=dict(state.retrieval_mode_counts),
+        hit_type_counts=dict(state.hit_type_counts),
+        error_counts=dict(state.error_counts),
+        timeseries=_rag_metrics_timeseries(state.bucket),
+    )
+
+
 def summarize_rag_metrics(
     *,
     tenant_id: str | None,
@@ -171,208 +494,20 @@ def summarize_rag_metrics(
     Build a small dashboard summary from the metrics JSONL file.
     """
     enabled = bool(getattr(settings, "ENABLE_METRICS_LOG", False))
-    path_str = str(getattr(settings, "METRICS_LOG_PATH", DEFAULT_METRICS_LOG_PATH) or DEFAULT_METRICS_LOG_PATH)
-    path = Path(path_str)
-
-    window_minutes = max(1, int(window_minutes or 0))
-    cutoff_ms = int(time.time() * 1000) - (window_minutes * 60 * 1000)
-
-    raw_records, truncated_by_tail = _read_jsonl_tail(path, max_bytes=int(max_bytes or 0))
-
-    # Tenant filter (avoid cross-tenant leakage on shared log files).
-    tenant_key = str(tenant_id) if tenant_id else None
-    records: list[dict[str, Any]] = []
-    for r in raw_records:
-        try:
-            ts_ms = int(r.get("ts_ms") or 0)
-        except Exception:
-            ts_ms = 0
-        if ts_ms and ts_ms < cutoff_ms:
-            continue
-        if tenant_key:
-            rid = r.get("tenant_id")
-            if rid and str(rid) != tenant_key:
-                continue
-        records.append(r)
-
-    earliest_ts_ms: int | None = None
-    for r in records:
-        try:
-            ts_ms = int(r.get("ts_ms") or 0)
-        except Exception:
-            continue
-        if not ts_ms:
-            continue
-        if earliest_ts_ms is None or ts_ms < earliest_ts_ms:
-            earliest_ts_ms = ts_ms
-    truncated = bool(truncated_by_tail and earliest_ts_ms is not None and earliest_ts_ms > cutoff_ms)
-
-    retrieval_elapsed: list[float] = []
-    rerank_elapsed: list[float] = []
-    citations_counts: list[int] = []
-    retrieval_mode_counts: dict[str, int] = defaultdict(int)
-    hit_type_counts: dict[str, int] = defaultdict(int)
-    error_counts: dict[str, int] = defaultdict(int)
-
-    overfetch_ratios: list[float] = []
-    overfetch_count = 0
-    filtered_acl_total = 0
-    retrieval_candidate_cache_hit_count = 0
-    retrieval_candidate_cache_store_ok_count = 0
-    retrieval_candidate_cache_backend_counts: dict[str, int] = defaultdict(int)
-    retrieval_candidate_cache_skip_reason_counts: dict[str, int] = defaultdict(int)
-    retrieval_rerank_skip_reason_counts: dict[str, int] = defaultdict(int)
-
-    # Simple minute-bucket time series.
-    bucket: dict[int, dict[str, Any]] = {}
-
-    rag_trace_count = 0
-    reranker_api_count = 0
-
-    for r in records:
-        event = str(r.get("event") or "")
-        ts_ms = int(r.get("ts_ms") or 0) if r.get("ts_ms") is not None else 0
-        minute_ms = (ts_ms // 60_000) * 60_000 if ts_ms else 0
-        if minute_ms and minute_ms not in bucket:
-            bucket[minute_ms] = {"ts_ms": minute_ms, "rag_trace": 0, "reranker_api": 0, "retrieval_elapsed_sum": 0.0}
-
-        if event == "rag_trace":
-            rag_trace_count += 1
-            if minute_ms:
-                bucket[minute_ms]["rag_trace"] += 1
-
-            retrieval = r.get("retrieval") or {}
-            mode = retrieval.get("mode")
-            if mode:
-                retrieval_mode_counts[str(mode)] += 1
-
-            # Best-effort: retriever debug counters (if present).
-            per_query = retrieval.get("per_query") if isinstance(retrieval, dict) else None
-            if isinstance(per_query, list):
-                for q in per_query:
-                    if not isinstance(q, dict):
-                        continue
-                    dbg = q.get("retriever_debug")
-                    if not isinstance(dbg, dict):
-                        continue
-                    try:
-                        if bool(dbg.get("overfetch_enabled")):
-                            overfetch_count += 1
-                            req = int(dbg.get("requested_k") or 0)
-                            search = int(dbg.get("search_k") or 0)
-                            if req > 0 and search > 0:
-                                overfetch_ratios.append(search / req)
-                    except Exception as exc:
-                        logger.debug(_METRICS_DASHBOARD_FALLBACK_LOG_MESSAGE, exc)
-                    enrich1 = dbg.get("enrich_pass1")
-                    if isinstance(enrich1, dict):
-                        try:
-                            filtered_acl_total += int(enrich1.get("filtered_acl") or 0)
-                        except Exception as exc:
-                            logger.debug(_METRICS_DASHBOARD_FALLBACK_LOG_MESSAGE, exc)
-
-                    channels = dbg.get("channels")
-                    if isinstance(channels, dict):
-                        cache_meta = channels.get("cache")
-                        if isinstance(cache_meta, dict):
-                            if bool(cache_meta.get("hit")):
-                                retrieval_candidate_cache_hit_count += 1
-                            if bool(cache_meta.get("store_ok")):
-                                retrieval_candidate_cache_store_ok_count += 1
-                            backend = str(cache_meta.get("backend") or "").strip().lower()
-                            if backend:
-                                retrieval_candidate_cache_backend_counts[backend] += 1
-                            skip_reason = str(cache_meta.get("skip_reason") or "").strip()
-                            if skip_reason:
-                                retrieval_candidate_cache_skip_reason_counts[skip_reason[:80]] += 1
-
-                        rerank_meta = channels.get("rerank")
-                        if isinstance(rerank_meta, dict):
-                            skip_reason = str(rerank_meta.get("skip_reason") or "").strip()
-                            if skip_reason:
-                                retrieval_rerank_skip_reason_counts[skip_reason[:80]] += 1
-
-            # Citations are already structured for UI; ignore text, only aggregate numeric fields.
-            citations = r.get("citations") or []
-            if isinstance(citations, list):
-                citations_counts.append(len(citations))
-                for c in citations:
-                    if not isinstance(c, dict):
-                        continue
-                    hit_type = c.get("hit_type")
-                    if hit_type:
-                        hit_type_counts[str(hit_type)] += 1
-                    re_sec = c.get("retrieval_elapsed_sec")
-                    if re_sec is not None:
-                        try:
-                            fv = float(re_sec)
-                            if fv >= 0:
-                                retrieval_elapsed.append(fv)
-                                if minute_ms:
-                                    bucket[minute_ms]["retrieval_elapsed_sum"] += fv
-                        except Exception as exc:
-                            logger.debug(_METRICS_DASHBOARD_FALLBACK_LOG_MESSAGE, exc)
-                    rr_sec = c.get("rerank_elapsed_sec")
-                    if rr_sec is not None:
-                        try:
-                            fv = float(rr_sec)
-                            if fv >= 0:
-                                rerank_elapsed.append(fv)
-                        except Exception as exc:
-                            logger.debug(_METRICS_DASHBOARD_FALLBACK_LOG_MESSAGE, exc)
-
-            # Track errors (PII-safe): only keep short error strings.
-            errors = retrieval.get("errors") if isinstance(retrieval, dict) else None
-            if isinstance(errors, list):
-                for e in errors:
-                    s = (str(e) if e is not None else "").strip()
-                    if not s:
-                        continue
-                    error_counts[s[:80]] += 1
-
-        elif event == "reranker_api":
-            reranker_api_count += 1
-            if minute_ms:
-                bucket[minute_ms]["reranker_api"] += 1
-            if r.get("error"):
-                error_counts["reranker_api_error"] += 1
-
-    # Build timeseries arrays (sorted by time).
-    ts_keys = sorted(k for k in bucket.keys() if k)
-    series = {
-        "ts_ms": list(ts_keys),
-        "rag_trace": [int(bucket[k]["rag_trace"]) for k in ts_keys],
-        "reranker_api": [int(bucket[k]["reranker_api"]) for k in ts_keys],
-        "retrieval_avg_elapsed_sec": [
-            (bucket[k]["retrieval_elapsed_sum"] / bucket[k]["rag_trace"]) if bucket[k]["rag_trace"] else None
-            for k in ts_keys
-        ],
-    }
-
-    return RagMetricsSummary(
+    window_minutes = _normalize_window_minutes(window_minutes)
+    record_window = _load_metrics_record_window(
+        tenant_id=tenant_id,
+        window_minutes=window_minutes,
+        max_bytes=max_bytes,
+    )
+    state = _RagMetricsAccumulator()
+    for record in record_window.records:
+        _accumulate_rag_metrics_record(state, record)
+    return _build_rag_metrics_summary(
         enabled=enabled,
-        path=path_str,
-        window_minutes=int(window_minutes),
-        truncated=bool(truncated),
-        record_count=len(records),
-        rag_trace_count=int(rag_trace_count),
-        reranker_api_count=int(reranker_api_count),
-        retrieval_avg_elapsed_sec=_mean(retrieval_elapsed),
-        retrieval_p95_elapsed_sec=_percentile(retrieval_elapsed, 95.0),
-        rerank_avg_elapsed_sec=_mean(rerank_elapsed),
-        citations_avg_count=_mean(citations_counts),
-        retriever_overfetch_count=int(overfetch_count),
-        retriever_overfetch_avg_ratio=_mean(overfetch_ratios),
-        retriever_filtered_acl_total=int(filtered_acl_total),
-        retrieval_candidate_cache_hit_count=int(retrieval_candidate_cache_hit_count),
-        retrieval_candidate_cache_store_ok_count=int(retrieval_candidate_cache_store_ok_count),
-        retrieval_candidate_cache_backend_counts=dict(retrieval_candidate_cache_backend_counts),
-        retrieval_candidate_cache_skip_reason_counts=dict(retrieval_candidate_cache_skip_reason_counts),
-        retrieval_rerank_skip_reason_counts=dict(retrieval_rerank_skip_reason_counts),
-        retrieval_mode_counts=dict(retrieval_mode_counts),
-        hit_type_counts=dict(hit_type_counts),
-        error_counts=dict(error_counts),
-        timeseries=series,
+        record_window=record_window,
+        window_minutes=window_minutes,
+        state=state,
     )
 
 
@@ -405,6 +540,104 @@ class RagCostAttributionSummary:
     retrieval_query_count: int
 
 
+@dataclass
+class _RagCostAttributionAccumulator:
+    rag_trace_count: int = 0
+    llm_prompt_tokens: int = 0
+    llm_completion_tokens: int = 0
+    llm_total_tokens: int = 0
+    llm_model_counts: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    llm_source_counts: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    embed_query_tokens: int = 0
+    embed_query_chars: int = 0
+    embed_query_count: int = 0
+    embed_provider_counts: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    embed_model_counts: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    retrieval_elapsed: list[float] = field(default_factory=list)
+    rerank_elapsed: list[float] = field(default_factory=list)
+    retrieval_vector_backend_counts: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    retrieval_query_count: int = 0
+
+
+def _collect_cost_llm(state: _RagCostAttributionAccumulator, llm: dict[str, Any]) -> None:
+    state.llm_prompt_tokens += _safe_int_value(llm.get("prompt_tokens"))
+    state.llm_completion_tokens += _safe_int_value(llm.get("completion_tokens"))
+    state.llm_total_tokens += _safe_int_value(llm.get("total_tokens"))
+    _increment_limited_count(state.llm_model_counts, llm.get("model_used"), limit=120)
+    _increment_limited_count(state.llm_source_counts, llm.get("source"), limit=50)
+
+
+def _collect_cost_embeddings(state: _RagCostAttributionAccumulator, embeddings: dict[str, Any]) -> None:
+    state.embed_query_tokens += _safe_int_value(embeddings.get("query_tokens"))
+    state.embed_query_chars += _safe_int_value(embeddings.get("query_chars"))
+    state.embed_query_count += _safe_int_value(embeddings.get("query_count"))
+    _increment_limited_count(state.embed_provider_counts, embeddings.get("provider"), limit=50)
+    _increment_limited_count(state.embed_model_counts, embeddings.get("model"), limit=80)
+
+
+def _collect_cost_retrieval(state: _RagCostAttributionAccumulator, retrieval: dict[str, Any]) -> None:
+    elapsed = _safe_non_negative_float(retrieval.get("elapsed_sec"))
+    if elapsed is not None:
+        state.retrieval_elapsed.append(elapsed)
+
+    rerank_elapsed = _safe_non_negative_float(retrieval.get("rerank_elapsed_sec"))
+    if rerank_elapsed is not None:
+        state.rerank_elapsed.append(rerank_elapsed)
+
+    _increment_limited_count(state.retrieval_vector_backend_counts, retrieval.get("vector_backend"), limit=50)
+    state.retrieval_query_count += _safe_int_value(retrieval.get("query_count"))
+
+
+def _accumulate_cost_attribution_record(
+    state: _RagCostAttributionAccumulator,
+    record: dict[str, Any],
+) -> None:
+    if _record_event(record) != "rag_trace":
+        return
+
+    state.rag_trace_count += 1
+    cost = _safe_dict(record.get("cost_attribution"))
+    if not cost:
+        return
+
+    _collect_cost_llm(state, _safe_dict(cost.get("llm")))
+    _collect_cost_embeddings(state, _safe_dict(cost.get("embeddings")))
+    _collect_cost_retrieval(state, _safe_dict(cost.get("retrieval")))
+
+
+def _build_cost_attribution_summary(
+    *,
+    enabled: bool,
+    record_window: _MetricsRecordWindow,
+    window_minutes: int,
+    state: _RagCostAttributionAccumulator,
+) -> RagCostAttributionSummary:
+    return RagCostAttributionSummary(
+        enabled=enabled,
+        path=record_window.path,
+        window_minutes=int(window_minutes),
+        truncated=bool(record_window.truncated),
+        record_count=len(record_window.records),
+        rag_trace_count=int(state.rag_trace_count),
+        llm_prompt_tokens=int(state.llm_prompt_tokens),
+        llm_completion_tokens=int(state.llm_completion_tokens),
+        llm_total_tokens=int(state.llm_total_tokens),
+        llm_model_counts=dict(state.llm_model_counts),
+        llm_source_counts=dict(state.llm_source_counts),
+        embed_query_tokens=int(state.embed_query_tokens),
+        embed_query_chars=int(state.embed_query_chars),
+        embed_query_count=int(state.embed_query_count),
+        embed_provider_counts=dict(state.embed_provider_counts),
+        embed_model_counts=dict(state.embed_model_counts),
+        retrieval_elapsed_avg_sec=_mean(state.retrieval_elapsed),
+        retrieval_elapsed_p95_sec=_percentile(state.retrieval_elapsed, 95.0),
+        rerank_elapsed_avg_sec=_mean(state.rerank_elapsed),
+        rerank_elapsed_p95_sec=_percentile(state.rerank_elapsed, 95.0),
+        retrieval_vector_backend_counts=dict(state.retrieval_vector_backend_counts),
+        retrieval_query_count=int(state.retrieval_query_count),
+    )
+
+
 def summarize_rag_cost_attribution(
     *,
     tenant_id: str | None,
@@ -418,165 +651,20 @@ def summarize_rag_cost_attribution(
     """
 
     enabled = bool(getattr(settings, "ENABLE_METRICS_LOG", False))
-    path_str = str(getattr(settings, "METRICS_LOG_PATH", DEFAULT_METRICS_LOG_PATH) or DEFAULT_METRICS_LOG_PATH)
-    path = Path(path_str)
-
-    window_minutes = max(1, int(window_minutes or 0))
-    cutoff_ms = int(time.time() * 1000) - (window_minutes * 60 * 1000)
-
-    raw_records, truncated_by_tail = _read_jsonl_tail(path, max_bytes=int(max_bytes or 0))
-
-    # Tenant filter (avoid cross-tenant leakage on shared log files).
-    tenant_key = str(tenant_id) if tenant_id else None
-    records: list[dict[str, Any]] = []
-    for r in raw_records:
-        try:
-            ts_ms = int(r.get("ts_ms") or 0)
-        except Exception:
-            ts_ms = 0
-        if ts_ms and ts_ms < cutoff_ms:
-            continue
-        if tenant_key:
-            rid = r.get("tenant_id")
-            if rid and str(rid) != tenant_key:
-                continue
-        records.append(r)
-
-    earliest_ts_ms: int | None = None
-    for r in records:
-        try:
-            ts_ms = int(r.get("ts_ms") or 0)
-        except Exception:
-            continue
-        if not ts_ms:
-            continue
-        if earliest_ts_ms is None or ts_ms < earliest_ts_ms:
-            earliest_ts_ms = ts_ms
-    truncated = bool(truncated_by_tail and earliest_ts_ms is not None and earliest_ts_ms > cutoff_ms)
-
-    rag_trace_count = 0
-
-    llm_prompt_tokens = 0
-    llm_completion_tokens = 0
-    llm_total_tokens = 0
-    llm_model_counts: dict[str, int] = defaultdict(int)
-    llm_source_counts: dict[str, int] = defaultdict(int)
-
-    embed_query_tokens = 0
-    embed_query_chars = 0
-    embed_query_count = 0
-    embed_provider_counts: dict[str, int] = defaultdict(int)
-    embed_model_counts: dict[str, int] = defaultdict(int)
-
-    retrieval_elapsed: list[float] = []
-    rerank_elapsed: list[float] = []
-    retrieval_vector_backend_counts: dict[str, int] = defaultdict(int)
-    retrieval_query_count = 0
-
-    for r in records:
-        if str(r.get("event") or "") != "rag_trace":
-            continue
-
-        rag_trace_count += 1
-
-        cost = r.get("cost_attribution")
-        if not isinstance(cost, dict) or not cost:
-            continue
-
-        llm = cost.get("llm") if isinstance(cost.get("llm"), dict) else {}
-        if isinstance(llm, dict):
-            try:
-                llm_prompt_tokens += int(llm.get("prompt_tokens") or 0)
-            except Exception as exc:
-                logger.debug(_METRICS_DASHBOARD_FALLBACK_LOG_MESSAGE, exc)
-            try:
-                llm_completion_tokens += int(llm.get("completion_tokens") or 0)
-            except Exception as exc:
-                logger.debug(_METRICS_DASHBOARD_FALLBACK_LOG_MESSAGE, exc)
-            try:
-                llm_total_tokens += int(llm.get("total_tokens") or 0)
-            except Exception as exc:
-                logger.debug(_METRICS_DASHBOARD_FALLBACK_LOG_MESSAGE, exc)
-            model_used = str(llm.get("model_used") or "").strip()
-            if model_used:
-                llm_model_counts[model_used[:120]] += 1
-            source = str(llm.get("source") or "").strip()
-            if source:
-                llm_source_counts[source[:50]] += 1
-
-        emb = cost.get("embeddings") if isinstance(cost.get("embeddings"), dict) else {}
-        if isinstance(emb, dict):
-            try:
-                embed_query_tokens += int(emb.get("query_tokens") or 0)
-            except Exception as exc:
-                logger.debug(_METRICS_DASHBOARD_FALLBACK_LOG_MESSAGE, exc)
-            try:
-                embed_query_chars += int(emb.get("query_chars") or 0)
-            except Exception as exc:
-                logger.debug(_METRICS_DASHBOARD_FALLBACK_LOG_MESSAGE, exc)
-            try:
-                embed_query_count += int(emb.get("query_count") or 0)
-            except Exception as exc:
-                logger.debug(_METRICS_DASHBOARD_FALLBACK_LOG_MESSAGE, exc)
-
-            provider = str(emb.get("provider") or "").strip()
-            if provider:
-                embed_provider_counts[provider[:50]] += 1
-            model = str(emb.get("model") or "").strip()
-            if model:
-                embed_model_counts[model[:80]] += 1
-
-        retrieval = cost.get("retrieval") if isinstance(cost.get("retrieval"), dict) else {}
-        if isinstance(retrieval, dict):
-            v = retrieval.get("elapsed_sec")
-            if v is not None:
-                try:
-                    fv = float(v)
-                    if fv >= 0:
-                        retrieval_elapsed.append(fv)
-                except Exception as exc:
-                    logger.debug(_METRICS_DASHBOARD_FALLBACK_LOG_MESSAGE, exc)
-
-            v = retrieval.get("rerank_elapsed_sec")
-            if v is not None:
-                try:
-                    fv = float(v)
-                    if fv >= 0:
-                        rerank_elapsed.append(fv)
-                except Exception as exc:
-                    logger.debug(_METRICS_DASHBOARD_FALLBACK_LOG_MESSAGE, exc)
-
-            vector_backend = str(retrieval.get("vector_backend") or "").strip()
-            if vector_backend:
-                retrieval_vector_backend_counts[vector_backend[:50]] += 1
-            try:
-                retrieval_query_count += int(retrieval.get("query_count") or 0)
-            except Exception as exc:
-                logger.debug(_METRICS_DASHBOARD_FALLBACK_LOG_MESSAGE, exc)
-
-    return RagCostAttributionSummary(
+    window_minutes = _normalize_window_minutes(window_minutes)
+    record_window = _load_metrics_record_window(
+        tenant_id=tenant_id,
+        window_minutes=window_minutes,
+        max_bytes=max_bytes,
+    )
+    state = _RagCostAttributionAccumulator()
+    for record in record_window.records:
+        _accumulate_cost_attribution_record(state, record)
+    return _build_cost_attribution_summary(
         enabled=enabled,
-        path=path_str,
-        window_minutes=int(window_minutes),
-        truncated=bool(truncated),
-        record_count=len(records),
-        rag_trace_count=int(rag_trace_count),
-        llm_prompt_tokens=int(llm_prompt_tokens),
-        llm_completion_tokens=int(llm_completion_tokens),
-        llm_total_tokens=int(llm_total_tokens),
-        llm_model_counts=dict(llm_model_counts),
-        llm_source_counts=dict(llm_source_counts),
-        embed_query_tokens=int(embed_query_tokens),
-        embed_query_chars=int(embed_query_chars),
-        embed_query_count=int(embed_query_count),
-        embed_provider_counts=dict(embed_provider_counts),
-        embed_model_counts=dict(embed_model_counts),
-        retrieval_elapsed_avg_sec=_mean(retrieval_elapsed),
-        retrieval_elapsed_p95_sec=_percentile(retrieval_elapsed, 95.0),
-        rerank_elapsed_avg_sec=_mean(rerank_elapsed),
-        rerank_elapsed_p95_sec=_percentile(rerank_elapsed, 95.0),
-        retrieval_vector_backend_counts=dict(retrieval_vector_backend_counts),
-        retrieval_query_count=int(retrieval_query_count),
+        record_window=record_window,
+        window_minutes=window_minutes,
+        state=state,
     )
 
 
@@ -623,6 +711,88 @@ def _safe_rate(numerator: int, denominator: int) -> float:
     return float(numerator) / float(denominator)
 
 
+@dataclass(frozen=True)
+class _RateSpikeStats:
+    baseline_rate: float
+    baseline_std: float | None
+    ratio: float | None
+    z_score: float | None
+
+
+def _rate_spike_stats(*, baseline_rates: list[float], current_rate: float) -> _RateSpikeStats:
+    baseline_rate = _mean(baseline_rates) if baseline_rates else 0.0
+    baseline_std = _stddev(baseline_rates) if baseline_rates else 0.0
+    ratio = current_rate / baseline_rate if baseline_rate and baseline_rate > 1e-9 else None
+    z_score = None
+    if baseline_std is not None and baseline_std > 1e-9:
+        z_score = (current_rate - baseline_rate) / baseline_std
+    return _RateSpikeStats(
+        baseline_rate=float(baseline_rate or 0.0),
+        baseline_std=baseline_std,
+        ratio=ratio,
+        z_score=z_score,
+    )
+
+
+def _rate_spike_matches(
+    *,
+    current_rate: float,
+    stats: _RateSpikeStats,
+    abs_threshold: float,
+    ratio_threshold: float,
+    zscore_threshold: float,
+) -> bool:
+    meets_abs = current_rate >= float(abs_threshold or 0.0)
+    meets_ratio = stats.ratio is not None and stats.ratio >= float(ratio_threshold or 0.0)
+    meets_z = stats.z_score is not None and stats.z_score >= float(zscore_threshold or 0.0)
+    return bool(meets_abs and (meets_ratio or meets_z or (stats.baseline_rate <= 1e-9)))
+
+
+def _rate_spike_severity(
+    *,
+    stats: _RateSpikeStats,
+    ratio_threshold: float,
+    zscore_threshold: float,
+) -> str:
+    ratio_is_critical = stats.ratio is not None and stats.ratio >= (float(ratio_threshold or 0.0) * 2.0)
+    zscore_is_critical = stats.z_score is not None and stats.z_score >= (float(zscore_threshold or 0.0) * 2.0)
+    return "critical" if ratio_is_critical or zscore_is_critical else "warning"
+
+
+def _rate_spike_payload(
+    *,
+    metric: str,
+    current_rate: float,
+    stats: _RateSpikeStats,
+    current_requests: int,
+    baseline_requests: int,
+    baseline_window_minutes: int,
+    current_window_minutes: int,
+    severity: str,
+    hints: list[str],
+    extra: dict[str, Any] | None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "key": f"rag.{metric}.spike",
+        "metric": metric,
+        "severity": severity,
+        "message": f"{metric} spike: current={current_rate:.3f} baseline={stats.baseline_rate:.3f}",
+        "baseline_window_minutes": int(baseline_window_minutes),
+        "current_window_minutes": int(current_window_minutes),
+        "current_rate": round(float(current_rate), 6),
+        "baseline_rate": round(float(stats.baseline_rate), 6),
+        "baseline_std": round(float(stats.baseline_std or 0.0), 6) if stats.baseline_std is not None else None,
+        "ratio": round(float(stats.ratio), 6) if stats.ratio is not None else None,
+        "z_score": round(float(stats.z_score), 6) if stats.z_score is not None else None,
+        "current_requests": int(current_requests),
+        "baseline_requests": int(baseline_requests),
+        "hints": list(hints or []),
+    }
+    if extra:
+        payload["extra"] = dict(extra)
+    return payload
+
+
 def _detect_rate_spike(
     *,
     metric: str,
@@ -641,51 +811,284 @@ def _detect_rate_spike(
     if current_requests <= 0 or baseline_requests <= 0:
         return None
 
-    baseline_rate = _mean(baseline_rates) if baseline_rates else 0.0
-    baseline_std = _stddev(baseline_rates) if baseline_rates else 0.0
-
-    # Guard: avoid division explosions when baseline is near zero.
-    ratio = None
-    if baseline_rate and baseline_rate > 1e-9:
-        ratio = current_rate / baseline_rate
-
-    z_score = None
-    if baseline_std is not None and baseline_std > 1e-9:
-        z_score = (current_rate - baseline_rate) / baseline_std
-
-    meets_abs = current_rate >= float(abs_threshold or 0.0)
-    meets_ratio = ratio is not None and ratio >= float(ratio_threshold or 0.0)
-    meets_z = z_score is not None and z_score >= float(zscore_threshold or 0.0)
-    meets_spike = meets_abs and (meets_ratio or meets_z or (baseline_rate <= 1e-9))
-    if not meets_spike:
+    stats = _rate_spike_stats(baseline_rates=baseline_rates, current_rate=current_rate)
+    if not _rate_spike_matches(
+        current_rate=current_rate,
+        stats=stats,
+        abs_threshold=abs_threshold,
+        ratio_threshold=ratio_threshold,
+        zscore_threshold=zscore_threshold,
+    ):
         return None
 
-    severity = "warning"
-    if (ratio is not None and ratio >= (float(ratio_threshold or 0.0) * 2.0)) or (
-        z_score is not None and z_score >= (float(zscore_threshold or 0.0) * 2.0)
-    ):
-        severity = "critical"
+    severity = _rate_spike_severity(
+        stats=stats,
+        ratio_threshold=ratio_threshold,
+        zscore_threshold=zscore_threshold,
+    )
+    return _rate_spike_payload(
+        metric=metric,
+        current_rate=current_rate,
+        stats=stats,
+        current_requests=current_requests,
+        baseline_requests=baseline_requests,
+        baseline_window_minutes=baseline_window_minutes,
+        current_window_minutes=current_window_minutes,
+        severity=severity,
+        hints=hints,
+        extra=extra,
+    )
 
-    message = f"{metric} spike: current={current_rate:.3f} baseline={baseline_rate:.3f}"
-    payload: dict[str, Any] = {
-        "key": f"rag.{metric}.spike",
-        "metric": metric,
-        "severity": severity,
-        "message": message,
-        "baseline_window_minutes": int(baseline_window_minutes),
-        "current_window_minutes": int(current_window_minutes),
-        "current_rate": round(float(current_rate), 6),
-        "baseline_rate": round(float(baseline_rate), 6),
-        "baseline_std": round(float(baseline_std or 0.0), 6) if baseline_std is not None else None,
-        "ratio": round(float(ratio), 6) if ratio is not None else None,
-        "z_score": round(float(z_score), 6) if z_score is not None else None,
-        "current_requests": int(current_requests),
-        "baseline_requests": int(baseline_requests),
-        "hints": list(hints or []),
-    }
-    if extra:
-        payload["extra"] = dict(extra)
-    return payload
+
+@dataclass(frozen=True)
+class _QueryAnomalyConfig:
+    baseline_window_minutes: int
+    current_window_minutes: int
+    min_requests_per_bucket: int
+    min_baseline_buckets: int
+    zero_hit_abs_threshold: float
+    zero_hit_ratio_threshold: float
+    zero_hit_zscore_threshold: float
+    error_abs_threshold: float
+    error_ratio_threshold: float
+    error_zscore_threshold: float
+
+
+@dataclass(frozen=True)
+class _QueryAnomalyWindow:
+    current_start_ms: int
+    baseline_keys: list[int]
+    current_keys: list[int]
+
+
+@dataclass(frozen=True)
+class _QueryAnomalyBucketStats:
+    baseline_rates_zero: list[float]
+    baseline_rates_error: list[float]
+    baseline_requests: int
+    current_requests: int
+    current_zero: int
+    current_error: int
+    baseline_bucket_count: int
+    current_bucket_count: int
+
+
+def _query_anomaly_config(window_minutes: int) -> _QueryAnomalyConfig | None:
+    if not bool(getattr(settings, "OBS_ANOMALY_ENABLED", True)):
+        return None
+    window_minutes = max(1, int(window_minutes or 0))
+    baseline_win = max(1, int(getattr(settings, "OBS_ANOMALY_BASELINE_WINDOW_MINUTES", 60) or 60))
+    current_win = max(1, int(getattr(settings, "OBS_ANOMALY_CURRENT_WINDOW_MINUTES", 5) or 5))
+    min_reqs = max(1, int(getattr(settings, "OBS_ANOMALY_MIN_REQUESTS_PER_BUCKET", 5) or 5))
+    min_baseline_buckets = max(1, int(getattr(settings, "OBS_ANOMALY_MIN_BASELINE_BUCKETS", 10) or 10))
+
+    current_win = min(current_win, window_minutes)
+    baseline_win = min(baseline_win, max(0, window_minutes - current_win))
+    if baseline_win <= 0 or current_win <= 0:
+        return None
+
+    return _QueryAnomalyConfig(
+        baseline_window_minutes=baseline_win,
+        current_window_minutes=current_win,
+        min_requests_per_bucket=min_reqs,
+        min_baseline_buckets=min_baseline_buckets,
+        zero_hit_abs_threshold=float(getattr(settings, "OBS_ANOMALY_ZERO_HIT_RATE_ABS_THRESHOLD", 0.6) or 0.6),
+        zero_hit_ratio_threshold=float(getattr(settings, "OBS_ANOMALY_ZERO_HIT_RATE_RATIO_THRESHOLD", 2.0) or 2.0),
+        zero_hit_zscore_threshold=float(getattr(settings, "OBS_ANOMALY_ZERO_HIT_RATE_ZSCORE_THRESHOLD", 3.0) or 3.0),
+        error_abs_threshold=float(getattr(settings, "OBS_ANOMALY_ERROR_RATE_ABS_THRESHOLD", 0.05) or 0.05),
+        error_ratio_threshold=float(getattr(settings, "OBS_ANOMALY_ERROR_RATE_RATIO_THRESHOLD", 3.0) or 3.0),
+        error_zscore_threshold=float(getattr(settings, "OBS_ANOMALY_ERROR_RATE_ZSCORE_THRESHOLD", 3.0) or 3.0),
+    )
+
+
+def _query_anomaly_window(ts_keys: list[int], config: _QueryAnomalyConfig) -> _QueryAnomalyWindow:
+    last_ts_ms = max(ts_keys)
+    current_start_ms = last_ts_ms - ((config.current_window_minutes - 1) * 60_000)
+    baseline_start_ms = current_start_ms - (config.baseline_window_minutes * 60_000)
+    return _QueryAnomalyWindow(
+        current_start_ms=current_start_ms,
+        baseline_keys=[k for k in ts_keys if baseline_start_ms <= k < current_start_ms],
+        current_keys=[k for k in ts_keys if k >= current_start_ms],
+    )
+
+
+def _collect_baseline_anomaly_stats(
+    bucket: dict[int, dict[str, Any]],
+    keys: list[int],
+    *,
+    min_requests: int,
+) -> tuple[list[float], list[float], int, int]:
+    baseline_rates_zero: list[float] = []
+    baseline_rates_error: list[float] = []
+    baseline_req = 0
+    baseline_bucket_count = 0
+
+    for k in keys:
+        req = int((bucket.get(k) or {}).get("requests") or 0)
+        if req < min_requests:
+            continue
+        zh = int((bucket.get(k) or {}).get("zero_hit") or 0)
+        er = int((bucket.get(k) or {}).get("errors") or 0)
+        baseline_bucket_count += 1
+        baseline_req += req
+        baseline_rates_zero.append(_safe_rate(zh, req))
+        baseline_rates_error.append(_safe_rate(er, req))
+
+    return baseline_rates_zero, baseline_rates_error, baseline_req, baseline_bucket_count
+
+
+def _collect_current_anomaly_stats(
+    bucket: dict[int, dict[str, Any]],
+    keys: list[int],
+    *,
+    min_requests: int,
+) -> tuple[int, int, int, int]:
+    current_req = 0
+    current_zero = 0
+    current_error = 0
+    current_bucket_count = 0
+
+    for k in keys:
+        req = int((bucket.get(k) or {}).get("requests") or 0)
+        if req < min_requests:
+            continue
+        zh = int((bucket.get(k) or {}).get("zero_hit") or 0)
+        er = int((bucket.get(k) or {}).get("errors") or 0)
+        current_bucket_count += 1
+        current_req += req
+        current_zero += zh
+        current_error += er
+
+    return current_req, current_zero, current_error, current_bucket_count
+
+
+def _collect_query_anomaly_bucket_stats(
+    bucket: dict[int, dict[str, Any]],
+    window: _QueryAnomalyWindow,
+    config: _QueryAnomalyConfig,
+) -> _QueryAnomalyBucketStats:
+    zero_rates, error_rates, baseline_req, baseline_bucket_count = _collect_baseline_anomaly_stats(
+        bucket,
+        window.baseline_keys,
+        min_requests=config.min_requests_per_bucket,
+    )
+    current_req, current_zero, current_error, current_bucket_count = _collect_current_anomaly_stats(
+        bucket,
+        window.current_keys,
+        min_requests=config.min_requests_per_bucket,
+    )
+    return _QueryAnomalyBucketStats(
+        baseline_rates_zero=zero_rates,
+        baseline_rates_error=error_rates,
+        baseline_requests=baseline_req,
+        current_requests=current_req,
+        current_zero=current_zero,
+        current_error=current_error,
+        baseline_bucket_count=baseline_bucket_count,
+        current_bucket_count=current_bucket_count,
+    )
+
+
+def _has_enough_anomaly_data(stats: _QueryAnomalyBucketStats, config: _QueryAnomalyConfig) -> bool:
+    return bool(
+        stats.baseline_bucket_count >= config.min_baseline_buckets
+        and stats.current_requests > 0
+        and stats.baseline_requests > 0
+    )
+
+
+def _collect_current_error_kind_counts(
+    records: list[dict[str, Any]],
+    *,
+    current_start_ms: int,
+) -> dict[str, int]:
+    current_error_kinds: dict[str, int] = defaultdict(int)
+    for record in records:
+        if _record_event(record) != "rag_trace":
+            continue
+        ts_ms = _record_ts_ms(record)
+        if ts_ms and ts_ms < current_start_ms:
+            continue
+        errors = _safe_dict(record.get("retrieval")).get("errors")
+        if not isinstance(errors, list) or not errors:
+            continue
+        for error in errors:
+            if not isinstance(error, str):
+                continue
+            kind = error.split(":", 1)[0].strip().lower()
+            if not kind:
+                continue
+            current_error_kinds[kind[:30]] += 1
+    return dict(current_error_kinds)
+
+
+def _top_error_kind(error_kind_counts: dict[str, int]) -> str | None:
+    if not error_kind_counts:
+        return None
+    return min(error_kind_counts.items(), key=lambda kv: (-kv[1], kv[0]))[0]
+
+
+def _zero_hit_anomaly_hints() -> list[str]:
+    return [
+        "Index 可能为空或入库未完成：检查 ingestion/queue 状态与 index-audit。",
+        "检索 scope 过窄或 ACL 过滤过严：确认 dataset/document scope 与权限配置。",
+        "检索配置变更：对比 retrieval_config_hash 或最近配置变更。",
+    ]
+
+
+def _error_anomaly_hints() -> list[str]:
+    return [
+        "向量/检索后端异常：检查 /health/ready 与依赖延迟（DB/Redis/vector）。",
+        "reranker 上游故障或 429：检查 provider 状态与限流/配额。",
+        "查看 error_kind_counts 以定位主要失败类型。",
+    ]
+
+
+def _zero_hit_rate_anomaly(
+    *,
+    stats: _QueryAnomalyBucketStats,
+    config: _QueryAnomalyConfig,
+) -> dict[str, Any] | None:
+    return _detect_rate_spike(
+        metric="zero_hit_rate",
+        baseline_rates=stats.baseline_rates_zero,
+        current_rate=_safe_rate(stats.current_zero, stats.current_requests),
+        current_requests=stats.current_requests,
+        baseline_requests=stats.baseline_requests,
+        baseline_window_minutes=config.baseline_window_minutes,
+        current_window_minutes=config.current_window_minutes,
+        abs_threshold=config.zero_hit_abs_threshold,
+        ratio_threshold=config.zero_hit_ratio_threshold,
+        zscore_threshold=config.zero_hit_zscore_threshold,
+        hints=_zero_hit_anomaly_hints(),
+        extra={"baseline_buckets": stats.baseline_bucket_count, "current_buckets": stats.current_bucket_count},
+    )
+
+
+def _error_rate_anomaly(
+    *,
+    stats: _QueryAnomalyBucketStats,
+    config: _QueryAnomalyConfig,
+    top_error_kind: str | None,
+) -> dict[str, Any] | None:
+    return _detect_rate_spike(
+        metric="error_rate",
+        baseline_rates=stats.baseline_rates_error,
+        current_rate=_safe_rate(stats.current_error, stats.current_requests),
+        current_requests=stats.current_requests,
+        baseline_requests=stats.baseline_requests,
+        baseline_window_minutes=config.baseline_window_minutes,
+        current_window_minutes=config.current_window_minutes,
+        abs_threshold=config.error_abs_threshold,
+        ratio_threshold=config.error_ratio_threshold,
+        zscore_threshold=config.error_zscore_threshold,
+        hints=_error_anomaly_hints(),
+        extra={
+            "top_error_kind": top_error_kind,
+            "baseline_buckets": stats.baseline_bucket_count,
+            "current_buckets": stats.current_bucket_count,
+        },
+    )
 
 
 def _detect_query_analytics_anomalies(
@@ -695,155 +1098,233 @@ def _detect_query_analytics_anomalies(
     ts_keys: list[int],
     window_minutes: int,
 ) -> list[dict[str, Any]]:
-    if not bool(getattr(settings, "OBS_ANOMALY_ENABLED", True)):
-        return []
-
     if not ts_keys:
         return []
 
-    window_minutes = max(1, int(window_minutes or 0))
-
-    baseline_win = max(1, int(getattr(settings, "OBS_ANOMALY_BASELINE_WINDOW_MINUTES", 60) or 60))
-    current_win = max(1, int(getattr(settings, "OBS_ANOMALY_CURRENT_WINDOW_MINUTES", 5) or 5))
-    min_reqs = max(1, int(getattr(settings, "OBS_ANOMALY_MIN_REQUESTS_PER_BUCKET", 5) or 5))
-    min_baseline_buckets = max(1, int(getattr(settings, "OBS_ANOMALY_MIN_BASELINE_BUCKETS", 10) or 10))
-
-    current_win = min(current_win, window_minutes)
-    baseline_win = min(baseline_win, max(0, window_minutes - current_win))
-    if baseline_win <= 0 or current_win <= 0:
+    config = _query_anomaly_config(window_minutes)
+    if config is None:
         return []
 
-    last_ts_ms = max(ts_keys)
-    current_start_ms = last_ts_ms - ((current_win - 1) * 60_000)
-    baseline_start_ms = current_start_ms - (baseline_win * 60_000)
-
-    baseline_keys = [k for k in ts_keys if baseline_start_ms <= k < current_start_ms]
-    current_keys = [k for k in ts_keys if k >= current_start_ms]
-
-    baseline_rates_zero: list[float] = []
-    baseline_rates_error: list[float] = []
-    baseline_req = 0
-    current_req = 0
-    current_zero = 0
-    current_error = 0
-    baseline_bucket_count = 0
-    current_bucket_count = 0
-
-    for k in baseline_keys:
-        req = int((bucket.get(k) or {}).get("requests") or 0)
-        if req < min_reqs:
-            continue
-        zh = int((bucket.get(k) or {}).get("zero_hit") or 0)
-        er = int((bucket.get(k) or {}).get("errors") or 0)
-        baseline_bucket_count += 1
-        baseline_req += req
-        baseline_rates_zero.append(_safe_rate(zh, req))
-        baseline_rates_error.append(_safe_rate(er, req))
-
-    for k in current_keys:
-        req = int((bucket.get(k) or {}).get("requests") or 0)
-        if req < min_reqs:
-            continue
-        zh = int((bucket.get(k) or {}).get("zero_hit") or 0)
-        er = int((bucket.get(k) or {}).get("errors") or 0)
-        current_bucket_count += 1
-        current_req += req
-        current_zero += zh
-        current_error += er
-
-    # Not enough baseline -> skip to avoid noisy alerts on low traffic.
-    if baseline_bucket_count < min_baseline_buckets or current_req <= 0 or baseline_req <= 0:
+    window = _query_anomaly_window(ts_keys, config)
+    stats = _collect_query_anomaly_bucket_stats(bucket, window, config)
+    if not _has_enough_anomaly_data(stats, config):
         return []
 
-    current_zero_rate = _safe_rate(current_zero, current_req)
-    current_error_rate = _safe_rate(current_error, current_req)
-
-    # Error kinds for the current window (PII-safe: only kind prefixes).
-    current_error_kinds: dict[str, int] = defaultdict(int)
-    for r in records:
-        if str(r.get("event") or "") != "rag_trace":
-            continue
-        try:
-            ts_ms = int(r.get("ts_ms") or 0)
-        except Exception:
-            ts_ms = 0
-        if ts_ms and ts_ms < current_start_ms:
-            continue
-        retrieval = r.get("retrieval") if isinstance(r.get("retrieval"), dict) else {}
-        errors = retrieval.get("errors") if isinstance(retrieval, dict) else None
-        if not isinstance(errors, list) or not errors:
-            continue
-        for e in errors:
-            if not isinstance(e, str):
-                continue
-            kind = e.split(":", 1)[0].strip().lower()
-            if not kind:
-                continue
-            current_error_kinds[kind[:30]] += 1
-    top_error_kind = None
-    if current_error_kinds:
-        top_error_kind = min(current_error_kinds.items(), key=lambda kv: (-kv[1], kv[0]))[0]
-
-    anomalies: list[dict[str, Any]] = []
-
-    zero_hit_hints = [
-        "Index 可能为空或入库未完成：检查 ingestion/queue 状态与 index-audit。",
-        "检索 scope 过窄或 ACL 过滤过严：确认 dataset/document scope 与权限配置。",
-        "检索配置变更：对比 retrieval_config_hash 或最近配置变更。",
-    ]
-    err_hints = [
-        "向量/检索后端异常：检查 /health/ready 与依赖延迟（DB/Redis/vector）。",
-        "reranker 上游故障或 429：检查 provider 状态与限流/配额。",
-        "查看 error_kind_counts 以定位主要失败类型。",
-    ]
-
-    zh_abs = float(getattr(settings, "OBS_ANOMALY_ZERO_HIT_RATE_ABS_THRESHOLD", 0.6) or 0.6)
-    zh_ratio = float(getattr(settings, "OBS_ANOMALY_ZERO_HIT_RATE_RATIO_THRESHOLD", 2.0) or 2.0)
-    zh_z = float(getattr(settings, "OBS_ANOMALY_ZERO_HIT_RATE_ZSCORE_THRESHOLD", 3.0) or 3.0)
-    er_abs = float(getattr(settings, "OBS_ANOMALY_ERROR_RATE_ABS_THRESHOLD", 0.05) or 0.05)
-    er_ratio = float(getattr(settings, "OBS_ANOMALY_ERROR_RATE_RATIO_THRESHOLD", 3.0) or 3.0)
-    er_z = float(getattr(settings, "OBS_ANOMALY_ERROR_RATE_ZSCORE_THRESHOLD", 3.0) or 3.0)
-
-    zh = _detect_rate_spike(
-        metric="zero_hit_rate",
-        baseline_rates=baseline_rates_zero,
-        current_rate=current_zero_rate,
-        current_requests=current_req,
-        baseline_requests=baseline_req,
-        baseline_window_minutes=baseline_win,
-        current_window_minutes=current_win,
-        abs_threshold=zh_abs,
-        ratio_threshold=zh_ratio,
-        zscore_threshold=zh_z,
-        hints=zero_hit_hints,
-        extra={"baseline_buckets": baseline_bucket_count, "current_buckets": current_bucket_count},
+    top_error_kind = _top_error_kind(
+        _collect_current_error_kind_counts(records, current_start_ms=window.current_start_ms)
     )
-    if zh:
-        anomalies.append(zh)
+    anomalies = [
+        anomaly
+        for anomaly in (
+            _zero_hit_rate_anomaly(stats=stats, config=config),
+            _error_rate_anomaly(stats=stats, config=config, top_error_kind=top_error_kind),
+        )
+        if anomaly
+    ]
+    return sorted(anomalies, key=lambda x: str(x.get("metric") or ""))
 
-    er = _detect_rate_spike(
-        metric="error_rate",
-        baseline_rates=baseline_rates_error,
-        current_rate=current_error_rate,
-        current_requests=current_req,
-        baseline_requests=baseline_req,
-        baseline_window_minutes=baseline_win,
-        current_window_minutes=current_win,
-        abs_threshold=er_abs,
-        ratio_threshold=er_ratio,
-        zscore_threshold=er_z,
-        hints=err_hints,
-        extra={
-            "top_error_kind": top_error_kind,
-            "baseline_buckets": baseline_bucket_count,
-            "current_buckets": current_bucket_count,
-        },
+
+@dataclass
+class _RagQueryAnalyticsAccumulator:
+    rag_trace_count: int = 0
+    query_hashes: set[str] = field(default_factory=set)
+    retrieval_elapsed: list[float] = field(default_factory=list)
+    zero_hit_count: int = 0
+    slow_count: int = 0
+    error_kind_counts: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    zero_hit_by_hash: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    slow_by_hash_count: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    slow_by_hash_max_elapsed: dict[str, float] = field(default_factory=lambda: defaultdict(float))
+    bucket: dict[int, dict[str, Any]] = field(default_factory=dict)
+
+
+def _query_analytics_bucket(state: _RagQueryAnalyticsAccumulator, minute_ms: int) -> dict[str, Any] | None:
+    if not minute_ms:
+        return None
+    return state.bucket.setdefault(
+        minute_ms,
+        {"ts_ms": minute_ms, "requests": 0, "zero_hit": 0, "slow": 0, "errors": 0},
     )
-    if er:
-        anomalies.append(er)
 
-    anomalies.sort(key=lambda x: str(x.get("metric") or ""))
-    return anomalies
+
+def _query_hash_from_record(record: dict[str, Any]) -> str | None:
+    qhash = record.get("query_hash") or record.get("question_hash")
+    if not qhash:
+        raw_query = record.get("query_for_retrieval") or record.get("question")
+        if isinstance(raw_query, str) and raw_query.strip():
+            qhash = _hash_for_analytics(raw_query.strip())
+    if isinstance(qhash, str) and qhash.strip():
+        return qhash.strip()
+    return None
+
+
+def _citation_count_from_record(record: dict[str, Any]) -> int:
+    try:
+        if record.get("citations_count") is not None:
+            return int(record.get("citations_count") or 0)
+        citations = record.get("citations") or []
+        return len(citations) if isinstance(citations, list) else 0
+    except Exception:
+        return 0
+
+
+def _query_error_kinds(retrieval: dict[str, Any]) -> tuple[list[str], bool]:
+    errors = retrieval.get("errors")
+    if not isinstance(errors, list) or not errors:
+        return [], False
+
+    kinds: list[str] = []
+    for error in errors:
+        if not isinstance(error, str):
+            continue
+        kind = error.split(":", 1)[0].strip().lower()
+        if kind:
+            kinds.append(kind[:30])
+    return kinds, True
+
+
+def _collect_query_error_metrics(
+    state: _RagQueryAnalyticsAccumulator,
+    retrieval: dict[str, Any],
+    bucket_entry: dict[str, Any] | None,
+) -> None:
+    kinds, has_error = _query_error_kinds(retrieval)
+    for kind in kinds:
+        state.error_kind_counts[kind] += 1
+    if has_error and bucket_entry is not None:
+        bucket_entry["errors"] += 1
+
+
+def _collect_zero_hit_query(
+    state: _RagQueryAnalyticsAccumulator,
+    *,
+    qhash: str | None,
+    bucket_entry: dict[str, Any] | None,
+) -> None:
+    state.zero_hit_count += 1
+    if bucket_entry is not None:
+        bucket_entry["zero_hit"] += 1
+    if qhash:
+        state.zero_hit_by_hash[qhash] += 1
+
+
+def _collect_slow_query(
+    state: _RagQueryAnalyticsAccumulator,
+    *,
+    qhash: str | None,
+    elapsed_sec: float,
+    bucket_entry: dict[str, Any] | None,
+) -> None:
+    state.slow_count += 1
+    if bucket_entry is not None:
+        bucket_entry["slow"] += 1
+    if qhash:
+        state.slow_by_hash_count[qhash] += 1
+        state.slow_by_hash_max_elapsed[qhash] = max(
+            float(state.slow_by_hash_max_elapsed.get(qhash) or 0.0),
+            elapsed_sec,
+        )
+
+
+def _accumulate_query_analytics_record(
+    state: _RagQueryAnalyticsAccumulator,
+    record: dict[str, Any],
+    *,
+    slow_threshold_sec: float,
+) -> None:
+    if _record_event(record) != "rag_trace":
+        return
+
+    state.rag_trace_count += 1
+    bucket_entry = _query_analytics_bucket(state, _metric_minute_ms(record))
+    if bucket_entry is not None:
+        bucket_entry["requests"] += 1
+
+    qhash = _query_hash_from_record(record)
+    if qhash:
+        state.query_hashes.add(qhash)
+
+    retrieval = _safe_dict(record.get("retrieval"))
+    elapsed_sec = _safe_non_negative_float(retrieval.get("elapsed_sec"))
+    if elapsed_sec is not None:
+        state.retrieval_elapsed.append(elapsed_sec)
+
+    _collect_query_error_metrics(state, retrieval, bucket_entry)
+
+    if _citation_count_from_record(record) == 0:
+        _collect_zero_hit_query(state, qhash=qhash, bucket_entry=bucket_entry)
+    if slow_threshold_sec > 0 and elapsed_sec is not None and elapsed_sec >= slow_threshold_sec:
+        _collect_slow_query(state, qhash=qhash, elapsed_sec=elapsed_sec, bucket_entry=bucket_entry)
+
+
+def _top_zero_hit_queries(state: _RagQueryAnalyticsAccumulator, *, top_n: int) -> list[dict[str, Any]]:
+    top_zero = sorted(state.zero_hit_by_hash.items(), key=lambda kv: (-kv[1], kv[0]))[:top_n]
+    return [{"query_hash": h, "count": int(c)} for h, c in top_zero]
+
+
+def _top_slow_queries(state: _RagQueryAnalyticsAccumulator, *, top_n: int) -> list[dict[str, Any]]:
+    top_slow_items = sorted(
+        state.slow_by_hash_count.items(),
+        key=lambda kv: (-kv[1], -(float(state.slow_by_hash_max_elapsed.get(kv[0]) or 0.0)), kv[0]),
+    )[:top_n]
+    return [
+        {
+            "query_hash": h,
+            "count": int(c),
+            "max_elapsed_sec": round(float(state.slow_by_hash_max_elapsed.get(h) or 0.0), 3),
+        }
+        for h, c in top_slow_items
+    ]
+
+
+def _query_analytics_timeseries(bucket: dict[int, dict[str, Any]]) -> dict[str, list[Any]]:
+    ts_keys = sorted(k for k in bucket.keys() if k)
+    return {
+        "ts_ms": list(ts_keys),
+        "requests": [int(bucket[k]["requests"]) for k in ts_keys],
+        "zero_hit": [int(bucket[k]["zero_hit"]) for k in ts_keys],
+        "slow": [int(bucket[k]["slow"]) for k in ts_keys],
+        "errors": [int(bucket[k]["errors"]) for k in ts_keys],
+    }
+
+
+def _build_query_analytics_summary(
+    *,
+    enabled: bool,
+    record_window: _MetricsRecordWindow,
+    window_minutes: int,
+    slow_threshold_sec: float,
+    top_n: int,
+    state: _RagQueryAnalyticsAccumulator,
+) -> RagQueryAnalyticsSummary:
+    ts_keys = sorted(k for k in state.bucket.keys() if k)
+    return RagQueryAnalyticsSummary(
+        enabled=enabled,
+        path=record_window.path,
+        window_minutes=int(window_minutes),
+        truncated=bool(record_window.truncated),
+        record_count=len(record_window.records),
+        rag_trace_count=int(state.rag_trace_count),
+        unique_query_hashes=len(state.query_hashes),
+        zero_hit_count=int(state.zero_hit_count),
+        zero_hit_rate=(state.zero_hit_count / state.rag_trace_count) if state.rag_trace_count else None,
+        slow_threshold_sec=slow_threshold_sec,
+        slow_count=int(state.slow_count),
+        slow_rate=(state.slow_count / state.rag_trace_count) if state.rag_trace_count else None,
+        retrieval_p50_elapsed_sec=_percentile(state.retrieval_elapsed, 50.0),
+        retrieval_p95_elapsed_sec=_percentile(state.retrieval_elapsed, 95.0),
+        retrieval_p99_elapsed_sec=_percentile(state.retrieval_elapsed, 99.0),
+        error_kind_counts=dict(state.error_kind_counts),
+        top_zero_hit_queries=_top_zero_hit_queries(state, top_n=top_n),
+        top_slow_queries=_top_slow_queries(state, top_n=top_n),
+        timeseries=_query_analytics_timeseries(state.bucket),
+        anomalies=_detect_query_analytics_anomalies(
+            bucket=state.bucket,
+            records=record_window.records,
+            ts_keys=ts_keys,
+            window_minutes=window_minutes,
+        ),
+    )
 
 
 def summarize_rag_query_analytics(
@@ -863,193 +1344,25 @@ def summarize_rag_query_analytics(
     """
 
     enabled = bool(getattr(settings, "ENABLE_METRICS_LOG", False))
-    path_str = str(getattr(settings, "METRICS_LOG_PATH", DEFAULT_METRICS_LOG_PATH) or DEFAULT_METRICS_LOG_PATH)
-    path = Path(path_str)
-
-    window_minutes = max(1, int(window_minutes or 0))
-    cutoff_ms = int(time.time() * 1000) - (window_minutes * 60 * 1000)
+    window_minutes = _normalize_window_minutes(window_minutes)
     top_n = max(1, min(200, int(top_n or 0)))
     slow_threshold_sec = max(0.0, float(slow_threshold_sec or 0.0))
 
-    raw_records, truncated_by_tail = _read_jsonl_tail(path, max_bytes=int(max_bytes or 0))
-
-    # Tenant filter (avoid cross-tenant leakage on shared log files).
-    tenant_key = str(tenant_id) if tenant_id else None
-    records: list[dict[str, Any]] = []
-    for r in raw_records:
-        try:
-            ts_ms = int(r.get("ts_ms") or 0)
-        except Exception:
-            ts_ms = 0
-        if ts_ms and ts_ms < cutoff_ms:
-            continue
-        if tenant_key:
-            rid = r.get("tenant_id")
-            if rid and str(rid) != tenant_key:
-                continue
-        records.append(r)
-
-    earliest_ts_ms: int | None = None
-    for r in records:
-        try:
-            ts_ms = int(r.get("ts_ms") or 0)
-        except Exception:
-            continue
-        if not ts_ms:
-            continue
-        if earliest_ts_ms is None or ts_ms < earliest_ts_ms:
-            earliest_ts_ms = ts_ms
-    truncated = bool(truncated_by_tail and earliest_ts_ms is not None and earliest_ts_ms > cutoff_ms)
-
-    rag_trace_count = 0
-    query_hashes: set[str] = set()
-    retrieval_elapsed: list[float] = []
-
-    zero_hit_count = 0
-    slow_count = 0
-
-    error_kind_counts: dict[str, int] = defaultdict(int)
-    zero_hit_by_hash: dict[str, int] = defaultdict(int)
-    slow_by_hash_count: dict[str, int] = defaultdict(int)
-    slow_by_hash_max_elapsed: dict[str, float] = defaultdict(float)
-
-    # Simple minute-bucket time series (PII-safe).
-    bucket: dict[int, dict[str, Any]] = {}
-
-    for r in records:
-        if str(r.get("event") or "") != "rag_trace":
-            continue
-
-        rag_trace_count += 1
-
-        ts_ms = int(r.get("ts_ms") or 0) if r.get("ts_ms") is not None else 0
-        minute_ms = (ts_ms // 60_000) * 60_000 if ts_ms else 0
-        if minute_ms and minute_ms not in bucket:
-            bucket[minute_ms] = {"ts_ms": minute_ms, "requests": 0, "zero_hit": 0, "slow": 0, "errors": 0}
-        if minute_ms:
-            bucket[minute_ms]["requests"] += 1
-
-        qhash = r.get("query_hash") or r.get("question_hash")
-        if not qhash:
-            raw_query = r.get("query_for_retrieval") or r.get("question")
-            if isinstance(raw_query, str) and raw_query.strip():
-                qhash = _hash_for_analytics(raw_query.strip())
-
-        if isinstance(qhash, str) and qhash.strip():
-            qhash = qhash.strip()
-            query_hashes.add(qhash)
-        else:
-            qhash = None
-
-        citations_count = 0
-        try:
-            if r.get("citations_count") is not None:
-                citations_count = int(r.get("citations_count") or 0)
-            else:
-                citations = r.get("citations") or []
-                citations_count = len(citations) if isinstance(citations, list) else 0
-        except Exception:
-            citations_count = 0
-
-        retrieval = r.get("retrieval") if isinstance(r.get("retrieval"), dict) else {}
-        elapsed_sec: float | None = None
-        try:
-            v = retrieval.get("elapsed_sec") if isinstance(retrieval, dict) else None
-            if v is not None:
-                fv = float(v)
-                if fv >= 0:
-                    elapsed_sec = fv
-        except Exception:
-            elapsed_sec = None
-        if elapsed_sec is not None:
-            retrieval_elapsed.append(elapsed_sec)
-
-        errors = retrieval.get("errors") if isinstance(retrieval, dict) else None
-        has_error = False
-        if isinstance(errors, list) and errors:
-            has_error = True
-            for e in errors:
-                if not isinstance(e, str):
-                    continue
-                kind = e.split(":", 1)[0].strip().lower()
-                if not kind:
-                    continue
-                error_kind_counts[kind[:30]] += 1
-        if has_error and minute_ms:
-            bucket[minute_ms]["errors"] += 1
-
-        if citations_count == 0:
-            zero_hit_count += 1
-            if minute_ms:
-                bucket[minute_ms]["zero_hit"] += 1
-            if qhash:
-                zero_hit_by_hash[qhash] += 1
-
-        if slow_threshold_sec > 0 and elapsed_sec is not None and elapsed_sec >= slow_threshold_sec:
-            slow_count += 1
-            if minute_ms:
-                bucket[minute_ms]["slow"] += 1
-            if qhash:
-                slow_by_hash_count[qhash] += 1
-                slow_by_hash_max_elapsed[qhash] = max(float(slow_by_hash_max_elapsed.get(qhash) or 0.0), elapsed_sec)
-
-    zero_hit_rate = (zero_hit_count / rag_trace_count) if rag_trace_count else None
-    slow_rate = (slow_count / rag_trace_count) if rag_trace_count else None
-
-    top_zero = sorted(zero_hit_by_hash.items(), key=lambda kv: (-kv[1], kv[0]))[:top_n]
-    top_zero_hit_queries = [{"query_hash": h, "count": int(c)} for h, c in top_zero]
-
-    top_slow_items = sorted(
-        slow_by_hash_count.items(),
-        key=lambda kv: (-kv[1], -(float(slow_by_hash_max_elapsed.get(kv[0]) or 0.0)), kv[0]),
-    )[:top_n]
-    top_slow_queries: list[dict[str, Any]] = []
-    for h, c in top_slow_items:
-        top_slow_queries.append(
-            {
-                "query_hash": h,
-                "count": int(c),
-                "max_elapsed_sec": round(float(slow_by_hash_max_elapsed.get(h) or 0.0), 3),
-            }
-        )
-
-    ts_keys = sorted(k for k in bucket.keys() if k)
-    timeseries = {
-        "ts_ms": list(ts_keys),
-        "requests": [int(bucket[k]["requests"]) for k in ts_keys],
-        "zero_hit": [int(bucket[k]["zero_hit"]) for k in ts_keys],
-        "slow": [int(bucket[k]["slow"]) for k in ts_keys],
-        "errors": [int(bucket[k]["errors"]) for k in ts_keys],
-    }
-
-    anomalies = _detect_query_analytics_anomalies(
-        bucket=bucket,
-        records=records,
-        ts_keys=ts_keys,
+    record_window = _load_metrics_record_window(
+        tenant_id=tenant_id,
         window_minutes=window_minutes,
+        max_bytes=max_bytes,
     )
-
-    return RagQueryAnalyticsSummary(
+    state = _RagQueryAnalyticsAccumulator()
+    for record in record_window.records:
+        _accumulate_query_analytics_record(state, record, slow_threshold_sec=slow_threshold_sec)
+    return _build_query_analytics_summary(
         enabled=enabled,
-        path=path_str,
-        window_minutes=int(window_minutes),
-        truncated=bool(truncated),
-        record_count=len(records),
-        rag_trace_count=int(rag_trace_count),
-        unique_query_hashes=len(query_hashes),
-        zero_hit_count=int(zero_hit_count),
-        zero_hit_rate=zero_hit_rate,
+        record_window=record_window,
+        window_minutes=window_minutes,
         slow_threshold_sec=slow_threshold_sec,
-        slow_count=int(slow_count),
-        slow_rate=slow_rate,
-        retrieval_p50_elapsed_sec=_percentile(retrieval_elapsed, 50.0),
-        retrieval_p95_elapsed_sec=_percentile(retrieval_elapsed, 95.0),
-        retrieval_p99_elapsed_sec=_percentile(retrieval_elapsed, 99.0),
-        error_kind_counts=dict(error_kind_counts),
-        top_zero_hit_queries=top_zero_hit_queries,
-        top_slow_queries=top_slow_queries,
-        timeseries=timeseries,
-        anomalies=anomalies,
+        top_n=top_n,
+        state=state,
     )
 
 
@@ -1083,6 +1396,37 @@ _TRACE_BUNDLE_CITATION_SAFE_KEYS = {
 }
 
 
+def _add_hashed_text_metadata(
+    out: dict[str, Any],
+    *,
+    source_field: str,
+    hash_field: str,
+    chars_field: str,
+) -> None:
+    text = out.pop(source_field, None)
+    if isinstance(text, str) and text.strip():
+        normalized = text.strip()
+        out.setdefault(hash_field, _hash_for_analytics(normalized))
+        out.setdefault(chars_field, len(normalized))
+
+
+def _sanitize_trace_citations(citations: Any) -> list[dict[str, Any]] | None:
+    if not isinstance(citations, list):
+        return None
+
+    safe: list[dict[str, Any]] = []
+    for citation in citations:
+        citation_dict = _safe_dict(citation)
+        if not citation_dict:
+            continue
+        item = {key: citation_dict.get(key) for key in _TRACE_BUNDLE_CITATION_SAFE_KEYS if citation_dict.get(key) is not None}
+        if item:
+            safe.append(item)
+        if len(safe) >= 50:
+            break
+    return safe
+
+
 def _sanitize_rag_trace_for_bundle(record: dict[str, Any]) -> dict[str, Any]:
     """
     Return a PII-safe copy of a rag_trace record (for incident bundles).
@@ -1093,34 +1437,17 @@ def _sanitize_rag_trace_for_bundle(record: dict[str, Any]) -> dict[str, Any]:
     """
 
     out = dict(record)
+    _add_hashed_text_metadata(out, source_field="question", hash_field="question_hash", chars_field="question_chars")
+    _add_hashed_text_metadata(
+        out,
+        source_field="query_for_retrieval",
+        hash_field="query_hash",
+        chars_field="query_chars",
+    )
 
-    question = out.pop("question", None)
-    if isinstance(question, str) and question.strip():
-        q = question.strip()
-        out.setdefault("question_hash", _hash_for_analytics(q))
-        out.setdefault("question_chars", len(q))
-
-    query = out.pop("query_for_retrieval", None)
-    if isinstance(query, str) and query.strip():
-        q = query.strip()
-        out.setdefault("query_hash", _hash_for_analytics(q))
-        out.setdefault("query_chars", len(q))
-
-    citations = out.get("citations")
-    if isinstance(citations, list):
-        safe: list[dict[str, Any]] = []
-        for c in citations:
-            if not isinstance(c, dict):
-                continue
-            item: dict[str, Any] = {}
-            for k in _TRACE_BUNDLE_CITATION_SAFE_KEYS:
-                if k in c and c.get(k) is not None:
-                    item[k] = c.get(k)
-            if item:
-                safe.append(item)
-            if len(safe) >= 50:
-                break
-        out["citations"] = safe
+    safe_citations = _sanitize_trace_citations(out.get("citations"))
+    if safe_citations is not None:
+        out["citations"] = safe_citations
 
     return out
 
@@ -1142,6 +1469,65 @@ def _sanitize_rag_done_for_bundle(record: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _metrics_tail_redactor() -> Any | None:
+    try:
+        from app.core.pii_redaction import PIIRedactor
+
+        return PIIRedactor(mask="[REDACTED]")
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _strip_generic_sensitive_fields(record: dict[str, Any]) -> dict[str, Any]:
+    safe = dict(record)
+    for key in (
+        "question",
+        "query_for_retrieval",
+        "prompt",
+        "response",
+        "messages",
+        "snippets",
+        "structured_data",
+        "abstain_followup",
+        "text",
+        "content",
+    ):
+        safe.pop(key, None)
+
+    metrics = safe.get("metrics")
+    if isinstance(metrics, dict):
+        metric_payload = dict(metrics)
+        metric_payload.pop("structured_data", None)
+        metric_payload.pop("abstain_followup", None)
+        safe["metrics"] = metric_payload
+    return safe
+
+
+def _redacted_metrics_tail_record(record: dict[str, Any], redactor: Any | None) -> dict[str, Any]:
+    event = _record_event(record)
+    if event == "rag_trace":
+        safe = _sanitize_rag_trace_for_bundle(record)
+    elif event == "rag_done":
+        safe = _sanitize_rag_done_for_bundle(record)
+    else:
+        safe = _strip_generic_sensitive_fields(record)
+    return redactor.redact_obj(safe) if redactor is not None else safe
+
+
+def _json_line_or_none(record: dict[str, Any]) -> str | None:
+    try:
+        return json.dumps(record, ensure_ascii=False, default=str)
+    except Exception:
+        return None
+
+
+def _gzip_jsonl_lines(lines: list[str]) -> bytes:
+    text = "\n".join(lines)
+    if text:
+        text += "\n"
+    return gzip.compress(text.encode("utf-8"))
+
+
 def build_redacted_metrics_tail_gzip(
     *,
     tenant_id: str | None,
@@ -1157,80 +1543,19 @@ def build_redacted_metrics_tail_gzip(
     - Applies lightweight secret/PII masking on remaining strings (best-effort).
     """
 
-    path_str = str(getattr(settings, "METRICS_LOG_PATH", DEFAULT_METRICS_LOG_PATH) or DEFAULT_METRICS_LOG_PATH)
-    path = Path(path_str)
-
-    window_minutes = max(1, int(window_minutes or 0))
-    cutoff_ms = int(time.time() * 1000) - (window_minutes * 60 * 1000)
-
-    raw_records, _truncated = _read_jsonl_tail(path, max_bytes=int(max_bytes or 0))
-
-    tenant_key = str(tenant_id) if tenant_id else None
-    records: list[dict[str, Any]] = []
-    for r in raw_records:
-        try:
-            ts_ms = int(r.get("ts_ms") or 0)
-        except Exception:
-            ts_ms = 0
-        if ts_ms and ts_ms < cutoff_ms:
-            continue
-        if tenant_key:
-            rid = r.get("tenant_id")
-            if rid and str(rid) != tenant_key:
-                continue
-        records.append(r)
-
-    # Apply additional masking on remaining strings (independent of global PII_REDACTION_ENABLED).
-    try:
-        from app.core.pii_redaction import PIIRedactor
-
-        redactor = PIIRedactor(mask="[REDACTED]")
-    except Exception:  # noqa: BLE001
-        redactor = None
+    record_window = _load_metrics_record_window(
+        tenant_id=tenant_id,
+        window_minutes=_normalize_window_minutes(window_minutes),
+        max_bytes=max_bytes,
+    )
+    redactor = _metrics_tail_redactor()
 
     lines: list[str] = []
-    for r in records:
-        if not isinstance(r, dict):
-            continue
-        event = str(r.get("event") or "")
-        if event == "rag_trace":
-            safe = _sanitize_rag_trace_for_bundle(r)
-        elif event == "rag_done":
-            safe = _sanitize_rag_done_for_bundle(r)
-        else:
-            safe = dict(r)
-            for k in (
-                "question",
-                "query_for_retrieval",
-                "prompt",
-                "response",
-                "messages",
-                "snippets",
-                "structured_data",
-                "abstain_followup",
-                "text",
-                "content",
-            ):
-                safe.pop(k, None)
-            metrics = safe.get("metrics")
-            if isinstance(metrics, dict):
-                m = dict(metrics)
-                m.pop("structured_data", None)
-                m.pop("abstain_followup", None)
-                safe["metrics"] = m
-
-        if redactor is not None:
-            safe = redactor.redact_obj(safe)
-
-        try:
-            lines.append(json.dumps(safe, ensure_ascii=False, default=str))
-        except Exception:
-            continue
-
-    text = "\n".join(lines)
-    if text:
-        text += "\n"
-    return gzip.compress(text.encode("utf-8"))
+    for record in record_window.records:
+        line = _json_line_or_none(_redacted_metrics_tail_record(record, redactor))
+        if line is not None:
+            lines.append(line)
+    return _gzip_jsonl_lines(lines)
 
 
 @dataclass(frozen=True)
@@ -1287,57 +1612,78 @@ def _coerce_float(value: Any) -> float | None:
         return None
 
 
+def _trace_bundle_citations_count(trace: dict[str, Any]) -> int | None:
+    try:
+        if trace.get("citations_count") is not None:
+            return int(trace.get("citations_count") or 0)
+        citations = trace.get("citations") or []
+        return len(citations) if isinstance(citations, list) else 0
+    except Exception:
+        return None
+
+
+def _rounded_non_negative_float(value: Any, *, digits: int) -> float | None:
+    coerced = _coerce_float(value)
+    if coerced is None:
+        return None
+    return round(max(0.0, coerced), digits)
+
+
+def _rounded_float(value: Any, *, digits: int) -> float | None:
+    coerced = _coerce_float(value)
+    return round(coerced, digits) if coerced is not None else None
+
+
+def _str_or_none(value: Any) -> str | None:
+    return str(value or "").strip() or None
+
+
+def _retrieval_bool_or_none(retrieval: dict[str, Any], key: str) -> bool | None:
+    value = retrieval.get(key)
+    return bool(value) if value is not None else None
+
+
+def _trace_bundle_retrieval_summary(retrieval: dict[str, Any], done: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "retrieval_config_hash": _str_or_none(retrieval.get("retrieval_config_hash")),
+        "retrieval_mode": _str_or_none(retrieval.get("mode") or done.get("retrieval_mode")),
+        "retrieval_requested_mode": _str_or_none(retrieval.get("requested_mode")),
+        "retrieval_auto_routed": _retrieval_bool_or_none(retrieval, "auto_routed"),
+        "retrieval_profile": _str_or_none(retrieval.get("profile")),
+        "retrieval_top_k": _coerce_int(retrieval.get("top_k")),
+        "retrieval_alpha": _rounded_float(retrieval.get("alpha"), digits=6),
+        "retrieval_enable_reranker": _retrieval_bool_or_none(retrieval, "enable_reranker"),
+        "retrieval_reranker_provider": _str_or_none(retrieval.get("reranker_provider")),
+        "retrieval_reranker_top_n": _coerce_int(retrieval.get("reranker_top_n")),
+        "retrieval_query_parallelism": _coerce_int(retrieval.get("query_parallelism")),
+        "retrieval_query_count": _coerce_int(retrieval.get("query_count")),
+        "retrieval_elapsed_sec": _rounded_non_negative_float(retrieval.get("elapsed_sec"), digits=3),
+        "retrieval_error_kinds": _extract_error_kind_counts(retrieval.get("errors")),
+    }
+
+
+def _trace_bundle_model_summary(route_trace: dict[str, Any], done: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "model_route": _str_or_none(route_trace.get("model_route") or done.get("route")),
+        "model_used": _str_or_none(route_trace.get("model_used") or done.get("model_used")),
+        "vector_backend": _str_or_none(done.get("vector_backend")),
+    }
+
+
 def _extract_trace_bundle_summary(bundle: RagTraceBundle) -> dict[str, Any]:
     trace = _first_event(bundle.records, "rag_trace") or {}
     done = _first_event(bundle.records, "rag_done") or {}
-
-    retrieval = trace.get("retrieval") if isinstance(trace.get("retrieval"), dict) else {}
-    route_trace = trace.get("route") if isinstance(trace.get("route"), dict) else {}
-
-    citations_count: int | None = None
-    try:
-        if trace.get("citations_count") is not None:
-            citations_count = int(trace.get("citations_count") or 0)
-        else:
-            citations = trace.get("citations") or []
-            citations_count = len(citations) if isinstance(citations, list) else 0
-    except Exception:
-        citations_count = None
-
-    retrieval_elapsed_sec = _coerce_float(retrieval.get("elapsed_sec"))
-    if retrieval_elapsed_sec is not None:
-        retrieval_elapsed_sec = round(max(0.0, retrieval_elapsed_sec), 3)
-
-    retrieval_alpha = _coerce_float(retrieval.get("alpha"))
-    if retrieval_alpha is not None:
-        retrieval_alpha = round(retrieval_alpha, 6)
+    retrieval = _safe_dict(trace.get("retrieval"))
+    route_trace = _safe_dict(trace.get("route"))
 
     out: dict[str, Any] = {
         "request_id": bundle.request_id,
         "window_minutes": int(bundle.window_minutes),
         "truncated": bool(bundle.truncated),
-        # Config fingerprint (stable, PII-safe): per-request retrieval config hash.
-        "retrieval_config_hash": (str(retrieval.get("retrieval_config_hash") or "").strip() or None),
-        "retrieval_mode": (str(retrieval.get("mode") or done.get("retrieval_mode") or "").strip() or None),
-        "retrieval_requested_mode": (str(retrieval.get("requested_mode") or "").strip() or None),
-        "retrieval_auto_routed": bool(retrieval.get("auto_routed")) if retrieval.get("auto_routed") is not None else None,
-        "retrieval_profile": (str(retrieval.get("profile") or "").strip() or None),
-        "retrieval_top_k": _coerce_int(retrieval.get("top_k")),
-        "retrieval_alpha": retrieval_alpha,
-        "retrieval_enable_reranker": bool(retrieval.get("enable_reranker"))
-        if retrieval.get("enable_reranker") is not None
-        else None,
-        "retrieval_reranker_provider": (str(retrieval.get("reranker_provider") or "").strip() or None),
-        "retrieval_reranker_top_n": _coerce_int(retrieval.get("reranker_top_n")),
-        "retrieval_query_parallelism": _coerce_int(retrieval.get("query_parallelism")),
-        "retrieval_query_count": _coerce_int(retrieval.get("query_count")),
-        "retrieval_elapsed_sec": retrieval_elapsed_sec,
-        "retrieval_error_kinds": _extract_error_kind_counts(retrieval.get("errors")),
-        "citations_count": citations_count,
-        "model_route": (str(route_trace.get("model_route") or done.get("route") or "").strip() or None),
-        "model_used": (str(route_trace.get("model_used") or done.get("model_used") or "").strip() or None),
-        "vector_backend": (str(done.get("vector_backend") or "").strip() or None),
+        "citations_count": _trace_bundle_citations_count(trace),
     }
+    out.update(_trace_bundle_retrieval_summary(retrieval, done))
+    out.update(_trace_bundle_model_summary(route_trace, done))
     return out
 
 
@@ -1412,6 +1758,24 @@ def build_rag_trace_bundle_diff(*, bundle_a: RagTraceBundle, bundle_b: RagTraceB
     )
 
 
+def _sanitize_trace_bundle_record(record: dict[str, Any]) -> dict[str, Any]:
+    event = _record_event(record)
+    if event == "rag_trace":
+        return _sanitize_rag_trace_for_bundle(record)
+    if event == "rag_done":
+        return _sanitize_rag_done_for_bundle(record)
+    return dict(record)
+
+
+def _matching_trace_bundle_records(records: list[dict[str, Any]], *, request_id: str) -> list[dict[str, Any]]:
+    matched = [
+        _sanitize_trace_bundle_record(record)
+        for record in records
+        if str(record.get("request_id") or "") == request_id
+    ]
+    return sorted(matched, key=lambda x: int(x.get("ts_ms") or 0))
+
+
 def build_rag_trace_bundle(
     *,
     tenant_id: str | None,
@@ -1427,69 +1791,27 @@ def build_rag_trace_bundle(
     """
 
     enabled = bool(getattr(settings, "ENABLE_METRICS_LOG", False))
-    path_str = str(getattr(settings, "METRICS_LOG_PATH", DEFAULT_METRICS_LOG_PATH) or DEFAULT_METRICS_LOG_PATH)
-    path = Path(path_str)
-
     request_id = str(request_id or "").strip()
     if not request_id:
         return None
 
-    window_minutes = max(1, int(window_minutes or 0))
-    cutoff_ms = int(time.time() * 1000) - (window_minutes * 60 * 1000)
-
-    raw_records, truncated_by_tail = _read_jsonl_tail(path, max_bytes=int(max_bytes or 0))
-
-    tenant_key = str(tenant_id) if tenant_id else None
-    records: list[dict[str, Any]] = []
-    for r in raw_records:
-        try:
-            ts_ms = int(r.get("ts_ms") or 0)
-        except Exception:
-            ts_ms = 0
-        if ts_ms and ts_ms < cutoff_ms:
-            continue
-        if tenant_key:
-            rid = r.get("tenant_id")
-            if rid and str(rid) != tenant_key:
-                continue
-        records.append(r)
-
-    earliest_ts_ms: int | None = None
-    for r in records:
-        try:
-            ts_ms = int(r.get("ts_ms") or 0)
-        except Exception:
-            continue
-        if not ts_ms:
-            continue
-        if earliest_ts_ms is None or ts_ms < earliest_ts_ms:
-            earliest_ts_ms = ts_ms
-    truncated = bool(truncated_by_tail and earliest_ts_ms is not None and earliest_ts_ms > cutoff_ms)
-
-    matched: list[dict[str, Any]] = []
-    for r in records:
-        if str(r.get("request_id") or "") != request_id:
-            continue
-        event = str(r.get("event") or "")
-        if event == "rag_trace":
-            matched.append(_sanitize_rag_trace_for_bundle(r))
-        elif event == "rag_done":
-            matched.append(_sanitize_rag_done_for_bundle(r))
-        else:
-            # Best-effort: include other correlated events (already PII-safe by convention).
-            matched.append(dict(r))
+    window_minutes = _normalize_window_minutes(window_minutes)
+    record_window = _load_metrics_record_window(
+        tenant_id=tenant_id,
+        window_minutes=window_minutes,
+        max_bytes=max_bytes,
+    )
+    matched = _matching_trace_bundle_records(record_window.records, request_id=request_id)
 
     if not matched:
         return None
 
-    matched.sort(key=lambda x: int(x.get("ts_ms") or 0))
-
     return RagTraceBundle(
         enabled=enabled,
-        path=path_str,
+        path=record_window.path,
         window_minutes=window_minutes,
-        truncated=truncated,
-        record_count=len(records),
+        truncated=record_window.truncated,
+        record_count=len(record_window.records),
         request_id=request_id,
         records=matched,
     )
