@@ -203,7 +203,10 @@ async def stream_cached_chat_events(
     persistence: ChatStreamPersistenceContext,
 ) -> AsyncIterator[dict[str, Any]]:
     async for event in stream_materialized_chat_events(
-        stream_input=replace(stream_input, start_message="缓存命中，直接返回…"),
+        stream_input=cast(
+            MaterializedChatStreamInput,
+            replace(stream_input, start_message="缓存命中，直接返回…"),
+        ),
         runtime=runtime,
         persistence=persistence,
     ):
