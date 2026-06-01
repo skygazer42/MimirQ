@@ -87,6 +87,22 @@ export function DatasetFolderTreeView({
 
     const Icon = isExpanded ? FolderOpen : Folder
     const Chevron = isExpanded ? ChevronDown : ChevronRight
+    let toggleControl = <span className="h-3.5 w-3.5" />
+    if (hasChildren) {
+      toggleControl = (
+        <button
+          type="button"
+          className="p-0.5 rounded hover:bg-muted/50 focus-ring z-10"
+          aria-label={isExpanded ? labels.collapse : labels.expand}
+          onClick={(e) => {
+            e.stopPropagation()
+            toggle(node.path)
+          }}
+        >
+          <Chevron className="h-3.5 w-3.5 text-muted-foreground/50 group-hover/node:text-primary transition-colors" />
+        </button>
+      )
+    }
 
     return (
       <div key={node.path} className="select-none relative">
@@ -97,21 +113,7 @@ export function DatasetFolderTreeView({
           )}
           style={{ paddingLeft: 8 + depth * 12 }}
         >
-          {hasChildren ? (
-            <button
-              type="button"
-              className="p-0.5 rounded hover:bg-muted/50 focus-ring z-10"
-              aria-label={isExpanded ? labels.collapse : labels.expand}
-              onClick={(e) => {
-                e.stopPropagation()
-                toggle(node.path)
-              }}
-            >
-              <Chevron className="h-3.5 w-3.5 text-muted-foreground/50 group-hover/node:text-primary transition-colors" />
-            </button>
-          ) : (
-            <span className="h-3.5 w-3.5" />
-          )}
+          {toggleControl}
 
           <button
             type="button"

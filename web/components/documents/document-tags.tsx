@@ -21,20 +21,24 @@ export function DocumentTags({
 
   const visible = cap ? normalized.slice(0, cap) : normalized
   const hidden = cap ? Math.max(0, normalized.length - visible.length) : 0
+  const denseBadgeClassName = dense ? 'px-2 py-0 text-[11px]' : null
+  let hiddenBadge = null
+  if (hidden) {
+    hiddenBadge = (
+      <Badge variant="outline" className={cn(denseBadgeClassName)}>
+        +{hidden}
+      </Badge>
+    )
+  }
 
   return (
     <div className={cn('flex flex-wrap items-center gap-1.5', className)}>
       {visible.map((t) => (
-        <Badge key={t} variant="soft" className={cn('max-w-[12rem] truncate', dense ? 'px-2 py-0 text-[11px]' : null)}>
+        <Badge key={t} variant="soft" className={cn('max-w-[12rem] truncate', denseBadgeClassName)}>
           {t}
         </Badge>
       ))}
-      {hidden ? (
-        <Badge variant="outline" className={cn(dense ? 'px-2 py-0 text-[11px]' : null)}>
-          +{hidden}
-        </Badge>
-      ) : null}
+      {hiddenBadge}
     </div>
   )
 }
-
