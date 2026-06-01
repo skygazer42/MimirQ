@@ -343,7 +343,8 @@ class APIReranker(BaseReranker):
         payload = self._build_payload(query, documents, max_length)
 
         self._ensure_session()
-        assert self.session is not None
+        if self.session is None:
+            raise RuntimeError("Reranker HTTP session is not initialized")
 
         await self._rate_limit_async()
         async with self.session.post(self.url, json=payload) as response:
