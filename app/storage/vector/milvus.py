@@ -381,6 +381,12 @@ class MilvusAdapter:
             vector_field=self.vector_field,
         )
 
+    def _require_store(self):
+        self._ensure_store()
+        if self._store is None:
+            raise RuntimeError(f"Milvus store is not initialized for collection={self.collection_name}")
+        return self._store
+
     def add_vectors(
         self,
         items: list[dict[str, Any]],
@@ -409,8 +415,7 @@ class MilvusAdapter:
         if not items:
             return []
 
-        self._ensure_store()
-        assert self._store is not None
+        self._require_store()
 
         reserved_fields = {
             getattr(self._store, "_primary_field", "id"),
@@ -487,17 +492,19 @@ class MilvusAdapter:
 
         total_count = len(embeddings)
         pks: list[str] = []
-        assert isinstance(self._store.col, Collection)
+        collection = getattr(self._store, "col", None)
+        if not isinstance(collection, Collection):
+            raise RuntimeError(f"Milvus collection is not initialized for collection={self.collection_name}")
         for i in range(0, total_count, batch_size):
             end = min(i + batch_size, total_count)
             insert_list = [insert_dict[x][i:end] for x in self._store.fields if x in insert_dict]
             try:
                 eff_timeout = getattr(self._store, "timeout", None) or timeout
                 if upsert:
-                    res = self._store.col.upsert(insert_list, timeout=eff_timeout, **kwargs)
+                    res = collection.upsert(insert_list, timeout=eff_timeout, **kwargs)
                     pks.extend([str(pk) for pk in res.primary_keys])
                 else:
-                    res = self._store.col.insert(insert_list, timeout=eff_timeout, **kwargs)
+                    res = collection.insert(insert_list, timeout=eff_timeout, **kwargs)
                     pks.extend([str(pk) for pk in res.primary_keys])
             except MilvusException:
                 logger.exception(
@@ -509,7 +516,7 @@ class MilvusAdapter:
                 raise
 
         try:
-            self._store.col.flush()
+            collection.flush()
         except MilvusException:
             logger.exception("Failed to flush vector writes collection=%s", self.collection_name)
             raise
@@ -520,14 +527,12 @@ class MilvusAdapter:
         """Delete vectors with specified IDs."""
         if not ids:
             return
-        self._ensure_store()
-        assert self._store is not None
+        self._require_store()
         self._store.delete(ids)
 
     def delete_by_document_id(self, document_id: UUID, tenant_id: UUID | None = None) -> None:
         """Delete all vectors for a document from this collection."""
-        self._ensure_store()
-        assert self._store is not None
+        self._require_store()
         parts = []
         if tenant_id:
             parts.append(f'tenant_id == "{_escape_milvus_string(str(tenant_id))}"')
@@ -550,8 +555,7 @@ class MilvusAdapter:
         metadata_expr = _build_milvus_metadata_expr(metadata_filter)
         if not metadata_expr:
             return
-        self._ensure_store()
-        assert self._store is not None
+        self._require_store()
         parts = []
         if tenant_id:
             parts.append(f'tenant_id == "{_escape_milvus_string(str(tenant_id))}"')
@@ -582,8 +586,7 @@ class MilvusAdapter:
         Returns:
             List of search results
         """
-        self._ensure_store()
-        assert self._store is not None
+        self._require_store()
 
         supported_filter = _sanitize_milvus_metadata_filter(metadata_filter)
         metadata_expr = _build_milvus_metadata_expr(supported_filter)
@@ -713,6 +716,12 @@ class MilvusVectorStore:
         )
         self._embedding_space_hash = current_space
 
+    def _require_store(self):
+        self._ensure_store()
+        if self._store is None:
+            raise RuntimeError("Milvus vector store is not initialized")
+        return self._store
+
     def _build_expr(
         self,
         document_ids: list[UUID] | None = None,
@@ -743,8 +752,7 @@ class MilvusVectorStore:
         tenant_id: UUID,
     ) -> list[str]:
         """Add document chunks to Milvus (returns vector id list)."""
-        self._ensure_store()
-        assert self._store is not None
+        self._require_store()
 
         def _effective_write_batch_size(texts: list[str]) -> int:
             base = max(1, int(getattr(settings, "VECTOR_WRITE_BATCH_SIZE", 256) or 256))
@@ -855,8 +863,7 @@ class MilvusVectorStore:
         metadata_filter: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """Vector similarity search (text query)."""
-        self._ensure_store()
-        assert self._store is not None
+        self._require_store()
 
         supported_filter = _sanitize_milvus_metadata_filter(
             metadata_filter,
@@ -930,8 +937,7 @@ class MilvusVectorStore:
 
     def delete_by_document_id(self, document_id: UUID, tenant_id: UUID | None = None) -> None:
         """Delete all vectors for a given document."""
-        self._ensure_store()
-        assert self._store is not None
+        self._require_store()
 
         expr = self._build_expr(document_ids=[document_id], tenant_id=tenant_id)
         if expr:
@@ -955,8 +961,7 @@ class MilvusVectorStore:
         - If the filter cannot be translated into a safe Milvus expr, this is a no-op (never "delete all").
         - Caller can still fall back to full delete_by_document_id when appropriate.
         """
-        self._ensure_store()
-        assert self._store is not None
+        self._require_store()
 
         base_expr = self._build_expr(document_ids=[document_id], tenant_id=tenant_id)
         metadata_expr = _build_milvus_metadata_expr(metadata_filter)
@@ -972,8 +977,7 @@ class MilvusVectorStore:
 
     def get_collection_count(self) -> int:
         """Return document count in the vector collection."""
-        self._ensure_store()
-        assert self._store is not None
+        self._require_store()
         try:
             return int(self._store.col.num_entities)  # type: ignore[union-attr]
         except Exception:
@@ -1001,8 +1005,7 @@ class MilvusVectorStore:
         if not raw_ids:
             return set()
 
-        self._ensure_store()
-        assert self._store is not None
+        self._require_store()
 
         col = getattr(self._store, "col", None)
         if col is None or not hasattr(col, "query"):
@@ -1067,8 +1070,7 @@ class MilvusVectorStore:
         if not raw_ids:
             return {}
 
-        self._ensure_store()
-        assert self._store is not None
+        self._require_store()
 
         col = getattr(self._store, "col", None)
         if col is None or not hasattr(col, "query"):
@@ -1149,8 +1151,7 @@ class MilvusVectorStore:
         This is intentionally bounded (limit/offset) and should only be used for
         troubleshooting/audits (not hot path retrieval).
         """
-        self._ensure_store()
-        assert self._store is not None
+        self._require_store()
 
         col = getattr(self._store, "col", None)
         if col is None or not hasattr(col, "query"):

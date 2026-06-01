@@ -98,9 +98,9 @@ export function computeHierarchyReviewSignals(chunks: ChunkPreviewItem[]) {
     return (Number(a.index) || 0) - (Number(b.index) || 0)
   })
 
-  let anyNodeKey = false
-  let anyFamilyKey = false
-  let anySiblingLinks = false
+  let hasNodeKey = false
+  let hasFamilyKey = false
+  let hasSiblingLinks = false
 
   const nodeKeysByIndex = new Map<number, string>()
   const familyKeysByIndex = new Map<number, string>()
@@ -117,13 +117,13 @@ export function computeHierarchyReviewSignals(chunks: ChunkPreviewItem[]) {
 
     const nodeKey = getStringMeta(meta, 'hierarchy_node_key') ?? ''
     if (nodeKey) {
-      anyNodeKey = true
+      hasNodeKey = true
       nodeKeysByIndex.set(idx, nodeKey)
     }
 
     const familyKey = getStringMeta(meta, 'hierarchy_family_key') ?? ''
     if (familyKey) {
-      anyFamilyKey = true
+      hasFamilyKey = true
       familyKeysByIndex.set(idx, familyKey)
     }
 
@@ -132,18 +132,18 @@ export function computeHierarchyReviewSignals(chunks: ChunkPreviewItem[]) {
     const prevKey = typeof prevKeyRaw === 'string' ? prevKeyRaw.trim() : ''
     const nextKey = typeof nextKeyRaw === 'string' ? nextKeyRaw.trim() : ''
     if (prevKey) {
-      anySiblingLinks = true
+      hasSiblingLinks = true
       prevKeysByIndex.set(idx, prevKey)
     }
     if (nextKey) {
-      anySiblingLinks = true
+      hasSiblingLinks = true
       nextKeysByIndex.set(idx, nextKey)
     }
   }
 
   // Only flag missing hierarchy fields if the document provides hierarchy metadata.
   // This keeps the UI signal meaningful for legacy datasets / chunkers.
-  if (anyNodeKey) {
+  if (hasNodeKey) {
     for (const c of sorted) {
       const idx = Number(c.index)
       if (!Number.isFinite(idx)) continue
@@ -151,7 +151,7 @@ export function computeHierarchyReviewSignals(chunks: ChunkPreviewItem[]) {
     }
   }
 
-  if (anyFamilyKey) {
+  if (hasFamilyKey) {
     for (const c of sorted) {
       const idx = Number(c.index)
       if (!Number.isFinite(idx)) continue
@@ -159,7 +159,7 @@ export function computeHierarchyReviewSignals(chunks: ChunkPreviewItem[]) {
     }
   }
 
-  if (anySiblingLinks && sorted.length > 1) {
+  if (hasSiblingLinks && sorted.length > 1) {
     for (let i = 0; i < sorted.length; i += 1) {
       const idx = Number(sorted[i]?.index)
       if (!Number.isFinite(idx)) continue
@@ -171,7 +171,7 @@ export function computeHierarchyReviewSignals(chunks: ChunkPreviewItem[]) {
   }
 
   return {
-    active: anyNodeKey || anyFamilyKey || anySiblingLinks,
+    active: hasNodeKey || hasFamilyKey || hasSiblingLinks,
     missingNodeKeyIndices,
     missingFamilyKeyIndices,
     missingPrevSiblingIndices,

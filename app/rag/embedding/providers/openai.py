@@ -44,7 +44,8 @@ def _get_sync_semaphore() -> threading.BoundedSemaphore:
             if _sync_sem is None or _sync_sem_cap != cap:
                 _sync_sem = threading.BoundedSemaphore(cap)
                 _sync_sem_cap = cap
-    assert _sync_sem is not None
+    if _sync_sem is None:
+        raise RuntimeError("OpenAI embedding semaphore is not initialized")
     return _sync_sem
 
 

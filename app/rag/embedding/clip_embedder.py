@@ -52,7 +52,8 @@ class _ClipEmbedder:
         if not raw:
             return np.zeros((0, 1), dtype=np.float32)
         self._ensure_loaded()
-        assert self._model is not None
+        if self._model is None:
+            raise RuntimeError("CLIP model is not initialized")
         vecs = self._model.encode(  # type: ignore[no-any-return]
             raw,
             batch_size=self._batch_size,
@@ -66,7 +67,8 @@ class _ClipEmbedder:
         if not images:
             return np.zeros((0, 1), dtype=np.float32)
         self._ensure_loaded()
-        assert self._model is not None
+        if self._model is None:
+            raise RuntimeError("CLIP model is not initialized")
         vecs = self._model.encode(  # type: ignore[no-any-return]
             images,
             batch_size=self._batch_size,
@@ -165,4 +167,3 @@ def batch_mean_dim(vectors: Iterable[list[float] | None]) -> int:
         return 0
     # Use max (safer for Milvus schema); dimensions should be consistent in practice.
     return max(dims)
-

@@ -558,7 +558,8 @@ async def preview_chunking(
             _ensure_preview_page_indices(documents)
 
             if resolved_chunk_strategy == "separator":
-                assert separator_config is not None
+                if separator_config is None:
+                    raise ValueError("separator chunk strategy requires separator_config")
                 preset = str(separator_config.get("preset") or "paragraph")
                 sep_value = str(separator_config.get("separator") or "\n\n")
                 keep_sep_bool = bool(separator_config.get("keep_separator"))
@@ -1287,7 +1288,8 @@ async def preview_chunking_by_sha(
     _ensure_preview_page_indices(documents)
 
     if resolved_chunk_strategy == "separator":
-        assert separator_config is not None
+        if separator_config is None:
+            raise ValueError("separator chunk strategy requires separator_config")
         preset = str(separator_config.get("preset") or "paragraph")
         sep_value = str(separator_config.get("separator") or "\n\n")
         keep_sep_bool = bool(separator_config.get("keep_separator"))
