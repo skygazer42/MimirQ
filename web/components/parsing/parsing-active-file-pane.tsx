@@ -159,16 +159,29 @@ function formatElementPages(element: ParsingElement | null | undefined): string 
  return ''
 }
 
+function readEvidenceRawPages(
+ evidence: ParsingExtractEvidence | null | undefined,
+ element: ParsingElement | null | undefined
+): unknown[] {
+ if (Array.isArray(element?.pages)) return element.pages
+ if (Array.isArray(evidence?.pages)) return evidence.pages
+ return []
+}
+
+function isPositiveIntegerPage(value: unknown): value is number {
+ return typeof value === 'number' && Number.isInteger(value) && value > 0
+}
+
+function filterPositiveIntegerPages(values: unknown[]): number[] {
+ return values.filter(isPositiveIntegerPage)
+}
+
 function formatEvidencePages(
  evidence: ParsingExtractEvidence | null | undefined,
  element: ParsingElement | null | undefined
 ): string {
- const rawPages = Array.isArray(element?.pages)
- ? element?.pages
- : Array.isArray(evidence?.pages)
- ? evidence?.pages
- : []
- const pages = rawPages.filter((value) => Number.isInteger(value) && value > 0)
+ const rawPages = readEvidenceRawPages(evidence, element)
+ const pages = filterPositiveIntegerPages(rawPages)
  if (pages.length >= 2) {
  if (pages.length === 2 && pages[1] === pages[0] + 1) {
  return `跨页 ${pages[0]}-${pages[1]}`
@@ -193,16 +206,66 @@ function toLayoutKind(kind: string | null | undefined): ParsingLayoutKind {
  return 'paragraph'
 }
 
+function buildElementPageIndexes(element: ParsingElement): number[] {
+ const rawPages = Array.isArray(element.pages)
+ ? element.pages.filter((value) => Number.isInteger(value) && value > 0)
+ : []
+ if (rawPages.length > 0) {
+ return rawPages.map((value) => Math.max(0, value - 1))
+ }
+ if (typeof element.page === 'number') {
+ return [Math.max(0, element.page - 1)]
+ }
+ return []
+}
+
+function buildQualityEvidenceItems(summary: string): string[] {
+ if (!summary) return []
+ return summary.split(' · ').map((item) => item.trim()).filter(Boolean)
+}
+
+function getScrollBehavior(reduceMotion: boolean): ScrollBehavior {
+ return reduceMotion ? 'auto' : 'smooth'
+}
+
+function buildParsedStatItems(activeFile: ParsedFile) {
+ if (activeFile.status !== 'parsed' || !activeFile.stats) return []
+ const pageCount =
+ typeof activeFile.stats.pageCount === 'number' && activeFile.stats.pageCount > 0
+ ? activeFile.stats.pageCount
+ : '-'
+ const duration =
+ typeof activeFile.duration === 'number' && Number.isFinite(activeFile.duration)
+ ? `${activeFile.duration}s`
+ : '-'
+ return [
+ { icon: FileText, label: '字符', value: activeFile.stats.charCount.toLocaleString() },
+ { icon: FileStack, label: '行数', value: activeFile.stats.lineCount.toLocaleString() },
+ { icon: Heading1, label: '标题', value: (activeFile.stats.headingCount || 0).toLocaleString() },
+ { icon: Layers, label: '页数', value: pageCount },
+ { icon: Blocks, label: '定位块', value: Math.floor(activeFile.stats.blockCount || 0) },
+ { icon: Table2, label: '表格', value: Math.floor(activeFile.stats.tableCount || 0) },
+ { icon: Image, label: '图片', value: activeFile.stats.imageCount || 0 },
+ { icon: Clock, label: '耗时', value: duration },
+ ]
+}
+
+function getQualitySectionClass(hasDivider: boolean): string {
+ return hasDivider ? 'mt-2 border-t border-border/60 pt-2' : 'mt-2'
+}
+
+function getToggleButtonClass(active: boolean): string {
+ return active
+ ? 'bg-card text-foreground shadow-sm dark:bg-background dark:text-foreground dark:shadow-none'
+ : 'text-muted-foreground hover:text-foreground/80 dark:text-muted-foreground dark:hover:text-muted-foreground'
+}
+
 function buildExtractEvidencePosition(
  evidence: ParsingExtractEvidence | null | undefined,
  element: ParsingElement | null | undefined
 ): ParsingPosition | null {
- const rawPages = Array.isArray(element?.pages)
- ? element?.pages
- : Array.isArray(evidence?.pages)
- ? evidence?.pages
- : []
- const pages = rawPages.filter((value) => Number.isInteger(value) && value > 0)
+ const rawPages = readEvidenceRawPages(evidence, element)
+ const pages = filterPositiveIntegerPages(rawPages)
  const page = element?.page ?? evidence?.page
  const bbox = element?.bbox ?? evidence?.bbox
  if (!bbox) return null
@@ -310,21 +373,14 @@ export function ParsingActiveFilePane({
  const qualityGrade = getQualityGateGrade(activeQualityGate)
  const qualityReasons = getQualityGateReasons(activeQualityGate)
  const qualityEvidenceSummary = buildQualityEvidenceSummary(activeQualityGate, activePdfQuality)
- const qualityEvidenceItems = qualityEvidenceSummary
- ? qualityEvidenceSummary.split(' · ').map((item) => item.trim()).filter(Boolean)
- : []
+ const qualityEvidenceItems = buildQualityEvidenceItems(qualityEvidenceSummary)
  const layoutEntries = useMemo(() => buildParsingLayoutEntries(activeBlocksWithPositions), [activeBlocksWithPositions])
  const elementOverlayItems = useMemo(() => {
  return (activeElements || [])
  .map((element) => {
  const bbox = element.bbox
  if (!bbox) return null
- const rawPages = Array.isArray(element.pages) ? element.pages.filter((value) => Number.isInteger(value) && value > 0) : []
- const pages = rawPages.length > 0
- ? rawPages.map((value) => Math.max(0, value - 1))
- : typeof element.page === 'number'
- ? [Math.max(0, element.page - 1)]
- : []
+ const pages = buildElementPageIndexes(element)
  if (pages.length === 0) return null
  return {
  id: String(element.id || '').trim(),
@@ -519,39 +575,13 @@ export function ParsingActiveFilePane({
  typeof globalThis.window.matchMedia === 'function' &&
  globalThis.window.matchMedia('(prefers-reduced-motion: reduce)').matches
  targetCard.scrollIntoView({
- behavior: reduceMotion ? 'auto' : 'smooth',
+ behavior: getScrollBehavior(reduceMotion),
  block: 'nearest',
  inline: 'nearest',
  })
  }, [activeBlockId, layoutEntries, rightPanelMode])
 
- const parsedStatItems =
- activeFile.status === 'parsed' && activeFile.stats
- ? [
- { icon: FileText, label: '字符', value: activeFile.stats.charCount.toLocaleString() },
- { icon: FileStack, label: '行数', value: activeFile.stats.lineCount.toLocaleString() },
- { icon: Heading1, label: '标题', value: (activeFile.stats.headingCount || 0).toLocaleString() },
- {
- icon: Layers,
- label: '页数',
- value:
- typeof activeFile.stats.pageCount === 'number' && activeFile.stats.pageCount > 0
- ? activeFile.stats.pageCount
- : '-',
- },
- { icon: Blocks, label: '定位块', value: Math.floor(activeFile.stats.blockCount || 0) },
- { icon: Table2, label: '表格', value: Math.floor(activeFile.stats.tableCount || 0) },
- { icon: Image, label: '图片', value: activeFile.stats.imageCount || 0 },
- {
- icon: Clock,
- label: '耗时',
- value:
- typeof activeFile.duration === 'number' && Number.isFinite(activeFile.duration)
- ? `${activeFile.duration}s`
- : '-',
- },
- ]
- : []
+ const parsedStatItems = buildParsedStatItems(activeFile)
  const activeElementSummaryItems = useMemo(() => {
  const counts = new Map<string, number>()
  for (const element of activeElements || []) {
@@ -704,7 +734,7 @@ export function ParsingActiveFilePane({
  <div
  className={cn(
  'flex flex-wrap items-center gap-1.5',
- activeQualityGate ? 'mt-2 border-t border-border/60 pt-2' : 'mt-2'
+ getQualitySectionClass(Boolean(activeQualityGate))
  )}
  >
  <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground/75">
@@ -725,7 +755,7 @@ export function ParsingActiveFilePane({
  <div
  className={cn(
  'flex flex-wrap items-center gap-1.5',
- activeElementSummaryItems.length > 0 || activeQualityGate ? 'mt-2 border-t border-border/60 pt-2' : 'mt-2'
+ getQualitySectionClass(activeElementSummaryItems.length > 0 || Boolean(activeQualityGate))
  )}
  >
  {activeElementHighlightItems.map((item) => (
@@ -842,9 +872,7 @@ export function ParsingActiveFilePane({
  onClick={() => onPreviewModeChange('rendered')}
  className={cn(
  'focus-ring flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] transition-colors duration-200 motion-reduce:transition-none',
- previewMode === 'rendered'
- ? 'bg-card text-foreground shadow-sm dark:bg-background dark:text-foreground dark:shadow-none'
- : 'text-muted-foreground hover:text-foreground/80 dark:text-muted-foreground dark:hover:text-muted-foreground'
+ getToggleButtonClass(previewMode === 'rendered')
  )}
  >
  <Eye className="h-3.5 w-3.5" />
@@ -854,9 +882,7 @@ export function ParsingActiveFilePane({
  onClick={() => onPreviewModeChange('raw')}
  className={cn(
  'focus-ring flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] transition-colors duration-200 motion-reduce:transition-none',
- previewMode === 'raw'
- ? 'bg-card text-foreground shadow-sm dark:bg-background dark:text-foreground dark:shadow-none'
- : 'text-muted-foreground hover:text-foreground/80 dark:text-muted-foreground dark:hover:text-muted-foreground'
+ getToggleButtonClass(previewMode === 'raw')
  )}
  >
  <Code className="h-3.5 w-3.5" />
@@ -871,9 +897,7 @@ export function ParsingActiveFilePane({
  onClick={() => onRightPanelModeChange('blocks')}
  className={cn(
  'focus-ring flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] transition-colors duration-200 motion-reduce:transition-none',
- rightPanelMode === 'blocks'
- ? 'bg-card text-foreground shadow-sm dark:bg-background dark:text-foreground dark:shadow-none'
- : 'text-muted-foreground hover:text-foreground/80 dark:text-muted-foreground dark:hover:text-muted-foreground'
+ getToggleButtonClass(rightPanelMode === 'blocks')
  )}
  >
  <FileStack className="h-3.5 w-3.5" />
@@ -883,9 +907,7 @@ export function ParsingActiveFilePane({
  onClick={() => onRightPanelModeChange('markdown')}
  className={cn(
  'focus-ring flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] transition-colors duration-200 motion-reduce:transition-none',
- rightPanelMode === 'markdown'
- ? 'bg-card text-foreground shadow-sm dark:bg-background dark:text-foreground dark:shadow-none'
- : 'text-muted-foreground hover:text-foreground/80 dark:text-muted-foreground dark:hover:text-muted-foreground'
+ getToggleButtonClass(rightPanelMode === 'markdown')
  )}
  >
  <FileText className="h-3.5 w-3.5" />
