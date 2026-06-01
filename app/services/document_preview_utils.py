@@ -228,10 +228,10 @@ def _preview_images_dir(tenant_id: UUID) -> Path:
 
 def _load_preview_pillow_image_class() -> tuple[Any | None, bool]:
     try:
-        from PIL import Image as pil_image  # type: ignore
+        from PIL import Image  # type: ignore
     except ImportError:
         return None, False
-    return pil_image, True
+    return Image, True
 
 
 def _drop_preview_image_objects(documents: list) -> list:

@@ -114,11 +114,12 @@ class DeepSeekOCRParser:
         from io import BytesIO
 
         try:
-            from PIL import Image as pil_image  # type: ignore
+            from PIL import Image  # type: ignore
         except ImportError:
             pil_image = None  # type: ignore[assignment]
             pillow_ok = False
         else:
+            pil_image = Image
             pillow_ok = True
 
         def normalize_ext(ext: str) -> str:

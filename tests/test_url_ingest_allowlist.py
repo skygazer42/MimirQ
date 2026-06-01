@@ -103,14 +103,48 @@ async def test_download_url_to_path_validates_redirect_hops(monkeypatch: pytest.
         await url_ingest_module.download_url_to_path(
             "https://allowed.com/start",
             dest,
-            follow_redirects=True,
-            timeout_sec=5.0,
-            max_bytes=1024,
+            options=url_ingest_module.URLDownloadOptions(
+                follow_redirects=True,
+                timeout_sec=5.0,
+                max_bytes=1024,
+            ),
         )
     assert exc.value.status_code == 400
     assert calls and calls[0].startswith("https://allowed.com/")
     # Must not request the blocked host if validation is enforced per hop.
     assert not any("blocked.com" in c for c in calls)
+    assert not dest.exists()
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_download_url_to_path_rejects_large_content_length(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    from app.api.utils import url_ingest as url_ingest_module
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"not-read", headers={"content-length": "2048"})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    class _Pool:
+        async def get_external_client(self):  # noqa: ANN202
+            await yield_control()
+            return client
+
+    monkeypatch.setattr(socket, "getaddrinfo", _fake_getaddrinfo_global, raising=True)
+    monkeypatch.setattr(settings, "URL_INGEST_ALLOWED_HOSTS", "example.com", raising=False)
+    monkeypatch.setattr(settings, "URL_INGEST_ALLOWED_PORTS", "", raising=False)
+    monkeypatch.setattr(url_ingest_module, "get_http_client_pool", lambda: _Pool(), raising=True)
+
+    dest = tmp_path / "out.bin"
+    with pytest.raises(HTTPException) as exc:
+        await url_ingest_module.download_url_to_path(
+            "https://example.com/file.txt",
+            dest,
+            options=url_ingest_module.URLDownloadOptions(max_bytes=1024),
+        )
+    assert exc.value.status_code == 413
     assert not dest.exists()
 
     await client.aclose()
