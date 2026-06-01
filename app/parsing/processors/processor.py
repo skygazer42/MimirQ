@@ -392,36 +392,44 @@ def _is_seal_segment_metadata(meta: dict[str, Any] | None) -> bool:
     return content_type == "seal" or doc_type == "seal"
 
 
-def _build_seal_summary(documents: list[Document] | None) -> dict[str, Any] | None:
-    candidates: list[dict[str, Any]] = []
-    pages: set[int] = set()
-    for doc in documents or []:
-        meta = dict(doc.metadata or {})
-        if not _is_seal_segment_metadata(meta):
-            continue
-        primary = meta.get("seal_primary") if isinstance(meta.get("seal_primary"), dict) else {}
-        score = _coerce_float(primary.get("score"))
-        if score is None:
-            score = _coerce_float(meta.get("seal_score"))
-        page = _coerce_int(meta.get("page"))
-        if page is None:
-            page = _coerce_int(meta.get("page_number"))
-        if page is not None:
-            pages.add(int(page))
-        candidate_count = _coerce_int(meta.get("seal_candidate_count"))
-        if candidate_count is None:
-            raw_candidates = meta.get("seal_candidates")
-            candidate_count = len(raw_candidates) if isinstance(raw_candidates, list) else 1
-        candidates.append(
-            {
-                "text": str(primary.get("text") or meta.get("seal_text") or doc.page_content or "").strip(),
-                "score": float(score) if score is not None else None,
-                "kind": str(primary.get("seal_kind") or meta.get("seal_kind") or "unknown").strip() or "unknown",
-                "page": int(page) if page is not None else None,
-                "candidate_count": int(candidate_count),
-            }
-        )
+def _seal_primary_metadata(meta: dict[str, Any]) -> dict[str, Any]:
+    primary = meta.get("seal_primary")
+    return primary if isinstance(primary, dict) else {}
 
+
+def _seal_segment_page(meta: dict[str, Any]) -> int | None:
+    page = _coerce_int(meta.get("page"))
+    return page if page is not None else _coerce_int(meta.get("page_number"))
+
+
+def _seal_segment_candidate_count(meta: dict[str, Any]) -> int:
+    candidate_count = _coerce_int(meta.get("seal_candidate_count"))
+    if candidate_count is not None:
+        return int(candidate_count)
+    raw_candidates = meta.get("seal_candidates")
+    return len(raw_candidates) if isinstance(raw_candidates, list) else 1
+
+
+def _seal_candidate_from_document(doc: Document) -> dict[str, Any] | None:
+    meta = dict(doc.metadata or {})
+    if not _is_seal_segment_metadata(meta):
+        return None
+
+    primary = _seal_primary_metadata(meta)
+    score = _coerce_float(primary.get("score"))
+    if score is None:
+        score = _coerce_float(meta.get("seal_score"))
+    page = _seal_segment_page(meta)
+    return {
+        "text": str(primary.get("text") or meta.get("seal_text") or doc.page_content or "").strip(),
+        "score": float(score) if score is not None else None,
+        "kind": str(primary.get("seal_kind") or meta.get("seal_kind") or "unknown").strip() or "unknown",
+        "page": int(page) if page is not None else None,
+        "candidate_count": _seal_segment_candidate_count(meta),
+    }
+
+
+def _format_seal_summary(candidates: list[dict[str, Any]]) -> dict[str, Any] | None:
     if not candidates:
         return None
 
@@ -432,6 +440,7 @@ def _build_seal_summary(documents: list[Document] | None) -> dict[str, Any] | No
         ),
         reverse=True,
     )
+    pages = sorted({int(item["page"]) for item in candidates if item.get("page") is not None})
     primary = candidates[0]
     return {
         "detected": True,
@@ -441,8 +450,17 @@ def _build_seal_summary(documents: list[Document] | None) -> dict[str, Any] | No
         "primary_score": (float(primary["score"]) if primary.get("score") is not None else None),
         "primary_kind": str(primary.get("kind") or "unknown"),
         "primary_page": primary.get("page"),
-        "pages": sorted(int(page) for page in pages),
+        "pages": pages,
     }
+
+
+def _build_seal_summary(documents: list[Document] | None) -> dict[str, Any] | None:
+    candidates: list[dict[str, Any]] = []
+    for doc in documents or []:
+        candidate = _seal_candidate_from_document(doc)
+        if candidate is not None:
+            candidates.append(candidate)
+    return _format_seal_summary(candidates)
 
 
 def _seal_summary_to_specialty_signals(summary: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -456,6 +474,57 @@ def _seal_summary_to_specialty_signals(summary: dict[str, Any] | None) -> dict[s
     }
 
 
+def _ocr_confidence_from_metadata(meta: dict[str, Any]) -> float | None:
+    confidence_value = meta.get("confidence")
+    if confidence_value is None:
+        confidence_value = meta.get("element_confidence")
+    if confidence_value is None:
+        confidence_value = meta.get("ocr_confidence")
+    confidence = _coerce_float(confidence_value)
+    if confidence is None:
+        return None
+    return max(0.0, min(1.0, float(confidence)))
+
+
+def _low_confidence_span(meta: dict[str, Any], *, text: str, confidence: float) -> dict[str, Any]:
+    return {
+        "element_id": str(meta.get("id") or meta.get("element_id") or meta.get("source_element_id") or ""),
+        "text": str(meta.get("text") or text or "")[:160],
+        "page": meta.get("page") or meta.get("element_page"),
+        "bbox": meta.get("bbox") if isinstance(meta.get("bbox"), dict) else meta.get("element_bbox"),
+        "confidence": round(float(confidence), 4),
+    }
+
+
+def _iter_ocr_quality_candidates(documents: list[Document] | None) -> list[tuple[dict[str, Any], str]]:
+    candidates: list[tuple[dict[str, Any], str]] = []
+    for doc in documents or []:
+        meta = dict(getattr(doc, "metadata", None) or {})
+        derived = meta.get("derived_elements")
+        if isinstance(derived, list):
+            for item in derived:
+                if isinstance(item, dict):
+                    candidates.append((dict(item), str(item.get("text") or "")))
+        candidates.append((meta, str(getattr(doc, "page_content", "") or "")))
+    return candidates
+
+
+def _append_ocr_quality_candidate(
+    *,
+    confidences: list[float],
+    low_spans: list[dict[str, Any]],
+    meta: dict[str, Any],
+    text: str,
+    low_confidence_threshold: float,
+) -> None:
+    confidence = _ocr_confidence_from_metadata(meta)
+    if confidence is None:
+        return
+    confidences.append(confidence)
+    if confidence < float(low_confidence_threshold):
+        low_spans.append(_low_confidence_span(meta, text=text, confidence=confidence))
+
+
 def _build_ocr_quality_summary(
     documents: list[Document] | None,
     *,
@@ -464,36 +533,14 @@ def _build_ocr_quality_summary(
     confidences: list[float] = []
     low_spans: list[dict[str, Any]] = []
 
-    def visit(meta: dict[str, Any], text: str) -> None:
-        confidence_value = meta.get("confidence")
-        if confidence_value is None:
-            confidence_value = meta.get("element_confidence")
-        if confidence_value is None:
-            confidence_value = meta.get("ocr_confidence")
-        confidence = _coerce_float(confidence_value)
-        if confidence is None:
-            return
-        confidence = max(0.0, min(1.0, float(confidence)))
-        confidences.append(confidence)
-        if confidence < float(low_confidence_threshold):
-            low_spans.append(
-                {
-                    "element_id": str(meta.get("id") or meta.get("element_id") or meta.get("source_element_id") or ""),
-                    "text": str(meta.get("text") or text or "")[:160],
-                    "page": meta.get("page") or meta.get("element_page"),
-                    "bbox": meta.get("bbox") if isinstance(meta.get("bbox"), dict) else meta.get("element_bbox"),
-                    "confidence": round(float(confidence), 4),
-                }
-            )
-
-    for doc in documents or []:
-        meta = dict(getattr(doc, "metadata", None) or {})
-        derived = meta.get("derived_elements")
-        if isinstance(derived, list):
-            for item in derived:
-                if isinstance(item, dict):
-                    visit(dict(item), str(item.get("text") or ""))
-        visit(meta, str(getattr(doc, "page_content", "") or ""))
+    for meta, text in _iter_ocr_quality_candidates(documents):
+        _append_ocr_quality_candidate(
+            confidences=confidences,
+            low_spans=low_spans,
+            meta=meta,
+            text=text,
+            low_confidence_threshold=low_confidence_threshold,
+        )
 
     if not confidences:
         return None
@@ -640,6 +687,63 @@ def _joined_text_total_characters(
     return int(total)
 
 
+def _document_page_index(doc: Document, index: int) -> int:
+    meta = dict(getattr(doc, "metadata", None) or {})
+    try:
+        return int(meta.get("page_index") or (index + 1))
+    except (TypeError, ValueError, AttributeError):
+        return index + 1
+
+
+def _optional_int(value: Any) -> int | None:
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError, AttributeError):
+        return None
+
+
+def _chunk_page_index(chunk: Document) -> int | None:
+    meta = getattr(chunk, "metadata", None) or {}
+    return _optional_int(meta.get("page_index"))
+
+
+def _build_page_start_offsets(
+    documents: list[Document],
+    *,
+    join_separator: str,
+) -> dict[int, int]:
+    sep_len = len(join_separator or "")
+    page_start: dict[int, int] = {}
+    cursor = 0
+    last_index = len(documents) - 1
+    for index, doc in enumerate(documents):
+        page_start[_document_page_index(doc, index)] = cursor
+        cursor += len(doc.page_content or "")
+        if index < last_index:
+            cursor += sep_len
+    return page_start
+
+
+def _rebase_single_chunk_offsets(chunk: Document, *, page_start: dict[int, int]) -> Document:
+    meta = dict(getattr(chunk, "metadata", None) or {})
+    page_index = _optional_int(meta.get("page_index"))
+    base = page_start.get(page_index, 0) if page_index is not None else 0
+    start_i = _optional_int(meta.get("start_char"))
+    end_i = _optional_int(meta.get("end_char"))
+
+    if start_i is not None:
+        meta.setdefault("start_char_local", start_i)
+        meta["start_char"] = base + start_i
+    if end_i is not None:
+        meta.setdefault("end_char_local", end_i)
+        meta["end_char"] = base + end_i
+    if page_index is not None:
+        meta.setdefault("start_char_base", base)
+
+    meta.setdefault("offsets_rebased", True)
+    return Document(page_content=chunk.page_content, metadata=meta, id=getattr(chunk, "id", None))
+
+
 def _rebase_chunk_offsets_by_page_index(
     *,
     documents: list[Document],
@@ -655,57 +759,163 @@ def _rebase_chunk_offsets_by_page_index(
     if not documents or not chunks:
         return chunks
 
-    # Build page_index -> start_offset map.
+    page_start = _build_page_start_offsets(documents, join_separator=join_separator)
+    return [_rebase_single_chunk_offsets(chunk, page_start=page_start) for chunk in chunks]
+
+
+def _build_page_text_lookup(
+    documents: list[Document],
+    *,
+    join_separator: str,
+) -> tuple[dict[int, str], dict[int, int]]:
     sep_len = len(join_separator or "")
-    page_start: dict[int, int] = {}
+    page_text: dict[int, str] = {}
+    page_base: dict[int, int] = {}
     cursor = 0
-    total_docs = len(documents)
-    for i, doc in enumerate(documents):
-        meta = dict(getattr(doc, "metadata", None) or {})
-        try:
-            page_index = int(meta.get("page_index") or (i + 1))
-        except (TypeError, ValueError, AttributeError):
-            page_index = i + 1
-        page_start[page_index] = cursor
+    last_index = len(documents) - 1
+    for index, doc in enumerate(documents):
+        page_index = _document_page_index(doc, index)
+        page_text[page_index] = doc.page_content or ""
+        page_base[page_index] = cursor
         cursor += len(doc.page_content or "")
-        if i < total_docs - 1:
+        if index < last_index:
             cursor += sep_len
+    return page_text, page_base
 
-    out: list[Document] = []
-    for c in chunks:
-        meta = dict(getattr(c, "metadata", None) or {})
-        page_index_raw = meta.get("page_index")
-        try:
-            page_index = int(page_index_raw) if page_index_raw is not None else None
-        except (TypeError, ValueError, AttributeError):
-            page_index = None
-        base = page_start.get(page_index, 0) if page_index is not None else 0
 
-        local_start = meta.get("start_char")
-        local_end = meta.get("end_char")
+def _chunk_mergeable(chunk: Document) -> bool:
+    meta = getattr(chunk, "metadata", None) or {}
+    if _chunk_has_asset(meta):
+        return False
+    return not (meta.get("chunk_role") or meta.get("parent_id"))
 
-        try:
-            start_i = int(local_start) if local_start is not None else None
-        except (TypeError, ValueError, AttributeError):
-            start_i = None
-        try:
-            end_i = int(local_end) if local_end is not None else None
-        except (TypeError, ValueError, AttributeError):
-            end_i = None
 
-        if start_i is not None:
-            meta.setdefault("start_char_local", start_i)
-            meta["start_char"] = base + start_i
-        if end_i is not None:
-            meta.setdefault("end_char_local", end_i)
-            meta["end_char"] = base + end_i
-        if page_index is not None:
-            meta.setdefault("start_char_base", base)
+def _local_chunk_range(meta: dict[str, Any], *, base: int) -> tuple[int, int] | None:
+    # Prefer explicitly stored locals (set by offset rebase stage).
+    start_local = meta.get("start_char_local")
+    end_local = meta.get("end_char_local")
+    start_i = _optional_int(start_local)
+    end_i = _optional_int(end_local)
 
-        meta.setdefault("offsets_rebased", True)
-        out.append(Document(page_content=c.page_content, metadata=meta, id=getattr(c, "id", None)))
+    if start_i is None or end_i is None:
+        sg = _optional_int(meta.get("start_char"))
+        eg = _optional_int(meta.get("end_char"))
+        if sg is None or eg is None:
+            return None
+        start_i = max(0, sg - base)
+        end_i = max(start_i, eg - base)
 
-    return out
+    if end_i < start_i:
+        return None
+    return start_i, end_i
+
+
+def _merge_two_small_chunks(
+    first: Document,
+    second: Document,
+    *,
+    page_index: int,
+    page_text: dict[int, str],
+    page_base: dict[int, int],
+) -> Document | None:
+    text = page_text.get(page_index)
+    base = int(page_base.get(page_index) or 0)
+    if text is None:
+        return None
+
+    first_meta = dict(getattr(first, "metadata", None) or {})
+    second_meta = dict(getattr(second, "metadata", None) or {})
+    first_range = _local_chunk_range(first_meta, base=base)
+    second_range = _local_chunk_range(second_meta, base=base)
+    if first_range is None or second_range is None:
+        return None
+
+    start_local = max(0, min(min(first_range[0], second_range[0]), len(text)))
+    end_local = max(start_local, min(max(first_range[1], second_range[1]), len(text)))
+    first_meta["page_index"] = page_index
+    first_meta.setdefault("start_char_base", base)
+    first_meta["start_char_local"] = start_local
+    first_meta["end_char_local"] = end_local
+    first_meta["start_char"] = base + start_local
+    first_meta["end_char"] = base + end_local
+    first_meta["offsets_rebased"] = True
+    first_meta["merged_small_chunks"] = int(first_meta.get("merged_small_chunks") or 0) + 1
+
+    return Document(page_content=text[start_local:end_local], metadata=first_meta, id=getattr(first, "id", None))
+
+
+def _merge_with_pending_small_chunk(
+    *,
+    out: list[Document],
+    pending: Document,
+    current: Document,
+    page_index: int,
+    page_text: dict[int, str],
+    page_base: dict[int, int],
+) -> None:
+    merged = _merge_two_small_chunks(
+        pending,
+        current,
+        page_index=page_index,
+        page_text=page_text,
+        page_base=page_base,
+    )
+    if merged is not None:
+        out.append(merged)
+        return
+    out.append(pending)
+    out.append(current)
+
+
+def _flush_pending_on_page_change(
+    *,
+    out: list[Document],
+    pending: Document | None,
+    pending_page: int | None,
+    page_index: int | None,
+) -> tuple[Document | None, int | None]:
+    if pending is not None and page_index != pending_page:
+        out.append(pending)
+        return None, None
+    return pending, pending_page
+
+
+def _append_unmergeable_chunk(
+    *,
+    out: list[Document],
+    chunk: Document,
+    pending: Document | None,
+) -> tuple[Document | None, int | None]:
+    if pending is not None:
+        out.append(pending)
+    out.append(chunk)
+    return None, None
+
+
+def _try_merge_with_previous_chunk(
+    *,
+    out: list[Document],
+    chunk: Document,
+    page_index: int,
+    page_text: dict[int, str],
+    page_base: dict[int, int],
+) -> bool:
+    if not out:
+        return False
+    prev = out[-1]
+    if _chunk_page_index(prev) != page_index or not _chunk_mergeable(prev):
+        return False
+    merged = _merge_two_small_chunks(
+        prev,
+        chunk,
+        page_index=page_index,
+        page_text=page_text,
+        page_base=page_base,
+    )
+    if merged is None:
+        return False
+    out[-1] = merged
+    return True
 
 
 def _merge_small_chunks_by_min_chars(
@@ -727,99 +937,7 @@ def _merge_small_chunks_by_min_chars(
     if min_chars <= 0 or not documents or not chunks:
         return chunks
 
-    # Build page_index -> (text, base_offset) lookup.
-    sep_len = len(join_separator or "")
-    page_text: dict[int, str] = {}
-    page_base: dict[int, int] = {}
-    cursor = 0
-    for i, doc in enumerate(documents):
-        meta = dict(getattr(doc, "metadata", None) or {})
-        try:
-            page_index = int(meta.get("page_index") or (i + 1))
-        except (TypeError, ValueError, AttributeError):
-            page_index = i + 1
-        page_text[page_index] = doc.page_content or ""
-        page_base[page_index] = cursor
-        cursor += len(doc.page_content or "")
-        if i < len(documents) - 1:
-            cursor += sep_len
-
-    def _chunk_page_index(c: Document) -> int | None:
-        meta = getattr(c, "metadata", None) or {}
-        raw = meta.get("page_index")
-        try:
-            return int(raw) if raw is not None else None
-        except (TypeError, ValueError, AttributeError):
-            return None
-
-    def _chunk_mergeable(c: Document) -> bool:
-        meta = getattr(c, "metadata", None) or {}
-        if _chunk_has_asset(meta):
-            return False
-        # Don't merge parent/child chunks (semantics matter for retrieval).
-        if meta.get("chunk_role") or meta.get("parent_id"):
-            return False
-        return True
-
-    def _local_range(meta: dict[str, Any], *, base: int) -> tuple[int, int] | None:
-        # Prefer explicitly stored locals (set by offset rebase stage).
-        start_local = meta.get("start_char_local")
-        end_local = meta.get("end_char_local")
-        try:
-            s = int(start_local) if start_local is not None else None
-            e = int(end_local) if end_local is not None else None
-        except (TypeError, ValueError, AttributeError):
-            s = None
-            e = None
-
-        if s is None or e is None:
-            # Fallback: derive from global offsets.
-            try:
-                sg = int(meta.get("start_char")) if meta.get("start_char") is not None else None
-                eg = int(meta.get("end_char")) if meta.get("end_char") is not None else None
-            except (TypeError, ValueError, AttributeError):
-                sg = None
-                eg = None
-            if sg is None or eg is None:
-                return None
-            s = max(0, sg - base)
-            e = max(s, eg - base)
-
-        if e < s:
-            return None
-        return s, e
-
-    def _merge_two(a: Document, b: Document, *, page_index: int) -> Document | None:
-        text = page_text.get(page_index)
-        base = int(page_base.get(page_index) or 0)
-        if text is None:
-            return None
-
-        ma = dict(getattr(a, "metadata", None) or {})
-        mb = dict(getattr(b, "metadata", None) or {})
-        ra = _local_range(ma, base=base)
-        rb = _local_range(mb, base=base)
-        if ra is None or rb is None:
-            return None
-
-        start_local = min(ra[0], rb[0])
-        end_local = max(ra[1], rb[1])
-        start_local = max(0, min(start_local, len(text)))
-        end_local = max(start_local, min(end_local, len(text)))
-
-        merged_text = text[start_local:end_local]
-
-        ma["page_index"] = page_index
-        ma.setdefault("start_char_base", base)
-        ma["start_char_local"] = start_local
-        ma["end_char_local"] = end_local
-        ma["start_char"] = base + start_local
-        ma["end_char"] = base + end_local
-        ma["offsets_rebased"] = True
-
-        ma["merged_small_chunks"] = int(ma.get("merged_small_chunks") or 0) + 1
-
-        return Document(page_content=merged_text, metadata=ma, id=getattr(a, "id", None))
+    page_text, page_base = _build_page_text_lookup(documents, join_separator=join_separator)
 
     out: list[Document] = []
     pending: Document | None = None
@@ -827,30 +945,29 @@ def _merge_small_chunks_by_min_chars(
 
     for c in chunks:
         page_index = _chunk_page_index(c)
-        if pending is not None and page_index != pending_page:
-            out.append(pending)
-            pending = None
-            pending_page = None
+        pending, pending_page = _flush_pending_on_page_change(
+            out=out,
+            pending=pending,
+            pending_page=pending_page,
+            page_index=page_index,
+        )
 
-        meta = dict(getattr(c, "metadata", None) or {})
         mergeable = page_index is not None and page_index in page_text and _chunk_mergeable(c)
         content_len = len((c.page_content or "").strip())
 
         if not mergeable:
-            if pending is not None:
-                out.append(pending)
-                pending = None
-                pending_page = None
-            out.append(c)
+            pending, pending_page = _append_unmergeable_chunk(out=out, chunk=c, pending=pending)
             continue
 
         if pending is not None:
-            merged = _merge_two(pending, c, page_index=page_index) if page_index is not None else None
-            if merged is not None:
-                out.append(merged)
-            else:
-                out.append(pending)
-                out.append(c)
+            _merge_with_pending_small_chunk(
+                out=out,
+                pending=pending,
+                current=c,
+                page_index=page_index,
+                page_text=page_text,
+                page_base=page_base,
+            )
             pending = None
             pending_page = None
             continue
@@ -860,14 +977,14 @@ def _merge_small_chunks_by_min_chars(
             continue
 
         # Small chunk: merge into previous if possible, otherwise buffer and merge into next.
-        if out:
-            prev = out[-1]
-            prev_page = _chunk_page_index(prev)
-            if prev_page == page_index and _chunk_mergeable(prev):
-                merged = _merge_two(prev, c, page_index=page_index) if page_index is not None else None
-                if merged is not None:
-                    out[-1] = merged
-                    continue
+        if _try_merge_with_previous_chunk(
+            out=out,
+            chunk=c,
+            page_index=page_index,
+            page_text=page_text,
+            page_base=page_base,
+        ):
+            continue
 
         pending = c
         pending_page = page_index
@@ -876,6 +993,150 @@ def _merge_small_chunks_by_min_chars(
         out.append(pending)
 
     return out
+
+
+def _governance_reduction_pct(*, original_chars: int, cleaned_chars: int) -> int:
+    if original_chars <= 0 or cleaned_chars < 0:
+        return 0
+    try:
+        ratio = float((original_chars - cleaned_chars) / float(original_chars))
+    except (TypeError, ValueError, AttributeError):
+        ratio = 0.0
+    return int(round(max(0.0, min(1.0, ratio)) * 100.0))
+
+
+def _safe_governance_int(raw: object) -> int:
+    try:
+        if raw is None or isinstance(raw, bool):
+            return 0
+        return int(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError, AttributeError):
+        return 0
+
+
+def _governance_quality_from_metadata(meta: dict[str, Any]) -> tuple[int, int, int, int, int] | None:
+    quality = meta.get("governance_quality")
+    if not isinstance(quality, dict):
+        return None
+    return (
+        _safe_governance_int(quality.get("chars_non_space")),
+        _safe_governance_int(quality.get("chars_alnum_cjk")),
+        _safe_governance_int(quality.get("lines_total")),
+        _safe_governance_int(quality.get("lines_outline")),
+        _safe_governance_int(quality.get("content_chars")),
+    )
+
+
+def _compute_governance_quality_metrics(text: str) -> tuple[int, int, int, int, int]:
+    from app.rag.preprocessing.quality_filters import drop_if_low_density, drop_if_outline_only
+
+    try:
+        density_metrics = drop_if_low_density(text, threshold=-1.0).metrics or {}
+    except Exception as exc:
+        _log_processor_fallback('_build_governance_audit_metadata_patch', exc)
+        density_metrics = {}
+    try:
+        outline_metrics = drop_if_outline_only(text, min_content_chars=0, max_heading_ratio=2.0).metrics or {}
+    except Exception as exc:
+        _log_processor_fallback('_build_governance_audit_metadata_patch', exc)
+        outline_metrics = {}
+
+    return (
+        _safe_governance_int(density_metrics.get("chars_non_space")),
+        _safe_governance_int(density_metrics.get("chars_alnum_cjk")),
+        _safe_governance_int(outline_metrics.get("lines_total")),
+        _safe_governance_int(outline_metrics.get("lines_outline")),
+        _safe_governance_int(outline_metrics.get("content_chars")),
+    )
+
+
+def _aggregate_governance_quality(source_items: list[Document]) -> dict[str, Any]:
+    chars_non_space = 0
+    chars_alnum_cjk = 0
+    lines_total = 0
+    lines_outline = 0
+    content_chars = 0
+
+    for doc in source_items:
+        meta = doc.metadata if isinstance(getattr(doc, "metadata", None), dict) else {}
+        metrics = _governance_quality_from_metadata(meta)
+        if metrics is None:
+            metrics = _compute_governance_quality_metrics(doc.page_content or "")
+        chars_non_space += metrics[0]
+        chars_alnum_cjk += metrics[1]
+        lines_total += metrics[2]
+        lines_outline += metrics[3]
+        content_chars += metrics[4]
+
+    density = float(chars_alnum_cjk / max(1, chars_non_space)) if chars_non_space > 0 else 0.0
+    heading_ratio = float(lines_outline / max(1, lines_total)) if lines_total > 0 else 0.0
+    return {
+        "density": round(float(max(0.0, min(1.0, density))), 6),
+        "chars_non_space": int(max(0, chars_non_space)),
+        "chars_alnum_cjk": int(max(0, chars_alnum_cjk)),
+        "heading_ratio": round(float(max(0.0, min(1.0, heading_ratio))), 6),
+        "lines_total": int(max(0, lines_total)),
+        "lines_outline": int(max(0, lines_outline)),
+        "content_chars": int(max(0, content_chars)),
+    }
+
+
+def _positive_governance_counts(stats: GovernanceStats) -> dict[str, int]:
+    effects_map = {
+        "governance_frontmatter_docs": getattr(stats, "frontmatter_docs", 0),
+        "governance_frontmatter_stripped_docs": getattr(stats, "frontmatter_stripped_docs", 0),
+        "governance_paragraphs_dropped": getattr(stats, "paragraphs_dropped", 0),
+        "governance_references_removed_lines": getattr(stats, "references_removed_lines", 0),
+        "governance_urls_changed": getattr(stats, "urls_changed", 0),
+        "governance_boilerplate_removed_sections": getattr(stats, "boilerplate_removed_sections", 0),
+        "governance_boilerplate_removed_lines": getattr(stats, "boilerplate_removed_lines", 0),
+        "governance_images_removed": getattr(stats, "images_removed", 0),
+        "governance_tables_normalized": getattr(stats, "tables_normalized", 0),
+        "governance_table_rows_changed": getattr(stats, "table_rows_changed", 0),
+        "governance_code_blocks_changed": getattr(stats, "code_blocks_changed", 0),
+        "governance_code_lines_stripped": getattr(stats, "code_lines_stripped", 0),
+        "governance_keywords_docs": getattr(stats, "keywords_docs", 0),
+        "governance_keywords_total": getattr(stats, "keywords_total", 0),
+        "governance_titles_docs": getattr(stats, "titles_docs", 0),
+        "governance_tags_docs": getattr(stats, "tags_docs", 0),
+    }
+    return {key: value for key, raw in effects_map.items() if (value := _safe_governance_int(raw)) > 0}
+
+
+def _positive_string_count_map(raw_counts: Any) -> dict[str, int] | None:
+    if not isinstance(raw_counts, dict) or not raw_counts:
+        return None
+    out: dict[str, int] = {}
+    for raw_key, raw_value in raw_counts.items():
+        if raw_key is None:
+            continue
+        key = str(raw_key).strip()
+        value = _safe_governance_int(raw_value)
+        if key and value > 0:
+            out[key] = value
+    return out or None
+
+
+def _string_count_map(raw_counts: Any) -> dict[str, int] | None:
+    if not isinstance(raw_counts, dict) or not raw_counts:
+        return None
+    return {str(key): int(value) for key, value in raw_counts.items()}
+
+
+def _clean_governance_rule_packs(rule_packs: list[str] | None) -> list[str]:
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for raw in rule_packs or []:
+        if not isinstance(raw, str):
+            continue
+        key = raw.strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(key[:64])
+        if len(cleaned) >= 20:
+            break
+    return cleaned
 
 
 class ParsingStage:
@@ -4414,6 +4675,48 @@ class DocumentProcessorService:
             logger.info("Failed to persist parsed table_store metadata (ignored): %s document_id=%s", str(exc)[:200], document_id)
         return len(assets or [])
 
+    @staticmethod
+    def _table_sidecar_excluded_sample(*, index: int, meta: dict[str, Any]) -> dict[str, Any]:
+        page = _optional_int(meta.get("page"))
+        return {
+            "chunk_index": int(index),
+            "page": page,
+            "content_type": str(meta.get("content_type") or "").strip().lower() or None,
+            "doc_type_kwd": str(meta.get("doc_type_kwd") or "").strip().lower() or None,
+        }
+
+    @staticmethod
+    def _mark_table_sidecar_routing(meta: dict[str, Any]) -> None:
+        meta.setdefault("table_routing_kind", "tag_sidecar")
+        meta.setdefault("table_routing_source", "parser_table_segment")
+
+    @staticmethod
+    def _mark_non_table_rag_routing(meta: dict[str, Any]) -> None:
+        meta.setdefault("table_routing_kind", "rag_text")
+        meta.setdefault("table_routing_source", "non_table_content")
+        meta.setdefault("table_rag_excluded", False)
+        meta.setdefault("table_rag_exclusion_reason", None)
+
+    @staticmethod
+    def _build_table_sidecar_audit(
+        *,
+        enabled: bool,
+        imported: int,
+        table_seen: int,
+        table_excluded: int,
+        excluded_samples: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        return {
+            "version": "1",
+            "mode": "table_sidecar_exclusive",
+            "enabled": bool(enabled),
+            "sidecar_tables_imported": int(imported),
+            "table_chunks_seen": int(table_seen),
+            "table_chunks_excluded_from_rag": int(table_excluded),
+            "rag_exclusion_reason": ("table_sidecar_exclusive" if table_excluded > 0 else None),
+            "excluded_samples": excluded_samples,
+        }
+
     def _apply_table_sidecar_exclusive_routing(
         self,
         *,
@@ -4439,24 +4742,11 @@ class DocumentProcessorService:
             is_table = _is_table_segment_metadata(meta)
             if is_table:
                 table_seen += 1
-                meta.setdefault("table_routing_kind", "tag_sidecar")
-                meta.setdefault("table_routing_source", "parser_table_segment")
+                self._mark_table_sidecar_routing(meta)
                 if should_exclude:
                     table_excluded += 1
                     if len(excluded_samples) < 20:
-                        page = meta.get("page")
-                        try:
-                            page = int(page) if page is not None else None
-                        except (TypeError, ValueError, AttributeError):
-                            page = None
-                        excluded_samples.append(
-                            {
-                                "chunk_index": int(idx),
-                                "page": page,
-                                "content_type": str(meta.get("content_type") or "").strip().lower() or None,
-                                "doc_type_kwd": str(meta.get("doc_type_kwd") or "").strip().lower() or None,
-                            }
-                        )
+                        excluded_samples.append(self._table_sidecar_excluded_sample(index=idx, meta=meta))
                     continue
                 meta["table_rag_excluded"] = False
                 meta["table_rag_exclusion_reason"] = None
@@ -4465,24 +4755,17 @@ class DocumentProcessorService:
                 continue
 
             if imported > 0:
-                meta.setdefault("table_routing_kind", "rag_text")
-                meta.setdefault("table_routing_source", "non_table_content")
-                meta.setdefault("table_rag_excluded", False)
-                meta.setdefault("table_rag_exclusion_reason", None)
+                self._mark_non_table_rag_routing(meta)
                 chunk.metadata = meta
             kept.append(chunk)
 
-        audit = {
-            "version": "1",
-            "mode": "table_sidecar_exclusive",
-            "enabled": bool(enabled),
-            "sidecar_tables_imported": int(imported),
-            "table_chunks_seen": int(table_seen),
-            "table_chunks_excluded_from_rag": int(table_excluded),
-            "rag_exclusion_reason": ("table_sidecar_exclusive" if table_excluded > 0 else None),
-            "excluded_samples": excluded_samples,
-        }
-        return kept, audit
+        return kept, self._build_table_sidecar_audit(
+            enabled=enabled,
+            imported=imported,
+            table_seen=table_seen,
+            table_excluded=table_excluded,
+            excluded_samples=excluded_samples,
+        )
 
     def _cleanup_parser_artifacts(self, artifact_dirs: set[str], *, tenant_id: UUID) -> None:
         if not artifact_dirs:
@@ -4632,21 +4915,14 @@ class DocumentProcessorService:
 
         original_chars = sum(len(d.page_content or "") for d in before)
         cleaned_chars = sum(len(d.page_content or "") for d in after)
-
-        reduction_pct = 0
-        if original_chars > 0 and cleaned_chars >= 0:
-            try:
-                ratio = float((original_chars - cleaned_chars) / float(original_chars))
-            except (TypeError, ValueError, AttributeError):
-                ratio = 0.0
-            ratio = max(0.0, min(1.0, ratio))
-            reduction_pct = int(round(ratio * 100.0))
-
         patch: dict[str, Any] = {
             "governance_char_stats": {
                 "original_chars": int(max(0, original_chars)),
                 "cleaned_chars": int(max(0, cleaned_chars)),
-                "reduction_pct": int(max(0, min(100, reduction_pct))),
+                "reduction_pct": int(max(0, min(100, _governance_reduction_pct(
+                    original_chars=original_chars,
+                    cleaned_chars=cleaned_chars,
+                )))),
             }
         }
 
@@ -4655,69 +4931,7 @@ class DocumentProcessorService:
         if not source_items:
             return patch
 
-        chars_non_space = 0
-        chars_alnum_cjk = 0
-        lines_total = 0
-        lines_outline = 0
-        content_chars = 0
-
-        def _safe_int(raw: object) -> int:
-            try:
-                if raw is None:
-                    return 0
-                if isinstance(raw, bool):
-                    return 0
-                return int(raw)  # type: ignore[arg-type]
-            except (TypeError, ValueError, AttributeError):
-                return 0
-
-        # Fast path: consume per-item governance_quality metrics when present (already computed by governance stage).
-        # Fallback: recompute via shared quality_filters helpers (best-effort).
-        from app.rag.preprocessing.quality_filters import drop_if_low_density, drop_if_outline_only
-
-        for d in source_items:
-            meta = d.metadata if isinstance(getattr(d, "metadata", None), dict) else {}
-            q = meta.get("governance_quality")
-            if isinstance(q, dict):
-                chars_non_space += _safe_int(q.get("chars_non_space"))
-                chars_alnum_cjk += _safe_int(q.get("chars_alnum_cjk"))
-                lines_total += _safe_int(q.get("lines_total"))
-                lines_outline += _safe_int(q.get("lines_outline"))
-                content_chars += _safe_int(q.get("content_chars"))
-                continue
-
-            text = d.page_content or ""
-            try:
-                dm = drop_if_low_density(text, threshold=-1.0).metrics or {}
-            except Exception as exc:
-                _log_processor_fallback('_build_governance_audit_metadata_patch', exc)
-                dm = {}
-            try:
-                om = drop_if_outline_only(text, min_content_chars=0, max_heading_ratio=2.0).metrics or {}
-            except Exception as exc:
-                _log_processor_fallback('_build_governance_audit_metadata_patch', exc)
-                om = {}
-
-            chars_non_space += _safe_int(dm.get("chars_non_space"))
-            chars_alnum_cjk += _safe_int(dm.get("chars_alnum_cjk"))
-            lines_total += _safe_int(om.get("lines_total"))
-            lines_outline += _safe_int(om.get("lines_outline"))
-            content_chars += _safe_int(om.get("content_chars"))
-
-        density = float(chars_alnum_cjk / max(1, chars_non_space)) if chars_non_space > 0 else 0.0
-        heading_ratio = float(lines_outline / max(1, lines_total)) if lines_total > 0 else 0.0
-        density = max(0.0, min(1.0, density))
-        heading_ratio = max(0.0, min(1.0, heading_ratio))
-
-        patch["governance_quality"] = {
-            "density": round(float(density), 6),
-            "chars_non_space": int(max(0, chars_non_space)),
-            "chars_alnum_cjk": int(max(0, chars_alnum_cjk)),
-            "heading_ratio": round(float(heading_ratio), 6),
-            "lines_total": int(max(0, lines_total)),
-            "lines_outline": int(max(0, lines_outline)),
-            "content_chars": int(max(0, content_chars)),
-        }
+        patch["governance_quality"] = _aggregate_governance_quality(source_items)
         patch["governance_quality_source"] = "cleaned" if after else "pre_governance"
         return patch
 
@@ -4746,75 +4960,28 @@ class DocumentProcessorService:
         metadata["governance_changed_documents"] = int(stats.changed)
         metadata["governance_rules_applied"] = int(stats.applied_rules)
         metadata["governance_dropped_documents"] = int(getattr(stats, "dropped", 0) or 0)
-        reasons = getattr(stats, "drop_reasons", None)
-        if isinstance(reasons, dict) and reasons:
-            metadata["governance_drop_reasons"] = {str(k): int(v) for k, v in reasons.items()}
-        pii_hits = getattr(stats, "pii_hits", None)
-        if isinstance(pii_hits, dict) and pii_hits:
-            metadata["governance_pii_hits"] = {str(k): int(v) for k, v in pii_hits.items()}
-        secrets_hits = getattr(stats, "secrets_hits", None)
-        if isinstance(secrets_hits, dict) and secrets_hits:
-            metadata["governance_secrets_hits"] = {str(k): int(v) for k, v in secrets_hits.items()}
+
+        drop_reasons = _string_count_map(getattr(stats, "drop_reasons", None))
+        if drop_reasons:
+            metadata["governance_drop_reasons"] = drop_reasons
+        pii_hits = _string_count_map(getattr(stats, "pii_hits", None))
+        if pii_hits:
+            metadata["governance_pii_hits"] = pii_hits
+        secrets_hits = _string_count_map(getattr(stats, "secrets_hits", None))
+        if secrets_hits:
+            metadata["governance_secrets_hits"] = secrets_hits
 
         # Persist richer "effects" counters for dataset-level governance audit (best-effort).
-        effects_map = {
-            "governance_frontmatter_docs": getattr(stats, "frontmatter_docs", 0),
-            "governance_frontmatter_stripped_docs": getattr(stats, "frontmatter_stripped_docs", 0),
-            "governance_paragraphs_dropped": getattr(stats, "paragraphs_dropped", 0),
-            "governance_references_removed_lines": getattr(stats, "references_removed_lines", 0),
-            "governance_urls_changed": getattr(stats, "urls_changed", 0),
-            "governance_boilerplate_removed_sections": getattr(stats, "boilerplate_removed_sections", 0),
-            "governance_boilerplate_removed_lines": getattr(stats, "boilerplate_removed_lines", 0),
-            "governance_images_removed": getattr(stats, "images_removed", 0),
-            "governance_tables_normalized": getattr(stats, "tables_normalized", 0),
-            "governance_table_rows_changed": getattr(stats, "table_rows_changed", 0),
-            "governance_code_blocks_changed": getattr(stats, "code_blocks_changed", 0),
-            "governance_code_lines_stripped": getattr(stats, "code_lines_stripped", 0),
-            "governance_keywords_docs": getattr(stats, "keywords_docs", 0),
-            "governance_keywords_total": getattr(stats, "keywords_total", 0),
-            "governance_titles_docs": getattr(stats, "titles_docs", 0),
-            "governance_tags_docs": getattr(stats, "tags_docs", 0),
-        }
-        for k, raw in effects_map.items():
-            try:
-                n = int(raw or 0)
-            except (TypeError, ValueError, AttributeError):
-                n = 0
-            if n > 0:
-                metadata[k] = n
+        metadata.update(_positive_governance_counts(stats))
 
-        langs = getattr(stats, "languages", None)
-        if isinstance(langs, dict) and langs:
-            out: dict[str, int] = {}
-            for lk, lv in langs.items():
-                if lk is None:
-                    continue
-                key = str(lk).strip()
-                if not key:
-                    continue
-                try:
-                    out[key] = int(lv or 0)
-                except (TypeError, ValueError, AttributeError):
-                    out[key] = 0
-            if any(v > 0 for v in out.values()):
-                # Keep small; caller can still use governance_enrichment.language for a canonical single value.
-                metadata["governance_languages"] = {k: v for k, v in out.items() if v > 0}
+        languages = _positive_string_count_map(getattr(stats, "languages", None))
+        if languages:
+            # Keep small; caller can still use governance_enrichment.language for a canonical single value.
+            metadata["governance_languages"] = languages
 
-        if rule_packs:
-            cleaned: list[str] = []
-            seen: set[str] = set()
-            for raw in rule_packs:
-                if not isinstance(raw, str):
-                    continue
-                key = raw.strip().lower()
-                if not key or key in seen:
-                    continue
-                seen.add(key)
-                cleaned.append(key[:64])
-                if len(cleaned) >= 20:
-                    break
-            if cleaned:
-                metadata["governance_rule_packs"] = cleaned
+        cleaned_rule_packs = _clean_governance_rule_packs(rule_packs)
+        if cleaned_rule_packs:
+            metadata["governance_rule_packs"] = cleaned_rule_packs
 
         if isinstance(audit_patch, dict) and audit_patch:
             metadata.update(audit_patch)
