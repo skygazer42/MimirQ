@@ -149,7 +149,7 @@ export function KnowledgeUrlBatchDialog({
       setAccessGroupIds([])
       detachPromise(loadConnectorRuns({ datasetId: selectedDatasetId }))
       detachPromise(loadDocuments())
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast.error(formatApiError(err, '创建 URL 批量导入失败'))
     } finally {
       setSubmitting(false)

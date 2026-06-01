@@ -64,7 +64,7 @@ export function KnowledgeUrlImportDialog({
 
     let normalizedUrl: string
     try {
-      // Keep this permissive (any valid absolute URL) and let the backend enforce policy.
+      // Keep this permissive for valid absolute URLs and let the backend enforce policy.
       // This is primarily an inline UX guard so users don't submit empty/garbled text.
       normalizedUrl = new URL(nextUrl).toString()
     } catch {
@@ -88,7 +88,7 @@ export function KnowledgeUrlImportDialog({
       Promise.resolve(onAfterImport?.()).catch(() => {
         // Best-effort refresh.
       })
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast.error(formatApiError(err, 'URL 导入失败'))
     } finally {
       setSubmitting(false)

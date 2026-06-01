@@ -37,32 +37,46 @@ function line(label: string, value: string): string {
   )}</span></div>`
 }
 
-function inferSourceTarget(link: any): { source: string; target: string } {
-  const rawSource = link?.source
-  const rawTarget = link?.target
+type GraphLinkRecord = Record<string, unknown> & {
+  readonly meta?: Record<string, unknown>
+}
 
-  const source = typeof rawSource === 'object' && rawSource !== null ? rawSource.label || rawSource.id : rawSource
-  const target = typeof rawTarget === 'object' && rawTarget !== null ? rawTarget.label || rawTarget.id : rawTarget
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function linkEndpointValue(value: unknown): unknown {
+  if (!isRecord(value)) return value
+  return value.label || value.id
+}
+
+function inferSourceTarget(link: GraphLinkRecord): { source: string; target: string } {
+  const rawSource = link.source
+  const rawTarget = link.target
+
+  const source = linkEndpointValue(rawSource)
+  const target = linkEndpointValue(rawTarget)
 
   return { source: coerceTrimmedString(source), target: coerceTrimmedString(target) }
 }
 
-export function buildGraphLinkProvenanceTooltipHtml(link: any): string {
-  if (!link) return ''
+export function buildGraphLinkProvenanceTooltipHtml(link: unknown): string {
+  if (!isRecord(link)) return ''
+  const meta = isRecord(link.meta) ? link.meta : {}
 
-  const kind = coerceTrimmedString(link?.meta?.kind ?? link?.kind)
-  const label = coerceTrimmedString(link?.meta?.predicate ?? link?.predicate ?? link?.label)
-  const conf = formatConfidence(link?.meta?.confidence ?? link?.confidence ?? link?.weight)
+  const kind = coerceTrimmedString(meta.kind ?? link.kind)
+  const label = coerceTrimmedString(meta.predicate ?? link.predicate ?? link.label)
+  const conf = formatConfidence(meta.confidence ?? link.confidence ?? link.weight)
   const { source, target } = inferSourceTarget(link)
 
-  const docId = coerceTrimmedString(link?.meta?.document_id)
-  const chunkId = coerceTrimmedString(link?.meta?.chunk_id)
-  const eventId = coerceTrimmedString(link?.meta?.event_id)
+  const docId = coerceTrimmedString(meta.document_id)
+  const chunkId = coerceTrimmedString(meta.chunk_id)
+  const eventId = coerceTrimmedString(meta.event_id)
 
-  const page = coerceTrimmedString(link?.meta?.page ?? link?.meta?.page_number)
-  const chunkIndex = coerceTrimmedString(link?.meta?.chunk_index)
-  const sharedEvents = coerceTrimmedString(link?.meta?.shared_events)
-  const contentHash = coerceTrimmedString(link?.meta?.content_hash)
+  const page = coerceTrimmedString(meta.page ?? meta.page_number)
+  const chunkIndex = coerceTrimmedString(meta.chunk_index)
+  const sharedEvents = coerceTrimmedString(meta.shared_events)
+  const contentHash = coerceTrimmedString(meta.content_hash)
 
   const title =
     (() => {

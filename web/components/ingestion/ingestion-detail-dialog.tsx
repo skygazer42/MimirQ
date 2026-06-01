@@ -152,7 +152,7 @@ export function IngestionDetailDialog({
         sample_limit: 50,
       })
       setDiff(data)
-    } catch (err: any) {
+    } catch (err: unknown) {
       setDiffError(formatApiError(err, t("errors.diffFailed")))
       setDiff(null)
     } finally {
@@ -167,7 +167,7 @@ export function IngestionDetailDialog({
       await documentApi.cancel(doc.id)
       toast.success(t('toasts.cancelSuccess'))
       await refetch()
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast.error(formatApiError(err, t('errors.cancelFailed')))
     } finally {
       setIsActing(false)
@@ -181,7 +181,7 @@ export function IngestionDetailDialog({
       await documentApi.retry(doc.id, force ? { force: true } : undefined)
       toast.success(force ? t('toasts.retryForced') : t('toasts.retry'))
       await refetch()
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast.error(formatApiError(err, t('errors.retryFailed')))
     } finally {
       setIsActing(false)

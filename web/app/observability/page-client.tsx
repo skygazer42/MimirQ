@@ -46,6 +46,42 @@ const SLOW_PRESETS = [
     { label: '≥ 5s', value: 5 },
 ]
 
+type AnalyticsChartPoint = {
+  t: number
+  time: string
+  requests: number
+  zero_hit: number
+  slow: number
+  errors: number
+  zero_hit_rate: number | null
+  slow_rate: number | null
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function queryCountItem(value: unknown): { query_hash: string; count: number } {
+  const item = isRecord(value) ? value : {}
+  return {
+    query_hash: String(item.query_hash || ''),
+    count: Number(item.count || 0),
+  }
+}
+
+function slowQueryItem(value: unknown): {
+  query_hash: string
+  count: number
+  max_elapsed_sec: number | null
+} {
+  const item = isRecord(value) ? value : {}
+  return {
+    query_hash: String(item.query_hash || ''),
+    count: Number(item.count || 0),
+    max_elapsed_sec: item.max_elapsed_sec == null ? null : Number(item.max_elapsed_sec),
+  }
+}
+
 function formatTs(tsMs: number) {
   try {
     return new Date(tsMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -157,7 +193,7 @@ export default function ObservabilityPage() {
     const zeroHit = analytics.timeseries.zero_hit || []
     const slow = analytics.timeseries.slow || []
     const errors = analytics.timeseries.errors || []
-    const out: Array<Record<string, any>> = []
+    const out: AnalyticsChartPoint[] = []
     for (let i = 0; i < ts.length; i++) {
       const t = Number(ts[i] || 0)
       const req = Number(requests[i] || 0)
@@ -179,7 +215,7 @@ export default function ObservabilityPage() {
   }, [analytics?.timeseries])
 
   const topErrorKinds = useMemo(() => {
-    const raw: Record<string, number> = (analytics?.error_kind_counts as any) ?? {}
+    const raw: Record<string, number> = analytics?.error_kind_counts ?? {}
     const entries = Object.entries(raw).sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))
     return entries.slice(0, 8)
   }, [analytics?.error_kind_counts])
@@ -187,7 +223,7 @@ export default function ObservabilityPage() {
   const topZeroHits = useMemo(() => {
     const raw = Array.isArray(analytics?.top_zero_hit_queries) ? analytics?.top_zero_hit_queries : []
     return raw
-      .map((it: any) => ({ query_hash: String(it?.query_hash || ''), count: Number(it?.count || 0) }))
+      .map(queryCountItem)
       .filter((it) => it.query_hash && Number.isFinite(it.count))
       .sort((a, b) => b.count - a.count)
       .slice(0, 20)
@@ -196,11 +232,7 @@ export default function ObservabilityPage() {
   const topSlowQueries = useMemo(() => {
     const raw = Array.isArray(analytics?.top_slow_queries) ? analytics?.top_slow_queries : []
     return raw
-      .map((it: any) => ({
-        query_hash: String(it?.query_hash || ''),
-        count: Number(it?.count || 0),
-        max_elapsed_sec: it?.max_elapsed_sec == null ? null : Number(it.max_elapsed_sec),
-      }))
+      .map(slowQueryItem)
       .filter((it) => it.query_hash && Number.isFinite(it.count))
       .sort((a, b) => b.count - a.count)
       .slice(0, 20)
@@ -494,10 +526,11 @@ export default function ObservabilityPage() {
                           <CartesianGrid strokeDasharray="3 3" opacity={0.2}/>
                           <XAxis dataKey="time" tick={{ fontSize: 10 }}/>
                           <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `${Math.round(Number(v || 0) * 100)}%`} domain={[0, 1]}/>
-                          <Tooltip formatter={(v: any, name: any) => {
-                            if (name === 'zero-hit rate' || name === 'slow rate')
-                                return [fmtPercent(Number(v), 2), name];
-                            return [v, name];
+                          <Tooltip formatter={(v: unknown, name: unknown) => {
+                            const label = String(name)
+                            if (label === 'zero-hit rate' || label === 'slow rate')
+                                return [fmtPercent(Number(v), 2), label];
+                            return [String(v ?? ''), label];
                         }}/>
                           <Line type="monotone" dataKey="zero_hit_rate" name="zero-hit rate" stroke="hsl(var(--warning))" strokeWidth={2} dot={false}/>
                           <Line type="monotone" dataKey="slow_rate" name="slow rate" stroke="hsl(var(--info))" strokeWidth={2} dot={false}/>

@@ -72,7 +72,7 @@ export function DatasetOpsPanel({ datasetId, datasetName }: Readonly<{ datasetId
         <Field label="克隆名称">
           <Input value={cloneName} onChange={(event) => setCloneName(event.target.value)} className="h-8 text-xs" />
         </Field>
-        <ActionButton icon={FolderTree} busy={busy === 'clone'} disabled={Boolean(busy) || !dataset || !cloneName.trim()} label="克隆数据集" onClick={() => runAction('clone', '克隆数据集', () => datasetApi.clone(dataset, { name: cloneName.trim() } as any))} />
+        <ActionButton icon={FolderTree} busy={busy === 'clone'} disabled={Boolean(busy) || !dataset || !cloneName.trim()} label="克隆数据集" onClick={() => runAction('clone', '克隆数据集', () => datasetApi.clone(dataset, { name: cloneName.trim(), copy_permission: true, copy_partial_members: true }))} />
       </div>
 
       <div className="flex flex-wrap gap-2">

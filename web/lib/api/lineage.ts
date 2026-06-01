@@ -1,6 +1,6 @@
 import { apiClient } from '@/lib/api/core'
 
-export type LineageResponse = Record<string, any>
+export type LineageResponse = Record<string, unknown>
 
 export const lineageApi = {
   async getChunkLineage(chunkId: string): Promise<LineageResponse> {

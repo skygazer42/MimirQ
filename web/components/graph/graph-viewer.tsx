@@ -276,12 +276,18 @@ function hashTypeToIndex(type: string): number {
   return Math.abs(hash) % NODE_COLOR_PALETTE.length
 }
 
-export function buildTypeColorMap(nodes: readonly any[]): Map<string, string> {
+function graphNodeRecord(node: unknown): { meta?: Record<string, unknown> | null; type?: unknown } {
+  return node && typeof node === 'object' ? (node as { meta?: Record<string, unknown> | null; type?: unknown }) : {}
+}
+
+export function buildTypeColorMap(nodes: readonly unknown[]): Map<string, string> {
   const map = new Map<string, string>()
   for (const node of nodes) {
-    const kind = graphDisplayString(node?.meta?.kind)
+    const record = graphNodeRecord(node)
+    const meta = record.meta && typeof record.meta === 'object' ? record.meta : {}
+    const kind = graphDisplayString(meta.kind)
     if (kind === 'event') continue
-    const type = firstGraphDisplayString(node?.meta?.type, node?.type) || 'unknown'
+    const type = firstGraphDisplayString(meta.type, record.type) || 'unknown'
     if (!map.has(type)) {
       map.set(type, NODE_COLOR_PALETTE[hashTypeToIndex(type)])
     }

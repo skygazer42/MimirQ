@@ -156,7 +156,7 @@ export function GovernanceProfilesPage() {
       a.click()
       globalThis.window.setTimeout(() => URL.revokeObjectURL(url), 1000)
       toast.success('已导出')
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast.error(formatApiError(err, '导出失败'))
     }
   }
@@ -174,7 +174,7 @@ export function GovernanceProfilesPage() {
       a.click()
       globalThis.window.setTimeout(() => URL.revokeObjectURL(url), 1000)
       toast.success('已导出 ingestion policy')
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast.error(formatApiError(err, '导出 ingestion policy 失败'))
     }
   }
@@ -538,7 +538,7 @@ export function GovernanceProfilesPage() {
                                   buildGovernanceProfileCreateFromExisting(prof)
                                 )
                                 setEditorOpen(true)
-                              } catch (err: any) {
+                              } catch (err: unknown) {
                                 toast.error(formatApiError(err, '复制失败'))
                               }
                             })()

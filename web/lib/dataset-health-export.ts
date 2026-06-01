@@ -11,8 +11,8 @@ export type DatasetHealthExportInput = {
   datasetName?: string | null
   exportedAt?: string | null
   generatedAt?: string | null
-  profile?: any
-  ingestion?: any
+  profile?: Record<string, unknown> | null
+  ingestion?: Record<string, unknown> | null
   suggestions?: DatasetHealthSuggestion[]
 }
 

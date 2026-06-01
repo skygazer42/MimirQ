@@ -99,7 +99,7 @@ export function DatasetCategoryMultiSelect({ datasetId, className }: Readonly<{ 
       await saveCategoriesMutation.mutateAsync(draft)
       toast.success('分类已更新')
       setOpen(false)
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('Failed to set dataset categories', e)
       toast.error(formatApiError(e, '更新分类失败'))
     }

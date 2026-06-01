@@ -10,13 +10,19 @@ interface HolographicRadarProps {
   className?: string
 }
 
-const CustomTooltip = ({ active, payload, label }: any) => {
+type RadarTooltipProps = {
+  active?: boolean
+  payload?: Array<{ value?: unknown }>
+  label?: unknown
+}
+
+const CustomTooltip = ({ active, payload, label }: RadarTooltipProps) => {
   if (active && payload?.length) {
     return (
       <div className="bg-popover/95 backdrop-blur-md border border-primary/30 p-3 rounded-lg shadow-strong">
-        <p className="text-primary font-semibold text-xs uppercase mb-1">{label}</p>
+        <p className="text-primary font-semibold text-xs uppercase mb-1">{String(label ?? '')}</p>
         <div className="flex items-baseline gap-1">
-            <span className="text-2xl font-mono text-foreground font-bold">{payload[0].value}</span>
+            <span className="text-2xl font-mono text-foreground font-bold">{String(payload[0].value ?? '')}</span>
             <span className="text-xs text-muted-foreground">/ 100</span>
         </div>
       </div>

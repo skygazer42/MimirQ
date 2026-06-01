@@ -803,10 +803,11 @@ export function DataGovernancePanel() {
   // Ensure markdown is available after refresh: load from IndexedDB cache first, fallback to backend.
   useEffect(() => {
     const file = selectedFile
+    if (!file) return
     const id = (file?.id || '').trim()
     if (!id) return
     if ((file?.markdownContent || '').trim()) {
-      initializeGovernanceState(file as any)
+      initializeGovernanceState(file)
       return
     }
 

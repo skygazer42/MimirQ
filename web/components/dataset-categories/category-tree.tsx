@@ -248,7 +248,7 @@ export function DatasetCategoryTree({ selectedId, onSelect, className }: Readonl
       setCreateOpen(false)
       resetCreateState()
       onSelect(created.id)
-    } catch (e: any) {
+    } catch (e: unknown) {
       toast.error(formatApiError(e, '创建分类失败'))
     }
   }
@@ -261,7 +261,7 @@ export function DatasetCategoryTree({ selectedId, onSelect, className }: Readonl
       toast.success('已删除分类')
       setDeleteOpen(false)
       onSelect(null)
-    } catch (e: any) {
+    } catch (e: unknown) {
       toast.error(formatApiError(e, '删除分类失败'))
     }
   }

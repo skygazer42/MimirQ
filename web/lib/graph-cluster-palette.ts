@@ -38,7 +38,7 @@ export function applyClusterPalette(args: {
   const nodes = graphRenderData.nodes.map((node) => {
     if (node.color) return node
 
-    const record = node as Record<string, unknown>
+    const record = node as unknown as Record<string, unknown>
     const meta = (record.meta ?? {}) as Record<string, unknown>
     const kind = primitiveText(meta.kind ?? record.kind).trim().toLowerCase()
     if (kind === 'event' || kind === 'trace' || kind === 'step' || kind === 'citation') return node

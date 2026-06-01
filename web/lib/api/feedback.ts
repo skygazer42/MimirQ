@@ -63,7 +63,7 @@ export const feedbackApi = {
 
   async toRegressionCase(
     feedbackId: string,
-    body: { include_document_scope?: boolean; tags?: string[]; extra?: Record<string, any> } = {}
+    body: { include_document_scope?: boolean; tags?: string[]; extra?: Record<string, unknown> } = {}
   ): Promise<RegressionCase> {
     const { data } = await apiClient.post(`/feedback/messages/${feedbackId}/to-regression-case`, body)
     return data
@@ -79,7 +79,7 @@ export const feedbackApi = {
 
   async toEvidenceItem(
     feedbackId: string,
-    body: { suite_id: string; tags?: string[]; extra?: Record<string, any> }
+    body: { suite_id: string; tags?: string[]; extra?: Record<string, unknown> }
   ): Promise<EvidenceItem> {
     const { data } = await apiClient.post(`/feedback/messages/${feedbackId}/to-evidence-item`, body)
     return data

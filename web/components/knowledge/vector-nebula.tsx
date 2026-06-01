@@ -6,6 +6,7 @@ import { useTheme } from "next-themes"
 import { useQuery } from "@tanstack/react-query"
 import { AlertCircle, Database, Loader2, RefreshCw } from "lucide-react"
 import * as THREE from "three"
+import type { ForceGraphMethods } from "react-force-graph-3d"
 
 import { Button } from "@/components/ui/button"
 import { formatApiError } from "@/lib/api-errors"
@@ -300,7 +301,7 @@ async function loadVectorNebulaData(): Promise<NebulaData> {
 
 export function VectorNebula() {
   const { resolvedTheme } = useTheme()
-  const fgRef = useRef<any>(null)
+  const fgRef = useRef<ForceGraphMethods | undefined>(undefined)
   const nebulaQuery = useQuery({
     queryKey: queryKeys.documents.nebula,
     queryFn: loadVectorNebulaData,

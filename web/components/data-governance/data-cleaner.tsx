@@ -234,13 +234,13 @@ export function DataCleaner({
           if (llmResponse.warnings?.length) {
             setBackendError(llmResponse.warnings.join('；'))
           }
-        } catch (error: any) {
+        } catch (error: unknown) {
           setBackendError(formatApiError(error, t('errors.llmCleanFailedKeepPreview')))
         }
       }
 
       onClean(next)
-    } catch (error: any) {
+    } catch (error: unknown) {
       setBackendError(formatApiError(error, t('errors.backendCleanFailed')))
     } finally {
       setIsApplying(false)
@@ -497,7 +497,10 @@ export function DataCleaner({
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => applyPipelinePatch(lastPreview.suggested_pipeline_patch as any)}
+                        onClick={() => {
+                          const patch = lastPreview.suggested_pipeline_patch
+                          if (patch) applyPipelinePatch(patch)
+                        }}
                       >
                         {t('diff.applySuggestion')}
                       </Button>

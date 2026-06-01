@@ -42,9 +42,9 @@ export default function OidcCallbackPage() {
         const { returnTo } = await completeOidcLogin({ code, state })
         setStatus('success')
         router.replace(returnTo || '/')
-      } catch (e: any) {
+      } catch (e: unknown) {
         setStatus('error')
-        setError(String(e?.message || 'SSO failed'))
+        setError(e instanceof Error ? e.message : 'SSO failed')
       }
     })()
   }, [router, searchParams])

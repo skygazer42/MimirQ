@@ -62,7 +62,7 @@ export default function AuthPage() {
         setSsoProviderWorkingId(providerId)
         try {
             await startOidcLogin({ providerId, returnTo: '/' })
-        } catch (err: any) {
+        } catch (err: unknown) {
             setError(toApiErrorInfo(err, 'SSO login failed'))
             setSsoProviderWorkingId(null)
         }
@@ -85,7 +85,7 @@ export default function AuthPage() {
                     : await authApi.register({ email: email.trim(), username: username.trim(), password })
             setAuthSession({ token: response.token, user: response.user })
             router.push('/')
-        } catch (err: any) {
+        } catch (err: unknown) {
             setError(toApiErrorInfo(err, '请求失败，请重试'))
         } finally {
             setIsSubmitting(false)

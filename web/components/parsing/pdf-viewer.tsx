@@ -865,7 +865,7 @@ export function PdfViewer({
  }
  }, [releasePage])
 
- // Invalidate any in-flight renders when doc/scale changes.
+ // Invalidate in-flight renders when doc/scale changes.
  useEffect(() => {
  renderGenRef.current += 1
  clearQueuedRenderFlush()

@@ -11,6 +11,36 @@ interface VoiceModeOverlayProps {
     onSend: (text: string) => void
 }
 
+type SpeechRecognitionResultItem = {
+    readonly transcript: string
+}
+
+type SpeechRecognitionResultLike = {
+    readonly isFinal: boolean
+    readonly 0: SpeechRecognitionResultItem
+}
+
+type SpeechRecognitionEventLike = {
+    readonly resultIndex: number
+    readonly results: {
+        readonly length: number
+        readonly [index: number]: SpeechRecognitionResultLike
+    }
+}
+
+type SpeechRecognitionLike = {
+    continuous: boolean
+    interimResults: boolean
+    lang: string
+    onresult: ((event: SpeechRecognitionEventLike) => void) | null
+    start: () => void
+    stop: () => void
+}
+
+type WindowWithSpeechRecognition = Window & {
+    webkitSpeechRecognition?: new () => SpeechRecognitionLike
+}
+
 export function VoiceModeOverlay({ isOpen, onClose, onSend }: Readonly<VoiceModeOverlayProps>) {
 	    const [isListening, setIsListening] = useState(false)
 	    const [transcript, setTranscript] = useState("")
@@ -18,17 +48,18 @@ export function VoiceModeOverlay({ isOpen, onClose, onSend }: Readonly<VoiceMode
 	    const reduceMotion = useReducedMotion()
 
     // Speech Recognition Setup
-    const recognitionRef = useRef<any>(null)
+    const recognitionRef = useRef<SpeechRecognitionLike | null>(null)
 
     useEffect(() => {
-        if (globalThis.window !== undefined && (globalThis.window as any).webkitSpeechRecognition) {
-            const SpeechRecognition = (globalThis.window as any).webkitSpeechRecognition
+        const windowWithSpeech = globalThis.window as WindowWithSpeechRecognition
+        if (globalThis.window !== undefined && windowWithSpeech.webkitSpeechRecognition) {
+            const SpeechRecognition = windowWithSpeech.webkitSpeechRecognition
             const recognition = new SpeechRecognition()
             recognition.continuous = true
             recognition.interimResults = true
             recognition.lang = 'zh-CN'
 
-            recognition.onresult = (event: any) => {
+            recognition.onresult = (event) => {
                 let finalTranscript = ''
                 for (let i = event.resultIndex; i < event.results.length; ++i) {
                     if (event.results[i].isFinal) {

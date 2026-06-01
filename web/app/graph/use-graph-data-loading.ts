@@ -12,7 +12,9 @@ import type { GraphData } from '@/lib/graph-parser'
 import type {
   KGEntityDetailResponse,
   KGEventDetailResponse,
+  KGManualEntityInput,
   KGManualImportRequest,
+  KGManualRelationInput,
   KGStatsResponse,
   RagTrace,
 } from '@/types'
@@ -264,18 +266,18 @@ export function useGraphDataLoading({
 
     const firstString = (...values: unknown[]) => values.find((value): value is string => typeof value === 'string') ?? ''
     const coerceRows = (rows: unknown[]): KGManualImportRequest => {
-      const entities: any[] = []
-      const relations: any[] = []
+      const entities: KGManualEntityInput[] = []
+      const relations: KGManualRelationInput[] = []
       for (const row of rows) {
         if (!row || typeof row !== 'object') continue
         const item = row as Record<string, unknown>
         const kind = firstString(item.kind, item.row_type, item.type_hint).toLowerCase()
         if (kind === 'relation' || ('subject' in item && 'object' in item && 'predicate' in item)) {
-          relations.push(item)
+          relations.push(item as unknown as KGManualRelationInput)
           continue
         }
         if (kind === 'entity' || ('name' in item && 'type' in item)) {
-          entities.push(item)
+          entities.push(item as unknown as KGManualEntityInput)
         }
       }
       return {

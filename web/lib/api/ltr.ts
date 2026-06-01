@@ -23,7 +23,7 @@ export interface LTRModelRegisterResponse {
 }
 
 export interface LTRModelActivateResponse {
-  active: Record<string, any>
+  active: Record<string, unknown>
 }
 
 export const ltrApi = {

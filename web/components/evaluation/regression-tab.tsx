@@ -655,8 +655,8 @@ export function RegressionTestTab({
     ? '有'
     : '待返回'
   const evidenceRecall =
-    typeof (summary as any)?.retrieval_recall === 'number'
-      ? Number((summary as any).retrieval_recall).toFixed(3)
+    typeof summary.retrieval_recall === 'number'
+      ? Number(summary.retrieval_recall).toFixed(3)
       : '待返回'
   const multimodalSlices = safeRecord(summary.multimodal_slices)
   const multimodalSliceCounts = safeRecord(multimodalSlices.counts)
@@ -1393,12 +1393,12 @@ export function RegressionTestTab({
                       {item.scores && Object.keys(item.scores).length > 0 && (
                         <div className="flex gap-2 mt-2">
                           {Object.entries(item.scores).map(
-                            ([k, v]: [string, any]) => (
+                            ([k, v]) => (
                               <span
                                 key={k}
                                 className="text-[11px] px-2 py-0.5 rounded-full bg-info/10 text-info border border-info/20"
                               >
-                                {k}: {typeof v === 'number' ? v.toFixed(2) : v}
+                                {k}: {typeof v === 'number' ? v.toFixed(2) : String(v)}
                               </span>
                             )
                           )}
@@ -1407,9 +1407,9 @@ export function RegressionTestTab({
                       {(() => {
                         const exps = item.meta?.explanations
                         if (!exps || typeof exps !== 'object') return null
-                        const entries = Object.entries(
-                          exps as Record<string, any>
-                        ).filter(([, v]) => typeof v === 'string' && v)
+                        const entries = Object.entries(safeRecord(exps)).filter(
+                          ([, v]) => typeof v === 'string' && v
+                        )
                         if (!entries.length) return null
                         return (
                           <details className="mt-2">

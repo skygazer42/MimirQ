@@ -1,8 +1,10 @@
 import type { AuditLogListResponse } from '@/types'
+import type { OpenApiSchema } from '@/types/backend'
 
 import { apiClient } from '@/lib/api/core'
 import { API_LONG_TIMEOUT_MS } from '@/lib/env'
 
+export type AuditLogPurgeResponse = OpenApiSchema<'AuditLogPurgeResponse'>
 export type AuditLogDeleteResponse = {
   requested: number
   deleted: number
@@ -22,6 +24,10 @@ function mergeAuditDeleteResponses(responses: AuditLogDeleteResponse[]): AuditLo
     }),
     { requested: 0, deleted: 0, missing: 0, ids: [] }
   )
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
 }
 
 export const auditApi = {
@@ -70,7 +76,7 @@ export const auditApi = {
     request_id?: string
     since?: string
     until?: string
-  } = {}): Promise<any> {
+  } = {}): Promise<AuditLogPurgeResponse> {
     const { data } = await apiClient.post('/audit/logs/purge', undefined, { params })
     return data
   },
@@ -124,14 +130,14 @@ export const auditApi = {
     nextCursor: { after_kind: string; after_created_at: string; after_id: string } | null
   }> {
     const resp = await apiClient.get('/audit/access-graph/export', { params, responseType: 'blob' })
-    const headers: Record<string, any> = (resp as any)?.headers || {}
+    const headers = isRecord(resp.headers) ? resp.headers : {}
     const raw = headers['x-next-cursor'] || headers['X-Next-Cursor'] || ''
     let nextCursor: { after_kind: string; after_created_at: string; after_id: string } | null = null
 
     if (raw) {
       try {
-        const obj = JSON.parse(String(raw))
-        if (obj && typeof obj === 'object' && obj.after_kind && obj.after_created_at && obj.after_id) {
+        const obj = JSON.parse(String(raw)) as unknown
+        if (isRecord(obj) && obj.after_kind && obj.after_created_at && obj.after_id) {
           nextCursor = {
             after_kind: String(obj.after_kind),
             after_created_at: String(obj.after_created_at),
@@ -146,7 +152,7 @@ export const auditApi = {
     return { blob: resp.data as Blob, nextCursor }
   },
 
-  async getAccessGraphSummary(): Promise<any> {
+  async getAccessGraphSummary(): Promise<Record<string, unknown>> {
     const { data } = await apiClient.get('/audit/access-graph/summary')
     return data
   },

@@ -81,6 +81,20 @@ const SETTINGS_OUTLINE_BUTTON =
 const SETTINGS_PRIMARY_BUTTON =
   'h-8 rounded-[12px] bg-primary px-3 text-[12px] font-medium text-primary-foreground shadow-sm hover:bg-primary/90 disabled:bg-primary/55 disabled:opacity-80 disabled:text-primary-foreground'
 
+type SettingsPageState = ReturnType<typeof useSettingsPageState>
+type ParserBackendPreference = ReturnType<typeof useParserBackendPreference>
+type ChunkStrategyPreference = ReturnType<typeof useChunkStrategyPreference>
+type SettingsContentProps = {
+  state: SettingsPageState
+  visibleSections: SettingsSectionDefinition[]
+  visibleSectionIndex: Record<string, number>
+  isAdmin: boolean
+  parserBackend: ParserBackendPreference['parserBackend']
+  setParserBackend: ParserBackendPreference['setParserBackend']
+  chunkStrategy: ChunkStrategyPreference['chunkStrategy']
+  setChunkStrategy: ChunkStrategyPreference['setChunkStrategy']
+}
+
 type SettingsMetricTone = 'blue' | 'green' | 'indigo' | 'slate'
 
 type SettingsMetricItem = {
@@ -325,7 +339,7 @@ function EnhancementCard({
   )
 }
 
-function RetrievalEnhancementSection({ state }: Readonly<{ state: any }>) {
+function RetrievalEnhancementSection({ state }: Readonly<{ state: SettingsPageState }>) {
   const bm25Enabled = Boolean(state.ragMerged?.bm25_index_enabled)
   const kgEnabled = state.getFeatureValue('kg_enabled')
 
@@ -617,8 +631,8 @@ function SettingsContent({
   setParserBackend,
   chunkStrategy,
   setChunkStrategy,
-}: any) {
-  const sectionIds = visibleSections.map((s: { id: string }) => s.id)
+}: Readonly<SettingsContentProps>) {
+  const sectionIds = visibleSections.map((s) => s.id)
   const activeId = useSettingsScrollSpy(sectionIds)
 
   const scrollTo = useCallback((id: string) => {
@@ -650,7 +664,7 @@ function SettingsContent({
         )}
       >
         <ul className="space-y-0.5">
-          {visibleSections.map((sec: { id: string; label: string }) => (
+          {visibleSections.map((sec) => (
             <li key={sec.id}>
               <button
                 type="button"

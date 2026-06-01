@@ -141,7 +141,7 @@ export function computeHierarchyReviewSignals(chunks: ChunkPreviewItem[]) {
     }
   }
 
-  // Only flag missing hierarchy fields if the document provides *any* hierarchy metadata.
+  // Only flag missing hierarchy fields if the document provides hierarchy metadata.
   // This keeps the UI signal meaningful for legacy datasets / chunkers.
   if (anyNodeKey) {
     for (const c of sorted) {
