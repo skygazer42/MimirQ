@@ -3,6 +3,12 @@ import { base64UrlDecodeToBytes, base64UrlEncode, decodeUtf8, encodeUtf8 } from 
 
 export const SAML_BRIDGE_COOKIE_NAME = 'mimirq_saml_bridge'
 export const SAML_BRIDGE_COOKIE_PATH = '/auth/saml/callback'
+const SAML_BRIDGE_CLEAR_COOKIE_ATTRIBUTES = [
+  'Max-Age=0',
+  `Path=${SAML_BRIDGE_COOKIE_PATH}`,
+  'SameSite=Lax',
+  'Secure',
+] as const
 
 export type SamlBridgeState =
   | {
@@ -26,9 +32,9 @@ function fromBase64Url(value: string): Uint8Array | null {
   }
 }
 
-function readCookie(name: string): string | null {
+function readBridgeCookie(): string | null {
   if (typeof document === 'undefined') return null
-  const prefix = `${name}=`
+  const prefix = `${SAML_BRIDGE_COOKIE_NAME}=`
   const parts = document.cookie.split(';')
   for (const rawPart of parts) {
     const part = rawPart.trim()
@@ -45,11 +51,11 @@ export function encodeSamlBridgeState(payload: SamlBridgeState): string {
 
 export function clearSamlBridgeState(): void {
   if (typeof document === 'undefined') return
-  document.cookie = `${SAML_BRIDGE_COOKIE_NAME}=; Max-Age=0; Path=${SAML_BRIDGE_COOKIE_PATH}; SameSite=Lax`
+  document.cookie = `${SAML_BRIDGE_COOKIE_NAME}=; ${SAML_BRIDGE_CLEAR_COOKIE_ATTRIBUTES.join('; ')}`
 }
 
 export function consumeSamlBridgeState(): SamlBridgeState | null {
-  const raw = readCookie(SAML_BRIDGE_COOKIE_NAME)
+  const raw = readBridgeCookie()
   clearSamlBridgeState()
   if (!raw) return null
 
