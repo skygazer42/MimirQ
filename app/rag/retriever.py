@@ -232,6 +232,139 @@ class HybridRetriever(BaseRetriever):
         return str(tenant_id or settings.DEFAULT_TENANT_ID)
 
     @staticmethod
+    def _resolve_tenant_uuid(tenant_id: UUID | None) -> UUID | None:
+        if tenant_id is not None:
+            return tenant_id
+        try:
+            return UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or ""))
+        except (TypeError, ValueError, AttributeError):
+            return None
+
+    def _dataset_scope_id(self, document_ids: list[UUID] | None) -> UUID | None:
+        return self.dataset_id if self.dataset_id is not None and not (document_ids or []) else None
+
+    @staticmethod
+    def _query_maybe_call(query: Any, method_name: str, *args: Any, **kwargs: Any) -> Any:
+        method = getattr(query, method_name, None)
+        if not callable(method):
+            return query
+        try:
+            return method(*args, **kwargs)
+        except TypeError:
+            return query
+
+    @staticmethod
+    def _iter_query_rows(query: Any, batch_size: int = 2000) -> Any:
+        yield_per = getattr(query, "yield_per", None)
+        if callable(yield_per):
+            try:
+                return yield_per(batch_size)
+            except TypeError as exc:
+                logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+        all_rows = getattr(query, "all", None)
+        if callable(all_rows):
+            return all_rows()
+        return []
+
+    @staticmethod
+    def _unpack_chunk_row(row: Any) -> tuple[Any, Any, Any, Any, Any, Any, Any]:
+        try:
+            (
+                chunk_id,
+                content,
+                doc_metadata,
+                tenant_uuid_row,
+                document_uuid_row,
+                chunk_index,
+                page_number,
+            ) = row
+            return chunk_id, content, doc_metadata, tenant_uuid_row, document_uuid_row, chunk_index, page_number
+        except (TypeError, ValueError, AttributeError):
+            return (
+                getattr(row, "id", None),
+                getattr(row, "content", None),
+                getattr(row, "doc_metadata", None),
+                getattr(row, "tenant_id", None),
+                getattr(row, "document_id", None),
+                getattr(row, "chunk_index", None),
+                getattr(row, "page_number", None),
+            )
+
+    @staticmethod
+    def _document_from_chunk_row(row: Any) -> Document:
+        chunk_id, content, doc_metadata, tenant_uuid_row, document_uuid_row, chunk_index, page_number = (
+            HybridRetriever._unpack_chunk_row(row)
+        )
+        meta = dict(doc_metadata or {})
+        meta.setdefault("tenant_id", str(tenant_uuid_row))
+        meta.setdefault("document_id", str(document_uuid_row))
+        meta.setdefault("chunk_index", int(chunk_index) if chunk_index is not None else None)
+        meta.setdefault("chunk_id", str(chunk_id))
+        meta.setdefault("source", meta.get("source", "unknown"))
+        if page_number is not None and not meta.get("page"):
+            meta["page"] = page_number
+        meta.setdefault("image_id", meta.get("image_id"))
+        meta.setdefault("image_url", meta.get("image_url"))
+        return Document(page_content=content or "", id=str(chunk_id), metadata=meta)
+
+    @staticmethod
+    def _base_completed_chunk_query(db: Session, tenant_uuid: UUID) -> Any:
+        query = (
+            db.query(
+                DocumentChunk.id,
+                DocumentChunk.content,
+                DocumentChunk.doc_metadata,
+                DocumentChunk.tenant_id,
+                DocumentChunk.document_id,
+                DocumentChunk.chunk_index,
+                DocumentChunk.page_number,
+            )
+            .join(DBDocument)
+            .filter(DBDocument.status == "completed")
+            .filter(DBDocument.publication_status == "published")
+            .filter(DocumentChunk.tenant_id == tenant_uuid)
+        )
+        query = HybridRetriever._query_maybe_call(query, "enable_eagerloads", False)
+        return HybridRetriever._query_maybe_call(query, "execution_options", stream_results=True)
+
+    @classmethod
+    def _load_chunk_documents(cls, query: Any, *, max_chunks: int = 0, batch_size: int = 2000) -> list[Document]:
+        if max_chunks:
+            query = query.limit(max_chunks)
+        return [cls._document_from_chunk_row(row) for row in cls._iter_query_rows(query, batch_size)]
+
+    def _bm25_scope_cache_ready(
+        self,
+        *,
+        cache_key: str,
+        existing_docs: list[Document] | None,
+        document_ids: list[UUID] | None,
+    ) -> bool:
+        if existing_docs is None:
+            return False
+        if not document_ids:
+            self._touch_bm25_cache(cache_key)
+            return True
+        indexed = self._bm25_doc_ids.get(cache_key)
+        if indexed is None:
+            self._refresh_bm25_doc_ids(cache_key, existing_docs)
+            indexed = self._bm25_doc_ids.get(cache_key) or set()
+        requested = {str(did) for did in document_ids if did is not None}
+        if requested - set(indexed or set()):
+            return False
+        self._touch_bm25_cache(cache_key)
+        return True
+
+    def _bm25_existing_scope_ready(self, *, cache_key: str, document_ids: list[UUID] | None) -> bool:
+        if self._bm25_retrievers.get(cache_key) is None:
+            return False
+        return self._bm25_scope_cache_ready(
+            cache_key=cache_key,
+            existing_docs=self._bm25_docs.get(cache_key),
+            document_ids=document_ids,
+        )
+
+    @staticmethod
     def _normalize_partition_keys(value: Any, *, max_items: int = 8) -> list[str]:
         out: list[str] = []
         seen: set[str] = set()
@@ -1075,6 +1208,80 @@ class HybridRetriever(BaseRetriever):
             vectors=vecs,
         )
 
+    def _colbert_incremental_base_parts(
+        self,
+        *,
+        cache_key: str,
+        provider_config: dict[str, Any],
+    ) -> tuple[list[Any], Any | None]:
+        base = self._colbert_index_cache.get(cache_key)
+        if base is None:
+            return [], None
+        base_cfg = dict(getattr(base, "provider_config", {}) or {})
+        base_ids = list(getattr(base, "doc_ids", []) or [])
+        base_vecs = getattr(base, "vectors", None)
+        if not base_ids or base_vecs is None or base_cfg != dict(provider_config):
+            return [], None
+        return base_ids, base_vecs
+
+    @staticmethod
+    def _collect_colbert_upsert_payload(upsert_docs: list[Document]) -> tuple[list[str], list[str]]:
+        up_ids: list[str] = []
+        up_texts: list[str] = []
+        for d in upsert_docs:
+            if d is None or d.id is None:
+                continue
+            cid = str(d.id).strip()
+            if not cid:
+                continue
+            up_ids.append(cid)
+            up_texts.append(str(d.page_content or ""))
+        return up_ids, up_texts
+
+    def _colbert_incremental_vectors(
+        self,
+        *,
+        cache_key: str,
+        corpus_docs: list[Document],
+        upsert_docs: list[Document],
+        base_ids: list[Any],
+        base_vecs: Any,
+        embedder: Any,
+    ) -> tuple[list[str], Any] | None:
+        try:
+            import numpy as np  # local import
+
+            mat = np.asarray(base_vecs, dtype=np.float32)
+            if mat.ndim != 2 or int(mat.shape[0]) != len(base_ids):
+                return None
+
+            vec_by_id: dict[str, np.ndarray] = {
+                str(doc_id): mat[i] for i, doc_id in enumerate(base_ids) if doc_id is not None
+            }
+            up_ids, up_texts = self._collect_colbert_upsert_payload(upsert_docs)
+            if not up_ids:
+                return None
+
+            corpus_ids = {str(d.id) for d in corpus_docs if d is not None and d.id is not None}
+            missing = set(corpus_ids) - set(vec_by_id.keys())
+            if missing and (missing - set(up_ids)):
+                self._build_colbert_index(cache_key=cache_key, docs=corpus_docs)
+                return None
+
+            up_mat = np.asarray(embedder.encode_batch(up_texts), dtype=np.float32)
+            if up_mat.ndim != 2 or int(up_mat.shape[0]) != len(up_ids):
+                return None
+
+            for cid, row in zip(up_ids, up_mat, strict=False):
+                vec_by_id[str(cid)] = np.asarray(row, dtype=np.float32)
+
+            doc_ids = sorted(vec_by_id.keys())
+            vectors = np.stack([vec_by_id[cid] for cid in doc_ids], axis=0).astype(np.float32, copy=False)
+            return doc_ids, vectors
+        except Exception as exc:
+            _log_retriever_fallback('_upsert_colbert_index_incremental', exc)
+            return None
+
     def _upsert_colbert_index_incremental(
         self,
         *,
@@ -1091,13 +1298,7 @@ class HybridRetriever(BaseRetriever):
         if not upsert_docs or not corpus_docs:
             return
 
-        try:
-            max_docs = int(getattr(settings, "COLBERT_RETRIEVAL_MAX_DOCS", 0) or 0)
-        except (TypeError, ValueError, AttributeError):
-            max_docs = 0
-        if max_docs > 0 and len(corpus_docs or []) > max_docs:
-            # Keep bounded resource usage by dropping the index for oversized scopes.
-            self._colbert_index_cache.pop(cache_key, None)
+        if self._colbert_scope_exceeds_limit(cache_key=cache_key, docs=corpus_docs):
             return
 
         from app.rag.retrieval.colbert_ann import (  # local import: optional deps
@@ -1107,8 +1308,17 @@ class HybridRetriever(BaseRetriever):
             get_dense_embedder,
         )
 
-        provider = str(getattr(settings, "COLBERT_RETRIEVAL_PROVIDER", "deterministic") or "deterministic").strip().lower()
-        provider_config = build_colbert_provider_config(
+        provider = self._colbert_provider_name()
+        provider_config = self._build_colbert_provider_config(build_colbert_provider_config, provider=provider)
+        base_ids, base_vecs = self._colbert_incremental_base_parts(
+            cache_key=cache_key,
+            provider_config=provider_config,
+        )
+        if not base_ids or base_vecs is None:
+            # No compatible index in memory: keep lazy-build semantics for cold start.
+            return
+
+        embedder = get_dense_embedder(
             provider=provider,
             model_name=str(getattr(settings, "COLBERT_RETRIEVAL_MODEL_NAME", "") or ""),
             device=str(getattr(settings, "COLBERT_RETRIEVAL_DEVICE", "cpu") or "cpu"),
@@ -1116,73 +1326,19 @@ class HybridRetriever(BaseRetriever):
             max_length=int(getattr(settings, "COLBERT_RETRIEVAL_MAX_LENGTH", 256) or 256),
             deterministic_dim=int(getattr(settings, "COLBERT_RETRIEVAL_EMBED_DIM", 64) or 64),
         )
+        packed = self._colbert_incremental_vectors(
+            cache_key=cache_key,
+            corpus_docs=corpus_docs,
+            upsert_docs=upsert_docs,
+            base_ids=base_ids,
+            base_vecs=base_vecs,
+            embedder=embedder,
+        )
+        if packed is None:
+            return
+        doc_ids, vectors = packed
 
         expected_fp = self._colbert_corpus_fingerprint(corpus_docs)
-
-        base = self._colbert_index_cache.get(cache_key)
-        base_cfg = dict(getattr(base, "provider_config", {}) or {}) if base is not None else {}
-        base_ids = list(getattr(base, "doc_ids", []) or []) if base is not None else []
-        base_vecs = getattr(base, "vectors", None) if base is not None else None
-        if not base_ids or base_vecs is None or base_cfg != dict(provider_config):
-            # No compatible index in memory: keep lazy-build semantics for cold start.
-            return
-
-        try:
-            import numpy as np  # local import
-
-            mat = np.asarray(base_vecs, dtype=np.float32)
-            if mat.ndim != 2 or int(mat.shape[0]) != len(base_ids):
-                return
-
-            vec_by_id: dict[str, np.ndarray] = {
-                str(doc_id): mat[i] for i, doc_id in enumerate(base_ids) if doc_id is not None
-            }
-
-            embedder = get_dense_embedder(
-                provider=provider,
-                model_name=str(getattr(settings, "COLBERT_RETRIEVAL_MODEL_NAME", "") or ""),
-                device=str(getattr(settings, "COLBERT_RETRIEVAL_DEVICE", "cpu") or "cpu"),
-                batch_size=int(getattr(settings, "COLBERT_RETRIEVAL_BATCH_SIZE", 16) or 16),
-                max_length=int(getattr(settings, "COLBERT_RETRIEVAL_MAX_LENGTH", 256) or 256),
-                deterministic_dim=int(getattr(settings, "COLBERT_RETRIEVAL_EMBED_DIM", 64) or 64),
-            )
-
-            up_ids: list[str] = []
-            up_texts: list[str] = []
-            for d in upsert_docs:
-                if d is None or d.id is None:
-                    continue
-                cid = str(d.id).strip()
-                if not cid:
-                    continue
-                up_ids.append(cid)
-                up_texts.append(str(d.page_content or ""))
-            if not up_ids:
-                return
-
-            # Correctness guard: if the base index is missing corpus docs *other than* the upsert batch,
-            # do a full rebuild. Missing items that are part of this upsert are expected.
-            corpus_ids = {str(d.id) for d in corpus_docs if d is not None and d.id is not None}
-            missing = set(corpus_ids) - set(vec_by_id.keys())
-            if missing and (missing - set(up_ids)):
-                self._build_colbert_index(cache_key=cache_key, docs=corpus_docs)
-                return
-
-            up_mat = embedder.encode_batch(up_texts)
-            up_mat = np.asarray(up_mat, dtype=np.float32)
-            if up_mat.ndim != 2 or int(up_mat.shape[0]) != len(up_ids):
-                return
-
-            for cid, row in zip(up_ids, up_mat, strict=False):
-                vec_by_id[str(cid)] = np.asarray(row, dtype=np.float32)
-
-            # Re-pack to a stable, deterministic on-disk/in-memory layout.
-            doc_ids = sorted(vec_by_id.keys())
-            vectors = np.stack([vec_by_id[cid] for cid in doc_ids], axis=0).astype(np.float32, copy=False)
-        except Exception as exc:
-            _log_retriever_fallback('_upsert_colbert_index_incremental', exc)
-            return
-
         index = ColbertAnnIndex(
             doc_ids=doc_ids,
             vectors=vectors,
@@ -1191,18 +1347,14 @@ class HybridRetriever(BaseRetriever):
         )
         self._colbert_index_cache[cache_key] = index
 
-        if bool(getattr(settings, "COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED", True)):
-            try:
-                store = ColbertAnnIndexStore(base_dir=str(getattr(settings, "COLBERT_RETRIEVAL_INDEX_DIR", COLBERT_INDEX_DIR_FALLBACK) or ""))
-                store.save(
-                    cache_key=cache_key,
-                    provider_config=provider_config,
-                    corpus_fingerprint=expected_fp,
-                    doc_ids=doc_ids,
-                    vectors=vectors,
-                )
-            except Exception as exc:
-                logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+        self._persist_colbert_index(
+            store_cls=ColbertAnnIndexStore,
+            cache_key=cache_key,
+            provider_config=provider_config,
+            corpus_fingerprint=expected_fp,
+            doc_ids=doc_ids,
+            vectors=vectors,
+        )
 
     def _sparse_corpus_fingerprint(self, docs: list[Document]) -> str:
         """
@@ -1277,6 +1429,228 @@ class HybridRetriever(BaseRetriever):
         if evicted:
             logger.info("BM25 cache evicted %s keys (max=%s)", len(evicted), max_tenants)
 
+    def _missing_bm25_document_ids(
+        self,
+        *,
+        cache_key: str,
+        existing_docs: list[Document],
+        document_ids: list[UUID],
+    ) -> set[str]:
+        indexed = self._bm25_doc_ids.get(cache_key)
+        if indexed is None:
+            self._refresh_bm25_doc_ids(cache_key, existing_docs)
+            indexed = self._bm25_doc_ids.get(cache_key) or set()
+        requested = {str(did) for did in document_ids if did is not None}
+        return requested - set(indexed or set())
+
+    def _load_bm25_scope_documents(
+        self,
+        db: Session,
+        *,
+        tenant_uuid: UUID,
+        document_ids: list[UUID] | None = None,
+        dataset_id: UUID | None = None,
+        max_chunks: int = 0,
+    ) -> list[Document]:
+        query = self._base_completed_chunk_query(db, tenant_uuid)
+        if document_ids:
+            query = query.filter(DocumentChunk.document_id.in_(document_ids))
+        elif dataset_id is not None:
+            query = query.filter(DBDocument.dataset_id == dataset_id)
+        query = query.order_by(DocumentChunk.document_id.asc(), DocumentChunk.chunk_index.asc())
+        return self._load_chunk_documents(query, max_chunks=max_chunks)
+
+    def _rebuild_bm25_scope_for_documents(
+        self,
+        db: Session,
+        *,
+        tenant_uuid: UUID,
+        cache_key: str,
+        document_ids: list[UUID],
+        missing_count: int,
+        max_chunks: int,
+    ) -> bool:
+        docs = self._load_bm25_scope_documents(
+            db,
+            tenant_uuid=tenant_uuid,
+            document_ids=document_ids,
+            max_chunks=max_chunks,
+        )
+        if not docs:
+            return True
+        self._build_bm25_index_from_documents(docs, tenant_id=tenant_uuid, cache_key=cache_key)
+        logger.info(
+            "BM25 lazy-built (scoped rebuild) %s chunks for tenant %s missing_docs=%s cap=%s",
+            len(docs),
+            cache_key,
+            missing_count,
+            max_chunks,
+        )
+        return True
+
+    def _extend_bm25_scope_for_missing_documents(
+        self,
+        db: Session,
+        *,
+        tenant_uuid: UUID,
+        tenant_key: str,
+        missing: set[str],
+        existing_count: int,
+        max_chunks: int,
+    ) -> bool:
+        remaining = max(0, int(max_chunks) - int(existing_count)) if max_chunks else 0
+        if max_chunks and remaining <= 0:
+            return True
+        missing_ids = [UUID(doc_id) for doc_id in missing]
+        bm25_docs = self._load_bm25_scope_documents(
+            db,
+            tenant_uuid=tenant_uuid,
+            document_ids=missing_ids,
+            max_chunks=remaining,
+        )
+        if not bm25_docs:
+            return True
+        self.upsert_bm25_documents(bm25_docs, tenant_id=tenant_uuid)
+        logger.info(
+            "BM25 lazy-extended %s chunks for tenant %s (missing_docs=%s)",
+            len(bm25_docs),
+            tenant_key,
+            len(missing),
+        )
+        return True
+
+    def _handle_missing_bm25_scope_docs(
+        self,
+        db: Session,
+        *,
+        tenant_uuid: UUID,
+        tenant_key: str,
+        cache_key: str,
+        existing_docs: list[Document] | None,
+        document_ids: list[UUID] | None,
+        max_chunks: int,
+    ) -> bool | None:
+        if existing_docs is None or not document_ids:
+            return None
+        missing = self._missing_bm25_document_ids(
+            cache_key=cache_key,
+            existing_docs=existing_docs,
+            document_ids=document_ids,
+        )
+        if not missing:
+            self._touch_bm25_cache(cache_key)
+            return True
+        existing_count = len(existing_docs)
+        if max_chunks and existing_count >= max_chunks:
+            return self._rebuild_bm25_scope_for_documents(
+                db,
+                tenant_uuid=tenant_uuid,
+                cache_key=cache_key,
+                document_ids=document_ids,
+                missing_count=len(missing),
+                max_chunks=max_chunks,
+            )
+        return self._extend_bm25_scope_for_missing_documents(
+            db,
+            tenant_uuid=tenant_uuid,
+            tenant_key=tenant_key,
+            missing=missing,
+            existing_count=existing_count,
+            max_chunks=max_chunks,
+        )
+
+    def _build_initial_bm25_scope(
+        self,
+        db: Session,
+        *,
+        tenant_uuid: UUID,
+        cache_key: str,
+        document_ids: list[UUID] | None,
+        dataset_id: UUID | None,
+        max_chunks: int,
+    ) -> bool:
+        docs = self._load_bm25_scope_documents(
+            db,
+            tenant_uuid=tenant_uuid,
+            document_ids=document_ids,
+            dataset_id=dataset_id,
+            max_chunks=max_chunks,
+        )
+        if not docs:
+            return False
+        self._build_bm25_index_from_documents(docs, tenant_id=tenant_uuid, cache_key=cache_key)
+        logger.info(
+            "BM25 lazy-built %s chunks for scope %s (doc_ids=%s)",
+            len(docs),
+            cache_key,
+            len(document_ids) if document_ids else 0,
+        )
+        return True
+
+    @staticmethod
+    def _bm25_lazy_build_enabled() -> bool:
+        return bool(getattr(settings, "BM25_INDEX_ENABLED", True)) and bool(
+            getattr(settings, "BM25_LAZY_BUILD_ENABLED", True)
+        )
+
+    @staticmethod
+    def _can_lazy_build_scope(*, document_ids: list[UUID] | None, dataset_id: UUID | None) -> bool:
+        full_tenant = bool(getattr(settings, "BM25_LAZY_BUILD_FULL_TENANT", False))
+        return bool(document_ids or full_tenant or dataset_id is not None)
+
+    def _build_bm25_scope_inside_lock(
+        self,
+        *,
+        tenant_uuid: UUID,
+        tenant_key: str,
+        cache_key: str,
+        document_ids: list[UUID] | None,
+        dataset_id: UUID | None,
+    ) -> bool:
+        existing_retriever = self._bm25_retrievers.get(cache_key)
+        existing_docs = self._bm25_docs.get(cache_key)
+        if existing_retriever is not None and self._bm25_scope_cache_ready(
+            cache_key=cache_key,
+            existing_docs=existing_docs,
+            document_ids=document_ids,
+        ):
+            return True
+        if not self._can_lazy_build_scope(document_ids=document_ids, dataset_id=dataset_id):
+            return False
+
+        max_chunks = max(0, int(getattr(settings, "BM25_LAZY_BUILD_MAX_CHUNKS", 0) or 0))
+        db = SessionLocal()
+        try:
+            if existing_retriever is not None and existing_docs is not None and document_ids:
+                handled = self._handle_missing_bm25_scope_docs(
+                    db,
+                    tenant_uuid=tenant_uuid,
+                    tenant_key=tenant_key,
+                    cache_key=cache_key,
+                    existing_docs=existing_docs,
+                    document_ids=document_ids,
+                    max_chunks=max_chunks,
+                )
+                if handled is not None:
+                    return handled
+
+            return self._build_initial_bm25_scope(
+                db,
+                tenant_uuid=tenant_uuid,
+                cache_key=cache_key,
+                document_ids=document_ids,
+                dataset_id=dataset_id,
+                max_chunks=max_chunks,
+            )
+        except Exception as exc:
+            logger.warning("BM25 lazy build failed for scope %s: %s", cache_key, str(exc)[:200])
+            return False
+        finally:
+            try:
+                db.close()
+            except Exception as exc:
+                logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+
     def _lazy_build_bm25_index(
         self,
         *,
@@ -1285,309 +1659,27 @@ class HybridRetriever(BaseRetriever):
         dataset_id: UUID | None = None,
     ) -> bool:
         """Build BM25 index on-demand to mitigate cold-start in multi-process deployments."""
-        if not bool(getattr(settings, "BM25_INDEX_ENABLED", True)):
-            return False
-        if not bool(getattr(settings, "BM25_LAZY_BUILD_ENABLED", True)):
+        if not self._bm25_lazy_build_enabled():
             return False
 
-        tenant_uuid: UUID | None = tenant_id
-        if tenant_uuid is None:
-            try:
-                tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or ""))
-            except (TypeError, ValueError, AttributeError):
-                tenant_uuid = None
+        tenant_uuid = self._resolve_tenant_uuid(tenant_id)
         if tenant_uuid is None:
             return False
 
         tenant_key = self._tenant_key(tenant_uuid)
         cache_key = self._bm25_scope_key(tenant_id=tenant_uuid, dataset_id=dataset_id, document_ids=document_ids)
-        existing_retriever = self._bm25_retrievers.get(cache_key)
-        existing_docs = self._bm25_docs.get(cache_key)
-        if existing_retriever is not None and existing_docs is not None:
-            # If a request scopes to specific documents, ensure those docs are covered by the current cache.
-            # Lazy-built indices may have been created from a subset (e.g. first query after restart).
-            if document_ids:
-                indexed = self._bm25_doc_ids.get(cache_key)
-                if indexed is None:
-                    self._refresh_bm25_doc_ids(cache_key, existing_docs)
-                    indexed = self._bm25_doc_ids.get(cache_key) or set()
-                requested = {str(did) for did in document_ids if did is not None}
-                missing = requested - set(indexed or set())
-                if not missing:
-                    self._touch_bm25_cache(cache_key)
-                    return True
-            else:
-                self._touch_bm25_cache(cache_key)
-                return True
+        if self._bm25_existing_scope_ready(cache_key=cache_key, document_ids=document_ids):
+            return True
 
         lock = self._get_bm25_build_lock(cache_key)
         with lock:
-            existing_retriever = self._bm25_retrievers.get(cache_key)
-            existing_docs = self._bm25_docs.get(cache_key)
-            if existing_retriever is not None and existing_docs is not None:
-                if document_ids:
-                    indexed = self._bm25_doc_ids.get(cache_key)
-                    if indexed is None:
-                        self._refresh_bm25_doc_ids(cache_key, existing_docs)
-                        indexed = self._bm25_doc_ids.get(cache_key) or set()
-                    requested = {str(did) for did in document_ids if did is not None}
-                    missing = requested - set(indexed or set())
-                    if not missing:
-                        self._touch_bm25_cache(cache_key)
-                        return True
-                else:
-                    self._touch_bm25_cache(cache_key)
-                    return True
-
-            full_tenant = bool(getattr(settings, "BM25_LAZY_BUILD_FULL_TENANT", False))
-            if not document_ids and not full_tenant and dataset_id is None:
-                return False
-
-            def _maybe_call(q, method_name: str, *args, **kwargs):
-                fn = getattr(q, method_name, None)
-                if not callable(fn):
-                    return q
-                try:
-                    return fn(*args, **kwargs)
-                except TypeError:
-                    return q
-
-            def _iter_rows(q, batch_size: int = 2000):
-                fn = getattr(q, "yield_per", None)
-                if callable(fn):
-                    try:
-                        return fn(batch_size)
-                    except TypeError as exc:
-                        logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
-                all_fn = getattr(q, "all", None)
-                if callable(all_fn):
-                    return all_fn()
-                return []
-
-            def _unpack_chunk_row(row):
-                try:
-                    (
-                        chunk_id,
-                        content,
-                        doc_metadata,
-                        tenant_uuid_row,
-                        document_uuid_row,
-                        chunk_index,
-                        page_number,
-                    ) = row
-                    return (
-                        chunk_id,
-                        content,
-                        doc_metadata,
-                        tenant_uuid_row,
-                        document_uuid_row,
-                        chunk_index,
-                        page_number,
-                    )
-                except (TypeError, ValueError, AttributeError):
-                    return (
-                        getattr(row, "id", None),
-                        getattr(row, "content", None),
-                        getattr(row, "doc_metadata", None),
-                        getattr(row, "tenant_id", None),
-                        getattr(row, "document_id", None),
-                        getattr(row, "chunk_index", None),
-                        getattr(row, "page_number", None),
-                    )
-
-            max_chunks = max(0, int(getattr(settings, "BM25_LAZY_BUILD_MAX_CHUNKS", 0) or 0))
-            db = SessionLocal()
-            try:
-                # If we already have an index and are missing requested docs, try to extend it.
-                if existing_retriever is not None and existing_docs is not None and document_ids:
-                    indexed = self._bm25_doc_ids.get(cache_key)
-                    if indexed is None:
-                        self._refresh_bm25_doc_ids(cache_key, existing_docs)
-                        indexed = self._bm25_doc_ids.get(cache_key) or set()
-                    requested = {str(did) for did in document_ids if did is not None}
-                    missing = requested - set(indexed or set())
-
-                    if missing:
-                        existing_count = len(existing_docs)
-                        if max_chunks and existing_count >= max_chunks:
-                            # Memory cap reached: rebuild a scoped index for the requested documents.
-                            q = (
-                                db.query(
-                                    DocumentChunk.id,
-                                    DocumentChunk.content,
-                                    DocumentChunk.doc_metadata,
-                                    DocumentChunk.tenant_id,
-                                    DocumentChunk.document_id,
-                                    DocumentChunk.chunk_index,
-                                    DocumentChunk.page_number,
-                                )
-                                .join(DBDocument)
-                                .filter(DBDocument.status == "completed")
-                                .filter(DBDocument.publication_status == "published")
-                                .filter(DocumentChunk.tenant_id == tenant_uuid)
-                                .filter(DocumentChunk.document_id.in_(document_ids))
-                                .order_by(DocumentChunk.document_id.asc(), DocumentChunk.chunk_index.asc())
-                            )
-                            q = _maybe_call(q, "enable_eagerloads", False)
-                            q = _maybe_call(q, "execution_options", stream_results=True)
-                            if max_chunks:
-                                q = q.limit(max_chunks)
-                            docs: list[Document] = []
-                            for row in _iter_rows(q, 2000):
-                                (
-                                    chunk_id,
-                                    content,
-                                    doc_metadata,
-                                    tenant_uuid_row,
-                                    document_uuid_row,
-                                    chunk_index,
-                                    page_number,
-                                ) = _unpack_chunk_row(row)
-                                meta = dict(doc_metadata or {})
-                                meta.setdefault("tenant_id", str(tenant_uuid_row))
-                                meta.setdefault("document_id", str(document_uuid_row))
-                                meta.setdefault("chunk_index", int(chunk_index) if chunk_index is not None else None)
-                                meta.setdefault("chunk_id", str(chunk_id))
-                                meta.setdefault("source", meta.get("source", "unknown"))
-                                if page_number is not None and not meta.get("page"):
-                                    meta["page"] = page_number
-                                meta.setdefault("image_id", meta.get("image_id"))
-                                meta.setdefault("image_url", meta.get("image_url"))
-                                docs.append(Document(page_content=content or "", id=str(chunk_id), metadata=meta))
-                            if not docs:
-                                return True
-                            self._build_bm25_index_from_documents(docs, tenant_id=tenant_uuid, cache_key=cache_key)
-                            logger.info(
-                                "BM25 lazy-built (scoped rebuild) %s chunks for tenant %s missing_docs=%s cap=%s",
-                                len(docs),
-                                cache_key,
-                                len(missing),
-                                max_chunks,
-                            )
-                            return True
-
-                        q = (
-                            db.query(
-                                DocumentChunk.id,
-                                DocumentChunk.content,
-                                DocumentChunk.doc_metadata,
-                                DocumentChunk.tenant_id,
-                                DocumentChunk.document_id,
-                                DocumentChunk.chunk_index,
-                                DocumentChunk.page_number,
-                            )
-                            .join(DBDocument)
-                            .filter(DBDocument.status == "completed")
-                            .filter(DBDocument.publication_status == "published")
-                            .filter(DocumentChunk.tenant_id == tenant_uuid)
-                            .filter(DocumentChunk.document_id.in_(list(missing)))
-                            .order_by(DocumentChunk.document_id.asc(), DocumentChunk.chunk_index.asc())
-                        )
-                        q = _maybe_call(q, "enable_eagerloads", False)
-                        q = _maybe_call(q, "execution_options", stream_results=True)
-                        if max_chunks:
-                            remaining = max(0, int(max_chunks) - int(existing_count))
-                            if remaining <= 0:
-                                return True
-                            q = q.limit(remaining)
-                        bm25_docs: list[Document] = []
-                        for row in _iter_rows(q, 2000):
-                            (
-                                chunk_id,
-                                content,
-                                doc_metadata,
-                                tenant_uuid_row,
-                                document_uuid_row,
-                                chunk_index,
-                                page_number,
-                            ) = _unpack_chunk_row(row)
-                            meta = dict(doc_metadata or {})
-                            meta.setdefault("tenant_id", str(tenant_uuid_row))
-                            meta.setdefault("document_id", str(document_uuid_row))
-                            meta.setdefault("chunk_index", int(chunk_index) if chunk_index is not None else None)
-                            meta.setdefault("chunk_id", str(chunk_id))
-                            meta.setdefault("source", meta.get("source", "unknown"))
-                            if page_number is not None and not meta.get("page"):
-                                meta["page"] = page_number
-                            meta.setdefault("image_id", meta.get("image_id"))
-                            meta.setdefault("image_url", meta.get("image_url"))
-                            bm25_docs.append(Document(page_content=content or "", id=str(chunk_id), metadata=meta))
-                        if not bm25_docs:
-                            return True
-                        self.upsert_bm25_documents(bm25_docs, tenant_id=tenant_uuid)
-                        logger.info(
-                            "BM25 lazy-extended %s chunks for tenant %s (missing_docs=%s)",
-                            len(bm25_docs),
-                            tenant_key,
-                            len(missing),
-                        )
-                        return True
-
-                # Cold start: build an initial index (full tenant or scoped document_ids).
-                q = (
-                    db.query(
-                        DocumentChunk.id,
-                        DocumentChunk.content,
-                        DocumentChunk.doc_metadata,
-                        DocumentChunk.tenant_id,
-                        DocumentChunk.document_id,
-                        DocumentChunk.chunk_index,
-                        DocumentChunk.page_number,
-                    )
-                    .join(DBDocument)
-                    .filter(DBDocument.status == "completed")
-                    .filter(DBDocument.publication_status == "published")
-                    .filter(DocumentChunk.tenant_id == tenant_uuid)
-                )
-                q = _maybe_call(q, "enable_eagerloads", False)
-                q = _maybe_call(q, "execution_options", stream_results=True)
-                if document_ids:
-                    q = q.filter(DocumentChunk.document_id.in_(document_ids))
-                elif dataset_id is not None:
-                    q = q.filter(DBDocument.dataset_id == dataset_id)
-                q = q.order_by(DocumentChunk.document_id.asc(), DocumentChunk.chunk_index.asc())
-                if max_chunks:
-                    q = q.limit(max_chunks)
-                docs: list[Document] = []
-                for row in _iter_rows(q, 2000):
-                    (
-                        chunk_id,
-                        content,
-                        doc_metadata,
-                        tenant_uuid_row,
-                        document_uuid_row,
-                        chunk_index,
-                        page_number,
-                    ) = _unpack_chunk_row(row)
-                    meta = dict(doc_metadata or {})
-                    meta.setdefault("tenant_id", str(tenant_uuid_row))
-                    meta.setdefault("document_id", str(document_uuid_row))
-                    meta.setdefault("chunk_index", int(chunk_index) if chunk_index is not None else None)
-                    meta.setdefault("chunk_id", str(chunk_id))
-                    meta.setdefault("source", meta.get("source", "unknown"))
-                    if page_number is not None and not meta.get("page"):
-                        meta["page"] = page_number
-                    meta.setdefault("image_id", meta.get("image_id"))
-                    meta.setdefault("image_url", meta.get("image_url"))
-                    docs.append(Document(page_content=content or "", id=str(chunk_id), metadata=meta))
-                if not docs:
-                    return False
-                self._build_bm25_index_from_documents(docs, tenant_id=tenant_uuid, cache_key=cache_key)
-                logger.info(
-                    "BM25 lazy-built %s chunks for scope %s (doc_ids=%s)",
-                    len(docs),
-                    cache_key,
-                    len(document_ids) if document_ids else 0,
-                )
-                return True
-            except Exception as exc:
-                logger.warning("BM25 lazy build failed for scope %s: %s", cache_key, str(exc)[:200])
-                return False
-            finally:
-                try:
-                    db.close()
-                except Exception as exc:
-                    logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+            return self._build_bm25_scope_inside_lock(
+                tenant_uuid=tenant_uuid,
+                tenant_key=tenant_key,
+                cache_key=cache_key,
+                document_ids=document_ids,
+                dataset_id=dataset_id,
+            )
 
     @staticmethod
     def _bm25_tokenize(text: str) -> list[str]:
@@ -1931,6 +2023,107 @@ class HybridRetriever(BaseRetriever):
             metadata_filter={"document_id": {"$eq": str(document_id)}},
         )
 
+    def _bm25_filter_scope_keys(self, *, tenant_key: str) -> list[str]:
+        scope_prefix = f"{tenant_key}:dataset:"
+        scope_keys = [
+            k
+            for k in set(list(self._bm25_docs.keys()) + list(self._bm25_retrievers.keys()))
+            if k == tenant_key or str(k).startswith(scope_prefix)
+        ]
+        return scope_keys or [tenant_key]
+
+    def _clear_bm25_scope_after_filter_delete(self, *, scope_key: str, removed: int) -> None:
+        self._bm25_retrievers.pop(scope_key, None)
+        self._bm25_docs.pop(scope_key, None)
+        self._bm25_doc_ids.pop(scope_key, None)
+        self._chunk_id_lookup.pop(scope_key, None)
+        self._bm25_build_locks.pop(scope_key, None)
+        self._bm25_cache_versions.pop(scope_key, None)
+        with self._bm25_cache_lock:
+            self._bm25_cache_order.pop(scope_key, None)
+        self._sparse_doc_vectors.pop(scope_key, None)
+        self._colbert_index_cache.pop(scope_key, None)
+        logger.info(
+            "BM25 index cleared for scope %s after filtered deletion (removed=%s)",
+            scope_key,
+            removed,
+        )
+
+    def _remove_sparse_vectors_for_deleted_chunks(self, *, scope_key: str, removed_ids: set[str]) -> None:
+        if not removed_ids or not self._effective_sparse_enabled():
+            return
+        try:
+            with self._get_sparse_build_lock(scope_key):
+                vecs = self._sparse_doc_vectors.get(scope_key) or {}
+                if not vecs:
+                    return
+                for cid in removed_ids:
+                    vecs.pop(cid, None)
+                self._sparse_doc_vectors[scope_key] = vecs
+        except Exception as exc:
+            logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+
+    def _remove_colbert_vectors_for_deleted_chunks(
+        self,
+        *,
+        scope_key: str,
+        removed_ids: set[str],
+        filtered: list[Document],
+    ) -> None:
+        if not removed_ids or not bool(getattr(settings, "COLBERT_RETRIEVAL_ENABLED", False)):
+            return
+        try:
+            with self._get_colbert_build_lock(scope_key):
+                idx = self._colbert_index_cache.get(scope_key)
+                if idx is None:
+                    return
+                ids0 = list(getattr(idx, "doc_ids", []) or [])
+                vecs0 = getattr(idx, "vectors", None)
+                if not ids0 or vecs0 is None:
+                    return
+                self._replace_colbert_index_without_deleted_chunks(
+                    scope_key=scope_key,
+                    idx=idx,
+                    ids0=ids0,
+                    vecs0=vecs0,
+                    removed_ids=removed_ids,
+                    filtered=filtered,
+                )
+        except Exception as exc:
+            logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+
+    def _replace_colbert_index_without_deleted_chunks(
+        self,
+        *,
+        scope_key: str,
+        idx: Any,
+        ids0: list[Any],
+        vecs0: Any,
+        removed_ids: set[str],
+        filtered: list[Document],
+    ) -> None:
+        try:
+            import numpy as np
+
+            mat = np.asarray(vecs0, dtype=np.float32)
+            keep: list[int] = [i for i, cid in enumerate(ids0) if str(cid) not in removed_ids]
+            if not keep:
+                self._colbert_index_cache.pop(scope_key, None)
+                return
+            new_ids = [str(ids0[i]) for i in keep]
+            new_mat = mat[keep, :]
+            fp = self._colbert_corpus_fingerprint(filtered)
+            from app.rag.retrieval.colbert_ann import ColbertAnnIndex  # noqa: WPS433
+
+            self._colbert_index_cache[scope_key] = ColbertAnnIndex(
+                doc_ids=new_ids,
+                vectors=new_mat,
+                corpus_fingerprint=fp,
+                provider_config=dict(getattr(idx, "provider_config", {}) or {}),
+            )
+        except Exception as exc:
+            logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+
     def remove_from_bm25_index_by_metadata_filter(
         self,
         *,
@@ -1947,15 +2140,8 @@ class HybridRetriever(BaseRetriever):
             return 0
 
         tenant_key = self._tenant_key(tenant_id)
-        scope_prefix = f"{tenant_key}:dataset:"
-        scope_keys = [
-            k
-            for k in set(list(self._bm25_docs.keys()) + list(self._bm25_retrievers.keys()))
-            if k == tenant_key or str(k).startswith(scope_prefix)
-        ] or [tenant_key]
-
         total_removed = 0
-        for scope_key in scope_keys:
+        for scope_key in self._bm25_filter_scope_keys(tenant_key=tenant_key):
             existing = self._bm25_docs.get(scope_key) or []
             if not existing:
                 continue
@@ -1970,98 +2156,20 @@ class HybridRetriever(BaseRetriever):
 
             removed_ids = before_ids - after_ids
 
-            retriever = (
-                BM25Retriever.from_documents(
-                    filtered,
-                    preprocess_func=self._bm25_tokenize,
-                    k=10,
-                )
-                if filtered
-                else None
-            )
-
-            if retriever is None:
-                self._bm25_retrievers.pop(scope_key, None)
-                self._bm25_docs.pop(scope_key, None)
-                self._bm25_doc_ids.pop(scope_key, None)
-                self._chunk_id_lookup.pop(scope_key, None)
-                self._bm25_build_locks.pop(scope_key, None)
-                self._bm25_cache_versions.pop(scope_key, None)
-                with self._bm25_cache_lock:
-                    self._bm25_cache_order.pop(scope_key, None)
-                # Keep optional candidate indices in sync (avoid stale/false negatives).
-                self._sparse_doc_vectors.pop(scope_key, None)
-                self._colbert_index_cache.pop(scope_key, None)
-                logger.info(
-                    "BM25 index cleared for scope %s after filtered deletion (removed=%s)",
-                    scope_key,
-                    removed,
-                )
+            if not filtered:
+                self._clear_bm25_scope_after_filter_delete(scope_key=scope_key, removed=removed)
                 total_removed += removed
                 continue
 
-            self._bm25_retrievers[scope_key] = retriever
-            self._bm25_docs[scope_key] = filtered
-            self._refresh_bm25_doc_ids(scope_key, filtered)
-            lookup: dict[str, str] = {}
-            for d in filtered:
-                meta = d.metadata or {}
-                doc_id = meta.get("document_id")
-                doc_pipeline_key = meta.get("doc_pipeline_key")
-                chunk_index = meta.get("chunk_index")
-                if doc_id is None or chunk_index is None or d.id is None:
-                    continue
-                if doc_pipeline_key is not None:
-                    lookup[f"{doc_pipeline_key}:{chunk_index}"] = str(d.id)
-                lookup[f"{doc_id}:{chunk_index}"] = str(d.id)
-            self._chunk_id_lookup[scope_key] = lookup
-            self._touch_bm25_cache(scope_key)
+            self._replace_bm25_scope_index(cache_key=scope_key, merged_docs=filtered)
 
             if removed_ids:
-                # Best-effort: update sparse index by removing vectors for deleted chunks.
-                if self._effective_sparse_enabled():
-                    try:
-                        with self._get_sparse_build_lock(scope_key):
-                            vecs = self._sparse_doc_vectors.get(scope_key) or {}
-                            if vecs:
-                                for cid in removed_ids:
-                                    vecs.pop(cid, None)
-                                self._sparse_doc_vectors[scope_key] = vecs
-                    except Exception as exc:
-                        logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
-
-                # Best-effort: update ColBERT ANN index by removing deleted chunk vectors.
-                if bool(getattr(settings, "COLBERT_RETRIEVAL_ENABLED", False)):
-                    try:
-                        with self._get_colbert_build_lock(scope_key):
-                            idx = self._colbert_index_cache.get(scope_key)
-                            if idx is not None:
-                                ids0 = list(getattr(idx, "doc_ids", []) or [])
-                                vecs0 = getattr(idx, "vectors", None)
-                                if ids0 and vecs0 is not None:
-                                    try:
-                                        import numpy as np
-
-                                        mat = np.asarray(vecs0, dtype=np.float32)
-                                        keep: list[int] = [i for i, cid in enumerate(ids0) if str(cid) not in removed_ids]
-                                        if not keep:
-                                            self._colbert_index_cache.pop(scope_key, None)
-                                        else:
-                                            new_ids = [str(ids0[i]) for i in keep]
-                                            new_mat = mat[keep, :]
-                                            fp = self._colbert_corpus_fingerprint(filtered)
-                                            from app.rag.retrieval.colbert_ann import ColbertAnnIndex  # noqa: WPS433
-
-                                            self._colbert_index_cache[scope_key] = ColbertAnnIndex(
-                                                doc_ids=new_ids,
-                                                vectors=new_mat,
-                                                corpus_fingerprint=fp,
-                                                provider_config=dict(getattr(idx, "provider_config", {}) or {}),
-                                            )
-                                    except Exception as exc:
-                                        logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
-                    except Exception as exc:
-                        logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+                self._remove_sparse_vectors_for_deleted_chunks(scope_key=scope_key, removed_ids=removed_ids)
+                self._remove_colbert_vectors_for_deleted_chunks(
+                    scope_key=scope_key,
+                    removed_ids=removed_ids,
+                    filtered=filtered,
+                )
 
             logger.info("BM25 index removed %s docs by metadata_filter for scope %s", removed, scope_key)
             total_removed += removed
@@ -2083,6 +2191,129 @@ class HybridRetriever(BaseRetriever):
         with self._bm25_cache_lock:
             self._bm25_cache_order.clear()
 
+    def _bm25_search_scope(
+        self,
+        *,
+        tenant_id: UUID | None,
+        document_ids: list[UUID] | None,
+    ) -> tuple[UUID | None, UUID | None, str | None]:
+        tenant_uuid = self._resolve_tenant_uuid(tenant_id)
+        if tenant_uuid is None:
+            return None, None, None
+        dataset_scope_id = self._dataset_scope_id(document_ids)
+        cache_key = self._bm25_scope_key(
+            tenant_id=tenant_uuid,
+            dataset_id=dataset_scope_id,
+            document_ids=document_ids,
+        )
+        return tenant_uuid, dataset_scope_id, cache_key
+
+    def _refresh_bm25_dataset_cache_version(
+        self,
+        *,
+        cache_key: str,
+        tenant_uuid: UUID,
+        dataset_scope_id: UUID | None,
+    ) -> str | None:
+        if dataset_scope_id is None:
+            return None
+        current_version = self._bm25_dataset_cache_version(
+            _tenant_id=tenant_uuid,
+            _dataset_id=dataset_scope_id,
+        )
+        if current_version and self._bm25_cache_versions.get(cache_key) != current_version:
+            self._clear_bm25_cache_key(cache_key)
+        return current_version or None
+
+    def _ensure_bm25_search_index(
+        self,
+        *,
+        cache_key: str,
+        tenant_uuid: UUID,
+        dataset_scope_id: UUID | None,
+        document_ids: list[UUID] | None,
+    ) -> tuple[BM25Retriever | None, list[Document] | None]:
+        retriever = self._bm25_retrievers.get(cache_key)
+        docs = self._bm25_docs.get(cache_key)
+        if retriever is not None and docs is not None:
+            return retriever, docs
+        self._lazy_build_bm25_index(
+            tenant_id=tenant_uuid,
+            document_ids=document_ids,
+            dataset_id=dataset_scope_id,
+        )
+        return self._bm25_retrievers.get(cache_key), self._bm25_docs.get(cache_key)
+
+    def _bm25_result_allowed(
+        self,
+        *,
+        metadata: dict[str, Any],
+        allowed_ids: set[str] | None,
+        metadata_filter: dict[str, Any] | None,
+    ) -> bool:
+        if allowed_ids and str(metadata.get("document_id")) not in allowed_ids:
+            return False
+        return not (
+            metadata_filter
+            and self.metadata_filter_enabled
+            and not self._match_metadata_filter(metadata, metadata_filter)
+        )
+
+    def _bm25_result_from_doc(
+        self,
+        *,
+        doc: Document,
+        raw_score: Any,
+        final_score: float,
+        question_channel_score: float,
+    ) -> dict[str, Any]:
+        meta = doc.metadata or {}
+        return {
+            "chunk_id": doc.id,
+            "content": self._result_content_from_doc(doc),
+            "metadata": {
+                "tenant_id": meta.get("tenant_id"),
+                "document_id": meta.get("document_id"),
+                "source": meta.get("source", "unknown"),
+                "page": meta.get("page"),
+                "chunk_index": meta.get("chunk_index"),
+                "chunk_id": meta.get("chunk_id") or doc.id,
+                "img_id": meta.get("img_id"),
+                "image_id": meta.get("image_id"),
+                "image_url": meta.get("image_url"),
+                "bm25_score": float(final_score),
+                "bm25_score_raw": float(raw_score),
+                "question_channel_score": float(question_channel_score),
+            },
+            "score": float(final_score),
+        }
+
+    def _bm25_results_from_scores(
+        self,
+        *,
+        docs: list[Document],
+        scores: Any,
+        query_tokens: list[str],
+        allowed_ids: set[str] | None,
+        metadata_filter: dict[str, Any] | None,
+    ) -> list[dict[str, Any]]:
+        results: list[dict[str, Any]] = []
+        for doc, score in zip(docs, scores, strict=False):
+            meta = doc.metadata or {}
+            if not self._bm25_result_allowed(metadata=meta, allowed_ids=allowed_ids, metadata_filter=metadata_filter):
+                continue
+            question_channel_score = self._question_channel_overlap_score(query_tokens=query_tokens, metadata=meta)
+            final_score = float(score) + float(question_channel_score or 0.0)
+            results.append(
+                self._bm25_result_from_doc(
+                    doc=doc,
+                    raw_score=score,
+                    final_score=final_score,
+                    question_channel_score=question_channel_score,
+                )
+            )
+        return results
+
     def _search_bm25(
         self,
         query: str,
@@ -2095,51 +2326,27 @@ class HybridRetriever(BaseRetriever):
         if not bool(getattr(settings, "BM25_INDEX_ENABLED", True)):
             return []
 
-        tenant_uuid: UUID | None = tenant_id
-        if tenant_uuid is None:
-            try:
-                tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or ""))
-            except (TypeError, ValueError, AttributeError):
-                tenant_uuid = None
-        if tenant_uuid is None:
+        tenant_uuid, dataset_scope_id, cache_key = self._bm25_search_scope(
+            tenant_id=tenant_id,
+            document_ids=document_ids,
+        )
+        if tenant_uuid is None or cache_key is None:
             return []
 
-        dataset_scope_id: UUID | None = None
-        if self.dataset_id is not None and not (document_ids or []):
-            dataset_scope_id = self.dataset_id
-
-        cache_key = self._bm25_scope_key(tenant_id=tenant_uuid, dataset_id=dataset_scope_id, document_ids=document_ids)
-
-        current_version: str | None = None
-        if dataset_scope_id is not None:
-            current_version = self._bm25_dataset_cache_version(
-                _tenant_id=tenant_uuid,
-                _dataset_id=dataset_scope_id,
-            )
-            if current_version:
-                cached_version = self._bm25_cache_versions.get(cache_key)
-                if cached_version != current_version:
-                    # Dataset was updated since this index was built. Fail closed by rebuilding.
-                    self._clear_bm25_cache_key(cache_key)
-            else:
-                # If we can't determine a stable version (e.g., offline test mode / DB down),
-                # do not invalidate existing in-memory indices.
-                current_version = None
-
-        retriever = self._bm25_retrievers.get(cache_key)
-        docs = self._bm25_docs.get(cache_key)
+        current_version = self._refresh_bm25_dataset_cache_version(
+            cache_key=cache_key,
+            tenant_uuid=tenant_uuid,
+            dataset_scope_id=dataset_scope_id,
+        )
+        retriever, docs = self._ensure_bm25_search_index(
+            cache_key=cache_key,
+            tenant_uuid=tenant_uuid,
+            dataset_scope_id=dataset_scope_id,
+            document_ids=document_ids,
+        )
         if retriever is None or docs is None:
-            self._lazy_build_bm25_index(
-                tenant_id=tenant_uuid,
-                document_ids=document_ids,
-                dataset_id=dataset_scope_id,
-            )
-            retriever = self._bm25_retrievers.get(cache_key)
-            docs = self._bm25_docs.get(cache_key)
-            if retriever is None or docs is None:
-                logger.warning("BM25 index not initialized, skipping keyword search")
-                return []
-
+            logger.warning("BM25 index not initialized, skipping keyword search")
+            return []
         if dataset_scope_id is not None and current_version:
             self._bm25_cache_versions[cache_key] = current_version
 
@@ -2149,43 +2356,14 @@ class HybridRetriever(BaseRetriever):
         processed_query = retriever.preprocess_func(query)
         scores = retriever.vectorizer.get_scores(processed_query)  # type: ignore[attr-defined]
         query_tokens = [str(token or "").strip() for token in processed_query if str(token or "").strip()]
-
-        results: list[dict[str, Any]] = []
-        for doc, score in zip(docs, scores, strict=False):
-            meta = doc.metadata or {}
-            if allowed_ids and str(meta.get("document_id")) not in allowed_ids:
-                continue
-            # Apply metadata filter if provided
-            if metadata_filter and self.metadata_filter_enabled:
-                if not self._match_metadata_filter(meta, metadata_filter):
-                    continue
-            question_channel_score = self._question_channel_overlap_score(query_tokens=query_tokens, metadata=meta)
-            final_score = float(score) + float(question_channel_score or 0.0)
-            results.append(
-                {
-                    "chunk_id": doc.id,
-                    "content": self._result_content_from_doc(doc),
-                    "metadata": {
-                        "tenant_id": meta.get("tenant_id"),
-                        "document_id": meta.get("document_id"),
-                        "source": meta.get("source", "unknown"),
-                        "page": meta.get("page"),
-                        "chunk_index": meta.get("chunk_index"),
-                        "chunk_id": meta.get("chunk_id") or doc.id,
-                        "img_id": meta.get("img_id"),
-                        "image_id": meta.get("image_id"),
-                        "image_url": meta.get("image_url"),
-                        "bm25_score": float(final_score),
-                        "bm25_score_raw": float(score),
-                        "question_channel_score": float(question_channel_score),
-                    },
-                    "score": float(final_score),
-                }
-            )
-
-        if not results:
-            return []
-        return heapq.nlargest(max(0, int(top_k or 0)), results, key=lambda x: float(x.get("score", 0.0) or 0.0))
+        results = self._bm25_results_from_scores(
+            docs=docs,
+            scores=scores,
+            query_tokens=query_tokens,
+            allowed_ids=allowed_ids,
+            metadata_filter=metadata_filter,
+        )
+        return self._top_scored_results(results, top_k)
 
     def _search_colpali_retriever(
         self,
@@ -2236,6 +2414,565 @@ class HybridRetriever(BaseRetriever):
             out.append(item)
         return out
 
+    def _channel_metric_box(self, channel: str) -> dict[str, Any] | None:
+        try:
+            if not isinstance(self._last_channel_metrics, dict):
+                return None
+            box = self._last_channel_metrics.get(channel)
+            if not isinstance(box, dict):
+                box = {}
+                self._last_channel_metrics[channel] = box
+            return box
+        except Exception as exc:
+            logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+            return None
+
+    def _update_channel_metric(self, channel: str, values: dict[str, Any]) -> None:
+        box = self._channel_metric_box(channel)
+        if box is not None:
+            box.update(values)
+
+    def _bm25_scope_docs(
+        self,
+        *,
+        tenant_id: UUID | None,
+        document_ids: list[UUID] | None,
+    ) -> tuple[UUID | None, str | None, list[Document]]:
+        tenant_uuid, _dataset_scope_id, cache_key = self._bm25_search_scope(
+            tenant_id=tenant_id,
+            document_ids=document_ids,
+        )
+        if tenant_uuid is None or cache_key is None:
+            return None, None, []
+        return tenant_uuid, cache_key, self._bm25_docs.get(cache_key) or []
+
+    @staticmethod
+    def _result_allowed_by_scope(
+        *,
+        metadata: dict[str, Any],
+        allowed_ids: set[str] | None,
+        metadata_filter: dict[str, Any] | None,
+        metadata_filter_enabled: bool,
+        matcher: Any,
+    ) -> bool:
+        if allowed_ids and str(metadata.get("document_id")) not in allowed_ids:
+            return False
+        return not (metadata_filter and metadata_filter_enabled and not matcher(metadata, metadata_filter))
+
+    @staticmethod
+    def _top_scored_results(results: list[dict[str, Any]], top_k: int) -> list[dict[str, Any]]:
+        if not results:
+            return []
+        return heapq.nlargest(max(0, int(top_k or 0)), results, key=lambda x: float(x.get("score", 0.0) or 0.0))
+
+    def _resolve_colbert_readiness(self, resolve_provider_capability: Any, *, docs: list[Document]) -> tuple[int, dict[str, Any]]:
+        max_docs = self._resolve_colbert_max_docs()
+        readiness = resolve_provider_capability(
+            colbert_enabled=bool(getattr(settings, "COLBERT_RETRIEVAL_ENABLED", False)),
+            requested_provider=self._colbert_provider_name(),
+            model_name=str(getattr(settings, "COLBERT_RETRIEVAL_MODEL_NAME", "") or ""),
+            device=str(getattr(settings, "COLBERT_RETRIEVAL_DEVICE", "cpu") or "cpu"),
+            docs_count=int(len(docs or [])),
+            max_docs=int(max_docs),
+        )
+        self._update_channel_metric("colbert_ann", {"readiness": dict(readiness or {})})
+        return max_docs, dict(readiness or {})
+
+    def _mark_colbert_skipped(
+        self,
+        *,
+        reason: str,
+        cache_key: str | None = None,
+        docs_count: int | None = None,
+        max_docs: int | None = None,
+    ) -> None:
+        values: dict[str, Any] = {"skipped_reason": reason}
+        if docs_count is not None:
+            values["docs_n"] = int(docs_count)
+        if max_docs is not None:
+            values["max_docs"] = int(max_docs)
+        self._update_channel_metric("colbert_ann", values)
+        if reason == "too_many_docs" and cache_key:
+            try:
+                self._colbert_index_cache.pop(cache_key, None)
+            except Exception as exc:
+                logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+
+    @staticmethod
+    def _colbert_index_matches(index: Any, *, expected_fp: str, provider_config: dict[str, Any]) -> bool:
+        try:
+            return (
+                index is not None
+                and str(getattr(index, "corpus_fingerprint", "") or "") == str(expected_fp or "")
+                and dict(getattr(index, "provider_config", {}) or {}) == dict(provider_config)
+            )
+        except (TypeError, ValueError, AttributeError):
+            return False
+
+    def _load_colbert_index_from_store(
+        self,
+        *,
+        store_cls: Any,
+        cache_key: str,
+        provider_config: dict[str, Any],
+        expected_fp: str,
+    ) -> Any | None:
+        if not bool(getattr(settings, "COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED", True)):
+            return None
+        try:
+            store = store_cls(base_dir=str(getattr(settings, "COLBERT_RETRIEVAL_INDEX_DIR", COLBERT_INDEX_DIR_FALLBACK) or ""))
+            loaded = store.load(cache_key=cache_key, provider_config=provider_config, expected_fingerprint=expected_fp)
+            if loaded is not None:
+                self._colbert_index_cache[cache_key] = loaded
+            return loaded
+        except Exception as exc:
+            _log_retriever_fallback('_search_colbert_ann', exc)
+            return None
+
+    def _ensure_colbert_search_index(
+        self,
+        *,
+        cache_key: str,
+        docs: list[Document],
+        provider_config: dict[str, Any],
+        expected_fp: str,
+        store_cls: Any,
+    ) -> Any | None:
+        index = self._colbert_index_cache.get(cache_key)
+        if self._colbert_index_matches(index, expected_fp=expected_fp, provider_config=provider_config):
+            return index
+
+        loaded = self._load_colbert_index_from_store(
+            store_cls=store_cls,
+            cache_key=cache_key,
+            provider_config=provider_config,
+            expected_fp=expected_fp,
+        )
+        if self._colbert_index_matches(loaded, expected_fp=expected_fp, provider_config=provider_config):
+            return loaded
+
+        try:
+            with self._get_colbert_build_lock(cache_key):
+                index = self._colbert_index_cache.get(cache_key)
+                if self._colbert_index_matches(index, expected_fp=expected_fp, provider_config=provider_config):
+                    return index
+                self._build_colbert_index(cache_key=cache_key, docs=docs)
+                index = self._colbert_index_cache.get(cache_key)
+                if self._colbert_index_matches(index, expected_fp=expected_fp, provider_config=provider_config):
+                    return index
+        except Exception as exc:
+            _log_retriever_fallback('_search_colbert_ann', exc)
+        return None
+
+    @staticmethod
+    def _colbert_query_vector(get_dense_embedder: Any, *, provider: str, raw_query: str) -> Any | None:
+        embedder = get_dense_embedder(
+            provider=provider,
+            model_name=str(getattr(settings, "COLBERT_RETRIEVAL_MODEL_NAME", "") or ""),
+            device=str(getattr(settings, "COLBERT_RETRIEVAL_DEVICE", "cpu") or "cpu"),
+            batch_size=int(getattr(settings, "COLBERT_RETRIEVAL_BATCH_SIZE", 16) or 16),
+            max_length=int(getattr(settings, "COLBERT_RETRIEVAL_MAX_LENGTH", 256) or 256),
+            deterministic_dim=int(getattr(settings, "COLBERT_RETRIEVAL_EMBED_DIM", 64) or 64),
+        )
+        q_mat = embedder.encode_batch([raw_query])
+        try:
+            return q_mat[0]
+        except (TypeError, ValueError, AttributeError):
+            return None
+
+    def _colbert_results_from_scores(
+        self,
+        *,
+        scored: list[tuple[int, float]],
+        doc_ids: list[Any],
+        docs: list[Document],
+        document_ids: list[UUID] | None,
+        metadata_filter: dict[str, Any] | None,
+    ) -> list[dict[str, Any]]:
+        doc_by_id: dict[str, Document] = {str(d.id): d for d in docs if d is not None and d.id is not None}
+        allowed_ids = {str(doc_id) for doc_id in document_ids} if document_ids else None
+        results: list[dict[str, Any]] = []
+        for idx, score in scored:
+            if idx < 0 or idx >= len(doc_ids):
+                continue
+            doc_id = str(doc_ids[int(idx)])
+            doc = doc_by_id.get(doc_id)
+            if doc is None:
+                continue
+            meta = dict(doc.metadata or {})
+            if not self._result_allowed_by_scope(
+                metadata=meta,
+                allowed_ids=allowed_ids,
+                metadata_filter=metadata_filter,
+                metadata_filter_enabled=self.metadata_filter_enabled,
+                matcher=self._match_metadata_filter,
+            ):
+                continue
+            meta.setdefault("chunk_id", doc_id)
+            meta["colbert_score"] = float(score)
+            results.append(
+                {
+                    "chunk_id": doc_id,
+                    "content": self._result_content_from_doc(doc),
+                    "metadata": meta,
+                    "score": float(score),
+                }
+            )
+        return results
+
+    @staticmethod
+    def _sparse_runtime_inputs(
+        *,
+        provider: str,
+        build_sparse_provider_config: Any,
+        parse_synonyms: Any,
+    ) -> tuple[str, dict[str, Any], dict[str, Any]]:
+        synonyms_raw = str(getattr(settings, "SPARSE_RETRIEVAL_SYNONYMS", "") or "")
+        synonyms = parse_synonyms(synonyms_raw) if synonyms_raw.strip() else {}
+        provider_config = build_sparse_provider_config(
+            provider=provider,
+            synonyms_raw=synonyms_raw,
+            model_name=str(getattr(settings, "SPARSE_SPLADE_MODEL_NAME", "") or ""),
+            device=str(getattr(settings, "SPARSE_SPLADE_DEVICE", "cpu") or "cpu"),
+            batch_size=int(getattr(settings, "SPARSE_SPLADE_BATCH_SIZE", 8) or 8),
+            max_length=int(getattr(settings, "SPARSE_SPLADE_MAX_LENGTH", 256) or 256),
+            top_k=int(getattr(settings, "SPARSE_SPLADE_TOP_K", 128) or 128),
+            min_weight=float(getattr(settings, "SPARSE_SPLADE_MIN_WEIGHT", 0.0) or 0.0),
+        )
+        return synonyms_raw, synonyms, provider_config
+
+    def _load_persisted_sparse_vectors_for_search(
+        self,
+        *,
+        cache_key: str,
+        provider: str,
+        provider_config: dict[str, Any],
+        docs: list[Document],
+        version_token: str | None,
+        store_cls: Any,
+        observe_sparse_index_load: Any,
+    ) -> tuple[dict[str, SparseVector], bool]:
+        if not bool(getattr(settings, "SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED", True)):
+            observe_sparse_index_load(provider=provider, outcome="skipped")
+            return {}, False
+
+        load_outcome = "miss"
+        try:
+            fp = self._sparse_corpus_fingerprint(docs)
+            store = store_cls(base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", SPARSE_INDEX_DIR_FALLBACK) or ""))
+            loaded = store.load(
+                cache_key=cache_key,
+                provider_config=provider_config,
+                expected_fingerprint=fp,
+                expected_version_token=str(version_token or "").strip(),
+            )
+            if loaded:
+                self._sparse_doc_vectors[cache_key] = loaded
+                load_outcome = "hit"
+                return loaded, False
+            return {}, False
+        except Exception as exc:
+            _log_retriever_fallback('_search_sparse', exc)
+            load_outcome = "error"
+            return {}, True
+        finally:
+            observe_sparse_index_load(provider=provider, outcome=load_outcome)
+
+    def _ensure_sparse_vectors_for_search(
+        self,
+        *,
+        cache_key: str,
+        provider: str,
+        provider_config: dict[str, Any],
+        docs: list[Document],
+        version_token: str | None,
+        store_cls: Any,
+        observe_sparse_index_load: Any,
+    ) -> tuple[dict[str, SparseVector], bool, bool]:
+        sparse_vecs = self._sparse_doc_vectors.get(cache_key) or {}
+        had_load_error = False
+        had_build_error = False
+        if len(sparse_vecs) != len(docs):
+            sparse_vecs, had_load_error = self._load_persisted_sparse_vectors_for_search(
+                cache_key=cache_key,
+                provider=provider,
+                provider_config=provider_config,
+                docs=docs,
+                version_token=version_token,
+                store_cls=store_cls,
+                observe_sparse_index_load=observe_sparse_index_load,
+            )
+
+        if len(sparse_vecs) == len(docs):
+            return sparse_vecs, had_load_error, had_build_error
+
+        try:
+            with self._get_sparse_build_lock(cache_key):
+                sparse_vecs = self._sparse_doc_vectors.get(cache_key) or {}
+                if len(sparse_vecs) != len(docs):
+                    self._build_sparse_index(
+                        cache_key=cache_key,
+                        docs=docs,
+                        version_token=version_token,
+                    )
+                    sparse_vecs = self._sparse_doc_vectors.get(cache_key) or {}
+        except Exception as exc:
+            _log_retriever_fallback('_search_sparse', exc)
+            had_build_error = True
+            sparse_vecs = self._sparse_doc_vectors.get(cache_key) or {}
+        return sparse_vecs, had_load_error, had_build_error
+
+    @staticmethod
+    def _sparse_query_vector(encoder: Any, raw_query: str) -> SparseVector:
+        q_raw = encoder.encode_batch([raw_query])[0]
+        if isinstance(q_raw, SparseVector):
+            return q_raw
+        if isinstance(q_raw, dict):
+            return SparseVector(weights={str(k): float(v) for k, v in q_raw.items() if k is not None and v is not None})
+        return SparseVector(weights={})
+
+    def _sparse_results_from_scores(
+        self,
+        *,
+        scored: list[tuple[str, float]],
+        docs: list[Document],
+        document_ids: list[UUID] | None,
+        metadata_filter: dict[str, Any] | None,
+    ) -> list[dict[str, Any]]:
+        doc_by_id: dict[str, Document] = {str(d.id): d for d in docs if d is not None and d.id is not None}
+        allowed_ids = {str(doc_id) for doc_id in document_ids} if document_ids else None
+        results: list[dict[str, Any]] = []
+        for doc_id, score in scored:
+            doc = doc_by_id.get(str(doc_id))
+            if doc is None:
+                continue
+            meta = doc.metadata or {}
+            if not self._result_allowed_by_scope(
+                metadata=meta,
+                allowed_ids=allowed_ids,
+                metadata_filter=metadata_filter,
+                metadata_filter_enabled=self.metadata_filter_enabled,
+                matcher=self._match_metadata_filter,
+            ):
+                continue
+            results.append(
+                {
+                    "chunk_id": doc.id,
+                    "content": self._result_content_from_doc(doc),
+                    "metadata": {
+                        "tenant_id": meta.get("tenant_id"),
+                        "document_id": meta.get("document_id"),
+                        "source": meta.get("source", "unknown"),
+                        "page": meta.get("page"),
+                        "chunk_index": meta.get("chunk_index"),
+                        "chunk_id": meta.get("chunk_id") or doc.id,
+                        "img_id": meta.get("img_id"),
+                        "image_id": meta.get("image_id"),
+                        "image_url": meta.get("image_url"),
+                        "sparse_score": float(score),
+                    },
+                    "score": float(score),
+                }
+            )
+        return results
+
+    def _record_sparse_search_status(
+        self,
+        *,
+        provider_status: dict[str, Any],
+        provider: str,
+        outcome: str,
+        reason: str,
+        candidates_count: int,
+        search_t0: float,
+        observe_sparse_search: Any,
+    ) -> None:
+        try:
+            self._last_sparse_provider_status = {
+                **provider_status,
+                "effective_provider": provider,
+                "status": str(provider_status.get("status") or "ready"),
+                "outcome": outcome,
+                "reason": reason,
+                "candidates": int(candidates_count or 0),
+            }
+        except (TypeError, ValueError, AttributeError):
+            self._last_sparse_provider_status = {}
+        observe_sparse_search(
+            provider=provider,
+            outcome=outcome,
+            duration_sec=(time.perf_counter() - search_t0),
+            candidates_count=candidates_count,
+            reason=reason,
+        )
+
+    def _search_colbert_ann_docs(
+        self,
+        *,
+        raw_query: str,
+        top_k: int,
+        cache_key: str,
+        docs: list[Document],
+        document_ids: list[UUID] | None,
+        metadata_filter: dict[str, Any] | None,
+    ) -> list[dict[str, Any]]:
+        from app.rag.retrieval.colbert_ann import (
+            ColbertAnnIndexStore,
+            build_colbert_provider_config,
+            get_dense_embedder,
+            resolve_colbert_ann_provider_capability,
+            topk_cosine_scores,
+        )
+
+        max_docs, readiness = self._resolve_colbert_readiness(resolve_colbert_ann_provider_capability, docs=docs)
+        if str(readiness.get("reason") or "") == "too_many_docs":
+            self._mark_colbert_skipped(
+                reason="too_many_docs",
+                cache_key=cache_key,
+                docs_count=len(docs or []),
+                max_docs=max_docs,
+            )
+            return []
+
+        provider = str(readiness.get("effective_provider") or "deterministic").strip().lower() or "deterministic"
+        if not bool(readiness.get("ready", False)):
+            self._mark_colbert_skipped(reason="provider_unready")
+            return []
+
+        provider_config = self._build_colbert_provider_config(build_colbert_provider_config, provider=provider)
+        index = self._ensure_colbert_search_index(
+            cache_key=cache_key,
+            docs=docs,
+            provider_config=provider_config,
+            expected_fp=self._colbert_corpus_fingerprint(docs),
+            store_cls=ColbertAnnIndexStore,
+        )
+        if index is None:
+            return []
+
+        q_vec = self._colbert_query_vector(get_dense_embedder, provider=provider, raw_query=raw_query)
+        if q_vec is None:
+            return []
+
+        doc_vecs = getattr(index, "vectors", None)
+        doc_ids = list(getattr(index, "doc_ids", []) or [])
+        if doc_vecs is None or not doc_ids:
+            return []
+
+        scored = topk_cosine_scores(query_vec=q_vec, doc_vecs=doc_vecs, k=max(0, int(top_k or 0)))
+        if not scored:
+            return []
+
+        return self._colbert_results_from_scores(
+            scored=scored,
+            doc_ids=doc_ids,
+            docs=docs,
+            document_ids=document_ids,
+            metadata_filter=metadata_filter,
+        )
+
+    @staticmethod
+    def _sparse_reason_after_index(
+        *,
+        reason: str,
+        had_index_load_error: bool,
+        had_index_build_error: bool,
+        sparse_vecs: dict[str, SparseVector],
+        docs: list[Document],
+    ) -> str:
+        if reason == "none" and had_index_load_error:
+            return "index_load_error"
+        if reason == "none" and had_index_build_error and len(sparse_vecs) != len(docs):
+            return "index_build_failed"
+        return reason
+
+    @staticmethod
+    def _empty_sparse_result(reason: str) -> tuple[list[dict[str, Any]], str, str, int]:
+        if reason == "none":
+            reason = "no_candidates"
+        return [], "empty", reason, 0
+
+    def _search_sparse_docs(
+        self,
+        *,
+        raw_query: str,
+        top_k: int,
+        tenant_uuid: UUID,
+        cache_key: str,
+        docs: list[Document],
+        document_ids: list[UUID] | None,
+        metadata_filter: dict[str, Any] | None,
+        provider: str,
+        reason: str,
+        observe_sparse_index_load: Any,
+    ) -> tuple[list[dict[str, Any]], str, str, int]:
+        if not docs:
+            return [], "skipped", "scope_empty", 0
+
+        sparse_index_version_token = self._resolve_candidate_cache_corpus_token(
+            tenant_id=tenant_uuid,
+            document_ids=document_ids,
+        )
+
+        from app.rag.retrieval.sparse import (
+            SparseIndexStore,
+            build_sparse_provider_config,
+            get_sparse_encoder,
+            parse_synonyms,
+            topk_scores,
+        )
+
+        synonyms_raw, synonyms, provider_config = self._sparse_runtime_inputs(
+            provider=provider,
+            build_sparse_provider_config=build_sparse_provider_config,
+            parse_synonyms=parse_synonyms,
+        )
+        sparse_vecs, had_index_load_error, had_index_build_error = self._ensure_sparse_vectors_for_search(
+            cache_key=cache_key,
+            provider=provider,
+            provider_config=provider_config,
+            docs=docs,
+            version_token=sparse_index_version_token,
+            store_cls=SparseIndexStore,
+            observe_sparse_index_load=observe_sparse_index_load,
+        )
+        reason = self._sparse_reason_after_index(
+            reason=reason,
+            had_index_load_error=had_index_load_error,
+            had_index_build_error=had_index_build_error,
+            sparse_vecs=sparse_vecs,
+            docs=docs,
+        )
+
+        encoder = get_sparse_encoder(
+            provider=provider,
+            synonyms=synonyms,
+            synonyms_raw=synonyms_raw,
+            model_name=str(getattr(settings, "SPARSE_SPLADE_MODEL_NAME", "") or ""),
+            device=str(getattr(settings, "SPARSE_SPLADE_DEVICE", "cpu") or "cpu"),
+            batch_size=int(getattr(settings, "SPARSE_SPLADE_BATCH_SIZE", 8) or 8),
+            max_length=int(getattr(settings, "SPARSE_SPLADE_MAX_LENGTH", 256) or 256),
+            top_k=int(getattr(settings, "SPARSE_SPLADE_TOP_K", 128) or 128),
+            min_weight=float(getattr(settings, "SPARSE_SPLADE_MIN_WEIGHT", 0.0) or 0.0),
+        )
+        scored = topk_scores(
+            query_vec=self._sparse_query_vector(encoder, raw_query),
+            docs=sparse_vecs,
+            k=max(0, int(top_k or 0)),
+        )
+        if not scored:
+            return self._empty_sparse_result(reason)
+
+        results = self._sparse_results_from_scores(
+            scored=scored,
+            docs=docs,
+            document_ids=document_ids,
+            metadata_filter=metadata_filter,
+        )
+        if not results:
+            return self._empty_sparse_result(reason)
+        return self._top_scored_results(results, top_k), "ok", reason, len(results)
+
     def _search_colbert_ann(
         self,
         query: str,
@@ -2258,203 +2995,19 @@ class HybridRetriever(BaseRetriever):
         if not bool(getattr(settings, "COLBERT_RETRIEVAL_ENABLED", False)):
             return []
 
-        tenant_uuid: UUID | None = tenant_id
-        if tenant_uuid is None:
-            try:
-                tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or ""))
-            except (TypeError, ValueError, AttributeError):
-                tenant_uuid = None
-        if tenant_uuid is None:
+        _tenant_uuid, cache_key, docs = self._bm25_scope_docs(tenant_id=tenant_id, document_ids=document_ids)
+        if cache_key is None:
             return []
-
-        dataset_scope_id: UUID | None = None
-        if self.dataset_id is not None and not (document_ids or []):
-            dataset_scope_id = self.dataset_id
-
-        cache_key = self._bm25_scope_key(tenant_id=tenant_uuid, dataset_id=dataset_scope_id, document_ids=document_ids)
-        docs = self._bm25_docs.get(cache_key) or []
         if not docs:
             return []
-
-        from app.rag.retrieval.colbert_ann import (
-            ColbertAnnIndexStore,
-            build_colbert_provider_config,
-            get_dense_embedder,
-            resolve_colbert_ann_provider_capability,
-            topk_cosine_scores,
+        return self._search_colbert_ann_docs(
+            raw_query=raw_query,
+            top_k=top_k,
+            cache_key=cache_key,
+            docs=docs,
+            document_ids=document_ids,
+            metadata_filter=metadata_filter,
         )
-
-        # Provider readiness gate with deterministic fallback diagnostics.
-        try:
-            max_docs = int(getattr(settings, "COLBERT_RETRIEVAL_MAX_DOCS", 0) or 0)
-        except (TypeError, ValueError, AttributeError):
-            max_docs = 0
-        requested_provider = str(getattr(settings, "COLBERT_RETRIEVAL_PROVIDER", "deterministic") or "deterministic").strip().lower()
-        readiness = resolve_colbert_ann_provider_capability(
-            colbert_enabled=bool(getattr(settings, "COLBERT_RETRIEVAL_ENABLED", False)),
-            requested_provider=requested_provider,
-            model_name=str(getattr(settings, "COLBERT_RETRIEVAL_MODEL_NAME", "") or ""),
-            device=str(getattr(settings, "COLBERT_RETRIEVAL_DEVICE", "cpu") or "cpu"),
-            docs_count=int(len(docs or [])),
-            max_docs=int(max_docs),
-        )
-        try:
-            if isinstance(self._last_channel_metrics, dict):
-                box = self._last_channel_metrics.get("colbert_ann")
-                if not isinstance(box, dict):
-                    box = {}
-                    self._last_channel_metrics["colbert_ann"] = box
-                box["readiness"] = dict(readiness or {})
-        except Exception as exc:
-            logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
-
-        if str(readiness.get("reason") or "") == "too_many_docs":
-            try:
-                if isinstance(self._last_channel_metrics, dict):
-                    box = self._last_channel_metrics.get("colbert_ann")
-                    if not isinstance(box, dict):
-                        box = {}
-                        self._last_channel_metrics["colbert_ann"] = box
-                    box["skipped_reason"] = "too_many_docs"
-                    box["docs_n"] = int(len(docs or []))
-                    box["max_docs"] = int(max_docs)
-            except Exception as exc:
-                logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
-            # Free any cached index for this scope to keep memory bounded.
-            try:
-                self._colbert_index_cache.pop(cache_key, None)
-            except Exception as exc:
-                logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
-            return []
-
-        provider = str(readiness.get("effective_provider") or "deterministic").strip().lower() or "deterministic"
-        if not bool(readiness.get("ready", False)):
-            try:
-                if isinstance(self._last_channel_metrics, dict):
-                    box = self._last_channel_metrics.get("colbert_ann")
-                    if not isinstance(box, dict):
-                        box = {}
-                        self._last_channel_metrics["colbert_ann"] = box
-                    box["skipped_reason"] = "provider_unready"
-            except Exception as exc:
-                logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
-            return []
-
-        provider_config = build_colbert_provider_config(
-            provider=provider,
-            model_name=str(getattr(settings, "COLBERT_RETRIEVAL_MODEL_NAME", "") or ""),
-            device=str(getattr(settings, "COLBERT_RETRIEVAL_DEVICE", "cpu") or "cpu"),
-            batch_size=int(getattr(settings, "COLBERT_RETRIEVAL_BATCH_SIZE", 16) or 16),
-            max_length=int(getattr(settings, "COLBERT_RETRIEVAL_MAX_LENGTH", 256) or 256),
-            deterministic_dim=int(getattr(settings, "COLBERT_RETRIEVAL_EMBED_DIM", 64) or 64),
-        )
-
-        expected_fp = self._colbert_corpus_fingerprint(docs)
-
-        index = self._colbert_index_cache.get(cache_key)
-        try:
-            index_ok = (
-                index is not None
-                and str(getattr(index, "corpus_fingerprint", "") or "") == str(expected_fp or "")
-                and dict(getattr(index, "provider_config", {}) or {}) == dict(provider_config)
-            )
-        except (TypeError, ValueError, AttributeError):
-            index_ok = False
-
-        if not index_ok and bool(getattr(settings, "COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED", True)):
-            try:
-                store = ColbertAnnIndexStore(base_dir=str(getattr(settings, "COLBERT_RETRIEVAL_INDEX_DIR", COLBERT_INDEX_DIR_FALLBACK) or ""))
-                loaded = store.load(cache_key=cache_key, provider_config=provider_config, expected_fingerprint=expected_fp)
-                if loaded is not None:
-                    index = loaded
-                    self._colbert_index_cache[cache_key] = loaded
-                    index_ok = True
-            except Exception as exc:
-                _log_retriever_fallback('_search_colbert_ann', exc)
-                index_ok = False
-
-        if not index_ok:
-            try:
-                with self._get_colbert_build_lock(cache_key):
-                    index = self._colbert_index_cache.get(cache_key)
-                    try:
-                        index_ok = (
-                            index is not None
-                            and str(getattr(index, "corpus_fingerprint", "") or "") == str(expected_fp or "")
-                            and dict(getattr(index, "provider_config", {}) or {}) == dict(provider_config)
-                        )
-                    except (TypeError, ValueError, AttributeError):
-                        index_ok = False
-
-                    if not index_ok:
-                        self._build_colbert_index(cache_key=cache_key, docs=docs)
-                        index = self._colbert_index_cache.get(cache_key)
-                        index_ok = index is not None
-            except Exception as exc:
-                _log_retriever_fallback('_search_colbert_ann', exc)
-                index_ok = False
-                index = self._colbert_index_cache.get(cache_key)
-
-        if not index_ok or index is None:
-            return []
-
-        embedder = get_dense_embedder(
-            provider=provider,
-            model_name=str(getattr(settings, "COLBERT_RETRIEVAL_MODEL_NAME", "") or ""),
-            device=str(getattr(settings, "COLBERT_RETRIEVAL_DEVICE", "cpu") or "cpu"),
-            batch_size=int(getattr(settings, "COLBERT_RETRIEVAL_BATCH_SIZE", 16) or 16),
-            max_length=int(getattr(settings, "COLBERT_RETRIEVAL_MAX_LENGTH", 256) or 256),
-            deterministic_dim=int(getattr(settings, "COLBERT_RETRIEVAL_EMBED_DIM", 64) or 64),
-        )
-        q_mat = embedder.encode_batch([raw_query])
-        try:
-            q_vec = q_mat[0]
-        except (TypeError, ValueError, AttributeError):
-            return []
-
-        doc_vecs = getattr(index, "vectors", None)
-        doc_ids = list(getattr(index, "doc_ids", []) or [])
-        if doc_vecs is None or not doc_ids:
-            return []
-
-        scored = topk_cosine_scores(query_vec=q_vec, doc_vecs=doc_vecs, k=max(0, int(top_k or 0)))
-        if not scored:
-            return []
-
-        doc_by_id: dict[str, Document] = {str(d.id): d for d in docs if d is not None and d.id is not None}
-        allowed_ids = {str(doc_id) for doc_id in document_ids} if document_ids else None
-
-        results: list[dict[str, Any]] = []
-        for idx, score in scored:
-            if idx < 0 or idx >= len(doc_ids):
-                continue
-            doc_id = str(doc_ids[int(idx)])
-            doc = doc_by_id.get(doc_id)
-            if doc is None:
-                continue
-            meta = dict(doc.metadata or {})
-            if allowed_ids and str(meta.get("document_id")) not in allowed_ids:
-                continue
-            if metadata_filter and self.metadata_filter_enabled:
-                if not self._match_metadata_filter(meta, metadata_filter):
-                    continue
-
-            # Keep provenance stable and low-cardinality: expose score, but avoid embedding details.
-            meta.setdefault("chunk_id", doc_id)
-            meta["colbert_score"] = float(score)
-
-            results.append(
-                {
-                    "chunk_id": doc_id,
-                    "content": self._result_content_from_doc(doc),
-                    "metadata": meta,
-                    "score": float(score),
-                }
-            )
-
-        if not results:
-            return []
-        return results
 
     def _search_sparse(
         self,
@@ -2476,13 +3029,8 @@ class HybridRetriever(BaseRetriever):
         if not self._effective_sparse_enabled():
             return []
 
-        tenant_uuid: UUID | None = tenant_id
-        if tenant_uuid is None:
-            try:
-                tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or ""))
-            except (TypeError, ValueError, AttributeError):
-                tenant_uuid = None
-        if tenant_uuid is None:
+        tenant_uuid, cache_key, docs = self._bm25_scope_docs(tenant_id=tenant_id, document_ids=document_ids)
+        if tenant_uuid is None or cache_key is None:
             return []
 
         provider_status = self._resolve_sparse_provider_status(sparse_enabled=True)
@@ -2498,162 +3046,19 @@ class HybridRetriever(BaseRetriever):
         )
 
         try:
-            dataset_scope_id: UUID | None = None
-            if self.dataset_id is not None and not (document_ids or []):
-                dataset_scope_id = self.dataset_id
-
-            # Align with BM25 scope so we reuse the same corpus and caching semantics.
-            cache_key = self._bm25_scope_key(tenant_id=tenant_uuid, dataset_id=dataset_scope_id, document_ids=document_ids)
-            docs = self._bm25_docs.get(cache_key) or []
-            if not docs:
-                outcome = "skipped"
-                reason = "scope_empty"
-                return []
-            sparse_index_version_token = self._resolve_candidate_cache_corpus_token(
-                tenant_id=tenant_uuid,
+            results, outcome, reason, candidates_count = self._search_sparse_docs(
+                raw_query=raw_query,
+                top_k=top_k,
+                tenant_uuid=tenant_uuid,
+                cache_key=cache_key,
+                docs=docs,
                 document_ids=document_ids,
-            )
-
-            from app.rag.retrieval.sparse import (
-                SparseIndexStore,
-                build_sparse_provider_config,
-                get_sparse_encoder,
-                parse_synonyms,
-                topk_scores,
-            )
-
-            synonyms_raw = str(getattr(settings, "SPARSE_RETRIEVAL_SYNONYMS", "") or "")
-            synonyms = parse_synonyms(synonyms_raw) if synonyms_raw.strip() else {}
-            provider_config = build_sparse_provider_config(
+                metadata_filter=metadata_filter,
                 provider=provider,
-                synonyms_raw=synonyms_raw,
-                model_name=str(getattr(settings, "SPARSE_SPLADE_MODEL_NAME", "") or ""),
-                device=str(getattr(settings, "SPARSE_SPLADE_DEVICE", "cpu") or "cpu"),
-                batch_size=int(getattr(settings, "SPARSE_SPLADE_BATCH_SIZE", 8) or 8),
-                max_length=int(getattr(settings, "SPARSE_SPLADE_MAX_LENGTH", 256) or 256),
-                top_k=int(getattr(settings, "SPARSE_SPLADE_TOP_K", 128) or 128),
-                min_weight=float(getattr(settings, "SPARSE_SPLADE_MIN_WEIGHT", 0.0) or 0.0),
+                reason=reason,
+                observe_sparse_index_load=observe_sparse_index_load,
             )
-
-            # Lazy-load persisted sparse vectors if needed (best-effort; robust across restarts).
-            sparse_vecs = self._sparse_doc_vectors.get(cache_key) or {}
-            had_index_load_error = False
-            if len(sparse_vecs) != len(docs):
-                if bool(getattr(settings, "SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED", True)):
-                    load_outcome = "miss"
-                    try:
-                        fp = self._sparse_corpus_fingerprint(docs)
-                        store = SparseIndexStore(
-                            base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", SPARSE_INDEX_DIR_FALLBACK) or "")
-                        )
-                        loaded = store.load(
-                            cache_key=cache_key,
-                            provider_config=provider_config,
-                            expected_fingerprint=fp,
-                            expected_version_token=str(sparse_index_version_token or "").strip(),
-                        )
-                        if loaded:
-                            sparse_vecs = loaded
-                            self._sparse_doc_vectors[cache_key] = sparse_vecs
-                            load_outcome = "hit"
-                    except Exception as exc:
-                        _log_retriever_fallback('_search_sparse', exc)
-                        load_outcome = "error"
-                        had_index_load_error = True
-                    observe_sparse_index_load(provider=provider, outcome=load_outcome)
-                else:
-                    observe_sparse_index_load(provider=provider, outcome="skipped")
-
-            had_index_build_error = False
-            if len(sparse_vecs) != len(docs):
-                try:
-                    with self._get_sparse_build_lock(cache_key):
-                        sparse_vecs = self._sparse_doc_vectors.get(cache_key) or {}
-                        if len(sparse_vecs) != len(docs):
-                            self._build_sparse_index(
-                                cache_key=cache_key,
-                                docs=docs,
-                                version_token=sparse_index_version_token,
-                            )
-                            sparse_vecs = self._sparse_doc_vectors.get(cache_key) or {}
-                except Exception as exc:
-                    _log_retriever_fallback('_search_sparse', exc)
-                    had_index_build_error = True
-                    sparse_vecs = self._sparse_doc_vectors.get(cache_key) or {}
-
-            if reason == "none" and had_index_load_error:
-                reason = "index_load_error"
-            if reason == "none" and had_index_build_error and len(sparse_vecs) != len(docs):
-                reason = "index_build_failed"
-
-            encoder = get_sparse_encoder(
-                provider=provider,
-                synonyms=synonyms,
-                synonyms_raw=synonyms_raw,
-                model_name=str(getattr(settings, "SPARSE_SPLADE_MODEL_NAME", "") or ""),
-                device=str(getattr(settings, "SPARSE_SPLADE_DEVICE", "cpu") or "cpu"),
-                batch_size=int(getattr(settings, "SPARSE_SPLADE_BATCH_SIZE", 8) or 8),
-                max_length=int(getattr(settings, "SPARSE_SPLADE_MAX_LENGTH", 256) or 256),
-                top_k=int(getattr(settings, "SPARSE_SPLADE_TOP_K", 128) or 128),
-                min_weight=float(getattr(settings, "SPARSE_SPLADE_MIN_WEIGHT", 0.0) or 0.0),
-            )
-            q_raw = encoder.encode_batch([raw_query])[0]
-            if isinstance(q_raw, SparseVector):
-                q_vec = q_raw
-            elif isinstance(q_raw, dict):
-                q_vec = SparseVector(weights={str(k): float(v) for k, v in q_raw.items() if k is not None and v is not None})
-            else:
-                q_vec = SparseVector(weights={})
-
-            scored = topk_scores(query_vec=q_vec, docs=sparse_vecs, k=max(0, int(top_k or 0)))
-            if not scored:
-                outcome = "empty"
-                if reason == "none":
-                    reason = "no_candidates"
-                return []
-
-            doc_by_id: dict[str, Document] = {str(d.id): d for d in docs if d is not None and d.id is not None}
-            allowed_ids = {str(doc_id) for doc_id in document_ids} if document_ids else None
-
-            results: list[dict[str, Any]] = []
-            for doc_id, score in scored:
-                doc = doc_by_id.get(str(doc_id))
-                if doc is None:
-                    continue
-                meta = doc.metadata or {}
-                if allowed_ids and str(meta.get("document_id")) not in allowed_ids:
-                    continue
-                if metadata_filter and self.metadata_filter_enabled:
-                    if not self._match_metadata_filter(meta, metadata_filter):
-                        continue
-                results.append(
-                    {
-                        "chunk_id": doc.id,
-                        "content": self._result_content_from_doc(doc),
-                        "metadata": {
-                            "tenant_id": meta.get("tenant_id"),
-                            "document_id": meta.get("document_id"),
-                            "source": meta.get("source", "unknown"),
-                            "page": meta.get("page"),
-                            "chunk_index": meta.get("chunk_index"),
-                            "chunk_id": meta.get("chunk_id") or doc.id,
-                            "img_id": meta.get("img_id"),
-                            "image_id": meta.get("image_id"),
-                            "image_url": meta.get("image_url"),
-                            "sparse_score": float(score),
-                        },
-                        "score": float(score),
-                    }
-                )
-
-            if not results:
-                outcome = "empty"
-                if reason == "none":
-                    reason = "no_candidates"
-                return []
-            candidates_count = len(results)
-            outcome = "ok"
-            return heapq.nlargest(max(0, int(top_k or 0)), results, key=lambda x: float(x.get("score", 0.0) or 0.0))
+            return results
         except Exception as exc:
             _log_retriever_fallback('_search_sparse', exc)
             outcome = "error"
@@ -2661,24 +3066,304 @@ class HybridRetriever(BaseRetriever):
                 reason = "exception"
             raise
         finally:
-            try:
-                self._last_sparse_provider_status = {
-                    **provider_status,
-                    "effective_provider": provider,
-                    "status": str(provider_status.get("status") or "ready"),
-                    "outcome": outcome,
-                    "reason": reason,
-                    "candidates": int(candidates_count or 0),
-                }
-            except (TypeError, ValueError, AttributeError):
-                self._last_sparse_provider_status = {}
-            observe_sparse_search(
+            self._record_sparse_search_status(
+                provider_status=provider_status,
                 provider=provider,
                 outcome=outcome,
-                duration_sec=(time.perf_counter() - search_t0),
-                candidates_count=candidates_count,
                 reason=reason,
+                candidates_count=candidates_count,
+                search_t0=search_t0,
+                observe_sparse_search=observe_sparse_search,
             )
+
+    @staticmethod
+    def _lexical_dataset_scope(metadata_filter: dict[str, Any] | None) -> tuple[UUID | None, str | None]:
+        dataset_uuid: UUID | None = None
+        dataset_str: str | None = None
+        if isinstance(metadata_filter, dict):
+            ds_raw = metadata_filter.get("dataset_id")
+            if isinstance(ds_raw, str) and ds_raw.strip():
+                dataset_str = ds_raw.strip()
+                try:
+                    dataset_uuid = UUID(dataset_str)
+                except (TypeError, ValueError, AttributeError):
+                    dataset_uuid = None
+        return dataset_uuid, dataset_str
+
+    @staticmethod
+    def _lexical_search_config(top_k: int) -> tuple[str, int, bool, int]:
+        fts_config = str(getattr(settings, "LEXICAL_DB_FTS_CONFIG", "simple") or "simple").strip() or "simple"
+        fetch_mult = max(1, int(getattr(settings, "LEXICAL_DB_FETCH_MULTIPLIER", 4) or 4))
+        fetch_cap = max(10, int(getattr(settings, "LEXICAL_DB_MAX_CANDIDATES", 200) or 200))
+        limit = max(0, int(top_k or 0))
+        fetch_k = min(fetch_cap, max(limit, limit * fetch_mult))
+        want_trgm = bool(getattr(settings, "LEXICAL_DB_TRGM_ENABLED", True))
+        trgm_min_chars = max(1, int(getattr(settings, "LEXICAL_DB_TRGM_MIN_QUERY_CHARS", 3) or 3))
+        return fts_config, fetch_k, want_trgm, trgm_min_chars
+
+    @staticmethod
+    def _lexical_base_query(
+        db: Session,
+        *,
+        tenant_uuid: UUID,
+        dataset_uuid: UUID | None,
+        document_ids: list[UUID] | None,
+    ) -> Any:
+        query = (
+            db.query(
+                DocumentChunk.id,
+                DocumentChunk.content,
+                DocumentChunk.doc_metadata,
+                DocumentChunk.tenant_id,
+                DocumentChunk.document_id,
+                DocumentChunk.chunk_index,
+                DocumentChunk.page_number,
+            )
+            .join(DBDocument, DocumentChunk.document_id == DBDocument.id)
+            .filter(DBDocument.status == "completed")
+            .filter(DBDocument.publication_status == "published")
+            .filter(DBDocument.archived_at.is_(None))
+            .filter(DBDocument.disabled_at.is_(None))
+            .filter(DocumentChunk.disabled_at.is_(None))
+            .filter(DocumentChunk.tenant_id == tenant_uuid)
+        )
+        if dataset_uuid is not None:
+            query = query.filter(DBDocument.dataset_id == dataset_uuid)
+        if document_ids:
+            query = query.filter(DocumentChunk.document_id.in_(document_ids))
+        return query
+
+    def _lexical_result_from_row(
+        self,
+        row: Any,
+        *,
+        method: str,
+        dataset_str: str | None,
+        metadata_filter: dict[str, Any] | None,
+    ) -> tuple[str, dict[str, Any]] | None:
+        try:
+            (
+                chunk_id,
+                content,
+                doc_metadata,
+                tenant_uuid_row,
+                document_uuid_row,
+                chunk_index,
+                page_number,
+                score_raw,
+            ) = row
+        except (TypeError, ValueError, AttributeError):
+            return None
+
+        cid = str(chunk_id)
+        score = float(score_raw or 0.0)
+        meta = dict(doc_metadata or {})
+        meta.setdefault("tenant_id", str(tenant_uuid_row))
+        meta.setdefault("document_id", str(document_uuid_row))
+        meta.setdefault("chunk_index", int(chunk_index) if chunk_index is not None else None)
+        meta.setdefault("chunk_id", cid)
+        meta.setdefault("source", meta.get("source", "unknown"))
+        if dataset_str:
+            meta.setdefault("dataset_id", dataset_str)
+        if page_number is not None and not meta.get("page"):
+            meta["page"] = page_number
+        meta.setdefault("lexical_method", method)
+        meta.setdefault("lexical_score_raw", score)
+        if metadata_filter and not self._match_metadata_filter(meta, metadata_filter):
+            return None
+        return cid, {"chunk_id": cid, "content": content or "", "metadata": meta, "score": score}
+
+    def _add_lexical_rows(
+        self,
+        *,
+        rows: Any,
+        results_by_id: dict[str, dict[str, Any]],
+        method: str,
+        dataset_str: str | None,
+        metadata_filter: dict[str, Any] | None,
+        replace_if_higher: bool = False,
+    ) -> None:
+        for row in rows:
+            parsed = self._lexical_result_from_row(
+                row,
+                method=method,
+                dataset_str=dataset_str,
+                metadata_filter=metadata_filter,
+            )
+            if parsed is None:
+                continue
+            cid, result = parsed
+            existing = results_by_id.get(cid)
+            if not replace_if_higher or existing is None or float(existing.get("score", 0.0) or 0.0) < float(
+                result.get("score", 0.0) or 0.0
+            ):
+                results_by_id[cid] = result
+
+    def _collect_lexical_fts_results(
+        self,
+        *,
+        db: Session,
+        tenant_uuid: UUID,
+        dataset_uuid: UUID | None,
+        document_ids: list[UUID] | None,
+        fts_config: str,
+        raw_query: str,
+        fetch_k: int,
+        method: str,
+        tsquery_builder: Any,
+        dataset_str: str | None,
+        metadata_filter: dict[str, Any] | None,
+        results_by_id: dict[str, dict[str, Any]],
+    ) -> None:
+        try:
+            vector = func.to_tsvector(fts_config, DocumentChunk.content)
+            tsq = tsquery_builder(fts_config, raw_query)
+            rank = func.ts_rank_cd(vector, tsq).label("fts_rank")
+            rows = (
+                self._lexical_base_query(
+                    db,
+                    tenant_uuid=tenant_uuid,
+                    dataset_uuid=dataset_uuid,
+                    document_ids=document_ids,
+                )
+                .add_columns(rank)
+                .filter(vector.op("@@")(tsq))
+                .order_by(rank.desc())
+                .limit(fetch_k)
+                .all()
+            )
+            self._add_lexical_rows(
+                rows=rows,
+                results_by_id=results_by_id,
+                method=method,
+                dataset_str=dataset_str,
+                metadata_filter=metadata_filter,
+            )
+        except Exception as exc:
+            logger.debug("Lexical %s query failed: %s", method, exc)
+
+    def _lexical_pg_trgm_available_now(self, db: Session) -> bool:
+        pg_trgm_available = self._lexical_pg_trgm_available
+        if pg_trgm_available is not None:
+            return bool(pg_trgm_available)
+        try:
+            row = db.execute(text("SELECT 1 FROM pg_extension WHERE extname='pg_trgm' LIMIT 1;")).first()
+            pg_trgm_available = bool(row)
+        except Exception as exc:
+            _log_retriever_fallback('_search_lexical_db', exc)
+            pg_trgm_available = False
+        self._lexical_pg_trgm_available = pg_trgm_available
+        return bool(pg_trgm_available)
+
+    def _collect_lexical_trigram_results(
+        self,
+        *,
+        db: Session,
+        tenant_uuid: UUID,
+        dataset_uuid: UUID | None,
+        document_ids: list[UUID] | None,
+        raw_query: str,
+        fetch_k: int,
+        dataset_str: str | None,
+        metadata_filter: dict[str, Any] | None,
+        results_by_id: dict[str, dict[str, Any]],
+    ) -> None:
+        try:
+            sim = func.similarity(DocumentChunk.content, raw_query).label("trgm_sim")
+            rows = (
+                self._lexical_base_query(
+                    db,
+                    tenant_uuid=tenant_uuid,
+                    dataset_uuid=dataset_uuid,
+                    document_ids=document_ids,
+                )
+                .add_columns(sim)
+                .filter(DocumentChunk.content.op("%")(raw_query))
+                .order_by(sim.desc())
+                .limit(fetch_k)
+                .all()
+            )
+            self._add_lexical_rows(
+                rows=rows,
+                results_by_id=results_by_id,
+                method="trgm",
+                dataset_str=dataset_str,
+                metadata_filter=metadata_filter,
+                replace_if_higher=True,
+            )
+        except Exception as exc:
+            logger.debug("Lexical trigram query failed: %s", exc)
+
+    def _search_lexical_db_with_session(
+        self,
+        *,
+        db: Session,
+        raw_query: str,
+        top_k: int,
+        tenant_uuid: UUID,
+        document_ids: list[UUID] | None = None,
+        metadata_filter: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        dataset_uuid, dataset_str = self._lexical_dataset_scope(metadata_filter)
+        fts_config, fetch_k, want_trgm, trgm_min_chars = self._lexical_search_config(top_k)
+        limit = max(0, int(top_k or 0))
+        if limit <= 0:
+            return []
+
+        bind = db.get_bind()
+        if not bind or getattr(getattr(bind, "dialect", None), "name", "") != "postgresql":
+            return []
+
+        results_by_id: dict[str, dict[str, Any]] = {}
+        self._collect_lexical_fts_results(
+            db=db,
+            tenant_uuid=tenant_uuid,
+            dataset_uuid=dataset_uuid,
+            document_ids=document_ids,
+            fts_config=fts_config,
+            raw_query=raw_query,
+            fetch_k=fetch_k,
+            method="fts",
+            tsquery_builder=func.websearch_to_tsquery,
+            dataset_str=dataset_str,
+            metadata_filter=metadata_filter,
+            results_by_id=results_by_id,
+        )
+
+        if not results_by_id:
+            self._collect_lexical_fts_results(
+                db=db,
+                tenant_uuid=tenant_uuid,
+                dataset_uuid=dataset_uuid,
+                document_ids=document_ids,
+                fts_config=fts_config,
+                raw_query=raw_query,
+                fetch_k=fetch_k,
+                method="fts_plain",
+                tsquery_builder=func.plainto_tsquery,
+                dataset_str=dataset_str,
+                metadata_filter=metadata_filter,
+                results_by_id=results_by_id,
+            )
+
+        if want_trgm and len(raw_query) >= trgm_min_chars and self._lexical_pg_trgm_available_now(db):
+            self._collect_lexical_trigram_results(
+                db=db,
+                tenant_uuid=tenant_uuid,
+                dataset_uuid=dataset_uuid,
+                document_ids=document_ids,
+                raw_query=raw_query,
+                fetch_k=fetch_k,
+                dataset_str=dataset_str,
+                metadata_filter=metadata_filter,
+                results_by_id=results_by_id,
+            )
+
+        if not results_by_id:
+            return []
+        merged = list(results_by_id.values())
+        merged.sort(key=lambda x: float(x.get("score", 0.0) or 0.0), reverse=True)
+        return merged[:limit]
 
     def _search_lexical_db(  # noqa: PLR0915
         self,
@@ -2707,257 +3392,20 @@ class HybridRetriever(BaseRetriever):
         if not bool(getattr(settings, "LEXICAL_DB_ENABLED", True)):
             return []
 
-        tenant_uuid: UUID | None = tenant_id
-        if tenant_uuid is None:
-            try:
-                tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or ""))
-            except (TypeError, ValueError, AttributeError):
-                tenant_uuid = None
+        tenant_uuid = self._resolve_tenant_uuid(tenant_id)
         if tenant_uuid is None:
             return []
-
-        # Best-effort: extract dataset scope from the metadata filter so we can push it down via join.
-        dataset_uuid: UUID | None = None
-        dataset_str: str | None = None
-        if isinstance(metadata_filter, dict):
-            ds_raw = metadata_filter.get("dataset_id")
-            if isinstance(ds_raw, str) and ds_raw.strip():
-                dataset_str = ds_raw.strip()
-                try:
-                    dataset_uuid = UUID(dataset_str)
-                except (TypeError, ValueError, AttributeError):
-                    dataset_uuid = None
-
-        # Config knobs (keep safe defaults even if not present in Settings yet).
-        fts_config = str(getattr(settings, "LEXICAL_DB_FTS_CONFIG", "simple") or "simple").strip() or "simple"
-        fetch_mult = int(getattr(settings, "LEXICAL_DB_FETCH_MULTIPLIER", 4) or 4)
-        fetch_mult = max(1, fetch_mult)
-        fetch_cap = int(getattr(settings, "LEXICAL_DB_MAX_CANDIDATES", 200) or 200)
-        fetch_cap = max(10, fetch_cap)
-        want_trgm = bool(getattr(settings, "LEXICAL_DB_TRGM_ENABLED", True))
-        trgm_min_chars = int(getattr(settings, "LEXICAL_DB_TRGM_MIN_QUERY_CHARS", 3) or 3)
-        trgm_min_chars = max(1, trgm_min_chars)
-
-        limit = max(0, int(top_k or 0))
-        if limit <= 0:
-            return []
-        fetch_k = min(fetch_cap, max(limit, limit * fetch_mult))
 
         db = SessionLocal()
         try:
-            bind = db.get_bind()
-            if not bind or getattr(getattr(bind, "dialect", None), "name", "") != "postgresql":
-                return []
-
-            def _base_query():
-                q = (
-                    db.query(
-                        DocumentChunk.id,
-                        DocumentChunk.content,
-                        DocumentChunk.doc_metadata,
-                        DocumentChunk.tenant_id,
-                        DocumentChunk.document_id,
-                        DocumentChunk.chunk_index,
-                        DocumentChunk.page_number,
-                    )
-                    .join(DBDocument, DocumentChunk.document_id == DBDocument.id)
-                    .filter(DBDocument.status == "completed")
-                    .filter(DBDocument.publication_status == "published")
-                    .filter(DBDocument.archived_at.is_(None))
-                    .filter(DBDocument.disabled_at.is_(None))
-                    .filter(DocumentChunk.disabled_at.is_(None))
-                    .filter(DocumentChunk.tenant_id == tenant_uuid)
-                )
-                if dataset_uuid is not None:
-                    q = q.filter(DBDocument.dataset_id == dataset_uuid)
-                if document_ids:
-                    q = q.filter(DocumentChunk.document_id.in_(document_ids))
-                return q
-
-            results_by_id: dict[str, dict[str, Any]] = {}
-
-            # 1) Full-text search (FTS)
-            try:
-                vector = func.to_tsvector(fts_config, DocumentChunk.content)
-                tsq = func.websearch_to_tsquery(fts_config, raw_query)
-                rank = func.ts_rank_cd(vector, tsq).label("fts_rank")
-                q1 = (
-                    _base_query()
-                    .add_columns(rank)
-                    .filter(vector.op("@@")(tsq))
-                    .order_by(rank.desc())
-                    .limit(fetch_k)
-                )
-                for row in q1.all():
-                    try:
-                        (
-                            chunk_id,
-                            content,
-                            doc_metadata,
-                            tenant_uuid_row,
-                            document_uuid_row,
-                            chunk_index,
-                            page_number,
-                            fts_rank,
-                        ) = row
-                    except (TypeError, ValueError, AttributeError):
-                        continue
-
-                    cid = str(chunk_id)
-                    meta = dict(doc_metadata or {})
-                    meta.setdefault("tenant_id", str(tenant_uuid_row))
-                    meta.setdefault("document_id", str(document_uuid_row))
-                    meta.setdefault("chunk_index", int(chunk_index) if chunk_index is not None else None)
-                    meta.setdefault("chunk_id", cid)
-                    meta.setdefault("source", meta.get("source", "unknown"))
-                    if dataset_str:
-                        meta.setdefault("dataset_id", dataset_str)
-                    if page_number is not None and not meta.get("page"):
-                        meta["page"] = page_number
-                    meta.setdefault("lexical_method", "fts")
-                    meta.setdefault("lexical_score_raw", float(fts_rank or 0.0))
-
-                    if metadata_filter and not self._match_metadata_filter(meta, metadata_filter):
-                        continue
-
-                    results_by_id[cid] = {
-                        "chunk_id": cid,
-                        "content": content or "",
-                        "metadata": meta,
-                        "score": float(fts_rank or 0.0),
-                    }
-            except Exception as exc:
-                logger.debug("Lexical FTS query failed: %s", exc)
-
-            # 1b) Plain FTS fallback (plainto_tsquery)
-            #
-            # `websearch_to_tsquery` is convenient for natural language, but it may interpret
-            # code-like inputs (paths, hyphenated tokens, etc.) as operators and return no hits.
-            # When the websearch query yields no results, fall back to a "plain" tsquery.
-            if not results_by_id:
-                try:
-                    vector = func.to_tsvector(fts_config, DocumentChunk.content)
-                    tsq = func.plainto_tsquery(fts_config, raw_query)
-                    rank = func.ts_rank_cd(vector, tsq).label("fts_rank")
-                    q1_plain = (
-                        _base_query()
-                        .add_columns(rank)
-                        .filter(vector.op("@@")(tsq))
-                        .order_by(rank.desc())
-                        .limit(fetch_k)
-                    )
-                    for row in q1_plain.all():
-                        try:
-                            (
-                                chunk_id,
-                                content,
-                                doc_metadata,
-                                tenant_uuid_row,
-                                document_uuid_row,
-                                chunk_index,
-                                page_number,
-                                fts_rank,
-                            ) = row
-                        except (TypeError, ValueError, AttributeError):
-                            continue
-
-                        cid = str(chunk_id)
-                        meta = dict(doc_metadata or {})
-                        meta.setdefault("tenant_id", str(tenant_uuid_row))
-                        meta.setdefault("document_id", str(document_uuid_row))
-                        meta.setdefault("chunk_index", int(chunk_index) if chunk_index is not None else None)
-                        meta.setdefault("chunk_id", cid)
-                        meta.setdefault("source", meta.get("source", "unknown"))
-                        if dataset_str:
-                            meta.setdefault("dataset_id", dataset_str)
-                        if page_number is not None and not meta.get("page"):
-                            meta["page"] = page_number
-                        meta.setdefault("lexical_method", "fts_plain")
-                        meta.setdefault("lexical_score_raw", float(fts_rank or 0.0))
-
-                        if metadata_filter and not self._match_metadata_filter(meta, metadata_filter):
-                            continue
-
-                        results_by_id[cid] = {
-                            "chunk_id": cid,
-                            "content": content or "",
-                            "metadata": meta,
-                            "score": float(fts_rank or 0.0),
-                        }
-                except Exception as exc:
-                    logger.debug("Lexical plain FTS query failed: %s", exc)
-
-            # 2) Trigram fallback (pg_trgm)
-            if want_trgm and len(raw_query) >= trgm_min_chars:
-                pg_trgm_available = self._lexical_pg_trgm_available
-                if pg_trgm_available is None:
-                    try:
-                        row = db.execute(text("SELECT 1 FROM pg_extension WHERE extname='pg_trgm' LIMIT 1;")).first()
-                        pg_trgm_available = bool(row)
-                    except Exception as exc:
-                        _log_retriever_fallback('_search_lexical_db', exc)
-                        pg_trgm_available = False
-                    self._lexical_pg_trgm_available = pg_trgm_available
-
-                if pg_trgm_available:
-                    try:
-                        sim = func.similarity(DocumentChunk.content, raw_query).label("trgm_sim")
-                        q2 = (
-                            _base_query()
-                            .add_columns(sim)
-                            .filter(DocumentChunk.content.op("%")(raw_query))
-                            .order_by(sim.desc())
-                            .limit(fetch_k)
-                        )
-                        for row in q2.all():
-                            try:
-                                (
-                                    chunk_id,
-                                    content,
-                                    doc_metadata,
-                                    tenant_uuid_row,
-                                    document_uuid_row,
-                                    chunk_index,
-                                    page_number,
-                                    trgm_sim,
-                                ) = row
-                            except (TypeError, ValueError, AttributeError):
-                                continue
-
-                            cid = str(chunk_id)
-                            score = float(trgm_sim or 0.0)
-                            meta = dict(doc_metadata or {})
-                            meta.setdefault("tenant_id", str(tenant_uuid_row))
-                            meta.setdefault("document_id", str(document_uuid_row))
-                            meta.setdefault("chunk_index", int(chunk_index) if chunk_index is not None else None)
-                            meta.setdefault("chunk_id", cid)
-                            meta.setdefault("source", meta.get("source", "unknown"))
-                            if dataset_str:
-                                meta.setdefault("dataset_id", dataset_str)
-                            if page_number is not None and not meta.get("page"):
-                                meta["page"] = page_number
-                            meta.setdefault("lexical_method", "trgm")
-                            meta.setdefault("lexical_score_raw", score)
-
-                            if metadata_filter and not self._match_metadata_filter(meta, metadata_filter):
-                                continue
-
-                            existing = results_by_id.get(cid)
-                            if existing is None or float(existing.get("score", 0.0) or 0.0) < score:
-                                results_by_id[cid] = {
-                                    "chunk_id": cid,
-                                    "content": content or "",
-                                    "metadata": meta,
-                                    "score": score,
-                                }
-                    except Exception as exc:
-                        logger.debug("Lexical trigram query failed: %s", exc)
-
-            if not results_by_id:
-                return []
-            merged = list(results_by_id.values())
-            merged.sort(key=lambda x: float(x.get("score", 0.0) or 0.0), reverse=True)
-            return merged[:limit]
+            return self._search_lexical_db_with_session(
+                db=db,
+                raw_query=raw_query,
+                top_k=top_k,
+                tenant_uuid=tenant_uuid,
+                document_ids=document_ids,
+                metadata_filter=metadata_filter,
+            )
         finally:
             try:
                 db.close()
@@ -6050,6 +6498,28 @@ class HybridRetriever(BaseRetriever):
                     selected.append(result)
         return selected, used_keys
 
+    def _record_document_diversity_post_stats(
+        self,
+        *,
+        stats: dict[str, Any] | None,
+        out_all: list[dict[str, Any]],
+        top_k: int,
+        pre_keys: set[str],
+    ) -> None:
+        if stats is None:
+            return
+        post_top = out_all[: max(0, int(top_k or 0))]
+        post_keys = {self._result_key(r) for r in post_top}
+        post_docs = {did for did in (self._get_doc_id(r) for r in post_top) if did}
+        post_pages = {pk for pk in (self._diversity_page_key(r) for r in post_top) if pk is not None}
+        self._set_document_diversity_output_stats(
+            stats,
+            post_docs_count=len(post_docs),
+            post_pages_count=len(post_pages),
+            moved_out=len(pre_keys - post_keys),
+            moved_in=len(post_keys - pre_keys),
+        )
+
     def _apply_document_diversity(
         self,
         results: list[dict[str, Any]],
@@ -6104,19 +6574,7 @@ class HybridRetriever(BaseRetriever):
             rest = [r for r in results if self._result_key(r) not in used_keys]
             out_all = selected + rest
 
-        if stats is not None:
-            post_top = out_all[: max(0, int(top_k or 0))]
-            post_keys = {self._result_key(r) for r in post_top}
-            post_docs = {did for did in (self._get_doc_id(r) for r in post_top) if did}
-            post_pages = {pk for pk in (self._diversity_page_key(r) for r in post_top) if pk is not None}
-            self._set_document_diversity_output_stats(
-                stats,
-                post_docs_count=len(post_docs),
-                post_pages_count=len(post_pages),
-                moved_out=len(pre_keys - post_keys),
-                moved_in=len(post_keys - pre_keys),
-            )
-
+        self._record_document_diversity_post_stats(stats=stats, out_all=out_all, top_k=top_k, pre_keys=pre_keys)
         return out_all
 
     def _merge_results(
