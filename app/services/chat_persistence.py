@@ -44,6 +44,31 @@ class ChatResponseFinalizationInput:
     retrieval_mode_default: str | None
 
 
+def _is_extractive_fallback_trace(metrics: dict[str, Any]) -> bool:
+    return str(metrics.get("generation_fallback_kind") or "").strip() == "extractive_retrieval_summary"
+
+
+def _retrieval_elapsed_seconds(metrics: dict[str, Any]) -> float | None:
+    retrieval_elapsed_raw = (
+        metrics.get("retrieval_elapsed_sec")
+        if metrics.get("retrieval_elapsed_sec") is not None
+        else metrics.get("elapsed_sec")
+    )
+    try:
+        if retrieval_elapsed_raw is not None:
+            candidate = float(retrieval_elapsed_raw)
+            if candidate >= 0:
+                return candidate
+    except Exception:
+        return None
+    return None
+
+
+def _compact_retrieval_errors(metrics: dict[str, Any]) -> list[str]:
+    errors_raw = metrics.get("retrieval_errors") or metrics.get("errors") or []
+    return [str(item)[:200] for item in errors_raw if str(item or "").strip()]
+
+
 def _log_extractive_fallback_rag_trace(
     *,
     tenant_id: UUID,
@@ -54,28 +79,14 @@ def _log_extractive_fallback_rag_trace(
     metrics: dict[str, Any],
     retrieval_mode_default: str | None,
 ) -> None:
-    if str(metrics.get("generation_fallback_kind") or "").strip() != "extractive_retrieval_summary":
+    if not _is_extractive_fallback_trace(metrics):
         return
 
     retrieval_mode_used = str(
         metrics.get("retrieval_mode") or retrieval_mode_default or ""
     ).strip()
-    retrieval_elapsed_raw = (
-        metrics.get("retrieval_elapsed_sec")
-        if metrics.get("retrieval_elapsed_sec") is not None
-        else metrics.get("elapsed_sec")
-    )
-    retrieval_elapsed_sec: float | None = None
-    try:
-        if retrieval_elapsed_raw is not None:
-            candidate = float(retrieval_elapsed_raw)
-            if candidate >= 0:
-                retrieval_elapsed_sec = candidate
-    except Exception:
-        retrieval_elapsed_sec = None
-
-    errors_raw = metrics.get("retrieval_errors") or metrics.get("errors") or []
-    errors = [str(item)[:200] for item in errors_raw if str(item or "").strip()]
+    retrieval_elapsed_sec = _retrieval_elapsed_seconds(metrics)
+    errors = _compact_retrieval_errors(metrics)
 
     payload: dict[str, Any] = {
         "event": "rag_trace",

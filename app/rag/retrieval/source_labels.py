@@ -126,6 +126,29 @@ def should_replace_source_label(source: Any, *, document_id: Any) -> bool:
     return bool(doc_id and name.lower() in {doc_id, f"{doc_id}.pdf"})
 
 
+def _source_answer_title_and_filename(doc: Any) -> tuple[str | None, str | None]:
+    meta = getattr(doc, "metadata", None) or {}
+    if not isinstance(meta, dict):
+        return None, None
+
+    title = str(meta.get("document_title") or meta.get("doc_title") or meta.get("title") or "").strip() or None
+    filename = str(meta.get("filename") or meta.get("source") or "").strip() or None
+    return title, filename
+
+
+def _source_answer_label(question: str) -> str:
+    q = str(question or "").lower()
+    if "survey" in q:
+        return "survey"
+    if "document" in q:
+        return "document"
+    if "source" in q:
+        return "source"
+    if "file" in q:
+        return "file"
+    return "paper"
+
+
 def maybe_build_source_identification_answer(*, question: str, docs: list[Any] | None) -> str | None:
     """
     Build a deterministic answer for source-identification questions.
@@ -140,27 +163,13 @@ def maybe_build_source_identification_answer(*, question: str, docs: list[Any] |
         return None
 
     doc = docs[0]
-    meta = getattr(doc, "metadata", None) or {}
-    if not isinstance(meta, dict):
-        return None
-
-    title = str(meta.get("document_title") or meta.get("doc_title") or meta.get("title") or "").strip()
-    filename = str(meta.get("filename") or meta.get("source") or "").strip()
+    title, filename = _source_answer_title_and_filename(doc)
     if not title:
-        title = filename
+        title = filename or ""
     if not title:
         return None
 
-    q = str(question or "").lower()
-    label = "paper"
-    if "survey" in q:
-        label = "survey"
-    elif "document" in q:
-        label = "document"
-    elif "source" in q:
-        label = "source"
-    elif "file" in q:
-        label = "file"
+    label = _source_answer_label(question)
 
     suffix = ""
     if filename and filename != title:

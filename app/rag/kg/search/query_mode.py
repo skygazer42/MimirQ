@@ -39,6 +39,14 @@ def normalize_kg_query_mode(mode: Any, *, default: str = "auto") -> str:
     return str(default or "auto").strip().lower() if str(default or "auto").strip().lower() in _ALLOWED_MODES else "auto"
 
 
+def _query_mode_result(mode: str, confidence: str, reasons: list[str]) -> dict[str, Any]:
+    return {
+        "mode": mode,
+        "confidence": confidence,
+        "reason_codes": reasons,
+    }
+
+
 def classify_kg_query_mode(
     *,
     query: str,
@@ -48,11 +56,7 @@ def classify_kg_query_mode(
 ) -> dict[str, Any]:
     default_norm = normalize_kg_query_mode(default_mode, default="auto")
     if default_norm != "auto":
-        return {
-            "mode": default_norm,
-            "confidence": "forced",
-            "reason_codes": ["default_mode_forced"],
-        }
+        return _query_mode_result(default_norm, "forced", ["default_mode_forced"])
 
     q = str(query or "").strip()
     q_fold = q.casefold()
@@ -60,7 +64,7 @@ def classify_kg_query_mode(
 
     if _DRIFT_RE.search(q):
         reasons.append("drift_pattern")
-        return {"mode": "drift", "confidence": "high", "reason_codes": reasons}
+        return _query_mode_result("drift", "high", reasons)
 
     has_local = bool(_LOCAL_RE.search(q))
     if has_local:
@@ -74,28 +78,28 @@ def classify_kg_query_mode(
         reasons.append("global_pattern")
         # Global wins unless local is explicit and strong.
         if not has_local:
-            return {"mode": "global", "confidence": "medium", "reason_codes": reasons}
+            return _query_mode_result("global", "medium", reasons)
 
     doc_count = len(list(document_ids or []))
     if doc_count == 1 and ("id=" in q_fold or "主键" in q or "row" in q_fold):
         reasons.append("single_doc_row_focus")
-        return {"mode": "local", "confidence": "high", "reason_codes": reasons}
+        return _query_mode_result("local", "high", reasons)
 
     if has_local:
-        return {"mode": "local", "confidence": "medium", "reason_codes": reasons}
+        return _query_mode_result("local", "medium", reasons)
 
     if dataset_id is not None and doc_count == 0 and _DATASET_FACTOID_RE.search(q):
         reasons.append("dataset_factoid_scope")
         if _DATASET_FACTOID_DOMAIN_RE.search(q):
             reasons.append("dataset_factoid_domain")
-        return {"mode": "local", "confidence": "medium", "reason_codes": reasons}
+        return _query_mode_result("local", "medium", reasons)
 
     if dataset_id is not None and doc_count == 0:
         reasons.append("dataset_scope_no_doc_ids")
-        return {"mode": "global", "confidence": "low", "reason_codes": reasons}
+        return _query_mode_result("global", "low", reasons)
 
     reasons.append("fallback_global")
-    return {"mode": "global", "confidence": "low", "reason_codes": reasons}
+    return _query_mode_result("global", "low", reasons)
 
 
 def build_mode_aware_recall_overrides(
