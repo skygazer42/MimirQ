@@ -121,8 +121,8 @@ def chunk(
                     attachment_res.extend(
                         naive_chunk(filename, payload, callback=callback, **kwargs)
                     )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logging.debug("Failed to chunk email attachment %s: %s", filename, exc)
 
     return main_res + attachment_res
 

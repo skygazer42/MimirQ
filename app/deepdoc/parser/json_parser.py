@@ -19,6 +19,7 @@
 # from https://github.com/langchain-ai/langchain/blob/master/libs/text-splitters/langchain_text_splitters/json.py
 
 import json
+import logging
 from typing import Any
 
 import chardet
@@ -53,13 +54,13 @@ def find_codec(blob):
         try:
             blob[:1024].decode(c)
             return c
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.debug("Codec %s failed JSON sample decode: %s", c, exc)
         try:
             blob.decode(c)
             return c
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.debug("Codec %s failed JSON full decode: %s", c, exc)
 
     return "utf-8"
 

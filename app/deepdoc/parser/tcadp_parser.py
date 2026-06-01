@@ -440,14 +440,14 @@ class TCADPParser(IntegratedPipelinePdfParser):
             if temp_file and os.path.exists(temp_file.name):
                 try:
                     os.unlink(temp_file.name)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    self.logger.debug("[TCADP] Failed to remove temporary file %s: %s", temp_file.name, exc)
 
             if delete_output and created_tmp_dir and out_dir and out_dir.exists():
                 try:
                     shutil.rmtree(out_dir)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    self.logger.debug("[TCADP] Failed to remove temporary output %s: %s", out_dir, exc)
 
 
 if __name__ == "__main__":

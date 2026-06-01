@@ -15,6 +15,8 @@
 #  limitations under the License.
 #
 
+import logging
+
 import chardet
 import html_text
 import readability
@@ -49,13 +51,13 @@ def find_codec(blob):
         try:
             blob[:1024].decode(c)
             return c
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.debug("Codec %s failed HTML sample decode: %s", c, exc)
         try:
             blob.decode(c)
             return c
-        except Exception:
-            pass
+        except Exception as exc:
+            logging.debug("Codec %s failed HTML full decode: %s", c, exc)
 
     return "utf-8"
 

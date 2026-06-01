@@ -1329,8 +1329,8 @@ class IntegratedPipelinePdfParser:
                     self._collect_scrap_lines(boxes, first_box, 0, lines, widths, mean_height, page_width, zoom)
                 else:
                     logging.debug("WASTE: " + first_box["text"])
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.debug("Failed to collect PDF scrap lines: %s", exc)
             boxes.pop(0)
             if self._scrap_group_should_keep(first_box, widths, page_width):
                 res.append("\n".join([c["text"] + self._line_tag(c, zoom) for c in lines]))

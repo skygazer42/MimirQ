@@ -69,8 +69,8 @@ class _FallbackTrie:
             try:
                 if os.path.exists(tmp):
                     os.remove(tmp)
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.debug("Failed to remove temporary fallback trie cache %s: %s", tmp, exc)
 
     @classmethod
     def load(cls, path: str) -> "_FallbackTrie":
@@ -195,8 +195,8 @@ class RagTokenizer:
                     )
                 try:
                     os.remove(trie_file_name)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logging.debug("Failed to remove unreadable trie cache %s: %s", trie_file_name, exc)
                 self.trie_ = Trie(string.printable)
         else:
             # file not exist, build default trie
