@@ -41,7 +41,8 @@ def _start_subprocess_worker_fallback(
     result_path: Path,
     log_file: Any,
 ) -> subprocess.Popen[bytes]:
-    return subprocess.Popen(  # noqa: S603
+    # Fixed internal worker entrypoint; only generated payload/result paths vary.
+    return subprocess.Popen(  # noqa: S603  # NOSONAR
         [
             sys.executable,
             "-m",
@@ -177,7 +178,8 @@ async def run_subprocess_worker(
     try:
         log_file = log_path.open("wb")
         try:
-            process = await asyncio.create_subprocess_exec(
+            # Fixed internal worker entrypoint; no caller-provided executable is accepted.
+            process = await asyncio.create_subprocess_exec(  # NOSONAR
                 sys.executable,
                 "-m",
                 "app.parsing.subprocess_worker",
