@@ -24621,6 +24621,13 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     get_batch_task_status_api_v1_documents_batch_upload_status__batch_id__get: {
@@ -24690,6 +24697,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -34628,15 +34642,15 @@ export interface operations {
                 dataset_id?: string | null;
                 /** @description Optional pipeline version filter (defaults to active pipeline per document) */
                 pipeline_hash?: string | null;
-                max_events?: number;
-                max_entities?: number;
-                max_links?: number;
+                max_events?: number | null;
+                max_entities?: number | null;
+                max_links?: number | null;
                 /** @description Include entity-entity co-occurrence links */
                 include_entity_links?: boolean;
                 /** @description Include entity-entity relation links (triples) */
                 include_relation_links?: boolean;
-                min_shared_events?: number;
-                max_entity_links?: number;
+                min_shared_events?: number | null;
+                max_entity_links?: number | null;
             };
             header?: {
                 "x-tenant-id"?: string | null;
@@ -34713,15 +34727,15 @@ export interface operations {
                 dataset_id?: string | null;
                 /** @description Optional pipeline version filter (defaults to active pipeline per document) */
                 pipeline_hash?: string | null;
-                max_events?: number;
-                max_entities?: number;
-                max_links?: number;
+                max_events?: number | null;
+                max_entities?: number | null;
+                max_links?: number | null;
                 /** @description Include entity-entity co-occurrence links */
                 include_entity_links?: boolean;
                 /** @description Include entity-entity relation links (triples) */
                 include_relation_links?: boolean;
-                min_shared_events?: number;
-                max_entity_links?: number;
+                min_shared_events?: number | null;
+                max_entity_links?: number | null;
             };
             header?: {
                 "x-tenant-id"?: string | null;
@@ -35455,15 +35469,15 @@ export interface operations {
                 dataset_id?: string | null;
                 /** @description Optional pipeline version filter (defaults to active pipeline per document) */
                 pipeline_hash?: string | null;
-                max_events?: number;
-                max_entities?: number;
-                max_links?: number;
+                max_events?: number | null;
+                max_entities?: number | null;
+                max_links?: number | null;
                 /** @description Include entity-entity co-occurrence links */
                 include_entity_links?: boolean;
                 /** @description Include entity-entity relation links (triples) */
                 include_relation_links?: boolean;
-                min_shared_events?: number;
-                max_entity_links?: number;
+                min_shared_events?: number | null;
+                max_entity_links?: number | null;
                 download?: boolean;
                 /** @description Return gzipped GraphML */
                 gzip?: boolean;
@@ -46557,6 +46571,13 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     document_structure_preview_api_v1_rag_document_structure_post: {
@@ -51433,7 +51454,6 @@ export interface operations {
     export_audit_logs_api_v1_audit_logs_export_get: {
         parameters: {
             query?: {
-                limit?: number;
                 actor_id?: string | null;
                 action?: string | null;
                 resource_type?: string | null;
@@ -51441,6 +51461,7 @@ export interface operations {
                 request_id?: string | null;
                 since?: string | null;
                 until?: string | null;
+                limit?: number;
                 /** @description Cursor: last seen created_at */
                 after_created_at?: string | null;
                 /** @description Cursor: last seen id (tie-breaker) */
