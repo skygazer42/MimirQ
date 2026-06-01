@@ -8,6 +8,7 @@ Centralized settings management including:
 - Storage backend config
 """
 import ipaddress
+import os
 import re
 import sys
 import warnings
@@ -2126,9 +2127,9 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         # Load `.env` from repo root (stable even when running with a different CWD).
         #
-        # Note: unit tests should not be influenced by a developer's local `.env`,
-        # so we disable dotenv loading when running under pytest.
-        env_file=None if "pytest" in sys.modules else str(_env_file),
+        # Note: unit tests and generated OpenAPI artifacts should not be influenced by
+        # a developer's local `.env`, so disable dotenv loading for those paths.
+        env_file=None if "pytest" in sys.modules or os.getenv("MIMIRQ_OPENAPI_EXPORT") == "1" else str(_env_file),
         case_sensitive=True,
         extra="ignore",
     )

@@ -7612,7 +7612,7 @@ export interface components {
             file: string;
             /**
              * Parser Backend
-             * @default deepdoc
+             * @default auto
              */
             parser_backend: string;
             /**
@@ -7669,7 +7669,7 @@ export interface components {
             file_size?: number | null;
             /**
              * Parser Backend
-             * @default deepdoc
+             * @default auto
              */
             parser_backend: string;
             /**
@@ -7720,7 +7720,7 @@ export interface components {
             file: string;
             /**
              * Parser Backend
-             * @default deepdoc
+             * @default auto
              */
             parser_backend: string;
             /**
@@ -7772,7 +7772,7 @@ export interface components {
             file: string;
             /**
              * Parser Backend
-             * @default deepdoc
+             * @default auto
              */
             parser_backend: string;
             /**
@@ -7827,7 +7827,7 @@ export interface components {
             files: string[];
             /**
              * Parser Backend
-             * @default deepdoc
+             * @default auto
              */
             parser_backend: string;
             /**
@@ -22895,7 +22895,7 @@ export interface components {
             user_agent?: string | null;
             /**
              * Parser Backend
-             * @default deepdoc
+             * @default auto
              */
             parser_backend: string;
             /**
