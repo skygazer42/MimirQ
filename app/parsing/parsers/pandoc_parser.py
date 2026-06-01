@@ -13,14 +13,14 @@ This parser is intentionally optional because it relies on external CLIs:
 from __future__ import annotations
 
 import re
-import subprocess
 from pathlib import Path
+from subprocess import PIPE, CalledProcessError, TimeoutExpired
 from typing import Any
 
 from langchain_core.documents import Document
 
 from app.core.config import settings
-from app.parsing.utils.cli import resolve_cli_command
+from app.parsing.utils.cli import resolve_cli_command, run_resolved_cli
 from app.parsing.utils.text import read_text_file
 from app.rag.core.logging import get_logger
 
@@ -95,18 +95,18 @@ class PandocParser:
             stdin = (input_text or "").encode("utf-8")
 
         try:
-            proc = subprocess.run(
+            proc = run_resolved_cli(
                 args,
                 input=stdin,
                 cwd=str(cwd),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stdout=PIPE,
+                stderr=PIPE,
                 timeout=self._timeout_sec,
                 check=True,
             )
-        except subprocess.TimeoutExpired as exc:
+        except TimeoutExpired as exc:
             raise RuntimeError(f"pandoc timed out after {self._timeout_sec:.0f}s") from exc
-        except subprocess.CalledProcessError as exc:
+        except CalledProcessError as exc:
             err = (exc.stderr or b"").decode("utf-8", errors="ignore")
             raise RuntimeError(f"pandoc failed: {err.strip()[:500]}") from exc
 
@@ -145,17 +145,17 @@ class PandocParser:
             str(file_path),
         ]
         try:
-            subprocess.run(
+            run_resolved_cli(
                 args,
                 cwd=str(artifact_root),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stdout=PIPE,
+                stderr=PIPE,
                 timeout=self._lo_timeout_sec,
                 check=True,
             )
-        except subprocess.TimeoutExpired as exc:
+        except TimeoutExpired as exc:
             raise RuntimeError(f"soffice timed out after {self._lo_timeout_sec:.0f}s") from exc
-        except subprocess.CalledProcessError as exc:
+        except CalledProcessError as exc:
             err = (exc.stderr or b"").decode("utf-8", errors="ignore")
             raise RuntimeError(f"soffice convert failed: {err.strip()[:500]}") from exc
 

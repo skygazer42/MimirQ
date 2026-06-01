@@ -12,15 +12,15 @@ import json
 import os
 import re
 import shutil
-import subprocess
 from pathlib import Path
+from subprocess import PIPE, STDOUT, CalledProcessError, TimeoutExpired
 from typing import Any
 
 import requests
 from langchain_core.documents import Document
 
 from app.core.config import settings
-from app.parsing.utils.cli import resolve_cli_command
+from app.parsing.utils.cli import resolve_cli_command, run_resolved_cli
 from app.parsing.utils.markdown_response import extract_markdown_response_text
 from app.rag.core.logging import get_logger
 
@@ -367,11 +367,11 @@ class MagicPDFParser:
         env.setdefault("YOLO_CONFIG_DIR", str(artifact_root / ".ultralytics"))
         stdout_text = ""
         try:
-            proc = subprocess.run(
+            proc = run_resolved_cli(
                 cmd,
                 check=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
+                stdout=PIPE,
+                stderr=STDOUT,
                 text=True,
                 timeout=timeout_sec,
                 env=env,
@@ -379,9 +379,9 @@ class MagicPDFParser:
             stdout_text = proc.stdout or ""
             if stdout_text:
                 logger.info("[magicpdf] %s", stdout_text.strip()[:4000])
-        except subprocess.TimeoutExpired as exc:
+        except TimeoutExpired as exc:
             raise RuntimeError(f"MagicPDF timed out after {timeout_sec:.0f}s") from exc
-        except subprocess.CalledProcessError as exc:
+        except CalledProcessError as exc:
             out = (exc.stdout or "").strip()
             raise RuntimeError(f"MagicPDF failed: {out[:4000] or exc}") from exc
 

@@ -12,6 +12,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from threading import Lock
+from typing import Any
 
 from fastapi import HTTPException, Request, Response
 from fastapi.responses import JSONResponse
@@ -167,10 +168,11 @@ class RedisRateLimiter:
         self.burst_size = int(burst_size or int(self.requests_per_second * 2))
         self.key_prefix = str(key_prefix or "rl").strip() or "rl"
         self.key_ttl_sec = max(10, int(key_ttl_sec or 0) or 600)
-        self._client = None
+        self._client: Any | None = None
+        self._token_bucket_script: Any | None = None
         self._last_error_ts = 0.0
 
-    def _get_client(self):
+    def _get_client(self) -> Any:
         if self._client is None:
             import redis
 
@@ -181,6 +183,11 @@ class RedisRateLimiter:
                 decode_responses=True,
             )
         return self._client
+
+    def _get_token_bucket_script(self, client: Any) -> Any:
+        if self._token_bucket_script is None:
+            self._token_bucket_script = client.register_script(_REDIS_TOKEN_BUCKET_LUA)
+        return self._token_bucket_script
 
     def _redis_key(self, key: str) -> str:
         return f"{self.key_prefix}:{self.namespace}:{key}"
@@ -193,21 +200,23 @@ class RedisRateLimiter:
         redis_key = self._redis_key(key)
         try:
             client = self._get_client()
-            allowed_raw, wait_raw = client.eval(
-                _REDIS_TOKEN_BUCKET_LUA,
-                1,
-                redis_key,
-                float(self.burst_size),
-                float(self.requests_per_second),
-                float(now),
-                1.0,
-                float(self.key_ttl_sec),
+            script = self._get_token_bucket_script(client)
+            allowed_raw, wait_raw = script(
+                keys=[redis_key],
+                args=[
+                    float(self.burst_size),
+                    float(self.requests_per_second),
+                    float(now),
+                    1.0,
+                    float(self.key_ttl_sec),
+                ],
             )
             allowed = int(allowed_raw) == 1
             wait_time = float(wait_raw or 0.0)
             return (True, 0.0) if allowed else (False, max(0.0, wait_time))
         except Exception as exc:  # noqa: BLE001
             self._client = None
+            self._token_bucket_script = None
             # Avoid log spam during outages.
             if now - self._last_error_ts > 60:
                 self._last_error_ts = now

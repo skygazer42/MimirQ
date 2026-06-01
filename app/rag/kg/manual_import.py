@@ -62,7 +62,7 @@ def _normalized_key(value: Any) -> str:
 
 
 def _short_hash(value: str, size: int = 12) -> str:
-    return hashlib.sha1(value.encode("utf-8", "ignore"), usedforsecurity=False).hexdigest()[:size]
+    return hashlib.sha256(value.encode("utf-8", "ignore")).hexdigest()[:size]
 
 
 def _stable_uuid(kind: str, key: str) -> UUID:
