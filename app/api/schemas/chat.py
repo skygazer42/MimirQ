@@ -1,6 +1,7 @@
 """
 Chat-related Pydantic schemas.
 """
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
@@ -18,6 +19,119 @@ from app.rag.retrieval.contract import (
 from .base import OrmModel
 
 HIERARCHY_FAMILY_AGGREGATION_VALUES = ("frequency", "score", "combined")
+FUSION_CHANNELS = {"vector", "bm25", "lexical", "sparse"}
+
+
+@dataclass(frozen=True)
+class _FloatFusionRule:
+    field_name: str
+    key_error: str
+    value_error: str
+    min_value: float
+    max_value: float
+
+
+def _clean_int_fusion_map(raw: Any, *, field_name: str) -> dict[str, int] | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError(f"{field_name} must be an object/dict when provided")
+    cleaned: dict[str, int] = {}
+    for k, v in raw.items():
+        key = str(k or "").strip().lower()
+        if not key:
+            continue
+        if key not in FUSION_CHANNELS:
+            raise ValueError(f"{field_name} keys must be in: vector, bm25, lexical, sparse")
+        try:
+            iv = int(v) if v is not None else 0
+        except Exception as exc:  # noqa: BLE001
+            raise ValueError(f"{field_name}[{key}] must be an int") from exc
+        if iv < 0 or iv > 200:
+            raise ValueError(f"{field_name} values must be between 0 and 200")
+        cleaned[key] = iv
+    return cleaned or None
+
+
+def _clean_float_fusion_map(
+    raw: Any,
+    *,
+    rule: _FloatFusionRule,
+) -> dict[str, float] | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError(f"{rule.field_name} must be an object/dict when provided")
+    cleaned: dict[str, float] = {}
+    for k, v in raw.items():
+        key = str(k or "").strip().lower()
+        if not key:
+            continue
+        if key not in FUSION_CHANNELS:
+            raise ValueError(rule.key_error)
+        try:
+            fv = float(v) if v is not None else 0.0
+        except Exception as exc:  # noqa: BLE001
+            raise ValueError(rule.value_error) from exc
+        if fv < rule.min_value or fv > rule.max_value:
+            raise ValueError(
+                f"{rule.field_name} values must be between {rule.min_value:.1f} and {rule.max_value:.1f}"
+            )
+        cleaned[key] = fv
+    return cleaned or None
+
+
+def _profile_from_mode(mode: str) -> str:
+    return {
+        "basic": "hybrid_ce",
+        "contextual": "long_context",
+        "expanded": "expanded",
+    }.get(mode, "")
+
+
+def _retrieval_knobs_appear_omitted(config: Any) -> bool:
+    default_top_k = int(getattr(settings, "RETRIEVAL_TOP_K", 10) or 10)
+    default_score_threshold = float(getattr(settings, "SIMILARITY_THRESHOLD", 0.0) or 0.0)
+    default_reranker_provider = str(getattr(settings, "RERANKER_PROVIDER", "") or "").strip().lower()
+    return (
+        int(config.top_k or 0) == int(default_top_k)
+        and abs(float(config.score_threshold or 0.0) - float(default_score_threshold)) <= 1e-9
+        and str(config.retrieval_mode or "").strip().lower() == "hybrid"
+        and bool(config.enable_reranker) is bool(getattr(settings, "ENABLE_RERANKER", False))
+        and str(config.reranker_provider or "").strip().lower() == default_reranker_provider
+        and int(config.reranker_top_n or 0) == int(getattr(settings, "RERANKER_TOP_N", 20) or 20)
+        and bool(config.enable_weight_rerank) is True
+    )
+
+
+def _default_profile_for_omitted_knobs(config: Any) -> str:
+    if not _retrieval_knobs_appear_omitted(config):
+        return ""
+    return str(getattr(settings, "CHAT_DEFAULT_RETRIEVAL_PROFILE", "") or "").strip().lower()
+
+
+def _apply_profile_value_overrides(config: Any, applied: dict[str, Any]) -> None:
+    config.retrieval_profile = applied["retrieval_profile"]
+    config.top_k = int(applied["top_k"])
+    config.score_threshold = float(applied["score_threshold"])
+    for key in ("retrieval_mode", "reranker_provider", "hierarchy_family_aggregation"):
+        if applied.get(key):
+            setattr(config, key, str(applied[key]))
+    for key in ("reranker_top_n", "hierarchy_parent_depth", "hierarchy_sibling_window", "hierarchy_overfetch_factor"):
+        if applied.get(key) is not None:
+            setattr(config, key, int(applied[key]))
+    for key in (
+        "enable_reranker",
+        "enable_weight_rerank",
+        "visible_evidence_only",
+        "enable_hierarchy_recall",
+        "hierarchy_family_collapse",
+        "hierarchy_tree_dedup",
+    ):
+        if applied.get(key) is not None:
+            setattr(config, key, bool(applied[key]))
+    if applied.get("retrieval_contract_mode") is not None:
+        config.retrieval_contract_mode = normalize_retrieval_contract_mode(applied["retrieval_contract_mode"])
 
 
 class CitationBbox(BaseModel):
@@ -348,48 +462,17 @@ class ChatRAGConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_fusion_budgets(self) -> "ChatRAGConfig":
-        allowed = {"vector", "bm25", "lexical", "sparse"}
-
-        fb = getattr(self, "fusion_budgets", None)
-        if fb is not None:
-            if not isinstance(fb, dict):
-                raise ValueError("fusion_budgets must be an object/dict when provided")
-            cleaned: dict[str, int] = {}
-            for k, v in fb.items():
-                key = str(k or "").strip().lower()
-                if not key:
-                    continue
-                if key not in allowed:
-                    raise ValueError("fusion_budgets keys must be in: vector, bm25, lexical, sparse")
-                try:
-                    iv = int(v) if v is not None else 0
-                except Exception as exc:  # noqa: BLE001
-                    raise ValueError(f"fusion_budgets[{key}] must be an int") from exc
-                if iv < 0 or iv > 200:
-                    raise ValueError("fusion_budgets values must be between 0 and 200")
-                cleaned[key] = iv
-            self.fusion_budgets = cleaned or None
-
-        fms = getattr(self, "fusion_min_scores", None)
-        if fms is not None:
-            if not isinstance(fms, dict):
-                raise ValueError("fusion_min_scores must be an object/dict when provided")
-            cleaned2: dict[str, float] = {}
-            for k, v in fms.items():
-                key = str(k or "").strip().lower()
-                if not key:
-                    continue
-                if key not in allowed:
-                    raise ValueError("fusion_min_scores keys must be in: vector, bm25, lexical, sparse")
-                try:
-                    fv = float(v) if v is not None else 0.0
-                except Exception as exc:  # noqa: BLE001
-                    raise ValueError(f"fusion_min_scores[{key}] must be a float") from exc
-                if fv < 0.0 or fv > 1.0:
-                    raise ValueError("fusion_min_scores values must be between 0.0 and 1.0")
-                cleaned2[key] = fv
-            self.fusion_min_scores = cleaned2 or None
-
+        self.fusion_budgets = _clean_int_fusion_map(self.fusion_budgets, field_name="fusion_budgets")
+        self.fusion_min_scores = _clean_float_fusion_map(
+            self.fusion_min_scores,
+            rule=_FloatFusionRule(
+                field_name="fusion_min_scores",
+                key_error="fusion_min_scores keys must be in: vector, bm25, lexical, sparse",
+                value_error="fusion_min_scores values must be floats",
+                min_value=0.0,
+                max_value=1.0,
+            ),
+        )
         return self
 
     @model_validator(mode="after")
@@ -455,36 +538,13 @@ class ChatRAGConfig(BaseModel):
         default_profile_applied = False
 
         if not p and mode:
-            mode_to_profile = {
-                "basic": "hybrid_ce",
-                "contextual": "long_context",
-                "expanded": "expanded",
-            }
-            p = mode_to_profile.get(mode, "")
+            p = _profile_from_mode(mode)
 
         # Request-level default retrieval profile:
         # apply only when caller omitted retrieval_profile and did not provide explicit retrieval knobs.
         if not p:
-            default_top_k = int(getattr(settings, "RETRIEVAL_TOP_K", 10) or 10)
-            default_score_threshold = float(getattr(settings, "SIMILARITY_THRESHOLD", 0.0) or 0.0)
-            default_retrieval_mode = "hybrid"
-            default_enable_reranker = bool(getattr(settings, "ENABLE_RERANKER", False))
-            default_reranker_provider = str(getattr(settings, "RERANKER_PROVIDER", "") or "").strip().lower()
-            default_reranker_top_n = int(getattr(settings, "RERANKER_TOP_N", 20) or 20)
-            default_enable_weight_rerank = True
-
-            knobs_appear_omitted = (
-                int(self.top_k or 0) == int(default_top_k)
-                and abs(float(self.score_threshold or 0.0) - float(default_score_threshold)) <= 1e-9
-                and str(self.retrieval_mode or "").strip().lower() == default_retrieval_mode
-                and bool(self.enable_reranker) is default_enable_reranker
-                and str(self.reranker_provider or "").strip().lower() == default_reranker_provider
-                and int(self.reranker_top_n or 0) == int(default_reranker_top_n)
-                and bool(self.enable_weight_rerank) is default_enable_weight_rerank
-            )
-            if knobs_appear_omitted:
-                p = str(getattr(settings, "CHAT_DEFAULT_RETRIEVAL_PROFILE", "") or "").strip().lower()
-                default_profile_applied = bool(p)
+            p = _default_profile_for_omitted_knobs(self)
+            default_profile_applied = bool(p)
 
         if not p:
             self.retrieval_profile = None
@@ -502,37 +562,7 @@ class ChatRAGConfig(BaseModel):
             retrieval_contract_mode=self.retrieval_contract_mode,
             visible_evidence_only=self.visible_evidence_only,
         )
-        self.retrieval_profile = applied["retrieval_profile"]
-        self.top_k = int(applied["top_k"])
-        self.score_threshold = float(applied["score_threshold"])
-        if applied.get("retrieval_mode"):
-            self.retrieval_mode = str(applied["retrieval_mode"])
-        if applied.get("enable_reranker") is not None:
-            self.enable_reranker = bool(applied["enable_reranker"])
-        if applied.get("reranker_provider"):
-            self.reranker_provider = str(applied["reranker_provider"])
-        if applied.get("reranker_top_n") is not None:
-            self.reranker_top_n = int(applied["reranker_top_n"])
-        if applied.get("enable_weight_rerank") is not None:
-            self.enable_weight_rerank = bool(applied["enable_weight_rerank"])
-        if applied.get("retrieval_contract_mode") is not None:
-            self.retrieval_contract_mode = normalize_retrieval_contract_mode(applied["retrieval_contract_mode"])
-        if applied.get("visible_evidence_only") is not None:
-            self.visible_evidence_only = bool(applied["visible_evidence_only"])
-        if applied.get("enable_hierarchy_recall") is not None:
-            self.enable_hierarchy_recall = bool(applied["enable_hierarchy_recall"])
-        if applied.get("hierarchy_family_collapse") is not None:
-            self.hierarchy_family_collapse = bool(applied["hierarchy_family_collapse"])
-        if applied.get("hierarchy_family_aggregation") is not None:
-            self.hierarchy_family_aggregation = str(applied["hierarchy_family_aggregation"])
-        if applied.get("hierarchy_tree_dedup") is not None:
-            self.hierarchy_tree_dedup = bool(applied["hierarchy_tree_dedup"])
-        if applied.get("hierarchy_parent_depth") is not None:
-            self.hierarchy_parent_depth = int(applied["hierarchy_parent_depth"])
-        if applied.get("hierarchy_sibling_window") is not None:
-            self.hierarchy_sibling_window = int(applied["hierarchy_sibling_window"])
-        if applied.get("hierarchy_overfetch_factor") is not None:
-            self.hierarchy_overfetch_factor = int(applied["hierarchy_overfetch_factor"])
+        _apply_profile_value_overrides(self, applied)
         if default_profile_applied and bool(getattr(settings, "CHAT_DEFAULT_VISIBLE_EVIDENCE_ONLY", False)):
             self.visible_evidence_only = True
         return self
