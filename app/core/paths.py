@@ -78,6 +78,26 @@ def ensure_dir(path: Path) -> Path:
     return path
 
 
+def _resolve_safe_child(base: Path, child: str, *, label: str) -> Path:
+    """
+    Resolve a caller-provided child path under `base`.
+
+    Public path helpers are sometimes used at API boundaries. Keeping this
+    guard here prevents accidental absolute-path or traversal use when a caller
+    passes an untrusted filename/model name.
+    """
+    raw = str(child or "").strip()
+    if not raw:
+        raise ValueError(f"{label} is required")
+    candidate = (base / raw).resolve(strict=False)
+    base_resolved = base.resolve(strict=False)
+    try:
+        candidate.relative_to(base_resolved)
+    except ValueError as exc:
+        raise ValueError(f"{label} must stay under {base_resolved}") from exc
+    return candidate
+
+
 def get_upload_path(filename: str, tenant_id: str | None = None) -> Path:
     """
     Get storage path for uploaded file.
@@ -89,10 +109,10 @@ def get_upload_path(filename: str, tenant_id: str | None = None) -> Path:
     Returns:
         Full file path.
     """
-    upload_dir = UPLOAD_DIR / tenant_id if tenant_id else UPLOAD_DIR
+    upload_dir = _resolve_safe_child(UPLOAD_DIR, tenant_id, label="tenant_id") if tenant_id else UPLOAD_DIR
 
     ensure_dir(upload_dir)
-    return upload_dir / filename
+    return _resolve_safe_child(upload_dir, filename, label="filename")
 
 
 def get_temp_path(filename: str) -> Path:
@@ -106,7 +126,7 @@ def get_temp_path(filename: str) -> Path:
         Full file path.
     """
     ensure_dir(TEMP_DIR)
-    return TEMP_DIR / filename
+    return _resolve_safe_child(TEMP_DIR, filename, label="filename")
 
 
 def get_model_path(model_name: str) -> Path:
@@ -119,7 +139,7 @@ def get_model_path(model_name: str) -> Path:
     Returns:
         Model directory path.
     """
-    return MODELS_DIR / model_name
+    return _resolve_safe_child(MODELS_DIR, model_name, label="model_name")
 
 
 def resolve_path(path: str) -> Path:
