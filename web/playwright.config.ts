@@ -29,7 +29,7 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI && !useProdServer,
     stdout: 'pipe',
     stderr: 'pipe',
-    timeout: useProdServer ? 300_000 : 120_000,
+    timeout: useProdServer ? 900_000 : 120_000,
   },
   projects: [
     {

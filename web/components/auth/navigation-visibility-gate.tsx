@@ -7,6 +7,7 @@ import { AppFrame } from '@/components/app-frame'
 import { Button } from '@/components/ui/button'
 import { PageLoading } from '@/components/ui/page-loading'
 import { PageScaffold } from '@/components/ui/page-scaffold'
+import { useAuth } from '@/hooks/use-auth'
 import { useTenantAccess } from '@/hooks/use-tenant-access'
 import {
   canShowAdminControlledNavigationModule,
@@ -25,8 +26,10 @@ export function NavigationVisibilityGate({
   children,
 }: Readonly<NavigationVisibilityGateProps>) {
   const [hasHydrated, setHasHydrated] = useState(false)
+  const { isDevMode } = useAuth()
   const access = useTenantAccess()
   const allowed = hasHydrated && canShowAdminControlledNavigationModule(access.data, moduleKey)
+  const effectiveAllowed = hasHydrated && (isDevMode || allowed)
 
   useEffect(() => {
     setHasHydrated(true)
@@ -44,7 +47,7 @@ export function NavigationVisibilityGate({
     )
   }
 
-  if (!allowed) {
+  if (!effectiveAllowed) {
     const isUnknown = access.isError || !access.data
     return (
       <AppFrame>

@@ -32,6 +32,39 @@ const QUOTA_ENABLED_TONE =
 const QUOTA_EXCEEDED_TONE =
   'border-destructive/20 bg-destructive/10 text-destructive'
 
+const DISABLED_DOCUMENT_QUOTA: TenantQuotaSummary['documents'] = {
+  enabled: false,
+  limit: 0,
+  used: 0,
+  remaining: 0,
+  exceeded: false,
+}
+const DISABLED_STORAGE_QUOTA: TenantQuotaSummary['storage'] = {
+  enabled: false,
+  limit_bytes: 0,
+  used_bytes: 0,
+  remaining_bytes: 0,
+  exceeded: false,
+}
+const DISABLED_EMBEDDING_QUOTA: TenantQuotaSummary['embedding_chars'] = {
+  enabled: false,
+  mode: 'disabled',
+  limit_chars: 0,
+  used_chars: 0,
+  remaining_chars: 0,
+  exceeded: false,
+  window_hours: 0,
+  window_start: '',
+  window_end: '',
+}
+const DISABLED_QPS_QUOTA: TenantQuotaSummary['qps'] = {
+  enabled: false,
+  mode: 'disabled',
+  rps: 0,
+  burst: 0,
+  scopes: [],
+}
+
 function prettyJson(value: unknown) {
   try {
     return JSON.stringify(value, null, 2)
@@ -172,30 +205,34 @@ export function TenantQuotaPanel() {
     staleTime: 60 * 1000,
   })
   const payload = quotaQuery.data ?? null
+  const documentsQuota = payload?.documents ?? DISABLED_DOCUMENT_QUOTA
+  const storageQuota = payload?.storage ?? DISABLED_STORAGE_QUOTA
+  const embeddingQuota = payload?.embedding_chars ?? DISABLED_EMBEDDING_QUOTA
+  const qpsQuota = payload?.qps ?? DISABLED_QPS_QUOTA
   const json = useMemo(() => prettyJson(payload), [payload])
   const lines = useMemo(() => json.split('\n'), [json])
-  const documentQuotaText = payload?.documents.enabled
+  const documentQuotaText = documentsQuota.enabled
     ? {
-        primary: `${formatNumber(payload.documents.used)} / ${formatNumber(payload.documents.limit)}`,
-        secondary: `剩余 ${formatNumber(payload.documents.remaining)} 个文档`,
+        primary: `${formatNumber(documentsQuota.used)} / ${formatNumber(documentsQuota.limit)}`,
+        secondary: `剩余 ${formatNumber(documentsQuota.remaining)} 个文档`,
       }
     : disabledQuotaText()
-  const storageQuotaText = payload?.storage.enabled
+  const storageQuotaText = storageQuota.enabled
     ? {
-        primary: `${formatBytes(payload.storage.used_bytes)} / ${formatBytes(payload.storage.limit_bytes)}`,
-        secondary: `剩余 ${formatBytes(payload.storage.remaining_bytes)}`,
+        primary: `${formatBytes(storageQuota.used_bytes)} / ${formatBytes(storageQuota.limit_bytes)}`,
+        secondary: `剩余 ${formatBytes(storageQuota.remaining_bytes)}`,
       }
     : disabledQuotaText()
-  const embeddingQuotaText = payload?.embedding_chars.enabled
+  const embeddingQuotaText = embeddingQuota.enabled
     ? {
-        primary: `${formatNumber(payload.embedding_chars.used_chars)} / ${formatNumber(payload.embedding_chars.limit_chars)}`,
-        secondary: `${payload.embedding_chars.window_hours}h 窗口 · ${payload.embedding_chars.mode}`,
+        primary: `${formatNumber(embeddingQuota.used_chars)} / ${formatNumber(embeddingQuota.limit_chars)}`,
+        secondary: `${embeddingQuota.window_hours}h 窗口 · ${embeddingQuota.mode}`,
       }
     : disabledQuotaText('后端未启用字符配额')
-  const qpsQuotaText = payload?.qps.enabled
+  const qpsQuotaText = qpsQuota.enabled
     ? {
-        primary: `${formatNumber(payload.qps.rps)} rps`,
-        secondary: `burst ${formatNumber(payload.qps.burst)} · ${payload.qps.scopes?.join(' / ') || 'chat / retrieval'}`,
+        primary: `${formatNumber(qpsQuota.rps)} rps`,
+        secondary: `burst ${formatNumber(qpsQuota.burst)} · ${qpsQuota.scopes?.join(' / ') || 'chat / retrieval'}`,
       }
     : disabledQuotaText('后端未启用租户限流')
 
@@ -243,54 +280,54 @@ export function TenantQuotaPanel() {
       <div className="border-t border-border/50 px-5 pb-5 pt-4">
         {payload ? (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-	            <QuotaCard
-	              icon={FileText}
-	              title="文档数配额"
-	              enabled={payload.documents.enabled}
-	              exceeded={payload.documents.exceeded}
-	              primary={documentQuotaText.primary}
-	              secondary={documentQuotaText.secondary}
+            <QuotaCard
+              icon={FileText}
+              title="文档数配额"
+              enabled={documentsQuota.enabled}
+              exceeded={documentsQuota.exceeded}
+              primary={documentQuotaText.primary}
+              secondary={documentQuotaText.secondary}
               progress={
-                payload.documents.enabled
-                  ? (payload.documents.used / Math.max(1, payload.documents.limit)) * 100
+                documentsQuota.enabled
+                  ? (documentsQuota.used / Math.max(1, documentsQuota.limit)) * 100
                   : 0
               }
             />
-	            <QuotaCard
-	              icon={Database}
-	              title="存储配额"
-	              enabled={payload.storage.enabled}
-	              exceeded={payload.storage.exceeded}
-	              primary={storageQuotaText.primary}
-	              secondary={storageQuotaText.secondary}
+            <QuotaCard
+              icon={Database}
+              title="存储配额"
+              enabled={storageQuota.enabled}
+              exceeded={storageQuota.exceeded}
+              primary={storageQuotaText.primary}
+              secondary={storageQuotaText.secondary}
               progress={
-                payload.storage.enabled
-                  ? (payload.storage.used_bytes / Math.max(1, payload.storage.limit_bytes)) * 100
+                storageQuota.enabled
+                  ? (storageQuota.used_bytes / Math.max(1, storageQuota.limit_bytes)) * 100
                   : 0
               }
             />
-	            <QuotaCard
-	              icon={TextCursorInput}
-	              title="Embedding 字符"
-	              enabled={payload.embedding_chars.enabled}
-	              exceeded={payload.embedding_chars.exceeded}
-	              primary={embeddingQuotaText.primary}
-	              secondary={embeddingQuotaText.secondary}
+            <QuotaCard
+              icon={TextCursorInput}
+              title="Embedding 字符"
+              enabled={embeddingQuota.enabled}
+              exceeded={embeddingQuota.exceeded}
+              primary={embeddingQuotaText.primary}
+              secondary={embeddingQuotaText.secondary}
               progress={
-                payload.embedding_chars.enabled
-                  ? (payload.embedding_chars.used_chars /
-                      Math.max(1, payload.embedding_chars.limit_chars)) *
+                embeddingQuota.enabled
+                  ? (embeddingQuota.used_chars /
+                      Math.max(1, embeddingQuota.limit_chars)) *
                     100
                   : 0
               }
             />
-	            <QuotaCard
-	              icon={Gauge}
-	              title="QPS 限流"
-	              enabled={payload.qps.enabled}
-	              primary={qpsQuotaText.primary}
-	              secondary={qpsQuotaText.secondary}
-              progress={payload.qps.enabled ? 100 : 0}
+            <QuotaCard
+              icon={Gauge}
+              title="QPS 限流"
+              enabled={qpsQuota.enabled}
+              primary={qpsQuotaText.primary}
+              secondary={qpsQuotaText.secondary}
+              progress={qpsQuota.enabled ? 100 : 0}
             />
           </div>
         ) : (
