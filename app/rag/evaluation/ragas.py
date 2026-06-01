@@ -183,7 +183,8 @@ def _build_http_clients() -> tuple[httpx.Client, httpx.AsyncClient]:
     trust_env = True
     if proxy_url and proxy_url.lower().startswith("socks"):
         trust_env = False
-    return httpx.Client(trust_env=trust_env), httpx.AsyncClient(trust_env=trust_env)
+    timeout = float(getattr(settings, "LLM_TIMEOUT", 60) or 60)
+    return httpx.Client(trust_env=trust_env, timeout=timeout), httpx.AsyncClient(trust_env=trust_env, timeout=timeout)
 
 
 def _pair_turns(messages: list[Message]) -> list[tuple[Message, Message]]:

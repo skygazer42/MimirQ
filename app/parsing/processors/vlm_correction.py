@@ -11,6 +11,7 @@ import fitz  # PyMuPDF
 import httpx
 from langchain_core.documents import Document
 
+from app.core.config import settings
 from app.rag.core.logging import get_logger
 from app.rag.core.vision_reader import _describe_with_vision_llm
 
@@ -55,7 +56,8 @@ def _build_correction_prompt(markdown: str) -> str:
 
 
 async def _correct_markdown_with_vision_async(*, markdown: str, image_bytes: bytes) -> str:
-    async with httpx.AsyncClient() as http_client:
+    timeout = float(getattr(settings, "VISION_LLM_TIMEOUT_SEC", 120) or 120)
+    async with httpx.AsyncClient(timeout=timeout) as http_client:
         return (await _describe_with_vision_llm(
             http_client=http_client,
             image_bytes=image_bytes,
@@ -220,12 +222,12 @@ async def _call_vlm_backend_async(
       - raw text body (treated as markdown)
     """
     payload = {"markdown": str(markdown or ""), "meta": dict(meta or {})}
-    async with httpx.AsyncClient() as client:
+    timeout = float(timeout_sec)
+    async with httpx.AsyncClient(timeout=timeout) as client:
         try:
             resp = await client.post(
                 str(api_url).strip(),
                 json=payload,
-                timeout=float(timeout_sec),
             )
         except Exception as exc:  # noqa: BLE001
             return markdown, False, f"http_failed:{exc.__class__.__name__}"
