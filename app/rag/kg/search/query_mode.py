@@ -47,6 +47,105 @@ def _query_mode_result(mode: str, confidence: str, reasons: list[str]) -> dict[s
     }
 
 
+def _query_mode_with_reason(mode: str, confidence: str, reasons: list[str], reason: str) -> dict[str, Any]:
+    reasons.append(reason)
+    return _query_mode_result(mode, confidence, reasons)
+
+
+def _query_mode_pattern_flags(query: str) -> tuple[bool, bool, bool]:
+    has_local = bool(_LOCAL_RE.search(query))
+    has_global = bool(_GLOBAL_RE.search(query))
+    has_drift = bool(_DRIFT_RE.search(query))
+    return has_local, has_global, has_drift
+
+
+def _dataset_scope_mode(
+    *,
+    query: str,
+    dataset_id: Any,
+    doc_count: int,
+    reasons: list[str],
+) -> dict[str, Any] | None:
+    if dataset_id is None or doc_count != 0:
+        return None
+    if _DATASET_FACTOID_RE.search(query):
+        reasons.append("dataset_factoid_scope")
+        if _DATASET_FACTOID_DOMAIN_RE.search(query):
+            reasons.append("dataset_factoid_domain")
+        return _query_mode_result("local", "medium", reasons)
+    return _query_mode_with_reason("global", "low", reasons, "dataset_scope_no_doc_ids")
+
+
+def _single_doc_row_focus(query_fold: str, query: str, *, doc_count: int) -> bool:
+    return doc_count == 1 and ("id=" in query_fold or "主键" in query or "row" in query_fold)
+
+
+def _apply_local_budget(
+    *,
+    max_events_out: int,
+    final_entity_count_out: int,
+    entity_weight_threshold_out: float,
+    reason_codes: list[str],
+) -> tuple[int, int, float]:
+    max_events_out = min(
+        int(max_events_out),
+        max(1, int(getattr(settings, "KG_SEARCH_QUERY_MODE_LOCAL_MAX_EVENTS", 40) or 40)),
+    )
+    final_entity_count_out = min(final_entity_count_out, 20)
+    bonus = float(getattr(settings, "KG_SEARCH_QUERY_MODE_LOCAL_ENTITY_WEIGHT_BONUS", 0.05) or 0.05)
+    entity_weight_threshold_out = min(1.0, entity_weight_threshold_out + max(0.0, bonus))
+    reason_codes.append("local_focus_budget")
+    return max_events_out, final_entity_count_out, entity_weight_threshold_out
+
+
+def _apply_global_budget(
+    *,
+    max_events_out: int,
+    max_entities_out: int,
+    final_entity_count_out: int,
+    confidence: str,
+    input_reasons: set[str],
+    reason_codes: list[str],
+) -> tuple[int, int, int]:
+    is_low_confidence_fallback = (
+        confidence == "low"
+        and "global_pattern" not in input_reasons
+        and "drift_pattern" not in input_reasons
+    )
+    if is_low_confidence_fallback:
+        max_events_out = min(
+            int(max_events_out),
+            max(1, int(getattr(settings, "KG_SEARCH_QUERY_MODE_LOW_CONFIDENCE_GLOBAL_MAX_EVENTS", 80) or 80)),
+        )
+        reason_codes.append("low_confidence_global_budget")
+        return max_events_out, max_entities_out, final_entity_count_out
+    max_events_out = max(
+        int(max_events_out),
+        max(1, int(getattr(settings, "KG_SEARCH_QUERY_MODE_GLOBAL_MIN_EVENTS", 120) or 120)),
+    )
+    max_entities_out = max(max_entities_out, 40)
+    final_entity_count_out = max(final_entity_count_out, 25)
+    reason_codes.append("global_coverage_budget")
+    return max_events_out, max_entities_out, final_entity_count_out
+
+
+def _apply_drift_budget(
+    *,
+    max_events_out: int,
+    max_entities_out: int,
+    final_entity_count_out: int,
+    reason_codes: list[str],
+) -> tuple[int, int, int]:
+    max_events_out = max(
+        int(max_events_out),
+        max(1, int(getattr(settings, "KG_SEARCH_QUERY_MODE_DRIFT_MIN_EVENTS", 140) or 140)),
+    )
+    max_entities_out = max(max_entities_out, 45)
+    final_entity_count_out = max(final_entity_count_out, 30)
+    reason_codes.append("drift_expanded_budget")
+    return max_events_out, max_entities_out, final_entity_count_out
+
+
 def classify_kg_query_mode(
     *,
     query: str,
@@ -62,11 +161,10 @@ def classify_kg_query_mode(
     q_fold = q.casefold()
     reasons: list[str] = []
 
-    if _DRIFT_RE.search(q):
-        reasons.append("drift_pattern")
-        return _query_mode_result("drift", "high", reasons)
+    has_local, has_global, has_drift = _query_mode_pattern_flags(q)
+    if has_drift:
+        return _query_mode_with_reason("drift", "high", reasons, "drift_pattern")
 
-    has_local = bool(_LOCAL_RE.search(q))
     if has_local:
         reasons.append("local_pattern")
 
@@ -74,32 +172,29 @@ def classify_kg_query_mode(
         reasons.append("quoted_term")
         has_local = True
 
-    if _GLOBAL_RE.search(q):
+    if has_global:
         reasons.append("global_pattern")
         # Global wins unless local is explicit and strong.
         if not has_local:
             return _query_mode_result("global", "medium", reasons)
 
     doc_count = len(list(document_ids or []))
-    if doc_count == 1 and ("id=" in q_fold or "主键" in q or "row" in q_fold):
-        reasons.append("single_doc_row_focus")
-        return _query_mode_result("local", "high", reasons)
+    if _single_doc_row_focus(q_fold, q, doc_count=doc_count):
+        return _query_mode_with_reason("local", "high", reasons, "single_doc_row_focus")
 
     if has_local:
         return _query_mode_result("local", "medium", reasons)
 
-    if dataset_id is not None and doc_count == 0 and _DATASET_FACTOID_RE.search(q):
-        reasons.append("dataset_factoid_scope")
-        if _DATASET_FACTOID_DOMAIN_RE.search(q):
-            reasons.append("dataset_factoid_domain")
-        return _query_mode_result("local", "medium", reasons)
+    dataset_scope = _dataset_scope_mode(
+        query=q,
+        dataset_id=dataset_id,
+        doc_count=doc_count,
+        reasons=reasons,
+    )
+    if dataset_scope is not None:
+        return dataset_scope
 
-    if dataset_id is not None and doc_count == 0:
-        reasons.append("dataset_scope_no_doc_ids")
-        return _query_mode_result("global", "low", reasons)
-
-    reasons.append("fallback_global")
-    return _query_mode_result("global", "low", reasons)
+    return _query_mode_with_reason("global", "low", reasons, "fallback_global")
 
 
 def build_mode_aware_recall_overrides(
@@ -123,45 +218,28 @@ def build_mode_aware_recall_overrides(
     reason_codes: list[str] = []
 
     if mode_norm == "local":
-        max_events_out = min(
-            int(max_events_out),
-            max(1, int(getattr(settings, "KG_SEARCH_QUERY_MODE_LOCAL_MAX_EVENTS", 40) or 40)),
+        max_events_out, final_entity_count_out, entity_weight_threshold_out = _apply_local_budget(
+            max_events_out=max_events_out,
+            final_entity_count_out=final_entity_count_out,
+            entity_weight_threshold_out=entity_weight_threshold_out,
+            reason_codes=reason_codes,
         )
-        final_entity_count_out = min(final_entity_count_out, 20)
-        bonus = float(getattr(settings, "KG_SEARCH_QUERY_MODE_LOCAL_ENTITY_WEIGHT_BONUS", 0.05) or 0.05)
-        entity_weight_threshold_out = min(1.0, entity_weight_threshold_out + max(0.0, bonus))
-        reason_codes.append("local_focus_budget")
     elif mode_norm == "global":
-        is_low_confidence_fallback = (
-            confidence == "low"
-            and "global_pattern" not in input_reasons
-            and "drift_pattern" not in input_reasons
+        max_events_out, max_entities_out, final_entity_count_out = _apply_global_budget(
+            max_events_out=max_events_out,
+            max_entities_out=max_entities_out,
+            final_entity_count_out=final_entity_count_out,
+            confidence=confidence,
+            input_reasons=input_reasons,
+            reason_codes=reason_codes,
         )
-        if is_low_confidence_fallback:
-            # Dataset-scoped factoid queries often resolve to "global" only because no
-            # document ids were supplied. Keep those searches responsive; explicit
-            # overview/global-pattern queries still use the broader coverage budget.
-            max_events_out = min(
-                int(max_events_out),
-                max(1, int(getattr(settings, "KG_SEARCH_QUERY_MODE_LOW_CONFIDENCE_GLOBAL_MAX_EVENTS", 80) or 80)),
-            )
-            reason_codes.append("low_confidence_global_budget")
-        else:
-            max_events_out = max(
-                int(max_events_out),
-                max(1, int(getattr(settings, "KG_SEARCH_QUERY_MODE_GLOBAL_MIN_EVENTS", 120) or 120)),
-            )
-            max_entities_out = max(max_entities_out, 40)
-            final_entity_count_out = max(final_entity_count_out, 25)
-            reason_codes.append("global_coverage_budget")
     elif mode_norm == "drift":
-        max_events_out = max(
-            int(max_events_out),
-            max(1, int(getattr(settings, "KG_SEARCH_QUERY_MODE_DRIFT_MIN_EVENTS", 140) or 140)),
+        max_events_out, max_entities_out, final_entity_count_out = _apply_drift_budget(
+            max_events_out=max_events_out,
+            max_entities_out=max_entities_out,
+            final_entity_count_out=final_entity_count_out,
+            reason_codes=reason_codes,
         )
-        max_entities_out = max(max_entities_out, 45)
-        final_entity_count_out = max(final_entity_count_out, 30)
-        reason_codes.append("drift_expanded_budget")
 
     return {
         "mode": mode_norm,
