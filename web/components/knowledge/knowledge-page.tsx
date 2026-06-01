@@ -63,6 +63,7 @@ import { useDocuments } from '@/hooks/use-documents'
 import { Link, useRouter } from '@/i18n/navigation'
 import { documentApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { buildChunkPreviewDocumentHref } from '@/lib/chunk-preview-links'
 import { cn, detachPromise, formatFileSize } from '@/lib/utils'
 
 const DATASET_ALL = '__all__'
@@ -1176,8 +1177,9 @@ export default function KnowledgePage() {
                       className="h-9 w-full rounded-xl"
                     >
                       <Link
-                        href={`/chunk-preview?docId=${peekingDoc.id}`}
+                        href={buildChunkPreviewDocumentHref(peekingDoc.id)}
                         target="_blank"
+                        rel="noopener noreferrer"
                       >
                         <Maximize2 className="mr-2 size-3.5" />
                         进入沉浸式预览

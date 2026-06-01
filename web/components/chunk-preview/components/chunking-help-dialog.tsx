@@ -92,7 +92,7 @@ export function ChunkingHelpDialog({
                   <a
                     href="https://github.com/skygazer42/MimirQ/blob/main/docs/guides/chunk_preview.md"
                     target="_blank"
-                    rel="noreferrer"
+                    rel="noopener noreferrer"
                   >
                     {t("help.links.previewDocs")} <ExternalLink className="w-3.5 h-3.5 ml-1" />
                   </a>
@@ -101,7 +101,7 @@ export function ChunkingHelpDialog({
                   <a
                     href="https://github.com/skygazer42/MimirQ/blob/main/docs/guides/chunk_strategies.md"
                     target="_blank"
-                    rel="noreferrer"
+                    rel="noopener noreferrer"
                   >
                     {t("help.links.strategiesDocs")} <ExternalLink className="w-3.5 h-3.5 ml-1" />
                   </a>
