@@ -129,6 +129,63 @@ export function GraphActionDialogs({
   onConnectLabelDraftChange,
   onConfirmConnectionLabel,
 }: GraphActionDialogsProps) {
+  let mergeSearchContent: React.ReactNode
+  if (mergeSearchLoading) {
+    mergeSearchContent = <div className="text-xs text-muted-foreground">Searching…</div>
+  } else if (mergeSearchResults.length === 0) {
+    mergeSearchContent = <div className="text-xs text-muted-foreground">输入至少 2 个字符开始搜索</div>
+  } else {
+    mergeSearchContent = (
+      <div className="space-y-1">
+        {mergeSearchResults.slice(0, 8).map((node) => (
+          <button
+            key={node.id}
+            type="button"
+            onClick={() => onSelectMergeTarget(node)}
+            className={cn(
+              'w-full text-left rounded-lg border border-border bg-background/60 px-3 py-2 text-xs hover:bg-background transition-colors',
+              mergeTarget?.id === node.id && 'ring-2 ring-primary/20 border-primary/30'
+            )}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="truncate">{node.label || node.id}</span>
+              <span className="text-muted-foreground font-mono">{String(node.id).slice(0, 8)}</span>
+            </div>
+          </button>
+        ))}
+      </div>
+    )
+  }
+
+  let mergePreviewContent: React.ReactNode = null
+  if (mergeTarget) {
+    let mergePreviewDetails: React.ReactNode
+    if (mergePreviewLoading) {
+      mergePreviewDetails = <div className="text-xs text-muted-foreground">Loading preview…</div>
+    } else if (mergePreview) {
+      mergePreviewDetails = (
+        <div className="grid grid-cols-2 gap-2 text-[11px] text-muted-foreground">
+          <div>source edges: {primitiveText(mergePreview.stats?.source_event_entity_edges)}</div>
+          <div>overlap: {primitiveText(mergePreview.stats?.overlap_events)}</div>
+          <div>relations: {primitiveText(mergePreview.stats?.source_relations)}</div>
+          <div>self removed: {primitiveText(mergePreview.stats?.self_relations_removed)}</div>
+        </div>
+      )
+    } else {
+      mergePreviewDetails = <div className="text-xs text-muted-foreground">No preview available</div>
+    }
+
+    mergePreviewContent = (
+      <div className="rounded-xl border border-border bg-muted p-3 space-y-2">
+        <div className="text-[11px] font-medium text-muted-foreground">Preview</div>
+        <div className="text-xs text-foreground truncate" title={mergeTarget.label}>
+          Target: {mergeTarget.label || mergeTarget.id}
+        </div>
+        {mergePreviewDetails}
+      </div>
+    )
+  }
+
   return (
     <>
       <AlertDialog open={deleteNodeOpen} onOpenChange={onDeleteNodeOpenChange}>
@@ -180,53 +237,10 @@ export function GraphActionDialogs({
                 placeholder="输入名称关键词…"
               />
 
-              {mergeSearchLoading ? (
-                <div className="text-xs text-muted-foreground">Searching…</div>
-              ) : mergeSearchResults.length === 0 ? (
-                <div className="text-xs text-muted-foreground">输入至少 2 个字符开始搜索</div>
-              ) : (
-                <div className="space-y-1">
-                  {mergeSearchResults.slice(0, 8).map((node) => (
-                    <button
-                      key={node.id}
-                      type="button"
-                      onClick={() => onSelectMergeTarget(node)}
-                      className={cn(
-                        'w-full text-left rounded-lg border border-border bg-background/60 px-3 py-2 text-xs hover:bg-background transition-colors',
-                        mergeTarget?.id === node.id && 'ring-2 ring-primary/20 border-primary/30'
-                      )}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="truncate">{node.label || node.id}</span>
-                        <span className="text-muted-foreground font-mono">{String(node.id).slice(0, 8)}</span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
+              {mergeSearchContent}
             </div>
 
-            {mergeTarget ? (
-              <div className="rounded-xl border border-border bg-muted p-3 space-y-2">
-                <div className="text-[11px] font-medium text-muted-foreground">Preview</div>
-                <div className="text-xs text-foreground truncate" title={mergeTarget.label}>
-                  Target: {mergeTarget.label || mergeTarget.id}
-                </div>
-
-                {mergePreviewLoading ? (
-                  <div className="text-xs text-muted-foreground">Loading preview…</div>
-                ) : mergePreview ? (
-                  <div className="grid grid-cols-2 gap-2 text-[11px] text-muted-foreground">
-                    <div>source edges: {primitiveText(mergePreview.stats?.source_event_entity_edges)}</div>
-                    <div>overlap: {primitiveText(mergePreview.stats?.overlap_events)}</div>
-                    <div>relations: {primitiveText(mergePreview.stats?.source_relations)}</div>
-                    <div>self removed: {primitiveText(mergePreview.stats?.self_relations_removed)}</div>
-                  </div>
-                ) : (
-                  <div className="text-xs text-muted-foreground">No preview available</div>
-                )}
-              </div>
-            ) : null}
+            {mergePreviewContent}
 
             {mergeError ? (
               <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
