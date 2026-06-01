@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
+from app.api.utils.response_headers import download_response_headers
 from app.core.database import get_db
 from app.services.corpus_cache_tokens import invalidate_dataset_cache_namespace
 from app.services.dataset_service import DatasetService
@@ -743,10 +744,7 @@ def get_rag_metrics_tail(
     return Response(
         content=payload,
         media_type="application/gzip",
-        headers={
-            "Content-Disposition": f'attachment; filename="{filename}"',
-            "Cache-Control": "no-store",
-        },
+        headers=download_response_headers(filename),
     )
 
 

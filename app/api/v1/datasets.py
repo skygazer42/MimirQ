@@ -60,6 +60,7 @@ from app.api.schemas.ingestion_policy import (
     IngestionRuleTableRoutingAudit,
     TableRoutingSettingAudit,
 )
+from app.api.utils.response_headers import download_response_headers, set_download_content_disposition
 from app.core.config import settings
 from app.core.database import SessionLocal, get_db
 from app.core.pipeline_versions import build_doc_pipeline_key, get_active_pipeline_hash
@@ -1821,7 +1822,7 @@ def export_dataset_ingestion_policy(
     return Response(
         content=content,
         media_type=_APPLICATION_JSON_MEDIA_TYPE,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers=download_response_headers(filename),
     )
 
 
@@ -2146,7 +2147,7 @@ def export_dataset_profile_summary(
     return Response(
         content=content,
         media_type=_APPLICATION_JSON_MEDIA_TYPE,
-        headers={"Content-Disposition": f'attachment; filename=\"{filename}\"'},
+        headers=download_response_headers(filename),
     )
 
 
@@ -2183,7 +2184,7 @@ def export_dataset_profile_html_report(
     return Response(
         content=html,
         media_type="text/html; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename=\"{filename}\"'},
+        headers=download_response_headers(filename),
     )
 
 
@@ -2464,10 +2465,10 @@ def _documents_json_export_response(
     }
     content = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=str).encode("utf-8")
     filename = f"{safe_name}.documents.json"
-    headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+    set_download_content_disposition(headers, filename)
     if gzip:
         headers["Content-Encoding"] = "gzip"
-        headers["Content-Disposition"] = f'attachment; filename="{filename}.gz"'
+        set_download_content_disposition(headers, f"{filename}.gz")
         content = gzip_lib.compress(content)
     return Response(content=content, media_type=_APPLICATION_JSON_MEDIA_TYPE, headers=headers)
 
@@ -2488,10 +2489,10 @@ def _documents_ndjson_export_response(
 
     body_iter: Iterator[bytes] = _iter_lines()
     filename = f"{safe_name}.documents.ndjson"
-    headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+    set_download_content_disposition(headers, filename)
     if gzip:
         headers["Content-Encoding"] = "gzip"
-        headers["Content-Disposition"] = f'attachment; filename="{filename}.gz"'
+        set_download_content_disposition(headers, f"{filename}.gz")
         body_iter = _iter_gzip_chunks(body_iter)
     return StreamingResponse(body_iter, media_type="application/x-ndjson", headers=headers)
 
@@ -2823,8 +2824,5 @@ def export_dataset_bundle_zip(
     return Response(
         content=raw,
         media_type="application/zip",
-        headers={
-            "Cache-Control": "no-store",
-            "Content-Disposition": f'attachment; filename="{filename}"',
-        },
+        headers=download_response_headers(filename),
     )

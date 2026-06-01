@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.report import DatasetReportOut
+from app.api.utils.response_headers import download_response_headers
 from app.core.database import get_db
 from app.services.report_html import _scrub_report_for_redaction, render_dataset_report_html, render_rag_audit_html
 from app.services.report_service import ReportService
@@ -80,7 +81,7 @@ def export_dataset_report_json(
     return Response(
         content=content,
         media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers=download_response_headers(filename),
     )
 
 
@@ -119,7 +120,7 @@ def export_dataset_report_html(
     return Response(
         content=html,
         media_type="text/html; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers=download_response_headers(filename),
     )
 
 
@@ -158,7 +159,7 @@ def export_dataset_rag_audit_html(
     return Response(
         content=html,
         media_type="text/html; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers=download_response_headers(filename),
     )
 
 
@@ -344,5 +345,5 @@ def export_dataset_report_bundle_zip(
     return Response(
         content=buf.getvalue(),
         media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers=download_response_headers(filename),
     )

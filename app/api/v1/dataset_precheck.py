@@ -34,6 +34,7 @@ from app.api.schemas.dataset_precheck import (
     DatasetPrecheckSummary,
 )
 from app.api.schemas.ingestion_policy import IngestionPolicyImportResponse
+from app.api.utils.response_headers import download_response_headers
 from app.core.database import SessionLocal, get_db
 from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
 from app.services.dataset_precheck_diff import diff_precheck_summaries
@@ -712,7 +713,7 @@ def export_dataset_precheck_summary_json(
     return Response(
         content=content,
         media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename=\"{filename}\"'},
+        headers=download_response_headers(filename),
     )
 
 
@@ -779,5 +780,5 @@ def export_dataset_precheck_html_report(
     return Response(
         content=html,
         media_type="text/html; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename=\"{filename}\"'},
+        headers=download_response_headers(filename),
     )

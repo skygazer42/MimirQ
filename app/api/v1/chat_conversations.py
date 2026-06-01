@@ -7,7 +7,6 @@ import json
 import re
 from datetime import UTC, datetime
 from typing import Annotated
-from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -23,6 +22,7 @@ from app.api.schemas.chat import (
     ConversationSchema,
     ConversationUpdate,
 )
+from app.api.utils.response_headers import download_response_headers
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.chat import Conversation, Message
@@ -394,7 +394,7 @@ async def export_conversation(
 
     safe_title = re.sub(r"[^A-Za-z0-9._-]+", "_", title)[:80] or "conversation"
     filename = f"{safe_title}.{suffix}"
-    headers = {"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"}
+    headers = download_response_headers(filename)
 
     audit_log_event(
         db,

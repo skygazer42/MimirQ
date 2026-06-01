@@ -22,6 +22,7 @@ from app.api.schemas.ingestion_run import (
     IngestionRunListResponse,
     IngestionRunOut,
 )
+from app.api.utils.response_headers import download_response_headers
 from app.core.database import get_db
 from app.models.ingestion_run import IngestionRun as DBIngestionRun
 from app.services.audit_log_service import audit_log_event
@@ -191,7 +192,7 @@ def export_ingestion_run_json(
     return Response(
         content=content,
         media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers=download_response_headers(filename),
     )
 
 
@@ -245,7 +246,7 @@ def export_ingestion_run_html(
     return Response(
         content=html,
         media_type="text/html; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers=download_response_headers(filename),
     )
 
 

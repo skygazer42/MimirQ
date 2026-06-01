@@ -51,6 +51,7 @@ from app.api.schemas.regression import (
     SyntheticHardcaseGenerateRequest,
     SyntheticHardcaseGenerateResponse,
 )
+from app.api.utils.response_headers import download_response_headers, set_download_content_disposition
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.chat import Conversation
@@ -1348,10 +1349,11 @@ async def export_ragas_regression_run_bundle_api(
 
     headers = {
         "Cache-Control": "no-store",
+        "X-Content-Type-Options": "nosniff",
     }
     if download:
         filename = f"regression-run.{str(run_id)[:8]}.json"
-        headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+        set_download_content_disposition(headers, filename)
 
     return JSONResponse(content=bundle, headers=headers)
 
@@ -1556,7 +1558,7 @@ async def export_ragas_regression_run_diff_html(
     return Response(
         content=html,
         media_type="text/html; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers=download_response_headers(filename),
     )
 
 
