@@ -566,6 +566,13 @@ def _uniform_sample_indices(indices: list[int], k: int) -> list[int]:
     if k == 1:
         return [indices[len(indices) // 2]]
 
+    picked, seen = _initial_uniform_sample(indices, k)
+    if len(picked) < k:
+        _fill_uniform_sample(indices, picked=picked, seen=seen, k=k)
+    return picked[:k]
+
+
+def _initial_uniform_sample(indices: list[int], k: int) -> tuple[list[int], set[int]]:
     n = len(indices)
     picked: list[int] = []
     seen: set[int] = set()
@@ -577,17 +584,71 @@ def _uniform_sample_indices(indices: list[int], k: int) -> list[int]:
             continue
         seen.add(idx)
         picked.append(idx)
+    return picked, seen
 
-    if len(picked) < k:
-        for idx in indices:
-            if idx in seen:
-                continue
-            seen.add(idx)
-            picked.append(idx)
-            if len(picked) >= k:
-                break
 
-    return picked[:k]
+def _fill_uniform_sample(indices: list[int], *, picked: list[int], seen: set[int], k: int) -> None:
+    for idx in indices:
+        if idx in seen:
+            continue
+        seen.add(idx)
+        picked.append(idx)
+        if len(picked) >= k:
+            break
+
+
+def _chunk_asset_indices(chunks: list[Document]) -> list[int]:
+    asset_indices: list[int] = []
+    for idx, chunk in enumerate(chunks):
+        meta = chunk.metadata if isinstance(getattr(chunk, "metadata", None), dict) else {}
+        if _chunk_has_asset(meta):
+            asset_indices.append(idx)
+    return asset_indices
+
+
+def _truncate_head_chunks(
+    chunks: list[Document],
+    *,
+    max_chunks: int,
+    asset_indices: list[int],
+) -> tuple[list[Document], dict[str, Any]]:
+    kept_chunks = chunks[:max_chunks]
+    asset_kept = sum(
+        1
+        for c in kept_chunks
+        if _chunk_has_asset(c.metadata if isinstance(getattr(c, "metadata", None), dict) else {})
+    )
+    return kept_chunks, {
+        "strategy": "head",
+        "asset_total": int(len(asset_indices)),
+        "asset_kept": int(asset_kept),
+    }
+
+
+def _truncate_asset_uniform_chunks(
+    chunks: list[Document],
+    *,
+    max_chunks: int,
+    asset_indices: list[int],
+) -> tuple[list[Document], dict[str, Any]]:
+    must_keep = [0]
+    for idx in asset_indices:
+        if idx not in must_keep:
+            must_keep.append(idx)
+    if len(must_keep) > max_chunks:
+        must_keep = must_keep[:max_chunks]
+
+    keep_set = set(must_keep)
+    remaining_slots = max_chunks - len(must_keep)
+    if remaining_slots > 0:
+        candidate_indices = [i for i in range(len(chunks)) if i not in keep_set]
+        keep_set |= set(_uniform_sample_indices(candidate_indices, remaining_slots))
+
+    return [chunks[i] for i in range(len(chunks)) if i in keep_set], {
+        "strategy": "asset_uniform",
+        "asset_total": int(len(asset_indices)),
+        "asset_kept": int(sum(1 for idx in asset_indices if idx in keep_set)),
+    }
 
 
 def _truncate_chunks_for_limit(
@@ -600,57 +661,12 @@ def _truncate_chunks_for_limit(
         return chunks, {"strategy": (strategy or "head").strip().lower() or "head", "asset_total": 0, "asset_kept": 0}
 
     strategy_norm = (strategy or "head").strip().lower() or "head"
-    total = len(chunks)
-
-    asset_indices: list[int] = []
-    for idx, chunk in enumerate(chunks):
-        meta = chunk.metadata if isinstance(getattr(chunk, "metadata", None), dict) else {}
-        if _chunk_has_asset(meta):
-            asset_indices.append(idx)
-
+    asset_indices = _chunk_asset_indices(chunks)
     if strategy_norm not in {"head", "asset_uniform"}:
         strategy_norm = "head"
-
     if strategy_norm == "head":
-        kept_chunks = chunks[:max_chunks]
-        asset_kept = 0
-        for c in kept_chunks:
-            meta = c.metadata if isinstance(getattr(c, "metadata", None), dict) else {}
-            if _chunk_has_asset(meta):
-                asset_kept += 1
-        return kept_chunks, {
-            "strategy": "head",
-            "asset_total": int(len(asset_indices)),
-            "asset_kept": int(asset_kept),
-        }
-
-    # asset_uniform: keep first chunk + assets, then uniformly sample remaining text chunks.
-    must_keep: list[int] = [0]
-    for idx in asset_indices:
-        if idx not in must_keep:
-            must_keep.append(idx)
-
-    if len(must_keep) > max_chunks:
-        must_keep = must_keep[:max_chunks]
-
-    remaining_slots = max_chunks - len(must_keep)
-    keep_set = set(must_keep)
-    if remaining_slots > 0:
-        candidate_indices = [i for i in range(total) if i not in keep_set]
-        sampled = _uniform_sample_indices(candidate_indices, remaining_slots)
-        keep_set |= set(sampled)
-
-    kept_chunks = [chunks[i] for i in range(total) if i in keep_set]
-    asset_kept = 0
-    for idx in asset_indices:
-        if idx in keep_set:
-            asset_kept += 1
-
-    return kept_chunks, {
-        "strategy": "asset_uniform",
-        "asset_total": int(len(asset_indices)),
-        "asset_kept": int(asset_kept),
-    }
+        return _truncate_head_chunks(chunks, max_chunks=max_chunks, asset_indices=asset_indices)
+    return _truncate_asset_uniform_chunks(chunks, max_chunks=max_chunks, asset_indices=asset_indices)
 
 
 def _ensure_ingest_page_indices(documents: list[Document]) -> None:
@@ -1860,6 +1876,36 @@ class ChunkingStage:
 
 
 class ChunkDedupStage:
+    @staticmethod
+    def _chunk_digest_metadata(chunk: Document) -> tuple[str, dict[str, Any]]:
+        raw = chunk.page_content or ""
+        normalized = normalize_text(raw, normalize_line_endings=True, remove_control_chars=True)
+        digest = hashlib.sha256(normalized.strip().encode("utf-8", "ignore")).hexdigest()
+
+        meta = dict(chunk.metadata or {})
+        meta.setdefault("content_hash", digest)
+        meta.setdefault("content_hash_algo", "sha256")
+        meta.setdefault("content_len", len(normalized.strip()))
+        return digest, meta
+
+    @staticmethod
+    def _chunk_has_asset(meta: dict[str, Any]) -> bool:
+        doc_type = str(meta.get("doc_type_kwd") or "").lower()
+        return (
+            doc_type in {"image", "table"}
+            or meta.get("image") is not None
+            or bool(meta.get("img_id") or meta.get("image_id") or meta.get("image_url"))
+        )
+
+    @classmethod
+    def _duplicate_text_chunk(cls, *, digest: str, meta: dict[str, Any], seen: set[str]) -> bool:
+        if cls._chunk_has_asset(meta):
+            return False
+        if digest in seen:
+            return True
+        seen.add(digest)
+        return False
+
     def run(self, *, chunks: list[Document], enabled: bool) -> ChunkDedupResult:
         """
         Drop exact-duplicate *text* chunks within a single document.
@@ -1876,26 +1922,10 @@ class ChunkDedupStage:
         dropped = 0
 
         for c in chunks:
-            raw = c.page_content or ""
-            normalized = normalize_text(raw, normalize_line_endings=True, remove_control_chars=True)
-            digest = hashlib.sha256(normalized.strip().encode("utf-8", "ignore")).hexdigest()
-
-            meta = dict(c.metadata or {})
-            meta.setdefault("content_hash", digest)
-            meta.setdefault("content_hash_algo", "sha256")
-            meta.setdefault("content_len", len(normalized.strip()))
-
-            doc_type = str(meta.get("doc_type_kwd") or "").lower()
-            has_asset = (
-                doc_type in {"image", "table"}
-                or meta.get("image") is not None
-                or bool(meta.get("img_id") or meta.get("image_id") or meta.get("image_url"))
-            )
-            if not has_asset:
-                if digest in seen:
-                    dropped += 1
-                    continue
-                seen.add(digest)
+            digest, meta = self._chunk_digest_metadata(c)
+            if self._duplicate_text_chunk(digest=digest, meta=meta, seen=seen):
+                dropped += 1
+                continue
 
             out.append(Document(page_content=c.page_content, metadata=meta, id=getattr(c, "id", None)))
 
@@ -4335,6 +4365,111 @@ class DocumentProcessorService:
             if owns_db:
                 db.close()
 
+    @staticmethod
+    def _status_update_cancel_blocked(db_doc: DBDocument, status: str) -> bool:
+        status_norm = str(status).lower()
+        current_status = str(db_doc.status or "").lower()
+        if current_status == "cancelled" and status_norm != "cancelled":
+            return True
+        meta = db_doc.doc_metadata or {}
+        return isinstance(meta, dict) and bool(meta.get("cancel_requested")) and status_norm != "cancelled"
+
+    @staticmethod
+    def _clear_failure_retry_fields(db_doc: DBDocument) -> None:
+        for attr in ("failed_stage", "error_code", "next_retry_at"):
+            if hasattr(db_doc, attr):
+                setattr(db_doc, attr, None)
+
+    @staticmethod
+    def _apply_status_update_fields(
+        db_doc: DBDocument,
+        *,
+        status: str,
+        progress: int,
+        stage: str,
+        extra_fields: dict[str, Any],
+    ) -> None:
+        db_doc.status = status
+        db_doc.processing_progress = progress
+        db_doc.current_stage = stage
+        for key, value in extra_fields.items():
+            setattr(db_doc, key, value)
+
+    @staticmethod
+    def _record_ingest_dead_letter_for_status(
+        db: Session,
+        *,
+        db_doc: DBDocument,
+        status_norm: str,
+        stage: str,
+        prev_stage: str,
+        failed_stage_hint: Any,
+        error_code_hint: Any,
+    ) -> None:
+        if status_norm not in {"failed", "quarantined"}:
+            return
+        try:
+            from app.services.ingest_dead_letter_service import record_ingest_dead_letter
+
+            record_ingest_dead_letter(
+                db,
+                document=db_doc,
+                failed_stage=str(failed_stage_hint or prev_stage or stage or "").strip() or None,
+                error_code=(str(error_code_hint).strip() if error_code_hint else None),
+                error_message=getattr(db_doc, "error_message", None),
+                original_payload={
+                    "status": status_norm,
+                    "stage": str(stage or ""),
+                    "previous_stage": prev_stage,
+                },
+            )
+        except Exception as exc:
+            logger.debug("Ignoring non-critical ingest DLQ write failure: %s", exc)
+
+    @staticmethod
+    def _adjust_processing_stage_metric(
+        *,
+        current_status: str,
+        prev_stage: str,
+        status: str,
+        stage: str,
+    ) -> None:
+        try:
+            from app.services.ingestion_prometheus_metrics import adjust_processing_stage_gauge
+
+            adjust_processing_stage_gauge(
+                prev_status=current_status,
+                prev_stage=prev_stage,
+                new_status=str(status or ""),
+                new_stage=str(stage or ""),
+            )
+        except Exception as exc:
+            logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
+
+    @staticmethod
+    def _notify_ingestion_run_status(
+        db: Session,
+        *,
+        tenant_id: UUID,
+        document_id: UUID,
+        status: str,
+        db_doc: DBDocument,
+    ) -> None:
+        try:
+            from app.services.ingestion_run_service import IngestionRunService
+
+            doc_meta = getattr(db_doc, "doc_metadata", None)
+            IngestionRunService.on_document_status_update(
+                db,
+                tenant_id=tenant_id,
+                document_id=document_id,
+                new_status=str(status or ""),
+                error_message=getattr(db_doc, "error_message", None),
+                doc_meta=(dict(doc_meta or {}) if isinstance(doc_meta, dict) else None),
+            )
+        except Exception as exc:
+            logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
+
     async def _update_status(
         self,
         db: Session,
@@ -4360,80 +4495,48 @@ class DocumentProcessorService:
         if db_doc:
             # Do not overwrite a user-requested cancellation from a long-running worker.
             current_status = str(db_doc.status or "").lower()
-            if current_status == "cancelled" and str(status).lower() != "cancelled":
-                return
-            meta = db_doc.doc_metadata or {}
-            if isinstance(meta, dict) and bool(meta.get("cancel_requested")) and str(status).lower() != "cancelled":
+            if self._status_update_cancel_blocked(db_doc, status):
                 return
 
             prev_stage = str(getattr(db_doc, "current_stage", None) or "")
             status_norm = str(status or "").strip().lower()
             failed_stage_hint = kwargs.pop("failed_stage", None)
             error_code_hint = kwargs.pop("error_code", None)
-            db_doc.status = status
-            db_doc.processing_progress = progress
-            db_doc.current_stage = stage
-
-            for key, value in kwargs.items():
-                setattr(db_doc, key, value)
+            self._apply_status_update_fields(
+                db_doc,
+                status=status,
+                progress=progress,
+                stage=stage,
+                extra_fields=kwargs,
+            )
 
             if status_norm in {"pending", "completed", "cancelled"}:
-                if hasattr(db_doc, "failed_stage"):
-                    db_doc.failed_stage = None
-                if hasattr(db_doc, "error_code"):
-                    db_doc.error_code = None
-                if hasattr(db_doc, "next_retry_at"):
-                    db_doc.next_retry_at = None
+                self._clear_failure_retry_fields(db_doc)
 
             db.commit()
             db.refresh(db_doc)
-
-            if status_norm in {"failed", "quarantined"}:
-                try:
-                    from app.services.ingest_dead_letter_service import record_ingest_dead_letter
-
-                    record_ingest_dead_letter(
-                        db,
-                        document=db_doc,
-                        failed_stage=str(failed_stage_hint or prev_stage or stage or "").strip() or None,
-                        error_code=(str(error_code_hint).strip() if error_code_hint else None),
-                        error_message=getattr(db_doc, "error_message", None),
-                        original_payload={
-                            "status": status_norm,
-                            "stage": str(stage or ""),
-                            "previous_stage": prev_stage,
-                        },
-                    )
-                except Exception as exc:
-                    logger.debug("Ignoring non-critical ingest DLQ write failure: %s", exc)
-
-            # Prometheus gauge: docs currently processing by stage (best-effort).
-            try:
-                from app.services.ingestion_prometheus_metrics import adjust_processing_stage_gauge
-
-                adjust_processing_stage_gauge(
-                    prev_status=current_status,
-                    prev_stage=prev_stage,
-                    new_status=str(status or ""),
-                    new_stage=str(stage or ""),
-                )
-            except Exception as exc:
-                logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-
-            # Best-effort: update ingestion run manifest (never block ingestion/status updates).
-            try:
-                from app.services.ingestion_run_service import IngestionRunService
-
-                IngestionRunService.on_document_status_update(
-                    db,
-                    tenant_id=tenant_id,
-                    document_id=document_id,
-                    new_status=str(status or ""),
-                    error_message=getattr(db_doc, "error_message", None),
-                    doc_meta=(dict(getattr(db_doc, "doc_metadata", None) or {}) if isinstance(getattr(db_doc, "doc_metadata", None), dict) else None),
-                )
-            except Exception as exc:
-                logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
+            self._record_ingest_dead_letter_for_status(
+                db,
+                db_doc=db_doc,
+                status_norm=status_norm,
+                stage=stage,
+                prev_stage=prev_stage,
+                failed_stage_hint=failed_stage_hint,
+                error_code_hint=error_code_hint,
+            )
+            self._adjust_processing_stage_metric(
+                current_status=current_status,
+                prev_stage=prev_stage,
+                status=status,
+                stage=stage,
+            )
+            self._notify_ingestion_run_status(
+                db,
+                tenant_id=tenant_id,
+                document_id=document_id,
+                status=status,
+                db_doc=db_doc,
+            )
 
     async def _rebuild_bm25_index_for_tenant(self, db: Session, tenant_id: UUID):
         """Rebuild BM25 index for a specific tenant."""
@@ -4529,6 +4632,166 @@ class DocumentProcessorService:
         db.refresh(db_doc)
         # Avoid raising errors to keep the document flow intact.
 
+    @staticmethod
+    def _parsed_table_input_from_document(doc: Document, *, table_index: int) -> dict[str, Any] | None:
+        meta = doc.metadata if isinstance(getattr(doc, "metadata", None), dict) else {}
+        if not _is_table_segment_metadata(meta):
+            return None
+        markdown = str(doc.page_content or "")
+        if not markdown.strip():
+            return None
+
+        page_i = _optional_int(meta.get("page")) or 0
+        label = f"Table {table_index + 1}"
+        if page_i > 0:
+            label = f"Page {page_i} Table {table_index + 1}"
+        return {
+            "markdown": markdown,
+            "sheet_name": label,
+            "source_page": (page_i if page_i > 0 else None),
+            "source_bbox": meta.get("element_bbox") or meta.get("bbox"),
+            "source_element_id": meta.get("source_element_id") or meta.get("element_id"),
+            "source_table_shape": meta.get("table_shape"),
+            "source_table_columns": meta.get("table_columns"),
+        }
+
+    @classmethod
+    def _collect_parsed_table_inputs(cls, documents: list[Document]) -> list[dict[str, Any]]:
+        table_inputs: list[dict[str, Any]] = []
+        for doc in documents or []:
+            table_input = cls._parsed_table_input_from_document(doc, table_index=len(table_inputs))
+            if table_input is None:
+                continue
+            table_inputs.append(table_input)
+            if len(table_inputs) >= 500:
+                break
+        return table_inputs
+
+    @staticmethod
+    def _import_table_store_assets(
+        *,
+        tenant_id: UUID,
+        dataset_id: UUID,
+        document_id: UUID,
+        table_inputs: list[dict[str, Any]],
+        pipeline_effective: PipelineEffective,
+    ) -> list[Any] | None:
+        try:
+            from app.services.table_store_service import import_markdown_tables
+
+            return import_markdown_tables(
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                document_id=document_id,
+                tables=table_inputs,
+                max_rows=int(getattr(pipeline_effective, "table_store_max_rows", 0) or 0),
+                max_cols=int(getattr(pipeline_effective, "table_store_max_cols", 0) or 0),
+                sample_rows=int(getattr(pipeline_effective, "table_store_sample_rows", 0) or 0),
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.info("Parsed table import failed (ignored): %s document_id=%s", str(exc)[:200], document_id)
+            return None
+
+    @staticmethod
+    def _parsed_table_asset_payload(asset: Any, source_info: dict[str, Any]) -> dict[str, Any]:
+        payload = {
+            "table_id": str(getattr(asset, "table_id", "")),
+            "sheet_index": int(getattr(asset, "sheet_index", 0) or 0),
+            "sheet_name": getattr(asset, "sheet_name", None),
+            "row_count": int(getattr(asset, "row_count", 0) or 0),
+            "col_count": int(getattr(asset, "col_count", 0) or 0),
+            "truncated": bool(getattr(asset, "truncated", False)),
+            "columns": list(getattr(asset, "columns", None) or []),
+            "sample_rows": list(getattr(asset, "sample_rows", None) or []),
+            "source_page": source_info.get("source_page"),
+            "routing_kind": "tag_sidecar",
+            "routing_source": "parser_table_segment",
+        }
+        for source_key in (
+            "source_bbox",
+            "source_element_id",
+            "source_table_shape",
+            "source_table_columns",
+        ):
+            value = source_info.get(source_key)
+            if value not in (None, "", [], {}):
+                payload[source_key] = value
+        return payload
+
+    @classmethod
+    def _parsed_table_assets_payload(
+        cls,
+        *,
+        assets: list[Any],
+        table_inputs: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        tables_payload: list[dict[str, Any]] = []
+        for idx, asset in enumerate(assets or []):
+            source_info = table_inputs[idx] if idx < len(table_inputs) else {}
+            tables_payload.append(cls._parsed_table_asset_payload(asset, source_info))
+        return tables_payload
+
+    @staticmethod
+    def _parsed_table_store_source_ext(db_document: DBDocument) -> str | None:
+        source_ext = getattr(db_document, "file_type", None)
+        return f".{str(source_ext).lower().lstrip('.')}" if source_ext else None
+
+    @classmethod
+    def _apply_parsed_table_store_metadata(
+        cls,
+        *,
+        metadata: dict[str, Any],
+        db_document: DBDocument,
+        assets: list[Any],
+        table_inputs: list[dict[str, Any]],
+        pipeline_effective: PipelineEffective,
+    ) -> dict[str, Any]:
+        if not assets:
+            existing = metadata.get("table_store")
+            if isinstance(existing, dict) and str(existing.get("source_ext") or "").lower() in {".pdf"}:
+                metadata.pop("table_store", None)
+            return metadata
+
+        exclusive_enabled = bool(getattr(pipeline_effective, "table_store_sidecar_exclusive_routing", False))
+        metadata["table_store"] = {
+            "version": "1",
+            "source_ext": cls._parsed_table_store_source_ext(db_document),
+            "imported_at": dt.datetime.now(dt.UTC).isoformat(),
+            "routing": {
+                "kind": "tag_sidecar",
+                "source": "parser_table_segments",
+                "exclusive_rag_routing_enabled": exclusive_enabled,
+            },
+            "tables": cls._parsed_table_assets_payload(assets=assets, table_inputs=table_inputs),
+        }
+        return metadata
+
+    @classmethod
+    def _persist_parsed_table_store_metadata(
+        cls,
+        db: Session,
+        *,
+        db_document: DBDocument,
+        assets: list[Any],
+        table_inputs: list[dict[str, Any]],
+        pipeline_effective: PipelineEffective,
+    ) -> None:
+        try:
+            next_meta = cls._apply_parsed_table_store_metadata(
+                metadata=dict(db_document.doc_metadata or {}),
+                db_document=db_document,
+                assets=assets,
+                table_inputs=table_inputs,
+                pipeline_effective=pipeline_effective,
+            )
+            next_meta = apply_parse_quality_gate_metadata(next_meta)
+            if next_meta != (db_document.doc_metadata or {}):
+                db_document.doc_metadata = next_meta
+                db.commit()
+                db.refresh(db_document)
+        except Exception as exc:  # noqa: BLE001
+            logger.info("Failed to persist parsed table_store metadata (ignored): %s document_id=%s", str(exc)[:200], db_document.id)
+
     def _import_parsed_markdown_tables_to_store(
         self,
         db: Session,
@@ -4553,126 +4816,27 @@ class DocumentProcessorService:
         if dataset_id is None or document_id is None:
             return 0
 
-        table_inputs: list[dict[str, Any]] = []
-        table_index = 0
-        for doc in documents or []:
-            meta = doc.metadata if isinstance(getattr(doc, "metadata", None), dict) else {}
-            if not _is_table_segment_metadata(meta):
-                continue
-
-            md = str(doc.page_content or "")
-            if not md.strip():
-                continue
-
-            page = meta.get("page")
-            page_i = 0
-            try:
-                if page is not None:
-                    page_i = int(page)
-            except (TypeError, ValueError, AttributeError):
-                page_i = 0
-
-            label = f"Table {table_index + 1}"
-            if page_i > 0:
-                label = f"Page {page_i} Table {table_index + 1}"
-
-            table_inputs.append(
-                {
-                    "markdown": md,
-                    "sheet_name": label,
-                    "source_page": (page_i if page_i > 0 else None),
-                    "source_bbox": meta.get("element_bbox") or meta.get("bbox"),
-                    "source_element_id": meta.get("source_element_id") or meta.get("element_id"),
-                    "source_table_shape": meta.get("table_shape"),
-                    "source_table_columns": meta.get("table_columns"),
-                }
-            )
-            table_index += 1
-            if table_index >= 500:
-                break
-
+        table_inputs = self._collect_parsed_table_inputs(documents)
         if not table_inputs:
             return 0
 
-        try:
-            from app.services.table_store_service import import_markdown_tables
-
-            assets = import_markdown_tables(
-                tenant_id=tenant_id,
-                dataset_id=dataset_id,
-                document_id=document_id,
-                tables=table_inputs,
-                max_rows=int(getattr(pipeline_effective, "table_store_max_rows", 0) or 0),
-                max_cols=int(getattr(pipeline_effective, "table_store_max_cols", 0) or 0),
-                sample_rows=int(getattr(pipeline_effective, "table_store_sample_rows", 0) or 0),
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.info("Parsed table import failed (ignored): %s document_id=%s", str(exc)[:200], document_id)
+        assets = self._import_table_store_assets(
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            document_id=document_id,
+            table_inputs=table_inputs,
+            pipeline_effective=pipeline_effective,
+        )
+        if assets is None:
             return 0
 
-        # Persist structured table metadata for listing/preview endpoints + chat TAG.
-        try:
-            next_meta = dict(db_document.doc_metadata or {})
-            if assets:
-                now_iso = dt.datetime.now(dt.UTC).isoformat()
-                tables_payload: list[dict[str, Any]] = []
-                for idx, a in enumerate(assets or []):
-                    source_info: dict[str, Any] = {}
-                    if idx < len(table_inputs):
-                        source_info = table_inputs[idx]
-                    payload = {
-                        "table_id": str(getattr(a, "table_id", "")),
-                        "sheet_index": int(getattr(a, "sheet_index", 0) or 0),
-                        "sheet_name": getattr(a, "sheet_name", None),
-                        "row_count": int(getattr(a, "row_count", 0) or 0),
-                        "col_count": int(getattr(a, "col_count", 0) or 0),
-                        "truncated": bool(getattr(a, "truncated", False)),
-                        "columns": list(getattr(a, "columns", None) or []),
-                        "sample_rows": list(getattr(a, "sample_rows", None) or []),
-                        "source_page": source_info.get("source_page"),
-                        "routing_kind": "tag_sidecar",
-                        "routing_source": "parser_table_segment",
-                    }
-                    for source_key in (
-                        "source_bbox",
-                        "source_element_id",
-                        "source_table_shape",
-                        "source_table_columns",
-                    ):
-                        value = source_info.get(source_key)
-                        if value not in (None, "", [], {}):
-                            payload[source_key] = value
-                    tables_payload.append(payload)
-
-                source_ext = getattr(db_document, "file_type", None)
-                source_ext = f".{str(source_ext).lower().lstrip('.')}" if source_ext else None
-                exclusive_enabled = bool(
-                    getattr(pipeline_effective, "table_store_sidecar_exclusive_routing", False)
-                )
-                next_meta["table_store"] = {
-                    "version": "1",
-                    "source_ext": source_ext,
-                    "imported_at": now_iso,
-                    "routing": {
-                        "kind": "tag_sidecar",
-                        "source": "parser_table_segments",
-                        "exclusive_rag_routing_enabled": exclusive_enabled,
-                    },
-                    "tables": tables_payload,
-                }
-            else:
-                # No tables found - remove stale metadata only for parsed-table sources.
-                existing = next_meta.get("table_store")
-                if isinstance(existing, dict) and str(existing.get("source_ext") or "").lower() in {".pdf"}:
-                    next_meta.pop("table_store", None)
-            next_meta = apply_parse_quality_gate_metadata(next_meta)
-
-            if next_meta != (db_document.doc_metadata or {}):
-                db_document.doc_metadata = next_meta
-                db.commit()
-                db.refresh(db_document)
-        except Exception as exc:  # noqa: BLE001
-            logger.info("Failed to persist parsed table_store metadata (ignored): %s document_id=%s", str(exc)[:200], document_id)
+        self._persist_parsed_table_store_metadata(
+            db,
+            db_document=db_document,
+            assets=assets,
+            table_inputs=table_inputs,
+            pipeline_effective=pipeline_effective,
+        )
         return len(assets or [])
 
     @staticmethod
@@ -4717,6 +4881,33 @@ class DocumentProcessorService:
             "excluded_samples": excluded_samples,
         }
 
+    def _route_table_sidecar_chunk(
+        self,
+        *,
+        index: int,
+        chunk: Document,
+        imported: int,
+        should_exclude: bool,
+        excluded_samples: list[dict[str, Any]],
+    ) -> tuple[bool, bool]:
+        meta = dict(chunk.metadata or {})
+        if not _is_table_segment_metadata(meta):
+            if imported > 0:
+                self._mark_non_table_rag_routing(meta)
+                chunk.metadata = meta
+            return False, False
+
+        self._mark_table_sidecar_routing(meta)
+        if should_exclude:
+            if len(excluded_samples) < 20:
+                excluded_samples.append(self._table_sidecar_excluded_sample(index=index, meta=meta))
+            return True, True
+
+        meta["table_rag_excluded"] = False
+        meta["table_rag_exclusion_reason"] = None
+        chunk.metadata = meta
+        return True, False
+
     def _apply_table_sidecar_exclusive_routing(
         self,
         *,
@@ -4738,25 +4929,18 @@ class DocumentProcessorService:
         table_excluded = 0
 
         for idx, chunk in enumerate(chunks or []):
-            meta = dict(chunk.metadata or {})
-            is_table = _is_table_segment_metadata(meta)
+            is_table, excluded = self._route_table_sidecar_chunk(
+                index=idx,
+                chunk=chunk,
+                imported=imported,
+                should_exclude=should_exclude,
+                excluded_samples=excluded_samples,
+            )
             if is_table:
                 table_seen += 1
-                self._mark_table_sidecar_routing(meta)
-                if should_exclude:
-                    table_excluded += 1
-                    if len(excluded_samples) < 20:
-                        excluded_samples.append(self._table_sidecar_excluded_sample(index=idx, meta=meta))
-                    continue
-                meta["table_rag_excluded"] = False
-                meta["table_rag_exclusion_reason"] = None
-                chunk.metadata = meta
-                kept.append(chunk)
+            if excluded:
+                table_excluded += 1
                 continue
-
-            if imported > 0:
-                self._mark_non_table_rag_routing(meta)
-                chunk.metadata = meta
             kept.append(chunk)
 
         return kept, self._build_table_sidecar_audit(
@@ -4990,6 +5174,97 @@ class DocumentProcessorService:
         db.commit()
         db.refresh(db_doc)
 
+    @staticmethod
+    def _add_limited_string_values(target: set[str], values: Any, *, max_len: int) -> None:
+        if not isinstance(values, list):
+            return
+        for item in values:
+            if not isinstance(item, str):
+                continue
+            value = item.strip()
+            if value:
+                target.add(value[:max_len])
+
+    @staticmethod
+    def _update_governance_frontmatter_and_title(state: dict[str, Any], meta: dict[str, Any]) -> None:
+        if state.get("frontmatter") is None:
+            frontmatter = meta.get("document_frontmatter")
+            if isinstance(frontmatter, dict) and frontmatter:
+                state["frontmatter"] = frontmatter
+
+        if state.get("title") is None:
+            raw_title = meta.get("document_title")
+            if isinstance(raw_title, str) and raw_title.strip():
+                state["title"] = raw_title.strip()[:200]
+
+    @staticmethod
+    def _update_governance_keyword_provider(state: dict[str, Any], meta: dict[str, Any]) -> None:
+        if state.get("keywords_provider") is not None:
+            return
+        raw_provider = meta.get("document_keywords_provider")
+        if isinstance(raw_provider, str) and raw_provider.strip():
+            state["keywords_provider"] = raw_provider.strip()[:50]
+
+    @staticmethod
+    def _update_governance_language_state(state: dict[str, Any], meta: dict[str, Any]) -> None:
+        raw_lang = meta.get("document_language")
+        if not isinstance(raw_lang, str) or not raw_lang.strip():
+            return
+        lang = raw_lang.strip()
+        state["lang_counts"][lang] = state["lang_counts"].get(lang, 0) + 1
+        raw_conf = meta.get("document_language_confidence")
+        if isinstance(raw_conf, (int, float)):
+            state["conf_sum"] += float(raw_conf)
+            state["conf_n"] += 1
+
+    @staticmethod
+    def _update_governance_enrichment_state(state: dict[str, Any], meta: dict[str, Any]) -> None:
+        DocumentProcessorService._update_governance_frontmatter_and_title(state, meta)
+        DocumentProcessorService._add_limited_string_values(state["tags"], meta.get("document_tags"), max_len=64)
+        DocumentProcessorService._add_limited_string_values(
+            state["keywords"],
+            meta.get("document_keywords"),
+            max_len=64,
+        )
+        DocumentProcessorService._update_governance_keyword_provider(state, meta)
+        DocumentProcessorService._update_governance_language_state(state, meta)
+
+    @staticmethod
+    def _build_governance_enrichment_payload(state: dict[str, Any]) -> dict[str, object]:
+        enrichment: dict[str, object] = {}
+        if state.get("title"):
+            enrichment["title"] = state["title"]
+        if state.get("tags"):
+            enrichment["tags"] = sorted(state["tags"])
+        lang_counts = state.get("lang_counts") if isinstance(state.get("lang_counts"), dict) else {}
+        if lang_counts:
+            language = min(lang_counts.items(), key=lambda kv: (-kv[1], kv[0]))[0]
+            enrichment["language"] = language
+            if int(state.get("conf_n") or 0) > 0:
+                enrichment["language_confidence"] = round(float(state.get("conf_sum") or 0.0) / int(state["conf_n"]), 3)
+        if state.get("keywords"):
+            enrichment["keywords"] = sorted(state["keywords"])
+            enrichment["keywords_provider"] = state.get("keywords_provider") or "auto"
+        if state.get("frontmatter"):
+            enrichment["frontmatter"] = state["frontmatter"]
+        return enrichment
+
+    @staticmethod
+    def _collect_governance_enrichment_payload(items: list[Document]) -> dict[str, object]:
+        state: dict[str, Any] = {
+            "title": None,
+            "tags": set(),
+            "keywords": set(),
+            "keywords_provider": None,
+            "frontmatter": None,
+            "lang_counts": {},
+            "conf_sum": 0.0,
+            "conf_n": 0,
+        }
+        for doc in items:
+            DocumentProcessorService._update_governance_enrichment_state(state, doc.metadata or {})
+        return DocumentProcessorService._build_governance_enrichment_payload(state)
+
     def _record_governance_enrichment_metadata(
         self,
         db: Session,
@@ -5009,80 +5284,7 @@ class DocumentProcessorService:
         if not db_doc:
             return
 
-        title: str | None = None
-        tags: set[str] = set()
-        keywords: set[str] = set()
-        keywords_provider: str | None = None
-        frontmatter: dict | None = None
-
-        lang_counts: dict[str, int] = {}
-        conf_sum = 0.0
-        conf_n = 0
-
-        for d in items:
-            meta = d.metadata or {}
-
-            if frontmatter is None:
-                fm = meta.get("document_frontmatter")
-                if isinstance(fm, dict) and fm:
-                    frontmatter = fm
-
-            if title is None:
-                raw_title = meta.get("document_title")
-                if isinstance(raw_title, str) and raw_title.strip():
-                    title = raw_title.strip()[:200]
-
-            raw_tags = meta.get("document_tags")
-            if isinstance(raw_tags, list):
-                for item in raw_tags:
-                    if not isinstance(item, str):
-                        continue
-                    val = item.strip()
-                    if val:
-                        tags.add(val[:64])
-
-            raw_kws = meta.get("document_keywords")
-            if isinstance(raw_kws, list):
-                for item in raw_kws:
-                    if not isinstance(item, str):
-                        continue
-                    val = item.strip()
-                    if val:
-                        keywords.add(val[:64])
-
-            if keywords_provider is None:
-                raw_provider = meta.get("document_keywords_provider")
-                if isinstance(raw_provider, str) and raw_provider.strip():
-                    keywords_provider = raw_provider.strip()[:50]
-
-            raw_lang = meta.get("document_language")
-            if isinstance(raw_lang, str) and raw_lang.strip():
-                lang = raw_lang.strip()
-                lang_counts[lang] = lang_counts.get(lang, 0) + 1
-                raw_conf = meta.get("document_language_confidence")
-                if isinstance(raw_conf, (int, float)):
-                    conf_sum += float(raw_conf)
-                    conf_n += 1
-
-        language: str | None = None
-        if lang_counts:
-            language = min(lang_counts.items(), key=lambda kv: (-kv[1], kv[0]))[0]
-
-        enrichment: dict[str, object] = {}
-        if title:
-            enrichment["title"] = title
-        if tags:
-            enrichment["tags"] = sorted(tags)
-        if language:
-            enrichment["language"] = language
-            if conf_n > 0:
-                enrichment["language_confidence"] = round(conf_sum / conf_n, 3)
-        if keywords:
-            enrichment["keywords"] = sorted(keywords)
-            enrichment["keywords_provider"] = keywords_provider or "auto"
-        if frontmatter:
-            enrichment["frontmatter"] = frontmatter
-
+        enrichment = self._collect_governance_enrichment_payload(items)
         if not enrichment:
             return
 
@@ -5180,6 +5382,107 @@ class DocumentProcessorService:
         db.commit()
         db.refresh(db_doc)
 
+    @staticmethod
+    def _chunk_coverage_range(chunk: Document) -> tuple[int, int] | None:
+        meta = chunk.metadata if isinstance(chunk.metadata, dict) else {}
+        start = _optional_int(meta.get("start_char"))
+        if start is None:
+            return None
+        end = _optional_int(meta.get("end_char"))
+        if end is None:
+            end = start + len(chunk.page_content or "")
+        if end <= start:
+            return None
+        return start, end
+
+    @staticmethod
+    def _chunk_coverage_ranges(chunks: list[Document]) -> list[tuple[int, int]]:
+        ranges: list[tuple[int, int]] = []
+        for chunk in chunks:
+            text_range = DocumentProcessorService._chunk_coverage_range(chunk)
+            if text_range is not None:
+                ranges.append(text_range)
+        return ranges
+
+    @staticmethod
+    def _chunk_quality_gate_inputs(
+        *,
+        stats: dict[str, Any] | None,
+        coverage: dict[str, float | int] | None,
+    ) -> dict[str, float | int]:
+        def int_metric(source: dict[str, Any] | None, key: str) -> int:
+            return int((source or {}).get(key) or 0) if isinstance(source, dict) else 0
+
+        def float_metric(source: dict[str, Any] | None, key: str) -> float:
+            return float((source or {}).get(key) or 0.0) if isinstance(source, dict) else 0.0
+
+        return {
+            "count": int_metric(stats, "count"),
+            "short_count": int_metric(stats, "short_count"),
+            "duplicate_count": int_metric(stats, "duplicate_count"),
+            "covered_chars": int_metric(coverage, "covered_chars"),
+            "coverage_ratio": float_metric(coverage, "coverage_ratio"),
+            "overlap_waste_ratio": float_metric(coverage, "overlap_waste_ratio"),
+            "gap_count": int_metric(coverage, "gap_count"),
+        }
+
+    @staticmethod
+    def _compute_chunk_quality_gate_metadata(
+        *,
+        metadata: dict[str, Any],
+        stats: dict[str, Any] | None,
+        coverage: dict[str, float | int] | None,
+        chunks_count: int,
+        total_chars: int,
+        compute_chunk_quality_gate: Any,
+    ) -> tuple[dict[str, object] | None, list[str], list[dict[str, object]]]:
+        try:
+            effective = metadata.get("pipeline_effective") if isinstance(metadata.get("pipeline_effective"), dict) else {}
+            gate_raw, recs_raw, patches_raw = compute_chunk_quality_gate(
+                stats=DocumentProcessorService._chunk_quality_gate_inputs(stats=stats, coverage=coverage),
+                total_chunks=int(chunks_count),
+                total_characters=total_chars,
+                chunk_size=int(effective.get("chunk_size") or 0),
+                chunk_overlap=int(effective.get("chunk_overlap") or 0),
+                original_text_included=False,
+                original_text_truncated=False,
+                original_text_max_chars=0,
+            )
+            gate = gate_raw if isinstance(gate_raw, dict) else None
+            recs = [str(x) for x in (recs_raw or []) if str(x or "").strip()]
+            patches = [p for p in (patches_raw or []) if isinstance(p, dict)]
+            return gate, recs, patches
+        except Exception as exc:
+            _log_processor_fallback('_record_chunking_stats_metadata', exc)
+            return None, [], []
+
+    @staticmethod
+    def _apply_chunking_stats_metadata(
+        metadata: dict[str, Any],
+        *,
+        stats: dict[str, Any] | None,
+        token_stats: dict[str, Any] | None,
+        coverage: dict[str, float | int] | None,
+        ranges_count: int,
+        gate: dict[str, object] | None,
+        recs: list[str],
+        patches: list[dict[str, object]],
+    ) -> None:
+        if stats:
+            metadata["chunking_stats"] = stats
+        if token_stats:
+            metadata["chunking_stats_tokens"] = token_stats
+        if coverage:
+            cov = dict(coverage)
+            cov["ranges_used"] = int(ranges_count)
+            metadata["chunk_coverage"] = cov
+        if gate:
+            metadata["chunk_quality_gate"] = gate
+        if recs:
+            metadata["chunk_quality_recommendations"] = recs[:10]
+        if patches:
+            metadata["chunk_quality_patches"] = patches[:10]
+
     def _record_chunking_stats_metadata(
         self,
         db: Session,
@@ -5219,28 +5522,7 @@ class DocumentProcessorService:
         token_stats = compute_chunking_stats_from_texts_tokens(((c.page_content or "") for c in chunks))
 
         # Best-effort chunk coverage metrics (requires offsets).
-        ranges: list[tuple[int, int]] = []
-        for c in chunks:
-            meta = c.metadata if isinstance(c.metadata, dict) else {}
-            raw_s = meta.get("start_char")
-            if raw_s is None:
-                continue
-            try:
-                s = int(raw_s)
-            except (TypeError, ValueError, AttributeError):
-                continue
-            raw_e = meta.get("end_char")
-            if raw_e is None:
-                e = s + len(c.page_content or "")
-            else:
-                try:
-                    e = int(raw_e)
-                except (TypeError, ValueError, AttributeError):
-                    e = s + len(c.page_content or "")
-            if e <= s:
-                continue
-            ranges.append((s, e))
-
+        ranges = self._chunk_coverage_ranges(chunks)
         total_chars = int(total_characters or 0) or int(getattr(db_doc, "total_characters", 0) or 0)
         coverage: dict[str, float | int] | None = None
         if ranges and total_chars > 0:
@@ -5251,53 +5533,24 @@ class DocumentProcessorService:
 
         metadata = dict(db_doc.doc_metadata or {})
         # Quality gate (heuristics; same as preview but best-effort here).
-        gate: dict[str, object] | None = None
-        recs: list[str] = []
-        patches: list[dict[str, object]] = []
-        try:
-            effective = metadata.get("pipeline_effective") if isinstance(metadata.get("pipeline_effective"), dict) else {}
-            chunk_size = int(effective.get("chunk_size") or 0)
-            chunk_overlap = int(effective.get("chunk_overlap") or 0)
-            gate_raw, recs_raw, patches_raw = compute_chunk_quality_gate(
-                stats={
-                    "count": int((stats or {}).get("count") or 0) if isinstance(stats, dict) else 0,
-                    "short_count": int((stats or {}).get("short_count") or 0) if isinstance(stats, dict) else 0,
-                    "duplicate_count": int((stats or {}).get("duplicate_count") or 0) if isinstance(stats, dict) else 0,
-                    "covered_chars": int((coverage or {}).get("covered_chars") or 0) if isinstance(coverage, dict) else 0,
-                    "coverage_ratio": float((coverage or {}).get("coverage_ratio") or 0.0) if isinstance(coverage, dict) else 0.0,
-                    "overlap_waste_ratio": float((coverage or {}).get("overlap_waste_ratio") or 0.0) if isinstance(coverage, dict) else 0.0,
-                    "gap_count": int((coverage or {}).get("gap_count") or 0) if isinstance(coverage, dict) else 0,
-                },
-                total_chunks=int(len(chunks)),
-                total_characters=total_chars,
-                chunk_size=chunk_size,
-                chunk_overlap=chunk_overlap,
-                original_text_included=False,
-                original_text_truncated=False,
-                original_text_max_chars=0,
-            )
-            gate = gate_raw if isinstance(gate_raw, dict) else None
-            recs = [str(x) for x in (recs_raw or []) if str(x or "").strip()]
-            patches = [p for p in (patches_raw or []) if isinstance(p, dict)]
-        except Exception as exc:
-            _log_processor_fallback('_record_chunking_stats_metadata', exc)
-            gate = None
-
-        if stats:
-            metadata["chunking_stats"] = stats
-        if token_stats:
-            metadata["chunking_stats_tokens"] = token_stats
-        if coverage:
-            # Include a small hint for debugging (how many chunk ranges contributed).
-            cov = dict(coverage)
-            cov["ranges_used"] = int(len(ranges))
-            metadata["chunk_coverage"] = cov
-        if gate:
-            metadata["chunk_quality_gate"] = gate
-        if recs:
-            metadata["chunk_quality_recommendations"] = recs[:10]
-        if patches:
-            metadata["chunk_quality_patches"] = patches[:10]
+        gate, recs, patches = self._compute_chunk_quality_gate_metadata(
+            metadata=metadata,
+            stats=stats,
+            coverage=coverage,
+            chunks_count=len(chunks),
+            total_chars=total_chars,
+            compute_chunk_quality_gate=compute_chunk_quality_gate,
+        )
+        self._apply_chunking_stats_metadata(
+            metadata,
+            stats=stats,
+            token_stats=token_stats,
+            coverage=coverage,
+            ranges_count=len(ranges),
+            gate=gate,
+            recs=recs,
+            patches=patches,
+        )
         db_doc.doc_metadata = metadata
         db.commit()
         db.refresh(db_doc)
@@ -5359,6 +5612,260 @@ class DocumentProcessorService:
         img_id = m.group(1)
         return img_id.strip() or None
 
+    @staticmethod
+    def _inline_image_patterns() -> tuple[re.Pattern[str], re.Pattern[str]]:
+        return (
+            re.compile(
+                r"!\[[^\]]*\]\(\s*(?:<)?([^)\s>]+)(?:>)?(?:\s+['\"][^'\"]*['\"])?\s*\)",
+                flags=re.IGNORECASE,
+            ),
+            re.compile(r"<img[^>]+src=[\"']([^\"']+)[\"']", flags=re.IGNORECASE),
+        )
+
+    @staticmethod
+    def _collect_inline_image_refs(markdown_text: str, patterns: tuple[re.Pattern[str], re.Pattern[str]]) -> list[str]:
+        found: list[str] = []
+        seen: set[str] = set()
+        for pattern in patterns:
+            for match in pattern.finditer(markdown_text):
+                ref = match.group(1)
+                if not isinstance(ref, str):
+                    continue
+                ref = ref.strip()
+                if not ref or ref in seen:
+                    continue
+                seen.add(ref)
+                found.append(ref)
+        return found
+
+    @staticmethod
+    def _resolve_inline_image_base_dir(origin_path: Path | None) -> Path | None:
+        if origin_path is None:
+            return None
+        resolved_origin = origin_path.resolve(strict=False)
+        base_dir = resolved_origin if resolved_origin.is_dir() else resolved_origin.parent
+        return base_dir.resolve(strict=False)
+
+    @staticmethod
+    def _inline_image_ref_skipped(ref: str) -> bool:
+        return urlparse(ref).scheme in {"http", "https"} or "/api/v1/documents/image-url/" in ref
+
+    @staticmethod
+    def _inline_file_url_path(ref: str) -> str | None:
+        parsed = urlparse(ref)
+        if str(parsed.scheme or "").lower() != "file":
+            return None
+        netloc = str(parsed.netloc or "").strip().lower()
+        if netloc and netloc not in {"localhost", "127.0.0.1"}:
+            return None
+        resolved_ref = unquote(str(parsed.path or ""))
+        if not resolved_ref:
+            return None
+        if re.match(r"^/[a-zA-Z]:/", resolved_ref):
+            return resolved_ref[1:]
+        return resolved_ref
+
+    @staticmethod
+    def _inline_local_ref_path_text(ref: str) -> str | None:
+        if ref.lower().startswith("file://"):
+            return DocumentProcessorService._inline_file_url_path(ref)
+        return unquote(ref)
+
+    @staticmethod
+    def _resolve_inline_path_candidate(path_text: str, *, base_dir_resolved: Path) -> Path | None:
+        path_obj = Path(path_text)
+        if not path_obj.is_absolute():
+            path_obj = (base_dir_resolved / path_obj).resolve(strict=False)
+        else:
+            path_obj = path_obj.resolve(strict=False)
+        try:
+            path_obj.relative_to(base_dir_resolved)
+        except Exception as exc:
+            _log_processor_fallback('_upload_inline_images_to_minio', exc)
+            return None
+        return path_obj
+
+    @staticmethod
+    def _decode_inline_data_uri(ref: str, *, max_image_bytes: int) -> bytes | None:
+        header, b64_part = ref.split(",", 1)
+        if "base64" not in header:
+            return None
+        b64_part = re.sub(r"\s+", "", b64_part)
+        if len(b64_part) > int(max_image_bytes * 4 / 3) + 32:
+            return None
+        return base64.b64decode(b64_part)
+
+    @staticmethod
+    def _resolve_inline_local_image_path(ref: str, *, base_dir_resolved: Path | None) -> Path | None:
+        if not base_dir_resolved:
+            return None
+        path_text = DocumentProcessorService._inline_local_ref_path_text(ref)
+        if not path_text:
+            return None
+        return DocumentProcessorService._resolve_inline_path_candidate(path_text, base_dir_resolved=base_dir_resolved)
+
+    @classmethod
+    def _read_inline_image_ref(
+        cls,
+        ref: str,
+        *,
+        base_dir_resolved: Path | None,
+        max_image_bytes: int,
+    ) -> bytes | None:
+        if ref.startswith("data:image"):
+            return cls._decode_inline_data_uri(ref, max_image_bytes=max_image_bytes)
+        path_obj = cls._resolve_inline_local_image_path(ref, base_dir_resolved=base_dir_resolved)
+        if path_obj is None or not path_obj.exists() or not path_obj.is_file():
+            return None
+        try:
+            if path_obj.stat().st_size > max_image_bytes:
+                return None
+        except Exception as exc:
+            _log_processor_fallback('_upload_inline_images_to_minio', exc)
+            return None
+        return path_obj.read_bytes()
+
+    @staticmethod
+    def _jpeg_bytes_from_binary(binary: bytes) -> bytes:
+        img = None
+        converted = None
+        try:
+            img = PILImage.open(BytesIO(binary))
+            if img.mode in ("RGBA", "P"):
+                converted = img.convert("RGB")
+                out_img = converted
+            else:
+                out_img = img
+            out = BytesIO()
+            out_img.save(out, format="JPEG", quality=85, optimize=True)
+            return out.getvalue()
+        finally:
+            if converted is not None:
+                try:
+                    converted.close()
+                except Exception as exc:
+                    logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
+            if img is not None:
+                try:
+                    img.close()
+                except Exception as exc:
+                    logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
+
+    @staticmethod
+    def _rewrite_inline_image_refs(
+        markdown_text: str,
+        *,
+        replacements: dict[str, str],
+        patterns: tuple[re.Pattern[str], re.Pattern[str]],
+    ) -> str:
+        if not replacements:
+            return markdown_text
+
+        def replace_match(match: re.Match) -> str:
+            raw = match.group(1) or ""
+            new = replacements.get(raw.strip())
+            if not new:
+                return match.group(0)
+            return match.group(0).replace(raw, new, 1)
+
+        md_pat, html_pat = patterns
+        markdown_text = md_pat.sub(replace_match, markdown_text)
+        return html_pat.sub(replace_match, markdown_text)
+
+    def _upload_inline_image_ref_to_minio(
+        self,
+        ref: str,
+        *,
+        tenant_id: str,
+        dataset_id: str,
+        document_id: str,
+        cache: dict[str, str],
+        idx: int,
+        base_dir_resolved: Path | None,
+        max_image_bytes: int,
+    ) -> tuple[str | None, str | None, int]:
+        if self._inline_image_ref_skipped(ref):
+            return None, None, idx
+        try:
+            binary = self._read_inline_image_ref(
+                ref,
+                base_dir_resolved=base_dir_resolved,
+                max_image_bytes=max_image_bytes,
+            )
+            if binary is None or len(binary) > max_image_bytes:
+                return None, None, idx
+
+            image_bytes = self._jpeg_bytes_from_binary(binary)
+            digest = hashlib.sha256(image_bytes).hexdigest()
+            img_id = cache.get(digest)
+            new_img_id: str | None = None
+            if not img_id:
+                chunk_key = f"asset{idx}"
+                idx += 1
+                img_id = minio_service.upload_image(
+                    image_data=image_bytes,
+                    tenant_id=tenant_id,
+                    dataset_id=dataset_id,
+                    document_id=document_id,
+                    chunk_key=chunk_key,
+                    extension="jpg",
+                )
+                cache[digest] = img_id
+                new_img_id = img_id
+            return f"/api/v1/documents/image-url/{img_id}", new_img_id, idx
+        except Exception as exc:
+            logger.warning("Inline/local image upload failed (skipped): %s", exc)
+            return None, None, idx
+
+    @classmethod
+    def _collect_limited_inline_upload_refs(
+        cls,
+        markdown_text: str,
+    ) -> tuple[tuple[re.Pattern[str], re.Pattern[str]], list[str]] | None:
+        lowered = markdown_text.lower()
+        if "data:image" not in lowered and "![" not in lowered and "<img" not in lowered:
+            return None
+        patterns = cls._inline_image_patterns()
+        found = cls._collect_inline_image_refs(markdown_text, patterns)
+        if not found:
+            return None
+        max_inline_images = max(0, int(getattr(settings, "MAX_INLINE_IMAGES", 0) or 0))
+        if max_inline_images and len(found) > max_inline_images:
+            found = found[:max_inline_images]
+        return patterns, found
+
+    def _collect_inline_image_upload_replacements(
+        self,
+        found: list[str],
+        *,
+        tenant_id: str,
+        dataset_id: str,
+        document_id: str,
+        cache: dict[str, str],
+        start_index: int,
+        base_dir_resolved: Path | None,
+        max_image_bytes: int,
+    ) -> tuple[dict[str, str], list[str], int]:
+        idx = int(start_index or 0)
+        new_ids: list[str] = []
+        replacements: dict[str, str] = {}
+        for ref in found:
+            url, new_img_id, idx = self._upload_inline_image_ref_to_minio(
+                ref,
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                document_id=document_id,
+                cache=cache,
+                idx=idx,
+                base_dir_resolved=base_dir_resolved,
+                max_image_bytes=max_image_bytes,
+            )
+            if url:
+                replacements[ref] = url
+            if new_img_id:
+                new_ids.append(new_img_id)
+        return replacements, new_ids, idx
+
     def _upload_inline_images_to_minio(
         self,
         markdown_text: str,
@@ -5387,187 +5894,27 @@ class DocumentProcessorService:
             return markdown_text, [], start_index
         if not isinstance(markdown_text, str) or not markdown_text:
             return markdown_text, [], start_index
-        lowered = markdown_text.lower()
-        if "data:image" not in lowered and "![" not in lowered and "<img" not in lowered:
+
+        refs = self._collect_limited_inline_upload_refs(markdown_text)
+        if refs is None:
             return markdown_text, [], start_index
+        patterns, found = refs
 
-        # Only process Markdown images and HTML img tags, matching src content.
-        md_pat = re.compile(
-            r"!\[[^\]]*\]\(\s*(?:<)?([^)\s>]+)(?:>)?(?:\s+['\"][^'\"]*['\"])?\s*\)",
-            flags=re.IGNORECASE,
-        )
-        html_pat = re.compile(r"<img[^>]+src=[\"']([^\"']+)[\"']", flags=re.IGNORECASE)
-
-        found: list[str] = []
-        seen: set[str] = set()
-        for pat in (md_pat, html_pat):
-            for m in pat.finditer(markdown_text):
-                ref = m.group(1)
-                if not isinstance(ref, str) or not ref:
-                    continue
-                ref = ref.strip()
-                if ref in seen:
-                    continue
-                seen.add(ref)
-                found.append(ref)
-
-        if not found:
-            return markdown_text, [], start_index
-
-        max_inline_images = max(0, int(getattr(settings, "MAX_INLINE_IMAGES", 0) or 0))
-        if max_inline_images and len(found) > max_inline_images:
-            found = found[:max_inline_images]
-
-        new_ids: list[str] = []
-        idx = int(start_index or 0)
-        replacements: dict[str, str] = {}
-
-        base_dir = origin_path.parent if origin_path else None
-        if origin_path is not None:
-            origin_path = origin_path.resolve(strict=False)
-            base_dir = origin_path if origin_path.is_dir() else origin_path.parent
-        base_dir_resolved = base_dir.resolve(strict=False) if base_dir else None
+        base_dir_resolved = self._resolve_inline_image_base_dir(origin_path)
         max_image_bytes = int(getattr(settings, "MAX_INLINE_IMAGE_BYTES", 10_000_000) or 10_000_000)
         max_image_bytes = max(1_000_000, max_image_bytes)
+        replacements, new_ids, idx = self._collect_inline_image_upload_replacements(
+            found,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            document_id=document_id,
+            cache=cache,
+            start_index=start_index,
+            base_dir_resolved=base_dir_resolved,
+            max_image_bytes=max_image_bytes,
+        )
 
-        for ref in found:
-            # Already remote or already rewritten.
-            if urlparse(ref).scheme in {"http", "https"}:
-                continue
-            if "/api/v1/documents/image-url/" in ref:
-                continue
-
-            is_data_uri = ref.startswith("data:image")
-
-            try:
-                if is_data_uri:
-                    header, b64_part = ref.split(",", 1)
-                    if "base64" not in header:
-                        continue
-                    b64_part = re.sub(r"\s+", "", b64_part)
-                    if len(b64_part) > int(max_image_bytes * 4 / 3) + 32:
-                        continue
-                    binary = base64.b64decode(b64_part)
-                else:
-                    # Normalize local refs:
-                    # - MarkItDown (or other converters) may emit `file://...` URLs or percent-escaped paths.
-                    # - Keep `ref` as the replacement key, but resolve/unquote for filesystem access.
-                    resolved_ref = ref
-                    ref_lower = ref.lower()
-                    if ref_lower.startswith("file://"):
-                        parsed = urlparse(ref)
-                        if str(parsed.scheme or "").lower() != "file":
-                            continue
-                        netloc = str(parsed.netloc or "").strip().lower()
-                        if netloc and netloc not in {"localhost", "127.0.0.1"}:
-                            continue
-                        resolved_ref = unquote(str(parsed.path or ""))
-                        if not resolved_ref:
-                            continue
-                        # file:///C:/... -> C:/... (Windows compatibility; safe on POSIX too).
-                        if re.match(r"^/[a-zA-Z]:/", resolved_ref):
-                            resolved_ref = resolved_ref[1:]
-                    else:
-                        resolved_ref = unquote(ref)
-
-                    # Local/relative path.
-                    path_obj = Path(resolved_ref)
-                    if not path_obj.is_absolute():
-                        if not base_dir_resolved:
-                            continue
-                        path_obj = (base_dir_resolved / path_obj).resolve(strict=False)
-                    else:
-                        if not base_dir_resolved:
-                            continue
-                        path_obj = path_obj.resolve(strict=False)
-                    if base_dir_resolved:
-                        try:
-                            path_obj.relative_to(base_dir_resolved)
-                        except Exception as exc:
-                            _log_processor_fallback('_upload_inline_images_to_minio', exc)
-                            continue
-                    if not path_obj.exists() or not path_obj.is_file():
-                        continue
-                    try:
-                        if path_obj.stat().st_size > max_image_bytes:
-                            continue
-                    except Exception as exc:
-                        _log_processor_fallback('_upload_inline_images_to_minio', exc)
-                        continue
-                    binary = path_obj.read_bytes()
-                if len(binary) > max_image_bytes:
-                    continue
-
-                # Convert to JPEG.
-                img = None
-                converted = None
-                try:
-                    img = PILImage.open(BytesIO(binary))
-                    if img.mode in ("RGBA", "P"):
-                        converted = img.convert("RGB")
-                        out_img = converted
-                    else:
-                        out_img = img
-                    out = BytesIO()
-                    out_img.save(out, format="JPEG", quality=85, optimize=True)
-                    image_bytes = out.getvalue()
-                finally:
-                    if converted is not None:
-                        try:
-                            converted.close()
-                        except Exception as exc:
-                            logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-                    if img is not None:
-                        try:
-                            img.close()
-                        except Exception as exc:
-                            logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-
-                digest = hashlib.sha256(image_bytes).hexdigest()
-                img_id = cache.get(digest)
-                if not img_id:
-                    chunk_key = f"asset{idx}"
-                    idx += 1
-                    img_id = minio_service.upload_image(
-                        image_data=image_bytes,
-                        tenant_id=tenant_id,
-                        dataset_id=dataset_id,
-                        document_id=document_id,
-                        chunk_key=chunk_key,
-                        extension="jpg",
-                    )
-                    cache[digest] = img_id
-                    new_ids.append(img_id)
-
-                url = f"/api/v1/documents/image-url/{img_id}"
-                replacements[ref] = url
-
-            except Exception as e:
-                logger.warning("Inline/local image upload failed (skipped): %s", e)
-                continue
-
-        if replacements:
-            # Single-pass replacement to avoid N full-text replaces (O(N*M)).
-            def _md_repl(m: re.Match) -> str:
-                raw = m.group(1) or ""
-                key = raw.strip()
-                new = replacements.get(key)
-                if not new:
-                    return m.group(0)
-                return m.group(0).replace(raw, new, 1)
-
-            def _html_repl(m: re.Match) -> str:
-                raw = m.group(1) or ""
-                key = raw.strip()
-                new = replacements.get(key)
-                if not new:
-                    return m.group(0)
-                return m.group(0).replace(raw, new, 1)
-
-            markdown_text = md_pat.sub(_md_repl, markdown_text)
-            markdown_text = html_pat.sub(_html_repl, markdown_text)
-
-        return markdown_text, new_ids, idx
+        return self._rewrite_inline_image_refs(markdown_text, replacements=replacements, patterns=patterns), new_ids, idx
 
     def _integrated_chunk_file(self, file_path: Path, strategy: str):
         """
@@ -5590,6 +5937,199 @@ class DocumentProcessorService:
 
         return documents
 
+    @staticmethod
+    def _existing_metadata_image_id(metadata: dict[str, Any]) -> str | None:
+        img_id = metadata.get("img_id")
+        if isinstance(img_id, str) and img_id.strip():
+            return img_id
+        return None
+
+    @staticmethod
+    def _metadata_image_keys() -> tuple[str, ...]:
+        return ("image_base64", "image", "img_base64", "img", "image_data")
+
+    @staticmethod
+    def _metadata_doc_type_is_image(metadata: dict[str, Any]) -> bool:
+        return str(metadata.get("doc_type_kwd") or "").lower() == "image"
+
+    @staticmethod
+    def _drop_minio_disabled_image_metadata(metadata: dict[str, Any]) -> None:
+        metadata.pop("image", None)
+
+    @classmethod
+    def _metadata_embedded_image(cls, metadata: dict[str, Any]) -> tuple[Any | None, str | None]:
+        value = metadata.get("image")
+        if value is None:
+            return None, None
+        if cls._metadata_doc_type_is_image(metadata):
+            return value, "image"
+        metadata.pop("image", None)
+        return None, None
+
+    @staticmethod
+    def _metadata_image_path_candidate(raw_path: str, *, tenant_id: str) -> Path | None:
+        try:
+            upload_root = Path(settings.UPLOAD_DIR).resolve(strict=False)
+            tenant_root = (upload_root / str(tenant_id)).resolve(strict=False)
+            candidate = Path(raw_path.strip()).resolve(strict=False)
+            candidate.relative_to(tenant_root)
+        except Exception as exc:
+            _log_processor_fallback('_extract_and_upload_image_to_minio', exc)
+            return None
+        if not candidate.exists() or not candidate.is_file():
+            return None
+        return candidate
+
+    @staticmethod
+    def _safe_unlink_processor_path(path: Path) -> None:
+        try:
+            path.unlink()
+        except Exception as exc:
+            logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
+
+    @staticmethod
+    def _metadata_image_path_within_limit(path: Path) -> bool:
+        max_bytes = int(getattr(settings, "MINIO_IMAGE_MAX_BYTES", 0) or 0)
+        if max_bytes <= 0:
+            return True
+        try:
+            size = int(path.stat().st_size)
+        except Exception as exc:
+            _log_processor_fallback('_extract_and_upload_image_to_minio', exc)
+            size = 0
+        return size <= max_bytes
+
+    @classmethod
+    def _metadata_image_path_payload(
+        cls,
+        metadata: dict[str, Any],
+        *,
+        tenant_id: str,
+    ) -> tuple[Path | None, bytes | None, str | None]:
+        raw_path = metadata.get("image_path")
+        if not isinstance(raw_path, str) or not raw_path.strip():
+            return None, None, None
+        if not cls._metadata_doc_type_is_image(metadata):
+            metadata.pop("image_path", None)
+            return None, None, None
+
+        candidate = cls._metadata_image_path_candidate(raw_path, tenant_id=tenant_id)
+        if candidate is None:
+            metadata.pop("image_path", None)
+            return None, None, None
+        if not cls._metadata_image_path_within_limit(candidate):
+            metadata.pop("image_path", None)
+            cls._safe_unlink_processor_path(candidate)
+            return None, None, None
+        try:
+            return candidate, candidate.read_bytes(), "image_path"
+        except Exception as exc:
+            _log_processor_fallback('_extract_and_upload_image_to_minio', exc)
+            metadata.pop("image_path", None)
+            return None, None, None
+
+    @staticmethod
+    def _metadata_base64_image(metadata: dict[str, Any], keys: tuple[str, ...]) -> tuple[str | None, str | None]:
+        for key in keys:
+            value = metadata.get(key)
+            if isinstance(value, str) and value.strip():
+                return value, key
+        return None, None
+
+    @staticmethod
+    def _strip_data_uri_payload(value: str | None) -> str | None:
+        if not isinstance(value, str) or not value.startswith("data:"):
+            return value
+        parts = value.split(",", 1)
+        return parts[1] if len(parts) == 2 else value
+
+    @staticmethod
+    def _jpeg_bytes_from_pil_image(img: Any) -> bytes:
+        converted = None
+        try:
+            out_img = img
+            if img.mode in ("RGBA", "P"):
+                converted = img.convert("RGB")
+                out_img = converted
+            out = BytesIO()
+            out_img.save(out, format="JPEG", quality=85, optimize=True)
+            return out.getvalue()
+        finally:
+            if converted is not None:
+                try:
+                    converted.close()
+                except Exception as exc:
+                    logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
+
+    @classmethod
+    def _metadata_image_bytes(cls, *, raw_image: Any | None, b64_data: str | None) -> bytes:
+        if raw_image is not None:
+            if isinstance(raw_image, bytes):
+                return cls._jpeg_bytes_from_binary(raw_image)
+            return cls._jpeg_bytes_from_pil_image(raw_image)
+        return cls._jpeg_bytes_from_binary(base64.b64decode(b64_data or ""))
+
+    @staticmethod
+    def _close_metadata_raw_image(raw_image: Any | None) -> None:
+        if raw_image is None or isinstance(raw_image, bytes) or not hasattr(raw_image, "close"):
+            return
+        try:
+            raw_image.close()
+        except Exception as exc:
+            logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
+
+    @classmethod
+    def _cleanup_uploaded_metadata_image_fields(
+        cls,
+        metadata: dict[str, Any],
+        *,
+        keys: tuple[str, ...],
+        found_key: str | None,
+        image_path: Path | None,
+    ) -> None:
+        if found_key:
+            metadata.pop(found_key, None)
+        for key in keys:
+            if key != found_key:
+                metadata.pop(key, None)
+        if image_path is not None:
+            cls._safe_unlink_processor_path(image_path)
+
+    @classmethod
+    def _upload_extracted_metadata_image(
+        cls,
+        metadata: dict[str, Any],
+        *,
+        tenant_id: str,
+        dataset_id: str,
+        document_id: str,
+        chunk_index: int,
+        image_bytes: bytes,
+        keys: tuple[str, ...],
+        found_key: str | None,
+        image_path: Path | None,
+    ) -> str | None:
+        try:
+            img_id = minio_service.upload_image(
+                image_data=image_bytes,
+                tenant_id=tenant_id,
+                dataset_id=dataset_id,
+                document_id=document_id,
+                chunk_key=str(metadata.get("chunk_key") or chunk_index),
+                extension="jpg",
+            )
+            cls._cleanup_uploaded_metadata_image_fields(
+                metadata,
+                keys=keys,
+                found_key=found_key,
+                image_path=image_path,
+            )
+            logger.info("Image uploaded and bound: img_id=%s", img_id)
+            return img_id
+        except Exception as exc:
+            logger.exception("Image upload failed: %s", exc)
+            return None
+
     def _extract_and_upload_image_to_minio(
         self,
         metadata: dict[str, Any],
@@ -5606,156 +6146,52 @@ class DocumentProcessorService:
 
         Recognized fields: image (PIL.Image/bytes) / image_base64 / img_base64 / img / image_data
         """
-        # If img_id already exists, return it.
-        if isinstance(metadata.get("img_id"), str) and metadata.get("img_id").strip():
-            return metadata.get("img_id")
+        existing_img_id = self._existing_metadata_image_id(metadata)
+        if existing_img_id is not None:
+            return existing_img_id
 
-        # If MinIO is disabled, ensure non-serializable fields are removed.
         if not settings.MINIO_ENABLED:
-            if "image" in metadata:
-                metadata.pop("image", None)
+            self._drop_minio_disabled_image_metadata(metadata)
             return None
 
-        # Find image data.
-        possible_keys = ["image_base64", "image", "img_base64", "img", "image_data"]
-        found_key = None
-        raw_image = None
-        b64_data = None
+        possible_keys = self._metadata_image_keys()
+        raw_image, found_key = self._metadata_embedded_image(metadata)
 
-        # integrated may place PIL.Image/bytes in metadata["image"].
-        # Only upload for real image chunks (doc_type_kwd == "image").
-        val = metadata.get("image")
-        if val is not None:
-            doc_type = str(metadata.get("doc_type_kwd") or "").lower()
-            if doc_type == "image":
-                raw_image = val
-                found_key = "image"
-            else:
-                # Non-image chunk: drop image field to avoid JSON serialization failure.
-                metadata.pop("image", None)
-
-        # Subprocess parser may materialize PIL.Image into an on-disk file path.
         image_path: Path | None = None
-        raw_path = metadata.get("image_path")
-        if raw_image is None and isinstance(raw_path, str) and raw_path.strip():
-            doc_type = str(metadata.get("doc_type_kwd") or "").lower()
-            if doc_type != "image":
-                metadata.pop("image_path", None)
-            else:
-                try:
-                    upload_root = Path(settings.UPLOAD_DIR).resolve(strict=False)
-                    tenant_root = (upload_root / str(tenant_id)).resolve(strict=False)
-                    candidate = Path(raw_path.strip()).resolve(strict=False)
-                    candidate.relative_to(tenant_root)
-                    if candidate.exists() and candidate.is_file():
-                        max_bytes = int(getattr(settings, "MINIO_IMAGE_MAX_BYTES", 0) or 0)
-                        if max_bytes > 0:
-                            try:
-                                size = int(candidate.stat().st_size)
-                            except Exception as exc:
-                                _log_processor_fallback('_extract_and_upload_image_to_minio', exc)
-                                size = 0
-                            if size > max_bytes:
-                                metadata.pop("image_path", None)
-                                try:
-                                    candidate.unlink()
-                                except Exception as exc:
-                                    logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-                            else:
-                                image_path = candidate
-                                raw_image = candidate.read_bytes()
-                                found_key = "image_path"
-                        else:
-                            image_path = candidate
-                            raw_image = candidate.read_bytes()
-                            found_key = "image_path"
-                    else:
-                        metadata.pop("image_path", None)
-                except Exception as exc:
-                    _log_processor_fallback('_extract_and_upload_image_to_minio', exc)
-                    # Unsafe or unreadable path; drop it to avoid leaking arbitrary filesystem paths.
-                    metadata.pop("image_path", None)
-
         if raw_image is None:
-            for key in possible_keys:
-                val = metadata.get(key)
-                if isinstance(val, str) and val.strip():
-                    b64_data = val
-                    found_key = key
-                    break
-        
+            image_path, raw_image, path_key = self._metadata_image_path_payload(metadata, tenant_id=tenant_id)
+            found_key = path_key or found_key
+
+        b64_data = None
+        if raw_image is None:
+            b64_data, found_key = self._metadata_base64_image(metadata, possible_keys)
+
         if raw_image is None and not b64_data:
             return None
 
-        # Handle data URI format.
-        if isinstance(b64_data, str) and b64_data.startswith("data:"):
-            parts = b64_data.split(",", 1)
-            if len(parts) == 2:
-                b64_data = parts[1]
+        b64_data = self._strip_data_uri_payload(b64_data)
 
-        # Convert to JPEG bytes (save storage, simplify reading).
         try:
-            if raw_image is not None:
-                if isinstance(raw_image, bytes):
-                    img = PILImage.open(BytesIO(raw_image))
-                else:
-                    img = raw_image
-            else:
-                binary = base64.b64decode(b64_data)
-                img = PILImage.open(BytesIO(binary))
-
-            if img.mode in ("RGBA", "P"):
-                img = img.convert("RGB")
-
-            out = BytesIO()
-            img.save(out, format="JPEG", quality=85, optimize=True)
-            image_bytes = out.getvalue()
-        except Exception as e:
-            logger.warning("Image conversion failed (skip upload): %s", e)
-            # Always drop the image field to avoid persistence failures.
+            image_bytes = self._metadata_image_bytes(raw_image=raw_image, b64_data=b64_data)
+        except Exception as exc:
+            logger.warning("Image conversion failed (skip upload): %s", exc)
             if found_key == "image":
                 metadata.pop("image", None)
             return None
         finally:
-            if raw_image is not None and not isinstance(raw_image, bytes) and hasattr(raw_image, "close"):
-                try:
-                    raw_image.close()
-                except Exception as exc:
-                    logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
+            self._close_metadata_raw_image(raw_image)
 
-        # Upload to MinIO.
-        try:
-            img_id = minio_service.upload_image(
-                image_data=image_bytes,
-                tenant_id=tenant_id,
-                dataset_id=dataset_id,
-                document_id=document_id,
-                chunk_key=str(metadata.get("chunk_key") or chunk_index),
-                extension="jpg",
-            )
-            
-            # After upload, delete in-memory image data to save resources.
-            if found_key:
-                del metadata[found_key]
-            
-            # Clean up other possible image fields.
-            for key in possible_keys:
-                if key in metadata and key != found_key:
-                    del metadata[key]
-
-            # If the subprocess provided an on-disk image file, remove it after successful upload.
-            if image_path is not None:
-                try:
-                    image_path.unlink()
-                except Exception as exc:
-                    logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-
-            logger.info("Image uploaded and bound: img_id=%s", img_id)
-            return img_id
-            
-        except Exception as e:
-            logger.exception("Image upload failed: %s", e)
-            return None
+        return self._upload_extracted_metadata_image(
+            metadata,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            document_id=document_id,
+            chunk_index=chunk_index,
+            image_bytes=image_bytes,
+            keys=possible_keys,
+            found_key=found_key,
+            image_path=image_path,
+        )
 
     def _extract_and_save_image(self, metadata: dict[str, Any], tenant_id: UUID) -> str | None:
         """
