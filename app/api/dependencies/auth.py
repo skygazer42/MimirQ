@@ -54,6 +54,120 @@ def _best_effort_client_ip(request: Request) -> str | None:
     return str(client.host).strip() or None
 
 
+def _resolve_header_mode_user(*, x_user_id: str | None, request: Request | None) -> str:
+    if not x_user_id:
+        raise HTTPException(status_code=401, detail="X-User-ID header required")
+    user_id = str(x_user_id)
+    if request is not None:
+        request.state.user_id = user_id
+    set_request_user_id(user_id)
+    return user_id
+
+
+def _bearer_token_or_401(authorization: str | None) -> str:
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header required")
+    token = authorization.strip()
+    if not token.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Invalid Authorization header")
+    return token[7:].strip()
+
+
+def _cached_jwt_payload(request: Request | None) -> dict | None:
+    if request is None:
+        return None
+    cached = getattr(request.state, "_jwt_payload", None)
+    return cached if isinstance(cached, dict) and cached else None
+
+
+async def _decode_or_cached_jwt_payload(*, token: str, request: Request | None) -> dict:
+    if payload := _cached_jwt_payload(request):
+        return payload
+    try:
+        payload = await decode_access_token(token)
+    except ExpiredSignatureError as exc:
+        logger.warning("Expired token attempted for access")
+        raise HTTPException(status_code=401, detail="Token expired") from exc
+    except JWTError as exc:
+        logger.warning("Invalid token: %s", str(exc)[:100])
+        raise HTTPException(status_code=401, detail=INVALID_TOKEN_DETAIL) from exc
+    if request is not None:
+        request.state._jwt_payload = payload
+    return payload
+
+
+def _enforce_tenant_header_match(*, jwt_tenant_id: str | None, x_tenant_id: str | None) -> None:
+    if not bool(getattr(settings, "JWT_ENFORCE_TENANT_HEADER_MATCH", False)):
+        return
+    if not jwt_tenant_id:
+        raise HTTPException(status_code=401, detail=INVALID_TOKEN_DETAIL)
+
+    header_tenant_id = _coerce_uuid(x_tenant_id)
+    if not header_tenant_id:
+        raise HTTPException(status_code=400, detail="X-Tenant-ID header required")
+    if header_tenant_id != jwt_tenant_id:
+        raise HTTPException(status_code=401, detail=INVALID_TOKEN_DETAIL)
+
+
+def _set_authenticated_context(*, user_id: str, jwt_tenant_id: str | None, request: Request | None) -> None:
+    if request is not None:
+        request.state.user_id = user_id
+    set_request_user_id(user_id)
+    if not jwt_tenant_id:
+        return
+    set_request_tenant_id(jwt_tenant_id)
+    if request is not None:
+        request.state.tenant_id = UUID(jwt_tenant_id)
+
+
+def _maybe_sync_jwt_groups(*, jwt_tenant_id: str, user_id: str, payload: dict) -> None:
+    if not bool(getattr(settings, "JWT_GROUPS_SYNC_ENABLED", False)):
+        return
+    try:
+        from app.services.jwt_group_sync_service import maybe_sync_jwt_groups  # noqa: WPS433
+
+        maybe_sync_jwt_groups(
+            tenant_id=UUID(jwt_tenant_id),
+            account_id=user_id,
+            jwt_payload=payload,
+        )
+    except Exception as exc:  # noqa: BLE001
+        # Never block auth due to sync failures.
+        logger.debug("JWT group sync failed during auth; continuing without sync: %s", exc)
+
+
+def _request_provisioning_context(request: Request | None) -> tuple[str | None, str | None, str | None]:
+    if request is None:
+        return None, None, None
+    request_id = str(getattr(request.state, "request_id", "") or "").strip() or None
+    ip = _best_effort_client_ip(request)
+    user_agent = (request.headers.get("User-Agent") or "").strip() or None
+    return request_id, ip, user_agent
+
+
+def _maybe_auto_provision_tenant_member(*, jwt_tenant_id: str, user_id: str, request: Request | None) -> None:
+    if not bool(getattr(settings, "JWT_TENANT_MEMBER_AUTO_PROVISION_ENABLED", False)):
+        return
+    try:
+        from app.core.database import SessionLocal  # noqa: WPS433
+        from app.services.tenant_member_provisioning_service import (  # noqa: WPS433
+            maybe_auto_provision_jwt_tenant_member_best_effort,
+        )
+
+        request_id, ip, user_agent = _request_provisioning_context(request)
+        maybe_auto_provision_jwt_tenant_member_best_effort(
+            db_factory=SessionLocal,
+            tenant_id=UUID(jwt_tenant_id),
+            user_id=user_id,
+            request_id=request_id,
+            ip=ip,
+            user_agent=user_agent,
+        )
+    except Exception as exc:  # noqa: BLE001
+        # Never block auth due to auto-provisioning failures.
+        logger.debug("JWT tenant member auto-provisioning failed during auth; continuing: %s", exc)
+
+
 async def get_current_account_id_from_headers(
     *,
     authorization: str | None,
@@ -70,108 +184,21 @@ async def get_current_account_id_from_headers(
     mode = (getattr(settings, "AUTH_MODE", "jwt") or "jwt").lower()
 
     if mode == "header":
-        if not x_user_id:
-            raise HTTPException(status_code=401, detail="X-User-ID header required")
-        user_id = str(x_user_id)
-        if request is not None:
-            request.state.user_id = user_id
-        set_request_user_id(user_id)
-        return user_id
+        return _resolve_header_mode_user(x_user_id=x_user_id, request=request)
 
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Authorization header required")
-
-    token = authorization.strip()
-    if token.lower().startswith("bearer "):
-        token = token[7:].strip()
-    else:
-        raise HTTPException(status_code=401, detail="Invalid Authorization header")
-
-    payload = None
-    if request is not None:
-        cached = getattr(request.state, "_jwt_payload", None)
-        if isinstance(cached, dict) and cached:
-            payload = cached
-
-    if payload is None:
-        try:
-            payload = await decode_access_token(token)
-        except ExpiredSignatureError as exc:
-            logger.warning("Expired token attempted for access")
-            raise HTTPException(status_code=401, detail="Token expired") from exc
-        except JWTError as exc:
-            logger.warning("Invalid token: %s", str(exc)[:100])
-            raise HTTPException(status_code=401, detail=INVALID_TOKEN_DETAIL) from exc
-        if request is not None:
-            request.state._jwt_payload = payload
-
+    payload = await _decode_or_cached_jwt_payload(token=_bearer_token_or_401(authorization), request=request)
     user_id = payload.get("sub")
     if not user_id:
         logger.warning("Token missing 'sub' claim")
         raise HTTPException(status_code=401, detail=INVALID_TOKEN_DETAIL)
 
     jwt_tenant_id = _get_jwt_tenant_id(payload)
-
-    if bool(getattr(settings, "JWT_ENFORCE_TENANT_HEADER_MATCH", False)):
-        if not jwt_tenant_id:
-            raise HTTPException(status_code=401, detail=INVALID_TOKEN_DETAIL)
-
-        header_tenant_id = _coerce_uuid(x_tenant_id)
-        if not header_tenant_id:
-            raise HTTPException(status_code=400, detail="X-Tenant-ID header required")
-        if header_tenant_id != jwt_tenant_id:
-            raise HTTPException(status_code=401, detail=INVALID_TOKEN_DETAIL)
-
+    _enforce_tenant_header_match(jwt_tenant_id=jwt_tenant_id, x_tenant_id=x_tenant_id)
     user_id = str(user_id)
-    if request is not None:
-        request.state.user_id = user_id
-    set_request_user_id(user_id)
+    _set_authenticated_context(user_id=user_id, jwt_tenant_id=jwt_tenant_id, request=request)
     if jwt_tenant_id:
-        set_request_tenant_id(jwt_tenant_id)
-        if request is not None:
-            request.state.tenant_id = UUID(jwt_tenant_id)
-
-        # Optional enterprise: best-effort group sync from verified JWT payload (opt-in).
-        if bool(getattr(settings, "JWT_GROUPS_SYNC_ENABLED", False)):
-            try:
-                from app.services.jwt_group_sync_service import maybe_sync_jwt_groups  # noqa: WPS433
-
-                maybe_sync_jwt_groups(
-                    tenant_id=UUID(jwt_tenant_id),
-                    account_id=user_id,
-                    jwt_payload=payload,
-                )
-            except Exception as exc:  # noqa: BLE001
-                # Never block auth due to sync failures.
-                logger.debug("JWT group sync failed during auth; continuing without sync: %s", exc)
-
-        # Optional enterprise: auto-provision tenant_members for JWT-authenticated users (opt-in).
-        if bool(getattr(settings, "JWT_TENANT_MEMBER_AUTO_PROVISION_ENABLED", False)):
-            try:
-                from app.core.database import SessionLocal  # noqa: WPS433
-                from app.services.tenant_member_provisioning_service import (  # noqa: WPS433
-                    maybe_auto_provision_jwt_tenant_member_best_effort,
-                )
-
-                request_id = None
-                ip = None
-                user_agent = None
-                if request is not None:
-                    request_id = str(getattr(request.state, "request_id", "") or "").strip() or None
-                    ip = _best_effort_client_ip(request)
-                    user_agent = (request.headers.get("User-Agent") or "").strip() or None
-
-                maybe_auto_provision_jwt_tenant_member_best_effort(
-                    db_factory=SessionLocal,
-                    tenant_id=UUID(jwt_tenant_id),
-                    user_id=user_id,
-                    request_id=request_id,
-                    ip=ip,
-                    user_agent=user_agent,
-                )
-            except Exception as exc:  # noqa: BLE001
-                # Never block auth due to auto-provisioning failures.
-                logger.debug("JWT tenant member auto-provisioning failed during auth; continuing: %s", exc)
+        _maybe_sync_jwt_groups(jwt_tenant_id=jwt_tenant_id, user_id=user_id, payload=payload)
+        _maybe_auto_provision_tenant_member(jwt_tenant_id=jwt_tenant_id, user_id=user_id, request=request)
     return user_id
 
 

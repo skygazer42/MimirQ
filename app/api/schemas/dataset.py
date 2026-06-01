@@ -21,6 +21,36 @@ from .fls_policy import FlsPolicy
 from .ingestion_policy import IngestionPolicy
 
 HIERARCHY_FAMILY_AGGREGATION_VALUES = ("frequency", "score", "combined")
+FUSION_CHANNELS = {"vector", "bm25", "lexical", "sparse"}
+
+
+def _validate_fusion_map_keys(raw: Any, *, field_name: str) -> dict | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError(f"{field_name} must be an object/dict when provided")
+    for key in (str(k or "").strip().lower() for k in raw):
+        if key and key not in FUSION_CHANNELS:
+            raise ValueError(f"{field_name} keys must be one of: vector, bm25, lexical, sparse")
+    return raw
+
+
+def _validate_fusion_map_values(raw: dict | None, *, field_name: str, value_type: type) -> None:
+    if raw is None:
+        return
+    for value in raw.values():
+        if value is None:
+            continue
+        try:
+            value_type(value)
+        except Exception as exc:
+            label = "integers" if value_type is int else "numbers"
+            raise ValueError(f"{field_name} values must be {label}") from exc
+
+
+def _validate_fusion_map(raw: Any, *, field_name: str, value_type: type) -> None:
+    checked = _validate_fusion_map_keys(raw, field_name=field_name)
+    _validate_fusion_map_values(checked, field_name=field_name, value_type=value_type)
 
 
 class DatasetChunkTargetsV2(BaseModel):
@@ -170,53 +200,9 @@ class DatasetRAGDefaults(BaseModel):
         Note: ChatRAGConfig re-validates these after merge; this is defense-in-depth
         for obviously invalid dataset metadata.
         """
-        allowed = {"vector", "bm25", "lexical", "sparse"}
-
-        fb = getattr(self, "fusion_budgets", None)
-        if fb is not None:
-            if not isinstance(fb, dict):
-                raise ValueError("fusion_budgets must be an object/dict when provided")
-            for k, v in fb.items():
-                key = str(k or "").strip().lower()
-                if key and key not in allowed:
-                    raise ValueError("fusion_budgets keys must be one of: vector, bm25, lexical, sparse")
-                if v is None:
-                    continue
-                try:
-                    int(v)
-                except Exception as exc:
-                    raise ValueError("fusion_budgets values must be integers") from exc
-
-        fms = getattr(self, "fusion_min_scores", None)
-        if fms is not None:
-            if not isinstance(fms, dict):
-                raise ValueError("fusion_min_scores must be an object/dict when provided")
-            for k, v in fms.items():
-                key = str(k or "").strip().lower()
-                if key and key not in allowed:
-                    raise ValueError("fusion_min_scores keys must be one of: vector, bm25, lexical, sparse")
-                if v is None:
-                    continue
-                try:
-                    float(v)
-                except Exception as exc:
-                    raise ValueError("fusion_min_scores values must be numbers") from exc
-
-        fw = getattr(self, "fusion_weights", None)
-        if fw is not None:
-            if not isinstance(fw, dict):
-                raise ValueError("fusion_weights must be an object/dict when provided")
-            for k, v in fw.items():
-                key = str(k or "").strip().lower()
-                if key and key not in allowed:
-                    raise ValueError("fusion_weights keys must be one of: vector, bm25, lexical, sparse")
-                if v is None:
-                    continue
-                try:
-                    float(v)
-                except Exception as exc:
-                    raise ValueError("fusion_weights values must be numbers") from exc
-
+        _validate_fusion_map(self.fusion_budgets, field_name="fusion_budgets", value_type=int)
+        _validate_fusion_map(self.fusion_min_scores, field_name="fusion_min_scores", value_type=float)
+        _validate_fusion_map(self.fusion_weights, field_name="fusion_weights", value_type=float)
         return self
 
 
