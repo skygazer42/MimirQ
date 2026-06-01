@@ -47,13 +47,13 @@ def _tenant_id_migrations(table: str, default_tenant: str) -> list[MigrationStat
     return [
         # Add column for legacy schemas (covers the "column does not exist" crashes).
         (
-            f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS tenant_id UUID NOT NULL DEFAULT CAST(:default_tenant AS uuid);",
+            f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS tenant_id UUID NOT NULL DEFAULT CAST(:default_tenant AS uuid);",  # noqa: S608 - table names are internal static migration targets.
             params,
         ),
         # If the column existed but was nullable, backfill and harden.
-        (f"UPDATE {table} SET tenant_id = CAST(:default_tenant AS uuid) WHERE tenant_id IS NULL;", params),
-        (f"ALTER TABLE {table} ALTER COLUMN tenant_id SET DEFAULT CAST(:default_tenant AS uuid);", params),
-        f"ALTER TABLE {table} ALTER COLUMN tenant_id SET NOT NULL;",
+        (f"UPDATE {table} SET tenant_id = CAST(:default_tenant AS uuid) WHERE tenant_id IS NULL;", params),  # noqa: S608 - table names are internal static migration targets.
+        (f"ALTER TABLE {table} ALTER COLUMN tenant_id SET DEFAULT CAST(:default_tenant AS uuid);", params),  # noqa: S608 - table names are internal static migration targets.
+        f"ALTER TABLE {table} ALTER COLUMN tenant_id SET NOT NULL;",  # noqa: S608 - table names are internal static migration targets.
     ]
 
 

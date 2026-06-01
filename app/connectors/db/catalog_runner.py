@@ -554,7 +554,7 @@ def extract_row_snapshots(
                     continue
                 db_name = str(t.get("db_name") or config.get("database") or "").strip()
                 source_table = f"{db_name}.{table_name}" if db_name else table_name
-                sql = f"SELECT * FROM {_quote_mysql_ident(table_name)} LIMIT {max_rows_i}"
+                sql = f"SELECT * FROM {_quote_mysql_ident(table_name)} LIMIT {max_rows_i}"  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
                 try:
                     rows_raw = conn.execute(text(sql)).mappings().all()
                 except Exception:  # noqa: BLE001
@@ -619,7 +619,7 @@ def extract_row_snapshots(
                     if schema_name
                     else _quote_sqlserver_ident(table_name)
                 )
-                sql = f"SELECT TOP ({max_rows_i}) * FROM {table_ref}"
+                sql = f"SELECT TOP ({max_rows_i}) * FROM {table_ref}"  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
                 try:
                     rows_raw = conn.execute(text(sql)).mappings().all()
                 except Exception:  # noqa: BLE001

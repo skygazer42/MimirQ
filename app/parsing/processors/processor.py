@@ -101,7 +101,7 @@ def _log_processor_fallback(context: str, exc: BaseException) -> None:
 
 MIMIRQ_PARSE_DIRNAME = '.mimirq_parse'
 REDACTED_MASK = '[REDACTED]'
-SECRET_MASK = '[SECRET]'
+SECRET_MASK = '[SECRET]'  # noqa: S105 - redaction placeholder, not a credential.
 LOG_DOC_ID_FMT = '%s document_id=%s'
 AUDIT_ACTION_DOCUMENT_QUARANTINE = 'document.quarantine'
 

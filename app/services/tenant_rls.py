@@ -24,23 +24,23 @@ def build_tenant_rls_bundle(
     role_column_q = _quote_ident(role_column)
     admin_role_s = _quote_literal(str(admin_role or "admin").strip() or "admin")
 
-    is_admin_sql = f"""CREATE OR REPLACE FUNCTION is_admin() RETURNS boolean
-LANGUAGE sql SECURITY DEFINER AS $$
-    SELECT EXISTS (
-        SELECT 1
-        FROM {tenant_table_q}
-        WHERE id = auth.uid() AND {role_column_q} = {admin_role_s}
+    is_admin_sql = (
+        "CREATE OR REPLACE FUNCTION is_admin() RETURNS boolean\n"  # noqa: S608 - identifiers and literals are quoted locally.
+        "LANGUAGE sql SECURITY DEFINER AS $$\n"
+        "    SELECT EXISTS (\n"
+        f"        SELECT 1 FROM {tenant_table_q} WHERE id = auth.uid() AND {role_column_q} = {admin_role_s}\n"
+        "    )\n"
+        "$$;"
     )
-$$;"""
 
-    tenant_matches_sql = f"""CREATE OR REPLACE FUNCTION tenant_matches(resource_tenant uuid) RETURNS boolean
-LANGUAGE sql SECURITY DEFINER AS $$
-    SELECT EXISTS (
-        SELECT 1
-        FROM {tenant_table_q}
-        WHERE id = auth.uid() AND {tenant_column_q} = resource_tenant
+    tenant_matches_sql = (
+        "CREATE OR REPLACE FUNCTION tenant_matches(resource_tenant uuid) RETURNS boolean\n"  # noqa: S608 - identifiers are quoted locally.
+        "LANGUAGE sql SECURITY DEFINER AS $$\n"
+        "    SELECT EXISTS (\n"
+        f"        SELECT 1 FROM {tenant_table_q} WHERE id = auth.uid() AND {tenant_column_q} = resource_tenant\n"
+        "    )\n"
+        "$$;"
     )
-$$;"""
 
     policies: dict[str, dict[str, str]] = {}
     for table in managed_tables or []:

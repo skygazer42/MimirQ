@@ -223,7 +223,7 @@ def _decode_saml_response(saml_response: str) -> etree._Element:
     if not xml_bytes or len(xml_bytes) > max_bytes:
         raise HTTPException(status_code=400, detail=INVALID_SAML_RESPONSE_DETAIL)
     try:
-        return etree.fromstring(xml_bytes, parser=_xml_parser())
+        return etree.fromstring(xml_bytes, parser=_xml_parser())  # noqa: S320 - hardened lxml parser required by signxml.
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=INVALID_SAML_RESPONSE_DETAIL) from exc
 
