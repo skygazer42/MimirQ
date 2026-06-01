@@ -56,6 +56,42 @@ export default function AuthPage() {
     const [error, setError] = useState<ApiErrorInfo | null>(null)
 
     const isSsoSubmitting = ssoProviderWorkingId !== null
+
+    const handleSso = async (providerId: string) => {
+        setError(null)
+        setSsoProviderWorkingId(providerId)
+        try {
+            await startOidcLogin({ providerId, returnTo: '/' })
+        } catch (err: any) {
+            setError(toApiErrorInfo(err, 'SSO login failed'))
+            setSsoProviderWorkingId(null)
+        }
+    }
+
+    const handleSubmit = async (event: React.SyntheticEvent<HTMLFormElement>) => {
+        event.preventDefault()
+        setError(null)
+
+        if (mode === 'register' && password !== confirmPassword) {
+            setError({ message: '两次输入的密码不一致' })
+            return
+        }
+
+        setIsSubmitting(true)
+        try {
+            const response =
+                mode === 'login'
+                    ? await authApi.login({ identifier: identifier.trim(), password })
+                    : await authApi.register({ email: email.trim(), username: username.trim(), password })
+            setAuthSession({ token: response.token, user: response.user })
+            router.push('/')
+        } catch (err: any) {
+            setError(toApiErrorInfo(err, '请求失败，请重试'))
+        } finally {
+            setIsSubmitting(false)
+        }
+    }
+
     let ssoSectionContent: ReactNode = null
     if (oidcProviders.length > 1) {
         ssoSectionContent = (
@@ -108,41 +144,6 @@ export default function AuthPage() {
                 )}
             </Button>
         )
-    }
-
-    const handleSso = async (providerId: string) => {
-        setError(null)
-        setSsoProviderWorkingId(providerId)
-        try {
-            await startOidcLogin({ providerId, returnTo: '/' })
-        } catch (err: any) {
-            setError(toApiErrorInfo(err, 'SSO login failed'))
-            setSsoProviderWorkingId(null)
-        }
-    }
-
-    const handleSubmit = async (event: React.SyntheticEvent<HTMLFormElement>) => {
-        event.preventDefault()
-        setError(null)
-
-        if (mode === 'register' && password !== confirmPassword) {
-            setError({ message: '两次输入的密码不一致' })
-            return
-        }
-
-        setIsSubmitting(true)
-        try {
-            const response =
-                mode === 'login'
-                    ? await authApi.login({ identifier: identifier.trim(), password })
-                    : await authApi.register({ email: email.trim(), username: username.trim(), password })
-            setAuthSession({ token: response.token, user: response.user })
-            router.push('/')
-        } catch (err: any) {
-            setError(toApiErrorInfo(err, '请求失败，请重试'))
-        } finally {
-            setIsSubmitting(false)
-        }
     }
 
     return (
