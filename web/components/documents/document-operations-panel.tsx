@@ -14,7 +14,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { documentApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { cn, detachPromise } from '@/lib/utils'
-import type { Dataset } from '@/types'
+import type { BatchFileInfo, Dataset } from '@/types'
 
 const NO_TARGET_DATASET = '__none__'
 
@@ -61,7 +61,7 @@ function formatResultSummary(value: unknown) {
   const itemCount = Array.isArray(record.items) ? record.items.length : null
   const documentCount = Array.isArray(record.documents) ? record.documents.length : null
   const duplicateCount = Array.isArray(record.groups) ? record.groups.length : null
-  const count = typeof record.count === 'number' ? record.count : typeof record.total === 'number' ? record.total : null
+  const count = getDocumentOperationCount(record)
 
   if (itemCount != null) return `已返回 ${itemCount} 条记录。`
   if (documentCount != null) return `已返回 ${documentCount} 个文档。`
@@ -69,6 +69,20 @@ function formatResultSummary(value: unknown) {
   if (count != null) return `本次返回 ${count} 条结果。`
 
   return `操作已完成，返回 ${Object.keys(record).length} 个字段。`
+}
+
+function getDocumentOperationCount(record: Record<string, unknown>): number | null {
+  if (typeof record.count === 'number') return record.count
+  if (typeof record.total === 'number') return record.total
+  return null
+}
+
+function getBatchUploadFiles(parsed: unknown): BatchFileInfo[] {
+  if (Array.isArray(parsed)) return parsed as BatchFileInfo[]
+  if (Array.isArray((parsed as { files?: BatchFileInfo[] })?.files)) {
+    return (parsed as { files: BatchFileInfo[] }).files
+  }
+  return []
 }
 
 export function DocumentOperationsPanel({
@@ -115,6 +129,34 @@ export function DocumentOperationsPanel({
   const targetDatasetValue = targetDatasetId.trim() || NO_TARGET_DATASET
   const selectedScopeLabel = ids.length ? `${ids.length} 个文档` : '未勾选文档'
   const resultSummary = result ? formatResultSummary(result.payload) : null
+  let resultPanel: React.ReactNode = null
+  if (result) {
+    resultPanel = (
+      <div className="mt-3 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <div className="text-xs font-semibold text-foreground">{result.title}已完成</div>
+            <div className="mt-1 text-xs leading-5 text-muted-foreground">{resultSummary}</div>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-7 shrink-0 rounded-lg px-2 text-[11px] font-medium"
+            aria-expanded={resultDetailsOpen}
+            onClick={() => setResultDetailsOpen((open) => !open)}
+          >
+            查看原始响应
+          </Button>
+        </div>
+        {resultDetailsOpen ? (
+          <pre className={cn('mt-2 max-h-56 overflow-auto rounded-md border border-border/60 bg-background p-2 text-xs', 'whitespace-pre-wrap break-words')}>
+            {prettyJson(result.payload)}
+          </pre>
+        ) : null}
+      </div>
+    )
+  }
 
   async function runAction(key: string, title: string, action: () => Promise<unknown>) {
     setBusy(key)
@@ -188,7 +230,7 @@ export function DocumentOperationsPanel({
         <ActionButton icon={FileJson} busy={busy === 'metadata'} disabled={Boolean(busy) || ids.length === 0} label="批量元数据" onClick={() => runAction('metadata', '批量用户元数据', () => documentApi.batchPatchUserMetadata({ document_ids: ids, ...parseJson(payloadJson) }))} />
         <ActionButton icon={FileJson} busy={busy === 'apply-urls'} disabled={Boolean(busy)} label="申请上传 URL" onClick={() => runAction('apply-urls', '申请批量上传 URL', () => {
           const parsed = parseJson(payloadJson)
-          const files = Array.isArray(parsed) ? parsed : Array.isArray(parsed.files) ? parsed.files : []
+          const files = getBatchUploadFiles(parsed)
           return documentApi.applyBatchUploadUrls(files)
         })} />
         <ActionButton icon={FileJson} busy={busy === 'batch-status'} disabled={Boolean(busy) || !batchId.trim()} label="批量任务状态" onClick={() => runAction('batch-status', '批量任务状态', () => documentApi.getBatchTaskStatus(batchId.trim()))} />
@@ -254,31 +296,7 @@ export function DocumentOperationsPanel({
         ) : null}
       </div>
 
-      {result ? (
-        <div className="mt-3 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-3">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-            <div className="min-w-0">
-              <div className="text-xs font-semibold text-foreground">{result.title}已完成</div>
-              <div className="mt-1 text-xs leading-5 text-muted-foreground">{resultSummary}</div>
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-7 shrink-0 rounded-lg px-2 text-[11px] font-medium"
-              aria-expanded={resultDetailsOpen}
-              onClick={() => setResultDetailsOpen((open) => !open)}
-            >
-              查看原始响应
-            </Button>
-          </div>
-          {resultDetailsOpen ? (
-            <pre className={cn('mt-2 max-h-56 overflow-auto rounded-md border border-border/60 bg-background p-2 text-xs', 'whitespace-pre-wrap break-words')}>
-              {prettyJson(result.payload)}
-            </pre>
-          ) : null}
-        </div>
-      ) : null}
+      {resultPanel}
     </Panel>
   )
 }
