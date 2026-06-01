@@ -93,6 +93,28 @@ class HybridSearchOptions:
     requested_k: int | None = None
 
 
+@dataclass
+class _DedupRuntime:
+    threshold: float
+    max_compare: int
+    near_enabled: bool
+    near_thr: int
+    near_max_compare: int
+    distance_func: Any
+
+
+@dataclass
+class _DedupState:
+    seen_chunk_ids: set[str]
+    seen_content_hashes: set[str]
+    seen_fingerprints: set[str]
+    kept: list[dict[str, Any]]
+    kept_tokens_by_doc: dict[str, list[set[str]]]
+    kept_simhashes: list[int]
+    dropped_near: int = 0
+    dropped_content_hash: int = 0
+
+
 def _resolve_hybrid_search_options(
     *,
     options: HybridSearchOptions | None,
@@ -1469,7 +1491,7 @@ class HybridRetriever(BaseRetriever):
         document_ids: list[UUID],
         missing_count: int,
         max_chunks: int,
-    ) -> bool:
+    ) -> None:
         docs = self._load_bm25_scope_documents(
             db,
             tenant_uuid=tenant_uuid,
@@ -1477,7 +1499,7 @@ class HybridRetriever(BaseRetriever):
             max_chunks=max_chunks,
         )
         if not docs:
-            return True
+            return
         self._build_bm25_index_from_documents(docs, tenant_id=tenant_uuid, cache_key=cache_key)
         logger.info(
             "BM25 lazy-built (scoped rebuild) %s chunks for tenant %s missing_docs=%s cap=%s",
@@ -1486,7 +1508,6 @@ class HybridRetriever(BaseRetriever):
             missing_count,
             max_chunks,
         )
-        return True
 
     def _extend_bm25_scope_for_missing_documents(
         self,
@@ -1497,10 +1518,10 @@ class HybridRetriever(BaseRetriever):
         missing: set[str],
         existing_count: int,
         max_chunks: int,
-    ) -> bool:
+    ) -> None:
         remaining = max(0, int(max_chunks) - int(existing_count)) if max_chunks else 0
         if max_chunks and remaining <= 0:
-            return True
+            return
         missing_ids = [UUID(doc_id) for doc_id in missing]
         bm25_docs = self._load_bm25_scope_documents(
             db,
@@ -1509,7 +1530,7 @@ class HybridRetriever(BaseRetriever):
             max_chunks=remaining,
         )
         if not bm25_docs:
-            return True
+            return
         self.upsert_bm25_documents(bm25_docs, tenant_id=tenant_uuid)
         logger.info(
             "BM25 lazy-extended %s chunks for tenant %s (missing_docs=%s)",
@@ -1517,7 +1538,6 @@ class HybridRetriever(BaseRetriever):
             tenant_key,
             len(missing),
         )
-        return True
 
     def _handle_missing_bm25_scope_docs(
         self,
@@ -1542,7 +1562,7 @@ class HybridRetriever(BaseRetriever):
             return True
         existing_count = len(existing_docs)
         if max_chunks and existing_count >= max_chunks:
-            return self._rebuild_bm25_scope_for_documents(
+            self._rebuild_bm25_scope_for_documents(
                 db,
                 tenant_uuid=tenant_uuid,
                 cache_key=cache_key,
@@ -1550,7 +1570,8 @@ class HybridRetriever(BaseRetriever):
                 missing_count=len(missing),
                 max_chunks=max_chunks,
             )
-        return self._extend_bm25_scope_for_missing_documents(
+            return True
+        self._extend_bm25_scope_for_missing_documents(
             db,
             tenant_uuid=tenant_uuid,
             tenant_key=tenant_key,
@@ -1558,6 +1579,7 @@ class HybridRetriever(BaseRetriever):
             existing_count=existing_count,
             max_chunks=max_chunks,
         )
+        return True
 
     def _build_initial_bm25_scope(
         self,
@@ -1886,15 +1908,6 @@ class HybridRetriever(BaseRetriever):
             "colbert_rebuilt": colbert_rebuilt,
         }
 
-    @staticmethod
-    def _resolve_bm25_upsert_tenant(tenant_id: UUID | None) -> UUID | None:
-        if tenant_id is not None:
-            return tenant_id
-        try:
-            return UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or ""))
-        except (TypeError, ValueError, AttributeError):
-            return None
-
     def _prepare_bm25_upsert_docs(self, docs: list[Document]) -> list[Document]:
         return [self._prepare_retrieval_document(doc) for doc in docs if doc is not None]
 
@@ -1987,7 +2000,7 @@ class HybridRetriever(BaseRetriever):
         """
         if not docs:
             return
-        tenant_uuid = self._resolve_bm25_upsert_tenant(tenant_id)
+        tenant_uuid = self._resolve_tenant_uuid(tenant_id)
         if tenant_uuid is None:
             return
         upsert_docs = self._prepare_bm25_upsert_docs(docs)
@@ -6252,71 +6265,94 @@ class HybridRetriever(BaseRetriever):
         except Exception as exc:
             logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
 
+    def _dedup_runtime(self) -> _DedupRuntime:
+        threshold, max_compare = self._bounded_similarity_settings(self.dedup_jaccard_threshold, self.dedup_max_compare)
+        near_enabled, near_thr, near_max_compare, distance_func = self._resolve_near_dedup_runtime()
+        return _DedupRuntime(
+            threshold=threshold,
+            max_compare=max_compare,
+            near_enabled=near_enabled,
+            near_thr=near_thr,
+            near_max_compare=near_max_compare,
+            distance_func=distance_func,
+        )
+
+    @staticmethod
+    def _new_dedup_state() -> _DedupState:
+        return _DedupState(
+            seen_chunk_ids=set(),
+            seen_content_hashes=set(),
+            seen_fingerprints=set(),
+            kept=[],
+            kept_tokens_by_doc={},
+            kept_simhashes=[],
+        )
+
+    def _keep_dedup_result(
+        self,
+        result: dict[str, Any],
+        *,
+        runtime: _DedupRuntime,
+        state: _DedupState,
+    ) -> None:
+        meta = result.get("metadata") or {}
+        if self._is_seen_chunk_id(result, meta, state.seen_chunk_ids):
+            return
+
+        content = (result.get("content") or "").strip()
+        if not content:
+            return
+
+        if self._is_seen_content_hash(meta, state.seen_content_hashes):
+            state.dropped_content_hash += 1
+            return
+
+        fingerprint = self._fingerprint(content)
+        if fingerprint in state.seen_fingerprints:
+            return
+        state.seen_fingerprints.add(fingerprint)
+
+        if self._is_near_duplicate_simhash(
+            meta,
+            near_enabled=runtime.near_enabled,
+            near_thr=runtime.near_thr,
+            near_max_compare=runtime.near_max_compare,
+            kept_simhashes=state.kept_simhashes,
+            distance_func=runtime.distance_func,
+        ):
+            state.dropped_near += 1
+            return
+
+        if self._is_jaccard_duplicate(
+            content=content,
+            doc_id=self._get_doc_id(result),
+            threshold=runtime.threshold,
+            max_compare=runtime.max_compare,
+            kept_tokens_by_doc=state.kept_tokens_by_doc,
+        ):
+            return
+
+        state.kept.append(result)
+        self._remember_near_simhash(meta, near_enabled=runtime.near_enabled, kept_simhashes=state.kept_simhashes)
+
     def _deduplicate_results(self, results: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if not results or not bool(self.dedup_enabled):
             return results
 
-        threshold, max_compare = self._bounded_similarity_settings(self.dedup_jaccard_threshold, self.dedup_max_compare)
-        near_enabled, near_thr, near_max_compare, distance_func = self._resolve_near_dedup_runtime()
-        seen_chunk_ids: set[str] = set()
-        seen_content_hashes: set[str] = set()
-        seen_fingerprints: set[str] = set()
-        kept: list[dict[str, Any]] = []
-        kept_tokens_by_doc: dict[str, list[set[str]]] = {}
-        kept_simhashes: list[int] = []
-        dropped_near = 0
-        dropped_content_hash = 0
+        runtime = self._dedup_runtime()
+        state = self._new_dedup_state()
 
-        for r in results:
-            meta = r.get("metadata") or {}
-            if self._is_seen_chunk_id(r, meta, seen_chunk_ids):
-                continue
-
-            content = (r.get("content") or "").strip()
-            if not content:
-                continue
-
-            if self._is_seen_content_hash(meta, seen_content_hashes):
-                dropped_content_hash += 1
-                continue
-
-            fp = self._fingerprint(content)
-            if fp in seen_fingerprints:
-                continue
-            seen_fingerprints.add(fp)
-
-            if self._is_near_duplicate_simhash(
-                meta,
-                near_enabled=near_enabled,
-                near_thr=near_thr,
-                near_max_compare=near_max_compare,
-                kept_simhashes=kept_simhashes,
-                distance_func=distance_func,
-            ):
-                dropped_near += 1
-                continue
-
-            doc_id = self._get_doc_id(r)
-            if self._is_jaccard_duplicate(
-                content=content,
-                doc_id=doc_id,
-                threshold=threshold,
-                max_compare=max_compare,
-                kept_tokens_by_doc=kept_tokens_by_doc,
-            ):
-                continue
-
-            kept.append(r)
-            self._remember_near_simhash(meta, near_enabled=near_enabled, kept_simhashes=kept_simhashes)
+        for result in results:
+            self._keep_dedup_result(result, runtime=runtime, state=state)
 
         self._record_dedup_metrics(
-            near_enabled=near_enabled,
-            near_thr=near_thr,
-            near_max_compare=near_max_compare,
-            dropped_near=dropped_near,
-            dropped_content_hash=dropped_content_hash,
+            near_enabled=runtime.near_enabled,
+            near_thr=runtime.near_thr,
+            near_max_compare=runtime.near_max_compare,
+            dropped_near=state.dropped_near,
+            dropped_content_hash=state.dropped_content_hash,
         )
-        return kept
+        return state.kept
 
     def _diversity_page_key(self, result: dict[str, Any]) -> tuple[str, int] | None:
         meta = result.get("metadata") or {}
@@ -6437,33 +6473,39 @@ class HybridRetriever(BaseRetriever):
         page_key = self._diversity_page_key(result)
         return not (max_per_page > 0 and page_key is not None and per_page[page_key] >= max_per_page)
 
-    def _select_document_diversity_results(
+    def _select_document_diversity_must_have(
+        self,
+        must_have: list[dict[str, Any]],
+        *,
+        selected: list[dict[str, Any]],
+        used_keys: set[str],
+        per_doc: Counter,
+        per_page: Counter,
+    ) -> None:
+        for result in must_have:
+            key = self._result_key(result)
+            if key in used_keys:
+                continue
+            self._remember_document_diversity_selection(
+                result,
+                selected=selected,
+                used_keys=used_keys,
+                per_doc=per_doc,
+                per_page=per_page,
+            )
+
+    def _select_document_diversity_primary(
         self,
         results: list[dict[str, Any]],
         *,
+        selected: list[dict[str, Any]],
+        used_keys: set[str],
+        per_doc: Counter,
+        per_page: Counter,
         top_k: int,
         max_per_doc: int,
         max_per_page: int,
-        min_docs: int,
-    ) -> tuple[list[dict[str, Any]], set[str]]:
-        groups = self._document_diversity_groups(results)
-        must_have = self._document_diversity_must_have(groups, min_docs=min_docs, top_k=top_k)
-        selected: list[dict[str, Any]] = []
-        used_keys: set[str] = set()
-        per_doc: Counter = Counter()
-        per_page: Counter = Counter()
-
-        for result in must_have:
-            key = self._result_key(result)
-            if key not in used_keys:
-                self._remember_document_diversity_selection(
-                    result,
-                    selected=selected,
-                    used_keys=used_keys,
-                    per_doc=per_doc,
-                    per_page=per_page,
-                )
-
+    ) -> list[dict[str, Any]]:
         overflow: list[dict[str, Any]] = []
         for result in results:
             if len(selected) >= top_k:
@@ -6487,15 +6529,65 @@ class HybridRetriever(BaseRetriever):
                 per_doc=per_doc,
                 per_page=per_page,
             )
+        return overflow
 
+    def _fill_document_diversity_overflow(
+        self,
+        overflow: list[dict[str, Any]],
+        *,
+        selected: list[dict[str, Any]],
+        used_keys: set[str],
+        top_k: int,
+    ) -> None:
+        for result in overflow:
+            if len(selected) >= top_k:
+                break
+            key = self._result_key(result)
+            if key in used_keys:
+                continue
+            used_keys.add(key)
+            selected.append(result)
+
+    def _select_document_diversity_results(
+        self,
+        results: list[dict[str, Any]],
+        *,
+        top_k: int,
+        max_per_doc: int,
+        max_per_page: int,
+        min_docs: int,
+    ) -> tuple[list[dict[str, Any]], set[str]]:
+        groups = self._document_diversity_groups(results)
+        must_have = self._document_diversity_must_have(groups, min_docs=min_docs, top_k=top_k)
+        selected: list[dict[str, Any]] = []
+        used_keys: set[str] = set()
+        per_doc: Counter = Counter()
+        per_page: Counter = Counter()
+
+        self._select_document_diversity_must_have(
+            must_have,
+            selected=selected,
+            used_keys=used_keys,
+            per_doc=per_doc,
+            per_page=per_page,
+        )
+        overflow = self._select_document_diversity_primary(
+            results,
+            selected=selected,
+            used_keys=used_keys,
+            per_doc=per_doc,
+            per_page=per_page,
+            top_k=top_k,
+            max_per_doc=max_per_doc,
+            max_per_page=max_per_page,
+        )
         if len(selected) < top_k and overflow:
-            for result in overflow:
-                if len(selected) >= top_k:
-                    break
-                key = self._result_key(result)
-                if key not in used_keys:
-                    used_keys.add(key)
-                    selected.append(result)
+            self._fill_document_diversity_overflow(
+                overflow,
+                selected=selected,
+                used_keys=used_keys,
+                top_k=top_k,
+            )
         return selected, used_keys
 
     def _record_document_diversity_post_stats(
