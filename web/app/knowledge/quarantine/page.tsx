@@ -74,6 +74,39 @@ type QueueSyncStatus = {
 
 const QUARANTINE_PAGE_SIZE = 6
 
+const STATUS_LABELS: Record<string, string> = {
+  completed: '已解决',
+  failed: '失败',
+  quarantined: '待审核',
+  pending: '待处理',
+  processing: '处理中',
+  cancelled: '已取消',
+}
+
+function getDemoDocumentStatus(index: number): Document['status'] {
+  if (index >= 23 && index < 179) return 'completed'
+  if (index < 23) return 'quarantined'
+  return 'cancelled'
+}
+
+function getQuarantineFooterMessage({
+  hasActiveFilters,
+  filteredCount,
+  documentCount,
+  autoRefresh,
+}: {
+  hasActiveFilters: boolean
+  filteredCount: number
+  documentCount: number
+  autoRefresh: boolean
+}): string {
+  if (hasActiveFilters) {
+    return `当前筛出 ${filteredCount} / ${documentCount} 条`
+  }
+  if (autoRefresh) return '自动刷新已开启，每 5 秒轮询一次'
+  return '自动刷新已关闭'
+}
+
 function getUserMeta(doc: Document): any {
   const meta = doc.metadata
   if (!meta || typeof meta !== 'object') return null
@@ -343,12 +376,8 @@ function buildDemoQuarantineDocuments(): Document[] {
 
   const extraRows = Array.from({ length: 242 }, (_, index) => {
     const bucket = reasons[index % reasons.length]
-    const reviewed = index >= 23 && index < 179
-    const status = reviewed
-      ? 'completed'
-      : index < 23
-        ? 'quarantined'
-        : 'cancelled'
+    const status = getDemoDocumentStatus(index)
+    const reviewed = status === 'completed'
     const suffix = `${String(index + 7).padStart(3, '0')}`
     return makeDemoQuarantineDocument(index + 7, {
       filename: `${bucket.filename}_${suffix}.${bucket.fileType}`,
@@ -841,18 +870,7 @@ function QuickActionCard({
 }
 
 function StatusPill({ status }: Readonly<{ status: Document['status'] }>) {
-  const label =
-    status === 'completed'
-      ? '已解决'
-      : status === 'failed'
-        ? '失败'
-        : status === 'quarantined'
-          ? '待审核'
-          : status === 'pending'
-            ? '待处理'
-            : status === 'processing'
-              ? '处理中'
-              : '已取消'
+  const label = STATUS_LABELS[status] ?? STATUS_LABELS.cancelled
 
   return (
     <span
@@ -2467,11 +2485,12 @@ export default function QuarantineQueuePage() {
               <div>共 {filtered.length} 条记录</div>
               <div className="flex flex-wrap items-center gap-3">
                 <div>
-                  {hasActiveFilters
-                    ? `当前筛出 ${filtered.length} / ${documents.length} 条`
-                    : autoRefresh
-                      ? '自动刷新已开启，每 5 秒轮询一次'
-                      : '自动刷新已关闭'}
+                  {getQuarantineFooterMessage({
+                    hasActiveFilters,
+                    filteredCount: filtered.length,
+                    documentCount: documents.length,
+                    autoRefresh,
+                  })}
                 </div>
                 {filtered.length > 0 ? (
                   <div className="flex items-center gap-1">
