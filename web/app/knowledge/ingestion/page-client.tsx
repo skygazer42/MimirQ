@@ -4103,7 +4103,7 @@ export default function KnowledgeIngestionPageClient() {
       toast.success('已导出 JPG 报告')
     } catch (error) {
       const previewUrl = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }))
-      const reportWindow = globalThis.window.open(previewUrl, '_blank')
+      const reportWindow = globalThis.window.open(previewUrl, '_blank', 'noopener,noreferrer')
       if (reportWindow) {
         reportWindow.opener = null
         globalThis.window.setTimeout(() => URL.revokeObjectURL(previewUrl), 60_000)

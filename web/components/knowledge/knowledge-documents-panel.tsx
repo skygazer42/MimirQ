@@ -62,6 +62,7 @@ import {
 } from '@/components/ui/dialog'
 import { Link } from '@/i18n/navigation'
 import { formatApiError } from '@/lib/api-errors'
+import { buildChunkPreviewDocumentHref } from '@/lib/chunk-preview-links'
 import { reportClientError } from '@/lib/client-logging'
 import { cn, formatDate, formatFileSize, detachPromise } from '@/lib/utils'
 import { getParserLabel } from '@/lib/parser-options'
@@ -1296,8 +1297,9 @@ export function KnowledgeDocumentsPanel({
                                           if (onPeek) onPeek(doc.id)
                                           else
                                             globalThis.window.open(
-                                              `/chunk-preview?docId=${doc.id}`,
-                                              '_blank'
+                                              buildChunkPreviewDocumentHref(doc.id),
+                                              '_blank',
+                                              'noopener,noreferrer'
                                             )
                                         }}
                                       >
@@ -1625,8 +1627,9 @@ function DocumentCard({
               if (onPeek) onPeek(doc.id)
               else
                 globalThis.window.open(
-                  `/chunk-preview?docId=${doc.id}`,
-                  '_blank'
+                  buildChunkPreviewDocumentHref(doc.id),
+                  '_blank',
+                  'noopener,noreferrer'
                 )
             }}
           >
