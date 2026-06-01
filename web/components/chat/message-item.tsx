@@ -48,6 +48,38 @@ type ConfidenceMeta = Readonly<{
   badgeClass: string
   lineClass: string
 }>
+type ClaimEvidenceReference = Record<string, unknown> & {
+  document_id?: string
+  chunk_id?: string
+  start_char?: number
+  end_char?: number
+  score?: number
+  quote?: string
+}
+type ClaimEvidenceItem = Record<string, unknown> & {
+  claim?: string
+  evidence?: ClaimEvidenceReference[]
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function claimEvidenceReferences(value: unknown): ClaimEvidenceReference[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is ClaimEvidenceReference => isRecord(item))
+    : []
+}
+
+function claimEvidenceItems(value: unknown): ClaimEvidenceItem[] | null {
+  return Array.isArray(value)
+    ? value.filter((item): item is ClaimEvidenceItem => isRecord(item))
+    : null
+}
+
+function claimEvidenceReferenceKey(ev: ClaimEvidenceReference): string {
+  return String(ev.chunk_id || ev.document_id || '')
+}
 
 function getCitationRange(citation: Citation): { start: number; end: number } | undefined {
   let start: number | null = null
@@ -387,7 +419,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
     return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : null
   })()
   const confidenceMeta = getConfidenceMeta(confidenceScore)
-  const claimEvidence = Array.isArray(metrics.claim_evidence) ? metrics.claim_evidence : null
+  const claimEvidence = claimEvidenceItems(metrics.claim_evidence)
   const claimEvidenceCount = claimEvidence?.length ?? 0
   const messageDatasetId =
     typeof metrics.dataset_id === 'string' && metrics.dataset_id.trim() ? metrics.dataset_id.trim() : null
@@ -438,7 +470,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
     return map
   })()
 
-  const handleOpenEvidence = useCallback((ev: any) => {
+  const handleOpenEvidence = useCallback((ev: ClaimEvidenceReference) => {
     const docId = typeof ev?.document_id === 'string' ? ev.document_id : ''
     if (!docId) return
     const chunkId = typeof ev?.chunk_id === 'string' && ev.chunk_id ? ev.chunk_id : undefined
@@ -559,7 +591,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
       const created = await feedbackApi.create({ message_id: message.id, rating: nextRating })
       setFeedbackRecord(created)
       toast.success('已提交反馈')
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast.error(formatApiError(err, '反馈提交失败'))
     } finally {
       setRatingSending(false)
@@ -876,12 +908,12 @@ export const ChatMessageItem = memo(function ChatMessageItem({
 
                           {claimEvidence?.length ? (
                             <div className="p-4 space-y-3 overflow-auto max-h-72 custom-scrollbar">
-                              {claimEvidence.slice(0, 24).map((item: any, idx: number) => {
+                              {claimEvidence.slice(0, 24).map((item, idx) => {
                                 const claim = String(item?.claim || '').trim()
-                                const evidence = Array.isArray(item?.evidence) ? item.evidence : []
+                                const evidence = claimEvidenceReferences(item?.evidence)
                                 return (
                                   <div
-                                    key={claim || evidence.map((ev: any) => String(ev?.chunk_id || ev?.document_id || '')).join(':') || 'claim'}
+                                    key={claim || evidence.map(claimEvidenceReferenceKey).join(':') || 'claim'}
                                     className="rounded-lg border border-border/60 bg-background/40 p-3"
                                   >
                                     <div className="flex items-start justify-between gap-3">
@@ -895,12 +927,12 @@ export const ChatMessageItem = memo(function ChatMessageItem({
 
                                     {evidence.length ? (
                                       <div className="mt-2 space-y-2">
-                                        {evidence.slice(0, 3).map((ev: any, eidx: number) => {
+                                        {evidence.slice(0, 3).map((ev, eidx) => {
                                           const docId = typeof ev?.document_id === 'string' ? ev.document_id : ''
                                           const chunkId = typeof ev?.chunk_id === 'string' ? ev.chunk_id : ''
                                           const c =
-                                            (chunkId && citationByChunkId.get(chunkId)) ||
-                                            (docId && citationByDocumentId.get(docId))
+                                            (chunkId ? citationByChunkId.get(chunkId) : undefined) ||
+                                            (docId ? citationByDocumentId.get(docId) : undefined)
 
                                           const score = typeof ev?.score === 'number' ? ev.score : null
                                           const quote = String(ev?.quote || '').trim()
@@ -1119,12 +1151,12 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                     <div className="text-[11px] text-muted-foreground">{claimEvidenceCount} 条</div>
                   </div>
                   <div className="space-y-3">
-                    {claimEvidence?.slice(0, 6).map((item: any, idx: number) => {
+                    {claimEvidence?.slice(0, 6).map((item, idx) => {
                       const claim = String(item?.claim || '').trim()
-                      const evidence = Array.isArray(item?.evidence) ? item.evidence : []
+                      const evidence = claimEvidenceReferences(item?.evidence)
                       return (
                         <div
-                          key={claim || evidence.map((ev: any) => String(ev?.chunk_id || ev?.document_id || '')).join(':') || `claim-${idx}`}
+                          key={claim || evidence.map(claimEvidenceReferenceKey).join(':') || `claim-${idx}`}
                           className="rounded-xl border border-border/60 bg-card/70 p-3"
                         >
                           <div className="flex items-start justify-between gap-3">
@@ -1136,12 +1168,12 @@ export const ChatMessageItem = memo(function ChatMessageItem({
 
                           {evidence.length ? (
                             <div className="mt-3 flex flex-col gap-2">
-                              {evidence.slice(0, 2).map((ev: any) => {
+                              {evidence.slice(0, 2).map((ev) => {
                                 const docId = typeof ev?.document_id === 'string' ? ev.document_id : ''
                                 const chunkId = typeof ev?.chunk_id === 'string' ? ev.chunk_id : ''
                                 const citation =
-                                  (chunkId && citationByChunkId.get(chunkId)) ||
-                                  (docId && citationByDocumentId.get(docId))
+                                  (chunkId ? citationByChunkId.get(chunkId) : undefined) ||
+                                  (docId ? citationByDocumentId.get(docId) : undefined)
                                 const score = typeof ev?.score === 'number' ? ev.score : null
                                 const quote = String(ev?.quote || '').trim()
                                 const disabled = !docId
@@ -1318,9 +1350,9 @@ const CitationCard = memo(function CitationCard({
   })()
 
   const isTableEvidence = (() => {
-    const hitType = String((citation as any).hit_type || '').trim().toLowerCase()
-    const chunkRole = String((citation as any).chunk_role || '').trim().toLowerCase()
-    const semanticRole = String((citation as any).chunk_semantic_role || '').trim().toLowerCase()
+    const hitType = String(citation.hit_type || '').trim().toLowerCase()
+    const chunkRole = String(citation.chunk_role || '').trim().toLowerCase()
+    const semanticRole = String(citation.chunk_semantic_role || '').trim().toLowerCase()
     return (
       hitType === 'tag' ||
       hitType === 'table' ||

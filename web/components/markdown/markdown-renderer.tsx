@@ -74,6 +74,23 @@ type MarkdownRendererRuntime = Readonly<{
   headings: MarkdownHeading[]
   scrollContainerSelector?: string
 }>
+type MarkdownAstNode = {
+  position?: {
+    start?: {
+      line?: number
+    }
+  }
+}
+type MarkdownHeadingLevel = 1 | 2 | 3 | 4 | 5 | 6
+type MarkdownHeadingProps = React.HTMLAttributes<HTMLHeadingElement> & {
+  level: MarkdownHeadingLevel
+  node?: MarkdownAstNode
+}
+type MarkdownAnchorProps = React.AnchorHTMLAttributes<HTMLAnchorElement>
+type MarkdownImageProps = React.ImgHTMLAttributes<HTMLImageElement>
+type MarkdownTableProps = React.TableHTMLAttributes<HTMLTableElement> & {
+  node?: unknown
+}
 
 const MarkdownRendererRuntimeContext = createContext<MarkdownRendererRuntime>({
   enableTocAnchors: true,
@@ -84,23 +101,41 @@ function useMarkdownRendererRuntime() {
   return useContext(MarkdownRendererRuntimeContext)
 }
 
+function renderHeadingByLevel(
+  level: MarkdownHeadingLevel,
+  props: React.HTMLAttributes<HTMLHeadingElement>
+) {
+  switch (level) {
+    case 1:
+      return <h1 {...props} />
+    case 2:
+      return <h2 {...props} />
+    case 3:
+      return <h3 {...props} />
+    case 4:
+      return <h4 {...props} />
+    case 5:
+      return <h5 {...props} />
+    case 6:
+      return <h6 {...props} />
+  }
+}
+
 function MarkdownHeadingComponent({
   children,
   className,
   level,
   node,
   ...props
-}: any) {
+}: MarkdownHeadingProps) {
   const { enableTocAnchors, headings, scrollContainerSelector } = useMarkdownRendererRuntime()
-  const Tag = `h${level}` as keyof React.JSX.IntrinsicElements
   const line = Number(node?.position?.start?.line || 0)
   const heading = line
     ? headings.find((item) => item.line === line && item.level === level)
     : undefined
   const id = heading?.id
-
-  return (
-    <Tag id={id} className={cn('group scroll-mt-32', className)} {...props}>
+  const headingChildren = (
+    <>
       {children}
       {enableTocAnchors && id && (
         <a
@@ -119,35 +154,42 @@ function MarkdownHeadingComponent({
           #
         </a>
       )}
-    </Tag>
+    </>
   )
+
+  return renderHeadingByLevel(level, {
+    id,
+    className: cn('group scroll-mt-32', className),
+    ...props,
+    children: headingChildren,
+  })
 }
 
-function MarkdownH1(props: any) {
+function MarkdownH1(props: Omit<MarkdownHeadingProps, 'level'>) {
   return <MarkdownHeadingComponent level={1} {...props} />
 }
 
-function MarkdownH2(props: any) {
+function MarkdownH2(props: Omit<MarkdownHeadingProps, 'level'>) {
   return <MarkdownHeadingComponent level={2} {...props} />
 }
 
-function MarkdownH3(props: any) {
+function MarkdownH3(props: Omit<MarkdownHeadingProps, 'level'>) {
   return <MarkdownHeadingComponent level={3} {...props} />
 }
 
-function MarkdownH4(props: any) {
+function MarkdownH4(props: Omit<MarkdownHeadingProps, 'level'>) {
   return <MarkdownHeadingComponent level={4} {...props} />
 }
 
-function MarkdownH5(props: any) {
+function MarkdownH5(props: Omit<MarkdownHeadingProps, 'level'>) {
   return <MarkdownHeadingComponent level={5} {...props} />
 }
 
-function MarkdownH6(props: any) {
+function MarkdownH6(props: Omit<MarkdownHeadingProps, 'level'>) {
   return <MarkdownHeadingComponent level={6} {...props} />
 }
 
-function MarkdownAnchor({ href, children }: any) {
+function MarkdownAnchor({ href, children }: MarkdownAnchorProps) {
   const { scrollContainerSelector } = useMarkdownRendererRuntime()
   const rawHref = typeof href === 'string' ? href : ''
   const safeHref = sanitizeMarkdownHref(rawHref)
@@ -189,7 +231,7 @@ function MarkdownAnchor({ href, children }: any) {
   )
 }
 
-function MarkdownImage({ src, alt }: any) {
+function MarkdownImage({ src, alt }: MarkdownImageProps) {
   const raw = typeof src === 'string' ? src : ''
   const resolved = resolveMarkdownImageSrc(raw)
   if (!resolved) return null
@@ -205,7 +247,7 @@ function MarkdownImage({ src, alt }: any) {
   )
 }
 
-function MarkdownTable({ className, children, node: _node, ...props }: any) {
+function MarkdownTable({ className, children, node: _node, ...props }: MarkdownTableProps) {
   return (
     <div className="my-4 overflow-x-auto">
       <table aria-label="Markdown 表格" className={cn('w-full', className)} {...props}>

@@ -31,6 +31,35 @@ import { observabilityApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { queryKeys } from '@/lib/query-keys'
 import { cn } from '@/lib/utils'
+import type { JsonObject } from '@/types'
+
+type QuerysetHealthRunItem = JsonObject & {
+  generated_at?: string
+  metrics?: JsonObject
+  risk?: JsonObject
+  degradation_flags?: unknown[]
+  status?: string
+}
+
+type QuerysetTrendRow = {
+  t: number
+  time: string
+  dateLabel: string
+  hit_at_k: number | null
+  mrr: number | null
+  ndcg_at_k: number | null
+  p95_latency_ms: number | null
+  miss_rate: number | null
+  weak_hit_rate: number | null
+}
+
+function isJsonObject(value: unknown): value is JsonObject {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function querysetRunItem(value: unknown): QuerysetHealthRunItem {
+  return isJsonObject(value) ? (value as QuerysetHealthRunItem) : {}
+}
 function formatTs(tsMs: number) {
   try {
     return new Date(tsMs).toLocaleString([], {
@@ -75,17 +104,17 @@ function buildQuerysetTrendSkeleton() {
   })
 }
 
-function fmtPercent(v?: number | null, digits = 1) {
+function fmtPercent(v?: unknown, digits = 1) {
   if (v == null || !Number.isFinite(Number(v))) return '—'
   return `${(Number(v) * 100).toFixed(digits)}%`
 }
 
-function fmtNum(v?: number | null, digits = 3) {
+function fmtNum(v?: unknown, digits = 3) {
   if (v == null || !Number.isFinite(Number(v))) return '—'
   return Number(v).toFixed(digits)
 }
 
-function fmtMs(v?: number | null) {
+function fmtMs(v?: unknown) {
   if (v == null || !Number.isFinite(Number(v))) return '—'
   return `${Math.round(Number(v))}ms`
 }
@@ -158,14 +187,15 @@ export function QuerysetHealthTab({
     if (latest || prev) setBaselineTs((p) => p || prev || latest)
   }, [runsQuery.data])
 
-  const latest = runs?.items?.[0]
-  const latestMetrics: Record<string, any> = latest?.metrics || {}
-  const latestRisk: Record<string, any> = latest?.risk || {}
+  const runItems = (runs?.items || []).map(querysetRunItem)
+  const latest = runItems[0]
+  const latestMetrics = isJsonObject(latest?.metrics) ? latest.metrics : {}
+  const latestRisk = isJsonObject(latest?.risk) ? latest.risk : {}
   const latestFlags = Array.isArray(latest?.degradation_flags)
     ? latest?.degradation_flags
     : []
 
-  const chartData = useMemo(() => {
+  const chartData = useMemo<QuerysetTrendRow[]>(() => {
     const ts = runs?.timeseries?.ts_ms || []
     const hit = runs?.timeseries?.hit_at_k || []
     const mrr = runs?.timeseries?.mrr || []
@@ -173,7 +203,7 @@ export function QuerysetHealthTab({
     const p95 = runs?.timeseries?.p95_latency_ms || []
     const miss = runs?.timeseries?.miss_rate || []
     const weak = runs?.timeseries?.weak_hit_rate || []
-    const out: Array<Record<string, any>> = []
+    const out: QuerysetTrendRow[] = []
     for (let i = 0; i < ts.length; i++) {
       const t = Number(ts[i] || 0)
       out.push({
@@ -195,9 +225,9 @@ export function QuerysetHealthTab({
     : buildQuerysetTrendSkeleton()
 
   const diffMetricDeltas = useMemo(() => {
-    const d = diff?.diff as Record<string, any> | undefined
-    const deltas = (d?.metric_deltas as Record<string, any>) || {}
-    return deltas
+    const d = isJsonObject(diff?.diff) ? diff.diff : {}
+    const deltas = d.metric_deltas
+    return isJsonObject(deltas) ? deltas : {}
   }, [diff?.diff])
   const hasQualityChartData = chartData.some(
     (row) => row.hit_at_k != null || row.mrr != null || row.ndcg_at_k != null
@@ -208,8 +238,6 @@ export function QuerysetHealthTab({
       row.miss_rate != null ||
       row.weak_hit_rate != null
   )
-  const runItems = runs?.items || []
-
   return (
     <div className={cn('space-y-2.5', embedded ? '' : 'p-5')}>
       {embedded ? (
@@ -335,7 +363,7 @@ export function QuerysetHealthTab({
 
           {latestFlags.length ? (
             <div className="mt-3 flex flex-wrap gap-2">
-              {latestFlags.slice(0, 12).map((f: any) => (
+              {latestFlags.slice(0, 12).map((f) => (
                 <span
                   key={String(f)}
                   className="text-[11px] px-2 py-0.5 rounded-full bg-destructive/10 text-destructive border border-destructive/20"
@@ -493,7 +521,7 @@ export function QuerysetHealthTab({
                     <SelectValue placeholder="选择基线快照" />
                   </SelectTrigger>
                   <SelectContent>
-                    {(runs?.items || []).map((it: any) => (
+                    {runItems.map((it) => (
                       <SelectItem
                         key={String(it.generated_at)}
                         value={String(it.generated_at)}
@@ -517,7 +545,7 @@ export function QuerysetHealthTab({
                     <SelectValue placeholder="选择当前快照" />
                   </SelectTrigger>
                   <SelectContent>
-                    {(runs?.items || []).map((it: any) => (
+                    {runItems.map((it) => (
                       <SelectItem
                         key={String(it.generated_at)}
                         value={String(it.generated_at)}
@@ -546,7 +574,7 @@ export function QuerysetHealthTab({
                   >
                     <span className="font-mono text-muted-foreground">{k}</span>
                     <span className="tabular-nums text-foreground/90">
-                      {String((diffMetricDeltas as any)[k] ?? '—')}
+                      {String(diffMetricDeltas[k] ?? '—')}
                     </span>
                   </div>
                 ))}
@@ -624,9 +652,9 @@ export function QuerysetHealthTab({
                   </td>
                 </tr>
               ) : (
-                runItems.slice(0, 30).map((it: any) => {
-                  const m = it?.metrics || {}
-                  const r = it?.risk || {}
+                runItems.slice(0, 30).map((it) => {
+                  const m = isJsonObject(it.metrics) ? it.metrics : {}
+                  const r = isJsonObject(it.risk) ? it.risk : {}
                   const st = String(it?.status || 'unknown')
                   const isDegraded = st === 'degraded'
                   const stLabel =
