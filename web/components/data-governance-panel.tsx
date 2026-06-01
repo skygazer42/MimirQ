@@ -144,6 +144,29 @@ type GovernanceParsingDocument = Awaited<
   ReturnType<typeof parsingApi.listDocuments>
 >['items'][number]
 
+function getGovernanceNextChunkStatus(
+  fileId: string,
+  markReadyFileIds: Set<string>,
+  markSubmittedFileIds: Set<string>
+): 'ready' | 'submitted' | undefined {
+  if (markSubmittedFileIds.has(fileId)) return 'submitted'
+  if (markReadyFileIds.has(fileId)) return 'ready'
+  return undefined
+}
+
+function getScoreBadgeClass(score: number): string {
+  if (score >= 80) return 'bg-success/12 text-success border-success/25'
+  if (score >= 60) return 'bg-warning/15 text-warning border-warning/30'
+  return 'bg-rose/12 text-rose border-rose/25'
+}
+
+function getAvgScoreGradientClass(avgScore: number): string {
+  if (avgScore >= 80) return 'from-success/80 via-success to-success'
+  if (avgScore >= 60) return 'from-warning/70 via-warning to-warning'
+  if (avgScore > 0) return 'from-rose/70 via-rose to-rose'
+  return 'from-info/40 to-info/70'
+}
+
 const ALL_DATASETS_VALUE = '__all_datasets__'
 const EMPTY_UPLOAD_FORMATS = ['PDF', 'Word', 'Excel', 'TXT', 'MD', 'ZIP'] as const
 const EMPTY_UPLOAD_STEPS = ['parse', 'quality', 'clean'] as const
@@ -1250,11 +1273,11 @@ export function DataGovernancePanel() {
 
       for (const f of files) {
         const state = governanceStates[f.id]
-        const nextChunkStatus = markSubmittedFileIds.has(f.id)
-          ? 'submitted'
-          : markReadyFileIds.has(f.id)
-            ? 'ready'
-            : undefined
+        const nextChunkStatus = getGovernanceNextChunkStatus(
+          f.id,
+          markReadyFileIds,
+          markSubmittedFileIds
+        )
         if (!state && !nextChunkStatus) continue
 
         // 濡傛灉鍘嗗彶鏁版嵁娌℃湁淇濆瓨 originalMarkdownContent锛屽厛鐢ㄥ綋鍓嶅唴瀹硅ˉ榻愶紝閬垮厤琚悗缁繚瀛樿鐩栨帀銆?
@@ -1588,103 +1611,116 @@ export function DataGovernancePanel() {
     )
   }
 
-  const contentBody =
-    viewMode === 'edit' ? (
-      <div className="grid grid-cols-2 gap-4 h-full">
-        <div className="flex flex-col bg-muted rounded-xl border border-border shadow-sm overflow-hidden h-full">
-          <div className="px-4 py-2 bg-muted border-b border-border text-xs font-medium text-muted-foreground">
-            {t('canvas.livePreview')}
+  const contentBody = (() => {
+    if (viewMode === 'edit') {
+      return (
+        <div className="grid grid-cols-2 gap-4 h-full">
+          <div className="flex flex-col bg-muted rounded-xl border border-border shadow-sm overflow-hidden h-full">
+            <div className="px-4 py-2 bg-muted border-b border-border text-xs font-medium text-muted-foreground">
+              {t('canvas.livePreview')}
+            </div>
+            <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-6">
+              <MarkdownRenderer markdown={displayContent || ''} />
+            </div>
           </div>
-          <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-6">
-            <MarkdownRenderer markdown={displayContent || ''} />
+          <div className="flex flex-col bg-card rounded-xl border border-border shadow-sm overflow-hidden h-full">
+            <div className="px-4 py-2 bg-muted border-b border-border text-xs font-medium text-muted-foreground">
+              {t('canvas.sourceEditor')}
+            </div>
+            <textarea
+              value={displayContent}
+              onChange={(e) => handleManualEdit(e.target.value)}
+              className="flex-1 w-full p-6 resize-none outline-none font-mono text-sm leading-relaxed text-foreground"
+              spellCheck={false}
+            />
           </div>
         </div>
-        <div className="flex flex-col bg-card rounded-xl border border-border shadow-sm overflow-hidden h-full">
-          <div className="px-4 py-2 bg-muted border-b border-border text-xs font-medium text-muted-foreground">
-            {t('canvas.sourceEditor')}
-          </div>
-          <textarea
-            value={displayContent}
-            onChange={(e) => handleManualEdit(e.target.value)}
-            className="flex-1 w-full p-6 resize-none outline-none font-mono text-sm leading-relaxed text-foreground"
-            spellCheck={false}
-          />
-        </div>
-      </div>
-    ) : displayContent?.includes(libraryOnlyNotice) ? (
-      <div className="flex flex-col items-center justify-center h-full p-8 text-center">
-        <div className="w-16 h-16 bg-muted rounded-2xl flex items-center justify-center mb-6 border border-border shadow-sm">
-          <FileText className="w-8 h-8 text-muted-foreground" />
-        </div>
-        <h3 className="text-lg font-medium text-foreground mb-2 truncate max-w-lg">
-          {selectedFile?.filename || t('libraryFile.unknownFile')}
-        </h3>
-        <div className="flex items-center gap-2 mb-8">
-          <span className="px-2.5 py-1 rounded-full bg-muted text-muted-foreground text-xs font-medium border border-border">
-            {t('libraryFile.badge')}
-          </span>
-          <span className="px-2.5 py-1 rounded-full bg-warning/10 dark:bg-warning/20 text-warning dark:text-warning text-xs font-medium border border-warning/30 flex items-center gap-1">
-            <div className="w-1.5 h-1.5 rounded-full bg-warning/10 dark:bg-warning/20" />
-            {t('libraryFile.pending')}
-          </span>
-        </div>
+      )
+    }
 
-        <div className="max-w-md bg-muted rounded-xl p-5 border border-border mb-8 text-left">
-          <p className="text-sm text-muted-foreground leading-relaxed flex gap-3">
-            <Info className="w-5 h-5 text-info flex-shrink-0 mt-0.5" />
-            {t('libraryFile.description', { notice: libraryOnlyNotice })}
-          </p>
-        </div>
+    if (displayContent?.includes(libraryOnlyNotice)) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full p-8 text-center">
+          <div className="w-16 h-16 bg-muted rounded-2xl flex items-center justify-center mb-6 border border-border shadow-sm">
+            <FileText className="w-8 h-8 text-muted-foreground" />
+          </div>
+          <h3 className="text-lg font-medium text-foreground mb-2 truncate max-w-lg">
+            {selectedFile?.filename || t('libraryFile.unknownFile')}
+          </h3>
+          <div className="flex items-center gap-2 mb-8">
+            <span className="px-2.5 py-1 rounded-full bg-muted text-muted-foreground text-xs font-medium border border-border">
+              {t('libraryFile.badge')}
+            </span>
+            <span className="px-2.5 py-1 rounded-full bg-warning/10 dark:bg-warning/20 text-warning dark:text-warning text-xs font-medium border border-warning/30 flex items-center gap-1">
+              <div className="w-1.5 h-1.5 rounded-full bg-warning/10 dark:bg-warning/20" />
+              {t('libraryFile.pending')}
+            </span>
+          </div>
 
-        <div className="flex items-center gap-3">
-          <Button
-            variant="outline"
-            className="gap-2 bg-card hover:bg-muted text-foreground/80 border-border"
-            onClick={() => {
-              if (selectedFile?.filename) {
-                navigator.clipboard.writeText(selectedFile.filename)
-                toast.success(t('toasts.filenameCopied'))
-              }
-            }}
-          >
-            <Copy className="w-4 h-4" />
-            {t('libraryFile.copyName')}
-          </Button>
-          <ConfirmDialog
-            title={t('libraryFile.removeDialog.title')}
-            description={t('libraryFile.removeDialog.description')}
-            confirmLabel={t('libraryFile.removeDialog.confirm')}
-            cancelLabel={t('libraryFile.removeDialog.cancel')}
-            confirmVariant="destructive"
-            confirmDisabled={!selectedFileId}
-            onConfirm={() => {
-              if (!selectedFileId) return
-              const { removeFile } = useParsedFiles.getState()
-              removeFile(selectedFileId)
-              setSelectedFileId(null)
-              toast.success(t('toasts.fileRemoved'))
-            }}
-          >
+          <div className="max-w-md bg-muted rounded-xl p-5 border border-border mb-8 text-left">
+            <p className="text-sm text-muted-foreground leading-relaxed flex gap-3">
+              <Info className="w-5 h-5 text-info flex-shrink-0 mt-0.5" />
+              {t('libraryFile.description', { notice: libraryOnlyNotice })}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
             <Button
               variant="outline"
-              className="gap-2 bg-card hover:bg-destructive/10 dark:bg-destructive/20 text-foreground/80 hover:text-destructive dark:text-destructive/85 border-border hover:border-destructive/30"
-              disabled={!selectedFileId}
+              className="gap-2 bg-card hover:bg-muted text-foreground/80 border-border"
+              onClick={() => {
+                if (selectedFile?.filename) {
+                  navigator.clipboard.writeText(selectedFile.filename)
+                  toast.success(t('toasts.filenameCopied'))
+                }
+              }}
             >
-              <Trash2 className="w-4 h-4" />
-              {t('libraryFile.removeButton')}
+              <Copy className="w-4 h-4" />
+              {t('libraryFile.copyName')}
             </Button>
-          </ConfirmDialog>
+            <ConfirmDialog
+              title={t('libraryFile.removeDialog.title')}
+              description={t('libraryFile.removeDialog.description')}
+              confirmLabel={t('libraryFile.removeDialog.confirm')}
+              cancelLabel={t('libraryFile.removeDialog.cancel')}
+              confirmVariant="destructive"
+              confirmDisabled={!selectedFileId}
+              onConfirm={() => {
+                if (!selectedFileId) return
+                const { removeFile } = useParsedFiles.getState()
+                removeFile(selectedFileId)
+                setSelectedFileId(null)
+                toast.success(t('toasts.fileRemoved'))
+              }}
+            >
+              <Button
+                variant="outline"
+                className="gap-2 bg-card hover:bg-destructive/10 dark:bg-destructive/20 text-foreground/80 hover:text-destructive dark:text-destructive/85 border-border hover:border-destructive/30"
+                disabled={!selectedFileId}
+              >
+                <Trash2 className="w-4 h-4" />
+                {t('libraryFile.removeButton')}
+              </Button>
+            </ConfirmDialog>
+          </div>
         </div>
-      </div>
-    ) : previewFormat === 'rendered' ? (
-      <div className="prose prose-slate dark:prose-invert max-w-none prose-headings:text-foreground prose-p:text-muted-foreground prose-a:text-info dark:prose-a:text-info">
-        <MarkdownRenderer markdown={displayContent || ''} />
-      </div>
-    ) : (
+      )
+    }
+
+    if (previewFormat === 'rendered') {
+      return (
+        <div className="prose prose-slate dark:prose-invert max-w-none prose-headings:text-foreground prose-p:text-muted-foreground prose-a:text-info dark:prose-a:text-info">
+          <MarkdownRenderer markdown={displayContent || ''} />
+        </div>
+      )
+    }
+
+    return (
       <pre className="font-mono text-sm leading-relaxed whitespace-pre-wrap break-words text-foreground">
         {displayContent || ''}
       </pre>
     )
+  })()
 
   return (
     <WorkbenchScaffold
@@ -1999,11 +2035,7 @@ export function DataGovernancePanel() {
                                     <span
                                       className={cn(
                                         'flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded-md font-medium tabular-nums border',
-                                        score >= 80
-                                          ? 'bg-success/12 text-success border-success/25'
-                                          : score >= 60
-                                            ? 'bg-warning/15 text-warning border-warning/30'
-                                            : 'bg-rose/12 text-rose border-rose/25'
+                                        getScoreBadgeClass(score)
                                       )}
                                     >
                                       {t('sidebar.scoreLabel', { score })}
@@ -2142,13 +2174,7 @@ export function DataGovernancePanel() {
                     <div
                       className={cn(
                         'h-full rounded-full transition-[width] duration-500 motion-reduce:transition-none',
-                        stats.avgScore >= 80
-                          ? 'from-success/80 via-success to-success'
-                          : stats.avgScore >= 60
-                            ? 'from-warning/70 via-warning to-warning'
-                            : stats.avgScore > 0
-                              ? 'from-rose/70 via-rose to-rose'
-                              : 'from-info/40 to-info/70'
+                        getAvgScoreGradientClass(stats.avgScore)
                       )}
                       style={{
                         width:
