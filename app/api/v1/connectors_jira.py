@@ -149,6 +149,32 @@ def _jira_security_level_principal_key(security: object) -> str:
     return f"jira:policy:security-level/{name}"[:255]
 
 
+def _jira_comment_visibility_principal_key(visibility: object) -> str:
+    if not isinstance(visibility, dict):
+        return ""
+
+    vis_type = str(visibility.get("type") or "").strip().lower()
+    vis_value = visibility.get("value") or visibility.get("identifier") or visibility.get("name")
+    if vis_type == "group":
+        return _jira_group_principal_key(str(vis_value or ""))
+    if vis_type == "role":
+        return _jira_role_principal_key(str(vis_value or ""))
+    return ""
+
+
+def _jira_issue_comment_visibility_keys(fields: dict[str, Any], *, max_comments: int) -> set[str]:
+    comments_obj = fields.get("comment")
+    comments = comments_obj.get("comments") if isinstance(comments_obj, dict) else None
+    items = comments if isinstance(comments, list) else []
+    keys: set[str] = set()
+    for comment in items[: max(0, int(max_comments or 0))]:
+        visibility = comment.get("visibility") if isinstance(comment, dict) else None
+        key = _jira_comment_visibility_principal_key(visibility)
+        if key:
+            keys.add(key)
+    return keys
+
+
 def _jira_issue_acl_principal_keys(issue: dict, *, include_comments: bool, max_comments: int) -> tuple[bool, list[str]]:
     """
     Collect best-effort Jira visibility/security handles for source ACL inheritance.
@@ -170,26 +196,7 @@ def _jira_issue_acl_principal_keys(issue: dict, *, include_comments: bool, max_c
         keys.add(security_key)
 
     if include_comments:
-        lim = max(0, int(max_comments or 0))
-        comments_obj = fields.get("comment")
-        comments = comments_obj.get("comments") if isinstance(comments_obj, dict) else None
-        items = comments if isinstance(comments, list) else []
-        for comment in items[:lim]:
-            if not isinstance(comment, dict):
-                continue
-            visibility = comment.get("visibility")
-            if not isinstance(visibility, dict):
-                continue
-            vis_type = str(visibility.get("type") or "").strip().lower()
-            vis_value = visibility.get("value") or visibility.get("identifier") or visibility.get("name")
-            if vis_type == "group":
-                key = _jira_group_principal_key(str(vis_value or ""))
-            elif vis_type == "role":
-                key = _jira_role_principal_key(str(vis_value or ""))
-            else:
-                key = ""
-            if key:
-                keys.add(key)
+        keys.update(_jira_issue_comment_visibility_keys(fields, max_comments=max_comments))
 
     ordered = sorted(keys)
     return bool(ordered), ordered
@@ -225,31 +232,41 @@ def _jira_adf_is_doc(value: object) -> bool:
     return str(value.get("type") or "").strip().lower() == "doc" and isinstance(value.get("content"), list)
 
 
+_JIRA_ADF_MARK_TAGS = {
+    "strong": "strong",
+    "em": "em",
+    "code": "code",
+    "strike": "s",
+    "strikethrough": "s",
+}
+
+
+def _jira_adf_mark_link_html(text: str, mark: dict[str, Any]) -> str:
+    attrs = mark.get("attrs") if isinstance(mark.get("attrs"), dict) else {}
+    href = str(attrs.get("href") or "").strip()
+    if not _resolve_connectors_helper("_is_link_href_allowed")(href):
+        return text
+    return f'<a href="{html.escape(href)}">{text}</a>'
+
+
+def _jira_adf_apply_mark_html(text: str, mark: object) -> str:
+    if not isinstance(mark, dict):
+        return text
+
+    mark_type = str(mark.get("type") or "").strip().lower()
+    if mark_type == "link":
+        return _jira_adf_mark_link_html(text, mark)
+
+    tag = _JIRA_ADF_MARK_TAGS.get(mark_type)
+    return f"<{tag}>{text}</{tag}>" if tag else text
+
+
 def _jira_adf_text_node_html(value: dict) -> str:
     text = html.escape(str(value.get("text") or ""))
 
     marks = value.get("marks") if isinstance(value.get("marks"), list) else []
     for mark in marks:
-        if not isinstance(mark, dict):
-            continue
-        mtype = str(mark.get("type") or "").strip().lower()
-        if mtype == "link":
-            attrs = mark.get("attrs") if isinstance(mark.get("attrs"), dict) else {}
-            href = str(attrs.get("href") or "").strip()
-            if _resolve_connectors_helper("_is_link_href_allowed")(href):
-                text = f'<a href="{html.escape(href)}">{text}</a>'
-            continue
-        if mtype == "strong":
-            text = f"<strong>{text}</strong>"
-            continue
-        if mtype == "em":
-            text = f"<em>{text}</em>"
-            continue
-        if mtype == "code":
-            text = f"<code>{text}</code>"
-            continue
-        if mtype in {"strike", "strikethrough"}:
-            text = f"<s>{text}</s>"
+        text = _jira_adf_apply_mark_html(text, mark)
 
     return text
 
@@ -809,28 +826,34 @@ def _jira_render_issue_html(*, base_url: str, issue: dict, include_comments: boo
     return "\n".join(part for part in parts if part)
 
 
-def _build_jira_project_run_settings(cfg: dict[str, Any]) -> dict[str, Any]:
+def _jira_project_required_config(cfg: dict[str, Any]) -> tuple[str, str]:
     base_url = str(cfg.get("base_url") or "").strip().rstrip("/")
     project_key = str(cfg.get("project_key") or "").strip().upper()
     if not base_url or not project_key:
         raise ValueError("base_url and project_key are required")
+    return base_url, project_key
 
-    sync_mode = str(cfg.get("sync_mode") or "auto").strip().lower()
-    if sync_mode not in {"auto", "full", "incremental"}:
-        sync_mode = "auto"
 
+def _jira_project_cursor_state(cfg: dict[str, Any]) -> tuple[str, set[str]]:
     state = cfg.get("_state") if isinstance(cfg.get("_state"), dict) else {}
     cursor_last_modified = str(state.get("last_modified") or "").strip() if isinstance(state, dict) else ""
     cursor_last_modified_ids = (
         set(_resolve_connectors_helper("normalize_boundary_ids")(state.get("last_modified_ids"))) if isinstance(state, dict) else set()
     )
+    return cursor_last_modified, cursor_last_modified_ids
 
-    effective_mode = sync_mode
+
+def _jira_project_effective_mode(cfg: dict[str, Any], *, cursor_last_modified: str) -> str:
+    sync_mode = str(cfg.get("sync_mode") or "auto").strip().lower()
+    effective_mode = sync_mode if sync_mode in {"auto", "full", "incremental"} else "auto"
     if effective_mode == "auto":
-        effective_mode = "incremental" if cursor_last_modified else "full"
+        return "incremental" if cursor_last_modified else "full"
     if effective_mode == "incremental" and not cursor_last_modified:
-        effective_mode = "full"
+        return "full"
+    return effective_mode
 
+
+def _jira_project_custom_fields(cfg: dict[str, Any]) -> list[str]:
     custom_fields_raw = cfg.get("custom_fields")
     custom_fields_in = custom_fields_raw if isinstance(custom_fields_raw, list) else []
     custom_fields: list[str] = []
@@ -843,28 +866,50 @@ def _build_jira_project_run_settings(cfg: dict[str, Any]) -> dict[str, Any]:
         custom_fields.append(key)
         if len(custom_fields) >= 30:
             break
+    return custom_fields
 
-    include_attachments, max_attachments_per_issue, max_total_attachments = _resolve_connectors_helper("_jira_attachment_limits")(cfg)
-    include_linked_artifacts, max_linked_artifacts_per_issue, max_total_linked_artifacts = _resolve_connectors_helper("_jira_linked_artifact_limits")(cfg)
+
+def _jira_project_access_settings(cfg: dict[str, Any]) -> dict[str, Any]:
     access = cfg.get("access") if isinstance(cfg.get("access"), dict) else None
     source_acl = cfg.get("source_acl") if isinstance(cfg.get("source_acl"), dict) else None
     access_mode = str(access.get("mode") or "inherit").strip().lower() if isinstance(access, dict) else "inherit"
-    has_manual_access_override = bool(isinstance(access, dict) and access_mode != "inherit")
-    source_acl_mode = (
-        str(source_acl.get("mode") or "disabled").strip().lower() if isinstance(source_acl, dict) else "disabled"
-    )
+    source_acl_mode = str(source_acl.get("mode") or "disabled").strip().lower() if isinstance(source_acl, dict) else "disabled"
     source_acl_fallback_mode = (
         str(source_acl.get("fallback_mode") or "partial_members").strip().lower()
         if isinstance(source_acl, dict)
         else "partial_members"
     )
-    user_agent = cfg.get("user_agent") if isinstance(cfg.get("user_agent"), str) else None
+    has_manual_access_override = bool(isinstance(access, dict) and access_mode != "inherit")
+    return {
+        "access": access,
+        "source_acl_mode": source_acl_mode,
+        "source_acl_fallback_mode": source_acl_fallback_mode,
+        "has_manual_access_override": has_manual_access_override,
+        "enable_source_acl": bool(source_acl_mode == "inherit" and not has_manual_access_override),
+    }
+
+
+def _jira_project_headers(cfg: dict[str, Any], *, user_agent: str | None) -> tuple[dict[str, str], dict[str, str]]:
     auth_headers = _resolve_connectors_helper("_build_auth_headers")(cfg)
     headers: dict[str, str] = {
         "Accept": "application/json",
         "User-Agent": (user_agent or "MimirQ/1.0 (+jira_project)"),
     }
     headers.update(auth_headers)
+    return auth_headers, headers
+
+
+def _build_jira_project_run_settings(cfg: dict[str, Any]) -> dict[str, Any]:
+    base_url, project_key = _jira_project_required_config(cfg)
+    cursor_last_modified, cursor_last_modified_ids = _jira_project_cursor_state(cfg)
+    effective_mode = _jira_project_effective_mode(cfg, cursor_last_modified=cursor_last_modified)
+    custom_fields = _jira_project_custom_fields(cfg)
+
+    include_attachments, max_attachments_per_issue, max_total_attachments = _resolve_connectors_helper("_jira_attachment_limits")(cfg)
+    include_linked_artifacts, max_linked_artifacts_per_issue, max_total_linked_artifacts = _resolve_connectors_helper("_jira_linked_artifact_limits")(cfg)
+    access_settings = _jira_project_access_settings(cfg)
+    user_agent = cfg.get("user_agent") if isinstance(cfg.get("user_agent"), str) else None
+    auth_headers, headers = _jira_project_headers(cfg, user_agent=user_agent)
 
     return {
         "base_url": base_url,
@@ -886,11 +931,11 @@ def _build_jira_project_run_settings(cfg: dict[str, Any]) -> dict[str, Any]:
         "parser_backend": cfg.get("parser_backend") if isinstance(cfg.get("parser_backend"), str) else "auto",
         "chunk_strategy": cfg.get("chunk_strategy") if isinstance(cfg.get("chunk_strategy"), str) else "jira_ticket",
         "pipeline": cfg.get("pipeline") if isinstance(cfg.get("pipeline"), dict) else None,
-        "access": access,
-        "source_acl_mode": source_acl_mode,
-        "source_acl_fallback_mode": source_acl_fallback_mode,
-        "has_manual_access_override": has_manual_access_override,
-        "enable_source_acl": bool(source_acl_mode == "inherit" and not has_manual_access_override),
+        "access": access_settings["access"],
+        "source_acl_mode": access_settings["source_acl_mode"],
+        "source_acl_fallback_mode": access_settings["source_acl_fallback_mode"],
+        "has_manual_access_override": access_settings["has_manual_access_override"],
+        "enable_source_acl": access_settings["enable_source_acl"],
         "extra_jql": str(cfg.get("jql") or "").strip(),
         "user_agent": user_agent,
         "auth_headers": auth_headers,
@@ -1037,43 +1082,50 @@ def _jira_linked_artifact_limits(cfg: dict) -> tuple[bool, int, int]:
     return include, per_issue, total
 
 
+def _jira_effective_positive_limit(limit: int) -> int:
+    lim = int(limit or 0)
+    return lim if lim > 0 else 10_000
+
+
+def _jira_attachment_items(issue: dict) -> list[object]:
+    fields = issue.get("fields") if isinstance(issue.get("fields"), dict) else {}
+    items = fields.get("attachment") if isinstance(fields.get("attachment"), list) else []
+    return items
+
+
+def _jira_attachment_ref(raw: object) -> dict[str, str] | None:
+    if not isinstance(raw, dict):
+        return None
+
+    attachment_id = str(raw.get("id") or "").strip()
+    if not attachment_id:
+        return None
+
+    filename = str(raw.get("filename") or raw.get("title") or raw.get("name") or "").strip()
+    download_url = str(raw.get("content") or raw.get("downloadUrl") or raw.get("download_url") or "").strip()
+    if not download_url:
+        return None
+
+    return {
+        "attachment_id": attachment_id,
+        "filename": filename or f"jira-attachment-{attachment_id}",
+        "download_url": download_url,
+    }
+
+
 def _jira_extract_attachments(issue: dict, *, limit: int) -> list[dict[str, str]]:
     if not isinstance(issue, dict):
         return []
 
-    lim = int(limit or 0)
-    if lim <= 0:
-        lim = 10_000
-
-    fields = issue.get("fields") if isinstance(issue.get("fields"), dict) else {}
-    items = fields.get("attachment") if isinstance(fields.get("attachment"), list) else []
+    lim = _jira_effective_positive_limit(limit)
     out: list[dict[str, str]] = []
 
-    for raw in items:
+    for raw in _jira_attachment_items(issue):
         if len(out) >= lim:
             break
-        if not isinstance(raw, dict):
-            continue
-
-        attachment_id = str(raw.get("id") or "").strip()
-        if not attachment_id:
-            continue
-
-        filename = str(raw.get("filename") or raw.get("title") or raw.get("name") or "").strip()
-        if not filename:
-            filename = f"jira-attachment-{attachment_id}"
-
-        download_url = str(raw.get("content") or raw.get("downloadUrl") or raw.get("download_url") or "").strip()
-        if not download_url:
-            continue
-
-        out.append(
-            {
-                "attachment_id": attachment_id,
-                "filename": filename,
-                "download_url": download_url,
-            }
-        )
+        attachment_ref = _jira_attachment_ref(raw)
+        if attachment_ref:
+            out.append(attachment_ref)
 
     return out
 
@@ -1101,109 +1153,111 @@ def _jira_extract_urls_from_text(value: object, *, limit: int) -> list[str]:
     return out
 
 
-def _jira_extract_urls_from_adf(value: object, *, limit: int) -> list[str]:
-    lim = int(limit or 0)
-    if lim <= 0:
-        lim = 10_000
+def _jira_push_unique_http_url(out: list[str], seen: set[str], raw: object, *, limit: int) -> None:
+    if len(out) >= limit:
+        return
 
+    url = str(raw or "").strip()
+    if not url or url in seen:
+        return
+    if not _resolve_connectors_helper("_is_http_or_https_url")(url):
+        return
+
+    seen.add(url)
+    out.append(url)
+
+
+def _jira_extract_adf_text_mark_urls(node: dict[str, Any], out: list[str], seen: set[str], *, limit: int) -> None:
+    marks = node.get("marks") if isinstance(node.get("marks"), list) else []
+    for mark in marks:
+        if not isinstance(mark, dict):
+            continue
+        if str(mark.get("type") or "").strip().lower() != "link":
+            continue
+        attrs = mark.get("attrs") if isinstance(mark.get("attrs"), dict) else {}
+        _jira_push_unique_http_url(out, seen, attrs.get("href"), limit=limit)
+
+
+def _jira_extract_adf_node_urls(node: dict[str, Any], out: list[str], seen: set[str], *, limit: int) -> None:
+    node_type = str(node.get("type") or "").strip().lower()
+    if node_type == "text":
+        _jira_extract_adf_text_mark_urls(node, out, seen, limit=limit)
+        return
+    if node_type == "inlinecard":
+        attrs = node.get("attrs") if isinstance(node.get("attrs"), dict) else {}
+        _jira_push_unique_http_url(out, seen, attrs.get("url"), limit=limit)
+
+
+def _jira_walk_adf_urls(node: object, out: list[str], seen: set[str], *, limit: int, depth: int = 0) -> None:
+    if len(out) >= limit or depth > 60 or node is None:
+        return
+    if isinstance(node, str):
+        for url in _jira_extract_urls_from_text(node, limit=limit - len(out)):
+            _jira_push_unique_http_url(out, seen, url, limit=limit)
+        return
+    if isinstance(node, list):
+        for item in node:
+            _jira_walk_adf_urls(item, out, seen, limit=limit, depth=depth + 1)
+        return
+    if not isinstance(node, dict):
+        return
+
+    _jira_extract_adf_node_urls(node, out, seen, limit=limit)
+    content = node.get("content")
+    for item in content if isinstance(content, list) else []:
+        _jira_walk_adf_urls(item, out, seen, limit=limit, depth=depth + 1)
+
+
+def _jira_extract_urls_from_adf(value: object, *, limit: int) -> list[str]:
+    lim = _jira_effective_positive_limit(limit)
     out: list[str] = []
     seen: set[str] = set()
-
-    def _push(raw: object) -> None:
-        if len(out) >= lim:
-            return
-        url = str(raw or "").strip()
-        if not url:
-            return
-        if not _resolve_connectors_helper("_is_http_or_https_url")(url):
-            return
-        if url in seen:
-            return
-        seen.add(url)
-        out.append(url)
-
-    def _walk(node: object, *, depth: int = 0) -> None:
-        if len(out) >= lim or depth > 60:
-            return
-        if node is None:
-            return
-        if isinstance(node, str):
-            for u in _jira_extract_urls_from_text(node, limit=lim - len(out)):
-                _push(u)
-            return
-        if isinstance(node, list):
-            for item in node:
-                _walk(item, depth=depth + 1)
-            return
-        if not isinstance(node, dict):
-            return
-
-        node_type = str(node.get("type") or "").strip().lower()
-        if node_type == "text":
-            marks = node.get("marks") if isinstance(node.get("marks"), list) else []
-            for mark in marks:
-                if not isinstance(mark, dict):
-                    continue
-                if str(mark.get("type") or "").strip().lower() != "link":
-                    continue
-                attrs = mark.get("attrs") if isinstance(mark.get("attrs"), dict) else {}
-                _push(attrs.get("href"))
-        elif node_type == "inlinecard":
-            attrs = node.get("attrs") if isinstance(node.get("attrs"), dict) else {}
-            _push(attrs.get("url"))
-
-        content = node.get("content")
-        items = content if isinstance(content, list) else []
-        for item in items:
-            _walk(item, depth=depth + 1)
-
-    _walk(value)
+    _jira_walk_adf_urls(value, out, seen, limit=lim)
     return out
+
+
+def _jira_extract_urls_from_adf_or_text(value: object, *, limit: int) -> list[str]:
+    if _jira_adf_is_doc(value):
+        return _jira_extract_urls_from_adf(value, limit=limit)
+    return _jira_extract_urls_from_text(value, limit=limit)
+
+
+def _jira_extend_unique_urls(out: list[str], seen: set[str], urls: list[str], *, limit: int) -> None:
+    for url in urls:
+        if len(out) >= limit:
+            return
+        normalized_url = str(url or "").strip()
+        if not normalized_url or normalized_url in seen:
+            continue
+        seen.add(normalized_url)
+        out.append(normalized_url)
+
+
+def _jira_issue_comment_bodies(fields: dict[str, Any], *, max_comments: int) -> list[object]:
+    comments_obj = fields.get("comment") if isinstance(fields.get("comment"), dict) else {}
+    comment_items = comments_obj.get("comments") if isinstance(comments_obj.get("comments"), list) else []
+    lim_comments = max(0, int(max_comments or 0))
+    return [comment.get("body") for comment in comment_items[:lim_comments] if isinstance(comment, dict)]
 
 
 def _jira_extract_linked_artifact_urls(issue: dict, *, include_comments: bool, max_comments: int, limit: int) -> list[str]:
     if not isinstance(issue, dict):
         return []
 
-    lim = int(limit or 0)
-    if lim <= 0:
-        lim = 10_000
-
+    lim = _jira_effective_positive_limit(limit)
     fields = issue.get("fields") if isinstance(issue.get("fields"), dict) else {}
     out: list[str] = []
     seen: set[str] = set()
 
-    def _extend(urls: list[str]) -> None:
-        nonlocal out
-        for url in urls:
-            if len(out) >= lim:
-                return
-            u = str(url or "").strip()
-            if not u or u in seen:
-                continue
-            seen.add(u)
-            out.append(u)
-
-    desc = fields.get("description")
-    if _jira_adf_is_doc(desc):
-        _extend(_jira_extract_urls_from_adf(desc, limit=lim - len(out)))
-    else:
-        _extend(_jira_extract_urls_from_text(desc, limit=lim - len(out)))
+    desc_urls = _jira_extract_urls_from_adf_or_text(fields.get("description"), limit=lim - len(out))
+    _jira_extend_unique_urls(out, seen, desc_urls, limit=lim)
 
     if include_comments:
-        comments_obj = fields.get("comment") if isinstance(fields.get("comment"), dict) else {}
-        comment_items = comments_obj.get("comments") if isinstance(comments_obj.get("comments"), list) else []
-        lim_comments = max(0, int(max_comments or 0))
-        for comment in comment_items[:lim_comments]:
+        for body in _jira_issue_comment_bodies(fields, max_comments=max_comments):
             if len(out) >= lim:
                 break
-            if not isinstance(comment, dict):
-                continue
-            body = comment.get("body")
-            if _jira_adf_is_doc(body):
-                _extend(_jira_extract_urls_from_adf(body, limit=lim - len(out)))
-            else:
-                _extend(_jira_extract_urls_from_text(body, limit=lim - len(out)))
+            body_urls = _jira_extract_urls_from_adf_or_text(body, limit=lim - len(out))
+            _jira_extend_unique_urls(out, seen, body_urls, limit=lim)
 
     out_sorted = sorted(out)
     return out_sorted[:lim]
@@ -1792,6 +1846,34 @@ def _initialize_jira_project_run_stats(*, run: ConnectorRun, settings_map: dict[
     return stats
 
 
+def _jira_project_progress_stats_patch(progress: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "processed_issues": int(progress.get("processed") or 0),
+        "processed_attachments": int(progress.get("attachments_processed") or 0),
+        "processed_linked_artifacts": int(progress.get("linked_artifacts_processed") or 0),
+        "cursor": int(progress.get("processed") or 0),
+        "created": int(progress.get("created") or 0),
+        "created_attachments": int(progress.get("attachments_created") or 0),
+        "created_linked_artifacts": int(progress.get("linked_artifacts_created") or 0),
+        "failed": int(progress.get("failed") or 0),
+        "skipped_boundary_duplicates": int(progress.get("skipped_boundary_duplicates") or 0),
+        "document_ids": [str(doc_id) for doc_id in (progress.get("created_doc_ids") or [])],
+        "acl_delta_sync_updated_documents": int(progress.get("delta_acl_docs_updated") or 0),
+        "acl_delta_sync_updated_sources": int(progress.get("delta_acl_sources_updated") or 0),
+        "removed_issues_reconciled": int(progress.get("removed_issues_reconciled") or 0),
+        "removed_documents_disabled": int(progress.get("removed_documents_disabled") or 0),
+        "removed_attachment_documents_disabled": int(progress.get("removed_attachment_documents_disabled") or 0),
+        "removed_linked_artifact_documents_disabled": int(progress.get("removed_linked_artifact_documents_disabled") or 0),
+    }
+
+
+def _apply_jira_project_progress_cursor(stats: dict[str, Any], progress: dict[str, Any]) -> None:
+    if not progress.get("last_modified_seen"):
+        return
+    stats["last_modified"] = progress.get("last_modified_seen")
+    stats["last_modified_ids"] = sorted(progress.get("last_modified_ids_seen") or set())
+
+
 def _persist_jira_project_progress(
     db: Session,
     *,
@@ -1799,29 +1881,8 @@ def _persist_jira_project_progress(
     progress: dict[str, Any],
 ) -> None:
     stats = dict(run.stats or {})
-    stats.update(
-        {
-            "processed_issues": int(progress.get("processed") or 0),
-            "processed_attachments": int(progress.get("attachments_processed") or 0),
-            "processed_linked_artifacts": int(progress.get("linked_artifacts_processed") or 0),
-            "cursor": int(progress.get("processed") or 0),
-            "created": int(progress.get("created") or 0),
-            "created_attachments": int(progress.get("attachments_created") or 0),
-            "created_linked_artifacts": int(progress.get("linked_artifacts_created") or 0),
-            "failed": int(progress.get("failed") or 0),
-            "skipped_boundary_duplicates": int(progress.get("skipped_boundary_duplicates") or 0),
-            "document_ids": [str(doc_id) for doc_id in (progress.get("created_doc_ids") or [])],
-            "acl_delta_sync_updated_documents": int(progress.get("delta_acl_docs_updated") or 0),
-            "acl_delta_sync_updated_sources": int(progress.get("delta_acl_sources_updated") or 0),
-            "removed_issues_reconciled": int(progress.get("removed_issues_reconciled") or 0),
-            "removed_documents_disabled": int(progress.get("removed_documents_disabled") or 0),
-            "removed_attachment_documents_disabled": int(progress.get("removed_attachment_documents_disabled") or 0),
-            "removed_linked_artifact_documents_disabled": int(progress.get("removed_linked_artifact_documents_disabled") or 0),
-        }
-    )
-    if progress.get("last_modified_seen"):
-        stats["last_modified"] = progress.get("last_modified_seen")
-        stats["last_modified_ids"] = sorted(progress.get("last_modified_ids_seen") or set())
+    stats.update(_jira_project_progress_stats_patch(progress))
+    _apply_jira_project_progress_cursor(stats, progress)
     run.stats = _resolve_connectors_helper("_finalize_connector_stats")(stats)
     db.commit()
 
