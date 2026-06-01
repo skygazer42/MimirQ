@@ -781,7 +781,7 @@ def _mask_secret_value(kind: str, raw: str) -> str:
     if k == "bearer_token":
         return "Bearer ***"
     if k == "private_key":
-        return "-----BEGIN PRIVATE KEY----- ... -----END PRIVATE KEY-----"
+        return "[PRIVATE_KEY_REDACTED]"
     return SECRET_MASK
 
 
