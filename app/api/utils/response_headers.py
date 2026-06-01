@@ -36,8 +36,18 @@ def download_response_headers(
     cache_control: str | None = "no-store",
     extra: dict[str, str] | None = None,
 ) -> dict[str, str]:
+    return file_response_headers(filename, disposition="attachment", cache_control=cache_control, extra=extra)
+
+
+def file_response_headers(
+    filename: str,
+    *,
+    disposition: str = "attachment",
+    cache_control: str | None = "no-store",
+    extra: dict[str, str] | None = None,
+) -> dict[str, str]:
     headers: dict[str, str] = {
-        "Content-Disposition": content_disposition_header(filename),
+        "Content-Disposition": content_disposition_header(filename, disposition=disposition),
         "X-Content-Type-Options": "nosniff",
     }
     if cache_control:
@@ -47,7 +57,16 @@ def download_response_headers(
     return headers
 
 
-def set_download_content_disposition(headers: dict[str, str], filename: str) -> dict[str, str]:
-    headers["Content-Disposition"] = content_disposition_header(filename)
+def set_content_disposition(
+    headers: dict[str, str],
+    filename: str,
+    *,
+    disposition: str = "attachment",
+) -> dict[str, str]:
+    headers["Content-Disposition"] = content_disposition_header(filename, disposition=disposition)
     headers.setdefault("X-Content-Type-Options", "nosniff")
     return headers
+
+
+def set_download_content_disposition(headers: dict[str, str], filename: str) -> dict[str, str]:
+    return set_content_disposition(headers, filename, disposition="attachment")
