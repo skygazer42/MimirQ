@@ -21,10 +21,12 @@ import {
 
 import type { GraphData, GraphNode } from '@/lib/graph-parser'
 
+type JsonRecord = Record<string, unknown>
+
 type WorkflowLayout = {
   schema?: string
-  nodes?: Array<Record<string, any>>
-  edges?: Array<Record<string, any>>
+  nodes?: JsonRecord[]
+  edges?: JsonRecord[]
 }
 
 type WorkflowEditorNodeData = {
@@ -43,7 +45,7 @@ const ORIGIN_X = 48
 const ORIGIN_Y = 48
 const FALLBACK_NODE_COLOR = '#94a3b8'
 
-function isRecord(value: unknown): value is Record<string, any> {
+function isRecord(value: unknown): value is JsonRecord {
   return !!value && typeof value === 'object' && !Array.isArray(value)
 }
 
@@ -52,7 +54,7 @@ function toFiniteNumber(value: unknown, fallback: number): number {
   return Number.isFinite(num) ? num : fallback
 }
 
-function getWorkflowLayout(value: Record<string, any> | null | undefined): WorkflowLayout {
+function getWorkflowLayout(value: JsonRecord | null | undefined): WorkflowLayout {
   return isRecord(value) ? (value as WorkflowLayout) : {}
 }
 
@@ -117,11 +119,11 @@ function buildDefaultPositions(graph: GraphData): Map<string, { x: number, y: nu
   return positions
 }
 
-function buildEditorNodes(graph: GraphData, workflowLayout: Record<string, any> | null | undefined): WorkflowEditorNode[] {
+function buildEditorNodes(graph: GraphData, workflowLayout: JsonRecord | null | undefined): WorkflowEditorNode[] {
   const layout = getWorkflowLayout(workflowLayout)
   const layoutNodes = Array.isArray(layout.nodes) ? layout.nodes.filter(isRecord) : []
   const positions = buildDefaultPositions(graph)
-  const storedNodeMap = new Map<string, Record<string, any>>(
+  const storedNodeMap = new Map<string, JsonRecord>(
     layoutNodes
       .map((node) => [String(node.id || ''), node] as const)
       .filter(([id]) => !!id)
@@ -166,7 +168,7 @@ function buildEditorNodes(graph: GraphData, workflowLayout: Record<string, any> 
 
 function buildEditorEdges(
   graph: GraphData,
-  workflowLayout: Record<string, any> | null | undefined,
+  workflowLayout: JsonRecord | null | undefined,
   nodeIds: Set<string>
 ): WorkflowEditorEdge[] {
   const layout = getWorkflowLayout(workflowLayout)
@@ -193,7 +195,7 @@ function buildEditorEdges(
   })
 }
 
-function serializeWorkflowLayout(nodes: WorkflowEditorNode[], edges: WorkflowEditorEdge[]): Record<string, any> {
+function serializeWorkflowLayout(nodes: WorkflowEditorNode[], edges: WorkflowEditorEdge[]): WorkflowLayout {
   return {
     schema: LAYOUT_SCHEMA,
     nodes: nodes.map((node) => ({
@@ -214,8 +216,8 @@ function serializeWorkflowLayout(nodes: WorkflowEditorNode[], edges: WorkflowEdi
 
 export interface WorkflowEditorProps {
   graph: GraphData
-  workflowLayout?: Record<string, any> | null
-  onWorkflowLayoutChange?: (layout: Record<string, any>) => void
+  workflowLayout?: JsonRecord | null
+  onWorkflowLayoutChange?: (layout: WorkflowLayout) => void
   onNodeSelect?: (node: GraphNode | null) => void
 }
 
