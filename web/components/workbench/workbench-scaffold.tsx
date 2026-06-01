@@ -39,6 +39,26 @@ type WorkbenchScaffoldProps = {
   mainPaneBodyClassName?: string
 }
 
+function getWorkbenchHeaderSpacingClass(compactHeader: boolean): string {
+  if (compactHeader) return 'px-4 md:px-6 pt-3 md:pt-4 pb-2 md:pb-3'
+  return 'px-6 md:px-8 pt-6 md:pt-8 pb-5 md:pb-6'
+}
+
+function getWorkbenchSectionMarginClass(compactHeader: boolean): string {
+  if (compactHeader) return 'mt-2'
+  return 'mt-4'
+}
+
+function getWorkbenchToolbarSpacingClass(compactHeader: boolean): string {
+  if (compactHeader) return 'px-4 md:px-6 py-2 md:py-3'
+  return 'px-6 md:px-8 py-3 md:py-4'
+}
+
+function getWorkbenchBodySpacingClass(compactHeader: boolean): string {
+  if (compactHeader) return 'px-4 md:px-6'
+  return 'px-6 md:px-8'
+}
+
 export function WorkbenchScaffold({
   title,
   description,
@@ -64,8 +84,17 @@ export function WorkbenchScaffold({
   mainPaneClassName,
   mainPaneBodyClassName,
 }: Readonly<WorkbenchScaffoldProps>) {
-  const resolvedMainPanel =
-    mainPanel ?? (children ? <WorkbenchPane className={cn('flex-1', mainPaneClassName)} bodyClassName={mainPaneBodyClassName}>{children}</WorkbenchPane> : null)
+  let resolvedMainPanel = mainPanel
+  if (!resolvedMainPanel && children) {
+    resolvedMainPanel = (
+      <WorkbenchPane
+        className={cn('flex-1', mainPaneClassName)}
+        bodyClassName={mainPaneBodyClassName}
+      >
+        {children}
+      </WorkbenchPane>
+    )
+  }
 
   if (!resolvedMainPanel) {
     throw new Error('WorkbenchScaffold requires `mainPanel` or `children`.')
@@ -75,9 +104,7 @@ export function WorkbenchScaffold({
     <div className={cn('flex h-full min-h-0 flex-col overflow-hidden', className)}>
       <div className={cn(
         'flex-shrink-0 relative z-10',
-        compactHeader
-          ? 'px-4 md:px-6 pt-3 md:pt-4 pb-2 md:pb-3'
-          : 'px-6 md:px-8 pt-6 md:pt-8 pb-5 md:pb-6'
+        getWorkbenchHeaderSpacingClass(compactHeader)
       )}>
         <PageContainer size={size}>
           {header ? (
@@ -97,15 +124,15 @@ export function WorkbenchScaffold({
             </PageHeader>
           )}
 
-          {top ? <div className={compactHeader ? 'mt-2' : 'mt-4'}>{top}</div> : null}
-          {pipelineRail ? <div className={compactHeader ? 'mt-2' : 'mt-4'}>{pipelineRail}</div> : null}
+          {top ? <div className={getWorkbenchSectionMarginClass(compactHeader)}>{top}</div> : null}
+          {pipelineRail ? <div className={getWorkbenchSectionMarginClass(compactHeader)}>{pipelineRail}</div> : null}
         </PageContainer>
       </div>
 
       {toolbar ? (
         <PageHeaderBar className="z-20">
           <div className={cn(
-            compactHeader ? 'px-4 md:px-6 py-2 md:py-3' : 'px-6 md:px-8 py-3 md:py-4',
+            getWorkbenchToolbarSpacingClass(compactHeader),
             toolbarClassName
           )}>
             <PageContainer size={size}>{toolbar}</PageContainer>
@@ -115,7 +142,7 @@ export function WorkbenchScaffold({
 
       <div className={cn(
         'flex-1 min-h-0 overflow-hidden pb-8',
-        compactHeader ? 'px-4 md:px-6' : 'px-6 md:px-8',
+        getWorkbenchBodySpacingClass(compactHeader),
         bodyClassName
       )}>
         <PageContainer size={size} className="h-full">

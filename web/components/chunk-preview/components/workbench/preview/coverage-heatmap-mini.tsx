@@ -21,6 +21,31 @@ function statInt(value: unknown): number | null {
   return Math.max(0, Math.trunc(value))
 }
 
+function getCoverageStatusTone(gapCount: number, overlapWastePct: number): string {
+  if (gapCount <= 0 && overlapWastePct <= 8) {
+    return 'text-emerald-700 dark:text-emerald-300'
+  }
+  if (gapCount <= 2) return 'text-amber-700 dark:text-amber-300'
+  return 'text-destructive'
+}
+
+function getCoveragePulseTone(gapCount: number, overlapWastePct: number): string {
+  if (gapCount <= 0 && overlapWastePct <= 8) return 'bg-emerald-500/80'
+  if (gapCount <= 2) return 'bg-amber-500/80'
+  return 'bg-rose-500/80'
+}
+
+function getCoverageBarBackground(active: boolean, tone: string): string {
+  if (!active) return 'hsl(var(--muted-foreground) / 0.16)'
+  if (tone === 'risk') return 'hsl(35 92% 52% / 0.78)'
+  return 'hsl(160 84% 38% / 0.72)'
+}
+
+function getCoverageWarningClass(active: boolean): string {
+  if (active) return 'text-amber-700 dark:text-amber-300'
+  return 'text-muted-foreground'
+}
+
 export function CoverageHeatmapMini(props: Readonly<{
   stats?: ChunkPreviewStats
   className?: string
@@ -63,18 +88,10 @@ export function CoverageHeatmapMini(props: Readonly<{
   const gapDisplayLabel = backendStats.gapCount === 0 ? '无缺口' : `缺口 ${gapLabel}`
   const title = `后端统计：覆盖 ${coverageLabel} · 重叠浪费 ${overlapLabel} · 缺口 ${gapLabel} · 最大缺口 ${largestGapLabel}`
   const aria = `后端切片统计：覆盖率 ${coverageLabel}，重叠浪费 ${overlapLabel}，缺口 ${gapLabel}，最大缺口 ${largestGapLabel}`
-  const statusTone =
-    (backendStats.gapCount ?? 0) <= 0 && (backendStats.overlapWastePct ?? 0) <= 8
-      ? 'text-emerald-700 dark:text-emerald-300'
-      : (backendStats.gapCount ?? 0) <= 2
-        ? 'text-amber-700 dark:text-amber-300'
-        : 'text-destructive'
-  const pulseTone =
-    (backendStats.gapCount ?? 0) <= 0 && (backendStats.overlapWastePct ?? 0) <= 8
-      ? 'bg-emerald-500/80'
-      : (backendStats.gapCount ?? 0) <= 2
-        ? 'bg-amber-500/80'
-        : 'bg-rose-500/80'
+  const gapCount = backendStats.gapCount ?? 0
+  const overlapWastePct = backendStats.overlapWastePct ?? 0
+  const statusTone = getCoverageStatusTone(gapCount, overlapWastePct)
+  const pulseTone = getCoveragePulseTone(gapCount, overlapWastePct)
 
   return (
     <div
@@ -90,11 +107,7 @@ export function CoverageHeatmapMini(props: Readonly<{
 
       <div className="flex items-end gap-[2px] rounded-md border border-border/40 bg-[linear-gradient(180deg,hsl(var(--background)/0.84),hsl(var(--muted)/0.32))] px-1.5 py-1">
         {backendBars.map(({ active, height, key, tone }) => {
-          const bg = active
-            ? tone === 'risk'
-              ? 'hsl(35 92% 52% / 0.78)'
-              : 'hsl(160 84% 38% / 0.72)'
-            : 'hsl(var(--muted-foreground) / 0.16)'
+          const bg = getCoverageBarBackground(active, tone)
           return (
             <span
               key={key}
@@ -109,10 +122,10 @@ export function CoverageHeatmapMini(props: Readonly<{
         <span className={cn('tabular-nums transition-colors duration-300 motion-reduce:transition-none', statusTone)}>
           覆盖 {coverageLabel}
         </span>
-        <span className={cn('tabular-nums transition-colors duration-300 motion-reduce:transition-none', (backendStats.overlapWastePct ?? 0) > 8 ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground')}>
+        <span className={cn('tabular-nums transition-colors duration-300 motion-reduce:transition-none', getCoverageWarningClass(overlapWastePct > 8))}>
           {overlapDisplayLabel}
         </span>
-        <span className={cn('tabular-nums transition-colors duration-300 motion-reduce:transition-none', (backendStats.gapCount ?? 0) > 0 ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground')}>
+        <span className={cn('tabular-nums transition-colors duration-300 motion-reduce:transition-none', getCoverageWarningClass(gapCount > 0))}>
           {gapDisplayLabel}
         </span>
       </div>
