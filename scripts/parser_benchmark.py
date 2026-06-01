@@ -80,6 +80,14 @@ def _stable_hash_obj(obj: Any) -> str:
     return _stable_hash_text(json.dumps(obj, ensure_ascii=False, sort_keys=True))
 
 
+def _stable_path_id(path: Path) -> str:
+    resolved = path.resolve()
+    try:
+        return resolved.relative_to(_REPO_ROOT).as_posix()
+    except ValueError:
+        return resolved.as_posix()
+
+
 def _coerce_specialty_elements(value: Any) -> dict[str, int] | None:
     if not isinstance(value, dict):
         return None
@@ -407,7 +415,7 @@ def _build_fixture_hash(*, cases: list[BenchmarkCase], manifest_path: Path | Non
     if manifest_path and manifest_path.exists():
         payload.append(
             {
-                "manifest_path": str(manifest_path),
+                "manifest_path": _stable_path_id(manifest_path),
                 "manifest_hash": _stable_hash_file(manifest_path),
             }
         )
@@ -427,9 +435,9 @@ def _build_fixture_hash(*, cases: list[BenchmarkCase], manifest_path: Path | Non
                 )
         row: dict[str, Any] = {
             "id": str(case.case_id),
-            "path": str(case.path),
+            "path": _stable_path_id(case.path),
             "path_hash": _stable_hash_file(case.path) if case.path.exists() else None,
-            "golden_markdown_path": (str(case.golden_markdown_path) if case.golden_markdown_path else None),
+            "golden_markdown_path": (_stable_path_id(case.golden_markdown_path) if case.golden_markdown_path else None),
             "golden_markdown_hash": (
                 _stable_hash_file(case.golden_markdown_path)
                 if case.golden_markdown_path and case.golden_markdown_path.exists()
@@ -439,7 +447,7 @@ def _build_fixture_hash(*, cases: list[BenchmarkCase], manifest_path: Path | Non
             "golden_image_visual_kinds": dict(case.golden_image_visual_kinds or {}) if isinstance(case.golden_image_visual_kinds, dict) else None,
             "golden_image_code_values": dict(case.golden_image_code_values or {}) if isinstance(case.golden_image_code_values, dict) else None,
             "governance_rule_packs": list(case.governance_rule_packs or []),
-            "case_root": str(case_root),
+            "case_root": _stable_path_id(case_root),
             "case_files": case_files,
         }
         if isinstance(case.golden_table_continuity, dict) and case.golden_table_continuity:
