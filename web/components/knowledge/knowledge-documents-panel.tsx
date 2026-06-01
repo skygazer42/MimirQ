@@ -136,6 +136,27 @@ type KnowledgeDocumentsPanelProps = {
   onPeek?: (docId: string) => void
 }
 
+function getDocsGridColsClassName(docGridColumns: number): string {
+  if (docGridColumns >= 5) return 'grid-cols-5'
+  if (docGridColumns === 4) return 'grid-cols-4'
+  if (docGridColumns === 3) return 'grid-cols-3'
+  if (docGridColumns === 2) return 'grid-cols-2'
+  return 'grid-cols-1'
+}
+
+function getEmptyTitle(isDatasetEmpty: boolean, docFilter: string): string {
+  if (isDatasetEmpty) return '知识货架待入库'
+  if (docFilter) return '没有匹配到相关文档'
+  return '当前筛选无结果'
+}
+
+function getQualityColor(qualityPercent: number | null): string {
+  if (qualityPercent === null) return 'text-muted-foreground/20'
+  if (qualityPercent > 80) return 'text-success'
+  if (qualityPercent > 50) return 'text-warning'
+  return 'text-rose'
+}
+
 function getStatusBadge(
   status: string,
   t: TranslateFn
@@ -268,16 +289,7 @@ export function KnowledgeDocumentsPanel({
   )
   const [opsOpen, setOpsOpen] = useState(false)
 
-  const docsGridColsClassName =
-    docGridColumns >= 5
-      ? 'grid-cols-5'
-      : docGridColumns === 4
-        ? 'grid-cols-4'
-        : docGridColumns === 3
-          ? 'grid-cols-3'
-          : docGridColumns === 2
-            ? 'grid-cols-2'
-            : 'grid-cols-1'
+  const docsGridColsClassName = getDocsGridColsClassName(docGridColumns)
 
   const showDatasetColumn = !selectedDatasetId
   const tableColumnCount = showDatasetColumn ? 9 : 8
@@ -846,11 +858,7 @@ export function KnowledgeDocumentsPanel({
             }
 
             if (showEmptyState) {
-              const emptyTitle = isDatasetEmpty
-                ? '知识货架待入库'
-                : docFilter
-                  ? '没有匹配到相关文档'
-                  : '当前筛选无结果'
+              const emptyTitle = getEmptyTitle(isDatasetEmpty, docFilter)
               const emptyDescription = isDatasetEmpty
                 ? '使用右上角「导入/新增」上传文档或创建连接器后，资产列表会在这里形成可检索的文档货架。'
                 : '当前筛选条件没有命中文档，可以放宽范围、清空搜索，或切回全部数据集重新查看。'
@@ -1466,14 +1474,7 @@ function DocumentCard({
   // 计算质量百分比和颜色
   const qualityPercent =
     parseScore === null ? null : Math.round(parseScore * 100)
-  const qualityColor =
-    qualityPercent === null
-      ? 'text-muted-foreground/20'
-      : qualityPercent > 80
-        ? 'text-success'
-        : qualityPercent > 50
-          ? 'text-warning'
-          : 'text-rose'
+  const qualityColor = getQualityColor(qualityPercent)
 
   return (
     <Panel

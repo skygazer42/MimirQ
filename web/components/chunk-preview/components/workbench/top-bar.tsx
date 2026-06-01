@@ -76,6 +76,48 @@ function getFiniteNumber(record: Record<string, unknown>, key: string): number |
   return undefined
 }
 
+function getFiniteNumberValue(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+function getVisibleFileSize(
+  previewFileSize: unknown,
+  originalFileSize: unknown,
+  fallbackFileSize: number
+): number {
+  const previewSize = getFiniteNumberValue(previewFileSize)
+  if (previewSize !== undefined) return previewSize
+
+  const originalSize = getFiniteNumberValue(originalFileSize)
+  if (originalSize !== undefined) return originalSize
+
+  return fallbackFileSize
+}
+
+function getQualityGradeLabel(
+  grade: unknown,
+  labels: { pass: string; warn: string; fail: string }
+): string {
+  if (grade === 'pass') return labels.pass
+  if (grade === 'warn') return labels.warn
+  if (grade === 'fail') return labels.fail
+  return grade ? String(grade).toUpperCase() : ''
+}
+
+function getQualityGradeClass(grade: unknown): string {
+  if (grade === 'pass') return 'border-success/20 bg-success/10 text-success'
+  if (grade === 'fail') {
+    return 'border-destructive/20 bg-destructive/10 text-destructive'
+  }
+  return 'border-warning/20 bg-warning/10 text-warning'
+}
+
+function getSubmitIcon(isSubmitting: boolean, submitSuccess: boolean) {
+  if (isSubmitting) return Loader2
+  if (submitSuccess) return Check
+  return Save
+}
+
 function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback
 }
@@ -245,14 +287,11 @@ export function TopBar() {
     currentFileItem.originalFileType ||
     currentFile.name.split('.').pop() ||
     ''
-  const visibleFileSize =
-    typeof previewData?.file_size === 'number' &&
-    Number.isFinite(previewData.file_size)
-      ? previewData.file_size
-      : typeof currentFileItem.originalFileSize === 'number' &&
-          Number.isFinite(currentFileItem.originalFileSize)
-        ? currentFileItem.originalFileSize
-        : currentFile.size
+  const visibleFileSize = getVisibleFileSize(
+    previewData?.file_size,
+    currentFileItem.originalFileSize,
+    currentFile.size
+  )
   const visibleChunkSize =
     typeof previewData?.params?.chunk_size === 'number' &&
     Number.isFinite(previewData.params.chunk_size)
@@ -270,16 +309,13 @@ export function TopBar() {
       ? Math.max(0, Math.round(previewData.preview_duration_ms))
       : lastPreviewDurationMs
   const visibleQualityGrade = previewData?.quality_gate?.grade
-  const visibleQualityLabel =
-    visibleQualityGrade === 'pass'
-      ? t('topBar.status.qualityGrades.pass')
-      : visibleQualityGrade === 'warn'
-        ? t('topBar.status.qualityGrades.warn')
-        : visibleQualityGrade === 'fail'
-          ? t('topBar.status.qualityGrades.fail')
-          : visibleQualityGrade
-            ? String(visibleQualityGrade).toUpperCase()
-            : ''
+  const visibleQualityLabel = getQualityGradeLabel(visibleQualityGrade, {
+    pass: t('topBar.status.qualityGrades.pass'),
+    warn: t('topBar.status.qualityGrades.warn'),
+    fail: t('topBar.status.qualityGrades.fail'),
+  })
+  const visibleQualityClass = getQualityGradeClass(visibleQualityGrade)
+  const SubmitIcon = getSubmitIcon(isSubmitting, submitSuccess)
 
   const buildConfig = () => ({
     dataset_id: datasetId || undefined,
@@ -515,11 +551,7 @@ export function TopBar() {
             <span
               className={cn(
                 stateChipClass,
-                visibleQualityGrade === 'pass'
-                  ? 'border-success/20 bg-success/10 text-success'
-                  : visibleQualityGrade === 'fail'
-                    ? 'border-destructive/20 bg-destructive/10 text-destructive'
-                    : 'border-warning/20 bg-warning/10 text-warning'
+                visibleQualityClass
               )}
               title={(previewData?.quality_gate?.reasons || []).join(ESCAPED_NEWLINE)}
             >
@@ -1005,13 +1037,12 @@ export function TopBar() {
               : 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-primary/20'
           )}
         >
-          {isSubmitting ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none mr-2" />
-          ) : submitSuccess ? (
-            <Check className="w-3.5 h-3.5 mr-2" />
-          ) : (
-            <Save className="w-3.5 h-3.5 mr-2" />
-          )}
+          <SubmitIcon
+            className={cn(
+              'w-3.5 h-3.5 mr-2',
+              isSubmitting && 'animate-spin motion-reduce:animate-none'
+            )}
+          />
           {submitSuccess
             ? t('topBar.actions.completed')
             : t('topBar.actions.confirmIngest')}

@@ -48,8 +48,39 @@ function formatBytesCompact(bytes: number): string {
     unitIndex += 1
   }
 
-  const digits = value >= 100 ? 0 : value >= 10 ? 1 : 2
+  const digits = getCompactByteDigits(value)
   return `${value.toFixed(digits)} ${units[unitIndex]}`
+}
+
+function getCompactByteDigits(value: number): number {
+  if (value >= 100) return 0
+  if (value >= 10) return 1
+  return 2
+}
+
+function getChecklistStateLabel(state: string): string {
+  if (state === 'ok') return '正常'
+  if (state === 'warning') return '关注'
+  return '等待'
+}
+
+function getDetailsButtonLabel({
+  hasIndexDetails,
+  detailsExpanded,
+  selectedDatasetId,
+  indexAuditLoading,
+}: {
+  hasIndexDetails: boolean
+  detailsExpanded: boolean
+  selectedDatasetId?: string
+  indexAuditLoading: boolean
+}): string {
+  if (hasIndexDetails) {
+    return detailsExpanded ? '收起索引详情' : '查看索引详情'
+  }
+  if (!selectedDatasetId) return '选择数据集后查看详情'
+  if (indexAuditLoading) return '审计运行中'
+  return '运行审计查看详情'
 }
 
 // Backend currently doesn't expose index storage directly.
@@ -233,6 +264,12 @@ export function KnowledgeRetrievalPanel({
   }, [hasAggregateOverview, indexAudit])
 
   const hasIndexDetails = Boolean(indexAudit || hasAggregateOverview)
+  const detailsButtonLabel = getDetailsButtonLabel({
+    hasIndexDetails,
+    detailsExpanded,
+    selectedDatasetId,
+    indexAuditLoading,
+  })
   const indexDetailRows = useMemo(() => {
     if (indexAudit) {
       return [
@@ -509,11 +546,7 @@ export function KnowledgeRetrievalPanel({
                           'bg-muted/30 text-muted-foreground'
                       )}
                     >
-                      {item.state === 'ok'
-                        ? '正常'
-                        : item.state === 'warning'
-                          ? '关注'
-                          : '等待'}
+                      {getChecklistStateLabel(item.state)}
                     </span>
                   </div>
                 ))}
@@ -540,15 +573,7 @@ export function KnowledgeRetrievalPanel({
               {!hasIndexDetails && indexAuditLoading ? (
                 <Loader2 className="mr-2 size-4 animate-spin" />
               ) : null}
-              {hasIndexDetails
-                ? detailsExpanded
-                  ? '收起索引详情'
-                  : '查看索引详情'
-                : selectedDatasetId
-                  ? indexAuditLoading
-                    ? '审计运行中'
-                    : '运行审计查看详情'
-                  : '选择数据集后查看详情'}
+              {detailsButtonLabel}
               {hasIndexDetails ? (
                 <ChevronRight
                   className={cn(

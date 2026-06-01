@@ -76,6 +76,14 @@ const PAGE_SIZE_OPTIONS = [7, 10, 20, 50]
 const RBAC_MEMBERS_PARAMS = { limit: 500 } as const
 const CARD_CLASS =
   'rounded-2xl border border-slate-200/80 bg-card shadow-[0_1px_3px_rgba(15,23,42,0.04)]'
+const ROLE_DOT_TONES: Record<string, string> = {
+  owner: 'bg-blue-500',
+  admin: 'bg-purple-500',
+  auditor: 'bg-amber-500',
+  editor: 'bg-info',
+  dataset_operator: 'bg-emerald-500',
+  viewer: 'bg-teal-500',
+}
 
 type RbacMembersSnapshot = {
   items: TenantMember[]
@@ -109,6 +117,26 @@ function avatarTone(userId?: string | null) {
   const raw = String(userId || '')
   const sum = raw.split('').reduce((acc, char) => acc + (char.codePointAt(0) ?? 0), 0)
   return tones[sum % tones.length]
+}
+
+function roleDotTone(roleKey: string): string {
+  return ROLE_DOT_TONES[roleKey] ?? ROLE_DOT_TONES.viewer
+}
+
+function removeMemberDescription({
+  canRemove,
+  isSelf,
+  displayName,
+}: {
+  canRemove: boolean
+  isSelf: boolean
+  displayName: string
+}): string {
+  if (canRemove) {
+    return `将把 ${displayName} 从当前租户移除，并撤销组和显式访问授权`
+  }
+  if (isSelf) return '不能移除当前用户。请切换到其他管理员账号后再操作'
+  return '缺少成员 ID，无法移除'
 }
 
 function fmtDateTime(value?: string | null) {
@@ -527,11 +555,11 @@ function SettingsRbacPageContent() {
                             (!currentAccountId && m.is_current)
                           )
                           const canRemove = Boolean(uid) && !isSelf
-                          const removeDescription = canRemove
-                            ? `将把 ${display.primary} 从当前租户移除，并撤销组和显式访问授权`
-                            : isSelf
-                              ? '不能移除当前用户。请切换到其他管理员账号后再操作'
-                              : '缺少成员 ID，无法移除'
+                          const removeDescription = removeMemberDescription({
+                            canRemove,
+                            isSelf,
+                            displayName: display.primary,
+                          })
                           return (
                             <tr
                               key={key}
@@ -587,18 +615,7 @@ function SettingsRbacPageContent() {
                                           <span
                                             className={cn(
                                               'size-2 rounded-full',
-                                              r.key === 'owner'
-                                                ? 'bg-blue-500'
-                                                : r.key === 'admin'
-                                                  ? 'bg-purple-500'
-                                                  : r.key === 'auditor'
-                                                    ? 'bg-amber-500'
-                                                    : r.key === 'editor'
-                                                      ? 'bg-info'
-                                                      : r.key ===
-                                                          'dataset_operator'
-                                                        ? 'bg-emerald-500'
-                                                        : 'bg-teal-500'
+                                              roleDotTone(r.key)
                                             )}
                                           />
                                           {r.label}
