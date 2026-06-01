@@ -74,6 +74,24 @@ function disabledQuotaText(label = '后端未启用该配额') {
   }
 }
 
+function getQuotaTone(enabled: boolean, exceeded: boolean): string {
+  if (exceeded) return QUOTA_EXCEEDED_TONE
+  if (enabled) return QUOTA_ENABLED_TONE
+  return QUOTA_DISABLED_TONE
+}
+
+function getQuotaStatusLabel(enabled: boolean, exceeded: boolean): string {
+  if (exceeded) return '已超额'
+  if (enabled) return '已启用'
+  return '未启用'
+}
+
+function getQuotaProgressClass(enabled: boolean, exceeded: boolean): string {
+  if (exceeded) return 'bg-destructive'
+  if (enabled) return 'bg-success'
+  return 'bg-muted-foreground/45'
+}
+
 type QuotaCardProps = {
   icon: ComponentType<{ className?: string }>
   title: string
@@ -93,11 +111,7 @@ function QuotaCard({
   secondary,
   progress = 0,
 }: Readonly<QuotaCardProps>) {
-  const tone = exceeded
-    ? QUOTA_EXCEEDED_TONE
-    : enabled
-      ? QUOTA_ENABLED_TONE
-      : QUOTA_DISABLED_TONE
+  const tone = getQuotaTone(enabled, exceeded)
 
   return (
     <div className={QUOTA_CARD_CLASS}>
@@ -118,14 +132,10 @@ function QuotaCard({
         <span
           className={cn(
             'shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold',
-            exceeded
-              ? QUOTA_EXCEEDED_TONE
-              : enabled
-                ? QUOTA_ENABLED_TONE
-                : QUOTA_DISABLED_TONE
+            tone
           )}
         >
-          {exceeded ? '已超额' : enabled ? '已启用' : '未启用'}
+          {getQuotaStatusLabel(enabled, exceeded)}
         </span>
       </div>
       <div className="mt-2 flex min-h-5 items-end justify-between gap-3">
@@ -146,11 +156,7 @@ function QuotaCard({
         <div
           className={cn(
             'h-full rounded-full',
-            exceeded
-              ? 'bg-destructive'
-              : enabled
-                ? 'bg-success'
-                : 'bg-muted-foreground/45'
+            getQuotaProgressClass(enabled, exceeded)
           )}
           style={{ width: `${Math.max(0, Math.min(100, progress))}%` }}
         />
