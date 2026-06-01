@@ -141,9 +141,9 @@ async def get_current_account_id_from_headers(
                     account_id=user_id,
                     jwt_payload=payload,
                 )
-            except Exception:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001
                 # Never block auth due to sync failures.
-                pass
+                logger.debug("JWT group sync failed during auth; continuing without sync: %s", exc)
 
         # Optional enterprise: auto-provision tenant_members for JWT-authenticated users (opt-in).
         if bool(getattr(settings, "JWT_TENANT_MEMBER_AUTO_PROVISION_ENABLED", False)):
@@ -169,9 +169,9 @@ async def get_current_account_id_from_headers(
                     ip=ip,
                     user_agent=user_agent,
                 )
-            except Exception:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001
                 # Never block auth due to auto-provisioning failures.
-                pass
+                logger.debug("JWT tenant member auto-provisioning failed during auth; continuing: %s", exc)
     return user_id
 
 

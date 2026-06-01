@@ -1017,9 +1017,9 @@ class Indexer:
             )
         except TenantQuotaExceededError:
             raise
-        except Exception:
+        except Exception as exc:
             # Fail open if quota checks are unavailable (misconfig/DB issues).
-            pass
+            logger.debug("Tenant quota check failed during indexing; continuing fail-open: %s", exc)
 
         normalized_chunks: list[ChunkInput] = []
         vector_docs: list[dict[str, Any]] = []
@@ -1099,9 +1099,9 @@ class Indexer:
                     )
                     if prefix:
                         embed_text = prefix + "\n" + raw_body
-                except Exception:
+                except Exception as exc:
                     # Fail open: contextual prefixes are best-effort.
-                    pass
+                    logger.debug("Failed to build contextual embedding prefix; continuing without prefix: %s", exc)
             if embedding_prefix_enabled:
                 embed_text = _build_embedding_text(embed_text, meta)
             vector_docs.append({"content": embed_text, "metadata": meta})

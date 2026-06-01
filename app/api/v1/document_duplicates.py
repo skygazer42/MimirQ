@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -14,6 +15,8 @@ from app.core.database import get_db
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentPermission
 from app.services.dataset_service import DatasetService
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -238,9 +241,9 @@ async def list_document_duplicates(
                 )
 
             return {"total": total_groups, "items": items}
-        except Exception:
+        except Exception as exc:
             # Fall back to the Python scan path below (best-effort).
-            pass
+            logger.debug("Postgres duplicate-document query failed; falling back to Python scan: %s", exc)
 
     rows = base_query.with_entities(
         DBDocument.id,

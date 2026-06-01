@@ -1672,9 +1672,9 @@ class EventExtractor:
                                     if subj_id is None or obj_id is None:
                                         continue
                                     seen_rel_keys.add((subj_id, str(pred or "").strip(), obj_id))
-                            except Exception:
+                            except Exception as exc:
                                 # Best-effort: if the DB can't answer, proceed without dedupe.
-                                pass
+                                logger.debug(_KG_EXTRACTOR_FALLBACK_LOG_MESSAGE, exc)
 
                         cand_map = {c.cid: c for c in (candidates_by_chunk.get(chunk_id) or [])}
                         if ok:

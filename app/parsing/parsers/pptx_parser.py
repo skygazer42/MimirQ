@@ -9,9 +9,12 @@ fail on certain presentations.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from langchain_core.documents import Document
+
+logger = logging.getLogger(__name__)
 
 
 def _clean_line(text: str) -> str:
@@ -78,9 +81,9 @@ class PptxParser:
                         if rows:
                             parts.append(_md_table(rows))
                         continue
-                except Exception:
+                except Exception as exc:
                     # Best-effort: ignore table extraction errors.
-                    pass
+                    logger.debug("Failed to extract PPTX table; falling back to text frame handling: %s", exc)
 
                 # Text frames -> plain text (keep bullet/indent via paragraph.level).
                 try:
@@ -132,4 +135,3 @@ class PptxParser:
                 },
             )
         ]
-

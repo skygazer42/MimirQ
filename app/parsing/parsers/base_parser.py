@@ -304,9 +304,9 @@ class BaseAdvancedParser(ABC):
                     if positions is not None:
                         meta["positions"] = positions
                     documents.append(Document(page_content=content, metadata=meta))
-            except Exception:
+            except Exception as exc:
                 # Best-effort: never fail parsing due to table image handling.
-                pass
+                self._logger.debug("Failed to attach table image metadata; continuing parse: %s", exc)
 
         return documents
 

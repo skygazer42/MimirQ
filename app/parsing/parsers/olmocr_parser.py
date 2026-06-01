@@ -138,9 +138,9 @@ class OlmocrParser:
         try:
             artifact_root.mkdir(parents=True, exist_ok=True)
             (artifact_root / "result.md").write_text(markdown_text or "", encoding="utf-8")
-        except Exception:
+        except Exception as exc:
             # Best-effort only; do not block parsing.
-            pass
+            logger.debug("Failed to write olmOCR parse artifact; continuing: %s", exc)
 
         metadata: dict[str, Any] = {
             "source": str(file_path.name),

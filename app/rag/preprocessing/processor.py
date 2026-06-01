@@ -559,9 +559,9 @@ class GovernanceProcessor:
                     "perplexity_proxy": float(perplexity_metrics.get("perplexity_proxy") or 0.0),
                     "token_count": int(perplexity_metrics.get("token_count") or 0),
                 }
-            except Exception:
+            except Exception as exc:
                 # Best-effort only; never fail ingestion due to metrics.
-                pass
+                logger.debug(_MARKDOWN_GOVERNANCE_FALLBACK_LOG_MESSAGE, exc)
             cleaned.append(Document(page_content=text, metadata=meta, id=getattr(doc, "id", None)))
 
         # Compliance gates (PII/Secrets): if enabled (>=0), quarantine/drop the entire document when total hits exceed the threshold.

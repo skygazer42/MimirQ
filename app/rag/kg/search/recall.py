@@ -1,6 +1,7 @@
 """
 Recall stage: 8-step pipeline (query -> keys -> events -> weights).
 """
+import logging
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -13,6 +14,8 @@ from app.rag.kg.search.query_mode import build_mode_aware_recall_overrides, norm
 from app.rag.kg.search.relation_scoring import relation_multiplier
 from app.rag.kg.search.tracker import Tracker
 from app.rag.kg.search.utils import confidence_bucket, cosine_similarity
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -513,9 +516,9 @@ class RecallSearcher:
                                         relation="entity->entity:graph_embedding",
                                         metadata={"method": "graph_embedding", "step": "step1b"},
                                     )
-                except Exception:
+                except Exception as exc:
                     # Best-effort: graph recall must never crash KG search.
-                    pass
+                    logger.debug("Graph embedding recall failed; continuing KG search without it: %s", exc)
             if not bool(getattr(config, "include_skill_entities", True)):
                 raw_entities = [
                     e

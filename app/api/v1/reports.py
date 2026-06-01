@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 import re
 import zipfile
 from typing import Annotated
@@ -22,6 +23,8 @@ from app.api.utils.response_headers import download_response_headers
 from app.core.database import get_db
 from app.services.report_html import _scrub_report_for_redaction, render_dataset_report_html, render_rag_audit_html
 from app.services.report_service import ReportService
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -312,9 +315,9 @@ def export_dataset_report_bundle_zip(
                 )
                 files.append("regression_diff.json")
                 files.append("regression_diff.html")
-    except Exception:
+    except Exception as exc:
         # Best-effort: do not fail report bundle exports due to missing DB/models in unit tests.
-        pass
+        logger.debug("Failed to add regression diff files to report bundle: %s", exc)
     manifest = {
         "schema": "mimirq.report_bundle.v2",
         "generated_at": report.generated_at.isoformat() if hasattr(report.generated_at, "isoformat") else str(report.generated_at or ""),

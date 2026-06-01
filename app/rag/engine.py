@@ -1086,9 +1086,9 @@ Requirements:
                         # Override user-supplied doc_pipeline_key filters to avoid mixing versions.
                         mf["doc_pipeline_key"] = {"$in": set(active_keys)}
                         metadata_filter = mf
-                except Exception:
+                except Exception as exc:
                     # Best-effort only; fallback to legacy behavior.
-                    pass
+                    logger.debug("Failed to constrain retrieval by active document pipeline hash: %s", exc)
 
             t_all_start = time.time()
             temporal_intent_enabled = bool(getattr(settings, "RAG_TEMPORAL_INTENT_ENABLED", False))

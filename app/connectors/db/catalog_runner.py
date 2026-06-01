@@ -12,6 +12,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
+import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -21,6 +22,9 @@ from uuid import UUID
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+logger = logging.getLogger(__name__)
 
 
 def _fingerprint(*, engine: str, db_name: str, schema_name: str | None, table_name: str) -> str:
@@ -478,8 +482,8 @@ def _jsonify_row_value(v: Any) -> Any:
     try:
         if hasattr(v, "item"):
             return v.item()
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Failed to unwrap DB catalog scalar value via item(): %s", exc)
     return str(v)
 
 

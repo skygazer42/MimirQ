@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import time
 from collections.abc import AsyncIterator
 from typing import Any
@@ -11,6 +12,8 @@ from typing import Any
 from app.connectors.base import ConnectorBase
 from app.connectors.registry import registry
 from app.connectors.types import ConnectionTestResult, RawDocument
+
+logger = logging.getLogger(__name__)
 
 
 def _has_write_privileges_from_text(text: str) -> bool:
@@ -47,8 +50,8 @@ def _extract_cfg(config: dict[str, Any] | Any) -> dict[str, Any]:
     if hasattr(config, "model_dump"):
         try:
             return dict(config.model_dump(mode="json", exclude_none=True))
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Failed to extract DB catalog connector config via model_dump: %s", exc)
 
     out: dict[str, Any] = {}
     for key in ("host", "port", "database", "username", "password"):

@@ -154,9 +154,9 @@ class LangChainEmbeddingsAdapter:
                                 pipe.set(keys[idx], payload, ex=ttl)
                             else:
                                 pipe.set(keys[idx], payload)
-                        except Exception:  # noqa: BLE001
+                        except Exception as exc:  # noqa: BLE001
                             # Cache failures do not affect main flow.
-                            pass
+                            logger.debug("Embedding cache write payload failed; continuing without cached vector: %s", exc)
                     try:
                         pipe.execute()
                     except Exception:  # noqa: BLE001
