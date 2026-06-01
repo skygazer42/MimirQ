@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -29,19 +28,32 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
-@dataclass
 class ListDocumentsQueryFields:
-    skip: int = Query(0, ge=0)
-    limit: int = Query(20, ge=1, le=200)
-    status: str | None = Query(None)
-    lifecycle: Literal["active", "archived", "disabled", "all"] = Query("active")
-    dataset_id: UUID | None = Query(None)
-    file_type: str | None = Query(None, max_length=20)
-    owner_id: str | None = Query(None, max_length=255)
-    q: str | None = Query(None, max_length=200)
-    source_path_prefix: str | None = Query(None, max_length=500)
-    order_by: Literal["created_at", "filename", "file_size"] = Query("created_at")
-    order_dir: Literal["asc", "desc"] = Query("desc")
+    def __init__(
+        self,
+        skip: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int, Query(ge=1, le=200)] = 20,
+        status: Annotated[str | None, Query()] = None,
+        lifecycle: Annotated[Literal["active", "archived", "disabled", "all"], Query()] = "active",
+        dataset_id: Annotated[UUID | None, Query()] = None,
+        file_type: Annotated[str | None, Query(max_length=20)] = None,
+        owner_id: Annotated[str | None, Query(max_length=255)] = None,
+        q: Annotated[str | None, Query(max_length=200)] = None,
+        source_path_prefix: Annotated[str | None, Query(max_length=500)] = None,
+        order_by: Annotated[Literal["created_at", "filename", "file_size"], Query()] = "created_at",
+        order_dir: Annotated[Literal["asc", "desc"], Query()] = "desc",
+    ) -> None:
+        self.skip = skip
+        self.limit = limit
+        self.status = status
+        self.lifecycle = lifecycle
+        self.dataset_id = dataset_id
+        self.file_type = file_type
+        self.owner_id = owner_id
+        self.q = q
+        self.source_path_prefix = source_path_prefix
+        self.order_by = order_by
+        self.order_dir = order_dir
 
 
 def _source_path_prefix_expr(prefix: str | None):  # noqa: ANN201
