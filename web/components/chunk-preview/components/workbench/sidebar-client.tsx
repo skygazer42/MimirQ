@@ -68,6 +68,20 @@ type FileVisual = {
   shellClassName: string
   iconClassName: string
 }
+type EmptyFileListLabels = {
+  syncing: string
+  emptyDataset: string
+  emptyAll: string
+}
+type PreviewConfigLabels = {
+  noDatasetFile: string
+  noFile: string
+}
+type PreviewActionLabels = {
+  cancel: string
+  ignoreCache: string
+  forceRefresh: string
+}
 
 const SIDEBAR_BASE_TONE: SidebarToneStyle = {
   chip: 'border-border/55 bg-background/78 text-muted-foreground',
@@ -95,6 +109,57 @@ const SIDEBAR_FILE_ICON_STYLE = {
   shellClassName: 'border-border/55 bg-background/72 text-muted-foreground',
   iconClassName: 'text-muted-foreground',
 } satisfies Omit<FileVisual, 'icon'>
+
+function getEmptyFileListLabel({
+  scopeSyncLoading,
+  datasetId,
+  labels,
+}: {
+  scopeSyncLoading: boolean
+  datasetId?: string | null
+  labels: EmptyFileListLabels
+}): string {
+  if (scopeSyncLoading) return labels.syncing
+  if (datasetId) return labels.emptyDataset
+  return labels.emptyAll
+}
+
+function getPreviewConfigFileLabel({
+  currentFileName,
+  currentFileMatchesScope,
+  datasetId,
+  labels,
+}: {
+  currentFileName?: string | null
+  currentFileMatchesScope: boolean
+  datasetId?: string | null
+  labels: PreviewConfigLabels
+}): string {
+  if (currentFileName && currentFileMatchesScope) return currentFileName
+  if (datasetId) return labels.noDatasetFile
+  return labels.noFile
+}
+
+function getPreviewActionLabel({
+  isLoading,
+  cacheHit,
+  labels,
+}: {
+  isLoading: boolean
+  cacheHit: boolean
+  labels: PreviewActionLabels
+}): string {
+  if (isLoading) return labels.cancel
+  if (cacheHit) return labels.ignoreCache
+  return labels.forceRefresh
+}
+
+function getRecommendationTargetLabel(
+  target: string,
+  labels: Record<string, string>
+): string {
+  return labels[target] ?? target
+}
 
 function getFileVisual(file: { displayName?: string; originalFileType?: string } | null | undefined): FileVisual {
   const rawType = String(file?.originalFileType || '').toLowerCase().replace(/^\./, '')
@@ -743,11 +808,15 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
             {sortedFileList.length === 0 ? (
               <div className="rounded-xl border border-dashed border-border/60 bg-muted/20 px-3 py-4 text-center">
                 <div className="text-[11px] font-medium text-foreground/75">
-                  {scopeSyncLoading
-                    ? t('sidebar.datasetScope.syncing')
-                    : datasetId
-                      ? t('sidebar.fileList.emptyDataset')
-                      : t('sidebar.fileList.emptyAll')}
+                  {getEmptyFileListLabel({
+                    scopeSyncLoading,
+                    datasetId,
+                    labels: {
+                      syncing: t('sidebar.datasetScope.syncing'),
+                      emptyDataset: t('sidebar.fileList.emptyDataset'),
+                      emptyAll: t('sidebar.fileList.emptyAll'),
+                    },
+                  })}
                 </div>
                 <div className="mt-1 text-[10px] leading-4 text-muted-foreground/70">
                   {datasetId ? t('sidebar.fileList.emptyDatasetHint') : t('sidebar.fileList.emptyAllHint')}
@@ -1231,11 +1300,15 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
               <div>
                 <div className="text-[11px] font-semibold text-foreground/86">{t('sidebar.previewConfig.title')}</div>
                 <div className="max-w-[210px] truncate text-[10px] text-muted-foreground">
-                  {currentFile && currentFileMatchesScope
-                    ? currentFile.name
-                    : datasetId
-                      ? t('sidebar.previewActions.noDatasetFile')
-                      : t('sidebar.previewActions.noFile')}
+                  {getPreviewConfigFileLabel({
+                    currentFileName: currentFile?.name,
+                    currentFileMatchesScope,
+                    datasetId,
+                    labels: {
+                      noDatasetFile: t('sidebar.previewActions.noDatasetFile'),
+                      noFile: t('sidebar.previewActions.noFile'),
+                    },
+                  })}
                 </div>
               </div>
               {cacheHit ? <SidebarChip tone="sky">Cache</SidebarChip> : <SidebarChip tone="emerald">配置</SidebarChip>}
@@ -1265,11 +1338,15 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                 disabled={!isLoading && !canRunPreview}
                 className="h-9 rounded-xl border-border/60 bg-background/80 text-[10.5px] font-medium text-foreground/78 shadow-none transition-colors hover:bg-muted/55 hover:text-foreground/78"
               >
-                {isLoading
-                  ? t('sidebar.previewActions.cancel')
-                  : cacheHit
-                    ? t('sidebar.previewActions.ignoreCache')
-                    : t('sidebar.previewActions.forceRefresh')}
+                {getPreviewActionLabel({
+                  isLoading,
+                  cacheHit,
+                  labels: {
+                    cancel: t('sidebar.previewActions.cancel'),
+                    ignoreCache: t('sidebar.previewActions.ignoreCache'),
+                    forceRefresh: t('sidebar.previewActions.forceRefresh'),
+                  },
+                })}
               </Button>
             </div>
 
@@ -1894,14 +1971,11 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                           const desc = patchItem.description || ''
                           const target = patchItem.target || 'preview'
                           const patch = patchItem.patch || {}
-                          const targetLabel =
-                            target === 'preview'
-                              ? t('sidebar.recommendations.targets.preview')
-                              : target === 'pipeline'
-                                ? t('sidebar.recommendations.targets.pipeline')
-                                : target === 'perf'
-                                  ? t('sidebar.recommendations.targets.perf')
-                                  : target
+                          const targetLabel = getRecommendationTargetLabel(target, {
+                            preview: t('sidebar.recommendations.targets.preview'),
+                            pipeline: t('sidebar.recommendations.targets.pipeline'),
+                            perf: t('sidebar.recommendations.targets.perf'),
+                          })
                           return (
                             <div key={patchItem.id || title} className="rounded-lg border border-border/60 bg-background p-2">
                               <div className="flex items-center justify-between gap-2">
