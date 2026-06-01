@@ -69,6 +69,77 @@ def _compact_retrieval_errors(metrics: dict[str, Any]) -> list[str]:
     return [str(item)[:200] for item in errors_raw if str(item or "").strip()]
 
 
+def _online_eval_contexts(citations: list) -> list[str]:
+    contexts: list[str] = []
+    for citation in citations or []:
+        if hasattr(citation, "model_dump"):
+            try:
+                citation = citation.model_dump(mode="json")
+            except Exception:
+                continue
+        if not isinstance(citation, dict):
+            continue
+        text = str(citation.get("chunk_content") or citation.get("quote") or citation.get("text") or "").strip()
+        if not text or text in contexts:
+            continue
+        contexts.append(text)
+        if len(contexts) >= 24:
+            break
+    return contexts
+
+
+def _online_eval_retrieval_mode(metrics: dict[str, Any], retrieval_mode_default: str | None) -> str | None:
+    return str(metrics.get("retrieval_mode") or retrieval_mode_default or "") or None
+
+
+def _resolve_singleflight_payload(options: ChatResponseFinalizationInput, metrics_out: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "content": options.full_response,
+        "citations": options.citations,
+        "metrics": metrics_out,
+        "structured_data": options.structured_data,
+    }
+
+
+def _chat_turn_persist_input(options: ChatResponseFinalizationInput, metrics_out: dict[str, Any]) -> ChatTurnPersistInput:
+    return ChatTurnPersistInput(
+        tenant_id=options.tenant_id,
+        conversation_id=options.conversation_id,
+        account_id=options.account_id,
+        assistant_message_id=options.assistant_message_id,
+        request_id=options.request_id,
+        question=options.question,
+        document_count=options.document_count,
+        content=options.full_response,
+        citations=options.citations,
+        metrics=metrics_out,
+        dataset_id_used=options.dataset_id_used,
+        cache_hit=options.cache_hit,
+        ip=options.ip,
+        user_agent=options.user_agent,
+        enable_structured_memory=options.request_enable_structured_memory,
+    )
+
+
+def _maybe_enqueue_online_eval(options: ChatResponseFinalizationInput, metrics_out: dict[str, Any]) -> None:
+    if not options.enable_online_eval:
+        return
+    try:
+        from app.services.online_eval_service import maybe_enqueue_online_eval
+
+        maybe_enqueue_online_eval(
+            tenant_id=options.tenant_id,
+            dataset_id=options.dataset_id_used,
+            request_id=str(options.request_id),
+            answer=str(options.full_response or ""),
+            contexts=_online_eval_contexts(options.citations),
+            retrieval_mode=_online_eval_retrieval_mode(metrics_out, options.retrieval_mode_default),
+            citations_count=int(len(options.citations or [])),
+        )
+    except Exception:
+        pass
+
+
 def _log_extractive_fallback_rag_trace(
     *,
     tenant_id: UUID,
@@ -126,43 +197,7 @@ def finalize_chat_response_sync(
         retrieval_mode_default=options.retrieval_mode_default,
     )
 
-    if options.enable_online_eval:
-        try:
-            from app.services.online_eval_service import maybe_enqueue_online_eval
-
-            contexts: list[str] = []
-            for c in options.citations or []:
-                if hasattr(c, "model_dump"):
-                    try:
-                        c = c.model_dump(mode="json")
-                    except Exception:
-                        continue
-                if not isinstance(c, dict):
-                    continue
-                text = str(
-                    c.get("chunk_content") or c.get("quote") or c.get("text") or ""
-                ).strip()
-                if not text:
-                    continue
-                if text not in contexts:
-                    contexts.append(text)
-                if len(contexts) >= 24:
-                    break
-
-            maybe_enqueue_online_eval(
-                tenant_id=options.tenant_id,
-                dataset_id=options.dataset_id_used,
-                request_id=str(options.request_id),
-                answer=str(options.full_response or ""),
-                contexts=contexts,
-                retrieval_mode=str(
-                    metrics_out.get("retrieval_mode") or options.retrieval_mode_default or ""
-                )
-                or None,
-                citations_count=int(len(options.citations or [])),
-            )
-        except Exception:
-            pass
+    _maybe_enqueue_online_eval(options, metrics_out)
 
     store_chat_response_cache_if_needed(
         cache_eligible=options.cache_eligible,
@@ -177,35 +212,12 @@ def finalize_chat_response_sync(
     if options.singleflight_key and options.singleflight_leader:
         resolve_inflight_chat_response(
             options.singleflight_key,
-            jsonable_encoder(
-                {
-                    "content": options.full_response,
-                    "citations": options.citations,
-                    "metrics": metrics_out,
-                    "structured_data": options.structured_data,
-                }
-            ),
+            jsonable_encoder(_resolve_singleflight_payload(options, metrics_out)),
         )
 
     persist_chat_turn_sync(
         db=options.db,
-        options=ChatTurnPersistInput(
-            tenant_id=options.tenant_id,
-            conversation_id=options.conversation_id,
-            account_id=options.account_id,
-            assistant_message_id=options.assistant_message_id,
-            request_id=options.request_id,
-            question=options.question,
-            document_count=options.document_count,
-            content=options.full_response,
-            citations=options.citations,
-            metrics=metrics_out,
-            dataset_id_used=options.dataset_id_used,
-            cache_hit=options.cache_hit,
-            ip=options.ip,
-            user_agent=options.user_agent,
-            enable_structured_memory=options.request_enable_structured_memory,
-        ),
+        options=_chat_turn_persist_input(options, metrics_out),
     )
 
     return metrics_out
