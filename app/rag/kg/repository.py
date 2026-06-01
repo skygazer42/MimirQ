@@ -9,7 +9,7 @@ import unicodedata
 from collections.abc import Iterable
 from uuid import UUID
 
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
@@ -89,73 +89,6 @@ def _lexical_score(*, query_terms: list[str], name: str, normalized_name: str, t
     return float(score)
 
 
-def _extract_alias_candidates(query: str, *, max_tokens: int = 32, max_ngrams: int = 256) -> list[str]:
-    """
-    Extract normalized alias candidates from a query string (deterministic, conservative).
-
-    Design:
-    - Avoid full substring search over all aliases (too expensive).
-    - Generate a small set of candidate terms/phrases and use an indexed IN lookup on
-      kg_entity_aliases.normalized_alias.
-    """
-    text = unicodedata.normalize("NFKC", str(query or "")).strip()
-    if not text:
-        return []
-
-    tokens = [t for t in _ALIAS_TOKEN_RE.findall(text) if str(t or "").strip()]
-    if not tokens:
-        return []
-    tokens = tokens[: max(1, int(max_tokens or 0))]
-
-    # Candidate surfaces (unigram + short ASCII ngrams).
-    surfaces: list[str] = []
-    seen_s: set[str] = set()
-
-    def _add_surface(s: str) -> None:
-        s = str(s or "").strip()
-        if not s:
-            return
-        if len(s) > 80:
-            return
-        sig = s.casefold() if s.isascii() else s
-        if sig in seen_s:
-            return
-        seen_s.add(sig)
-        surfaces.append(s)
-
-    # Prefer informative multi-token phrases before generic unigrams so scoped
-    # lexical KG recall does not burn its SQL budget on broad terms like "neural".
-    for phrase in extract_informative_query_phrases(text, max_phrases=max_ngrams, include_unigrams=False):
-        _add_surface(phrase)
-
-    # Whole query if short (helps for exact-term queries).
-    if len(text) <= 80:
-        _add_surface(text)
-
-    for tok in tokens:
-        _add_surface(tok)
-
-    # Normalize via the shared KG name normalizer so stored and query forms align.
-    from app.rag.kg.extraction.parser import EntityValueParser  # noqa: WPS433
-
-    parser = EntityValueParser()
-    out: list[str] = []
-    seen_n: set[str] = set()
-    for surf in surfaces:
-        norm = parser.normalize_name(surf)
-        if not norm:
-            continue
-        if len(norm) > 500:
-            continue
-        if norm in seen_n:
-            continue
-        seen_n.add(norm)
-        out.append(norm)
-        if len(out) >= max(1, int(max_ngrams or 0)):
-            break
-    return out
-
-
 def _active_pipeline_hash_expr(doc_model):  # noqa: ANN001
     """
     SQL expression for a document's active pipeline hash.
@@ -205,6 +138,295 @@ def _as_uuid_list(values: Iterable[str | UUID]) -> list[UUID]:
         seen.add(u)
         out.append(u)
     return out
+
+
+def _add_alias_surface(surfaces: list[str], seen: set[str], value: str) -> None:
+    surface = str(value or "").strip()
+    if not surface or len(surface) > 80:
+        return
+    sig = surface.casefold() if surface.isascii() else surface
+    if sig not in seen:
+        seen.add(sig)
+        surfaces.append(surface)
+
+
+def _alias_candidate_surfaces(text: str, tokens: list[str], *, max_ngrams: int) -> list[str]:
+    surfaces: list[str] = []
+    seen: set[str] = set()
+    for phrase in extract_informative_query_phrases(text, max_phrases=max_ngrams, include_unigrams=False):
+        _add_alias_surface(surfaces, seen, phrase)
+    if len(text) <= 80:
+        _add_alias_surface(surfaces, seen, text)
+    for token in tokens:
+        _add_alias_surface(surfaces, seen, token)
+    return surfaces
+
+
+def _normalize_alias_surfaces(surfaces: list[str], *, max_ngrams: int) -> list[str]:
+    from app.rag.kg.extraction.parser import EntityValueParser  # noqa: WPS433
+
+    parser = EntityValueParser()
+    out: list[str] = []
+    seen: set[str] = set()
+    for surface in surfaces:
+        norm = parser.normalize_name(surface)
+        if norm and len(norm) <= 500 and norm not in seen:
+            seen.add(norm)
+            out.append(norm)
+            if len(out) >= max(1, int(max_ngrams or 0)):
+                break
+    return out
+
+
+def _limited_alias_tokens(text: str, *, max_tokens: int) -> list[str]:
+    tokens = [token for token in _ALIAS_TOKEN_RE.findall(text) if str(token or "").strip()]
+    return tokens[: max(1, int(max_tokens or 0))]
+
+
+def _extract_alias_candidates(query: str, *, max_tokens: int = 32, max_ngrams: int = 256) -> list[str]:
+    """
+    Extract normalized alias candidates from a query string (deterministic, conservative).
+
+    Design:
+    - Avoid full substring search over all aliases (too expensive).
+    - Generate a small set of candidate terms/phrases and use an indexed IN lookup on
+      kg_entity_aliases.normalized_alias.
+    """
+    text = unicodedata.normalize("NFKC", str(query or "")).strip()
+    if not text:
+        return []
+
+    tokens = _limited_alias_tokens(text, max_tokens=max_tokens)
+    if not tokens:
+        return []
+    return _normalize_alias_surfaces(
+        _alias_candidate_surfaces(text, tokens, max_ngrams=max_ngrams),
+        max_ngrams=max_ngrams,
+    )
+
+
+def _lexical_terms(query: str) -> list[str]:
+    terms = _extract_alias_candidates(query, max_tokens=24, max_ngrams=96)
+    return [term for term in terms if len(str(term or "").strip()) >= 2][:48]
+
+
+def _entity_lexical_clauses(terms: list[str]):
+    clauses = []
+    for term in terms[:24]:
+        pattern = f"%{_escape_like(term)}%"
+        clauses.extend(
+            [
+                KgEntity.normalized_name == term,
+                KgEntity.normalized_name.ilike(pattern, escape="\\"),
+                KgEntity.name.ilike(pattern, escape="\\"),
+            ]
+        )
+    return clauses
+
+
+def _join_active_document_scope(stmt):
+    from app.models.document import Document as DBDocument  # noqa: WPS433
+
+    return stmt.join(KgEventEntity, KgEventEntity.entity_id == KgEntity.id).join(
+        KgSourceEvent,
+        KgSourceEvent.id == KgEventEntity.event_id,
+    ).join(
+        DBDocument,
+        and_(
+            DBDocument.id == KgSourceEvent.document_id,
+            DBDocument.tenant_id == KgSourceEvent.tenant_id,
+        ),
+    ).where(KgSourceEvent.pipeline_hash == _active_pipeline_hash_expr(DBDocument))
+
+
+def _apply_entity_lexical_scope(
+    stmt,
+    session: Session,
+    *,
+    tenant_id,
+    document_ids: list[UUID] | None,
+    dataset_id: UUID | None,
+    account_id: str | None,
+):
+    if document_ids is None and dataset_id is None:
+        return stmt
+    stmt = _join_active_document_scope(stmt)
+    if document_ids is not None:
+        return stmt.where(KgSourceEvent.document_id.in_(document_ids))
+    if not account_id:
+        raise ValueError(ACCOUNT_ID_REQUIRED_WHEN_DATASET_ID_PROVIDED_ERROR)
+    allowed_docs = _allowed_document_ids_subquery_for_dataset(
+        session,
+        tenant_id=UUID(str(tenant_id)),
+        dataset_id=dataset_id,
+        account_id=account_id,
+    )
+    return stmt.where(KgSourceEvent.document_id.in_(select(allowed_docs.c.id)))
+
+
+def _format_lexical_entity(entity, *, terms: list[str], tenant_id) -> dict | None:  # noqa: ANN001
+    entity_id = str(getattr(entity, "id", "") or "")
+    score = _lexical_score(
+        query_terms=terms,
+        name=str(getattr(entity, "name", "") or ""),
+        normalized_name=str(getattr(entity, "normalized_name", "") or ""),
+    )
+    if not entity_id or score <= 0:
+        return None
+    return {
+        "entity_id": entity_id,
+        "name": str(getattr(entity, "name", "") or ""),
+        "type": str(getattr(entity, "type", "") or "unknown"),
+        "similarity": float(score),
+        "tenant_id": str(tenant_id),
+        "method": "lexical_match",
+    }
+
+
+def _canonical_entity_ids(rows: list) -> list:  # noqa: ANN001
+    return [getattr(row, "canonical_entity_id", None) for row in rows if getattr(row, "canonical_entity_id", None)]
+
+
+def _alias_match_item(row, entity, *, resolved_id, tenant_id: UUID) -> dict:  # noqa: ANN001
+    return {
+        "entity_id": str(resolved_id),
+        "name": str(getattr(entity, "name", "") or ""),
+        "type": str(getattr(entity, "type", "") or "unknown"),
+        "similarity": 1.0,
+        "tenant_id": str(tenant_id),
+        "alias_id": str(getattr(row, "id", "") or ""),
+        "alias": str(getattr(row, "alias", "") or ""),
+        "method": "alias_match",
+    }
+
+
+def _alias_match_results(
+    rows: list,
+    *,
+    resolved_map: dict[UUID, UUID],
+    ent_by_id: dict[UUID, KgEntity],
+    tenant_id: UUID,
+    limit: int,
+) -> list[dict]:
+    out: list[dict] = []
+    seen: set[str] = set()
+    for row in rows:
+        raw_id = getattr(row, "canonical_entity_id", None)
+        resolved_id = resolved_map.get(raw_id, raw_id)
+        entity = ent_by_id.get(resolved_id)
+        sig = str(resolved_id) if resolved_id is not None else ""
+        if entity is not None and sig and sig not in seen:
+            seen.add(sig)
+            out.append(_alias_match_item(row, entity, resolved_id=resolved_id, tenant_id=tenant_id))
+            if len(out) >= limit:
+                break
+    return out
+
+
+def _event_fetch_k(want_k: int, *, scoped: bool) -> int:
+    return min(max(want_k, want_k * 5), 500) if scoped else want_k
+
+
+def _format_event_vector_hit(result: dict) -> dict:
+    meta = result.get("metadata") or {}
+    return {
+        "event_id": meta.get("id") or result.get("id"),
+        "title": meta.get("title") or "",
+        "summary": meta.get("summary") or "",
+        "similarity": result.get("score", 0.0),
+        "tenant_id": meta.get("tenant_id"),
+        "chunk_id": meta.get("chunk_id"),
+        "document_id": meta.get("document_id"),
+    }
+
+
+def _filter_formatted_events(formatted: list[dict], allowed_event_ids: set[UUID], *, limit: int) -> list[dict]:
+    allowed_strs = {str(event_id) for event_id in allowed_event_ids}
+    return [item for item in formatted if str(item.get("event_id")) in allowed_strs][:limit]
+
+
+def _candidate_event_ids(formatted: list[dict]) -> list:
+    return [item.get("event_id") for item in formatted if item.get("event_id")]
+
+
+def _event_lexical_clauses_and_rank(terms: list[str]):
+    clauses = []
+    rank_expr = None
+    for term in terms[:24]:
+        pattern = f"%{_escape_like(term)}%"
+        token_count = max(1, len(str(term).split()))
+        weight = float(min(4, token_count))
+        clauses.extend(
+            [
+                KgSourceEvent.title.ilike(pattern, escape="\\"),
+                KgSourceEvent.summary.ilike(pattern, escape="\\"),
+                KgSourceEvent.content.ilike(pattern, escape="\\"),
+            ]
+        )
+        term_rank = (
+            case((KgSourceEvent.title.ilike(pattern, escape="\\"), weight * 1.0), else_=0.0)
+            + case((KgSourceEvent.summary.ilike(pattern, escape="\\"), weight * 0.8), else_=0.0)
+            + case((KgSourceEvent.content.ilike(pattern, escape="\\"), weight * 0.6), else_=0.0)
+        )
+        rank_expr = term_rank if rank_expr is None else rank_expr + term_rank
+    return clauses, rank_expr
+
+
+def _join_event_active_document_scope(stmt):
+    from app.models.document import Document as DBDocument  # noqa: WPS433
+
+    return stmt.join(
+        DBDocument,
+        and_(
+            DBDocument.id == KgSourceEvent.document_id,
+            DBDocument.tenant_id == KgSourceEvent.tenant_id,
+        ),
+    ).where(KgSourceEvent.pipeline_hash == _active_pipeline_hash_expr(DBDocument))
+
+
+def _apply_event_lexical_scope(
+    stmt,
+    repo,
+    *,
+    tenant_id,
+    document_ids: list[UUID] | None,
+    dataset_id: UUID | None,
+    account_id: str | None,
+):
+    if document_ids is None and dataset_id is None:
+        return stmt
+    stmt = _join_event_active_document_scope(stmt)
+    if document_ids is not None:
+        return stmt.where(KgSourceEvent.document_id.in_(document_ids))
+    if not account_id:
+        raise ValueError(ACCOUNT_ID_REQUIRED_WHEN_DATASET_ID_PROVIDED_ERROR)
+    allowed_docs = repo._allowed_document_ids_subquery_for_dataset(
+        tenant_id=UUID(str(tenant_id)),
+        dataset_id=dataset_id,
+        account_id=account_id,
+    )
+    return stmt.where(KgSourceEvent.document_id.in_(select(allowed_docs.c.id)))
+
+
+def _format_lexical_event(event, *, terms: list[str], tenant_id) -> dict | None:  # noqa: ANN001
+    score = _lexical_score(
+        query_terms=terms,
+        name=str(getattr(event, "title", "") or ""),
+        normalized_name=str(getattr(event, "title", "") or ""),
+        text=f"{getattr(event, 'summary', '') or ''} {getattr(event, 'content', '') or ''}",
+    )
+    if score <= 0:
+        return None
+    return {
+        "event_id": str(getattr(event, "id", "") or ""),
+        "title": str(getattr(event, "title", "") or ""),
+        "summary": str(getattr(event, "summary", "") or ""),
+        "similarity": float(score),
+        "tenant_id": str(tenant_id),
+        "chunk_id": str(getattr(event, "chunk_id", "") or ""),
+        "document_id": str(getattr(event, "document_id", "") or ""),
+        "method": "lexical_match",
+    }
 
 
 class EntityRepository:
@@ -259,55 +481,22 @@ class EntityRepository:
         occur in the user query terms are returned, and dataset/document filters
         are enforced before scoring.
         """
-        terms = _extract_alias_candidates(query, max_tokens=24, max_ngrams=96)
-        terms = [t for t in terms if len(str(t or "").strip()) >= 2][:48]
+        terms = _lexical_terms(query)
         if not terms:
             return []
         if document_ids is not None and not document_ids:
             return []
 
-        from sqlalchemy import and_  # noqa: WPS433
-
-        from app.models.document import Document as DBDocument  # noqa: WPS433
-
         stmt = select(KgEntity).where(KgEntity.tenant_id == tenant_id)
-        clauses = []
-        for term in terms[:24]:
-            pattern = f"%{_escape_like(term)}%"
-            clauses.extend(
-                [
-                    KgEntity.normalized_name == term,
-                    KgEntity.normalized_name.ilike(pattern, escape="\\"),
-                    KgEntity.name.ilike(pattern, escape="\\"),
-                ]
-            )
-        stmt = stmt.where(or_(*clauses))
-
-        if document_ids is not None or dataset_id is not None:
-            stmt = (
-                stmt.join(KgEventEntity, KgEventEntity.entity_id == KgEntity.id)
-                .join(KgSourceEvent, KgSourceEvent.id == KgEventEntity.event_id)
-                .join(
-                    DBDocument,
-                    and_(
-                        DBDocument.id == KgSourceEvent.document_id,
-                        DBDocument.tenant_id == KgSourceEvent.tenant_id,
-                    ),
-                )
-                .where(KgSourceEvent.pipeline_hash == _active_pipeline_hash_expr(DBDocument))
-            )
-            if document_ids is not None:
-                stmt = stmt.where(KgSourceEvent.document_id.in_(document_ids))
-            elif dataset_id is not None:
-                if not account_id:
-                    raise ValueError(ACCOUNT_ID_REQUIRED_WHEN_DATASET_ID_PROVIDED_ERROR)
-                allowed_docs = _allowed_document_ids_subquery_for_dataset(
-                    self.session,
-                    tenant_id=UUID(str(tenant_id)),
-                    dataset_id=dataset_id,
-                    account_id=account_id,
-                )
-                stmt = stmt.where(KgSourceEvent.document_id.in_(select(allowed_docs.c.id)))
+        stmt = stmt.where(or_(*_entity_lexical_clauses(terms)))
+        stmt = _apply_entity_lexical_scope(
+            stmt,
+            self.session,
+            tenant_id=tenant_id,
+            document_ids=document_ids,
+            dataset_id=dataset_id,
+            account_id=account_id,
+        )
 
         rows = self.session.execute(stmt.limit(max(1, int(k)) * 8)).scalars().all()
         scored: list[dict] = []
@@ -317,23 +506,8 @@ class EntityRepository:
             if not ent_id or ent_id in seen_ids:
                 continue
             seen_ids.add(ent_id)
-            score = _lexical_score(
-                query_terms=terms,
-                name=str(getattr(ent, "name", "") or ""),
-                normalized_name=str(getattr(ent, "normalized_name", "") or ""),
-            )
-            if score <= 0:
-                continue
-            scored.append(
-                {
-                    "entity_id": ent_id,
-                    "name": str(getattr(ent, "name", "") or ""),
-                    "type": str(getattr(ent, "type", "") or "unknown"),
-                    "similarity": float(score),
-                    "tenant_id": str(tenant_id),
-                    "method": "lexical_match",
-                }
-            )
+            if formatted := _format_lexical_entity(ent, terms=terms, tenant_id=tenant_id):
+                scored.append(formatted)
         scored.sort(key=lambda item: (-float(item.get("similarity", 0.0) or 0.0), str(item.get("name") or "")))
         return scored[: max(1, int(k))]
 
@@ -460,7 +634,7 @@ class AliasRepository:
         if not rows:
             return []
 
-        raw_entity_ids = [getattr(r, "canonical_entity_id", None) for r in rows if getattr(r, "canonical_entity_id", None)]
+        raw_entity_ids = _canonical_entity_ids(rows)
         resolved_map = self._resolve_redirects(raw_entity_ids, tenant_id=tenant_id)
 
         resolved_ids = _as_uuid_list([resolved_map.get(eid, eid) for eid in raw_entity_ids if eid is not None])
@@ -475,40 +649,7 @@ class AliasRepository:
         )
         ent_by_id = {e.id: e for e in ents if getattr(e, "id", None) is not None}
 
-        # Dedupe by resolved entity id (stable).
-        out: list[dict] = []
-        seen: set[str] = set()
-        for r in rows:
-            raw_id = getattr(r, "canonical_entity_id", None)
-            if raw_id is None:
-                continue
-            resolved_id = resolved_map.get(raw_id, raw_id)
-            ent = ent_by_id.get(resolved_id)
-            if ent is None:
-                continue
-
-            sig = str(resolved_id)
-            if sig in seen:
-                continue
-            seen.add(sig)
-
-            out.append(
-                {
-                    "entity_id": str(resolved_id),
-                    "name": str(getattr(ent, "name", "") or ""),
-                    "type": str(getattr(ent, "type", "") or "unknown"),
-                    # Treat exact alias matches as high-confidence "similarity".
-                    "similarity": 1.0,
-                    "tenant_id": str(tenant_id),
-                    "alias_id": str(getattr(r, "id", "") or ""),
-                    "alias": str(getattr(r, "alias", "") or ""),
-                    "method": "alias_match",
-                }
-            )
-            if len(out) >= lim:
-                break
-
-        return out
+        return _alias_match_results(rows, resolved_map=resolved_map, ent_by_id=ent_by_id, tenant_id=tenant_id, limit=lim)
 
 
 class EventRepository:
@@ -741,37 +882,20 @@ class EventRepository:
         # Best-effort: over-fetch when we will post-filter by ACL/pipeline so we can still
         # return close to k results after trimming.
         want_k = max(1, int(k))
-        fetch_k = want_k
-        if document_ids is not None or dataset_id is not None:
-            fetch_k = min(max(want_k, want_k * 5), 500)
+        fetch_k = _event_fetch_k(want_k, scoped=document_ids is not None or dataset_id is not None)
 
         results = self._milvus.search(query_vector=query_vector, top_k=fetch_k, expr=expr)
-        formatted = []
-        for r in results:
-            meta = r.get("metadata") or {}
-            formatted.append(
-                {
-                    "event_id": meta.get("id") or r.get("id"),
-                    "title": meta.get("title") or "",
-                    "summary": meta.get("summary") or "",
-                    "similarity": r.get("score", 0.0),
-                    "tenant_id": meta.get("tenant_id"),
-                    "chunk_id": meta.get("chunk_id"),
-                    "document_id": meta.get("document_id"),
-                }
-            )
+        formatted = [_format_event_vector_hit(result) for result in results]
 
         # Document-scoped search: post-filter to active pipeline to prevent stale KG drift.
         if document_ids is not None:
             try:
-                candidate_event_ids = [item.get("event_id") for item in formatted if item.get("event_id")]
                 allowed_event_ids = self.filter_event_ids_in_documents(
-                    candidate_event_ids,
+                    _candidate_event_ids(formatted),
                     tenant_id=UUID(str(tenant_id)),
                     document_ids=document_ids,
                 )
-                allowed_strs = {str(eid) for eid in allowed_event_ids}
-                return [item for item in formatted if str(item.get("event_id")) in allowed_strs][:want_k]
+                return _filter_formatted_events(formatted, allowed_event_ids, limit=want_k)
             except Exception:
                 return formatted[:want_k]
 
@@ -782,15 +906,13 @@ class EventRepository:
         if not account_id:
             raise ValueError(ACCOUNT_ID_REQUIRED_WHEN_DATASET_ID_PROVIDED_ERROR)
         try:
-            candidate_event_ids = [item.get("event_id") for item in formatted if item.get("event_id")]
             allowed_event_ids = self.filter_event_ids_in_dataset(
-                candidate_event_ids,
+                _candidate_event_ids(formatted),
                 tenant_id=UUID(str(tenant_id)),
                 dataset_id=dataset_id,
                 account_id=account_id,
             )
-            allowed_strs = {str(eid) for eid in allowed_event_ids}
-            return [item for item in formatted if str(item.get("event_id")) in allowed_strs][:want_k]
+            return _filter_formatted_events(formatted, allowed_event_ids, limit=want_k)
         except Exception:
             # Best-effort: if filtering fails, fall back to raw vector hits (caller can still filter later).
             return formatted[:want_k]
@@ -806,58 +928,23 @@ class EventRepository:
         account_id: str | None = None,
     ) -> list[dict]:
         """DB-backed event fallback when query/event vectors are unavailable."""
-        terms = _extract_alias_candidates(query, max_tokens=24, max_ngrams=96)
-        terms = [t for t in terms if len(str(t or "").strip()) >= 2][:48]
+        terms = _lexical_terms(query)
         if not terms:
             return []
         if document_ids is not None and not document_ids:
             return []
 
-        from sqlalchemy import and_  # noqa: WPS433
-
-        from app.models.document import Document as DBDocument  # noqa: WPS433
-
         stmt = select(KgSourceEvent).where(KgSourceEvent.tenant_id == tenant_id)
-        clauses = []
-        rank_expr = None
-        for term in terms[:24]:
-            pattern = f"%{_escape_like(term)}%"
-            token_count = max(1, len(str(term).split()))
-            weight = float(min(4, token_count))
-            clauses.extend(
-                [
-                    KgSourceEvent.title.ilike(pattern, escape="\\"),
-                    KgSourceEvent.summary.ilike(pattern, escape="\\"),
-                    KgSourceEvent.content.ilike(pattern, escape="\\"),
-                ]
-            )
-            term_rank = (
-                case((KgSourceEvent.title.ilike(pattern, escape="\\"), weight * 1.0), else_=0.0)
-                + case((KgSourceEvent.summary.ilike(pattern, escape="\\"), weight * 0.8), else_=0.0)
-                + case((KgSourceEvent.content.ilike(pattern, escape="\\"), weight * 0.6), else_=0.0)
-            )
-            rank_expr = term_rank if rank_expr is None else rank_expr + term_rank
+        clauses, rank_expr = _event_lexical_clauses_and_rank(terms)
         stmt = stmt.where(or_(*clauses))
-
-        if document_ids is not None or dataset_id is not None:
-            stmt = stmt.join(
-                DBDocument,
-                and_(
-                    DBDocument.id == KgSourceEvent.document_id,
-                    DBDocument.tenant_id == KgSourceEvent.tenant_id,
-                ),
-            ).where(KgSourceEvent.pipeline_hash == _active_pipeline_hash_expr(DBDocument))
-            if document_ids is not None:
-                stmt = stmt.where(KgSourceEvent.document_id.in_(document_ids))
-            elif dataset_id is not None:
-                if not account_id:
-                    raise ValueError(ACCOUNT_ID_REQUIRED_WHEN_DATASET_ID_PROVIDED_ERROR)
-                allowed_docs = self._allowed_document_ids_subquery_for_dataset(
-                    tenant_id=UUID(str(tenant_id)),
-                    dataset_id=dataset_id,
-                    account_id=account_id,
-                )
-                stmt = stmt.where(KgSourceEvent.document_id.in_(select(allowed_docs.c.id)))
+        stmt = _apply_event_lexical_scope(
+            stmt,
+            self,
+            tenant_id=tenant_id,
+            document_ids=document_ids,
+            dataset_id=dataset_id,
+            account_id=account_id,
+        )
 
         rows = (
             self.session.execute(
@@ -872,26 +959,8 @@ class EventRepository:
         )
         scored: list[dict] = []
         for ev in rows:
-            score = _lexical_score(
-                query_terms=terms,
-                name=str(getattr(ev, "title", "") or ""),
-                normalized_name=str(getattr(ev, "title", "") or ""),
-                text=f"{getattr(ev, 'summary', '') or ''} {getattr(ev, 'content', '') or ''}",
-            )
-            if score <= 0:
-                continue
-            scored.append(
-                {
-                    "event_id": str(getattr(ev, "id", "") or ""),
-                    "title": str(getattr(ev, "title", "") or ""),
-                    "summary": str(getattr(ev, "summary", "") or ""),
-                    "similarity": float(score),
-                    "tenant_id": str(tenant_id),
-                    "chunk_id": str(getattr(ev, "chunk_id", "") or ""),
-                    "document_id": str(getattr(ev, "document_id", "") or ""),
-                    "method": "lexical_match",
-                }
-            )
+            if formatted := _format_lexical_event(ev, terms=terms, tenant_id=tenant_id):
+                scored.append(formatted)
         scored.sort(key=lambda item: (-float(item.get("similarity", 0.0) or 0.0), str(item.get("event_id") or "")))
         return scored[: max(1, int(k))]
 
