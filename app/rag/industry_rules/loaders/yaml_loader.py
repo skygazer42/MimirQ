@@ -6,6 +6,7 @@ from typing import Any, Iterable
 import yaml
 
 from app.rag.industry_rules.schema import IndustryRuleset
+
 _GLOSSARY_FILENAME = "glossary.yaml"
 
 

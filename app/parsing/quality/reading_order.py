@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.parsing.artifact_stats import POSITION_TAG_RE
+
 _READING_ORDER_SCHEMA = "mimirq.reading_order_score.v1"
 
 

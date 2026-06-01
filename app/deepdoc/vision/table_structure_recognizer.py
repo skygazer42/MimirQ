@@ -23,6 +23,7 @@ from huggingface_hub import snapshot_download
 
 from ..src.model import rag_tokenizer
 from .recognizer import Recognizer
+
 _TABLE_COLUMN_LABEL = "table column"
 
 

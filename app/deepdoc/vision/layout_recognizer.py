@@ -25,6 +25,7 @@ from huggingface_hub import snapshot_download
 
 from .operators import nms
 from .recognizer import Recognizer
+
 _FIGURE_CAPTION_LABEL = "Figure caption"
 _TABLE_CAPTION_LABEL = "Table caption"
 
