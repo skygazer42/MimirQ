@@ -19,7 +19,6 @@ from typing import Any
 from urllib.parse import urlparse
 
 import aiofiles
-import aiofiles.tempfile
 import httpx
 from langchain_core.documents import Document
 
@@ -773,11 +772,9 @@ class MinerUService:
     ) -> list[Document]:
         images_meta: list[dict] = []
         if dataset_id and document_id and settings.MINIO_ENABLED:
-            tmp_zip_path: Path | None = None
-            try:
-                with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_zip:
-                    tmp_zip.write(zip_bytes)
-                    tmp_zip_path = Path(tmp_zip.name)
+            with tempfile.TemporaryDirectory(prefix="mineru_zip_") as tmp_dir:
+                tmp_zip_path = Path(tmp_dir) / "result.zip"
+                tmp_zip_path.write_bytes(zip_bytes)
 
                 result = zip_image_processor.process_zip_with_images(
                     zip_path=tmp_zip_path,
@@ -788,12 +785,6 @@ class MinerUService:
                 markdown_content = extract_markdown_response_text(result)
                 images_meta = result.get("images") or []
                 position_tagged_markdown = extract_position_tagged_markdown_from_zip_path(tmp_zip_path)
-            finally:
-                if tmp_zip_path and tmp_zip_path.exists():
-                    try:
-                        tmp_zip_path.unlink()
-                    except Exception as exc:
-                        logger.debug(MINERU_FALLBACK_LOG_MESSAGE, exc)
         else:
             markdown_content = self._extract_markdown_from_zip_bytes(zip_bytes)
             if tenant_id:
@@ -865,11 +856,9 @@ class MinerUService:
 
         images_meta: list[dict] = []
         if dataset_id and document_id and settings.MINIO_ENABLED:
-            tmp_zip_path: Path | None = None
-            try:
-                async with aiofiles.tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_zip:
-                    await tmp_zip.write(zip_bytes)
-                    tmp_zip_path = Path(tmp_zip.name)
+            with tempfile.TemporaryDirectory(prefix="mineru_zip_") as tmp_dir:
+                tmp_zip_path = Path(tmp_dir) / "result.zip"
+                await asyncio.to_thread(tmp_zip_path.write_bytes, zip_bytes)
 
                 result = await asyncio.to_thread(
                     zip_image_processor.process_zip_with_images,
@@ -880,12 +869,6 @@ class MinerUService:
                 )
                 markdown_content = extract_markdown_response_text(result)
                 images_meta = result.get("images") or []
-            finally:
-                if tmp_zip_path and tmp_zip_path.exists():
-                    try:
-                        tmp_zip_path.unlink()
-                    except Exception as exc:
-                        logger.debug(MINERU_FALLBACK_LOG_MESSAGE, exc)
         else:
             markdown_content = self._extract_markdown_from_zip_bytes(zip_bytes)
             if tenant_id:

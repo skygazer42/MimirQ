@@ -102,18 +102,12 @@ class RapidOCRService:
         text = ""
         try:
             # Save to temp file (RapidOCR requires a file path).
-            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-                tmp_path = Path(tmp.name)
+            with tempfile.TemporaryDirectory(prefix="rapidocr_") as tmp_dir:
+                tmp_path = Path(tmp_dir) / "sample.png"
                 image.save(tmp_path)
-
-            try:
                 result, _ = self._ocr(str(tmp_path))
                 if result:
                     text = "\n".join([line[1] for line in result])
-            finally:
-                # Clean up temp file.
-                if tmp_path.exists():
-                    tmp_path.unlink()
 
         except Exception as e:
             logger.warning("RapidOCR image OCR failed: %s", e)
