@@ -98,6 +98,22 @@ if TYPE_CHECKING:
 class ParserFactory:
     """Select appropriate parser based on file type"""
 
+    PDF_ADVANCED_FALLBACK_BACKENDS = {
+        "docling",
+        "deepdoc",
+        "marker",
+        "paddle_vl",
+        "glm_ocr",
+        "olmocr",
+        "qianfan_ocr",
+        "textin",
+        "mineru",
+        "magicpdf",
+        "deepseek_ocr",
+        "etl4llm",
+    }
+    DOCX_ADVANCED_FALLBACK_BACKENDS = {"docling", "deepdoc", "textin"}
+
     SUPPORTED_PDF_BACKENDS = {
         "auto",
         "basic",
@@ -169,7 +185,87 @@ class ParserFactory:
     # but some advanced backends (e.g. DeepDoc/Docling) can also handle DOCX when enabled.
     SUPPORTED_NON_PDF_BACKENDS = {"auto", "markitdown", "pandoc", "excel", "docx", "pptx", "html", "csv", "json", "deepdoc", "docling", "email", "image", "audio", "video", "textin", "colpali"}
 
+    PDF_SETTING_REQUIREMENTS = {
+        "marker": (
+            "MARKER_ENABLED",
+            "Marker parser is not enabled. Please set MARKER_ENABLED=True and configure MARKER_API_URL.",
+            (("MARKER_API_URL", "Marker parser requires MARKER_API_URL."),),
+        ),
+        "paddle_vl": (
+            "PADDLE_VL_ENABLED",
+            "PaddleOCR-VL parser is not enabled. Please set PADDLE_VL_ENABLED=True and configure PADDLE_VL_API_URL.",
+            (("PADDLE_VL_API_URL", "PaddleOCR-VL parser requires PADDLE_VL_API_URL."),),
+        ),
+        "glm_ocr": (
+            "GLM_OCR_ENABLED",
+            "GLM-OCR parser is not enabled. Please set GLM_OCR_ENABLED=True and configure GLM_OCR_API_URL.",
+            (("GLM_OCR_API_URL", "GLM-OCR parser requires GLM_OCR_API_URL."),),
+        ),
+        "olmocr": (
+            "OLMOCR_ENABLED",
+            "olmOCR parser is not enabled. Please set OLMOCR_ENABLED=True and configure OLMOCR_API_URL.",
+            (("OLMOCR_API_URL", "olmOCR parser requires OLMOCR_API_URL."),),
+        ),
+        "qianfan_ocr": (
+            "QIANFAN_OCR_ENABLED",
+            "Qianfan-OCR parser is not enabled. Please set QIANFAN_OCR_ENABLED=True and configure QIANFAN_OCR_API_URL.",
+            (("QIANFAN_OCR_API_URL", "Qianfan-OCR parser requires QIANFAN_OCR_API_URL."),),
+        ),
+        "textin": (
+            "TEXTIN_ENABLED",
+            "TextIn parser is not enabled. Please set TEXTIN_ENABLED=True and configure TEXTIN credentials.",
+            (
+                ("TEXTIN_APP_ID", "TextIn parser requires TEXTIN_APP_ID."),
+                ("TEXTIN_SECRET_CODE", "TextIn parser requires TEXTIN_SECRET_CODE."),
+            ),
+        ),
+        "deepseek_ocr": (
+            "DEEPSEEK_OCR_ENABLED",
+            "DeepSeek OCR parser is not enabled. Please set DEEPSEEK_OCR_ENABLED=True and configure SILICONFLOW_API_KEY.",
+            (("SILICONFLOW_API_KEY", "DeepSeek OCR parser requires SILICONFLOW_API_KEY."),),
+        ),
+        "etl4llm": (
+            "ETL4LLM_ENABLED",
+            "ETL4LLM parser is not enabled. Please set ETL4LLM_ENABLED=True and configure ETL4LLM_API_URL.",
+            (("ETL4LLM_API_URL", "ETL4LLM parser requires ETL4LLM_API_URL."),),
+        ),
+    }
+
+    NON_PDF_BACKEND_EXTENSION_RULES = {
+        "excel": ({".xls", XLSX_EXTENSION}, "excel backend supports only .xls/.xlsx"),
+        "docx": ({DOCX_EXTENSION}, "docx backend supports only .docx"),
+        "pptx": ({PPTX_EXTENSION}, "pptx backend supports only .pptx"),
+        "html": ({HTML_EXTENSION, ".htm"}, "html backend supports only .html/.htm"),
+        "csv": ({".csv"}, "csv backend supports only .csv"),
+        "json": ({JSON_EXTENSION}, "json backend supports only .json"),
+        "email": ({EML_EXTENSION, MSG_EXTENSION}, "email backend supports only .eml/.msg"),
+        "image": (IMAGE_EXTENSIONS, f"image backend supports only: {sorted(IMAGE_EXTENSIONS)}"),
+        "docling": ({DOCX_EXTENSION}, "docling backend currently supports only .docx (non-PDF)"),
+        "deepdoc": ({DOCX_EXTENSION}, "deepdoc backend currently supports only .docx (non-PDF)"),
+    }
+
+    PDF_PARSER_SPECS = {
+        "marker": ("_marker_parser", "app.parsing.parsers.marker_parser", "MarkerParser", "[pdf] Initializing Marker parser (external service)"),
+        "paddle_vl": ("_paddle_vl_parser", "app.parsing.parsers.paddle_vl_parser", "PaddleVLParser", "[pdf] Initializing PaddleOCR-VL parser (external service)"),
+        "glm_ocr": ("_glm_ocr_parser", "app.parsing.parsers.glm_ocr_parser", "GlmOCRParser", "[pdf] Initializing GLM-OCR parser (external service)"),
+        "olmocr": ("_olmocr_parser", "app.parsing.parsers.olmocr_parser", "OlmocrParser", "[pdf] Initializing olmOCR parser (external service)"),
+        "qianfan_ocr": ("_qianfan_ocr_parser", "app.parsing.parsers.qianfan_ocr_parser", "QianfanOCRParser", "[pdf] Initializing Qianfan-OCR parser (external service)"),
+        "textin": ("_textin_parser", "app.parsing.parsers.textin_parser", "TextInParser", "[pdf] Initializing TextIn xParse parser (external API)"),
+        "mineru": ("_mineru_parser", "app.parsing.parsers.mineru_parser", "MinerUParser", "[pdf] Initializing MinerU parser (advanced)"),
+        "deepdoc": ("_deepdoc_parser", "app.parsing.parsers.deepdoc_parser", "DeepDocParser", "[pdf] Initializing DeepDoc parser (structure-aware)"),
+        "deepseek_ocr": ("_deepseek_ocr_parser", "app.parsing.parsers.deepseek_ocr_parser", "DeepSeekOCRParser", "[pdf] Initializing DeepSeek OCR parser (SiliconFlow)"),
+        "etl4llm": ("_etl4llm_parser", "app.parsing.parsers.etl4llm_parser", "Etl4LlmParser", "[pdf] Initializing ETL4LLM parser (layout-aware)"),
+        "markitdown": ("_markitdown_parser", "app.parsing.parsers.markitdown_parser", "MarkItDownParser", "[pdf] Initializing MarkItDown parser (markdown-focused)"),
+        "docling": ("_docling_parser", "app.parsing.parsers.docling_parser", "DoclingParser", "[pdf] Initializing Docling parser (structure-aware)"),
+        "magicpdf": ("_magicpdf_parser", "app.parsing.parsers.magic_pdf_parser", "MagicPDFParser", "[pdf] Initializing MagicPDF parser (local advanced)"),
+    }
+
     def __init__(self):
+        self._initialize_parser_cache()
+        self._log_available_parsers()
+        self.parsers = self._build_default_parsers()
+
+    def _initialize_parser_cache(self) -> None:
         self._basic_pdf_parser: PDFParser | None = None
         self._marker_parser: MarkerParser | None = None
         self._paddle_vl_parser: PaddleVLParser | None = None
@@ -191,38 +287,39 @@ class ParserFactory:
         self._audio_parser: AudioParser | None = None
         self._video_parser: VideoParser | None = None
 
+    @staticmethod
+    def _settings_enabled(flag_name: str, *value_names: str) -> bool:
+        if not bool(getattr(settings, flag_name, False)):
+            return False
+        return all(bool((getattr(settings, value_name, "") or "").strip()) for value_name in value_names)
+
+    @staticmethod
+    def _mineru_configured() -> bool:
+        return bool(settings.MINERU_ENABLED and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL))
+
+    def _log_available_parsers(self) -> None:
         logger.debug("[pdf] Basic PyMuPDF parser available (lazy)")
-        if bool(getattr(settings, "MARKER_ENABLED", False)) and bool((getattr(settings, "MARKER_API_URL", "") or "").strip()):
-            logger.debug("[pdf] Marker parser available (requires selection)")
-        if bool(getattr(settings, "PADDLE_VL_ENABLED", False)) and bool((getattr(settings, "PADDLE_VL_API_URL", "") or "").strip()):
-            logger.debug("[pdf] PaddleOCR-VL parser available (requires selection)")
-        if bool(getattr(settings, "GLM_OCR_ENABLED", False)) and bool((getattr(settings, "GLM_OCR_API_URL", "") or "").strip()):
-            logger.debug("[pdf] GLM-OCR parser available (requires selection)")
+        availability_logs = (
+            (self._settings_enabled("MARKER_ENABLED", "MARKER_API_URL"), "[pdf] Marker parser available (requires selection)"),
+            (self._settings_enabled("PADDLE_VL_ENABLED", "PADDLE_VL_API_URL"), "[pdf] PaddleOCR-VL parser available (requires selection)"),
+            (self._settings_enabled("GLM_OCR_ENABLED", "GLM_OCR_API_URL"), "[pdf] GLM-OCR parser available (requires selection)"),
+            (self._settings_enabled("OLMOCR_ENABLED", "OLMOCR_API_URL"), "[pdf] olmOCR parser available (requires selection)"),
+            (self._settings_enabled("QIANFAN_OCR_ENABLED", "QIANFAN_OCR_API_URL"), "[pdf] Qianfan-OCR parser available (requires selection)"),
+            (self._settings_enabled("TEXTIN_ENABLED", "TEXTIN_APP_ID", "TEXTIN_SECRET_CODE"), "[pdf] TextIn parser available (requires selection)"),
+            (self._mineru_configured(), "[pdf] MinerU parser available (requires selection)"),
+            (bool(settings.DEEPDOC_ENABLED), "[pdf] DeepDoc parser available (requires selection)"),
+            (self._settings_enabled("DEEPSEEK_OCR_ENABLED", "SILICONFLOW_API_KEY"), "[pdf] DeepSeek OCR parser available (requires selection)"),
+            (self._settings_enabled("ETL4LLM_ENABLED", "ETL4LLM_API_URL"), "[pdf] ETL4LLM parser available (requires selection)"),
+            (bool(settings.MARKITDOWN_ENABLED), "[pdf] MarkItDown parser available (requires selection)"),
+            (bool(getattr(settings, "DOCLING_ENABLED", False)), "[pdf] Docling parser available (requires selection)"),
+            (bool(getattr(settings, "MAGIC_PDF_ENABLED", False)), "[pdf] MagicPDF parser available (requires selection)"),
+        )
+        for available, message in availability_logs:
+            if available:
+                logger.debug(message)
 
-        if bool(getattr(settings, "OLMOCR_ENABLED", False)) and bool((getattr(settings, "OLMOCR_API_URL", "") or "").strip()):
-            logger.debug("[pdf] olmOCR parser available (requires selection)")
-        if bool(getattr(settings, "QIANFAN_OCR_ENABLED", False)) and bool((getattr(settings, "QIANFAN_OCR_API_URL", "") or "").strip()):
-            logger.debug("[pdf] Qianfan-OCR parser available (requires selection)")
-        if bool(getattr(settings, "TEXTIN_ENABLED", False)) and bool((getattr(settings, "TEXTIN_APP_ID", "") or "").strip()) and bool((getattr(settings, "TEXTIN_SECRET_CODE", "") or "").strip()):
-            logger.debug("[pdf] TextIn parser available (requires selection)")
-        if settings.MINERU_ENABLED and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL):
-            logger.debug("[pdf] MinerU parser available (requires selection)")
-        if settings.DEEPDOC_ENABLED:
-            logger.debug("[pdf] DeepDoc parser available (requires selection)")
-        if bool(getattr(settings, "DEEPSEEK_OCR_ENABLED", False)) and bool(getattr(settings, "SILICONFLOW_API_KEY", "")):
-            logger.debug("[pdf] DeepSeek OCR parser available (requires selection)")
-        if bool(getattr(settings, "ETL4LLM_ENABLED", False)) and bool(
-            (getattr(settings, "ETL4LLM_API_URL", "") or "").strip()
-        ):
-            logger.debug("[pdf] ETL4LLM parser available (requires selection)")
-        if settings.MARKITDOWN_ENABLED:
-            logger.debug("[pdf] MarkItDown parser available (requires selection)")
-        if getattr(settings, "DOCLING_ENABLED", False):
-            logger.debug("[pdf] Docling parser available (requires selection)")
-        if getattr(settings, "MAGIC_PDF_ENABLED", False):
-            logger.debug("[pdf] MagicPDF parser available (requires selection)")
-
-        self.parsers = {
+    def _build_default_parsers(self) -> dict[str, Any]:
+        parsers = {
             ".txt": TextParser(),
             ".md": MarkdownParser(),
             ".doc": None,  # lazy init MarkItDown
@@ -239,7 +336,8 @@ class ParserFactory:
             MSG_EXTENSION: None,
         }
         for ext in sorted(self.PLAIN_TEXT_EXTENSIONS):
-            self.parsers.setdefault(ext, TextParser())
+            parsers.setdefault(ext, TextParser())
+        return parsers
 
     @staticmethod
     def _magicpdf_runtime_ready() -> bool:
@@ -269,241 +367,163 @@ class ParserFactory:
         file_ext = file_ext.lower()
 
         if file_ext != ".pdf":
-            if file_ext in self.PLAIN_TEXT_EXTENSIONS:
-                return "text"
-            if file_ext == ".md":
-                return "markdown"
-            if file_ext in {EML_EXTENSION, MSG_EXTENSION}:
-                # Keep email parsing deterministic and resilient to unrelated backend hints
-                # (e.g. when UI stores a global PDF backend preference).
-                return "email"
-            if file_ext in IMAGE_EXTENSIONS:
-                # Standalone images: treat as a first-class supported ingest type.
-                # Ignore unrelated backend hints and always route to the lightweight image adapter.
-                if normalized == "textin":
-                    return "textin"
-                return "image"
-            if file_ext in AUDIO_EXTENSIONS:
-                return "audio"
-            if file_ext in VIDEO_EXTENSIONS:
-                return "video"
-            if normalized == "colpali":
-                return "colpali"
-            if file_ext not in self.SUPPORTED_NON_PDF_EXTENSIONS:
-                raise ValueError(f"Unsupported file type: {file_ext}")
+            return self._resolve_non_pdf_backend(file_ext=file_ext, backend=normalized)
+        return self._resolve_pdf_backend(normalized)
 
-            # If a PDF-only backend is selected (common when frontend stores a global preference),
-            # fall back to non-PDF auto routing instead of failing hard.
-            if normalized not in {"", "auto"} and normalized not in self.SUPPORTED_NON_PDF_BACKENDS:
-                if normalized in self.SUPPORTED_PDF_BACKENDS:
-                    normalized = "auto"
+    def _resolve_non_pdf_backend(self, *, file_ext: str, backend: str) -> str:
+        direct_backend = self._direct_non_pdf_backend(file_ext=file_ext, backend=backend)
+        if direct_backend:
+            return direct_backend
+        if file_ext not in self.SUPPORTED_NON_PDF_EXTENSIONS:
+            raise ValueError(f"Unsupported file type: {file_ext}")
 
-            if normalized in {"", "auto"}:
-                # Office/HTML defaults:
-                # - Prefer Pandoc for better image/table fidelity when enabled.
-                # - Prefer the built-in Excel Markdown renderer for .xlsx/.xls.
-                if file_ext in {EPUB_EXTENSION, RTF_EXTENSION, ODT_EXTENSION}:
-                    if bool(getattr(settings, "PANDOC_ENABLED", False)):
-                        return "pandoc"
-                    return "markitdown"
-                if file_ext in {XLSX_EXTENSION, ".xls"}:
-                    return "excel"
-                if file_ext in {".doc", ".ppt"}:
-                    # Pandoc needs LibreOffice for legacy formats.
-                    if bool(getattr(settings, "PANDOC_ENABLED", False)) and bool(getattr(settings, "LIBREOFFICE_ENABLED", False)):
-                        return "pandoc"
-                    return "markitdown"
-                if file_ext in {DOCX_EXTENSION, PPTX_EXTENSION, HTML_EXTENSION, ".htm"}:
-                    if bool(getattr(settings, "PANDOC_ENABLED", False)):
-                        return "pandoc"
-                    return "markitdown"
-                # csv/json: keep MarkItDown as the general converter.
-                return "markitdown"
+        backend = self._normalize_non_pdf_backend(backend)
+        if backend in {"", "auto"}:
+            return self._resolve_auto_non_pdf_backend(file_ext)
 
-            if normalized not in self.SUPPORTED_NON_PDF_BACKENDS:
-                raise ValueError(
-                    f"Unsupported parser backend '{normalized}' for {file_ext}. "
-                    f"Supported: {sorted(self.SUPPORTED_NON_PDF_BACKENDS)}"
-                )
+        self._validate_non_pdf_backend(backend=backend, file_ext=file_ext)
+        return backend
 
-            # Backend compatibility checks (best-effort).
-            if normalized == "excel" and file_ext not in {".xls", XLSX_EXTENSION}:
-                raise ValueError("excel backend supports only .xls/.xlsx")
-            if normalized == "docx" and file_ext not in {DOCX_EXTENSION}:
-                raise ValueError("docx backend supports only .docx")
-            if normalized == "pptx" and file_ext not in {PPTX_EXTENSION}:
-                raise ValueError("pptx backend supports only .pptx")
-            if normalized == "html" and file_ext not in {HTML_EXTENSION, ".htm"}:
-                raise ValueError("html backend supports only .html/.htm")
-            if normalized == "csv" and file_ext != ".csv":
-                raise ValueError("csv backend supports only .csv")
-            if normalized == "json" and file_ext != JSON_EXTENSION:
-                raise ValueError("json backend supports only .json")
-            if normalized == "email" and file_ext not in {EML_EXTENSION, MSG_EXTENSION}:
-                raise ValueError("email backend supports only .eml/.msg")
-            if normalized == "image" and file_ext not in IMAGE_EXTENSIONS:
-                raise ValueError(f"image backend supports only: {sorted(IMAGE_EXTENSIONS)}")
-            if normalized == "docling":
-                if file_ext not in {DOCX_EXTENSION}:
-                    raise ValueError("docling backend currently supports only .docx (non-PDF)")
-                if not getattr(settings, "DOCLING_ENABLED", False):
-                    raise ValueError(
-                        "Docling parser is not enabled. "
-                        "Please set DOCLING_ENABLED=True."
-                    )
-            if normalized == "deepdoc" and file_ext not in {DOCX_EXTENSION}:
-                raise ValueError("deepdoc backend currently supports only .docx (non-PDF)")
-            return normalized
+    def _direct_non_pdf_backend(self, *, file_ext: str, backend: str) -> str | None:
+        if file_ext in self.PLAIN_TEXT_EXTENSIONS:
+            return "text"
+        if file_ext == ".md":
+            return "markdown"
+        if file_ext in {EML_EXTENSION, MSG_EXTENSION}:
+            return "email"
+        if file_ext in IMAGE_EXTENSIONS:
+            return "textin" if backend == "textin" else "image"
+        if file_ext in AUDIO_EXTENSIONS:
+            return "audio"
+        if file_ext in VIDEO_EXTENSIONS:
+            return "video"
+        if backend == "colpali":
+            return "colpali"
+        return None
 
-        if normalized not in self.SUPPORTED_PDF_BACKENDS:
+    def _normalize_non_pdf_backend(self, backend: str) -> str:
+        if backend in {"", "auto"} or backend in self.SUPPORTED_NON_PDF_BACKENDS:
+            return backend
+        if backend in self.SUPPORTED_PDF_BACKENDS:
+            return "auto"
+        return backend
+
+    def _resolve_auto_non_pdf_backend(self, file_ext: str) -> str:
+        if file_ext in {EPUB_EXTENSION, RTF_EXTENSION, ODT_EXTENSION}:
+            return "pandoc" if bool(getattr(settings, "PANDOC_ENABLED", False)) else "markitdown"
+        if file_ext in {XLSX_EXTENSION, ".xls"}:
+            return "excel"
+        if file_ext in {".doc", ".ppt"}:
+            pandoc_with_libreoffice = bool(getattr(settings, "PANDOC_ENABLED", False)) and bool(
+                getattr(settings, "LIBREOFFICE_ENABLED", False)
+            )
+            return "pandoc" if pandoc_with_libreoffice else "markitdown"
+        if file_ext in {DOCX_EXTENSION, PPTX_EXTENSION, HTML_EXTENSION, ".htm"}:
+            return "pandoc" if bool(getattr(settings, "PANDOC_ENABLED", False)) else "markitdown"
+        return "markitdown"
+
+    def _validate_non_pdf_backend(self, *, backend: str, file_ext: str) -> None:
+        if backend not in self.SUPPORTED_NON_PDF_BACKENDS:
             raise ValueError(
-                f"Unsupported parser backend '{normalized}'. "
-                f"Supported backends: {sorted(self.SUPPORTED_PDF_BACKENDS)}"
+                f"Unsupported parser backend '{backend}' for {file_ext}. "
+                f"Supported: {sorted(self.SUPPORTED_NON_PDF_BACKENDS)}"
+            )
+        self._validate_non_pdf_extension_rule(backend=backend, file_ext=file_ext)
+        if backend == "docling" and not getattr(settings, "DOCLING_ENABLED", False):
+            raise ValueError(
+                "Docling parser is not enabled. "
+                "Please set DOCLING_ENABLED=True."
             )
 
-        if normalized == "auto":
-            if getattr(settings, "DOCLING_ENABLED", False):
-                return "docling"
-            if bool(getattr(settings, "ETL4LLM_ENABLED", False)) and bool(
-                (getattr(settings, "ETL4LLM_API_URL", "") or "").strip()
-            ):
-                return "etl4llm"
-            if settings.DEEPDOC_ENABLED:
-                return "deepdoc"
-            if settings.MARKITDOWN_ENABLED:
-                return "markitdown"
-            if settings.MINERU_ENABLED and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL):
-                return "mineru"
-            if self._magicpdf_runtime_ready():
-                return "magicpdf"
-            return "basic"
+    def _validate_non_pdf_extension_rule(self, *, backend: str, file_ext: str) -> None:
+        rule = self.NON_PDF_BACKEND_EXTENSION_RULES.get(backend)
+        if not rule:
+            return
+        supported_extensions, message = rule
+        if file_ext not in supported_extensions:
+            raise ValueError(message)
 
-        if normalized == "basic":
-            return "basic"
+    def _resolve_pdf_backend(self, backend: str) -> str:
+        if backend not in self.SUPPORTED_PDF_BACKENDS:
+            raise ValueError(
+                f"Unsupported parser backend '{backend}'. "
+                f"Supported backends: {sorted(self.SUPPORTED_PDF_BACKENDS)}"
+            )
+        if backend == "auto":
+            return self._resolve_auto_pdf_backend()
+        self._validate_pdf_backend(backend)
+        return backend
 
-        if normalized == "marker":
-            if not bool(getattr(settings, "MARKER_ENABLED", False)):
-                raise ValueError(
-                    "Marker parser is not enabled. "
-                    "Please set MARKER_ENABLED=True and configure MARKER_API_URL."
-                )
-            if not bool((getattr(settings, "MARKER_API_URL", "") or "").strip()):
-                raise ValueError("Marker parser requires MARKER_API_URL.")
-            return "marker"
-
-        if normalized == "paddle_vl":
-            if not bool(getattr(settings, "PADDLE_VL_ENABLED", False)):
-                raise ValueError(
-                    "PaddleOCR-VL parser is not enabled. "
-                    "Please set PADDLE_VL_ENABLED=True and configure PADDLE_VL_API_URL."
-                )
-            if not bool((getattr(settings, "PADDLE_VL_API_URL", "") or "").strip()):
-                raise ValueError("PaddleOCR-VL parser requires PADDLE_VL_API_URL.")
-            return "paddle_vl"
-
-        if normalized == "glm_ocr":
-            if not bool(getattr(settings, "GLM_OCR_ENABLED", False)):
-                raise ValueError(
-                    "GLM-OCR parser is not enabled. "
-                    "Please set GLM_OCR_ENABLED=True and configure GLM_OCR_API_URL."
-                )
-            if not bool((getattr(settings, "GLM_OCR_API_URL", "") or "").strip()):
-                raise ValueError("GLM-OCR parser requires GLM_OCR_API_URL.")
-            return "glm_ocr"
-
-        if normalized == "olmocr":
-            if not bool(getattr(settings, "OLMOCR_ENABLED", False)):
-                raise ValueError(
-                    "olmOCR parser is not enabled. "
-                    "Please set OLMOCR_ENABLED=True and configure OLMOCR_API_URL."
-                )
-            if not bool((getattr(settings, "OLMOCR_API_URL", "") or "").strip()):
-                raise ValueError("olmOCR parser requires OLMOCR_API_URL.")
-            return "olmocr"
-
-        if normalized == "qianfan_ocr":
-            if not bool(getattr(settings, "QIANFAN_OCR_ENABLED", False)):
-                raise ValueError(
-                    "Qianfan-OCR parser is not enabled. "
-                    "Please set QIANFAN_OCR_ENABLED=True and configure QIANFAN_OCR_API_URL."
-                )
-            if not bool((getattr(settings, "QIANFAN_OCR_API_URL", "") or "").strip()):
-                raise ValueError("Qianfan-OCR parser requires QIANFAN_OCR_API_URL.")
-            return "qianfan_ocr"
-
-        if normalized == "textin":
-            if not bool(getattr(settings, "TEXTIN_ENABLED", False)):
-                raise ValueError(
-                    "TextIn parser is not enabled. "
-                    "Please set TEXTIN_ENABLED=True and configure TEXTIN credentials."
-                )
-            if not bool((getattr(settings, "TEXTIN_APP_ID", "") or "").strip()):
-                raise ValueError("TextIn parser requires TEXTIN_APP_ID.")
-            if not bool((getattr(settings, "TEXTIN_SECRET_CODE", "") or "").strip()):
-                raise ValueError("TextIn parser requires TEXTIN_SECRET_CODE.")
-            return "textin"
-
-        if normalized == "mineru":
-            if not (settings.MINERU_ENABLED and (settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL)):
-                raise ValueError(
-                    "MinerU parser is not enabled. "
-                    "Please set MINERU_ENABLED=True and configure MINERU_API_TOKEN (online) "
-                    "or MINERU_LOCAL_SERVER_URL (local ZIP mode)."
-                )
-            return "mineru"
-
-        if normalized == "deepdoc":
-            return "deepdoc"
-
-        if normalized == "deepseek_ocr":
-            if not bool(getattr(settings, "DEEPSEEK_OCR_ENABLED", False)):
-                raise ValueError(
-                    "DeepSeek OCR parser is not enabled. "
-                    "Please set DEEPSEEK_OCR_ENABLED=True and configure SILICONFLOW_API_KEY."
-                )
-            if not bool((getattr(settings, "SILICONFLOW_API_KEY", "") or "").strip()):
-                raise ValueError("DeepSeek OCR parser requires SILICONFLOW_API_KEY.")
-            return "deepseek_ocr"
-
-        if normalized == "etl4llm":
-            if not bool(getattr(settings, "ETL4LLM_ENABLED", False)):
-                raise ValueError(
-                    "ETL4LLM parser is not enabled. "
-                    "Please set ETL4LLM_ENABLED=True and configure ETL4LLM_API_URL."
-                )
-            if not bool((getattr(settings, "ETL4LLM_API_URL", "") or "").strip()):
-                raise ValueError("ETL4LLM parser requires ETL4LLM_API_URL.")
-            return "etl4llm"
-
-        if normalized == "markitdown":
-            return "markitdown"
-
-        if normalized == "docling":
-            if not getattr(settings, "DOCLING_ENABLED", False):
-                raise ValueError(
-                    "Docling parser is not enabled. "
-                    "Please set DOCLING_ENABLED=True."
-                )
+    def _resolve_auto_pdf_backend(self) -> str:
+        if getattr(settings, "DOCLING_ENABLED", False):
             return "docling"
-
-        if normalized == "magicpdf":
-            if not getattr(settings, "MAGIC_PDF_ENABLED", False):
-                raise ValueError(
-                    "MagicPDF parser is not enabled. "
-                    "Please set MAGIC_PDF_ENABLED=True."
-                )
-            if not self._magicpdf_runtime_ready():
-                raise ValueError(
-                    "MagicPDF parser is not available. "
-                    "Configure MAGIC_PDF_API_URL for the service mode, or install the magic-pdf CLI "
-                    "and mount PDF-Extract-Kit models (or set MAGIC_PDF_MODELS_DIR)."
-                )
+        if self._settings_enabled("ETL4LLM_ENABLED", "ETL4LLM_API_URL"):
+            return "etl4llm"
+        if settings.DEEPDOC_ENABLED:
+            return "deepdoc"
+        if settings.MARKITDOWN_ENABLED:
+            return "markitdown"
+        if self._mineru_configured():
+            return "mineru"
+        if self._magicpdf_runtime_ready():
             return "magicpdf"
+        return "basic"
 
-        if normalized == "colpali":
-            return "colpali"
+    def _validate_pdf_backend(self, backend: str) -> None:
+        if backend in {"basic", "deepdoc", "markitdown", "colpali"}:
+            return
+        if backend in self.PDF_SETTING_REQUIREMENTS:
+            self._validate_pdf_setting_requirements(backend)
+            return
+        if backend == "mineru":
+            self._validate_mineru_backend()
+            return
+        if backend == "docling":
+            self._validate_docling_backend()
+            return
+        if backend == "magicpdf":
+            self._validate_magicpdf_backend()
+            return
+        raise ValueError(f"Unsupported parser backend '{backend}'")
 
-        raise ValueError(f"Unsupported parser backend '{normalized}'")
+    def _validate_pdf_setting_requirements(self, backend: str) -> None:
+        flag_name, disabled_message, required_values = self.PDF_SETTING_REQUIREMENTS[backend]
+        if not bool(getattr(settings, flag_name, False)):
+            raise ValueError(disabled_message)
+        for value_name, missing_message in required_values:
+            if not bool((getattr(settings, value_name, "") or "").strip()):
+                raise ValueError(missing_message)
+
+    def _validate_mineru_backend(self) -> None:
+        if self._mineru_configured():
+            return
+        raise ValueError(
+            "MinerU parser is not enabled. "
+            "Please set MINERU_ENABLED=True and configure MINERU_API_TOKEN (online) "
+            "or MINERU_LOCAL_SERVER_URL (local ZIP mode)."
+        )
+
+    @staticmethod
+    def _validate_docling_backend() -> None:
+        if getattr(settings, "DOCLING_ENABLED", False):
+            return
+        raise ValueError(
+            "Docling parser is not enabled. "
+            "Please set DOCLING_ENABLED=True."
+        )
+
+    def _validate_magicpdf_backend(self) -> None:
+        if not getattr(settings, "MAGIC_PDF_ENABLED", False):
+            raise ValueError(
+                "MagicPDF parser is not enabled. "
+                "Please set MAGIC_PDF_ENABLED=True."
+            )
+        if not self._magicpdf_runtime_ready():
+            raise ValueError(
+                "MagicPDF parser is not available. "
+                "Configure MAGIC_PDF_API_URL for the service mode, or install the magic-pdf CLI "
+                "and mount PDF-Extract-Kit models (or set MAGIC_PDF_MODELS_DIR)."
+            )
 
     def _resolve_non_pdf_parser(self, *, backend: str, file_ext: str) -> Any:
         if backend in {"deepdoc", "docling", "textin"}:
@@ -549,6 +569,17 @@ class ParserFactory:
             return JsonParser()
         raise ValueError(f"Unsupported parser backend '{backend}' for {file_ext}")
 
+    def _select_parser(self, *, file_ext: str, backend: str) -> Any:
+        if file_ext == ".pdf":
+            return self._get_pdf_parser(backend)
+        if file_ext in self.PLAIN_TEXT_EXTENSIONS:
+            return self.parsers[file_ext]
+        if file_ext == ".md":
+            return self.parsers[".md"]
+        if file_ext in self.SUPPORTED_NON_PDF_EXTENSIONS:
+            return self._resolve_non_pdf_parser(backend=backend, file_ext=file_ext)
+        raise ValueError(f"Unsupported file type: {file_ext}")
+
     def _parse_with_selected_backend(
         self,
         *,
@@ -585,6 +616,86 @@ class ParserFactory:
             return parser.parse(file_path, html_xpath=html_xpath)  # type: ignore[call-arg]
         return parser.parse(file_path)
 
+    def _parse_backend_documents(
+        self,
+        *,
+        file_path: Path,
+        file_ext: str,
+        backend: str,
+        dataset_id: str | None,
+        document_id: str | None,
+        tenant_id: str | None,
+        pdf_quality: dict[str, Any] | None,
+        html_xpath: str | None,
+    ) -> list[Document]:
+        parser = self._select_parser(file_ext=file_ext, backend=backend)
+        return self._parse_with_selected_backend(
+            parser=parser,
+            backend=backend,
+            file_path=file_path,
+            dataset_id=dataset_id,
+            document_id=document_id,
+            tenant_id=tenant_id,
+            pdf_quality=pdf_quality,
+            html_xpath=html_xpath,
+        )
+
+    @staticmethod
+    def _apply_document_metadata(documents: list[Document], *, backend: str, filename: str, file_ext: str) -> None:
+        for doc in documents:
+            meta = dict(doc.metadata or {})
+            meta["parser_backend"] = backend
+            meta["source"] = filename
+            meta.setdefault("filename", filename)
+            meta.setdefault("file_type", file_ext.lstrip("."))
+            doc.metadata = meta
+
+    @staticmethod
+    def _successful_attempt(*, backend: str, started_at: float, documents: list[Document], selected: bool = True) -> dict[str, Any]:
+        return {
+            "backend": backend,
+            "ok": True,
+            "elapsed_ms": int(round((time.perf_counter() - started_at) * 1000)),
+            "documents": int(len(documents or [])),
+            "selected": selected,
+        }
+
+    @staticmethod
+    def _failed_attempt(*, backend: str, started_at: float, error: Exception) -> dict[str, Any]:
+        return {
+            "backend": backend,
+            "ok": False,
+            "elapsed_ms": int(round((time.perf_counter() - started_at) * 1000)),
+            "error_type": error.__class__.__name__,
+            "error_message": str(error)[:200],
+            "selected": False,
+        }
+
+    def _fallback_with_attempt(
+        self,
+        *,
+        file_path: Path,
+        file_ext: str,
+        backend: str,
+        error: Exception,
+        html_xpath: str | None,
+        attempts: list[dict[str, Any]],
+    ) -> tuple[list[Document], str] | None:
+        fb_t0 = time.perf_counter()
+        fallback_docs, fallback_backend = self._fallback_parse(
+            file_path=file_path,
+            file_ext=file_ext,
+            requested_backend=backend,
+            error=error,
+            html_xpath=html_xpath,
+        )
+        if fallback_docs is None:
+            return None
+        attempt = self._successful_attempt(backend=fallback_backend, started_at=fb_t0, documents=fallback_docs)
+        attempt["fallback_from"] = attempts[0].get("backend") if attempts else backend
+        attempts.append(attempt)
+        return fallback_docs, fallback_backend
+
     def parse(
         self,
         file_path: Path,
@@ -603,23 +714,10 @@ class ParserFactory:
         backend = self.resolve_backend(file_ext, parser_backend)
 
         try:
-            if file_ext == ".pdf":
-                parser = self._get_pdf_parser(backend)
-            elif file_ext in self.PLAIN_TEXT_EXTENSIONS:
-                # Text-like formats (rst/yaml/toml/sql/log/conf/patch/diff/srt/vtt/xml/jsonl/ndjson/etc.).
-                # Keep this lightweight and deterministic (no Pandoc/MarkItDown needed).
-                parser = self.parsers[file_ext]
-            elif file_ext == ".md":
-                parser = self.parsers[".md"]
-            elif file_ext in self.SUPPORTED_NON_PDF_EXTENSIONS:
-                parser = self._resolve_non_pdf_parser(backend=backend, file_ext=file_ext)
-            else:
-                raise ValueError(f"Unsupported file type: {file_ext}")
-
-            documents = self._parse_with_selected_backend(
-                parser=parser,
-                backend=backend,
+            documents = self._parse_backend_documents(
                 file_path=file_path,
+                file_ext=file_ext,
+                backend=backend,
                 dataset_id=dataset_id,
                 document_id=document_id,
                 tenant_id=tenant_id,
@@ -641,15 +739,7 @@ class ParserFactory:
             documents = fallback_docs
             backend = fallback_backend
 
-        for doc in documents:
-            meta = dict(doc.metadata or {})
-            # Normalize common metadata keys so downstream indexing/retrieval is consistent.
-            meta["parser_backend"] = backend
-            # Security + UX: avoid leaking server filesystem paths; keep filename only.
-            meta["source"] = str(file_path.name)
-            meta.setdefault("filename", file_path.name)
-            meta.setdefault("file_type", file_ext.lstrip("."))
-            doc.metadata = meta
+        self._apply_document_metadata(documents, backend=backend, filename=str(file_path.name), file_ext=file_ext)
         return documents, backend
 
     def parse_with_provenance(
@@ -677,127 +767,34 @@ class ParserFactory:
         attempts: list[dict[str, Any]] = []
         total_t0 = time.perf_counter()
 
-        def _select_and_parse(selected_backend: str) -> list[Document]:
-            if file_ext == ".pdf":
-                parser = self._get_pdf_parser(selected_backend)
-            elif file_ext in self.PLAIN_TEXT_EXTENSIONS:
-                parser = self.parsers[file_ext]
-            elif file_ext == ".md":
-                parser = self.parsers[".md"]
-            elif file_ext in self.SUPPORTED_NON_PDF_EXTENSIONS:
-                if selected_backend in {"deepdoc", "docling", "textin"}:
-                    parser = self._get_pdf_parser(selected_backend)
-                elif selected_backend == "markitdown":
-                    parser = self._get_markitdown_parser()
-                elif selected_backend == "pandoc":
-                    parser = self._get_pandoc_parser()
-                elif selected_backend == "email":
-                    parser = self._get_email_parser()
-                elif selected_backend == "image":
-                    parser = self._get_image_parser()
-                elif selected_backend == "colpali":
-                    parser = self._get_colpali_parser()
-                elif selected_backend == "audio":
-                    parser = self._get_audio_parser()
-                elif selected_backend == "video":
-                    parser = self._get_video_parser()
-                elif selected_backend == "excel":
-                    from app.parsing.parsers.excel_parser import ExcelParser
-
-                    parser = ExcelParser()
-                elif selected_backend == "docx":
-                    from app.parsing.parsers.docx_parser import DocxParser
-
-                    parser = DocxParser()
-                elif selected_backend == "pptx":
-                    from app.parsing.parsers.pptx_parser import PptxParser
-
-                    parser = PptxParser()
-                elif selected_backend == "html":
-                    from app.parsing.parsers.html_parser import HtmlParser
-
-                    parser = HtmlParser()
-                elif selected_backend == "csv":
-                    from app.parsing.parsers.csv_parser import CsvParser
-
-                    parser = CsvParser()
-                elif selected_backend == "json":
-                    from app.parsing.parsers.json_parser import JsonParser
-
-                    parser = JsonParser()
-                else:
-                    raise ValueError(f"Unsupported parser backend '{selected_backend}' for {file_ext}")
-            else:
-                raise ValueError(f"Unsupported file type: {file_ext}")
-
-            if selected_backend in {"marker", "paddle_vl", "glm_ocr", "olmocr", "qianfan_ocr", "textin", "mineru", "magicpdf", "deepseek_ocr", "etl4llm", "pandoc"}:
-                return parser.parse(
-                    file_path,
-                    dataset_id=dataset_id,
-                    document_id=document_id,
-                    tenant_id=tenant_id,
-                    pdf_quality=pdf_quality,
-                )
-            if selected_backend == "html":
-                return parser.parse(file_path, html_xpath=html_xpath)  # type: ignore[call-arg]
-            return parser.parse(file_path)
-
         primary_t0 = time.perf_counter()
         try:
-            documents = _select_and_parse(backend)
-            attempts.append(
-                {
-                    "backend": backend,
-                    "ok": True,
-                    "elapsed_ms": int(round((time.perf_counter() - primary_t0) * 1000)),
-                    "documents": int(len(documents or [])),
-                    "selected": True,
-                }
-            )
-        except Exception as exc:
-            attempts.append(
-                {
-                    "backend": backend,
-                    "ok": False,
-                    "elapsed_ms": int(round((time.perf_counter() - primary_t0) * 1000)),
-                    "error_type": exc.__class__.__name__,
-                    "error_message": str(exc)[:200],
-                    "selected": False,
-                }
-            )
-
-            fb_t0 = time.perf_counter()
-            fallback_docs, fallback_backend = self._fallback_parse(
+            documents = self._parse_backend_documents(
                 file_path=file_path,
                 file_ext=file_ext,
-                requested_backend=backend,
-                error=exc,
+                backend=backend,
+                dataset_id=dataset_id,
+                document_id=document_id,
+                tenant_id=tenant_id,
+                pdf_quality=pdf_quality,
                 html_xpath=html_xpath,
             )
-            fb_elapsed_ms = int(round((time.perf_counter() - fb_t0) * 1000))
-            if fallback_docs is None:
-                raise
-
-            documents = fallback_docs
-            backend = fallback_backend
-            attempts.append(
-                {
-                    "backend": backend,
-                    "ok": True,
-                    "elapsed_ms": int(fb_elapsed_ms),
-                    "documents": int(len(documents or [])),
-                    "fallback_from": attempts[0].get("backend"),
-                    "selected": True,
-                }
+            attempts.append(self._successful_attempt(backend=backend, started_at=primary_t0, documents=documents))
+        except Exception as exc:
+            attempts.append(self._failed_attempt(backend=backend, started_at=primary_t0, error=exc))
+            fallback = self._fallback_with_attempt(
+                file_path=file_path,
+                file_ext=file_ext,
+                backend=backend,
+                error=exc,
+                html_xpath=html_xpath,
+                attempts=attempts,
             )
+            if fallback is None:
+                raise
+            documents, backend = fallback
 
-        for doc in documents:
-            meta = dict(doc.metadata or {})
-            meta["parser_backend"] = backend
-            meta["source"] = str(file_path.name)
-            meta.setdefault("filename", file_path.name)
-            meta.setdefault("file_type", file_ext.lstrip("."))
-            doc.metadata = meta
+        self._apply_document_metadata(documents, backend=backend, filename=str(file_path.name), file_ext=file_ext)
 
         provenance: dict[str, Any] = {
             "version": "2",
@@ -827,265 +824,281 @@ class ParserFactory:
         backend = (requested_backend or "").strip().lower()
         file_ext = (file_ext or "").strip().lower()
 
-        # PDF advanced backends (may fail to import due to binary deps or external services); fall back to basic PyMuPDF.
-        if file_ext == ".pdf" and backend in {"docling", "deepdoc", "marker", "paddle_vl", "glm_ocr", "olmocr", "qianfan_ocr", "textin", "mineru", "magicpdf", "deepseek_ocr", "etl4llm"}:
-            logger.warning(
-                "[parse] PDF backend '%s' failed for %s: %s; falling back to 'basic'",
-                backend,
-                str(file_path.name),
-                str(error)[:200],
-            )
-            try:
-                return self._get_pdf_parser("basic").parse(file_path), "basic"
-            except Exception as fallback_exc:
-                logger.warning(
-                    "[parse] PDF basic fallback also failed for %s: %s",
-                    str(file_path.name),
-                    str(fallback_exc)[:200],
-                )
-                return None, backend
-
-        # DOCX advanced backends (optional); fall back to Pandoc/MarkItDown/DocxParser.
-        if file_ext == DOCX_EXTENSION and backend in {"docling", "deepdoc", "textin"}:
-            logger.warning(
-                "[parse] DOCX backend '%s' failed for %s: %s; falling back to office converters",
-                backend,
-                str(file_path.name),
-                str(error)[:200],
-            )
-            try:
-                if bool(getattr(settings, "PANDOC_ENABLED", False)):
-                    return self._get_pandoc_parser().parse(file_path), "pandoc"
-            except Exception as fallback_exc:
-                logger.warning(
-                    "[parse] Pandoc fallback also failed for %s: %s",
-                    str(file_path.name),
-                    str(fallback_exc)[:200],
-                )
-
-            try:
-                return self._get_markitdown_parser().parse(file_path), "markitdown"
-            except Exception as fallback_exc:
-                logger.warning(
-                    "[parse] MarkItDown fallback also failed for %s: %s",
-                    str(file_path.name),
-                    str(fallback_exc)[:200],
-                )
-                try:
-                    from app.parsing.parsers.docx_parser import DocxParser
-
-                    return DocxParser().parse(file_path), "docx"
-                except Exception:
-                    return None, backend
-
-        # MarkItDown is a great general converter, but some inputs may fail.
+        if file_ext == ".pdf" and backend in self.PDF_ADVANCED_FALLBACK_BACKENDS:
+            return self._fallback_pdf_parse(file_path=file_path, backend=backend, error=error)
+        if file_ext == DOCX_EXTENSION and backend in self.DOCX_ADVANCED_FALLBACK_BACKENDS:
+            return self._fallback_docx_parse(file_path=file_path, backend=backend, error=error)
         if backend == "markitdown":
-            logger.warning(
-                "[parse] MarkItDown failed for %s (%s): %s",
-                str(file_path.name),
-                file_ext,
-                str(error)[:200],
+            return self._fallback_markitdown_parse(
+                file_path=file_path,
+                file_ext=file_ext,
+                backend=backend,
+                error=error,
+                html_xpath=html_xpath,
             )
-            try:
-                if file_ext == DOCX_EXTENSION:
-                    from app.parsing.parsers.docx_parser import DocxParser
-
-                    return DocxParser().parse(file_path), "docx"
-                if file_ext == PPTX_EXTENSION:
-                    if bool(getattr(settings, "PANDOC_ENABLED", False)):
-                        return self._get_pandoc_parser().parse(file_path), "pandoc"
-                    from app.parsing.parsers.pptx_parser import PptxParser
-
-                    return PptxParser().parse(file_path), "pptx"
-                if file_ext in {XLSX_EXTENSION, ".xls"}:
-                    from app.parsing.parsers.excel_parser import ExcelParser
-
-                    return ExcelParser().parse(file_path), "excel"
-                if file_ext == HTML_EXTENSION:
-                    from app.parsing.parsers.html_parser import HtmlParser
-
-                    return HtmlParser().parse(file_path, html_xpath=html_xpath), "html"
-                if file_ext == ".htm":
-                    from app.parsing.parsers.html_parser import HtmlParser
-
-                    return HtmlParser().parse(file_path, html_xpath=html_xpath), "html"
-                if file_ext == ".csv":
-                    from app.parsing.parsers.csv_parser import CsvParser
-
-                    return CsvParser().parse(file_path), "csv"
-                if file_ext == JSON_EXTENSION:
-                    from app.parsing.parsers.json_parser import JsonParser
-
-                    return JsonParser().parse(file_path), "json"
-                if file_ext in {EPUB_EXTENSION, RTF_EXTENSION, ODT_EXTENSION}:
-                    if bool(getattr(settings, "PANDOC_ENABLED", False)):
-                        return self._get_pandoc_parser().parse(file_path), "pandoc"
-                if file_ext == ".pdf":
-                    # Last-resort fallback: basic text extraction via PyMuPDF.
-                    return self._get_pdf_parser("basic").parse(file_path), "basic"
-            except Exception as fallback_exc:
-                logger.warning(
-                    "[parse] Fallback parser also failed for %s: %s",
-                    str(file_path.name),
-                    str(fallback_exc)[:200],
-                )
-                return None, backend
-
-        # Excel parser may fail for legacy .xls when optional engines are missing; fall back to MarkItDown.
         if backend == "excel":
-            logger.warning(
-                "[parse] Excel parser failed for %s (%s): %s",
-                str(file_path.name),
-                file_ext,
-                str(error)[:200],
+            return self._fallback_to_markitdown(
+                file_path=file_path,
+                file_ext=file_ext,
+                backend=backend,
+                error=error,
+                failed_backend_label="Excel parser",
             )
-            try:
-                return self._get_markitdown_parser().parse(file_path), "markitdown"
-            except Exception as fallback_exc:
-                logger.warning(
-                    "[parse] MarkItDown fallback also failed for %s: %s",
-                    str(file_path.name),
-                    str(fallback_exc)[:200],
-                )
-                return None, backend
-
-        # Pandoc may fail when the CLI isn't installed; fall back to MarkItDown or lightweight parsers.
         if backend == "pandoc":
-            logger.warning(
-                "[parse] Pandoc failed for %s (%s): %s",
-                str(file_path.name),
-                file_ext,
-                str(error)[:200],
-            )
-            try:
-                return self._get_markitdown_parser().parse(file_path), "markitdown"
-            except Exception:
-                # Reuse MarkItDown fallback logic by pretending MarkItDown failed.
-                return self._fallback_parse(file_path=file_path, file_ext=file_ext, requested_backend="markitdown", error=error)
+            return self._fallback_pandoc_parse(file_path=file_path, file_ext=file_ext, backend=backend, error=error)
 
         return None, backend
 
+    def _fallback_pdf_parse(
+        self,
+        *,
+        file_path: Path,
+        backend: str,
+        error: Exception,
+    ) -> tuple[list[Document] | None, str]:
+        logger.warning(
+            "[parse] PDF backend '%s' failed for %s: %s; falling back to 'basic'",
+            backend,
+            str(file_path.name),
+            str(error)[:200],
+        )
+        try:
+            return self._get_pdf_parser("basic").parse(file_path), "basic"
+        except Exception as fallback_exc:
+            logger.warning(
+                "[parse] PDF basic fallback also failed for %s: %s",
+                str(file_path.name),
+                str(fallback_exc)[:200],
+            )
+            return None, backend
+
+    def _fallback_docx_parse(
+        self,
+        *,
+        file_path: Path,
+        backend: str,
+        error: Exception,
+    ) -> tuple[list[Document] | None, str]:
+        logger.warning(
+            "[parse] DOCX backend '%s' failed for %s: %s; falling back to office converters",
+            backend,
+            str(file_path.name),
+            str(error)[:200],
+        )
+        pandoc_result = self._try_docx_pandoc_fallback(file_path)
+        if pandoc_result is not None:
+            return pandoc_result
+
+        try:
+            return self._get_markitdown_parser().parse(file_path), "markitdown"
+        except Exception as fallback_exc:
+            logger.warning(
+                "[parse] MarkItDown fallback also failed for %s: %s",
+                str(file_path.name),
+                str(fallback_exc)[:200],
+            )
+            return self._try_docx_lightweight_fallback(file_path, backend)
+
+    def _try_docx_pandoc_fallback(self, file_path: Path) -> tuple[list[Document], str] | None:
+        if not bool(getattr(settings, "PANDOC_ENABLED", False)):
+            return None
+        try:
+            return self._get_pandoc_parser().parse(file_path), "pandoc"
+        except Exception as fallback_exc:
+            logger.warning(
+                "[parse] Pandoc fallback also failed for %s: %s",
+                str(file_path.name),
+                str(fallback_exc)[:200],
+            )
+            return None
+
+    @staticmethod
+    def _try_docx_lightweight_fallback(file_path: Path, backend: str) -> tuple[list[Document] | None, str]:
+        try:
+            from app.parsing.parsers.docx_parser import DocxParser
+
+            return DocxParser().parse(file_path), "docx"
+        except Exception:
+            return None, backend
+
+    def _fallback_markitdown_parse(
+        self,
+        *,
+        file_path: Path,
+        file_ext: str,
+        backend: str,
+        error: Exception,
+        html_xpath: str | None,
+    ) -> tuple[list[Document] | None, str]:
+        logger.warning(
+            "[parse] MarkItDown failed for %s (%s): %s",
+            str(file_path.name),
+            file_ext,
+            str(error)[:200],
+        )
+        try:
+            return self._markitdown_fallback_result(file_path=file_path, file_ext=file_ext, html_xpath=html_xpath)
+        except Exception as fallback_exc:
+            logger.warning(
+                "[parse] Fallback parser also failed for %s: %s",
+                str(file_path.name),
+                str(fallback_exc)[:200],
+            )
+            return None, backend
+
+    def _markitdown_fallback_result(
+        self,
+        *,
+        file_path: Path,
+        file_ext: str,
+        html_xpath: str | None,
+    ) -> tuple[list[Document] | None, str]:
+        if file_ext == DOCX_EXTENSION:
+            return self._parse_docx_file(file_path), "docx"
+        if file_ext == PPTX_EXTENSION:
+            return self._parse_pptx_markitdown_fallback(file_path)
+        if file_ext in {XLSX_EXTENSION, ".xls"}:
+            return self._parse_excel_file(file_path), "excel"
+        if file_ext in {HTML_EXTENSION, ".htm"}:
+            return self._parse_html_file(file_path, html_xpath=html_xpath), "html"
+        if file_ext == ".csv":
+            return self._parse_csv_file(file_path), "csv"
+        if file_ext == JSON_EXTENSION:
+            return self._parse_json_file(file_path), "json"
+        if file_ext in {EPUB_EXTENSION, RTF_EXTENSION, ODT_EXTENSION}:
+            return self._parse_extended_office_fallback(file_path)
+        if file_ext == ".pdf":
+            return self._get_pdf_parser("basic").parse(file_path), "basic"
+        return None, "markitdown"
+
+    def _parse_pptx_markitdown_fallback(self, file_path: Path) -> tuple[list[Document], str]:
+        if bool(getattr(settings, "PANDOC_ENABLED", False)):
+            return self._get_pandoc_parser().parse(file_path), "pandoc"
+        return self._parse_pptx_file(file_path), "pptx"
+
+    def _parse_extended_office_fallback(self, file_path: Path) -> tuple[list[Document] | None, str]:
+        if bool(getattr(settings, "PANDOC_ENABLED", False)):
+            return self._get_pandoc_parser().parse(file_path), "pandoc"
+        return None, "markitdown"
+
+    @staticmethod
+    def _parse_docx_file(file_path: Path) -> list[Document]:
+        from app.parsing.parsers.docx_parser import DocxParser
+
+        return DocxParser().parse(file_path)
+
+    @staticmethod
+    def _parse_pptx_file(file_path: Path) -> list[Document]:
+        from app.parsing.parsers.pptx_parser import PptxParser
+
+        return PptxParser().parse(file_path)
+
+    @staticmethod
+    def _parse_excel_file(file_path: Path) -> list[Document]:
+        from app.parsing.parsers.excel_parser import ExcelParser
+
+        return ExcelParser().parse(file_path)
+
+    @staticmethod
+    def _parse_html_file(file_path: Path, *, html_xpath: str | None) -> list[Document]:
+        from app.parsing.parsers.html_parser import HtmlParser
+
+        return HtmlParser().parse(file_path, html_xpath=html_xpath)
+
+    @staticmethod
+    def _parse_csv_file(file_path: Path) -> list[Document]:
+        from app.parsing.parsers.csv_parser import CsvParser
+
+        return CsvParser().parse(file_path)
+
+    @staticmethod
+    def _parse_json_file(file_path: Path) -> list[Document]:
+        from app.parsing.parsers.json_parser import JsonParser
+
+        return JsonParser().parse(file_path)
+
+    def _fallback_to_markitdown(
+        self,
+        *,
+        file_path: Path,
+        file_ext: str,
+        backend: str,
+        error: Exception,
+        failed_backend_label: str,
+    ) -> tuple[list[Document] | None, str]:
+        logger.warning(
+            "[parse] %s failed for %s (%s): %s",
+            failed_backend_label,
+            str(file_path.name),
+            file_ext,
+            str(error)[:200],
+        )
+        try:
+            return self._get_markitdown_parser().parse(file_path), "markitdown"
+        except Exception as fallback_exc:
+            logger.warning(
+                "[parse] MarkItDown fallback also failed for %s: %s",
+                str(file_path.name),
+                str(fallback_exc)[:200],
+            )
+            return None, backend
+
+    def _fallback_pandoc_parse(
+        self,
+        *,
+        file_path: Path,
+        file_ext: str,
+        backend: str,
+        error: Exception,
+    ) -> tuple[list[Document] | None, str]:
+        fallback_docs, fallback_backend = self._fallback_to_markitdown(
+            file_path=file_path,
+            file_ext=file_ext,
+            backend=backend,
+            error=error,
+            failed_backend_label="Pandoc",
+        )
+        if fallback_docs is not None:
+            return fallback_docs, fallback_backend
+        return self._fallback_parse(file_path=file_path, file_ext=file_ext, requested_backend="markitdown", error=error)
+
     def _get_pdf_parser(self, backend: str):
         if backend == "basic":
-            if self._basic_pdf_parser is None:
-                from app.parsing.parsers.pdf_parser import PDFParser
+            return self._get_basic_pdf_parser()
+        spec = self.PDF_PARSER_SPECS.get(backend)
+        if spec is None:
+            raise ValueError(f"Unsupported PDF parser backend '{backend}'")
+        return self._get_cached_parser(*spec)
 
-                logger.debug("[pdf] Initializing PyMuPDF parser (basic)")
-                self._basic_pdf_parser = PDFParser()
-            else:
-                # Keep the lazy-import contract observable in tests that clear `sys.modules["fitz"]`
-                # after previous parser initialization.
-                try:
-                    importlib.import_module("fitz")
-                except Exception:
-                    pass
-            return self._basic_pdf_parser
+    def _get_basic_pdf_parser(self):
+        if self._basic_pdf_parser is None:
+            from app.parsing.parsers.pdf_parser import PDFParser
 
-        if backend == "marker":
-            if self._marker_parser is None:
-                from app.parsing.parsers.marker_parser import MarkerParser
+            logger.debug("[pdf] Initializing PyMuPDF parser (basic)")
+            self._basic_pdf_parser = PDFParser()
+        else:
+            # Keep the lazy-import contract observable in tests that clear `sys.modules["fitz"]`
+            # after previous parser initialization.
+            try:
+                importlib.import_module("fitz")
+            except Exception:
+                pass
+        return self._basic_pdf_parser
 
-                logger.info("[pdf] Initializing Marker parser (external service)")
-                self._marker_parser = MarkerParser()
-            return self._marker_parser
-
-        if backend == "paddle_vl":
-            if self._paddle_vl_parser is None:
-                from app.parsing.parsers.paddle_vl_parser import PaddleVLParser
-
-                logger.info("[pdf] Initializing PaddleOCR-VL parser (external service)")
-                self._paddle_vl_parser = PaddleVLParser()
-            return self._paddle_vl_parser
-
-        if backend == "glm_ocr":
-            if self._glm_ocr_parser is None:
-                from app.parsing.parsers.glm_ocr_parser import GlmOCRParser
-
-                logger.info("[pdf] Initializing GLM-OCR parser (external service)")
-                self._glm_ocr_parser = GlmOCRParser()
-            return self._glm_ocr_parser
-
-        if backend == "olmocr":
-            if self._olmocr_parser is None:
-                from app.parsing.parsers.olmocr_parser import OlmocrParser
-
-                logger.info("[pdf] Initializing olmOCR parser (external service)")
-                self._olmocr_parser = OlmocrParser()
-            return self._olmocr_parser
-
-        if backend == "qianfan_ocr":
-            if self._qianfan_ocr_parser is None:
-                from app.parsing.parsers.qianfan_ocr_parser import QianfanOCRParser
-
-                logger.info("[pdf] Initializing Qianfan-OCR parser (external service)")
-                self._qianfan_ocr_parser = QianfanOCRParser()
-            return self._qianfan_ocr_parser
-
-        if backend == "textin":
-            if self._textin_parser is None:
-                from app.parsing.parsers.textin_parser import TextInParser
-
-                logger.info("[pdf] Initializing TextIn xParse parser (external API)")
-                self._textin_parser = TextInParser()
-            return self._textin_parser
-
-        if backend == "mineru":
-            if self._mineru_parser is None:
-                from app.parsing.parsers.mineru_parser import MinerUParser
-
-                logger.info("[pdf] Initializing MinerU parser (advanced)")
-                self._mineru_parser = MinerUParser()
-            return self._mineru_parser
-
-        if backend == "deepdoc":
-            if self._deepdoc_parser is None:
-                from app.parsing.parsers.deepdoc_parser import DeepDocParser
-
-                logger.info("[pdf] Initializing DeepDoc parser (structure-aware)")
-                self._deepdoc_parser = DeepDocParser()
-            return self._deepdoc_parser
-
-        if backend == "deepseek_ocr":
-            if self._deepseek_ocr_parser is None:
-                from app.parsing.parsers.deepseek_ocr_parser import DeepSeekOCRParser
-
-                logger.info("[pdf] Initializing DeepSeek OCR parser (SiliconFlow)")
-                self._deepseek_ocr_parser = DeepSeekOCRParser()
-            return self._deepseek_ocr_parser
-
-        if backend == "etl4llm":
-            if self._etl4llm_parser is None:
-                from app.parsing.parsers.etl4llm_parser import Etl4LlmParser
-
-                logger.info("[pdf] Initializing ETL4LLM parser (layout-aware)")
-                self._etl4llm_parser = Etl4LlmParser()
-            return self._etl4llm_parser
-
-        if backend == "markitdown":
-            if self._markitdown_parser is None:
-                from app.parsing.parsers.markitdown_parser import MarkItDownParser
-
-                logger.info("[pdf] Initializing MarkItDown parser (markdown-focused)")
-                self._markitdown_parser = MarkItDownParser()
-            return self._markitdown_parser
-
-        if backend == "docling":
-            if self._docling_parser is None:
-                from app.parsing.parsers.docling_parser import DoclingParser
-
-                logger.info("[pdf] Initializing Docling parser (structure-aware)")
-                self._docling_parser = DoclingParser()
-            return self._docling_parser
-
-        if backend == "magicpdf":
-            if self._magicpdf_parser is None:
-                from app.parsing.parsers.magic_pdf_parser import MagicPDFParser
-
-                logger.info("[pdf] Initializing MagicPDF parser (local advanced)")
-                self._magicpdf_parser = MagicPDFParser()
-            return self._magicpdf_parser
-
-        raise ValueError(f"Unsupported PDF parser backend '{backend}'")
+    def _get_cached_parser(
+        self,
+        cache_attr: str,
+        module_name: str,
+        class_name: str,
+        log_message: str,
+    ) -> Any:
+        parser = getattr(self, cache_attr)
+        if parser is None:
+            module = importlib.import_module(module_name)
+            logger.info(log_message)
+            parser = getattr(module, class_name)()
+            setattr(self, cache_attr, parser)
+        return parser
 
     def _get_markitdown_parser(self):
         """Lazy init MarkItDown parser for non-PDF office formats."""
