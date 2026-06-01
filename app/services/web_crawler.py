@@ -361,8 +361,8 @@ def _extract_links_from_html(html_text: str, *, base_url: str) -> tuple[list[str
 
     try:
         doc.make_links_absolute(base_url, resolve_base_href=True)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Ignoring web crawl link absolute rewrite failure: %s", exc)
 
     out: list[str] = []
     for _el, _attr, link, _pos in doc.iterlinks():

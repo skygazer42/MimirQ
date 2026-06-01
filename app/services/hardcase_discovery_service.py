@@ -19,6 +19,9 @@ from pathlib import Path
 from typing import Any
 
 from app.rag.core.hashing import stable_hash
+from app.rag.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def _safe_str(value: Any, *, max_len: int = 200) -> str | None:
@@ -78,8 +81,8 @@ def _safe_rag_config_template(raw: Any) -> dict[str, Any] | None:
     if raw.get("version") is not None:
         try:
             out["version"] = int(raw.get("version"))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Ignoring malformed hardcase rag config template version: %s", exc)
 
     ph = _safe_str(raw.get("patch_hash"), max_len=128)
     if ph:

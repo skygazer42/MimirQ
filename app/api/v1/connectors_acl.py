@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.models.connector import ConnectorRun, ConnectorRunDocument
 from app.models.document import Document as DBDocument
+from app.rag.core.logging import get_logger
 from app.services.document_permission_service import (
     DocumentGroupPermissionService,
     DocumentPermissionService,
@@ -16,6 +17,7 @@ from app.services.document_permission_service import (
 
 _leader_module = None
 _CONNECTORS_MODULE_NAME = "app.api.v1.connectors"
+logger = get_logger(__name__)
 
 
 def _resolve_acl_helper(name: str):  # noqa: ANN202
@@ -195,8 +197,8 @@ def _delta_sync_connector_documents_acl_by_source_url(
                 meta0 = dict(getattr(doc, "doc_metadata", None) or {})
                 meta0["acl_provenance"] = dict(acl_provenance)
                 doc.doc_metadata = meta0
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring connector ACL provenance metadata update failure: %s", exc)
         updated += 1
 
     return int(updated)
@@ -357,8 +359,8 @@ def _delta_sync_jira_documents_acl_by_issue_url(
                     meta0 = dict(getattr(doc, "doc_metadata", None) or {})
                     meta0["acl_provenance"] = dict(acl_provenance)
                     doc.doc_metadata = meta0
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring Jira connector ACL provenance metadata update failure: %s", exc)
             updated += 1
     except Exception:
         max_docs_scan = max(0, int(max_docs_scan or 0))
@@ -404,8 +406,8 @@ def _delta_sync_jira_documents_acl_by_issue_url(
                     meta0 = dict(meta or {})
                     meta0["acl_provenance"] = dict(acl_provenance)
                     doc.doc_metadata = meta0
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring Jira connector ACL provenance fallback metadata update failure: %s", exc)
             updated += 1
 
     return int(updated)

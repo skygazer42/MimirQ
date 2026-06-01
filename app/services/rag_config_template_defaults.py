@@ -12,6 +12,10 @@ from collections.abc import Iterable
 from typing import Any
 from uuid import UUID
 
+from app.rag.core.logging import get_logger
+
+logger = get_logger(__name__)
+
 
 def merge_rag_config_template_defaults_with_dataset(
     *,
@@ -45,8 +49,8 @@ def merge_rag_config_template_defaults_with_dataset(
             try:
                 eff_id = UUID(raw.strip())
                 applied.append("rag_config_template_id")
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring malformed default rag config template id: %s", exc)
 
     if eff_id is None and "rag_config_template_key" not in provided and not (eff_key or "").strip():
         raw = meta.get("default_rag_config_template_key")
@@ -64,4 +68,3 @@ def merge_rag_config_template_defaults_with_dataset(
 
 
 __all__ = ["merge_rag_config_template_defaults_with_dataset"]
-

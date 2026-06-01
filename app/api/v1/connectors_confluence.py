@@ -12,7 +12,10 @@ from sqlalchemy.orm import Session, selectinload
 from app.core.config import settings
 from app.models.connector import ConnectorRun
 from app.models.document import Document as DBDocument
+from app.rag.core.logging import get_logger
 from app.services.connector_sync_state import normalize_boundary_ids
+
+logger = get_logger(__name__)
 
 
 def _zero_confluence_attachment_result(*, failed: int = 0, attachments_failed: int = 0) -> dict[str, Any]:
@@ -968,8 +971,8 @@ def _patch_confluence_page_document_metadata(
             source_id=(page_id or page_url),
         )
         db.commit()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Ignoring Confluence page connector metadata update failure: %s", exc)
 
 
 async def _ingest_confluence_page_webui(
@@ -1220,8 +1223,8 @@ def _patch_confluence_attachment_document_metadata(
             source_ref=(attachment_id or download_url),
             source_id=(attachment_id or download_url),
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Ignoring Confluence attachment connector metadata update failure: %s", exc)
 
 
 async def _ingest_single_confluence_attachment(

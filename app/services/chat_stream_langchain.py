@@ -7,6 +7,7 @@ from dataclasses import dataclass, replace
 from typing import Any, AsyncIterator, Awaitable, Callable, cast
 
 from app.core.stream_events import StreamEmitter, bind_stream_emitter, reset_stream_emitter
+from app.rag.core.logging import get_logger
 from app.services.chat_execution_runtime import ChatExecutionContext
 from app.services.chat_runtime import (
     ChatStreamPersistInput,
@@ -15,6 +16,8 @@ from app.services.chat_runtime import (
     store_chat_response_cache_if_needed,
 )
 from app.services.chat_stream_persistence import dispatch_chat_stream_persistence
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -69,8 +72,8 @@ async def stream_langchain_chat_session_events(
                     disconnected = True
                     producer_task.cancel()
                     break
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring chat stream disconnect check failure: %s", exc)
 
         try:
             ev = (

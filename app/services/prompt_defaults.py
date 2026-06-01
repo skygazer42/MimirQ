@@ -12,6 +12,10 @@ from collections.abc import Iterable
 from typing import Any
 from uuid import UUID
 
+from app.rag.core.logging import get_logger
+
+logger = get_logger(__name__)
+
 
 def merge_prompt_defaults_with_dataset(
     *,
@@ -45,8 +49,8 @@ def merge_prompt_defaults_with_dataset(
             try:
                 eff_id = UUID(raw.strip())
                 applied.append("prompt_template_id")
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring malformed default prompt template id: %s", exc)
 
     if (
         eff_id is None
@@ -65,4 +69,3 @@ def merge_prompt_defaults_with_dataset(
             applied.append("prompt_ab_experiment_key")
 
     return eff_id, eff_key, eff_ab, applied
-

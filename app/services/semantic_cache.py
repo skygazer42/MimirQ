@@ -270,8 +270,8 @@ def get_cached_semantic_payload(
             # Best-effort cleanup: drop orphaned vector pointer.
             try:
                 _get_adapter().delete([rid])
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Ignoring semantic cache orphan vector cleanup failure: %s", exc)
             continue
 
         try:
@@ -387,4 +387,3 @@ __all__ = [
     "get_cached_semantic_payload",
     "set_cached_semantic_payload",
 ]
-

@@ -26,9 +26,12 @@ from pathlib import Path
 from typing import Any
 
 from app.core.config import settings
+from app.rag.core.logging import get_logger
 from app.rag.core.text import is_claim_supported, split_into_claims
 from app.rag.evaluation.chunk_diagnostics import compute_chunk_diagnostics
 from app.services.metrics_logger import log_metrics
+
+logger = get_logger(__name__)
 
 
 def _mean(values: Iterable[float]) -> float | None:
@@ -348,8 +351,8 @@ def _ensure_worker_started() -> None:
                     continue
                 try:
                     _process_eval_item(item)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("Ignoring online evaluation worker item failure: %s", exc)
                 finally:
                     with contextlib.suppress(Exception):
                         _eval_queue.task_done()

@@ -8,6 +8,7 @@ from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.rag.core.logging import get_logger
 from app.services.chat_response_cache import resolve_inflight_chat_response
 from app.services.chat_runtime import store_chat_response_cache_if_needed
 from app.services.chat_turn_persistence import (
@@ -15,6 +16,8 @@ from app.services.chat_turn_persistence import (
     persist_chat_turn_sync,
 )
 from app.services.metrics_logger import log_metrics
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -136,8 +139,8 @@ def _maybe_enqueue_online_eval(options: ChatResponseFinalizationInput, metrics_o
             retrieval_mode=_online_eval_retrieval_mode(metrics_out, options.retrieval_mode_default),
             citations_count=int(len(options.citations or [])),
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Ignoring online evaluation enqueue failure: %s", exc)
 
 
 def _log_extractive_fallback_rag_trace(

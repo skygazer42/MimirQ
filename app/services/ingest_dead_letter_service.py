@@ -7,8 +7,10 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.models.ingest_dead_letter import IngestDeadLetter
+from app.rag.core.logging import get_logger
 
 INGEST_DEAD_LETTER_SCHEMA_V1 = "mimirq.ingest_dead_letter.v1"
+logger = get_logger(__name__)
 
 _ERROR_CODE_ALIASES: tuple[tuple[str, str], ...] = (
     ("timeout", "timeout"),
@@ -151,8 +153,8 @@ def record_ingest_dead_letter(
     db.commit()
     try:
         db.refresh(letter)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Ignoring ingest dead-letter refresh failure: %s", exc)
     return letter
 
 
@@ -162,6 +164,6 @@ def mark_dead_letter_replayed(db: Session, *, dead_letter: IngestDeadLetter) -> 
     db.commit()
     try:
         db.refresh(dead_letter)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Ignoring replayed ingest dead-letter refresh failure: %s", exc)
     return dead_letter
