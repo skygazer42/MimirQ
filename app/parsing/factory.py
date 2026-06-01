@@ -505,6 +505,86 @@ class ParserFactory:
 
         raise ValueError(f"Unsupported parser backend '{normalized}'")
 
+    def _resolve_non_pdf_parser(self, *, backend: str, file_ext: str) -> Any:
+        if backend in {"deepdoc", "docling", "textin"}:
+            # These parsers are initialized in the PDF backend factory, but can also
+            # handle certain non-PDF formats (e.g. DOCX) when explicitly requested.
+            return self._get_pdf_parser(backend)
+
+        direct_factories = {
+            "markitdown": self._get_markitdown_parser,
+            "pandoc": self._get_pandoc_parser,
+            "email": self._get_email_parser,
+            "image": self._get_image_parser,
+            "colpali": self._get_colpali_parser,
+            "audio": self._get_audio_parser,
+            "video": self._get_video_parser,
+        }
+        if backend in direct_factories:
+            return direct_factories[backend]()
+
+        if backend == "excel":
+            from app.parsing.parsers.excel_parser import ExcelParser
+
+            return ExcelParser()
+        if backend == "docx":
+            from app.parsing.parsers.docx_parser import DocxParser
+
+            return DocxParser()
+        if backend == "pptx":
+            from app.parsing.parsers.pptx_parser import PptxParser
+
+            return PptxParser()
+        if backend == "html":
+            from app.parsing.parsers.html_parser import HtmlParser
+
+            return HtmlParser()
+        if backend == "csv":
+            from app.parsing.parsers.csv_parser import CsvParser
+
+            return CsvParser()
+        if backend == "json":
+            from app.parsing.parsers.json_parser import JsonParser
+
+            return JsonParser()
+        raise ValueError(f"Unsupported parser backend '{backend}' for {file_ext}")
+
+    def _parse_with_selected_backend(
+        self,
+        *,
+        parser: Any,
+        backend: str,
+        file_path: Path,
+        dataset_id: str | None,
+        document_id: str | None,
+        tenant_id: str | None,
+        pdf_quality: dict[str, Any] | None,
+        html_xpath: str | None,
+    ) -> list[Document]:
+        if backend in {
+            "marker",
+            "paddle_vl",
+            "glm_ocr",
+            "olmocr",
+            "qianfan_ocr",
+            "textin",
+            "mineru",
+            "magicpdf",
+            "deepseek_ocr",
+            "etl4llm",
+            "pandoc",
+        }:
+            return parser.parse(
+                file_path,
+                dataset_id=dataset_id,
+                document_id=document_id,
+                tenant_id=tenant_id,
+                pdf_quality=pdf_quality,
+            )
+        if backend == "html":
+            return parser.parse(file_path, html_xpath=html_xpath)  # type: ignore[call-arg]
+        return parser.parse(file_path)
+
     def parse(
         self,
         file_path: Path,
@@ -532,67 +612,20 @@ class ParserFactory:
             elif file_ext == ".md":
                 parser = self.parsers[".md"]
             elif file_ext in self.SUPPORTED_NON_PDF_EXTENSIONS:
-                if backend in {"deepdoc", "docling", "textin"}:
-                    # These parsers are initialized in the PDF backend factory, but can also
-                    # handle certain non-PDF formats (e.g. DOCX) when explicitly requested.
-                    parser = self._get_pdf_parser(backend)
-                elif backend == "markitdown":
-                    parser = self._get_markitdown_parser()
-                elif backend == "pandoc":
-                    parser = self._get_pandoc_parser()
-                elif backend == "email":
-                    parser = self._get_email_parser()
-                elif backend == "image":
-                    parser = self._get_image_parser()
-                elif backend == "colpali":
-                    parser = self._get_colpali_parser()
-                elif backend == "audio":
-                    parser = self._get_audio_parser()
-                elif backend == "video":
-                    parser = self._get_video_parser()
-                elif backend == "excel":
-                    from app.parsing.parsers.excel_parser import ExcelParser
-
-                    parser = ExcelParser()
-                elif backend == "docx":
-                    from app.parsing.parsers.docx_parser import DocxParser
-
-                    parser = DocxParser()
-                elif backend == "pptx":
-                    from app.parsing.parsers.pptx_parser import PptxParser
-
-                    parser = PptxParser()
-                elif backend == "html":
-                    from app.parsing.parsers.html_parser import HtmlParser
-
-                    parser = HtmlParser()
-                elif backend == "csv":
-                    from app.parsing.parsers.csv_parser import CsvParser
-
-                    parser = CsvParser()
-                elif backend == "json":
-                    from app.parsing.parsers.json_parser import JsonParser
-
-                    parser = JsonParser()
-                else:
-                    raise ValueError(f"Unsupported parser backend '{backend}' for {file_ext}")
+                parser = self._resolve_non_pdf_parser(backend=backend, file_ext=file_ext)
             else:
                 raise ValueError(f"Unsupported file type: {file_ext}")
 
-            # Some parsers need dataset/document ids to produce stable artifacts.
-            if backend in {"marker", "paddle_vl", "glm_ocr", "olmocr", "qianfan_ocr", "textin", "mineru", "magicpdf", "deepseek_ocr", "etl4llm", "pandoc"}:
-                documents = parser.parse(
-                    file_path,
-                    dataset_id=dataset_id,
-                    document_id=document_id,
-                    tenant_id=tenant_id,
-                    pdf_quality=pdf_quality,
-                )
-            else:
-                if backend == "html":
-                    documents = parser.parse(file_path, html_xpath=html_xpath)  # type: ignore[call-arg]
-                else:
-                    documents = parser.parse(file_path)
+            documents = self._parse_with_selected_backend(
+                parser=parser,
+                backend=backend,
+                file_path=file_path,
+                dataset_id=dataset_id,
+                document_id=document_id,
+                tenant_id=tenant_id,
+                pdf_quality=pdf_quality,
+                html_xpath=html_xpath,
+            )
         except Exception as exc:
             if not bool(allow_fallback):
                 raise
