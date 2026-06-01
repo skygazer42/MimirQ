@@ -16,6 +16,7 @@ import re
 import sqlite3
 import time
 from dataclasses import dataclass
+from itertools import islice
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -1046,7 +1047,7 @@ def evaluate_planner_execution_mismatch(
         "expected_tables": expected_tables,
         "actual_tables": actual_tables,
         "mismatch": bool(mismatch_reasons),
-        "reasons": mismatch_reasons[:8],
+        "reasons": list(islice(mismatch_reasons, 8)),
     }
 
 

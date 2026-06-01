@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from itertools import islice
 from typing import Any
 
 from app.rag.kg.provenance import build_kg_path_provenance
@@ -28,9 +29,10 @@ def exact_phrase_metadata(query: str, event: Any) -> dict[str, Any]:
     score = float(phrase.get("score", 0.0) or 0.0)
     if score <= 0.0:
         return {}
+    matched_phrases = phrase.get("matched_phrases") or []
     return {
         "kg_exact_phrase_score": score,
-        "kg_exact_phrase_matches": list(phrase.get("matched_phrases") or [])[:4],
+        "kg_exact_phrase_matches": list(islice(matched_phrases, 4)),
     }
 
 

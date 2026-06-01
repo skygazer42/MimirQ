@@ -53,26 +53,42 @@ def _path_entities(event: Mapping[str, Any], *, key_entities: Sequence[Mapping[s
     return out
 
 
+def _report_summary(report: Mapping[str, Any]) -> str:
+    return _safe_text(report.get("summary"), max_len=500)
+
+
+def _report_event_ids(report: Mapping[str, Any]) -> set[str]:
+    event_ids: set[str] = set()
+    for rep_event in report.get("events") or []:
+        if isinstance(rep_event, Mapping):
+            rep_event_id = _safe_text(rep_event.get("id"), max_len=200)
+            if rep_event_id:
+                event_ids.add(rep_event_id)
+    return event_ids
+
+
+def _matching_report_summary(event_id: str, community_reports: Sequence[Mapping[str, Any]] | None) -> str:
+    for report in community_reports or []:
+        if isinstance(report, Mapping) and event_id in _report_event_ids(report):
+            summary = _report_summary(report)
+            if summary:
+                return summary
+    return ""
+
+
+def _first_report_summary(community_reports: Sequence[Mapping[str, Any]] | None) -> str:
+    for report in community_reports or []:
+        if isinstance(report, Mapping):
+            summary = _report_summary(report)
+            if summary:
+                return summary
+    return ""
+
+
 def _community_context_for_event(event: Mapping[str, Any], community_reports: Sequence[Mapping[str, Any]] | None) -> str | None:
     event_id = _safe_text(event.get("id"), max_len=200)
-    for report in community_reports or []:
-        if not isinstance(report, Mapping):
-            continue
-        for rep_event in report.get("events") or []:
-            if not isinstance(rep_event, Mapping):
-                continue
-            rep_event_id = _safe_text(rep_event.get("id"), max_len=200)
-            if event_id and rep_event_id and rep_event_id == event_id:
-                summary = _safe_text(report.get("summary"), max_len=500)
-                if summary:
-                    return summary
-    for report in community_reports or []:
-        if not isinstance(report, Mapping):
-            continue
-        summary = _safe_text(report.get("summary"), max_len=500)
-        if summary:
-            return summary
-    return None
+    matched_summary = _matching_report_summary(event_id, community_reports) if event_id else ""
+    return matched_summary or _first_report_summary(community_reports) or None
 
 
 def build_path_renderings(

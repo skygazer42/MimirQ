@@ -7,17 +7,36 @@ _YEAR_RE = re.compile(r"\b(20\d{2})\b")
 _TEMPORAL_HINT_RE = re.compile(r"(?i)\b(current|latest|now|today|timeline|history|before|after)\b|当前|现在|最新|历史|之前|之后")
 
 
+def _sorted_snapshots(available_snapshots: list[str]) -> list[str]:
+    snapshots = [str(item or "").strip() for item in (available_snapshots or []) if str(item or "").strip()]
+    return sorted(snapshots)
+
+
+def _snapshot_for_year(query: str, snapshots: list[str]) -> str | None:
+    year_match = _YEAR_RE.search(query)
+    if not year_match:
+        return None
+    year = str(year_match.group(1) or "")
+    return next((snap for snap in snapshots if snap.startswith(year)), None)
+
+
+def _select_temporal_snapshot(query: str, snapshots: list[str]) -> tuple[str, str]:
+    year_snapshot = _snapshot_for_year(query, snapshots)
+    if year_snapshot is not None:
+        return year_snapshot, "year_match"
+    if _TEMPORAL_HINT_RE.search(query):
+        return snapshots[-1], "latest_keyword"
+    return snapshots[-1], "fallback_latest"
+
+
 def route_snapshot_for_query(
     *,
     query: str,
     available_snapshots: list[str],
 ) -> dict[str, Any]:
     q = str(query or "").strip()
-    snapshots = [str(item or "").strip() for item in (available_snapshots or []) if str(item or "").strip()]
-    snapshots.sort()
+    snapshots = _sorted_snapshots(available_snapshots)
     temporal_query = bool(_TEMPORAL_HINT_RE.search(q) or _YEAR_RE.search(q))
-    reason_codes: list[str] = []
-    selected_snapshot: str | None = None
 
     if not snapshots:
         return {
@@ -33,27 +52,11 @@ def route_snapshot_for_query(
             "reason_codes": ["non_temporal_query"],
         }
 
-    year_match = _YEAR_RE.search(q)
-    if year_match:
-        year = str(year_match.group(1) or "")
-        for snap in snapshots:
-            if snap.startswith(year):
-                selected_snapshot = snap
-                reason_codes.append("year_match")
-                break
-
-    if selected_snapshot is None and _TEMPORAL_HINT_RE.search(q):
-        selected_snapshot = snapshots[-1]
-        reason_codes.append("latest_keyword")
-
-    if selected_snapshot is None:
-        selected_snapshot = snapshots[-1]
-        reason_codes.append("fallback_latest")
-
+    selected_snapshot, reason_code = _select_temporal_snapshot(q, snapshots)
     return {
         "selected_snapshot": selected_snapshot,
         "temporal_query": True,
-        "reason_codes": reason_codes,
+        "reason_codes": [reason_code],
     }
 
 
