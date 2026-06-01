@@ -63,6 +63,16 @@ type LifecycleValidationKey =
   | 'validation.authorityRange'
   | 'validation.reviewDueAt'
 type AccessModeFormValue = FormDataEntryValue | string | null | undefined
+type DocumentMetadataRecord = Record<string, unknown>
+type DocumentPipelineMetadata = DocumentMetadataRecord & {
+  parser_backend_requested?: string
+  parser_backend?: string
+  pipeline_effective?: DocumentMetadataRecord
+  analytics_raw?: DocumentMetadataRecord
+  governance_rule_packs?: unknown
+  active_pipeline_hash?: string
+  pipeline_hash?: string
+}
 
 function formString(value: AccessModeFormValue, fallback = ''): string {
   return typeof value === 'string' ? value : fallback
@@ -187,7 +197,21 @@ function hasLifecycleChanges(doc: Document, values: LifecycleDraftValues) {
   )
 }
 
-function DocumentSaveButton({ disabled }: Readonly<{ disabled: boolean }>) {
+function DocumentTagsSaveButton({ disabled }: Readonly<{ disabled: boolean }>) {
+  const commonT = useTranslations('Common')
+  const { pending } = useFormStatus()
+
+  return (
+    <Button size="sm" type="submit" disabled={disabled || pending}>
+      {pending ? (
+        <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
+      ) : null}
+      {commonT('save')}
+    </Button>
+  )
+}
+
+function DocumentLifecycleSaveButton({ disabled }: Readonly<{ disabled: boolean }>) {
   const commonT = useTranslations('Common')
   const { pending } = useFormStatus()
 
@@ -662,13 +686,13 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
   const effectiveAccessMode: DocumentAccessMode =
     accessInfo?.mode || (displayDoc.access_mode as DocumentAccessMode | null) || 'inherit'
 
-  const docMeta = (displayDoc.metadata || {}) as any
-  const pipeline = (displayDoc as any)?.pipeline || null
+  const docMeta = (displayDoc.metadata || {}) as DocumentMetadataRecord
+  const pipeline = ('pipeline' in displayDoc ? displayDoc.pipeline : null) as DocumentPipelineMetadata | null
   const requestedParserBackend = String(
-    pipeline?.parser_backend_requested || docMeta?.parser_backend_requested || '-'
+    pipeline?.parser_backend_requested || docMeta.parser_backend_requested || '-'
   )
-  const pipelineEffective = (pipeline?.pipeline_effective || docMeta.pipeline_effective || {})
-  const analyticsRaw = (pipeline?.analytics_raw || docMeta.document_analytics_raw || {})
+  const pipelineEffective = (pipeline?.pipeline_effective || docMeta.pipeline_effective || {}) as DocumentMetadataRecord
+  const analyticsRaw = (pipeline?.analytics_raw || docMeta.document_analytics_raw || {}) as DocumentMetadataRecord
   const governanceRulePacks: string[] = (() => {
     if (Array.isArray(pipeline?.governance_rule_packs)) {
       return pipeline.governance_rule_packs
@@ -1018,7 +1042,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
           <DocumentDetailTagsPanel
             editing={tagsEditing}
             saveAction={saveTagsAction}
-            saveButton={<DocumentSaveButton disabled={!canSaveTags} />}
+            saveButton={<DocumentTagsSaveButton disabled={!canSaveTags} />}
             isSaving={isSavingTags}
             tagsDraft={tagsDraft}
             onTagsDraftChange={setTagsDraft}
@@ -1031,7 +1055,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
           <DocumentDetailLifecyclePanel
             editing={lifecycleEditing}
             saveAction={saveLifecycleAction}
-            saveButton={<DocumentSaveButton disabled={!canSaveLifecycle} />}
+            saveButton={<DocumentLifecycleSaveButton disabled={!canSaveLifecycle} />}
             isSaving={isSavingLifecycle}
             canEdit={!(lifecycleWritable === false || lifecycleWritable == null)}
             editTitle={

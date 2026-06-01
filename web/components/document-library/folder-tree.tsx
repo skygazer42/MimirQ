@@ -640,11 +640,10 @@ export function DocumentFolderTree({
       const progressTitle = getParsingProgressTitle(progress)
       let selectableControl: React.ReactNode = null
       if (file.isSelectable) {
-        const selectionLabel = file.isSelected ? '取消选择待提交文档' : '选择待提交文档'
         selectableControl = (
           <button
             type="button"
-            aria-label={selectionLabel}
+            aria-label={file.isSelected ? '取消选择待提交文档' : '选择待提交文档'}
             className={cn(
               'flex size-4 shrink-0 items-center justify-center rounded-full border text-[10px] font-semibold transition-colors focus-ring',
               getSelectableFileClass(Boolean(file.isSelected))

@@ -280,26 +280,6 @@ function parsingGovernanceButtonClass(canSubmitToGovernance: boolean) {
   return 'border-info/20 bg-info/[0.10] text-info/70'
 }
 
-function parsingInspectorToggleIcon(inspectorCollapsed: boolean) {
-  if (inspectorCollapsed) return <PanelRightOpen className="size-3.5" />
-  return <PanelRightClose className="size-3.5" />
-}
-
-function parsingInspectorWidth(inspectorCollapsed: boolean, inspectorWidth: number) {
-  if (inspectorCollapsed) return COLLAPSED_PARSING_INSPECTOR_HOTZONE_WIDTH
-  return inspectorWidth
-}
-
-function parsingInspectorToggleLabel(inspectorCollapsed: boolean) {
-  if (inspectorCollapsed) return '展开解析信息侧栏'
-  return '收起解析信息侧栏'
-}
-
-function parsingInspectorToggleOffsetClass(inspectorCollapsed: boolean) {
-  if (inspectorCollapsed) return 'left-0'
-  return 'left-[-0.875rem]'
-}
-
 function ParsingInspectorCard({
   title,
   icon: Icon,
@@ -833,7 +813,6 @@ function ResizableParsingInspectorRail({
     DEFAULT_PARSING_INSPECTOR_WIDTH
   )
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false)
-  const inspectorExpanded = inspectorCollapsed === false
   const resizeStateRef = useRef<{
     currentWidth: number
     startWidth: number
@@ -938,27 +917,27 @@ function ResizableParsingInspectorRail({
     <aside
       data-testid="parsing-static-inspector"
       className="group/inspector relative hidden min-h-0 shrink-0 overflow-visible transition-[width] duration-200 ease-out motion-reduce:transition-none xl:flex"
-      style={{ width: parsingInspectorWidth(inspectorCollapsed, inspectorWidth) }}
+      style={{ width: inspectorCollapsed ? COLLAPSED_PARSING_INSPECTOR_HOTZONE_WIDTH : inspectorWidth }}
     >
       <Button
         type="button"
         variant="ghost"
         size="icon"
-        aria-label={parsingInspectorToggleLabel(inspectorCollapsed)}
-        title={parsingInspectorToggleLabel(inspectorCollapsed)}
+        aria-label={inspectorCollapsed ? '展开解析信息侧栏' : '收起解析信息侧栏'}
+        title={inspectorCollapsed ? '展开解析信息侧栏' : '收起解析信息侧栏'}
         className={cn(
           'absolute top-3 z-30 size-8 rounded-xl border border-border/60 bg-card/95 text-muted-foreground shadow-[0_14px_28px_-22px_rgba(15,23,42,0.50)] backdrop-blur-sm transition-[left,opacity,background-color,color,box-shadow] duration-200 hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-info/35',
           'opacity-0 hover:opacity-100 focus-visible:opacity-100',
-          parsingInspectorToggleOffsetClass(inspectorCollapsed)
+          inspectorCollapsed ? 'left-0' : 'left-[-0.875rem]'
         )}
         onClick={() => setInspectorCollapsed((collapsed) => !collapsed)}
       >
-        {parsingInspectorToggleIcon(inspectorCollapsed)}
+        {inspectorCollapsed ? <PanelRightOpen className="size-3.5" /> : <PanelRightClose className="size-3.5" />}
       </Button>
 
-      {inspectorExpanded ? (
+      {!inspectorCollapsed ? (
         <div
-          role="slider"
+          role="separator"
           aria-label="调整解析信息宽度"
           aria-orientation="vertical"
           aria-valuemax={MAX_PARSING_INSPECTOR_WIDTH}
@@ -1074,8 +1053,7 @@ export function ParsingWorkbenchShell({
   vlmCorrectionEnabled,
 }: Readonly<ParsingWorkbenchShellProps>) {
   const t = useTranslations('ParsingWorkbench')
-  const bumpPdfPreviewResetToken = () =>
-    setPdfPreviewResetToken((prev) => prev + 1)
+  const bumpPdfPreviewResetToken = () => setPdfPreviewResetToken((prev) => prev + 1)
   const pendingCount = visibleQueueFiles.filter(
     (file) => file.status === 'pending'
   ).length
@@ -1133,7 +1111,8 @@ export function ParsingWorkbenchShell({
   )
   const shouldAutoRestoreLibraryPdf =
     !activeFile &&
-    activeLibraryFile?.status === 'parsed' &&
+    activeLibraryFile != null &&
+    activeLibraryFile.status === 'parsed' &&
     activeLibraryMarkdownAvailable &&
     filename.toLowerCase().endsWith('.pdf')
 

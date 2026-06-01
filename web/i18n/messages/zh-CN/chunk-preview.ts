@@ -674,6 +674,7 @@ ChunkPreview: {
         healthySummary: '其余 {count} 项正常',
       },
       actions: {
+        copySelected: '复制切片',
         clearSelection: '清除锁定',
         restorePdfDockTitle: '显示右侧 PDF 原文，并保持后续切片选择联动定位',
         restorePdfDock: '恢复 PDF 联动',
@@ -715,6 +716,7 @@ ChunkPreview: {
       },
       toasts: {
         clipboardUnsupported: '复制失败：浏览器不支持 Clipboard API',
+        copiedSelected: '已复制切片内容',
         savedEdit: '已保存编辑',
         resetEdit: '已重置编辑',
         markedReviewed: '已标记为已审核',

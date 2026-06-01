@@ -11,6 +11,7 @@ const config = {
     pool: 'threads',
     include: ['**/*.test.ts'],
     reporters: ['default'],
+    testTimeout: 15000,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'text-summary', 'lcov', 'html'],

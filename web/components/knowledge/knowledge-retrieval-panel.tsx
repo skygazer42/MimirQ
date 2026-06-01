@@ -428,7 +428,7 @@ export function KnowledgeRetrievalPanel({
               </div>
               <div className="inline-flex items-center rounded-full border border-border/70 bg-background px-3 py-1.5 text-[13px] font-medium text-foreground">
                 <Database className="mr-2 size-3.5 text-info" />
-                {overviewDatasetLabel}
+                {overviewDatasetLabel || t("header.noneSelected")}
               </div>
             </div>
 

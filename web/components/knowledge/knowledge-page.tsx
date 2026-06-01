@@ -122,6 +122,7 @@ export default function KnowledgePage() {
   >(initialQueryState.connectorRunId)
   const [peekingDocId, setPeekingDocId] = useState<string | null>(null)
   const [showConnectorRunsPanel, setShowConnectorRunsPanel] = useState(false)
+  const setShowTaskCenter = setShowConnectorRunsPanel
   const [mobileScopeOpen, setMobileScopeOpen] = useState(false)
   const [mobileInspectorOpen, setMobileInspectorOpen] = useState(false)
   const [mobileRunsOpen, setMobileRunsOpen] = useState(false)
@@ -701,9 +702,7 @@ export default function KnowledgePage() {
                 </span>
                 <span className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-muted/40 px-2 py-0.5 text-muted-foreground">
                   <span>任务</span>
-                  <span className="font-medium tabular-nums text-foreground">
-                    {activeTasksCount}
-                  </span>
+                  <span className="font-mono tabular-nums">{activeTasksCount}</span>
                 </span>
               </div>
             </div>
@@ -927,6 +926,7 @@ export default function KnowledgePage() {
                     : 'border-border/60 bg-card text-foreground'
                 )}
                 onClick={() => setDesktopScopeCollapsed((prev) => !prev)}
+                aria-label={desktopScopeCollapsed ? t('actions.showScope') : t('actions.hideScope')}
               >
                 {desktopScopeCollapsed ? (
                   <Maximize2 className="mr-2 size-3.5" />
@@ -938,7 +938,7 @@ export default function KnowledgePage() {
                   : t('actions.hideScope')}
               </Button>
 
-              {activeTab === 'documents' ? (
+              {activeTab === 'documents' && (
                 <>
                   <Button
                     type="button"
@@ -965,9 +965,7 @@ export default function KnowledgePage() {
                     )}
                     {activeTasksCount > 0 ? (
                       <>
-                        <span className="font-mono tabular-nums">
-                          {activeTasksCount}
-                        </span>
+                        <span className="font-mono tabular-nums">{activeTasksCount}</span>
                         <span className="ml-1">个任务进行中</span>
                       </>
                     ) : (
@@ -976,7 +974,7 @@ export default function KnowledgePage() {
                   </Button>
 
                   <KnowledgeWorkbenchActions
-                    className="h-10 rounded-xl border border-primary/20 bg-primary px-4 text-[13px] font-medium text-primary-foreground shadow-soft"
+                    className="h-8 rounded-xl border border-info/20 bg-info/[0.08] px-4 text-[10px] font-medium text-info dark:text-info shadow-soft"
                     datasets={datasets}
                     datasetsLoading={datasetsLoading}
                     selectedDatasetId={selectedDatasetId}
@@ -985,12 +983,7 @@ export default function KnowledgePage() {
                     uploadDocumentFromUrl={uploadDocumentFromUrl}
                     loadDocuments={loadDocuments}
                     loadConnectorRuns={loadConnectorRuns}
-                    onConnectorRunCreated={(run) => {
-                      setShowConnectorRunsPanel(true)
-                      setPeekingDocId(null)
-                      setActiveTab('documents')
-                      setActiveConnectorRunId(run.id)
-                    }}
+                    onConnectorRunCreated={(run) => { setShowTaskCenter(true); setPeekingDocId(null); setActiveTab('documents'); }}
                   />
 
                   <div className="inline-flex h-10 items-center gap-1 rounded-xl border border-border/60 bg-card p-1">
@@ -1033,7 +1026,7 @@ export default function KnowledgePage() {
                     </button>
                   </div>
                 </>
-              ) : null}
+              )}
 
               {activeTab === 'settings' ? (
                 <>
@@ -1099,13 +1092,14 @@ export default function KnowledgePage() {
         // Legacy source-test anchor:
         // rightPanel={(activeTab === 'retrieval' || peekingDocId || showTaskCenter) ? (
         leftPanel={
-          !desktopScopeCollapsed && activeTab !== 'settings' ? (
-            <aside
+          !desktopScopeCollapsed ? (
+            activeTab !== 'settings' ? (
+              <aside
               className={cn(
                 'flex h-full flex-col overflow-hidden rounded-2xl border',
                 KNOWLEDGE_WORKBENCH_SURFACE_CLASS
               )}
-            >
+              >
               <KnowledgeScopePanel
                 mode={scopeMode}
                 surface="embedded"
@@ -1127,7 +1121,8 @@ export default function KnowledgePage() {
                 quarantinedDocsValue={quarantinedDocsValue}
                 setDatasetScope={handleDatasetScopeChange}
               />
-            </aside>
+              </aside>
+            ) : null
           ) : null
         }
         rightPanel={

@@ -204,16 +204,6 @@ function feedbackStatusTone(
   return 'neutral'
 }
 
-function filterTypeTitle(filterType: FeedbackTypeFilter): string {
-  if (filterType === 'all') return '按类型筛选（当前：全部）'
-  return `按类型筛选：${FEEDBACK_KIND_LABELS[filterType]}反馈`
-}
-
-function filterTypeTriggerLabel(filterType: FeedbackTypeFilter): string {
-  if (filterType === 'all') return '类型'
-  return `类型 · ${FEEDBACK_KIND_LABELS[filterType]}`
-}
-
 function feedbackSourceBadgeLabel(source: FeedbackSourceFilter): string {
   if (source === 'all') return '引用不足'
   return SOURCE_BADGE_LABELS[source]
@@ -1399,11 +1389,11 @@ export default function FeedbackTriagePage() {
                       }
                     >
                       <SelectTrigger
-                        title={filterTypeTitle(filterType)}
+                        title={filterType === 'all' ? '按类型筛选（当前：全部）' : filterType === 'thumbs_up' ? '按类型筛选：点赞反馈' : '按类型筛选：点踩反馈'}
                         className="h-9 w-full rounded-xl border-border/60 bg-background/75 px-3 shadow-none [&>svg]:text-muted-foreground/65"
                       >
                         <span className="truncate pr-2 text-[12px] font-medium text-foreground">
-                          {filterTypeTriggerLabel(filterType)}
+                          {filterType === 'all' ? '类型' : filterType === 'thumbs_up' ? '类型 · 点赞' : '类型 · 点踩'}
                         </span>
                       </SelectTrigger>
                       <SelectContent className="rounded-lg border-border/60 bg-popover p-1 shadow-soft">
