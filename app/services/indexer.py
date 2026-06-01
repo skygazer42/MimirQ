@@ -54,19 +54,14 @@ _shadow_vector_writer: tuple[Any, Any, str] | None = None  # (embeddings, adapte
 _SHADOW_VECTOR_WRITE_EVENT = "ingest.shadow_vector_write"
 
 
-def _resolve_shadow_vector_writer() -> tuple[Any, Any, str] | None:
-    """
-    Best-effort resolve (embeddings, milvus_adapter, shadow_space_hash) for dual-write.
+def _milvus_backend_enabled() -> bool:
+    return str(getattr(settings, "VECTOR_BACKEND", "milvus") or "milvus").strip().lower() == "milvus"
 
-    This is used by Gap5 embedding blue-green migrations: when enabled, ingestion writes
-    vectors into both the primary collection (settings.MILVUS_COLLECTION_NAME) and the
-    shadow collection (settings.MILVUS_SHADOW_COLLECTION_NAME) using a potentially
-    different embedding model.
-    """
+
+def _shadow_vector_config() -> tuple[str, str, str, str, str] | None:
     if not bool(getattr(settings, "EMBEDDING_SHADOW_ENABLED", False)):
         return None
-
-    if str(getattr(settings, "VECTOR_BACKEND", "milvus") or "milvus").strip().lower() != "milvus":
+    if not _milvus_backend_enabled():
         return None
 
     shadow_collection = str(getattr(settings, "MILVUS_SHADOW_COLLECTION_NAME", "") or "").strip()
@@ -89,9 +84,46 @@ def _resolve_shadow_vector_writer() -> tuple[Any, Any, str] | None:
         or str(getattr(settings, "EMBEDDING_API_BASE", "") or "").strip()
         or str(getattr(settings, "LLM_API_BASE", "") or "").strip()
     )
+    return mapped_provider, shadow_model, api_key, base_url, shadow_collection
+
+
+def _cache_shadow_vector_writer(
+    sig: str,
+    writer: tuple[Any, Any, str] | None,
+) -> tuple[Any, Any, str] | None:
+    global _shadow_vector_writer_sig, _shadow_vector_writer
+    _shadow_vector_writer_sig = sig
+    _shadow_vector_writer = writer
+    return writer
+
+
+def _shadow_embedding_space_hash(*, provider: str, model: str, base_url: str) -> str:
+    try:
+        return embedding_space_hash_for_config(
+            provider=provider,
+            model=model,
+            base_url=base_url,
+            length=16,
+        )
+    except Exception:
+        return ""
+
+
+def _resolve_shadow_vector_writer() -> tuple[Any, Any, str] | None:
+    """
+    Best-effort resolve (embeddings, milvus_adapter, shadow_space_hash) for dual-write.
+
+    This is used by Gap5 embedding blue-green migrations: when enabled, ingestion writes
+    vectors into both the primary collection (settings.MILVUS_COLLECTION_NAME) and the
+    shadow collection (settings.MILVUS_SHADOW_COLLECTION_NAME) using a potentially
+    different embedding model.
+    """
+    config = _shadow_vector_config()
+    if config is None:
+        return None
+    mapped_provider, shadow_model, api_key, base_url, shadow_collection = config
     sig = f"{mapped_provider}|{shadow_model}|{base_url}|{shadow_collection}"
 
-    global _shadow_vector_writer_sig, _shadow_vector_writer
     if _shadow_vector_writer is not None and _shadow_vector_writer_sig == sig:
         return _shadow_vector_writer
 
@@ -105,31 +137,59 @@ def _resolve_shadow_vector_writer() -> tuple[Any, Any, str] | None:
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("Shadow embeddings init failed; dual-write disabled: %s", str(exc)[:200])
-        _shadow_vector_writer_sig = sig
-        _shadow_vector_writer = None
-        return None
+        return _cache_shadow_vector_writer(sig, None)
 
     try:
         adapter = get_milvus_adapter(resolve_collection_name(shadow_collection))
     except Exception as exc:  # noqa: BLE001
         logger.warning("Shadow Milvus adapter init failed; dual-write disabled: %s", str(exc)[:200])
-        _shadow_vector_writer_sig = sig
-        _shadow_vector_writer = None
-        return None
+        return _cache_shadow_vector_writer(sig, None)
 
-    try:
-        shadow_space = embedding_space_hash_for_config(
-            provider=mapped_provider,
-            model=shadow_model,
-            base_url=base_url,
-            length=16,
-        )
-    except Exception:
-        shadow_space = ""
+    shadow_space = _shadow_embedding_space_hash(provider=mapped_provider, model=shadow_model, base_url=base_url)
+    return _cache_shadow_vector_writer(sig, (emb, adapter, shadow_space))
 
-    _shadow_vector_writer_sig = sig
-    _shadow_vector_writer = (emb, adapter, shadow_space)
-    return _shadow_vector_writer
+
+def _prepare_shadow_vector_items(
+    docs: list[dict[str, Any]],
+    *,
+    shadow_space: str,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    items: list[dict[str, Any]] = []
+    texts: list[str] = []
+    for doc in docs:
+        meta0 = doc.get("metadata") if isinstance(doc, dict) else None
+        meta = dict(meta0 or {}) if isinstance(meta0, dict) else {}
+        chunk_id = str(meta.get("chunk_id") or "").strip()
+        if not chunk_id:
+            continue
+        content = str(doc.get("content") or "")
+        meta["embedding_space_hash"] = shadow_space
+        items.append({"id": chunk_id, "content": content, "metadata": meta})
+        texts.append(content)
+    return items, texts
+
+
+def _log_shadow_vector_write(
+    *,
+    ok: bool,
+    tenant_id: UUID,
+    document_id: UUID,
+    count: int,
+    reason: str | None = None,
+    error: Exception | None = None,
+) -> None:
+    payload: dict[str, Any] = {
+        "event": _SHADOW_VECTOR_WRITE_EVENT,
+        "ok": ok,
+        "tenant_id": str(tenant_id),
+        "document_id": str(document_id),
+        "count": int(count),
+    }
+    if reason:
+        payload["reason"] = reason
+    if error is not None:
+        payload["error"] = str(error)[:200]
+    log_metrics(payload)
 
 
 def _dual_write_shadow_vectors_best_effort(
@@ -146,60 +206,35 @@ def _dual_write_shadow_vectors_best_effort(
     if not docs:
         return
 
-    items: list[dict[str, Any]] = []
-    texts: list[str] = []
-    for doc in docs:
-        meta0 = doc.get("metadata") if isinstance(doc, dict) else None
-        meta = dict(meta0 or {}) if isinstance(meta0, dict) else {}
-        chunk_id = str(meta.get("chunk_id") or "").strip()
-        if not chunk_id:
-            continue
-        meta["embedding_space_hash"] = shadow_space
-        items.append({"id": chunk_id, "content": str(doc.get("content") or ""), "metadata": meta})
-        texts.append(str(doc.get("content") or ""))
-
+    items, texts = _prepare_shadow_vector_items(docs, shadow_space=shadow_space)
     if not items:
         return
 
     try:
         vecs = embeddings.embed_documents(texts)
     except Exception as exc:  # noqa: BLE001
-        log_metrics(
-            {
-                "event": _SHADOW_VECTOR_WRITE_EVENT,
-                "ok": False,
-                "reason": "embed_failed",
-                "tenant_id": str(tenant_id),
-                "document_id": str(document_id),
-                "count": int(len(items)),
-                "error": str(exc)[:200],
-            }
+        _log_shadow_vector_write(
+            ok=False,
+            reason="embed_failed",
+            tenant_id=tenant_id,
+            document_id=document_id,
+            count=len(items),
+            error=exc,
         )
         return
 
     try:
         batch_size = int(getattr(settings, "VECTOR_WRITE_BATCH_SIZE", 256) or 256)
         adapter.add_vectors(items, embeddings=vecs, batch_size=batch_size, upsert=True)
-        log_metrics(
-            {
-                "event": _SHADOW_VECTOR_WRITE_EVENT,
-                "ok": True,
-                "tenant_id": str(tenant_id),
-                "document_id": str(document_id),
-                "count": int(len(items)),
-            }
-        )
+        _log_shadow_vector_write(ok=True, tenant_id=tenant_id, document_id=document_id, count=len(items))
     except Exception as exc:  # noqa: BLE001
-        log_metrics(
-            {
-                "event": _SHADOW_VECTOR_WRITE_EVENT,
-                "ok": False,
-                "reason": "milvus_write_failed",
-                "tenant_id": str(tenant_id),
-                "document_id": str(document_id),
-                "count": int(len(items)),
-                "error": str(exc)[:200],
-            }
+        _log_shadow_vector_write(
+            ok=False,
+            reason="milvus_write_failed",
+            tenant_id=tenant_id,
+            document_id=document_id,
+            count=len(items),
+            error=exc,
         )
         return
 
@@ -306,32 +341,36 @@ def _coerce_short_text(value: Any, *, max_chars: int) -> str | None:
     return s or None
 
 
+def _title_from_document_metadata(doc_metadata: Any) -> str | None:
+    if not isinstance(doc_metadata, dict):
+        return None
+    for key in ("document_title", "doc_title", "title", "name"):
+        value = doc_metadata.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _title_from_filename(filename: Any) -> str | None:
+    raw = str(filename or "").strip()
+    if not raw:
+        return None
+    try:
+        from pathlib import Path
+
+        base = Path(raw).name
+        return Path(base).stem or base
+    except Exception:
+        return raw
+
+
 def _derive_document_title(filename: Any, doc_metadata: Any, *, max_chars: int = 120) -> str | None:
     """
     Best-effort derive a human-ish document title for embedding prefixes.
 
     Prefer explicit metadata when available; fall back to filename stem.
     """
-    title: str | None = None
-    if isinstance(doc_metadata, dict):
-        for key in ("document_title", "doc_title", "title", "name"):
-            v = doc_metadata.get(key)
-            if isinstance(v, str) and v.strip():
-                title = v.strip()
-                break
-
-    if not title:
-        raw = str(filename or "").strip()
-        if raw:
-            try:
-                from pathlib import Path
-
-                base = Path(raw).name
-                stem = Path(base).stem
-                title = stem or base
-            except Exception:
-                title = raw
-
+    title = _title_from_document_metadata(doc_metadata) or _title_from_filename(filename)
     return _coerce_short_text(title, max_chars=int(max_chars or 0)) if title else None
 
 
@@ -387,49 +426,23 @@ def _build_llm_contextual_summary(
     - Disabled unless CONTEXTUAL_RETRIEVAL_LLM_ENRICHMENT_ENABLED=true.
     - Any failure falls back to deterministic prefixing.
     """
-    if not bool(getattr(settings, "CONTEXTUAL_RETRIEVAL_LLM_ENRICHMENT_ENABLED", False)):
+    limits = _contextual_summary_limits()
+    if limits is None:
         return None
     text = str(raw_body or "").strip()
     if not text:
         return None
-
-    max_input_chars = max(0, int(getattr(settings, "CONTEXTUAL_RETRIEVAL_LLM_MAX_INPUT_CHARS", 2400) or 2400))
-    max_summary_chars = max(0, int(getattr(settings, "CONTEXTUAL_RETRIEVAL_LLM_MAX_SUMMARY_CHARS", 180) or 180))
-    if max_summary_chars <= 0:
-        return None
+    max_input_chars, max_summary_chars = limits
     sample = text[:max_input_chars] if max_input_chars else text
-
     section = _extract_heading_for_embedding(meta) or ""
     title = str(document_title or "").strip()
     try:
-        from langchain_core.messages import HumanMessage, SystemMessage
-        from langchain_openai import ChatOpenAI
-
-        llm = ChatOpenAI(
-            model=settings.LLM_MODEL,
-            api_key=settings.LLM_API_KEY,
-            base_url=settings.LLM_API_BASE,
-            temperature=0,
-            timeout=max(5, int(getattr(settings, "LLM_TIMEOUT", 60) or 60)),
-            max_retries=0,
-            streaming=False,
+        summary = _invoke_contextual_summary_llm(
+            title=title,
+            section=section,
+            sample=sample,
+            max_summary_chars=max_summary_chars,
         )
-        system = SystemMessage(
-            content=(
-                "Write one concise retrieval-oriented summary sentence for embedding enrichment. "
-                "Output plain text only. No markdown. No lists."
-            )
-        )
-        human = HumanMessage(
-            content=(
-                f"Title: {title or 'N/A'}\n"
-                f"Section: {section or 'N/A'}\n"
-                f"Chunk:\n{sample}\n\n"
-                f"Constraints: <= {max_summary_chars} chars, factual, no speculation."
-            )
-        )
-        resp = llm.invoke([system, human])
-        summary = str(getattr(resp, "content", "") or "").strip()
     except Exception:
         return None
 
@@ -438,6 +451,51 @@ def _build_llm_contextual_summary(
     if len(summary) > max_summary_chars:
         summary = summary[:max_summary_chars].rstrip()
     return summary or None
+
+
+def _contextual_summary_limits() -> tuple[int, int] | None:
+    if not bool(getattr(settings, "CONTEXTUAL_RETRIEVAL_LLM_ENRICHMENT_ENABLED", False)):
+        return None
+    max_input_chars = max(0, int(getattr(settings, "CONTEXTUAL_RETRIEVAL_LLM_MAX_INPUT_CHARS", 2400) or 2400))
+    max_summary_chars = max(0, int(getattr(settings, "CONTEXTUAL_RETRIEVAL_LLM_MAX_SUMMARY_CHARS", 180) or 180))
+    return (max_input_chars, max_summary_chars) if max_summary_chars > 0 else None
+
+
+def _invoke_contextual_summary_llm(
+    *,
+    title: str,
+    section: str,
+    sample: str,
+    max_summary_chars: int,
+) -> str:
+    from langchain_core.messages import HumanMessage, SystemMessage
+    from langchain_openai import ChatOpenAI
+
+    llm = ChatOpenAI(
+        model=settings.LLM_MODEL,
+        api_key=settings.LLM_API_KEY,
+        base_url=settings.LLM_API_BASE,
+        temperature=0,
+        timeout=max(5, int(getattr(settings, "LLM_TIMEOUT", 60) or 60)),
+        max_retries=0,
+        streaming=False,
+    )
+    system = SystemMessage(
+        content=(
+            "Write one concise retrieval-oriented summary sentence for embedding enrichment. "
+            "Output plain text only. No markdown. No lists."
+        )
+    )
+    human = HumanMessage(
+        content=(
+            f"Title: {title or 'N/A'}\n"
+            f"Section: {section or 'N/A'}\n"
+            f"Chunk:\n{sample}\n\n"
+            f"Constraints: <= {max_summary_chars} chars, factual, no speculation."
+        )
+    )
+    resp = llm.invoke([system, human])
+    return str(getattr(resp, "content", "") or "").strip()
 
 
 def _build_contextual_prefix_for_chunk(
@@ -476,6 +534,188 @@ def _should_apply_contextual_retrieval_prefix(meta: dict[str, Any], *, lazy_mode
         if evidence_gap.get("missing_source_keys"):
             return True
     return False
+
+
+def _coerce_entity_upsert_input(raw: Any) -> dict[str, Any] | None:
+    if not isinstance(raw, dict):
+        return None
+    name = str(raw.get("name") or "").strip()
+    if not name:
+        return None
+    normalized_name = str(raw.get("normalized_name") or name).strip()
+    if not normalized_name:
+        return None
+    return {
+        "name": name,
+        "normalized_name": normalized_name,
+        "type": str(raw.get("type") or "unknown").strip() or "unknown",
+        "description": str(raw.get("description")).strip() if isinstance(raw.get("description"), str) else None,
+        "vector": raw.get("vector") if isinstance(raw.get("vector"), list) else None,
+        "extra_data": raw.get("extra_data") if isinstance(raw.get("extra_data"), dict) else None,
+    }
+
+
+def _enrich_entity_best_effort(
+    entity: KgEntity,
+    *,
+    description: str | None,
+    vector: list[Any] | None,
+    extra_data: dict[str, Any] | None,
+) -> None:
+    if description and not getattr(entity, "description", None):
+        entity.description = description
+    if vector and not getattr(entity, "vector", None):
+        entity.vector = vector
+    if extra_data and not getattr(entity, "extra_data", None):
+        entity.extra_data = extra_data
+
+
+def _normalized_vector_ids(vector_ids: list[str | None] | None, *, chunks_count: int) -> list[str | None]:
+    if vector_ids is None:
+        return [None] * chunks_count
+    if len(vector_ids) != chunks_count:
+        raise ValueError(f"vector_ids length {len(vector_ids)} != chunks length {chunks_count}")
+    return vector_ids
+
+
+def _normalized_chunk_ids(chunk_ids: list[UUID] | None, *, chunks_count: int) -> list[UUID]:
+    if chunk_ids is None:
+        return [uuid.uuid4() for _ in range(chunks_count)]
+    if len(chunk_ids) != chunks_count:
+        raise ValueError(f"chunk_ids length {len(chunk_ids)} != chunks length {chunks_count}")
+    return chunk_ids
+
+
+def _document_chunk_metadata(
+    chunk: ChunkInput,
+    *,
+    document_id: UUID,
+    tenant_id: UUID,
+    chunk_index: int,
+    total_chunks: int,
+    chunk_id: UUID,
+) -> dict[str, Any]:
+    meta = dict(chunk.metadata or {})
+    normalize_image_metadata(meta)
+    meta.setdefault("tenant_id", str(tenant_id))
+    meta.setdefault("document_id", str(document_id))
+    meta.setdefault("chunk_index", chunk_index)
+    pipeline_hash = str(meta.get("pipeline_hash") or "").strip()
+    if pipeline_hash:
+        meta.setdefault("doc_pipeline_key", f"{document_id}:{pipeline_hash}")
+    meta = _ensure_chunk_metadata(
+        meta,
+        content=chunk.content or "",
+        document_id=document_id,
+        chunk_index=chunk_index,
+        total_chunks=total_chunks,
+    )
+    meta["chunk_id"] = str(chunk_id)
+    return meta
+
+
+def _chunk_position_values(chunk: ChunkInput, meta: dict[str, Any]) -> tuple[int | None, int | None, int | None]:
+    page_number = (
+        _safe_int(chunk.page_number) if chunk.page_number is not None else _safe_int(meta.get("page") or meta.get("page_number"))
+    )
+    start_char = _safe_int(chunk.start_char) if chunk.start_char is not None else _safe_int(meta.get("start_char"))
+    end_char = _safe_int(chunk.end_char) if chunk.end_char is not None else _safe_int(meta.get("end_char"))
+    return page_number, start_char, end_char
+
+
+def _event_references(event: KgSourceEvent) -> dict[str, Any]:
+    refs = getattr(event, "references", None)
+    return refs if isinstance(refs, dict) else {}
+
+
+def _event_pipeline_hash(event: KgSourceEvent, refs: dict[str, Any]) -> str | None:
+    pipeline_hash = str(getattr(event, "pipeline_hash", None) or refs.get("pipeline_hash") or "").strip() or None
+    return pipeline_hash[:200] if pipeline_hash and len(pipeline_hash) > 200 else pipeline_hash
+
+
+def _event_vector_metadata(event: KgSourceEvent, refs: dict[str, Any]) -> dict[str, Any]:
+    pipeline_hash = _event_pipeline_hash(event, refs)
+    meta: dict[str, Any] = {
+        "tenant_id": str(event.tenant_id),
+        "document_id": str(event.document_id) if event.document_id else "",
+        "chunk_id": str(event.chunk_id) if event.chunk_id else "",
+        "title": event.title,
+        "summary": event.summary,
+        "index_kind": IndexKind.EVENT.value,
+    }
+    if pipeline_hash:
+        meta["pipeline_hash"] = pipeline_hash
+        if event.document_id:
+            meta["doc_pipeline_key"] = f"{event.document_id}:{pipeline_hash}"
+    for key in (
+        "chunk_index",
+        "page",
+        "start_char",
+        "end_char",
+        "chunk_key",
+        "content_hash",
+        "content_len",
+        "source",
+    ):
+        value = refs.get(key)
+        if value is not None:
+            meta[key] = value
+    return meta
+
+
+def _event_vector_item(event: KgSourceEvent) -> tuple[dict[str, Any], list[float]] | None:
+    if not event.content_vector:
+        return None
+    refs = _event_references(event)
+    return (
+        {
+            "id": str(event.id),
+            "content": event.content,
+            "metadata": _event_vector_metadata(event, refs),
+        },
+        list(event.content_vector),
+    )
+
+
+def _vector_write_batch_size() -> int:
+    return int(getattr(settings, "VECTOR_WRITE_BATCH_SIZE", 256) or 256)
+
+
+def _vector_write_retry_policy() -> tuple[int, float]:
+    max_retries = int(getattr(settings, "VECTOR_WRITE_MAX_RETRIES", 1) or 1)
+    backoff = float(getattr(settings, "VECTOR_WRITE_RETRY_BACKOFF_SEC", 0.5) or 0.5)
+    return max_retries, backoff
+
+
+def _log_chunk_vector_retry(
+    *,
+    tenant_id: UUID,
+    document_id: UUID,
+    attempt: int,
+    max_attempts: int,
+    batch_size: int,
+    backoff: float,
+    error: Exception,
+) -> None:
+    log_metrics(
+        {
+            "event": "ingest.vector_write.retry",
+            "tenant_id": str(tenant_id),
+            "document_id": str(document_id),
+            "attempt": attempt,
+            "max_retries": max_attempts,
+            "batch_size": batch_size,
+            "backoff_sec": round(float(backoff), 3),
+            "error": str(error)[:200],
+        }
+    )
+    logger.warning(
+        "Vector write failed (attempt %s/%s), retrying in %.2fs: %s",
+        attempt,
+        max_attempts,
+        backoff,
+        str(error)[:200],
+    )
 
 
 class Indexer:
@@ -1104,41 +1344,28 @@ class Indexer:
         unique: dict[tuple[str, str], KgEntity] = {}
 
         for raw in entities:
-            if not isinstance(raw, dict):
+            item = _coerce_entity_upsert_input(raw)
+            if item is None:
                 continue
-            name = str(raw.get("name") or "").strip()
-            if not name:
-                continue
-            normalized_name = str(raw.get("normalized_name") or name).strip()
-            if not normalized_name:
-                continue
-            type_ = str(raw.get("type") or "unknown").strip() or "unknown"
-
-            desc_raw = raw.get("description")
-            description = str(desc_raw).strip() if isinstance(desc_raw, str) else None
-
-            vector = raw.get("vector") if isinstance(raw.get("vector"), list) else None
-            extra_data = raw.get("extra_data") if isinstance(raw.get("extra_data"), dict) else None
-
-            key = (normalized_name, type_)
+            key = (item["normalized_name"], item["type"])
             ent = unique.get(key)
             if ent is None:
                 ent = self._get_or_create_entity(
                     tenant_id=tenant_id,
-                    name=name,
-                    normalized_name=normalized_name,
-                    type_=type_,
-                    description=description,
+                    name=item["name"],
+                    normalized_name=item["normalized_name"],
+                    type_=item["type"],
+                    description=item["description"],
                 )
                 unique[key] = ent
 
             # Best-effort enrichment (avoid clobbering user edits).
-            if description and not getattr(ent, "description", None):
-                ent.description = description
-            if vector and not getattr(ent, "vector", None):
-                ent.vector = vector
-            if extra_data and not getattr(ent, "extra_data", None):
-                ent.extra_data = extra_data
+            _enrich_entity_best_effort(
+                ent,
+                description=item["description"],
+                vector=item["vector"],
+                extra_data=item["extra_data"],
+            )
 
         out = list(unique.values())
         if not out:
@@ -1452,9 +1679,93 @@ class Indexer:
             entities=list(record.entities or []),
         )
 
+    def _write_dataset_scoped_chunk_vectors(
+        self,
+        docs: list[dict[str, Any]],
+        *,
+        document_id: UUID,
+        tenant_id: UUID,
+        runtime: DatasetEmbeddingRuntimeConfig,
+    ) -> list[str | None]:
+        try:
+            embeddings = create_embeddings_for_runtime(runtime)
+            vectors = embeddings.embed_documents([str(doc.get("content") or "") for doc in docs])
+            adapter = get_milvus_adapter(resolve_collection_name(runtime.collection_name))
+            items = [
+                self._document_vector_item(
+                    doc=doc,
+                    document_id=document_id,
+                    tenant_id=tenant_id,
+                    index=index,
+                )
+                for index, doc in enumerate(docs)
+            ]
+            return adapter.add_vectors(items, embeddings=vectors, batch_size=_vector_write_batch_size(), upsert=True)
+        except Exception as exc:
+            logger.warning(
+                "Dataset-scoped vector write failed collection=%s space=%s: %s",
+                runtime.collection_name,
+                runtime.embedding_space_hash,
+                str(exc)[:200],
+            )
+            raise
+
+    def _write_chunk_vector_batch_with_retries(
+        self,
+        batch: list[dict[str, Any]],
+        *,
+        document_id: UUID,
+        tenant_id: UUID,
+        max_retries: int,
+        backoff: float,
+    ) -> tuple[list[str | None], float]:
+        vector_store = get_vector_store()
+        for attempt in range(max_retries + 1):
+            try:
+                ids = list(vector_store.add_documents(batch, document_id, tenant_id))
+                _dual_write_shadow_vectors_best_effort(batch, document_id=document_id, tenant_id=tenant_id)
+                return ids, backoff
+            except Exception as exc:  # noqa: BLE001
+                if attempt >= max_retries:
+                    raise
+                _log_chunk_vector_retry(
+                    tenant_id=tenant_id,
+                    document_id=document_id,
+                    attempt=attempt + 1,
+                    max_attempts=max_retries + 1,
+                    batch_size=len(batch),
+                    backoff=backoff,
+                    error=exc,
+                )
+                time.sleep(backoff)
+                backoff *= 2
+        return [], backoff
+
+    def _write_default_chunk_vectors(
+        self,
+        docs: list[dict[str, Any]],
+        *,
+        document_id: UUID,
+        tenant_id: UUID,
+    ) -> list[str | None]:
+        batch_size = _vector_write_batch_size()
+        max_retries, backoff = _vector_write_retry_policy()
+        out: list[str | None] = []
+        for i in range(0, len(docs), batch_size):
+            batch = docs[i : i + batch_size]
+            ids, backoff = self._write_chunk_vector_batch_with_retries(
+                batch,
+                document_id=document_id,
+                tenant_id=tenant_id,
+                max_retries=max_retries,
+                backoff=backoff,
+            )
+            out.extend(ids)
+        return out
+
     def _index_chunk_vectors(
         self,
-        docs: list[dict],
+        docs: list[dict[str, Any]],
         *,
         document_id: UUID,
         tenant_id: UUID,
@@ -1468,78 +1779,16 @@ class Indexer:
             return [None] * len(docs)
 
         runtime = embedding_runtime or resolve_dataset_embedding_runtime(None)
-        if runtime.dataset_scoped and str(getattr(settings, "VECTOR_BACKEND", "milvus") or "milvus").strip().lower() == "milvus":
-            try:
-                embeddings = create_embeddings_for_runtime(runtime)
-                vectors = embeddings.embed_documents([str(doc.get("content") or "") for doc in docs])
-                adapter = get_milvus_adapter(resolve_collection_name(runtime.collection_name))
-                batch_size = int(getattr(settings, "VECTOR_WRITE_BATCH_SIZE", 256) or 256)
-                items = [
-                    self._document_vector_item(
-                        doc=doc,
-                        document_id=document_id,
-                        tenant_id=tenant_id,
-                        index=index,
-                    )
-                    for index, doc in enumerate(docs)
-                ]
-                return adapter.add_vectors(items, embeddings=vectors, batch_size=batch_size, upsert=True)
-            except Exception as exc:
-                logger.warning(
-                    "Dataset-scoped vector write failed collection=%s space=%s: %s",
-                    runtime.collection_name,
-                    runtime.embedding_space_hash,
-                    str(exc)[:200],
-                )
-                raise
+        if runtime.dataset_scoped and _milvus_backend_enabled():
+            return self._write_dataset_scoped_chunk_vectors(
+                docs,
+                document_id=document_id,
+                tenant_id=tenant_id,
+                runtime=runtime,
+            )
 
-        vector_store = get_vector_store()
         try:
-            batch_size = int(getattr(settings, "VECTOR_WRITE_BATCH_SIZE", 256) or 256)
-            max_retries = int(getattr(settings, "VECTOR_WRITE_MAX_RETRIES", 1) or 1)
-            backoff = float(getattr(settings, "VECTOR_WRITE_RETRY_BACKOFF_SEC", 0.5) or 0.5)
-
-            out: list[str | None] = []
-            for i in range(0, len(docs), batch_size):
-                batch = docs[i : i + batch_size]
-                last_exc: Exception | None = None
-                for attempt in range(max_retries + 1):
-                    try:
-                        out.extend(list(vector_store.add_documents(batch, document_id, tenant_id)))
-                        # Best-effort dual-write to the shadow collection (Gap5).
-                        _dual_write_shadow_vectors_best_effort(batch, document_id=document_id, tenant_id=tenant_id)
-                        last_exc = None
-                        break
-                    except Exception as exc:  # noqa: BLE001
-                        last_exc = exc
-                        if attempt < max_retries:
-                            log_metrics(
-                                {
-                                    "event": "ingest.vector_write.retry",
-                                    "tenant_id": str(tenant_id),
-                                    "document_id": str(document_id),
-                                    "attempt": attempt + 1,
-                                    "max_retries": max_retries + 1,
-                                    "batch_size": len(batch),
-                                    "backoff_sec": round(float(backoff), 3),
-                                    "error": str(exc)[:200],
-                                }
-                            )
-                            logger.warning(
-                                "Vector write failed (attempt %s/%s), retrying in %.2fs: %s",
-                                attempt + 1,
-                                max_retries + 1,
-                                backoff,
-                                str(exc)[:200],
-                            )
-                            time.sleep(backoff)
-                            backoff *= 2
-                        else:
-                            raise
-
-                if last_exc is not None:
-                    raise last_exc
-
+            out = self._write_default_chunk_vectors(docs, document_id=document_id, tenant_id=tenant_id)
             if len(out) != len(docs):
                 raise ValueError(f"vector ids length {len(out)} != docs length {len(docs)}")
             return out
@@ -1561,44 +1810,20 @@ class Indexer:
         if not chunks:
             return []
 
-        if vector_ids is None:
-            vector_ids = [None] * len(chunks)
-        if len(vector_ids) != len(chunks):
-            raise ValueError(f"vector_ids length {len(vector_ids)} != chunks length {len(chunks)}")
-
-        if chunk_ids is None:
-            chunk_ids = [uuid.uuid4() for _ in chunks]
-        if len(chunk_ids) != len(chunks):
-            raise ValueError(f"chunk_ids length {len(chunk_ids)} != chunks length {len(chunks)}")
-
+        vector_ids = _normalized_vector_ids(vector_ids, chunks_count=len(chunks))
+        chunk_ids = _normalized_chunk_ids(chunk_ids, chunks_count=len(chunks))
         db_chunks: list[DocumentChunk] = []
         total_chunks = len(chunks)
         for idx, (chunk, vector_id, chunk_id) in enumerate(zip(chunks, vector_ids, chunk_ids, strict=False)):
-            meta = dict(chunk.metadata or {})
-            normalize_image_metadata(meta)
-            meta.setdefault("tenant_id", str(tenant_id))
-            meta.setdefault("document_id", str(document_id))
-            meta.setdefault("chunk_index", idx)
-            # Versioning: keep a stable composite key so retrieval can filter the active
-            # pipeline per document across multi-doc queries.
-            pipeline_hash = str(meta.get("pipeline_hash") or "").strip()
-            if pipeline_hash:
-                meta.setdefault("doc_pipeline_key", f"{document_id}:{pipeline_hash}")
-            meta = _ensure_chunk_metadata(
-                meta,
-                content=chunk.content or "",
+            meta = _document_chunk_metadata(
+                chunk,
                 document_id=document_id,
+                tenant_id=tenant_id,
                 chunk_index=idx,
                 total_chunks=total_chunks,
+                chunk_id=chunk_id,
             )
-            meta["chunk_id"] = str(chunk_id)
-            page_number = (
-                _safe_int(chunk.page_number)
-                if chunk.page_number is not None
-                else _safe_int(meta.get("page") or meta.get("page_number"))
-            )
-            start_char = _safe_int(chunk.start_char) if chunk.start_char is not None else _safe_int(meta.get("start_char"))
-            end_char = _safe_int(chunk.end_char) if chunk.end_char is not None else _safe_int(meta.get("end_char"))
+            page_number, start_char, end_char = _chunk_position_values(chunk, meta)
 
             db_chunks.append(
                 DocumentChunk(
@@ -1699,47 +1924,12 @@ class Indexer:
         items: list[dict[str, Any]] = []
         embeddings: list[list[float]] = []
         for ev in events:
-            if not ev.content_vector:
+            vector_item = _event_vector_item(ev)
+            if vector_item is None:
                 continue
-            refs = ev.references if isinstance(getattr(ev, "references", None), dict) else {}
-            embeddings.append(list(ev.content_vector))
-            pipeline_hash = str(getattr(ev, "pipeline_hash", None) or refs.get("pipeline_hash") or "").strip() or None
-            if pipeline_hash and len(pipeline_hash) > 200:
-                pipeline_hash = pipeline_hash[:200]
-            meta: dict[str, Any] = {
-                "tenant_id": str(ev.tenant_id),
-                "document_id": str(ev.document_id) if ev.document_id else "",
-                "chunk_id": str(ev.chunk_id) if ev.chunk_id else "",
-                "title": ev.title,
-                "summary": ev.summary,
-                "index_kind": IndexKind.EVENT.value,
-            }
-            if pipeline_hash:
-                meta["pipeline_hash"] = pipeline_hash
-                if ev.document_id:
-                    meta["doc_pipeline_key"] = f"{ev.document_id}:{pipeline_hash}"
-            if isinstance(refs, dict):
-                for k in (
-                    "chunk_index",
-                    "page",
-                    "start_char",
-                    "end_char",
-                    "chunk_key",
-                    "content_hash",
-                    "content_len",
-                    "source",
-                ):
-                    v = refs.get(k)
-                    if v is None:
-                        continue
-                    meta[k] = v
-            items.append(
-                {
-                    "id": str(ev.id),
-                    "content": ev.content,
-                    "metadata": meta,
-                }
-            )
+            item, vector = vector_item
+            items.append(item)
+            embeddings.append(vector)
 
         if not items:
             return []
