@@ -28,7 +28,7 @@ function asDatasetId(raw: unknown): string | null {
   return null
 }
 
-function renderValue(v: any): string {
+function renderValue(v: unknown): string {
   if (v === null || v === undefined) return ''
   if (typeof v === 'string') return v
   if (typeof v === 'number' || typeof v === 'boolean') return String(v)
@@ -44,7 +44,7 @@ const TABLE_ASSET_LIST_PARAMS = { skip: 0, limit: 200 } as const
 export default function DatasetTablesPage() {
   const router = useRouter()
   const params = useParams()
-  const datasetId = asDatasetId((params as any)?.id)
+  const datasetId = asDatasetId((params as Record<string, unknown>)?.id)
 
   const [selected, setSelected] = useState<DatasetTableAsset | null>(null)
 
@@ -116,7 +116,7 @@ export default function DatasetTablesPage() {
       // Update default query target table for convenience.
       const sheetName = `sheet_${full.sheet_index || 0}`
       setQuerySql(`SELECT * FROM "${sheetName}" LIMIT 20`)
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('Failed to load table detail', e)
       toast.error(formatApiError(e, '加载表格详情失败'))
     }
@@ -129,7 +129,7 @@ export default function DatasetTablesPage() {
     try {
       const res = await datasetApi.queryTable(datasetId, selected.table_id, { sql: querySql })
       setQueryRes(res)
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('Query failed', e)
       toast.error(formatApiError(e, '查询失败（只允许 SELECT/WITH SELECT）'))
     } finally {
@@ -145,7 +145,7 @@ export default function DatasetTablesPage() {
     try {
       const res = await datasetApi.askTable(datasetId, selected.table_id, { question: question.trim() })
       setAskRes(res)
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('Ask failed', e)
       toast.error(formatApiError(e, 'TAG 问答失败（需要开启 TABLE_NL2SQL_ENABLED）'))
     } finally {
@@ -161,7 +161,7 @@ export default function DatasetTablesPage() {
     try {
       const res = await datasetApi.lotusSemFilter(datasetId, selected.table_id, { user_instruction: semFilterInstruction.trim(), strategy: 'cot' })
       setSemFilterRes(res)
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('Sem filter failed', e)
       toast.error(formatApiError(e, '语义过滤失败（需要开启 TABLE_LOTUS_ENABLED 或 TABLE_NL2SQL_ENABLED）'))
     } finally {

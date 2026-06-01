@@ -147,8 +147,9 @@ async function listWritableCommonLineProfiles(): Promise<
         DEFAULT_COMMON_LINES_PROFILE
       )
       profs = [created]
-    } catch (createErr: any) {
-      if (createErr?.response?.status !== 409) throw createErr
+    } catch (caughtCreateErr: unknown) {
+      const createErr = caughtCreateErr as { response?: { status?: number } }
+      if (createErr?.response?.status !== 409) throw caughtCreateErr
       const retryResp = await pipelineApi.listGovernanceProfiles(
         COMMON_LINES_PROFILE_PARAMS
       )
@@ -294,7 +295,7 @@ export function GovernanceCommonLinesPage() {
       })
       setResp(out)
       toast.success(`已生成候选行：${(out.candidates || []).length}`)
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast.error(formatApiError(err, '扫描重复行失败'))
     } finally {
       setLoading(false)
@@ -374,7 +375,7 @@ export function GovernanceCommonLinesPage() {
           },
         })
         toast.success(`已导入 ${drafts.length} 个处理脚本草案`)
-      } catch (err: any) {
+      } catch (err: unknown) {
         toast.error(formatApiError(err, '导入处理脚本失败'))
       } finally {
         setImportingScript(false)
@@ -434,7 +435,7 @@ export function GovernanceCommonLinesPage() {
         toast.success(`已从模板库添加 ${drafts.length} 个处理脚本`)
         setTemplateLibraryOpen(false)
         setSelectedTemplateKeys(new Set())
-      } catch (err: any) {
+      } catch (err: unknown) {
         toast.error(formatApiError(err, '从模板库添加处理脚本失败'))
       } finally {
         setImportingScript(false)
@@ -527,7 +528,7 @@ export function GovernanceCommonLinesPage() {
       })
       toast.success(`已写入治理配置：新增 ${added} 条规则`)
       router.push('/data-governance/profiles')
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast.error(formatApiError(err, '写入治理配置失败'))
     } finally {
       setLoading(false)

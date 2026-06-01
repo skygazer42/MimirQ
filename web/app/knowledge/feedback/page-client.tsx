@@ -73,6 +73,17 @@ type FeedbackMetricKey = 'all' | FeedbackType | 'neutral'
 type FeedbackKind = FeedbackType | 'neutral'
 type FeedbackSummaryTone = 'indigo' | 'emerald' | 'rose' | 'blue'
 type FeedbackStatusTone = 'positive' | 'negative' | 'neutral' | 'priority'
+type FeedbackRating = 1 | 2 | 3 | 4 | 5
+type FeedbackListParams = {
+  min_rating?: number
+  max_rating?: number
+}
+type FeedbackStats = Record<FeedbackRating, number> & {
+  total: number
+  upvotes: number
+  downvotes: number
+  neutral: number
+}
 type FeedbackDelta = {
   label: string
   tone: 'positive' | 'negative' | 'neutral'
@@ -84,6 +95,7 @@ type ActiveFeedbackFilterBadge = {
 }
 
 const FEEDBACK_PAGE_SIZE = 3
+const FEEDBACK_RATINGS: readonly FeedbackRating[] = [1, 2, 3, 4, 5]
 
 const FEEDBACK_RANGE_DAYS: Record<Exclude<FeedbackTimeRange, 'all'>, number> = {
   '7d': 7,
@@ -881,7 +893,7 @@ export default function FeedbackTriagePage() {
   }, [])
 
   const params = useMemo(() => {
-    const p: any = {}
+    const p: FeedbackListParams = {}
     if (ratingFilter !== 'all') {
       const v = Number(ratingFilter)
       p.min_rating = v
@@ -934,7 +946,7 @@ export default function FeedbackTriagePage() {
         5: 46,
       }
     }
-    const s = {
+    const s: FeedbackStats = {
       1: 0,
       2: 0,
       3: 0,
@@ -948,7 +960,9 @@ export default function FeedbackTriagePage() {
     for (const it of items) {
       s.total++
       const r = Number(it.rating) || 0
-      if (r >= 1 && r <= 5) (s as any)[r] += 1
+      if (FEEDBACK_RATINGS.includes(r as FeedbackRating)) {
+        s[r as FeedbackRating] += 1
+      }
       const kind = classifyFeedback(r)
       if (kind === 'thumbs_up') s.upvotes++
       if (kind === 'thumbs_down') s.downvotes++
@@ -1096,7 +1110,7 @@ export default function FeedbackTriagePage() {
     try {
       await navigator.clipboard.writeText(JSON.stringify(it, null, 2))
       toast.success('已复制')
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast.error(formatApiError(err, '复制失败'))
     }
   }
@@ -1113,7 +1127,7 @@ export default function FeedbackTriagePage() {
         await feedbackApi.update(item.id, { archived: nextArchived })
         toast.success(nextArchived ? '已归档反馈' : '已取消归档')
         await refetch()
-      } catch (err: any) {
+      } catch (err: unknown) {
         toast.error(formatApiError(err, nextArchived ? '归档失败' : '取消归档失败'))
       } finally {
         setArchivingId(null)
@@ -1135,7 +1149,7 @@ export default function FeedbackTriagePage() {
         })
         setCreatedCaseId(rc.id)
         toast.success('已创建回归用例')
-      } catch (err: any) {
+      } catch (err: unknown) {
         toast.error(formatApiError(err, '创建回归用例失败'))
       } finally {
         setCreatingCase(false)
@@ -2087,7 +2101,7 @@ export default function FeedbackTriagePage() {
                       })
                       setCreatedCaseId(rc.id)
                       toast.success('已创建回归用例')
-                    } catch (err: any) {
+                    } catch (err: unknown) {
                       toast.error(formatApiError(err, '创建回归用例失败'))
                     } finally {
                       setCreatingCase(false)

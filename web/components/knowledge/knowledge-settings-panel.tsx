@@ -65,7 +65,8 @@ type ConnectorRunStatusFilter =
   | 'failed'
   | 'completed'
   | 'cancelled'
-type TranslateFn = (key: string, values?: Record<string, any>) => string
+type TranslateValue = string | number | Date
+type TranslateFn = (key: string, values?: Record<string, TranslateValue>) => string
 
 type KnowledgeSettingsPanelProps = {
   selectedDatasetId?: string
@@ -88,7 +89,22 @@ type KnowledgeConnectorRunsPanelProps = {
   onLoadConnectorRuns: (params: { datasetId?: string }) => void | Promise<void>
 }
 
-function getConnectorRunProgress(stats: any) {
+type TaskCardProps = {
+  run: ConnectorRunOut
+  t: TranslateFn
+  onCancel: (id: string) => void | Promise<void>
+  onResume?: (id: string) => void | Promise<void>
+  onRetry: (id: string) => void | Promise<void>
+  isExpanded: boolean
+  onToggleExpand: () => void
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function getConnectorRunProgress(rawStats: unknown) {
+  const stats = isRecord(rawStats) ? rawStats : {}
   const total = Number(
     stats?.total_items || stats?.items_total || stats?.total_urls || 0
   )
@@ -99,6 +115,11 @@ function getConnectorRunProgress(stats: any) {
       0
   )
   return { total, processed }
+}
+
+function getConnectorRunErrors(stats: unknown): Record<string, unknown>[] {
+  const record = isRecord(stats) ? stats : {}
+  return Array.isArray(record.errors) ? record.errors.filter(isRecord) : []
 }
 
 const EMBEDDING_PRESETS = [
@@ -1320,7 +1341,7 @@ export function KnowledgeConnectorRunsPanel({
           ].map((item) => (
             <button
               key={item.key}
-              onClick={() => setRunStatusFilter(item.key as any)}
+              onClick={() => setRunStatusFilter(item.key as ConnectorRunStatusFilter)}
               className={cn(
                 'flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-[10px] font-medium transition-all duration-200',
                 runStatusFilter === item.key
@@ -1380,8 +1401,9 @@ function TaskCard({
   onRetry,
   isExpanded,
   onToggleExpand,
-}: any) {
+}: TaskCardProps) {
   const { total, processed } = getConnectorRunProgress(run.stats || {})
+  const runErrors = getConnectorRunErrors(run.stats)
   const progressPct = total > 0 ? Math.round((processed / total) * 100) : 0
   const isFailed = run.status === 'failed'
   const isRunning = run.status === 'running' || run.status === 'pending'
@@ -1526,11 +1548,11 @@ function TaskCard({
               <div className="text-rose/80 font-medium mb-1">
                 ERR: {run.error_message}
               </div>
-              {(run.stats?.errors || [])
+              {runErrors
                 .slice(0, 2)
-                .map((err: any) => (
+                .map((err) => (
                   <div key={String(err.error ?? err.message ?? err.code ?? 'error')} className="mt-1 opacity-60 truncate">
-                    ! {err.error}
+                    ! {String(err.error ?? err.message ?? err.code ?? 'error')}
                   </div>
                 ))}
             </div>

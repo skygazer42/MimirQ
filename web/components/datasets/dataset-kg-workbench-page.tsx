@@ -167,7 +167,7 @@ function GraphPreviewSkeleton() {
 export default function DatasetKGWorkbenchPage() {
   const router = useRouter()
   const params = useParams()
-  const datasetId = asDatasetId((params as any)?.id)
+  const datasetId = asDatasetId((params as Record<string, unknown>)?.id)
 
   const graphRef = useRef<GraphViewerRef>(null)
   const graphClusteringSeqRef = useRef(0)
@@ -431,7 +431,7 @@ export default function DatasetKGWorkbenchPage() {
       })
       setExtractResults((prev) => ({ ...prev, [id]: { ok: true, res } }))
       toast.success(`KG 抽取完成：events=${Number(res?.event_count || 0)}`)
-    } catch (e: any) {
+    } catch (e: unknown) {
       const msg = formatApiError(e, 'KG 抽取失败')
       setExtractResults((prev) => ({ ...prev, [id]: { ok: false, error: msg } }))
       toast.error(msg)
@@ -471,7 +471,7 @@ export default function DatasetKGWorkbenchPage() {
             prune_orphan_entities: pruneOrphans,
           })
           nextResults[docId] = { ok: true, res }
-        } catch (e: any) {
+        } catch (e: unknown) {
           const msg = formatApiError(e, 'KG 抽取失败')
           nextResults[docId] = { ok: false, error: msg }
         } finally {
@@ -528,7 +528,7 @@ export default function DatasetKGWorkbenchPage() {
 
       setGraphData(graph)
       setGraphStats(stats)
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('Failed to load graph preview', e)
       toast.error(formatApiError(e, '加载图预览失败'))
       setGraphData(null)
@@ -584,7 +584,7 @@ export default function DatasetKGWorkbenchPage() {
       if (!nodes?.length) {
         toast.message('未找到匹配节点')
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('KG quick search failed', e)
       toast.error(formatApiError(e, 'KG 搜索失败'))
       setSearchResults([])
