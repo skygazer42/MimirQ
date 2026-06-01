@@ -33,6 +33,7 @@ type OidcTransaction = {
   code_verifier: string
   return_to: string
 }
+type OidcClaims = Record<string, unknown>
 
 const TX_KEY_PREFIX = 'mimirq_oidc_tx:'
 
@@ -58,6 +59,10 @@ function parseAuthParams(raw: string): Record<string, string> {
     out[k] = String(value || '')
   }
   return out
+}
+
+function claimString(claims: OidcClaims, key: string): string {
+  return String(claims[key] || '').trim()
 }
 
 function resolveRedirectUri(): string {
@@ -135,12 +140,12 @@ async function discover(issuer: string): Promise<OidcDiscovery> {
   return out
 }
 
-function buildUserFromClaims(claims: any): UserProfile {
-  const sub = String(claims?.sub || '').trim() || 'oidc-user'
-  const email = String(claims?.email || '').trim() || 'unknown@example.invalid'
+function buildUserFromClaims(claims: OidcClaims): UserProfile {
+  const sub = claimString(claims, 'sub') || 'oidc-user'
+  const email = claimString(claims, 'email') || 'unknown@example.invalid'
   const username =
-    String(claims?.preferred_username || '').trim() ||
-    String(claims?.name || '').trim() ||
+    claimString(claims, 'preferred_username') ||
+    claimString(claims, 'name') ||
     (email === 'unknown@example.invalid' ? '' : email) ||
     sub
 
@@ -282,9 +287,9 @@ export async function completeOidcLogin(params: { code: string; state: string })
       const msg = String(data?.error_description || data?.error || '').trim()
       throw new Error(msg || `oidc_token_exchange_failed_${res.status}`)
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     // Fallback: exchange server-side to avoid browser CORS/client_secret constraints.
-    const providerId = String((tx as any)?.provider_id || '').trim() || undefined
+    const providerId = String(tx.provider_id || '').trim() || undefined
     const serverRes = await fetch('/api/oidc/exchange', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -295,10 +300,11 @@ export async function completeOidcLogin(params: { code: string; state: string })
         redirect_uri: tx.redirect_uri,
       }),
     })
-    const serverData = (await serverRes.json().catch(() => null))
+    const serverData = (await serverRes.json().catch(() => null)) as OidcTokenResponse | null
     if (!serverRes.ok) {
       const msg = String(serverData?.error || '').trim()
-      const originalMsg = String(err?.message || '').trim()
+      const originalMsg =
+        err instanceof Error ? err.message.trim() : String(err || '').trim()
       const originalLower = originalMsg.toLowerCase()
       const preferServer =
         Boolean(msg) &&
@@ -324,8 +330,8 @@ export async function completeOidcLogin(params: { code: string; state: string })
   }
 
   const claims =
-    (data?.id_token ? tryDecodeJwtPayload<any>(String(data.id_token)) : null) ||
-    tryDecodeJwtPayload<any>(accessToken) ||
+    (data?.id_token ? tryDecodeJwtPayload<OidcClaims>(String(data.id_token)) : null) ||
+    tryDecodeJwtPayload<OidcClaims>(accessToken) ||
     {}
 
   const user: UserProfile = buildUserFromClaims(claims)

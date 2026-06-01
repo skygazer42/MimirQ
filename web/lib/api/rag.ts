@@ -1,6 +1,7 @@
 import type {
   EvidenceRetrieveRequest,
   EvidenceRetrieveResponse,
+  JsonObject,
   PromptPreviewRequest,
   PromptPreviewResponse,
   RagvizSimilarityCalculateResponse,
@@ -13,6 +14,7 @@ import { z } from 'zod'
 
 import { API_LONG_TIMEOUT_MS } from '@/lib/env'
 import { apiClient, openapiRequest } from '@/lib/api/core'
+import type { Citation } from '@/types'
 
 export interface ClipImageIndexRequest {
   dataset_id: string
@@ -37,8 +39,8 @@ export interface ClipImageSearchRequest {
 }
 
 export interface ClipImageSearchResponse {
-  citations: any[]
-  metrics: Record<string, any>
+  citations: Citation[]
+  metrics: JsonObject
 }
 
 export interface DocumentStructureRequest {
@@ -74,7 +76,7 @@ export interface RagConfigTemplate {
   template_key?: string | null
   name: string
   description?: string | null
-  config_patch: Record<string, any>
+  config_patch: JsonObject
   is_active: boolean
   usage_count: number
   version: number
@@ -90,7 +92,7 @@ export interface RagConfigTemplateCreate {
   template_key?: string
   name: string
   description?: string
-  config_patch?: Record<string, any>
+  config_patch?: JsonObject
   is_active?: boolean
   parent_id?: string | null
   ab_experiment_key?: string | null
@@ -102,7 +104,7 @@ export interface RagConfigTemplateUpdate {
   template_key?: string | null
   name?: string
   description?: string | null
-  config_patch?: Record<string, any>
+  config_patch?: JsonObject
   is_active?: boolean
   version?: number
   parent_id?: string | null
@@ -114,7 +116,7 @@ export interface RagConfigTemplateUpdate {
 export interface RagConfigTemplateNewVersion {
   name?: string
   description?: string | null
-  config_patch?: Record<string, any>
+  config_patch?: JsonObject
   is_active?: boolean
   deactivate_previous?: boolean
   ab_experiment_key?: string | null

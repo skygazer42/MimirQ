@@ -1,4 +1,5 @@
 import axios, { AxiosHeaders } from 'axios'
+import type { AxiosRequestConfig, AxiosResponse } from 'axios'
 
 import { extractBackendMessage, extractBackendRequestId, extractRateLimitDetail } from '@/lib/api-errors'
 import { getAuthHeaders } from '@/lib/auth-headers'
@@ -45,6 +46,34 @@ type RateLimitLogMessageInput = {
   retryAfterSec?: number
   scope?: string
   limit?: number
+}
+type RetriableRequestConfig = AxiosRequestConfig & {
+  __mimirqOidcRetried?: boolean
+}
+type ApiClientError = Error & {
+  code?: string
+  config?: RetriableRequestConfig
+  request?: unknown
+  requestId?: string
+  response?: {
+    status: number
+    data: unknown
+    headers?: Record<string, unknown>
+  }
+}
+type HtmlResponseError = Error & {
+  code?: string
+  response?: AxiosResponse
+  config?: AxiosResponse['config']
+  request?: AxiosResponse['request']
+}
+
+function asApiClientError(error: unknown): ApiClientError {
+  return error instanceof Error
+    ? (error as ApiClientError)
+    : Object.assign(new Error(String(error || 'API request failed')), {
+        cause: error,
+      }) as ApiClientError
 }
 
 export const apiClient = axios.create({
@@ -108,14 +137,14 @@ function isRequestCancellationError(error: unknown): boolean {
   return message === 'canceled'
 }
 
-async function handleUnauthorizedApiError(error: any, requestId?: string) {
+async function handleUnauthorizedApiError(error: ApiClientError, requestId?: string) {
   logRequestScopedError('[API] 未授权，请检查登录状态', requestId)
 
   const token = getAccessToken()
   const canAttemptRefresh =
-    !!token && globalThis.window !== undefined && !!error?.config && !(error.config).__mimirqOidcRetried
-  if (canAttemptRefresh) {
-    ;(error.config).__mimirqOidcRetried = true
+    !!token && globalThis.window !== undefined && !!error.config && !error.config.__mimirqOidcRetried
+  if (canAttemptRefresh && error.config) {
+    error.config.__mimirqOidcRetried = true
 
     const refreshed = await tryRefreshOidcAccessToken()
     if (refreshed) {
@@ -137,7 +166,13 @@ async function handleUnauthorizedApiError(error: any, requestId?: string) {
   return undefined
 }
 
-function handleResponseStatusError(status: number, detail: string, requestId: string | undefined, data: unknown, error: any) {
+function handleResponseStatusError(
+  status: number,
+  detail: string,
+  requestId: string | undefined,
+  data: unknown,
+  error: ApiClientError
+) {
   if (status === 403) {
     logRequestScopedError('[API] 无权限访问', requestId)
     return
@@ -151,7 +186,7 @@ function handleResponseStatusError(status: number, detail: string, requestId: st
     return
   }
   if (status === 429) {
-    const retryAfterHeader = error.response.headers?.['retry-after']
+    const retryAfterHeader = error.response?.headers?.['retry-after']
     const rateLimit = extractRateLimitDetail(data)
     const retryAfterSec = coerceRetryAfterSeconds(rateLimit?.retryAfterSec, retryAfterHeader)
     const { message, extra } = formatRateLimitLogMessage({
@@ -169,37 +204,41 @@ function handleResponseStatusError(status: number, detail: string, requestId: st
   logRequestScopedError('[API] 请求失败:', requestId, detail || error.message)
 }
 
-async function handleApiClientError(error: any) {
+async function handleApiClientError(error: unknown) {
   if (isRequestCancellationError(error)) {
     throw error
   }
 
-  if (error.response) {
-    const status = error.response.status
-    const data = error.response.data
-    const detail = extractBackendMessage(data) || error.message
-    const headerRequestId = headerValueToString(error.response.headers?.['x-request-id'])
+  const apiError = asApiClientError(error)
+
+  if (apiError.response) {
+    const status = apiError.response.status
+    const data = apiError.response.data
+    const detail = extractBackendMessage(data) || apiError.message
+    const headerRequestId = headerValueToString(apiError.response.headers?.['x-request-id'])
     const requestId = extractBackendRequestId(data) || headerRequestId
-    ;(error).requestId = requestId
+    apiError.requestId = requestId
 
     if (status === 401) {
-      const retried = await handleUnauthorizedApiError(error, requestId)
+      const retried = await handleUnauthorizedApiError(apiError, requestId)
       if (retried) return retried
-      throw error
+      throw apiError
     }
 
-    handleResponseStatusError(status, detail, requestId, data, error)
-    throw error
+    handleResponseStatusError(status, detail, requestId, data, apiError)
+    throw apiError
   }
 
-  if (error.request) {
-    const headers = AxiosHeaders.from(error.config?.headers)
+  if (apiError.request) {
+    const headers = AxiosHeaders.from(
+      (apiError.config?.headers ?? {}) as Record<string, string | number | boolean>
+    )
     const requestId = headerValueToString(headers.get('X-Request-ID'))
-    ;(error).requestId = requestId
+    apiError.requestId = requestId
     logRequestScopedError('[API] 网络连接中断或后端不可达，请检查后端服务 / API 地址', requestId)
   }
 
-  throw error
+  throw apiError
 }
 
 apiClient.interceptors.request.use((config) => {
@@ -226,7 +265,7 @@ apiClient.interceptors.response.use(
         const trimmed = response.data.trimStart().slice(0, 200).toLowerCase()
         const looksHtml = trimmed.startsWith('<!doctype html') || trimmed.startsWith('<html')
         if (looksHtml || contentType.includes('text/html')) {
-          const err: any = new Error(
+          const err: HtmlResponseError = new Error(
             'Backend returned HTML (可能 API 地址配错了；请检查 NEXT_PUBLIC_API_URL / 反向代理配置)'
           )
           err.code = 'ERR_BAD_RESPONSE'

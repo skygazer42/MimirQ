@@ -1,13 +1,17 @@
 import type { GraphData, GraphLink, GraphNode } from './graph-parser'
 import { toTrimmedPrimitiveString } from './primitive-text'
 
-type AnyObj = Record<string, any>
+type JsonRecord = Record<string, unknown>
 
-function isNonEmptyObject(v: unknown): v is AnyObj {
-  return !!v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length > 0
+function isRecord(v: unknown): v is JsonRecord {
+  return !!v && typeof v === 'object' && !Array.isArray(v)
 }
 
-function truthyCount(obj: AnyObj, prefix: string) {
+function isNonEmptyObject(v: unknown): v is JsonRecord {
+  return isRecord(v) && Object.keys(v).length > 0
+}
+
+function truthyCount(obj: JsonRecord, prefix: string) {
   return Object.entries(obj).filter(([k, v]) => k.startsWith(prefix) && !!v).length
 }
 
@@ -24,10 +28,10 @@ type NodeMeta = {
   kind: 'bundle' | 'group' | 'subgroup'
   configured?: boolean
   summary?: string[]
-  json?: any
+  json?: unknown
 }
 
-function makeNode(id: string, label: string, configured: boolean, json: any, summary: string[] = [], color?: string): GraphNode {
+function makeNode(id: string, label: string, configured: boolean, json: unknown, summary: string[] = [], color?: string): GraphNode {
   return {
     id,
     label,
@@ -50,9 +54,8 @@ function makeLink(source: string, target: string, label?: string): GraphLink {
   }
 }
 
-export function buildDatasetConfigGraph(config: AnyObj): GraphData {
-  const cfg = (config || {})
-  const cfgAny = cfg as any
+export function buildDatasetConfigGraph(config: object): GraphData {
+  const cfg = isRecord(config) ? config : {}
 
   const nodes: GraphNode[] = [
     {
@@ -64,12 +67,12 @@ export function buildDatasetConfigGraph(config: AnyObj): GraphData {
   ]
   const links: GraphLink[] = []
 
-  const addGroup = (id: string, label: string, configured: boolean, json: any, summary: string[] = []) => {
+  const addGroup = (id: string, label: string, configured: boolean, json: unknown, summary: string[] = []) => {
     nodes.push(makeNode(id, label, configured, json, summary))
     links.push(makeLink('bundle', id))
   }
 
-  const addSub = (id: string, label: string, configured: boolean, json: any, summary: string[] = []) => {
+  const addSub = (id: string, label: string, configured: boolean, json: unknown, summary: string[] = []) => {
     nodes.push({
       id,
       label,
@@ -94,7 +97,7 @@ export function buildDatasetConfigGraph(config: AnyObj): GraphData {
   )
 
   // Pipeline (and sub-blocks)
-  const pipeline = (cfg.pipeline || null) as AnyObj | null
+  const pipeline = isNonEmptyObject(cfg.pipeline) ? cfg.pipeline : null
   addGroup(
     'pipeline',
     'Pipeline',
@@ -154,8 +157,9 @@ export function buildDatasetConfigGraph(config: AnyObj): GraphData {
   }
 
   // Ingestion policy (keep high-level)
-  const ingestionPolicy = cfg.ingestion_policy || null
-  const policyRuleCount = (ingestionPolicy)?.rules?.length
+  const ingestionPolicy = isRecord(cfg.ingestion_policy) ? cfg.ingestion_policy : null
+  const policyRules = Array.isArray(ingestionPolicy?.rules) ? ingestionPolicy.rules : null
+  const policyRuleCount = policyRules?.length
   addGroup(
     'ingestion_policy',
     'Ingestion Policy',
@@ -182,11 +186,11 @@ export function buildDatasetConfigGraph(config: AnyObj): GraphData {
   )
 
   // Optional nodes (backend may include these even if web TS types don't yet)
-  if (cfgAny.chunk_targets_v2 != null) {
-    addGroup('chunk_targets', 'Chunk Targets', isNonEmptyObject(cfgAny.chunk_targets_v2), cfgAny.chunk_targets_v2)
+  if (cfg.chunk_targets_v2 != null) {
+    addGroup('chunk_targets', 'Chunk Targets', isNonEmptyObject(cfg.chunk_targets_v2), cfg.chunk_targets_v2)
   }
-  if (cfgAny.fls_policy != null) {
-    addGroup('fls_policy', 'FLS Policy', isNonEmptyObject(cfgAny.fls_policy), cfgAny.fls_policy)
+  if (cfg.fls_policy != null) {
+    addGroup('fls_policy', 'FLS Policy', isNonEmptyObject(cfg.fls_policy), cfg.fls_policy)
   }
 
   return { nodes, links }

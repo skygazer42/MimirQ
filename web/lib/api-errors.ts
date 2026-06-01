@@ -10,6 +10,23 @@ type RateLimitDetailLike = {
   limit?: unknown
   scope?: unknown
 }
+type HeaderLike = Record<string, unknown> & {
+  get?: (name: string) => unknown
+}
+type AxiosErrorLike = {
+  code?: unknown
+  message?: unknown
+  requestId?: unknown
+  request_id?: unknown
+  response?: {
+    status?: unknown
+    data?: unknown
+    headers?: unknown
+  }
+  config?: {
+    headers?: unknown
+  }
+}
 
 function looksLikeHtmlDocument(value: string): boolean {
   const trimmed = (value || '').trimStart().slice(0, 200).toLowerCase()
@@ -18,6 +35,10 @@ function looksLikeHtmlDocument(value: string): boolean {
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 function asNonEmptyString(value: unknown): string | undefined {
@@ -100,13 +121,14 @@ export function extractBackendMessage(data: unknown): string | undefined {
 
   if (typeof data === 'object') {
     const payload = data as ErrorResponseLike
+    const detail = isRecord(payload.detail) ? payload.detail : null
     return (
       asNonEmptyString(payload.message) ||
       asNonEmptyString(payload.detail) ||
       // FastAPI default: {"detail":[{...},{...}]}
       (Array.isArray(payload.detail) ? 'Validation error' : undefined) ||
-      (typeof payload.detail === 'object'
-        ? asNonEmptyString((payload.detail as any)?.message) || safeJson(payload.detail)
+      (detail
+        ? asNonEmptyString(detail.message) || safeJson(payload.detail)
         : undefined)
     )
   }
@@ -120,45 +142,48 @@ export type ApiErrorInfo = {
   status?: number
 }
 
-function extractHeaderRequestId(headers: any): string | undefined {
+function extractHeaderRequestId(headers: unknown): string | undefined {
   if (!headers) return undefined
+  const record = headers as HeaderLike
   const raw =
-    headers['x-request-id'] ??
-    headers['X-Request-ID'] ??
-    headers['x-request-id'.toLowerCase()] ??
-    headers['X-Request-ID'.toLowerCase()]
+    record['x-request-id'] ??
+    record['X-Request-ID'] ??
+    record['x-request-id'.toLowerCase()] ??
+    record['X-Request-ID'.toLowerCase()]
   if (raw == null) return undefined
   return asNonEmptyString(String(raw))
 }
 
-function extractHeaderRetryAfterSec(headers: any): number | undefined {
+function extractHeaderRetryAfterSec(headers: unknown): number | undefined {
   if (!headers) return undefined
+  const record = headers as HeaderLike
   const raw =
-    headers['retry-after'] ??
-    headers['Retry-After'] ??
-    headers['retry-after'.toLowerCase()] ??
-    headers['Retry-After'.toLowerCase()]
+    record['retry-after'] ??
+    record['Retry-After'] ??
+    record['retry-after'.toLowerCase()] ??
+    record['Retry-After'.toLowerCase()]
   if (raw == null) return undefined
   const parsed = asFiniteNumber(raw)
   if (parsed == null) return undefined
   return Math.max(0, Math.round(parsed))
 }
 
-function extractConfigRequestId(headers: any): string | undefined {
+function extractConfigRequestId(headers: unknown): string | undefined {
   if (!headers) return undefined
+  const record = headers as HeaderLike
   try {
-    if (typeof headers.get === 'function') {
-      return asNonEmptyString(headers.get('X-Request-ID') || headers.get('x-request-id'))
+    if (typeof record.get === 'function') {
+      return asNonEmptyString(record.get('X-Request-ID') || record.get('x-request-id'))
     }
   } catch {
     // ignore
   }
-  const raw = headers['X-Request-ID'] ?? headers['x-request-id']
+  const raw = record['X-Request-ID'] ?? record['x-request-id']
   return raw == null ? undefined : asNonEmptyString(String(raw))
 }
 
 export function extractAxiosRequestId(err: unknown): string | undefined {
-  const maybeError = err as any
+  const maybeError = err as AxiosErrorLike
 
   // If upstream already attached a request id, trust it first.
   const direct = asNonEmptyString(maybeError?.requestId) || asNonEmptyString(maybeError?.request_id)
@@ -214,12 +239,15 @@ export function formatApiError(err: unknown, fallbackMessage: string): string {
 export function toApiErrorInfo(err: unknown, fallbackMessage: string): ApiErrorInfo {
   if (isNonEmptyString(err)) return { message: err.trim() }
 
-  const maybeError = err as any
+  const maybeError = err as AxiosErrorLike
   const axiosResponse = maybeError?.response
   const status = typeof axiosResponse?.status === 'number' ? axiosResponse.status : undefined
   const data = axiosResponse?.data
 
-  let message = extractBackendMessage(data) || (maybeError?.message && String(maybeError.message)) || fallbackMessage
+  let message =
+    extractBackendMessage(data) ||
+    (maybeError?.message ? String(maybeError.message) : '') ||
+    fallbackMessage
   const requestId = extractAxiosRequestId(err)
   const normalizedMessage = String(message || '').trim().toLowerCase()
   const code = String(maybeError?.code || '').trim().toUpperCase()
