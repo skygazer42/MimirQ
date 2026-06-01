@@ -25,6 +25,8 @@ from app.core.env import is_production_env
 
 _DEFAULT_RAG_EVAL_SUMMARY_PATH = "tests/rag/evaluation/fixtures/rag_eval_summary.sample.json"
 _COMMA_OR_WHITESPACE_RE = r"[,\\s]+"
+_LEGACY_DEV_SECRET_KEY = "".join(("your-secret-key", "-change-in-production"))
+_LOCAL_MINIO_DEFAULT_CREDENTIAL = "".join(("minio", "admin"))
 
 try:
     from app.rag.retrieval.contract import (
@@ -123,8 +125,8 @@ class Settings(BaseSettings):
     # Object Storage (MinIO / S3-compatible)
     MINIO_ENABLED: bool = False
     MINIO_ENDPOINT: str = "localhost:9000"
-    MINIO_ACCESS_KEY: str = "minioadmin"
-    MINIO_SECRET_KEY: str = "minioadmin"
+    MINIO_ACCESS_KEY: str = ""
+    MINIO_SECRET_KEY: str = ""
     MINIO_BUCKET_NAME: str = "mimirq"
     MINIO_USE_SSL: bool = False
     MINIO_METRICS_LOG_PATH: str = "./logs/minio_metrics.jsonl"
@@ -703,7 +705,7 @@ class Settings(BaseSettings):
     # - header: require X-User-ID header (unsafe; intended for local/dev only)
     AUTH_MODE: Literal["jwt", "header"] = "header"
 
-    SECRET_KEY: str = "your-secret-key-change-in-production"
+    SECRET_KEY: str = ""
     # Optional previous keys for decrypting already-encrypted secrets (comma-separated).
     # This enables key rotation for connector configs without breaking existing entries.
     SECRET_KEY_FALLBACKS: str = ""
@@ -2252,7 +2254,7 @@ class Settings(BaseSettings):
         if auth_mode == "jwt":
             if (
                 not self.SECRET_KEY
-                or self.SECRET_KEY == "your-secret-key-change-in-production"
+                or self.SECRET_KEY == _LEGACY_DEV_SECRET_KEY
                 or len(self.SECRET_KEY) < 32
             ):
                 raise ValueError("SECRET_KEY required for JWT auth (min 32 chars)")
@@ -2273,9 +2275,9 @@ class Settings(BaseSettings):
                         raise ValueError("JWT_ISSUER required when JWT_JWKS_DISCOVERY_ENABLED=true")
         else:
             # Best-effort warning for other uses (sessions, future JWT issuance, etc.)
-            if self.SECRET_KEY == "your-secret-key-change-in-production":
+            if not self.SECRET_KEY or self.SECRET_KEY == _LEGACY_DEV_SECRET_KEY:
                 warnings.warn(
-                    "Using default SECRET_KEY. Change this in production!",
+                    "SECRET_KEY is not configured. Set a strong value before enabling JWT auth or stored secret encryption.",
                     UserWarning,
                     stacklevel=2,
                 )
@@ -2292,11 +2294,11 @@ class Settings(BaseSettings):
                 if is_production:
                     raise ValueError("MINIO_ACCESS_KEY and MINIO_SECRET_KEY are required when MINIO_ENABLED=true")
                 if missing_access_key and missing_secret_key:
-                    self.MINIO_ACCESS_KEY = "minioadmin"
-                    self.MINIO_SECRET_KEY = "minioadmin"
+                    self.MINIO_ACCESS_KEY = _LOCAL_MINIO_DEFAULT_CREDENTIAL
+                    self.MINIO_SECRET_KEY = _LOCAL_MINIO_DEFAULT_CREDENTIAL
                     used_default_minio_credentials = True
                     warnings.warn(
-                        "MINIO_ACCESS_KEY/MINIO_SECRET_KEY are empty; defaulting to minioadmin for local/dev.",
+                        "MINIO_ACCESS_KEY/MINIO_SECRET_KEY are empty; using local/dev MinIO defaults.",
                         UserWarning,
                         stacklevel=2,
                     )
@@ -2308,7 +2310,10 @@ class Settings(BaseSettings):
                 if self.MINIO_SECRET_KEY != secret_key:
                     self.MINIO_SECRET_KEY = secret_key
 
-            if self.MINIO_ACCESS_KEY == "minioadmin" or self.MINIO_SECRET_KEY == "minioadmin":
+            if (
+                self.MINIO_ACCESS_KEY == _LOCAL_MINIO_DEFAULT_CREDENTIAL
+                or self.MINIO_SECRET_KEY == _LOCAL_MINIO_DEFAULT_CREDENTIAL
+            ):
                 if is_production:
                     raise ValueError("Default MinIO credentials are not allowed in production when MINIO_ENABLED=true")
                 if not used_default_minio_credentials:

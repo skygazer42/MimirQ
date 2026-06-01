@@ -22,7 +22,7 @@ warnings.filterwarnings(
 )
 warnings.filterwarnings(
     "ignore",
-    message=r"Using default SECRET_KEY\. Change this in production!",
+    message=r"SECRET_KEY is not configured\..*",
     category=UserWarning,
 )
 warnings.filterwarnings(
