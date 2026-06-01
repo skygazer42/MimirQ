@@ -12,6 +12,7 @@ import io
 from pathlib import Path
 
 from langchain_core.documents import Document
+
 _EMPTY_SHEET_MARKDOWN = "_Empty sheet._\n\n"
 
 

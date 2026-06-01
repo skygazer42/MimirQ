@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 from uuid import UUID
+
 _DOCUMENT_STRUCTURE_SCHEMA = "mimirq.document_structure.v1"
 
 

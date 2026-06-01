@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from urllib.parse import unquote
+
 _IMAGE_CAPTION_PREFIX = "Image caption:"
 
 # Match Markdown inline image: ![alt](src "optional title")

@@ -12,7 +12,6 @@ from typing import (
     Any,
     Literal,
     TypeVar,
-    Union,
 )
 
 from app.models.chunk import BaseDocumentTransformer, Document

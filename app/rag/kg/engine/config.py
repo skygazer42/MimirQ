@@ -1,6 +1,7 @@
 """Engine config models."""
 
 from pathlib import Path
+
 from pydantic import BaseModel, Field
 
 from app.core.config import settings
