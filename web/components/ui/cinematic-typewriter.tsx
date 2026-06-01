@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import dynamic from 'next/dynamic'
-import { startTransition, useEffect, useMemo, useRef, useState } from "react"
+import { startTransition, useEffect, useMemo, useRef, useState, type ComponentPropsWithoutRef } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { AuthImage } from '@/components/auth-image'
@@ -92,7 +92,7 @@ function CinematicMarkdownImage({ src, alt }: MarkdownImageProps) {
   )
 }
 
-function CinematicMarkdownCode({ className, children, ...props }: any) {
+function CinematicMarkdownCode({ className, children, ...props }: ComponentPropsWithoutRef<'code'>) {
   const match = /language-(\w+)/.exec(className || '')
   if (match) {
     return (

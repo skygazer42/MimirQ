@@ -14,6 +14,7 @@ import {
   ChevronDown,
   Check,
 } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   buildChunkStrategyCatalog,
@@ -25,7 +26,7 @@ import {
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
 
 // 图标映射
-const ICON_MAP: Record<ChunkStrategyOption['icon'], any> = {
+const ICON_MAP: Record<ChunkStrategyOption['icon'], LucideIcon> = {
   recursive: Layers,
   token: Hash,
   sentence: AlignLeft,

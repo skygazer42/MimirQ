@@ -22,7 +22,8 @@ export function KnowledgeInspector({
   const selected = selectedDocs.length === 1 ? selectedDocs[0] : null
   const fileType = selected ? getFileTypeMeta(selected) : null
   const TypeIcon = fileType?.icon
-  const sourcePath = selected ? String((selected.metadata as any)?.source_path || '').trim() : ''
+  const metadata = selected?.metadata as Record<string, unknown> | undefined
+  const sourcePath = selected ? String(metadata?.source_path || '').trim() : ''
   const folderPath = sourcePath.includes('/') ? sourcePath.split('/').slice(0, -1).join('/') : ''
 
   const header = (

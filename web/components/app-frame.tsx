@@ -55,7 +55,7 @@ export function AppFrame({
     const applyInert = (el: HTMLElement | null, inert: boolean) => {
       if (!el) return
       try {
-        ;(el as any).inert = inert
+        ;(el as HTMLElement & { inert: boolean }).inert = inert
       } catch {
         // ignore: inert not supported everywhere
       }

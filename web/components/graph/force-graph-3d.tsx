@@ -62,6 +62,7 @@ type GraphLinkDatum = GraphLinkLike & {
   source: GraphEndpointRef | GraphNodeDatum
   target: GraphEndpointRef | GraphNodeDatum
   color?: string
+  type?: unknown
   curvature?: number
   curveRotation?: number
   isSelfLoop?: boolean
@@ -159,6 +160,24 @@ type ForceGraph3DComponentProps = Record<string, unknown> & {
   ref?: Ref<unknown>
 }
 
+type ForceGraph3DHandle = {
+  d3ReheatSimulation?: () => void
+  controls?: () => {
+    panSpeed?: number
+    target?: { x: number; y: number; z: number }
+  } | null
+  camera?: () => {
+    position: { x: number; y: number; z: number }
+  } | null
+  cameraPosition?: (
+    position: { x: number; y: number; z: number },
+    lookAt?: { x?: number; y?: number; z?: number },
+    ms?: number
+  ) => void
+  zoomToFit?: (ms?: number, padding?: number) => void
+  renderer?: () => { domElement?: HTMLCanvasElement } | null
+}
+
 // Dynamic import to avoid SSR issues with Three.js
 const ForceGraph3D = dynamic(() => import("react-force-graph-3d"), {
   ssr: false,
@@ -222,7 +241,7 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
     const { resolvedTheme } = useTheme()
     const isDark = resolvedTheme === "dark"
     const containerRef = useRef<HTMLDivElement>(null)
-    const fgRef = useRef<any>(null)
+    const fgRef = useRef<ForceGraph3DHandle | null>(null)
     const [mounted, setMounted] = useState(false)
     const [hoveredLinkId, setHoveredLinkId] = useState<string | null>(null)
     const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
@@ -367,7 +386,7 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
 
         const distance = 40
         const distRatio = 1 + distance / Math.hypot(node.x || 0, node.y || 0, node.z || 0)
-        fgRef.current.cameraPosition(
+        fgRef.current.cameraPosition?.(
           { x: (node.x || 0) * distRatio, y: (node.y || 0) * distRatio, z: (node.z || 0) * distRatio },
           node,
           900
@@ -379,7 +398,7 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
     const zoomIn = useCallback(() => {
       const g = fgRef.current
       const cam = g?.camera?.()
-      if (!cam) return
+      if (!cam || !g?.cameraPosition) return
       const target = getLookAtTarget()
       g.cameraPosition(
         { x: cam.position.x * 0.85, y: cam.position.y * 0.85, z: cam.position.z * 0.85 },
@@ -391,7 +410,7 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
     const zoomOut = useCallback(() => {
       const g = fgRef.current
       const cam = g?.camera?.()
-      if (!cam) return
+      if (!cam || !g?.cameraPosition) return
       const target = getLookAtTarget()
       g.cameraPosition(
         { x: cam.position.x * 1.15, y: cam.position.y * 1.15, z: cam.position.z * 1.15 },

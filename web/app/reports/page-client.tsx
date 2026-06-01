@@ -203,7 +203,7 @@ async function exportReportBlobFile({
     )
     const safe = sanitizeFilename(datasetName || 'dataset')
     downloadBlob(blob, `${safe}.${filenameStem}${reportPipelineSuffix(pipelineHash)}.${extension}`)
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error(`${errorFallback}:`, e)
     toast.error(formatApiError(e, errorFallback))
   } finally {

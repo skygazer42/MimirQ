@@ -172,7 +172,7 @@ export function ManualUploadDialog({ onUploaded }: Readonly<ManualUploadDialogPr
         { signal: controller.signal }
       )
       setPreview(result)
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (controller.signal.aborted) return
       console.error('Preview parse failed:', err)
       setError(formatApiError(err, '文档解析失败'))
@@ -310,7 +310,7 @@ export function ManualUploadDialog({ onUploaded }: Readonly<ManualUploadDialogPr
       setFile(null)
 
       if (onUploaded) onUploaded()
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Manual upload failed:', err)
       setError(formatApiError(err, '手动切片上传失败'))
     } finally {

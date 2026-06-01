@@ -19,10 +19,19 @@ interface EdgeKindEntry {
 }
 
 interface GraphLegendProps {
-  readonly nodes: readonly any[]
-  readonly links?: readonly any[]
+  readonly nodes: readonly unknown[]
+  readonly links?: readonly unknown[]
   readonly activeTypeFilters?: readonly string[]
   readonly onToggleTypeFilter?: (type: string) => void
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
+}
+
+function metaRecord(value: unknown): Record<string, unknown> {
+  const record = asRecord(value)
+  return asRecord(record.meta)
 }
 
 export function GraphLegend({ nodes, links = [], activeTypeFilters = [], onToggleTypeFilter }: GraphLegendProps) {
@@ -34,12 +43,14 @@ export function GraphLegend({ nodes, links = [], activeTypeFilters = [], onToggl
     let eventCount = 0
 
     for (const node of nodes) {
-      const kind = String(node?.meta?.kind ?? '').trim()
+      const nodeRecord = asRecord(node)
+      const meta = metaRecord(node)
+      const kind = String(meta.kind ?? '').trim()
       if (kind === 'event') {
         eventCount++
         continue
       }
-      const type = String(node?.meta?.type ?? node?.type ?? '').trim() || 'unknown'
+      const type = String(meta.type ?? nodeRecord.type ?? '').trim() || 'unknown'
       countMap.set(type, (countMap.get(type) || 0) + 1)
     }
 
@@ -59,7 +70,9 @@ export function GraphLegend({ nodes, links = [], activeTypeFilters = [], onToggl
   const edgeKinds = useMemo<EdgeKindEntry[]>(() => {
     const countMap = new Map<string, number>()
     for (const link of links || []) {
-      const kind = String(link?.meta?.kind ?? link?.kind ?? '').trim() || 'unknown'
+      const linkRecord = asRecord(link)
+      const meta = metaRecord(link)
+      const kind = String(meta.kind ?? linkRecord.kind ?? '').trim() || 'unknown'
       countMap.set(kind, (countMap.get(kind) || 0) + 1)
     }
 

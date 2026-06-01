@@ -28,6 +28,7 @@ import { DatasetSelectField } from '@/components/ops/dataset-select-field'
 import { evaluationApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { cn, detachPromise } from '@/lib/utils'
+import type { RegressionCaseBundleV1 } from '@/types'
 
 function prettyJson(value: unknown) {
   try {
@@ -377,7 +378,7 @@ export function EvaluationDataOpsPanel() {
                   dataset_id: dataset,
                   overwrite,
                   max_items: maxItems,
-                  items: parseJson(itemsJson) as any[],
+                  items: parseJson(itemsJson) as RegressionCaseBundleV1['items'],
                 })
               )
             }

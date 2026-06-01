@@ -5,7 +5,7 @@ function toHex(value: number): string {
 }
 
 export function generateRequestId(): string {
-  const cryptoLike = (globalThis as any)?.crypto
+  const cryptoLike = globalThis.crypto
   if (cryptoLike && typeof cryptoLike.randomUUID === 'function') {
     return cryptoLike.randomUUID()
   }

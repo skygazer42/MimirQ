@@ -22,7 +22,7 @@ export async function readSseDataStrings(
     }
   }
 
-  // Flush any remaining decoder output (best-effort).
+  // Flush remaining decoder output (best-effort).
   for (const data of sse.feed(decoder.decode())) {
     try {
       onData(data)
@@ -31,4 +31,3 @@ export async function readSseDataStrings(
     }
   }
 }
-

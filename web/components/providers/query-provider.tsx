@@ -4,8 +4,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useState } from 'react'
 
 function getHttpStatus(error: unknown): number | null {
-  const anyErr = error as any
-  const status = anyErr?.response?.status ?? anyErr?.status
+  const err = error as { response?: { status?: unknown }; status?: unknown }
+  const status = err?.response?.status ?? err?.status
   return typeof status === 'number' ? status : null
 }
 

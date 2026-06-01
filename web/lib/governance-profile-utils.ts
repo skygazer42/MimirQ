@@ -42,7 +42,7 @@ export function buildCleanPreviewRequestFromGovernanceProfile(
   markdown: string,
   options: BuildCleanPreviewOptions = {}
 ): CleanPreviewRequest {
-  const patch = (payload?.pipeline_patch || {}) as any
+  const patch = payload?.pipeline_patch || {}
 
   const inputFormat =
     options.inputFormat ||

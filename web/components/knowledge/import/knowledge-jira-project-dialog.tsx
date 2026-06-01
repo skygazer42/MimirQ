@@ -183,7 +183,7 @@ export function KnowledgeJiraProjectDialog({
       setSourceAclFallbackMode('partial_members')
       detachPromise(loadConnectorRuns({ datasetId: selectedDatasetId }))
       detachPromise(loadDocuments())
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast.error(formatApiError(err, '创建 Jira 导入任务失败'))
     } finally {
       setSubmitting(false)

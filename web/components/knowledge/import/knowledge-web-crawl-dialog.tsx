@@ -166,7 +166,11 @@ export function KnowledgeWebCrawlDialog({
       return
     }
 
-    let auth: any = null
+    let auth:
+      | { type: 'cookie'; cookie: string }
+      | { type: 'bearer'; token: string }
+      | { type: 'basic'; username: string; password: string }
+      | null = null
     if (authType === 'cookie') {
       const cookie = authCookie.trim()
       if (!cookie) {
@@ -260,7 +264,7 @@ export function KnowledgeWebCrawlDialog({
       setAccessGroupIds([])
       detachPromise(loadConnectorRuns({ datasetId: selectedDatasetId }))
       detachPromise(loadDocuments())
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast.error(formatApiError(err, '创建网页爬取任务失败'))
     } finally {
       setSubmitting(false)

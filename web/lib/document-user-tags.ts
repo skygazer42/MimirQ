@@ -101,9 +101,9 @@ export function mergeTags(current: unknown, mode: TagOpMode, tags: string[]): st
 export function getUserTagsFromDocument(doc: Pick<Document, 'metadata'>): string[] {
   const meta = doc?.metadata
   if (!meta || typeof meta !== 'object') return []
-  const user = (meta as any).user
+  const user = (meta as Record<string, unknown>).user
   if (!user || typeof user !== 'object') return []
-  return normalizeTags((user).tags)
+  return normalizeTags((user as Record<string, unknown>).tags)
 }
 
 export function buildTagsPatch(nextTags: string[]): { patch: { tags: string[] | null }; replace: false } {
@@ -116,4 +116,3 @@ export function buildTagsPatch(nextTags: string[]): { patch: { tags: string[] | 
     },
   }
 }
-

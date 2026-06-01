@@ -144,7 +144,7 @@ export function ModelConfigDialog({
         max_retries: 1,
       })
       setTestResult({ success: !!result.success, message: result.message })
-    } catch (e: any) {
+    } catch (e: unknown) {
       setTestResult({ success: false, message: formatApiError(e, '测试失败') })
     } finally {
       setIsTesting(false)

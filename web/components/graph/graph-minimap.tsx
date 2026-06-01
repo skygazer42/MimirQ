@@ -5,10 +5,10 @@ import { useCallback, useEffect, useMemo, useRef, type MouseEvent } from 'react'
 import { cn } from '@/lib/utils'
 
 type GraphMinimapProps = {
-  readonly graphRef: any
+  readonly graphRef: Readonly<{ current?: GraphMinimapHandle | null }>
   readonly data: {
-    nodes: any[]
-    links: any[]
+    nodes: GraphMinimapNode[]
+    links: unknown[]
   }
   readonly graphWidth: number
   readonly graphHeight: number
@@ -18,7 +18,23 @@ type GraphMinimapProps = {
   readonly height?: number
 }
 
-function safeNumber(value: any, fallback: number): number {
+type GraphMinimapNode = {
+  readonly x?: unknown
+  readonly y?: unknown
+}
+
+type GraphBbox = {
+  readonly x?: readonly unknown[]
+  readonly y?: readonly unknown[]
+}
+
+type GraphMinimapHandle = {
+  readonly getGraphBbox?: () => GraphBbox | null | undefined
+  readonly centerAt?: (x?: number, y?: number, ms?: number) => unknown
+  readonly zoom?: () => unknown
+}
+
+function safeNumber(value: unknown, fallback: number): number {
   const n = Number(value)
   return Number.isFinite(n) ? n : fallback
 }
@@ -70,11 +86,13 @@ export function GraphMinimap({
     let ymax = -Infinity
     try {
       const bbox = g.getGraphBbox?.()
-      if (bbox?.x && bbox?.y) {
-        xmin = safeNumber(bbox.x[0], xmin)
-        xmax = safeNumber(bbox.x[1], xmax)
-        ymin = safeNumber(bbox.y[0], ymin)
-        ymax = safeNumber(bbox.y[1], ymax)
+      const xRange = Array.isArray(bbox?.x) ? bbox.x : null
+      const yRange = Array.isArray(bbox?.y) ? bbox.y : null
+      if (xRange && yRange) {
+        xmin = safeNumber(xRange[0], xmin)
+        xmax = safeNumber(xRange[1], xmax)
+        ymin = safeNumber(yRange[0], ymin)
+        ymax = safeNumber(yRange[1], ymax)
       }
     } catch {}
 
@@ -110,7 +128,18 @@ export function GraphMinimap({
     let center = { x: 0, y: 0 }
     let zoom = 1
     try {
-      center = g.centerAt?.() || center
+      const currentCenter = g.centerAt?.()
+      if (
+        currentCenter &&
+        typeof currentCenter === 'object' &&
+        'x' in currentCenter &&
+        'y' in currentCenter
+      ) {
+        center = {
+          x: safeNumber(currentCenter.x, center.x),
+          y: safeNumber(currentCenter.y, center.y),
+        }
+      }
       zoom = safeNumber(g.zoom?.(), 1)
     } catch {}
     zoom = Math.max(0.1, zoom)

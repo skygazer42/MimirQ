@@ -10,6 +10,7 @@ import type {
   RagTraceListResponse,
 } from '@/types'
 import { z } from 'zod'
+import type { OpenApiOkResponse, OpenApiRequestBody } from '@/types/openapi-helpers'
 
 import { getAuthHeaders } from '@/lib/auth-headers'
 import { buildFetchError } from '@/lib/fetch-errors'
@@ -18,6 +19,9 @@ import { withPreferredLanguageHeader } from '@/lib/preferred-language'
 import { generateRequestId } from '@/lib/request-id'
 import { readSseDataStrings } from '@/lib/sse-reader'
 import { apiClient, openapiRequest } from '@/lib/api/core'
+
+type ChatRequestBody = OpenApiRequestBody<'/api/v1/chat', 'post'>
+type ChatResponseBody = OpenApiOkResponse<'/api/v1/chat', 'post'>
 
 const chatCitationSchema = z.looseObject({
     document_id: z.string(),
@@ -133,10 +137,10 @@ export const chatApi = {
     const data = await openapiRequest({
       path: '/api/v1/chat',
       method: 'post',
-      body: request as any,
+      body: request as unknown as ChatRequestBody,
       signal: options.signal,
       timeoutMs: API_LONG_TIMEOUT_MS,
-      responseSchema: chatResponseSchema as any,
+      responseSchema: chatResponseSchema as unknown as z.ZodType<ChatResponseBody>,
       responseSchemaName: 'ChatResponse',
     })
     return data as ChatResponse

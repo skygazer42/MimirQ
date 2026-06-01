@@ -396,7 +396,7 @@ export function GraphCanvas({
   const semanticNodes = useMemo(
     () =>
       graphRenderData.nodes.slice(0, SEMANTIC_LIST_ITEM_LIMIT).map((node, index) => {
-        const nodeRecord = node as Record<string, unknown>
+        const nodeRecord = node as unknown as Record<string, unknown>
         const meta = (nodeRecord.meta ?? {}) as Record<string, unknown>
         const nodeId =
           typeof nodeRecord.id === 'string' && nodeRecord.id.trim().length > 0 ? nodeRecord.id : `node-${index + 1}`
@@ -415,7 +415,7 @@ export function GraphCanvas({
   const semanticLinks = useMemo(
     () =>
       graphRenderData.links.slice(0, SEMANTIC_LIST_ITEM_LIMIT).map((link, index) => {
-        const linkRecord = link as Record<string, unknown>
+        const linkRecord = link as unknown as Record<string, unknown>
         const meta = (linkRecord.meta ?? {}) as Record<string, unknown>
         const source = normalizeLinkEndpoint(linkRecord.source)
         const target = normalizeLinkEndpoint(linkRecord.target)

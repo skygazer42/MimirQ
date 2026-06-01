@@ -242,7 +242,7 @@ export function TestGenerationDialog({
         setError(result.error_message || '生成失败')
         toast.error('生成失败')
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('生成问题失败:', error)
       const msg = formatApiError(error, '生成问题失败')
       setError(msg)

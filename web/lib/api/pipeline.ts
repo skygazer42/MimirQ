@@ -8,6 +8,7 @@ import type {
   GovernanceAnalyzeResponse,
   GovernanceCommonLinesLearnRequest,
   GovernanceCommonLinesLearnResponse,
+  DocumentPipelineOptions,
   GovernanceProfileCreate,
   GovernanceProfileImportResponse,
   GovernanceProfileListResponse,
@@ -29,10 +30,20 @@ import type {
 import type {
   BuiltinProcessingScriptListResponse,
 } from '@/types/backend'
+import type { OpenApiRequestBody } from '@/types/openapi-helpers'
 
 import { API_LONG_TIMEOUT_MS } from '@/lib/env'
 import { resolveParserBackendForFilename } from '@/lib/parser-compat'
 import { apiClient, openapiRequest } from '@/lib/api/core'
+
+type GovernanceProfileUpdateBody = OpenApiRequestBody<
+  '/api/v1/pipeline/governance-profiles/{profile_ref}',
+  'patch'
+>
+type GovernanceProfileCreateBody = OpenApiRequestBody<
+  '/api/v1/pipeline/governance-profiles',
+  'post'
+>
 
 function normalizeRegexRuleForApi(rule: { pattern: string; repl?: string; flags?: number }): {
   pattern: string
@@ -55,27 +66,62 @@ function normalizeProcessingScriptForApi(
   }
 }
 
-function normalizeGovernanceProfilePayload(payload: any): GovernanceProfileOut['payload'] {
-  const p = payload || {}
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isInputFormat(value: unknown): value is 'markdown' | 'html' {
+  return value === 'markdown' || value === 'html'
+}
+
+function isRegexRuleInput(value: unknown): value is { pattern: string; repl?: string; flags?: number } {
+  return isRecord(value) && typeof value.pattern === 'string'
+}
+
+function isProcessingScript(value: unknown): value is GovernanceProcessingScript {
+  return (
+    isRecord(value) &&
+    typeof value.name === 'string' &&
+    typeof value.content === 'string' &&
+    (value.language === 'javascript' ||
+      value.language === 'typescript' ||
+      value.language === 'python' ||
+      value.language === 'rust') &&
+    (value.stage === 'post_parse' || value.stage === 'post_governance')
+  )
+}
+
+function normalizeGovernanceProfilePayload(payload: unknown): GovernanceProfileOut['payload'] {
+  const p = isRecord(payload) ? payload : {}
   const inputFormatsRaw = p.input_formats
+  const validInputFormats = Array.isArray(inputFormatsRaw) ? inputFormatsRaw.filter(isInputFormat) : []
   const input_formats =
-    Array.isArray(inputFormatsRaw) && inputFormatsRaw.length > 0 ? inputFormatsRaw : ['markdown']
-  const regex_rules = Array.isArray(p.regex_rules) ? p.regex_rules.map(normalizeRegexRuleForApi) : []
-  const processing_scripts = Array.isArray(p.processing_scripts) ? p.processing_scripts : []
+    validInputFormats.length > 0
+      ? validInputFormats
+      : (['markdown'] satisfies Array<'markdown' | 'html'>)
+  const regex_rules = Array.isArray(p.regex_rules)
+    ? p.regex_rules.filter(isRegexRuleInput).map(normalizeRegexRuleForApi)
+    : []
+  const processing_scripts = Array.isArray(p.processing_scripts)
+    ? p.processing_scripts.filter(isProcessingScript)
+    : []
+  const pipeline_patch = isRecord(p.pipeline_patch)
+    ? (p.pipeline_patch as DocumentPipelineOptions)
+    : {}
 
   return {
     version: typeof p.version === 'string' && p.version ? p.version : '1',
-    extends: p.extends ?? null,
+    extends: typeof p.extends === 'string' ? p.extends : null,
     input_formats,
-    pipeline_patch: p.pipeline_patch ?? {},
+    pipeline_patch,
     regex_rules,
     processing_scripts,
   }
 }
 
-function normalizeGovernanceProfileOut(profile: any): GovernanceProfileOut {
-  const pr = profile || {}
-  return { ...pr, payload: normalizeGovernanceProfilePayload(pr.payload) }
+function normalizeGovernanceProfileOut(profile: unknown): GovernanceProfileOut {
+  const pr = isRecord(profile) ? profile : {}
+  return { ...pr, payload: normalizeGovernanceProfilePayload(pr.payload) } as GovernanceProfileOut
 }
 
 export const pipelineApi = {
@@ -179,7 +225,7 @@ export const pipelineApi = {
     const data = await openapiRequest({
       path: '/api/v1/pipeline/governance-profiles',
       method: 'post',
-      body,
+      body: body as unknown as GovernanceProfileCreateBody,
     })
     return normalizeGovernanceProfileOut(data)
   },
@@ -202,7 +248,7 @@ export const pipelineApi = {
       path: '/api/v1/pipeline/governance-profiles/{profile_ref}',
       method: 'patch',
       pathParams: { profile_ref: profileRef },
-      body: body as any,
+      body: body as unknown as GovernanceProfileUpdateBody,
     })
     return normalizeGovernanceProfileOut(data)
   },

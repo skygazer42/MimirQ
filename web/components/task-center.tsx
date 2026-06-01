@@ -77,7 +77,7 @@ export function TaskCenter() {
       await documentApi.cancel(id)
       toast.success(t('cancelledTask'))
       await refetch()
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast.error(formatApiError(err, t('cancelFailed')))
     } finally {
       setActing(null)
@@ -91,7 +91,7 @@ export function TaskCenter() {
       await documentApi.retry(id)
       toast.success(t('retryTriggered'))
       await refetch()
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast.error(formatApiError(err, t('retryFailed')))
     } finally {
       setActing(null)

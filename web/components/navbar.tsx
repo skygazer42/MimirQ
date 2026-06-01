@@ -316,7 +316,7 @@ export function Navbar({
 
   // Accessibility: prevent focus from entering the sidebar when collapsed/hidden.
   useEffect(() => {
-    const el = navRef.current as any
+    const el = navRef.current as (HTMLElement & { inert: boolean }) | null
     if (!el) return
     const inertNow = !isSidebarOpen
     try {
@@ -437,7 +437,13 @@ export function Navbar({
     }
 
     // Prefer idle time to avoid blocking initial render.
-    const w = globalThis.window as any
+    const w = globalThis.window as Window & {
+      requestIdleCallback?: (
+        callback: (deadline: { didTimeout: boolean; timeRemaining: () => number }) => void,
+        options?: { timeout?: number }
+      ) => number
+      cancelIdleCallback?: (id: number) => void
+    }
     if (typeof w.requestIdleCallback === 'function') {
       const id = w.requestIdleCallback(prefetchAll, { timeout: 2000 })
       return () => w.cancelIdleCallback?.(id)

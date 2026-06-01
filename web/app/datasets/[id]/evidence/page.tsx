@@ -20,7 +20,7 @@ export default function DatasetEvidencePage() {
   const router = useRouter()
   const params = useParams()
   const searchParams = useSearchParams()
-  const datasetId = useMemo(() => asDatasetId((params as any)?.id), [params])
+  const datasetId = useMemo(() => asDatasetId((params as Record<string, unknown>).id), [params])
   const initialFeedbackId = useMemo(() => {
     const raw = searchParams.get('feedback_id')
     return raw?.trim() ? raw.trim() : undefined

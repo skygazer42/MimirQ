@@ -8,14 +8,37 @@ export interface GraphNode {
   label: string
   val?: number // size
   color?: string
-  [key: string]: any
+  group?: number
+  kind?: unknown
+  type?: unknown
+  source?: unknown
+  meta?: Record<string, unknown>
+  x?: number
+  y?: number
+  z?: number
+  fx?: number | null
+  fy?: number | null
+  fz?: number | null
+  vx?: number | null
+  vy?: number | null
+  vz?: number | null
 }
 
 export interface GraphLink {
   source: string
   target: string
+  id?: string | number | null
   label?: string
-  [key: string]: any
+  kind?: unknown
+  type?: unknown
+  predicate?: unknown
+  confidence?: unknown
+  weight?: unknown
+  value?: unknown
+  score?: unknown
+  color?: string
+  index?: number
+  meta?: Record<string, unknown>
 }
 
 export interface GraphData {
@@ -46,7 +69,7 @@ export const parseGraphML = (xmlContent: string): GraphData => {
     const id = node.getAttribute('id')
     if (!id) return
 
-    const nodeData: GraphNode = { id, label: id }
+    const nodeData: GraphNode & Record<string, unknown> = { id, label: id }
 
     // Parse data attributes
     node.querySelectorAll('data').forEach((data) => {
@@ -79,7 +102,7 @@ export const parseGraphML = (xmlContent: string): GraphData => {
     const target = edge.getAttribute('target')
 
     if (source && target) {
-      const linkData: GraphLink = { source, target }
+      const linkData: GraphLink & Record<string, unknown> = { source, target }
 
       // Parse data attributes for edges
       edge.querySelectorAll('data').forEach((data) => {

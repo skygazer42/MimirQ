@@ -47,7 +47,10 @@ export type KGNetworkRequest = {
   node_id?: string
 }
 
-export type KGNetworkResponse = Record<string, any>
+export type KGNetworkResponse = Record<string, unknown>
+export type KGSnapshotExportResponse = Record<string, unknown>
+export type KGSnapshotDiffResponse = Record<string, unknown>
+export type KGSnapshotCompareResponse = Record<string, unknown>
 
 export const kgApi = {
   async extract(
@@ -194,12 +197,15 @@ export const kgApi = {
     document_ids?: string[]
     dataset_id?: string
     include_details?: boolean
-  }): Promise<any> {
+  }): Promise<KGSnapshotExportResponse> {
     const { data } = await apiClient.get('/kg/snapshots/export', { params })
     return data
   },
 
-  async diffSnapshots(body: { snapshot_a: Record<string, any>; snapshot_b: Record<string, any> }): Promise<any> {
+  async diffSnapshots(body: {
+    snapshot_a: Record<string, unknown>
+    snapshot_b: Record<string, unknown>
+  }): Promise<KGSnapshotDiffResponse> {
     const { data } = await apiClient.post('/kg/snapshots/diff', body)
     return data
   },
@@ -209,7 +215,7 @@ export const kgApi = {
     pipeline_hash_b: string
     document_ids?: string[]
     dataset_id?: string
-  }): Promise<any> {
+  }): Promise<KGSnapshotCompareResponse> {
     const { data } = await apiClient.get('/kg/snapshots/compare', { params })
     return data
   },

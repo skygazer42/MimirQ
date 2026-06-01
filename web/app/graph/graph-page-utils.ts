@@ -220,7 +220,7 @@ export function buildGraphFromTrace(trace: RagTrace): {
       kind: 'citation',
       val: 1.2,
       color: '#64748b',
-      meta: citation,
+      meta: citation as unknown as GraphRecord,
     })
   })
 

@@ -7,7 +7,7 @@ export type RtbfRequest = {
   max_retries?: number
 }
 
-export type RtbfCascadeResponse = Record<string, any>
+export type RtbfCascadeResponse = Record<string, unknown>
 
 export type RtbfStatusResponse = {
   ticket_id: string

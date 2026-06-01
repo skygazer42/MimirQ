@@ -254,7 +254,7 @@ export default function DatasetKGWorkbenchPage() {
     const selectedNode = graphData.nodes.find((node) => String(node.id || '') === selectedGraphNodeId)
     if (!selectedNode) return null
 
-    const nodeRecord = selectedNode as Record<string, unknown>
+    const nodeRecord = selectedNode as unknown as Record<string, unknown>
     const meta = (nodeRecord.meta ?? {}) as Record<string, unknown>
     const label = primitiveText(nodeRecord.label ?? nodeRecord.name, selectedGraphNodeId).trim() || selectedGraphNodeId
     const type = primitiveText(meta.type ?? nodeRecord.type, 'unknown').trim() || 'unknown'

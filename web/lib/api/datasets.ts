@@ -76,7 +76,8 @@ export type DatasetAnalysisGlossaryWritebackParams = DatasetAnalysisFilters & {
   limit?: number
 }
 
-export type DatasetAnalysisResponse = Record<string, any>
+export type DatasetAnalysisResponse = Record<string, unknown>
+export type DatasetPurgeResponse = Record<string, unknown>
 
 export const datasetApi = {
   async create(params: DatasetCreate): Promise<Dataset> {
@@ -234,7 +235,7 @@ export const datasetApi = {
   async purge(
     datasetId: string,
     params?: { max_delete?: number; dry_run?: boolean }
-  ): Promise<any> {
+  ): Promise<DatasetPurgeResponse> {
     const { data } = await apiClient.post(`/datasets/${datasetId}/purge`, undefined, { params })
     return data
   },
