@@ -851,7 +851,7 @@ def _hierarchy_dedup_meta(
         "max_candidates": int(max_candidates),
         "scanned_unique": int(state.scanned_unique),
         "input_primary": int(len(primary_list)),
-        "input_refill": int(len(refill or [])) if refill else 0,
+        "input_refill": int(len(refill or [])),
         "output": int(len(out_sliced)),
         "dropped_as_descendant": int(state.dropped_as_descendant),
         "removed_by_ancestor": int(state.removed_by_ancestor),
