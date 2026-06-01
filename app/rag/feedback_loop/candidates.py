@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 from typing import Any
 
 from app.rag.evaluation.hard_negative_mining import mine_hard_negatives_for_case_from_trace
@@ -21,6 +22,7 @@ def _as_mapping(row: Any) -> dict[str, Any]:
         try:
             value = getattr(row, key)
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if callable(value):
             continue

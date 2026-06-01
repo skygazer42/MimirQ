@@ -9,6 +9,7 @@ Used by:
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable
 
 
@@ -44,6 +45,7 @@ def compute_chunk_coverage_metrics_from_ranges(
             s0 = int(s)
             e0 = int(e)
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if e0 <= s0:
             continue

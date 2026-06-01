@@ -1,6 +1,7 @@
 """
 PDF parser (based on PyMuPDF).
 """
+import logging
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,7 @@ class PDFParser:
             try:
                 x0, y0, x1, y1, text, *_rest = block
             except Exception:
+                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                 continue
             clean = str(text or "").strip()
             if not clean:
@@ -70,6 +72,7 @@ class PDFParser:
             try:
                 xref = int(image_info[0])
             except Exception:
+                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                 continue
             if xref in seen_xrefs:
                 continue
@@ -77,6 +80,7 @@ class PDFParser:
             try:
                 extracted = pdf_document.extract_image(xref)
             except Exception:
+                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                 continue
             image_bytes = extracted.get("image") if isinstance(extracted, dict) else None
             if not isinstance(image_bytes, (bytes, bytearray)) or not image_bytes:
@@ -85,6 +89,7 @@ class PDFParser:
                 with PILImage.open(BytesIO(bytes(image_bytes))) as raw_image:
                     image = raw_image.convert("RGB")
             except Exception:
+                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                 continue
 
             code_info = decode_image_codes(image)

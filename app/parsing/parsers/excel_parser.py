@@ -9,6 +9,7 @@ Outputs Markdown tables (best-effort) for better fidelity in downstream preview/
 
 
 import io
+import logging
 from pathlib import Path
 
 from langchain_core.documents import Document
@@ -121,6 +122,7 @@ class ExcelParser:
                     try:
                         min_col, min_row, max_col, max_row = merged.bounds  # type: ignore[attr-defined]
                     except Exception:
+                        logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                         continue
                     if min_row > max_rows or min_col > max_cols:
                         continue

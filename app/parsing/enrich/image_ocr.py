@@ -9,6 +9,7 @@ Design constraints:
 
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass
 from io import BytesIO
@@ -130,6 +131,7 @@ def add_image_ocr_blocks(
             try:
                 image = PILImage.open(BytesIO(image_bytes))
             except Exception:
+                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                 continue
             try:
                 text = str(ocr_image(image, _max_chars=int(max_ocr_chars or 0)) or "").strip()

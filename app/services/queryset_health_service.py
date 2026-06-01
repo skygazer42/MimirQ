@@ -10,6 +10,7 @@ Goal:
 from __future__ import annotations
 
 import json
+import logging
 import math
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
@@ -370,6 +371,7 @@ def load_queryset_health_history(path: Path) -> list[dict[str, Any]]:
         try:
             obj = json.loads(raw)
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if isinstance(obj, dict):
             rows.append(obj)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -83,6 +84,7 @@ def _coerce_mapping(value: Any) -> dict[str, Any]:
         try:
             current = getattr(value, key)
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if callable(current):
             continue
@@ -179,6 +181,7 @@ def _load_dataset_scope_rows(
                 max_bytes=10_000_000,
             )
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         for item in getattr(response, "items", []) or []:
             traces.append(_coerce_mapping(item))

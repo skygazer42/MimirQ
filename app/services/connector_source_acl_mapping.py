@@ -9,6 +9,7 @@ This module is intentionally connector-agnostic. Individual connectors are expec
 
 from __future__ import annotations
 
+import logging
 from uuid import UUID
 
 from app.api.schemas.connector_acl import ConnectorSourceAclConfig, SourceAcl
@@ -43,6 +44,7 @@ def resolve_document_access_from_source_acl(
         try:
             key = rule.source.key()
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         index.setdefault(key, set()).add(rule.group_id)
 
@@ -51,6 +53,7 @@ def resolve_document_access_from_source_acl(
         try:
             key = p.key()
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         gids = index.get(key)
         if gids:

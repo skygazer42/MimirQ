@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
+import logging
 import re
 from collections import deque
 from dataclasses import dataclass, field, replace
@@ -66,6 +67,7 @@ def _extract_sitemap_candidates_from_robots(text: str, *, base_url: str) -> list
         try:
             out.append(_normalize_url(urljoin(base_url, url)))
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
     # Dedup while preserving order.
     seen: set[str] = set()
@@ -458,6 +460,7 @@ async def crawl_site(
         try:
             allowed_netlocs.add(urlsplit(s).netloc.lower())
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
 
     # Headers for fetch.
@@ -499,6 +502,7 @@ async def crawl_site(
             try:
                 parsed = urlsplit(s)
             except Exception:
+                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                 continue
             if not parsed.scheme or not parsed.netloc:
                 continue
@@ -523,6 +527,7 @@ async def crawl_site(
                 try:
                     parsed = urlsplit(s)
                 except Exception:
+                    logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                     continue
                 base = urlunsplit((parsed.scheme, parsed.netloc, "/", "", ""))
                 await robots_cache._load(base_url=base, headers=h, timeout_sec=timeout_eff, follow_redirects=follow_eff)
@@ -571,6 +576,7 @@ async def crawl_site(
                 try:
                     candidate = _normalize_url(urljoin(base_url, str(raw_page or "").strip()))
                 except Exception:
+                    logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                     continue
                 if not candidate:
                     continue
@@ -601,6 +607,7 @@ async def crawl_site(
                 try:
                     child = _normalize_url(urljoin(base_url, child))
                 except Exception:
+                    logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                     continue
                 if not child or child in sitemap_seen:
                     continue
@@ -614,6 +621,7 @@ async def crawl_site(
                 try:
                     safe_out.append(await validate_url_for_ingest(u))
                 except Exception:
+                    logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                     continue
             return WebCrawlResult(urls=safe_out, visited=0, queued=0, errors=sitemap_errors)
 
@@ -645,6 +653,7 @@ async def crawl_site(
                 if urlsplit(url).netloc.lower() not in allowed_netlocs:
                     continue
             except Exception:
+                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                 continue
 
         # SSRF validation per URL.
@@ -740,6 +749,7 @@ async def crawl_site(
                     if urlsplit(link).netloc.lower() not in allowed_netlocs:
                         continue
                 except Exception:
+                    logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                     continue
             if robots_cache is not None:
                 allowed = await robots_cache.can_fetch(

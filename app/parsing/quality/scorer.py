@@ -10,6 +10,7 @@ Scoring dimensions (sample first 3 pages):
 Final score 0-1; higher is cleaner. Low scores prefer OCR/structured flow.
 """
 
+import logging
 import re
 from pathlib import Path
 from typing import Any
@@ -169,6 +170,7 @@ def _detect_preprocess_info(file_path: Path, *, sample_pages: int) -> dict[str, 
                     if "watermark" in hint or name.strip().lower() in {"watermark", "stamp"}:
                         watermark_annots += 1
                 except Exception:
+                    logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                     continue
 
         if rot_counts:

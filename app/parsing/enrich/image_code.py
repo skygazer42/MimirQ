@@ -9,6 +9,7 @@ Design constraints:
 
 from __future__ import annotations
 
+import logging
 import re
 import time
 from dataclasses import dataclass
@@ -216,6 +217,7 @@ def add_image_code_blocks(
             try:
                 image = PILImage.open(BytesIO(image_bytes))
             except Exception:
+                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                 continue
             try:
                 code_info = decode_image_codes(image)

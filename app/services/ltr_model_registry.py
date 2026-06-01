@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import threading
 from dataclasses import dataclass
@@ -417,6 +418,7 @@ def list_models() -> list[LTRRegisteredModel]:
                 )
             )
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
     out.sort(key=lambda m: (m.created_at or "", m.model_id))
     return out

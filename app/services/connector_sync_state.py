@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -134,6 +135,7 @@ def _normalize_totals(*, definition: ConnectorDefinition, state: Mapping[str, An
         try:
             totals[str(key)] = int(raw)
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
     return totals or None
 

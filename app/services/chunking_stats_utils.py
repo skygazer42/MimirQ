@@ -10,6 +10,7 @@ This module is intentionally dependency-light so it can be used from:
 from __future__ import annotations
 
 import hashlib
+import logging
 from collections.abc import Iterable
 from typing import Any
 
@@ -46,6 +47,7 @@ def compute_chunking_stats_from_lengths(
         try:
             n = int(raw)
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if n <= 0:
             continue

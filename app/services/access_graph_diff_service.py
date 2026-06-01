@@ -12,6 +12,7 @@ Security posture:
 
 from __future__ import annotations
 
+import logging
 from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -154,6 +155,7 @@ def _changed_fields(kind: str, fp_a: tuple[str | None, ...], fp_b: tuple[str | N
             if fp_a[idx] != fp_b[idx]:
                 out.append(str(name))
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
     return out
 

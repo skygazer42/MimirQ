@@ -5,6 +5,7 @@ RAGAS evaluation service.
 - Runs in FastAPI BackgroundTasks (sync function).
 """
 
+import logging
 import math
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -235,6 +236,7 @@ def _extract_contexts(
             try:
                 item = item.model_dump(mode="json")
             except Exception:
+                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                 continue
         if not isinstance(item, dict):
             continue
@@ -341,6 +343,7 @@ def _mean(values: Iterable[float]) -> float | None:
         try:
             fv = float(v)
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if math.isnan(fv):
             continue
@@ -390,6 +393,7 @@ def _build_answer_quality_metrics_summary(metas: list[dict[str, Any]]) -> dict[s
             try:
                 fv = float(v)
             except Exception:
+                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                 continue
             if math.isnan(fv):
                 continue
@@ -562,6 +566,7 @@ def _parse_uuid_list(raw_list: Any) -> list[UUID]:
         try:
             out.append(UUID(str(item)))
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
     return out
 
@@ -1367,6 +1372,7 @@ def run_regression_ragas_evaluation(
                 try:
                     did = UUID(str(raw))
                 except Exception:
+                    logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                     continue
                 if did in seen:
                     continue

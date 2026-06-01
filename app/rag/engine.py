@@ -5,6 +5,7 @@ RAG Conversation Engine
 import asyncio
 import hashlib
 import json
+import logging
 import re
 import threading
 import time
@@ -2053,6 +2054,7 @@ Requirements:
                         try:
                             cid = UUID(str(cid_raw))
                         except Exception:
+                            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                             continue
                         if cid in seen_chunk_ids:
                             continue
@@ -3972,6 +3974,7 @@ Requirements:
                 try:
                     fv = float(v)
                 except Exception:
+                    logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                     continue
                 if fv < 0:
                     continue

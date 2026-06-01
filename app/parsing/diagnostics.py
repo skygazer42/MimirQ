@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -115,6 +116,7 @@ def _filter_available_backends(file_ext: str, *, parser_factory: ParserFactory) 
         try:
             parser_factory.resolve_backend(file_ext, backend)
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if backend not in out:
             out.append(backend)

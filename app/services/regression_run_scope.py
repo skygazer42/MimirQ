@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
 from uuid import UUID
 
@@ -33,6 +34,7 @@ def validate_case_ids_belong_to_dataset(
         try:
             key = UUID(str(cid))
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if case_ds is None:
             found[key] = None

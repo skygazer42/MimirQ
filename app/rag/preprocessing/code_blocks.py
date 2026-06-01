@@ -10,6 +10,7 @@ This is opt-in because it can be destructive for certain content.
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 
@@ -44,6 +45,7 @@ def _should_strip_line_numbers(code_lines: list[str]) -> bool:
         try:
             nums.append(int(m.group("num")))
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
 
     if matched < max(3, int(len(non_empty) * 0.6)):

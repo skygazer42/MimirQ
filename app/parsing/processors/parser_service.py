@@ -5,6 +5,7 @@ Unified document parsing entry point:
 """
 import base64
 import hashlib
+import logging
 import re
 import uuid
 from functools import lru_cache
@@ -169,12 +170,14 @@ class DocumentParserService:
                         try:
                             path_obj.relative_to(base_dir_resolved)
                         except Exception:
+                            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                             continue
 
                         if path_obj.exists() and path_obj.is_file():
                             resolved_path = path_obj
                             break
                     except Exception:
+                        logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                         continue
 
                 if resolved_path is None:
@@ -184,12 +187,14 @@ class DocumentParserService:
                     if resolved_path.stat().st_size > max_image_bytes:
                         continue
                 except Exception:
+                    logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                     continue
 
                 ext = resolved_path.suffix.lower()
                 try:
                     raw_bytes = resolved_path.read_bytes()
                 except Exception:
+                    logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                     continue
                 if not raw_bytes or len(raw_bytes) > max_image_bytes:
                     continue
@@ -211,6 +216,7 @@ class DocumentParserService:
                         img.save(out, format="JPEG", quality=85, optimize=True)
                         image_bytes = out.getvalue()
                     except Exception:
+                        logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                         continue
 
                 digest = hashlib.sha256(image_bytes).hexdigest()
@@ -224,6 +230,7 @@ class DocumentParserService:
                     try:
                         out_path.write_bytes(image_bytes)
                     except Exception:
+                        logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                         continue
                     digest_cache[digest] = (preview_id, out_ext)
 
@@ -356,6 +363,7 @@ class DocumentParserService:
                     continue
                 file_path.write_bytes(binary)
             except Exception:
+                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                 continue
 
             url = f"/api/v1/documents/image/{img_id}"

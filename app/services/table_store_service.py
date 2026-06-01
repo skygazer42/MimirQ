@@ -12,6 +12,7 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import json
+import logging
 import re
 import sqlite3
 import time
@@ -395,6 +396,7 @@ def _import_excel(
                     df = pd.read_excel(xls, sheet_name=name, nrows=nrows, dtype_backend="numpy_nullable")  # type: ignore[call-arg]
                 except Exception:
                     # Best-effort: skip unreadable sheets.
+                    logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                     continue
                 truncated = bool(workbook_truncated)
                 if hard_nrows > 0 and int(getattr(df, "shape", (0, 0))[0]) > hard_nrows:
@@ -980,6 +982,7 @@ def list_tables_from_metadata(meta: dict[str, Any]) -> list[TableAsset]:
             doc_id = parsed.document_id
             sheet_index = int(parsed.sheet_index)
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         sql_table = sql_table_name_for_sheet(sheet_index)
         out.append(

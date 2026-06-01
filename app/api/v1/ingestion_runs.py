@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import re
 from typing import Annotated
 from uuid import UUID
@@ -427,6 +428,7 @@ async def replay_ingestion_run(
                 doc_meta=None,
             )
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
 
     background_tasks.add_task(_run_all, doc_ids)

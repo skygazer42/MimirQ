@@ -14,6 +14,7 @@ Optional persistence (compact run snapshots) is handled at the API layer.
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from collections.abc import Iterable, Sequence
 from typing import Any
@@ -65,6 +66,7 @@ def _coerce_uuid_list(values: Iterable[Any]) -> list[UUID]:
         try:
             u = UUID(str(v))
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if u in seen:
             continue

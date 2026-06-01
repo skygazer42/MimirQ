@@ -8,6 +8,7 @@ collection-collection similarity heatmaps similar to Kumi.
 
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -332,6 +333,7 @@ def _regression_chunks_items(
         try:
             chunk_uuid = UUID(chunk_id_raw)
         except Exception:  # noqa: BLE001
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         ordered_case_rows.append((row, chunk_uuid))
         wanted.append(chunk_uuid)

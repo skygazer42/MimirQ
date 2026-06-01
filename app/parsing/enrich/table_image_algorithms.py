@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -339,6 +340,7 @@ def extract_ocr_lines_from_image(image: PILImage.Image, *, max_lines: int = 300)
             try:
                 xy.append((float(point[0]), float(point[1])))
             except Exception:
+                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                 continue
         if not xy:
             continue

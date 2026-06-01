@@ -273,6 +273,7 @@ async def _refresh_from_redis(*, redis: Any, queue_name: str) -> tuple[bool, int
             try:
                 item = json.loads(text)
             except Exception:
+                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                 continue
             if isinstance(item, dict):
                 recent_job_outcomes.append(item)

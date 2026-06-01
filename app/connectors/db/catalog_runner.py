@@ -558,6 +558,7 @@ def extract_row_snapshots(
                 try:
                     rows_raw = conn.execute(text(sql)).mappings().all()
                 except Exception:  # noqa: BLE001
+                    logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                     continue
                 rows: list[dict[str, Any]] = []
                 cols: list[str] = []
@@ -622,6 +623,7 @@ def extract_row_snapshots(
                 try:
                     rows_raw = conn.execute(text(sql)).mappings().all()
                 except Exception:  # noqa: BLE001
+                    logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                     continue
                 rows: list[dict[str, Any]] = []
                 cols: list[str] = []

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
@@ -79,6 +80,7 @@ def _online_eval_contexts(citations: list) -> list[str]:
             try:
                 citation = citation.model_dump(mode="json")
             except Exception:
+                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                 continue
         if not isinstance(citation, dict):
             continue

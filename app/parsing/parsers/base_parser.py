@@ -174,6 +174,7 @@ class BaseAdvancedParser(ABC):
                 try:
                     out.append((max(0, int(token) - 1), left, right, top, bottom))
                 except Exception:
+                    logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                     continue
             return out
 

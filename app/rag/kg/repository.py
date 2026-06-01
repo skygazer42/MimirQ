@@ -4,6 +4,7 @@ Entity and Event repositories.
 Provides data access for entities and events with both PostgreSQL storage
 and Milvus vector similarity search capabilities.
 """
+import logging
 import re
 import unicodedata
 from collections.abc import Iterable
@@ -132,6 +133,7 @@ def _as_uuid_list(values: Iterable[str | UUID]) -> list[UUID]:
         try:
             u = UUID(str(v))
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if u in seen:
             continue

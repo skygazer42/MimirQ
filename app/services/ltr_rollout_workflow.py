@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -291,6 +292,7 @@ def _metric_map(raw: Any) -> dict[str, float]:
         try:
             out[str(key)] = round(float(value), 4)
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
     return out
 

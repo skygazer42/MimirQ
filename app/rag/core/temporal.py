@@ -9,6 +9,7 @@ This module is intentionally:
 
 from __future__ import annotations
 
+import logging
 import re
 import time
 from typing import Any
@@ -80,6 +81,7 @@ def _doc_base_score(meta: dict[str, Any]) -> float:
         try:
             return float(v or 0.0)
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
     return 0.0
 
@@ -195,6 +197,7 @@ def fetch_document_updated_ts(
         try:
             doc_uuid_list.append(UUID(s))
         except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if len(doc_uuid_list) >= max_docs:
             break
