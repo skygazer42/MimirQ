@@ -122,29 +122,36 @@ def _build_testgen_prompt_inputs(
     return payload
 
 
-def _normalize_testgen_result_rows(result: Any) -> list[dict[str, Any]]:
-    if not isinstance(result, dict):
-        return []
+def _testgen_rows(result: dict[str, Any]) -> list[Any]:
     rows = result.get("questions")
     if not isinstance(rows, list):
         rows = result.get("qa_pairs")
-    if not isinstance(rows, list):
+    return rows if isinstance(rows, list) else []
+
+
+def _normalize_testgen_row(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "question": item.get("question", ""),
+        "expected_answer": item.get("expected_answer") if "expected_answer" in item else item.get("ground_truth"),
+        "question_type": item.get("question_type") if "question_type" in item else item.get("difficulty"),
+        "expected_refusal": bool(item.get("expected_refusal")),
+        "evidence_quotes": list(item.get("evidence_quotes") or []) if isinstance(item.get("evidence_quotes"), list) else [],
+        "expected_chunks": list(item.get("expected_chunks") or []) if isinstance(item.get("expected_chunks"), list) else [],
+    }
+
+
+def _normalize_testgen_result_rows(result: Any) -> list[dict[str, Any]]:
+    if not isinstance(result, dict):
+        return []
+    rows = _testgen_rows(result)
+    if not rows:
         return []
 
     normalized: list[dict[str, Any]] = []
     for item in rows:
         if not isinstance(item, dict):
             continue
-        normalized.append(
-            {
-                "question": item.get("question", ""),
-                "expected_answer": item.get("expected_answer") if "expected_answer" in item else item.get("ground_truth"),
-                "question_type": item.get("question_type") if "question_type" in item else item.get("difficulty"),
-                "expected_refusal": bool(item.get("expected_refusal")),
-                "evidence_quotes": list(item.get("evidence_quotes") or []) if isinstance(item.get("evidence_quotes"), list) else [],
-                "expected_chunks": list(item.get("expected_chunks") or []) if isinstance(item.get("expected_chunks"), list) else [],
-            }
-        )
+        normalized.append(_normalize_testgen_row(item))
     return normalized
 
 
