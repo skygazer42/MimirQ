@@ -554,10 +554,21 @@ def _parse_claim_list_item(raw: str) -> str | None:
         return None
 
     if text[0] in ("-", "*", "•"):
-        if len(text) < 2 or not text[1].isspace():
-            return None
-        return text[1:].strip() or None
+        return _parse_bullet_claim(text)
 
+    marker_index = _numbered_claim_marker_index(text)
+    if marker_index is None:
+        return None
+    return _claim_after_numbered_marker(text, marker_index)
+
+
+def _parse_bullet_claim(text: str) -> str | None:
+    if len(text) < 2 or not text[1].isspace():
+        return None
+    return text[1:].strip() or None
+
+
+def _numbered_claim_marker_index(text: str) -> int | None:
     index = 0
     while index < len(text) and text[index].isdigit():
         index += 1
@@ -565,10 +576,14 @@ def _parse_claim_list_item(raw: str) -> str | None:
         index += 1
     if index <= 0 or index >= len(text) or text[index] not in (".", ")"):
         return None
-    index += 1
-    if index >= len(text) or not text[index].isspace():
+    return index
+
+
+def _claim_after_numbered_marker(text: str, marker_index: int) -> str | None:
+    content_index = marker_index + 1
+    if content_index >= len(text) or not text[content_index].isspace():
         return None
-    return text[index:].strip() or None
+    return text[content_index:].strip() or None
 
 
 def _flush_claim_paragraph(paragraph_lines: list[str], claims: list[str], *, max_claims: int) -> bool:
@@ -606,27 +621,45 @@ def split_into_claims(text: str, *, max_claims: int = 24) -> list[str]:
     paragraph_lines: list[str] = []
 
     for raw_line in (text or "").splitlines():
-        line = (raw_line or "").strip()
-        if not line:
-            if _flush_claim_paragraph(paragraph_lines, claims, max_claims=max_claims):
-                break
-            continue
-
-        item = _parse_claim_list_item(raw_line)
-        if item:
-            if _flush_claim_paragraph(paragraph_lines, claims, max_claims=max_claims):
-                break
-            claims.append(item)
-            if len(claims) >= max_claims:
-                break
-            continue
-
-        paragraph_lines.append(line)
+        if _consume_claim_line(raw_line, paragraph_lines=paragraph_lines, claims=claims, max_claims=max_claims):
+            break
 
     if len(claims) < max_claims:
         _flush_claim_paragraph(paragraph_lines, claims, max_claims=max_claims)
 
     return [c for c in claims if c.strip()][:max_claims]
+
+
+def _consume_claim_line(
+    raw_line: str,
+    *,
+    paragraph_lines: list[str],
+    claims: list[str],
+    max_claims: int,
+) -> bool:
+    line = (raw_line or "").strip()
+    if not line:
+        return _flush_claim_paragraph(paragraph_lines, claims, max_claims=max_claims)
+
+    item = _parse_claim_list_item(raw_line)
+    if item:
+        return _append_claim_list_item(item, paragraph_lines=paragraph_lines, claims=claims, max_claims=max_claims)
+
+    paragraph_lines.append(line)
+    return False
+
+
+def _append_claim_list_item(
+    item: str,
+    *,
+    paragraph_lines: list[str],
+    claims: list[str],
+    max_claims: int,
+) -> bool:
+    if _flush_claim_paragraph(paragraph_lines, claims, max_claims=max_claims):
+        return True
+    claims.append(item)
+    return len(claims) >= max_claims
 
 
 def _claim_token_set(text: str) -> set[str]:
@@ -918,24 +951,39 @@ def scrub_structured_output_visible_evidence_only(
 def _abstain_followup_options(citations: list[dict[str, Any]] | None, *, max_options: int) -> list[dict[str, Any]]:
     options: list[dict[str, Any]] = []
     seen: set[str] = set()
-    for citation in (citations or []) if isinstance(citations, list) else []:
-        if not isinstance(citation, dict):
-            continue
-        document_id = citation.get("document_id")
-        name = citation.get("document_name") or citation.get("source")
-        key = str(document_id or name or "").strip()
-        if not key or key in seen:
+    for citation in _iter_citation_dicts(citations):
+        document_id, name, key = _citation_followup_identity(citation)
+        if _skip_followup_option(key, seen):
             continue
         seen.add(key)
-        options.append(
-            {
-                "document_id": str(document_id) if document_id is not None else None,
-                "document_name": str(name) if name is not None else None,
-            }
-        )
+        options.append(_citation_followup_option(document_id=document_id, name=name))
         if max_options and len(options) >= max_options:
             break
     return options
+
+
+def _iter_citation_dicts(citations: list[dict[str, Any]] | None):
+    for citation in (citations or []) if isinstance(citations, list) else []:
+        if isinstance(citation, dict):
+            yield citation
+
+
+def _citation_followup_identity(citation: dict[str, Any]) -> tuple[Any, Any, str]:
+    document_id = citation.get("document_id")
+    name = citation.get("document_name") or citation.get("source")
+    key = str(document_id or name or "").strip()
+    return document_id, name, key
+
+
+def _skip_followup_option(key: str, seen: set[str]) -> bool:
+    return not key or key in seen
+
+
+def _citation_followup_option(*, document_id: Any, name: Any) -> dict[str, Any]:
+    return {
+        "document_id": str(document_id) if document_id is not None else None,
+        "document_name": str(name) if name is not None else None,
+    }
 
 
 def build_abstain_followup(

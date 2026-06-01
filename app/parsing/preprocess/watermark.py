@@ -396,7 +396,7 @@ def _is_watermark_annotation(annot: Any) -> bool:
 
 def _remove_watermark_annots_from_page(page: Any) -> int:
     removed = 0
-    for annot in list(page.annots() or []):
+    for annot in page.annots() or []:
         try:
             if _is_watermark_annotation(annot):
                 page.delete_annot(annot)
