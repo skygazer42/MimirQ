@@ -26,7 +26,7 @@ from app.api.schemas.document import (
     DocumentPipelineOptions,
 )
 from app.api.utils.upload import save_upload_file_with_hash
-from app.api.utils.url_ingest import download_url_to_path, validate_url_for_ingest
+from app.api.utils.url_ingest import URLDownloadOptions, download_url_to_path, validate_url_for_ingest
 from app.api.v1 import (
     document_access,
     document_assets,
@@ -1792,11 +1792,13 @@ async def _download_url_ingest_file(*, url: str, body: UrlUploadRequest, tenant_
     downloaded = await download_url_to_path(
         url,
         temp_path,
-        max_bytes=int(getattr(settings, "URL_INGEST_MAX_BYTES", 0) or settings.MAX_FILE_SIZE),
-        timeout_sec=float(getattr(settings, "URL_INGEST_TIMEOUT_SEC", 30.0) or 30.0),
-        follow_redirects=bool(getattr(settings, "URL_INGEST_FOLLOW_REDIRECTS", False)),
-        user_agent=(body.user_agent or None),
-        extra_headers=(body.fetch_headers or None),
+        options=URLDownloadOptions(
+            max_bytes=int(getattr(settings, "URL_INGEST_MAX_BYTES", 0) or settings.MAX_FILE_SIZE),
+            timeout_sec=float(getattr(settings, "URL_INGEST_TIMEOUT_SEC", 30.0) or 30.0),
+            follow_redirects=bool(getattr(settings, "URL_INGEST_FOLLOW_REDIRECTS", False)),
+            user_agent=(body.user_agent or None),
+            extra_headers=(body.fetch_headers or None),
+        ),
     )
 
     content_type = (downloaded.content_type or "").split(";", 1)[0].strip().lower()

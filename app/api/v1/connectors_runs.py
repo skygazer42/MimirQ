@@ -170,10 +170,10 @@ def _connector_run_has_abortable_task(*, task_queue_enabled: bool, task_id: obje
 
 def _load_arq_job_class():
     try:
-        from arq.jobs import Job as job_cls
+        from arq.jobs import Job
     except ImportError:
         return None
-    return job_cls
+    return Job
 
 
 async def _get_queue_or_none():
