@@ -78,13 +78,14 @@ def _load_image_bytes_from_local(*, tenant_id: UUID, image_id: str, max_bytes: i
                     st = p.stat()
                     if int(getattr(st, "st_size", 0) or 0) > int(max_bytes):
                         return None
-                except Exception:
+                except Exception as exc:
                     # If stat fails, still try to read boundedly below.
-                    pass
+                    logger.debug("Ignoring local image size check failure: %s", exc)
             with p.open("rb") as f:
                 data = f.read(int(max_bytes) if int(max_bytes or 0) > 0 else -1)
             return data or None
-        except Exception:
+        except Exception as exc:
+            logger.debug("Ignoring local image load failure: %s", exc)
             continue
     return None
 
