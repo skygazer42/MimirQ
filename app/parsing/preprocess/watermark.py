@@ -57,12 +57,9 @@ def _infer_onnx_layout(shape: Any) -> str:
     return "nchw"
 
 
-def _normalize_ocr_line(line: Any) -> dict[str, Any] | None:
-    if not isinstance(line, (list, tuple)) or len(line) < 2:
-        return None
-    points = line[0]
+def _ocr_points(points: Any) -> list[tuple[float, float]]:
     if not isinstance(points, (list, tuple)) or not points:
-        return None
+        return []
     out_points: list[tuple[float, float]] = []
     for item in points:
         if not isinstance(item, (list, tuple)) or len(item) < 2:
@@ -71,9 +68,10 @@ def _normalize_ocr_line(line: Any) -> dict[str, Any] | None:
             out_points.append((float(item[0]), float(item[1])))
         except Exception:
             continue
-    if not out_points:
-        return None
+    return out_points
 
+
+def _ocr_text_and_score(line: Any) -> tuple[str, float | None]:
     text_raw = line[1]
     score = None
     if isinstance(text_raw, (list, tuple)) and text_raw:
@@ -90,7 +88,17 @@ def _normalize_ocr_line(line: Any) -> dict[str, Any] | None:
                 score = float(line[2])
             except Exception:
                 score = None
+    return text, score
 
+
+def _normalize_ocr_line(line: Any) -> dict[str, Any] | None:
+    if not isinstance(line, (list, tuple)) or len(line) < 2:
+        return None
+    out_points = _ocr_points(line[0])
+    if not out_points:
+        return None
+
+    text, score = _ocr_text_and_score(line)
     if not text:
         return None
     xs = [p[0] for p in out_points]
@@ -158,51 +166,81 @@ def _crop_stddev(gray: Image.Image, bbox: list[float]) -> float:
     return float(arr.std())
 
 
-def _collect_watermark_mask_boxes(image: Image.Image, *, max_boxes: int = 32) -> list[dict[str, Any]]:
+def _watermark_reason(
+    *,
+    text: str,
+    bbox: list[float],
+    points: list[tuple[float, float]],
+    width: int,
+    height: int,
+    gray: Image.Image,
+) -> str:
     import re
 
+    keyword_re = re.compile(r"(draft|company confidential|for internal use only|仅供内部使用|机密|保密)", re.IGNORECASE)
+    x0, y0, x1, y1 = bbox
+    box_width = max(1.0, float(x1) - float(x0))
+    box_height = max(1.0, float(y1) - float(y0))
+    area_ratio = (box_width * box_height) / float(max(1, width * height))
+    width_ratio = box_width / float(max(1, width))
+    angle = _estimate_angle_deg(points)
+    low_contrast = _crop_stddev(gray, bbox) <= 28.0
+    centerish = _is_center_region(bbox=bbox, width=width, height=height)
+
+    if keyword_re.search(text):
+        return "keyword"
+    if centerish and low_contrast and (width_ratio >= 0.22 or area_ratio >= 0.035 or (12.0 <= angle <= 78.0)):
+        return "geometry"
+    return ""
+
+
+def _padded_watermark_box(*, bbox: list[float], width: int, height: int) -> list[float]:
+    x0, y0, x1, y1 = bbox
+    box_width = max(1.0, float(x1) - float(x0))
+    box_height = max(1.0, float(y1) - float(y0))
+    pad_x = max(6.0, box_width * 0.08)
+    pad_y = max(6.0, box_height * 0.25)
+    return [
+        max(0.0, x0 - pad_x),
+        max(0.0, y0 - pad_y),
+        min(float(width), x1 + pad_x),
+        min(float(height), y1 + pad_y),
+    ]
+
+
+def _watermark_box_from_ocr_item(
+    item: dict[str, Any],
+    *,
+    width: int,
+    height: int,
+    gray: Image.Image,
+) -> dict[str, Any] | None:
+    bbox = list(item.get("bbox") or [])
+    points = list(item.get("points") or [])
+    text = str(item.get("text") or "").strip()
+    if len(bbox) != 4 or not text:
+        return None
+
+    reason = _watermark_reason(text=text, bbox=bbox, points=points, width=width, height=height, gray=gray)
+    if not reason:
+        return None
+    return {
+        "bbox": _padded_watermark_box(bbox=bbox, width=width, height=height),
+        "text": text,
+        "score": item.get("score"),
+        "reason": reason,
+    }
+
+
+def _collect_watermark_mask_boxes(image: Image.Image, *, max_boxes: int = 32) -> list[dict[str, Any]]:
     width, height = image.size
     gray = image.convert("L")
-    keyword_re = re.compile(r"(draft|company confidential|for internal use only|仅供内部使用|机密|保密)", re.IGNORECASE)
     boxes: list[dict[str, Any]] = []
     for item in _ocr_lines_for_mask(image):
-        bbox = list(item.get("bbox") or [])
-        points = list(item.get("points") or [])
-        text = str(item.get("text") or "").strip()
-        if len(bbox) != 4 or not text:
+        box = _watermark_box_from_ocr_item(item, width=width, height=height, gray=gray)
+        if box is None:
             continue
-        x0, y0, x1, y1 = bbox
-        bw = max(1.0, float(x1) - float(x0))
-        bh = max(1.0, float(y1) - float(y0))
-        area_ratio = (bw * bh) / float(max(1, width * height))
-        width_ratio = bw / float(max(1, width))
-        angle = _estimate_angle_deg(points)
-        low_contrast = _crop_stddev(gray, bbox) <= 28.0
-        centerish = _is_center_region(bbox=bbox, width=width, height=height)
-
-        reason = ""
-        if keyword_re.search(text):
-            reason = "keyword"
-        elif centerish and low_contrast and (width_ratio >= 0.22 or area_ratio >= 0.035 or (12.0 <= angle <= 78.0)):
-            reason = "geometry"
-        if not reason:
-            continue
-
-        pad_x = max(6.0, bw * 0.08)
-        pad_y = max(6.0, bh * 0.25)
-        boxes.append(
-            {
-                "bbox": [
-                    max(0.0, x0 - pad_x),
-                    max(0.0, y0 - pad_y),
-                    min(float(width), x1 + pad_x),
-                    min(float(height), y1 + pad_y),
-                ],
-                "text": text,
-                "score": item.get("score"),
-                "reason": reason,
-            }
-        )
+        boxes.append(box)
         if len(boxes) >= int(max_boxes or 32):
             break
     return boxes
@@ -217,6 +255,79 @@ def _mask_image_from_boxes(*, size: tuple[int, int], boxes: list[dict[str, Any]]
             continue
         draw.rectangle(tuple(float(v) for v in bbox), fill=255)
     return mask
+
+
+def _onnx_target_size(*, dims: list[Any], layout: str) -> tuple[int | None, int | None]:
+    if len(dims) != 4:
+        return None, None
+    if layout == "nhwc":
+        return _positive_int(dims[2]), _positive_int(dims[1])
+    return _positive_int(dims[3]), _positive_int(dims[2])
+
+
+def _prepare_onnx_images(
+    *,
+    source: Image.Image,
+    mask_image: Image.Image,
+    target_width: int | None,
+    target_height: int | None,
+) -> tuple[Image.Image, Image.Image]:
+    prepared = source
+    prepared_mask = mask_image.convert("L")
+    if target_width and target_height and (target_width, target_height) != source.size:
+        prepared = prepared.resize((target_width, target_height))
+        prepared_mask = prepared_mask.resize((target_width, target_height))
+    return prepared, prepared_mask
+
+
+def _onnx_feeds(
+    *,
+    image_input: Any,
+    mask_input: Any | None,
+    image_arr: Any,
+    mask_arr: Any,
+    layout: str,
+) -> dict[str, Any]:
+    import numpy as np
+
+    image_name = str(getattr(image_input, "name", "") or "image")
+    if mask_input is None:
+        if layout == "nhwc":
+            combined = np.concatenate([image_arr, mask_arr[..., None]], axis=-1)[None, ...]
+        else:
+            combined = np.concatenate([np.transpose(image_arr, (2, 0, 1)), mask_arr[None, ...]], axis=0)[None, ...]
+        return {image_name: combined}
+
+    mask_name = str(getattr(mask_input, "name", "") or "mask")
+    if layout == "nhwc":
+        return {image_name: image_arr[None, ...], mask_name: mask_arr[None, ..., None]}
+    return {image_name: np.transpose(image_arr, (2, 0, 1))[None, ...], mask_name: mask_arr[None, None, ...]}
+
+
+def _normalize_onnx_output(output: Any, *, original_size: tuple[int, int]) -> Image.Image:
+    import numpy as np
+
+    arr = np.asarray(output)
+    if arr.ndim == 4:
+        arr = arr[0]
+    if arr.ndim == 3 and arr.shape[0] in {1, 3} and arr.shape[-1] not in {1, 3}:
+        arr = np.transpose(arr, (1, 2, 0))
+    if arr.ndim == 3 and arr.shape[-1] == 1:
+        arr = np.repeat(arr, 3, axis=-1)
+    if arr.ndim != 3:
+        raise ValueError("unsupported_output_shape")
+    if arr.dtype.kind in {"f", "c"} and float(arr.max()) <= 1.5:
+        arr = arr * 255.0
+    arr = arr.clip(0, 255).astype("uint8")
+    cleaned = Image.fromarray(arr, mode="RGB")
+    return cleaned.resize(original_size) if cleaned.size != original_size else cleaned
+
+
+def _output_changed(*, input_path: Path, output_path: Path) -> bool:
+    try:
+        return output_path.read_bytes() != input_path.read_bytes()
+    except Exception:
+        return True
 
 
 def _run_local_onnx_inpaint(*, input_path: Path, output_path: Path, session: Any, mask_image: Image.Image) -> bool:
@@ -236,66 +347,70 @@ def _run_local_onnx_inpaint(*, input_path: Path, output_path: Path, session: Any
     mask_input = inputs[1] if len(inputs) > 1 else None
     layout = _infer_onnx_layout(getattr(image_input, "shape", None))
     dims = list(getattr(image_input, "shape", None) or [])
-    target_height = None
-    target_width = None
-    if len(dims) == 4:
-        if layout == "nhwc":
-            target_height = _positive_int(dims[1])
-            target_width = _positive_int(dims[2])
-        else:
-            target_height = _positive_int(dims[2])
-            target_width = _positive_int(dims[3])
-
-    prepared = source
-    prepared_mask = mask_image.convert("L")
-    if target_width and target_height and (target_width, target_height) != original_size:
-        prepared = prepared.resize((target_width, target_height))
-        prepared_mask = prepared_mask.resize((target_width, target_height))
+    target_width, target_height = _onnx_target_size(dims=dims, layout=layout)
+    prepared, prepared_mask = _prepare_onnx_images(
+        source=source,
+        mask_image=mask_image,
+        target_width=target_width,
+        target_height=target_height,
+    )
 
     image_arr = np.asarray(prepared, dtype=np.float32) / 255.0
     mask_arr = (np.asarray(prepared_mask, dtype=np.float32) > 0).astype("float32")
-    if mask_input is not None:
-        if layout == "nhwc":
-            feeds = {
-                str(getattr(image_input, "name", "") or "image"): image_arr[None, ...],
-                str(getattr(mask_input, "name", "") or "mask"): mask_arr[None, ..., None],
-            }
-        else:
-            feeds = {
-                str(getattr(image_input, "name", "") or "image"): np.transpose(image_arr, (2, 0, 1))[None, ...],
-                str(getattr(mask_input, "name", "") or "mask"): mask_arr[None, None, ...],
-            }
-    else:
-        if layout == "nhwc":
-            combined = np.concatenate([image_arr, mask_arr[..., None]], axis=-1)[None, ...]
-        else:
-            combined = np.concatenate([np.transpose(image_arr, (2, 0, 1)), mask_arr[None, ...]], axis=0)[None, ...]
-        feeds = {str(getattr(image_input, "name", "") or "image"): combined}
+    feeds = _onnx_feeds(
+        image_input=image_input,
+        mask_input=mask_input,
+        image_arr=image_arr,
+        mask_arr=mask_arr,
+        layout=layout,
+    )
 
     outputs = list(session.run(None, feeds) or [])
     if not outputs:
         raise ValueError("empty_output")
-    arr = np.asarray(outputs[0])
-    if arr.ndim == 4:
-        arr = arr[0]
-    if arr.ndim == 3 and arr.shape[0] in {1, 3} and arr.shape[-1] not in {1, 3}:
-        arr = np.transpose(arr, (1, 2, 0))
-    if arr.ndim == 3 and arr.shape[-1] == 1:
-        arr = np.repeat(arr, 3, axis=-1)
-    if arr.ndim != 3:
-        raise ValueError("unsupported_output_shape")
-    if arr.dtype.kind in {"f", "c"} and float(arr.max()) <= 1.5:
-        arr = arr * 255.0
-    arr = arr.clip(0, 255).astype("uint8")
-    cleaned = Image.fromarray(arr, mode="RGB")
-    if cleaned.size != original_size:
-        cleaned = cleaned.resize(original_size)
+    cleaned = _normalize_onnx_output(outputs[0], original_size=original_size)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     cleaned.save(output_path)
-    try:
-        return output_path.read_bytes() != input_path.read_bytes()
-    except Exception:
-        return True
+    return _output_changed(input_path=input_path, output_path=output_path)
+
+
+def _elapsed_ms(start: float) -> int:
+    return int(round((time.perf_counter() - start) * 1000))
+
+
+def _annotation_name_and_subject(annot: Any) -> tuple[str, str]:
+    typ = getattr(annot, "type", None)
+    name = ""
+    if isinstance(typ, (tuple, list)) and len(typ) >= 2:
+        name = str(typ[1] or "")
+    info = getattr(annot, "info", None) or {}
+    subject = str((info or {}).get("subject") or (info or {}).get("title") or "")
+    return name, subject
+
+
+def _is_watermark_annotation(annot: Any) -> bool:
+    name, subject = _annotation_name_and_subject(annot)
+    hint = f"{name} {subject}".lower()
+    return "watermark" in hint or name.strip().lower() in {"watermark", "stamp"}
+
+
+def _remove_watermark_annots_from_page(page: Any) -> int:
+    removed = 0
+    for annot in list(page.annots() or []):
+        try:
+            if _is_watermark_annotation(annot):
+                page.delete_annot(annot)
+                removed += 1
+        except Exception:
+            continue
+    return removed
+
+
+def _strip_pdf_meta(meta: dict[str, Any], *, removed: int, scanned_pages: int, start: float) -> dict[str, Any]:
+    meta["removed"] = int(removed)
+    meta["scanned_pages"] = int(scanned_pages)
+    meta["elapsed_ms"] = _elapsed_ms(start)
+    return meta
 
 
 def strip_pdf_watermark_annotations(
@@ -314,7 +429,7 @@ def strip_pdf_watermark_annotations(
     try:
         import fitz  # PyMuPDF
     except Exception as exc:  # noqa: BLE001
-        meta["elapsed_ms"] = int(round((time.perf_counter() - t0) * 1000))
+        meta["elapsed_ms"] = _elapsed_ms(t0)
         return False, f"pymupdf_missing:{exc.__class__.__name__}", meta
 
     doc = None
@@ -327,36 +442,18 @@ def strip_pdf_watermark_annotations(
         for i in range(k):
             page = doc.load_page(i)
             scanned_pages += 1
-            annots = list(page.annots() or [])
-            for annot in annots:
-                try:
-                    typ = getattr(annot, "type", None)
-                    name = ""
-                    if isinstance(typ, (tuple, list)) and len(typ) >= 2:
-                        name = str(typ[1] or "")
-                    info = getattr(annot, "info", None) or {}
-                    subject = str((info or {}).get("subject") or (info or {}).get("title") or "")
-                    hint = f"{name} {subject}".lower()
-                    if "watermark" in hint or name.strip().lower() in {"watermark", "stamp"}:
-                        page.delete_annot(annot)
-                        removed += 1
-                except Exception:
-                    continue
+            removed += _remove_watermark_annots_from_page(page)
 
         if removed <= 0:
-            meta["removed"] = 0
-            meta["scanned_pages"] = int(scanned_pages)
-            meta["elapsed_ms"] = int(round((time.perf_counter() - t0) * 1000))
+            _strip_pdf_meta(meta, removed=0, scanned_pages=scanned_pages, start=t0)
             return False, "no_watermark_annots", meta
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         doc.save(str(output_path), garbage=4, deflate=True)
-        meta["removed"] = int(removed)
-        meta["scanned_pages"] = int(scanned_pages)
-        meta["elapsed_ms"] = int(round((time.perf_counter() - t0) * 1000))
+        _strip_pdf_meta(meta, removed=removed, scanned_pages=scanned_pages, start=t0)
         return True, f"removed_annots:{removed}", meta
     except Exception as exc:  # noqa: BLE001
-        meta["elapsed_ms"] = int(round((time.perf_counter() - t0) * 1000))
+        meta["elapsed_ms"] = _elapsed_ms(t0)
         return False, f"strip_failed:{exc.__class__.__name__}", meta
     finally:
         try:
@@ -421,81 +518,116 @@ def remove_watermark_via_http(
     )
 
 
-def cleanup_watermark_document(
+def _resolve_watermark_backend(
+    *,
+    backend: str,
+    model_path: str,
+    api_url: str,
+    input_path: Path,
+) -> tuple[str, bool]:
+    normalized_backend = str(backend or "auto").strip().lower() or "auto"
+    auto_selected = normalized_backend == "auto"
+    if not auto_selected:
+        return normalized_backend, False
+    if str(model_path or "").strip():
+        return "local", True
+    if str(api_url or "").strip():
+        return "http", True
+    if input_path.suffix.lower() in _RASTER_EXTS:
+        return "heuristic", True
+    return "http", True
+
+
+def _record_mask_info(info: dict[str, Any], boxes: list[dict[str, Any]]) -> None:
+    info["mask_box_count"] = int(len(boxes))
+    info["mask_reasons"] = [str(item.get("reason") or "") for item in boxes if str(item.get("reason") or "")]
+
+
+def _collect_mask_boxes_for_path(input_path: Path, info: dict[str, Any]) -> list[dict[str, Any]]:
+    with Image.open(input_path) as image:
+        boxes = _collect_watermark_mask_boxes(image)
+    _record_mask_info(info, boxes)
+    return boxes
+
+
+def _cleanup_watermark_heuristic(
     *,
     input_path: Path,
     output_path: Path,
-    backend: str,
-    model_path: str = "",
-    api_url: str = "",
-    timeout_sec: float = 120.0,
+    info: dict[str, Any],
+    auto_selected: bool,
+    api_url: str,
 ) -> tuple[bool, str, dict[str, Any]]:
-    normalized_backend = str(backend or "auto").strip().lower() or "auto"
-    auto_selected = normalized_backend == "auto"
-    info: dict[str, Any] = {"backend": normalized_backend}
+    if input_path.suffix.lower() not in _RASTER_EXTS:
+        return False, "unsupported_input_type", info
+    try:
+        boxes = _collect_mask_boxes_for_path(input_path, info)
+        if not boxes:
+            return False, "no_mask_boxes", info
+        changed, suppress_meta = suppress_watermark_file(input_path=input_path, output_path=output_path, boxes=boxes)
+        info["suppressor"] = suppress_meta
+    except Exception as exc:  # noqa: BLE001
+        if auto_selected and not str(api_url or "").strip():
+            return False, "missing_api_url", info
+        return False, f"heuristic_failed:{exc.__class__.__name__}", info
+    return changed, "watermark_ok" if changed else "watermark_no_change", info
 
-    if normalized_backend == "skip":
-        return False, "skipped", info
 
-    if normalized_backend == "auto":
-        if str(model_path or "").strip():
-            normalized_backend = "local"
-        elif str(api_url or "").strip():
-            normalized_backend = "http"
-        elif input_path.suffix.lower() in _RASTER_EXTS:
-            normalized_backend = "heuristic"
-        else:
-            normalized_backend = "http"
-        info["backend"] = normalized_backend
+def _load_watermark_onnx(model_path: str, info: dict[str, Any]) -> Any | None:
+    model_ref = str(model_path or "").strip()
+    if not model_ref:
+        return None
+    loaded = get_preprocess_model_loader().load_onnx(name="watermark_removal", model_path=model_ref)
+    info["model_backend"] = str(loaded.backend or "")
+    info["model_name"] = str(loaded.name or "")
+    return loaded
 
-    if normalized_backend == "heuristic":
-        if input_path.suffix.lower() not in _RASTER_EXTS:
-            return False, "unsupported_input_type", info
-        try:
-            with Image.open(input_path) as image:
-                boxes = _collect_watermark_mask_boxes(image)
-            info["mask_box_count"] = int(len(boxes))
-            info["mask_reasons"] = [str(item.get("reason") or "") for item in boxes if str(item.get("reason") or "")]
+
+def _cleanup_watermark_local(
+    *,
+    input_path: Path,
+    output_path: Path,
+    model_path: str,
+    info: dict[str, Any],
+) -> tuple[bool, str, dict[str, Any]]:
+    if not str(model_path or "").strip():
+        return False, "missing_model_path", info
+    try:
+        loaded = _load_watermark_onnx(model_path, info)
+    except Exception as exc:  # noqa: BLE001
+        return False, f"model_unavailable:{exc.__class__.__name__}", info
+    if loaded is None:
+        return False, "missing_model_path", info
+    if input_path.suffix.lower() not in _RASTER_EXTS:
+        return False, "unsupported_input_type", info
+    try:
+        with Image.open(input_path) as image:
+            boxes = _collect_watermark_mask_boxes(image)
+            _record_mask_info(info, boxes)
             if not boxes:
                 return False, "no_mask_boxes", info
-            changed, suppress_meta = suppress_watermark_file(input_path=input_path, output_path=output_path, boxes=boxes)
-            info["suppressor"] = suppress_meta
-        except Exception as exc:  # noqa: BLE001
-            if auto_selected and not str(api_url or "").strip():
-                return False, "missing_api_url", info
-            return False, f"heuristic_failed:{exc.__class__.__name__}", info
-        return changed, "watermark_ok" if changed else "watermark_no_change", info
+            mask = _mask_image_from_boxes(size=image.size, boxes=boxes)
+        changed = _run_local_onnx_inpaint(
+            input_path=input_path,
+            output_path=output_path,
+            session=loaded.handle,
+            mask_image=mask,
+        )
+    except ValueError as exc:
+        return False, f"onnx_{exc}", info
+    except Exception as exc:  # noqa: BLE001
+        return False, f"onnx_failed:{exc.__class__.__name__}", info
+    return changed, "watermark_ok" if changed else "watermark_no_change", info
 
-    if normalized_backend == "local":
-        model_ref = str(model_path or "").strip()
-        if not model_ref:
-            return False, "missing_model_path", info
-        try:
-            loaded = get_preprocess_model_loader().load_onnx(name="watermark_removal", model_path=model_ref)
-            info["model_backend"] = str(loaded.backend or "")
-            info["model_name"] = str(loaded.name or "")
-        except Exception as exc:  # noqa: BLE001
-            return False, f"model_unavailable:{exc.__class__.__name__}", info
-        if input_path.suffix.lower() not in _RASTER_EXTS:
-            return False, "unsupported_input_type", info
-        try:
-            with Image.open(input_path) as image:
-                boxes = _collect_watermark_mask_boxes(image)
-                info["mask_box_count"] = int(len(boxes))
-                info["mask_reasons"] = [str(item.get("reason") or "") for item in boxes if str(item.get("reason") or "")]
-                if not boxes:
-                    return False, "no_mask_boxes", info
-                mask = _mask_image_from_boxes(size=image.size, boxes=boxes)
-            changed = _run_local_onnx_inpaint(input_path=input_path, output_path=output_path, session=loaded.handle, mask_image=mask)
-        except ValueError as exc:
-            return False, f"onnx_{exc}", info
-        except Exception as exc:  # noqa: BLE001
-            return False, f"onnx_failed:{exc.__class__.__name__}", info
-        return changed, "watermark_ok" if changed else "watermark_no_change", info
 
-    if normalized_backend != "http":
-        return False, "unsupported_backend", info
-
+def _cleanup_watermark_http(
+    *,
+    input_path: Path,
+    output_path: Path,
+    api_url: str,
+    timeout_sec: float,
+    info: dict[str, Any],
+) -> tuple[bool, str, dict[str, Any]]:
     target_url = str(api_url or "").strip()
     if not target_url:
         return False, "missing_api_url", info
@@ -506,6 +638,55 @@ def cleanup_watermark_document(
         timeout_sec=timeout_sec,
     )
     return changed, note, info
+
+
+def cleanup_watermark_document(
+    *,
+    input_path: Path,
+    output_path: Path,
+    backend: str,
+    model_path: str = "",
+    api_url: str = "",
+    timeout_sec: float = 120.0,
+) -> tuple[bool, str, dict[str, Any]]:
+    normalized_backend, auto_selected = _resolve_watermark_backend(
+        backend=backend,
+        model_path=model_path,
+        api_url=api_url,
+        input_path=input_path,
+    )
+    info: dict[str, Any] = {"backend": normalized_backend}
+
+    if normalized_backend == "skip":
+        return False, "skipped", info
+
+    if normalized_backend == "heuristic":
+        return _cleanup_watermark_heuristic(
+            input_path=input_path,
+            output_path=output_path,
+            info=info,
+            auto_selected=auto_selected,
+            api_url=api_url,
+        )
+
+    if normalized_backend == "local":
+        return _cleanup_watermark_local(
+            input_path=input_path,
+            output_path=output_path,
+            model_path=model_path,
+            info=info,
+        )
+
+    if normalized_backend != "http":
+        return False, "unsupported_backend", info
+
+    return _cleanup_watermark_http(
+        input_path=input_path,
+        output_path=output_path,
+        api_url=api_url,
+        timeout_sec=timeout_sec,
+        info=info,
+    )
 
 
 __all__ = [
