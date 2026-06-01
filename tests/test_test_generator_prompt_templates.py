@@ -1,6 +1,18 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+from uuid import uuid4
+
 from app.rag.evaluation.test_generator import _build_testgen_prompt_inputs, _normalize_testgen_result_rows
+
+
+def test_normalize_question_types_dedupes_and_maps_reasoning() -> None:
+    from app.rag.evaluation.test_generator import _normalize_question_types
+
+    assert _normalize_question_types([" factual ", "reasoning", "factual", "unknown"]) == [
+        "factual",
+        "multi_hop",
+    ]
 
 
 def test_build_testgen_prompt_inputs_supports_builtin_testset_variables() -> None:
@@ -60,3 +72,87 @@ def test_normalize_testgen_result_rows_accepts_builtin_qa_pairs_shape() -> None:
             "expected_chunks": ["alpha"],
         }
     ]
+
+
+def test_generate_questions_from_documents_uses_prompt_selection_and_normalized_rows(monkeypatch) -> None:
+    import app.rag.evaluation.test_generator as mod
+
+    doc_id = uuid4()
+    chunk_id = uuid4()
+    chunk = SimpleNamespace(
+        id=chunk_id,
+        document_id=doc_id,
+        content="Chunk body for generation.",
+    )
+
+    monkeypatch.setattr(mod, "filter_allowed_document_ids", lambda *_args, **_kwargs: [doc_id], raising=True)
+    monkeypatch.setattr(mod, "_sample_diverse_chunks", lambda chunks, _n: list(chunks), raising=True)
+    monkeypatch.setattr(mod, "get_proxy_url", lambda: None, raising=True)
+    monkeypatch.setattr(mod.settings, "LLM_TIMEOUT", 30, raising=False)
+    monkeypatch.setattr(mod.settings, "LLM_MODEL", "mock-model", raising=False)
+    monkeypatch.setattr(mod.settings, "LLM_API_KEY", "mock-key", raising=False)
+    monkeypatch.setattr(mod.settings, "LLM_API_BASE", "https://example.test/v1", raising=False)
+
+    class _FakeQuery:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def filter(self, *_args, **_kwargs):  # noqa: ANN002, ANN003
+            return self
+
+        def all(self):
+            return self._rows
+
+    class _FakeDB:
+        def query(self, _model):  # noqa: ANN001
+            return _FakeQuery([chunk])
+
+    class _FakePrompt:
+        def __init__(self, **kwargs):  # noqa: ANN003
+            self.kwargs = kwargs
+
+        def __or__(self, _other):
+            return self
+
+        def invoke(self, _inputs):
+            return {
+                "questions": [
+                    {
+                        "question": "What is in the chunk?",
+                        "expected_answer": "Chunk body for generation.",
+                        "question_type": "reasoning",
+                    }
+                ]
+            }
+
+    monkeypatch.setattr(mod, "PromptTemplate", _FakePrompt, raising=True)
+    monkeypatch.setattr(mod, "ChatOpenAI", lambda **_kwargs: object(), raising=True)
+    monkeypatch.setattr(mod, "JsonOutputParser", lambda: object(), raising=True)
+    monkeypatch.setattr(
+        mod,
+        "resolve_prompt_template",
+        lambda **_kwargs: SimpleNamespace(
+            id="tpl-1",
+            template_key="kg-testgen",
+            ab_experiment_key="exp-1",
+            ab_variant="A",
+            content="Prompt: {text}",
+            variables=["text", "num_questions", "question_types"],
+        ),
+        raising=True,
+    )
+
+    rows = mod.generate_questions_from_documents(
+        db=_FakeDB(),
+        tenant_id=uuid4(),
+        account_id="acct",
+        document_ids=[doc_id],
+        num_questions=1,
+        question_types=["reasoning"],
+        prompt_template_key="kg-testgen",
+    )
+
+    assert len(rows) == 1
+    assert rows[0].question == "What is in the chunk?"
+    assert rows[0].metadata["question_type"] == "multi_hop"
+    assert rows[0].metadata["prompt_template_key"] == "kg-testgen"
