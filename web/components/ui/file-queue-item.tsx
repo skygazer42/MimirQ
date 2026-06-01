@@ -69,11 +69,6 @@ function getFileQueueSelectionClass(isSelected: boolean): string {
   return 'border-border/70 bg-background text-transparent hover:border-primary/50 hover:text-primary/40'
 }
 
-function getFileQueueRowClass(isActive: boolean): string {
-  if (isActive) return 'bg-primary/[0.055] shadow-none'
-  return 'bg-background/60 hover:bg-muted/35'
-}
-
 export type FileStatus = 'pending' | 'parsing' | 'parsed' | 'error'
 
 export interface FileQueueItemData {
@@ -253,7 +248,9 @@ export function FileQueueItem({
     <div
       className={cn(
         'group cursor-pointer rounded-md border border-transparent px-2.5 py-2 transition-colors duration-150 motion-reduce:transition-none',
-        getFileQueueRowClass(isActive)
+        isActive
+          ? 'bg-primary/[0.055] shadow-none'
+          : 'bg-background/60 hover:bg-muted/35'
       )}
     >
       <div className="flex items-start gap-2">

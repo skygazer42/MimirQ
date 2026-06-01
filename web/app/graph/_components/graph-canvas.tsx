@@ -575,7 +575,7 @@ export function GraphCanvas({
     <div
       ref={viewportRef}
       className="relative h-full min-h-0 w-full flex-1 overflow-hidden bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-      tabIndex={0}
+      tabIndex={viewMode === '3d' && semanticNodes.length > 0 ? 0 : undefined}
       role="grid"
       aria-label="知识图谱画布，按 Tab 浏览节点"
       aria-describedby={viewMode === '3d' ? `${semanticPanelId}-keyboard-help ${semanticPanelId}-keyboard-status` : undefined}

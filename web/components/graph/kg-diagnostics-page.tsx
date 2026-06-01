@@ -1772,7 +1772,7 @@ export function KGDiagnosticsPage() {
                       <DiagnosticsInlineStat label="TOP-K" value={k} />
                       <DiagnosticsInlineStat
                         label="保存"
-                        value={diagnosticsPersistValue(persistRun)}
+                        value={persistRun ? "开启" : "关闭"}
                         tone={diagnosticsPersistTone(persistRun)}
                       />
                     </div>

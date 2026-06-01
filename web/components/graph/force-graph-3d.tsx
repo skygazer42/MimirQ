@@ -8,6 +8,8 @@ import {
   useMemo,
   useRef,
   useState,
+  type ComponentType,
+  type Ref,
 } from "react"
 import dynamic from "next/dynamic"
 import { useTheme } from "next-themes"
@@ -153,6 +155,10 @@ function getPrimaryCanvas(root: ParentNode | null): HTMLCanvasElement | null {
     .sort((a, b) => b.width * b.height - a.width * a.height)[0] ?? null
 }
 
+type ForceGraph3DComponentProps = Record<string, unknown> & {
+  ref?: Ref<unknown>
+}
+
 // Dynamic import to avoid SSR issues with Three.js
 const ForceGraph3D = dynamic(() => import("react-force-graph-3d"), {
   ssr: false,
@@ -165,7 +171,7 @@ const ForceGraph3D = dynamic(() => import("react-force-graph-3d"), {
       />
     </div>
   ),
-}) as any
+}) as unknown as ComponentType<ForceGraph3DComponentProps>
 
 export interface KnowledgeGraph3DRef {
   zoomIn: () => void

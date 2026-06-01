@@ -265,6 +265,19 @@ export function ChunkList() {
     })
   }, [previewData?.chunks, chunkOverrides])
 
+  const copySelectedChunk = useCallback(async () => {
+    if (selectedChunkIndex == null) return
+    const chunk = effectiveChunks[selectedChunkIndex]
+    const text = String(chunk?.content || '').trim()
+    if (!text) return
+    if (!globalThis.navigator?.clipboard?.writeText) {
+      toast.error(t('chunkList.toasts.clipboardUnsupported'))
+      return
+    }
+    await globalThis.navigator.clipboard.writeText(text)
+    toast.success(t('chunkList.toasts.copiedSelected'))
+  }, [effectiveChunks, selectedChunkIndex, t])
+
   const sectionOptions = useMemo(() => {
     const chunks = effectiveChunks || []
     const seen = new Set<string>()
@@ -904,15 +917,26 @@ export function ChunkList() {
                 ) : null}
               </div>
               {selectedChunkIndex == null ? null : (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className={chunkListToolbarButtonClass}
-                  onClick={() => selectChunkIndex(null)}
-                >
-                  {t('chunkList.actions.clearSelection')}
-                </Button>
+                <>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className={chunkListToolbarButtonClass}
+                    onClick={() => void copySelectedChunk()}
+                  >
+                    {t('chunkList.actions.copySelected')}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className={chunkListToolbarButtonClass}
+                    onClick={() => selectChunkIndex(null)}
+                  >
+                    {t('chunkList.actions.clearSelection')}
+                  </Button>
+                </>
               )}
               {!showOriginalPanel && supportsPdfDocking ? (
                 <Button

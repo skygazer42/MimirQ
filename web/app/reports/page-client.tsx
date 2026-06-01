@@ -427,19 +427,6 @@ function reportPreviewEmptyDescription(datasetId: string, isLoadingReport: boole
   return '点击“重新生成报告”拉取最新后端报告。'
 }
 
-function successDocumentCount(
-  statusCounts: Record<string, number>,
-  totalDocs: number,
-  failed: number,
-  quarantined: number
-): number {
-  const completedDocs = safeNumber(
-    statusCounts.completed ?? statusCounts.ready ?? statusCounts.done
-  )
-  if (Object.keys(statusCounts).length > 0) return completedDocs
-  return Math.max(0, totalDocs - failed - quarantined)
-}
-
 function filterReportFindings(
   findings: ReportFinding[],
   showOnlyIssues: boolean
@@ -2096,12 +2083,13 @@ export default function ReportsCenterPage() {
   }, [governanceAudit])
 
   const statusCounts = report?.profile?.by_status || {}
-  const successDocs = successDocumentCount(
-    statusCounts,
-    totalDocs,
-    failed,
-    quarantined
+  const hasStatusCounts = Object.keys(statusCounts).length > 0
+  const completedDocs = safeNumber(
+    statusCounts.completed ?? statusCounts.ready ?? statusCounts.done
   )
+  const successDocs = hasStatusCounts
+    ? completedDocs
+    : Math.max(0, totalDocs - failed - quarantined)
   const successRate = formatPct(successDocs, totalDocs)
   const failedRate = formatPct(failed, totalDocs)
   const selectedDatasetName =
@@ -2154,14 +2142,12 @@ export default function ReportsCenterPage() {
   const governanceAuditHasSamples =
     safeNumber(governanceAudit?.used_documents) > 0
   const governanceAuditUnavailableSub = '当前报告无治理审计样本'
-  const governanceAuditUrlValue = governanceAuditStatValue(
-    governanceAuditHasSamples,
-    governanceAudit?.urls_changed_total
-  )
-  const governanceAuditImageValue = governanceAuditStatValue(
-    governanceAuditHasSamples,
-    governanceAudit?.images_removed_total
-  )
+  const governanceAuditUrlValue = governanceAuditHasSamples
+    ? String(governanceAudit?.urls_changed_total || 0)
+    : governanceAuditStatValue(governanceAuditHasSamples, governanceAudit?.urls_changed_total)
+  const governanceAuditImageValue = governanceAuditHasSamples
+    ? String(governanceAudit?.images_removed_total || 0)
+    : governanceAuditStatValue(governanceAuditHasSamples, governanceAudit?.images_removed_total)
   const governanceAuditUrlSub = governanceAuditHasSamples
     ? 'URL 规范化变更'
     : governanceAuditUnavailableSub

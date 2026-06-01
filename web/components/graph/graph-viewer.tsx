@@ -2,6 +2,7 @@
 
 import dynamic from 'next/dynamic'
 import { Component, useRef, useEffect, useState, forwardRef, useImperativeHandle, useCallback, useMemo } from 'react'
+import type { ForceGraphMethods } from 'react-force-graph-2d'
 import { useTheme } from 'next-themes'
 import type { GraphEndpointRef, GraphLinkLike, GraphNodeLike } from '@/app/graph/graph-page-utils'
 import { useResizeObserver } from '@/hooks/use-resize-observer'
@@ -1022,7 +1023,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
   showMinimap = true
 }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null)
-  const fgRef = useRef<any>(null)
+  const fgRef = useRef<ForceGraphMethods | undefined>(undefined)
   const { width, height } = useResizeObserver(containerRef)
   const [mounted, setMounted] = useState(false)
   const [hoveredLinkId, setHoveredLinkId] = useState<string | null>(null)
@@ -1110,7 +1111,7 @@ export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(({
     }))
 
     // Spread parallel links and draw self-loops deterministically.
-    decorateLinksForDisplay(links as any[])
+    decorateLinksForDisplay(links as Array<GraphLinkDatum & Record<string, unknown>>)
 
     return { nodes, links }
   }, [data])

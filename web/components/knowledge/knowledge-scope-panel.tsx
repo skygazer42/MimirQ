@@ -112,7 +112,12 @@ export function KnowledgeScopePanel({
       ratio,
       showRatioBar:
         item.key !== 'all' && count > 0 && Number(totalDocs || 0) > 0,
-      ratioClassName: getDocStatusRatioClassName(item.key),
+      ratioClassName:
+        item.key === 'failed'
+          ? 'bg-destructive/75'
+          : item.key === 'quarantined'
+            ? 'bg-warning/75'
+            : getDocStatusRatioClassName(item.key),
       countElement: (
         <span
           className={cn(
@@ -296,7 +301,7 @@ export function KnowledgeScopePanel({
                   <span
                     aria-hidden="true"
                     className={cn(
-                      'pointer-events-none absolute inset-x-2 bottom-1 h-[2px] rounded-full opacity-90 transition-all duration-500',
+                      'pointer-events-none absolute inset-x-2 bottom-1 h-[2px] rounded-full opacity-90',
                       item.ratioClassName
                     )}
                     style={{

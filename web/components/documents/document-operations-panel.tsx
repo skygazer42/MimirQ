@@ -129,34 +129,6 @@ export function DocumentOperationsPanel({
   const targetDatasetValue = targetDatasetId.trim() || NO_TARGET_DATASET
   const selectedScopeLabel = ids.length ? `${ids.length} 个文档` : '未勾选文档'
   const resultSummary = result ? formatResultSummary(result.payload) : null
-  let resultPanel: React.ReactNode = null
-  if (result) {
-    resultPanel = (
-      <div className="mt-3 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-3">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <div className="text-xs font-semibold text-foreground">{result.title}已完成</div>
-            <div className="mt-1 text-xs leading-5 text-muted-foreground">{resultSummary}</div>
-          </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-7 shrink-0 rounded-lg px-2 text-[11px] font-medium"
-            aria-expanded={resultDetailsOpen}
-            onClick={() => setResultDetailsOpen((open) => !open)}
-          >
-            查看原始响应
-          </Button>
-        </div>
-        {resultDetailsOpen ? (
-          <pre className={cn('mt-2 max-h-56 overflow-auto rounded-md border border-border/60 bg-background p-2 text-xs', 'whitespace-pre-wrap break-words')}>
-            {prettyJson(result.payload)}
-          </pre>
-        ) : null}
-      </div>
-    )
-  }
 
   async function runAction(key: string, title: string, action: () => Promise<unknown>) {
     setBusy(key)
@@ -296,7 +268,31 @@ export function DocumentOperationsPanel({
         ) : null}
       </div>
 
-      {resultPanel}
+      {result ? (
+        <div className="mt-3 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <div className="text-xs font-semibold text-foreground">{result.title}已完成</div>
+              <div className="mt-1 text-xs leading-5 text-muted-foreground">{resultSummary}</div>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 shrink-0 rounded-lg px-2 text-[11px] font-medium"
+              aria-expanded={resultDetailsOpen}
+              onClick={() => setResultDetailsOpen((open) => !open)}
+            >
+              查看原始响应
+            </Button>
+          </div>
+          {resultDetailsOpen ? (
+            <pre className={cn('mt-2 max-h-56 overflow-auto rounded-md border border-border/60 bg-background p-2 text-xs', 'whitespace-pre-wrap break-words')}>
+              {prettyJson(result.payload)}
+            </pre>
+          ) : null}
+        </div>
+      ) : null}
     </Panel>
   )
 }

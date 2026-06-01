@@ -330,17 +330,6 @@ function getScopeDocumentCountLabel(documentCount: number, selectedDatasetId: st
   return '全局范围'
 }
 
-function getPipelineCandidatesStatusText(
-  loading: boolean,
-  error: string | null,
-  count: number
-): string {
-  if (loading) return '正在读取候选版本'
-  if (error) return error
-  if (count > 0) return `已发现 ${count} 个版本`
-  return '暂无可选版本'
-}
-
 function downloadJson(value: unknown, filename: string): void {
   const content = JSON.stringify(value ?? {}, null, 2)
   const blob = new Blob([content], { type: 'application/json;charset=utf-8' })
@@ -3133,11 +3122,13 @@ export function KGSnapshotsPage() {
 
                       <div className="flex items-center justify-between gap-2 text-[11px]">
                         <span className="text-muted-foreground">
-                          {getPipelineCandidatesStatusText(
-                            pipelineCandidatesLoading,
-                            pipelineCandidatesError,
-                            pipelineCandidates.length
-                          )}
+                          {pipelineCandidatesLoading
+                            ? '正在加载版本…'
+                            : pipelineCandidatesError || (
+                                pipelineCandidates.length > 0
+                                  ? `已发现 ${pipelineCandidates.length} 个版本`
+                                  : '当前数据集暂无可对比版本'
+                              )}
                         </span>
                         <Button
                           type="button"
