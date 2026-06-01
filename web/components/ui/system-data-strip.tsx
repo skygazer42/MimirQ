@@ -47,26 +47,33 @@ export function SystemDataStrip({
       )}
       style={{ gridTemplateColumns: `repeat(auto-fit, minmax(${cellWidth}px, 1fr))` }}
     >
-      {items.map((item, index) => (
-        <div key={item.id || `${item.label}-${index}`} className="min-w-0 bg-background px-3 py-2.5">
-          <dt className={cn(systemPageTokens.microLabel, "truncate")}>{item.label}</dt>
-          <dd
-            className={cn(
-              "mt-1 truncate text-[13px] font-semibold tracking-[-0.01em]",
-              item.mono && "font-mono tabular-nums",
-              resolveTone(item.tone)
-            )}
-            title={typeof item.value === "string" ? item.value : undefined}
-          >
-            {item.value}
-          </dd>
-          {item.hint ? (
+      {items.map((item, index) => {
+        let hintContent = null
+        if (item.hint) {
+          hintContent = (
             <p className={cn(systemPageTokens.subtle, "mt-0.5 truncate")} title={typeof item.hint === "string" ? item.hint : undefined}>
               {item.hint}
             </p>
-          ) : null}
-        </div>
-      ))}
+          )
+        }
+
+        return (
+          <div key={item.id || `${item.label}-${index}`} className="min-w-0 bg-background px-3 py-2.5">
+            <dt className={cn(systemPageTokens.microLabel, "truncate")}>{item.label}</dt>
+            <dd
+              className={cn(
+                "mt-1 truncate text-[13px] font-semibold tracking-[-0.01em]",
+                item.mono && "font-mono tabular-nums",
+                resolveTone(item.tone)
+              )}
+              title={typeof item.value === "string" ? item.value : undefined}
+            >
+              {item.value}
+            </dd>
+            {hintContent}
+          </div>
+        )
+      })}
     </dl>
   )
 }

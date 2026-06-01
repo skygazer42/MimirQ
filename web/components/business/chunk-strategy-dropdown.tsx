@@ -4,7 +4,7 @@
  * 切块策略下拉选择组件
  * 带图标、描述和徽章的下拉菜单
  */
-import { useState, useRef, useEffect } from 'react'
+import { type ReactNode, useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import {
   Layers,
@@ -181,17 +181,20 @@ export function ChunkStrategyDropdown({ value, onChange, className }: Readonly<C
     }
   }, [isOpen])
 
-  const menu = isOpen && menuRect && typeof document !== 'undefined'
-    ? createPortal(
+  let menu: ReactNode = null
+  if (isOpen && menuRect && typeof document !== 'undefined') {
+    const placementStyle = openUpward
+      ? { bottom: menuRect.bottom }
+      : { top: menuRect.top }
+
+    menu = createPortal(
         <div
           ref={menuRef}
           className="fixed z-[1000] overflow-hidden rounded-lg border border-border bg-card shadow-lg"
           style={{
             left: menuRect.left,
             width: menuRect.width,
-            ...(openUpward
-              ? { bottom: menuRect.bottom }
-              : { top: menuRect.top }),
+            ...placementStyle,
           }}
         >
           <div
@@ -269,7 +272,7 @@ export function ChunkStrategyDropdown({ value, onChange, className }: Readonly<C
         </div>,
         document.body
       )
-    : null
+  }
 
   return (
     <div ref={dropdownRef} className={cn('relative', className)}>

@@ -1,6 +1,6 @@
 'use client'
 
-import type { ChangeEventHandler, RefObject } from 'react'
+import type { ChangeEventHandler, ReactNode, RefObject } from 'react'
 
 import { BarChart3, FileCode, FileText, Filter, MoreHorizontal, Network, RefreshCw, Share2, Link as LinkIcon } from 'lucide-react'
 
@@ -141,6 +141,58 @@ export function GraphPageHeader({
   manualKgFileInputRef,
   onManualKgFileUpload,
 }: GraphPageHeaderProps) {
+  let liveControls: ReactNode = null
+  if (dataSource === 'live') {
+    liveControls = (
+      <>
+        <div className="hidden shrink-0 items-center gap-2 2xl:flex">
+          <div className="flex items-center gap-2 rounded-full border border-border/60 bg-background/76 px-2.5 py-1.5 shadow-none">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-foreground/88">
+              <LinkIcon className={cn('h-3.5 w-3.5', includeEntityLinks ? 'text-info' : 'text-muted-foreground')} />
+              <span>实体</span>
+            </div>
+            <Switch
+              checked={includeEntityLinks}
+              onCheckedChange={() => onToggleEntityLinks()}
+              aria-label="切换实体连线"
+              className="scale-[0.82] data-[state=checked]:bg-info"
+            />
+          </div>
+          <div className="flex items-center gap-2 rounded-full border border-border/60 bg-background/76 px-2.5 py-1.5 shadow-none">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-foreground/88">
+              <Network className={cn('h-3.5 w-3.5', includeRelationLinks ? 'text-teal-600 dark:text-teal-300' : 'text-muted-foreground')} />
+              <span>关系</span>
+            </div>
+            <Switch
+              checked={includeRelationLinks}
+              onCheckedChange={() => onToggleRelationLinks()}
+              aria-label="切换关系连线"
+              className="scale-[0.82] data-[state=checked]:bg-teal-500"
+            />
+          </div>
+        </div>
+        <TooltipProvider delayDuration={120}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onCycleMinSharedEvents}
+                className="shrink-0 text-muted-foreground hover:text-info hover:bg-info/10"
+              >
+                <Filter className="w-4 h-4 mr-2" />
+                Co≥{minSharedEvents}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" align="center" className="max-w-[240px] text-[11px] leading-5">
+              共现阈值。仅保留至少在 {minSharedEvents} 个事件中共同出现的关系连线；点击可在 1-4 之间切换。
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </>
+    )
+  }
+
   return (
     <header className="absolute top-0 left-0 right-0 z-20 flex h-16 items-center gap-3 border-b border-border/60 bg-[linear-gradient(135deg,hsl(var(--card)/0.98),hsl(var(--muted)/0.34))] px-4 shadow-[0_18px_46px_-40px_rgba(15,23,42,0.46)] pointer-events-none lg:px-6">
       <div
@@ -204,54 +256,7 @@ export function GraphPageHeader({
       />
 
       <div className="pointer-events-auto ml-auto flex shrink-0 items-center gap-2">
-        {dataSource === 'live' ? (
-          <>
-            <div className="hidden shrink-0 items-center gap-2 2xl:flex">
-              <div className="flex items-center gap-2 rounded-full border border-border/60 bg-background/76 px-2.5 py-1.5 shadow-none">
-                <div className="flex items-center gap-1.5 text-xs font-medium text-foreground/88">
-                  <LinkIcon className={cn('h-3.5 w-3.5', includeEntityLinks ? 'text-info' : 'text-muted-foreground')} />
-                  <span>实体</span>
-                </div>
-                <Switch
-                  checked={includeEntityLinks}
-                  onCheckedChange={() => onToggleEntityLinks()}
-                  aria-label="切换实体连线"
-                  className="scale-[0.82] data-[state=checked]:bg-info"
-                />
-              </div>
-              <div className="flex items-center gap-2 rounded-full border border-border/60 bg-background/76 px-2.5 py-1.5 shadow-none">
-                <div className="flex items-center gap-1.5 text-xs font-medium text-foreground/88">
-                  <Network className={cn('h-3.5 w-3.5', includeRelationLinks ? 'text-teal-600 dark:text-teal-300' : 'text-muted-foreground')} />
-                  <span>关系</span>
-                </div>
-                <Switch
-                  checked={includeRelationLinks}
-                  onCheckedChange={() => onToggleRelationLinks()}
-                  aria-label="切换关系连线"
-                  className="scale-[0.82] data-[state=checked]:bg-teal-500"
-                />
-              </div>
-            </div>
-            <TooltipProvider delayDuration={120}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={onCycleMinSharedEvents}
-                    className="shrink-0 text-muted-foreground hover:text-info hover:bg-info/10"
-                  >
-                    <Filter className="w-4 h-4 mr-2" />
-                    Co≥{minSharedEvents}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom" align="center" className="max-w-[240px] text-[11px] leading-5">
-                  共现阈值。仅保留至少在 {minSharedEvents} 个事件中共同出现的关系连线；点击可在 1-4 之间切换。
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </>
-        ) : null}
+        {liveControls}
 
         <Popover>
           <PopoverTrigger asChild>
