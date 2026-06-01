@@ -1,4 +1,5 @@
 import type {
+  JsonObject,
   RagasRegressionRunDiffResponse,
   RegressionAblationBatchRequest,
   RegressionAblationBatchResponse,
@@ -16,16 +17,22 @@ import type {
   TestGenFromDocsRequest,
   TestGenResponse,
 } from '@/types'
+import type { OpenApiSchema } from '@/types/backend'
 
 import { apiClient } from '@/lib/api/core'
+
+type SyntheticHardcaseGenerateResponse = OpenApiSchema<'SyntheticHardcaseGenerateResponse'>
+type RegressionRunLeaderboardResponse = OpenApiSchema<'RagasRegressionRunLeaderboardResponse'>
+type KGSearchDiagnosticsItem = OpenApiSchema<'KGSearchDiagnosticsItem'>
+type KGSearchDiagnosticsSummary = OpenApiSchema<'KGSearchDiagnosticsSummary'>
 
 export interface RagasRun {
   id: string
   conversation_id?: string
   status: string
   metrics: string[]
-  params: Record<string, any>
-  summary: Record<string, any>
+  params: JsonObject
+  summary: JsonObject
   error_message?: string
   created_at: string
   started_at?: string
@@ -41,8 +48,8 @@ export interface RagasItem {
   user_input: string
   response: string
   retrieved_contexts?: string[] | null
-  citations: any[]
-  scores: Record<string, any>
+  citations: unknown[]
+  scores: JsonObject
   created_at: string
 }
 
@@ -70,8 +77,8 @@ export interface KGSearchDiagnosticsRequest {
 
 export interface KGSearchDiagnosticsResponse {
   run_id?: string | null
-  summary: Record<string, any>
-  items: any[]
+  summary: KGSearchDiagnosticsSummary
+  items?: KGSearchDiagnosticsItem[]
 }
 
 export interface KGSearchDiagnosticsRunOut {
@@ -80,8 +87,8 @@ export interface KGSearchDiagnosticsRunOut {
   account_id?: string | null
   dataset_id: string
   status: string
-  params: Record<string, any>
-  summary: Record<string, any>
+  params?: JsonObject
+  summary?: JsonObject
   created_at: string
 }
 
@@ -92,7 +99,7 @@ export interface KGSearchDiagnosticsRunList {
 
 export interface KGSearchDiagnosticsRunDetail {
   run: KGSearchDiagnosticsRunOut
-  items: any[]
+  items?: JsonObject[]
 }
 
 export const evaluationApi = {
@@ -147,7 +154,7 @@ export const evaluationApi = {
     dataset_id: string
     overwrite?: boolean
     max_items?: number
-    items: any[]
+    items: RegressionCaseBundleV1['items']
   }): Promise<RegressionCaseImportResponse> {
     const { data } = await apiClient.post('/evaluations/ragas/regression/cases/import', payload)
     return data as RegressionCaseImportResponse
@@ -170,7 +177,7 @@ export const evaluationApi = {
     max_created?: number
     dry_run?: boolean
     tag?: string
-  }): Promise<any> {
+  }): Promise<SyntheticHardcaseGenerateResponse> {
     const { data } = await apiClient.post('/evaluations/ragas/regression/cases/synthetic-hardcases', payload)
     return data
   },
@@ -210,7 +217,7 @@ export const evaluationApi = {
     limit?: number
     include_incomplete?: boolean
     max_candidates?: number
-  }): Promise<any> {
+  }): Promise<RegressionRunLeaderboardResponse> {
     const { data } = await apiClient.get('/evaluations/ragas/regression/runs/leaderboard', { params })
     return data
   },
@@ -265,7 +272,7 @@ export const evaluationApi = {
     max_delete?: number
     dry_run?: boolean
     dataset_id?: string
-  }): Promise<any> {
+  }): Promise<unknown> {
     const { data } = await apiClient.post('/evaluations/ragas/regression/runs/purge', null, { params })
     return data
   },
@@ -289,7 +296,7 @@ export const evaluationApi = {
     dataset_id: string
     document_limit?: number
     pipeline_hash?: string
-  }): Promise<any> {
+  }): Promise<JsonObject> {
     const { data } = await apiClient.get('/evaluations/kg/quality/report', { params })
     return data
   },

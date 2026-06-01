@@ -50,11 +50,13 @@ import {
   type KGHardcaseMode,
   type KGSearchDiagnosticsResponse,
   type KGSearchDiagnosticsRunDetail,
+  type KGSearchDiagnosticsRunOut,
 } from '@/lib/api'
 import { coerceOneOf } from '@/lib/one-of'
 import { queryKeys } from '@/lib/query-keys'
 import { sanitizeFilename } from '@/lib/sanitize'
 import { cn } from '@/lib/utils'
+import type { JsonObject } from '@/types'
 
 const KG_EXTRACT_MODE_VALUES = ['auto', 'on', 'off'] as const
 const DIAGNOSTICS_SECTION_TITLE_CLASS =
@@ -203,6 +205,19 @@ function prettyJson(value: unknown): string {
   }
 }
 
+function isDiagnosticsRecord(value: unknown): value is JsonObject {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function diagnosticsField(source: unknown, key: string): unknown {
+  return isDiagnosticsRecord(source) ? source[key] : undefined
+}
+
+function diagnosticsRecordField(source: unknown, key: string): JsonObject | null {
+  const value = diagnosticsField(source, key)
+  return isDiagnosticsRecord(value) ? value : null
+}
+
 function downloadJson(value: unknown, filename: string): void {
   const content = JSON.stringify(value ?? {}, null, 2)
   const blob = new Blob([content], { type: 'application/json;charset=utf-8' })
@@ -214,7 +229,7 @@ function downloadJson(value: unknown, filename: string): void {
   globalThis.window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-function toNumber(value: any): number | null {
+function toNumber(value: unknown): number | null {
   if (value === null || value === undefined) return null
   const n = Number(value)
   return Number.isFinite(n) ? n : null
@@ -236,22 +251,20 @@ function formatDiagnosticsMetricLabel(key: string): string {
   return DIAGNOSTICS_METRIC_LABELS[key] ?? key.replaceAll('_', ' ')
 }
 
-function extractBaselineMetrics(
-  item: any
-): {
+function extractBaselineMetrics(item: unknown): {
   hit_at_k: boolean
   mrr: number
   recall: number
   ndcg: number
   map: number
 } | null {
-  const baseline = item?.baseline
-  const metrics = baseline?.metrics
-  const hit = Boolean(metrics?.hit_at_k)
-  const mrr = toNumber(metrics?.mrr)
-  const recall = toNumber(metrics?.recall)
-  const ndcg = toNumber(metrics?.ndcg)
-  const meanAveragePrecision = toNumber(metrics?.map)
+  const baseline = diagnosticsRecordField(item, 'baseline')
+  const metrics = diagnosticsRecordField(baseline, 'metrics')
+  const hit = Boolean(diagnosticsField(metrics, 'hit_at_k'))
+  const mrr = toNumber(diagnosticsField(metrics, 'mrr'))
+  const recall = toNumber(diagnosticsField(metrics, 'recall'))
+  const ndcg = toNumber(diagnosticsField(metrics, 'ndcg'))
+  const meanAveragePrecision = toNumber(diagnosticsField(metrics, 'map'))
   if (mrr === null || recall === null) return null
   return {
     hit_at_k: hit,
@@ -262,8 +275,8 @@ function extractBaselineMetrics(
   }
 }
 
-function caseKey(item: any): string | null {
-  const id = item?.case_id
+function caseKey(item: unknown): string | null {
+  const id = diagnosticsField(item, 'case_id')
   const s = String(id || '').trim()
   return s || null
 }
@@ -298,7 +311,7 @@ function diagnosticsDeltaClass(delta: number): string {
 }
 
 function diagnosticsRunSummary(run: KGSearchDiagnosticsRunDetail['run']) {
-  return run?.summary && typeof run.summary === 'object' ? run.summary : {}
+  return isDiagnosticsRecord(run?.summary) ? run.summary : {}
 }
 
 function diagnosticsMetricDelta(aValue: number | null, bValue: number | null) {
@@ -307,10 +320,10 @@ function diagnosticsMetricDelta(aValue: number | null, bValue: number | null) {
 }
 
 function buildDiagnosticsSummaryDelta(
-  aSummary: Record<string, any>,
-  bSummary: Record<string, any>
+  aSummary: JsonObject,
+  bSummary: JsonObject
 ) {
-  const summaryDelta: Record<string, any> = {}
+  const summaryDelta: JsonObject = {}
   for (const key of DIAGNOSTICS_DIFF_METRIC_KEYS) {
     const aValue = toNumber(aSummary[key])
     const bValue = toNumber(bSummary[key])
@@ -325,14 +338,14 @@ function buildDiagnosticsSummaryDelta(
 }
 
 function buildDiagnosticsCaseMap(
-  items: any[] | undefined
+  items: JsonObject[] | undefined
 ): Map<string, DiagnosticsRunCaseMapValue> {
   const byCase = new Map<string, DiagnosticsRunCaseMapValue>()
   for (const item of items || []) {
     const key = caseKey(item)
     if (!key) continue
     byCase.set(key, {
-      question: String(item?.question || ''),
+      question: String(diagnosticsField(item, 'question') || ''),
       metrics: extractBaselineMetrics(item),
     })
   }
@@ -436,8 +449,8 @@ function resolveInitialDiagnosticsDatasetId(
   return firstDatasetId || current
 }
 
-function diagnosticsRecordOrNull(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' ? (value as Record<string, unknown>) : null
+function diagnosticsRecordOrNull(value: unknown): JsonObject | null {
+  return isDiagnosticsRecord(value) ? value : null
 }
 
 function diagnosticsDatasetPlaceholder(
@@ -823,7 +836,7 @@ function DiagnosticsRunHeroPanel({
   emptyTitle,
   emptyDescription,
 }: Readonly<{
-  summary: Record<string, any> | null
+  summary: JsonObject | null
   emptyTitle: string
   emptyDescription: string
 }>) {
@@ -1046,7 +1059,7 @@ function DiagnosticsRunRecordsPanel({
   runs,
   runRespJson,
 }: Readonly<{
-  runs: any[]
+  runs: KGSearchDiagnosticsRunOut[]
   runRespJson: string
 }>) {
   return (
@@ -1080,10 +1093,19 @@ function DiagnosticsRunRecordsPanel({
             <tbody>
               {runs.length ? (
                 runs.slice(0, 8).map((run) => {
-                  const summary =
-                    run?.summary && typeof run.summary === 'object'
-                      ? run.summary
-                      : {}
+                  const summary = diagnosticsRecordOrNull(run.summary) ?? {}
+                  const params = diagnosticsRecordOrNull(run.params)
+                  const maxCases =
+                    diagnosticsField(run, 'max_cases') ??
+                    diagnosticsField(params, 'max_cases') ??
+                    '-'
+                  const k =
+                    diagnosticsField(run, 'k') ??
+                    diagnosticsField(params, 'k') ??
+                    '-'
+                  const persisted =
+                    diagnosticsField(run, 'persisted') ??
+                    diagnosticsField(params, 'persist_run')
                   return (
                     <tr
                       key={String(run.id)}
@@ -1099,17 +1121,17 @@ function DiagnosticsRunRecordsPanel({
                         {String(run.dataset_id || '').slice(0, 8) || '-'}
                       </td>
                       <td className="px-2 py-3 text-muted-foreground">
-                        {String(run.max_cases ?? '-')}
+                        {String(maxCases)}
                       </td>
                       <td className="px-2 py-3 text-muted-foreground">
-                        {String(run.k ?? '-')}
+                        {String(k)}
                       </td>
                       <td className="px-2 py-3 text-muted-foreground">
                         {String(summary?.baseline_mrr ?? '-')} /{' '}
                         {String(summary?.baseline_recall ?? '-')}
                       </td>
                       <td className="px-2 py-3 text-muted-foreground">
-                        {run.persisted ? '已保存' : '临时'}
+                        {persisted ? '已保存' : '临时'}
                       </td>
                       <td className="px-2 py-3 text-muted-foreground">-</td>
                     </tr>
@@ -1232,7 +1254,7 @@ export function KGDiagnosticsPage() {
   )
 
   const [runsLoading, setRunsLoading] = useState(false)
-  const [runs, setRuns] = useState<any[]>([])
+  const [runs, setRuns] = useState<KGSearchDiagnosticsRunOut[]>([])
   const [selectedRunA, setSelectedRunA] = useState<string>('')
   const [selectedRunB, setSelectedRunB] = useState<string>('')
   const [detailA, setDetailA] = useState<KGSearchDiagnosticsRunDetail | null>(
@@ -2227,7 +2249,7 @@ export function KGDiagnosticsPage() {
                                 <div className="px-4 py-4">
                                   {diff.changed_cases?.length ? (
                                     <div className="grid gap-2">
-                                      {diff.changed_cases.map((r: any) => (
+                                      {diff.changed_cases.map((r) => (
                                         <div
                                           key={r.case_id}
                                           className="rounded-lg border border-border/70 bg-background px-3 py-3"

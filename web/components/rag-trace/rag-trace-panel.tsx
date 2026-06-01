@@ -20,7 +20,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { Input } from '@/components/ui/input'
 import { Panel } from '@/components/ui/panel'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import type { RagTrace, RagTraceBundleDiffResponse, RagTraceCitation, RagTraceListResponse } from '@/types'
+import type { JsonObject, RagTrace, RagTraceBundleDiffResponse, RagTraceCitation, RagTraceListResponse } from '@/types'
 
 function formatTs(tsMs: number) {
   try {
@@ -70,7 +70,16 @@ function isNonZero(v?: number | null, eps = 1e-12) {
   return Math.abs(n) > eps
 }
 
-function formatDiffValue(value: any, maxLen = 160): string {
+function isJsonObject(value: unknown): value is JsonObject {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function jsonObjectField(source: unknown, key: string): JsonObject | null {
+  const value = isJsonObject(source) ? source[key] : undefined
+  return isJsonObject(value) ? value : null
+}
+
+function formatDiffValue(value: unknown, maxLen = 160): string {
   if (value == null) return '—'
   if (typeof value === 'string') return value.trim() ? value : '—'
   if (typeof value === 'number' || typeof value === 'boolean') return String(value)
@@ -441,10 +450,10 @@ function getTraceRankDeltaLabel(rankDelta: number): string {
 }
 
 function getRagTraceChannelBox(
-  channels: Record<string, any> | null | undefined,
+  channels: JsonObject | null | undefined,
   channel: Exclude<RagTraceCitationChannelFilter, 'all'>
-): Record<string, any> | null {
-  return channels?.[channel] ?? null
+): JsonObject | null {
+  return jsonObjectField(channels, channel)
 }
 
 export function filterTraceCitationsByChannel(
@@ -475,10 +484,7 @@ export function buildTraceCitationChannelSummaries(
     (trace?.retrieval?.per_query || []).find((query) => query?.kind === 'main') ??
     (trace?.retrieval?.per_query || [])[0] ??
     null
-  const channels = mainQuery?.retriever_debug?.channels as
-    | Record<string, any>
-    | null
-    | undefined
+  const channels = jsonObjectField(mainQuery?.retriever_debug, 'channels')
 
   return getRagTraceCitationChannelOptions(t).map((option) => {
     const label = getRagTraceCitationChannelLabel(option.key, t)
@@ -763,9 +769,9 @@ export function buildPipelineInspectorSections(trace: RagTrace | null, t: RagTra
   if (!trace) return []
 
   const mainQuery = (trace.retrieval?.per_query || []).find((query) => query?.kind === 'main') ?? (trace.retrieval?.per_query || [])[0] ?? null
-  const channels = mainQuery?.retriever_debug?.channels as Record<string, any> | null | undefined
-  const hierarchyRecall = mainQuery?.retriever_debug?.hierarchy_recall as Record<string, any> | null | undefined
-  const rerankMeta = channels?.rerank as Record<string, any> | null | undefined
+  const channels = jsonObjectField(mainQuery?.retriever_debug, 'channels')
+  const hierarchyRecall = jsonObjectField(mainQuery?.retriever_debug, 'hierarchy_recall')
+  const rerankMeta = jsonObjectField(channels, 'rerank')
   const citationSummary = buildCitationsSummary(trace.citations || [])
 
   const sections = buildPipelineTimelineSteps(trace).map<PipelineInspectorSection>((step) => {
@@ -1151,9 +1157,10 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
   const selected = items[selectedIndex] ?? items[0] ?? null
   const retrievalConfigHash = selected?.retrieval?.retrieval_config_hash || null
   const mainQuery = (selected?.retrieval?.per_query || []).find((q) => q?.kind === 'main') ?? (selected?.retrieval?.per_query || [])[0] ?? null
-  const channels = (mainQuery?.retriever_debug as any)?.channels as Record<string, any> | null | undefined
-  const hierarchyRecall = (mainQuery?.retriever_debug as any)?.hierarchy_recall as Record<string, any> | null | undefined
-  const rerankMeta = (channels as any)?.rerank as Record<string, any> | null | undefined
+  const channels = jsonObjectField(mainQuery?.retriever_debug, 'channels')
+  const hierarchyRecall = jsonObjectField(mainQuery?.retriever_debug, 'hierarchy_recall')
+  const rerankMeta = jsonObjectField(channels, 'rerank')
+  const channelTiming = jsonObjectField(channels, 'timing')
   const rerankSkipReason = rerankMeta?.skip_reason ? String(rerankMeta.skip_reason) : null
   const rerankError = rerankMeta?.error ? String(rerankMeta.error) : null
   const requestId = String(selected?.request_id || '').trim()
@@ -2038,19 +2045,19 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                           rrf_k={channels.rrf_k}
                         </Badge>
                       ) : null}
-                      {channels?.timing?.vector_ms == null ? null : (
+                      {channelTiming?.vector_ms == null ? null : (
                         <Badge variant="soft" className="text-[11px]">
-                          vector_ms={channels.timing.vector_ms}
+                          vector_ms={String(channelTiming.vector_ms)}
                         </Badge>
                       )}
-                      {channels?.timing?.bm25_ms == null ? null : (
+                      {channelTiming?.bm25_ms == null ? null : (
                         <Badge variant="soft" className="text-[11px]">
-                          bm25_ms={channels.timing.bm25_ms}
+                          bm25_ms={String(channelTiming.bm25_ms)}
                         </Badge>
                       )}
-                      {channels?.timing?.fusion_ms == null ? null : (
+                      {channelTiming?.fusion_ms == null ? null : (
                         <Badge variant="soft" className="text-[11px]">
-                          fusion_ms={channels.timing.fusion_ms}
+                          fusion_ms={String(channelTiming.fusion_ms)}
                         </Badge>
                       )}
                     </div>
@@ -2240,7 +2247,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
 
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                       {(['vector', 'colbert_ann', 'bm25', 'lexical_db', 'sparse']).map((k) => {
-                        const box = (channels as any)?.[k] as Record<string, any> | null | undefined
+                        const box = jsonObjectField(channels, k)
                         if (!box) return null
                         const summary = channelSummaries.find((item) => item.key === k)
                         return (
