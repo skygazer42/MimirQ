@@ -62,6 +62,7 @@ import {
 } from '@/components/ui/dialog'
 import { Link } from '@/i18n/navigation'
 import { formatApiError } from '@/lib/api-errors'
+import { reportClientError } from '@/lib/client-logging'
 import { cn, formatDate, formatFileSize, detachPromise } from '@/lib/utils'
 import { getParserLabel } from '@/lib/parser-options'
 import { getUserTagsFromDocument } from '@/lib/document-user-tags'
@@ -342,7 +343,7 @@ export function KnowledgeDocumentsPanel({
       toast.success(t('toasts.deleteSuccess'))
       setSingleDeleteDoc(null)
     } catch (err: unknown) {
-      console.error('Delete document failed:', err)
+      reportClientError('Failed to delete knowledge document', err)
       setSingleDeleteError(formatApiError(err, t('singleDelete.errorFallback')))
     } finally {
       setSingleDeleteWorking(false)

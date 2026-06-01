@@ -32,6 +32,7 @@ import { useRouter } from '@/i18n/navigation'
 
 import { datasetApi, documentApi, kgApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { reportClientError, reportClientWarning } from '@/lib/client-logging'
 import { applyClusterPalette } from '@/lib/graph-cluster-palette'
 import type { GraphClusterResult } from '@/lib/graph-clustering'
 import type { GraphData } from '@/lib/graph-parser'
@@ -304,7 +305,7 @@ export default function DatasetKGWorkbenchPage() {
   useEffect(() => {
     const error = datasetQuery.error || docsQuery.error
     if (!error) return
-    console.error('Failed to load dataset kg workbench', error)
+    reportClientError('Failed to load dataset KG workbench', error)
     toast.error(formatApiError(error, '加载数据失败'))
   }, [datasetQuery.error, docsQuery.error])
 
@@ -329,7 +330,7 @@ export default function DatasetKGWorkbenchPage() {
           setGraphClusterResult(result)
         }
       } catch (e) {
-        console.warn('Failed to compute dataset graph clusters', e)
+        reportClientWarning('Failed to compute dataset graph clusters', e)
         if (graphClusteringSeqRef.current === seq) {
           setGraphClusterResult(null)
         }
@@ -362,7 +363,7 @@ export default function DatasetKGWorkbenchPage() {
         if (graphClusteringSeqRef.current !== seq) return
         setGraphClusterResult(result)
       } catch (e) {
-        console.warn('Dataset graph clustering worker failed; falling back to main thread', e)
+        reportClientWarning('Dataset graph clustering worker failed; falling back to main thread', e)
         graphClusteringDisabledRef.current = true
         detachPromise(computeOnMainThread())
       }
@@ -529,7 +530,7 @@ export default function DatasetKGWorkbenchPage() {
       setGraphData(graph)
       setGraphStats(stats)
     } catch (e: unknown) {
-      console.error('Failed to load graph preview', e)
+      reportClientError('Failed to load dataset KG graph preview', e)
       toast.error(formatApiError(e, '加载图预览失败'))
       setGraphData(null)
       setGraphClusterResult(null)
@@ -585,7 +586,7 @@ export default function DatasetKGWorkbenchPage() {
         toast.message('未找到匹配节点')
       }
     } catch (e: unknown) {
-      console.error('KG quick search failed', e)
+      reportClientError('Dataset KG quick search failed', e)
       toast.error(formatApiError(e, 'KG 搜索失败'))
       setSearchResults([])
     } finally {

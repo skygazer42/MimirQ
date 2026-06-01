@@ -52,6 +52,7 @@ import { Switch } from '@/components/ui/switch'
 import { datasetApi, datasetCategoryApi } from '@/lib/api/datasets'
 import { reportApi } from '@/lib/api/reports'
 import { formatApiError } from '@/lib/api-errors'
+import { reportClientError, reportClientWarning } from '@/lib/client-logging'
 import { queryKeys } from '@/lib/query-keys'
 import { flattenFolderTree } from '@/lib/report-transforms'
 import { sanitizeFilename } from '@/lib/sanitize'
@@ -204,7 +205,7 @@ async function exportReportBlobFile({
     const safe = sanitizeFilename(datasetName || 'dataset')
     downloadBlob(blob, `${safe}.${filenameStem}${reportPipelineSuffix(pipelineHash)}.${extension}`)
   } catch (e: unknown) {
-    console.error(`${errorFallback}:`, e)
+    reportClientError(errorFallback, e)
     toast.error(formatApiError(e, errorFallback))
   } finally {
     setLoading(false)
@@ -700,7 +701,7 @@ function useFlatReportFolders(folderTree: DatasetReport['folder_tree']) {
         const rows = flattenFolderTree(folderTree)
         if (flatFoldersSeqRef.current === seq) setFlatFolders(rows)
       } catch (e) {
-        console.warn(
+        reportClientWarning(
           'Failed to flatten folder tree; falling back to empty list',
           e
         )
@@ -737,7 +738,7 @@ function useFlatReportFolders(folderTree: DatasetReport['folder_tree']) {
           setFlatFolders(rows)
         } catch (e) {
           // If the environment can't load a worker bundle (or Comlink fails), keep the page functional.
-          console.warn(
+          reportClientWarning(
             'Report transforms worker failed; falling back to main thread',
             e
           )

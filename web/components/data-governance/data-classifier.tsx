@@ -8,6 +8,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { pipelineApi } from '@/lib/api'
+import { reportClientWarning } from '@/lib/client-logging'
 import { cn } from '@/lib/utils'
 import type { AutoDocumentTag } from '@/types'
 
@@ -181,7 +182,7 @@ export function DataClassifier({
         toast.info(t('auto.noTags'))
       }
     } catch (error) {
-      console.warn('Backend auto classification failed:', error)
+      reportClientWarning('Backend auto classification failed', error)
       toast.error(t('auto.failed'))
     } finally {
       setIsAutoClassifying(false)

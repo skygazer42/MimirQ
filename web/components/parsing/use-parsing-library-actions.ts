@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 
 import { documentApi, parsingApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { reportClientError, reportClientWarning } from '@/lib/client-logging'
 import { deleteDocContentFromCache, deleteDocSourceFromCache, getDocContentFromCache, getDocSourceFromCache, saveDocSourceToCache } from '@/lib/doc-content-cache'
 import { getParserLabel } from '@/lib/parser-options'
 import { resolveParserBackendForFilename } from '@/lib/parser-compat'
@@ -363,7 +364,7 @@ export function useParsingLibraryActions({
         await saveDocSourceToCache({ id: target.libraryId, file: selectedFile })
         setActiveLibrarySourceStatus('available')
       } catch (err) {
-        console.warn('Failed to cache source file:', err)
+        reportClientWarning('Failed to cache parsing source file', err)
         toast.warning('源文件本地缓存失败：刷新后需要预览时将从服务器重新下载')
       }
 
@@ -406,7 +407,7 @@ export function useParsingLibraryActions({
         setActiveLibrarySourceStatus('available')
         detachPromise(mountLibraryFileToQueue(id, file, { autoParse }))
       } catch (err) {
-        console.warn('Failed to restore source file:', err)
+        reportClientWarning('Failed to restore parsing source file', err)
         setActiveLibrarySourceStatus('missing')
         toast.error('从服务器下载源文件失败，请稍后重试')
       }
@@ -537,7 +538,7 @@ export function useParsingLibraryActions({
               addedInZip += 1
             }
           } catch (err) {
-            console.error('Failed to extract zip:', err)
+            reportClientError('Failed to extract parsing ZIP upload', err)
             toast.error(`ZIP 解压失败：${file.name}`)
           }
 
@@ -627,7 +628,7 @@ export function useParsingLibraryActions({
             uploadedLibraryIds.push(libId)
           } catch (err: unknown) {
             uploadFailed += 1
-            console.error('Failed to upload parsing file into dataset scope:', err)
+            reportClientError('Failed to upload parsing file into dataset scope', err)
           }
         }
 

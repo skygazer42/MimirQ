@@ -32,6 +32,7 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { datasetApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { reportClientError } from '@/lib/client-logging'
 import { queryKeys } from '@/lib/query-keys'
 import { cn, detachPromise } from '@/lib/utils'
 import type { Dataset, DatasetListResponse, PermissionEnum, DocumentPipelineOptions, DatasetIngestionStats } from '@/types'
@@ -335,7 +336,7 @@ export default function DatasetsPage() {
 
   useEffect(() => {
     if (!datasetsQuery.error) return
-    console.error('Failed to load datasets', datasetsQuery.error)
+    reportClientError('Failed to load datasets', datasetsQuery.error)
     toast.error(formatApiError(datasetsQuery.error, '加载数据集失败'))
   }, [datasetsQuery.error, datasetsQuery.errorUpdatedAt])
 

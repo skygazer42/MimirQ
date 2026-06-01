@@ -69,6 +69,7 @@ import { documentApi } from '@/lib/api/documents'
 import { kgApi } from '@/lib/api/graph'
 import { metaApi } from '@/lib/api/meta'
 import { reportApi } from '@/lib/api/reports'
+import { reportClientError } from '@/lib/client-logging'
 import { sanitizeFilename } from '@/lib/sanitize'
 import { cn, detachPromise } from '@/lib/utils'
 import type {
@@ -352,7 +353,7 @@ async function copyToClipboard(text: string, label: string): Promise<void> {
     await navigator.clipboard.writeText(v)
     toast.success(`已复制 ${label}`)
   } catch (err) {
-    console.error('clipboard.writeText failed:', err)
+    reportClientError('Failed to copy KG snapshot value to clipboard', err)
     toast.error('复制失败（浏览器权限限制）')
   }
 }

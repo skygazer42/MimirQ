@@ -23,6 +23,7 @@ import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { getParserLabel } from '@/lib/parser-options'
 import { formatApiError } from '@/lib/api-errors'
+import { reportClientError } from '@/lib/client-logging'
 import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 import { ParserDropdown } from '@/components/business/parser-dropdown'
@@ -174,7 +175,7 @@ export function ManualUploadDialog({ onUploaded }: Readonly<ManualUploadDialogPr
       setPreview(result)
     } catch (err: unknown) {
       if (controller.signal.aborted) return
-      console.error('Preview parse failed:', err)
+      reportClientError('Manual upload preview parse failed', err)
       setError(formatApiError(err, '文档解析失败'))
     } finally {
       if (previewAbortRef.current === controller) {
@@ -311,7 +312,7 @@ export function ManualUploadDialog({ onUploaded }: Readonly<ManualUploadDialogPr
 
       if (onUploaded) onUploaded()
     } catch (err: unknown) {
-      console.error('Manual upload failed:', err)
+      reportClientError('Manual upload failed', err)
       setError(formatApiError(err, '手动切片上传失败'))
     } finally {
       setIsSubmitting(false)

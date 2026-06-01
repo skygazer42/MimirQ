@@ -6,6 +6,7 @@ import { useReportWebVitals } from 'next/web-vitals'
 import { usePathname } from '@/i18n/navigation'
 import { getAuthHeaders } from '@/lib/auth-headers'
 import { observabilityApi } from '@/lib/api'
+import { reportClientWarning } from '@/lib/client-logging'
 
 export type FrontendWebVitalName = 'LCP' | 'CLS' | 'FID' | 'INP'
 
@@ -69,7 +70,7 @@ export function WebVitalsReporter() {
     const request = page ? { ...payload, page } : payload
 
     void observabilityApi.reportFrontendVital(request, { keepalive: true }).catch((error) => {
-      console.warn('Failed to report web vital', error)
+      reportClientWarning('Failed to report web vital', error)
     })
   })
 

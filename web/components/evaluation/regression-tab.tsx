@@ -40,6 +40,7 @@ import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { formatApiError } from '@/lib/api-errors'
+import { reportClientError } from '@/lib/client-logging'
 import {
   Select,
   SelectContent,
@@ -592,7 +593,7 @@ export function RegressionTestTab({
 
   useEffect(() => {
     if (!runsQuery.error) return
-    console.error('加载运行历史失败:', runsQuery.error)
+    reportClientError('Failed to load regression run history', runsQuery.error)
     toast.error(formatApiError(runsQuery.error, '加载运行历史失败'))
   }, [runsQuery.error])
 
@@ -622,7 +623,7 @@ export function RegressionTestTab({
       await runsQuery.refetch()
       setSelectedRunId(run.id)
     } catch (error) {
-      console.error('运行 Golden 评测失败:', error)
+      reportClientError('Failed to run Golden regression evaluation', error)
       toast.error(formatApiError(error, '运行 Golden 评测失败'))
     }
   }

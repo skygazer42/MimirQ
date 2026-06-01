@@ -20,6 +20,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useRouter } from '@/i18n/navigation'
 import { formatApiError } from '@/lib/api-errors'
 import { connectorApi, datasetApi } from '@/lib/api'
+import { reportClientError } from '@/lib/client-logging'
 import { queryKeys } from '@/lib/query-keys'
 import { cn } from '@/lib/utils'
 
@@ -304,7 +305,7 @@ export default function DatasetDbCatalogPage() {
         refetchLatestRun()
       }, 1500)
     } catch (e: unknown) {
-      console.error('Failed to create DB catalog run', e)
+      reportClientError('Failed to create DB catalog run', e)
       setSyncError(formatApiError(e, '创建同步任务失败'))
     } finally {
       setSyncSubmitting(false)
@@ -334,7 +335,7 @@ export default function DatasetDbCatalogPage() {
 
   useEffect(() => {
     if (!detailQuery.error) return
-    console.error('Failed to load DB catalog table detail', detailQuery.error)
+    reportClientError('Failed to load DB catalog table detail', detailQuery.error)
     toast.error(formatApiError(detailQuery.error, '加载表结构失败'))
   }, [detailQuery.error, detailQuery.errorUpdatedAt])
 

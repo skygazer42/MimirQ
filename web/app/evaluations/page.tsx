@@ -64,6 +64,7 @@ import {
 import type { LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { reportClientError } from '@/lib/client-logging'
 import { queryKeys } from '@/lib/query-keys'
 import { RegressionTestTab } from '@/components/evaluation/regression-tab'
 import { QuerysetHealthTab } from '@/components/evaluation/queryset-health-tab'
@@ -832,7 +833,7 @@ function EvaluationsPageContent() {
       await runsQuery.refetch()
       setSelectedRunId(run.id)
     } catch (e) {
-      console.error('Failed to start evaluation', e)
+      reportClientError('Failed to start evaluation', e)
       toast.error(formatApiError(e, '启动评测失败'))
     } finally {
       setIsStarting(false)

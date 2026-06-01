@@ -15,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { governanceApi, pipelineApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { reportClientWarning } from '@/lib/client-logging'
 import { coerceOneOf } from '@/lib/one-of'
 import { cn, detachPromise } from '@/lib/utils'
 import type {
@@ -379,7 +380,7 @@ export function ProfileEditorDrawer({
         if (cancelled) return
         setAvailableRulePacks(Array.isArray(resp.items) ? resp.items : [])
       } catch (err) {
-        console.warn('Load governance rule packs failed:', err)
+        reportClientWarning('Load governance rule packs failed', err)
         if (!cancelled) setAvailableRulePacks([])
       } finally {
         if (!cancelled) setLoadingRulePacks(false)

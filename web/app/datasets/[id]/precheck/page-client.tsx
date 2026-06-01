@@ -32,6 +32,7 @@ import { SafeResponsiveChart } from '@/components/ui/safe-responsive-chart'
 
 import { datasetApi, sseApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { reportClientError, reportClientWarning } from '@/lib/client-logging'
 import { queryKeys } from '@/lib/query-keys'
 import { cn, formatFileSize, formatDate, detachPromise } from '@/lib/utils'
 import { useRouter } from '@/i18n/navigation'
@@ -258,14 +259,14 @@ export default function DatasetPrecheckPage() {
   useEffect(() => {
     const error = datasetQuery.error || runsQuery.error
     if (!error) return
-    console.error('Failed to load dataset precheck', error)
+    reportClientError('Failed to load dataset precheck', error)
     toast.error(formatApiError(error, '加载预检页面失败'))
   }, [datasetQuery.error, datasetQuery.errorUpdatedAt, runsQuery.error, runsQuery.errorUpdatedAt])
 
   useEffect(() => {
     const error = findingItemsQuery.error
     if (!error) return
-    console.error('Failed to load precheck finding', error)
+    reportClientError('Failed to load precheck finding', error)
     toast.error(formatApiError(error, '加载清单失败'))
   }, [findingItemsQuery.error, findingItemsQuery.errorUpdatedAt])
 
@@ -290,7 +291,7 @@ export default function DatasetPrecheckPage() {
     ) => {
       const { error } = await action()
       if (!error) return
-      console.error(logLabel, error)
+      reportClientError(logLabel, error)
       toast.error(formatApiError(error, errorMessage))
     },
     []
@@ -329,7 +330,7 @@ export default function DatasetPrecheckPage() {
           toast.error(`预检扫描失败：${next.error_message}`)
         }
       } catch (e: unknown) {
-        console.error('Failed to poll precheck run', e)
+        reportClientError('Failed to poll precheck run', e)
         setScanRunning(false)
         stopPolling()
       }
@@ -367,13 +368,13 @@ export default function DatasetPrecheckPage() {
           },
           {
             onError: (err) => {
-              console.error('Precheck SSE error', err)
+              reportClientError('Precheck SSE error', err)
             },
             signal: ctrl.signal,
           }
         )
         .catch((e) => {
-          console.warn('Precheck SSE unavailable; fallback to polling', e)
+          reportClientWarning('Precheck SSE unavailable; fallback to polling', e)
           stopSse()
           pollTimerRef.current = globalThis.window.setTimeout(() => {
             detachPromise(pollRun(datasetIdValue, runId))
@@ -424,7 +425,7 @@ export default function DatasetPrecheckPage() {
       }
       toast.success('已启动预检扫描')
     } catch (e: unknown) {
-      console.error('Failed to start precheck scan', e)
+      reportClientError('Failed to start precheck scan', e)
       toast.error(formatApiError(e, '启动预检扫描失败'))
       setScanRunning(false)
     }
@@ -438,7 +439,7 @@ export default function DatasetPrecheckPage() {
       setSelectedRun(run)
       toast.success('已请求取消')
     } catch (e: unknown) {
-      console.error('Failed to cancel precheck scan', e)
+      reportClientError('Failed to cancel precheck scan', e)
       toast.error(formatApiError(e, '取消失败'))
     } finally {
       setScanRunning(false)
@@ -450,7 +451,7 @@ export default function DatasetPrecheckPage() {
     setPolicyOpen(true)
     const { error } = await refetchPolicySuggestion()
     if (error) {
-      console.error('Failed to suggest ingestion policy', error)
+      reportClientError('Failed to suggest ingestion policy', error)
       toast.error(formatApiError(error, '生成入库策略失败'))
     }
   }, [datasetId, refetchPolicySuggestion, selectedRunId])
@@ -464,7 +465,7 @@ export default function DatasetPrecheckPage() {
       })
       toast.success(`已应用入库策略（rules=${res.rule_count}）`)
     } catch (e: unknown) {
-      console.error('Failed to apply ingestion policy', e)
+      reportClientError('Failed to apply ingestion policy', e)
       toast.error(formatApiError(e, '应用失败'))
     } finally {
       setPolicyApplying(false)
@@ -480,7 +481,7 @@ export default function DatasetPrecheckPage() {
       downloadBlob(blob, `${safe}.precheck.json`)
       toast.success('已导出 JSON 报告')
     } catch (e: unknown) {
-      console.error('Failed to export precheck json', e)
+      reportClientError('Failed to export precheck json', e)
       toast.error(formatApiError(e, '导出失败'))
     } finally {
       setIsExporting(false)
@@ -496,7 +497,7 @@ export default function DatasetPrecheckPage() {
       downloadBlob(blob, `${safe}.precheck.html`)
       toast.success('已导出 HTML 报告')
     } catch (e: unknown) {
-      console.error('Failed to export precheck html', e)
+      reportClientError('Failed to export precheck html', e)
       toast.error(formatApiError(e, '导出失败'))
     } finally {
       setIsExporting(false)

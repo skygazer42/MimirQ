@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
+import { reportClientWarning } from '@/lib/client-logging'
 
 type RegistrationEnv = {
   hasWindow: boolean
@@ -56,7 +57,7 @@ export async function clearLocalMimirqServiceWorkerState() {
 }
 
 function reportServiceWorkerCleanupFailure(error: unknown) {
-  console.warn('Service worker cleanup failed', error)
+  reportClientWarning('Service worker cleanup failed', error)
 }
 
 function scheduleLocalMimirqServiceWorkerCleanup() {
@@ -92,7 +93,7 @@ export function ServiceWorkerRegistrar() {
     }
 
     navigator.serviceWorker.register('/sw.js').catch((error) => {
-      console.warn('Service worker registration failed', error)
+      reportClientWarning('Service worker registration failed', error)
     })
   }, [])
 

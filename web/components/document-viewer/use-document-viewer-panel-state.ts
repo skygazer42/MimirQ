@@ -7,6 +7,7 @@ import { toast } from "sonner"
 import { useResolvedAuthAssetUrl } from "@/components/auth-image"
 import { documentApi, ragApi } from "@/lib/api"
 import { formatApiError } from "@/lib/api-errors"
+import { reportClientError } from "@/lib/client-logging"
 import { getDocContentFromCache, saveDocContentToCache } from "@/lib/doc-content-cache"
 import { mapDocumentChunksToPreviewItems } from "@/lib/document-chunks"
 import {
@@ -218,7 +219,7 @@ export function useDocumentViewerPanelState() {
       .then((data) => {
         setDoc(data)
       })
-      .catch(console.error)
+      .catch((error: unknown) => reportClientError("Load document detail failed", error))
       .finally(() => setIsLoading(false))
 
     return () => globalThis.window.cancelAnimationFrame(raf)
@@ -291,7 +292,7 @@ export function useDocumentViewerPanelState() {
       })
       .catch((err) => {
         if (cancelled) return
-        console.error(err)
+        reportClientError("Load highlighted chunk failed", err)
         setHighlightChunkState(null)
       })
       .finally(() => {
@@ -331,7 +332,7 @@ export function useDocumentViewerPanelState() {
       })
       .catch((err) => {
         if (cancelled) return
-        console.error(err)
+        reportClientError("Load parsed document content failed", err)
         setParsedContentError("加载解析文本失败")
       })
       .finally(() => {
@@ -370,7 +371,7 @@ export function useDocumentViewerPanelState() {
 
       if (!cancelled) setChunksLoaded(true)
     })()
-      .catch(console.error)
+      .catch((error: unknown) => reportClientError("Load document chunks failed", error))
       .finally(() => {
         if (!cancelled) setChunksLoading(false)
       })
@@ -522,7 +523,7 @@ export function useDocumentViewerPanelState() {
         setServerMatchTruncated(Boolean(res?.truncated))
       } catch (err) {
         if (seq !== matchRequestSeqRef.current) return
-        console.error(err)
+        reportClientError("Load chunk search matches failed", err)
         setServerMatchIds([])
         setServerMatchTotal(0)
         setServerMatchTruncated(false)
@@ -626,7 +627,7 @@ export function useDocumentViewerPanelState() {
       await navigator.clipboard.writeText(value)
       toast.success(okMsg)
     } catch (error) {
-      console.error(error)
+      reportClientError("Copy document viewer text failed", error)
       toast.error("复制失败")
     }
   }, [])
@@ -681,7 +682,7 @@ export function useDocumentViewerPanelState() {
         const items = raw.map(toCitation).filter(Boolean) as Citation[]
         setRetrieveCitations(items.filter((citation) => citation.document_id === documentId))
       } catch (err) {
-        console.error(err)
+        reportClientError("Run retrieve preview failed", err)
         setRetrieveError("检索测试失败，请稍后重试")
         setRetrieveCitations([])
       } finally {
@@ -796,12 +797,12 @@ export function useDocumentViewerPanelState() {
             }
           }
         } catch (err) {
-          console.error(err)
+          reportClientError("Re-embed saved chunk failed", err)
           toast.error(formatApiError(err, "切片已保存，但后续重嵌入失败"))
         }
       }
     } catch (err) {
-      console.error(err)
+      reportClientError("Save chunk failed", err)
       toast.error(formatApiError(err, "切片保存失败"))
     } finally {
       setChunkEditorSubmitting(false)
@@ -849,7 +850,7 @@ export function useDocumentViewerPanelState() {
 
         globalThis.window.requestAnimationFrame(() => rowVirtualizer.measure())
       } catch (err) {
-        console.error(err)
+        reportClientError("Delete chunk failed", err)
         toast.error(formatApiError(err, "切片删除失败"))
       } finally {
         setChunkDeleteSubmitting(null)
@@ -898,7 +899,7 @@ export function useDocumentViewerPanelState() {
         setHighlightChunk(res.chunk_ids[0])
       }
     } catch (err) {
-      console.error(err)
+      reportClientError("Generate document Q&A failed", err)
       toast.error(formatApiError(err, "问答生成失败"))
     } finally {
       setQaSubmitting(false)

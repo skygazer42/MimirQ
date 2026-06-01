@@ -8,6 +8,7 @@ import { toast } from 'sonner'
 import { metaApi } from '@/lib/api'
 import { kgApi } from '@/lib/api/graph'
 import { GraphService } from '@/lib/graph-service'
+import { reportClientError } from '@/lib/client-logging'
 import type { GraphData } from '@/lib/graph-parser'
 import type {
   KGEntityDetailResponse,
@@ -173,7 +174,7 @@ export function useGraphDataLoading({
 
         resetGraphSurface()
       } catch (error) {
-        console.error('Failed to fetch graph data:', error)
+        reportClientError('Failed to fetch graph data', error)
       } finally {
         setIsLoading(false)
       }
@@ -234,7 +235,7 @@ export function useGraphDataLoading({
         setViewMode('2d')
         toast.success('Trace 已导入（可点击右下角 Play 回放）')
       } catch (error) {
-        console.error('Failed to import trace JSON:', error)
+        reportClientError('Failed to import trace JSON', error)
         setTraceReplay(null)
         toast.error('导入 Trace 失败：请检查 JSON 格式或粘贴/导出内容是否完整')
       } finally {
@@ -339,7 +340,7 @@ export function useGraphDataLoading({
         toast.success(`KG 已导入：实体 ${imported.stats.entities}，关系 ${imported.stats.relations}`)
         await loadInitialData('live')
       } catch (error) {
-        console.error('Failed to import manual KG:', error)
+        reportClientError('Failed to import manual KG', error)
         toast.error('导入 KG 失败：请检查 JSON / JSONL 格式或后端校验信息')
       } finally {
         setIsLoading(false)

@@ -47,6 +47,7 @@ import { Magnetic } from '@/components/ui/magnetic'
 import { useRouter } from '@/i18n/navigation'
 import { coerceOneOf } from '@/lib/one-of'
 import { queryKeys } from '@/lib/query-keys'
+import { reportClientError } from '@/lib/client-logging'
 import { useDocumentView } from '@/store/document-view'
 import { ThemeCustomizer } from '@/components/theme-customizer'
 
@@ -569,7 +570,7 @@ export function ChatArea({
     enableSummaryMemory,
     onConversationId,
     onError: (error) => {
-      console.error('Chat error:', error)
+      reportClientError('Chat request failed', error)
       toast.error(error || t('requestFailed'))
     },
   })
@@ -604,7 +605,7 @@ export function ChatArea({
     if (desired) {
       if (desired !== current) {
         loadConversation(desired).catch((err) => {
-          console.error('Failed to load conversation:', err)
+          reportClientError('Failed to load conversation', err)
         })
       }
       return

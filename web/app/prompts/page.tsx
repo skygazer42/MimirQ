@@ -69,6 +69,7 @@ import { AnalysisPageShell } from '@/components/ui/analysis-page-shell'
 import { PageHeader } from '@/components/ui/page-header'
 import { cn } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
+import { reportClientError } from '@/lib/client-logging'
 import { queryKeys } from '@/lib/query-keys'
 import { EmptyState } from '@/components/ui/empty-state'
 import { PageSkeleton } from '@/components/ui/page-skeleton'
@@ -323,7 +324,7 @@ function PromptsPageContent() {
       await refreshTemplates()
     } catch (error) {
       toast.error(formatApiError(error, '批量删除失败'))
-      console.error(error)
+      reportClientError('Failed to batch delete prompt templates', error)
     }
   }
 
@@ -343,7 +344,7 @@ function PromptsPageContent() {
       await refreshTemplates()
     } catch (error) {
       toast.error(formatApiError(error, '批量操作失败'))
-      console.error(error)
+      reportClientError('Failed to batch update prompt templates', error)
     }
   }
 
@@ -393,7 +394,7 @@ function PromptsPageContent() {
       await refreshTemplates()
     } catch (error) {
       toast.error(formatApiError(error, '保存失败'))
-      console.error(error)
+      reportClientError('Failed to save prompt template', error)
     }
   }
 
@@ -404,7 +405,7 @@ function PromptsPageContent() {
       await refreshTemplates()
     } catch (error) {
       toast.error(formatApiError(error, '删除失败'))
-      console.error(error)
+      reportClientError('Failed to delete prompt template', error)
     }
   }
 
@@ -415,7 +416,7 @@ function PromptsPageContent() {
       await refreshTemplates()
     } catch (error) {
       toast.error(formatApiError(error, '复制失败'))
-      console.error(error)
+      reportClientError('Failed to duplicate prompt template', error)
     }
   }
 
@@ -428,7 +429,7 @@ function PromptsPageContent() {
       await refreshTemplates()
     } catch (error) {
       toast.error(formatApiError(error, '更新失败'))
-      console.error(error)
+      reportClientError('Failed to toggle prompt template active state', error)
     }
   }
 
@@ -440,7 +441,7 @@ function PromptsPageContent() {
       await refreshTemplates()
     } catch (error) {
       toast.error(formatApiError(error, '同步内置模板失败'))
-      console.error(error)
+      reportClientError('Failed to sync builtin prompt templates', error)
     } finally {
       setSyncingBuiltins(false)
     }

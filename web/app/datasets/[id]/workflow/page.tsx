@@ -17,6 +17,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { WorkflowEditor } from '@/components/workflow/workflow-editor'
 import { datasetApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { reportClientError } from '@/lib/client-logging'
 import { buildDatasetConfigGraph } from '@/lib/dataset-config-graph'
 import type { GraphNode } from '@/lib/graph-parser'
 import { queryKeys } from '@/lib/query-keys'
@@ -163,7 +164,7 @@ export default function DatasetWorkflowPage() {
       downloadJson(exp, `dataset-config-${name}-${id8}.json`)
       toast.success('Exported config')
     } catch (e: unknown) {
-      console.error('Failed to export dataset config', e)
+      reportClientError('Failed to export dataset config', e)
       toast.error(formatApiError(e, 'Export failed'))
     } finally {
       setExporting(false)
@@ -185,7 +186,7 @@ export default function DatasetWorkflowPage() {
       setImportBundle(bundle)
       setImportOpen(true)
     } catch (e: unknown) {
-      console.error('Failed to parse import JSON', e)
+      reportClientError('Failed to parse dataset config import JSON', e)
       toast.error('Failed to parse JSON file')
     } finally {
       setImporting(false)
@@ -205,7 +206,7 @@ export default function DatasetWorkflowPage() {
       setImportFileName('')
       await refreshWorkflow()
     } catch (e: unknown) {
-      console.error('Failed to import dataset config', e)
+      reportClientError('Failed to import dataset config', e)
       toast.error(formatApiError(e, 'Import failed'))
     } finally {
       setImporting(false)
@@ -230,7 +231,7 @@ export default function DatasetWorkflowPage() {
       toast.success('Saved workflow layout')
       await refreshWorkflow()
     } catch (e: unknown) {
-      console.error('Failed to save workflow layout', e)
+      reportClientError('Failed to save workflow layout', e)
       toast.error(formatApiError(e, 'Save failed'))
     } finally {
       setSaving(false)
@@ -243,7 +244,7 @@ export default function DatasetWorkflowPage() {
       await navigator.clipboard.writeText(selectedJsonText)
       toast.success('Copied JSON')
     } catch (e) {
-      console.error('Failed to copy JSON', e)
+      reportClientError('Failed to copy selected workflow JSON', e)
       toast.error('Copy failed')
     }
   }, [selectedJsonText])

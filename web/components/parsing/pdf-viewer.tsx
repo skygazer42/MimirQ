@@ -20,6 +20,7 @@ import { getAuthHeaders } from '@/lib/auth-headers'
 import { API_BASE_URL } from '@/lib/env'
 import { Button } from '@/components/ui/button'
 import { BboxOverlay, type BboxOverlayItem } from '@/components/parsing/bbox-overlay'
+import { reportClientWarning } from '@/lib/client-logging'
 import {
  MAX_RETAINED_PAGE_CANVASES,
  selectPdfPagesToReleaseForPool,
@@ -329,7 +330,7 @@ export function PdfViewer({
  (reason: unknown) => {
  if (offscreenRenderWorkerDisabledRef.current) return
  offscreenRenderWorkerDisabledRef.current = true
- console.warn('PDF offscreen page render failed; falling back to main-thread raster', reason)
+ reportClientWarning('PDF offscreen page render failed; falling back to main-thread raster', reason)
  terminateOffscreenRenderWorker()
  setOffscreenRenderEnabled(false)
  setReloadTick((prev) => prev + 1)
@@ -526,7 +527,7 @@ export function PdfViewer({
 
  setOffscreenRenderEnabled(ENABLE_PDF_OFFSCREEN_RENDER)
  } catch (error) {
- console.warn('PDF offscreen render worker failed; falling back to main-thread raster', error)
+ reportClientWarning('PDF offscreen render worker failed; falling back to main-thread raster', error)
  offscreenRenderWorkerDisabledRef.current = true
  terminateOffscreenRenderWorker()
  setOffscreenRenderEnabled(false)
@@ -648,7 +649,7 @@ export function PdfViewer({
  })
 
  if (process.env.NODE_ENV === 'development') {
- console.warn(`PDF page ${pageIndex + 1} render failed`, error)
+ reportClientWarning(`PDF page ${pageIndex + 1} render failed`, error)
  }
  }, [])
 
