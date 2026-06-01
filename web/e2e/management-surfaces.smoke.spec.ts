@@ -241,13 +241,13 @@ test.describe('management surfaces smoke', () => {
 
   test('loads prompts page with the managed prompt shell', async ({ page }) => {
     await page.goto('/prompts')
-    await expect(page.getByText('提示词模板')).toBeVisible({ timeout: 60_000 })
-    await expect(page.getByText('提示词中心 · 管理工作台')).toBeVisible()
+    await expect(page.getByTestId('page-title-shell').getByText('提示词模板')).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByText('创建模板')).toBeVisible()
   })
 
   test('loads reports page with mocked dataset data', async ({ page }) => {
     await page.goto('/reports')
-    await expect(page.getByText('报告中心')).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByText('数据报告与审计概览')).toBeVisible({ timeout: 60_000 })
     await expect(page.getByRole('combobox', { name: '数据集' })).toContainText('Smoke Dataset')
   })
 
@@ -260,13 +260,13 @@ test.describe('management surfaces smoke', () => {
   test('loads usage page with token and quota summaries', async ({ page }) => {
     await page.goto('/usage')
     await expect(page.getByRole('heading', { name: '用量/配额' })).toBeVisible({ timeout: 60_000 })
-    await expect(page.getByRole('row', { name: /Smoke Dataset ds-smoke 128/ })).toBeVisible()
+    await expect(page.getByRole('row', { name: /Smoke Dataset.*128/ })).toBeVisible()
   })
 
   test('loads audit page with mocked audit events', async ({ page }) => {
     await page.goto('/audit')
     await expect(page.getByRole('heading', { name: '审计日志' })).toBeVisible({ timeout: 60_000 })
-    await expect(page.getByRole('button', { name: /smoke\.audit\.view/ })).toBeVisible()
+    await expect(page.getByRole('row', { name: /smoke\.audit\.view/ })).toBeVisible()
   })
 
   test('redirects the retired access-review page to audit logs', async ({ page }) => {
