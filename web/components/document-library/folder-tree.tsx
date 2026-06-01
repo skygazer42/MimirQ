@@ -227,6 +227,49 @@ function getFolderIconElement(depth: number, isOpen: boolean) {
     : <Folder className={cn(className, "text-muted-foreground/80")} />
 }
 
+function getGovernanceStatusLabel(
+  governanceStatus?: DocumentTreeFileItem['governanceStatus']
+): string {
+  if (governanceStatus === 'ready') return '待提交'
+  if (governanceStatus === 'submitted') return '已提交'
+  return ''
+}
+
+function getGovernanceStatusBadgeClass(
+  governanceStatus?: DocumentTreeFileItem['governanceStatus']
+): string {
+  if (governanceStatus === 'ready') {
+    return 'border-warning/25 bg-warning/[0.10] text-warning'
+  }
+  return 'border-success/25 bg-success/[0.08] text-success'
+}
+
+function getFileRowShellClass(isActive: boolean, isError: boolean): string {
+  if (isActive) {
+    return 'bg-info/[0.085] text-foreground shadow-[inset_0_0_0_1px_hsl(var(--info)/0.10)] before:bg-info/70'
+  }
+  if (isError) return 'bg-destructive/7 text-destructive/90 hover:bg-destructive/8'
+  return 'text-foreground/72 hover:bg-muted/36 hover:text-foreground/88'
+}
+
+function getSelectableFileClass(isSelected: boolean): string {
+  if (isSelected) {
+    return 'border-primary bg-primary text-primary-foreground'
+  }
+  return 'border-border/70 bg-background text-transparent group-hover/file:border-primary/50 group-hover/file:text-primary/40'
+}
+
+function getDocumentTreeFileTitle(file: DocumentTreeFileItem): string {
+  if (file.error) return file.error
+  if (file.sourcePath) return `${file.name} · ${file.sourcePath}`
+  return file.name
+}
+
+function getParsingProgressTitle(progress: number | null): string {
+  if (progress == null) return '处理中'
+  return `处理中 ${Math.round(progress)}%`
+}
+
 export function DocumentFolderTree({
   className,
   onRequestUpload,
@@ -588,23 +631,98 @@ export function DocumentFolderTree({
       const isParsing = status === 'parsing'
       const isError = status === 'error'
       const isPending = status === 'pending'
-      const governanceStatusLabel =
-        file.governanceStatus === 'ready' ? '待提交' : file.governanceStatus === 'submitted' ? '已提交' : ''
+      const governanceStatusLabel = getGovernanceStatusLabel(file.governanceStatus)
       const progress =
         file.progress == null || !Number.isFinite(Number(file.progress))
           ? null
           : Math.max(0, Math.min(100, Number(file.progress)))
       const hasInlineActions = !file.readOnly && Boolean(onRetryFile || onRemoveFile)
+      const progressTitle = getParsingProgressTitle(progress)
+      let selectableControl: React.ReactNode = null
+      if (file.isSelectable) {
+        const selectionLabel = file.isSelected ? '取消选择待提交文档' : '选择待提交文档'
+        selectableControl = (
+          <button
+            type="button"
+            aria-label={selectionLabel}
+            className={cn(
+              'flex size-4 shrink-0 items-center justify-center rounded-full border text-[10px] font-semibold transition-colors focus-ring',
+              getSelectableFileClass(Boolean(file.isSelected))
+            )}
+            onClick={(event) => {
+              event.stopPropagation()
+              onToggleFileSelected?.(file.id)
+            }}
+          >
+            ✓
+          </button>
+        )
+      }
+
+      let inlineActions: React.ReactNode = null
+      if (hasInlineActions) {
+        let retryAction: React.ReactNode = null
+        if (isError && onRetryFile) {
+          retryAction = (
+            <button
+              type="button"
+              className="flex h-5 w-5 items-center justify-center rounded-md text-muted-foreground/80 hover:bg-muted/40 hover:text-foreground focus-ring"
+              title="重试"
+              aria-label="重试"
+              onClick={(event) => {
+                event.stopPropagation()
+                onRetryFile(file.id)
+              }}
+            >
+              <RotateCcw className="h-3 w-3" />
+            </button>
+          )
+        }
+
+        let removeAction: React.ReactNode = null
+        if (onRemoveFile) {
+          removeAction = (
+            <button
+              type="button"
+              className="flex h-5 w-5 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive focus-ring"
+              title="删除"
+              aria-label="删除"
+              onClick={(event) => {
+                event.stopPropagation()
+                onRemoveFile(file.id)
+              }}
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          )
+        }
+
+        inlineActions = (
+          <div className="pointer-events-none absolute right-1 top-1 flex items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover/file:pointer-events-auto group-hover/file:opacity-100">
+            {retryAction}
+            {removeAction}
+          </div>
+        )
+      }
+
+      let parsingProgressBar: React.ReactNode = null
+      if (isParsing) {
+        parsingProgressBar = (
+          <div className="pointer-events-none absolute inset-x-2 bottom-0 h-0.5 overflow-hidden rounded-full bg-primary/12">
+            <div
+              className="h-full rounded-full bg-primary transition-[width] duration-300 motion-reduce:transition-none"
+              style={{ width: `${progress ?? 45}%` }}
+            />
+          </div>
+        )
+      }
 
       return (
         <div
           key={file.id}
           className={cn(
             'group/file relative overflow-hidden rounded-xl before:absolute before:bottom-1.5 before:left-0 before:top-1.5 before:w-0.5 before:rounded-full before:bg-primary/0 before:transition-colors',
-            file.isActive
-              ? 'bg-info/[0.085] text-foreground shadow-[inset_0_0_0_1px_hsl(var(--info)/0.10)] before:bg-info/70'
-              : 'text-foreground/72 hover:bg-muted/36 hover:text-foreground/88',
-            isError && !file.isActive && 'bg-destructive/7 text-destructive/90 hover:bg-destructive/8'
+            getFileRowShellClass(Boolean(file.isActive), isError)
           )}
         >
           {renderIndentGuides(level)}
@@ -615,28 +733,11 @@ export function DocumentFolderTree({
               file.isSelectable && 'pl-1'
             )}
             style={{ paddingLeft: `${TREE_ROW_BASE_PADDING + level * TREE_INDENT_STEP}px` }}
-            title={file.error || (file.sourcePath ? `${file.name} · ${file.sourcePath}` : file.name)}
+            title={getDocumentTreeFileTitle(file)}
             draggable={Boolean(onFileDragStart) && !file.readOnly}
             onDragStart={!file.readOnly && onFileDragStart ? (event) => onFileDragStart(event, file.id) : undefined}
           >
-            {file.isSelectable ? (
-              <button
-                type="button"
-                aria-label={file.isSelected ? '取消选择待提交文档' : '选择待提交文档'}
-                className={cn(
-                  'flex size-4 shrink-0 items-center justify-center rounded-full border text-[10px] font-semibold transition-colors focus-ring',
-                  file.isSelected
-                    ? 'border-primary bg-primary text-primary-foreground'
-                    : 'border-border/70 bg-background text-transparent group-hover/file:border-primary/50 group-hover/file:text-primary/40'
-                )}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  onToggleFileSelected?.(file.id)
-                }}
-              >
-                ✓
-              </button>
-            ) : null}
+            {selectableControl}
             <button
               type="button"
               className="flex min-w-0 flex-1 items-center gap-1.5 text-left focus-ring"
@@ -652,16 +753,14 @@ export function DocumentFolderTree({
                   <span
                     className={cn(
                       'shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-medium',
-                      file.governanceStatus === 'ready'
-                        ? 'border-warning/25 bg-warning/[0.10] text-warning'
-                        : 'border-success/25 bg-success/[0.08] text-success'
+                      getGovernanceStatusBadgeClass(file.governanceStatus)
                     )}
                   >
                     {governanceStatusLabel}
                   </span>
                 ) : null}
                 {isParsing ? (
-                  <span className="shrink-0 text-primary" title={progress == null ? '处理中' : `处理中 ${Math.round(progress)}%`}>
+                  <span className="shrink-0 text-primary" title={progressTitle}>
                     <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" />
                   </span>
                 ) : null}
@@ -675,47 +774,9 @@ export function DocumentFolderTree({
             </button>
           </div>
 
-          {hasInlineActions ? (
-            <div className="pointer-events-none absolute right-1 top-1 flex items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover/file:pointer-events-auto group-hover/file:opacity-100">
-              {isError && onRetryFile ? (
-                <button
-                  type="button"
-                  className="flex h-5 w-5 items-center justify-center rounded-md text-muted-foreground/80 hover:bg-muted/40 hover:text-foreground focus-ring"
-                  title="重试"
-                  aria-label="重试"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    onRetryFile(file.id)
-                  }}
-                >
-                  <RotateCcw className="h-3 w-3" />
-                </button>
-              ) : null}
-              {onRemoveFile ? (
-                <button
-                  type="button"
-                  className="flex h-5 w-5 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive focus-ring"
-                  title="删除"
-                  aria-label="删除"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    onRemoveFile(file.id)
-                  }}
-                >
-                  <Trash2 className="h-3 w-3" />
-                </button>
-              ) : null}
-            </div>
-          ) : null}
+          {inlineActions}
 
-          {isParsing ? (
-            <div className="pointer-events-none absolute inset-x-2 bottom-0 h-0.5 overflow-hidden rounded-full bg-primary/12">
-              <div
-                className="h-full rounded-full bg-primary transition-[width] duration-300 motion-reduce:transition-none"
-                style={{ width: `${progress ?? 45}%` }}
-              />
-            </div>
-          ) : null}
+          {parsingProgressBar}
         </div>
       )
     },
