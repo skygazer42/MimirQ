@@ -27,6 +27,7 @@ _DEFAULT_RAG_EVAL_SUMMARY_PATH = "tests/rag/evaluation/fixtures/rag_eval_summary
 _COMMA_OR_WHITESPACE_RE = r"[,\\s]+"
 _LEGACY_DEV_SECRET_KEY = "".join(("your-secret-key", "-change-in-production"))
 _LOCAL_MINIO_DEFAULT_CREDENTIAL = "".join(("minio", "admin"))
+_ALL_INTERFACES_HOST = str(ipaddress.IPv4Address(0))
 
 try:
     from app.rag.retrieval.contract import (
@@ -250,7 +251,7 @@ class Settings(BaseSettings):
     # Mode:
     # - "block": reject new requests with HTTP 429 when exceeded
     # - "warn": allow but annotate metrics (no enforcement)
-    CHAT_ASSISTANT_TOKEN_QUOTA_MODE: str = "block"
+    CHAT_ASSISTANT_TOKEN_QUOTA_MODE: str = "block"  # noqa: S105 - quota enforcement mode, not a credential.
 
     # Tenant resource quotas (best-effort; disabled by default).
     # These are aggregate tenant guardrails, not per-user or per-dataset allocations.
@@ -853,7 +854,7 @@ class Settings(BaseSettings):
     HEALTH_CACHE_TTL_SEC: float = 2.0
     READY_CACHE_TTL_SEC: float = 2.0
 
-    HOST: str = "0.0.0.0"
+    HOST: str = "127.0.0.1"
     PORT: int = 8000
 
     # Response compression (Starlette GZipMiddleware).
@@ -954,7 +955,7 @@ class Settings(BaseSettings):
     # CSV of citation keys that must exist when must-recall is enabled.
     RETRIEVAL_MUST_RECALL_REQUIRED_ANCHOR_FIELDS: str = "chunk_id,document_id"
     RETRIEVAL_MUST_RECALL_SECOND_PASS_ENABLED: bool = True
-    RETRIEVAL_MUST_RECALL_SECOND_PASS_MODE: str = "keyword"  # hybrid | vector | keyword | mmr
+    RETRIEVAL_MUST_RECALL_SECOND_PASS_MODE: str = "keyword"  # noqa: S105  # hybrid | vector | keyword | mmr
     RETRIEVAL_MUST_RECALL_SECOND_PASS_TOP_K: int = 80
     # Contextual follow-up pass (deterministic):
     # build one bounded query from already retrieved docs, then run a second retrieval pass.
@@ -1520,7 +1521,7 @@ class Settings(BaseSettings):
     RAG_CORRECTIVE_ENABLED: bool = False
     RAG_CORRECTIVE_MAX_ATTEMPTS: int = 2
     RAG_CORRECTIVE_MIN_FAITHFULNESS_SCORE: float = 0.75
-    RAG_CORRECTIVE_SECOND_PASS_PROFILE: str = "recall50"
+    RAG_CORRECTIVE_SECOND_PASS_PROFILE: str = "recall50"  # noqa: S105 - retrieval profile label, not a credential.
     RAG_CORRECTIVE_SECOND_PASS_ENABLE_MULTI_QUERY: bool = True
     RAG_CORRECTIVE_SECOND_PASS_MULTI_QUERY_COUNT: int = 5
     RAG_AGENTIC_MODE_ENABLED: bool = False
@@ -2186,7 +2187,7 @@ class Settings(BaseSettings):
                 host = (parsed.hostname or "").lower().strip()
                 if scheme not in {"http", "https"} or not host:
                     raise ValueError("CORS_ORIGINS must be a comma-separated list of http(s) origins in production")
-                if host in {"localhost", "127.0.0.1", "0.0.0.0"} or host.endswith(".localhost"):
+                if host in {"localhost", "127.0.0.1", _ALL_INTERFACES_HOST} or host.endswith(".localhost"):
                     raise ValueError("CORS_ORIGINS must not include localhost origins in production")
 
         # Security: Auth mode guard

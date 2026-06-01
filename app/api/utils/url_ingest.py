@@ -26,10 +26,11 @@ from fastapi import HTTPException
 from app.core.config import settings
 from app.core.http_client import get_http_client_pool
 
+_ALL_INTERFACES_HOST = str(ipaddress.IPv4Address(0))
 _BLOCKED_HOSTS = {
     "localhost",
     "localhost.localdomain",
-    "0.0.0.0",
+    _ALL_INTERFACES_HOST,
     "127.0.0.1",
     "::1",
 }

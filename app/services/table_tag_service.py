@@ -734,7 +734,7 @@ def plan_join_query_for_tables(
     is_max = any(k in q_fold for k in (" max", "maximum", "最大"))
 
     sql = (
-        f"SELECT {right_alias}.{_quote_ident(group_col or right_column)} AS {_quote_ident(group_col or right_column)} "
+        f"SELECT {right_alias}.{_quote_ident(group_col or right_column)} AS {_quote_ident(group_col or right_column)} "  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
         f"FROM {_quote_ident(left_table)} AS {left_alias} "
         f"JOIN {_quote_ident(right_table)} AS {right_alias} "
         f"ON {left_alias}.{_quote_ident(left_column)} = {right_alias}.{_quote_ident(right_column)} "
@@ -753,7 +753,7 @@ def plan_join_query_for_tables(
             if group_table and group_col:
                 group_expr = f"{alias_map.get(group_table, right_alias)}.{_quote_ident(group_col)}"
                 sql = (
-                    f"SELECT {group_expr} AS {_quote_ident(group_col)}, SUM({metric_expr}) AS total "
+                    f"SELECT {group_expr} AS {_quote_ident(group_col)}, SUM({metric_expr}) AS total "  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
                     f"FROM {_quote_ident(left_table)} AS {left_alias} "
                     f"JOIN {_quote_ident(right_table)} AS {right_alias} "
                     f"ON {left_alias}.{_quote_ident(left_column)} = {right_alias}.{_quote_ident(right_column)} "
@@ -763,7 +763,7 @@ def plan_join_query_for_tables(
                 order_by = {"column": "total", "direction": "desc"}
             else:
                 sql = (
-                    f"SELECT SUM({metric_expr}) AS total "
+                    f"SELECT SUM({metric_expr}) AS total "  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
                     f"FROM {_quote_ident(left_table)} AS {left_alias} "
                     f"JOIN {_quote_ident(right_table)} AS {right_alias} "
                     f"ON {left_alias}.{_quote_ident(left_column)} = {right_alias}.{_quote_ident(right_column)} "
@@ -785,7 +785,7 @@ def plan_join_query_for_tables(
         if group_table and group_col:
             group_expr = f"{alias_map.get(group_table, right_alias)}.{_quote_ident(group_col)}"
             sql = (
-                f"SELECT {group_expr} AS {_quote_ident(group_col)}, {agg_sql}({metric_expr}) AS {alias_name} "
+                f"SELECT {group_expr} AS {_quote_ident(group_col)}, {agg_sql}({metric_expr}) AS {alias_name} "  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
                 f"FROM {_quote_ident(left_table)} AS {left_alias} "
                 f"JOIN {_quote_ident(right_table)} AS {right_alias} "
                 f"ON {left_alias}.{_quote_ident(left_column)} = {right_alias}.{_quote_ident(right_column)} "
@@ -795,7 +795,7 @@ def plan_join_query_for_tables(
             order_by = {"column": alias_name, "direction": "desc"}
         else:
             sql = (
-                f"SELECT {agg_sql}({metric_expr}) AS {alias_name} "
+                f"SELECT {agg_sql}({metric_expr}) AS {alias_name} "  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
                 f"FROM {_quote_ident(left_table)} AS {left_alias} "
                 f"JOIN {_quote_ident(right_table)} AS {right_alias} "
                 f"ON {left_alias}.{_quote_ident(left_column)} = {right_alias}.{_quote_ident(right_column)} "
@@ -807,7 +807,7 @@ def plan_join_query_for_tables(
     if is_count and group_table and group_col:
         group_expr = f"{alias_map.get(group_table, right_alias)}.{_quote_ident(group_col)}"
         sql = (
-            f"SELECT {group_expr} AS {_quote_ident(group_col)}, COUNT(*) AS count "
+            f"SELECT {group_expr} AS {_quote_ident(group_col)}, COUNT(*) AS count "  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
             f"FROM {_quote_ident(left_table)} AS {left_alias} "
             f"JOIN {_quote_ident(right_table)} AS {right_alias} "
             f"ON {left_alias}.{_quote_ident(left_column)} = {right_alias}.{_quote_ident(right_column)} "
@@ -819,7 +819,7 @@ def plan_join_query_for_tables(
         order_by = {"column": "count", "direction": "desc"}
     elif is_count:
         sql = (
-            "SELECT COUNT(*) AS count "
+            f"SELECT COUNT(*) AS count "  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
             f"FROM {_quote_ident(left_table)} AS {left_alias} "
             f"JOIN {_quote_ident(right_table)} AS {right_alias} "
             f"ON {left_alias}.{_quote_ident(left_column)} = {right_alias}.{_quote_ident(right_column)} "
@@ -1140,24 +1140,24 @@ def _generate_deterministic_sql_with_diagnostics(
             order_clause = f" ORDER BY {agg_alias} DESC"
             order_diag = {"column": agg_alias, "direction": "desc"}
         sql = (
-            f"SELECT {group_col_q}, {agg_expr} AS {agg_alias} "
+            f"SELECT {group_col_q}, {agg_expr} AS {agg_alias} "  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
             f"FROM {table_q}{where_clause} GROUP BY {group_col_q}{order_clause} LIMIT {int(limit)}"
         )
         reason = "aggregation_group"
     elif agg_kind:
-        sql = f"SELECT {agg_expr} AS {agg_alias} FROM {table_q}{where_clause} LIMIT 1"
+        sql = f"SELECT {agg_expr} AS {agg_alias} FROM {table_q}{where_clause} LIMIT 1"  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
         reason = "aggregation"
     elif group_col_q:
         if not order_clause:
             order_clause = " ORDER BY count DESC"
             order_diag = {"column": "count", "direction": "desc"}
         sql = (
-            f"SELECT {group_col_q}, COUNT(*) AS count "
+            f"SELECT {group_col_q}, COUNT(*) AS count "  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
             f"FROM {table_q}{where_clause} GROUP BY {group_col_q}{order_clause} LIMIT {int(limit)}"
         )
         reason = "group_count"
     else:
-        sql = f"SELECT {selected_col_q} FROM {table_q}{where_clause}{order_clause} LIMIT {int(limit)}"
+        sql = f"SELECT {selected_col_q} FROM {table_q}{where_clause}{order_clause} LIMIT {int(limit)}"  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
         if where_clause:
             reason = "filter_projection"
         elif order_clause:

@@ -552,7 +552,7 @@ def preview_dataset_table(
         tenant_id=tenant_id,
         dataset_id=dataset_id,
         table_id=table_id,
-        sql=f"SELECT * FROM {sql_table_q}",
+        sql=f"SELECT * FROM {sql_table_q}",  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
         max_rows=min(int(limit), int(getattr(settings, "TABLE_QUERY_MAX_ROWS", 200) or 200)),
         max_cols=int(getattr(settings, "TABLE_QUERY_MAX_COLS", 200) or 200),
         max_bytes=int(getattr(settings, "TABLE_QUERY_MAX_BYTES", 1_000_000) or 1_000_000),
@@ -947,9 +947,9 @@ def lotus_sem_filter_dataset_table(
                         return '"' + str(ident).replace('"', '""') + '"'
 
                     select_list = ", ".join([_q(c) for c in cols])
-                    query = f"SELECT {select_list} FROM {sql_table_q} LIMIT {int(max_in_rows)}"
+                    query = f"SELECT {select_list} FROM {sql_table_q} LIMIT {int(max_in_rows)}"  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
                 else:
-                    query = f"SELECT * FROM {sql_table_q} LIMIT {int(max_in_rows)}"
+                    query = f"SELECT * FROM {sql_table_q} LIMIT {int(max_in_rows)}"  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
                 df = pd.read_sql_query(query, conn)
                 if fls_policy is not None:
                     # Defense-in-depth: avoid sending denied columns to LOTUS/LLM flows.

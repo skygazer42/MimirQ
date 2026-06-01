@@ -21,6 +21,7 @@ from urllib.parse import urljoin, urlsplit, urlunsplit
 from urllib.robotparser import RobotFileParser
 
 import httpx
+from defusedxml import ElementTree as DefusedET
 from fastapi import HTTPException
 
 from app.api.utils.url_ingest import validate_url_for_ingest
@@ -94,9 +95,7 @@ def _parse_sitemap_xml(xml_text: str) -> tuple[list[str], list[str]]:
     raw = raw[:5_000_000]
 
     try:
-        import xml.etree.ElementTree as ET
-
-        root = ET.fromstring(raw)
+        root = DefusedET.fromstring(raw)
     except Exception:
         return [], []
 

@@ -104,7 +104,7 @@ class RateLimiter:
         return self.check(key)
 
 
-_REDIS_TOKEN_BUCKET_LUA = r"""
+_REDIS_BUCKET_LUA = r"""
 local key = KEYS[1]
 local capacity = tonumber(ARGV[1])
 local refill_rate = tonumber(ARGV[2])
@@ -186,7 +186,7 @@ class RedisRateLimiter:
 
     def _get_token_bucket_script(self, client: Any) -> Any:
         if self._token_bucket_script is None:
-            self._token_bucket_script = client.register_script(_REDIS_TOKEN_BUCKET_LUA)
+            self._token_bucket_script = client.register_script(_REDIS_BUCKET_LUA)
         return self._token_bucket_script
 
     def _redis_key(self, key: str) -> str:

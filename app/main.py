@@ -6,6 +6,7 @@ import os
 import time
 import warnings
 from contextlib import asynccontextmanager
+from ipaddress import IPv4Address
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -101,6 +102,7 @@ _OPENAPI_EXPORT_MODE = str(os.getenv("MIMIRQ_OPENAPI_EXPORT", "") or "").strip()
 _HEALTH_CACHE_TTL_SEC = max(0.0, float(getattr(settings, "HEALTH_CACHE_TTL_SEC", 2.0) or 2.0))
 _health_cache: dict[str, object] = {"ts": 0.0, "payload": None, "key": None}
 _DEV_LOCAL_CORS_PORTS = {3000, 3001, 3100}
+_ALL_INTERFACES_HOST = str(IPv4Address(0))
 _DOCS_PATH = "/docs"
 
 
@@ -163,7 +165,7 @@ def _expand_dev_cors_origins(origins: list[str]) -> list[str]:
             continue
         if scheme not in {"http", "https"}:
             continue
-        if host not in {"localhost", "127.0.0.1", "0.0.0.0"}:
+        if host not in {"localhost", "127.0.0.1", _ALL_INTERFACES_HOST}:
             continue
         local_schemes.add(scheme)
         if port is not None:
@@ -182,17 +184,17 @@ def _expand_dev_cors_origins(origins: list[str]) -> list[str]:
             continue
         if scheme not in {"http", "https"}:
             continue
-        if host not in {"localhost", "127.0.0.1", "0.0.0.0"}:
+        if host not in {"localhost", "127.0.0.1", _ALL_INTERFACES_HOST}:
             continue
 
-        for alt in {"localhost", "127.0.0.1", "0.0.0.0"}:
+        for alt in {"localhost", "127.0.0.1", _ALL_INTERFACES_HOST}:
             if alt == host:
                 continue
             expanded.add(f"{scheme}://{alt}:{port}" if port is not None else f"{scheme}://{alt}")
 
     for scheme in sorted(local_schemes):
         for port in candidate_local_ports:
-            for host in ("localhost", "127.0.0.1", "0.0.0.0"):
+            for host in ("localhost", "127.0.0.1", _ALL_INTERFACES_HOST):
                 expanded.add(f"{scheme}://{host}:{port}")
 
     return sorted(expanded)

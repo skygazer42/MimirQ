@@ -148,22 +148,22 @@ class SqliteSaver(BaseCheckpointSaver[str]):
         conn = self._get_conn()
         if checkpoint_id:
             row = conn.execute(
-                f"""
-                SELECT checkpoint_type, checkpoint_blob, metadata_type, metadata_blob, parent_checkpoint_id
-                FROM {self._checkpoints_table}
-                WHERE thread_id = ? AND checkpoint_ns = ? AND checkpoint_id = ?
-                """,
+                (
+                    "SELECT checkpoint_type, checkpoint_blob, metadata_type, metadata_blob, parent_checkpoint_id "  # noqa: S608 - table_prefix is validated at initialization.
+                    f"FROM {self._checkpoints_table} "
+                    "WHERE thread_id = ? AND checkpoint_ns = ? AND checkpoint_id = ?"
+                ),
                 (thread_id, checkpoint_ns, checkpoint_id),
             ).fetchone()
         else:
             row = conn.execute(
-                f"""
-                SELECT checkpoint_id, checkpoint_type, checkpoint_blob, metadata_type, metadata_blob, parent_checkpoint_id
-                FROM {self._checkpoints_table}
-                WHERE thread_id = ? AND checkpoint_ns = ?
-                ORDER BY checkpoint_id DESC
-                LIMIT 1
-                """,
+                (
+                    "SELECT checkpoint_id, checkpoint_type, checkpoint_blob, metadata_type, metadata_blob, parent_checkpoint_id "  # noqa: S608 - table_prefix is validated at initialization.
+                    f"FROM {self._checkpoints_table} "
+                    "WHERE thread_id = ? AND checkpoint_ns = ? "
+                    "ORDER BY checkpoint_id DESC "
+                    "LIMIT 1"
+                ),
                 (thread_id, checkpoint_ns),
             ).fetchone()
             checkpoint_id = row["checkpoint_id"] if row else None
@@ -176,12 +176,12 @@ class SqliteSaver(BaseCheckpointSaver[str]):
         parent_checkpoint_id = row["parent_checkpoint_id"]
 
         writes_rows = conn.execute(
-            f"""
-            SELECT task_id, channel, value_type, value_blob, task_path
-            FROM {self._writes_table}
-            WHERE thread_id = ? AND checkpoint_ns = ? AND checkpoint_id = ?
-            ORDER BY write_idx ASC
-            """,
+            (
+                "SELECT task_id, channel, value_type, value_blob, task_path "  # noqa: S608 - table_prefix is validated at initialization.
+                f"FROM {self._writes_table} "
+                "WHERE thread_id = ? AND checkpoint_ns = ? AND checkpoint_id = ? "
+                "ORDER BY write_idx ASC"
+            ),
             (thread_id, checkpoint_ns, checkpoint_id),
         ).fetchall()
         pending_writes = [
@@ -225,7 +225,7 @@ class SqliteSaver(BaseCheckpointSaver[str]):
 
         thread_ids: Sequence[str]
         if config is None:
-            rows = conn.execute(f"SELECT DISTINCT thread_id FROM {self._checkpoints_table}").fetchall()
+            rows = conn.execute(f"SELECT DISTINCT thread_id FROM {self._checkpoints_table}").fetchall()  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
             thread_ids = [r["thread_id"] for r in rows]
         else:
             thread_ids = [config["configurable"]["thread_id"]]
@@ -238,7 +238,7 @@ class SqliteSaver(BaseCheckpointSaver[str]):
 
         for thread_id in thread_ids:
             ns_rows = conn.execute(
-                f"SELECT DISTINCT checkpoint_ns FROM {self._checkpoints_table} WHERE thread_id = ?",
+                f"SELECT DISTINCT checkpoint_ns FROM {self._checkpoints_table} WHERE thread_id = ?",  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
                 (thread_id,),
             ).fetchall()
             namespaces = [r["checkpoint_ns"] for r in ns_rows]
@@ -248,12 +248,12 @@ class SqliteSaver(BaseCheckpointSaver[str]):
                     continue
 
                 rows = conn.execute(
-                    f"""
-                    SELECT checkpoint_id, checkpoint_type, checkpoint_blob, metadata_type, metadata_blob, parent_checkpoint_id
-                    FROM {self._checkpoints_table}
-                    WHERE thread_id = ? AND checkpoint_ns = ?
-                    ORDER BY checkpoint_id DESC
-                    """,
+                    (
+                        "SELECT checkpoint_id, checkpoint_type, checkpoint_blob, metadata_type, metadata_blob, parent_checkpoint_id "  # noqa: S608 - table_prefix is validated at initialization.
+                        f"FROM {self._checkpoints_table} "
+                        "WHERE thread_id = ? AND checkpoint_ns = ? "
+                        "ORDER BY checkpoint_id DESC"
+                    ),
                     (thread_id, checkpoint_ns),
                 ).fetchall()
 
@@ -277,12 +277,12 @@ class SqliteSaver(BaseCheckpointSaver[str]):
                     parent_checkpoint_id = row["parent_checkpoint_id"]
 
                     writes_rows = conn.execute(
-                        f"""
-                        SELECT task_id, channel, value_type, value_blob
-                        FROM {self._writes_table}
-                        WHERE thread_id = ? AND checkpoint_ns = ? AND checkpoint_id = ?
-                        ORDER BY write_idx ASC
-                        """,
+                        (
+                            "SELECT task_id, channel, value_type, value_blob "  # noqa: S608 - table_prefix is validated at initialization.
+                            f"FROM {self._writes_table} "
+                            "WHERE thread_id = ? AND checkpoint_ns = ? AND checkpoint_id = ? "
+                            "ORDER BY write_idx ASC"
+                        ),
                         (thread_id, checkpoint_ns, checkpoint_id),
                     ).fetchall()
                     pending_writes = [
@@ -376,13 +376,13 @@ class SqliteSaver(BaseCheckpointSaver[str]):
 
             if write_idx >= 0:
                 sql = (
-                    f"INSERT OR IGNORE INTO {self._writes_table} "
+                    f"INSERT OR IGNORE INTO {self._writes_table} "  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
                     "(thread_id, checkpoint_ns, checkpoint_id, task_id, write_idx, channel, value_type, value_blob, task_path) "
                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
                 )
             else:
                 sql = (
-                    f"INSERT OR REPLACE INTO {self._writes_table} "
+                    f"INSERT OR REPLACE INTO {self._writes_table} "  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
                     "(thread_id, checkpoint_ns, checkpoint_id, task_id, write_idx, channel, value_type, value_blob, task_path) "
                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
                 )
@@ -404,8 +404,8 @@ class SqliteSaver(BaseCheckpointSaver[str]):
 
     def delete_thread(self, thread_id: str) -> None:
         conn = self._get_conn()
-        conn.execute(f"DELETE FROM {self._writes_table} WHERE thread_id = ?", (thread_id,))
-        conn.execute(f"DELETE FROM {self._checkpoints_table} WHERE thread_id = ?", (thread_id,))
+        conn.execute(f"DELETE FROM {self._writes_table} WHERE thread_id = ?", (thread_id,))  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
+        conn.execute(f"DELETE FROM {self._checkpoints_table} WHERE thread_id = ?", (thread_id,))  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
 
     async def aget_tuple(self, config: RunnableConfig) -> CheckpointTuple | None:
         return self.get_tuple(config)
