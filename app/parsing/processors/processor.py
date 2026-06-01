@@ -561,8 +561,6 @@ def _uniform_sample_indices(indices: list[int], k: int) -> list[int]:
         return []
     if k >= len(indices):
         return list(indices)
-    if len(indices) == 1:
-        return [indices[0]]
     if k == 1:
         return [indices[len(indices) // 2]]
 
