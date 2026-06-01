@@ -1,4 +1,21 @@
 type EndpointLike = string | number | { id?: string | number | null } | null | undefined
+type LinkRecord = Record<string, unknown>
+type LinkDisplayDatum = LinkRecord & {
+  source?: EndpointLike
+  target?: EndpointLike
+  meta?: LinkRecord | null
+  kind?: unknown
+  predicate?: unknown
+  label?: unknown
+  confidence?: unknown
+  __display?: GraphLinkDisplayHints
+  curvature?: number
+  curveRotation?: number
+  parallelGroupKey?: string
+  parallelIndex?: number
+  parallelTotal?: number
+  isSelfLoop?: boolean
+}
 
 export type GraphLinkDisplayHints = {
   curvature: number
@@ -13,28 +30,28 @@ function endpointId(value: EndpointLike): string {
   if (value === null || value === undefined) return ''
   if (typeof value === 'string' || typeof value === 'number') return String(value)
   if (typeof value === 'object' && value && 'id' in value) {
-    const id = (value as any).id
+    const id = value.id
     if (typeof id === 'string' || typeof id === 'number') return String(id)
   }
   return ''
 }
 
-function stableLinkKind(link: any): string {
-  return String(link?.meta?.kind ?? link?.kind ?? '').trim()
+function stableLinkKind(link: LinkDisplayDatum): string {
+  return String(link.meta?.kind ?? link.kind ?? '').trim()
 }
 
-function stableLinkPredicate(link: any): string {
+function stableLinkPredicate(link: LinkDisplayDatum): string {
   // Prefer KG triple predicate if present; otherwise fall back to label.
-  return String(link?.meta?.predicate ?? link?.predicate ?? link?.label ?? '').trim()
+  return String(link.meta?.predicate ?? link.predicate ?? link.label ?? '').trim()
 }
 
-function stableLinkConfidence(link: any): string {
-  const v = link?.meta?.confidence ?? link?.confidence ?? ''
+function stableLinkConfidence(link: LinkDisplayDatum): string {
+  const v = link.meta?.confidence ?? link.confidence ?? ''
   // Keep as string to avoid floating point surprises in sort keys.
   return String(v).trim()
 }
 
-function linkSortKey(link: any): string {
+function linkSortKey(link: LinkDisplayDatum): string {
   // Keep this intentionally compact and deterministic; do not use JSON.stringify(link).
   const kind = stableLinkKind(link)
   const pred = stableLinkPredicate(link)
@@ -68,13 +85,13 @@ function loopRotation(index: number, total: number): number {
  *
  * This mutates the provided link objects (expected to be clones).
  */
-export function decorateLinksForDisplay<T extends Record<string, any>>(links: T[]): T[] {
+export function decorateLinksForDisplay<T extends LinkDisplayDatum>(links: T[]): T[] {
   const groups = new Map<string, Array<{ link: T; idx: number; sortKey: string; src: string; dst: string }>>()
 
   for (let i = 0; i < links.length; i += 1) {
     const link = links[i]
-    const src = endpointId((link as any).source)
-    const dst = endpointId((link as any).target)
+    const src = endpointId(link.source)
+    const dst = endpointId(link.target)
     const isSelf = src !== '' && src === dst
     const groupKey = isSelf
       ? `self:${src}`
@@ -103,14 +120,14 @@ export function decorateLinksForDisplay<T extends Record<string, any>>(links: T[
         isSelfLoop: isSelfLoopGroup,
       }
 
-      ;(link as any).__display = hints
+      link.__display = hints
       // Also assign direct fields to keep accessors simple and avoid deep optional chaining per-frame.
-      ;(link as any).curvature = hints.curvature
-      ;(link as any).curveRotation = hints.curveRotation
-      ;(link as any).isSelfLoop = hints.isSelfLoop
-      ;(link as any).parallelGroupKey = hints.parallelGroupKey
-      ;(link as any).parallelIndex = hints.parallelIndex
-      ;(link as any).parallelTotal = hints.parallelTotal
+      link.curvature = hints.curvature
+      link.curveRotation = hints.curveRotation
+      link.isSelfLoop = hints.isSelfLoop
+      link.parallelGroupKey = hints.parallelGroupKey
+      link.parallelIndex = hints.parallelIndex
+      link.parallelTotal = hints.parallelTotal
     }
   }
 

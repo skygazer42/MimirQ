@@ -66,6 +66,8 @@ import {
 type QuarantineAction = 'release' | 'retry' | 'delete' | 'review' | 'tune'
 type ActingState = { id: string; action: QuarantineAction } | null
 type ReviewState = 'all' | 'pending' | 'reviewed'
+type JsonRecord = Record<string, unknown>
+type UserMetadata = JsonRecord & { quarantine_reviewed?: boolean }
 type QueueSyncStatus = {
   type: 'success' | 'error'
   message: string
@@ -81,6 +83,40 @@ const STATUS_LABELS: Record<string, string> = {
   pending: '待处理',
   processing: '处理中',
   cancelled: '已取消',
+}
+
+function isRecord(value: unknown): value is JsonRecord {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function getRecordField(source: JsonRecord | undefined, key: string): JsonRecord | null {
+  const value = source?.[key]
+  return isRecord(value) ? value : null
+}
+
+function createDemoGovernance(
+  dropReasons: Record<string, number>
+): NonNullable<Document['governance']> {
+  return {
+    enabled: true,
+    documents: 1,
+    changed_documents: 0,
+    rules_applied: Object.keys(dropReasons).length,
+    dropped_documents: Object.values(dropReasons).some((count) => count > 0)
+      ? 1
+      : 0,
+    drop_reasons: dropReasons,
+  }
+}
+
+function createReviewedMetadata(): Document['metadata'] {
+  return { user: { quarantine_reviewed: true } }
+}
+
+function finiteNumberOrUndefined(value: string): number | undefined {
+  if (value === '') return undefined
+  const numericValue = Number(value)
+  return Number.isFinite(numericValue) ? numericValue : undefined
 }
 
 function getDemoDocumentStatus(index: number): Document['status'] {
@@ -107,11 +143,10 @@ function getQuarantineFooterMessage({
   return '自动刷新已关闭'
 }
 
-function getUserMeta(doc: Document): any {
+function getUserMeta(doc: Document): UserMetadata | null {
   const meta = doc.metadata
-  if (!meta || typeof meta !== 'object') return null
-  const user = (meta as any).user
-  return user && typeof user === 'object' ? user : null
+  const user = getRecordField(meta, 'user')
+  return user ? (user as UserMetadata) : null
 }
 
 function isReviewed(doc: Document): boolean {
@@ -130,20 +165,18 @@ function getDropReasons(doc: Document): string[] {
           .sort((a, b) => a.localeCompare(b))
   if (governanceReasons.length) return governanceReasons
 
-  const errorCode = String((doc as any).error_code || '').trim()
+  const errorCode = String(doc.error_code || '').trim()
   if (errorCode) return [errorCode]
 
-  const failedStage = String((doc as any).failed_stage || '').trim()
+  const failedStage = String(doc.failed_stage || '').trim()
   return failedStage ? [`${failedStage}_failed`] : []
 }
 
 function extractTuningOverrides(doc: Document): DocumentPipelineOptions {
   const meta = doc.metadata
-  if (!meta || typeof meta !== 'object') return {}
-  const pipeline = (meta as any).pipeline
-  if (!pipeline || typeof pipeline !== 'object') return {}
-  const governance = pipeline.governance
-  if (!governance || typeof governance !== 'object') return {}
+  const pipeline = getRecordField(meta, 'pipeline')
+  const governance = getRecordField(pipeline ?? undefined, 'governance')
+  if (!governance) return {}
 
   const out: DocumentPipelineOptions = {}
 
@@ -211,10 +244,8 @@ function buildReviewAdvice(doc: Document): string[] {
   return advice
 }
 
-function createReviewMetadataPatch(
-  extra?: Record<string, any>
-): Record<string, any> {
-  const patch: Record<string, any> = {
+function createReviewMetadataPatch(extra?: JsonRecord): JsonRecord {
+  const patch: JsonRecord = {
     quarantine_reviewed: true,
     quarantine_reviewed_at: new Date().toISOString(),
   }
@@ -275,9 +306,7 @@ function makeDemoQuarantineDocument(
     current_stage: 'governance',
     error_message: '命中治理规则，待人工复核',
     metadata: {},
-    governance: {
-      drop_reasons: {},
-    },
+    governance: createDemoGovernance({}),
     ...restOverrides,
   } as Document
 }
@@ -289,7 +318,7 @@ function buildDemoQuarantineDocuments(): Document[] {
       file_type: 'pdf',
       file_size: 1.24 * 1024 * 1024,
       dataset_id: '文档解析',
-      governance: { drop_reasons: { pii_exceeded: 1 } } as any,
+      governance: createDemoGovernance({ pii_exceeded: 1 }),
       error_message: '包含手机号、身份证号等敏感信息',
       status: 'quarantined',
     }),
@@ -298,7 +327,7 @@ function buildDemoQuarantineDocuments(): Document[] {
       file_type: 'xlsx',
       file_size: 2.81 * 1024 * 1024,
       dataset_id: '数据导入',
-      governance: { drop_reasons: { outline_only: 1 } } as any,
+      governance: createDemoGovernance({ outline_only: 1 }),
       error_message: '包含未公开财务数据',
       status: 'quarantined',
     }),
@@ -307,7 +336,7 @@ function buildDemoQuarantineDocuments(): Document[] {
       file_type: 'docx',
       file_size: 860 * 1024,
       dataset_id: '文档解析',
-      governance: { drop_reasons: { pii_exceeded: 1 } } as any,
+      governance: createDemoGovernance({ pii_exceeded: 1 }),
       error_message: '包含内部人事及组织结构信息',
       status: 'quarantined',
     }),
@@ -316,9 +345,9 @@ function buildDemoQuarantineDocuments(): Document[] {
       file_type: 'pdf',
       file_size: 1.09 * 1024 * 1024,
       dataset_id: '文档解析',
-      governance: { drop_reasons: { low_density: 1 } } as any,
+      governance: createDemoGovernance({ low_density: 1 }),
       error_message: '包含手机号、身份证号等敏感信息',
-      metadata: { user: { quarantine_reviewed: true } } as any,
+      metadata: createReviewedMetadata(),
       status: 'quarantined',
     }),
     makeDemoQuarantineDocument(5, {
@@ -326,9 +355,9 @@ function buildDemoQuarantineDocuments(): Document[] {
       file_type: 'pptx',
       file_size: 3.45 * 1024 * 1024,
       dataset_id: '数据导入',
-      governance: { drop_reasons: { outline_only: 1 } } as any,
+      governance: createDemoGovernance({ outline_only: 1 }),
       error_message: '包含未公开产品规划',
-      metadata: { user: { quarantine_reviewed: true } } as any,
+      metadata: createReviewedMetadata(),
       status: 'quarantined',
     }),
     makeDemoQuarantineDocument(6, {
@@ -336,9 +365,9 @@ function buildDemoQuarantineDocuments(): Document[] {
       file_type: 'csv',
       file_size: 680 * 1024,
       dataset_id: 'API 接入',
-      governance: { drop_reasons: { pii_exceeded: 1 } } as any,
+      governance: createDemoGovernance({ pii_exceeded: 1 }),
       error_message: '包含个人隐私信息',
-      metadata: { user: { quarantine_reviewed: true } } as any,
+      metadata: createReviewedMetadata(),
       status: 'completed',
     }),
   ]
@@ -384,11 +413,9 @@ function buildDemoQuarantineDocuments(): Document[] {
       file_type: bucket.fileType,
       file_size: (0.68 + (index % 7) * 0.42) * 1024 * 1024,
       dataset_id: bucket.source,
-      governance: { drop_reasons: { [bucket.key]: 1 } } as any,
+      governance: createDemoGovernance({ [bucket.key]: 1 }),
       error_message: bucket.error,
-      metadata: reviewed
-        ? ({ user: { quarantine_reviewed: true } } as any)
-        : {},
+      metadata: reviewed ? createReviewedMetadata() : {},
       status,
     })
   })
@@ -399,7 +426,7 @@ function buildDemoQuarantineDocuments(): Document[] {
 type QuarantineSeverity = '高' | '中' | '低'
 
 function getQuarantineSource(doc: Document): string {
-  const failedStage = String((doc as any).failed_stage || '').toLowerCase()
+  const failedStage = String(doc.failed_stage || '').toLowerCase()
   if (['parsing', 'parse', 'governance', 'chunking', 'embedding', 'vector_write', 'index'].includes(failedStage)) {
     return failedStage === 'embedding' || failedStage === 'vector_write' || failedStage === 'index'
       ? '索引入库'
@@ -1671,7 +1698,7 @@ export default function QuarantineQueuePage() {
   }, [handleDatasetScopeChange])
 
   const markReviewed = useCallback(
-    async (docId: string, extra?: Record<string, any>) => {
+    async (docId: string, extra?: JsonRecord) => {
       const patch = createReviewMetadataPatch(extra)
       await documentApi.patchUserMetadata(docId, { patch, replace: false })
     },
@@ -1702,7 +1729,7 @@ export default function QuarantineQueuePage() {
         await markReviewed(doc.id, { quarantine_action: 'retry' })
         toast.success('已触发重新入库')
         await refreshQueue()
-      } catch (err: any) {
+      } catch (err: unknown) {
         toast.error(formatApiError(err, '重试失败'))
       } finally {
         setActing(null)
@@ -1730,7 +1757,7 @@ export default function QuarantineQueuePage() {
         })
         toast.success('已放行并重试')
         await refreshQueue()
-      } catch (err: any) {
+      } catch (err: unknown) {
         toast.error(formatApiError(err, '放行失败'))
       } finally {
         setActing(null)
@@ -1754,7 +1781,7 @@ export default function QuarantineQueuePage() {
           setReviewDrawerOpen(false)
         }
         await refreshQueue()
-      } catch (err: any) {
+      } catch (err: unknown) {
         toast.error(formatApiError(err, '删除失败'))
       } finally {
         setActing(null)
@@ -1774,7 +1801,7 @@ export default function QuarantineQueuePage() {
         await markReviewed(doc.id, { quarantine_action: 'reviewed' })
         toast.success('已标记为已处理')
         await refreshQueue()
-      } catch (err: any) {
+      } catch (err: unknown) {
         toast.error(formatApiError(err, '标记失败'))
       } finally {
         setActing(null)
@@ -1818,7 +1845,7 @@ export default function QuarantineQueuePage() {
         }
         setTuneOpen(false)
         await refreshQueue()
-      } catch (err: any) {
+      } catch (err: unknown) {
         toast.error(formatApiError(err, '保存失败'))
       } finally {
         setActing(null)
@@ -2746,16 +2773,11 @@ export default function QuarantineQueuePage() {
                           : ''
                       }
                       onChange={(e) => {
-                        const val =
-                          e.target.value === ''
-                            ? undefined
-                            : Number(e.target.value)
+                        const val = finiteNumberOrUndefined(e.target.value)
                         setTunePatch((p) => ({
                           ...p,
                           governance_drop_outline_min_content_chars:
-                            Number.isFinite(val as any)
-                              ? (val as any)
-                              : undefined,
+                            val,
                         }))
                       }}
                       className="h-9 rounded-lg"
@@ -2777,14 +2799,11 @@ export default function QuarantineQueuePage() {
                           : ''
                       }
                       onChange={(e) => {
-                        const raw = e.target.value
-                        const val = raw === '' ? undefined : Number(raw)
+                        const val = finiteNumberOrUndefined(e.target.value)
                         setTunePatch((p) => ({
                           ...p,
                           governance_drop_outline_max_heading_ratio:
-                            Number.isFinite(val as any)
-                              ? (val as any)
-                              : undefined,
+                            val,
                         }))
                       }}
                       className="h-9 rounded-lg"
@@ -2828,15 +2847,10 @@ export default function QuarantineQueuePage() {
                         : ''
                     }
                     onChange={(e) => {
-                      const raw = e.target.value
-                      const val = raw === '' ? undefined : Number(raw)
+                      const val = finiteNumberOrUndefined(e.target.value)
                       setTunePatch((p) => ({
                         ...p,
-                        governance_drop_low_density_threshold: Number.isFinite(
-                          val as any
-                        )
-                          ? (val as any)
-                          : undefined,
+                        governance_drop_low_density_threshold: val,
                       }))
                     }}
                     className="h-9 rounded-lg"

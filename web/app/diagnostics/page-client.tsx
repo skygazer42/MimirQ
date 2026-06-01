@@ -61,6 +61,7 @@ import type {
   DepsDiagnosticsResponse,
   Document as KnowledgeDocument,
   DocumentList,
+  JsonObject,
   OnlineQualitySummaryResponse,
   PromptPreviewResponse,
 } from '@/types'
@@ -143,8 +144,22 @@ function prettyJson(value: unknown): string {
   }
 }
 
-function pickMetricNumber(source: any, keys: string[]): number | null {
-  if (!source || typeof source !== 'object') return null
+function isDiagnosticRecord(value: unknown): value is JsonObject {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function diagnosticField(source: unknown, key: string): unknown {
+  return isDiagnosticRecord(source) ? source[key] : undefined
+}
+
+function stringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : []
+}
+
+function pickMetricNumber(source: unknown, keys: string[]): number | null {
+  if (!isDiagnosticRecord(source)) return null
   for (const k of keys) {
     const v = source[k]
     if (typeof v === 'number' && Number.isFinite(v)) return v
@@ -153,16 +168,14 @@ function pickMetricNumber(source: any, keys: string[]): number | null {
   return null
 }
 
-function pickMetricNumberByPath(source: any, paths: string[]): number | null {
-  if (!source || typeof source !== 'object') return null
+function pickMetricNumberByPath(source: unknown, paths: string[]): number | null {
+  if (!isDiagnosticRecord(source)) return null
   for (const path of paths) {
-    const value = path
-      .split('.')
-      .reduce<any>(
-        (current, key) =>
-          current && typeof current === 'object' ? current[key] : undefined,
-        source
-      )
+    let value: unknown = source
+    for (const key of path.split('.')) {
+      value = diagnosticField(value, key)
+      if (value === undefined) break
+    }
     if (typeof value === 'number' && Number.isFinite(value)) return value
     if (typeof value === 'string' && Number.isFinite(Number(value))) {
       return Number(value)
@@ -307,7 +320,7 @@ function dependencyStatus(value: unknown): string {
 }
 
 function driftResultLabel(
-  snapshot: Record<string, any> | null,
+  snapshot: JsonObject | null,
   metric: number | null
 ) {
   if (!snapshot) return PENDING_RUN_LABEL
@@ -315,7 +328,7 @@ function driftResultLabel(
   return `${metric.toFixed(3)} 漂移率`
 }
 
-function perfGateResultStatus(result: Record<string, any> | null) {
+function perfGateResultStatus(result: JsonObject | null) {
   if (!result) return PENDING_RUN_LABEL
   return (
     diagnosticRecordString(result, ['status', 'gate_status', 'result']) ||
@@ -324,7 +337,7 @@ function perfGateResultStatus(result: Record<string, any> | null) {
 }
 
 function perfGateResultTone(
-  result: Record<string, any> | null,
+  result: JsonObject | null,
   status: string
 ): MetricTone {
   if (/pass|passed|ok|success|通过|已运行/i.test(status)) return 'green'
@@ -438,7 +451,7 @@ function healthSummaryStatusLabel(isPending: boolean, value: string) {
 
 function readyStatusLabel(
   loading: boolean,
-  snapshot: Record<string, any> | null | undefined,
+  snapshot: JsonObject | null | undefined,
   ready: boolean,
   readyLabel: string,
   errorLabel: string
@@ -462,12 +475,14 @@ function datasetSelectLabel(
 }
 
 function vectorBackendLabel(
-  readySnapshot: Record<string, any> | null,
+  readySnapshot: JsonObject | null,
   healthPayload: Record<string, unknown> | null | undefined
 ) {
+  const vector = diagnosticField(readySnapshot, 'vector')
+  const vectorBackend = diagnosticField(vector, 'backend')
   return (
     firstDiagnosticString(
-      readySnapshot?.vector?.backend,
+      vectorBackend,
       healthPayload?.vector_backend
     ) || 'milvus'
   )
@@ -475,7 +490,7 @@ function vectorBackendLabel(
 
 function driftMetricCardValue(
   running: boolean,
-  snapshot: Record<string, any> | null,
+  snapshot: JsonObject | null,
   metric: number | null
 ) {
   if (running) return '检查中'
@@ -845,18 +860,14 @@ export default function DiagnosticsPage() {
   // Param States
   const [driftSampleN, setDriftSampleN] = useState(200)
   const [driftThreshold, setDriftThreshold] = useState(0.05)
-  const [driftSnapshot, setDriftSnapshot] = useState<Record<
-    string,
-    any
-  > | null>(null)
+  const [driftSnapshot, setDriftSnapshot] = useState<JsonObject | null>(null)
   const [driftRunning, setDriftRunning] = useState(false)
 
   const [perfSuiteIterations, setPerfSuiteIterations] = useState(10)
   const [perfSuiteTimeoutSec, setPerfSuiteTimeoutSec] = useState(2)
-  const [perfSuiteResult, setPerfSuiteResult] = useState<Record<
-    string,
-    any
-  > | null>(null)
+  const [perfSuiteResult, setPerfSuiteResult] = useState<JsonObject | null>(
+    null
+  )
   const [perfSuiteRunning, setPerfSuiteRunning] = useState(false)
 
   const datasetsQuery = useQuery({
@@ -920,13 +931,13 @@ export default function DiagnosticsPage() {
 
   const readySnapshotQuery = useQuery({
     queryKey: queryKeys.diagnostics.ready,
-    queryFn: async (): Promise<Record<string, any> | null> => {
+    queryFn: async (): Promise<JsonObject | null> => {
       try {
         const response = await fetch(`${API_V1_BASE_URL}/health/ready`, {
           cache: 'no-store',
         })
         const payload = await response.json().catch(() => null)
-        return payload && typeof payload === 'object' ? payload : null
+        return isDiagnosticRecord(payload) ? payload : null
       } catch {
         return null
       }
@@ -984,7 +995,7 @@ export default function DiagnosticsPage() {
         sample_n: driftSampleN,
         drift_threshold: driftThreshold,
       })
-      setDriftSnapshot(res as Record<string, any>)
+      setDriftSnapshot(res)
       toast.success('漂移检查完成')
     } catch (err) {
       toast.error(formatApiError(err, '漂移检查失败'))
@@ -1001,7 +1012,7 @@ export default function DiagnosticsPage() {
         iterations: perfSuiteIterations,
         timeout_sec: perfSuiteTimeoutSec,
       })
-      setPerfSuiteResult(res as Record<string, any>)
+      setPerfSuiteResult(res)
       toast.success('性能门禁完成')
     } catch (err) {
       toast.error(formatApiError(err, '性能门禁失败'))
@@ -1248,8 +1259,9 @@ export default function DiagnosticsPage() {
     hasManualDiagnostics
   )
 
-  const backendRecommendations = ((onlineQuality as any)?.recommendations ??
-    []) as string[]
+  const backendRecommendations = stringList(
+    diagnosticField(onlineQuality, 'recommendations')
+  )
   const backendRecommendationItems = recommendationItems(backendRecommendations)
 
   return (

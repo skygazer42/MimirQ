@@ -40,7 +40,7 @@ import {
   type RagasRunDetail,
 } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
-import type { Conversation } from '@/types'
+import type { Conversation, JsonObject } from '@/types'
 import {
   BarChart3,
   ChevronDown,
@@ -227,7 +227,7 @@ function percentile(values: number[], percentileValue: number): number | null {
 
 function scoreRowsFor(
   detail: RagasRunDetail | null,
-  summary: Record<string, any>
+  summary: JsonObject
 ) {
   const metrics = detail?.run?.metrics?.length
     ? detail.run.metrics
@@ -470,7 +470,11 @@ function RunRecordCard({
   run: RagasRun
   onClick: () => void
 }>) {
-  const samples = run.summary?.items ?? run.params?.max_turns ?? '-'
+  const rawSamples = run.summary?.items ?? run.params?.max_turns
+  const samples =
+    typeof rawSamples === 'number' || typeof rawSamples === 'string'
+      ? rawSamples
+      : '-'
   const metrics = run.metrics?.length || '-'
   const progress =
     run.status === 'running' || run.status === 'pending' ? 60 : null
@@ -835,7 +839,7 @@ function EvaluationsPageContent() {
     }
   }
 
-  const summary = useMemo(
+  const summary = useMemo<JsonObject>(
     () => runDetail?.run?.summary || {},
     [runDetail?.run?.summary]
   )
