@@ -101,6 +101,31 @@ def _range_distance(start: int, end: int, target: int) -> int:
     return 0
 
 
+def _target_midpoint(
+    *,
+    evidence_start: int | None,
+    evidence_end: int | None,
+) -> int | None:
+    target_start = evidence_start if evidence_start is not None and evidence_start >= 0 else None
+    if target_start is None:
+        return None
+    target_end = evidence_end if evidence_end is not None and evidence_end >= 0 else target_start
+    return int((target_start + max(target_start, target_end)) / 2)
+
+
+def _iter_position_tag_matches(raw: str) -> list[tuple[tuple[dict[str, int], int], int, int]]:
+    matches: list[tuple[tuple[dict[str, int], int], int, int]] = []
+    last_tag_end = 0
+    for match in _POSITION_TAG_RE.finditer(raw):
+        parsed = _position_tag_bbox_from_match(match)
+        content_start = last_tag_end
+        content_end = match.start()
+        last_tag_end = match.end()
+        if parsed is not None:
+            matches.append((parsed, content_start, content_end))
+    return matches
+
+
 def _extract_position_tag_bbox(
     text: str,
     *,
@@ -111,23 +136,12 @@ def _extract_position_tag_bbox(
     if not raw:
         return None
 
-    target_start = evidence_start if evidence_start is not None and evidence_start >= 0 else None
-    target_end = evidence_end if evidence_end is not None and evidence_end >= 0 else target_start
-    target_mid = None
-    if target_start is not None:
-        target_mid = int((target_start + max(target_start, target_end or target_start)) / 2)
-
+    target_mid = _target_midpoint(
+        evidence_start=evidence_start,
+        evidence_end=evidence_end,
+    )
     best: tuple[int, dict[str, int], int] | None = None
-    last_tag_end = 0
-    for match in _POSITION_TAG_RE.finditer(raw):
-        parsed = _position_tag_bbox_from_match(match)
-        content_start = last_tag_end
-        content_end = match.start()
-        last_tag_end = match.end()
-        if parsed is None:
-            continue
-
-        bbox, page = parsed
+    for (bbox, page), content_start, content_end in _iter_position_tag_matches(raw):
         if target_mid is None:
             return bbox, page
 
@@ -140,6 +154,26 @@ def _extract_position_tag_bbox(
     if best is None:
         return None
     return best[1], best[2]
+
+
+def _iter_position_tag_strings(meta: dict[str, Any]) -> list[str]:
+    values: list[str] = []
+    for key in ("element_text", "position_tagged_markdown"):
+        value = meta.get(key)
+        if isinstance(value, str) and value.strip():
+            values.append(value)
+
+    for key in ("attributes", "element_attributes"):
+        attrs = meta.get(key)
+        if not isinstance(attrs, dict):
+            continue
+        raw_tags = attrs.get("position_tags")
+        if isinstance(raw_tags, list):
+            values.extend(str(item or "") for item in raw_tags)
+        raw_tag = attrs.get("position_tag")
+        if isinstance(raw_tag, str) and raw_tag.strip():
+            values.append(raw_tag)
+    return values
 
 
 def _extract_citation_bbox_with_page(
@@ -159,31 +193,11 @@ def _extract_citation_bbox_with_page(
         inline_bbox, inline_page = found
         return inline_bbox, inline_page, True
 
-    for key in ("element_text", "position_tagged_markdown"):
-        value = meta.get(key)
-        if isinstance(value, str) and value.strip():
-            found = _extract_position_tag_bbox(value)
-            if found is not None:
-                inline_bbox, inline_page = found
-                return inline_bbox, inline_page, True
-
-    for key in ("attributes", "element_attributes"):
-        attrs = meta.get(key)
-        if not isinstance(attrs, dict):
-            continue
-        raw_tags = attrs.get("position_tags")
-        if isinstance(raw_tags, list):
-            for item in raw_tags:
-                found = _extract_position_tag_bbox(str(item or ""))
-                if found is not None:
-                    inline_bbox, inline_page = found
-                    return inline_bbox, inline_page, True
-        raw_tag = attrs.get("position_tag")
-        if isinstance(raw_tag, str) and raw_tag.strip():
-            found = _extract_position_tag_bbox(raw_tag)
-            if found is not None:
-                inline_bbox, inline_page = found
-                return inline_bbox, inline_page, True
+    for value in _iter_position_tag_strings(meta):
+        found = _extract_position_tag_bbox(value)
+        if found is not None:
+            inline_bbox, inline_page = found
+            return inline_bbox, inline_page, True
 
     return None, None, False
 
