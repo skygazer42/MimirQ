@@ -123,6 +123,24 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback
 }
 
+function formatTopBarError(message: string): {
+  title: string
+  detail: string | null
+  badge: string | null
+} {
+  const cleaned = String(message || '').trim()
+  const match = /^([^:：]{2,24})[:：]\s*(.+)$/.exec(cleaned)
+  const title = (match?.[1] || '操作失败').trim()
+  const detail = (match?.[2] || (match ? '' : cleaned)).trim()
+  const badge = /请求超时|timeout/i.test(cleaned) ? '请求超时' : null
+
+  return {
+    title,
+    detail: detail || null,
+    badge,
+  }
+}
+
 const ESCAPED_NEWLINE = String.raw`\n`
 const SHELL_BACKSLASH = String.fromCodePoint(92)
 const DOUBLE_SHELL_BACKSLASH = SHELL_BACKSLASH.repeat(2)
@@ -317,6 +335,7 @@ export function TopBar() {
   })
   const visibleQualityClass = getQualityGradeClass(visibleQualityGrade)
   const SubmitIcon = getSubmitIcon(isSubmitting, submitSuccess)
+  const topBarError = error ? formatTopBarError(error) : null
 
   const buildConfig = () => ({
     dataset_id: datasetId || undefined,
@@ -590,10 +609,32 @@ export function TopBar() {
           </div>
         ) : null}
 
-        {error ? (
-          <div className="flex max-w-[300px] items-center gap-1.5 truncate rounded-lg border border-destructive/20 bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive">
-            <AlertCircle className="w-3.5 h-3.5" />
-            {error}
+        {topBarError ? (
+          <div
+            role="alert"
+            aria-live="polite"
+            className="flex min-w-[min(100%,18rem)] max-w-xl items-start gap-2 rounded-xl border border-destructive/25 bg-destructive/10 px-3 py-2 text-destructive shadow-[inset_0_1px_0_hsl(var(--background)/0.65)]"
+          >
+            <span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-lg bg-destructive/12">
+              <AlertCircle className="size-3.5" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-xs font-semibold leading-4">
+                  {topBarError.title}
+                </span>
+                {topBarError.badge ? (
+                  <span className="rounded-full border border-destructive/20 bg-background/60 px-1.5 py-0.5 text-[10px] font-medium leading-none text-destructive/85">
+                    {topBarError.badge}
+                  </span>
+                ) : null}
+              </div>
+              {topBarError.detail ? (
+                <p className="mt-1 max-w-[42rem] break-words text-[11px] leading-5 text-destructive/85">
+                  {topBarError.detail}
+                </p>
+              ) : null}
+            </div>
           </div>
         ) : null}
 

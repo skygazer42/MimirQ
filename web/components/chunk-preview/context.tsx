@@ -21,7 +21,14 @@ import type { ParsedFileData } from '@/store/use-parsed-files-store'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
 import { getParserLabel } from '@/lib/parser-options'
 import type { ChunkPreviewResponse, ManualChunk } from '@/types'
-import type { ChunkOverride, ChunkOverrides, ChunkPreviewState, ChunkPreviewFileItem, ChunkPreviewContextType } from './types'
+import type {
+  ChunkOverride,
+  ChunkOverrides,
+  ChunkPreviewProcessedStatus,
+  ChunkPreviewState,
+  ChunkPreviewFileItem,
+  ChunkPreviewContextType,
+} from './types'
 import { EXAMPLE_TEXT } from './constants'
 import { scanFiles } from './utils/file-scanner'
 import { getStoredOriginalPreviewMode, shouldRevealPdfPreviewOnChunkSelect } from './components/workbench/preview/pdf-dock'
@@ -33,7 +40,54 @@ const STORAGE_FOCUS_FILE_ID_KEY = 'mimirq_chunk_preview_focus_file_id'
 const STORAGE_PERF_SETTINGS_KEY = 'mimirq_chunk_preview_perf_settings'
 const STORAGE_PARENT_CHILD_SETTINGS_KEY = 'mimirq_chunk_preview_parent_child_settings'
 const CHUNK_PREVIEW_SCOPE_DOCUMENT_LIMIT = 8
+const MANUAL_INGEST_STATUS_POLL_INTERVAL_MS = 1500
+const MANUAL_INGEST_STATUS_MAX_WAIT_MS = 30 * 60 * 1000
+const MANUAL_INGEST_STILL_PROCESSING_MESSAGE = '入库已提交，后端仍在处理。请稍后刷新列表确认结果。'
 const scopedChunkFilesInFlight = new Map<string, Promise<ChunkPreviewFileItem[]>>()
+
+class ManualIngestStillProcessingError extends Error {
+  constructor() {
+    super(MANUAL_INGEST_STILL_PROCESSING_MESSAGE)
+    this.name = 'ManualIngestStillProcessingError'
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    globalThis.setTimeout(resolve, ms)
+  })
+}
+
+function normalizeIngestStatus(value: unknown): string {
+  return String(value || '').trim().toLowerCase()
+}
+
+async function waitForDocumentIngestCompletion(
+  documentId: string | null | undefined,
+  initialStatus?: unknown
+): Promise<void> {
+  const id = String(documentId || '').trim()
+  if (!id) return
+
+  let status = normalizeIngestStatus(initialStatus)
+  const startedAt = Date.now()
+  while (Date.now() - startedAt <= MANUAL_INGEST_STATUS_MAX_WAIT_MS) {
+    if (status === 'completed') return
+    if (status === 'failed' || status === 'cancelled' || status === 'quarantined') {
+      throw new Error(`入库失败：后端状态为 ${status}`)
+    }
+
+    await sleep(MANUAL_INGEST_STATUS_POLL_INTERVAL_MS)
+    const latest = await documentApi.getStatus(id)
+    status = normalizeIngestStatus(latest.status)
+    if (status === 'completed') return
+    if (status === 'failed' || status === 'cancelled' || status === 'quarantined') {
+      throw new Error(latest.error_message || `入库失败：后端状态为 ${status}`)
+    }
+  }
+
+  throw new ManualIngestStillProcessingError()
+}
 
 function normalizeBackendString(value: unknown): string {
   return typeof value === 'string' && value.trim() ? value.trim() : ''
@@ -328,7 +382,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
   const [parentChildMinChildSize, setParentChildMinChildSize] = useState(200)
 
   // 其他状态
-  const [processedStatus, setProcessedStatus] = useState<Record<string, 'pending' | 'success' | 'error'>>({})
+  const [processedStatus, setProcessedStatus] = useState<Record<string, ChunkPreviewProcessedStatus>>({})
   const [selectedIngestFileIds, setSelectedIngestFileIds] = useState<Set<string>>(
     () => new Set()
   )
@@ -1205,20 +1259,30 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
     setError(null)
 
     try {
+      const fileKey = currentFileItem?.id || file.name
+      setProcessedStatus((prev) => ({ ...prev, [fileKey]: 'pending' }))
       const created = await createDocumentFromPreview(
         previewData,
         currentFileItem,
         chunkOverrides
       )
 
-      setSubmitSuccess(true)
       setCreatedDocumentId(created?.id || null)
-      setProcessedStatus((prev) => ({ ...prev, [currentFileItem?.id || file.name]: 'success' }))
+      setProcessedStatus((prev) => ({ ...prev, [fileKey]: 'processing' }))
+      await waitForDocumentIngestCompletion(created?.id, created?.status)
+      setSubmitSuccess(true)
+      setProcessedStatus((prev) => ({ ...prev, [fileKey]: 'success' }))
       onConfirm?.({ chunk_size: chunkSize, chunk_overlap: chunkOverlap })
       toast.success('已成功入库')
     } catch (err: unknown) {
-      setError(formatApiError(err, '入库失败'))
-      setProcessedStatus((prev) => ({ ...prev, [currentFileItem?.id || file.name]: 'error' }))
+      const fileKey = currentFileItem?.id || file.name
+      if (err instanceof ManualIngestStillProcessingError) {
+        setProcessedStatus((prev) => ({ ...prev, [fileKey]: 'processing' }))
+        toast.info(err.message)
+      } else {
+        setError(formatApiError(err, '入库失败'))
+        setProcessedStatus((prev) => ({ ...prev, [fileKey]: 'error' }))
+      }
     } finally {
       setIsSubmitting(false)
     }
@@ -1261,6 +1325,7 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
 
     let successCount = 0
     let failureCount = 0
+    let processingCount = 0
     let lastFailure: string | null = null
     const failedIds = new Set<string>()
 
@@ -1277,13 +1342,22 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
           target,
           isActive ? chunkOverrides : {}
         )
+        if (isActive) {
+          setCreatedDocumentId(created?.id || null)
+        }
+        setProcessedStatus((prev) => ({ ...prev, [target.id]: 'processing' }))
+        await waitForDocumentIngestCompletion(created?.id, created?.status)
         successCount += 1
         if (isActive) {
           setSubmitSuccess(true)
-          setCreatedDocumentId(created?.id || null)
         }
         setProcessedStatus((prev) => ({ ...prev, [target.id]: 'success' }))
       } catch (err: unknown) {
+        if (err instanceof ManualIngestStillProcessingError) {
+          processingCount += 1
+          setProcessedStatus((prev) => ({ ...prev, [target.id]: 'processing' }))
+          continue
+        }
         failureCount += 1
         failedIds.add(target.id)
         lastFailure = formatApiError(err, '入库失败')
@@ -1305,7 +1379,9 @@ export function ChunkPreviewProvider({ children, onConfirm, onClose }: Readonly<
 
     if (failureCount > 0) {
       setError(lastFailure || '部分文件入库失败')
-      toast.error(`已入库 ${successCount} 个，失败 ${failureCount} 个`)
+      toast.error(`已入库 ${successCount} 个，处理中 ${processingCount} 个，失败 ${failureCount} 个`)
+    } else if (processingCount > 0) {
+      toast.info(`已提交 ${processingCount} 个文件，后端仍在处理`)
     } else {
       toast.success(`已批量入库 ${successCount} 个文件`)
     }

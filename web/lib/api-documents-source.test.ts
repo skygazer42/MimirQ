@@ -19,4 +19,13 @@ describe('document api service source', () => {
     expect(src).not.toContain('export const documentApi = {')
     expect(src).toContain("export { documentApi } from '@/lib/api/documents'")
   })
+
+  it('uses the long API timeout for manual chunk ingestion', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'api/documents.ts'), 'utf8')
+    const manualIngestBlock = src.slice(src.indexOf('async createFromChunks'), src.indexOf('async chunkPreview'))
+
+    expect(src).toContain("import { API_LONG_TIMEOUT_MS } from '@/lib/env'")
+    expect(manualIngestBlock).toContain("path: '/api/v1/documents/manual'")
+    expect(manualIngestBlock).toContain('timeoutMs: API_LONG_TIMEOUT_MS')
+  })
 })

@@ -127,11 +127,13 @@ def test_manual_document_endpoint_still_creates_documents_after_router_split(mon
     )
     assert res.status_code == 201, res.text
     body = res.json()
-    assert body["status"] == "completed"
+    assert body["status"] == "processing"
+    assert body["current_stage"] == "queued"
+    assert body["processing_progress"] == 1
     assert body["dataset_id"] == str(dataset_id)
-    assert body["chunk_count"] == 2
+    assert body["chunk_count"] == 0
     assert body["metadata"]["pipeline_hash"] == "pipeline-hash-1"
-    assert body["metadata"]["active_pipeline_ready"] is True
+    assert body["metadata"]["active_pipeline_ready"] is False
 
 
 def test_manual_document_endpoint_handles_minio_preview_refs_after_router_split(monkeypatch) -> None:
@@ -220,5 +222,61 @@ def test_manual_document_endpoint_handles_minio_preview_refs_after_router_split(
 
     assert res.status_code == 201, res.text
     body = res.json()
-    assert body["status"] == "completed"
+    assert body["status"] == "processing"
+    assert body["current_stage"] == "queued"
+
+    from app.api.schemas.document import ManualDocumentCreate
+    from app.models.document import Document as DBDocument
+
+    request = ManualDocumentCreate.model_validate(
+        {
+            "dataset_id": str(dataset_id),
+            "filename": "Manual Doc",
+            "file_type": "md",
+            "file_size": 42,
+            "metadata": {"source": "manual"},
+            "chunks": [
+                {
+                    "content": "![image](/api/v1/documents/image/preview-123)",
+                    "page_number": 1,
+                    "start_char": 0,
+                    "end_char": 44,
+                    "metadata": {},
+                }
+            ],
+        }
+    )
+    db_document = DBDocument(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        filename="Manual Doc",
+        file_type="md",
+        file_size=42,
+        file_path="manual://test",
+        owner_id="test-account",
+        access_mode=None,
+        status="processing",
+        processing_progress=1,
+        current_stage="queued",
+        chunk_count=0,
+        total_characters=0,
+        doc_metadata={
+            "pipeline_hash": "pipeline-hash-1",
+            "active_pipeline_hash": "pipeline-hash-1",
+            "active_pipeline_ready": False,
+        },
+    )
+    manual_module._index_manual_document_chunks(
+        db=_DummyDB(),
+        docs_mod=documents_module,
+        request=request,
+        tenant_id=tenant_id,
+        account_id="test-account",
+        dataset=_Dataset(dataset_id),
+        db_document=db_document,
+    )
+
+    assert db_document.status == "completed"
+    assert db_document.chunk_count == 1
     assert captured_contents == ["![image](/api/v1/documents/image/preview-123)"]

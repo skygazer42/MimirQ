@@ -643,6 +643,21 @@ def test_document_manual_route_is_split_from_documents_router() -> None:
     assert '@router.post("/manual"' in split_source
 
 
+def test_document_manual_route_returns_before_background_indexing() -> None:
+    split_source = _source("app/api/v1/document_manual.py")
+    route_idx = split_source.index("async def create_document_with_manual_chunks")
+    commit_idx = split_source.index("db.commit()", route_idx)
+    task_idx = split_source.index("background_tasks.add_task(", route_idx)
+    return_idx = split_source.index("return db_document", task_idx)
+
+    assert "BackgroundTasks" in split_source
+    assert "SessionLocal" in split_source
+    assert "_process_manual_document_chunks_background" in split_source
+    assert "current_stage=\"queued\"" in split_source
+    assert commit_idx < task_idx < return_idx
+    assert "Indexer(db).upsert(" not in split_source[route_idx:task_idx]
+
+
 def test_documents_router_still_exposes_manual_route() -> None:
     from app.api.v1.documents import router
 
