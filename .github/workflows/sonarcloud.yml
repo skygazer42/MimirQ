@@ -14,7 +14,7 @@ concurrency:
 jobs:
   scan:
     name: SonarCloud Scan
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64, mimirq-sonar]
     timeout-minutes: 20
     steps:
       - name: Checkout
