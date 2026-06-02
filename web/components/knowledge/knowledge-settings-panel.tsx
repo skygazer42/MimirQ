@@ -1313,7 +1313,7 @@ export function KnowledgeConnectorRunsPanel({
 
         {/* 高密度状态分段器 */}
         <div className="flex p-0.5 bg-muted/40 rounded-lg border border-border/40">
-          {[
+          {([
             {
               key: 'all',
               label: t('connectorRuns.summary.all'),
@@ -1338,10 +1338,15 @@ export function KnowledgeConnectorRunsPanel({
               count: stats.completed,
               color: 'text-success',
             },
-          ].map((item) => (
+          ] satisfies Array<{
+            key: ConnectorRunStatusFilter
+            label: string
+            count: number
+            color: string
+          }>).map((item) => (
             <button
               key={item.key}
-              onClick={() => setRunStatusFilter(item.key as ConnectorRunStatusFilter)}
+              onClick={() => setRunStatusFilter(item.key)}
               className={cn(
                 'flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-[10px] font-medium transition-all duration-200',
                 runStatusFilter === item.key

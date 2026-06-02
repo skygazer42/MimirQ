@@ -186,7 +186,7 @@ export function buildChatRequest({
     enable_summary_memory: Boolean(enableSummaryMemory),
     rag_config:
       normalizedRagConfig && Object.keys(normalizedRagConfig).length > 0
-        ? (normalizedRagConfig as ChatRequest['rag_config'])
+        ? normalizedRagConfig
         : undefined,
   }
 }

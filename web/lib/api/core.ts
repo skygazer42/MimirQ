@@ -71,7 +71,7 @@ type HtmlResponseError = Error & {
 
 function asApiClientError(error: unknown): ApiClientError {
   return error instanceof Error
-    ? (error as ApiClientError)
+    ? error
     : Object.assign(new Error(toTrimmedPrimitiveString(error, 'API request failed')), {
         cause: error,
       }) as ApiClientError

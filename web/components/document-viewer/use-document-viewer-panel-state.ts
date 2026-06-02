@@ -18,7 +18,7 @@ import { getPrefetchedChunk, getPrefetchedDocument } from "@/lib/document-view-p
 import { API_V1_BASE_URL } from "@/lib/env"
 import { globalEventBus } from "@/lib/event-bus"
 import { detachPromise } from "@/lib/utils"
-import { useDocumentView } from "@/store/document-view"
+import { useDocumentView, type DocumentViewTab } from "@/store/document-view"
 import type {
   Citation,
   Document,
@@ -38,6 +38,10 @@ function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
   const tagName = target.tagName
   return target.isContentEditable || tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT"
+}
+
+function isDocumentViewTab(value: string): value is DocumentViewTab {
+  return value === "preview" || value === "text" || value === "chunks"
 }
 
 export function useDocumentViewerPanelState() {
@@ -1029,7 +1033,7 @@ export function useDocumentViewerPanelState() {
 
   const handleActiveTabChange = React.useCallback(
     (value: string) => {
-      setActiveTab(value as "preview" | "text" | "chunks")
+      if (isDocumentViewTab(value)) setActiveTab(value)
     },
     [setActiveTab]
   )

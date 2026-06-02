@@ -52,6 +52,10 @@ function parseStreamEvent(jsonStr: string): StreamEvent | null {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
 export function useChatStream({
   conversationId,
   setConversationId,
@@ -224,9 +228,7 @@ export function useChatStream({
                 sawDone = true
                 flushCurrentResponseUpdate()
 
-                const doneData = (event.data && typeof event.data === 'object'
-                  ? (event.data as Record<string, unknown>)
-                  : {}) as Record<string, unknown>
+                const doneData = isRecord(event.data) ? event.data : {}
 
                 updateConversation(getConversationId(doneData.conversation_id))
 
@@ -246,9 +248,7 @@ export function useChatStream({
               }
 
               if (event.type === 'error') {
-                const payload = (event.data && typeof event.data === 'object'
-                  ? (event.data as Record<string, unknown>)
-                  : {}) as Record<string, unknown>
+                const payload = isRecord(event.data) ? event.data : {}
                 streamError = new Error(String(payload.message || 'Unknown error'))
               }
             },

@@ -278,7 +278,7 @@ function hashTypeToIndex(type: string): number {
 }
 
 function graphNodeRecord(node: unknown): { meta?: Record<string, unknown> | null; type?: unknown } {
-  return node && typeof node === 'object' ? (node as { meta?: Record<string, unknown> | null; type?: unknown }) : {}
+  return node && typeof node === 'object' ? node : {}
 }
 
 export function buildTypeColorMap(nodes: readonly unknown[]): Map<string, string> {
