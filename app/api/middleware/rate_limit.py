@@ -19,8 +19,8 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.status import HTTP_429_TOO_MANY_REQUESTS
 
+from app.core import jwt_verify
 from app.core.config import settings
-from app.core.jwt_verify import decode_access_token
 from app.rag.core.logging import get_logger
 
 logger = get_logger("api.rate_limit")
@@ -253,55 +253,76 @@ def get_default_limiter() -> RateLimiter | RedisRateLimiter:
     return _default_limiter
 
 
-async def get_client_key(request: Request) -> str:
-    from app.core.config import settings
-
+def _client_ip_from_request(request: Request) -> str:
     forwarded = request.headers.get("X-Forwarded-For")
     if forwarded:
-        client_ip = (forwarded.split(",")[0] or "").strip() or "unknown"
-    else:
-        real_ip = request.headers.get("X-Real-IP")
-        if real_ip:
-            client_ip = (real_ip or "").strip()
-        elif request.client:
-            client_ip = request.client.host
-        else:
-            client_ip = "unknown"
+        return (forwarded.split(",")[0] or "").strip() or "unknown"
 
+    real_ip = request.headers.get("X-Real-IP")
+    if real_ip:
+        return (real_ip or "").strip()
+    if request.client:
+        return request.client.host
+    return "unknown"
+
+
+def _tenant_id_from_request(request: Request) -> str:
     tenant_header = str(getattr(settings, "TENANT_HEADER", "") or "X-Tenant-ID").strip() or "X-Tenant-ID"
     tenant_id = (request.headers.get(tenant_header) or "").strip()
     if not tenant_id and tenant_header.lower() != "x-tenant-id":
         tenant_id = (request.headers.get("X-Tenant-ID") or "").strip()
+    return tenant_id
+
+
+def _jwt_bearer_token(request: Request) -> str:
+    auth = (request.headers.get("Authorization") or "").strip()
+    if not auth.lower().startswith("bearer "):
+        return ""
+    return auth[7:].strip()
+
+
+def _tenant_id_from_jwt_payload(payload: dict[str, Any]) -> str:
+    claim = str(getattr(settings, "JWT_TENANT_CLAIM", "") or "").strip()
+    if not claim:
+        return ""
+    raw = payload.get(claim)
+    return str(raw).strip() if raw else ""
+
+
+async def _jwt_identity_from_request(request: Request) -> tuple[str, str]:
+    token = _jwt_bearer_token(request)
+    if not token:
+        return "", ""
+    try:
+        payload = await jwt_verify.decode_access_token(token)
+    except Exception:  # noqa: BLE001
+        return "", ""
+    return (payload.get("sub") or "").strip(), _tenant_id_from_jwt_payload(payload)
+
+
+def _rate_limit_key(*, tenant_id: str, user_id: str, client_ip: str) -> str:
+    if user_id:
+        return f"tenant:{tenant_id}:user:{user_id}" if tenant_id else f"user:{user_id}"
+    return f"tenant:{tenant_id}:ip:{client_ip}" if tenant_id else f"ip:{client_ip}"
+
+
+async def get_client_key(request: Request) -> str:
+    client_ip = _client_ip_from_request(request)
+    tenant_id = _tenant_id_from_request(request)
 
     # Prefer a trusted user id:
     # - AUTH_MODE=jwt: JWT subject (ignore X-User-ID to avoid spoofing rate-limit keys)
     # - AUTH_MODE=header: X-User-ID (dev-only)
     user_id = str(getattr(request.state, "user_id", "") or "").strip()
-
     mode = (getattr(settings, "AUTH_MODE", "jwt") or "jwt").lower()
+
     if not user_id and mode == "header":
         user_id = (request.headers.get("X-User-ID") or "").strip()
+    elif not user_id:
+        user_id, token_tenant_id = await _jwt_identity_from_request(request)
+        tenant_id = token_tenant_id or tenant_id
 
-    if not user_id and mode != "header":
-        auth = (request.headers.get("Authorization") or "").strip()
-        if auth.lower().startswith("bearer "):
-            token = auth[7:].strip()
-            if token:
-                try:
-                    payload = await decode_access_token(token)
-                    user_id = (payload.get("sub") or "").strip()
-
-                    claim = str(getattr(settings, "JWT_TENANT_CLAIM", "") or "").strip()
-                    if claim:
-                        raw = payload.get(claim)
-                        if raw:
-                            tenant_id = str(raw).strip()
-                except Exception:  # noqa: BLE001
-                    user_id = ""
-
-    if user_id:
-        return f"tenant:{tenant_id}:user:{user_id}" if tenant_id else f"user:{user_id}"
-    return f"tenant:{tenant_id}:ip:{client_ip}" if tenant_id else f"ip:{client_ip}"
+    return _rate_limit_key(tenant_id=tenant_id, user_id=user_id, client_ip=client_ip)
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):

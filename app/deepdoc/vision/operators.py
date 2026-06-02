@@ -39,11 +39,11 @@ class DecodeImage:
     def __call__(self, data):
         img = data['image']
         if six.PY2:
-            assert isinstance(img, str) and len(
-                img) > 0, "invalid input 'img' in DecodeImage"
+            if not (isinstance(img, str) and len(img) > 0):
+                raise ValueError("invalid input 'img' in DecodeImage")
         else:
-            assert isinstance(img, bytes) and len(
-                img) > 0, "invalid input 'img' in DecodeImage"
+            if not (isinstance(img, bytes) and len(img) > 0):
+                raise ValueError("invalid input 'img' in DecodeImage")
         img = np.frombuffer(img, dtype='uint8')
         if self.ignore_orientation:
             img = cv2.imdecode(img, cv2.IMREAD_IGNORE_ORIENTATION |
@@ -55,8 +55,8 @@ class DecodeImage:
         if self.img_mode == 'GRAY':
             img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
         elif self.img_mode == 'RGB':
-            assert img.shape[2] == 3, 'invalid shape of image[%s]' % (
-                img.shape)
+            if img.shape[2] != 3:
+                raise ValueError("invalid shape of image[%s]" % (img.shape,))
             img = img[:, :, ::-1]
 
         if self.channel_first:
@@ -128,8 +128,8 @@ class NormalizeImage:
         from PIL import Image
         if isinstance(img, Image.Image):
             img = np.array(img)
-        assert isinstance(img,
-                          np.ndarray), "invalid input 'img' in NormalizeImage"
+        if not isinstance(img, np.ndarray):
+            raise ValueError("invalid input 'img' in NormalizeImage")
         data['image'] = (
                                 img.astype('float32') * self.scale - self.mean) / self.std
         return data
@@ -178,9 +178,8 @@ class Pad:
         img_h, img_w = img.shape[0], img.shape[1]
         if self.size:
             resize_h2, resize_w2 = self.size
-            assert (
-                    img_h < resize_h2 and img_w < resize_w2
-            ), '(h, w) of target size should be greater than (img_h, img_w)'
+            if not (img_h < resize_h2 and img_w < resize_w2):
+                raise ValueError("(h, w) of target size should be greater than (img_h, img_w)")
         else:
             resize_h2 = max(
                 int(math.ceil(img.shape[0] / self.size_div) * self.size_div),
@@ -224,8 +223,10 @@ class LinearResize:
             im (np.ndarray):  processed image (np.ndarray)
             im_info (dict): info of processed image
         """
-        assert len(self.target_size) == 2
-        assert self.target_size[0] > 0 and self.target_size[1] > 0
+        if len(self.target_size) != 2:
+            raise ValueError("target_size must contain two dimensions")
+        if self.target_size[0] <= 0 or self.target_size[1] <= 0:
+            raise ValueError("target_size dimensions must be positive")
         _im_channel = im.shape[2]
         im_scale_y, im_scale_x = self.generate_scale(im)
         im = cv2.resize(

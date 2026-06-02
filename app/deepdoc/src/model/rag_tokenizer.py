@@ -501,8 +501,10 @@ class RagTokenizer:
                 i = _i + 1
 
             if _i < len(tks1):
-                assert _j < len(tks)
-                assert "".join(tks1[_i:]) == "".join(tks[_j:])
+                if _j >= len(tks):
+                    raise RuntimeError("Token alignment index exceeded source tokens")
+                if "".join(tks1[_i:]) != "".join(tks[_j:]):
+                    raise RuntimeError("Token alignment suffix mismatch")
                 tkslist = []
                 self.dfs_("".join(tks[_j:]), 0, [], tkslist)
                 res.append(" ".join(self.sort_tks_(tkslist)[0][0]))
