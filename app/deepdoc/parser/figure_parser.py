@@ -121,8 +121,10 @@ class VisionFigureParser:
     def __init__(self, vision_model, figures_data, *args, **kwargs):
         self.vision_model = vision_model
         self._extract_figures_info(figures_data)
-        assert len(self.figures) == len(self.descriptions)
-        assert not self.positions or (len(self.figures) == len(self.positions))
+        if len(self.figures) != len(self.descriptions):
+            raise ValueError("Figure and description counts must match")
+        if self.positions and len(self.figures) != len(self.positions):
+            raise ValueError("Figure and position counts must match")
 
     def _extract_figures_info(self, figures_data):
         self.figures = []
@@ -135,14 +137,18 @@ class VisionFigureParser:
                                                                                                  tuple) and len(
                 item[1][0]) == 5:
                 img_desc = item[0]
-                assert len(img_desc) == 2 and isinstance(img_desc[0], Image.Image) and isinstance(img_desc[1],
-                                                                                                  list), "Should be (figure, [description])"
+                if not (
+                    len(img_desc) == 2
+                    and isinstance(img_desc[0], Image.Image)
+                    and isinstance(img_desc[1], list)
+                ):
+                    raise ValueError("Should be (figure, [description])")
                 self.figures.append(img_desc[0])
                 self.descriptions.append(img_desc[1])
                 self.positions.append(item[1])
             else:
-                assert len(item) == 2 and isinstance(item, tuple) and isinstance(item[1],
-                                                                                 list), f"get {len(item)=}, {item=}"
+                if not (len(item) == 2 and isinstance(item, tuple) and isinstance(item[1], list)):
+                    raise ValueError(f"get {len(item)=}, {item=}")
                 self.figures.append(item[0])
                 self.descriptions.append(item[1])
 

@@ -545,10 +545,12 @@ class IntegratedPipelinePdfParser:
         logging.debug("Table processing...")
         MARGIN = 10  # Margin around table images
         self.tb_cpns = []  # Final recognized table components
-        assert len(self.page_layout) == len(self.page_images)  # Layout pages must match image pages
+        if len(self.page_layout) != len(self.page_images):
+            raise RuntimeError("Layout pages must match image pages")
         imgs, pos, tbcnt = self._table_layout_crops(zoom, MARGIN)
 
-        assert len(self.page_images) == len(tbcnt) - 1  # Check page count consistency
+        if len(self.page_images) != len(tbcnt) - 1:
+            raise RuntimeError("Table crop page count must match image pages")
         if not imgs:
             return
         recos = self.tbl_det(imgs)
@@ -663,7 +665,8 @@ class IntegratedPipelinePdfParser:
 
     def _layouts_rec(self, zoom, drop=True):
         # Layout recognition: identify layout type (text, image, table, etc.) for each box
-        assert len(self.page_images) == len(self.boxes)
+        if len(self.page_images) != len(self.boxes):
+            raise RuntimeError("Layout recognition requires one box list per page image")
         self.boxes, self.page_layout = self.layouter(
             self.page_images, self.boxes, zoom, drop=drop)
         # Cumulative height offset: unify box y coordinates to global coordinates
@@ -1209,11 +1212,13 @@ class IntegratedPipelinePdfParser:
     @staticmethod
     def _format_extract_result(res, positions, figure_results, figure_positions, separate_tables_figures, need_position):
         if separate_tables_figures:
-            assert len(positions) + len(figure_positions) == len(res) + len(figure_results)
+            if len(positions) + len(figure_positions) != len(res) + len(figure_results):
+                raise RuntimeError("Extracted table/figure positions must match result counts")
             if need_position:
                 return list(zip(res, positions, strict=False)), list(zip(figure_results, figure_positions, strict=False))
             return res, figure_results
-        assert len(positions) == len(res)
+        if len(positions) != len(res):
+            raise RuntimeError("Extracted positions must match result count")
         if need_position:
             return list(zip(res, positions, strict=False))
         return res
@@ -1520,7 +1525,8 @@ class IntegratedPipelinePdfParser:
         logging.debug("Is it English: %s", self.is_english)
 
         self.page_cum_height = np.cumsum(self.page_cum_height)
-        assert len(self.page_cum_height) == len(self.page_images) + 1
+        if len(self.page_cum_height) != len(self.page_images) + 1:
+            raise RuntimeError("Cumulative page heights must include a leading zero plus one entry per page")
         if len(self.boxes) == 0 and zoomin < 9:
             self.__images__(fnm, zoomin * 3, page_from, page_to, callback)
 

@@ -102,12 +102,12 @@ def create_operators(op_param_list, global_config=None):
     Args:
         params(list): a dict list, used to create some operators
     """
-    assert isinstance(
-        op_param_list, list), ('operator config should be a list')
+    if not isinstance(op_param_list, list):
+        raise TypeError("operator config should be a list")
     ops = []
     for operator in op_param_list:
-        assert isinstance(operator,
-                          dict) and len(operator) == 1, "yaml format error"
+        if not (isinstance(operator, dict) and len(operator) == 1):
+            raise ValueError("yaml format error")
         op_name = next(iter(operator))
         param = {} if operator[op_name] is None else operator[op_name]
         if global_config is not None:
@@ -218,7 +218,8 @@ class TextRecognizer:
     def resize_norm_img(self, img, max_wh_ratio):
         img_c, img_h, img_w = self.rec_image_shape
 
-        assert img_c == img.shape[2]
+        if img_c != img.shape[2]:
+            raise ValueError("Recognizer image channel count does not match configured shape")
         img_w = int((img_h * max_wh_ratio))
         w = self.input_tensor.shape[3:][0]
         if not isinstance(w, str) and w is not None and w > 0:
@@ -679,7 +680,8 @@ class OCR:
                                               local_dir_use_symlinks=False)
 
                 if PARALLEL_DEVICES is not None:
-                    assert PARALLEL_DEVICES > 0, "Number of devices must be >= 1"
+                    if PARALLEL_DEVICES <= 0:
+                        raise ValueError("Number of devices must be >= 1")
                     self.text_detector = []
                     self.text_recognizer = []
                     for device_id in range(PARALLEL_DEVICES):
@@ -704,7 +706,8 @@ class OCR:
         points[:, 0] = points[:, 0] - left
         points[:, 1] = points[:, 1] - top
         '''
-        assert len(points) == 4, "shape of points must be 4*2"
+        if len(points) != 4:
+            raise ValueError("shape of points must be 4*2")
         img_crop_width = int(
             max(
                 np.linalg.norm(points[0] - points[1]),

@@ -60,9 +60,8 @@ class DBPostProcess:
         self.min_size = 3
         self.score_mode = score_mode
         self.box_type = box_type
-        assert score_mode in [
-            "slow", "fast"
-        ], "Score mode must be in [slow, fast] but got: {}".format(score_mode)
+        if score_mode not in ["slow", "fast"]:
+            raise ValueError("Score mode must be in [slow, fast] but got: {}".format(score_mode))
 
         self.dilation_kernel = None if not use_dilation else np.array(
             [[1, 1], [1, 1]])

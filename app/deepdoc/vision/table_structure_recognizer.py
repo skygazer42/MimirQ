@@ -243,7 +243,8 @@ class TableStructureRecognizer(Recognizer):
                         if tbl[i][j + 1]:
                             right = min(right, np.min(
                                 [a["x0"] - bx["x1"] for a in tbl[i][j + 1]]))
-                assert left < 100000 or right < 100000
+                if left >= 100000 and right >= 100000:
+                    raise RuntimeError("Unable to find adjacent column for table cell merge")
                 if left < right:
                     for jj in range(j, len(tbl[0])):
                         for i in range(len(tbl)):
@@ -268,8 +269,8 @@ class TableStructureRecognizer(Recognizer):
                     for i in range(len(tbl)):
                         tbl[i].pop(j)
                 cols.pop(j)
-        assert len(cols) == len(tbl[0]), "Column NO. miss matched: %d vs %d" % (
-            len(cols), len(tbl[0]))
+        if len(cols) != len(tbl[0]):
+            raise RuntimeError("Column NO. miss matched: %d vs %d" % (len(cols), len(tbl[0])))
 
         if len(cols) >= 4:
             # remove single in row
@@ -307,7 +308,8 @@ class TableStructureRecognizer(Recognizer):
                         if tbl[i + 1][j]:
                             down = min(down, np.min(
                                 [a["top"] - bx["bottom"] for a in tbl[i + 1][j]]))
-                assert up < 100000 or down < 100000
+                if up >= 100000 and down >= 100000:
+                    raise RuntimeError("Unable to find adjacent row for table cell merge")
                 if up < down:
                     for ii in range(i, len(tbl)):
                         for j in range(len(tbl[ii])):
@@ -572,8 +574,10 @@ class TableStructureRecognizer(Recognizer):
                 rowspan, colspan = sorted(rowspan), sorted(colspan)
                 rowspan = list(range(rowspan[0], rowspan[-1] + 1))
                 colspan = list(range(colspan[0], colspan[-1] + 1))
-                assert i in rowspan, rowspan
-                assert j in colspan, colspan
+                if i not in rowspan:
+                    raise RuntimeError(str(rowspan))
+                if j not in colspan:
+                    raise RuntimeError(str(colspan))
                 arr = []
                 for r in rowspan:
                     for c in colspan:
