@@ -70,6 +70,7 @@ import { kgApi } from '@/lib/api/graph'
 import { metaApi } from '@/lib/api/meta'
 import { reportApi } from '@/lib/api/reports'
 import { reportClientError } from '@/lib/client-logging'
+import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { sanitizeFilename } from '@/lib/sanitize'
 import { cn, detachPromise } from '@/lib/utils'
 import type {
@@ -606,10 +607,7 @@ function buildSnapshotStudioGraphFromKgGraph(graph: KGGraphResponse | null): {
       const target = getLinkEndpointId(link.target)
       if (!source || !target || !nodeById.has(source) || !nodeById.has(target))
         return null
-      const label = String(
-        getLinkValue(link, 'label', 'predicate', 'relation', 'type') ||
-          '关联'
-      )
+      const label = toTrimmedPrimitiveString(getLinkValue(link, 'label', 'predicate', 'relation', 'type'), '关联')
       return {
         source,
         target,

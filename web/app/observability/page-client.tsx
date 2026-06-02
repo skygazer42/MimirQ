@@ -16,6 +16,7 @@ import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { observabilityApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { cn, detachPromise } from '@/lib/utils'
 import { toast } from 'sonner'
 import { ObservabilityOpsPanel } from '@/components/observability/observability-ops-panel'
@@ -64,7 +65,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function queryCountItem(value: unknown): { query_hash: string; count: number } {
   const item = isRecord(value) ? value : {}
   return {
-    query_hash: String(item.query_hash || ''),
+    query_hash: toTrimmedPrimitiveString(item.query_hash),
     count: Number(item.count || 0),
   }
 }
@@ -76,7 +77,7 @@ function slowQueryItem(value: unknown): {
 } {
   const item = isRecord(value) ? value : {}
   return {
-    query_hash: String(item.query_hash || ''),
+    query_hash: toTrimmedPrimitiveString(item.query_hash),
     count: Number(item.count || 0),
     max_elapsed_sec: item.max_elapsed_sec == null ? null : Number(item.max_elapsed_sec),
   }
@@ -527,10 +528,10 @@ export default function ObservabilityPage() {
                           <XAxis dataKey="time" tick={{ fontSize: 10 }}/>
                           <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `${Math.round(Number(v || 0) * 100)}%`} domain={[0, 1]}/>
                           <Tooltip formatter={(v: unknown, name: unknown) => {
-                            const label = String(name)
+                            const label = toTrimmedPrimitiveString(name)
                             if (label === 'zero-hit rate' || label === 'slow rate')
                                 return [fmtPercent(Number(v), 2), label];
-                            return [String(v ?? ''), label];
+                            return [toTrimmedPrimitiveString(v), label];
                         }}/>
                           <Line type="monotone" dataKey="zero_hit_rate" name="zero-hit rate" stroke="hsl(var(--warning))" strokeWidth={2} dot={false}/>
                           <Line type="monotone" dataKey="slow_rate" name="slow rate" stroke="hsl(var(--info))" strokeWidth={2} dot={false}/>

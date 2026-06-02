@@ -89,8 +89,7 @@ function formatDiffValue(value: unknown, maxLen = 160): string {
     if (!s) return '—'
     return s.length > maxLen ? `${s.slice(0, maxLen)}…` : s
   } catch {
-    const s = String(value)
-    return s.length > maxLen ? `${s.slice(0, maxLen)}…` : s
+    return '—'
   }
 }
 

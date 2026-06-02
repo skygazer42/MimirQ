@@ -28,6 +28,7 @@ import { reportClientError, reportClientWarning } from '@/lib/client-logging'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
 import { buildTagsPatch, getUserTagsFromDocument, normalizeTags } from '@/lib/document-user-tags'
 import { getParserLabel } from '@/lib/parser-options'
+import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { queryKeys } from '@/lib/query-keys'
 import { formatDate, formatFileSize, detachPromise } from '@/lib/utils'
 import type {
@@ -689,8 +690,9 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
 
   const docMeta = (displayDoc.metadata || {}) as DocumentMetadataRecord
   const pipeline = ('pipeline' in displayDoc ? displayDoc.pipeline : null) as DocumentPipelineMetadata | null
-  const requestedParserBackend = String(
-    pipeline?.parser_backend_requested || docMeta.parser_backend_requested || '-'
+  const requestedParserBackend = toTrimmedPrimitiveString(
+    pipeline?.parser_backend_requested ?? docMeta.parser_backend_requested,
+    '-'
   )
   const pipelineEffective = (pipeline?.pipeline_effective || docMeta.pipeline_effective || {}) as DocumentMetadataRecord
   const analyticsRaw = (pipeline?.analytics_raw || docMeta.document_analytics_raw || {}) as DocumentMetadataRecord
@@ -712,7 +714,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
         docMeta.pipeline_hash ||
         ''
     ).trim() || ''
-  const lastPipelineHash = String(pipeline?.pipeline_hash || docMeta.pipeline_hash || '').trim() || ''
+  const lastPipelineHash = toTrimmedPrimitiveString(pipeline?.pipeline_hash ?? docMeta.pipeline_hash)
   const viewingPipelineHash = viewPipelineHash === ACTIVE_PIPELINE_VALUE ? activePipelineHash : viewPipelineHash
 
   const accessModeLabel = useMemo(() => {

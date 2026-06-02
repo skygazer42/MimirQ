@@ -21,6 +21,7 @@ import { useRouter } from '@/i18n/navigation'
 import { formatApiError } from '@/lib/api-errors'
 import { connectorApi, datasetApi } from '@/lib/api'
 import { reportClientError } from '@/lib/client-logging'
+import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { queryKeys } from '@/lib/query-keys'
 import { cn } from '@/lib/utils'
 
@@ -595,10 +596,10 @@ export default function DatasetDbCatalogPage() {
                                         <div className="font-semibold text-foreground">变更列</div>
                                         <div className="mt-1 space-y-1 font-mono text-muted-foreground">
                                           {ccItems.slice(0, 20).map((it) => {
-                                            const key = `${it?.table || ''}.${it?.column || ''}`
+                                            const key = `${toTrimmedPrimitiveString(it?.table)}.${toTrimmedPrimitiveString(it?.column)}`
                                             return (
                                               <div key={key} className="break-words">
-                                                {key} ({String(it?.old?.data_type || '')} → {String(it?.new?.data_type || '')})
+                                                {key} ({toTrimmedPrimitiveString(it?.old?.data_type)} → {toTrimmedPrimitiveString(it?.new?.data_type)})
                                               </div>
                                             )
                                           })}

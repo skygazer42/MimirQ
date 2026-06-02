@@ -18,6 +18,7 @@ import { useRouter } from '@/i18n/navigation'
 import { formatApiError } from '@/lib/api-errors'
 import { datasetApi } from '@/lib/api'
 import { reportClientError } from '@/lib/client-logging'
+import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { queryKeys } from '@/lib/query-keys'
 import { cn } from '@/lib/utils'
 
@@ -36,7 +37,7 @@ function renderValue(v: unknown): string {
   try {
     return JSON.stringify(v)
   } catch {
-    return String(v)
+    return toTrimmedPrimitiveString(v)
   }
 }
 

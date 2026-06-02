@@ -3,6 +3,7 @@
 import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, Tooltip } from 'recharts'
 import { motion, useReducedMotion } from 'framer-motion'
 import { SafeResponsiveChart } from '@/components/ui/safe-responsive-chart'
+import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { cn } from "@/lib/utils"
 
 interface HolographicRadarProps {
@@ -20,9 +21,9 @@ const CustomTooltip = ({ active, payload, label }: RadarTooltipProps) => {
   if (active && payload?.length) {
     return (
       <div className="bg-popover/95 backdrop-blur-md border border-primary/30 p-3 rounded-lg shadow-strong">
-        <p className="text-primary font-semibold text-xs uppercase mb-1">{String(label ?? '')}</p>
+        <p className="text-primary font-semibold text-xs uppercase mb-1">{toTrimmedPrimitiveString(label)}</p>
         <div className="flex items-baseline gap-1">
-            <span className="text-2xl font-mono text-foreground font-bold">{String(payload[0].value ?? '')}</span>
+            <span className="text-2xl font-mono text-foreground font-bold">{toTrimmedPrimitiveString(payload[0].value)}</span>
             <span className="text-xs text-muted-foreground">/ 100</span>
         </div>
       </div>

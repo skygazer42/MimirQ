@@ -20,6 +20,7 @@ import {
 } from '@xyflow/react'
 
 import type { GraphData, GraphNode } from '@/lib/graph-parser'
+import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 
 type JsonRecord = Record<string, unknown>
 
@@ -125,7 +126,7 @@ function buildEditorNodes(graph: GraphData, workflowLayout: JsonRecord | null | 
   const positions = buildDefaultPositions(graph)
   const storedNodeMap = new Map<string, JsonRecord>(
     layoutNodes
-      .map((node) => [String(node.id || ''), node] as const)
+      .map((node) => [toTrimmedPrimitiveString(node.id), node] as const)
       .filter(([id]) => !!id)
   )
 
@@ -177,8 +178,8 @@ function buildEditorEdges(
   const sourceEdges = hasStoredEdges ? storedEdges : graph.links
 
   return sourceEdges.flatMap((edgeLike, index) => {
-    const source = String(edgeLike.source || '')
-    const target = String(edgeLike.target || '')
+    const source = toTrimmedPrimitiveString(edgeLike.source)
+    const target = toTrimmedPrimitiveString(edgeLike.target)
     if (!source || !target || !nodeIds.has(source) || !nodeIds.has(target)) return []
 
     const label = typeof edgeLike.label === 'string' && edgeLike.label.trim() ? edgeLike.label.trim() : undefined

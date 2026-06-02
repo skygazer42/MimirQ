@@ -83,8 +83,8 @@ export function buildDatasetConfigGraph(config: object): GraphData {
   }
 
   // Ingestion defaults
-  const parserBackend = String(cfg.default_parser_backend || '')
-  const chunkStrategy = String(cfg.default_chunk_strategy || '')
+  const parserBackend = toTrimmedPrimitiveString(cfg.default_parser_backend)
+  const chunkStrategy = toTrimmedPrimitiveString(cfg.default_chunk_strategy)
   addGroup(
     'ingestion_defaults',
     'Ingestion Defaults',
@@ -181,7 +181,7 @@ export function buildDatasetConfigGraph(config: object): GraphData {
   addGroup(
     'prompt_defaults',
     'Prompt Defaults',
-    Object.values(promptDefaults).some((v) => v != null && String(v).trim()),
+    Object.values(promptDefaults).some((v) => v != null && toTrimmedPrimitiveString(v)),
     promptDefaults
   )
 

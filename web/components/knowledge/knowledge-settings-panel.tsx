@@ -52,6 +52,7 @@ import {
   type SystemSettings,
 } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { queryKeys } from '@/lib/query-keys'
 import { cn, detachPromise, formatDate } from '@/lib/utils'
 import type { ConnectorRunOut, Dataset } from '@/types'
@@ -1556,8 +1557,8 @@ function TaskCard({
               {runErrors
                 .slice(0, 2)
                 .map((err) => (
-                  <div key={String(err.error ?? err.message ?? err.code ?? 'error')} className="mt-1 opacity-60 truncate">
-                    ! {String(err.error ?? err.message ?? err.code ?? 'error')}
+	                  <div key={toTrimmedPrimitiveString(err.error ?? err.message ?? err.code, 'error')} className="mt-1 opacity-60 truncate">
+	                    ! {toTrimmedPrimitiveString(err.error ?? err.message ?? err.code, 'error')}
                   </div>
                 ))}
             </div>
