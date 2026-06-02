@@ -6,6 +6,7 @@ import { useCallback, useEffect } from 'react'
 import { kgApi } from '@/lib/api/graph'
 import type { GraphData } from '@/lib/graph-parser'
 import { GraphService } from '@/lib/graph-service'
+import { detachPromise } from '@/lib/utils'
 import type {
   KGEntityDetailResponse,
   KGEventDetailResponse,
@@ -174,12 +175,12 @@ export function useGraphNodeOperations({
 
   const handleExpandNode = useCallback(() => {
     if (!selectedNode) return
-    void expandNodeById(String(selectedNode.id))
+    detachPromise(expandNodeById(String(selectedNode.id)))
   }, [expandNodeById, selectedNode])
 
   const handleExpandNodeById = useCallback(
     (nodeId: string) => {
-      void expandNodeById(nodeId)
+      detachPromise(expandNodeById(nodeId))
     },
     [expandNodeById]
   )

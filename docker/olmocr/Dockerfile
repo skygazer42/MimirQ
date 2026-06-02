@@ -3,7 +3,7 @@
 # This image wraps the upstream olmOCR CLI (`python -m olmocr.pipeline`) behind
 # a simple HTTP API so the main MimirQ backend can call it like Marker/PaddleVL.
 
-FROM alleninstituteforai/olmocr:latest
+FROM alleninstituteforai/olmocr:v0.4.27
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

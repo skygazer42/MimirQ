@@ -5,6 +5,7 @@ Centralize magic strings and hardcoded values for maintainability.
 """
 
 DEFAULT_OPENAI_API_BASE = "https://api.openai.com/v1"
+NON_CRITICAL_EXCEPTION_LOG_MESSAGE = "Skipping item after non-critical exception"
 
 
 # =============================================================================

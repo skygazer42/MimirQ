@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
+import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { cn } from '@/lib/utils'
 import { buildTypeColorMap, EDGE_KIND_COLORS, EVENT_COLOR } from './graph-viewer'
 
@@ -45,12 +46,12 @@ export function GraphLegend({ nodes, links = [], activeTypeFilters = [], onToggl
     for (const node of nodes) {
       const nodeRecord = asRecord(node)
       const meta = metaRecord(node)
-      const kind = String(meta.kind ?? '').trim()
+      const kind = toTrimmedPrimitiveString(meta.kind)
       if (kind === 'event') {
         eventCount++
         continue
       }
-      const type = String(meta.type ?? nodeRecord.type ?? '').trim() || 'unknown'
+      const type = toTrimmedPrimitiveString(meta.type ?? nodeRecord.type, 'unknown')
       countMap.set(type, (countMap.get(type) || 0) + 1)
     }
 
@@ -72,7 +73,7 @@ export function GraphLegend({ nodes, links = [], activeTypeFilters = [], onToggl
     for (const link of links || []) {
       const linkRecord = asRecord(link)
       const meta = metaRecord(link)
-      const kind = String(meta.kind ?? linkRecord.kind ?? '').trim() || 'unknown'
+      const kind = toTrimmedPrimitiveString(meta.kind ?? linkRecord.kind, 'unknown')
       countMap.set(kind, (countMap.get(kind) || 0) + 1)
     }
 

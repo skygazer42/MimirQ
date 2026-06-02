@@ -43,6 +43,7 @@ import { getChunkSectionPath } from '@/components/chunk-preview/utils/sections'
 import { buildChunkSearchIndex, searchChunkIndex, type ChunkSearchResult } from '@/components/chunk-preview/utils/retrieval-search'
 import { rerankChunkSearchResults, type RerankedChunkSearchResult } from '@/components/chunk-preview/utils/reranker-sim'
 import { writeClientStorage } from '@/lib/client-storage'
+import { detachPromise } from '@/lib/utils'
 import {
   ORIGINAL_PREVIEW_MODE_STORAGE_KEY,
   getStoredOriginalPreviewMode,
@@ -924,7 +925,7 @@ export function ChunkList() {
                     variant="ghost"
                     size="sm"
                     className={chunkListToolbarButtonClass}
-                    onClick={() => void copySelectedChunk()}
+                    onClick={() => detachPromise(copySelectedChunk())}
                   >
                     {t('chunkList.actions.copySelected')}
                   </Button>

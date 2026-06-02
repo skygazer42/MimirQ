@@ -44,7 +44,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { connectorApi, datasetApi, documentApi, settingsApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { readClientStorage } from '@/lib/client-storage'
-import { cn, formatDate, formatFileSize } from '@/lib/utils'
+import { cn, detachPromise, formatDate, formatFileSize } from '@/lib/utils'
 import type { ConnectorRunOut, Dataset, DatasetIngestionStats, DocumentBatchUploadResponse, DocumentPipelineOptions } from '@/types'
 
 import { IngestionViewSwitch } from './view-switch'
@@ -826,7 +826,7 @@ export default function KnowledgeIngestionOperationPage() {
                 <Plus className="mr-2 size-4" />
                 新建数据集
               </Button>
-              <Button className="h-9 rounded-[1rem] bg-[linear-gradient(135deg,hsl(var(--primary)),hsl(var(--info)))] px-4 text-primary-foreground shadow-[0_12px_24px_hsl(var(--primary)/0.18)] hover:brightness-105" onClick={() => void uploadFiles('ingest')} disabled={!canStartIngest}>
+              <Button className="h-9 rounded-[1rem] bg-[linear-gradient(135deg,hsl(var(--primary)),hsl(var(--info)))] px-4 text-primary-foreground shadow-[0_12px_24px_hsl(var(--primary)/0.18)] hover:brightness-105" onClick={() => detachPromise(uploadFiles('ingest'))} disabled={!canStartIngest}>
                 {status === 'uploading' ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Play className="mr-2 size-4" />}
                 开始入库
               </Button>
@@ -1453,7 +1453,7 @@ function TaskListCard({
             aria-label="刷新入库任务列表"
             title="刷新入库任务列表"
             className={cn('size-7 rounded-[0.85rem] hover:bg-background/92', CONFIG_INPUT_CLASS)}
-            onClick={() => void onRefresh()}
+            onClick={() => detachPromise(onRefresh())}
           >
             <RefreshCw className="size-3.5" />
           </Button>
@@ -1497,7 +1497,7 @@ function TaskListCard({
                   </td>
                   <td className="px-2.5 py-1.5 text-muted-foreground">{formatDate(task.created_at)}</td>
                   <td className="px-2.5 py-1.5">
-                    <Button variant="ghost" className="h-7 rounded-[0.85rem] px-2 text-xs hover:bg-background/72" onClick={() => void onInspectTask(task)}>
+                    <Button variant="ghost" className="h-7 rounded-[0.85rem] px-2 text-xs hover:bg-background/72" onClick={() => detachPromise(onInspectTask(task))}>
                       查看
                     </Button>
                   </td>

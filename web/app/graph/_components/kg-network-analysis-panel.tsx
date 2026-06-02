@@ -33,6 +33,7 @@ import { OperationResultPanel } from '@/components/ops/operation-result-panel'
 import { kgApi, type KGNetworkEdge, type KGNetworkRequest } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import type { GraphData } from '@/lib/graph-parser'
+import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { detachPromise } from '@/lib/utils'
 
 type KgNetworkAnalysisPanelProps = Readonly<{
@@ -88,15 +89,11 @@ function toNetworkEdges(links: GraphData['links']): KGNetworkEdge[] {
 }
 
 function getNodeType(node: GraphData['nodes'][number]): string {
-  return String(node?.meta?.type ?? node?.type ?? '').trim() || '未知类型'
+  return toTrimmedPrimitiveString(node?.meta?.type ?? node?.type, '未知类型')
 }
 
 function getLinkType(link: GraphData['links'][number]): string {
-  return (
-    String(
-      link?.label ?? link?.predicate ?? link?.meta?.label ?? link?.kind ?? ''
-    ).trim() || '关系'
-  )
+  return toTrimmedPrimitiveString(link?.label ?? link?.predicate ?? link?.meta?.label ?? link?.kind, '关系')
 }
 
 export function KgNetworkAnalysisPanel({

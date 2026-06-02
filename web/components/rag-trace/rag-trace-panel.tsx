@@ -94,6 +94,11 @@ function formatDiffValue(value: unknown, maxLen = 160): string {
   }
 }
 
+function safeDisplayString(value: unknown, fallback = ''): string {
+  const formatted = formatDiffValue(value)
+  return formatted === '—' ? fallback : formatted
+}
+
 function getPrimaryScore(c: RagTraceCitation) {
   // Prefer rerank score when available.
   const v = c.rerank_score ?? c.retrieval_score ?? c.relevance_score ?? null
@@ -721,7 +726,7 @@ function stringifyInspectorValue(value: unknown, fallback = '—') {
   if (typeof value === 'string') return value.trim() || fallback
   if (typeof value === 'number') return Number.isFinite(value) ? String(value) : fallback
   if (typeof value === 'boolean') return value ? 'true' : 'false'
-  return fallback
+  return safeDisplayString(value, fallback)
 }
 
 function buildInspectorMetric(label: string, value: unknown, opts?: { formatter?: (value: unknown) => string | null }): PipelineInspectorMetric | null {
@@ -792,7 +797,8 @@ export function buildPipelineInspectorSections(trace: RagTrace | null, t: RagTra
             ? null
             : t("panel.inspector.retrieveCallout", {
                 status: hierarchyRecall.enabled ? t("panel.inspector.retrieveEnabled") : t("panel.inspector.retrieveDisabled"),
-                overfetch: hierarchyRecall.overfetch_factor == null ? '' : ` · overfetch=${hierarchyRecall.overfetch_factor}`,
+                overfetch:
+                  hierarchyRecall.overfetch_factor == null ? '' : ` · overfetch=${safeDisplayString(hierarchyRecall.overfetch_factor)}`,
               }),
         metrics,
         citations: citationSummary.top,
@@ -813,7 +819,7 @@ export function buildPipelineInspectorSections(trace: RagTrace | null, t: RagTra
         id,
         label: step.label,
         summary: t("panel.inspector.rerankSummary"),
-        callout: rerankMeta?.skip_reason ? t("panel.inspector.rerankSkipped", { reason: String(rerankMeta.skip_reason) }) : null,
+        callout: rerankMeta?.skip_reason ? t("panel.inspector.rerankSkipped", { reason: safeDisplayString(rerankMeta.skip_reason) }) : null,
         metrics,
         citations: citationSummary.top,
       }
@@ -1157,8 +1163,8 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
   const hierarchyRecall = jsonObjectField(mainQuery?.retriever_debug, 'hierarchy_recall')
   const rerankMeta = jsonObjectField(channels, 'rerank')
   const channelTiming = jsonObjectField(channels, 'timing')
-  const rerankSkipReason = rerankMeta?.skip_reason ? String(rerankMeta.skip_reason) : null
-  const rerankError = rerankMeta?.error ? String(rerankMeta.error) : null
+  const rerankSkipReason = rerankMeta?.skip_reason ? safeDisplayString(rerankMeta.skip_reason) : null
+  const rerankError = rerankMeta?.error ? safeDisplayString(rerankMeta.error) : null
   const requestId = String(selected?.request_id || '').trim()
   const diffCandidateOptions = React.useMemo(
     () => buildTraceDiffCandidateOptions(items, requestId, retrievalConfigHash),
@@ -2023,17 +2029,17 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                     <div className="flex flex-wrap items-center gap-2">
                       {channels.retrieval_mode ? (
                         <Badge variant="soft" className="text-[11px]">
-                          mode={String(channels.retrieval_mode)}
+                          mode={safeDisplayString(channels.retrieval_mode)}
                         </Badge>
                       ) : null}
                       {channels.fusion_strategy ? (
                         <Badge variant="soft" className="text-[11px]">
-                          fusion={String(channels.fusion_strategy)}
+                          fusion={safeDisplayString(channels.fusion_strategy)}
                         </Badge>
                       ) : null}
                       {channels.vector_backend ? (
                         <Badge variant="soft" className="text-[11px]">
-                          vec={String(channels.vector_backend)}
+                          vec={safeDisplayString(channels.vector_backend)}
                         </Badge>
                       ) : null}
                       {typeof channels.rrf_k === 'number' ? (
@@ -2043,17 +2049,17 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                       ) : null}
                       {channelTiming?.vector_ms == null ? null : (
                         <Badge variant="soft" className="text-[11px]">
-                          vector_ms={String(channelTiming.vector_ms)}
+                          vector_ms={safeDisplayString(channelTiming.vector_ms)}
                         </Badge>
                       )}
                       {channelTiming?.bm25_ms == null ? null : (
                         <Badge variant="soft" className="text-[11px]">
-                          bm25_ms={String(channelTiming.bm25_ms)}
+                          bm25_ms={safeDisplayString(channelTiming.bm25_ms)}
                         </Badge>
                       )}
                       {channelTiming?.fusion_ms == null ? null : (
                         <Badge variant="soft" className="text-[11px]">
-                          fusion_ms={String(channelTiming.fusion_ms)}
+                          fusion_ms={safeDisplayString(channelTiming.fusion_ms)}
                         </Badge>
                       )}
                     </div>
@@ -2072,7 +2078,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                         )}
                         {hierarchyRecall.family_aggregation ? (
                           <Badge variant="soft" className="text-[11px]">
-                            family_aggregation={String(hierarchyRecall.family_aggregation)}
+                            family_aggregation={safeDisplayString(hierarchyRecall.family_aggregation)}
                           </Badge>
                         ) : null}
                         {hierarchyRecall.tree_dedup == null ? null : (
@@ -2082,17 +2088,17 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                         )}
                         {hierarchyRecall.overfetch_factor == null ? null : (
                           <Badge variant="soft" className="text-[11px]">
-                            overfetch_factor={String(hierarchyRecall.overfetch_factor)}
+                            overfetch_factor={safeDisplayString(hierarchyRecall.overfetch_factor)}
                           </Badge>
                         )}
                         {hierarchyRecall.parent_depth == null ? null : (
                           <Badge variant="soft" className="text-[11px]">
-                            parent_depth={String(hierarchyRecall.parent_depth)}
+                            parent_depth={safeDisplayString(hierarchyRecall.parent_depth)}
                           </Badge>
                         )}
                         {hierarchyRecall.sibling_window == null ? null : (
                           <Badge variant="soft" className="text-[11px]">
-                            sibling_window={String(hierarchyRecall.sibling_window)}
+                            sibling_window={safeDisplayString(hierarchyRecall.sibling_window)}
                           </Badge>
                         )}
                         {hierarchyRecall.context_expansion_used == null ? null : (
@@ -2102,7 +2108,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                         )}
                         {hierarchyRecall.context_expansion_error ? (
                           <Badge variant="soft" className="text-[11px]">
-                            context_expansion_error={String(hierarchyRecall.context_expansion_error)}
+                            context_expansion_error={safeDisplayString(hierarchyRecall.context_expansion_error)}
                           </Badge>
                         ) : null}
                       </div>
@@ -2258,16 +2264,16 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                             <div className="min-w-0">
                               <div className="text-xs font-semibold text-foreground">{k}</div>
                               <div className="mt-0.5 text-[11px] text-muted-foreground">
-                                {box.enabled == null ? null : `enabled=${String(box.enabled)}`}
-                                {box.used == null ? null : ` · used=${String(box.used)}`}
-                                {box.filter_applied == null ? null : ` · filter=${String(box.filter_applied)}`}
-                                {box.index_enabled == null ? null : ` · index=${String(box.index_enabled)}`}
-                                {box.provider ? ` · provider=${String(box.provider)}` : null}
-                                {box.skipped_reason ? ` · skipped=${String(box.skipped_reason)}` : null}
+                                {box.enabled == null ? null : `enabled=${safeDisplayString(box.enabled)}`}
+                                {box.used == null ? null : ` · used=${safeDisplayString(box.used)}`}
+                                {box.filter_applied == null ? null : ` · filter=${safeDisplayString(box.filter_applied)}`}
+                                {box.index_enabled == null ? null : ` · index=${safeDisplayString(box.index_enabled)}`}
+                                {box.provider ? ` · provider=${safeDisplayString(box.provider)}` : null}
+                                {box.skipped_reason ? ` · skipped=${safeDisplayString(box.skipped_reason)}` : null}
                               </div>
                             </div>
                             <div className="shrink-0 text-xs font-medium text-muted-foreground">
-                              {box.candidates == null ? '—' : `${box.candidates}`}
+                              {box.candidates == null ? '—' : safeDisplayString(box.candidates, '—')}
                               {summary ? <span className="ml-2 text-[11px] text-foreground/70">hits {summary.matchCount}</span> : null}
                             </div>
                           </Panel>

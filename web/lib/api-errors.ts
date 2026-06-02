@@ -1,3 +1,5 @@
+import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
+
 type ErrorResponseLike = {
   error?: unknown
   message?: unknown
@@ -151,7 +153,7 @@ function extractHeaderRequestId(headers: unknown): string | undefined {
     record['x-request-id'.toLowerCase()] ??
     record['X-Request-ID'.toLowerCase()]
   if (raw == null) return undefined
-  return asNonEmptyString(String(raw))
+  return toTrimmedPrimitiveString(raw) || undefined
 }
 
 function extractHeaderRetryAfterSec(headers: unknown): number | undefined {
@@ -179,7 +181,7 @@ function extractConfigRequestId(headers: unknown): string | undefined {
     // ignore
   }
   const raw = record['X-Request-ID'] ?? record['x-request-id']
-  return raw == null ? undefined : asNonEmptyString(String(raw))
+  return toTrimmedPrimitiveString(raw) || undefined
 }
 
 export function extractAxiosRequestId(err: unknown): string | undefined {
@@ -246,11 +248,11 @@ export function toApiErrorInfo(err: unknown, fallbackMessage: string): ApiErrorI
 
   let message =
     extractBackendMessage(data) ||
-    (maybeError?.message ? String(maybeError.message) : '') ||
+    toTrimmedPrimitiveString(maybeError?.message) ||
     fallbackMessage
   const requestId = extractAxiosRequestId(err)
   const normalizedMessage = String(message || '').trim().toLowerCase()
-  const code = String(maybeError?.code || '').trim().toUpperCase()
+  const code = toTrimmedPrimitiveString(maybeError?.code).toUpperCase()
 
   if (
     !axiosResponse &&

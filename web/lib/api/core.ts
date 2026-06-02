@@ -8,6 +8,7 @@ import { API_TIMEOUT_MS, API_V1_BASE_URL } from '@/lib/env'
 import { tryRefreshOidcAccessToken } from '@/lib/oidc-session'
 import { createOpenApiAxiosClient } from '@/lib/openapi-request'
 import { applyPreferredLanguageAxiosHeader } from '@/lib/preferred-language'
+import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { generateRequestId } from '@/lib/request-id'
 
 type PrimitiveHeaderValue = string | number | boolean
@@ -71,7 +72,7 @@ type HtmlResponseError = Error & {
 function asApiClientError(error: unknown): ApiClientError {
   return error instanceof Error
     ? (error as ApiClientError)
-    : Object.assign(new Error(String(error || 'API request failed')), {
+    : Object.assign(new Error(toTrimmedPrimitiveString(error, 'API request failed')), {
         cause: error,
       }) as ApiClientError
 }

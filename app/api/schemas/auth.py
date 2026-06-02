@@ -32,7 +32,8 @@ class LoginRequest(BaseModel):
 
 class TokenResponse(BaseModel):
     access_token: str
-    token_type: str = "bearer"  # noqa: S105 - OAuth token type literal, not a credential.
+    # OAuth token type literal, not a credential.
+    token_type: str = "bearer"  # noqa: S105
     expires_in: int
 
 

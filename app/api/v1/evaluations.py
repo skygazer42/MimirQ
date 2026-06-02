@@ -54,6 +54,7 @@ from app.api.schemas.regression import (
 )
 from app.api.utils.response_headers import download_response_headers, set_download_content_disposition
 from app.core.config import settings
+from app.core.constants import NON_CRITICAL_EXCEPTION_LOG_MESSAGE
 from app.core.database import get_db
 from app.models.chat import Conversation
 from app.models.evaluation import (
@@ -293,12 +294,12 @@ def _finalize_reference_sources(
         try:
             doc_ids.append(UUID(str(src.get("document_id"))))
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
             continue
         try:
             chunk_ids.append(UUID(str(src.get("chunk_id"))))
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
             continue
 
     # ACL: all evidence documents must be readable.
@@ -1609,7 +1610,7 @@ async def generate_test_cases_from_documents(
                 try:
                     doc_ids.append(UUID(raw_doc))
                 except Exception:
-                    logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                    logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
                     continue
 
             doc_to_dataset: dict[str, UUID | None] = {}

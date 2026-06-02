@@ -1021,7 +1021,8 @@ async def retrieve_evidence(
     abstain_reason = primary.get("abstain_reason") or metrics.get("abstain_reason") or None
     has_evidence = bool(citations) and not abstain_triggered
 
-    selected_pass = "primary"  # noqa: S105 - retrieval pass label, not a credential.
+    # Retrieval pass label, not a credential.
+    selected_pass = "primary"  # noqa: S105
     fallback: dict[str, Any] | None = None
 
     # Optional: iterative fallback for evidence discovery.
@@ -1124,7 +1125,8 @@ async def retrieve_evidence(
         }
 
         if use_fallback:
-            selected_pass = "fallback"  # noqa: S105 - retrieval pass label, not a credential.
+            # Retrieval pass label, not a credential.
+            selected_pass = "fallback"  # noqa: S105
             citations = f_citations
             metrics = f_metrics
             query_for_retrieval = (fallback.get("query_for_retrieval") or query_for_retrieval or "").strip()

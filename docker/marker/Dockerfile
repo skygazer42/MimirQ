@@ -8,7 +8,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Minimal runtime dependencies for PDF/OCR conversion.
+# Minimal runtime dependencies for PDF/OCR conversion, followed by CPU-only
+# PyTorch and Marker. Keep this in one RUN layer to avoid stale intermediate
+# images and Sonar's consecutive-RUN warning.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
       ca-certificates \
@@ -17,12 +19,8 @@ RUN apt-get update && \
       ffmpeg \
       libglib2.0-0 \
       libgl1 && \
-    rm -rf /var/lib/apt/lists/*
-
-# Install CPU-only PyTorch first so Marker does not try to pull CUDA wheels.
-# Use the same download-r2 wheel URLs already proven in the main backend image;
-# the generic PyTorch CPU index intermittently fails SSL negotiation here.
-RUN pip install --upgrade pip && \
+    rm -rf /var/lib/apt/lists/* && \
+    pip install --upgrade pip && \
     pip install --retries 5 --timeout 120 \
       "torch @ https://download-r2.pytorch.org/whl/cpu/torch-2.10.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
       "torchvision @ https://download-r2.pytorch.org/whl/cpu/torchvision-0.25.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl" && \
@@ -30,9 +28,8 @@ RUN pip install --upgrade pip && \
       marker-pdf \
       fastapi \
       uvicorn \
-      python-multipart
-
-RUN useradd --create-home --shell /usr/sbin/nologin appuser && \
+      python-multipart && \
+    useradd --create-home --shell /usr/sbin/nologin appuser && \
     mkdir -p /home/appuser/.cache && \
     chown -R appuser:appuser /app /home/appuser/.cache
 

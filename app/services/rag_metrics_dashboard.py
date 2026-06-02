@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from app.core.config import settings
+from app.core.constants import NON_CRITICAL_EXCEPTION_LOG_MESSAGE
 from app.rag.core.logging import get_logger
 
 DEFAULT_METRICS_LOG_PATH = "./logs/rag_metrics.jsonl"
@@ -58,7 +59,7 @@ def _mean(values: Iterable[float]) -> float | None:
         try:
             fv = float(v)
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
             continue
         vals.append(fv)
     if not vals:
@@ -72,7 +73,7 @@ def _stddev(values: Iterable[float]) -> float | None:
         try:
             fv = float(v)
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
             continue
         if not math.isfinite(fv):
             continue
@@ -173,7 +174,7 @@ def _parse_jsonl_records(text: str) -> list[dict[str, Any]]:
         try:
             obj = json.loads(line)
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
             continue
         if isinstance(obj, dict):
             records.append(obj)
