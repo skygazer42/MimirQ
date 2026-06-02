@@ -39,7 +39,7 @@ describe('graph canvas accessibility source', () => {
     expect(src).toContain('const handleCanvasKeyDown = useCallback')
     expect(src).toContain("event.key !== 'Tab'")
     expect(src).toContain('event.preventDefault()')
-    expect(src).toContain("tabIndex={viewMode === '3d' && semanticNodes.length > 0 ? 0 : undefined}")
+    expect(src).toContain('tabIndex={0}')
     expect(src).toContain('onKeyDown={handleCanvasKeyDown}')
     expect(src).toContain('Shift + Tab 可反向切换')
   })

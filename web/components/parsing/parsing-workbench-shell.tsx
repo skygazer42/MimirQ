@@ -938,12 +938,13 @@ function ResizableParsingInspectorRail({
 
       {!inspectorCollapsed ? (
         <div
-          role="separator"
+          role="slider"
           aria-label="调整解析信息宽度"
           aria-orientation="vertical"
           aria-valuemax={MAX_PARSING_INSPECTOR_WIDTH}
           aria-valuemin={MIN_PARSING_INSPECTOR_WIDTH}
           aria-valuenow={inspectorWidth}
+          aria-valuetext={`${inspectorWidth}px`}
           tabIndex={0}
           className="absolute inset-y-4 left-[-6px] z-20 w-3 cursor-col-resize rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info/35 before:absolute before:inset-y-8 before:left-1/2 before:w-px before:-translate-x-1/2 before:rounded-full before:bg-border/65 before:transition-colors hover:before:bg-info/70 focus-visible:before:bg-info"
           onKeyDown={handleResizeKeyDown}

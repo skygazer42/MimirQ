@@ -19,6 +19,14 @@ RUN pip install --upgrade pip && pip install --extra-index-url https://download.
 
 COPY server.py ./server.py
 
+RUN useradd --create-home --shell /usr/sbin/nologin appuser && \
+    mkdir -p /home/appuser/.cache && \
+    chown -R appuser:appuser /app /home/appuser/.cache
+
+ENV HOME=/home/appuser
+
+USER appuser
+
 EXPOSE 2090
 
 CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "2090"]

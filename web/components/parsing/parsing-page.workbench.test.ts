@@ -274,7 +274,7 @@ describe('ParsingPage workbench scaffold', () => {
     expectSourceToContain(shellSrc, "{inspectorCollapsed ? <PanelRightOpen")
     expectSourceToContain(shellSrc, 'aria-label="调整解析信息宽度"')
     expectSourceToContain(shellSrc, 'onPointerDown={handleResizePointerDown}')
-    expectSourceToContain(shellSrc, 'role="separator"')
+    expectSourceToContain(shellSrc, 'role="slider"')
     expectSourceToContain(shellSrc, 'cursor-col-resize')
     expectSourceToContain(shellSrc, '!inspectorCollapsed ? (')
     expectSourceToContain(shellSrc, '<ParsingInspectorPanel')

@@ -55,3 +55,12 @@ def test_backend_dockerfile_allows_runtime_rapid_table_model_cache_for_magicpdf(
 
     assert "/opt/venv/lib/python3.11/site-packages/rapid_table/models" in dockerfile
     assert "/opt/venv/lib/python3.11/site-packages/rapid_table/models" in dockerfile.split("chown -R appuser:appuser", 1)[1]
+
+
+def test_backend_dockerfile_copies_only_runtime_paths() -> None:
+    dockerfile = _read("docker/Dockerfile")
+
+    assert "COPY . ." not in dockerfile
+    assert "COPY --chown=appuser:appuser app ./app" in dockerfile
+    assert "COPY --chown=appuser:appuser alembic ./alembic" in dockerfile
+    assert "COPY --chown=appuser:appuser docker/start_backend.sh ./docker/start_backend.sh" in dockerfile

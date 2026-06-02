@@ -49,7 +49,7 @@ services:
         aliases:
           - mimirq-marker
     volumes:
-      - marker_cache:/root/.cache
+      - marker_cache:/home/appuser/.cache
 
   # PaddleOCR-VL parser service (optional; heavyweight).
   # Then set `PADDLE_VL_ENABLED=true` and `PADDLE_VL_API_URL=http://mimirq-paddlevl:9030/convert` in the root .env.
@@ -202,7 +202,7 @@ services:
       OLMOCR_API_KEY: ${OLMOCR_API_KEY:-}
       OLMOCR_MODEL: ${OLMOCR_MODEL:-}
     volumes:
-      - olmocr_cache:/root/.cache
+      - olmocr_cache:/home/appuser/.cache
     networks:
       default:
         aliases:
@@ -243,7 +243,7 @@ services:
       MAGIC_PDF_ARTIFACT_ROOT: ${MAGIC_PDF_ARTIFACT_ROOT:-/var/lib/mimirq/magicpdf-artifacts}
     volumes:
       - mineru_cache:/opt/mimirq-model-cache:ro
-      - magicpdf_cache:/root/.cache
+      - magicpdf_cache:/home/appuser/.cache
     networks:
       default:
         aliases:

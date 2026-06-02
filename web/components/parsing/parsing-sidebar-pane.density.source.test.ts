@@ -14,7 +14,7 @@ describe('ParsingSidebarPane density', () => {
     expect(leftPanelSrc).toContain('const MAX_PARSING_LEFT_PANEL_WIDTH = 460')
     expect(leftPanelSrc).toContain('style={collapsed ? { width: 0 } : { width: sidebarWidth }}')
     expect(leftPanelSrc).toContain('onPointerDown={handleResizePointerDown}')
-    expect(leftPanelSrc).toContain('role="separator"')
+    expect(leftPanelSrc).toContain('role="slider"')
     expect(leftPanelSrc).toContain('cursor-col-resize')
     expect(leftPanelSrc).toContain('transition-[opacity,background-color,color,box-shadow]')
     expect(leftPanelSrc).toContain('opacity-0 hover:opacity-100 focus-visible:opacity-100')
