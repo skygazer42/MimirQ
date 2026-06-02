@@ -1,4 +1,5 @@
 import type {
+  Citation,
   EvidenceRetrieveRequest,
   EvidenceRetrieveResponse,
   JsonObject,
@@ -14,7 +15,6 @@ import { z } from 'zod'
 
 import { API_LONG_TIMEOUT_MS } from '@/lib/env'
 import { apiClient, openapiRequest } from '@/lib/api/core'
-import type { Citation } from '@/types'
 
 export interface ClipImageIndexRequest {
   dataset_id: string

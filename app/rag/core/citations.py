@@ -293,9 +293,9 @@ def _matched_terms_in_window(window: str, terms: list[str]) -> list[str]:
         if not term:
             continue
         term_s = str(term)
-        if term_s.isascii() and term_s.casefold() in folded:
-            matched.append(term_s)
-        elif not term_s.isascii() and term_s in window:
+        haystack = folded if term_s.isascii() else window
+        needle = term_s.casefold() if term_s.isascii() else term_s
+        if needle in haystack:
             matched.append(term_s)
     return matched
 

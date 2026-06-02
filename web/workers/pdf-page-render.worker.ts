@@ -14,8 +14,6 @@ type PageCanvasBinding = {
 }
 
 class WorkerCanvasFactory {
-  constructor(_: { enableHWA?: boolean; ownerDocument?: Document | undefined } = {}) {}
-
   create(width: number, height: number) {
     const canvas = this._createCanvas(width, height)
     return {
@@ -48,8 +46,6 @@ class WorkerCanvasFactory {
 }
 
 class WorkerFilterFactory {
-  constructor(_: { docId?: string; ownerDocument?: Document | undefined } = {}) {}
-
   addFilter() {
     return 'none'
   }
@@ -70,7 +66,9 @@ class WorkerFilterFactory {
     return 'none'
   }
 
-  destroy() {}
+  destroy() {
+    return undefined
+  }
 }
 
 let pdfLoadingTask: PDFDocumentLoadingTask | null = null

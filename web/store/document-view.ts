@@ -64,8 +64,8 @@ interface DocumentViewState {
 
 const STORAGE_KEY = 'mimirq_document_view_v1'
 const DEFAULT_ACTIVE_TAB: DocumentViewTab = 'preview'
-const VALID_TABS: DocumentViewTab[] = ['preview', 'text', 'chunks']
-const VALID_TEXT_MODES: DocumentTextMode[] = ['cleaned', 'original']
+const VALID_TABS = new Set<string>(['preview', 'text', 'chunks'])
+const VALID_TEXT_MODES = new Set<string>(['cleaned', 'original'])
 
 const noopStorage = {
   getItem: (_name: string) => null,
@@ -102,12 +102,16 @@ function normalizeChunkId(chunkId: string | null | undefined): string | null {
   return normalized || null
 }
 
+function isDocumentViewTab(tab: unknown): tab is DocumentViewTab {
+  return typeof tab === 'string' && VALID_TABS.has(tab)
+}
+
 function sanitizeDocumentViewTab(tab: unknown): DocumentViewTab | undefined {
-  return typeof tab === 'string' && VALID_TABS.includes(tab as DocumentViewTab) ? (tab as DocumentViewTab) : undefined
+  return isDocumentViewTab(tab) ? tab : undefined
 }
 
 function sanitizeSourceContext(sourceContext: DocumentViewSourceContext | null | undefined): DocumentViewSourceContext | null {
-  if (!sourceContext || sourceContext.kind !== 'chat-citation') return null
+  if (sourceContext?.kind !== 'chat-citation') return null
 
   const messageId = String(sourceContext.messageId || '').trim()
   const documentId = normalizeDocumentId(sourceContext.documentId)
@@ -166,11 +170,11 @@ function sanitizeResumeTarget(target: DocumentViewResumeTarget | null | undefine
 function sanitizeDocumentLayoutPatch(patch: Partial<DocumentViewLayout>): Partial<DocumentViewLayout> {
   const next: Partial<DocumentViewLayout> = {}
 
-  if (patch.activeTab && VALID_TABS.includes(patch.activeTab)) next.activeTab = patch.activeTab
+  if (patch.activeTab && VALID_TABS.has(patch.activeTab)) next.activeTab = patch.activeTab
   if (typeof patch.isExpanded === 'boolean') next.isExpanded = patch.isExpanded
   const panelWidthPx = sanitizePanelWidthPx(patch.panelWidthPx)
   if (panelWidthPx !== undefined) next.panelWidthPx = panelWidthPx
-  if (patch.textMode && VALID_TEXT_MODES.includes(patch.textMode)) next.textMode = patch.textMode
+  if (patch.textMode && VALID_TEXT_MODES.has(patch.textMode)) next.textMode = patch.textMode
 
   const chunksScrollTop = sanitizeScrollTop(patch.chunksScrollTop)
   if (chunksScrollTop !== undefined) next.chunksScrollTop = chunksScrollTop
@@ -186,7 +190,7 @@ function mergeDocumentLayout(
   patch: Partial<DocumentViewLayout>
 ): DocumentViewLayout | null {
   const next = {
-    ...(current || {}),
+    ...(current ?? {}),
     ...sanitizeDocumentLayoutPatch(patch),
   }
 

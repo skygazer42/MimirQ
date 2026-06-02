@@ -96,6 +96,11 @@ type ActiveFeedbackFilterBadge = {
 
 const FEEDBACK_PAGE_SIZE = 3
 const FEEDBACK_RATINGS: readonly FeedbackRating[] = [1, 2, 3, 4, 5]
+const FEEDBACK_RATING_SET = new Set<number>(FEEDBACK_RATINGS)
+
+function isFeedbackRating(value: number): value is FeedbackRating {
+  return FEEDBACK_RATING_SET.has(value)
+}
 
 const FEEDBACK_RANGE_DAYS: Record<Exclude<FeedbackTimeRange, 'all'>, number> = {
   '7d': 7,
@@ -960,8 +965,8 @@ export default function FeedbackTriagePage() {
     for (const it of items) {
       s.total++
       const r = Number(it.rating) || 0
-      if (FEEDBACK_RATINGS.includes(r as FeedbackRating)) {
-        s[r as FeedbackRating] += 1
+      if (isFeedbackRating(r)) {
+        s[r] += 1
       }
       const kind = classifyFeedback(r)
       if (kind === 'thumbs_up') s.upvotes++

@@ -1093,8 +1093,7 @@ export default function KnowledgePage() {
         // Legacy source-test anchor:
         // rightPanel={(activeTab === 'retrieval' || peekingDocId || showTaskCenter) ? (
         leftPanel={
-          !desktopScopeCollapsed ? (
-            activeTab !== 'settings' ? (
+          desktopScopeCollapsed || activeTab === 'settings' ? null : (
               <aside
               className={cn(
                 'flex h-full flex-col overflow-hidden rounded-2xl border',
@@ -1123,8 +1122,7 @@ export default function KnowledgePage() {
                 setDatasetScope={handleDatasetScopeChange}
               />
               </aside>
-            ) : null
-          ) : null
+          )
         }
         rightPanel={
           activeTab === 'retrieval' ||

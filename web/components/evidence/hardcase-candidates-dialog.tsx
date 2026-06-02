@@ -114,7 +114,7 @@ export function HardcaseCandidatesDialog({
         </div>
       </div>
     )
-  } else if (!(hardcaseRes.candidates || []).length) {
+  } else if ((hardcaseRes.candidates?.length ?? 0) === 0) {
     discoveryContent = (
       <div className="space-y-3 py-1">
         <Panel className="p-3">

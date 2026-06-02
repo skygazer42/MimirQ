@@ -936,7 +936,7 @@ function ResizableParsingInspectorRail({
         {inspectorCollapsed ? <PanelRightOpen className="size-3.5" /> : <PanelRightClose className="size-3.5" />}
       </Button>
 
-      {!inspectorCollapsed ? (
+      {inspectorCollapsed ? null : (
         <div
           role="slider"
           aria-label="调整解析信息宽度"
@@ -950,7 +950,7 @@ function ResizableParsingInspectorRail({
           onKeyDown={handleResizeKeyDown}
           onPointerDown={handleResizePointerDown}
         />
-      ) : null}
+      )}
 
       <div
         className={cn(
@@ -1113,8 +1113,7 @@ export function ParsingWorkbenchShell({
   )
   const shouldAutoRestoreLibraryPdf =
     !activeFile &&
-    activeLibraryFile != null &&
-    activeLibraryFile.status === 'parsed' &&
+    activeLibraryFile?.status === 'parsed' &&
     activeLibraryMarkdownAvailable &&
     filename.toLowerCase().endsWith('.pdf')
 
