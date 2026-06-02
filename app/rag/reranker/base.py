@@ -22,6 +22,7 @@ import httpx
 import numpy as np
 
 from app.core.config import settings
+from app.core.http_env import httpx_trust_env
 from app.rag.core.logging import get_logger
 from app.rag.reranker.types import RerankCandidate, RerankResult
 from app.services.metrics_logger import log_metrics
@@ -397,6 +398,7 @@ class APIReranker(BaseReranker):
         max_retries = max(0, int(settings.RERANKER_API_MAX_RETRIES or 0))
         backoff = max(0.0, float(settings.RERANKER_API_RETRY_BACKOFF_SEC or 0.0))
         max_concurrency = max(1, int(settings.RERANKER_API_MAX_CONCURRENCY or 1))
+        trust_env = httpx_trust_env(logger=logger)
 
         batches: list[tuple[int, list[str]]] = []
         for start in range(0, len(documents), batch_size):
@@ -416,7 +418,7 @@ class APIReranker(BaseReranker):
                     self._rate_limit_sync()
                     payload = self._build_payload(query, batch_docs, max_length)
                     if client is None:
-                        with httpx.Client(headers=self.headers, timeout=timeout_sec) as local_client:
+                        with httpx.Client(headers=self.headers, timeout=timeout_sec, trust_env=trust_env) as local_client:
                             resp = local_client.post(self.url, json=payload)
                             resp.raise_for_status()
                             result: dict[str, Any] = resp.json()
@@ -451,7 +453,7 @@ class APIReranker(BaseReranker):
 
         try:
             if max_concurrency <= 1 or len(batches) <= 1:
-                with httpx.Client(headers=self.headers, timeout=timeout_sec) as client:
+                with httpx.Client(headers=self.headers, timeout=timeout_sec, trust_env=trust_env) as client:
                     for _, batch_docs in batches:
                         all_scores.extend(post_one(batch_docs, client=client))
             else:

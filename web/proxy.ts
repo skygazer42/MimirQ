@@ -28,7 +28,7 @@ export function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     {
-      source: String.raw`/((?!api|_next|.*\..*).*)`,
+      source: '/((?!api|_next|.*\\..*).*)',
       missing: [
         { type: 'header', key: 'next-router-prefetch' },
         { type: 'header', key: 'purpose', value: 'prefetch' },

@@ -3,6 +3,83 @@ from __future__ import annotations
 import pytest
 
 
+def test_openai_reranker_payload_omits_provider_specific_max_chunks_by_default() -> None:
+    from app.rag.reranker.openai import OpenAIReranker
+
+    reranker = OpenAIReranker(
+        model_name="bge-reranker-large",
+        api_key="test-key",
+        base_url="http://example.test/v1/rerank",
+    )
+
+    payload = reranker._build_payload("q", ["a", "b"], max_length=512)  # noqa: SLF001
+
+    assert payload == {
+        "model": "bge-reranker-large",
+        "query": "q",
+        "documents": ["a", "b"],
+    }
+
+
+def test_openai_reranker_payload_can_opt_into_max_chunks() -> None:
+    from app.rag.reranker.openai import OpenAIReranker
+
+    reranker = OpenAIReranker(
+        model_name="bge-reranker-large",
+        api_key="test-key",
+        base_url="http://example.test/v1/rerank",
+        parameters={"include_max_chunks_per_doc": True},
+    )
+
+    payload = reranker._build_payload("q", ["a"], max_length=256)  # noqa: SLF001
+
+    assert payload["max_chunks_per_doc"] == 256
+
+
+def test_openai_reranker_ignores_unsupported_socks_proxy_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.rag.reranker.base as base_mod
+    from app.rag.reranker.openai import OpenAIReranker
+
+    captured: list[dict[str, object]] = []
+
+    class _Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {"results": [{"index": 0, "relevance_score": 2.0}]}
+
+    class _Client:
+        def __init__(self, **kwargs: object) -> None:
+            captured.append(dict(kwargs))
+
+        def __enter__(self) -> "_Client":
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def post(self, *_args: object, **_kwargs: object) -> _Response:
+            return _Response()
+
+    monkeypatch.setenv("ALL_PROXY", "socks://127.0.0.1:35983/")
+    monkeypatch.setattr(base_mod.httpx, "Client", _Client, raising=True)
+
+    reranker = OpenAIReranker(
+        model_name="bge-reranker-large",
+        api_key="test-key",
+        base_url="http://example.test/v1/rerank",
+    )
+
+    scores = reranker.compute_score("q", ["doc"], normalize=False)
+
+    assert scores == [2.0]
+    assert captured
+    assert captured[0]["trust_env"] is False
+
+
 def test_colbert_factory_falls_back_to_deterministic_when_hf_not_ready(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
