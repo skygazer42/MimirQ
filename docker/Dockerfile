@@ -101,17 +101,21 @@ RUN mkdir -p uploads logs vector_faiss vector_chroma chroma_db /data/uploads \
     /opt/venv/lib/python3.11/site-packages/rapid_table/models \
     && adduser --disabled-password --gecos "" --home /app appuser \
     && chown -R appuser:appuser \
-        /app \
+        uploads \
+        logs \
+        vector_faiss \
+        vector_chroma \
+        chroma_db \
         /data \
         /opt/venv/lib/python3.11/site-packages/rapidocr/models \
         /opt/venv/lib/python3.11/site-packages/rapid_table/models
 
 # 复制运行时需要的应用路径，避免把构建上下文整体带入镜像。
-COPY --chown=appuser:appuser app ./app
-COPY --chown=appuser:appuser alembic ./alembic
-COPY --chown=appuser:appuser config ./config
-COPY --chown=appuser:appuser alembic.ini main.py ./
-COPY --chown=appuser:appuser docker/start_backend.sh ./docker/start_backend.sh
+COPY app ./app
+COPY alembic ./alembic
+COPY config ./config
+COPY alembic.ini main.py ./
+COPY docker/start_backend.sh ./docker/start_backend.sh
 
 USER appuser
 
