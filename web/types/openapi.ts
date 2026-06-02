@@ -5512,7 +5512,7 @@ export interface paths {
         put?: never;
         /**
          * Create Connector Run
-         * @description Create a connector run (currently supports url_batch).
+         * @description Create a connector run.
          *
          *     Requires dataset write permission.
          */
