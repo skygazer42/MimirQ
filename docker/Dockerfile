@@ -95,9 +95,6 @@ ENV PATH="/opt/venv/bin:$PATH" \
 
 COPY --from=builder /opt/venv /opt/venv
 
-# 复制应用代码
-COPY . .
-
 # 创建必要的目录
 RUN mkdir -p uploads logs vector_faiss vector_chroma chroma_db /data/uploads \
     /opt/venv/lib/python3.11/site-packages/rapidocr/models \
@@ -108,6 +105,13 @@ RUN mkdir -p uploads logs vector_faiss vector_chroma chroma_db /data/uploads \
         /data \
         /opt/venv/lib/python3.11/site-packages/rapidocr/models \
         /opt/venv/lib/python3.11/site-packages/rapid_table/models
+
+# 复制运行时需要的应用路径，避免把构建上下文整体带入镜像。
+COPY --chown=appuser:appuser app ./app
+COPY --chown=appuser:appuser alembic ./alembic
+COPY --chown=appuser:appuser config ./config
+COPY --chown=appuser:appuser alembic.ini main.py ./
+COPY --chown=appuser:appuser docker/start_backend.sh ./docker/start_backend.sh
 
 USER appuser
 

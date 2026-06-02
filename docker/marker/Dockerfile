@@ -32,6 +32,14 @@ RUN pip install --upgrade pip && \
       uvicorn \
       python-multipart
 
+RUN useradd --create-home --shell /usr/sbin/nologin appuser && \
+    mkdir -p /home/appuser/.cache && \
+    chown -R appuser:appuser /app /home/appuser/.cache
+
+ENV HOME=/home/appuser
+
+USER appuser
+
 EXPOSE 2080
 
 CMD ["marker_server", "--host", "0.0.0.0", "--port", "2080"]

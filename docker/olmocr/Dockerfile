@@ -17,8 +17,15 @@ RUN python3 -m pip install -U pip && python3 -m pip install --extra-index-url ht
 
 COPY server.py ./server.py
 
+RUN useradd --create-home --shell /usr/sbin/nologin appuser && \
+    mkdir -p /home/appuser/.cache && \
+    chown -R appuser:appuser /app /home/appuser/.cache
+
+ENV HOME=/home/appuser
+
+USER appuser
+
 EXPOSE 2085
 
 # Override upstream ENTRYPOINT (often /bin/bash) so this container runs as a service.
 ENTRYPOINT ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "2085"]
-

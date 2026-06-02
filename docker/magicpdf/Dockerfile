@@ -33,6 +33,14 @@ RUN python -m pip install --upgrade pip setuptools wheel && \
 
 COPY server.py ./server.py
 
+RUN useradd --create-home --shell /usr/sbin/nologin appuser && \
+    mkdir -p /home/appuser/.cache /var/lib/mimirq/magicpdf-artifacts && \
+    chown -R appuser:appuser /app /home/appuser/.cache /var/lib/mimirq
+
+ENV HOME=/home/appuser
+
+USER appuser
+
 EXPOSE 2095
 
 CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "2095"]

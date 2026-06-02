@@ -7,12 +7,16 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-USER root
-
 COPY requirements.txt ./requirements.txt
 RUN python -m pip install --no-cache-dir -r requirements.txt
 
 COPY server.py ./server.py
+
+RUN id paddleocr >/dev/null 2>&1 || useradd --create-home --shell /usr/sbin/nologin paddleocr && \
+    mkdir -p /home/paddleocr/.paddlex && \
+    chown -R paddleocr:paddleocr /app /home/paddleocr
+
+USER paddleocr
 
 EXPOSE 9030
 

@@ -358,7 +358,7 @@ def _aggregate_governance_audit(
     valid_metadatas = _metadata_rows(metadatas)
     docs_changed = 0
     docs_dropped = 0
-    audit_totals = {name: 0 for name, _key in _GOVERNANCE_AUDIT_TOTAL_KEYS}
+    audit_totals = dict.fromkeys((name for name, _key in _GOVERNANCE_AUDIT_TOTAL_KEYS), 0)
 
     persisted_docs = 0
     persisted_truncated_docs = 0

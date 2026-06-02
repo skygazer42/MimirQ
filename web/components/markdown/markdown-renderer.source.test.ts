@@ -16,4 +16,13 @@ describe('markdown renderer source', () => {
     expect(src).not.toContain("searchParams.set('token'")
     expect(src).not.toContain("searchParams.set('access_token'")
   })
+
+  it('renders heading children explicitly instead of self-closing heading tags', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'markdown-renderer.tsx'), 'utf8')
+
+    for (const level of [1, 2, 3, 4, 5, 6]) {
+      expect(src).toContain(`return <h${level} {...props}>{children}</h${level}>`)
+      expect(src).not.toContain(`return <h${level} {...props} />`)
+    }
+  })
 })
