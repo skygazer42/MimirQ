@@ -238,7 +238,7 @@ export function buildFallbackAssistantMessage({
     citations: response.citations || [],
     steps: [],
     message_metadata: {
-      ...(response.metrics ?? {}),
+      ...response.metrics,
       request_id: response.request_id,
       total_tokens: response.total_tokens,
       total_chars: response.total_chars,

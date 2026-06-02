@@ -189,10 +189,8 @@ function mergeDocumentLayout(
   current: DocumentViewLayout | undefined,
   patch: Partial<DocumentViewLayout>
 ): DocumentViewLayout | null {
-  const next = {
-    ...(current ?? {}),
-    ...sanitizeDocumentLayoutPatch(patch),
-  }
+  const sanitizedPatch = sanitizeDocumentLayoutPatch(patch)
+  const next = current ? { ...current, ...sanitizedPatch } : { ...sanitizedPatch }
 
   return Object.keys(next).length > 0 ? next : null
 }
