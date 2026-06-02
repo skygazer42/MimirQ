@@ -18,12 +18,14 @@ class OpenAIReranker(APIReranker):
         documents: list[str],
         max_length: int,
     ) -> dict[str, Any]:
-        return {
+        payload: dict[str, Any] = {
             "model": self.model,
             "query": query,
             "documents": documents,
-            "max_chunks_per_doc": max_length,
         }
+        if self.parameters.get("include_max_chunks_per_doc"):
+            payload["max_chunks_per_doc"] = max_length
+        return payload
 
     def _extract_results(self, result: dict[str, Any]) -> list[dict[str, Any]]:
         return list(result.get("results", []))
