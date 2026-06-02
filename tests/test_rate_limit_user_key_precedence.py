@@ -82,3 +82,15 @@ async def test_get_client_key_jwt_mode_ignores_x_user_id_without_token(monkeypat
     )
 
     assert await rl.get_client_key(req) == "tenant:tenant-1:ip:10.0.0.9"
+
+
+@pytest.mark.asyncio
+async def test_get_client_key_uses_unknown_for_blank_real_ip(monkeypatch):
+    import app.api.middleware.rate_limit as rl
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
+
+    req = _make_request({"X-Real-IP": "   "})
+
+    assert await rl.get_client_key(req) == "ip:unknown"

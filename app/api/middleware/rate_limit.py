@@ -260,7 +260,7 @@ def _client_ip_from_request(request: Request) -> str:
 
     real_ip = request.headers.get("X-Real-IP")
     if real_ip:
-        return (real_ip or "").strip()
+        return real_ip.strip() or "unknown"
     if request.client:
         return request.client.host
     return "unknown"
