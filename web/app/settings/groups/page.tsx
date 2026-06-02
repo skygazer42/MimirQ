@@ -64,6 +64,7 @@ import {
 import { queryKeys } from '@/lib/query-keys'
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50] as const
+type PageSizeOption = (typeof PAGE_SIZE_OPTIONS)[number]
 const GROUP_PAGE_LIST_PARAMS = { limit: 500 } as const
 const OUTLINE_BUTTON =
   'h-9 rounded-xl border-slate-200 bg-card px-3.5 text-[12px] font-semibold text-slate-700 shadow-sm hover:bg-slate-50'
@@ -75,6 +76,10 @@ const CARD_CLASS =
   'rounded-[20px] border border-slate-200/80 bg-card/92 shadow-[0_18px_44px_rgba(15,23,42,0.06)]'
 const ICON_BUTTON =
   'size-7 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+
+function isPageSizeOption(value: number): value is PageSizeOption {
+  return PAGE_SIZE_OPTIONS.includes(value as PageSizeOption)
+}
 
 type SummaryTone = 'indigo' | 'blue' | 'green' | 'slate'
 
@@ -443,16 +448,12 @@ function SettingsGroupsPageContent() {
               </div>
               <Select
                 value={String(pageSize)}
-                onValueChange={(value) => {
-                  const next = Number(value)
-                  if (
-                    PAGE_SIZE_OPTIONS.includes(
-                      next as (typeof PAGE_SIZE_OPTIONS)[number]
-                    )
-                  ) {
-                    setPageSize(next as (typeof PAGE_SIZE_OPTIONS)[number])
-                  }
-                }}
+	                onValueChange={(value) => {
+	                  const next = Number(value)
+	                  if (isPageSizeOption(next)) {
+	                    setPageSize(next)
+	                  }
+	                }}
               >
                 <SelectTrigger className="h-9 w-[122px] rounded-xl border-slate-200 bg-card text-[13px] font-medium shadow-sm">
                   <SelectValue />

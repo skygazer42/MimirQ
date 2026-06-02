@@ -225,7 +225,7 @@ export const pipelineApi = {
     const data = await openapiRequest({
       path: '/api/v1/pipeline/governance-profiles',
       method: 'post',
-      body: body as unknown as GovernanceProfileCreateBody,
+      body,
     })
     return normalizeGovernanceProfileOut(data)
   },

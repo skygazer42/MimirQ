@@ -146,7 +146,7 @@ function getQuarantineFooterMessage({
 function getUserMeta(doc: Document): UserMetadata | null {
   const meta = doc.metadata
   const user = getRecordField(meta, 'user')
-  return user ? (user as UserMetadata) : null
+  return user || null
 }
 
 function isReviewed(doc: Document): boolean {

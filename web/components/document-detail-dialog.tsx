@@ -446,7 +446,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       toast.error(msg)
       return 'failed'
     }
-  }, 'idle' as SaveActionState)
+  }, 'idle')
 
   const canSaveTags = hasPendingTagChanges && !isSavingTags
 
@@ -607,7 +607,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       toast.error(msg)
       return 'failed'
     }
-  }, 'idle' as SaveActionState)
+  }, 'idle')
 
   const canSaveLifecycle = lifecycleEditing && !isSavingLifecycle && !lifecycleValidationError && lifecycleHasChanges
 
@@ -916,7 +916,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       toast.error(formatApiError(err, t('errors.updateAccessFailed')))
       return 'failed'
     }
-  }, 'idle' as SaveActionState)
+  }, 'idle')
 
   const handleVersionsDialogOpenChange = useCallback((next: boolean) => {
     setVersionsDialogOpen(next)

@@ -58,7 +58,7 @@ function isJsonObject(value: unknown): value is JsonObject {
 }
 
 function querysetRunItem(value: unknown): QuerysetHealthRunItem {
-  return isJsonObject(value) ? (value as QuerysetHealthRunItem) : {}
+  return isJsonObject(value) ? value : {}
 }
 function formatTs(tsMs: number) {
   try {

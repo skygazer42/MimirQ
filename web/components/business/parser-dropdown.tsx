@@ -108,7 +108,7 @@ export function ParserDropdown({ value, onChange, className, filename, compact =
   // 点击外部关闭
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+      if (event.target instanceof Node && dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setIsOpen(false)
       }
     }

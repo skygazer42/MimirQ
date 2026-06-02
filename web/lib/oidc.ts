@@ -303,7 +303,7 @@ export async function completeOidcLogin(params: { code: string; state: string })
           originalLower.startsWith('oidc_token_exchange_failed_'))
       throw new Error((preferServer ? msg : originalMsg) || msg || `oidc_server_exchange_failed_${serverRes.status}`)
     }
-    data = serverData as OidcTokenResponse
+    data = serverData
   }
 
   const accessToken = String(data?.access_token || '').trim()

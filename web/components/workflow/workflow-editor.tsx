@@ -55,7 +55,7 @@ function toFiniteNumber(value: unknown, fallback: number): number {
 }
 
 function getWorkflowLayout(value: JsonRecord | null | undefined): WorkflowLayout {
-  return isRecord(value) ? (value as WorkflowLayout) : {}
+  return isRecord(value) ? value : {}
 }
 
 function buildEdgeId(source: string, target: string, index: number): string {
