@@ -22,6 +22,7 @@ import SpriteText from "three-spritetext"
 import type { GraphEndpointRef, GraphLinkLike, GraphNodeLike } from "@/app/graph/graph-page-utils"
 import { getCssHslColor } from "@/lib/css-vars"
 import { buildGraphLinkProvenanceTooltipHtml } from "@/lib/graph-provenance"
+import { toTrimmedPrimitiveString } from "@/lib/primitive-text"
 import { GraphLoadingIndicator } from "./graph-loading-indicator"
 import {
   buildTypeColorMap,
@@ -584,7 +585,7 @@ export const KnowledgeGraph3D = forwardRef<KnowledgeGraph3DRef, ForceGraph3DProp
         linkThreeObject={
           allowLinkLabelSprites
             ? (link: GraphLinkDatum) => {
-                const label = String(link?.label ?? link?.predicate ?? link?.type ?? '').trim()
+                const label = toTrimmedPrimitiveString(link?.label ?? link?.predicate ?? link?.type)
                 if (!label) return new Group()
 
                 const kind = getLinkKind(link)

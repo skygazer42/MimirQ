@@ -10,6 +10,7 @@ import { formatApiError } from '@/lib/api-errors'
 import { getParserLabel } from '@/lib/parser-options'
 import { resolveParserBackendForFilename } from '@/lib/parser-compat'
 import { restoreParsingRunFromMarkdown } from '@/lib/parsing-run-restore'
+import { detachPromise } from '@/lib/utils'
 import { type ParsedFileData } from '@/store/use-parsed-files-store'
 import { type FileStatus } from '@/components/ui/file-queue-item'
 
@@ -341,7 +342,7 @@ export function useParsingRunActions({
     if (!autoParseFileId) return
     const id = autoParseFileId
     setAutoParseFileId(null)
-    void parseFile(id)
+    detachPromise(parseFile(id))
   }, [autoParseFileId, parseFile, setAutoParseFileId])
 
   const parseAllPending = useCallback(async () => {

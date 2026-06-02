@@ -23,6 +23,7 @@ import requests
 from langchain_core.documents import Document
 
 from app.core.config import settings
+from app.core.constants import NON_CRITICAL_EXCEPTION_LOG_MESSAGE
 from app.rag.core.logging import get_logger
 
 logger = get_logger("parsing.deepseek_ocr")
@@ -150,7 +151,7 @@ class DeepSeekOCRParser:
                 try:
                     extracted = doc.extract_image(xref) or {}
                 except Exception:
-                    logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                    logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
                     continue
                 raw = extracted.get("image")
                 if not raw:
@@ -165,7 +166,7 @@ class DeepSeekOCRParser:
                     try:
                         raw_path.write_bytes(raw)
                     except Exception:
-                        logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                        logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
                         continue
 
                 # Alias for jpg/jpeg to cover both reference styles.
@@ -444,7 +445,7 @@ class DeepSeekOCRParser:
             try:
                 dest_path.relative_to(images_dir_resolved)
             except Exception:
-                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
                 continue
             if dest_path.exists():
                 continue
@@ -452,7 +453,7 @@ class DeepSeekOCRParser:
             try:
                 dest_path.parent.mkdir(parents=True, exist_ok=True)
             except Exception:
-                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
                 continue
 
             prefer = "jpg" if ext in {".jpg", ".jpeg"} else "png"

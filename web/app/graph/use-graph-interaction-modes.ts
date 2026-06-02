@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo } from 'react'
 import type { LayoutMode } from '@/components/graph/graph-viewer'
 import { findShortestPath } from '@/lib/graph-algorithms'
 import type { GraphData } from '@/lib/graph-parser'
+import { detachPromise } from '@/lib/utils'
 import type {
   KGEntityDetailResponse,
   KGEventDetailResponse,
@@ -457,7 +458,7 @@ export function useGraphInteractionModes({
       setSelectedNode(null)
 
       globalThis.window.requestAnimationFrame(() => {
-        void animateTrace(built.steps, built.graph)
+        detachPromise(animateTrace(built.steps, built.graph))
       })
       return
     }
@@ -477,7 +478,7 @@ export function useGraphInteractionModes({
     setIsDetailOpen(false)
     setSelectedNode(null)
 
-    void animateTrace(steps)
+    detachPromise(animateTrace(steps))
   }, [
     animateTrace,
     displayGraphData,
@@ -551,7 +552,7 @@ export function useGraphInteractionModes({
     const next = !includeEntityLinks
     setIncludeEntityLinks(next)
     if (dataSource === 'live') {
-      void loadInitialData('live', { includeEntityLinks: next })
+      detachPromise(loadInitialData('live', { includeEntityLinks: next }))
     }
   }, [dataSource, includeEntityLinks, loadInitialData, setIncludeEntityLinks])
 
@@ -559,7 +560,7 @@ export function useGraphInteractionModes({
     const next = !includeRelationLinks
     setIncludeRelationLinks(next)
     if (dataSource === 'live') {
-      void loadInitialData('live', { includeRelationLinks: next })
+      detachPromise(loadInitialData('live', { includeRelationLinks: next }))
     }
   }, [dataSource, includeRelationLinks, loadInitialData, setIncludeRelationLinks])
 
@@ -569,7 +570,7 @@ export function useGraphInteractionModes({
     const next = options[(idx + 1) % options.length] || 2
     setMinSharedEvents(next)
     if (dataSource === 'live') {
-      void loadInitialData('live', { minSharedEvents: next })
+      detachPromise(loadInitialData('live', { minSharedEvents: next }))
     }
   }, [dataSource, loadInitialData, minSharedEvents, setMinSharedEvents])
 

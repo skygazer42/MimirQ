@@ -142,7 +142,8 @@ _BUILTIN_GOVERNANCE_BY_KEY = {p.key: p for p in _BUILTIN_GOVERNANCE_PROFILES}
 _BUILTIN_PROCESSING_SCRIPTS = list_builtin_processing_scripts()
 GOVERNANCE_PROFILE_NOT_FOUND_DETAIL = "Governance profile not found"
 REDACTED_MASK = "[REDACTED]"
-SECRET_MASK = "[SECRET]"  # noqa: S105 - redaction placeholder, not a credential.
+# Redaction placeholder, not a credential.
+SECRET_MASK = "[SECRET]"  # noqa: S105
 _AUTO_TAGGER_LLM_TIMEOUT_S = 3.0
 _TRIM_PUNCTUATION_CHARS = " \t\r\n，,。.;；:："
 _TOPIC_KEYWORD_LABEL = "主题关键词"

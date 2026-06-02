@@ -26,6 +26,7 @@ import requests
 from langchain_core.documents import Document
 
 from app.core.config import settings
+from app.core.constants import NON_CRITICAL_EXCEPTION_LOG_MESSAGE
 from app.rag.core.logging import get_logger
 
 logger = get_logger("parsing.etl4llm")
@@ -153,7 +154,7 @@ class Etl4LlmParser:
                 bbox_int = [int(x) for x in bbox]
                 items.append((page_idx, element_id, bbox_int))
             except Exception:
-                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
                 continue
 
         if not items:
@@ -185,7 +186,7 @@ class Etl4LlmParser:
                     cropped.save(out_path, format="PNG", optimize=True)
                     cropped.close()
                 except Exception:
-                    logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                    logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
                     continue
 
                 mapping[element_id] = f"images/{out_path.name}"
@@ -368,7 +369,7 @@ class Etl4LlmParser:
                             try:
                                 out_path.write_bytes(jpg_bytes)
                             except Exception:
-                                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                                logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
                                 continue
                         page_refs.append(f"![page {page_idx}](images/{out_path.name})")
                 finally:

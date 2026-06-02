@@ -1,3 +1,5 @@
+import { toTrimmedPrimitiveString } from './primitive-text'
+
 type EndpointLike = string | number | { id?: string | number | null } | null | undefined
 type LinkRecord = Record<string, unknown>
 type LinkDisplayDatum = LinkRecord & {
@@ -37,18 +39,17 @@ function endpointId(value: EndpointLike): string {
 }
 
 function stableLinkKind(link: LinkDisplayDatum): string {
-  return String(link.meta?.kind ?? link.kind ?? '').trim()
+  return toTrimmedPrimitiveString(link.meta?.kind ?? link.kind)
 }
 
 function stableLinkPredicate(link: LinkDisplayDatum): string {
   // Prefer KG triple predicate if present; otherwise fall back to label.
-  return String(link.meta?.predicate ?? link.predicate ?? link.label ?? '').trim()
+  return toTrimmedPrimitiveString(link.meta?.predicate ?? link.predicate ?? link.label)
 }
 
 function stableLinkConfidence(link: LinkDisplayDatum): string {
-  const v = link.meta?.confidence ?? link.confidence ?? ''
   // Keep as string to avoid floating point surprises in sort keys.
-  return String(v).trim()
+  return toTrimmedPrimitiveString(link.meta?.confidence ?? link.confidence)
 }
 
 function linkSortKey(link: LinkDisplayDatum): string {

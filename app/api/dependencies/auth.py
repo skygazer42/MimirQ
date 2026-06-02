@@ -15,7 +15,8 @@ from app.core.logging_config import set_request_tenant_id, set_request_user_id
 from app.rag.core.logging import get_logger
 
 logger = get_logger("api.auth")
-INVALID_TOKEN_DETAIL = "Invalid token"  # noqa: S105 - public error detail, not a credential.
+# Public error detail, not a credential.
+INVALID_TOKEN_DETAIL = "Invalid token"  # noqa: S105
 
 def _coerce_uuid(raw: object) -> str | None:
     value = str(raw or "").strip()

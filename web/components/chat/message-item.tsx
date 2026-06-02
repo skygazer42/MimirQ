@@ -15,7 +15,7 @@ import { useRouter } from '@/i18n/navigation'
 import { resolveMarkdownImageSrc, sanitizeMarkdownHref } from '@/components/markdown/markdown-safety'
 import type { Citation, Message, MessageFeedback } from '@/types'
 import { getDocumentPreviewAnchorFromCitation } from '@/lib/document-preview-anchor'
-import { cn } from '@/lib/utils'
+import { cn, detachPromise } from '@/lib/utils'
 import { globalEventBus } from '@/lib/event-bus'
 import { toAbsoluteBackendUrl } from '@/lib/env'
 import { prefetchDocumentView } from '@/lib/document-view-prefetch'
@@ -1293,7 +1293,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                        type="button"
                        size="sm"
                        variant="outline"
-                       onClick={() => void handleSendFeedbackToEvidence()}
+                       onClick={() => detachPromise(handleSendFeedbackToEvidence())}
                        disabled={expertAction != null}
                        className="h-8 rounded-full gap-2"
                      >
@@ -1308,7 +1308,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
                        type="button"
                        size="sm"
                        variant="outline"
-                       onClick={() => void handleCreateRegressionCase()}
+                       onClick={() => detachPromise(handleCreateRegressionCase())}
                        disabled={expertAction != null}
                        className="h-8 rounded-full gap-2"
                      >

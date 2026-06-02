@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 
 import { formatApiError } from '@/lib/api-errors'
 import { kgApi } from '@/lib/api/graph'
+import { detachPromise } from '@/lib/utils'
 import type {
   KGEntityAliasItem,
   KGEntityAliasSuggestionItem,
@@ -275,11 +276,11 @@ export function useGraphEntityResolution({
   const handleMergeAliasSuggestion = useCallback(
     (suggestion: KGEntityAliasSuggestionItem) => {
       openMergeDialog()
-      void selectMergeTarget({
+      detachPromise(selectMergeTarget({
         id: suggestion.entity_id,
         label: suggestion.name || suggestion.entity_id,
         meta: { kind: 'entity', type: suggestion.type },
-      })
+      }))
     },
     [openMergeDialog, selectMergeTarget]
   )

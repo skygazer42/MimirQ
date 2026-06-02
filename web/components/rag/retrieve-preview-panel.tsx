@@ -409,7 +409,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()
-                  void handleSearch()
+                  detachPromise(handleSearch())
                 }
               }}
               placeholder="例如：请按第十二条说明例外条件，并指出适用范围与例外条款"
@@ -820,7 +820,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
             variant="outline"
             className="h-10 rounded-[14px] px-4 text-[13px]"
             onClick={() => {
-              void navigator.clipboard.writeText(previewChunkContent(hit.chunk_content))
+              detachPromise(navigator.clipboard.writeText(previewChunkContent(hit.chunk_content)))
               toast.success('已复制命中内容')
             }}
           >

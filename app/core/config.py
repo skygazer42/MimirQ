@@ -251,7 +251,8 @@ class Settings(BaseSettings):
     # Mode:
     # - "block": reject new requests with HTTP 429 when exceeded
     # - "warn": allow but annotate metrics (no enforcement)
-    CHAT_ASSISTANT_TOKEN_QUOTA_MODE: str = "block"  # noqa: S105 - quota enforcement mode, not a credential.
+    # Quota enforcement mode, not a credential.
+    CHAT_ASSISTANT_TOKEN_QUOTA_MODE: str = "block"  # noqa: S105
 
     # Tenant resource quotas (best-effort; disabled by default).
     # These are aggregate tenant guardrails, not per-user or per-dataset allocations.
@@ -1521,7 +1522,8 @@ class Settings(BaseSettings):
     RAG_CORRECTIVE_ENABLED: bool = False
     RAG_CORRECTIVE_MAX_ATTEMPTS: int = 2
     RAG_CORRECTIVE_MIN_FAITHFULNESS_SCORE: float = 0.75
-    RAG_CORRECTIVE_SECOND_PASS_PROFILE: str = "recall50"  # noqa: S105 - retrieval profile label, not a credential.
+    # Retrieval profile label, not a credential.
+    RAG_CORRECTIVE_SECOND_PASS_PROFILE: str = "recall50"  # noqa: S105
     RAG_CORRECTIVE_SECOND_PASS_ENABLE_MULTI_QUERY: bool = True
     RAG_CORRECTIVE_SECOND_PASS_MULTI_QUERY_COUNT: int = 5
     RAG_AGENTIC_MODE_ENABLED: bool = False

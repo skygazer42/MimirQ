@@ -26,6 +26,7 @@ from app.api.schemas.dataset_precheck import (
     DatasetPrecheckSummary,
 )
 from app.core.config import settings
+from app.core.constants import NON_CRITICAL_EXCEPTION_LOG_MESSAGE
 from app.models.dataset import Dataset
 from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
 from app.rag.core.logging import get_logger
@@ -173,7 +174,7 @@ def _iter_jsonl(path: Path) -> Iterable[dict]:
             try:
                 obj = json.loads(s)
             except Exception:
-                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
                 continue
             if isinstance(obj, dict):
                 yield obj
@@ -230,7 +231,7 @@ def _list_finding_from_jsonl(
             items.append(DatasetPrecheckFileOut(**obj))
         except Exception:
             # Best-effort: ignore invalid lines.
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
             continue
 
     return DatasetPrecheckFindingListResponse(total=int(total), items=items)
@@ -273,7 +274,7 @@ def _list_files_from_jsonl(
         try:
             items.append(DatasetPrecheckFileOut(**obj))
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
             continue
 
     return DatasetPrecheckFindingListResponse(total=int(total), items=items)
@@ -483,7 +484,7 @@ def list_near_dup_files_from_row(
         try:
             items.append(DatasetPrecheckFileOut(**obj))
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
             continue
 
     return DatasetPrecheckFindingListResponse(total=int(total), items=items)

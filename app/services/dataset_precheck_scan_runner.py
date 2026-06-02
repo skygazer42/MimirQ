@@ -33,6 +33,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.constants import NON_CRITICAL_EXCEPTION_LOG_MESSAGE
 from app.core.optional_deps import optional_import
 from app.core.token_utils import estimate_tokens
 from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
@@ -63,7 +64,8 @@ _PRECHECK_RUNNER_FALLBACK_LOG_MESSAGE = "Ignoring non-critical precheck runner f
 
 UPLOAD_DIR_FALLBACK = "./uploads"
 REDACTED_MASK = "[REDACTED]"
-SECRET_MASK = "[SECRET]"  # noqa: S105 - redaction placeholder, not a credential.
+# Redaction placeholder, not a credential.
+SECRET_MASK = "[SECRET]"  # noqa: S105
 PRECHECK_SAMPLE_RATIO_NUMERATOR = 3
 PRECHECK_SAMPLE_RATIO_DENOMINATOR = 1000
 PRECHECK_SAMPLE_MAX_SIZE = 2000
@@ -273,7 +275,7 @@ def _bucket_file_size_label(size: int) -> str:
             if spec.contains(v):
                 return str(spec.label)
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
             continue
     return "unknown"
 
@@ -360,7 +362,7 @@ def _build_samples_payload(*, jsonl_path: Path, target_size: int) -> dict[str, A
             try:
                 obj = json.loads(s)
             except Exception:
-                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
                 continue
             if not isinstance(obj, dict):
                 continue
@@ -521,7 +523,7 @@ def _assert_scan_root_allowed(root: Path) -> None:
         try:
             allowed.append(Path(p).expanduser().resolve(strict=False))
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
             continue
 
     resolved = root.expanduser().resolve(strict=False)
@@ -530,7 +532,7 @@ def _assert_scan_root_allowed(root: Path) -> None:
             resolved.relative_to(base)
             return
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
             continue
     raise ValueError("scan_root_denied")
 
@@ -702,7 +704,7 @@ def _xlsx_spreadsheet_stats(path: Path, *, max_sheets: int = 3) -> tuple[dict[st
                         try:
                             merged_area += int((rng.max_row - rng.min_row + 1) * (rng.max_col - rng.min_col + 1))  # type: ignore[attr-defined]
                         except Exception:
-                            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                            logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
                             continue
 
         total_area = max(1, int(max_rows) * int(max_cols))
@@ -835,13 +837,13 @@ def _iter_files(root: Path, *, max_files: int) -> Iterable[Path]:
                 if path.is_symlink():
                     continue
             except Exception:
-                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
                 continue
             # Ensure the resolved path stays within the scan root to prevent symlink escape.
             try:
                 path.resolve(strict=False).relative_to(root_resolved)
             except Exception:
-                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
                 continue
 
             if not path.is_file():
@@ -1215,7 +1217,7 @@ def run_dataset_precheck_scan(
                                     try:
                                         obj = json.loads(s)
                                     except Exception:
-                                        logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                                        logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
                                         continue
                                     if not isinstance(obj, dict):
                                         continue
@@ -1365,14 +1367,14 @@ def run_dataset_precheck_scan(
                                 try:
                                     pii_totals[str(k)] = pii_totals.get(str(k), 0) + int(v or 0)
                                 except Exception:
-                                    logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                                    logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
                                     continue
                             secrets_hits = prev.get("secrets_hits") if isinstance(prev.get("secrets_hits"), dict) else {}
                             for k, v in secrets_hits.items():
                                 try:
                                     secrets_totals[str(k)] = secrets_totals.get(str(k), 0) + int(v or 0)
                                 except Exception:
-                                    logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                                    logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
                                     continue
 
                             # Near-dup entries and exact-dup entries.
@@ -1845,7 +1847,7 @@ def run_dataset_precheck_scan(
                         }
                     )
                 except Exception:
-                    logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                    logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
                     continue
             if member_stats:
                 cluster["member_stats"] = member_stats

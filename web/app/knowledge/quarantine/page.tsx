@@ -36,7 +36,7 @@ import { Input } from '@/components/ui/input'
 import { SearchInput } from '@/components/ui/search-input'
 import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
-import { cn, formatDate, formatFileSize } from '@/lib/utils'
+import { cn, detachPromise, formatDate, formatFileSize } from '@/lib/utils'
 import { documentApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { captureApiError } from '@/lib/api-error-reporting'
@@ -1948,7 +1948,7 @@ export default function QuarantineQueuePage() {
                       toast.success('Demo 数据已刷新')
                       return
                     }
-                    void refreshQueue({ notify: true })
+                    detachPromise(refreshQueue({ notify: true }))
                   }}
                 >
                   <RefreshCw
@@ -2300,7 +2300,7 @@ export default function QuarantineQueuePage() {
                     variant="outline"
                     size="sm"
                     className="h-9 rounded-xl border-info/25 bg-info/[0.06] px-3.5 text-[11px] font-medium text-info shadow-[0_12px_24px_-22px_hsl(var(--info)/0.5)] hover:border-info/40 hover:bg-info/[0.12] hover:text-info"
-                    onClick={() => void refreshQueue({ notify: true })}
+                    onClick={() => detachPromise(refreshQueue({ notify: true }))}
                   >
                     <RefreshCw
                       className={cn(
@@ -2359,7 +2359,7 @@ export default function QuarantineQueuePage() {
                           autoRefresh={autoRefresh}
                           isFetching={queueFetching}
                           onResetFilters={resetFilters}
-                          onRefresh={() => void refreshQueue({ notify: true })}
+                          onRefresh={() => detachPromise(refreshQueue({ notify: true }))}
                         />
                       </td>
                     </tr>

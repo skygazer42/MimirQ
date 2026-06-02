@@ -63,7 +63,7 @@ function parseAuthParams(raw: string): Record<string, string> {
 }
 
 function claimString(claims: OidcClaims, key: string): string {
-  return String(claims[key] || '').trim()
+  return toTrimmedPrimitiveString(claims[key])
 }
 
 function resolveRedirectUri(): string {
@@ -291,9 +291,9 @@ export async function completeOidcLogin(params: { code: string; state: string })
     })
     const serverData = (await serverRes.json().catch(() => null)) as OidcTokenResponse | null
     if (!serverRes.ok) {
-      const msg = String(serverData?.error || '').trim()
+      const msg = toTrimmedPrimitiveString(serverData?.error)
       const originalMsg =
-        err instanceof Error ? err.message.trim() : String(err || '').trim()
+        err instanceof Error ? err.message.trim() : toTrimmedPrimitiveString(err)
       const originalLower = originalMsg.toLowerCase()
       const preferServer =
         Boolean(msg) &&

@@ -10,6 +10,7 @@ import { kgApi } from '@/lib/api/graph'
 import { GraphService } from '@/lib/graph-service'
 import { reportClientError } from '@/lib/client-logging'
 import type { GraphData } from '@/lib/graph-parser'
+import { detachPromise } from '@/lib/utils'
 import type {
   KGEntityDetailResponse,
   KGEventDetailResponse,
@@ -208,7 +209,7 @@ export function useGraphDataLoading({
     if (scope.hasScope && scope.datasetId && scope.directDocIds.length === 0 && scopedDocumentIds === null) return
 
     setAutoLoadedGraphKey(autoLoadKey)
-    void loadInitialData('live')
+    detachPromise(loadInitialData('live'))
   }, [autoLoadedGraphKey, loadInitialData, scope, scopedDocumentIds])
 
   const handleTraceFileUpload = useCallback(

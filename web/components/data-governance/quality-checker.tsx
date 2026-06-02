@@ -18,7 +18,7 @@ import { useTranslations } from 'next-intl'
 
 import { pipelineApi } from '@/lib/api'
 import { reportClientError } from '@/lib/client-logging'
-import { cn } from '@/lib/utils'
+import { cn, detachPromise } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 
 interface QualityIssue {
@@ -330,7 +330,7 @@ export function QualityChecker({
 
   useEffect(() => {
     if (content && initialScore === 0) {
-      void handleScan()
+      detachPromise(handleScan())
     }
   }, [content, handleScan, initialScore])
 

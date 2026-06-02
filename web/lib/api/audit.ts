@@ -3,6 +3,7 @@ import type { OpenApiSchema } from '@/types/backend'
 
 import { apiClient } from '@/lib/api/core'
 import { API_LONG_TIMEOUT_MS } from '@/lib/env'
+import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 
 export type AuditLogPurgeResponse = OpenApiSchema<'AuditLogPurgeResponse'>
 export type AuditLogDeleteResponse = {
@@ -132,16 +133,22 @@ export const auditApi = {
     const resp = await apiClient.get('/audit/access-graph/export', { params, responseType: 'blob' })
     const headers = isRecord(resp.headers) ? resp.headers : {}
     const raw = headers['x-next-cursor'] || headers['X-Next-Cursor'] || ''
+    const rawCursor = toTrimmedPrimitiveString(raw)
     let nextCursor: { after_kind: string; after_created_at: string; after_id: string } | null = null
 
-    if (raw) {
+    if (rawCursor) {
       try {
-        const obj = JSON.parse(String(raw)) as unknown
-        if (isRecord(obj) && obj.after_kind && obj.after_created_at && obj.after_id) {
-          nextCursor = {
-            after_kind: String(obj.after_kind),
-            after_created_at: String(obj.after_created_at),
-            after_id: String(obj.after_id),
+        const obj = JSON.parse(rawCursor) as unknown
+        if (isRecord(obj)) {
+          const afterKind = toTrimmedPrimitiveString(obj.after_kind)
+          const afterCreatedAt = toTrimmedPrimitiveString(obj.after_created_at)
+          const afterId = toTrimmedPrimitiveString(obj.after_id)
+          if (afterKind && afterCreatedAt && afterId) {
+            nextCursor = {
+              after_kind: afterKind,
+              after_created_at: afterCreatedAt,
+              after_id: afterId,
+            }
           }
         }
       } catch {

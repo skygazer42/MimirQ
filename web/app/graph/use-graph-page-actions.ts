@@ -9,6 +9,7 @@ import { useRouter } from '@/i18n/navigation'
 import { kgApi } from '@/lib/api/graph'
 import { reportClientError } from '@/lib/client-logging'
 import { sanitizeFilename } from '@/lib/sanitize'
+import { detachPromise } from '@/lib/utils'
 
 import {
   coerceTrimmedString,
@@ -170,7 +171,7 @@ export function useGraphPageActions({
   }, [graphViewportRef])
 
   const handleToggleFullscreen = useCallback(() => {
-    void toggleFullscreen()
+    detachPromise(toggleFullscreen())
   }, [toggleFullscreen])
 
   const handleBackgroundClick = useCallback(() => {
@@ -232,14 +233,14 @@ export function useGraphPageActions({
 
   const handleCopyNodeId = useCallback(
     (nodeId: string) => {
-      void copyToClipboard(nodeId, '节点 ID')
+      detachPromise(copyToClipboard(nodeId, '节点 ID'))
     },
     [copyToClipboard]
   )
 
   const handleCopyLinkPredicate = useCallback(
     (predicate: string) => {
-      void copyToClipboard(predicate, 'Predicate')
+      detachPromise(copyToClipboard(predicate, 'Predicate'))
     },
     [copyToClipboard]
   )
@@ -339,22 +340,22 @@ export function useGraphPageActions({
 
   const handleExportPngDownload = useCallback(() => {
     setExportOpen(false)
-    void exportGraph('png', 'download')
+    detachPromise(exportGraph('png', 'download'))
   }, [exportGraph])
 
   const handleExportSvgDownload = useCallback(() => {
     setExportOpen(false)
-    void exportGraph('svg', 'download')
+    detachPromise(exportGraph('svg', 'download'))
   }, [exportGraph])
 
   const handleExportPngCopy = useCallback(() => {
     setExportOpen(false)
-    void exportGraph('png', 'copy')
+    detachPromise(exportGraph('png', 'copy'))
   }, [exportGraph])
 
   const handleExportSvgCopy = useCallback(() => {
     setExportOpen(false)
-    void exportGraph('svg', 'copy')
+    detachPromise(exportGraph('svg', 'copy'))
   }, [exportGraph])
 
   const handleExportGraphML = useCallback(async () => {
