@@ -11,13 +11,13 @@ const APP_SHELL_URLS = [
   '/icon.svg',
 ]
 
-self.addEventListener('install', (event) => {
+globalThis.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(APP_SHELL_CACHE).then((cache) => cache.addAll(APP_SHELL_URLS)).then(() => self.skipWaiting())
+    caches.open(APP_SHELL_CACHE).then((cache) => cache.addAll(APP_SHELL_URLS)).then(() => globalThis.skipWaiting())
   )
 })
 
-self.addEventListener('activate', (event) => {
+globalThis.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(
@@ -25,7 +25,7 @@ self.addEventListener('activate', (event) => {
           .filter((key) => key !== STATIC_CACHE && key !== APP_SHELL_CACHE)
           .map((key) => caches.delete(key))
       )
-    ).then(() => self.clients.claim())
+    ).then(() => globalThis.clients.claim())
   )
 })
 

@@ -291,8 +291,10 @@ def health() -> dict[str, Any]:
     "/convert",
     responses={
         400: {"description": "Invalid or empty upload"},
+        499: {"description": "Client disconnected"},
         500: {"description": "OLMoCR conversion failed"},
         503: {"description": "OLMoCR runtime unavailable"},
+        504: {"description": "OLMoCR conversion timed out"},
     },
 )
 async def convert(
@@ -301,7 +303,7 @@ async def convert(
     output_format: Annotated[str, Form()] = "markdown",  # kept for parity; ignored (always markdown)
 ) -> dict[str, Any]:
     name = (file.filename or "").lower()
-    if not (name.endswith(".pdf") or name.endswith(".png") or name.endswith(".jpg") or name.endswith(".jpeg")):
+    if not name.endswith((".pdf", ".png", ".jpg", ".jpeg")):
         raise HTTPException(status_code=400, detail="Only PDF/PNG/JPG is supported")
 
     file_bytes = await file.read()

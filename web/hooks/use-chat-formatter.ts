@@ -123,7 +123,7 @@ export function formatRouteStep(data: unknown): string | null {
 
 export function formatRewriteStep(data: unknown): string | null {
   const payload = asRecord(data)
-  if (!payload || !payload.used) return null
+  if (!payload?.used) return null
 
   const rewritten = asTrimmedString(payload.rewritten)
   const elapsedSec = asFiniteNumber(payload.elapsed_sec)
@@ -238,7 +238,7 @@ export function buildFallbackAssistantMessage({
     citations: response.citations || [],
     steps: [],
     message_metadata: {
-      ...(response.metrics || {}),
+      ...(response.metrics ?? {}),
       request_id: response.request_id,
       total_tokens: response.total_tokens,
       total_chars: response.total_chars,
@@ -247,7 +247,7 @@ export function buildFallbackAssistantMessage({
       vector_backend: response.vector_backend,
       structured: response.structured,
       structured_preset: structuredPreset || undefined,
-      structured_parse_ok: (response.metrics || {}).structured_parse_ok,
+      structured_parse_ok: response.metrics?.structured_parse_ok,
     },
     created_at: new Date().toISOString(),
   }

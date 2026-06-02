@@ -199,21 +199,7 @@ function hasLifecycleChanges(doc: Document, values: LifecycleDraftValues) {
   )
 }
 
-function DocumentTagsSaveButton({ disabled }: Readonly<{ disabled: boolean }>) {
-  const commonT = useTranslations('Common')
-  const { pending } = useFormStatus()
-
-  return (
-    <Button size="sm" type="submit" disabled={disabled || pending}>
-      {pending ? (
-        <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
-      ) : null}
-      {commonT('save')}
-    </Button>
-  )
-}
-
-function DocumentLifecycleSaveButton({ disabled }: Readonly<{ disabled: boolean }>) {
+function DocumentSaveButton({ disabled }: Readonly<{ disabled: boolean }>) {
   const commonT = useTranslations('Common')
   const { pending } = useFormStatus()
 
@@ -1045,7 +1031,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
           <DocumentDetailTagsPanel
             editing={tagsEditing}
             saveAction={saveTagsAction}
-            saveButton={<DocumentTagsSaveButton disabled={!canSaveTags} />}
+            saveButton={<DocumentSaveButton disabled={!canSaveTags} />}
             isSaving={isSavingTags}
             tagsDraft={tagsDraft}
             onTagsDraftChange={setTagsDraft}
@@ -1058,7 +1044,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
           <DocumentDetailLifecyclePanel
             editing={lifecycleEditing}
             saveAction={saveLifecycleAction}
-            saveButton={<DocumentLifecycleSaveButton disabled={!canSaveLifecycle} />}
+            saveButton={<DocumentSaveButton disabled={!canSaveLifecycle} />}
             isSaving={isSavingLifecycle}
             canEdit={!(lifecycleWritable === false || lifecycleWritable == null)}
             editTitle={

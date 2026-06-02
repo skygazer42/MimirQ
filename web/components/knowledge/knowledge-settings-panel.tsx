@@ -459,7 +459,7 @@ export function KnowledgeSettingsPanel({
               : 'xl:grid-cols-[206px_minmax(0,1fr)]'
           )}
         >
-          {!settingsSidebarCollapsed ? (
+          {settingsSidebarCollapsed ? null : (
             <div className="space-y-2 xl:sticky xl:top-0 xl:self-start">
               <Panel
                 padding="none"
@@ -687,7 +687,7 @@ export function KnowledgeSettingsPanel({
               ) : null}
               </Panel>
             </div>
-          ) : null}
+          )}
 
           <div className="space-y-2.5 xl:h-full xl:max-h-full xl:min-h-0 xl:overflow-y-auto xl:pr-1 xl:no-scrollbar">
             <Panel
@@ -1404,15 +1404,17 @@ function TaskCard({
   run,
   t,
   onCancel,
+  onResume,
   onRetry,
   isExpanded,
   onToggleExpand,
-}: TaskCardProps) {
+}: Readonly<TaskCardProps>) {
   const { total, processed } = getConnectorRunProgress(run.stats || {})
   const runErrors = getConnectorRunErrors(run.stats)
   const progressPct = total > 0 ? Math.round((processed / total) * 100) : 0
   const isFailed = run.status === 'failed'
   const isRunning = run.status === 'running' || run.status === 'pending'
+  const isCancelled = run.status === 'cancelled'
 
   return (
     <motion.div
@@ -1487,6 +1489,16 @@ function TaskCard({
                 <RotateCcw className="size-3.5" />
               </IconButton>
             )}
+            {isCancelled && onResume ? (
+              <IconButton
+                label="继续"
+                variant="ghost"
+                className="h-7 w-7 rounded-md text-muted-foreground hover:text-primary"
+                onClick={() => onResume(run.id)}
+              >
+                <RefreshCw className="size-3.5" />
+              </IconButton>
+            ) : null}
             <IconButton
               label="复制"
               variant="ghost"

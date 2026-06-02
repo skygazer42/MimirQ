@@ -35,7 +35,7 @@ export function useResizeObserver<T extends HTMLElement>(ref: RefObject<T | null
     commit(rect.width, rect.height)
 
     const resizeObserver = new ResizeObserver((entries) => {
-      const entry = entries[entries.length - 1]
+      const entry = entries.at(-1)
       if (!entry) return
       const { width, height } = entry.contentRect
       scheduleCommit(width, height)

@@ -186,11 +186,11 @@ ChunkPreview: {
         presetPlaceholder: '选择分隔符预设',
         presets: {
           paragraph: {
-            label: '段落（\\\\n\\\\n）',
+            label: String.raw`段落（\\n\\n）`,
             hint: '按空行分段（推荐）',
           },
           line: {
-            label: '按行（\\\\n）',
+            label: String.raw`按行（\\n）`,
             hint: '按换行切分',
           },
           sentenceCn: {
@@ -220,9 +220,9 @@ ChunkPreview: {
         },
         effectiveSeparator: '有效分隔符: {value} · len: {length}',
         customLabel: '自定义分隔符',
-        customPlaceholder: '例如：\\n\\n / --- / ##  / END_OF_SECTION',
+        customPlaceholder: String.raw`例如：\n\n / --- / ##  / END_OF_SECTION`,
         customAria: '自定义分隔符',
-        customHelp: '支持转义：\\n \\r \\t \\uXXXX（会在发送到后端前解析）',
+        customHelp: String.raw`支持转义：\n \r \t \uXXXX（会在发送到后端前解析）`,
         keepSeparator: {
           title: '保留分隔符',
           description: '将分隔符附在前一块末尾',
@@ -434,7 +434,7 @@ ChunkPreview: {
         includeOriginalTextDisabled: '当前关闭了 include_original_text（预览性能设置）。',
         noPositionTagsTitle: '未检测到 PDF 位置标签',
         noPositionTagsDescription:
-          '该解析结果不包含 @@page\\tl\\tr\\tt\\tb## 标签，无法做 PDF 框选高亮。你仍可使用“源码”面板做 offset 高亮。',
+          String.raw`该解析结果不包含 @@page\tl\tr\tt\tb## 标签，无法做 PDF 框选高亮。你仍可使用“源码”面板做 offset 高亮。`,
       },
       actions: {
         highlightOnly: '仅高亮',

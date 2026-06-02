@@ -11,7 +11,7 @@ let sentryModulePromise: Promise<typeof import('@sentry/nextjs') | null> | null 
 let sentryInitialized = false
 
 function installStaleChunkRecovery() {
-  if (typeof globalThis.window === 'undefined') return
+  if (globalThis.window === undefined) return
 
   const runtime = globalThis as StaleChunkRecoveryGlobal
   if (runtime.__mimirqStaleChunkRecoveryInstalled__) return
@@ -31,21 +31,19 @@ installStaleChunkRecovery()
 
 async function loadSentryModule() {
   if (!shouldEnableSentry) return null
-  if (!sentryModulePromise) {
-    sentryModulePromise = import('@sentry/nextjs')
-      .then((Sentry) => {
-        if (!sentryInitialized) {
-          Sentry.init({
-            dsn,
-            tracesSampleRate: Number(process.env.NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE || 0),
-            sendDefaultPii: false,
-          })
-          sentryInitialized = true
-        }
-        return Sentry
-      })
-      .catch(() => null)
-  }
+  sentryModulePromise ??= import('@sentry/nextjs')
+    .then((Sentry) => {
+      if (!sentryInitialized) {
+        Sentry.init({
+          dsn,
+          tracesSampleRate: Number(process.env.NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE || 0),
+          sendDefaultPii: false,
+        })
+        sentryInitialized = true
+      }
+      return Sentry
+    })
+    .catch(() => null)
   return sentryModulePromise
 }
 

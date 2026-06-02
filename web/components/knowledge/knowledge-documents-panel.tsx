@@ -328,7 +328,7 @@ export function KnowledgeDocumentsPanel({
     : 0
   const docsTablePaddingBottom = docsTableVirtualRows.length
     ? docsTableVirtualizer.getTotalSize() -
-      docsTableVirtualRows[docsTableVirtualRows.length - 1].end
+      (docsTableVirtualRows.at(-1)?.end ?? 0)
     : 0
   const sectionInsetClassName = embedded ? 'px-4 py-4' : ''
 

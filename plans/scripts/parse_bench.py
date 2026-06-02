@@ -9,7 +9,7 @@ _DEFAULT_METRICS = ["accuracy", "latency_ms", "cost_usd"]
 def _normalize_parsers(parsers: list[str] | None) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
-    for item in list(parsers or []):
+    for item in parsers or []:
         parser = str(item or "").strip().lower()
         if not parser:
             continue

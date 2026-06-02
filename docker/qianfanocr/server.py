@@ -88,7 +88,7 @@ def _build_api_url() -> str:
         raise RuntimeError("QIANFAN_OCR_SERVER_URL is empty")
     if base.endswith("/chat/completions"):
         return base
-    if base.endswith("/v1") or base.endswith("/v2"):
+    if base.endswith(("/v1", "/v2")):
         return f"{base}/chat/completions"
     if "qianfan.baidubce.com" in base:
         return f"{base}/v2/chat/completions"
@@ -236,7 +236,10 @@ def health() -> dict[str, Any]:
 
 @app.post(
     "/convert",
-    responses={400: {"description": "Invalid or empty upload"}},
+    responses={
+        400: {"description": "Invalid or empty upload"},
+        500: {"description": "Qianfan OCR conversion failed"},
+    },
 )
 async def convert(
     file: Annotated[UploadFile, File()],
