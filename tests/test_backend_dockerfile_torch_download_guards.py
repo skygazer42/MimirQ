@@ -45,7 +45,9 @@ def test_backend_dockerfile_allows_runtime_rapidocr_model_cache() -> None:
     chown_section = dockerfile.split("chown -R appuser:appuser", 1)[1]
 
     assert "/opt/venv/lib/python3.11/site-packages/rapidocr/models" in dockerfile
-    assert "/app" in chown_section
+    assert "uploads" in chown_section
+    assert "logs" in chown_section
+    assert "/app \\" not in chown_section
     assert "/data" in chown_section
     assert "/opt/venv/lib/python3.11/site-packages/rapidocr/models" in chown_section
 
@@ -61,6 +63,7 @@ def test_backend_dockerfile_copies_only_runtime_paths() -> None:
     dockerfile = _read("docker/Dockerfile")
 
     assert "COPY . ." not in dockerfile
-    assert "COPY --chown=appuser:appuser app ./app" in dockerfile
-    assert "COPY --chown=appuser:appuser alembic ./alembic" in dockerfile
-    assert "COPY --chown=appuser:appuser docker/start_backend.sh ./docker/start_backend.sh" in dockerfile
+    assert "COPY --chown=" not in dockerfile
+    assert "COPY app ./app" in dockerfile
+    assert "COPY alembic ./alembic" in dockerfile
+    assert "COPY docker/start_backend.sh ./docker/start_backend.sh" in dockerfile
