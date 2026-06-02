@@ -25,6 +25,7 @@ import {
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
+import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { ChunkCompareDialog } from '@/components/chunk-preview/components/chunk-compare-dialog'
 import { ChunkingHelpDialog } from '@/components/chunk-preview/components/chunking-help-dialog'
 import { useChunkPreview } from '@/components/chunk-preview/context'
@@ -101,7 +102,7 @@ function getQualityGradeLabel(
   if (grade === 'pass') return labels.pass
   if (grade === 'warn') return labels.warn
   if (grade === 'fail') return labels.fail
-  return grade ? String(grade).toUpperCase() : ''
+  return toTrimmedPrimitiveString(grade).toUpperCase()
 }
 
 function getQualityGradeClass(grade: unknown): string {

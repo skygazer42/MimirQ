@@ -4,6 +4,7 @@ import type { Document } from '@/types'
 
 import { Panel } from '@/components/ui/panel'
 import { getFileTypeMeta } from '@/components/knowledge/file-type'
+import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { cn, formatDate, formatFileSize } from '@/lib/utils'
 
 type KnowledgeInspectorProps = {
@@ -23,7 +24,7 @@ export function KnowledgeInspector({
   const fileType = selected ? getFileTypeMeta(selected) : null
   const TypeIcon = fileType?.icon
   const metadata = selected?.metadata
-  const sourcePath = selected ? String(metadata?.source_path || '').trim() : ''
+  const sourcePath = selected ? toTrimmedPrimitiveString(metadata?.source_path) : ''
   const folderPath = sourcePath.includes('/') ? sourcePath.split('/').slice(0, -1).join('/') : ''
 
   const header = (

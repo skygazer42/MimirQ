@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import { deleteDocContentFromCache, deleteDocSourceFromCache, saveDocContentToCache } from '@/lib/doc-content-cache'
 import { getClientStorage } from '@/lib/client-storage'
 import { collectFolderDescendantIds } from '@/lib/folder-tree-index'
+import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { generateRequestId } from '@/lib/request-id'
 import { detachPromise } from '@/lib/utils'
 import type { ParsingElement } from '@/lib/api/parsing'
@@ -88,7 +89,7 @@ function getUpdatedMarkdownFields(updates: ParsedFileUpdates): {
 }
 
 function isIndexedDbUnavailableError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error || '')
+  const message = error instanceof Error ? error.message : toTrimmedPrimitiveString(error)
   const normalized = message.toLowerCase()
   return (
     normalized.includes('indexeddb') ||

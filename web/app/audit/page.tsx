@@ -38,6 +38,7 @@ import {
 } from '@/components/ui/select'
 import { auditApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { queryKeys } from '@/lib/query-keys'
 import {
   TENANT_PERMISSIONS,
@@ -424,7 +425,7 @@ function AuditLogsPageContent() {
   const auditQueryParams = useMemo(() => {
     const params: AuditLogQueryParams = { skip, limit }
     for (const [key, value] of Object.entries(filters)) {
-      const trimmed = String(value || '').trim()
+      const trimmed = toTrimmedPrimitiveString(value)
       if (trimmed) {
         params[key as AuditFilterKey] = trimmed
       }
@@ -493,7 +494,7 @@ function AuditLogsPageContent() {
   const allVisibleSelected =
     visibleLogIds.length > 0 && selectedVisibleCount === visibleLogIds.length
   const activeFilterCount = Object.values(filters).filter((v) =>
-    String(v || '').trim()
+    toTrimmedPrimitiveString(v)
   ).length
   const optionSourceItems = useMemo(
     () => [...filterSeedItems, ...(resp?.items || [])],
@@ -542,7 +543,7 @@ function AuditLogsPageContent() {
   const auditOperationFilters = useMemo(() => {
     const out: Record<string, string> = {}
     for (const [key, value] of Object.entries(filters)) {
-      const trimmed = String(value || '').trim()
+      const trimmed = toTrimmedPrimitiveString(value)
       if (trimmed) out[key] = trimmed
     }
     return out

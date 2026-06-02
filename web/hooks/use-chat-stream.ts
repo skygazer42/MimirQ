@@ -6,6 +6,7 @@ import type { Citation, Message, StreamEvent } from '@/types'
 import { API_LONG_TIMEOUT_MS, API_TIMEOUT_MS } from '@/lib/env'
 import { chatApi } from '@/lib/api'
 import { reportClientError, reportClientWarning } from '@/lib/client-logging'
+import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 
 import {
   buildChatRequest,
@@ -249,7 +250,7 @@ export function useChatStream({
 
               if (event.type === 'error') {
                 const payload = isRecord(event.data) ? event.data : {}
-                streamError = new Error(String(payload.message || 'Unknown error'))
+                streamError = new Error(toTrimmedPrimitiveString(payload.message, 'Unknown error'))
               }
             },
             {

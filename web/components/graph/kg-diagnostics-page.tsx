@@ -53,6 +53,7 @@ import {
   type KGSearchDiagnosticsRunOut,
 } from '@/lib/api'
 import { coerceOneOf } from '@/lib/one-of'
+import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { queryKeys } from '@/lib/query-keys'
 import { sanitizeFilename } from '@/lib/sanitize'
 import { cn } from '@/lib/utils'
@@ -277,7 +278,7 @@ function extractBaselineMetrics(item: unknown): {
 
 function caseKey(item: unknown): string | null {
   const id = diagnosticsField(item, 'case_id')
-  const s = String(id || '').trim()
+  const s = toTrimmedPrimitiveString(id)
   return s || null
 }
 
@@ -345,7 +346,7 @@ function buildDiagnosticsCaseMap(
     const key = caseKey(item)
     if (!key) continue
     byCase.set(key, {
-      question: String(diagnosticsField(item, 'question') || ''),
+      question: toTrimmedPrimitiveString(diagnosticsField(item, 'question')),
       metrics: extractBaselineMetrics(item),
     })
   }
@@ -1121,14 +1122,14 @@ function DiagnosticsRunRecordsPanel({
                         {String(run.dataset_id || '').slice(0, 8) || '-'}
                       </td>
                       <td className="px-2 py-3 text-muted-foreground">
-                        {String(maxCases)}
+                        {toTrimmedPrimitiveString(maxCases)}
                       </td>
                       <td className="px-2 py-3 text-muted-foreground">
-                        {String(k)}
+                        {toTrimmedPrimitiveString(k)}
                       </td>
                       <td className="px-2 py-3 text-muted-foreground">
-                        {String(summary?.baseline_mrr ?? '-')} /{' '}
-                        {String(summary?.baseline_recall ?? '-')}
+                        {toTrimmedPrimitiveString(summary?.baseline_mrr, '-')} /{' '}
+                        {toTrimmedPrimitiveString(summary?.baseline_recall, '-')}
                       </td>
                       <td className="px-2 py-3 text-muted-foreground">
                         {persisted ? '已保存' : '临时'}
