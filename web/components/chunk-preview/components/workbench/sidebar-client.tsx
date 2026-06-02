@@ -884,6 +884,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                         >
                           {f.displayName}
                         </span>
+                        {processedStatus[f.id] === 'processing' ? <Loader2 className="h-3 w-3 shrink-0 animate-spin text-info motion-reduce:animate-none" /> : null}
                         {processedStatus[f.id] === 'success' ? <Check className="h-3 w-3 shrink-0 text-success" /> : null}
                         {processedStatus[f.id] === 'error' ? <AlertCircle className="h-3 w-3 shrink-0 text-destructive" /> : null}
                       </span>

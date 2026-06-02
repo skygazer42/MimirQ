@@ -111,4 +111,13 @@ describe('chunk preview top bar messages source', () => {
     expect(messages).toContain("chunks: '{count} 个切块'")
     expect(messages).not.toContain("chunks: '{count} Chunks'")
   })
+
+  it('renders long operational errors as wrapped status copy instead of a truncated chip', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'top-bar.tsx'), 'utf8')
+
+    expect(src).toContain('function formatTopBarError')
+    expect(src).toContain('const topBarError = error ? formatTopBarError(error) : null')
+    expect(src).toContain('break-words')
+    expect(src).not.toContain('items-center gap-1.5 truncate rounded-lg border border-destructive')
+  })
 })

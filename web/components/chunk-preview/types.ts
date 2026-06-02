@@ -12,6 +12,7 @@ export interface ChunkOverride {
 }
 
 export type ChunkOverrides = Record<number, ChunkOverride>
+export type ChunkPreviewProcessedStatus = 'pending' | 'processing' | 'success' | 'error'
 
 export interface ChunkPreviewProps {
   onConfirm?: (params: { chunk_size: number; chunk_overlap: number }) => void
@@ -51,7 +52,7 @@ export interface ChunkPreviewState {
   showSettingsPanel: boolean
   submitSuccess: boolean
   error: string | null
-  processedStatus: Record<string, 'pending' | 'success' | 'error'>
+  processedStatus: Record<string, ChunkPreviewProcessedStatus>
   selectedIngestFileIds: Set<string>
   createdDocumentId: string | null
 

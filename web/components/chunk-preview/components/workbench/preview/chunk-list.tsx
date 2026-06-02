@@ -1605,11 +1605,15 @@ export function ChunkList() {
             </div>);
         }
         else if (error) {
-                return (<div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-2 py-12">
-              <AlertCircle className="w-10 h-10 opacity-20"/>
-              <p className="text-xs text-muted-foreground">{t('chunkList.states.error')}</p>
-              <p className="text-[11px] text-muted-foreground max-w-xs text-center">{error}</p>
-              <Button variant="outline" size="sm" className="mt-2 h-8 px-3 text-[11px]" onClick={() => runPreview()}>
+                return (<div className="h-full flex flex-col items-center justify-center text-muted-foreground gap-3 px-5 py-12">
+              <div role="alert" aria-live="polite" className="flex w-full max-w-[34rem] flex-col items-center rounded-2xl border border-destructive/20 bg-destructive/8 px-5 py-5 text-center shadow-[inset_0_1px_0_hsl(var(--background)/0.72)]">
+                <span className="grid size-11 place-items-center rounded-2xl bg-destructive/10 text-destructive">
+                  <AlertCircle className="size-5"/>
+                </span>
+                <p className="mt-3 text-sm font-semibold text-foreground">{t('chunkList.states.error')}</p>
+                <p className="mt-2 max-w-[30rem] break-words text-xs leading-5 text-muted-foreground">{error}</p>
+              </div>
+              <Button variant="outline" size="sm" className="h-8 px-3 text-[11px]" onClick={() => runPreview()}>
                 {t('chunkList.states.retry')}
               </Button>
             </div>);

@@ -61,4 +61,17 @@ describe('chunk preview real backend data contract', () => {
     expect(context).not.toContain('limit: 100')
     expect(context).not.toContain('Promise.all(')
   })
+
+  it('tracks manual ingestion through backend document status instead of waiting on one request', () => {
+    const context = read('components/chunk-preview/context.tsx')
+    const types = read('components/chunk-preview/types.ts')
+
+    expect(context).toContain('const MANUAL_INGEST_STATUS_POLL_INTERVAL_MS')
+    expect(context).toContain('async function waitForDocumentIngestCompletion')
+    expect(context).toContain('documentApi.getStatus(id)')
+    expect(context).toContain("status === 'completed'")
+    expect(context).toContain("status === 'failed'")
+    expect(context).toContain('await waitForDocumentIngestCompletion(created?.id')
+    expect(types).toContain("'processing'")
+  })
 })

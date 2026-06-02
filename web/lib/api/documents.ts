@@ -672,6 +672,7 @@ export const documentApi = {
       path: '/api/v1/documents/manual',
       method: 'post',
       body: params,
+      timeoutMs: API_LONG_TIMEOUT_MS,
     })
   },
 
