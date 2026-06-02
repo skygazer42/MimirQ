@@ -9,6 +9,7 @@ pipelines.
 import json
 import re
 import uuid
+from dataclasses import dataclass
 from typing import Any
 
 from langchain_core.documents import Document
@@ -281,54 +282,61 @@ def _find_next_boundary(text: str, *, start: int, end: int) -> int | None:
     return best
 
 
-def _build_snippet(text: str, query: str | None, *, max_chars: int = 220) -> tuple[str, list[str]]:
-    max_chars = max(60, int(max_chars or 0))
-    clean = _collapse_ws(text)
-    if not clean:
-        return "", []
+def _snippet_max_chars(max_chars: int) -> int:
+    return max(60, int(max_chars or 0))
 
-    terms = _extract_query_terms(query or "", max_terms=10) if query else []
-    hit = _find_first_match(clean, terms) if terms else None
-    if hit is None:
-        snippet = clean[:max_chars]
-        if len(clean) > max_chars:
-            snippet += "..."
-        return snippet, []
 
-    idx, _ = hit
-    before = max_chars // 3
-    after = max_chars - before
-    base_start = max(0, idx - before)
-    base_end = min(len(clean), idx + after)
+def _matched_terms_in_window(window: str, terms: list[str]) -> list[str]:
+    folded = window.casefold()
+    matched: list[str] = []
+    for term in terms:
+        if not term:
+            continue
+        term_s = str(term)
+        if term_s.isascii() and term_s.casefold() in folded:
+            matched.append(term_s)
+        elif not term_s.isascii() and term_s in window:
+            matched.append(term_s)
+    return matched
 
-    # Prefer sentence-level windows for readability, while keeping the same max_chars budget.
+
+def _sentence_window(raw: str, *, base_start: int, base_end: int, focus_start: int, focus_end: int) -> tuple[int, int]:
     start = base_start
     end = base_end
-    prev = _find_prev_boundary(clean, start=base_start, end=idx)
+    prev = _find_prev_boundary(raw, start=base_start, end=focus_start)
     if prev >= 0:
-        start = min(max(base_start, prev + 1), len(clean))
-    nxt = _find_next_boundary(clean, start=idx, end=base_end)
+        start = min(max(base_start, prev + 1), len(raw))
+    nxt = _find_next_boundary(raw, start=focus_end, end=base_end)
     if nxt is not None:
-        end = min(max(start, nxt + 1), len(clean))
+        end = min(max(start, nxt + 1), len(raw))
+    return start, end
 
-    snippet = clean[start:end].strip() or clean[base_start:base_end]
+
+def _snippet_text(raw: str, *, start: int, end: int, fallback_start: int, fallback_end: int) -> str:
+    snippet = _collapse_ws(raw[start:end]).strip() or _collapse_ws(raw[fallback_start:fallback_end])
     if start > 0:
         snippet = "..." + snippet
-    if end < len(clean):
-        snippet = snippet + "..."
+    if end < len(raw):
+        snippet += "..."
+    return snippet
 
-    matched: list[str] = []
-    snippet_folded = snippet.casefold()
-    for t in terms:
-        if not t:
-            continue
-        if str(t).isascii():
-            if t.casefold() in snippet_folded:
-                matched.append(str(t))
-        else:
-            if str(t) in snippet:
-                matched.append(str(t))
-    return snippet, matched
+
+def _hit_window(raw: str, *, index: int, max_chars: int) -> tuple[int, int]:
+    before = max_chars // 3
+    after = max_chars - before
+    return max(0, index - before), min(len(raw), index + after)
+
+
+def _fallback_snippet_span(raw: str, *, max_chars: int) -> tuple[str, int, int]:
+    base_end = min(len(raw), max_chars)
+    end = base_end
+    nxt = _find_next_boundary(raw, start=0, end=base_end)
+    if nxt is not None and nxt > 0:
+        end = min(base_end, nxt + 1)
+    snippet = _collapse_ws(raw[:end]).strip() or _collapse_ws(raw[:base_end])
+    if end < len(raw):
+        snippet += "..."
+    return snippet, 0, end
 
 
 def _build_snippet_and_span(
@@ -342,7 +350,7 @@ def _build_snippet_and_span(
 
     Offsets are only returned when we find a query-term hit; otherwise offsets are None.
     """
-    max_chars = max(60, int(max_chars or 0))
+    max_chars = _snippet_max_chars(max_chars)
     raw = str(text or "")
     if not raw.strip():
         return "", [], None, None
@@ -352,53 +360,15 @@ def _build_snippet_and_span(
     if hit is None:
         # Fallback: still return a bounded span window so the UI can deep-link/highlight
         # even when we don't find an explicit query-term match (best-effort).
-        base_end = min(len(raw), max_chars)
-        start = 0
-        end = base_end
-        nxt = _find_next_boundary(raw, start=0, end=base_end)
-        if nxt is not None and nxt > 0:
-            end = min(base_end, nxt + 1)
-
-        snippet_raw = raw[start:end]
-        snippet = _collapse_ws(snippet_raw).strip() or _collapse_ws(raw[:base_end])
-        if end < len(raw):
-            snippet += "..."
+        snippet, start, end = _fallback_snippet_span(raw, max_chars=max_chars)
         return snippet, [], int(start), int(end)
 
     idx, _ = hit
-    before = max_chars // 3
-    after = max_chars - before
-    base_start = max(0, idx - before)
-    base_end = min(len(raw), idx + after)
-
-    # Prefer sentence-level windows for readability.
-    start = base_start
-    end = base_end
-    prev = _find_prev_boundary(raw, start=base_start, end=idx)
-    if prev >= 0:
-        start = min(max(base_start, prev + 1), len(raw))
-    nxt = _find_next_boundary(raw, start=idx, end=base_end)
-    if nxt is not None:
-        end = min(max(start, nxt + 1), len(raw))
-
+    base_start, base_end = _hit_window(raw, index=idx, max_chars=max_chars)
+    start, end = _sentence_window(raw, base_start=base_start, base_end=base_end, focus_start=idx, focus_end=idx)
     snippet_raw = raw[start:end]
-    snippet = _collapse_ws(snippet_raw).strip() or _collapse_ws(raw[base_start:base_end])
-    if start > 0:
-        snippet = "..." + snippet
-    if end < len(raw):
-        snippet = snippet + "..."
-
-    matched: list[str] = []
-    snippet_folded = snippet_raw.casefold()
-    for t in terms:
-        if not t:
-            continue
-        if str(t).isascii():
-            if t.casefold() in snippet_folded:
-                matched.append(str(t))
-        else:
-            if str(t) in snippet_raw:
-                matched.append(str(t))
+    snippet = _snippet_text(raw, start=start, end=end, fallback_start=base_start, fallback_end=base_end)
+    matched = _matched_terms_in_window(snippet_raw, terms)
 
     return snippet, matched, int(start), int(end)
 
@@ -417,7 +387,7 @@ def _build_snippet_from_span(
     This is used for hierarchy context expansion so parent citations can point at the
     same evidence span as their anchor child (instead of the first query-term match).
     """
-    max_chars = max(60, int(max_chars or 0))
+    max_chars = _snippet_max_chars(max_chars)
     raw = str(text or "")
     if not raw.strip():
         return "", []
@@ -434,46 +404,19 @@ def _build_snippet_from_span(
         return "", []
 
     terms = _extract_query_terms(query or "", max_terms=10) if query else []
-
-    before = max_chars // 3
     desired_len = min(len(raw), max_chars)
 
     # Keep the requested span inside the base window.
-    base_start = max(0, min(s - before, len(raw) - desired_len))
+    base_start = max(0, min(s - (max_chars // 3), len(raw) - desired_len))
     base_end = min(len(raw), base_start + desired_len)
     if e > base_end:
         base_start = max(0, min(e - desired_len, len(raw) - desired_len))
         base_end = min(len(raw), base_start + desired_len)
 
-    # Prefer sentence-level boundaries for readability.
-    start = base_start
-    end = base_end
-    prev = _find_prev_boundary(raw, start=base_start, end=s)
-    if prev >= 0:
-        start = min(max(base_start, prev + 1), len(raw))
-    nxt = _find_next_boundary(raw, start=e, end=base_end)
-    if nxt is not None:
-        end = min(max(start, nxt + 1), len(raw))
-
+    start, end = _sentence_window(raw, base_start=base_start, base_end=base_end, focus_start=s, focus_end=e)
     snippet_raw = raw[start:end]
-    snippet = _collapse_ws(snippet_raw).strip() or _collapse_ws(raw[base_start:base_end])
-    if start > 0:
-        snippet = "..." + snippet
-    if end < len(raw):
-        snippet = snippet + "..."
-
-    matched: list[str] = []
-    snippet_folded = snippet_raw.casefold()
-    for t in terms:
-        if not t:
-            continue
-        if str(t).isascii():
-            if t.casefold() in snippet_folded:
-                matched.append(str(t))
-        else:
-            if str(t) in snippet_raw:
-                matched.append(str(t))
-    return snippet, matched
+    snippet = _snippet_text(raw, start=start, end=end, fallback_start=base_start, fallback_end=base_end)
+    return snippet, _matched_terms_in_window(snippet_raw, terms)
 
 
 _NIL_UUID = uuid.UUID("00000000-0000-0000-0000-000000000000")
@@ -508,6 +451,50 @@ def _parse_json_object(text: str) -> dict[str, Any] | None:
     return obj if isinstance(obj, dict) else None
 
 
+def _optional_int(value: Any) -> int | None:
+    try:
+        return int(value) if value is not None else None
+    except Exception:
+        return None
+
+
+def _tag_sheet_summary(payload: dict[str, Any]) -> str | None:
+    sheet_name = payload.get("sheet_name")
+    sheet_name = str(sheet_name).strip() if sheet_name is not None else ""
+    sheet_index_i = _optional_int(payload.get("sheet_index"))
+    if sheet_name:
+        sheet_extra = f" (sheet_{sheet_index_i})" if sheet_index_i is not None else ""
+        return f"Sheet: {sheet_name}{sheet_extra}"
+    if sheet_index_i is not None:
+        return f"Sheet: sheet_{sheet_index_i}"
+    return None
+
+
+def _tag_shape_summary(payload: dict[str, Any]) -> str | None:
+    row_count_i = _optional_int(payload.get("row_count"))
+    col_count_i = _optional_int(payload.get("col_count"))
+    if row_count_i is None or col_count_i is None:
+        return None
+    return f"Shape: {row_count_i} rows x {col_count_i} cols"
+
+
+def _tag_preview_rows(payload: dict[str, Any]) -> list[str]:
+    columns = payload.get("columns") if isinstance(payload.get("columns"), list) else []
+    rows = payload.get("rows") if isinstance(payload.get("rows"), list) else []
+    cols_s = [str(col) for col in columns if str(col).strip()][:6]
+    if not cols_s or not rows:
+        return []
+
+    preview: list[str] = ["Rows (preview):"]
+    for row in rows[:4]:
+        if not isinstance(row, list):
+            continue
+        pairs = [f"{col}={str(row[i]).strip()}" for i, col in enumerate(cols_s) if i < len(row) and row[i] is not None and str(row[i]).strip()]
+        if pairs:
+            preview.append("- " + ", ".join(pairs))
+    return preview
+
+
 def _format_tag_table_store_summary(doc: Document, *, meta: dict[str, Any]) -> str | None:
     """
     Convert a TAG table_store JSON payload into a human-readable summary for citations/UI.
@@ -521,68 +508,624 @@ def _format_tag_table_store_summary(doc: Document, *, meta: dict[str, Any]) -> s
     doc_name = str(payload.get("document") or meta.get("source") or "table").strip() or "table"
     table_id = str(payload.get("table_id") or meta.get("table_id") or "").strip()
 
-    sheet_name = payload.get("sheet_name")
-    sheet_name = str(sheet_name).strip() if sheet_name is not None else ""
-    sheet_index = payload.get("sheet_index")
-    try:
-        sheet_index_i = int(sheet_index) if sheet_index is not None else None
-    except Exception:
-        sheet_index_i = None
-
-    row_count = payload.get("row_count")
-    col_count = payload.get("col_count")
-    try:
-        row_count_i = int(row_count) if row_count is not None else None
-    except Exception:
-        row_count_i = None
-    try:
-        col_count_i = int(col_count) if col_count is not None else None
-    except Exception:
-        col_count_i = None
-
     sql = str(payload.get("sql") or "").strip()
-    columns = payload.get("columns") if isinstance(payload.get("columns"), list) else []
-    rows = payload.get("rows") if isinstance(payload.get("rows"), list) else []
     truncated = bool(payload.get("truncated"))
 
     parts: list[str] = ["[TAG] Table Query Result"]
     parts.append(f"Document: {doc_name}")
-    if sheet_name:
-        sheet_extra = f" (sheet_{sheet_index_i})" if sheet_index_i is not None else ""
-        parts.append(f"Sheet: {sheet_name}{sheet_extra}")
-    elif sheet_index_i is not None:
-        parts.append(f"Sheet: sheet_{sheet_index_i}")
-    if row_count_i is not None and col_count_i is not None:
-        parts.append(f"Shape: {row_count_i} rows x {col_count_i} cols")
+    for summary in (_tag_sheet_summary(payload), _tag_shape_summary(payload)):
+        if summary:
+            parts.append(summary)
     if table_id:
         parts.append(f"Table ID: {table_id}")
     if sql:
         parts.append(f"SQL: {sql}")
-
-    cols_s = [str(c) for c in columns if str(c).strip()]
-    if cols_s and rows:
-        max_cols = 6
-        max_rows = 4
-        cols_s = cols_s[:max_cols]
-        parts.append("Rows (preview):")
-        for r in rows[:max_rows]:
-            if not isinstance(r, list):
-                continue
-            pairs: list[str] = []
-            for i, col in enumerate(cols_s):
-                v = r[i] if i < len(r) else None
-                if v is None:
-                    continue
-                s = str(v).strip()
-                if not s:
-                    continue
-                pairs.append(f"{col}={s}")
-            if pairs:
-                parts.append("- " + ", ".join(pairs))
+    parts.extend(_tag_preview_rows(payload))
     if truncated:
         parts.append("(truncated)")
 
     return "\n".join(parts).strip() or None
+
+
+def _bounded_str(value: Any, *, limit: int) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text[:limit] if text else None
+
+
+def _safe_kg_path_item(raw: Any, *, keys: tuple[str, ...]) -> dict[str, Any] | None:
+    if not isinstance(raw, dict):
+        return None
+
+    item: dict[str, Any] = {}
+    kind = _bounded_str(raw.get("kind"), limit=30)
+    if kind:
+        item["kind"] = kind
+    for key in keys:
+        value = _bounded_str(raw.get(key), limit=200)
+        if value:
+            item[key] = value
+    return item or None
+
+
+def _safe_kg_path_items(raw: Any, *, keys: tuple[str, ...]) -> list[dict[str, Any]]:
+    if not isinstance(raw, list):
+        return []
+
+    items: list[dict[str, Any]] = []
+    for entry_raw in raw:
+        entry = _safe_kg_path_item(entry_raw, keys=keys)
+        if entry:
+            items.append(entry)
+        if len(items) >= 10:
+            break
+    return items
+
+
+def _safe_kg_path_provenance(raw: Any) -> dict[str, Any] | None:
+    """
+    Sanitize a shortest-path provenance payload for citations.
+
+    Keeps identifiers and small, low-cardinality fields only; drops text evidence.
+    """
+    if not isinstance(raw, dict) or not raw:
+        return None
+
+    out: dict[str, Any] = {}
+    for key, limit in (("schema", 80), ("kind", 50)):
+        value = _bounded_str(raw.get(key), limit=limit)
+        if value:
+            out[key] = value
+    try:
+        if raw.get("hops") is not None:
+            out["hops"] = int(raw.get("hops") or 0)
+    except Exception as exc:
+        logger.debug(_CITATION_FALLBACK_LOG_MESSAGE, exc)
+
+    nodes = _safe_kg_path_items(
+        raw.get("nodes"),
+        keys=("entity_id", "type", "event_id", "document_id", "chunk_id"),
+    )
+    if nodes:
+        out["nodes"] = nodes
+
+    edges = _safe_kg_path_items(
+        raw.get("edges"),
+        keys=(
+            "entity_id",
+            "event_id",
+            "document_id",
+            "chunk_id",
+            "relation_id",
+            "predicate",
+            "confidence_bucket",
+            "evidence_source",
+        ),
+    )
+    if edges:
+        out["edges"] = edges
+
+    return out or None
+
+
+@dataclass
+class _CitationContext:
+    meta: dict[str, Any]
+    tag_payload: dict[str, Any] | None
+    effective_text: str
+    chunk_id: Any
+    retrieval_role: str | None
+    neighbor_of: str | None
+    is_tag: bool
+    is_image: bool
+    hit_type: str
+    img_id: Any
+    img_url: str | None
+    clean_docx_url: str | None
+    page_number: int | None
+    start_char: int | None
+    end_char: int | None
+    chunk_index: int | None
+    snippet: str
+    matched_terms: list[str]
+    evidence_start_in_chunk: int | None
+    evidence_end_in_chunk: int | None
+    bbox: dict[str, int] | None
+    bbox_page_number: int | None
+    hierarchy_basis: str | None
+    hierarchy_family_key: str | None
+    family_collapse_key: str | None
+    family_hit: bool
+    scores: dict[str, Any]
+
+
+def _float_meta(meta: dict[str, Any], key: str) -> float:
+    try:
+        return float(meta.get(key, 0.0) or 0.0)
+    except Exception:
+        return 0.0
+
+
+def _rounded_optional(value: Any, *, digits: int) -> float | None:
+    if value is None:
+        return None
+    try:
+        return round(float(value), digits)
+    except Exception as exc:
+        logger.debug(_CITATION_FALLBACK_LOG_MESSAGE, exc)
+        return None
+
+
+def _optional_clean_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _citation_scores(meta: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "vector_score": _float_meta(meta, "vector_score"),
+        "bm25_score": _float_meta(meta, "bm25_score"),
+        "lexical_score": _float_meta(meta, "lexical_score"),
+        "sparse_score": _float_meta(meta, "sparse_score"),
+        "colbert_score": _float_meta(meta, "colbert_score"),
+        "rerank_score": meta.get("rerank_score"),
+        "retrieval_score": meta.get("retrieval_score"),
+        "rerank_score_calibrated": meta.get("rerank_score_calibrated"),
+    }
+
+
+def _hit_type(*, scores: dict[str, Any], retrieval_mode: str, retrieval_role: str | None, is_image: bool) -> str:
+    if str(retrieval_role or "").strip().lower() == "tag":
+        hit_type = "tag"
+    elif is_image:
+        hit_type = "image"
+    elif retrieval_mode == "mmr":
+        hit_type = "mmr"
+    else:
+        vector_score = float(scores["vector_score"])
+        bm25_score = float(scores["bm25_score"])
+        colbert_score = float(scores["colbert_score"])
+        max_dense = max(vector_score, bm25_score, float(scores["lexical_score"]), float(scores["sparse_score"]))
+        if colbert_score > max_dense:
+            hit_type = "colbert_ann"
+        elif vector_score > bm25_score:
+            hit_type = "vector"
+        elif bm25_score > vector_score:
+            hit_type = "keyword"
+        else:
+            hit_type = "hybrid"
+    return hit_type
+
+
+def _media_urls(meta: dict[str, Any]) -> tuple[Any, str | None, str | None]:
+    img_id = meta.get("img_id")
+    img_url = f"/api/v1/documents/image-url/{img_id}" if img_id else _optional_clean_str(meta.get("img_url") or meta.get("image_url"))
+
+    clean_docx_url = _optional_clean_str(meta.get("clean_docx_url"))
+    doc_id_for_clean = meta.get("document_id")
+    doc_name_for_clean = str(meta.get("source") or meta.get("document_name") or "").strip().lower()
+    file_type_for_clean = str(meta.get("file_type") or "").strip().lower()
+    if clean_docx_url or doc_id_for_clean is None or not (doc_name_for_clean.endswith(".docx") or file_type_for_clean == "docx"):
+        return img_id, img_url, clean_docx_url
+    return img_id, img_url, f"/api/v1/documents/{doc_id_for_clean}/clean-docx"
+
+
+def _resolve_chunk_id(doc: Document, meta: dict[str, Any], *, is_tag: bool, tag_payload: dict[str, Any] | None) -> Any:
+    chunk_id = getattr(doc, "id", None) or meta.get("chunk_id")
+    if not is_tag or _is_uuid_like(chunk_id):
+        return chunk_id
+
+    tag_table_id = str(meta.get("table_id") or "").strip()
+    if not tag_table_id and tag_payload:
+        tag_table_id = str(tag_payload.get("table_id") or "").strip()
+    return _stable_tag_chunk_id(tag_table_id)
+
+
+def _effective_citation_text(doc: Document, meta: dict[str, Any], *, is_tag: bool) -> str:
+    effective_text = doc.page_content or ""
+    if is_tag:
+        formatted = _format_tag_table_store_summary(doc, meta=meta)
+        if formatted:
+            return formatted
+    return effective_text
+
+
+def _optional_meta_int(meta: dict[str, Any], key: str) -> int | None:
+    try:
+        value = meta.get(key)
+        return int(value) if value is not None else None
+    except Exception:
+        return None
+
+
+def _family_keys(meta: dict[str, Any]) -> tuple[str | None, str | None, str | None, bool]:
+    hierarchy_basis = _optional_clean_str(meta.get("hierarchy_basis"))
+    hierarchy_family_key = _optional_clean_str(meta.get("hierarchy_family_key"))
+    family_collapse_key = hierarchy_family_key or _optional_clean_str(meta.get("parent_id")) or _optional_clean_str(meta.get("parent_node_id"))
+    return hierarchy_basis, hierarchy_family_key, family_collapse_key, bool(family_collapse_key)
+
+
+def _citation_context(
+    doc: Document,
+    *,
+    retrieval_mode: str,
+    query: str | None,
+) -> _CitationContext:
+    meta = doc.metadata or {}
+    retrieval_role = _optional_clean_str(meta.get("retrieval_role"))
+    neighbor_of = _optional_clean_str(meta.get("neighbor_of"))
+    is_tag = str(retrieval_role or "").strip().lower() == "tag" or str(meta.get("chunk_role") or "") == "tag_sql_result"
+    is_image = str(retrieval_role or "").strip().lower() == "image" or str(meta.get("doc_type_kwd") or "").strip().lower() == "image"
+    tag_payload = _parse_json_object(doc.page_content or "") if is_tag else None
+    scores = _citation_scores(meta)
+    chunk_id = _resolve_chunk_id(doc, meta, is_tag=is_tag, tag_payload=tag_payload)
+    effective_text = _effective_citation_text(doc, meta, is_tag=is_tag)
+    snippet, matched_terms, evidence_start, evidence_end = _build_snippet_and_span(effective_text, query, max_chars=220)
+    page_number = _extract_page_number(meta)
+    bbox, bbox_page_number, bbox_from_position_tag = _extract_citation_bbox_with_page(
+        meta,
+        effective_text,
+        page_number=page_number,
+        evidence_start=evidence_start,
+        evidence_end=evidence_end,
+    )
+    if bbox_from_position_tag and bbox_page_number is not None:
+        page_number = bbox_page_number
+    hierarchy_basis, hierarchy_family_key, family_collapse_key, family_hit = _family_keys(meta)
+    img_id, img_url, clean_docx_url = _media_urls(meta)
+    return _CitationContext(
+        meta=meta,
+        tag_payload=tag_payload,
+        effective_text=effective_text,
+        chunk_id=chunk_id,
+        retrieval_role=retrieval_role,
+        neighbor_of=neighbor_of,
+        is_tag=is_tag,
+        is_image=is_image,
+        hit_type=_hit_type(scores=scores, retrieval_mode=retrieval_mode, retrieval_role=retrieval_role, is_image=is_image),
+        img_id=img_id,
+        img_url=img_url,
+        clean_docx_url=clean_docx_url,
+        page_number=page_number,
+        start_char=_optional_meta_int(meta, "start_char"),
+        end_char=_optional_meta_int(meta, "end_char"),
+        chunk_index=_optional_meta_int(meta, "chunk_index"),
+        snippet=snippet,
+        matched_terms=matched_terms,
+        evidence_start_in_chunk=evidence_start,
+        evidence_end_in_chunk=evidence_end,
+        bbox=bbox,
+        bbox_page_number=bbox_page_number,
+        hierarchy_basis=hierarchy_basis,
+        hierarchy_family_key=hierarchy_family_key,
+        family_collapse_key=family_collapse_key,
+        family_hit=family_hit,
+        scores=scores,
+    )
+
+
+def _absolute_evidence(start_char: int | None, local_offset: int | None) -> int | None:
+    if start_char is None or local_offset is None:
+        return None
+    return int(start_char) + int(local_offset)
+
+
+def _base_citation(
+    ctx: _CitationContext,
+    *,
+    retrieval_elapsed_sec: float,
+    retrieval_mode: str,
+) -> dict[str, Any]:
+    meta = ctx.meta
+    scores = ctx.scores
+    return {
+        "chunk_id": ctx.chunk_id,
+        "document_id": meta.get("document_id"),
+        "document_name": meta.get("source", "Unknown"),
+        "chunk_content": ctx.snippet or ((ctx.effective_text or "")[:200] + "..."),
+        "matched_terms": ctx.matched_terms,
+        "page_number": ctx.page_number,
+        "chunk_index": ctx.chunk_index,
+        "start_char": ctx.start_char,
+        "end_char": ctx.end_char,
+        "evidence_start_char": _absolute_evidence(ctx.start_char, ctx.evidence_start_in_chunk),
+        "evidence_end_char": _absolute_evidence(ctx.start_char, ctx.evidence_end_in_chunk),
+        "header_path": meta.get("header_path") or meta.get("header_context"),
+        "chunk_strategy": meta.get("chunk_strategy"),
+        "chunk_role": meta.get("chunk_role"),
+        "chunk_semantic_role": meta.get("chunk_semantic_role"),
+        "policy_clause_id": meta.get("policy_clause_id"),
+        "policy_clause_number": meta.get("policy_clause_number"),
+        "policy_path": meta.get("policy_path"),
+        "policy_path_str": meta.get("policy_path_str"),
+        "parent_id": meta.get("parent_id"),
+        "hierarchy_basis": ctx.hierarchy_basis,
+        "hierarchy_family_key": ctx.hierarchy_family_key,
+        "family_collapse_key": ctx.family_collapse_key,
+        "family_hit": ctx.family_hit,
+        "retrieval_role": ctx.retrieval_role,
+        "neighbor_of": ctx.neighbor_of,
+        "doc_pipeline_key": meta.get("doc_pipeline_key"),
+        "pipeline_hash": meta.get("pipeline_hash"),
+        "relevance_score": round(float(meta.get("score", 0.0) or 0.0), 2),
+        "vector_score": round(float(scores["vector_score"]), 3),
+        "bm25_score": round(float(scores["bm25_score"]), 3),
+        "lexical_score": round(float(scores["lexical_score"]), 3),
+        "sparse_score": round(float(scores["sparse_score"]), 3),
+        "colbert_score": round(float(scores["colbert_score"]), 3),
+        "keyword_score": round(_float_meta(meta, "keyword_score"), 3),
+        "field_aware_signal": str(meta.get("field_aware_signal")).strip().lower() if meta.get("field_aware_signal") is not None else None,
+        "field_aware_boost": round(_float_meta(meta, "field_aware_boost"), 6),
+        "kg_pagerank": round(_float_meta(meta, "kg_pagerank"), 3),
+        "kg_shared_events": int(meta.get("kg_shared_events", 0) or 0),
+        "kg_path_length": int(meta.get("kg_path_length", 0) or 0),
+        "kg_edge_conf_low": round(_float_meta(meta, "kg_edge_conf_low"), 3),
+        "kg_edge_conf_mid": round(_float_meta(meta, "kg_edge_conf_mid"), 3),
+        "kg_edge_conf_high": round(_float_meta(meta, "kg_edge_conf_high"), 3),
+        "kg_evidence_anchored": bool(meta.get("kg_evidence_anchored", False)),
+        "kg_boost_applied": bool(meta.get("kg_boost_applied", False)),
+        "kg_boost_score": _rounded_optional(meta.get("kg_boost_score"), digits=6),
+        "rerank_score": _rounded_optional(scores.get("rerank_score"), digits=3),
+        "retrieval_score": _rounded_optional(scores.get("retrieval_score"), digits=3),
+        "rerank_score_calibrated": _rounded_optional(scores.get("rerank_score_calibrated"), digits=6),
+        "reranker_provider": meta.get("reranker_provider"),
+        "rerank_elapsed_sec": meta.get("rerank_elapsed_sec"),
+        "rerank_model_used": meta.get("rerank_model_used"),
+        "retrieval_mode": retrieval_mode,
+        "vector_backend": getattr(settings, "VECTOR_BACKEND", "unknown"),
+        "retrieval_elapsed_sec": round(float(retrieval_elapsed_sec or 0.0), 3),
+        "hit_type": ctx.hit_type,
+    }
+
+
+def _tag_payload_value(ctx: _CitationContext, key: str) -> Any:
+    value = ctx.meta.get(key)
+    if value is None and ctx.tag_payload:
+        value = ctx.tag_payload.get(key)
+    return value
+
+
+def _tag_schema_link_values(ctx: _CitationContext) -> tuple[Any, Any]:
+    score = ctx.meta.get("schema_link_score")
+    strategy = ctx.meta.get("schema_link_strategy")
+    diagnostics = ctx.meta.get("schema_link_diagnostics")
+    if isinstance(diagnostics, dict):
+        score = diagnostics.get("score") if score is None else score
+        strategy = diagnostics.get("strategy") if strategy is None else strategy
+    if ctx.tag_payload:
+        score = ctx.tag_payload.get("schema_link_score") if score is None else score
+        strategy = ctx.tag_payload.get("schema_link_strategy") if strategy is None else strategy
+        payload_schema_link = ctx.tag_payload.get("schema_link")
+        if isinstance(payload_schema_link, dict):
+            score = payload_schema_link.get("score") if score is None else score
+            strategy = payload_schema_link.get("strategy") if strategy is None else strategy
+    return score, strategy
+
+
+def _tag_row_source_values(ctx: _CitationContext) -> tuple[Any, Any, Any]:
+    table = ctx.meta.get("row_source_table")
+    sync_token = ctx.meta.get("row_source_sync_token")
+    pk_hashes = ctx.meta.get("row_source_pk_hashes")
+    payload_row_source = ctx.tag_payload.get("row_source") if ctx.tag_payload else None
+    if isinstance(payload_row_source, dict):
+        table = payload_row_source.get("table") if table is None else table
+        sync_token = payload_row_source.get("sync_token") if sync_token is None else sync_token
+        pk_hashes = payload_row_source.get("pk_hashes") if pk_hashes is None else pk_hashes
+    return table, sync_token, pk_hashes
+
+
+def _limited_unique_strings(raw: Any, *, limit: int) -> list[str]:
+    if not isinstance(raw, list):
+        return []
+    values: list[str] = []
+    for item in raw:
+        value = str(item or "").strip()
+        if value and value not in values:
+            values.append(value)
+        if len(values) >= limit:
+            break
+    return values
+
+
+def _safe_join_provenance(raw: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw, list):
+        return []
+
+    items: list[dict[str, Any]] = []
+    for entry_raw in raw:
+        if not isinstance(entry_raw, dict):
+            continue
+        item = {
+            key: str(entry_raw.get(key)).strip()[:160]
+            for key in ("left_table", "left_column", "right_table", "right_column", "reason")
+            if entry_raw.get(key) is not None and str(entry_raw.get(key)).strip()
+        }
+        confidence = _rounded_optional(entry_raw.get("confidence"), digits=6)
+        if confidence is not None:
+            item["confidence"] = confidence
+        if item:
+            items.append(item)
+        if len(items) >= 10:
+            break
+    return items
+
+
+def _apply_tag_identity_fields(citation: dict[str, Any], ctx: _CitationContext) -> None:
+    for output_key, value in (
+        ("table_id", _tag_payload_value(ctx, "table_id")),
+        ("sheet_index", _tag_payload_value(ctx, "sheet_index")),
+        ("sheet_name", _tag_payload_value(ctx, "sheet_name")),
+        ("sql_generation_mode", _tag_payload_value(ctx, "sql_generation_mode")),
+    ):
+        if value is not None:
+            citation[output_key] = value
+
+
+def _apply_tag_schema_fields(citation: dict[str, Any], ctx: _CitationContext) -> None:
+    schema_link_score, schema_link_strategy = _tag_schema_link_values(ctx)
+    score = _rounded_optional(schema_link_score, digits=6)
+    if score is not None:
+        citation["tag_schema_link_score"] = score
+    if schema_link_strategy is not None:
+        citation["tag_schema_link_strategy"] = str(schema_link_strategy)[:80]
+
+
+def _apply_tag_row_source_fields(citation: dict[str, Any], ctx: _CitationContext) -> None:
+    row_source_table, row_source_sync_token, row_source_pk_hashes = _tag_row_source_values(ctx)
+    if row_source_table is not None:
+        citation["row_source_table"] = str(row_source_table)[:300]
+    if row_source_sync_token is not None:
+        citation["row_source_sync_token"] = str(row_source_sync_token)[:300]
+    row_hashes = _limited_unique_strings(row_source_pk_hashes, limit=200)
+    if row_hashes:
+        citation["row_source_pk_hashes"] = row_hashes
+
+
+def _apply_tag_join_fields(citation: dict[str, Any], ctx: _CitationContext) -> None:
+    join_provenance = ctx.meta.get("join_provenance")
+    join_table_ids = ctx.meta.get("join_table_ids")
+    if ctx.tag_payload:
+        join_provenance = ctx.tag_payload.get("join_provenance") if join_provenance is None else join_provenance
+        join_table_ids = ctx.tag_payload.get("join_table_ids") if join_table_ids is None else join_table_ids
+    safe_join = _safe_join_provenance(join_provenance)
+    if safe_join:
+        citation["join_provenance"] = safe_join
+    table_ids = _limited_unique_strings(join_table_ids, limit=10)
+    if table_ids:
+        citation["join_table_ids"] = table_ids
+
+
+def _apply_tag_fields(citation: dict[str, Any], ctx: _CitationContext) -> None:
+    if not ctx.is_tag:
+        return
+
+    _apply_tag_identity_fields(citation, ctx)
+    _apply_tag_schema_fields(citation, ctx)
+    _apply_tag_row_source_fields(citation, ctx)
+    _apply_tag_join_fields(citation, ctx)
+
+
+def _kg_path_entries(raw: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw, list):
+        return []
+    path: list[dict[str, Any]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        ent_id = _optional_clean_str(item.get("entity_id"))
+        if not ent_id:
+            continue
+        entry: dict[str, Any] = {"entity_id": ent_id}
+        typ = _optional_clean_str(item.get("type"))
+        if typ:
+            entry["type"] = typ[:100]
+        path.append(entry)
+        if len(path) >= 6:
+            break
+    return path
+
+
+def _apply_kg_fields(citation: dict[str, Any], meta: dict[str, Any]) -> None:
+    kg_path = _kg_path_entries(meta.get("kg_path"))
+    if kg_path:
+        citation["kg_path"] = kg_path
+    provenance = _safe_kg_path_provenance(meta.get("kg_path_provenance"))
+    if provenance:
+        citation["kg_path_provenance"] = provenance
+
+
+def _apply_media_fields(citation: dict[str, Any], ctx: _CitationContext) -> None:
+    has_image = bool(ctx.img_id) or bool(ctx.img_url)
+    if ctx.img_id:
+        citation["img_id"] = ctx.img_id
+    if ctx.img_url:
+        citation["img_url"] = ctx.img_url
+    if ctx.clean_docx_url:
+        citation["clean_docx_url"] = ctx.clean_docx_url
+    citation["has_image"] = bool(has_image)
+
+
+def _apply_hashes(citation: dict[str, Any]) -> None:
+    anchor_payload = {
+        "document_id": citation.get("document_id"),
+        "chunk_id": citation.get("chunk_id"),
+        "page_number": citation.get("page_number"),
+        "chunk_index": citation.get("chunk_index"),
+        "start_char": citation.get("start_char"),
+        "end_char": citation.get("end_char"),
+        "retrieval_role": citation.get("retrieval_role"),
+        "table_id": citation.get("table_id"),
+        "row_source_table": citation.get("row_source_table"),
+        "row_source_sync_token": citation.get("row_source_sync_token"),
+        "row_source_pk_hashes": citation.get("row_source_pk_hashes"),
+    }
+    if citation.get("bbox") is not None:
+        anchor_payload["bbox"] = citation.get("bbox")
+        anchor_payload["bbox_page_number"] = citation.get("bbox_page_number")
+    citation["evidence_anchor_hash"] = stable_json_hash(anchor_payload, length=16)
+    citation["citation_hash"] = stable_json_hash(citation, length=16)
+
+
+def _to_int(value: Any) -> int | None:
+    try:
+        return int(value) if value is not None else None
+    except Exception:
+        return None
+
+
+def _hierarchy_anchor_span(parent: dict[str, Any], anchor: dict[str, Any]) -> tuple[int, int, int] | None:
+    doc_a = str(anchor.get("document_id") or "").strip()
+    doc_b = str(parent.get("document_id") or "").strip()
+    if doc_a and doc_b and doc_a != doc_b:
+        return None
+
+    parent_start = _to_int(parent.get("start_char"))
+    parent_end = _to_int(parent.get("end_char"))
+    anchor_start = _to_int(anchor.get("evidence_start_char"))
+    anchor_end = _to_int(anchor.get("evidence_end_char"))
+    if parent_start is None or anchor_start is None or anchor_end is None or anchor_end <= anchor_start:
+        return None
+    if anchor_start < parent_start or (parent_end is not None and anchor_end > parent_end):
+        return None
+    return parent_start, anchor_start, anchor_end
+
+
+def _merge_hierarchy_parent_spans(
+    citations: list[dict[str, Any]],
+    *,
+    raw_text_by_chunk_id: dict[str, str],
+    query: str | None,
+) -> None:
+    by_chunk = {str(c.get("chunk_id")).strip(): c for c in citations if isinstance(c, dict) and c.get("chunk_id") is not None}
+    for citation in citations:
+        if str(citation.get("retrieval_role") or "").strip().lower() != "hierarchy_parent":
+            continue
+        anchor = by_chunk.get(str(citation.get("neighbor_of") or "").strip())
+        if not isinstance(anchor, dict):
+            continue
+        span = _hierarchy_anchor_span(citation, anchor)
+        if span is None:
+            continue
+        parent_start, anchor_start, anchor_end = span
+        citation["evidence_start_char"] = int(anchor_start)
+        citation["evidence_end_char"] = int(anchor_end)
+        text = raw_text_by_chunk_id.get(str(citation.get("chunk_id") or "").strip())
+        if not text:
+            continue
+        snippet, matched = _build_snippet_from_span(
+            text,
+            query,
+            span_start=int(anchor_start) - int(parent_start),
+            span_end=int(anchor_end) - int(parent_start),
+            max_chars=220,
+        )
+        if snippet:
+            citation["chunk_content"] = snippet
+        if matched:
+            citation["matched_terms"] = matched
 
 
 def build_citations_from_docs(
@@ -597,555 +1140,23 @@ def build_citations_from_docs(
     # build citations (so no extra DB calls or content retention outside this function).
     raw_text_by_chunk_id: dict[str, str] = {}
     for doc in docs:
-        meta = doc.metadata or {}
-
-        v_score_raw = float(meta.get("vector_score", 0.0) or 0.0)
-        b_score_raw = float(meta.get("bm25_score", 0.0) or 0.0)
-        l_score_raw = float(meta.get("lexical_score", 0.0) or 0.0)
-        s_score_raw = float(meta.get("sparse_score", 0.0) or 0.0)
-        c_score_raw = float(meta.get("colbert_score", 0.0) or 0.0)
-        rerank_score = meta.get("rerank_score")
-        retrieval_score = meta.get("retrieval_score")
-        rerank_score_calibrated = meta.get("rerank_score_calibrated")
-
-        retrieval_role_raw = meta.get("retrieval_role")
-        retrieval_role = (
-            str(retrieval_role_raw).strip()
-            if retrieval_role_raw is not None and str(retrieval_role_raw).strip()
-            else None
-        )
-        neighbor_of_raw = meta.get("neighbor_of")
-        neighbor_of = (
-            str(neighbor_of_raw).strip()
-            if neighbor_of_raw is not None and str(neighbor_of_raw).strip()
-            else None
-        )
-        is_tag = str(retrieval_role or "").strip().lower() == "tag" or str(meta.get("chunk_role") or "") == "tag_sql_result"
-        is_image = (
-            str(retrieval_role or "").strip().lower() == "image"
-            or str(meta.get("doc_type_kwd") or "").strip().lower() == "image"
-        )
-        tag_payload = _parse_json_object(doc.page_content or "") if is_tag else None
-
-        page_number = _extract_page_number(meta)
-
-        if is_tag:
-            hit_type = "tag"
-        elif is_image:
-            hit_type = "image"
-        elif retrieval_mode == "mmr":
-            hit_type = "mmr"
-        elif c_score_raw > max(v_score_raw, b_score_raw, l_score_raw, s_score_raw):
-            hit_type = "colbert_ann"
-        elif v_score_raw > b_score_raw:
-            hit_type = "vector"
-        elif b_score_raw > v_score_raw:
-            hit_type = "keyword"
-        else:
-            hit_type = "hybrid"
-
-        img_id = meta.get("img_id")
-        # Prefer stable MinIO-backed img_id -> image-url route, but allow pre-normalized
-        # img_url/image_url (e.g. local assets) as a fallback.
-        img_url = f"/api/v1/documents/image-url/{img_id}" if img_id else None
-        if not img_url:
-            raw_url = meta.get("img_url") or meta.get("image_url")
-            img_url = str(raw_url).strip() if raw_url is not None else None
-            if not img_url:
-                img_url = None
-        clean_docx_url = meta.get("clean_docx_url")
-        clean_docx_url = str(clean_docx_url).strip() if clean_docx_url is not None else None
-        if not clean_docx_url:
-            doc_id_for_clean = meta.get("document_id")
-            doc_name_for_clean = str(meta.get("source") or meta.get("document_name") or "").strip().lower()
-            file_type_for_clean = str(meta.get("file_type") or "").strip().lower()
-            if doc_id_for_clean is not None and (doc_name_for_clean.endswith(".docx") or file_type_for_clean == "docx"):
-                clean_docx_url = f"/api/v1/documents/{doc_id_for_clean}/clean-docx"
-            else:
-                clean_docx_url = None
-
-        raw_chunk_id = getattr(doc, "id", None) or meta.get("chunk_id")
-        chunk_id = raw_chunk_id
-        if is_tag and not _is_uuid_like(chunk_id):
-            # TAG docs are not real chunks; generate deterministic UUIDs so ChatResponse citation schema
-            # remains compatible even when callers used a non-UUID id (historical behavior/tests).
-            tag_table_id = str(meta.get("table_id") or "").strip()
-            if not tag_table_id and tag_payload:
-                tag_table_id = str(tag_payload.get("table_id") or "").strip()
-            chunk_id = _stable_tag_chunk_id(tag_table_id)
-
-        effective_text = doc.page_content or ""
-        if is_tag:
-            formatted = _format_tag_table_store_summary(doc, meta=meta)
-            if formatted:
-                effective_text = formatted
-
-        # Store the exact text used to build snippets/spans for this chunk id so we can
-        # re-anchor snippets when hierarchy expansion wants to "inherit" anchor spans.
-        chunk_id_s = str(chunk_id).strip() if chunk_id is not None else ""
+        ctx = _citation_context(doc, retrieval_mode=retrieval_mode, query=query)
+        chunk_id_s = str(ctx.chunk_id).strip() if ctx.chunk_id is not None else ""
         if chunk_id_s:
-            raw_text_by_chunk_id.setdefault(chunk_id_s, str(effective_text or ""))
+            raw_text_by_chunk_id.setdefault(chunk_id_s, str(ctx.effective_text or ""))
 
-        tag_table_id = str(meta.get("table_id") or "").strip()
-        if not tag_table_id and tag_payload:
-            tag_table_id = str(tag_payload.get("table_id") or "").strip()
-        tag_sheet_index = meta.get("sheet_index")
-        if tag_sheet_index is None and tag_payload:
-            tag_sheet_index = tag_payload.get("sheet_index")
-        tag_sheet_name = meta.get("sheet_name")
-        if tag_sheet_name is None and tag_payload:
-            tag_sheet_name = tag_payload.get("sheet_name")
-        tag_sql_generation_mode = meta.get("sql_generation_mode")
-        if tag_sql_generation_mode is None and tag_payload:
-            tag_sql_generation_mode = tag_payload.get("sql_generation_mode")
-        tag_schema_link_score = meta.get("schema_link_score")
-        tag_schema_link_strategy = meta.get("schema_link_strategy")
-        tag_schema_link_diag = meta.get("schema_link_diagnostics")
-        tag_row_source_table = meta.get("row_source_table")
-        tag_row_source_sync_token = meta.get("row_source_sync_token")
-        tag_row_source_pk_hashes = meta.get("row_source_pk_hashes")
-        tag_join_provenance = meta.get("join_provenance")
-        tag_join_table_ids = meta.get("join_table_ids")
-        if isinstance(tag_schema_link_diag, dict):
-            if tag_schema_link_score is None:
-                tag_schema_link_score = tag_schema_link_diag.get("score")
-            if tag_schema_link_strategy is None:
-                tag_schema_link_strategy = tag_schema_link_diag.get("strategy")
-        if tag_payload:
-            if tag_schema_link_score is None:
-                tag_schema_link_score = tag_payload.get("schema_link_score")
-            if tag_schema_link_strategy is None:
-                tag_schema_link_strategy = tag_payload.get("schema_link_strategy")
-            payload_schema_link = tag_payload.get("schema_link")
-            if isinstance(payload_schema_link, dict):
-                if tag_schema_link_score is None:
-                    tag_schema_link_score = payload_schema_link.get("score")
-                if tag_schema_link_strategy is None:
-                    tag_schema_link_strategy = payload_schema_link.get("strategy")
-            payload_row_source = tag_payload.get("row_source")
-            if isinstance(payload_row_source, dict):
-                if tag_row_source_table is None:
-                    tag_row_source_table = payload_row_source.get("table")
-                if tag_row_source_sync_token is None:
-                    tag_row_source_sync_token = payload_row_source.get("sync_token")
-                if tag_row_source_pk_hashes is None:
-                    tag_row_source_pk_hashes = payload_row_source.get("pk_hashes")
-            if tag_join_provenance is None:
-                tag_join_provenance = tag_payload.get("join_provenance")
-            if tag_join_table_ids is None:
-                tag_join_table_ids = tag_payload.get("join_table_ids")
-
-        snippet, matched_terms, evidence_start_in_chunk, evidence_end_in_chunk = _build_snippet_and_span(
-            effective_text, query, max_chars=220
-        )
-
-        start_char = meta.get("start_char")
-        end_char = meta.get("end_char")
-        chunk_index = meta.get("chunk_index")
-        try:
-            start_char = int(start_char) if start_char is not None else None
-        except Exception:
-            start_char = None
-        try:
-            end_char = int(end_char) if end_char is not None else None
-        except Exception:
-            end_char = None
-        try:
-            chunk_index = int(chunk_index) if chunk_index is not None else None
-        except Exception:
-            chunk_index = None
-        bbox, bbox_page_number, bbox_from_position_tag = _extract_citation_bbox_with_page(
-            meta,
-            effective_text,
-            page_number=page_number,
-            evidence_start=evidence_start_in_chunk,
-            evidence_end=evidence_end_in_chunk,
-        )
-        if bbox_from_position_tag and bbox_page_number is not None:
-            page_number = bbox_page_number
-
-        hierarchy_basis = str(meta.get("hierarchy_basis") or "").strip() or None
-        hierarchy_family_key = str(meta.get("hierarchy_family_key") or "").strip() or None
-        family_collapse_key = hierarchy_family_key
-        if family_collapse_key is None:
-            family_collapse_key = str(meta.get("parent_id") or "").strip() or None
-        if family_collapse_key is None:
-            family_collapse_key = str(meta.get("parent_node_id") or "").strip() or None
-        family_hit = bool(family_collapse_key)
-
-        citation: dict[str, Any] = {
-            "chunk_id": chunk_id,
-            "document_id": meta.get("document_id"),
-            "document_name": meta.get("source", "Unknown"),
-            "chunk_content": snippet or ((effective_text or "")[:200] + "..."),
-            "matched_terms": matched_terms,
-            "page_number": page_number,
-            "chunk_index": chunk_index,
-            "start_char": start_char,
-            "end_char": end_char,
-            "evidence_start_char": (
-                (int(start_char) + int(evidence_start_in_chunk))
-                if (start_char is not None and evidence_start_in_chunk is not None)
-                else None
-            ),
-            "evidence_end_char": (
-                (int(start_char) + int(evidence_end_in_chunk))
-                if (start_char is not None and evidence_end_in_chunk is not None)
-                else None
-            ),
-            "header_path": meta.get("header_path") or meta.get("header_context"),
-            "chunk_strategy": meta.get("chunk_strategy"),
-            "chunk_role": meta.get("chunk_role"),
-            "chunk_semantic_role": meta.get("chunk_semantic_role"),
-            # Policy/manual structured chunking (best-effort; present only for relevant docs).
-            "policy_clause_id": meta.get("policy_clause_id"),
-            "policy_clause_number": meta.get("policy_clause_number"),
-            "policy_path": meta.get("policy_path"),
-            "policy_path_str": meta.get("policy_path_str"),
-            "parent_id": meta.get("parent_id"),
-            "hierarchy_basis": hierarchy_basis,
-            "hierarchy_family_key": hierarchy_family_key,
-            "family_collapse_key": family_collapse_key,
-            "family_hit": family_hit,
-            "retrieval_role": retrieval_role,
-            "neighbor_of": neighbor_of,
-            # Useful for audit/debug and for versioned retrieval UIs.
-            "doc_pipeline_key": meta.get("doc_pipeline_key"),
-            "pipeline_hash": meta.get("pipeline_hash"),
-            "relevance_score": round(float(meta.get("score", 0.0) or 0.0), 2),
-            "vector_score": round(v_score_raw, 3),
-            "bm25_score": round(b_score_raw, 3),
-            "lexical_score": round(l_score_raw, 3),
-            "sparse_score": round(s_score_raw, 3),
-            "colbert_score": round(c_score_raw, 3),
-            "keyword_score": round(float(meta.get("keyword_score", 0.0) or 0.0), 3),
-            "field_aware_signal": (str(meta.get("field_aware_signal")).strip().lower() if meta.get("field_aware_signal") is not None else None),
-            "field_aware_boost": round(float(meta.get("field_aware_boost", 0.0) or 0.0), 6),
-            # KG ranking features (optional; low-cardinality).
-            # These fields stay numeric/boolean and do not include scope identifiers.
-            "kg_pagerank": round(float(meta.get("kg_pagerank", 0.0) or 0.0), 3),
-            "kg_shared_events": int(meta.get("kg_shared_events", 0) or 0),
-            "kg_path_length": int(meta.get("kg_path_length", 0) or 0),
-            "kg_edge_conf_low": round(float(meta.get("kg_edge_conf_low", 0.0) or 0.0), 3),
-            "kg_edge_conf_mid": round(float(meta.get("kg_edge_conf_mid", 0.0) or 0.0), 3),
-            "kg_edge_conf_high": round(float(meta.get("kg_edge_conf_high", 0.0) or 0.0), 3),
-            "kg_evidence_anchored": bool(meta.get("kg_evidence_anchored", False)),
-            "kg_boost_applied": bool(meta.get("kg_boost_applied", False)),
-            "kg_boost_score": (
-                round(float(meta.get("kg_boost_score")), 6)
-                if meta.get("kg_boost_score") is not None
-                else None
-            ),
-            "rerank_score": round(float(rerank_score), 3) if rerank_score is not None else None,
-            "retrieval_score": round(float(retrieval_score), 3) if retrieval_score is not None else None,
-            "rerank_score_calibrated": (
-                round(float(rerank_score_calibrated), 6)
-                if rerank_score_calibrated is not None
-                else None
-            ),
-            "reranker_provider": meta.get("reranker_provider"),
-            "rerank_elapsed_sec": meta.get("rerank_elapsed_sec"),
-            "rerank_model_used": meta.get("rerank_model_used"),
-            "retrieval_mode": retrieval_mode,
-            "vector_backend": getattr(settings, "VECTOR_BACKEND", "unknown"),
-            "retrieval_elapsed_sec": round(float(retrieval_elapsed_sec or 0.0), 3),
-            "hit_type": hit_type,
-        }
-        if bbox is not None:
-            citation["bbox"] = bbox
-            citation["bbox_page_number"] = bbox_page_number
-
-        if is_tag:
-            if tag_table_id:
-                citation["table_id"] = tag_table_id
-            if tag_sheet_index is not None:
-                citation["sheet_index"] = tag_sheet_index
-            if tag_sheet_name is not None:
-                citation["sheet_name"] = tag_sheet_name
-            if tag_sql_generation_mode is not None:
-                citation["sql_generation_mode"] = tag_sql_generation_mode
-            if tag_schema_link_score is not None:
-                try:
-                    citation["tag_schema_link_score"] = round(float(tag_schema_link_score), 6)
-                except Exception as exc:
-                    logger.debug(_CITATION_FALLBACK_LOG_MESSAGE, exc)
-            if tag_schema_link_strategy is not None:
-                citation["tag_schema_link_strategy"] = str(tag_schema_link_strategy)[:80]
-            if tag_row_source_table is not None:
-                citation["row_source_table"] = str(tag_row_source_table)[:300]
-            if tag_row_source_sync_token is not None:
-                citation["row_source_sync_token"] = str(tag_row_source_sync_token)[:300]
-            if isinstance(tag_row_source_pk_hashes, list):
-                row_hashes: list[str] = []
-                for v in tag_row_source_pk_hashes:
-                    s = str(v or "").strip()
-                    if not s:
-                        continue
-                    if s in row_hashes:
-                        continue
-                    row_hashes.append(s)
-                    if len(row_hashes) >= 200:
-                        break
-                if row_hashes:
-                    citation["row_source_pk_hashes"] = row_hashes
-            if isinstance(tag_join_provenance, list):
-                join_items: list[dict[str, Any]] = []
-                for raw in tag_join_provenance:
-                    if not isinstance(raw, dict):
-                        continue
-                    item: dict[str, Any] = {}
-                    for key in ("left_table", "left_column", "right_table", "right_column", "reason"):
-                        v = raw.get(key)
-                        if v is None:
-                            continue
-                        s = str(v).strip()
-                        if not s:
-                            continue
-                        item[key] = s[:160]
-                    conf = raw.get("confidence")
-                    if conf is not None:
-                        try:
-                            item["confidence"] = round(float(conf), 6)
-                        except Exception as exc:
-                            logger.debug(_CITATION_FALLBACK_LOG_MESSAGE, exc)
-                    if item:
-                        join_items.append(item)
-                    if len(join_items) >= 10:
-                        break
-                if join_items:
-                    citation["join_provenance"] = join_items
-            if isinstance(tag_join_table_ids, list):
-                table_ids: list[str] = []
-                for v in tag_join_table_ids:
-                    s = str(v or "").strip()
-                    if not s:
-                        continue
-                    if s in table_ids:
-                        continue
-                    table_ids.append(s)
-                    if len(table_ids) >= 10:
-                        break
-                if table_ids:
-                    citation["join_table_ids"] = table_ids
-
-        # Optional: KG path provenance for KG-injected citations (bounded, PII-safe).
-        #
-        # The retriever/orchestrator should attach this as a list of {entity_id,type} items
-        # (no names, no chunk snippets).
-        kg_path_raw = meta.get("kg_path")
-        if isinstance(kg_path_raw, list) and kg_path_raw:
-            kg_path: list[dict[str, Any]] = []
-            for item in kg_path_raw:
-                if not isinstance(item, dict):
-                    continue
-                ent_id = item.get("entity_id")
-                ent_id_s = str(ent_id or "").strip()
-                if not ent_id_s:
-                    continue
-                typ = item.get("type")
-                typ_s = str(typ or "").strip()
-                entry: dict[str, Any] = {"entity_id": ent_id_s}
-                if typ_s:
-                    entry["type"] = typ_s[:100]
-                kg_path.append(entry)
-                if len(kg_path) >= 6:
-                    break
-            if kg_path:
-                citation["kg_path"] = kg_path
-
-        def _safe_kg_path_provenance(raw: Any) -> dict[str, Any] | None:
-            """
-            Sanitize a shortest-path provenance payload for citations.
-
-            Rules:
-            - Keep identifiers + small, low-cardinality fields only.
-            - Drop any text evidence (quotes, entity names, etc).
-            - Bound list sizes.
-            """
-            if not isinstance(raw, dict) or not raw:
-                return None
-
-            out: dict[str, Any] = {}
-            schema = str(raw.get("schema") or "").strip()
-            if schema:
-                out["schema"] = schema[:80]
-            kind = str(raw.get("kind") or "").strip()
-            if kind:
-                out["kind"] = kind[:50]
-            try:
-                if raw.get("hops") is not None:
-                    out["hops"] = int(raw.get("hops") or 0)
-            except Exception as exc:
-                logger.debug(_CITATION_FALLBACK_LOG_MESSAGE, exc)
-
-            nodes_raw = raw.get("nodes")
-            if isinstance(nodes_raw, list) and nodes_raw:
-                nodes: list[dict[str, Any]] = []
-                for n in nodes_raw:
-                    if not isinstance(n, dict):
-                        continue
-                    node: dict[str, Any] = {}
-                    k = str(n.get("kind") or "").strip()
-                    if k:
-                        node["kind"] = k[:30]
-                    for key in ("entity_id", "type", "event_id", "document_id", "chunk_id"):
-                        v = n.get(key)
-                        if v is None:
-                            continue
-                        s = str(v).strip()
-                        if not s:
-                            continue
-                        node[key] = s[:200]
-                    if node:
-                        nodes.append(node)
-                    if len(nodes) >= 10:
-                        break
-                if nodes:
-                    out["nodes"] = nodes
-
-            edges_raw = raw.get("edges")
-            if isinstance(edges_raw, list) and edges_raw:
-                edges: list[dict[str, Any]] = []
-                for e in edges_raw:
-                    if not isinstance(e, dict):
-                        continue
-                    edge: dict[str, Any] = {}
-                    k = str(e.get("kind") or "").strip()
-                    if k:
-                        edge["kind"] = k[:30]
-                    for key in (
-                        "entity_id",
-                        "event_id",
-                        "document_id",
-                        "chunk_id",
-                        "relation_id",
-                        "predicate",
-                        "confidence_bucket",
-                        "evidence_source",
-                    ):
-                        v = e.get(key)
-                        if v is None:
-                            continue
-                        s = str(v).strip()
-                        if not s:
-                            continue
-                        edge[key] = s[:200]
-                    if edge:
-                        edges.append(edge)
-                    if len(edges) >= 10:
-                        break
-                if edges:
-                    out["edges"] = edges
-
-            return out or None
-
-        kg_path_prov_raw = meta.get("kg_path_provenance")
-        prov = _safe_kg_path_provenance(kg_path_prov_raw)
-        if prov:
-            citation["kg_path_provenance"] = prov
-
-        has_image = bool(img_id) or bool(img_url)
-        if img_id:
-            citation["img_id"] = img_id
-        if img_url:
-            citation["img_url"] = img_url
-        if clean_docx_url:
-            citation["clean_docx_url"] = clean_docx_url
-        citation["has_image"] = bool(has_image)
-
-        anchor_payload = {
-            "document_id": citation.get("document_id"),
-            "chunk_id": citation.get("chunk_id"),
-            "page_number": citation.get("page_number"),
-            "chunk_index": citation.get("chunk_index"),
-            "start_char": citation.get("start_char"),
-            "end_char": citation.get("end_char"),
-            "retrieval_role": citation.get("retrieval_role"),
-            "table_id": citation.get("table_id"),
-            "row_source_table": citation.get("row_source_table"),
-            "row_source_sync_token": citation.get("row_source_sync_token"),
-            "row_source_pk_hashes": citation.get("row_source_pk_hashes"),
-        }
-        if citation.get("bbox") is not None:
-            anchor_payload["bbox"] = citation.get("bbox")
-            anchor_payload["bbox_page_number"] = citation.get("bbox_page_number")
-        citation["evidence_anchor_hash"] = stable_json_hash(anchor_payload, length=16)
-        citation["citation_hash"] = stable_json_hash(citation, length=16)
-
+        citation = _base_citation(ctx, retrieval_elapsed_sec=retrieval_elapsed_sec, retrieval_mode=retrieval_mode)
+        if ctx.bbox is not None:
+            citation["bbox"] = ctx.bbox
+            citation["bbox_page_number"] = ctx.bbox_page_number
+        _apply_tag_fields(citation, ctx)
+        _apply_kg_fields(citation, ctx.meta)
+        _apply_media_fields(citation, ctx)
+        _apply_hashes(citation)
         citations.append(citation)
 
-    # Hierarchy context expansion: parent nodes are pulled in "for context", but we
-    # still want their evidence spans to line up with the anchor chunk that caused
-    # the expansion. Otherwise the parent citation often points at the *first* query
-    # term match in the section, which may not be what the anchor retrieved.
     try:
-        by_chunk: dict[str, dict[str, Any]] = {}
-        for c in citations:
-            if not isinstance(c, dict):
-                continue
-            cid = c.get("chunk_id")
-            if cid is None:
-                continue
-            by_chunk[str(cid).strip()] = c
-
-        def _to_int(v: Any) -> int | None:
-            try:
-                return int(v) if v is not None else None
-            except Exception:
-                return None
-
-        for c in citations:
-            if not isinstance(c, dict):
-                continue
-            rr = str(c.get("retrieval_role") or "").strip().lower()
-            if rr != "hierarchy_parent":
-                continue
-            neighbor = str(c.get("neighbor_of") or "").strip()
-            if not neighbor:
-                continue
-            anchor = by_chunk.get(neighbor)
-            if not isinstance(anchor, dict):
-                continue
-
-            # Keep merges within the same document.
-            doc_a = str(anchor.get("document_id") or "").strip()
-            doc_b = str(c.get("document_id") or "").strip()
-            if doc_a and doc_b and doc_a != doc_b:
-                continue
-
-            parent_start = _to_int(c.get("start_char"))
-            parent_end = _to_int(c.get("end_char"))
-            a_start = _to_int(anchor.get("evidence_start_char"))
-            a_end = _to_int(anchor.get("evidence_end_char"))
-            if parent_start is None or a_start is None or a_end is None or a_end <= a_start:
-                continue
-            if a_start < parent_start:
-                continue
-            if parent_end is not None and a_end > parent_end:
-                continue
-
-            c["evidence_start_char"] = int(a_start)
-            c["evidence_end_char"] = int(a_end)
-
-            # Best-effort: re-anchor the parent snippet around the inherited span so
-            # UI previews stay consistent with evidence pointers.
-            cid_s = str(c.get("chunk_id") or "").strip()
-            text = raw_text_by_chunk_id.get(cid_s)
-            if not text:
-                continue
-            local_s = int(a_start) - int(parent_start)
-            local_e = int(a_end) - int(parent_start)
-            snippet2, matched2 = _build_snippet_from_span(
-                text,
-                query,
-                span_start=local_s,
-                span_end=local_e,
-                max_chars=220,
-            )
-            if snippet2:
-                c["chunk_content"] = snippet2
-            if matched2:
-                c["matched_terms"] = matched2
+        _merge_hierarchy_parent_spans(citations, raw_text_by_chunk_id=raw_text_by_chunk_id, query=query)
     except Exception as exc:
         logger.debug(_CITATION_FALLBACK_LOG_MESSAGE, exc)
 
