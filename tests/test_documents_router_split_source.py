@@ -333,6 +333,16 @@ def test_document_upload_batch_supports_precheck_only_without_creating_documents
     assert '"successful": [],' in split_source
 
 
+def test_document_upload_batch_supports_upload_only_without_enqueueing_processing() -> None:
+    split_source = _source("app/api/v1/document_upload.py")
+
+    assert "upload_only: bool = Form(False)" in split_source
+    assert "upload_only = form.upload_only" in split_source
+    assert "if upload_only:" in split_source
+    assert 'doc_metadata["ingest_stage"] = "uploaded_only"' in split_source
+    assert "Upload-only stores the source document but intentionally does not enqueue parsing" in split_source
+
+
 def test_documents_router_still_exposes_upload_routes() -> None:
     from app.api.v1.documents import router
 

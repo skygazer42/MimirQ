@@ -124,16 +124,39 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback
 }
 
+function splitTopBarErrorMessage(cleaned: string): {
+  title: string
+  detail: string
+} | null {
+  const asciiColon = cleaned.indexOf(':')
+  const fullwidthColon = cleaned.indexOf('：')
+  const colonIndex =
+    asciiColon < 0
+      ? fullwidthColon
+      : fullwidthColon < 0
+        ? asciiColon
+        : Math.min(asciiColon, fullwidthColon)
+
+  if (colonIndex < 0) return null
+
+  const title = cleaned.slice(0, colonIndex).trim()
+  const detail = cleaned.slice(colonIndex + 1).trim()
+  if (title.length < 2 || title.length > 24 || !detail) return null
+
+  return { title, detail }
+}
+
 function formatTopBarError(message: string): {
   title: string
   detail: string | null
   badge: string | null
 } {
   const cleaned = String(message || '').trim()
-  const match = /^([^:：]{2,24})[:：]\s*(.+)$/.exec(cleaned)
-  const title = (match?.[1] || '操作失败').trim()
-  const detail = (match?.[2] || (match ? '' : cleaned)).trim()
-  const badge = /请求超时|timeout/i.test(cleaned) ? '请求超时' : null
+  const split = splitTopBarErrorMessage(cleaned)
+  const title = split?.title || '操作失败'
+  const detail = split?.detail || cleaned
+  const lower = cleaned.toLowerCase()
+  const badge = cleaned.includes('请求超时') || lower.includes('timeout') ? '请求超时' : null
 
   return {
     title,

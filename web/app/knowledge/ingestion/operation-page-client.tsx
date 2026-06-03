@@ -24,7 +24,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
@@ -56,6 +56,7 @@ type UploadSource = 'local' | 'folder' | 'url' | 'object' | 'api'
 type ParserBackend = 'auto' | 'docling' | 'markitdown' | 'deepdoc' | 'csv' | 'json' | 'markdown'
 type ChunkStrategy = 'semantic' | 'langchain_recursive' | 'markdown' | 'by_title'
 type IngestMode = 'append' | 'replace' | 'skip_duplicates'
+type IngestExecutionMode = 'upload_only' | 'parse_only' | 'full_index'
 type TaskStatus = 'idle' | 'prechecking' | 'uploading' | 'completed' | 'failed'
 
 type HistoryItem = {
@@ -74,6 +75,7 @@ type DraftState = {
   datasetId: string
   syncDataset: boolean
   ingestMode: IngestMode
+  executionMode: IngestExecutionMode
   parserBackend: ParserBackend
   chunkStrategy: ChunkStrategy
   chunkSize: number
@@ -82,15 +84,15 @@ type DraftState = {
   tags: string
   collection: string
   errorPolicy: string
-  autoSyncIndex: boolean
   refreshStats: boolean
   keepFailureTasks: boolean
 }
 
 const DEFAULT_DRAFT: DraftState = {
   datasetId: '',
-  syncDataset: true,
+  syncDataset: false,
   ingestMode: 'append',
+  executionMode: 'upload_only',
   parserBackend: 'auto',
   chunkStrategy: 'semantic',
   chunkSize: 600,
@@ -99,7 +101,6 @@ const DEFAULT_DRAFT: DraftState = {
   tags: '',
   collection: 'default',
   errorPolicy: 'skip_failed',
-  autoSyncIndex: true,
   refreshStats: true,
   keepFailureTasks: true,
 }
@@ -147,13 +148,22 @@ const TABLE_SHELL_CLASS = 'overflow-hidden rounded-[1.15rem] border border-borde
 const TABLE_HEAD_CLASS = 'bg-muted/38 text-muted-foreground'
 const TABLE_ROW_CLASS = 'border-t border-border/50'
 
+function isIngestExecutionMode(value: unknown): value is IngestExecutionMode {
+  return value === 'upload_only' || value === 'parse_only' || value === 'full_index'
+}
+
 function loadDraft(): DraftState {
   if (globalThis.window === undefined) return DEFAULT_DRAFT
   try {
     const raw = readClientStorage(DRAFT_KEY)
     if (!raw) return DEFAULT_DRAFT
     const parsed = JSON.parse(raw) as Partial<DraftState>
-    return { ...DEFAULT_DRAFT, ...parsed }
+    const draft = { ...DEFAULT_DRAFT, ...parsed }
+    if (!Object.prototype.hasOwnProperty.call(parsed, 'executionMode') || !isIngestExecutionMode(draft.executionMode)) {
+      draft.executionMode = DEFAULT_DRAFT.executionMode
+      draft.syncDataset = DEFAULT_DRAFT.syncDataset
+    }
+    return draft
   } catch {
     return DEFAULT_DRAFT
   }
@@ -177,14 +187,22 @@ function getFileIcon(file: File) {
   return FileType
 }
 
+function shouldBuildIndexes(draft: DraftState) {
+  return draft.executionMode === 'full_index'
+}
+
+function shouldOpenExecutionMonitor(draft: DraftState, mode: 'upload_only' | 'ingest') {
+  return mode === 'ingest' && draft.executionMode === 'parse_only'
+}
+
 function buildPipeline(draft: DraftState): DocumentPipelineOptions {
   return {
     chunk_size: draft.chunkSize,
     chunk_overlap: draft.chunkOverlap,
     near_dedup_enabled: draft.dedupStrategy !== 'none',
-    persist_parsed_content: true,
-    chunk_vector_enabled: draft.autoSyncIndex,
-    bm25_index_enabled: draft.autoSyncIndex,
+    persist_parsed_content: draft.executionMode !== 'upload_only',
+    chunk_vector_enabled: shouldBuildIndexes(draft),
+    bm25_index_enabled: shouldBuildIndexes(draft),
   }
 }
 
@@ -288,6 +306,8 @@ function isToday(value?: string | null) {
 
 export default function KnowledgeIngestionOperationPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const routeDatasetId = searchParams.get('datasetId') || ''
   const inputRef = useRef<HTMLInputElement | null>(null)
   const folderInputRef = useRef<HTMLInputElement | null>(null)
   const [draft, setDraft] = useState<DraftState>(DEFAULT_DRAFT)
@@ -323,9 +343,14 @@ export default function KnowledgeIngestionOperationPage() {
   const datasets = useMemo(() => datasetsQuery.data?.items ?? [], [datasetsQuery.data?.items])
 
   useEffect(() => {
-    if (draft.datasetId || !datasets[0]?.id) return
-    setDraft((current) => ({ ...current, datasetId: datasets[0].id }))
-  }, [datasets, draft.datasetId])
+    const routeDatasetExists = routeDatasetId && datasets.some((dataset) => dataset.id === routeDatasetId)
+    const fallbackDatasetId = datasets[0]?.id
+    setDraft((current) => {
+      if (routeDatasetExists && current.datasetId !== routeDatasetId) return { ...current, datasetId: routeDatasetId }
+      if (current.datasetId || !fallbackDatasetId) return current
+      return { ...current, datasetId: fallbackDatasetId }
+    })
+  }, [datasets, routeDatasetId])
 
   const selectedDataset = useMemo(
     () => datasets.find((dataset) => dataset.id === draft.datasetId) ?? null,
@@ -584,6 +609,9 @@ export default function KnowledgeIngestionOperationPage() {
       setStatus(run.status === 'failed' ? 'failed' : run.status === 'completed' ? 'completed' : 'uploading')
       await Promise.all([connectorRunsQuery.refetch(), ingestionStatsQuery.refetch()])
       toast.success(`连接器任务已创建：${String(run.id).slice(0, 8)}`)
+      if (run.status !== 'failed' && shouldOpenExecutionMonitor(draft, 'ingest')) {
+        router.push('/knowledge/ingestion?mode=execution-monitor')
+      }
     } catch (error) {
       setStatus('failed')
       toast.error(formatApiError(error, '连接器任务创建失败'))
@@ -597,6 +625,7 @@ export default function KnowledgeIngestionOperationPage() {
     objectPrefix,
     parsedObjectExtensions,
     parsedUrls,
+    router,
     source,
     urlIngestEnabled,
     urlFilename,
@@ -611,9 +640,17 @@ export default function KnowledgeIngestionOperationPage() {
   }, [connectorRunsQuery, datasetsQuery, documentsQuery, draft.datasetId, ingestionStatsQuery])
 
   const uploadFiles = useCallback(
-    async (mode: 'precheck' | 'ingest') => {
+    async (mode: 'upload_only' | 'ingest') => {
       if (!draft.datasetId) {
         toast.error('请先选择目标数据集')
+        return
+      }
+      if (mode === 'upload_only' && (source === 'url' || source === 'object')) {
+        toast.error('URL/对象存储暂不支持仅登记，请先下载为本地文件或选择解析入库')
+        return
+      }
+      if (mode === 'upload_only' && source === 'api') {
+        toast.error('API 导入没有原始文件可登记，请选择“解析入库”')
         return
       }
       if (source === 'url' || source === 'object') {
@@ -633,8 +670,7 @@ export default function KnowledgeIngestionOperationPage() {
         return
       }
       const uploadTargets = files
-      const nextStatus: TaskStatus = mode === 'precheck' ? 'prechecking' : 'uploading'
-      setStatus(nextStatus)
+      setStatus('uploading')
       setUploadResponse(null)
       try {
         if (source === 'api') {
@@ -690,7 +726,7 @@ export default function KnowledgeIngestionOperationPage() {
           parser_backend: draft.parserBackend,
           chunk_strategy: normalizeChunkStrategy(draft.chunkStrategy),
           pipeline: buildPipeline(draft),
-          precheck_only: mode === 'precheck',
+          upload_only: mode === 'upload_only',
           max_concurrent: 4,
           user_metadata_map: Object.fromEntries(
             uploadTargets.map((file) => [
@@ -710,16 +746,21 @@ export default function KnowledgeIngestionOperationPage() {
         const response = await documentApi.uploadBatch(files, uploadOptions)
         setUploadResponse(response)
         setStatus(response.failed_count > 0 ? 'failed' : 'completed')
-        if (mode === 'ingest') {
-          await Promise.all([documentsQuery.refetch(), ingestionStatsQuery.refetch()])
+        await Promise.all([documentsQuery.refetch(), ingestionStatsQuery.refetch()])
+        toast.success(
+          mode === 'upload_only'
+            ? `已登记到知识库：成功 ${response.successful_count} / 失败 ${response.failed_count}`
+            : `入库任务已提交：成功 ${response.successful_count} / 失败 ${response.failed_count}`
+        )
+        if (response.successful_count > 0 && shouldOpenExecutionMonitor(draft, mode)) {
+          router.push('/knowledge/ingestion?mode=execution-monitor')
         }
-        toast.success(`入库任务已提交：成功 ${response.successful_count} / 失败 ${response.failed_count}`)
       } catch (error) {
         setStatus('failed')
         toast.error(formatApiError(error, '入库任务提交失败'))
       }
     },
-    [apiContent, apiFilename, documentsQuery, draft, files, ingestionStatsQuery, parsedUrls.length, source, submitConnectorRun]
+    [apiContent, apiFilename, documentsQuery, draft, files, ingestionStatsQuery, parsedUrls.length, router, source, submitConnectorRun]
   )
 
   const inspectTask = useCallback(async (task: HistoryItem) => {
@@ -766,7 +807,7 @@ export default function KnowledgeIngestionOperationPage() {
       <div className="mx-auto flex min-h-[calc(100dvh-1.25rem)] w-full max-w-[1680px] flex-col gap-2">
         <PageHeader
           title="入库中心"
-          description="选择目标数据集、接入来源和入库策略，提交后在同一工作台跟踪进度并同步知识库。"
+          description="选择目标数据集和来源，默认只登记原始文件；解析、切块、建索引留到后续流程手动执行。"
           iconImage="ingestion-operation"
           badge="INGESTION"
           compact
@@ -775,7 +816,7 @@ export default function KnowledgeIngestionOperationPage() {
         </PageHeader>
 
         <section className={cn(WORKBENCH_SURFACE_CLASS, 'space-y-2 p-2.5')}>
-          <div className="grid gap-2 xl:grid-cols-[1.1fr_0.85fr_1.7fr_auto]">
+          <div className="grid gap-2 xl:grid-cols-[1.1fr_0.85fr_1.15fr_1.7fr_auto]">
             <FieldBlock label="目标数据集" required>
               <Select value={draft.datasetId} onValueChange={(value) => updateDraft('datasetId', value)}>
                 <SelectTrigger className={cn('h-9', SOFT_CONTROL_CLASS)}>
@@ -799,6 +840,18 @@ export default function KnowledgeIngestionOperationPage() {
                   <SelectItem value="append">追加导入（保留现有数据）</SelectItem>
                   <SelectItem value="skip_duplicates">跳过重复文件</SelectItem>
                   <SelectItem value="replace">替换同名文件</SelectItem>
+                </SelectContent>
+              </Select>
+            </FieldBlock>
+            <FieldBlock label="执行阶段">
+              <Select value={draft.executionMode} onValueChange={(value) => updateDraft('executionMode', value as IngestExecutionMode)}>
+                <SelectTrigger className={cn('h-9', SOFT_CONTROL_CLASS)}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="upload_only">仅登记到知识库（不解析）</SelectItem>
+                  <SelectItem value="parse_only">入库并解析（不建索引）</SelectItem>
+                  <SelectItem value="full_index">完整入库（解析 + 索引）</SelectItem>
                 </SelectContent>
               </Select>
             </FieldBlock>
@@ -826,9 +879,9 @@ export default function KnowledgeIngestionOperationPage() {
                 <Plus className="mr-2 size-4" />
                 新建数据集
               </Button>
-              <Button className="h-9 rounded-[1rem] bg-[linear-gradient(135deg,hsl(var(--primary)),hsl(var(--info)))] px-4 text-primary-foreground shadow-[0_12px_24px_hsl(var(--primary)/0.18)] hover:brightness-105" onClick={() => detachPromise(uploadFiles('ingest'))} disabled={!canStartIngest}>
+              <Button className="h-9 rounded-[1rem] bg-[linear-gradient(135deg,hsl(var(--primary)),hsl(var(--info)))] px-4 text-primary-foreground shadow-[0_12px_24px_hsl(var(--primary)/0.18)] hover:brightness-105" onClick={() => detachPromise(uploadFiles(draft.executionMode === 'upload_only' ? 'upload_only' : 'ingest'))} disabled={!canStartIngest}>
                 {status === 'uploading' ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Play className="mr-2 size-4" />}
-                开始入库
+                {draft.executionMode === 'upload_only' ? '登记到知识库' : draft.executionMode === 'full_index' ? '解析并建索引' : '入库并解析'}
               </Button>
             </div>
           </div>
@@ -845,7 +898,7 @@ export default function KnowledgeIngestionOperationPage() {
                 chunkCount={totalChunks}
                 totalBytes={datasetTotalBytes}
                 statsSource={statsSource}
-                syncEnabled={draft.syncDataset}
+                syncEnabled={shouldBuildIndexes(draft)}
               />
 
               <Tabs value={source} onValueChange={(value) => setSource(value as UploadSource)}>
@@ -1004,7 +1057,7 @@ function DatasetSummaryCard({
 }>) {
   const capacitySummary = dataset
     ? `${documentCount.toLocaleString()} 文档 · ${chunkCount.toLocaleString()} 分片 · ${formatFileSize(totalBytes)}`
-    : '选择数据集后承接上传、解析、切块与索引同步'
+    : '选择数据集后承接原始文件登记，解析与切块留到后续流程'
 
   return (
     <div className="rounded-[1.2rem] border border-border/60 bg-[linear-gradient(135deg,hsl(var(--card)/0.92)_0%,hsl(var(--surface-2)/0.56)_52%,hsl(var(--background)/0.78)_100%)] px-3 py-2 shadow-[inset_0_1px_0_hsl(var(--card)/0.8)]">
@@ -1374,11 +1427,11 @@ function IngestTaskControls({
       </div>
       <label className={cn('flex h-7 items-center gap-1.5 rounded-[0.85rem] px-2 text-xs text-muted-foreground', INLINE_FIELD_CLASS)}>
         <Switch
-          checked={draft.syncDataset}
+          checked={shouldBuildIndexes(draft)}
           className="h-5 w-9 data-[state=checked]:bg-primary data-[state=unchecked]:bg-muted [&>span]:h-4 [&>span]:w-4 [&>span[data-state=checked]]:translate-x-4"
-          onCheckedChange={(checked) => updateDraft('syncDataset', checked)}
+          onCheckedChange={(checked) => updateDraft('executionMode', checked ? 'full_index' : 'upload_only')}
         />
-        自动同步知识库
+        自动建索引
       </label>
     </div>
   )

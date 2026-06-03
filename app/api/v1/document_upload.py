@@ -68,6 +68,7 @@ class UploadDocumentsBatchFormFields:
     dataset_id: UUID | None = Form(None)
     precheck_first: bool = Form(False)
     precheck_only: bool = Form(False)
+    upload_only: bool = Form(False)
     user_metadata_map: str | None = Form(None)
     max_concurrent: int = Form(5)
 
@@ -564,6 +565,7 @@ async def upload_documents_batch(
     dataset_id = form.dataset_id
     precheck_first = form.precheck_first
     precheck_only = form.precheck_only
+    upload_only = form.upload_only
     user_metadata_map = form.user_metadata_map
 
     pipeline_overrides = documents_module.PipelineOptionOverrides(**asdict(overrides_form))
@@ -598,7 +600,7 @@ async def upload_documents_batch(
     )  # type: ignore[arg-type]
 
     ingestion_run = None
-    if not precheck_only:
+    if not precheck_only and not upload_only:
         try:
             ingestion_run = documents_module.IngestionRunService.create_run(
                 db,
@@ -1074,6 +1076,8 @@ async def upload_documents_batch(
                             patch=user_patch,
                             replace=True,
                         )
+                    if upload_only:
+                        doc_metadata["ingest_stage"] = "uploaded_only"
                     pipeline_hash = documents_module._compute_pipeline_hash(doc_metadata)
                     doc_metadata["pipeline_hash"] = pipeline_hash
                     doc_metadata.setdefault("active_pipeline_hash", pipeline_hash)
@@ -1143,6 +1147,15 @@ async def upload_documents_batch(
                             db.commit()
                             db.refresh(dup_any)
 
+                            if upload_only:
+                                return {
+                                    "success": True,
+                                    "filename": filename0,
+                                    "source_path": source_path,
+                                    "document_id": str(getattr(dup_any, "id", "")),
+                                    "document": dup_any,
+                                }
+
                             await documents_module.retry_document_processing(
                                 document_id=dup_any.id,
                                 background_tasks=background_tasks,
@@ -1179,6 +1192,16 @@ async def upload_documents_batch(
                     db.add(db_document)
                     db.commit()
                     db.refresh(db_document)
+
+                    if upload_only:
+                        # Upload-only stores the source document but intentionally does not enqueue parsing.
+                        return {
+                            "success": True,
+                            "filename": filename0,
+                            "source_path": source_path,
+                            "document_id": str(file_id),
+                            "document": db_document,
+                        }
 
                     job_id = f"doc:{tenant_id}:{file_id}:{pipeline_hash}"
                     task_id = await documents_module.enqueue_document_processing(
@@ -1452,6 +1475,8 @@ async def upload_documents_batch(
                         patch=user_patch,
                         replace=True,
                     )
+                if upload_only:
+                    doc_metadata["ingest_stage"] = "uploaded_only"
                 pipeline_hash = documents_module._compute_pipeline_hash(doc_metadata)
                 doc_metadata["pipeline_hash"] = pipeline_hash
                 doc_metadata.setdefault("active_pipeline_hash", pipeline_hash)
@@ -1521,6 +1546,15 @@ async def upload_documents_batch(
                         db.commit()
                         db.refresh(dup_any)
 
+                        if upload_only:
+                            return {
+                                "success": True,
+                                "filename": file.filename,
+                                "source_path": source_path,
+                                "document_id": str(getattr(dup_any, "id", "")),
+                                "document": dup_any,
+                            }
+
                         await documents_module.retry_document_processing(
                             document_id=dup_any.id,
                             background_tasks=background_tasks,
@@ -1557,6 +1591,16 @@ async def upload_documents_batch(
                 db.add(db_document)
                 db.commit()
                 db.refresh(db_document)
+
+                if upload_only:
+                    # Upload-only stores the source document but intentionally does not enqueue parsing.
+                    return {
+                        "success": True,
+                        "filename": file.filename,
+                        "source_path": source_path,
+                        "document_id": str(file_id),
+                        "document": db_document,
+                    }
 
                 job_id = f"doc:{tenant_id}:{file_id}:{pipeline_hash}"
                 task_id = await documents_module.enqueue_document_processing(
