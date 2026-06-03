@@ -20,17 +20,21 @@ type AuthImageLinkProps = Readonly<{
   children: ReactNode
 }>
 
-export function useResolvedAuthAssetUrl(src?: string | null): string | null {
+export function useResolvedAuthAssetUrl(
+  src?: string | null,
+  options?: { enabled?: boolean }
+): string | null {
+  const enabled = options?.enabled ?? true
   const normalizedSrc = useMemo(() => normalizeAssetUrl(src), [src])
   const [resolvedSrc, setResolvedSrc] = useState<string | null>(() => {
-    if (!normalizedSrc) return null
+    if (!enabled || !normalizedSrc) return null
     return needsAuthAssetProxy(normalizedSrc) ? null : normalizedSrc
   })
 
   useEffect(() => {
     let cancelled = false
 
-    if (!normalizedSrc) {
+    if (!enabled || !normalizedSrc) {
       setResolvedSrc(null)
       return
     }
@@ -52,7 +56,7 @@ export function useResolvedAuthAssetUrl(src?: string | null): string | null {
     return () => {
       cancelled = true
     }
-  }, [normalizedSrc])
+  }, [enabled, normalizedSrc])
 
   return resolvedSrc
 }

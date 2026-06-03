@@ -144,7 +144,8 @@ KnowledgeDocumentsPanel: {
     singleDelete: {
       titleDefault: '确认删除',
       title: '删除文档？',
-      description: '将删除文档 {filename}，此操作不可撤销。',
+      description:
+        '将删除文档 {filename}，并同步清理对应切片、向量/BM25 索引、知识图谱关联产物与文件资源。此操作不可撤销。',
       errorFallback: '删除失败',
     },
     toasts: {
@@ -176,7 +177,7 @@ KnowledgeDocumentsPanel: {
       copyFilename: '复制文件名',
       copySourcePath: '复制 Source Path',
       healthCard: '健康卡片',
-      peekChunks: '查看分块',
+      peekChunks: '切片管理',
       deleteDocument: '删除文档',
     },
     loading: '正在加载文档库...',

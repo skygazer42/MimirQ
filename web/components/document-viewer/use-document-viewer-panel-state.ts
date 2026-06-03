@@ -183,6 +183,7 @@ export function useDocumentViewerPanelState() {
     setDoc(null)
     setChunks([])
     setChunksLoaded(false)
+    setChunksLoading(false)
     setLoadAllChunks(false)
     setHighlightChunkState(null)
     setHighlightChunkLoading(false)
@@ -351,7 +352,7 @@ export function useDocumentViewerPanelState() {
 
   React.useEffect(() => {
     if (!documentId) return
-    if (chunksLoaded || chunksLoading) return
+    if (chunksLoaded) return
     const shouldLoadAll =
       (activeTab === "chunks" && (loadAllChunks || !highlightChunkId)) ||
       (activeTab === "text" && (loadAllChunks || !highlightChunkId))
@@ -383,7 +384,7 @@ export function useDocumentViewerPanelState() {
     return () => {
       cancelled = true
     }
-  }, [documentId, activeTab, highlightChunkId, loadAllChunks, chunksLoaded, chunksLoading])
+  }, [documentId, activeTab, highlightChunkId, loadAllChunks, chunksLoaded])
 
   const highlightIndex = React.useMemo(() => {
     if (!highlightChunkId) return -1
@@ -590,8 +591,11 @@ export function useDocumentViewerPanelState() {
     return url.toString()
   }, [documentId])
 
+  const shouldResolveDownloadUrl = isOpen && activeTab === "preview"
   const fileUrl = rawFileUrl
-  const downloadUrl = useResolvedAuthAssetUrl(rawDownloadUrl)
+  const downloadUrl = useResolvedAuthAssetUrl(rawDownloadUrl, {
+    enabled: shouldResolveDownloadUrl,
+  })
 
   const buildChunkLink = React.useCallback(
     (chunkId: string, range?: { start?: number | null; end?: number | null }) => {

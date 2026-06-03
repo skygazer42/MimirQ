@@ -86,6 +86,8 @@ ARG MIMIRQ_BUILD_SHA=""
 ARG MIMIRQ_BUILD_TIME=""
 
 ENV PATH="/opt/venv/bin:$PATH" \
+    XDG_CACHE_HOME=/app/.cache \
+    HF_HOME=/app/.cache/huggingface \
     # Optional build metadata (exposed via /api/v1/meta)
     MIMIRQ_BUILD_SHA="${MIMIRQ_BUILD_SHA}" \
     MIMIRQ_BUILD_TIME="${MIMIRQ_BUILD_TIME}" \
@@ -97,6 +99,7 @@ COPY --from=builder /opt/venv /opt/venv
 
 # 创建必要的目录
 RUN mkdir -p uploads logs vector_faiss vector_chroma chroma_db /data/uploads \
+    /app/.cache/huggingface \
     /opt/venv/lib/python3.11/site-packages/rapidocr/models \
     /opt/venv/lib/python3.11/site-packages/rapid_table/models \
     && adduser --disabled-password --gecos "" --home /app appuser \
@@ -106,6 +109,7 @@ RUN mkdir -p uploads logs vector_faiss vector_chroma chroma_db /data/uploads \
         vector_faiss \
         vector_chroma \
         chroma_db \
+        /app/.cache \
         /data \
         /opt/venv/lib/python3.11/site-packages/rapidocr/models \
         /opt/venv/lib/python3.11/site-packages/rapid_table/models

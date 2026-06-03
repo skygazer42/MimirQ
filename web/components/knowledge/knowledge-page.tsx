@@ -36,6 +36,7 @@ import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { AppFrame } from '@/components/app-frame'
+import { DocumentViewerPanel } from '@/components/document-viewer-panel'
 import { KnowledgeDocumentsPanel } from '@/components/knowledge/knowledge-documents-panel'
 import { KnowledgeInspector } from '@/components/knowledge/knowledge-inspector'
 import { KnowledgeRetrievalPanel } from '@/components/knowledge/knowledge-retrieval-panel'
@@ -65,6 +66,7 @@ import { documentApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { buildChunkPreviewDocumentHref } from '@/lib/chunk-preview-links'
 import { cn, detachPromise, formatFileSize } from '@/lib/utils'
+import { useDocumentView } from '@/store/document-view'
 
 const DATASET_ALL = '__all__'
 const KNOWLEDGE_BACKGROUND_CLASS =
@@ -87,6 +89,7 @@ export default function KnowledgePage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const reduceMotion = useReducedMotion()
+  const { openDocument } = useDocumentView()
 
   const initialQueryStateRef = useRef<KnowledgeQueryState | null>(null)
   initialQueryStateRef.current ??= parseKnowledgeQueryState(
@@ -658,8 +661,19 @@ export default function KnowledgePage() {
     duration: 0.45,
   }
 
+  const openChunkManager = useCallback(
+    (id: string) => {
+      openDocument(id, undefined, undefined, { activeTab: 'chunks' })
+      setPeekingDocId(null)
+      setShowConnectorRunsPanel(false)
+      setMobileInspectorOpen(false)
+      setMobileRunsOpen(false)
+    },
+    [openDocument]
+  )
+
   return (
-    <AppFrame>
+    <AppFrame rightPanel={<DocumentViewerPanel />} withDocumentViewerPadding>
       <div
         data-knowledge-page-root="true"
         className={cn(
@@ -1276,10 +1290,7 @@ export default function KnowledgePage() {
               anySelectedNotArchived={anySelectedNotArchived}
               deleteDocument={deleteDocument}
               handleFileUpload={handleFileUpload}
-              onPeek={(id) => {
-                setPeekingDocId(id)
-                setShowConnectorRunsPanel(false)
-              }}
+              onPeek={openChunkManager}
             />
 
             <div className="xl:hidden">

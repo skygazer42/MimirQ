@@ -21,6 +21,7 @@ import { LtrModelRegistrySection } from './_sections/ltr-model-registry-section'
 import { ModelProvidersSection } from './_sections/model-providers-section'
 import { NavigationVisibilitySection } from './_sections/navigation-visibility-section'
 import { ObservabilitySection } from './_sections/observability-section'
+import { ObjectStorageSection } from './_sections/object-storage-section'
 import { ParserServicesSection } from './_sections/parser-services-section'
 import { RagSection } from './_sections/rag-section'
 import { RuntimeControlsSection } from './_sections/runtime-controls-section'
@@ -61,6 +62,7 @@ const SETTINGS_SECTIONS: readonly SettingsSectionDefinition[] = [
   { id: 'sec-frontend', label: '前端偏好', hint: '本地浏览器偏好，不直接写后端' },
   { id: 'sec-navigation', label: '导航权限', hint: '普通用户入口可见性控制', adminOnly: true },
   { id: 'sec-parsers', label: '高级解析', hint: '高级解析器地址、超时与解析参数' },
+  { id: 'sec-storage', label: '对象存储', hint: 'MinIO / S3 兼容对象存储', adminOnly: true },
   { id: 'sec-rag', label: 'RAG 配置', hint: '检索、召回与生成参数' },
   { id: 'sec-ltr', label: 'LTR 模型', hint: '排序模型注册、回滚和启用' },
   { id: 'sec-dify', label: 'Dify 接入', hint: '外部知识库访问、API Key 与数据集绑定', adminOnly: true },
@@ -764,6 +766,18 @@ function SettingsContent({
             updateMagicPDF={state.updateMagicPDF}
           />
         </SettingsSectionFrame>
+
+        {isAdmin ? (
+          <SettingsSectionFrame
+            section={SETTINGS_SECTION_BY_ID['sec-storage']}
+            index={visibleSectionIndex['sec-storage']}
+          >
+            <ObjectStorageSection
+              minio={state.minioMerged}
+              updateMinIO={state.updateMinIO}
+            />
+          </SettingsSectionFrame>
+        ) : null}
 
         <SettingsSectionFrame
           section={SETTINGS_SECTION_BY_ID['sec-rag']}

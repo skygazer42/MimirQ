@@ -34,8 +34,9 @@ RUN python -m pip install --upgrade pip setuptools wheel && \
 COPY server.py ./server.py
 
 RUN useradd --create-home --shell /usr/sbin/nologin appuser && \
+    magic_pdf_resource_dir="$(python -c 'from pathlib import Path; from magic_pdf.model.sub_modules.ocr.paddleocr2pytorch import pytorch_paddle; print(Path(pytorch_paddle.root_dir) / "pytorchocr" / "utils" / "resources")')" && \
     mkdir -p /home/appuser/.cache /var/lib/mimirq/magicpdf-artifacts && \
-    chown -R appuser:appuser /app /home/appuser/.cache /var/lib/mimirq
+    chown -R appuser:appuser /app /home/appuser/.cache /var/lib/mimirq "${magic_pdf_resource_dir}"
 
 ENV HOME=/home/appuser
 

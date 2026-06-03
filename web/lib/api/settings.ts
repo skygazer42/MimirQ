@@ -47,6 +47,17 @@ export interface MilvusConfig {
   collection_name: string
 }
 
+export interface MinIOConfig {
+  enabled: boolean
+  endpoint: string
+  access_key: string
+  secret_key: string
+  bucket_name: string
+  use_ssl: boolean
+  documents_enabled: boolean
+  image_max_bytes: number
+}
+
 export interface RAGConfig {
   chunk_size: number
   chunk_overlap: number
@@ -186,6 +197,7 @@ export interface SystemSettings {
   llm: LLMConfig
   embedding: EmbeddingConfig
   milvus: MilvusConfig
+  minio: MinIOConfig
   rag: RAGConfig
   cache: CacheConfig
   url_ingest: UrlIngestConfig

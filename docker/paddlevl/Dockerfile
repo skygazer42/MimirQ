@@ -3,7 +3,8 @@ FROM ccr-2vdh3abv-pub.cnc.bj.baidubce.com/paddlepaddle/paddleocr-vl:latest-nvidi
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    PATH="/home/paddleocr/.local/bin:${PATH}"
 
 WORKDIR /app
 
@@ -14,7 +15,7 @@ COPY server.py ./server.py
 
 RUN id paddleocr >/dev/null 2>&1 || useradd --create-home --shell /usr/sbin/nologin paddleocr && \
     mkdir -p /home/paddleocr/.paddlex && \
-    chown -R paddleocr:paddleocr /app /home/paddleocr
+    chown -R paddleocr:paddleocr /home/paddleocr
 
 USER paddleocr
 

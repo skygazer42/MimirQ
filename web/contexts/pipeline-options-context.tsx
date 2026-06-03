@@ -67,7 +67,7 @@ const DEFAULT_OPTIONS: DocumentPipelineOptions = {
   embedding_context_prefix_enabled: false,
   chunk_vector_enabled: true,
   bm25_index_enabled: true,
-  kg_enabled: false,
+  kg_enabled: true,
   event_vector_enabled: true,
   entity_vector_enabled: true,
 }

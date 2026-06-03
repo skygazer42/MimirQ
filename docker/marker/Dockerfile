@@ -30,8 +30,9 @@ RUN apt-get update && \
       uvicorn \
       python-multipart && \
     useradd --create-home --shell /usr/sbin/nologin appuser && \
-    mkdir -p /home/appuser/.cache && \
-    chown -R appuser:appuser /app /home/appuser/.cache
+    marker_static_dir="$(python -c 'import sysconfig; from pathlib import Path; print(Path(sysconfig.get_paths()["purelib"]) / "static")')" && \
+    mkdir -p /home/appuser/.cache "${marker_static_dir}" && \
+    chown -R appuser:appuser /app /home/appuser/.cache "${marker_static_dir}"
 
 ENV HOME=/home/appuser
 

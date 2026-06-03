@@ -231,34 +231,34 @@ export function ChunkStrategyDropdown({ value, onChange, className }: Readonly<C
                           setIsOpen(false)
                         }}
                         className={cn(
-                          'w-full flex items-center gap-2.5 px-3 py-2 transition-colors',
+                          'h-[72px] w-full flex items-center gap-2.5 px-3 transition-colors',
                           isSelected ? 'bg-primary/10' : 'hover:bg-muted',
                           isDisabled && 'opacity-50 cursor-not-allowed hover:bg-transparent'
                         )}
                       >
-                        <div className={cn('rounded-md p-1.5', color.bg)}>
+                        <div className={cn('grid size-8 shrink-0 place-items-center rounded-md', color.bg)}>
                           <Icon className={cn('size-3.5', color.text)} />
                         </div>
-                        <div className="flex-1 min-w-0 text-left">
-                          <div className="flex items-center gap-1.5">
+                        <div className="min-w-0 flex-1 text-left">
+                          <div className="flex h-5 min-w-0 items-center gap-1.5">
                             <span
                               className={cn(
-                                'truncate text-[11px] font-medium',
+                                'min-w-0 flex-1 truncate text-[11px] font-medium',
                                 isSelected ? 'text-primary' : 'text-foreground'
                               )}
                             >
                               {option.label}
                             </span>
-                            <span className={cn('rounded px-1.5 py-0.5 text-[9px] font-medium', recommendationStyle.chip)}>
+                            <span className={cn('shrink-0 rounded px-1.5 py-0.5 text-[9px] font-medium', recommendationStyle.chip)}>
                               {option.recommendationLabel}
                             </span>
                             {option.badge ? (
-                              <span className="rounded px-1.5 py-0.5 text-[9px] font-medium bg-muted text-muted-foreground">
+                              <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-medium bg-muted text-muted-foreground">
                                 {option.badge}
                               </span>
                             ) : null}
                           </div>
-                          <p className="truncate text-[11px] text-muted-foreground">{option.description}</p>
+                          <p className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-muted-foreground">{option.description}</p>
                         </div>
                         {isSelected ? (
                           <Check className="size-4 flex-shrink-0 text-primary" />
@@ -286,31 +286,31 @@ export function ChunkStrategyDropdown({ value, onChange, className }: Readonly<C
           setIsOpen(!isOpen)
         }}
         className={cn(
-          'w-full flex items-center gap-2.5 rounded-lg border px-2.5 py-2 transition-colors duration-150 motion-reduce:transition-none',
+          'h-[60px] w-full flex items-center gap-2.5 rounded-lg border px-2.5 transition-colors duration-150 motion-reduce:transition-none',
           'bg-card hover:bg-muted',
           isOpen
             ? 'border-primary/30 ring-2 ring-primary/10'
             : 'border-border hover:border-border'
         )}
       >
-        <div className={cn('rounded-md p-1.5', selectedColor.bg)}>
+        <div className={cn('grid size-8 shrink-0 place-items-center rounded-md', selectedColor.bg)}>
           <SelectedIcon className={cn('size-3.5', selectedColor.text)} />
         </div>
-        <div className="flex-1 text-left min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="truncate text-[13px] font-medium text-foreground">
+        <div className="min-w-0 flex-1 text-left">
+          <div className="flex h-5 min-w-0 items-center gap-2">
+            <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">
               {selectedView.label}
             </span>
             <span
               className={cn(
-                'rounded px-1.5 py-px text-[9px] font-medium leading-4',
+                'shrink-0 rounded px-1.5 py-px text-[9px] font-medium leading-4',
                 selectedRecommendationStyle.chip
               )}
             >
               {selectedRecommendationLabel}
             </span>
             {selectedView.badge && (
-              <span className="rounded bg-primary/10 px-1.5 py-px text-[9px] font-medium leading-4 text-primary">
+              <span className="shrink-0 rounded bg-primary/10 px-1.5 py-px text-[9px] font-medium leading-4 text-primary">
                 {selectedView.badge}
               </span>
             )}

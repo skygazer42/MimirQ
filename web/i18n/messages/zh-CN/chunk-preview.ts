@@ -95,6 +95,9 @@ ChunkPreview: {
         truncatedSummaryWithFull: '已截断：当前显示 {current} / {full} chunks',
         clearLimit: '取消限制',
         clearLimitSuccess: '已取消限制，请重新生成预览',
+        warnings: {
+          semanticNeedsReview: '需复核切块 {count} 个',
+        },
       },
       dataset: {
         title: '入库目标数据集',

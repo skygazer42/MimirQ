@@ -8,7 +8,12 @@ FROM alleninstituteforai/olmocr:v0.4.27
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    XDG_CACHE_HOME=/home/appuser/.cache \
+    FLASHINFER_WORKSPACE_BASE=/tmp/flashinfer \
+    VLLM_CACHE_ROOT=/tmp/vllm-cache \
+    TORCHINDUCTOR_CACHE_DIR=/tmp/torchinductor-cache \
+    TRITON_CACHE_DIR=/tmp/triton-cache
 
 WORKDIR /app
 
@@ -18,8 +23,8 @@ RUN python3 -m pip install -U pip && python3 -m pip install --extra-index-url ht
 COPY server.py ./server.py
 
 RUN useradd --create-home --shell /usr/sbin/nologin appuser && \
-    mkdir -p /home/appuser/.cache && \
-    chown -R appuser:appuser /app /home/appuser/.cache
+    mkdir -p /home/appuser/.cache /tmp/flashinfer /tmp/vllm-cache /tmp/torchinductor-cache /tmp/triton-cache && \
+    chown -R appuser:appuser /app /home/appuser/.cache /tmp/flashinfer /tmp/vllm-cache /tmp/torchinductor-cache /tmp/triton-cache
 
 ENV HOME=/home/appuser
 

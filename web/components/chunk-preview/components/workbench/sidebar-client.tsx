@@ -23,6 +23,12 @@ import {
   BarChart3,
   Loader2,
   Wand2,
+  Database,
+  Globe,
+  Filter,
+  Layers,
+  Search,
+  ChevronDown,
   type LucideIcon,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
@@ -31,6 +37,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SafeResponsiveChart } from '@/components/ui/safe-responsive-chart'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { cn, formatFileSize } from '@/lib/utils'
 import { useChunkPreview } from '@/components/chunk-preview/context'
 import { ChunkStrategyDropdown } from '@/components/business/chunk-strategy-dropdown'
@@ -42,6 +49,7 @@ import { SEPARATOR_PRESET_OPTIONS } from '@/components/chunk-preview/constants'
 import { IngestionPreviewDetailsDialog } from '@/components/chunk-preview/components/ingestion-preview-details-dialog'
 import { ChunkPresetPanel } from '@/components/chunk-preview/components/chunk-preset-panel'
 import { ChunkAutoTuneDialog } from '@/components/chunk-preview/components/chunk-auto-tune-dialog'
+import { formatPreviewWarningMessage } from '@/components/chunk-preview/utils/preview-warnings'
 import type {
   ChunkPreviewHistogramBin,
   ChunkPreviewRecommendationPatch,
@@ -84,17 +92,17 @@ type PreviewActionLabels = {
 }
 
 const SIDEBAR_BASE_TONE: SidebarToneStyle = {
-  chip: 'border-border/55 bg-background/78 text-muted-foreground',
-  icon: 'border-border/55 bg-background/78 text-muted-foreground',
-  note: 'border-border/55 bg-muted/24 text-muted-foreground',
-  panel: 'border-border/55 bg-[linear-gradient(180deg,hsl(var(--background)/0.96),hsl(var(--muted)/0.16))]',
+  chip: 'border-border/60 bg-background/80 text-muted-foreground antialiased shadow-[0_1px_0_rgba(255,255,255,0.6)_inset]',
+  icon: 'border-border/60 bg-background/80 text-muted-foreground antialiased shadow-[0_1px_0_rgba(255,255,255,0.6)_inset]',
+  note: 'border-border/60 bg-muted/30 text-muted-foreground antialiased',
+  panel: 'border-border/60 bg-[linear-gradient(180deg,hsl(var(--background)/0.99),hsl(var(--muted)/0.25))] antialiased shadow-[0_1px_0_rgba(255,255,255,0.8)_inset]',
 }
 
 const SIDEBAR_PRIMARY_TONE: SidebarToneStyle = {
-  chip: 'border-primary/22 bg-primary/7 text-primary',
-  icon: 'border-primary/18 bg-primary/7 text-primary',
-  note: 'border-primary/18 bg-primary/6 text-muted-foreground',
-  panel: 'border-border/55 bg-[linear-gradient(180deg,hsl(var(--background)/0.98),hsl(var(--primary)/0.045))]',
+  chip: 'border-primary/25 bg-primary/8 text-primary antialiased shadow-[0_1px_0_rgba(255,255,255,0.4)_inset]',
+  icon: 'border-primary/20 bg-primary/8 text-primary antialiased shadow-[0_1px_0_rgba(255,255,255,0.4)_inset]',
+  note: 'border-primary/20 bg-primary/7 text-muted-foreground antialiased',
+  panel: 'border-primary/15 bg-[linear-gradient(165deg,hsl(var(--background)/0.99),hsl(var(--primary)/0.06),hsl(var(--background)/0.95))] antialiased shadow-[0_1px_0_rgba(255,255,255,0.8)_inset]',
 }
 
 const SIDEBAR_TONE_STYLES: Record<AccentTone, SidebarToneStyle> = {
@@ -268,16 +276,16 @@ function SidebarSectionHeader({
 }: Readonly<{ icon: LucideIcon; label: string; tone?: AccentTone; aside?: string }>) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <div className="flex min-w-0 items-center gap-1.5">
+      <div className="flex min-w-0 items-center gap-2">
         <span
           className={cn(
-            'flex h-5 w-5 items-center justify-center rounded-md border',
+            'flex h-5 w-5 items-center justify-center rounded-md border shadow-sm',
             SIDEBAR_TONE_STYLES[tone].icon
           )}
         >
-          <Icon className="h-3 w-3" />
+          <Icon className="h-3 w-3" strokeWidth={2.5} />
         </span>
-        <h2 className="truncate text-[11px] font-semibold text-foreground/88">{label}</h2>
+        <h2 className="truncate text-[11px] font-bold text-foreground/90 antialiased">{label}</h2>
       </div>
       {aside ? <SidebarChip tone={tone}>{aside}</SidebarChip> : null}
     </div>
@@ -292,7 +300,7 @@ function SidebarPanel({
   return (
     <section
       className={cn(
-        'rounded-[1.15rem] border px-3 py-3 shadow-[0_1px_0_rgba(255,255,255,0.7)_inset,0_12px_30px_-24px_rgba(15,23,42,0.35)]',
+        'rounded-2xl border px-3 py-3 shadow-[0_1px_0_rgba(255,255,255,0.8)_inset,0_8px_24px_-16px_rgba(15,23,42,0.4)]',
         SIDEBAR_TONE_STYLES[tone].panel,
         className
       )}
@@ -679,54 +687,118 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
         variant === 'pane' ? 'min-h-0' : 'flex-1 overflow-y-auto overscroll-contain no-scrollbar'
       )}
     >
-        <SidebarPanel tone="sky" className="space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[9px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/75">
-              {t('sidebar.datasetScope.title')}
-            </span>
-            <span className="rounded-full border border-border/50 bg-background/80 px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
-              {datasetId ? t('sidebar.datasetScope.scoped') : t('sidebar.datasetScope.all')}
-            </span>
-          </div>
-          <select
-            value={datasetId || DATASET_DEFAULT_VALUE}
-            onChange={(event) => {
-              setIngestionPreview(null)
-              setIngestionError(null)
-              setDatasetId(event.target.value === DATASET_DEFAULT_VALUE ? '' : event.target.value)
-            }}
-            className="h-9 w-full rounded-xl border border-border/60 bg-background/90 px-2.5 text-[11px] font-medium text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] outline-none transition-colors focus:border-primary/45 focus:ring-2 focus:ring-primary/12 dark:bg-background/60"
-          >
-            <option value={DATASET_DEFAULT_VALUE}>{t('sidebar.datasetScope.defaultOption')}</option>
-            {datasets.map((ds) => (
-              <option key={ds.id} value={ds.id}>
-                {ds.name}
-              </option>
-            ))}
-          </select>
-          <p className="mt-1 text-[10px] leading-4 text-muted-foreground/70">
-            {datasetId ? t('sidebar.datasetScope.selectedHint') : t('sidebar.datasetScope.hint')}
-          </p>
-          {datasetsLoading ? (
-            <div className="mt-1 text-[10px] text-muted-foreground">{t('sidebar.dataset.loading')}</div>
-          ) : null}
-          {datasetsError ? (
-            <SidebarNote tone="amber" className="mt-1 py-1.5">
-              {datasetsError}
-            </SidebarNote>
-          ) : null}
-          {scopeSyncLoading ? (
-            <div className="mt-1 flex items-center gap-1.5 text-[10px] text-muted-foreground">
-              <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" />
-              {t('sidebar.datasetScope.syncing')}
+        <SidebarPanel tone="sky" className="relative overflow-hidden space-y-4">
+          {/* Background Decorative Mesh */}
+          <div className="absolute -right-8 -top-8 size-24 bg-primary/5 blur-3xl pointer-events-none" />
+          
+          <div className="flex items-center justify-between gap-3 px-0.5">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <div className="relative flex h-6 w-6 items-center justify-center rounded-lg border border-primary/20 bg-background shadow-[0_1px_0_rgba(255,255,255,0.8)_inset,0_2px_4px_rgba(var(--primary-rgb),0.05)]">
+                <Filter className="h-3 w-3 text-primary" strokeWidth={2.8} />
+                {datasetId && (
+                  <span className="absolute -right-0.5 -top-0.5 flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary/40 opacity-75" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-col">
+                <h2 className="text-[10px] font-black uppercase tracking-[0.16em] text-foreground antialiased leading-none">
+                  {t('sidebar.datasetScope.title')}
+                </h2>
+                <span className="mt-1 text-[8px] font-bold uppercase tracking-widest text-muted-foreground/60 leading-none">
+                  Knowledge Context
+                </span>
+              </div>
             </div>
-          ) : null}
-          {scopeSyncError ? (
-            <SidebarNote tone="amber" className="mt-1 py-1.5">
-              {scopeSyncError}
-            </SidebarNote>
-          ) : null}
-          <div className="h-px bg-border/45" />
+            <div
+              className={cn(
+                'flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-widest transition-all shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] antialiased',
+                datasetId
+                  ? 'border-primary/30 bg-primary/10 text-primary'
+                  : 'border-border/60 bg-background/90 text-muted-foreground/90'
+              )}
+            >
+              <div className={cn('h-1 w-1 rounded-full', datasetId ? 'bg-primary animate-pulse' : 'bg-muted-foreground/40')} />
+              {datasetId ? t('sidebar.datasetScope.scoped') : t('sidebar.datasetScope.all')}
+            </div>
+          </div>
+
+          <div className="relative group/select">
+            <Select
+              value={datasetId || DATASET_DEFAULT_VALUE}
+              onValueChange={(value) => {
+                setIngestionPreview(null)
+                setIngestionError(null)
+                setDatasetId(value === DATASET_DEFAULT_VALUE ? '' : value)
+              }}
+            >
+              <SelectTrigger 
+                className={cn(
+                  "h-10 rounded-xl border-border/70 bg-background px-3.5 text-[11px] font-bold text-foreground shadow-[0_1px_0_rgba(255,255,255,0.8)_inset,0_2px_8px_-4px_rgba(0,0,0,0.05)] transition-all antialiased",
+                  "hover:border-primary/40 hover:bg-background/95 hover:shadow-[0_1px_0_rgba(255,255,255,0.8)_inset,0_4px_12px_-4px_rgba(var(--primary-rgb),0.1)]",
+                  "focus:ring-primary/10",
+                  datasetId && "border-primary/30 bg-primary/[0.02]"
+                )}
+              >
+                <SelectValue placeholder={t('sidebar.datasetScope.defaultOption')} />
+              </SelectTrigger>
+              <SelectContent className="rounded-2xl border-border/80 bg-popover/98 p-1.5 backdrop-blur-2xl shadow-strong ring-1 ring-black/5 animate-in fade-in zoom-in-95 duration-200">
+                <SelectItem value={DATASET_DEFAULT_VALUE} className="rounded-xl py-2 text-[11px] font-bold focus:bg-primary/5 focus:text-primary transition-all">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-muted/10 text-muted-foreground">
+                      <Globe className="h-3 w-3" strokeWidth={2.5} />
+                    </div>
+                    <span className="truncate">{t('sidebar.datasetScope.defaultOption')}</span>
+                  </div>
+                </SelectItem>
+                <div className="my-1 h-px bg-border/40 mx-1" />
+                {datasets.map((ds) => (
+                  <SelectItem key={ds.id} value={ds.id} className="rounded-xl py-2 text-[11px] font-bold focus:bg-primary/5 focus:text-primary transition-all">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-primary/5 text-primary/70">
+                        <Database className="h-3 w-3" strokeWidth={2.5} />
+                      </div>
+                      <span className="truncate">{ds.name}</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2.5 px-0.5">
+            <div className="flex items-start gap-2.5 rounded-xl border border-border/40 bg-muted/5 p-2.5 antialiased transition-colors hover:bg-muted/10">
+              <Sparkles className="h-3 w-3 mt-0.5 shrink-0 text-primary/60" strokeWidth={2.5} />
+              <p className="text-[10px] font-bold leading-normal text-muted-foreground/85">
+                {datasetId ? t('sidebar.datasetScope.selectedHint') : t('sidebar.datasetScope.hint')}
+              </p>
+            </div>
+            
+            {(datasetsLoading || scopeSyncLoading) && (
+              <div className="flex items-center gap-2.5 px-1 text-[10px] font-bold text-primary/80 antialiased">
+                <div className="relative flex h-3 w-3">
+                  <Loader2 className="h-full w-full animate-spin" strokeWidth={3} />
+                </div>
+                {datasetsLoading ? t('sidebar.dataset.loading') : t('sidebar.datasetScope.syncing')}
+              </div>
+            )}
+            
+            {(datasetsError || scopeSyncError) && (
+              <SidebarNote tone="amber" className="py-2.5 border-warning/20 bg-warning/5 shadow-sm">
+                <div className="flex items-start gap-2.5">
+                  <div className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-warning/10 text-warning">
+                    <AlertCircle className="h-3 w-3" strokeWidth={3} />
+                  </div>
+                  <span className="font-bold text-[10px] leading-relaxed text-warning">
+                    {datasetsError || scopeSyncError}
+                  </span>
+                </div>
+              </SidebarNote>
+            )}
+          </div>
+          
+          <div className="h-px bg-[linear-gradient(90deg,transparent,hsl(var(--border)/0.6),transparent)]" />
 
           <div
             data-chunk-file-queue
@@ -942,28 +1014,52 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
 
           <div className="h-px bg-border/45" />
 
-          <div className="space-y-2.5">
-            <div className="flex items-center justify-between gap-2">
-              <div className="text-[11px] font-semibold text-foreground/82">{t('sidebar.dataset.title')}</div>
-              <SidebarChip tone="cyan">
-                {datasetId ? t('sidebar.dataset.statusSelected') : t('sidebar.dataset.statusAuto')}
-              </SidebarChip>
-            </div>
-            <div className="rounded-xl border border-border/50 bg-background/80 px-2.5 py-2 text-[11px] text-muted-foreground">
-              {datasetId
-                ? t('sidebar.dataset.currentTarget', { name: selectedDataset?.name || datasetId })
-                : t('sidebar.dataset.defaultOption')}
-            </div>
-
+          <div className="space-y-2">
             {selectedDataset?.pipeline ? (
-              <div className="rounded-xl border border-border/50 bg-background p-2.5">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="text-[11px] text-muted-foreground">{t('sidebar.dataset.pipelineSummary')}</div>
+              <div className="rounded-xl border border-border/45 bg-background/72 px-2 py-1.5">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[11px] font-medium text-foreground/82">{t('sidebar.dataset.pipelineSummary')}</div>
+                    <div className="mt-1 flex flex-wrap gap-1.5 text-[10px]">
+                      {selectedDataset.pipeline.governance_enabled ? (
+                        <span className="rounded-full border border-primary/18 bg-primary/7 px-1.5 py-0.5 text-primary">
+                          {t('sidebar.dataset.badges.governanceOn')}
+                        </span>
+                      ) : (
+                        <span className="rounded-full border border-border/60 bg-muted px-1.5 py-0.5 text-muted-foreground">
+                          {t('sidebar.dataset.badges.governanceOff')}
+                        </span>
+                      )}
+                      {selectedDataset.pipeline.chunk_vector_enabled ? (
+                        <span className="rounded-full border border-primary/20 bg-primary/10 px-1.5 py-0.5 text-primary">
+                          {t('sidebar.dataset.badges.vectorOn')}
+                        </span>
+                      ) : (
+                        <span className="rounded-full border border-border/60 bg-muted px-1.5 py-0.5 text-muted-foreground">
+                          {t('sidebar.dataset.badges.vectorOff')}
+                        </span>
+                      )}
+                      {selectedDataset.pipeline.bm25_index_enabled ? (
+                        <span className="rounded-full border border-primary/20 bg-primary/10 px-1.5 py-0.5 text-primary">
+                          {t('sidebar.dataset.badges.bm25On')}
+                        </span>
+                      ) : (
+                        <span className="rounded-full border border-border/60 bg-muted px-1.5 py-0.5 text-muted-foreground">
+                          {t('sidebar.dataset.badges.bm25Off')}
+                        </span>
+                      )}
+                      {selectedDataset.pipeline.kg_enabled ? (
+                        <span className="rounded-full border border-primary/18 bg-primary/7 px-1.5 py-0.5 text-primary">
+                          {t('sidebar.dataset.badges.kg')}
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="h-7 px-2 text-[11px]"
+                    className="h-6 shrink-0 rounded-lg px-2 text-[10px]"
                     onClick={() => {
                       applyPipelinePatch(selectedDataset.pipeline, {
                         successMessage: t('sidebar.dataset.applyPipelineSuccess'),
@@ -974,40 +1070,6 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                     {t('sidebar.dataset.applyPipeline')}
                   </Button>
                 </div>
-                <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
-                  {selectedDataset.pipeline.governance_enabled ? (
-                    <span className="px-2 py-0.5 rounded-full border border-primary/18 bg-primary/7 text-primary">
-                      {t('sidebar.dataset.badges.governanceOn')}
-                    </span>
-                  ) : (
-                    <span className="px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border/60">
-                      {t('sidebar.dataset.badges.governanceOff')}
-                    </span>
-                  )}
-                  {selectedDataset.pipeline.chunk_vector_enabled ? (
-                    <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
-                      {t('sidebar.dataset.badges.vectorOn')}
-                    </span>
-                  ) : (
-                    <span className="px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border/60">
-                      {t('sidebar.dataset.badges.vectorOff')}
-                    </span>
-                  )}
-                  {selectedDataset.pipeline.bm25_index_enabled ? (
-                    <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
-                      {t('sidebar.dataset.badges.bm25On')}
-                    </span>
-                  ) : (
-                    <span className="px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border/60">
-                      {t('sidebar.dataset.badges.bm25Off')}
-                    </span>
-                  )}
-                  {selectedDataset.pipeline.kg_enabled ? (
-                    <span className="px-2 py-0.5 rounded-full border border-primary/18 bg-primary/7 text-primary">
-                      {t('sidebar.dataset.badges.kg')}
-                    </span>
-                  ) : null}
-                </div>
               </div>
             ) : null}
 
@@ -1016,6 +1078,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
               variant="outline"
               disabled={!datasetId || !currentFile || ingestionLoading}
               className="h-8 w-full justify-start rounded-xl border-border/55 bg-background/80 text-[11px]"
+              title={!datasetId ? t('sidebar.ingestionPreview.selectDatasetFirst') : undefined}
               onClick={async () => {
                 if (!datasetId) {
                   toast.error(t('sidebar.ingestionPreview.selectDatasetFirst'))
@@ -1167,163 +1230,230 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
         </div>
 
         <div className="space-y-4">
-          <SidebarPanel tone="amber" className="space-y-2.5">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <span className={cn('flex h-6 w-6 items-center justify-center rounded-lg border', SIDEBAR_TONE_STYLES.amber.icon)}>
-                  <Wand2 className="h-3.5 w-3.5" />
-                </span>
-                <div className="text-[11px] font-semibold text-foreground/84">{t('sidebar.performance.title')}</div>
-              </div>
-              <SidebarChip tone="amber">仅预览</SidebarChip>
-            </div>
-            <SidebarNote tone="amber">{t('sidebar.performance.description')}</SidebarNote>
+          <SidebarPanel tone="amber" className="relative overflow-hidden space-y-4">
+            {/* Background Decorative Mesh */}
+            <div className="absolute -right-8 -top-8 size-24 bg-warning/5 blur-3xl pointer-events-none" />
 
-            <div className="flex items-center justify-between gap-3 rounded-xl border border-border/45 bg-background/70 px-2.5 py-2">
-              <div className="min-w-0">
-                <div className="text-[11px] font-medium text-foreground/82">{t('sidebar.autoPreview.title')}</div>
-                <div className="truncate text-[10.5px] text-muted-foreground/85">{t('sidebar.autoPreview.description')}</div>
-              </div>
-              <label className="inline-flex shrink-0 items-center gap-2 text-[11px] text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={autoPreviewEnabled}
-                  onChange={(e) => toggleAutoPreview(e.target.checked)}
-                  className="h-3.5 w-3.5 rounded border-border/60 text-primary focus:ring-2 focus:ring-ring/20 focus:ring-offset-2 focus:ring-offset-background"
-                />
-                {autoPreviewEnabled ? t('sidebar.common.enabled') : t('sidebar.common.disabled')}
-              </label>
-            </div>
-
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <div className="text-[11px] font-medium text-foreground/82">{t('sidebar.performance.includeOriginalText.title')}</div>
-                <div className="text-[11px] text-muted-foreground">{t('sidebar.performance.includeOriginalText.description')}</div>
-              </div>
-              <label className="inline-flex items-center gap-2 text-[11px] text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={includeOriginalText}
-                  onChange={(e) => updatePerfSettings({ includeOriginalText: e.target.checked })}
-                  className="h-3.5 w-3.5 rounded border-border/60 text-primary focus:ring-2 focus:ring-ring/20 focus:ring-offset-2 focus:ring-offset-background"
-                />
-                {includeOriginalText ? t('sidebar.common.enabled') : t('sidebar.common.disabled')}
-              </label>
-            </div>
-
-            <div className="flex items-center justify-between gap-2">
-              <div className="text-[11px] font-medium text-muted-foreground">{t('sidebar.performance.originalTextMaxChars')}</div>
-              <Input
-                type="number"
-                inputMode="numeric"
-                min={0}
-                max={2000000}
-                step={10000}
-                value={originalTextMaxChars}
-                onChange={(e) => updatePerfSettings({ originalTextMaxChars: Number(e.target.value) })}
-                className="h-7 w-28 text-[11px] font-mono bg-background"
-                aria-label={t('sidebar.performance.originalTextMaxCharsAria')}
-                disabled={!includeOriginalText}
-              />
-            </div>
-
-            <div className="flex items-center justify-between gap-2">
-              <div className="text-[11px] font-medium text-muted-foreground">{t('sidebar.performance.maxChunks')}</div>
-              <Input
-                type="number"
-                inputMode="numeric"
-                min={0}
-                max={20000}
-                step={100}
-                value={maxChunks}
-                onChange={(e) => updatePerfSettings({ maxChunks: Number(e.target.value) })}
-                className="h-7 w-28 text-[11px] font-mono bg-background"
-                aria-label={t('sidebar.performance.maxChunksAria')}
-              />
-            </div>
-
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <div className="text-[11px] font-medium text-foreground/82">{t('sidebar.performance.parseCache.title')}</div>
-                <div className="text-[11px] text-muted-foreground">{t('sidebar.performance.parseCache.description')}</div>
-              </div>
-              <label className="inline-flex items-center gap-2 text-[11px] text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={useParseCache}
-                  onChange={(e) => updatePerfSettings({ useParseCache: e.target.checked })}
-                  className="h-3.5 w-3.5 rounded border-border/60 text-primary focus:ring-2 focus:ring-ring/20 focus:ring-offset-2 focus:ring-offset-background"
-                />
-                {useParseCache ? t('sidebar.common.enabled') : t('sidebar.common.disabled')}
-              </label>
-            </div>
-
-            <SidebarNote tone="amber" className="py-1.5">{t('sidebar.performance.maxChunksGuidance')}</SidebarNote>
-
-            {previewData?.chunks_truncated ? (
-              <div className="text-[11px] text-warning bg-warning/10 border border-warning/25 rounded-lg px-2 py-1">
-                {previewData.total_chunks_full && previewData.total_chunks_full !== previewData.total_chunks
-                  ? t('sidebar.performance.truncatedSummaryWithFull', {
-                    current: previewData.total_chunks,
-                    full: previewData.total_chunks_full,
-                  })
-                  : t('sidebar.performance.truncatedSummary', {
-                    current: previewData.total_chunks,
-                  })}
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 px-2 ml-2 text-[11px]"
-                  onClick={() => {
-                    updatePerfSettings({ maxChunks: 0 })
-                    toast.success(t('sidebar.performance.clearLimitSuccess'))
-                  }}
-                >
-                  {t('sidebar.performance.clearLimit')}
-                </Button>
-              </div>
-            ) : null}
-
-            {previewData?.warnings?.length ? (
-              <div className="text-[11px] text-muted-foreground space-y-1">
-                {(previewData.warnings || []).slice(0, 6).map((w) => (
-                  <div key={w} className="px-2 py-1 rounded-lg border border-border/60 bg-muted/40">
-                    {w}
+            <div data-preview-performance-panel className="space-y-2.5">
+              <div className="flex items-start justify-between gap-3 px-0.5">
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <div className="relative flex h-6 w-6 items-center justify-center rounded-lg border border-warning/20 bg-background shadow-[0_1px_0_rgba(255,255,255,0.8)_inset,0_2px_4px_rgba(245,158,11,0.05)]">
+                    <Wand2 className="h-3 w-3 text-warning" strokeWidth={2.8} />
                   </div>
-                ))}
+                  <div className="flex flex-col">
+                    <h2 className="text-[10px] font-black uppercase tracking-[0.16em] text-foreground antialiased leading-none">
+                      {t('sidebar.performance.title')}
+                    </h2>
+                    <span className="mt-1 text-[8px] font-bold uppercase tracking-widest text-muted-foreground/60 leading-none">
+                      Engine Runtime
+                    </span>
+                  </div>
+                </div>
+                <SidebarChip tone="amber">仅预览</SidebarChip>
               </div>
-            ) : null}
+
+              <div data-preview-performance-controls className="space-y-1.5">
+                <div className="grid gap-1.5">
+                  <div className="min-w-0 rounded-[12px] border border-border/45 bg-background/50 px-2.5 py-2 transition-all hover:bg-background/80 hover:shadow-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-[11px] font-bold leading-4 text-foreground/88">{t('sidebar.autoPreview.title')}</div>
+                        <div
+                          className="text-[9.5px] font-medium leading-3.5 text-muted-foreground/70"
+                          title={t('sidebar.autoPreview.description')}
+                        >
+                          {t('sidebar.autoPreview.description')}
+                        </div>
+                      </div>
+                      <Switch
+                        checked={autoPreviewEnabled}
+                        onCheckedChange={toggleAutoPreview}
+                        className="shrink-0 scale-75"
+                        aria-label={t('sidebar.autoPreview.title')}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="min-w-0 rounded-[12px] border border-border/45 bg-background/50 px-2.5 py-2 transition-all hover:bg-background/80 hover:shadow-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-[11px] font-bold leading-4 text-foreground/88">{t('sidebar.performance.includeOriginalText.title')}</div>
+                        <div
+                          className="text-[9.5px] font-medium leading-3.5 text-muted-foreground/70"
+                          title={t('sidebar.performance.includeOriginalText.description')}
+                        >
+                          {t('sidebar.performance.includeOriginalText.description')}
+                        </div>
+                      </div>
+                      <Switch
+                        checked={includeOriginalText}
+                        onCheckedChange={(checked) => updatePerfSettings({ includeOriginalText: checked })}
+                        className="shrink-0 scale-75"
+                        aria-label={t('sidebar.performance.includeOriginalText.title')}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-1.5">
+                  <div className="min-w-0 rounded-[12px] border border-border/45 bg-background/50 px-2 py-2 transition-all hover:bg-background/80 hover:shadow-sm">
+                    <div className="min-h-7 text-[9.5px] font-bold leading-3.5 text-muted-foreground/82">{t('sidebar.performance.originalTextMaxChars')}</div>
+                    <Input
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      max={2000000}
+                      step={10000}
+                      value={originalTextMaxChars}
+                      onChange={(e) => updatePerfSettings({ originalTextMaxChars: Number(e.target.value) })}
+                      className="mt-1 h-7 w-full border-border/40 bg-background/60 px-2 text-[11px] font-bold shadow-[inset_0_1px_2px_rgba(0,0,0,0.03)] focus:border-warning/40 focus:ring-warning/10"
+                      aria-label={t('sidebar.performance.originalTextMaxCharsAria')}
+                      disabled={!includeOriginalText}
+                    />
+                  </div>
+
+                  <div className="min-w-0 rounded-[12px] border border-border/45 bg-background/50 px-2 py-2 transition-all hover:bg-background/80 hover:shadow-sm">
+                    <div className="min-h-7 text-[9.5px] font-bold leading-3.5 text-muted-foreground/82">{t('sidebar.performance.maxChunks')}</div>
+                    <Input
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      max={20000}
+                      step={100}
+                      value={maxChunks}
+                      onChange={(e) => updatePerfSettings({ maxChunks: Number(e.target.value) })}
+                      className="mt-1 h-7 w-full border-border/40 bg-background/60 px-2 text-[11px] font-bold shadow-[inset_0_1px_2px_rgba(0,0,0,0.03)] focus:border-warning/40 focus:ring-warning/10"
+                      aria-label={t('sidebar.performance.maxChunksAria')}
+                    />
+                  </div>
+                </div>
+
+                <div className="group/item relative overflow-hidden rounded-[12px] border border-border/45 bg-background/50 px-2.5 py-2 transition-all hover:bg-background/80 hover:shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <div className={cn(
+                        "flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border transition-colors",
+                        useParseCache 
+                          ? "border-warning/30 bg-warning/10 text-warning" 
+                          : "border-border/50 bg-muted/10 text-muted-foreground"
+                      )}>
+                        <Database className="h-3 w-3" strokeWidth={2.5} />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-[11px] font-bold leading-4 text-foreground/88">{t('sidebar.performance.parseCache.title')}</div>
+                        <div
+                          className="text-[9.5px] font-medium leading-3.5 text-muted-foreground/70"
+                          title={t('sidebar.performance.parseCache.description')}
+                        >
+                          {t('sidebar.performance.parseCache.description')}
+                        </div>
+                      </div>
+                    </div>
+                    <Switch
+                      checked={useParseCache}
+                      onCheckedChange={(checked) => updatePerfSettings({ useParseCache: checked })}
+                      className="shrink-0 scale-75"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div
+                className="flex items-start gap-2.5 rounded-xl border border-border/40 bg-muted/5 p-2.5 antialiased transition-colors hover:bg-muted/10"
+                title={t('sidebar.performance.maxChunksGuidance')}
+              >
+                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/70" strokeWidth={2.5} />
+                <span className="text-[10px] font-bold leading-relaxed text-muted-foreground/80 italic">{t('sidebar.performance.maxChunksGuidance')}</span>
+              </div>
+
+              {previewData?.chunks_truncated ? (
+                <div className="flex items-center justify-between gap-2 rounded-lg border border-warning/25 bg-warning/10 px-2 py-1 text-[11px] text-warning">
+                  <span className="min-w-0">
+                    {previewData.total_chunks_full && previewData.total_chunks_full !== previewData.total_chunks
+                      ? t('sidebar.performance.truncatedSummaryWithFull', {
+                        current: previewData.total_chunks,
+                        full: previewData.total_chunks_full,
+                      })
+                      : t('sidebar.performance.truncatedSummary', {
+                        current: previewData.total_chunks,
+                      })}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 shrink-0 px-2 text-[11px]"
+                    onClick={() => {
+                      updatePerfSettings({ maxChunks: 0 })
+                      toast.success(t('sidebar.performance.clearLimitSuccess'))
+                    }}
+                  >
+                    {t('sidebar.performance.clearLimit')}
+                  </Button>
+                </div>
+              ) : null}
+
+              {previewData?.warnings?.length ? (
+                <div className="space-y-1 text-[11px]">
+                  {(previewData.warnings || []).slice(0, 6).map((w) => {
+                    const formattedWarning = formatPreviewWarningMessage(w, {
+                      semanticNeedsReview: (count) => t('sidebar.performance.warnings.semanticNeedsReview', { count }),
+                    })
+
+                    return (
+                      <div
+                        key={w}
+                        className="flex gap-1.5 rounded-lg border border-warning/18 bg-warning/8 px-2 py-1 text-warning"
+                        title={formattedWarning}
+                      >
+                        <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" />
+                        <span className="min-w-0">{formattedWarning}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : null}
+            </div>
           </SidebarPanel>
 
-          <SidebarPanel tone="emerald" className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-[11px] font-semibold text-foreground/86">{t('sidebar.previewConfig.title')}</div>
-                <div className="max-w-[210px] truncate text-[10px] text-muted-foreground">
-                  {getPreviewConfigFileLabel({
-                    currentFileName: currentFile?.name,
-                    currentFileMatchesScope,
-                    datasetId,
-                    labels: {
-                      noDatasetFile: t('sidebar.previewActions.noDatasetFile'),
-                      noFile: t('sidebar.previewActions.noFile'),
-                    },
-                  })}
+          <SidebarPanel tone="emerald" className="relative overflow-hidden space-y-4">
+            <div className="absolute -right-8 -top-8 size-24 bg-success/5 blur-3xl pointer-events-none" />
+
+            <div className="flex items-center justify-between gap-3 px-0.5">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <div className="relative flex h-6 w-6 items-center justify-center rounded-lg border border-success/20 bg-background shadow-[0_1px_0_rgba(255,255,255,0.8)_inset,0_2px_4px_rgba(16,185,129,0.05)]">
+                  <Settings className="h-3 w-3 text-success" strokeWidth={2.8} />
+                </div>
+                <div className="flex min-w-0 flex-col">
+                  <h2 className="text-[10px] font-black uppercase tracking-[0.16em] text-foreground antialiased leading-none">
+                    {t('sidebar.previewConfig.title')}
+                  </h2>
+                  <div className="mt-1 max-w-[160px] truncate text-[8px] font-bold uppercase tracking-widest text-muted-foreground/60 leading-none">
+                    {getPreviewConfigFileLabel({
+                      currentFileName: currentFile?.name,
+                      currentFileMatchesScope,
+                      datasetId,
+                      labels: {
+                        noDatasetFile: t('sidebar.previewActions.noDatasetFile'),
+                        noFile: t('sidebar.previewActions.noFile'),
+                      },
+                    })}
+                  </div>
                 </div>
               </div>
               {cacheHit ? <SidebarChip tone="sky">Cache</SidebarChip> : <SidebarChip tone="emerald">配置</SidebarChip>}
             </div>
-            <div className="grid grid-cols-2 gap-2 rounded-xl border border-border/50 bg-background/75 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]">
+
+            <div className="grid grid-cols-2 gap-2 rounded-2xl border border-border/60 bg-muted/20 p-1 shadow-[inset_0_1px_2px_rgba(0,0,0,0.03)] backdrop-blur-sm">
               <Button
                 onClick={() => runPreview()}
                 disabled={isLoading || !canRunPreview}
-                className="h-9 rounded-xl border border-primary/22 bg-primary/10 text-[10.5px] font-medium text-primary shadow-none transition-colors hover:bg-primary/14"
+                className="h-9 rounded-xl border border-primary/20 bg-primary/10 text-[10px] font-black uppercase tracking-widest text-primary shadow-sm hover:bg-primary/15 hover:scale-[1.02] active:scale-[0.98] transition-all"
               >
                 {isLoading ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" strokeWidth={3} />
                 ) : (
-                  <Sparkles className="mr-2 h-4 w-4 text-primary" />
+                  <Sparkles className="mr-2 h-4 w-4" strokeWidth={2.5} />
                 )}
                 {isLoading ? t('sidebar.previewActions.loading') : t('sidebar.previewActions.run')}
               </Button>
@@ -1337,7 +1467,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                   runPreview({ force: true })
                 }}
                 disabled={!isLoading && !canRunPreview}
-                className="h-9 rounded-xl border-border/60 bg-background/80 text-[10.5px] font-medium text-foreground/78 shadow-none transition-colors hover:bg-muted/55 hover:text-foreground/78"
+                className="h-9 rounded-xl border-border/60 bg-background/80 text-[10px] font-black uppercase tracking-widest text-muted-foreground/80 shadow-sm hover:bg-background hover:text-foreground transition-all"
               >
                 {getPreviewActionLabel({
                   isLoading,
@@ -1351,79 +1481,79 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
               </Button>
             </div>
 
-            <div className="h-px bg-border/50" />
-
-            <div>
-              <ChunkPresetPanel className="border-border/50 bg-background/75" />
-            </div>
-
-            <div className="h-px bg-border/50" />
-
-            <div className="flex items-center justify-between gap-2">
-              <div className="text-[11px] font-semibold text-foreground/82">{t('sidebar.strategy.title')}</div>
-              <SidebarChip tone="emerald">核心</SidebarChip>
-            </div>
-            <ChunkStrategyDropdown
-              value={chunkStrategy}
-              onChange={(value) => {
-                updateSettings({ strategy: value, ...(value === 'separator' ? { chunkOverlap: 0 } : {}) })
-                if (value === 'separator' && !separatorPreset) {
-                  updateSeparatorSettings({ separatorPreset: 'paragraph' })
-                }
-              }}
-            />
-            <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px] text-muted-foreground">
-              <span className="opacity-80">{t('sidebar.strategy.quickPresets')}</span>
-              {[
-                {
-                  key: 'general',
-                  label: t('sidebar.strategy.presets.general'),
-                  apply: () => updateSettings({ strategy: 'auto', chunkSize: 1000, chunkOverlap: 200 }),
-                },
-                {
-                  key: 'faq',
-                  label: t('sidebar.strategy.presets.faq'),
-                  apply: () => updateSettings({ strategy: 'qa_pairs', chunkSize: 800, chunkOverlap: 120 }),
-                },
-                {
-                  key: 'code',
-                  label: t('sidebar.strategy.presets.code'),
-                  apply: () => updateSettings({ strategy: 'smart_code', chunkSize: 1000, chunkOverlap: 150 }),
-                },
-                {
-                  key: 'contract',
-                  label: t('sidebar.strategy.presets.contract'),
-                  apply: () => updateSettings({ strategy: 'laws_structured', chunkSize: 1200, chunkOverlap: 200 }),
-                },
-                {
-                  key: 'separator',
-                  label: t('sidebar.strategy.presets.separator'),
-                  apply: () => {
-                    updateSettings({ strategy: 'separator', chunkSize: 1000, chunkOverlap: 0 })
-                    updateSeparatorSettings({ separatorPreset: 'paragraph' })
-                  },
-                },
-              ].map((item) => (
-                <button
-                  key={item.key}
-                  type="button"
-                  className="rounded-full border border-border/50 bg-background/78 px-2 py-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] transition-colors hover:bg-background focus-ring"
-                  onClick={() => {
-                    item.apply()
-                    toast.success(t('sidebar.strategy.presetApplied', { label: item.label }))
+            <div className="space-y-3 px-0.5">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/70">{t('sidebar.strategy.title')}</div>
+                <div className="flex items-center gap-1.5 rounded-full border border-success/30 bg-success/5 px-2 py-0.5 text-[8px] font-black uppercase tracking-widest text-success/80">
+                  <div className="h-1 w-1 rounded-full bg-success animate-pulse" />
+                  Core
+                </div>
+              </div>
+              <div className="rounded-xl border border-border/50 bg-background/40 p-1 shadow-sm">
+                <ChunkStrategyDropdown
+                  value={chunkStrategy}
+                  onChange={(value) => {
+                    updateSettings({ strategy: value, ...(value === 'separator' ? { chunkOverlap: 0 } : {}) })
+                    if (value === 'separator' && !separatorPreset) {
+                      updateSeparatorSettings({ separatorPreset: 'paragraph' })
+                    }
                   }}
-                >
-                  {item.label}
-                </button>
-              ))}
+                />
+              </div>
+              
+              <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[9px] font-black uppercase tracking-widest text-muted-foreground/60">
+                <span className="opacity-80">{t('sidebar.strategy.quickPresets')}</span>
+                {[
+                  {
+                    key: 'general',
+                    label: t('sidebar.strategy.presets.general'),
+                    apply: () => updateSettings({ strategy: 'auto', chunkSize: 1000, chunkOverlap: 200 }),
+                  },
+                  {
+                    key: 'faq',
+                    label: t('sidebar.strategy.presets.faq'),
+                    apply: () => updateSettings({ strategy: 'qa_pairs', chunkSize: 800, chunkOverlap: 120 }),
+                  },
+                  {
+                    key: 'code',
+                    label: t('sidebar.strategy.presets.code'),
+                    apply: () => updateSettings({ strategy: 'smart_code', chunkSize: 1000, chunkOverlap: 150 }),
+                  },
+                  {
+                    key: 'contract',
+                    label: t('sidebar.strategy.presets.contract'),
+                    apply: () => updateSettings({ strategy: 'laws_structured', chunkSize: 1200, chunkOverlap: 200 }),
+                  },
+                  {
+                    key: 'separator',
+                    label: t('sidebar.strategy.presets.separator'),
+                    apply: () => {
+                      updateSettings({ strategy: 'separator', chunkSize: 1000, chunkOverlap: 0 })
+                      updateSeparatorSettings({ separatorPreset: 'paragraph' })
+                    },
+                  },
+                ].map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    className="rounded-lg border border-border/60 bg-background/60 px-2 py-1 text-[9px] font-black transition-all hover:border-primary/40 hover:bg-background hover:text-primary active:scale-95 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]"
+                    onClick={() => {
+                      item.apply()
+                      toast.success(t('sidebar.strategy.presetApplied', { label: item.label }))
+                    }}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {hideChunkSizeControl ? null : (
-              <div className="space-y-2.5 rounded-xl border border-border/50 bg-background/75 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]">
+              <div className="space-y-4 rounded-2xl border border-border/60 bg-muted/10 p-3 shadow-[inset_0_1px_2px_rgba(0,0,0,0.02)]">
                 <div className="flex items-center justify-between gap-2">
-                  <label className="text-[11px] font-medium text-muted-foreground">{chunkSizeLabel}</label>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/80">{chunkSizeLabel}</label>
                   <div className="flex items-center gap-2">
-                    <span className="rounded bg-primary/8 px-2 py-0.5 font-mono text-[11px] font-medium text-primary">{chunkSize}</span>
+                    <span className="rounded-lg border border-primary/20 bg-primary/8 px-2.5 py-1 font-mono text-[11px] font-black text-primary shadow-[0_1px_0_rgba(255,255,255,0.8)_inset]">{chunkSize}</span>
                     <Input
                       type="number"
                       inputMode="numeric"
@@ -1439,31 +1569,35 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                         const nextOverlap = clampInt(chunkOverlap, 0, nextOverlapMax)
                         updateSettings({ chunkSize: nextSize, chunkOverlap: nextOverlap })
                       }}
-                      className="h-7 w-24 bg-background text-[11px] font-mono"
+                      className="h-8 w-24 border-border/40 bg-background/80 text-[11px] font-bold font-mono shadow-[inset_0_1px_2px_rgba(0,0,0,0.03)] focus:border-success/40 focus:ring-success/10 antialiased"
                       aria-label={chunkSizeAria}
                     />
                   </div>
                 </div>
-                <input
-                  type="range"
-                  min={chunkSizeMin}
-                  max={chunkSizeMax}
-                  step={chunkSizeStep}
-                  value={chunkSize}
-                  onChange={(e) => updateSettings({ chunkSize: Number(e.target.value) })}
-                  className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-primary/15 accent-primary transition-colors"
-                />
-                <div className="flex justify-between font-mono text-[10px] text-muted-foreground">
-                  <span>{chunkSizeMin}</span>
-                  <span>{chunkSizeMax}</span>
+                
+                <div className="group/range relative px-1">
+                  <input
+                    type="range"
+                    min={chunkSizeMin}
+                    max={chunkSizeMax}
+                    step={chunkSizeStep}
+                    value={chunkSize}
+                    onChange={(e) => updateSettings({ chunkSize: Number(e.target.value) })}
+                    className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-success/15 accent-primary transition-all hover:bg-success/25"
+                  />
+                  <div className="mt-2 flex justify-between font-mono text-[9px] font-bold text-muted-foreground/50 uppercase tracking-tighter">
+                    <span>MIN:{chunkSizeMin}</span>
+                    <span>MAX:{chunkSizeMax}</span>
+                  </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-                  <span>{t('sidebar.chunkControls.presets')}</span>
+
+                <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[9px] font-black uppercase tracking-widest text-muted-foreground/60">
+                  <span className="opacity-80">{t('sidebar.chunkControls.presets')}</span>
                   {(isTokenStrategy ? [256, 512, 1024] : [600, 800, 1000, 1500]).map((size) => (
                     <button
                       key={size}
                       type="button"
-                      className="rounded-full border border-border/50 bg-background/78 px-2 py-0.5 font-mono shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] transition-colors hover:bg-background focus-ring"
+                      className="rounded-lg border border-border/60 bg-background/60 px-2 py-1 font-mono transition-all hover:border-success/40 hover:bg-background hover:text-success active:scale-95 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]"
                       onClick={() => {
                         const nextOverlapMax = Math.min(isTokenStrategy ? 500 : 1000, Math.max(0, size - chunkSizeMin))
                         const ratio = chunkSize > 0 ? chunkOverlap / chunkSize : 0.2
@@ -1772,13 +1906,32 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
             </SidebarPanel>
           ) : null}
 
-          <SidebarPanel tone="violet" className="space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <div className="text-[11px] font-semibold text-foreground/82">{t('sidebar.ingestionPipeline')}</div>
+          <SidebarPanel tone="violet" className="relative overflow-hidden space-y-3.5">
+            <div className="absolute -right-8 -top-8 size-24 bg-accent/5 blur-3xl pointer-events-none" />
+            
+            <div className="flex items-center justify-between gap-3 px-0.5">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <div className="relative flex h-6 w-6 items-center justify-center rounded-lg border border-accent/20 bg-background shadow-[0_1px_0_rgba(255,255,255,0.8)_inset,0_2px_4px_rgba(139,92,246,0.05)]">
+                  <Layers className="h-3 w-3 text-accent" strokeWidth={2.8} />
+                </div>
+                <div className="flex flex-col">
+                  <h2 className="text-[10px] font-black uppercase tracking-[0.16em] text-foreground antialiased leading-none">
+                    {t('sidebar.ingestionPipeline')}
+                  </h2>
+                  <span className="mt-1 text-[8px] font-bold uppercase tracking-widest text-muted-foreground/60 leading-none">
+                    Data Governance
+                  </span>
+                </div>
+              </div>
               <SidebarChip tone="violet">入库</SidebarChip>
             </div>
-            <PipelineOptionsPanel compact />
+            
+            <div className="rounded-xl border border-border/40 bg-background/40 p-1">
+              <PipelineOptionsPanel compact />
+            </div>
           </SidebarPanel>
+
+          <ChunkPresetPanel className="border-border/50 bg-background/75" />
 
         </div>
 
@@ -1794,7 +1947,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="h-6 rounded-md border-border/50 bg-background/75 px-2 text-[11px] font-medium text-muted-foreground shadow-none hover:bg-muted/45 hover:text-muted-foreground"
+                    className="h-6 rounded-lg border-border/60 bg-background/80 px-2 text-[10px] font-black uppercase tracking-tight text-muted-foreground shadow-[0_1px_0_rgba(255,255,255,0.8)_inset] hover:bg-background hover:text-foreground transition-all"
                     onClick={() => setShowAdvancedStats((v) => !v)}
                   >
                     {showAdvancedStats ? t('sidebar.analysis.detailsHide') : t('sidebar.analysis.detailsShow')}
@@ -1804,7 +1957,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="h-6 rounded-md border-border/50 bg-background/75 px-2 text-[11px] font-medium text-muted-foreground shadow-none hover:bg-muted/45 hover:text-muted-foreground"
+                  className="h-6 rounded-lg border-border/60 bg-background/80 px-2 text-[10px] font-black uppercase tracking-tight text-muted-foreground shadow-[0_1px_0_rgba(255,255,255,0.8)_inset] hover:bg-background hover:text-foreground transition-all"
                   onClick={() => setAnalysisExpanded((v) => !v)}
                 >
                   {analysisExpanded ? t('sidebar.analysis.collapse') : t('sidebar.analysis.expand')}
@@ -1815,16 +1968,16 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
             {analysisExpanded ? (
               <>
                 <div data-chunk-stat-grid className="grid grid-cols-3 gap-1.5">
-                  <div className={compactStatCardClass}>
-                    <div className={compactStatLabelClass}>{t('sidebar.stats.totalChunks')}</div>
-                    <div className={compactStatValueClass}>{previewData.total_chunks}</div>
+                  <div className={cn(compactStatCardClass, "border-primary/20 bg-primary/5")}>
+                    <div className={cn(compactStatLabelClass, "text-primary/70")}>{t('sidebar.stats.totalChunks')}</div>
+                    <div className={cn(compactStatValueClass, "text-primary")}>{previewData.total_chunks}</div>
                   </div>
                   <div className={compactStatCardClass}>
                     <div className={compactStatLabelClass}>{averageStatLabel}</div>
                     <div className={compactStatValueClass}>
                       {serverStats?.avg ?? '-'}
                       {isTokenStrategy ? (
-                        <span className="ml-1 text-[8.5px] font-mono text-muted-foreground/75">{statsUnitLabel}</span>
+                        <span className="ml-1 text-[8.5px] font-black opacity-40">{statsUnitLabel}</span>
                       ) : null}
                     </div>
                   </div>
@@ -1833,29 +1986,29 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                     <div className={compactStatValueClass}>
                       {serverStats?.p95 ?? '-'}
                       {isTokenStrategy ? (
-                        <span className="ml-1 text-[8.5px] font-mono text-muted-foreground/75">{statsUnitLabel}</span>
+                        <span className="ml-1 text-[8.5px] font-black opacity-40">{statsUnitLabel}</span>
                       ) : null}
                     </div>
                   </div>
-                  <div className={compactStatCardClass} title={t('sidebar.stats.coverage')}>
-                    <div className={compactStatLabelClass}>{t('sidebar.stats.coverage')}</div>
-                    <div className={compactStatValueClass}>
+                  <div className={cn(compactStatCardClass, coverageSignals?.coveragePct && coverageSignals.coveragePct < 100 ? "border-warning/30 bg-warning/5" : "border-success/20 bg-success/5")} title={t('sidebar.stats.coverage')}>
+                    <div className={cn(compactStatLabelClass, coverageSignals?.coveragePct && coverageSignals.coveragePct < 100 ? "text-warning/70" : "text-success/70")}>{t('sidebar.stats.coverage')}</div>
+                    <div className={cn(compactStatValueClass, coverageSignals?.coveragePct && coverageSignals.coveragePct < 100 ? "text-warning" : "text-success")}>
                       {coverageSignals?.coveragePct == null ? '-' : `${coverageSignals.coveragePct}%`}
                     </div>
                   </div>
-                  <div className={compactStatCardClass} title={t('sidebar.stats.overlapWaste')}>
+                  <div className={cn(compactStatCardClass, coverageSignals?.overlapWastePct && coverageSignals.overlapWastePct > 20 ? "border-warning/30 bg-warning/5" : "")} title={t('sidebar.stats.overlapWaste')}>
                     <div className={compactStatLabelClass}>{t('sidebar.stats.overlapWaste')}</div>
-                    <div className={compactStatValueClass}>
+                    <div className={cn(compactStatValueClass, coverageSignals?.overlapWastePct && coverageSignals.overlapWastePct > 20 ? "text-warning" : "")}>
                       {coverageSignals?.overlapWastePct == null ? '-' : `${coverageSignals.overlapWastePct}%`}
                     </div>
                   </div>
-                  <div className={compactStatCardClass} title={t('sidebar.stats.gaps')}>
-                    <div className={compactStatLabelClass}>{t('sidebar.stats.gaps')}</div>
-                    <div className={compactStatValueClass}>
+                  <div className={cn(compactStatCardClass, coverageSignals?.gapCount && coverageSignals.gapCount > 0 ? "border-destructive/20 bg-destructive/5" : "")} title={t('sidebar.stats.gaps')}>
+                    <div className={cn(compactStatLabelClass, coverageSignals?.gapCount && coverageSignals.gapCount > 0 ? "text-destructive/70" : "")}>{t('sidebar.stats.gaps')}</div>
+                    <div className={cn(compactStatValueClass, coverageSignals?.gapCount && coverageSignals.gapCount > 0 ? "text-destructive" : "")}>
                       {coverageSignals?.gapCount == null ? '-' : String(coverageSignals.gapCount)}
                     </div>
                     {coverageSignals?.largestGap == null ? null : (
-                      <div className="mt-0.5 truncate text-[7.5px] font-mono leading-3 text-muted-foreground/66">
+                      <div className="mt-0.5 truncate text-[7.5px] font-black uppercase tracking-tighter opacity-40">
                         {t('sidebar.stats.largestGap', { value: coverageSignals.largestGap })}
                       </div>
                     )}

@@ -30,4 +30,14 @@ describe('ChunkStrategyDropdown source contract', () => {
     expect(source).toContain('mt-0.5 truncate text-[11px] leading-4 text-muted-foreground')
     expect(source).toContain('py-px text-[9px] font-medium leading-4')
   })
+
+  it('keeps strategy option rows visually stable across different copy lengths', () => {
+    const source = readComponent()
+
+    expect(source).toContain('h-[72px] w-full')
+    expect(source).toContain('size-8 shrink-0')
+    expect(source).toContain('line-clamp-2 text-[11px] leading-4 text-muted-foreground')
+    expect(source).toContain('h-[60px] w-full')
+    expect(source).toContain('min-w-0 flex-1 text-left')
+  })
 })

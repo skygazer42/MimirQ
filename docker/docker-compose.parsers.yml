@@ -91,6 +91,24 @@ services:
       timeout: 20s
       retries: 3
 
+  # Populates the shared MinerU model cache volume. Docker build cannot write
+  # into runtime volumes, so this one-shot service makes a fresh host usable
+  # after `docker compose --profile mineru --profile mineru-vlm up --build`.
+  mimirq-mineru-models:
+    profiles: ["mineru", "mineru-vlm"]
+    build:
+      context: ./mineru
+    restart: "no"
+    environment:
+      TZ: Asia/Shanghai
+      MINERU_MODEL_SOURCE: ${MINERU_MODEL_SOURCE:-local}
+      MINERU_AUTO_DOWNLOAD_MODELS: ${MINERU_AUTO_DOWNLOAD_MODELS:-1}
+      MINERU_MODEL_DOWNLOAD_SOURCE: ${MINERU_MODEL_DOWNLOAD_SOURCE:-huggingface}
+      MINERU_MODEL_DOWNLOAD_TYPE: ${MINERU_MODEL_DOWNLOAD_TYPE:-auto}
+    volumes:
+      - mineru_cache:/root/.cache
+    command: ["python3", "/app/start_local_api.py", "--download-models-only"]
+
   # MinerU local FastAPI service (heavy; uses GPU when available).
   # Then set `MINERU_ENABLED=true` and `MINERU_LOCAL_SERVER_URL=http://mimirq-mineru:8000` in the root .env.
   mimirq-mineru:
@@ -109,6 +127,9 @@ services:
       NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}
       # Model source: "local" reuses the shared cache; "huggingface"/"modelscope" download upstream.
       MINERU_MODEL_SOURCE: ${MINERU_MODEL_SOURCE:-local}
+      MINERU_AUTO_DOWNLOAD_MODELS: ${MINERU_AUTO_DOWNLOAD_MODELS:-1}
+      MINERU_MODEL_DOWNLOAD_SOURCE: ${MINERU_MODEL_DOWNLOAD_SOURCE:-huggingface}
+      MINERU_MODEL_DOWNLOAD_TYPE: ${MINERU_MODEL_DOWNLOAD_TYPE:-auto}
       # Keep FastAPI docs enabled by default (so /docs and /openapi.json work).
       MINERU_API_ENABLE_FASTAPI_DOCS: ${MINERU_API_ENABLE_FASTAPI_DOCS:-1}
       # Optional: limit concurrent requests at MinerU side (503 when saturated).
@@ -119,6 +140,9 @@ services:
       default:
         aliases:
           - mimirq-mineru
+    depends_on:
+      mimirq-mineru-models:
+        condition: service_completed_successfully
     volumes:
       # Persist downloaded models/caches across restarts.
       - mineru_cache:/root/.cache
@@ -149,10 +173,16 @@ services:
       NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}
       # Model source: "local" reuses the shared cache; "huggingface"/"modelscope" download upstream.
       MINERU_MODEL_SOURCE: ${MINERU_MODEL_SOURCE:-local}
+      MINERU_AUTO_DOWNLOAD_MODELS: ${MINERU_AUTO_DOWNLOAD_MODELS:-1}
+      MINERU_MODEL_DOWNLOAD_SOURCE: ${MINERU_MODEL_DOWNLOAD_SOURCE:-huggingface}
+      MINERU_MODEL_DOWNLOAD_TYPE: ${MINERU_MODEL_DOWNLOAD_TYPE:-auto}
       MINERU_VLM_GPU_MEMORY_UTILIZATION: ${MINERU_VLM_GPU_MEMORY_UTILIZATION:-0.45}
       VLLM_WORKER_MULTIPROC_METHOD: ${VLLM_WORKER_MULTIPROC_METHOD:-spawn}
     volumes:
       - mineru_cache:/root/.cache
+    depends_on:
+      mimirq-mineru-models:
+        condition: service_completed_successfully
     networks:
       default:
         aliases:
