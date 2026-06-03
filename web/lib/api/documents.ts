@@ -142,6 +142,7 @@ export const documentApi = {
       chunk_strategy?: string
       dataset_id?: string
       precheck_only?: boolean
+      upload_only?: boolean
       pipeline?: DocumentPipelineOptions
       max_concurrent?: number
       user_metadata_map?: Record<string, JsonObject>
@@ -160,6 +161,9 @@ export const documentApi = {
     }
     if (options.precheck_only) {
       formData.append('precheck_only', 'true')
+    }
+    if (options.upload_only) {
+      formData.append('upload_only', 'true')
     }
     if (typeof options.max_concurrent === 'number') {
       formData.append('max_concurrent', String(options.max_concurrent))

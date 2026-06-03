@@ -28,4 +28,13 @@ describe('document api service source', () => {
     expect(manualIngestBlock).toContain("path: '/api/v1/documents/manual'")
     expect(manualIngestBlock).toContain('timeoutMs: API_LONG_TIMEOUT_MS')
   })
+
+  it('passes upload-only batch uploads through to the backend form field', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'api/documents.ts'), 'utf8')
+    const batchUploadBlock = src.slice(src.indexOf('async uploadBatch'), src.indexOf('async list('))
+
+    expect(batchUploadBlock).toContain('upload_only?: boolean')
+    expect(batchUploadBlock).toContain('if (options.upload_only)')
+    expect(batchUploadBlock).toContain("formData.append('upload_only', 'true')")
+  })
 })

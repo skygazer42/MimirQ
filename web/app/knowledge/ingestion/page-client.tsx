@@ -181,6 +181,11 @@ function getDocumentMetadataRecord(
   return getRecord(document.metadata) ?? {}
 }
 
+function isExecutionMonitorDocument(document: Document) {
+  const meta = getDocumentMetadataRecord(document)
+  return String(meta.ingest_stage || '').toLowerCase() !== 'uploaded_only'
+}
+
 function firstPositiveNumber(...values: unknown[]): number {
   for (const value of values) {
     const numeric = safeNumber(value)
@@ -2169,7 +2174,7 @@ export default function KnowledgeIngestionPageClient() {
   const [datasetScope, setDatasetScope] = useState(
     searchParams.get('datasetId') || DATASET_ALL
   )
-  const [desktopScopeCollapsed, setDesktopScopeCollapsed] = useState(false)
+  const [desktopScopeCollapsed, setDesktopScopeCollapsed] = useState(true)
   const [headerCollapsed, setHeaderCollapsed] = useState(false)
   const [selectedReason, setSelectedReason] = useState<string | null>(null)
   const [auditDispositionFilter, setAuditDispositionFilter] =
@@ -2319,6 +2324,10 @@ export default function KnowledgeIngestionPageClient() {
         : (documentsQuery.data ?? []),
     [demoMode, documentsQuery.data]
   )
+  const executionDocuments = useMemo(
+    () => documents.filter(isExecutionMonitorDocument),
+    [documents]
+  )
   const summary = useMemo(
     () => summaryQuery.data ?? EMPTY_INGESTION_SUMMARY,
     [summaryQuery.data]
@@ -2419,11 +2428,11 @@ export default function KnowledgeIngestionPageClient() {
   )
   const documentThroughputRows = useMemo(
     () =>
-      buildDocumentThroughputAreaRows(documents, {
+      buildDocumentThroughputAreaRows(executionDocuments, {
         bucketMinutes: summary.bucket_minutes || 60,
         maxRows: 96,
       }),
-    [documents, summary.bucket_minutes]
+    [executionDocuments, summary.bucket_minutes]
   )
   const throughputRowsSource = useMemo(
     () =>
@@ -2453,8 +2462,8 @@ export default function KnowledgeIngestionPageClient() {
     [throughputRows]
   )
   const megabytesPerSecond = useMemo(
-    () => computeMegabytesPerSecond(documents),
-    [documents]
+    () => computeMegabytesPerSecond(executionDocuments),
+    [executionDocuments]
   )
   const recentThroughputDetail = useMemo(() => {
     if (throughputRowsSource === 'documents') {
@@ -2486,12 +2495,12 @@ export default function KnowledgeIngestionPageClient() {
     return hours > 0 ? `近 ${hours} 小时` : '后端时间窗'
   }, [summary.window_hours, throughputRowsSource])
   const durationPercentiles = useMemo(
-    () => computeDurationPercentiles(documents),
-    [documents]
+    () => computeDurationPercentiles(executionDocuments),
+    [executionDocuments]
   )
   const pdfDisposition = useMemo(
-    () => buildPdfDispositionBreakdown(documents),
-    [documents]
+    () => buildPdfDispositionBreakdown(executionDocuments),
+    [executionDocuments]
   )
   const salesAuditPersistedDispositions = useMemo(() => {
     const persisted = Object.fromEntries(
@@ -2507,7 +2516,7 @@ export default function KnowledgeIngestionPageClient() {
   }, [salesAuditSamples])
   const resolvedSampleDispositions = useMemo(() => {
     const executionPersisted = Object.fromEntries(
-      documents
+      executionDocuments
         .map((document) => [
           document.id,
           getPersistedSampleDisposition(document),
@@ -2520,7 +2529,7 @@ export default function KnowledgeIngestionPageClient() {
       ...salesAuditPersistedDispositions,
       ...sampleDispositions,
     }
-  }, [documents, salesAuditPersistedDispositions, sampleDispositions])
+  }, [executionDocuments, salesAuditPersistedDispositions, sampleDispositions])
 
   const reviewQueue = statusCounts.failed + statusCounts.quarantined
   const approvedCount = Object.values(resolvedSampleDispositions).filter(
@@ -2535,15 +2544,16 @@ export default function KnowledgeIngestionPageClient() {
       )
     : 0
 
+  const auditSourceDocuments = mode === 'execution-monitor' ? executionDocuments : documents
   const auditCandidates = useMemo(() => {
-    const prioritised = documents.filter(
+    const prioritised = auditSourceDocuments.filter(
       (document) =>
         ['failed', 'quarantined', 'processing', 'pending'].includes(
           String(document.status)
         ) || Boolean(document.error_message)
     )
-    return (prioritised.length ? prioritised : documents).slice(0, 10)
-  }, [documents])
+    return (prioritised.length ? prioritised : auditSourceDocuments).slice(0, 10)
+  }, [auditSourceDocuments])
 
   const reasonFilteredAuditSamples = useMemo(
     () =>
@@ -2679,16 +2689,16 @@ export default function KnowledgeIngestionPageClient() {
   ])
 
   const executionCharacterFootprint = useMemo(() => {
-    const totalCharacters = documents.reduce(
+    const totalCharacters = executionDocuments.reduce(
       (sum, document) => sum + Number(document.total_characters || 0),
       0
     )
     if (totalCharacters > 0) {
       return `${totalCharacters.toLocaleString('zh-CN')} 字符`
     }
-    if (documents.length > 0) return '字数待统计'
+    if (executionDocuments.length > 0) return '字数待统计'
     return '暂无字数'
-  }, [documents])
+  }, [executionDocuments])
 
   const executionRunStateCards = useMemo(
     () => [
@@ -2740,7 +2750,7 @@ export default function KnowledgeIngestionPageClient() {
       { color: '#0f766e', tone: 'bg-teal' },
     ]
 
-    return buildFileTypeDistribution(documents).map((item, index) => {
+    return buildFileTypeDistribution(executionDocuments).map((item, index) => {
       const swatch = palette[index % palette.length]
       return {
         color: swatch.color,
@@ -2749,7 +2759,7 @@ export default function KnowledgeIngestionPageClient() {
         value: item.count,
       }
     })
-  }, [documents])
+  }, [executionDocuments])
   const executionFileTypeDistributionTotal = useMemo(
     () =>
       executionFileTypeDistributionRows.reduce(
@@ -2842,13 +2852,24 @@ export default function KnowledgeIngestionPageClient() {
   )
 
   const executionPipelineState = useMemo(() => {
-    const total = documents.length
+    const total = executionDocuments.length
     const safeTotal = Math.max(1, total)
-    const parserFailures = statusCounts.failed + statusCounts.quarantined
-    const processingDocuments = documents.filter(
+    const executionStatusCounts = {
+      completed: executionDocuments.filter(
+        (document) => String(document.status || '').toLowerCase() === 'completed'
+      ).length,
+      failed: executionDocuments.filter(
+        (document) => String(document.status || '').toLowerCase() === 'failed'
+      ).length,
+      quarantined: executionDocuments.filter(
+        (document) => String(document.status || '').toLowerCase() === 'quarantined'
+      ).length,
+    }
+    const parserFailures = executionStatusCounts.failed + executionStatusCounts.quarantined
+    const processingDocuments = executionDocuments.filter(
       (document) => String(document.status || '').toLowerCase() === 'processing'
     )
-    const totalChunks = documents.reduce(
+    const totalChunks = executionDocuments.reduce(
       (sum, document) => sum + Number(document.chunk_count || 0),
       0
     )
@@ -2866,44 +2887,50 @@ export default function KnowledgeIngestionPageClient() {
         String(document.status || '').toLowerCase()
       )
 
+    const parserDoneDocuments = executionDocuments.filter(
+      (document) => isTerminal(document) || progressOf(document) >= 45
+    )
+    const parserDoneDocumentIds = new Set(parserDoneDocuments.map((document) => document.id))
     const parserRunning = processingDocuments.filter(
       (document) =>
-        progressOf(document) < 45 ||
-        stageIncludes(document, ['parse', 'parser', 'extract', 'ocr', 'mineru'])
+        !parserDoneDocumentIds.has(document.id) &&
+        (progressOf(document) < 45 ||
+          stageIncludes(document, ['parse', 'parser', 'extract', 'ocr', 'mineru']))
     ).length
-    const parserDone = documents.filter(
-      (document) => isTerminal(document) || progressOf(document) >= 45
-    ).length
+    const parserDone = parserDoneDocuments.length
     const parserWaiting = Math.max(0, total - parserDone - parserRunning)
 
+    const chunkerDoneDocuments = executionDocuments.filter(
+      (document) => isCompleted(document) || progressOf(document) >= 85
+    )
+    const chunkerDoneDocumentIds = new Set(chunkerDoneDocuments.map((document) => document.id))
     const chunkerRunning = processingDocuments.filter(
       (document) =>
-        progressOf(document) >= 45 ||
-        stageIncludes(document, [
-          'chunk',
-          'split',
-          'segment',
-          'embed',
-          'index',
-          'vector',
-          'bm25',
-        ])
+        !chunkerDoneDocumentIds.has(document.id) &&
+        (progressOf(document) >= 45 ||
+          stageIncludes(document, [
+            'chunk',
+            'split',
+            'segment',
+            'embed',
+            'index',
+            'vector',
+            'bm25',
+          ]))
     ).length
-    const chunkerDone = documents.filter(
-      (document) => isCompleted(document) || progressOf(document) >= 85
-    ).length
+    const chunkerDone = chunkerDoneDocuments.length
     const chunkerWaiting = Math.max(0, total - chunkerDone - chunkerRunning)
 
     const governanceQueue = reviewQueue + manualCount
     const governanceDone = Math.max(
       0,
-      Math.min(total, statusCounts.completed + approvedCount - governanceQueue)
+      Math.min(total, executionStatusCounts.completed + approvedCount - governanceQueue)
     )
     const governanceWaiting = Math.max(
       0,
       total - governanceDone - governanceQueue
     )
-    const exportReady = statusCounts.completed
+    const exportReady = executionStatusCounts.completed
     const exportWaiting = Math.max(0, total - exportReady)
 
     const resolveStatus = ({
@@ -3026,13 +3053,10 @@ export default function KnowledgeIngestionPageClient() {
     }
   }, [
     approvedCount,
-    documents,
+    executionDocuments,
     manualCount,
     reviewQueue,
     selectedDatasetId,
-    statusCounts.completed,
-    statusCounts.failed,
-    statusCounts.quarantined,
     taskQueueSnapshot?.enabled,
   ])
   const executionPipelineCards = executionPipelineState.cards
@@ -3118,7 +3142,7 @@ export default function KnowledgeIngestionPageClient() {
   const executionRecentLogs = useMemo(() => {
     if (recentQueueOutcomes.length) return recentQueueOutcomes
 
-    return [...documents]
+    return [...executionDocuments]
       .sort((left, right) => {
         const rightTs = new Date(
           String(
@@ -3146,10 +3170,10 @@ export default function KnowledgeIngestionPageClient() {
           tone: getRecentLogTone(status),
         }
       })
-  }, [documents, recentQueueOutcomes, renderTimestamp])
+  }, [executionDocuments, recentQueueOutcomes, renderTimestamp])
 
   const executionTaskRows = useMemo(() => {
-    return [...documents]
+    return [...executionDocuments]
       .sort((left, right) => {
         const rightTs = new Date(
           String(
@@ -3161,7 +3185,7 @@ export default function KnowledgeIngestionPageClient() {
         ).getTime()
         return rightTs - leftTs
       })
-  }, [documents])
+  }, [executionDocuments])
   const executionTaskPageCount = useMemo(
     () =>
       Math.max(
@@ -3272,12 +3296,12 @@ export default function KnowledgeIngestionPageClient() {
   }, [forecastPoints, throughputRows, throughputRowsSource])
 
   const costRadarValues = useMemo(() => {
-    const pdfCount = documents.filter(
+    const pdfCount = executionDocuments.filter(
       (document) => String(document.file_type || '').toLowerCase() === 'pdf'
     ).length
-    const totalFiles = Math.max(1, documents.length)
+    const totalFiles = Math.max(1, executionDocuments.length)
     const precheckSampleFiles = collectSalesAuditSampleFiles(salesAuditSamples)
-    const totalCharacters = documents.reduce(
+    const totalCharacters = executionDocuments.reduce(
       (sum, document) => sum + Number(document.total_characters || 0),
       0
     )
@@ -3287,7 +3311,7 @@ export default function KnowledgeIngestionPageClient() {
         Number(file.pdf_pages?.page_count || 0),
       0
     )
-    const pdfDocuments = documents.filter(
+    const pdfDocuments = executionDocuments.filter(
       (document) => String(document.file_type || '').toLowerCase() === 'pdf'
     )
     const totalPdfPagesFromDocuments = pdfDocuments.reduce(
@@ -3307,12 +3331,12 @@ export default function KnowledgeIngestionPageClient() {
       totalPdfPagesFromSamples ||
       totalPdfPagesFromDocuments ||
       totalPdfPagesEstimated
-    const totalImageAssets = documents.reduce(
+    const totalImageAssets = executionDocuments.reduce(
       (sum, document) => sum + getDocumentRuntimeStats(document).imageCount,
       0
     )
     const totalSizeMb =
-      documents.reduce((sum, document) => sum + Number(document.file_size || 0), 0) /
+      executionDocuments.reduce((sum, document) => sum + Number(document.file_size || 0), 0) /
       (1024 * 1024)
     const p90Duration = durationPercentiles.p90 || durationPercentiles.p50 || 0
 
@@ -3326,9 +3350,9 @@ export default function KnowledgeIngestionPageClient() {
       executionRetryRate,
     ]
   }, [
-    documents,
     durationPercentiles.p50,
     durationPercentiles.p90,
+    executionDocuments,
     executionRetryRate,
     salesAuditSamples,
   ])
@@ -3402,10 +3426,10 @@ export default function KnowledgeIngestionPageClient() {
     const clampScore = (value: number) => Math.max(0, Math.min(100, Math.round(value)))
 
     const precheckTotalFiles = Number(salesAuditSummary?.total_files || 0)
-    const totalFiles = precheckTotalFiles || documents.length
+    const totalFiles = precheckTotalFiles || executionDocuments.length
     const totalSizeBytes =
       Number(salesAuditSummary?.total_size_bytes || 0) ||
-      documents.reduce((sum, document) => sum + Number(document.file_size || 0), 0)
+      executionDocuments.reduce((sum, document) => sum + Number(document.file_size || 0), 0)
     const precheckTypeCounts = Object.fromEntries(
       Object.entries(salesAuditSummary?.by_file_type ?? {})
         .map(([fileType, count]) => [
@@ -3414,7 +3438,7 @@ export default function KnowledgeIngestionPageClient() {
         ])
         .filter(([fileType, count]) => Boolean(fileType) && Number(count) > 0)
     ) as Record<string, number>
-    const fallbackTypeCounts = documents.reduce<Record<string, number>>(
+    const fallbackTypeCounts = executionDocuments.reduce<Record<string, number>>(
       (acc, document) => {
         const fileType =
           String(document.file_type || '').trim().toLowerCase() || 'unknown'
@@ -3433,11 +3457,11 @@ export default function KnowledgeIngestionPageClient() {
       Number(salesAuditSummary?.pdf_scan.scanned || 0) +
       Number(salesAuditSummary?.pdf_scan.not_scanned || 0) +
       Number(salesAuditSummary?.pdf_scan.unknown || 0)
-    const fallbackPdfTotal = documents.filter(
+    const fallbackPdfTotal = executionDocuments.filter(
       (document) => String(document.file_type || '').toLowerCase() === 'pdf'
     ).length
     const pdfTotal = precheckPdfTotal || fallbackPdfTotal
-    const totalCharacters = documents.reduce(
+    const totalCharacters = executionDocuments.reduce(
       (sum, document) => sum + Number(document.total_characters || 0),
       0
     )
@@ -3445,7 +3469,7 @@ export default function KnowledgeIngestionPageClient() {
     const needsReviewCount = Object.values(salesAuditSamples?.needs_review ?? {}).flat().length
     const profileFiles = samplePool.length
       ? samplePool.map(buildPrecheckProfileFile)
-      : documents.map(buildDocumentProfileFile)
+      : executionDocuments.map(buildDocumentProfileFile)
     const pdfProfileFiles = profileFiles.filter(
       (file) => file.fileType.toLowerCase() === 'pdf'
     )
@@ -3561,8 +3585,8 @@ export default function KnowledgeIngestionPageClient() {
       totalSizeLabel: formatFileSize(totalSizeBytes),
     }
   }, [
-    documents,
     durationPercentiles.p90,
+    executionDocuments,
     executionRetryRate,
     salesAuditProfile?.complexity,
     salesAuditProfile?.pricingMode,
@@ -4195,20 +4219,6 @@ export default function KnowledgeIngestionPageClient() {
     return off
   }, [handleDownloadReport, handleExportSalesAuditReport, mode])
 
-  const handleRefreshExecutionMonitor = useCallback(async () => {
-    const results = await Promise.allSettled([
-      documentsQuery.refetch(),
-      summaryQuery.refetch(),
-      taskQueueQuery.refetch(),
-    ])
-    const failed = results.some((result) => result.status === 'rejected')
-    if (failed) {
-      toast.error('刷新运行态失败，请检查后端观测接口')
-      return
-    }
-    toast.success('运行态已刷新')
-  }, [documentsQuery, summaryQuery, taskQueueQuery])
-
   const handleHeatmapSelect = useCallback((reason: string) => {
     setSelectedReason((previous) => (previous === reason ? null : reason))
     setDesktopScopeCollapsed(false)
@@ -4236,6 +4246,14 @@ export default function KnowledgeIngestionPageClient() {
     [mode, pathname, router, searchParams]
   )
 
+  const handleOpenIngestionOperation = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString())
+    params.delete('mode')
+
+    const query = params.toString()
+    router.replace(query ? `${pathname}?${query}` : pathname)
+  }, [pathname, router, searchParams])
+
   const handleExitDemoMode = useCallback(() => {
     const params = new URLSearchParams(searchParams.toString())
     params.delete('demo')
@@ -4250,7 +4268,11 @@ export default function KnowledgeIngestionPageClient() {
         !documentsQuery.isLoading &&
         !precheckSummaryQuery.isLoading &&
         !salesAuditSummary
-      : !documentsQuery.isLoading && documents.length === 0
+      : false
+  const showExecutionMonitorEmptyShell =
+    mode === 'execution-monitor' &&
+    !documentsQuery.isLoading &&
+    executionTaskRows.length === 0
   const showDesktopAuditRail =
     mode === 'execution-monitor' && !showEmptyState && !desktopScopeCollapsed
   const showDesktopAuditRailToggle =
@@ -4296,52 +4318,56 @@ export default function KnowledgeIngestionPageClient() {
         >
           <button
             type="button"
-            aria-label="展开预检抽样侧栏"
+            aria-label="展开运行范围侧栏"
             onClick={() => setDesktopScopeCollapsed((previous) => !previous)}
             className={cn(
-              'absolute left-0 top-6 z-40 hidden h-12 w-7 items-center justify-center rounded-r-full border border-border/60 bg-background/92 text-muted-foreground shadow-[0_18px_42px_-24px_rgba(15,23,42,0.24)] backdrop-blur-xl transition-all hover:text-foreground',
+              'absolute left-0 top-7 z-40 hidden h-16 w-8 items-center justify-center gap-1 rounded-r-[0.9rem] border border-border/35 bg-background/78 text-[8px] font-semibold uppercase tracking-[0.16em] text-muted-foreground opacity-0 hover:opacity-100 focus-visible:opacity-100 shadow-none backdrop-blur-xl transition-all duration-200 hover:border-info/25 hover:bg-background/94 hover:text-info focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-info/30',
               showDesktopAuditRailToggle && desktopScopeCollapsed
-                ? 'translate-x-0 opacity-100 pointer-events-auto lg:flex'
+                ? 'translate-x-0 pointer-events-auto lg:flex'
                 : 'pointer-events-none -translate-x-3 opacity-0 lg:hidden'
             )}
           >
-            <ChevronRight className="h-4 w-4" />
+            <span
+              aria-hidden="true"
+              className="h-7 w-px rounded-full bg-info/35"
+            />
+            <span className="[writing-mode:vertical-rl]">范围</span>
           </button>
 
           <aside
             className={cn(
-              'hidden shrink-0 overflow-hidden pr-4 transition-all duration-300 ease-out lg:block',
+              'hidden shrink-0 overflow-hidden pr-3 transition-all duration-300 ease-out lg:block',
               showDesktopAuditRail
-                ? 'w-[18rem] opacity-100'
+                ? 'w-[15.5rem] opacity-100'
                 : 'w-0 opacity-0 -translate-x-4 pointer-events-none'
             )}
           >
             <div className="sticky top-4">
-              <div className="overflow-hidden rounded-[1.15rem] border border-border/55 bg-background/92 p-2 shadow-[0_18px_48px_-34px_rgba(15,23,42,0.24)] backdrop-blur-xl">
-                <div className="flex items-center justify-between gap-2 px-1 pb-2">
+              <div className="overflow-hidden rounded-[0.95rem] border border-border/38 bg-background/64 p-1.5 shadow-none backdrop-blur-xl">
+                <div className="flex items-center justify-between gap-2 px-1 pb-1.5">
                   <div className="flex min-w-0 items-center gap-2">
-                    <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[0.75rem] border border-info/18 bg-info/8 text-info">
+                    <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[0.65rem] border border-border/45 bg-muted/20 text-muted-foreground">
                       <Check className="h-3.5 w-3.5" />
                     </span>
                     <div className="min-w-0">
                       <div className="text-[10px] font-semibold text-foreground">
-                        数据列表
+                        运行范围
                       </div>
                       <div className="mt-0.5 truncate text-[8px] text-muted-foreground">
-                        按状态快速扫读资产
+                        轻量筛选数据集与线索
                       </div>
                     </div>
                   </div>
                   <button
                     type="button"
-                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/75 text-muted-foreground transition-colors hover:text-foreground"
+                    className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border/45 bg-background/60 text-muted-foreground transition-colors hover:border-info/25 hover:text-foreground"
                     onClick={() => setDesktopScopeCollapsed(true)}
                   >
                     <ChevronLeft className="h-3.5 w-3.5" />
                   </button>
                 </div>
 
-                <div className="mb-2 rounded-[0.78rem] border border-border/45 bg-muted/10 p-1.5">
+                <div className="mb-1.5 rounded-[0.68rem] border border-border/35 bg-background/45 p-1.5">
                   <div className="mb-1 flex items-center justify-between gap-2 px-1">
                     <span className="text-[8px] font-medium text-muted-foreground">
                       数据集
@@ -4354,7 +4380,7 @@ export default function KnowledgeIngestionPageClient() {
                     value={datasetScope}
                     onValueChange={handleDatasetScopeChange}
                   >
-                    <SelectTrigger className="h-7 rounded-[0.6rem] border-border/55 bg-background/86 px-2 text-[9px] font-medium shadow-none">
+                    <SelectTrigger className="h-7 rounded-[0.6rem] border-border/45 bg-background/70 px-2 text-[9px] font-medium shadow-none">
                       <SelectValue placeholder="全部项目" />
                     </SelectTrigger>
                     <SelectContent>
@@ -4368,7 +4394,7 @@ export default function KnowledgeIngestionPageClient() {
                   </Select>
                 </div>
 
-                <div className="mb-2 grid grid-cols-2 gap-1">
+                <div className="mb-1.5 grid grid-cols-2 gap-1">
                   {([
                     ['pending', '待确认', auditRailCounts.pending],
                     ['manual', '人工处理', auditRailCounts.manual],
@@ -4380,10 +4406,10 @@ export default function KnowledgeIngestionPageClient() {
                       aria-pressed={auditDispositionFilter === value}
                       onClick={() => setAuditDispositionFilter(value)}
                       className={cn(
-                        'rounded-[0.62rem] border px-2 py-1 text-left text-[8px] transition-colors',
+                        'rounded-[0.56rem] border px-1.5 py-1 text-left text-[8px] transition-colors',
                         auditDispositionFilter === value
                           ? 'border-info/25 bg-info/10 text-info'
-                          : 'border-border/45 bg-background/78 text-muted-foreground hover:text-foreground'
+                          : 'border-border/35 bg-background/50 text-muted-foreground hover:text-foreground'
                       )}
                     >
                       <span className="block font-medium">{label}</span>
@@ -4395,10 +4421,10 @@ export default function KnowledgeIngestionPageClient() {
                     aria-pressed={auditDispositionFilter === 'all'}
                     onClick={() => setAuditDispositionFilter('all')}
                     className={cn(
-                      'rounded-[0.62rem] border px-2 py-1 text-left text-[8px] transition-colors',
+                      'rounded-[0.56rem] border px-1.5 py-1 text-left text-[8px] transition-colors',
                       auditDispositionFilter === 'all'
                         ? 'border-info/25 bg-info/10 text-info'
-                        : 'border-border/45 bg-background/78 text-muted-foreground hover:text-foreground'
+                        : 'border-border/35 bg-background/50 text-muted-foreground hover:text-foreground'
                     )}
                   >
                     <span className="block font-medium">全部</span>
@@ -4440,7 +4466,7 @@ export default function KnowledgeIngestionPageClient() {
                               if (info.offset.x < -100)
                                 handleSampleDisposition(document.id, 'manual')
                             }}
-                            className="group relative overflow-hidden rounded-[0.82rem] border border-border/50 bg-background/86 px-1.5 py-1.5 shadow-none transition-colors hover:border-info/25 hover:bg-background/96"
+                            className="group relative overflow-hidden rounded-[0.74rem] border border-border/38 bg-background/62 px-1.5 py-1.5 shadow-none transition-colors hover:border-info/25 hover:bg-background/82"
                           >
                             <div className="flex items-start gap-2">
                                 <input
@@ -4552,8 +4578,8 @@ export default function KnowledgeIngestionPageClient() {
                         )
                       })}
                   {visibleAuditSamples.length === 0 ? (
-                    <div className="rounded-[0.9rem] border border-dashed border-border/70 bg-background/70 px-3 py-5 text-center text-[10px] text-muted-foreground">
-                      当前暂无可见资产
+                    <div className="rounded-[0.78rem] border border-dashed border-border/55 bg-background/48 px-3 py-4 text-center text-[10px] text-muted-foreground">
+                      暂无可见资产
                     </div>
                   ) : null}
                     <div className="flex items-center justify-between border-t border-border/45 px-1 pt-2 text-[9px] font-medium text-muted-foreground">
@@ -4567,7 +4593,7 @@ export default function KnowledgeIngestionPageClient() {
                           清除聚焦
                         </button>
                       ) : (
-                        <span>实时资产</span>
+                        <span>范围筛选</span>
                       )}
                     </div>
                 </div>
@@ -4601,7 +4627,6 @@ export default function KnowledgeIngestionPageClient() {
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <IngestionViewSwitch compact />
                         {showSalesPolicyBadge ? (
                           <span className="inline-flex items-center rounded-full border border-foreground/10 bg-foreground/[0.04] px-2 py-0.5 text-[7px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                             Sensitive Data Policy
@@ -4653,7 +4678,8 @@ export default function KnowledgeIngestionPageClient() {
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-1">
+                    <div className="flex flex-wrap items-center justify-end gap-1">
+                      <IngestionViewSwitch />
                       {demoMode ? (
                         <Button
                           type="button"
@@ -4695,20 +4721,6 @@ export default function KnowledgeIngestionPageClient() {
                         </>
                       ) : (
                         <>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="h-7 rounded-lg px-2 text-[9px]"
-                            disabled={
-                              documentsQuery.isFetching ||
-                              summaryQuery.isFetching ||
-                              taskQueueQuery.isFetching
-                            }
-                            onClick={() => handleRefreshExecutionMonitor()}
-                          >
-                            <RefreshCcw className="mr-1.5 h-3.5 w-3.5" />
-                            刷新运行态
-                          </Button>
                           <Button
                             type="button"
                             className="h-7 rounded-lg px-2 text-[9px]"
@@ -5388,7 +5400,7 @@ export default function KnowledgeIngestionPageClient() {
                               <span className="ml-1 font-mono text-foreground tabular-nums">
                                 {executionProcessedTotal}
                               </span>{' '}
-                              / {documents.length}
+                              / {executionDocuments.length}
                             </div>
                           </section>
                         </div>
@@ -5410,7 +5422,7 @@ export default function KnowledgeIngestionPageClient() {
                             </div>
                             <div className="flex flex-wrap items-center gap-1.5 text-[8px] text-muted-foreground">
                               <span className="rounded-full border border-border/55 bg-background/80 px-2 py-0.5 tabular-nums">
-                                已处理 {executionProcessedTotal} / {documents.length}
+                                已处理 {executionProcessedTotal} / {executionDocuments.length}
                               </span>
                               <span className="rounded-full border border-success/20 bg-success/10 px-2 py-0.5 text-success tabular-nums">
                                 成功率 {executionSuccessRate}%
@@ -5626,93 +5638,137 @@ export default function KnowledgeIngestionPageClient() {
                                 </tr>
                               </thead>
                               <tbody>
-                                {visibleExecutionTaskRows.map((document) => {
-                                  const progress = getTaskProgress(document)
-                                  const elapsedMinutes = (() => {
-                                    const created = new Date(
-                                      String(document.created_at || '')
-                                    ).getTime()
-                                    const updated = new Date(
-                                      String(document.updated_at || '')
-                                    ).getTime()
-                                    if (
-                                      !Number.isFinite(created) ||
-                                      !Number.isFinite(updated) ||
-                                      updated <= created
-                                    )
-                                      return '--'
-                                    return formatDurationClock(
-                                      (updated - created) / 1000
-                                    )
-                                  })()
-                                  const statusLabel = getDocumentStatusLabel(
-                                    document.status
-                                  )
-                                  const statusTone = getDocumentStatusTone(
-                                    document.status
-                                  )
-
-                                  return (
-                                    <tr
-                                      key={document.id}
-                                      className="border-t border-border/40"
-                                    >
-                                      <td className="px-3 py-2 font-medium text-foreground">
-                                        {document.filename}
-                                      </td>
-                                      <td className="px-3 py-2 text-muted-foreground">
-                                        {String(
-                                          document.file_type || ''
-                                        ).toUpperCase()}
-                                      </td>
-                                      <td className="px-3 py-2 font-mono text-muted-foreground">
-                                        {formatFileSize(
-                                          document.file_size || 0
-                                        )}
-                                      </td>
-                                      <td className="px-3 py-2 text-muted-foreground">
-                                        {String(
-                                          document.current_stage || 'Parser'
-                                        )}
-                                      </td>
-                                      <td
-                                        className={cn(
-                                          'px-3 py-2 font-medium',
-                                          statusTone
-                                        )}
-                                      >
-                                        {statusLabel}
-                                      </td>
-                                      <td className="px-3 py-2">
-                                        <div className="flex items-center gap-2">
-                                          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted/60">
-                                            <div
-                                              className="h-full rounded-full bg-info"
-                                              style={{ width: `${progress}%` }}
-                                            />
-                                          </div>
-                                          <span className="font-mono text-[8px] text-foreground">
-                                            {progress}%
-                                          </span>
+                                {showExecutionMonitorEmptyShell ? (
+                                  <tr className="border-t border-border/40">
+                                    <td colSpan={8} className="px-3 py-8">
+                                      <div className="mx-auto flex max-w-xl flex-col items-center rounded-[1rem] border border-dashed border-border/65 bg-background/74 px-4 py-5 text-center">
+                                        <div className="text-[11px] font-semibold text-foreground">
+                                          当前范围暂无执行任务
                                         </div>
-                                      </td>
-                                      <td className="px-3 py-2 font-mono text-muted-foreground">
-                                        {elapsedMinutes}
-                                      </td>
-                                      <td className="px-3 py-2">
-                                        <button
-                                          type="button"
-                                          className="text-[9px] font-medium text-info transition-colors hover:text-info"
-                                          onClick={() =>
-                                            handleOpenAuditSnapshot(document.id)
-                                          }
+                                        <div className="mt-1 max-w-md text-[9px] leading-4 text-muted-foreground">
+                                          这个监控范围可以直接打开，但当前知识库还没有解析任务。可以切到入库操作提交解析，或查看全部项目的运行态。
+                                        </div>
+                                        <div className="mt-3 flex flex-wrap justify-center gap-2">
+                                          <Button
+                                            type="button"
+                                            size="sm"
+                                            className="h-7 rounded-lg px-2 text-[9px]"
+                                            onClick={handleOpenIngestionOperation}
+                                          >
+                                            去入库操作
+                                          </Button>
+                                          {selectedDatasetId ? (
+                                            <Button
+                                              type="button"
+                                              variant="outline"
+                                              size="sm"
+                                              className="h-7 rounded-lg px-2 text-[9px]"
+                                              onClick={() =>
+                                                handleDatasetScopeChange(
+                                                  DATASET_ALL
+                                                )
+                                              }
+                                            >
+                                              查看全部项目
+                                            </Button>
+                                          ) : null}
+                                        </div>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ) : (
+                                  visibleExecutionTaskRows.map((document) => {
+                                    const progress = getTaskProgress(document)
+                                    const elapsedMinutes = (() => {
+                                      const created = new Date(
+                                        String(document.created_at || '')
+                                      ).getTime()
+                                      const updated = new Date(
+                                        String(document.updated_at || '')
+                                      ).getTime()
+                                      if (
+                                        !Number.isFinite(created) ||
+                                        !Number.isFinite(updated) ||
+                                        updated <= created
+                                      )
+                                        return '--'
+                                      return formatDurationClock(
+                                        (updated - created) / 1000
+                                      )
+                                    })()
+                                    const statusLabel = getDocumentStatusLabel(
+                                      document.status
+                                    )
+                                    const statusTone = getDocumentStatusTone(
+                                      document.status
+                                    )
+
+                                    return (
+                                      <tr
+                                        key={document.id}
+                                        className="border-t border-border/40"
+                                      >
+                                        <td className="px-3 py-2 font-medium text-foreground">
+                                          {document.filename}
+                                        </td>
+                                        <td className="px-3 py-2 text-muted-foreground">
+                                          {String(
+                                            document.file_type || ''
+                                          ).toUpperCase()}
+                                        </td>
+                                        <td className="px-3 py-2 font-mono text-muted-foreground">
+                                          {formatFileSize(
+                                            document.file_size || 0
+                                          )}
+                                        </td>
+                                        <td className="px-3 py-2 text-muted-foreground">
+                                          {String(
+                                            document.current_stage || 'Parser'
+                                          )}
+                                        </td>
+                                        <td
+                                          className={cn(
+                                            'px-3 py-2 font-medium',
+                                            statusTone
+                                          )}
                                         >
-                                          详情
-                                        </button>
-                                      </td>
-                                    </tr>
-                                  )
-                                })}
+                                          {statusLabel}
+                                        </td>
+                                        <td className="px-3 py-2">
+                                          <div className="flex items-center gap-2">
+                                            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted/60">
+                                              <div
+                                                className="h-full rounded-full bg-info"
+                                                style={{
+                                                  width: `${progress}%`,
+                                                }}
+                                              />
+                                            </div>
+                                            <span className="font-mono text-[8px] text-foreground">
+                                              {progress}%
+                                            </span>
+                                          </div>
+                                        </td>
+                                        <td className="px-3 py-2 font-mono text-muted-foreground">
+                                          {elapsedMinutes}
+                                        </td>
+                                        <td className="px-3 py-2">
+                                          <button
+                                            type="button"
+                                            className="text-[9px] font-medium text-info transition-colors hover:text-info"
+                                            onClick={() =>
+                                              handleOpenAuditSnapshot(
+                                                document.id
+                                              )
+                                            }
+                                          >
+                                            详情
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    )
+                                  })
+                                )}
                               </tbody>
                             </table>
                           </div>

@@ -68,7 +68,7 @@ describe('knowledge ingestion dual-mode layout', () => {
     expectSourceToContain(src, 'p-3.5 md:p-4')
     expectSourceToContain(
       src,
-      'const [desktopScopeCollapsed, setDesktopScopeCollapsed] = useState(false)'
+      'const [desktopScopeCollapsed, setDesktopScopeCollapsed] = useState(true)'
     )
     expectSourceToContain(
       src,
@@ -95,9 +95,13 @@ describe('knowledge ingestion dual-mode layout', () => {
       src,
       "showDesktopAuditRailToggle ? 'lg:flex' : 'lg:hidden'"
     )
+    expectSourceToContain(src, 'opacity-0 hover:opacity-100 focus-visible:opacity-100')
+    expectSourceToContain(src, '[writing-mode:vertical-rl]')
+    expectSourceToContain(src, '>范围</span>')
+    expectSourceNotToContain(src, '<ChevronRight className="h-4 w-4" />')
     expectSourceToContain(
       src,
-      "showDesktopAuditRail ? 'w-[18rem] opacity-100' : 'w-0 opacity-0 -translate-x-4 pointer-events-none'"
+      "showDesktopAuditRail ? 'w-[15.5rem] opacity-100' : 'w-0 opacity-0 -translate-x-4 pointer-events-none'"
     )
     expectSourceToContain(src, 'const auditRailCounts = useMemo(() => {')
     expectSourceToContain(
@@ -123,7 +127,8 @@ describe('knowledge ingestion dual-mode layout', () => {
     expectSourceToContain(src, 'handleExportSalesAuditReport')
     expectSourceToContain(src, 'taskQueueSnapshot')
     expectSourceToContain(src, 'recentQueueOutcomes')
-    expectSourceToContain(src, 'handleRefreshExecutionMonitor')
+    expectSourceNotToContain(src, 'handleRefreshExecutionMonitor')
+    expectSourceNotToContain(src, '刷新运行态')
     expectSourceToContain(src, '处理模式')
     expectSourceToContain(src, '当前吞吐')
     expectSourceToContain(src, "mode === 'sales-audit'")
