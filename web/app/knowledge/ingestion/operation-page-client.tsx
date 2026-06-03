@@ -45,12 +45,22 @@ import { connectorApi, datasetApi, documentApi, settingsApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { readClientStorage } from '@/lib/client-storage'
 import { cn, detachPromise, formatDate, formatFileSize } from '@/lib/utils'
-import type { ConnectorRunOut, Dataset, DatasetIngestionStats, DocumentBatchUploadResponse, DocumentPipelineOptions } from '@/types'
+import type {
+  ConnectorRunOut,
+  Dataset,
+  DatasetIngestionStats,
+  Document,
+  DocumentBatchUploadResponse,
+  DocumentFolderNode,
+  DocumentPipelineOptions,
+} from '@/types'
 
 import { IngestionViewSwitch } from './view-switch'
 
 const DRAFT_KEY = 'mimirq.knowledge.ingestion.operation.draft'
 const TASK_LIST_PAGE_SIZE = 6
+const DEFAULT_COLLECTION = 'default'
+const NO_DATASET_FILE_BUCKET = '__mimirq_no_dataset__'
 
 type UploadSource = 'local' | 'folder' | 'url' | 'object' | 'api'
 type ParserBackend = 'auto' | 'docling' | 'markitdown' | 'deepdoc' | 'csv' | 'json' | 'markdown'
@@ -88,6 +98,8 @@ type DraftState = {
   keepFailureTasks: boolean
 }
 
+type DatasetIngestContext = Pick<DraftState, 'tags' | 'collection'>
+
 const DEFAULT_DRAFT: DraftState = {
   datasetId: '',
   syncDataset: false,
@@ -99,7 +111,7 @@ const DEFAULT_DRAFT: DraftState = {
   chunkOverlap: 100,
   dedupStrategy: 'content_hash',
   tags: '',
-  collection: 'default',
+  collection: DEFAULT_COLLECTION,
   errorPolicy: 'skip_failed',
   refreshStats: true,
   keepFailureTasks: true,
@@ -174,9 +186,89 @@ function fileKey(file: File) {
   return `${path}:${file.size}:${file.lastModified}`
 }
 
+function fileUploadName(file: File) {
+  return String((file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name)
+}
+
+function fileRelativeFolder(file: File) {
+  const path = fileUploadName(file)
+  if (!path.includes('/')) return ''
+  return path.split('/').slice(0, -1).join('/').trim()
+}
+
 function formatFileType(file: File) {
   const ext = file.name.split('.').pop()
   return ext ? ext.toUpperCase() : 'FILE'
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function normalizeOption(value: unknown) {
+  return String(value || '').trim()
+}
+
+function normalizeListText(value: string) {
+  return value
+    .split(/[,\n，、]/g)
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function getDocumentUserTags(document: Document): string[] {
+  const metadata = document.metadata
+  if (!isRecord(metadata)) return []
+  const user = metadata.user
+  const rawTags = isRecord(user) ? user.tags : metadata.tags
+  if (Array.isArray(rawTags)) {
+    return rawTags.map(normalizeOption).filter(Boolean)
+  }
+  if (typeof rawTags === 'string') return normalizeListText(rawTags)
+  return []
+}
+
+function collectTagOptions(documents: Document[], draftTags: string): string[] {
+  const options = new Set<string>()
+  for (const tag of normalizeListText(draftTags)) options.add(tag)
+  for (const document of documents) {
+    for (const tag of getDocumentUserTags(document)) options.add(tag)
+  }
+  return Array.from(options).sort((a, b) => a.localeCompare(b, 'zh-CN'))
+}
+
+function collectFolderPaths(root?: DocumentFolderNode | null): string[] {
+  if (!root) return []
+  const out: string[] = []
+  const stack = [...(root.children || [])].reverse()
+  while (stack.length) {
+    const node = stack.pop()
+    if (!node) continue
+    const path = normalizeOption(node.path)
+    if (path) out.push(path)
+    for (const child of [...(node.children || [])].reverse()) stack.push(child)
+  }
+  return out
+}
+
+function collectCollectionOptions(
+  root: DocumentFolderNode | null | undefined,
+  files: File[],
+  currentCollection: string
+): string[] {
+  const options = new Set<string>([DEFAULT_COLLECTION])
+  for (const path of collectFolderPaths(root)) options.add(path)
+  for (const file of files) {
+    const folder = fileRelativeFolder(file)
+    if (folder) options.add(folder)
+  }
+  const normalizedCurrent = normalizeOption(currentCollection)
+  if (normalizedCurrent) options.add(normalizedCurrent)
+  return Array.from(options).sort((a, b) => {
+    if (a === DEFAULT_COLLECTION) return -1
+    if (b === DEFAULT_COLLECTION) return 1
+    return a.localeCompare(b, 'zh-CN')
+  })
 }
 
 function getFileIcon(file: File) {
@@ -310,9 +402,11 @@ export default function KnowledgeIngestionOperationPage() {
   const routeDatasetId = searchParams.get('datasetId') || ''
   const inputRef = useRef<HTMLInputElement | null>(null)
   const folderInputRef = useRef<HTMLInputElement | null>(null)
+  const previousDatasetIdRef = useRef<string | null>(null)
   const [draft, setDraft] = useState<DraftState>(DEFAULT_DRAFT)
+  const [datasetIngestContextById, setDatasetIngestContextById] = useState<Record<string, DatasetIngestContext>>({})
   const [source, setSource] = useState<UploadSource>('local')
-  const [files, setFiles] = useState<File[]>([])
+  const [filesByDatasetId, setFilesByDatasetId] = useState<Record<string, File[]>>({})
   const [urlList, setUrlList] = useState('')
   const [urlFilename, setUrlFilename] = useState('')
   const [objectBucket, setObjectBucket] = useState('')
@@ -326,7 +420,16 @@ export default function KnowledgeIngestionOperationPage() {
   const [uploadResponse, setUploadResponse] = useState<DocumentBatchUploadResponse | null>(null)
 
   useEffect(() => {
-    setDraft(loadDraft())
+    const nextDraft = loadDraft()
+    setDraft(nextDraft)
+    if (nextDraft.datasetId) {
+      setDatasetIngestContextById({
+        [nextDraft.datasetId]: {
+          tags: nextDraft.tags,
+          collection: nextDraft.collection || DEFAULT_COLLECTION,
+        },
+      })
+    }
   }, [])
 
   useEffect(() => {
@@ -356,6 +459,31 @@ export default function KnowledgeIngestionOperationPage() {
     () => datasets.find((dataset) => dataset.id === draft.datasetId) ?? null,
     [datasets, draft.datasetId]
   )
+  const activeFileBucketKey = draft.datasetId || NO_DATASET_FILE_BUCKET
+  const files = filesByDatasetId[activeFileBucketKey] ?? []
+
+  useEffect(() => {
+    if (previousDatasetIdRef.current === null) {
+      previousDatasetIdRef.current = draft.datasetId
+      return
+    }
+    if (previousDatasetIdRef.current === draft.datasetId) return
+    previousDatasetIdRef.current = draft.datasetId
+    setUploadResponse(null)
+    setStatus('idle')
+  }, [draft.datasetId])
+
+  useEffect(() => {
+    if (!draft.datasetId) return
+    const context = datasetIngestContextById[draft.datasetId]
+    const nextTags = context?.tags ?? DEFAULT_DRAFT.tags
+    const nextCollection = context?.collection ?? DEFAULT_COLLECTION
+    setDraft((current) => {
+      if (current.datasetId !== draft.datasetId) return current
+      if (current.tags === nextTags && current.collection === nextCollection) return current
+      return { ...current, tags: nextTags, collection: nextCollection }
+    })
+  }, [datasetIngestContextById, draft.datasetId])
 
   const ingestionStatsQuery = useQuery({
     queryKey: ['knowledge-ingestion-operation-stats', draft.datasetId],
@@ -380,6 +508,22 @@ export default function KnowledgeIngestionOperationPage() {
   })
 
   const documents = useMemo(() => documentsQuery.data?.items ?? [], [documentsQuery.data?.items])
+
+  const foldersQuery = useQuery({
+    queryKey: ['knowledge-ingestion-operation-folders', draft.datasetId],
+    queryFn: () => documentApi.folders({ dataset_id: draft.datasetId, max_depth: 20 }),
+    enabled: Boolean(draft.datasetId),
+    staleTime: 10_000,
+  })
+
+  const tagOptions = useMemo(
+    () => collectTagOptions(documents, draft.tags),
+    [documents, draft.tags]
+  )
+  const collectionOptions = useMemo(
+    () => collectCollectionOptions(foldersQuery.data?.root, files, draft.collection),
+    [draft.collection, files, foldersQuery.data?.root]
+  )
 
   const connectorRunsQuery = useQuery({
     queryKey: ['knowledge-ingestion-operation-connector-runs', draft.datasetId],
@@ -538,8 +682,23 @@ export default function KnowledgeIngestionOperationPage() {
   ]
 
   const updateDraft = useCallback(<K extends keyof DraftState>(key: K, value: DraftState[K]) => {
+    if ((key === 'tags' || key === 'collection') && draft.datasetId) {
+      setDatasetIngestContextById((current) => {
+        const previous = current[draft.datasetId] ?? {
+          tags: DEFAULT_DRAFT.tags,
+          collection: DEFAULT_COLLECTION,
+        }
+        return {
+          ...current,
+          [draft.datasetId]: {
+            ...previous,
+            [key]: String(value || ''),
+          },
+        }
+      })
+    }
     setDraft((current) => ({ ...current, [key]: value }))
-  }, [])
+  }, [draft.datasetId])
 
   const addFiles = useCallback((incoming: File[]) => {
     const supported = incoming.filter((file) => {
@@ -547,25 +706,35 @@ export default function KnowledgeIngestionOperationPage() {
       return ACCEPTED_EXTENSIONS.some((ext) => lower.endsWith(ext))
     })
     const rejected = incoming.length - supported.length
-    setFiles((current) => {
-      const byKey = new Map(current.map((file) => [fileKey(file), file]))
+    setFilesByDatasetId((current) => {
+      const activeFiles = current[activeFileBucketKey] ?? []
+      const byKey = new Map(activeFiles.map((file) => [fileKey(file), file]))
       for (const file of supported) byKey.set(fileKey(file), file)
-      return Array.from(byKey.values())
+      return {
+        ...current,
+        [activeFileBucketKey]: Array.from(byKey.values()),
+      }
     })
     if (rejected > 0) {
       toast.warning(`${rejected} 个文件格式未在允许列表中，已跳过`)
     }
-  }, [])
+  }, [activeFileBucketKey])
 
   const clearFiles = useCallback(() => {
-    setFiles([])
+    setFilesByDatasetId((current) => ({
+      ...current,
+      [activeFileBucketKey]: [],
+    }))
     setUploadResponse(null)
     setStatus('idle')
-  }, [])
+  }, [activeFileBucketKey])
 
   const removeFile = useCallback((key: string) => {
-    setFiles((current) => current.filter((file) => fileKey(file) !== key))
-  }, [])
+    setFilesByDatasetId((current) => ({
+      ...current,
+      [activeFileBucketKey]: (current[activeFileBucketKey] ?? []).filter((file) => fileKey(file) !== key),
+    }))
+  }, [activeFileBucketKey])
 
   const submitConnectorRun = useCallback(async () => {
     if (!draft.datasetId) {
@@ -607,7 +776,7 @@ export default function KnowledgeIngestionOperationPage() {
               },
             })
       setStatus(run.status === 'failed' ? 'failed' : run.status === 'completed' ? 'completed' : 'uploading')
-      await Promise.all([connectorRunsQuery.refetch(), ingestionStatsQuery.refetch()])
+      await Promise.all([connectorRunsQuery.refetch(), foldersQuery.refetch(), ingestionStatsQuery.refetch()])
       toast.success(`连接器任务已创建：${String(run.id).slice(0, 8)}`)
       if (run.status !== 'failed' && shouldOpenExecutionMonitor(draft, 'ingest')) {
         router.push('/knowledge/ingestion?mode=execution-monitor')
@@ -619,6 +788,7 @@ export default function KnowledgeIngestionOperationPage() {
   }, [
     connectorRunsQuery,
     draft,
+    foldersQuery,
     ingestionStatsQuery,
     objectBucket,
     objectMaxObjects,
@@ -634,10 +804,10 @@ export default function KnowledgeIngestionOperationPage() {
   const handleSyncDatasets = useCallback(async () => {
     await datasetsQuery.refetch()
     if (draft.datasetId) {
-      await Promise.all([documentsQuery.refetch(), connectorRunsQuery.refetch(), ingestionStatsQuery.refetch()])
+      await Promise.all([documentsQuery.refetch(), connectorRunsQuery.refetch(), foldersQuery.refetch(), ingestionStatsQuery.refetch()])
     }
     toast.success('数据集状态已同步')
-  }, [connectorRunsQuery, datasetsQuery, documentsQuery, draft.datasetId, ingestionStatsQuery])
+  }, [connectorRunsQuery, datasetsQuery, documentsQuery, draft.datasetId, foldersQuery, ingestionStatsQuery])
 
   const uploadFiles = useCallback(
     async (mode: 'upload_only' | 'ingest') => {
@@ -717,7 +887,7 @@ export default function KnowledgeIngestionOperationPage() {
             failed: [],
           })
           setStatus('completed')
-          await Promise.all([documentsQuery.refetch(), ingestionStatsQuery.refetch()])
+          await Promise.all([documentsQuery.refetch(), foldersQuery.refetch(), ingestionStatsQuery.refetch()])
           toast.success(`API 导入已写入：${filename}`)
           return
         }
@@ -730,7 +900,7 @@ export default function KnowledgeIngestionOperationPage() {
           max_concurrent: 4,
           user_metadata_map: Object.fromEntries(
             uploadTargets.map((file) => [
-              (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name,
+              fileUploadName(file),
               {
                 tags: draft.tags
                   .split(',')
@@ -746,7 +916,7 @@ export default function KnowledgeIngestionOperationPage() {
         const response = await documentApi.uploadBatch(files, uploadOptions)
         setUploadResponse(response)
         setStatus(response.failed_count > 0 ? 'failed' : 'completed')
-        await Promise.all([documentsQuery.refetch(), ingestionStatsQuery.refetch()])
+        await Promise.all([documentsQuery.refetch(), foldersQuery.refetch(), ingestionStatsQuery.refetch()])
         toast.success(
           mode === 'upload_only'
             ? `已登记到知识库：成功 ${response.successful_count} / 失败 ${response.failed_count}`
@@ -760,7 +930,7 @@ export default function KnowledgeIngestionOperationPage() {
         toast.error(formatApiError(error, '入库任务提交失败'))
       }
     },
-    [apiContent, apiFilename, documentsQuery, draft, files, ingestionStatsQuery, parsedUrls.length, router, source, submitConnectorRun]
+    [apiContent, apiFilename, documentsQuery, draft, files, foldersQuery, ingestionStatsQuery, parsedUrls.length, router, source, submitConnectorRun]
   )
 
   const inspectTask = useCallback(async (task: HistoryItem) => {
@@ -945,6 +1115,8 @@ export default function KnowledgeIngestionOperationPage() {
               sourceName={activeSource.label}
               draft={draft}
               updateDraft={updateDraft}
+              tagOptions={tagOptions}
+              collectionOptions={collectionOptions}
               onRefresh={handleSyncDatasets}
               onInspectTask={inspectTask}
             />
@@ -1388,29 +1560,48 @@ function SelectedFilesTable({
 function IngestTaskControls({
   draft,
   updateDraft,
+  tagOptions,
+  collectionOptions,
 }: Readonly<{
   draft: DraftState
   updateDraft: <K extends keyof DraftState>(key: K, value: DraftState[K]) => void
+  tagOptions: string[]
+  collectionOptions: string[]
 }>) {
+  const tagListId = 'knowledge-ingestion-tag-options'
+  const collectionListId = 'knowledge-ingestion-collection-options'
+
   return (
     <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
       <label className={cn('flex h-7 min-w-[10rem] items-center gap-1.5 rounded-[0.85rem] px-2', INLINE_FIELD_CLASS)}>
         <span className="shrink-0 text-[11px] font-medium text-muted-foreground">标签</span>
         <Input
+          list={tagListId}
           className="h-5 min-w-0 flex-1 border-0 bg-transparent px-0 text-xs shadow-none focus-visible:ring-1 focus-visible:ring-primary/30"
           value={draft.tags}
           onChange={(event) => updateDraft('tags', event.target.value)}
           placeholder="选择或输入标签"
         />
+        <datalist id={tagListId}>
+          {tagOptions.map((tag) => (
+            <option key={tag} value={tag} />
+          ))}
+        </datalist>
       </label>
       <label className={cn('flex h-7 min-w-[8.8rem] items-center gap-1.5 rounded-[0.85rem] px-2', INLINE_FIELD_CLASS)}>
         <span className="shrink-0 text-[11px] font-medium text-muted-foreground">目标目录</span>
         <Input
+          list={collectionListId}
           className="h-5 min-w-0 flex-1 border-0 bg-transparent px-0 text-xs shadow-none focus-visible:ring-1 focus-visible:ring-primary/30"
           value={draft.collection}
           onChange={(event) => updateDraft('collection', event.target.value)}
           placeholder="default"
         />
+        <datalist id={collectionListId}>
+          {collectionOptions.map((collection) => (
+            <option key={collection} value={collection} />
+          ))}
+        </datalist>
       </label>
       <div className={cn('flex h-7 items-center gap-1.5 rounded-[0.85rem] px-2', INLINE_FIELD_CLASS)}>
         <span className="shrink-0 text-[11px] font-medium text-muted-foreground">重复处理</span>
@@ -1443,6 +1634,8 @@ function TaskListCard({
   sourceName,
   draft,
   updateDraft,
+  tagOptions,
+  collectionOptions,
   onRefresh,
   onInspectTask,
 }: Readonly<{
@@ -1451,6 +1644,8 @@ function TaskListCard({
   sourceName: string
   draft: DraftState
   updateDraft: <K extends keyof DraftState>(key: K, value: DraftState[K]) => void
+  tagOptions: string[]
+  collectionOptions: string[]
   onRefresh: () => Promise<void>
   onInspectTask: (task: HistoryItem) => Promise<void>
 }>) {
@@ -1489,7 +1684,12 @@ function TaskListCard({
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <SectionTitle title="入库进度与任务列表" />
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
-          <IngestTaskControls draft={draft} updateDraft={updateDraft} />
+          <IngestTaskControls
+            draft={draft}
+            updateDraft={updateDraft}
+            tagOptions={tagOptions}
+            collectionOptions={collectionOptions}
+          />
           <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as 'all' | 'running' | 'done')}>
             <SelectTrigger className={cn('h-7 w-[7.6rem] text-xs', SOFT_CONTROL_CLASS)}>
               <SelectValue />

@@ -16,6 +16,10 @@ describe('datasets page source', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'datasets-page.tsx'), 'utf8')
 
     expect(src).toContain('flex min-h-[calc(100vh-11.5rem)] flex-col overflow-hidden rounded-3xl border border-border/60 bg-card/90 shadow-soft')
+    expect(src).toContain('grid min-h-0 flex-1 gap-2.5')
+    expect(src).toContain('section className="min-h-0 min-w-0"')
+    expect(src).toContain('data-dataset-catalog-scroll="true"')
+    expect(src).toContain('min-h-0 flex-1 overflow-y-auto overscroll-contain custom-scrollbar')
     expect(src).toContain('lg:grid-cols-[176px_minmax(0,1fr)]')
     expect(src).toContain('xl:grid-cols-[minmax(0,1.15fr)_320px]')
     expect(src).toContain('Dataset Inspector')

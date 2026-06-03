@@ -102,4 +102,5 @@ data/colbert_indexes/
 web/.next_3101/
 
 # Local generated analysis/training artifacts
+.scannerwork/
 work/

@@ -727,7 +727,7 @@ export default function DatasetsPage() {
             </div>
           </div>
 
-          <div className="grid flex-1 gap-2.5 px-2.5 py-2.5 xl:grid-cols-[208px_minmax(0,1.2fr)_284px]">
+          <div className="grid min-h-0 flex-1 gap-2.5 px-2.5 py-2.5 xl:grid-cols-[208px_minmax(0,1.2fr)_284px]">
             <aside className="min-h-0 overflow-hidden rounded-[22px] border border-border/60 bg-background/88 p-2.5 shadow-[0_18px_36px_-28px_rgba(15,23,42,0.12)]">
               <div className="border-b border-border/60 pb-2">
                 <div className="text-[9px] font-semibold uppercase tracking-[0.18em] text-primary/70">Collections</div>
@@ -785,7 +785,7 @@ export default function DatasetsPage() {
               </div>
             </aside>
 
-            <section className="min-w-0">
+            <section className="min-h-0 min-w-0">
               <div className="flex h-full min-h-0 flex-col rounded-[24px] border border-border/60 bg-background/88 shadow-[0_18px_36px_-28px_rgba(15,23,42,0.12)]">
                 <div className="flex items-center justify-between gap-3 border-b border-border/60 px-4 py-3">
                   <div className="min-w-0">
@@ -813,7 +813,10 @@ export default function DatasetsPage() {
                   </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto px-3.5 py-3">
+                <div
+                  data-dataset-catalog-scroll="true"
+                  className="min-h-0 flex-1 overflow-y-auto overscroll-contain custom-scrollbar px-3.5 py-3"
+                >
                   {displayedItems.length === 0 && !isLoading ? (
                     <EmptyState
                       icon={Layers}
