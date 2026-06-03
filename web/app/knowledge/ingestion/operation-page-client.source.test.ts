@@ -92,8 +92,10 @@ describe('knowledge ingestion operation page client source', () => {
     expect(src).toContain('当前目标数据集')
     expect(src).toContain('自动建索引')
     expect(src).toContain('IngestTaskControls')
-    expect(src).toContain('<IngestTaskControls draft={draft} updateDraft={updateDraft} />')
-    expect(src.indexOf('<IngestTaskControls draft={draft} updateDraft={updateDraft} />')).toBeLessThan(
+    expect(src).toContain('<IngestTaskControls')
+    expect(src).toContain('tagOptions={tagOptions}')
+    expect(src).toContain('collectionOptions={collectionOptions}')
+    expect(src.indexOf('<IngestTaskControls')).toBeLessThan(
       src.indexOf('<Select value={statusFilter}')
     )
     expect(src).toContain('mb-2 flex flex-wrap items-center justify-between gap-2')
@@ -161,6 +163,27 @@ describe('knowledge ingestion operation page client source', () => {
     expect(src).not.toContain("precheck_only:")
     expect(src).not.toContain("uploadFiles('precheck')")
     expect(src).toContain('user_metadata_map')
+  })
+
+  it('scopes selected files, tag suggestions, and target folder suggestions to the active dataset', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'operation-page-client.tsx'), 'utf8')
+
+    expect(src).toContain("const NO_DATASET_FILE_BUCKET = '__mimirq_no_dataset__'")
+    expect(src).toContain('const [filesByDatasetId, setFilesByDatasetId] = useState<Record<string, File[]>>({})')
+    expect(src).toContain('const activeFileBucketKey = draft.datasetId || NO_DATASET_FILE_BUCKET')
+    expect(src).toContain('const files = filesByDatasetId[activeFileBucketKey] ?? []')
+    expect(src).toContain('setFilesByDatasetId((current) => {')
+    expect(src).toContain('[activeFileBucketKey]: Array.from(byKey.values())')
+    expect(src).toContain('previousDatasetIdRef')
+    expect(src).toContain('setUploadResponse(null)')
+    expect(src).toContain('documentApi.folders({ dataset_id: draft.datasetId, max_depth: 20 })')
+    expect(src).toContain('collectTagOptions(documents, draft.tags)')
+    expect(src).toContain('collectCollectionOptions(foldersQuery.data?.root, files, draft.collection)')
+    expect(src).toContain('list={tagListId}')
+    expect(src).toContain('list={collectionListId}')
+    expect(src).toContain('<datalist id={tagListId}>')
+    expect(src).toContain('<datalist id={collectionListId}>')
+    expect(src).toContain('fileUploadName(file)')
   })
 
   it('uses backend statistics instead of demo metrics or hardcoded dataset facts', () => {
