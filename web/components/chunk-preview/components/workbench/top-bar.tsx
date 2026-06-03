@@ -8,6 +8,7 @@ import {
   AlertCircle,
   Check,
   Copy,
+  Database,
   Download,
   ExternalLink,
   FileText,
@@ -292,13 +293,13 @@ export function TopBar() {
       .replaceAll(BACKTICK, SHELL_BACKSLASH + BACKTICK)
 
   const summaryChipClass =
-    'inline-flex h-7 items-center gap-1.5 rounded-full border border-border/55 bg-muted/30 px-2.5 text-[11px] leading-none text-muted-foreground'
+    'inline-flex h-7 items-center gap-1.5 rounded-lg border border-border/55 bg-muted/20 px-2.5 text-[10.5px] font-bold uppercase tracking-tight text-muted-foreground/90 antialiased shadow-[0_1px_0_rgba(255,255,255,0.7)_inset]'
   const fileMetaChipClass =
-    'inline-flex h-5 min-w-0 items-center gap-1 rounded-md border border-border/45 bg-background/62 px-1.5 text-[9.5px] leading-none text-muted-foreground/78'
+    'inline-flex h-5 min-w-0 items-center gap-1 rounded-md border border-border/45 bg-background/60 px-1.5 text-[9px] font-bold tracking-tight text-muted-foreground/80 antialiased'
   const stateChipClass =
-    'inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-medium leading-none'
+    'inline-flex h-7 items-center gap-1.5 rounded-lg border px-2.5 text-[10.5px] font-bold uppercase tracking-tight antialiased shadow-[0_1px_0_rgba(255,255,255,0.7)_inset]'
   const actionButtonClass =
-    'h-8 rounded-lg px-2.5 text-[11px] font-medium text-muted-foreground hover:bg-primary/8 hover:text-foreground'
+    'h-8 rounded-lg px-2.5 text-[11px] font-bold uppercase tracking-tight text-muted-foreground/90 hover:bg-primary/8 hover:text-primary transition-all antialiased'
   const visibleFileName =
     currentFileItem.displayName || previewData?.filename || currentFile.name
   const visibleFileType =
@@ -451,40 +452,38 @@ export function TopBar() {
   return (
     <section
       aria-label={workbenchTitle}
-      className="relative flex min-w-0 flex-col gap-2.5 rounded-2xl border border-border/55 bg-card/90 px-3 py-2.5 shadow-[0_10px_28px_rgba(15,23,42,0.045)] xl:flex-row xl:items-center xl:justify-between"
+      className="relative flex min-w-0 flex-col gap-3 rounded-2xl border border-border/60 bg-background/95 px-3.5 py-3 shadow-[0_12px_32px_-12px_rgba(15,23,42,0.12)] xl:flex-row xl:items-center xl:justify-between antialiased backdrop-blur-xl"
     >
-      <div className="flex min-w-0 flex-1 flex-col gap-2">
-        <div data-current-file-summary className="flex min-w-0 items-center gap-2.5">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-primary/15 bg-primary/8 text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
-            <FileText className="h-4 w-4" />
+      <div className="flex min-w-0 flex-1 flex-col gap-2.5">
+        <div data-current-file-summary className="flex min-w-0 items-center gap-3">
+          <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/5 text-primary shadow-[0_1px_0_rgba(255,255,255,0.8)_inset,0_4px_12px_-4px_rgba(var(--primary-rgb),0.2)]">
+            <FileText className="h-5 w-5" strokeWidth={2.5} />
+            <div className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full border border-background bg-primary text-[8px] font-black text-white shadow-sm">
+              {currentFileIndex + 1}
+            </div>
           </div>
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-2">
               <span
-                className="max-w-full truncate text-sm font-semibold text-foreground sm:max-w-[28rem] xl:max-w-[34rem]"
+                className="max-w-full truncate text-[13px] font-black tracking-tight text-foreground sm:max-w-[28rem] xl:max-w-[34rem]"
                 title={visibleFileName}
               >
                 {visibleFileName}
               </span>
             </div>
             <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
-              <span className={cn(fileMetaChipClass, 'border-primary/20 bg-primary/6 text-primary/85')}>
-                <span className="text-primary/58">{t('topBar.fileMeta.index')}</span>
-                <span className="font-medium tabular-nums">#{currentFileIndex + 1}</span>
-              </span>
               {visibleFileType ? (
-                <span className={fileMetaChipClass}>
-                  <span className="text-muted-foreground/55">{t('topBar.fileMeta.type')}</span>
-                  <span className="font-mono font-medium text-foreground/72">{String(visibleFileType).toUpperCase()}</span>
+                <span className={cn(fileMetaChipClass, 'border-primary/20 bg-primary/5 text-primary/90')}>
+                  <span className="font-black uppercase tracking-widest">{String(visibleFileType).toUpperCase()}</span>
                 </span>
               ) : null}
               <span className={fileMetaChipClass}>
-                <span className="text-muted-foreground/55">{t('topBar.fileMeta.size')}</span>
-                <span className="font-mono font-medium text-foreground/72">{formatFileSize(visibleFileSize)}</span>
+                <span className="opacity-60">{t('topBar.fileMeta.size')}</span>
+                <span className="font-black tabular-nums">{formatFileSize(visibleFileSize)}</span>
               </span>
-              <span className={cn(fileMetaChipClass, 'max-w-[8.5rem]')}>
-                <span className="text-muted-foreground/55">{t('topBar.fileMeta.parser')}</span>
-                <span className="min-w-0 truncate font-medium text-foreground/72" title={effectiveParserBackend}>
+              <span className={cn(fileMetaChipClass, 'max-w-[10rem]')}>
+                <span className="opacity-60">{t('topBar.fileMeta.parser')}</span>
+                <span className="min-w-0 truncate font-black" title={effectiveParserBackend}>
                   {effectiveParserBackend}
                 </span>
               </span>
@@ -492,119 +491,121 @@ export function TopBar() {
           </div>
         </div>
 
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <span className={summaryChipClass}>
-            <span className="text-muted-foreground/70">{t('topBar.strategyLabel')}</span>
-            <span className="font-medium text-foreground/90" title={effectiveChunkStrategy}>
-              {getChunkStrategyLabel(effectiveChunkStrategy)}
-            </span>
-            {effectiveChunkStrategy === 'auto' && previewData?.auto_selected_strategy ? (
-              <>
-                <span className="h-3 w-px bg-border/80" />
-                <span
-                  className="inline-flex items-center rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary/90"
-                  title={t('topBar.status.autoSelectedStrategyTitle', {
-                    strategy: previewData.auto_selected_strategy,
-                  })}
-                >
-                  → {getChunkStrategyLabel(previewData.auto_selected_strategy)}
-                </span>
-              </>
-            ) : null}
-          </span>
-
-          <span className={summaryChipClass}>
-            <span className="text-muted-foreground/70">{t('topBar.paramsLabel')}</span>
-            <span
-              className="font-mono font-medium text-foreground/85"
-              title={visibleChunkUnit}
-            >
-              {visibleChunkSize}/{visibleChunkOverlap}
-            </span>
-          </span>
-
-          {typeof visiblePreviewDurationMs === 'number' ? (
-            <span className={summaryChipClass} title={serverTimingTitle}>
-              <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />
-              <span className="font-medium text-foreground/85">{visiblePreviewDurationMs}ms</span>
-            </span>
-          ) : null}
-
-          {previewData ? (
+        <div className="flex min-w-0 flex-wrap items-center gap-2 px-0.5">
+          <div className="flex items-center gap-1 rounded-lg border border-border/50 bg-muted/10 p-0.5 shadow-[inset_0_1px_2px_rgba(0,0,0,0.03)]">
             <span className={summaryChipClass}>
+              <span className="opacity-50 tracking-widest">{t('topBar.strategyLabel')}</span>
+              <span className="text-foreground" title={effectiveChunkStrategy}>
+                {getChunkStrategyLabel(effectiveChunkStrategy)}
+              </span>
+              {effectiveChunkStrategy === 'auto' && previewData?.auto_selected_strategy ? (
+                <>
+                  <span className="h-2.5 w-px bg-border/80" />
+                  <span
+                    className="inline-flex items-center rounded-md bg-primary/10 px-1 py-0.5 text-[9px] font-black text-primary"
+                    title={t('topBar.status.autoSelectedStrategyTitle', {
+                      strategy: previewData.auto_selected_strategy,
+                    })}
+                  >
+                    {getChunkStrategyLabel(previewData.auto_selected_strategy)}
+                  </span>
+                </>
+              ) : null}
+            </span>
+
+            <span className={summaryChipClass}>
+              <span className="opacity-50 tracking-widest">{t('topBar.paramsLabel')}</span>
               <span
-                className={cn(
-                  'h-1.5 w-1.5 rounded-full',
-                  previewData.chunks_truncated ? 'bg-warning' : 'bg-success'
-                )}
-              />
-              <span className="font-medium text-foreground/85">
-                {(() => {
-                  const shown = Number(previewData.total_chunks || 0)
-                  const full = Number(previewData.total_chunks_full ?? shown)
-                  return t('topBar.status.chunks', {
-                    count: full && full !== shown ? `${shown}/${full}` : `${shown}`,
-                  })
-                })()}
+                className="font-black tabular-nums text-foreground"
+                title={visibleChunkUnit}
+              >
+                {visibleChunkSize}/{visibleChunkOverlap}
               </span>
             </span>
-          ) : null}
+          </div>
 
-          {cacheHit ? (
-            <span className={cn(stateChipClass, 'border-success/20 bg-success/10 text-success')}>
-              {t('topBar.status.cacheHit')}
-            </span>
-          ) : null}
+          <div className="flex items-center gap-2">
+            {typeof visiblePreviewDurationMs === 'number' ? (
+              <span className={summaryChipClass} title={serverTimingTitle}>
+                <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground/30" />
+                <span className="tabular-nums">{visiblePreviewDurationMs}ms</span>
+              </span>
+            ) : null}
 
-          {previewData?.parse_cache_hit ? (
-            <span
-              className={cn(stateChipClass, 'border-info/20 bg-info/10 text-info')}
-              title={t('topBar.status.parseCacheAgeTitle', {
-                age: previewData.parse_cache_age_ms ?? '-',
-              })}
-            >
-              {t('topBar.status.parseCache')}
-            </span>
-          ) : null}
+            {previewData ? (
+              <span className={cn(summaryChipClass, 'border-primary/10')}>
+                <div
+                  className={cn(
+                    'h-1.5 w-1.5 rounded-full shadow-[0_0_8px_rgba(var(--primary-rgb),0.4)]',
+                    previewData.chunks_truncated ? 'bg-amber-500' : 'bg-primary'
+                  )}
+                />
+                <span className="font-black tabular-nums text-foreground/90">
+                  {(() => {
+                    const shown = Number(previewData.total_chunks || 0)
+                    const full = Number(previewData.total_chunks_full ?? shown)
+                    return t('topBar.status.chunks', {
+                      count: full && full !== shown ? `${shown}/${full}` : `${shown}`,
+                    })
+                  })()}
+                </span>
+              </span>
+            ) : null}
 
-          {visibleQualityGrade ? (
-            <span
-              className={cn(
-                stateChipClass,
-                visibleQualityClass
-              )}
-              title={(previewData?.quality_gate?.reasons || []).join(ESCAPED_NEWLINE)}
-            >
-              {t('topBar.status.quality', {
-                grade: visibleQualityLabel,
-              })}
-            </span>
-          ) : null}
+            {cacheHit ? (
+              <span className={cn(stateChipClass, 'border-primary/20 bg-primary/5 text-primary')}>
+                <Check className="h-3 w-3" strokeWidth={3} />
+                {t('topBar.status.cacheHit')}
+              </span>
+            ) : null}
 
-          {previewData?.warnings?.length ? (
-            <span
-              className={cn(stateChipClass, 'border-warning/20 bg-warning/10 text-warning')}
-              title={(previewData.warnings || []).join(ESCAPED_NEWLINE)}
-            >
-              {t('topBar.status.warnings', {
-                count: previewData.warnings.length,
-              })}
-            </span>
-          ) : null}
+            {previewData?.parse_cache_hit ? (
+              <span
+                className={cn(stateChipClass, 'border-violet-500/20 bg-violet-500/5 text-violet-600 dark:text-violet-400')}
+                title={t('topBar.status.parseCacheAgeTitle', {
+                  age: previewData.parse_cache_age_ms ?? '-',
+                })}
+              >
+                <Database className="h-3 w-3" strokeWidth={3} />
+                {t('topBar.status.parseCache')}
+              </span>
+            ) : null}
+
+            {visibleQualityGrade ? (
+              <span
+                className={cn(
+                  stateChipClass,
+                  visibleQualityClass,
+                  'border-opacity-30'
+                )}
+                title={(previewData?.quality_gate?.reasons || []).join(ESCAPED_NEWLINE)}
+              >
+                <div className="flex items-center gap-1.5">
+                  <div className={cn('h-1.5 w-1.5 rounded-full', 
+                    visibleQualityGrade === 'pass' ? 'bg-success' : 
+                    visibleQualityGrade === 'fail' ? 'bg-destructive' : 'bg-warning'
+                  )} />
+                  {t('topBar.status.quality', {
+                    grade: visibleQualityLabel,
+                  })}
+                </div>
+              </span>
+            ) : null}
+          </div>
         </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2 xl:justify-end">
         {submitSuccess ? (
-          <div className="flex items-center gap-1.5 rounded-lg border border-success/20 bg-success/10 px-2.5 py-1.5 text-xs font-medium text-success animate-in fade-in slide-in-from-right-4 motion-reduce:animate-none">
-            <Check className="w-3.5 h-3.5" />
+          <div className="flex items-center gap-2 rounded-xl border border-success/30 bg-success/10 px-3 py-1.5 text-xs font-black uppercase tracking-widest text-success animate-in fade-in slide-in-from-right-4 motion-reduce:animate-none shadow-[0_2px_12px_-4px_rgba(16,185,129,0.2)]">
+            <Check className="w-4 h-4" strokeWidth={3} />
             {t('topBar.submitSuccess')}
           </div>
         ) : null}
 
         {isPreviewDirty && !submitSuccess && !error ? (
-          <div className="flex items-center gap-1.5 rounded-lg border border-warning/20 bg-warning/10 px-2.5 py-1.5 text-xs font-medium text-warning">
-            <AlertCircle className="w-3.5 h-3.5" />
+          <div className="flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-black uppercase tracking-widest text-amber-600 dark:text-amber-400 shadow-[0_2px_12px_-4px_rgba(245,158,11,0.2)]">
+            <AlertCircle className="w-4 h-4" strokeWidth={3} />
             {t('topBar.dirtyWarning')}
           </div>
         ) : null}
@@ -613,24 +614,24 @@ export function TopBar() {
           <div
             role="alert"
             aria-live="polite"
-            className="flex min-w-[min(100%,18rem)] max-w-xl items-start gap-2 rounded-xl border border-destructive/25 bg-destructive/10 px-3 py-2 text-destructive shadow-[inset_0_1px_0_hsl(var(--background)/0.65)]"
+            className="flex min-w-[min(100%,18rem)] max-w-xl items-start gap-2.5 rounded-2xl border border-destructive/30 bg-destructive/5 px-3.5 py-2.5 text-destructive shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_4px_16px_-8px_rgba(239,68,68,0.2)] backdrop-blur-md"
           >
-            <span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-lg bg-destructive/12">
-              <AlertCircle className="size-3.5" />
+            <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-xl bg-destructive/10">
+              <AlertCircle className="size-4" strokeWidth={2.5} />
             </span>
             <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-xs font-semibold leading-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-black uppercase tracking-tight leading-none">
                   {topBarError.title}
                 </span>
                 {topBarError.badge ? (
-                  <span className="rounded-full border border-destructive/20 bg-background/60 px-1.5 py-0.5 text-[10px] font-medium leading-none text-destructive/85">
+                  <span className="rounded-full border border-destructive/30 bg-background/80 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest leading-none text-destructive/90 antialiased">
                     {topBarError.badge}
                   </span>
                 ) : null}
               </div>
               {topBarError.detail ? (
-                <p className="mt-1 max-w-[42rem] break-words text-[11px] leading-5 text-destructive/85">
+                <p className="mt-1.5 max-w-[42rem] break-words text-[11px] font-bold leading-relaxed text-destructive/80 antialiased">
                   {topBarError.detail}
                 </p>
               ) : null}
@@ -638,28 +639,29 @@ export function TopBar() {
           </div>
         ) : null}
 
-        <div className="flex items-center gap-1 rounded-xl border border-border/55 bg-muted/25 p-1">
-
+        <div className="flex items-center gap-1.5 rounded-2xl border border-border/60 bg-muted/20 p-1 shadow-[inset_0_1px_2px_rgba(0,0,0,0.03)] backdrop-blur-sm">
           <Button
             variant="ghost"
             size="sm"
             onClick={reset}
-            className={actionButtonClass}
+            className={cn(actionButtonClass, "hover:bg-background hover:shadow-sm")}
           >
-            <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
+            <RotateCcw className="w-3.5 h-3.5 mr-1.5 text-muted-foreground/60" strokeWidth={2.5} />
             {t('topBar.actions.reset')}
           </Button>
+
+          <div className="w-px h-4 bg-border/60 mx-0.5" />
 
           <Button
             type="button"
             variant="ghost"
             size="sm"
             onClick={toggleSettingsPanel}
-            className={cn(actionButtonClass, 'lg:hidden')}
+            className={cn(actionButtonClass, 'lg:hidden hover:bg-background hover:shadow-sm')}
             aria-label={t('topBar.actions.openSettingsPanel')}
             title={t('topBar.actions.openSettingsPanel')}
           >
-            <SlidersHorizontal className="w-3.5 h-3.5 mr-1.5" />
+            <SlidersHorizontal className="w-3.5 h-3.5 mr-1.5" strokeWidth={2.5} />
             {t('topBar.actions.settings')}
           </Button>
 
@@ -670,7 +672,9 @@ export function TopBar() {
             onClick={toggleOriginalPanel}
             className={cn(
               actionButtonClass,
-              showOriginalPanel ? 'bg-primary/8 text-primary hover:text-primary' : null
+              showOriginalPanel 
+                ? 'bg-primary/10 text-primary hover:bg-primary/15' 
+                : 'hover:bg-background hover:shadow-sm'
             )}
             aria-label={
               showOriginalPanel
@@ -683,7 +687,7 @@ export function TopBar() {
                 : t('topBar.actions.showOriginalPanel')
             }
           >
-            <FileText className="w-3.5 h-3.5 mr-1.5" />
+            <FileText className={cn("w-3.5 h-3.5 mr-1.5", showOriginalPanel ? "text-primary" : "text-muted-foreground/60")} strokeWidth={2.5} />
             {showOriginalPanel
               ? t('topBar.actions.hideOriginal')
               : t('topBar.actions.showOriginal')}
@@ -694,11 +698,11 @@ export function TopBar() {
             variant="ghost"
             size="sm"
             onClick={() => setHelpOpen(true)}
-            className={actionButtonClass}
+            className={cn(actionButtonClass, "hover:bg-background hover:shadow-sm")}
             aria-label={t('topBar.actions.helpTitle')}
             title={t('topBar.actions.helpTitle')}
           >
-            <HelpCircle className="w-3.5 h-3.5 mr-1.5" />
+            <HelpCircle className="w-3.5 h-3.5 mr-1.5 text-muted-foreground/60" strokeWidth={2.5} />
             <span className="hidden md:inline">{t('topBar.actions.help')}</span>
           </Button>
 
@@ -708,14 +712,14 @@ export function TopBar() {
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-8 w-8 rounded-lg p-0 text-muted-foreground hover:bg-primary/8 hover:text-foreground/80"
+                className="h-8 w-8 rounded-lg p-0 text-muted-foreground/60 hover:bg-background hover:text-foreground hover:shadow-sm transition-all"
                 aria-label={t('topBar.actions.moreActions')}
                 title={t('topBar.actions.moreActions')}
               >
-                <MoreVertical className="w-4 h-4" />
+                <MoreVertical className="w-4 h-4" strokeWidth={2.5} />
               </Button>
             </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuContent align="end" className="w-60 rounded-2xl border-border/80 bg-popover/98 backdrop-blur-2xl shadow-strong p-1.5 ring-1 ring-black/5 animate-in fade-in zoom-in-95">
             <input
               ref={importConfigInputRef}
               type="file"
@@ -741,6 +745,7 @@ export function TopBar() {
               }}
             />
             <DropdownMenuItem
+              className="rounded-xl py-2 font-bold text-xs"
               onSelect={() => {
                 detachPromise(
                   copyText(
@@ -750,10 +755,11 @@ export function TopBar() {
                 )
               }}
             >
-              <Copy className="mr-2 h-4 w-4" />
+              <Copy className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
               {t('topBar.actions.copyConfig')}
             </DropdownMenuItem>
             <DropdownMenuItem
+              className="rounded-xl py-2 font-bold text-xs"
               onSelect={() => {
                 const filename = `${sanitizeFilename(
                   currentFileItem?.displayName || currentFile.name
@@ -766,14 +772,15 @@ export function TopBar() {
                 toast.success(t('topBar.toasts.exportedConfig'))
               }}
             >
-              <Download className="mr-2 h-4 w-4" />
+              <Download className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
               {t('topBar.actions.exportConfig')}
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => importConfigInputRef.current?.click()}>
-              <Upload className="mr-2 h-4 w-4" />
+            <DropdownMenuItem className="rounded-xl py-2 font-bold text-xs" onSelect={() => importConfigInputRef.current?.click()}>
+              <Upload className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
               {t('topBar.actions.importConfigFromFile')}
             </DropdownMenuItem>
             <DropdownMenuItem
+              className="rounded-xl py-2 font-bold text-xs"
               onSelect={async () => {
                 try {
                   if (!navigator.clipboard?.readText) {
@@ -792,13 +799,14 @@ export function TopBar() {
                 }
               }}
             >
-              <Copy className="mr-2 h-4 w-4" />
+              <Copy className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
               {t('topBar.actions.importConfigFromClipboard')}
             </DropdownMenuItem>
             {previewData && skippedCount > 0 ? (
               <>
-                <DropdownMenuSeparator />
+                <DropdownMenuSeparator className="bg-border/60 mx-1 my-1.5" />
                 <DropdownMenuCheckboxItem
+                  className="rounded-xl py-2 font-bold text-xs"
                   checked={includeSkippedInExports}
                   onCheckedChange={(checked) =>
                     setIncludeSkippedInExports(Boolean(checked))
@@ -811,7 +819,10 @@ export function TopBar() {
               </>
             ) : null}
 
+            <DropdownMenuSeparator className="bg-border/60 mx-1 my-1.5" />
+
             <DropdownMenuItem
+              className="rounded-xl py-2 font-bold text-xs"
               disabled={!previewData}
               onSelect={() => {
                 if (!exportPreview) return
@@ -824,10 +835,11 @@ export function TopBar() {
                 toast.success(t('topBar.toasts.exportedJson'))
               }}
             >
-              <Download className="mr-2 h-4 w-4" />
+              <Download className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
               {t('topBar.actions.exportJson')}
             </DropdownMenuItem>
             <DropdownMenuItem
+              className="rounded-xl py-2 font-bold text-xs"
               disabled={!previewData}
               onSelect={() => {
                 if (!exportPreview) return
@@ -840,10 +852,11 @@ export function TopBar() {
                 toast.success(t('topBar.toasts.exportedMarkdown'))
               }}
             >
-              <Download className="mr-2 h-4 w-4" />
+              <Download className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
               {t('topBar.actions.exportMarkdown')}
             </DropdownMenuItem>
             <DropdownMenuItem
+              className="rounded-xl py-2 font-bold text-xs"
               disabled={!previewData}
               onSelect={() => {
                 if (!exportPreview) return
@@ -856,10 +869,11 @@ export function TopBar() {
                 toast.success(t('topBar.toasts.exportedCsv'))
               }}
             >
-              <Download className="mr-2 h-4 w-4" />
+              <Download className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
               {t('topBar.actions.exportCsv')}
             </DropdownMenuItem>
             <DropdownMenuItem
+              className="rounded-xl py-2 font-bold text-xs"
               disabled={!previewData}
               onSelect={() => {
                 if (!exportPreview) return
@@ -872,44 +886,11 @@ export function TopBar() {
                 toast.success(t('topBar.toasts.exportedJsonl'))
               }}
             >
-              <Download className="mr-2 h-4 w-4" />
+              <Download className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
               {t('topBar.actions.exportJsonl')}
             </DropdownMenuItem>
             <DropdownMenuItem
-              disabled={!previewData}
-              onSelect={() => {
-                if (!previewData) return
-                const report = chunkPreviewToReviewReport(previewData, chunkOverrides, {
-                  include_disabled: includeSkippedInExports,
-                })
-                const filename = `${sanitizeFilename(previewData.filename)}.chunk-review.json`
-                downloadTextFile(
-                  filename,
-                  JSON.stringify(report, null, 2),
-                  'application/json;charset=utf-8'
-                )
-                toast.success(t('topBar.toasts.exportedReviewReport'))
-              }}
-            >
-              <Download className="mr-2 h-4 w-4" />
-              {t('topBar.actions.exportReviewJson')}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              disabled={!previewData}
-              onSelect={() => {
-                if (!previewData) return
-                const markdown = chunkPreviewToReviewMarkdown(previewData, chunkOverrides, {
-                  include_disabled: includeSkippedInExports,
-                })
-                const filename = `${sanitizeFilename(previewData.filename)}.chunk-review.md`
-                downloadTextFile(filename, markdown, 'text/markdown;charset=utf-8')
-                toast.success(t('topBar.toasts.exportedReviewReport'))
-              }}
-            >
-              <Download className="mr-2 h-4 w-4" />
-              {t('topBar.actions.exportReviewMarkdown')}
-            </DropdownMenuItem>
-            <DropdownMenuItem
+              className="rounded-xl py-2 font-bold text-xs text-primary"
               disabled={!previewData}
               onSelect={() => {
                 const payloadPreview = exportPreviewEnabledOnly
@@ -942,18 +923,20 @@ export function TopBar() {
                 )
               }}
             >
-              <Copy className="mr-2 h-4 w-4" />
+              <Copy className="mr-2.5 h-4 w-4 opacity-80" strokeWidth={2.5} />
               {t('topBar.actions.copyIngestPayload')}
             </DropdownMenuItem>
             <DropdownMenuItem
+              className="rounded-xl py-2 font-bold text-xs"
               disabled={!canCompare}
               onSelect={() => setCompareOpen(true)}
             >
-              <GitCompareArrows className="mr-2 h-4 w-4" />
+              <GitCompareArrows className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
               {t('topBar.actions.comparePreview')}
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
+            <DropdownMenuSeparator className="bg-border/60 mx-1 my-1.5" />
             <DropdownMenuItem
+              className="rounded-xl py-2 font-bold text-xs"
               onSelect={() => {
                 const url = `${API_V1_BASE_URL}/documents/chunk-preview?chunk_size=${encodeURIComponent(
                   String(chunkSize)
@@ -1003,27 +986,29 @@ export function TopBar() {
                 )
               }}
             >
-              <Copy className="mr-2 h-4 w-4" />
+              <Copy className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
               {t('topBar.actions.copyCurl')}
             </DropdownMenuItem>
             {createdDocumentId ? (
               <>
-                <DropdownMenuSeparator />
+                <DropdownMenuSeparator className="bg-border/60 mx-1 my-1.5" />
                 <DropdownMenuItem
+                  className="rounded-xl py-2 font-bold text-xs"
                   onSelect={() => {
                     detachPromise(
                       copyText(createdDocumentId, t('topBar.toasts.copiedDocumentId'))
                     )
                   }}
                 >
-                  <Copy className="mr-2 h-4 w-4" />
+                  <Copy className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
                   {t('topBar.actions.copyDocumentId')}
                 </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => setTestGenOpen(true)}>
-                  <TestTube2 className="mr-2 h-4 w-4" />
+                <DropdownMenuItem className="rounded-xl py-2 font-bold text-xs" onSelect={() => setTestGenOpen(true)}>
+                  <TestTube2 className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
                   {t('topBar.actions.generateEvalQuestions')}
                 </DropdownMenuItem>
                 <DropdownMenuItem
+                  className="rounded-xl py-2 font-bold text-xs"
                   disabled={!canOpenSelectedChunkInChatPage}
                   onSelect={() => {
                     if (!canOpenSelectedChunkInChatPage) return
@@ -1038,16 +1023,17 @@ export function TopBar() {
                     toast.success(t('topBar.toasts.openedCurrentChunkInChat'))
                   }}
                 >
-                  <ExternalLink className="mr-2 h-4 w-4" />
+                  <ExternalLink className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
                   {t('topBar.actions.openCurrentChunkInChat')}
                 </DropdownMenuItem>
                 <DropdownMenuItem
+                  className="rounded-xl py-2 font-bold text-xs"
                   onSelect={() => {
                     router.push(`/?doc=${encodeURIComponent(createdDocumentId)}`)
                     toast.success(t('topBar.toasts.openedDocumentInChat'))
                   }}
                 >
-                  <ExternalLink className="mr-2 h-4 w-4" />
+                  <ExternalLink className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
                   {t('topBar.actions.openDocumentInChat')}
                 </DropdownMenuItem>
               </>
@@ -1061,11 +1047,11 @@ export function TopBar() {
             variant="ghost"
             size="sm"
             onClick={onClose}
-            className="text-muted-foreground hover:text-foreground/80 h-9 w-9 p-0 rounded-full hover:bg-muted"
+            className="text-muted-foreground/60 hover:text-foreground/90 h-9 w-9 p-0 rounded-full hover:bg-muted/50 transition-colors"
             aria-label={t('topBar.actions.close')}
             title={t('topBar.actions.close')}
           >
-            <X className="w-4 h-4" />
+            <X className="w-4 h-4" strokeWidth={2.5} />
           </Button>
         ) : null}
 
@@ -1073,17 +1059,18 @@ export function TopBar() {
           onClick={submitChunks}
           disabled={!previewData || isSubmitting || submitSuccess}
           className={cn(
-            'h-9 px-5 text-xs font-semibold rounded-lg shadow-sm transition-colors transition-shadow duration-150 motion-reduce:transition-none',
+            'h-9 px-6 text-xs font-black uppercase tracking-[0.1em] rounded-xl shadow-lg transition-all duration-300 motion-reduce:transition-none antialiased hover:scale-[1.02] active:scale-[0.98]',
             submitSuccess
               ? 'bg-success text-success-foreground hover:bg-success/90 shadow-success/20'
-              : 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-primary/20'
+              : 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-[0_4px_16px_-4px_rgba(var(--primary-rgb),0.4)]'
           )}
         >
           <SubmitIcon
             className={cn(
-              'w-3.5 h-3.5 mr-2',
+              'w-4 h-4 mr-2',
               isSubmitting && 'animate-spin motion-reduce:animate-none'
             )}
+            strokeWidth={3}
           />
           {submitSuccess
             ? t('topBar.actions.completed')

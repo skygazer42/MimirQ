@@ -19,6 +19,16 @@ describe('useDocumentViewerPanelState source', () => {
 
     expect(src).toContain('const fileUrl = rawFileUrl')
     expect(src).not.toContain('const fileUrl = useResolvedAuthAssetUrl(rawFileUrl)')
-    expect(src).toContain('const downloadUrl = useResolvedAuthAssetUrl(rawDownloadUrl)')
+    expect(src).toContain('const shouldResolveDownloadUrl = isOpen && activeTab === "preview"')
+    expect(src).toContain('const downloadUrl = useResolvedAuthAssetUrl(rawDownloadUrl, {')
+    expect(src).toContain('enabled: shouldResolveDownloadUrl')
+  })
+
+  it('does not cancel chunk loading when the loading flag turns true', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'use-document-viewer-panel-state.ts'), 'utf8')
+
+    expect(src).toContain('setChunksLoading(false)')
+    expect(src).toContain('[documentId, activeTab, highlightChunkId, loadAllChunks, chunksLoaded]')
+    expect(src).not.toContain('[documentId, activeTab, highlightChunkId, loadAllChunks, chunksLoaded, chunksLoading]')
   })
 })

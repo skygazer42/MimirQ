@@ -53,13 +53,9 @@ async def get_document_stats(
         DatasetService.assert_dataset_readable(db, dataset, account_id)
         query = query.filter(DBDocument.dataset_id == dataset_id)
     else:
-        partial_member_subq = (
-            db.query(DatasetPermission.dataset_id)
-            .filter(
-                DatasetPermission.tenant_id == tenant_id,
-                DatasetPermission.account_id == account_id,
-            )
-            .subquery()
+        partial_member_subq = select(DatasetPermission.dataset_id).where(
+            DatasetPermission.tenant_id == tenant_id,
+            DatasetPermission.account_id == account_id,
         )
 
         allowed_dataset_filter = or_(
@@ -71,13 +67,9 @@ async def get_document_stats(
             ),
         )
 
-        allowed_dataset_ids_subq = (
-            db.query(Dataset.id)
-            .filter(
-                Dataset.tenant_id == tenant_id,
-                allowed_dataset_filter,
-            )
-            .subquery()
+        allowed_dataset_ids_subq = select(Dataset.id).where(
+            Dataset.tenant_id == tenant_id,
+            allowed_dataset_filter,
         )
 
         query = query.filter(

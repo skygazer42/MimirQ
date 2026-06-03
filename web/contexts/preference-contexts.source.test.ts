@@ -21,4 +21,12 @@ describe('preference contexts', () => {
     expect(pipelineSrc).toContain('governance_pii_mode: normalizeMaskingMode(')
     expect(pipelineSrc).toContain('governance_secrets_mode: normalizeMaskingMode(')
   })
+
+  it('does not disable KG when pipeline overrides are enabled by default', () => {
+    const pipelineSrc = fs.readFileSync(path.resolve(__dirname, 'pipeline-options-context.tsx'), 'utf8')
+
+    expect(pipelineSrc).toContain('kg_enabled: true,')
+    expect(pipelineSrc).toContain('event_vector_enabled: true,')
+    expect(pipelineSrc).toContain('entity_vector_enabled: true,')
+  })
 })

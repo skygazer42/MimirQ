@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import os
 
-from start_local_api import ensure_local_model_config
+from start_local_api import ensure_local_model_config, ensure_models
 
 
 def main() -> None:
+    ensure_models(["vlm"])
     ensure_local_model_config()
     args = [
         "mineru-vllm-server",

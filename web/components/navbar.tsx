@@ -647,7 +647,7 @@ export function Navbar({
                             <div key={item.href}>
                               <Link
                                 href={item.href}
-                                prefetch
+                                prefetch={false}
                                 onClick={closeSidebarOnMobile}
                                 aria-current={isActive ? 'page' : undefined}
                                 className={cn(

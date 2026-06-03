@@ -317,7 +317,7 @@ export function KnowledgeDocumentsPanel({
   const peekChunksLabel = (() => {
     const resolved = t('actions.peekChunks')
     return resolved === 'KnowledgeDocumentsPanel.actions.peekChunks'
-      ? '查看分块'
+      ? '切片管理'
       : resolved
   })()
 
@@ -735,7 +735,7 @@ export function KnowledgeDocumentsPanel({
               文档审查视图
             </DialogTitle>
             <DialogDescription className="text-[12px] text-muted-foreground/76">
-              查看分块、检索与健康细节，不挤占主表格宽度。
+              管理切片、检索与健康细节，不挤占主表格宽度。
             </DialogDescription>
           </DialogHeader>
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -946,7 +946,7 @@ export function KnowledgeDocumentsPanel({
                                 质量路径
                               </div>
                               <p className="mt-1.5 text-[11px] leading-5 text-muted-foreground/74">
-                                文档入库后可在这里查看分块数量、解析状态、健康卡和后续检索测试入口。
+                                文档入库后可在这里查看切片数量、解析状态、健康卡和后续检索测试入口。
                               </p>
                             </div>
                           </div>
@@ -1475,7 +1475,7 @@ function DocumentCard({
   const peekChunksLabel = (() => {
     const resolved = t('actions.peekChunks')
     return resolved === 'KnowledgeDocumentsPanel.actions.peekChunks'
-      ? '查看分块'
+      ? '切片管理'
       : resolved
   })()
   const parserLabel = doc.metadata?.parser_backend

@@ -18,6 +18,7 @@ import {
   type LTRModelInfo,
   type MagicPDFConfig,
   type MarkerConfig,
+  type MinIOConfig,
   type MinerUConfig,
   type NavigationConfig,
   type ObservabilityConfig,
@@ -55,6 +56,7 @@ type RagSettings = NonNullable<SystemSettings['rag']>
 type UrlIngestSettings = NonNullable<SystemSettings['url_ingest']>
 type GovernanceSettings = NonNullable<SystemSettings['governance']>
 type DifyExternalKnowledgeSettings = NonNullable<SystemSettings['dify_external_knowledge']>
+type MinIOSettings = NonNullable<SystemSettings['minio']>
 
 function mergeConfig<T extends object>(current: T, patch: Partial<T>): T {
   return {
@@ -121,6 +123,17 @@ const DEFAULT_CACHE: CacheConfig = {
   chat_response_cache_ttl_sec: 300,
   chat_response_cache_max_value_bytes: 200000,
   chat_response_cache_require_empty_history: true,
+}
+
+const DEFAULT_MINIO: MinIOConfig = {
+  enabled: false,
+  endpoint: 'localhost:9000',
+  access_key: '',
+  secret_key: '',
+  bucket_name: 'mimirq',
+  use_ssl: false,
+  documents_enabled: false,
+  image_max_bytes: 0,
 }
 
 const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
@@ -453,6 +466,10 @@ export function useSettingsPageState() {
     () => mergeWithDefaults(DEFAULT_CACHE, settings?.cache, editedSettings.cache),
     [settings?.cache, editedSettings.cache]
   )
+  const minioMerged = useMemo(
+    () => mergeWithDefaults(DEFAULT_MINIO, settings?.minio, editedSettings.minio),
+    [settings?.minio, editedSettings.minio]
+  )
   const etl4llmMerged = useMemo(
     () => mergeWithDefaults(DEFAULT_ETL4LLM, settings?.etl4llm, editedSettings.etl4llm),
     [settings?.etl4llm, editedSettings.etl4llm]
@@ -688,6 +705,13 @@ export function useSettingsPageState() {
     }))
   }
 
+  const updateMinIO = (patch: Partial<MinIOSettings>) => {
+    setEditedSettings((prev) => ({
+      ...prev,
+      minio: mergeConfig(mergeWithDefaults(DEFAULT_MINIO, settings?.minio, prev.minio), patch),
+    }))
+  }
+
   const updateMagicPDF = (patch: Partial<MagicPDFConfig>) => {
     setEditedSettings((prev) => ({
       ...prev,
@@ -886,6 +910,7 @@ export function useSettingsPageState() {
     ltrUploading,
     magicPdfMerged,
     markerMerged,
+    minioMerged,
     mineruMerged,
     navigationMerged,
     observabilityMerged,
@@ -915,6 +940,7 @@ export function useSettingsPageState() {
     updateNavigation,
     updateMagicPDF,
     updateMarker,
+    updateMinIO,
     updateMinerU,
     updateObservability,
     updatePaddleVL,

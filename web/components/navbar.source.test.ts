@@ -10,6 +10,12 @@ describe('navbar source', () => {
     expect(src).toContain('router.prefetch(href)')
   })
 
+  it('does not force prefetching every sidebar menu route link', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'navbar.tsx'), 'utf8')
+
+    expect(src).toContain('prefetch={false}')
+  })
+
   it('uses locale-aware navigation helpers and has locale wrappers for navbar routes', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'navbar.tsx'), 'utf8')
     const webRoot = path.resolve(__dirname, '..')

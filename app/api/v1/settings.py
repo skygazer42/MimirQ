@@ -260,6 +260,18 @@ class MilvusConfig(BaseModel):
     collection_name: str = "documents"
 
 
+class MinioConfig(BaseModel):
+    """MinIO / S3-compatible object storage config."""
+    enabled: bool = False
+    endpoint: str = "localhost:9000"
+    access_key: str = ""
+    secret_key: str = ""
+    bucket_name: str = "mimirq"
+    use_ssl: bool = False
+    documents_enabled: bool = False
+    image_max_bytes: int = Field(default=0, ge=0)
+
+
 class RAGConfig(BaseModel):
     """RAG parameter config."""
     chunk_size: int = 1000
@@ -483,6 +495,7 @@ class SystemSettings(BaseModel):
     llm: LLMConfig
     embedding: EmbeddingConfig
     milvus: MilvusConfig
+    minio: MinioConfig
     rag: RAGConfig
     cache: CacheConfig
     url_ingest: UrlIngestConfig
@@ -508,6 +521,7 @@ class UpdateSettingsRequest(BaseModel):
     llm: LLMConfig | None = None
     embedding: EmbeddingConfig | None = None
     milvus: MilvusConfig | None = None
+    minio: MinioConfig | None = None
     rag: RAGConfig | None = None
     cache: CacheConfig | None = None
     url_ingest: UrlIngestConfig | None = None
@@ -623,6 +637,27 @@ def _apply_runtime_settings(env_vars: dict[str, str], updated_keys: list[str]) -
         settings.MILVUS_PASSWORD = env_vars["MILVUS_PASSWORD"]
     if "MILVUS_COLLECTION_NAME" in updated_keys and "MILVUS_COLLECTION_NAME" in env_vars:
         settings.MILVUS_COLLECTION_NAME = env_vars["MILVUS_COLLECTION_NAME"]
+
+    # MinIO / object storage
+    if "MINIO_ENABLED" in updated_keys and "MINIO_ENABLED" in env_vars:
+        settings.MINIO_ENABLED = _parse_bool(env_vars["MINIO_ENABLED"])
+    if "MINIO_ENDPOINT" in updated_keys and "MINIO_ENDPOINT" in env_vars:
+        settings.MINIO_ENDPOINT = env_vars["MINIO_ENDPOINT"]
+    if "MINIO_ACCESS_KEY" in updated_keys and "MINIO_ACCESS_KEY" in env_vars:
+        settings.MINIO_ACCESS_KEY = env_vars["MINIO_ACCESS_KEY"]
+    if "MINIO_SECRET_KEY" in updated_keys and "MINIO_SECRET_KEY" in env_vars:
+        settings.MINIO_SECRET_KEY = env_vars["MINIO_SECRET_KEY"]
+    if "MINIO_BUCKET_NAME" in updated_keys and "MINIO_BUCKET_NAME" in env_vars:
+        settings.MINIO_BUCKET_NAME = env_vars["MINIO_BUCKET_NAME"]
+    if "MINIO_USE_SSL" in updated_keys and "MINIO_USE_SSL" in env_vars:
+        settings.MINIO_USE_SSL = _parse_bool(env_vars["MINIO_USE_SSL"])
+    if "MINIO_DOCUMENTS_ENABLED" in updated_keys and "MINIO_DOCUMENTS_ENABLED" in env_vars:
+        settings.MINIO_DOCUMENTS_ENABLED = _parse_bool(env_vars["MINIO_DOCUMENTS_ENABLED"])
+    if "MINIO_IMAGE_MAX_BYTES" in updated_keys and "MINIO_IMAGE_MAX_BYTES" in env_vars:
+        settings.MINIO_IMAGE_MAX_BYTES = _parse_int(
+            env_vars["MINIO_IMAGE_MAX_BYTES"],
+            default=int(getattr(settings, "MINIO_IMAGE_MAX_BYTES", 0) or 0),
+        )
 
     # RAG knobs
     if "CHUNK_SIZE" in updated_keys and "CHUNK_SIZE" in env_vars:
@@ -985,6 +1020,16 @@ async def get_settings(
             password=mask_secret(settings.MILVUS_PASSWORD),
             collection_name=settings.MILVUS_COLLECTION_NAME,
         ),
+        minio=MinioConfig(
+            enabled=bool(getattr(settings, "MINIO_ENABLED", False)),
+            endpoint=str(getattr(settings, "MINIO_ENDPOINT", "localhost:9000") or ""),
+            access_key=mask_secret(str(getattr(settings, "MINIO_ACCESS_KEY", "") or "")),
+            secret_key=mask_secret(str(getattr(settings, "MINIO_SECRET_KEY", "") or "")),
+            bucket_name=str(getattr(settings, "MINIO_BUCKET_NAME", "mimirq") or "mimirq"),
+            use_ssl=bool(getattr(settings, "MINIO_USE_SSL", False)),
+            documents_enabled=bool(getattr(settings, "MINIO_DOCUMENTS_ENABLED", False)),
+            image_max_bytes=int(getattr(settings, "MINIO_IMAGE_MAX_BYTES", 0) or 0),
+        ),
         rag=RAGConfig(
             chunk_size=settings.CHUNK_SIZE,
             chunk_overlap=settings.CHUNK_OVERLAP,
@@ -1231,6 +1276,32 @@ async def update_settings(
                 updated_keys.append("MILVUS_PASSWORD")
             env_vars["MILVUS_COLLECTION_NAME"] = _sanitize_env_value("MILVUS_COLLECTION_NAME", mv.collection_name)
             updated_keys.extend(["MILVUS_HOST", "MILVUS_PORT", "MILVUS_USER", "MILVUS_COLLECTION_NAME"])
+
+        # Update MinIO / object storage config.
+        if request.minio:
+            mn = request.minio
+            env_vars["MINIO_ENABLED"] = str(bool(mn.enabled)).lower()
+            env_vars["MINIO_ENDPOINT"] = _sanitize_env_value("MINIO_ENDPOINT", mn.endpoint)
+            if mn.access_key and "***" not in mn.access_key:
+                env_vars["MINIO_ACCESS_KEY"] = _sanitize_env_value("MINIO_ACCESS_KEY", mn.access_key)
+                updated_keys.append("MINIO_ACCESS_KEY")
+            if mn.secret_key and "***" not in mn.secret_key:
+                env_vars["MINIO_SECRET_KEY"] = _sanitize_env_value("MINIO_SECRET_KEY", mn.secret_key)
+                updated_keys.append("MINIO_SECRET_KEY")
+            env_vars["MINIO_BUCKET_NAME"] = _sanitize_env_value("MINIO_BUCKET_NAME", mn.bucket_name)
+            env_vars["MINIO_USE_SSL"] = str(bool(mn.use_ssl)).lower()
+            env_vars["MINIO_DOCUMENTS_ENABLED"] = str(bool(mn.documents_enabled)).lower()
+            env_vars["MINIO_IMAGE_MAX_BYTES"] = str(max(0, int(mn.image_max_bytes or 0)))
+            updated_keys.extend(
+                [
+                    "MINIO_ENABLED",
+                    "MINIO_ENDPOINT",
+                    "MINIO_BUCKET_NAME",
+                    "MINIO_USE_SSL",
+                    "MINIO_DOCUMENTS_ENABLED",
+                    "MINIO_IMAGE_MAX_BYTES",
+                ]
+            )
 
         # Update RAG config.
         if request.rag:
