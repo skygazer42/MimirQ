@@ -163,6 +163,32 @@ def test_thresholds_from_args_preserves_defaults_and_applies_overrides() -> None
     }
 
 
+def test_load_mimirq_token_prefers_explicit_env_then_env_file(tmp_path: Path) -> None:
+    mod = _load_module()
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS=file-first,file-second",
+                "DIFY_EXTERNAL_KNOWLEDGE_API_KEY=file-single",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    assert mod.load_mimirq_token("explicit-token", env={"DIFY_EXTERNAL_KNOWLEDGE_API_KEY": "env-token"}, env_file=str(env_file)) == "explicit-token"
+    assert mod.load_mimirq_token("", env={"DIFY_EXTERNAL_KNOWLEDGE_API_KEY": "env-token"}, env_file=str(env_file)) == "env-token"
+    assert mod.load_mimirq_token("", env={}, env_file=str(env_file)) == "file-single"
+
+
+def test_load_mimirq_token_uses_first_token_from_env_file_list(tmp_path: Path) -> None:
+    mod = _load_module()
+    env_file = tmp_path / ".env"
+    env_file.write_text("DIFY_EXTERNAL_KNOWLEDGE_API_KEYS=file-first, file-second\n", encoding="utf-8")
+
+    assert mod.load_mimirq_token("", env={}, env_file=str(env_file)) == "file-first"
+
+
 def test_compact_summary_keeps_stage_metrics_and_artifact_paths_without_full_reports() -> None:
     mod = _load_module()
     full_report = {
