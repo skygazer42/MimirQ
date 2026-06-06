@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -187,6 +188,24 @@ def test_load_mimirq_token_uses_first_token_from_env_file_list(tmp_path: Path) -
     env_file.write_text("DIFY_EXTERNAL_KNOWLEDGE_API_KEYS=file-first, file-second\n", encoding="utf-8")
 
     assert mod.load_mimirq_token("", env={}, env_file=str(env_file)) == "file-first"
+
+
+def test_load_mimirq_token_defaults_to_repo_root_env_file(tmp_path: Path) -> None:
+    mod = _load_module()
+    repo_root = tmp_path / "repo"
+    other_cwd = tmp_path / "elsewhere"
+    repo_root.mkdir()
+    other_cwd.mkdir()
+    (repo_root / ".env").write_text("DIFY_EXTERNAL_KNOWLEDGE_API_KEY=repo-root-token\n", encoding="utf-8")
+    old_repo_root = mod.REPO_ROOT
+    old_cwd = Path.cwd()
+    try:
+        mod.REPO_ROOT = repo_root
+        os.chdir(other_cwd)
+        assert mod.load_mimirq_token("", env={}, env_file="") == "repo-root-token"
+    finally:
+        os.chdir(old_cwd)
+        mod.REPO_ROOT = old_repo_root
 
 
 def test_compact_summary_keeps_stage_metrics_and_artifact_paths_without_full_reports() -> None:

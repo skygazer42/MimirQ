@@ -76,7 +76,7 @@ def load_mimirq_token(
     explicit_token: str,
     *,
     env: Mapping[str, str] | None = None,
-    env_file: str = ".env",
+    env_file: str = "",
 ) -> str:
     explicit = _text(explicit_token)
     if explicit:
@@ -88,7 +88,7 @@ def load_mimirq_token(
     env_tokens = _text(source_env.get("DIFY_EXTERNAL_KNOWLEDGE_API_KEYS"))
     if env_tokens:
         return _text(env_tokens.split(",", 1)[0])
-    file_values = _env_file_values(env_file)
+    file_values = _env_file_values(env_file or str(REPO_ROOT / ".env"))
     file_token = _text(file_values.get("DIFY_EXTERNAL_KNOWLEDGE_API_KEY"))
     if file_token:
         return file_token
@@ -299,7 +299,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_arg_parser().parse_args(argv)
     dify_api_key = load_api_key(str(args.dify_api_key), str(args.dify_api_key_file))
     console_token = load_console_token(str(args.console_token), str(args.storage_state))
-    mimirq_token = load_mimirq_token(str(args.mimirq_token))
+    mimirq_token = load_mimirq_token(str(args.mimirq_token), env_file=str(REPO_ROOT / ".env"))
     if not dify_api_key:
         print("DIFY_APP_API_KEY, --dify-api-key, or --dify-api-key-file is required", file=sys.stderr)
         return 2
