@@ -111,7 +111,48 @@ def _iter_references(value: Any, *, path: str) -> list[tuple[str, str]]:
     return references
 
 
-def lint_workflow(workflow: dict[str, Any]) -> dict[str, Any]:
+def _case_dify_inputs(case: dict[str, Any]) -> dict[str, Any]:
+    raw = case.get("dify_inputs")
+    if raw is None:
+        raw = case.get("app_inputs")
+    if not isinstance(raw, dict):
+        return {}
+    return {_text(key): value for key, value in raw.items() if _text(key)}
+
+
+def _case_input_violations(
+    cases: list[dict[str, Any]],
+    hidden_required: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    required_inputs = [
+        {
+            "variable": _text(item.get("variable")),
+            "selector": _text(item.get("selector")),
+        }
+        for item in hidden_required
+        if _text(item.get("variable")) and _text(item.get("selector"))
+    ]
+    violations: list[dict[str, Any]] = []
+    for index, case in enumerate(cases):
+        inputs = _case_dify_inputs(case)
+        missing = [item for item in required_inputs if item["variable"] not in inputs or _text(inputs.get(item["variable"])) == ""]
+        if not missing:
+            continue
+        case_id = _text(case.get("id") or case.get("case_id")) or f"case-{index + 1}"
+        missing_inputs = [item["variable"] for item in missing]
+        violations.append(
+            {
+                "id": case_id,
+                "query": _text(case.get("query")),
+                "missing_inputs": missing_inputs,
+                "selectors": [item["selector"] for item in missing],
+                "recommendation": f"Add dify_inputs.{missing_inputs[0]} for this case before calling the Dify App API.",
+            }
+        )
+    return violations
+
+
+def lint_workflow(workflow: dict[str, Any], *, cases: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     nodes = _graph_nodes(workflow)
     start_variables = _start_variables(nodes)
     references_by_selector: dict[str, list[dict[str, Any]]] = {selector: [] for selector in start_variables}
@@ -152,15 +193,22 @@ def lint_workflow(workflow: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
-    return {
+    summary: dict[str, Any] = {
+        "start_variables": len(start_variables),
+        "referenced_start_variables": sum(1 for refs in references_by_selector.values() if refs),
+        "hidden_required_start_variables": len(hidden_required),
+    }
+    report: dict[str, Any] = {
         "schema": "mimirq.changzhou_gov_service_knowledge.dify_workflow_lint.v1",
-        "summary": {
-            "start_variables": len(start_variables),
-            "referenced_start_variables": sum(1 for refs in references_by_selector.values() if refs),
-            "hidden_required_start_variables": len(hidden_required),
-        },
+        "summary": summary,
         "hidden_required_start_variables": hidden_required,
     }
+    if cases is not None:
+        case_violations = _case_input_violations(cases, hidden_required)
+        summary["case_inputs_checked"] = len(cases)
+        summary["case_input_violations"] = len(case_violations)
+        report["case_input_violations"] = case_violations
+    return report
 
 
 def _load_workflow_json(path: str) -> dict[str, Any]:
@@ -168,6 +216,14 @@ def _load_workflow_json(path: str) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError("workflow JSON must be an object")
     return payload
+
+
+def _load_cases(path: str) -> list[dict[str, Any]]:
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    cases = payload.get("cases") if isinstance(payload, dict) else payload
+    if not isinstance(cases, list):
+        raise ValueError("cases file must be an object with cases[] or a cases[] list")
+    return [item for item in cases if isinstance(item, dict)]
 
 
 def _fetch_draft_workflow(
@@ -188,6 +244,7 @@ def _fetch_draft_workflow(
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Lint a Dify workflow for hidden required Start variables.")
     parser.add_argument("--workflow-json", default="")
+    parser.add_argument("--cases", default="")
     parser.add_argument("--app-id", default="")
     parser.add_argument("--console-base-url", default=os.getenv("DIFY_CONSOLE_API_BASE_URL") or DEFAULT_CONSOLE_BASE_URL)
     parser.add_argument("--console-token", default=os.getenv("DIFY_CONSOLE_TOKEN") or "")
@@ -217,7 +274,8 @@ def main(argv: list[str] | None = None) -> int:
                 console_token=console_token,
                 timeout=float(args.timeout),
             )
-        report = lint_workflow(workflow)
+        cases = _load_cases(str(args.cases)) if _text(args.cases) else None
+        report = lint_workflow(workflow, cases=cases)
     except Exception as exc:  # noqa: BLE001
         print(f"[changzhou-dify-workflow-lint] ERR: {exc}", file=sys.stderr)
         return 1
@@ -225,7 +283,11 @@ def main(argv: list[str] | None = None) -> int:
     text = json.dumps(report, ensure_ascii=False, indent=2)
     Path(str(args.out)).write_text(text + "\n", encoding="utf-8")
     print(text)
-    return 0 if int((report.get("summary") or {}).get("hidden_required_start_variables") or 0) == 0 else 1
+    summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
+    issue_count = int(summary.get("hidden_required_start_variables") or 0) + int(
+        summary.get("case_input_violations") or 0
+    )
+    return 0 if issue_count == 0 else 1
 
 
 if __name__ == "__main__":
