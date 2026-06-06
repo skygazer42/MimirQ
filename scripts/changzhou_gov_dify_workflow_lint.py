@@ -245,6 +245,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Lint a Dify workflow for hidden required Start variables.")
     parser.add_argument("--workflow-json", default="")
     parser.add_argument("--cases", default="")
+    parser.add_argument(
+        "--case-inputs-only",
+        action="store_true",
+        help="Exit non-zero only for case input violations; keep workflow warnings in the report.",
+    )
     parser.add_argument("--app-id", default="")
     parser.add_argument("--console-base-url", default=os.getenv("DIFY_CONSOLE_API_BASE_URL") or DEFAULT_CONSOLE_BASE_URL)
     parser.add_argument("--console-token", default=os.getenv("DIFY_CONSOLE_TOKEN") or "")
@@ -284,9 +289,12 @@ def main(argv: list[str] | None = None) -> int:
     Path(str(args.out)).write_text(text + "\n", encoding="utf-8")
     print(text)
     summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
-    issue_count = int(summary.get("hidden_required_start_variables") or 0) + int(
-        summary.get("case_input_violations") or 0
-    )
+    if bool(args.case_inputs_only):
+        issue_count = int(summary.get("case_input_violations") or 0)
+    else:
+        issue_count = int(summary.get("hidden_required_start_variables") or 0) + int(
+            summary.get("case_input_violations") or 0
+        )
     return 0 if issue_count == 0 else 1
 
 

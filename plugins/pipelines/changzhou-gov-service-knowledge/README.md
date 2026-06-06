@@ -234,12 +234,14 @@ python scripts/changzhou_gov_dify_trace_report.py \
 python scripts/changzhou_gov_dify_workflow_lint.py \
   --app-id 3c1c8b66-94c1-44fb-a09c-b1856d970eb7 \
   --cases plugins/pipelines/changzhou-gov-service-knowledge/golden_eval_cases.json \
+  --case-inputs-only \
   --storage-state /tmp/kingdonsoft_dify_storage_state.json \
   --out /tmp/changzhou_gov_dify_workflow_lint.json
 ```
 
 传入 `--cases` 后，报告会额外输出 `case_input_violations`，用于在调用 Dify 前发现
-golden/boundary case 是否漏传 `dify_inputs.areaName`。
+golden/boundary case 是否漏传 `dify_inputs.areaName`。`--case-inputs-only` 只把 case
+缺入参作为失败退出码，仍会在报告里保留 workflow 本身的隐性必填警告。
 
 如果需要区分“workflow 分支没进正确节点”和“Dify external knowledge runtime
 调用 MimirQ 失败”，用同一套 fixed golden cases 做边界对照：
