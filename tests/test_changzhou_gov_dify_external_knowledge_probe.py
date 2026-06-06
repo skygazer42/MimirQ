@@ -97,6 +97,17 @@ def test_request_json_retries_transient_url_errors(monkeypatch) -> None:
     assert calls == 2
 
 
+def test_format_cli_error_adds_login_hint_for_expired_console_token() -> None:
+    mod = _load_module()
+
+    message = mod._format_cli_error(RuntimeError('HTTP 401: {"code":"unauthorized","message":"Token has expired."}'))
+
+    assert "Token has expired" in message
+    assert "make dify-console-login" in message
+    assert "DIFY_CONSOLE_PASSWORD_FILE" in message
+    assert "secret" not in message.lower()
+
+
 def test_collect_probe_report_flags_dify_empty_but_mimirq_direct_ok_without_leaking_key() -> None:
     mod = _load_module()
     progress: list[dict] = []

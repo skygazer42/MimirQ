@@ -24,6 +24,11 @@ DEFAULT_CONSOLE_BASE_URL = "https://ai.kingdonsoft.com:5001/console/api"
 DEFAULT_STORAGE_STATE = "/tmp/kingdonsoft_dify_storage_state.json"
 DEFAULT_EXTERNAL_API_LIMIT = 50
 _REQUEST_ATTEMPTS = 3
+_CONSOLE_LOGIN_HINT = (
+    "Refresh Dify console login with "
+    "DIFY_CONSOLE_EMAIL=<email> DIFY_CONSOLE_PASSWORD_FILE=/tmp/dify_console_password.txt "
+    "make dify-console-login."
+)
 
 RequestJsonFn = Callable[..., dict[str, Any]]
 RequestMimirqDirectFn = Callable[..., dict[str, Any]]
@@ -32,6 +37,14 @@ ProgressFn = Callable[[dict[str, Any]], None]
 
 def _text(value: Any) -> str:
     return str(value or "").strip()
+
+
+def _format_cli_error(exc: Exception) -> str:
+    message = str(exc)
+    lowered = message.lower()
+    if "http 401" in lowered or "token has expired" in lowered or "unauthorized" in lowered:
+        return f"{message}\nHINT: {_CONSOLE_LOGIN_HINT}"
+    return message
 
 
 def _endpoint_host(endpoint: str) -> str:
@@ -496,7 +509,7 @@ def main(argv: list[str] | None = None) -> int:
             progress_fn=_progress_to_stderr,
         )
     except Exception as exc:  # noqa: BLE001
-        print(f"[changzhou-dify-external-probe] ERR: {exc}", file=sys.stderr)
+        print(f"[changzhou-dify-external-probe] ERR: {_format_cli_error(exc)}", file=sys.stderr)
         return 1
     text = json.dumps(report, ensure_ascii=False, indent=2)
     Path(str(args.out)).write_text(text + "\n", encoding="utf-8")

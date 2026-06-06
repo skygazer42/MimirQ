@@ -53,10 +53,23 @@ DEFAULT_THRESHOLDS = {
     "generated_answer_context_supported_rate": 1.0,
 }
 DEFAULT_MAXIMUMS = {"generated_answer_fallback_rate": 0.0}
+_CONSOLE_LOGIN_HINT = (
+    "Refresh Dify console login with "
+    "DIFY_CONSOLE_EMAIL=<email> DIFY_CONSOLE_PASSWORD_FILE=/tmp/dify_console_password.txt "
+    "make dify-console-login."
+)
 
 
 def _text(value: Any) -> str:
     return str(value or "").strip()
+
+
+def _format_cli_error(exc: Exception) -> str:
+    message = str(exc)
+    lowered = message.lower()
+    if "http 401" in lowered or "token has expired" in lowered or "unauthorized" in lowered:
+        return f"{message}\nHINT: {_CONSOLE_LOGIN_HINT}"
+    return message
 
 
 def _env_file_values(path: str) -> dict[str, str]:
@@ -446,7 +459,7 @@ def main(argv: list[str] | None = None) -> int:
             progress_fn=_progress_to_stderr,
         )
     except Exception as exc:  # noqa: BLE001
-        print(f"[changzhou-dify-full-gate] ERR: {exc}", file=sys.stderr)
+        print(f"[changzhou-dify-full-gate] ERR: {_format_cli_error(exc)}", file=sys.stderr)
         return 1
 
     artifacts = write_stage_artifacts(
