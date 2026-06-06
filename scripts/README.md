@@ -35,6 +35,9 @@ The Makefile is the source of truth for common workflows; these scripts are the 
   - Example: `python scripts/plugin_golden_closed_loop_smoke.py --base-url http://127.0.0.1:8000 --dataset-id <dataset_uuid>`
 - `plugin_corpus_closed_loop_smoke.py`: live plugin-backed corpus ingest + Golden regression smoke from a local directory
   - Example: `python scripts/plugin_corpus_closed_loop_smoke.py --base-url http://127.0.0.1:8000 --source-dir /path/to/domain-corpus --plugin-ref plugin:<plugin-id>@<version>:chunk --include-source-root-name --overwrite-goldens`
+- `dify_console_login.py`: refresh the Dify console Playwright `storage_state` used by workflow trace diagnostics
+  - Recommended: `DIFY_CONSOLE_EMAIL=<email> DIFY_CONSOLE_PASSWORD_FILE=/tmp/dify_console_password.txt make dify-console-login`
+  - Avoid putting Dify console passwords in repository files or shell history; the script writes only `console_token` localStorage state to `/tmp/kingdonsoft_dify_storage_state.json` by default.
 - `changzhou_gov_dify_full_gate.py`: run the Changzhou government-service Dify/MimirQ golden gate (preflight, generated answers, direct eval, workflow trace)
   - Recommended: `make changzhou-dify-full-gate`
   - Override cases or thresholds without editing the Makefile: `CHANGZHOU_DIFY_CASES=/tmp/boundary_cases.json CHANGZHOU_DIFY_EXTRA_ARGS='--min-hit-at-3 0.8' make changzhou-dify-full-gate`
