@@ -17,6 +17,11 @@ from langchain_core.documents import Document
 from app.core.config import settings
 from app.rag.core.hashing import stable_json_hash
 from app.rag.core.logging import get_logger
+from app.rag.pipeline_plugins.contracts import (
+    DISPLAY_METADATA_KEY,
+    EVALUABLE_METADATA_KEY,
+    RECORD_IDENTITY_METADATA_KEY,
+)
 
 _QUERY_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z\d_+-]+|[\u4e00-\u9fff]{2,}")
 _POSITION_TAG_RE = re.compile(r"@@([^#]+)##")
@@ -677,6 +682,21 @@ def _citation_scores(meta: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _citation_plugin_metadata(meta: dict[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for view_key in (DISPLAY_METADATA_KEY, EVALUABLE_METADATA_KEY):
+        view = meta.get(view_key)
+        if not isinstance(view, dict) or not view:
+            continue
+        out.update(view)
+        out[view_key] = dict(view)
+
+    record_identity = meta.get(RECORD_IDENTITY_METADATA_KEY)
+    if isinstance(record_identity, dict) and record_identity:
+        out[RECORD_IDENTITY_METADATA_KEY] = dict(record_identity)
+    return out
+
+
 def _hit_type(*, scores: dict[str, Any], retrieval_mode: str, retrieval_role: str | None, is_image: bool) -> str:
     if str(retrieval_role or "").strip().lower() == "tag":
         hit_type = "tag"
@@ -823,9 +843,11 @@ def _base_citation(
     scores = ctx.scores
     return {
         "chunk_id": ctx.chunk_id,
+        "dataset_id": meta.get("dataset_id"),
         "document_id": meta.get("document_id"),
         "document_name": meta.get("source", "Unknown"),
         "chunk_content": ctx.snippet or ((ctx.effective_text or "")[:200] + "..."),
+        "metadata": _citation_plugin_metadata(meta),
         "matched_terms": ctx.matched_terms,
         "page_number": ctx.page_number,
         "chunk_index": ctx.chunk_index,

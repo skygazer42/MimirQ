@@ -1,0 +1,151 @@
+{
+  "schema": "mimirq.changzhou_gov_service_knowledge.golden_eval.v1",
+  "description": "Fixed-variable retrieval cases for evaluating MimirQ + Changzhou government service plugin without changing the Dify workflow.",
+  "cases": [
+    {
+      "id": "xinbei-social-card-reissue-location",
+      "knowledge_id": "changzhou_新北区_service",
+      "query": "新北区社保卡补卡在哪里办理",
+      "dify_inputs": {"areaName": "新北区"},
+      "expected": {
+        "title_contains": ["新北区事项清单"],
+        "content_contains": ["事项名称：社会保障卡补卡", "办理地点：新北区"],
+        "answer_key_points": [
+          "办理地点：新北区云河路69 号新北区政务服务中心三楼18、19号窗口",
+          "咨询方式：0519-88516920",
+          "收费情况：不收费"
+        ]
+      }
+    },
+    {
+      "id": "jingkai-social-card-reissue-location",
+      "knowledge_id": "changzhou_经开区_service",
+      "query": "经开区社保卡补卡在哪里办理",
+      "dify_inputs": {"areaName": "经开区"},
+      "expected": {
+        "title_contains": ["经开区事项清单"],
+        "content_contains": ["事项名称：社会保障卡补卡", "办理地点："],
+        "answer_key_points": [
+          "办理地点：常州市锦绣路2号常州市政务服务中心1号楼一楼C区2-9号窗口",
+          "咨询方式：0519-12333",
+          "收费情况：不收费"
+        ]
+      }
+    },
+    {
+      "id": "tianning-social-card-reissue-qa",
+      "knowledge_id": "changzhou_天宁区_service",
+      "query": "请问我可以在哪里补办社会保障卡",
+      "dify_inputs": {"areaName": "天宁区"},
+      "expected": {
+        "title_contains": ["天宁区12345QA"],
+        "content_contains": ["请问我可以在哪里补办社会保障卡"],
+        "answer_key_points": ["0519-88817001", "雕庄街道为民服务中心"]
+      }
+    },
+    {
+      "id": "jingkai-enterprise-social-insurance-registration-qa",
+      "knowledge_id": "changzhou_经开区_service",
+      "query": "经开区在哪里办理企业社会保险登记",
+      "dify_inputs": {"areaName": "经开区"},
+      "expected": {
+        "title_contains": ["经开区12345QA"],
+        "content_contains": ["请问可以在哪里办理企业社会保险登记"],
+        "answer_key_points": ["常州经开区政务服务中心一楼大厅C区", "东方东路168号"]
+      }
+    },
+    {
+      "id": "jingkai-maintenance-fund-standard",
+      "knowledge_id": "changzhou_经开区_service",
+      "query": "住宅专项维修资金的交存标准是多少",
+      "dify_inputs": {"areaName": "经开区"},
+      "expected": {
+        "title_contains": ["经开区12345QA"],
+        "content_contains": ["住宅专项维修资金的交存标准", "每平方米120元"],
+        "answer_key_points": ["2008年3月24日以后", "每平方米120元", "每平方米60元"]
+      }
+    },
+    {
+      "id": "city-car-replacement-subsidy",
+      "knowledge_id": "changzhou_city_service",
+      "query": "汽车置换补贴怎么申请",
+      "dify_inputs": {"areaName": "常州市本级"},
+      "expected": {
+        "title_contains": ["常州市高频应用知识"],
+        "content_contains": ["汽车置换更新", "补贴申请"],
+        "answer_key_points": ["苏服办APP", "2025年补贴申请", "卖旧置换更新补贴", "报废置换更新补贴"]
+      }
+    },
+    {
+      "id": "topic-primary-school-materials",
+      "knowledge_id": "changzhou_city_service",
+      "query": "小学入学需要哪些材料",
+      "dify_inputs": {"areaName": "常州市本级"},
+      "expected": {
+        "title_contains": ["义务教育学校招生入学常见问题"],
+        "content_contains": ["小学入学需要哪些材料"],
+        "answer_key_points": ["户口簿", "合法固定住所证件", "所在学区小学"]
+      }
+    },
+    {
+      "id": "department-provident-fund-online-channel",
+      "knowledge_id": "changzhou_city_service",
+      "query": "公积金线上业务渠道有哪些",
+      "dify_inputs": {"areaName": "常州市本级"},
+      "expected": {
+        "title_contains": ["线上业务"],
+        "content_contains": ["线上业务渠道", "微信公众号"],
+        "answer_key_points": ["“常州住房公积金”微信公众号", "我的常州APP", "江苏政务服务网"]
+      }
+    },
+    {
+      "id": "one-thing-social-card-operation",
+      "knowledge_id": "changzhou_city_service",
+      "query": "社会保障卡居民服务一件事网上办理怎么操作",
+      "dify_inputs": {"areaName": "常州市本级"},
+      "expected": {
+        "title_contains": ["一件事操作指引"],
+        "content_contains": ["社会保障卡居民服务", "申报流程"],
+        "answer_key_points": ["点击社会保障卡居民服务“一件事”模块", "选择“个人登录”", "补卡申请流程"]
+      }
+    },
+    {
+      "id": "one-thing-restaurant-materials",
+      "knowledge_id": "changzhou_city_service",
+      "query": "开办餐饮店一件事需要哪些材料",
+      "dify_inputs": {"areaName": "常州市本级"},
+      "expected": {
+        "title_contains": ["一件事指南"],
+        "content_contains": ["开办餐饮店", "材料"],
+        "answer_key_points": ["开办餐饮店“一件事”申请表", "法定代表人(负责人)身份证明", "食品安全自查"]
+      }
+    },
+    {
+      "id": "id-card-reissue-common",
+      "knowledge_id": "changzhou_city_service",
+      "query": "居民身份证补领需要什么材料",
+      "dify_inputs": {"areaName": "常州市本级"},
+      "expected": {
+        "title_contains": ["居民身份证"],
+        "content_contains": ["居民身份证补领", "省内通办"],
+        "answer_key_points": [
+          "居民户口簿",
+          "有效身份证件之一",
+          "省外户籍居民补领",
+          "合法稳定就业、就学、居住的其中一种证明材料"
+        ]
+      }
+    },
+    {
+      "id": "emergency-account-password-reset",
+      "knowledge_id": "changzhou_city_service",
+      "query": "企业员工密码输入错误5次怎么办",
+      "dify_inputs": {"areaName": "常州市本级"},
+      "expected": {
+        "title_contains": ["应急局日常问题汇总"],
+        "content_contains": ["重置密码"],
+        "answer_key_points": ["重置密码", "刷新输入限制次数"]
+      }
+    }
+  ]
+}

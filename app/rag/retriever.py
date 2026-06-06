@@ -140,6 +140,47 @@ def _resolve_hybrid_search_options(
     return cast(HybridSearchOptions, replace(options, **legacy_overrides))
 
 
+def _is_dataset_scope_condition(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, dict):
+        if "$eq" in value:
+            return bool(str(value.get("$eq") or "").strip())
+        if "$in" in value:
+            items = value.get("$in")
+            return isinstance(items, list | tuple | set) and any(str(item or "").strip() for item in items)
+        return False
+    if isinstance(value, list | tuple | set):
+        return any(str(item or "").strip() for item in value)
+    return bool(str(value or "").strip())
+
+
+def _metadata_filter_has_dataset_scope(metadata_filter: dict[str, Any] | None) -> bool:
+    if not isinstance(metadata_filter, dict) or not metadata_filter:
+        return False
+    if _is_dataset_scope_condition(metadata_filter.get("dataset_id")):
+        return True
+
+    and_parts = metadata_filter.get("$and")
+    if isinstance(and_parts, list):
+        return any(
+            _metadata_filter_has_dataset_scope(part)
+            for part in and_parts
+            if isinstance(part, dict)
+        )
+
+    or_parts = metadata_filter.get("$or")
+    if isinstance(or_parts, list) and or_parts:
+        scoped_parts = [
+            _metadata_filter_has_dataset_scope(part)
+            for part in or_parts
+            if isinstance(part, dict)
+        ]
+        return bool(scoped_parts) and all(scoped_parts)
+
+    return False
+
+
 class HybridRetriever(BaseRetriever):
     """Hybrid Retriever: Vector + Keyword BM25, optional MMR reranking."""
 
@@ -3718,6 +3759,10 @@ class HybridRetriever(BaseRetriever):
         corpus_cache_token: str | None = None
         account_id0 = (self.account_id or "").strip()
         dataset_id0 = str(self.dataset_id) if self.dataset_id is not None else None
+        metadata_filter_dataset_scoped = bool(
+            self.metadata_filter_enabled
+            and _metadata_filter_has_dataset_scope(full_metadata_filter if isinstance(full_metadata_filter, dict) else None)
+        )
         pipeline_key = embedding_space or None
         doc_ids = [str(d) for d in (document_ids or [])]
 
@@ -3745,7 +3790,7 @@ class HybridRetriever(BaseRetriever):
             semantic_cache_eligible = False
             cache_meta["skip_reason"] = "missing_account"
             cache_meta["semantic"]["skip_reason"] = "missing_account"
-        elif not document_ids and self.dataset_id is None:
+        elif not document_ids and self.dataset_id is None and not metadata_filter_dataset_scoped:
             cache_eligible = False
             semantic_cache_eligible = False
             cache_meta["skip_reason"] = "missing_scope"
@@ -5562,7 +5607,11 @@ class HybridRetriever(BaseRetriever):
         # Caller must explicitly scope retrieval via either:
         # - `document_ids`, or
         # - `dataset_id` (dataset boundary is the default enterprise safety posture).
-        if self.dataset_id is None and not (self.document_ids or []):
+        metadata_filter_dataset_scoped = bool(
+            self.metadata_filter_enabled
+            and _metadata_filter_has_dataset_scope(self.metadata_filter)
+        )
+        if self.dataset_id is None and not (self.document_ids or []) and not metadata_filter_dataset_scoped:
             if not bool(getattr(settings, "CHAT_ALLOW_OPEN_SCOPE", False)):
                 raise ValueError("dataset_id is required when document_ids is empty")
 
@@ -5615,6 +5664,8 @@ class HybridRetriever(BaseRetriever):
             scope_kind = "document_ids"
         elif self.dataset_id is not None:
             scope_kind = "dataset_id"
+        elif metadata_filter_dataset_scoped:
+            scope_kind = "metadata_dataset_id"
         else:
             scope_kind = "open"
 

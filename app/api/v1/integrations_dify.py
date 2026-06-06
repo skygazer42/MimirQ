@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import re
 from dataclasses import dataclass
 from typing import Annotated, Any
@@ -25,6 +26,9 @@ from sqlalchemy.orm import Session
 from app.api.schemas.chat import ChatRAGConfig
 from app.core.config import settings
 from app.core.database import get_db
+from app.models.document import DocumentChunk
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -56,6 +60,9 @@ _METADATA_KEYS = (
     "retrieval_role",
     "hit_type",
 )
+_PUBLIC_METADATA_VIEW_KEYS = ("_evaluable_metadata", "_display_metadata")
+_RETRIEVAL_INTENT_KEYS = ("retrieval_intents", "query_intents", "intent_terms")
+_MIN_SPECIFIC_INTENT_CHARS = 7
 
 
 class _DifyErrorRoute(APIRoute):
@@ -213,6 +220,52 @@ def _coerce_dataset_id_list(value: Any) -> list[UUID]:
     raise HTTPException(status_code=400, detail="Dify knowledge mapping must be a dataset id or list")
 
 
+def _query_terms_match(query: str, terms: Any) -> bool:
+    query_text = str(query or "").strip().casefold()
+    if not query_text:
+        return False
+    raw_terms = terms if isinstance(terms, list | tuple | set) else [terms]
+    for raw in raw_terms:
+        term = str(raw or "").strip().casefold()
+        if term and term in query_text:
+            return True
+    return False
+
+
+def _route_mode(route: dict[str, Any]) -> str:
+    mode = str(route.get("mode") or route.get("merge") or "prepend").strip().lower()
+    if mode in {"replace", "override"}:
+        return "replace"
+    if mode in {"append", "extend"}:
+        return "append"
+    return "prepend"
+
+
+def _apply_query_dataset_routes(base_dataset_ids: list[UUID], mapping: dict[str, Any], *, query: str) -> list[UUID]:
+    routes = mapping.get("query_routes") or mapping.get("query_dataset_routes") or mapping.get("routes")
+    if not isinstance(routes, list):
+        return base_dataset_ids
+
+    current = list(base_dataset_ids)
+    for raw_route in routes:
+        if not isinstance(raw_route, dict):
+            continue
+        terms = raw_route.get("terms") or raw_route.get("query_terms") or raw_route.get("contains")
+        if not _query_terms_match(query, terms):
+            continue
+        routed_dataset_ids = _coerce_dataset_id_list(raw_route)
+        if not routed_dataset_ids:
+            continue
+        mode = _route_mode(raw_route)
+        if mode == "replace":
+            current = routed_dataset_ids
+        elif mode == "append":
+            current = [*current, *routed_dataset_ids]
+        else:
+            current = [*routed_dataset_ids, *current]
+    return _dedupe_dataset_ids(current)
+
+
 def _load_knowledge_map() -> dict[str, Any]:
     raw = str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON", "") or "").strip()
     if not raw:
@@ -226,11 +279,14 @@ def _load_knowledge_map() -> dict[str, Any]:
     return data
 
 
-def _resolve_knowledge_dataset_ids(knowledge_id: str) -> list[UUID]:
+def _resolve_knowledge_dataset_ids(knowledge_id: str, *, query: str = "") -> list[UUID]:
     key = str(knowledge_id or "").strip()
     knowledge_map = _load_knowledge_map()
     if key in knowledge_map:
-        dataset_ids = _coerce_dataset_id_list(knowledge_map[key])
+        raw_mapping = knowledge_map[key]
+        dataset_ids = _coerce_dataset_id_list(raw_mapping)
+        if isinstance(raw_mapping, dict):
+            dataset_ids = _apply_query_dataset_routes(dataset_ids, raw_mapping, query=query)
         if not dataset_ids:
             raise HTTPException(status_code=404, detail="Dify knowledge mapping is empty")
         return dataset_ids
@@ -353,13 +409,146 @@ def _citation_score(citation: dict[str, Any]) -> float:
     return 0.0
 
 
-def _citation_to_dify_record(citation: dict[str, Any], *, dataset_id: UUID) -> dict[str, Any]:
+def _citation_dataset_id(citation: dict[str, Any], *, fallback_dataset_id: UUID | None) -> UUID | None:
+    raw_metadata = citation.get("metadata")
+    metadata = raw_metadata if isinstance(raw_metadata, dict) else {}
+    for value in (citation.get("dataset_id"), metadata.get("dataset_id"), fallback_dataset_id):
+        if value is None:
+            continue
+        try:
+            return UUID(str(value))
+        except ValueError:
+            continue
+    return None
+
+
+def _citation_chunk_id(citation: dict[str, Any]) -> str:
+    raw_metadata = citation.get("metadata")
+    metadata = raw_metadata if isinstance(raw_metadata, dict) else {}
+    for value in (citation.get("chunk_id"), metadata.get("chunk_id")):
+        text = str(value or "").strip()
+        if text:
+            return text
+    return ""
+
+
+def _load_chunk_content_map(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    citations: list[dict[str, Any]],
+) -> dict[str, str]:
+    chunk_ids: list[UUID] = []
+    seen: set[UUID] = set()
+    for citation in citations or []:
+        chunk_id = _citation_chunk_id(citation)
+        if not chunk_id:
+            continue
+        try:
+            parsed = UUID(chunk_id)
+        except ValueError:
+            continue
+        if parsed in seen:
+            continue
+        seen.add(parsed)
+        chunk_ids.append(parsed)
+    if not chunk_ids:
+        return {}
+
+    try:
+        rows = (
+            db.query(DocumentChunk.id, DocumentChunk.content)
+            .filter(
+                DocumentChunk.tenant_id == tenant_id,
+                DocumentChunk.id.in_(chunk_ids),
+                DocumentChunk.disabled_at.is_(None),
+            )
+            .all()
+        )
+    except Exception:  # noqa: BLE001
+        logger.warning("Failed to hydrate Dify chunk content; falling back to citation snippets", exc_info=True)
+        return {}
+    out: dict[str, str] = {}
+    for chunk_id, content in rows:
+        text = str(content or "").strip()
+        if text:
+            out[str(chunk_id)] = text
+    return out
+
+
+def _iter_record_metadata_layers(record: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_metadata = record.get("metadata")
+    if not isinstance(raw_metadata, dict):
+        return []
+    layers = [raw_metadata]
+    for key in _PUBLIC_METADATA_VIEW_KEYS:
+        nested = raw_metadata.get(key)
+        if isinstance(nested, dict) and nested:
+            layers.append(nested)
+    return layers
+
+
+def _metadata_terms(value: Any) -> list[str]:
+    raw_items = value if isinstance(value, list | tuple | set) else [value]
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in raw_items:
+        text = str(raw or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        out.append(text)
+    return out
+
+
+def _record_retrieval_intents(record: dict[str, Any]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for metadata in _iter_record_metadata_layers(record):
+        for key in _RETRIEVAL_INTENT_KEYS:
+            for term in _metadata_terms(metadata.get(key)):
+                if term in seen:
+                    continue
+                seen.add(term)
+                out.append(term)
+    return out
+
+
+def _is_specific_intent_term(term: str) -> bool:
+    text = str(term or "").strip()
+    return len(text) >= _MIN_SPECIFIC_INTENT_CHARS
+
+
+def _record_intent_bonus(record: dict[str, Any], *, query: str) -> float:
+    query_text = str(query or "").casefold()
+    if not query_text:
+        return 0.0
+    matches = 0
+    for term in _record_retrieval_intents(record):
+        if not _is_specific_intent_term(term):
+            continue
+        folded = term.casefold()
+        if folded and (folded in query_text or query_text in folded):
+            matches += 1
+    return min(0.02 * matches, 0.08)
+
+
+def _sort_records_for_query(records: list[dict[str, Any]], *, query: str) -> None:
+    records.sort(
+        key=lambda item: float(item.get("score") or 0.0) + _record_intent_bonus(item, query=query),
+        reverse=True,
+    )
+
+
+def _citation_to_dify_record(citation: dict[str, Any], *, dataset_id: UUID | None) -> dict[str, Any]:
     content = _first_non_empty(citation, _CONTENT_KEYS)
     title = _first_non_empty(citation, _TITLE_KEYS) or "Untitled"
 
     raw_metadata = citation.get("metadata")
     metadata: dict[str, Any] = dict(raw_metadata) if isinstance(raw_metadata, dict) else {}
-    metadata["dataset_id"] = str(dataset_id)
+    resolved_dataset_id = _citation_dataset_id(citation, fallback_dataset_id=dataset_id)
+    if resolved_dataset_id is not None:
+        metadata["dataset_id"] = str(resolved_dataset_id)
     for key in _METADATA_KEYS:
         value = citation.get(key)
         if value is not None and value != "":
@@ -378,7 +567,7 @@ async def _retrieve_dataset_citations(
     db: Session,
     tenant_id: UUID,
     account_id: str,
-    dataset_id: UUID,
+    dataset_ids: list[UUID],
     query: str,
     top_k: int,
     score_threshold: float,
@@ -395,7 +584,7 @@ async def _retrieve_dataset_citations(
     )
 
     response = await retrieve_evidence(
-        body=EvidenceRetrieveRequest(query=query, dataset_id=dataset_id, rag_config=rag_config),
+        body=EvidenceRetrieveRequest(query=query, dataset_ids=dataset_ids, rag_config=rag_config),
         tenant_id=tenant_id,
         account_id=account_id,
         db=db,
@@ -409,28 +598,32 @@ async def retrieve_external_knowledge(
     actor: Annotated[_DifyActor, Depends(_require_dify_actor)],
     db: Annotated[Session, Depends(get_db)],
 ) -> DifyExternalKnowledgeResponse:
-    dataset_ids = _resolve_knowledge_dataset_ids(body.knowledge_id)
+    dataset_ids = _resolve_knowledge_dataset_ids(body.knowledge_id, query=body.query)
     configured_max = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX", 50) or 50)
     top_k = max(1, min(int(body.retrieval_setting.top_k), configured_max))
     score_threshold = _clamp_score(body.retrieval_setting.score_threshold)
     metadata_filter = _metadata_condition_to_filter(body.metadata_condition)
 
     records: list[dict[str, Any]] = []
-    for dataset_id in dataset_ids:
-        citations = await _retrieve_dataset_citations(
-            db=db,
-            tenant_id=actor.tenant_id,
-            account_id=actor.account_id,
-            dataset_id=dataset_id,
-            query=body.query,
-            top_k=top_k,
-            score_threshold=score_threshold,
-            metadata_filter=metadata_filter,
-        )
-        for citation in citations:
-            record = _citation_to_dify_record(citation, dataset_id=dataset_id)
-            if str(record.get("content") or "").strip():
-                records.append(record)
+    citations = await _retrieve_dataset_citations(
+        db=db,
+        tenant_id=actor.tenant_id,
+        account_id=actor.account_id,
+        dataset_ids=dataset_ids,
+        query=body.query,
+        top_k=top_k,
+        score_threshold=score_threshold,
+        metadata_filter=metadata_filter,
+    )
+    fallback_dataset_id = dataset_ids[0] if dataset_ids else None
+    chunk_content_map = _load_chunk_content_map(db=db, tenant_id=actor.tenant_id, citations=citations)
+    for citation in citations:
+        chunk_id = _citation_chunk_id(citation)
+        if chunk_id and chunk_content_map.get(chunk_id):
+            citation = {**citation, "content": chunk_content_map[chunk_id]}
+        record = _citation_to_dify_record(citation, dataset_id=fallback_dataset_id)
+        if str(record.get("content") or "").strip():
+            records.append(record)
 
-    records.sort(key=lambda item: float(item.get("score") or 0.0), reverse=True)
+    _sort_records_for_query(records, query=body.query)
     return DifyExternalKnowledgeResponse(records=[DifyExternalKnowledgeRecord(**record) for record in records[:top_k]])

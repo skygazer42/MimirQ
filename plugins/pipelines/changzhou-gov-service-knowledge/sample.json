@@ -18,6 +18,12 @@
     }
   },
   {
+    "page_content": "残疾人服务“一件事”操作指引\n一、系统入口\n1.访问江苏政务服务网常州综合服务旗舰店（https://cz.jszwfw.gov.cn/）。\n二、申报流程\n1.点击残疾人服务“一件事”模块。\n2.登录后点击在线办理。\n3.上传申报材料。\n常州综合服务旗舰店办事微课堂跟着手册学操作：https://czqjd.jszwfw.gov.cn/course?id=4066",
+    "metadata": {
+      "source": "/path/to/gov-service-knowledge/02高效办成一件事/一件事操作指引.txt"
+    }
+  },
+  {
     "page_content": "Excel: 常州市高频应用知识.xlsx\nSheets: 高频应用\n\n## Sheet: 高频应用\n\n| 问题 | 相似问法 | 答案 |\n| --- | --- | --- |\n| 汽车置换更新 | 以旧换新、购车补贴 | 汽车置换更新可在苏服办 APP 申请，也可查看 https://example.gov.cn/car-subsidy |",
     "metadata": {
       "source": "/path/to/gov-service-knowledge/03常州市常见问题/常州市高频应用知识.xlsx",

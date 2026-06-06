@@ -264,6 +264,8 @@ def _qa_event(doc: Document, meta: dict[str, Any], index: int) -> dict[str, Any]
             "category_leaf": _text(meta.get("category_leaf")),
             "applicable_area": applicable_area,
             "service_url": service_url,
+            "valid_from": _text(meta.get("valid_from")),
+            "valid_to": _text(meta.get("valid_to")),
         },
         "entities": _dedupe_entities(entities),
     }

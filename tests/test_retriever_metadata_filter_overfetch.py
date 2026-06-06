@@ -2,7 +2,56 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+import pytest
 from langchain_core.callbacks import CallbackManagerForRetrieverRun
+
+
+def test_retriever_accepts_dataset_metadata_filter_as_explicit_scope(monkeypatch) -> None:  # noqa: ANN001
+    from app.core.config import settings
+    from app.rag.retriever import HybridRetriever
+
+    monkeypatch.setattr(settings, "CHAT_ALLOW_OPEN_SCOPE", False, raising=False)
+
+    dataset_ids = [str(uuid4()), str(uuid4())]
+    captured: dict[str, object] = {}
+
+    def _fake_hybrid_search(self, *, metadata_filter=None, **_kw):  # noqa: ANN001
+        captured["metadata_filter"] = metadata_filter
+        return []
+
+    monkeypatch.setattr(HybridRetriever, "_hybrid_search", _fake_hybrid_search, raising=True)
+
+    r = HybridRetriever(
+        k=5,
+        tenant_id=uuid4(),
+        account_id="acct",
+        dataset_id=None,
+        document_ids=None,
+        metadata_filter={"dataset_id": {"$in": dataset_ids}},
+    )
+
+    _ = r._get_relevant_documents("q", run_manager=CallbackManagerForRetrieverRun.get_noop_manager())
+
+    assert captured["metadata_filter"] == {"dataset_id": {"$in": dataset_ids}}
+
+
+def test_retriever_rejects_non_scope_metadata_filter_when_open_scope_disabled(monkeypatch) -> None:  # noqa: ANN001
+    from app.core.config import settings
+    from app.rag.retriever import HybridRetriever
+
+    monkeypatch.setattr(settings, "CHAT_ALLOW_OPEN_SCOPE", False, raising=False)
+
+    r = HybridRetriever(
+        k=5,
+        tenant_id=uuid4(),
+        account_id="acct",
+        dataset_id=None,
+        document_ids=None,
+        metadata_filter={"source": "x"},
+    )
+
+    with pytest.raises(ValueError, match="dataset_id is required"):
+        r._get_relevant_documents("q", run_manager=CallbackManagerForRetrieverRun.get_noop_manager())
 
 
 def test_retriever_overfetches_when_metadata_filter_present_without_account_id(monkeypatch) -> None:  # noqa: ANN001

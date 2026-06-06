@@ -27,7 +27,7 @@ def test_dify_retrieval_maps_knowledge_id_to_multiple_datasets(monkeypatch: pyte
     token = "dify-test-token"
     dataset_a = uuid.uuid4()
     dataset_b = uuid.uuid4()
-    calls: list[tuple[uuid.UUID, str, int, float]] = []
+    calls: list[tuple[list[uuid.UUID], str, int, float]] = []
 
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
@@ -40,19 +40,8 @@ def test_dify_retrieval_maps_knowledge_id_to_multiple_datasets(monkeypatch: pyte
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
 
     async def _fake_retrieve_dataset_citations(**kwargs):  # noqa: ANN003, ANN202
-        dataset_id = kwargs["dataset_id"]
-        calls.append((dataset_id, kwargs["query"], kwargs["top_k"], kwargs["score_threshold"]))
-        if dataset_id == dataset_a:
-            return [
-                {
-                    "chunk_content": "A lower-ranked sales policy chunk",
-                    "relevance_score": 0.42,
-                    "document_name": "sales-a.md",
-                    "document_id": str(uuid.uuid4()),
-                    "chunk_id": str(uuid.uuid4()),
-                    "page_number": 3,
-                }
-            ]
+        dataset_ids = kwargs["dataset_ids"]
+        calls.append((dataset_ids, kwargs["query"], kwargs["top_k"], kwargs["score_threshold"]))
         return [
             {
                 "chunk_content": "B top-ranked sales policy chunk",
@@ -60,8 +49,18 @@ def test_dify_retrieval_maps_knowledge_id_to_multiple_datasets(monkeypatch: pyte
                 "document_name": "sales-b.md",
                 "document_id": str(uuid.uuid4()),
                 "chunk_id": str(uuid.uuid4()),
+                "dataset_id": str(dataset_b),
                 "header_path": "Pricing / Exceptions",
-            }
+            },
+            {
+                "chunk_content": "A lower-ranked sales policy chunk",
+                "relevance_score": 0.42,
+                "document_name": "sales-a.md",
+                "document_id": str(uuid.uuid4()),
+                "chunk_id": str(uuid.uuid4()),
+                "dataset_id": str(dataset_a),
+                "page_number": 3,
+            },
         ]
 
     monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
@@ -83,7 +82,7 @@ def test_dify_retrieval_maps_knowledge_id_to_multiple_datasets(monkeypatch: pyte
 
     assert res.status_code == 200, res.text
     body = res.json()
-    assert [call[0] for call in calls] == [dataset_a, dataset_b]
+    assert [call[0] for call in calls] == [[dataset_a, dataset_b]]
     assert all(call[1] == "报价例外条件" for call in calls)
     assert all(call[2] == 2 for call in calls)
     assert all(call[3] == pytest.approx(0.35) for call in calls)
@@ -96,6 +95,319 @@ def test_dify_retrieval_maps_knowledge_id_to_multiple_datasets(monkeypatch: pyte
     assert body["records"][0]["metadata"]["dataset_id"] == str(dataset_b)
     assert body["records"][0]["metadata"]["header_path"] == "Pricing / Exceptions"
     assert body["records"][0]["metadata"] is not None
+
+
+def test_dify_retrieval_expands_dataset_mapping_by_query_terms(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    token = "dify-test-token"
+    city_dataset = uuid.uuid4()
+    xinbei_dataset = uuid.uuid4()
+    calls: list[list[uuid.UUID]] = []
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        (
+            '{"city": {'
+            f'"dataset_ids": ["{city_dataset}"],'
+            '"query_routes": ['
+            '{"terms": ["新北区", "新北"], '
+            f'"dataset_ids": ["{xinbei_dataset}"], '
+            '"mode": "prepend"}'
+            "]"
+            "}}"
+        ),
+        raising=False,
+    )
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+
+    async def _fake_retrieve_dataset_citations(**kwargs):  # noqa: ANN003, ANN202
+        calls.append(kwargs["dataset_ids"])
+        return [
+            {
+                "chunk_content": "新北区社会保障卡补卡办理地点",
+                "relevance_score": 0.91,
+                "document_name": "新北区事项清单.txt",
+                "chunk_id": str(uuid.uuid4()),
+                "dataset_id": str(xinbei_dataset),
+            }
+        ]
+
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/integrations/dify/retrieval",
+        headers=_auth(token),
+        json={
+            "knowledge_id": "city",
+            "query": "新北区社保卡补卡在哪里办理",
+            "retrieval_setting": {"top_k": 2, "score_threshold": 0.0},
+        },
+    )
+
+    assert res.status_code == 200, res.text
+    assert calls == [[xinbei_dataset, city_dataset]]
+    assert res.json()["records"][0]["content"] == "新北区社会保障卡补卡办理地点"
+
+
+def test_dify_retrieval_prefers_full_chunk_content_over_short_citation_snippet(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    token = "dify-test-token"
+    dataset_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+    chunk_id = uuid.uuid4()
+    full_content = (
+        "区县：新北区\n"
+        "事项名称：社会保障卡补卡\n"
+        "办理地点：新北区政务服务中心\n"
+        "办理材料：居民身份证件（必要）\n"
+        "咨询方式：0519-12333"
+    )
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        f'{{"xinbei": "{dataset_id}"}}',
+        raising=False,
+    )
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+
+    async def _fake_retrieve_dataset_citations(**_kwargs):  # noqa: ANN003, ANN202
+        return [
+            {
+                "chunk_content": "区县：新北区...",
+                "relevance_score": 0.73,
+                "document_name": "新北区事项清单.txt",
+                "document_id": str(document_id),
+                "chunk_id": str(chunk_id),
+                "dataset_id": str(dataset_id),
+            }
+        ]
+
+    def _fake_load_chunk_content_map(**_kwargs):  # noqa: ANN003, ANN202
+        return {str(chunk_id): full_content}
+
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(dify_api, "_load_chunk_content_map", _fake_load_chunk_content_map, raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/integrations/dify/retrieval",
+        headers=_auth(token),
+        json={
+            "knowledge_id": "xinbei",
+            "query": "新北区社保卡补卡在哪里办理",
+            "retrieval_setting": {"top_k": 1, "score_threshold": 0.0},
+        },
+    )
+
+    assert res.status_code == 200, res.text
+    assert res.json()["records"][0]["content"] == full_content
+
+
+def test_dify_retrieval_uses_plugin_retrieval_intents_for_tie_breaking(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    token = "dify-test-token"
+    dataset_id = uuid.uuid4()
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        f'{{"city": "{dataset_id}"}}',
+        raising=False,
+    )
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+
+    async def _fake_retrieve_dataset_citations(**_kwargs):  # noqa: ANN003, ANN202
+        return [
+            {
+                "chunk_content": "入口说明正文",
+                "relevance_score": 0.73,
+                "document_name": "一件事操作指引.txt",
+                "chunk_id": str(uuid.uuid4()),
+                "metadata": {
+                    "section_type": "operation_url",
+                    "retrieval_intents": ["在线入口", "操作手册入口"],
+                },
+            },
+            {
+                "chunk_content": "步骤说明正文",
+                "relevance_score": 0.73,
+                "document_name": "一件事操作指引.txt",
+                "chunk_id": str(uuid.uuid4()),
+                "metadata": {
+                    "_evaluable_metadata": {
+                        "section_type": "operation_steps",
+                        "retrieval_intents": ["网上办理怎么操作", "申报步骤"],
+                    }
+                },
+            },
+        ]
+
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/integrations/dify/retrieval",
+        headers=_auth(token),
+        json={
+            "knowledge_id": "city",
+            "query": "社会保障卡居民服务一件事网上办理怎么操作",
+            "retrieval_setting": {"top_k": 2, "score_threshold": 0.0},
+        },
+    )
+
+    assert res.status_code == 200, res.text
+    records = res.json()["records"]
+    assert records[0]["content"] == "步骤说明正文"
+    assert records[0]["metadata"]["_evaluable_metadata"]["section_type"] == "operation_steps"
+    assert records[1]["content"] == "入口说明正文"
+
+
+def test_dify_retrieval_ignores_content_search_anchor_without_metadata_intents(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    token = "dify-test-token"
+    dataset_id = uuid.uuid4()
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        f'{{"city": "{dataset_id}"}}',
+        raising=False,
+    )
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+
+    async def _fake_retrieve_dataset_citations(**_kwargs):  # noqa: ANN003, ANN202
+        return [
+            {
+                "chunk_content": "检索锚点：社会保障卡居民服务一件事；章节意图：在线入口、操作手册入口\n入口说明正文",
+                "relevance_score": 0.73,
+                "document_name": "一件事操作指引.txt",
+                "chunk_id": str(uuid.uuid4()),
+                "metadata": {"section_type": "operation_url"},
+            },
+            {
+                "chunk_content": "检索锚点：社会保障卡居民服务一件事；章节意图：申报流程、网上办理怎么操作\n步骤说明正文",
+                "relevance_score": 0.73,
+                "document_name": "一件事操作指引.txt",
+                "chunk_id": str(uuid.uuid4()),
+                "metadata": {"section_type": "operation_steps"},
+            },
+        ]
+
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/integrations/dify/retrieval",
+        headers=_auth(token),
+        json={
+            "knowledge_id": "city",
+            "query": "社会保障卡居民服务一件事网上办理怎么操作",
+            "retrieval_setting": {"top_k": 2, "score_threshold": 0.0},
+        },
+    )
+
+    assert res.status_code == 200, res.text
+    records = res.json()["records"]
+    assert "入口说明正文" in records[0]["content"]
+    assert "步骤说明正文" in records[1]["content"]
+
+
+def test_dify_retrieval_does_not_boost_generic_anchor_terms_over_specific_hits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    token = "dify-test-token"
+    dataset_id = uuid.uuid4()
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        f'{{"city": "{dataset_id}"}}',
+        raising=False,
+    )
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+
+    async def _fake_retrieve_dataset_citations(**_kwargs):  # noqa: ANN003, ANN202
+        return [
+            {
+                "chunk_content": "检索锚点：临时身份证怎么办理，在哪办理，需要什么材料\n临时身份证材料说明",
+                "relevance_score": 0.72,
+                "document_name": "身份证问答.txt",
+                "chunk_id": str(uuid.uuid4()),
+            },
+            {
+                "chunk_content": "检索锚点：省外和省内人员补办身份证的办理材料和办理时限分别是什么？；身份证补办\n居民身份证补领材料说明",
+                "relevance_score": 0.73,
+                "document_name": "身份证问答.txt",
+                "chunk_id": str(uuid.uuid4()),
+            },
+        ]
+
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/integrations/dify/retrieval",
+        headers=_auth(token),
+        json={
+            "knowledge_id": "city",
+            "query": "居民身份证补领需要什么材料",
+            "retrieval_setting": {"top_k": 2, "score_threshold": 0.0},
+        },
+    )
+
+    assert res.status_code == 200, res.text
+    records = res.json()["records"]
+    assert "居民身份证补领材料说明" in records[0]["content"]
+    assert "临时身份证材料说明" in records[1]["content"]
 
 
 def test_dify_retrieval_rejects_missing_or_wrong_bearer_token(monkeypatch: pytest.MonkeyPatch) -> None:

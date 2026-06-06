@@ -201,6 +201,111 @@ async def test_rag_retrieve_passes_hierarchy_recall_fields_into_rag_state(monkey
 
 
 @pytest.mark.asyncio
+async def test_retrieve_preview_accepts_dataset_ids_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.rag as rag_api
+    from app.api.schemas.chat import ChatRAGConfig
+    from app.core.config import settings
+
+    ds1 = uuid.uuid4()
+    ds2 = uuid.uuid4()
+
+    monkeypatch.setattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True, raising=False)
+    monkeypatch.setattr(settings, "CHAT_ALLOW_OPEN_SCOPE", False, raising=False)
+    monkeypatch.setattr(rag_api.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(rag_api.DatasetService, "get_dataset", lambda *_a, **_k: object(), raising=True)
+    monkeypatch.setattr(rag_api.DatasetService, "assert_dataset_readable", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(rag_api, "_enforce_non_empty_retrieval_scope", lambda *_a, **_k: None, raising=True)
+
+    captured: dict = {}
+
+    def _build_rag_state(**kwargs):  # noqa: ANN003
+        captured.update(kwargs)
+        return dict(kwargs)
+
+    def _run_retrieval(state):  # noqa: ANN001
+        return {"citations": [], "metrics": {}, "query_for_retrieval": state.get("question") or ""}
+
+    import app.rag.pipelines.langgraph as lg_mod
+    import app.rag.retrieval.orchestrator as orch_mod
+
+    monkeypatch.setattr(lg_mod, "build_rag_state", _build_rag_state, raising=True)
+    monkeypatch.setattr(orch_mod, "run_retrieval", _run_retrieval, raising=True)
+
+    response = await rag_api.retrieve_preview(
+        body=rag_api.RetrievePreviewRequest(
+            query="社保卡在哪里办理",
+            dataset_ids=[ds1, ds2],
+            rag_config=ChatRAGConfig(top_k=10, score_threshold=0.35),
+        ),
+        tenant_id=uuid.uuid4(),
+        account_id="u",
+        db=None,
+    )
+
+    assert captured.get("dataset_id") is None
+    assert captured.get("document_ids") is None
+    assert captured.get("metadata_filter") == {"dataset_id": {"$in": [str(ds1), str(ds2)]}}
+    assert response.metrics["scope_dataset_ids"] == [str(ds1), str(ds2)]
+
+
+@pytest.mark.asyncio
+async def test_retrieve_evidence_accepts_dataset_ids_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.rag as rag_api
+    from app.api.schemas.chat import ChatRAGConfig
+    from app.core.config import settings
+
+    ds1 = uuid.uuid4()
+    ds2 = uuid.uuid4()
+
+    monkeypatch.setattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True, raising=False)
+    monkeypatch.setattr(settings, "CHAT_ALLOW_OPEN_SCOPE", False, raising=False)
+    monkeypatch.setattr(rag_api.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(rag_api.DatasetService, "get_dataset", lambda *_a, **_k: object(), raising=True)
+    monkeypatch.setattr(rag_api.DatasetService, "assert_dataset_readable", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(rag_api, "_enforce_non_empty_retrieval_scope", lambda *_a, **_k: None, raising=True)
+
+    captured: dict = {}
+
+    def _build_rag_state(**kwargs):  # noqa: ANN003
+        captured.update(kwargs)
+        return dict(kwargs)
+
+    def _run_retrieval(state):  # noqa: ANN001
+        return {
+            "citations": [{"document_id": "doc-1", "content": "命中"}],
+            "metrics": {},
+            "query_for_retrieval": state.get("question") or "",
+        }
+
+    import app.rag.pipelines.langgraph as lg_mod
+    import app.rag.retrieval.orchestrator as orch_mod
+
+    monkeypatch.setattr(lg_mod, "build_rag_state", _build_rag_state, raising=True)
+    monkeypatch.setattr(orch_mod, "run_retrieval", _run_retrieval, raising=True)
+
+    response = await rag_api.retrieve_evidence(
+        body=rag_api.EvidenceRetrieveRequest(
+            query="社保卡在哪里办理",
+            dataset_ids=[ds1, ds2],
+            rag_config=ChatRAGConfig(top_k=10, score_threshold=0.35),
+        ),
+        tenant_id=uuid.uuid4(),
+        account_id="u",
+        db=None,
+    )
+
+    assert captured.get("dataset_id") is None
+    assert captured.get("document_ids") is None
+    assert captured.get("metadata_filter") == {"dataset_id": {"$in": [str(ds1), str(ds2)]}}
+    assert response.metrics["scope_dataset_ids"] == [str(ds1), str(ds2)]
+    assert response.has_evidence is True
+
+
+@pytest.mark.asyncio
 async def test_retrieve_preview_offloads_blocking_retrieval(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.api.v1.rag as rag_api
     from app.api.schemas.chat import ChatRAGConfig

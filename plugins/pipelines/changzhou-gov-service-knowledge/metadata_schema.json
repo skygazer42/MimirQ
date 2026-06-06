@@ -118,6 +118,14 @@
       "max_length": 300
     },
     {
+      "name": "case_title_raw",
+      "type": "string",
+      "required": false,
+      "stages": ["governance", "chunk"],
+      "display": true,
+      "max_length": 300
+    },
+    {
       "name": "case_key",
       "type": "string",
       "required": false,
@@ -144,6 +152,14 @@
       "stages": ["chunk"],
       "display": true,
       "max_length": 120
+    },
+    {
+      "name": "retrieval_intents",
+      "type": "array",
+      "required": false,
+      "stages": ["chunk"],
+      "display": true,
+      "evaluable": true
     },
     {
       "name": "related_services",
@@ -201,6 +217,15 @@
       "evaluable": true
     },
     {
+      "name": "primary_alias",
+      "type": "string",
+      "required": false,
+      "stages": ["governance", "chunk"],
+      "display": true,
+      "evaluable": true,
+      "max_length": 1000
+    },
+    {
       "name": "keywords",
       "type": "array",
       "required": false,
@@ -244,6 +269,24 @@
       "filterable": true,
       "display": true,
       "max_length": 300
+    },
+    {
+      "name": "valid_from",
+      "type": "string",
+      "required": false,
+      "stages": ["governance", "chunk"],
+      "display": true,
+      "evaluable": true,
+      "max_length": 120
+    },
+    {
+      "name": "valid_to",
+      "type": "string",
+      "required": false,
+      "stages": ["governance", "chunk"],
+      "display": true,
+      "evaluable": true,
+      "max_length": 120
     },
     {
       "name": "source_topic",

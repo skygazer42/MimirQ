@@ -1,47 +1,47 @@
 {
   "plugin_id": "changzhou-gov-service-knowledge",
   "version": "1.0.0",
-  "package_hash": "c7059a17213322ed41ccfcaa93e8d00a533676703156ad27a92c474a02358d86",
-  "tested_at": "2026-06-06T03:25:13.043137+00:00",
+  "package_hash": "18c08573d3239818c4fa03852406fcb07c67072fe70ce66a6d56e0e7d3ad8194",
+  "tested_at": "2026-06-06T17:19:31.543673+00:00",
   "passed": true,
   "stages": {
     "governance": {
       "passed": true,
-      "input_count": 7,
-      "output_count": 7,
-      "output_chars": 757,
+      "input_count": 8,
+      "output_count": 8,
+      "output_chars": 959,
       "metadata_validation": {
         "ok": true,
-        "checked": 7,
+        "checked": 8,
         "errors": []
       }
     },
     "chunk": {
       "passed": true,
-      "input_count": 7,
-      "output_count": 8,
-      "output_chars": 764,
+      "input_count": 8,
+      "output_count": 11,
+      "output_chars": 1555,
       "metadata_validation": {
         "ok": true,
-        "checked": 8,
+        "checked": 11,
         "errors": []
       }
     },
     "kg": {
       "passed": true,
-      "input_count": 8,
-      "output_count": 8,
-      "output_chars": 764,
+      "input_count": 11,
+      "output_count": 11,
+      "output_chars": 1555,
       "kg_validation": {
         "ok": true,
-        "checked": 8,
+        "checked": 11,
         "errors": []
       }
     }
   },
   "golden_draft": {
     "passed": true,
-    "items_total": 11,
+    "items_total": 20,
     "sample_questions": [
       "社会保障卡补卡需要什么材料？",
       "社会保障卡补卡在哪里办理？",

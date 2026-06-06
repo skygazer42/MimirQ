@@ -9,7 +9,7 @@
   "golden_rules": "golden_rules.json",
   "processing_templates": "processing_templates.json",
   "suggested_pipeline_patch": {
-    "governance_enabled": true,
+    "governance_enabled": false,
     "chunk_python_params": {
       "max_record_chars": 1500
     },
