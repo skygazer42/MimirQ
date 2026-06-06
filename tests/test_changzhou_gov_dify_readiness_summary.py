@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -114,3 +115,25 @@ def test_build_readiness_summary_marks_failed_source() -> None:
     )
 
     assert summary["summary"] == {"passed": False, "failed_stages": ["external_probe"], "stage_count": 2}
+
+
+def test_main_writes_failed_summary_when_input_artifacts_are_missing(tmp_path: Path) -> None:
+    mod = _load_module()
+    out = tmp_path / "readiness.json"
+
+    rc = mod.main(
+        [
+            "--external-probe",
+            str(tmp_path / "missing-probe.json"),
+            "--full-summary",
+            str(tmp_path / "missing-full.json"),
+            "--out",
+            str(out),
+        ]
+    )
+
+    assert rc == 1
+    report = json.loads(out.read_text(encoding="utf-8"))
+    assert report["summary"] == {"passed": False, "failed_stages": ["external_probe", "full_gate"], "stage_count": 2}
+    assert report["external_probe"]["passed"] is False
+    assert report["full_gate"]["passed"] is False
