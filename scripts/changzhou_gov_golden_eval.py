@@ -13,7 +13,7 @@ import json
 import os
 import sys
 import unicodedata
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -45,7 +45,7 @@ def _text(value: Any) -> str:
 
 
 def _utc_now_text() -> str:
-    return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def _normalize_quality_text(value: Any) -> str:
