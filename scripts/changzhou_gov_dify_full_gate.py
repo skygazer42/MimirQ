@@ -13,6 +13,7 @@ import json
 import os
 import sys
 from collections.abc import Callable, Mapping
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -62,6 +63,10 @@ _CONSOLE_LOGIN_HINT = (
 
 def _text(value: Any) -> str:
     return str(value or "").strip()
+
+
+def _utc_now_text() -> str:
+    return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def _format_cli_error(exc: Exception) -> str:
@@ -281,7 +286,12 @@ def write_stage_artifacts(
     return artifacts
 
 
-def compact_summary(report: dict[str, Any], *, artifacts: dict[str, str] | None = None) -> dict[str, Any]:
+def compact_summary(
+    report: dict[str, Any],
+    *,
+    artifacts: dict[str, str] | None = None,
+    generated_at: str = "",
+) -> dict[str, Any]:
     stages: dict[str, Any] = {}
     for name, stage in (report.get("stages") or {}).items():
         if not isinstance(stage, dict):
@@ -293,6 +303,7 @@ def compact_summary(report: dict[str, Any], *, artifacts: dict[str, str] | None 
     clean_artifacts = {key: value for key, value in (artifacts or {}).items() if _text(value)}
     return {
         "schema": "mimirq.changzhou_gov_service_knowledge.dify_full_gate.summary.v1",
+        "generated_at": _text(generated_at) or _utc_now_text(),
         "summary": report.get("summary") if isinstance(report.get("summary"), dict) else {},
         "artifacts": clean_artifacts,
         "stages": stages,

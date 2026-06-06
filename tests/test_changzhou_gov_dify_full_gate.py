@@ -259,10 +259,12 @@ def test_compact_summary_keeps_stage_metrics_and_artifact_paths_without_full_rep
             "eval": "/tmp/eval.json",
             "trace": "",
         },
+        generated_at="2026-06-07T01:02:03Z",
     )
 
     assert summary == {
         "schema": "mimirq.changzhou_gov_service_knowledge.dify_full_gate.summary.v1",
+        "generated_at": "2026-06-07T01:02:03Z",
         "summary": {"passed": True, "failed_stages": [], "stage_count": 4},
         "artifacts": {
             "full": "/tmp/full.json",
