@@ -289,6 +289,8 @@ changzhou-dify-external-probe:
 changzhou-dify-readiness-gate: CHANGZHOU_DIFY_EFFECTIVE_EXTRA_ARGS = $(CHANGZHOU_DIFY_EXTRA_ARGS) $(CHANGZHOU_DIFY_READINESS_EXTRA_ARGS)
 changzhou-dify-readiness-gate:
 	@set +e; \
+	rm -f "$(CHANGZHOU_DIFY_PROBE_OUT)" "$(CHANGZHOU_DIFY_OUT_PREFIX).json" "$(CHANGZHOU_DIFY_OUT_PREFIX)_answers.json" \
+		"$(CHANGZHOU_DIFY_OUT_PREFIX)_eval.json" "$(CHANGZHOU_DIFY_OUT_PREFIX)_trace.json" "$(CHANGZHOU_DIFY_OUT_PREFIX)_summary.json" "$(CHANGZHOU_DIFY_READINESS_OUT)"; \
 	$(MAKE) changzhou-dify-external-probe; probe_rc=$$?; \
 	if [ $$probe_rc -eq 0 ]; then \
 		$(MAKE) changzhou-dify-full-gate CHANGZHOU_DIFY_EFFECTIVE_EXTRA_ARGS="$(CHANGZHOU_DIFY_EXTRA_ARGS) $(CHANGZHOU_DIFY_READINESS_EXTRA_ARGS)"; full_rc=$$?; \
