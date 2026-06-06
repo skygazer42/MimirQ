@@ -72,6 +72,34 @@ def test_check_storage_state_reports_valid_expiring_and_expired_tokens(tmp_path:
     assert mod.check_storage_state(storage_state=expiring_state, min_ttl_seconds=600)["valid"] is False
     assert mod.check_storage_state(storage_state=expiring_state, min_ttl_seconds=600)["reason"] == "token_expires_soon"
     assert mod.check_storage_state(storage_state=expired_state, min_ttl_seconds=600)["reason"] == "token_expired"
+    assert mod.check_storage_state(storage_state=expired_state, min_ttl_seconds=600)["min_ttl_seconds"] == 600
+
+
+def test_check_cli_writes_out_report_without_token(tmp_path: Path) -> None:
+    now = int(time.time())
+    state = tmp_path / "state.json"
+    out = tmp_path / "check.json"
+    state.write_text(
+        json.dumps(
+            mod.build_storage_state(
+                console_origin="https://dify.example.com:3000",
+                console_token=_jwt_with_exp(now + 60),
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    rc = mod.main(["--check", "--storage-state", str(state), "--min-ttl-seconds", "600", "--out", str(out)])
+
+    assert rc == 1
+    report = json.loads(out.read_text(encoding="utf-8"))
+    assert report["valid"] is False
+    assert report["reason"] == "token_expires_soon"
+    assert report["generated_at"]
+    assert report["ttl_seconds"] <= 60
+    assert "hint" in report
+    assert "console_token" not in out.read_text(encoding="utf-8")
+    assert "not-a-jwt" not in out.read_text(encoding="utf-8")
 
 
 def test_check_storage_state_handles_missing_malformed_and_non_jwt_state(tmp_path: Path) -> None:

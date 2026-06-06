@@ -59,10 +59,12 @@ def test_build_readiness_summary_combines_probe_and_full_gate() -> None:
 
     summary = mod.build_readiness_summary(
         knowledge_map={"summary": {"passed": True, "failed_conditions": [], "route_count": 7}},
+        console_auth={"valid": True, "reason": "ok", "ttl_seconds": 1800, "min_ttl_seconds": 900},
         external_probe=external_probe,
         full_gate_summary=full_gate,
         artifacts={
             "knowledge_map": "/tmp/map.json",
+            "console_auth": "/tmp/auth.json",
             "external_probe": "/tmp/probe.json",
             "full_gate": "/tmp/full_summary.json",
         },
@@ -72,13 +74,15 @@ def test_build_readiness_summary_combines_probe_and_full_gate() -> None:
     assert summary == {
         "schema": "mimirq.changzhou_gov_service_knowledge.dify_readiness_summary.v1",
         "generated_at": "2026-06-07T01:02:03Z",
-        "summary": {"passed": True, "failed_stages": [], "stage_count": 3},
+        "summary": {"passed": True, "failed_stages": [], "stage_count": 4},
         "artifacts": {
             "knowledge_map": "/tmp/map.json",
+            "console_auth": "/tmp/auth.json",
             "external_probe": "/tmp/probe.json",
             "full_gate": "/tmp/full_summary.json",
         },
         "knowledge_map": {"passed": True, "failed_conditions": [], "summary": {"passed": True, "failed_conditions": [], "route_count": 7}},
+        "console_auth": {"passed": True, "reason": "ok", "ttl_seconds": 1800, "min_ttl_seconds": 900},
         "external_probe": {
             "passed": True,
             "failed_conditions": [],
@@ -122,13 +126,24 @@ def test_build_readiness_summary_marks_failed_source() -> None:
 
     summary = mod.build_readiness_summary(
         knowledge_map={"summary": {"passed": False, "failed_conditions": ["route_missing:经开区"]}},
+        console_auth={"valid": False, "reason": "token_expires_soon", "ttl_seconds": 500, "min_ttl_seconds": 900},
         external_probe={"gate": {"passed": False, "failed_conditions": ["endpoint_host_is_local"]}},
         full_gate_summary={"summary": {"passed": True, "failed_stages": []}},
         artifacts={},
         generated_at="2026-06-07T01:02:03Z",
     )
 
-    assert summary["summary"] == {"passed": False, "failed_stages": ["knowledge_map", "external_probe"], "stage_count": 3}
+    assert summary["summary"] == {
+        "passed": False,
+        "failed_stages": ["knowledge_map", "console_auth", "external_probe"],
+        "stage_count": 4,
+    }
+    assert summary["console_auth"] == {
+        "passed": False,
+        "reason": "token_expires_soon",
+        "ttl_seconds": 500,
+        "min_ttl_seconds": 900,
+    }
 
 
 def test_main_writes_failed_summary_when_input_artifacts_are_missing(tmp_path: Path) -> None:
@@ -139,6 +154,8 @@ def test_main_writes_failed_summary_when_input_artifacts_are_missing(tmp_path: P
         [
             "--knowledge-map",
             str(tmp_path / "missing-map.json"),
+            "--console-auth",
+            str(tmp_path / "missing-auth.json"),
             "--external-probe",
             str(tmp_path / "missing-probe.json"),
             "--full-summary",
@@ -152,10 +169,11 @@ def test_main_writes_failed_summary_when_input_artifacts_are_missing(tmp_path: P
     report = json.loads(out.read_text(encoding="utf-8"))
     assert report["summary"] == {
         "passed": False,
-        "failed_stages": ["knowledge_map", "external_probe", "full_gate"],
-        "stage_count": 3,
+        "failed_stages": ["knowledge_map", "console_auth", "external_probe", "full_gate"],
+        "stage_count": 4,
     }
     assert report["knowledge_map"]["passed"] is False
+    assert report["console_auth"]["passed"] is False
     assert report["external_probe"]["passed"] is False
     assert report["full_gate"]["passed"] is False
 
@@ -165,6 +183,7 @@ def test_main_collects_artifact_generated_at_values(tmp_path: Path) -> None:
     external_probe = tmp_path / "external.json"
     full_summary = tmp_path / "full_summary.json"
     knowledge_map = tmp_path / "map.json"
+    console_auth = tmp_path / "auth.json"
     answers = tmp_path / "answers.json"
     eval_report = tmp_path / "eval.json"
     trace = tmp_path / "trace.json"
@@ -172,6 +191,10 @@ def test_main_collects_artifact_generated_at_values(tmp_path: Path) -> None:
 
     knowledge_map.write_text(
         json.dumps({"generated_at": "2026-06-07T00:59:00Z", "summary": {"passed": True, "failed_conditions": []}}),
+        encoding="utf-8",
+    )
+    console_auth.write_text(
+        json.dumps({"generated_at": "2026-06-07T00:59:30Z", "valid": True, "reason": "ok", "ttl_seconds": 1800}),
         encoding="utf-8",
     )
     external_probe.write_text(
@@ -192,6 +215,8 @@ def test_main_collects_artifact_generated_at_values(tmp_path: Path) -> None:
             str(external_probe),
             "--knowledge-map",
             str(knowledge_map),
+            "--console-auth",
+            str(console_auth),
             "--full-summary",
             str(full_summary),
             "--answers",
@@ -209,6 +234,7 @@ def test_main_collects_artifact_generated_at_values(tmp_path: Path) -> None:
     report = json.loads(out.read_text(encoding="utf-8"))
     assert report["artifact_generated_at"] == {
         "knowledge_map": "2026-06-07T00:59:00Z",
+        "console_auth": "2026-06-07T00:59:30Z",
         "external_probe": "2026-06-07T01:00:00Z",
         "answers": "2026-06-07T01:01:00Z",
         "eval": "2026-06-07T01:02:00Z",
