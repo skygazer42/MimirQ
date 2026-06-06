@@ -62,12 +62,15 @@ class _FakeQuery:
 
 
 class _FakeDB:
-    def __init__(self, *, run, cases):
+    def __init__(self, *, run, cases, document_rows=None, document_chunks=None):
         self._run = run
         self._cases = cases
+        self._document_rows = list(document_rows or [])
+        self._document_chunks = list(document_chunks or [])
         self.added = []
 
-    def query(self, model):  # noqa: ANN001
+    def query(self, *models):  # noqa: ANN002
+        model = models[0] if models else None
         name = getattr(model, "__name__", str(model))
         if name == "RagasRegressionRun":
             return _FakeQuery(self._run)
@@ -75,6 +78,17 @@ class _FakeDB:
             return _FakeQuery(self._cases)
         if name == "RagasRegressionItem":
             return _FakeQuery(None)
+        if name == "DocumentChunk":
+            return _FakeQuery(self._document_chunks)
+        if any("Document." in str(model) for model in models):
+            if models:
+                width = max(1, len(models))
+                rows = [
+                    tuple(row[:width]) if isinstance(row, tuple) else row
+                    for row in self._document_rows
+                ]
+                return _FakeQuery(rows)
+            return _FakeQuery(self._document_rows)
         raise AssertionError(f"unexpected model in query(): {name}")
 
     def add(self, obj) -> None:  # noqa: ANN001
@@ -102,8 +116,19 @@ class _FakeCase:
     def __init__(self, *, case_id: UUID, question: str):
         self.id = case_id
         self.question = question
+        self.expected_answer = None
+        self.reference_sources = []
+        self.extra = {}
         self.updated_at = None
         self.dataset_id = None
+
+
+class _FakeChunk:
+    def __init__(self, *, chunk_id: UUID, document_id: UUID, content: str, doc_metadata: dict):
+        self.id = chunk_id
+        self.document_id = document_id
+        self.content = content
+        self.doc_metadata = doc_metadata
 
 
 def test_regression_eval_supports_retrieval_only_mode(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -165,12 +190,205 @@ def test_regression_eval_supports_retrieval_only_mode(monkeypatch: pytest.Monkey
         rag_params={},
     )
 
-    assert run.status == "completed"
+    assert run.status == "completed", run.error_message
     assert run.metrics == []
     assert run.summary.get("retrieval_recall") == pytest.approx(1.0)
     assert run.summary.get("retrieval_hit_at_10") == pytest.approx(1.0)
     assert run.summary.get("retrieval_hit_at_20") == pytest.approx(1.0)
     assert (run.params or {}).get("mode") == "retrieval_only"
+
+
+def test_regression_eval_retrieval_only_scores_plugin_expected_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.rag.evaluation import ragas as mod
+
+    run = _FakeRun()
+    document_id = uuid4()
+    chunk_id = uuid4()
+    case = _FakeCase(case_id=uuid4(), question="Alpha onboarding requires what action?")
+    case.expected_answer = "Complete identity proofing before activation."
+    case.reference_sources = [
+        {
+            "document_id": str(document_id),
+            "chunk_id": str(chunk_id),
+            "quote": "Complete identity proofing before activation.",
+        }
+    ]
+    case.extra = {
+        "source": "plugin_golden_draft",
+        "plugin_id": "demo-runtime-plugin",
+        "plugin_ref": "plugin:demo-runtime-plugin@1.0.0:chunk",
+        "expected_metadata": {
+            "source_record_id": "record-1",
+            "business_type": "demo_case",
+            "chunk_kind": "demo_record_full",
+        },
+    }
+    fake_db = _FakeDB(
+        run=run,
+        cases=[case],
+        document_rows=[
+            (
+                document_id,
+                "txt",
+                "inherit",
+                {"source_path": "fixtures/demo-runtime-records.txt"},
+            )
+        ],
+    )
+
+    monkeypatch.setattr(mod, "SessionLocal", lambda: fake_db)
+    monkeypatch.setattr(mod.DatasetService, "ensure_member", lambda *_args, **_kwargs: None)
+
+    dataset_id = uuid4()
+    monkeypatch.setattr(mod, "_resolve_case_scope", lambda **_kwargs: ([], dataset_id))
+    monkeypatch.setattr(mod, "_extract_contexts", lambda **_kwargs: ["Complete identity proofing before activation."])
+
+    import app.rag.pipelines.langgraph as langgraph
+
+    monkeypatch.setattr(langgraph, "build_rag_state", lambda **kwargs: {"question": kwargs.get("question", "")})
+    monkeypatch.setattr(
+        langgraph,
+        "_retrieve_node",
+        lambda _state: {
+            "citations": [
+                {
+                    "document_id": str(document_id),
+                    "chunk_id": str(chunk_id),
+                    "metadata": {
+                        "_evaluable_metadata": {
+                            "source_record_id": "record-1",
+                            "business_type": "demo_case",
+                            "chunk_kind": "demo_record_full",
+                        },
+                    },
+                }
+            ],
+            "metrics": {},
+        },
+    )
+
+    mod.run_regression_ragas_evaluation(
+        run_id=uuid4(),
+        tenant_id=uuid4(),
+        account_id="acct",
+        case_ids=[case.id],
+        dataset_id=dataset_id,
+        metric_names=[],
+        skip_empty_contexts=False,
+        max_cases=10,
+        rag_params={},
+    )
+
+    assert run.status == "completed", run.error_message
+    assert run.summary["expected_metadata_hit_rate"] == pytest.approx(1.0)
+    assert run.summary["expected_metadata_recall"] == pytest.approx(1.0)
+    assert run.summary["expected_metadata_cases_total"] == 1
+    assert run.summary["expected_metadata_fields_total"] == 3
+    assert run.summary["expected_metadata_fields_matched"] == 3
+    saved_items = [item for item in fake_db.added if getattr(item, "case_id", None) == case.id]
+    assert len(saved_items) == 1
+    assert saved_items[0].meta["expected_metadata_hit"] is True
+    assert saved_items[0].meta["expected_metadata_missing_keys"] == []
+
+
+def test_regression_eval_enriches_retrieved_chunk_metadata_for_plugin_expected_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.rag.evaluation import ragas as mod
+
+    run = _FakeRun()
+    tenant_id = uuid4()
+    document_id = uuid4()
+    chunk_id = uuid4()
+    case = _FakeCase(case_id=uuid4(), question="Alpha onboarding requires what action?")
+    case.expected_answer = "Complete identity proofing before activation."
+    case.reference_sources = [
+        {
+            "document_id": str(document_id),
+            "chunk_id": str(chunk_id),
+            "quote": "Complete identity proofing before activation.",
+        }
+    ]
+    case.extra = {
+        "source": "plugin_golden_draft",
+        "plugin_ref": "plugin:demo-runtime-plugin@1.0.0:chunk",
+        "expected_metadata": {
+            "source_record_id": "record-1",
+            "business_type": "demo_case",
+            "chunk_kind": "demo_record_full",
+            "pipeline_hash": "hash-1",
+        },
+    }
+    chunk = _FakeChunk(
+        chunk_id=chunk_id,
+        document_id=document_id,
+        content="Complete identity proofing before activation.",
+        doc_metadata={
+            "_evaluable_metadata": {
+                "source_record_id": "record-1",
+                "business_type": "demo_case",
+                "chunk_kind": "demo_record_full",
+            },
+            "pipeline_hash": "hash-1",
+            "plugin_private_fields": {
+                "large_payload_that_should_not_be_required_for_scoring": ["x"] * 100,
+            },
+        },
+    )
+    dataset_id = uuid4()
+    fake_db = _FakeDB(
+        run=run,
+        cases=[case],
+        document_rows=[(document_id, dataset_id, "inherit", "acct")],
+        document_chunks=[chunk],
+    )
+
+    monkeypatch.setattr(mod, "SessionLocal", lambda: fake_db)
+    monkeypatch.setattr(mod.DatasetService, "ensure_member", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(mod, "get_allowed_document_id_sets", lambda *_args, **_kwargs: ({document_id}, set()))
+
+    monkeypatch.setattr(mod, "_resolve_case_scope", lambda **_kwargs: ([], dataset_id))
+
+    import app.rag.pipelines.langgraph as langgraph
+
+    monkeypatch.setattr(langgraph, "build_rag_state", lambda **kwargs: {"question": kwargs.get("question", "")})
+    monkeypatch.setattr(
+        langgraph,
+        "_retrieve_node",
+        lambda _state: {
+            "citations": [
+                {
+                    "document_id": str(document_id),
+                    "chunk_id": str(chunk_id),
+                }
+            ],
+            "metrics": {},
+        },
+    )
+
+    mod.run_regression_ragas_evaluation(
+        run_id=uuid4(),
+        tenant_id=tenant_id,
+        account_id="acct",
+        case_ids=[case.id],
+        dataset_id=dataset_id,
+        metric_names=[],
+        skip_empty_contexts=False,
+        max_cases=10,
+        rag_params={},
+    )
+
+    assert run.status == "completed", run.error_message
+    assert run.summary["expected_metadata_hit_rate"] == pytest.approx(1.0)
+    assert run.summary["expected_metadata_recall"] == pytest.approx(1.0)
+    assert run.summary["expected_metadata_fields_total"] == 4
+    assert run.summary["expected_metadata_fields_matched"] == 4
+    saved_items = [item for item in fake_db.added if getattr(item, "case_id", None) == case.id]
+    assert len(saved_items) == 1
+    saved_citation = saved_items[0].citations[0]
+    assert saved_citation["metadata"]["source_record_id"] == "record-1"
+    assert saved_citation["metadata"]["_evaluable_metadata"]["chunk_kind"] == "demo_record_full"
+    assert "plugin_private_fields" not in saved_citation["metadata"]
 
 
 def test_regression_eval_passes_extended_runtime_knobs_to_build_rag_state(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -228,6 +446,13 @@ def test_regression_eval_passes_extended_runtime_knobs_to_build_rag_state(monkey
             "query_rewrite_strategy": "kb_followup.v2",
             "query_rewrite_temperature": 0.3,
             "query_rewrite_max_chars": 180,
+            "enable_hierarchy_recall": True,
+            "hierarchy_family_collapse": True,
+            "hierarchy_family_aggregation": "combined",
+            "hierarchy_tree_dedup": True,
+            "hierarchy_parent_depth": 1,
+            "hierarchy_sibling_window": 2,
+            "hierarchy_overfetch_factor": 4,
             "sparse_retrieval_enabled": True,
             "sparse_retrieval_provider": "splade",
             "fusion_strategy": "weighted",
@@ -249,6 +474,13 @@ def test_regression_eval_passes_extended_runtime_knobs_to_build_rag_state(monkey
     assert captured[0]["query_rewrite_strategy"] == "kb_followup.v2"
     assert captured[0]["query_rewrite_temperature"] == pytest.approx(0.3)
     assert captured[0]["query_rewrite_max_chars"] == 180
+    assert captured[0]["enable_hierarchy_recall"] is True
+    assert captured[0]["hierarchy_family_collapse"] is True
+    assert captured[0]["hierarchy_family_aggregation"] == "combined"
+    assert captured[0]["hierarchy_tree_dedup"] is True
+    assert captured[0]["hierarchy_parent_depth"] == 1
+    assert captured[0]["hierarchy_sibling_window"] == 2
+    assert captured[0]["hierarchy_overfetch_factor"] == 4
     assert captured[0]["sparse_retrieval_enabled"] is True
     assert captured[0]["sparse_retrieval_provider"] == "splade"
     assert captured[0]["fusion_strategy"] == "weighted"

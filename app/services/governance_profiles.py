@@ -11,11 +11,9 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from pydantic import ValidationError
-
-from app.api.schemas.document import DocumentPipelineOptions
 from app.api.schemas.governance_profile import GovernanceProfileOut, GovernanceProfilePayload, RegexRuleModel
 from app.core.regex_safety import DEFAULT_ALLOWED_FLAG_BITS, validate_regex_rules
+from app.services.pipeline_patch_validator import normalize_document_pipeline_patch
 
 PROFILE_KEY_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.:\-]{0,99}$")
 MAX_PROFILE_RULES = 60
@@ -42,25 +40,11 @@ def validate_profile_key(key: str | None) -> str | None:
 
 
 def _normalize_pipeline_patch(raw: object) -> dict:
-    if raw is None:
-        return {}
-    if not isinstance(raw, dict):
-        raise ValueError("payload.pipeline_patch must be an object")
-
-    allowed = set(DocumentPipelineOptions.model_fields.keys())
-    unknown = [k for k in raw.keys() if k not in allowed]
-    if unknown:
-        unknown_sorted = ", ".join(sorted(map(str, unknown))[:20])
-        raise ValueError(f"payload.pipeline_patch contains unknown keys: {unknown_sorted}")
-
-    try:
-        validated = DocumentPipelineOptions(**raw)
-    except ValidationError as exc:
-        # Keep message short for API consumers.
-        raise ValueError("invalid payload.pipeline_patch") from exc
-
-    # Store only explicit overrides.
-    return validated.model_dump(exclude_none=True)
+    return normalize_document_pipeline_patch(
+        raw,
+        field_label="payload.pipeline_patch",
+        invalid_message="invalid payload.pipeline_patch",
+    )
 
 
 def _normalize_regex_rules(raw: object) -> list[dict]:

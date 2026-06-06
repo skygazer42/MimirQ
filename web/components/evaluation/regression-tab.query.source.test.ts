@@ -17,6 +17,11 @@ describe('regression tab query convergence', () => {
     expect(src).toContain(
       'queryKey: queryKeys.evaluations.regressionRunDetail(selectedRunId, {'
     )
+    expect(src).toContain("const deepLinkDatasetId = searchParams.get('dataset_id') || ''")
+    expect(src).toContain("const deepLinkRunId = searchParams.get('run_id') || ''")
+    expect(src).toContain('setSelectedDatasetId(deepLinkDatasetId)')
+    expect(src).toContain('setSelectedRunId(deepLinkRunId)')
+    expect(src).toContain('selectedRunId === deepLinkRunId')
     expect(src).toContain('refetchInterval: (query) => {')
     expect(src).not.toContain('const loadRuns = useCallback(async () => {')
     expect(src).not.toContain('detachPromise(loadRuns())')

@@ -5,6 +5,7 @@ from uuid import uuid4
 from app.api.schemas.regression import (
     RagasRegressionCaseBundleItem,
     RagasRegressionCaseCreateRequest,
+    RagasRegressionCaseImportResponse,
     RagasRegressionCasePatchRequest,
 )
 
@@ -42,3 +43,32 @@ def test_regression_bundle_item_keeps_multihop_fields() -> None:
     )
     assert item.reasoning_hops == ["a", "b"]
     assert len(item.evidence_chain) == 1
+
+
+def test_regression_bundle_item_keeps_plugin_extra_metadata() -> None:
+    item = RagasRegressionCaseBundleItem(
+        question="q",
+        reference_sources=[{"document_id": str(uuid4()), "chunk_id": str(uuid4())}],
+        extra={
+            "source": "plugin_golden_draft",
+            "plugin_id": "demo-runtime-plugin",
+            "expected_metadata": {"source_record_id": "record-1", "chunk_kind": "demo_record_full"},
+        },
+    )
+
+    assert item.extra["expected_metadata"]["source_record_id"] == "record-1"
+
+
+def test_regression_case_import_response_exposes_runnable_case_ids() -> None:
+    created_id = uuid4()
+    updated_id = uuid4()
+
+    res = RagasRegressionCaseImportResponse(
+        created=1,
+        updated=1,
+        created_case_ids=[created_id],
+        updated_case_ids=[updated_id],
+        case_ids=[created_id, updated_id],
+    )
+
+    assert res.case_ids == [created_id, updated_id]

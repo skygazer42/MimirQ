@@ -1,0 +1,47 @@
+[
+  {
+    "page_content": "[事项名称：社会保障卡补卡]\n行使层级：市级\n办理形式：窗口办理,网上办理\n办理地点：常州市政务服务中心\n受理条件：已办理社会保障卡正式挂失的持卡人。\n办理材料：1、居民身份证件（必要）\n在线办理地址：**<http://cz.jszwfw.gov.cn/item?utm_source=x&webId=5>**\n==##相似问法：补办社保卡、社保卡丢失##==",
+    "metadata": {
+      "source": "/path/to/gov-service-knowledge/01政务服务事项知识/经开区事项清单.txt"
+    }
+  },
+  {
+    "page_content": "问题：[住宅专项维修资金的交存标准是多少？]\n答案：配备电梯的，由业主按建筑面积每平方米120元标准交存。\n来源部门：常州经济开发区建设局",
+    "metadata": {
+      "source": "/path/to/gov-service-knowledge/06各区常见问题/经开区12345QA.txt"
+    }
+  },
+  {
+    "page_content": "[残疾人服务“一件事”]\n==##关键字：残疾证、残疾人补贴##==\n涉及事项\n残疾人证新办、困难残疾人生活补贴\n办理须知\n01残疾人证办理\n申请人应为江苏省户籍。",
+    "metadata": {
+      "source": "/path/to/gov-service-knowledge/02高效办成一件事/一件事指南.txt"
+    }
+  },
+  {
+    "page_content": "Excel: 常州市高频应用知识.xlsx\nSheets: 高频应用\n\n## Sheet: 高频应用\n\n| 问题 | 相似问法 | 答案 |\n| --- | --- | --- |\n| 汽车置换更新 | 以旧换新、购车补贴 | 汽车置换更新可在苏服办 APP 申请，也可查看 https://example.gov.cn/car-subsidy |",
+    "metadata": {
+      "source": "/path/to/gov-service-knowledge/03常州市常见问题/常州市高频应用知识.xlsx",
+      "file_type": "xlsx"
+    }
+  },
+  {
+    "page_content": "问题：[小学入学需要哪些材料？]\n==##关键字：小学入学、报名材料##==\n==##相似问：幼升小报名材料、上小学资料##==\n答案：凭户口簿、合法固定住所证件办理。点击查看相关通知：**<https://www.changzhou.gov.cn/gi_news/706177908756753>**\n来源部门：常州市教育局",
+    "metadata": {
+      "source": "/path/to/gov-service-knowledge/04专题常见问答/2026年常州市义务教育学校招生入学常见问题.txt"
+    }
+  },
+  {
+    "page_content": "Excel: 线上业务.xlsx\nSheets: Sheet1\n\n## Sheet: Sheet1\n\n| 问题 | 答案 | 相似问法 | 关键词 | 适用区域 | 办事链接 | 来源部门 |\n| --- | --- | --- | --- | --- | --- | --- |\n| 线上业务渠道 | 可通过常州住房公积金微信公众号、苏服办 APP、江苏政务服务网办理。 | 公积金线上入口、网上办理公积金 | 个人业务 | 常州全市 | https://gjj.changzhou.gov.cn/ | 公积金中心 |",
+    "metadata": {
+      "source": "/path/to/gov-service-knowledge/05业务部门常见问题/公积金知识/线上业务.xlsx",
+      "file_type": "xlsx"
+    }
+  },
+  {
+    "page_content": "【常州应急】常见问题解答\n用户管理\n企业员工密码输入错误5次，无法再输入密码。\n答：企业可通过重置密码，刷新输入限制次数。",
+    "metadata": {
+      "source": "/path/to/gov-service-knowledge/05业务部门常见问题/应急局日常问题汇总.docx",
+      "file_type": "docx"
+    }
+  }
+]

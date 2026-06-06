@@ -16,6 +16,7 @@ import {
   type ReactNode,
 } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useSearchParams } from 'next/navigation'
 import { datasetApi, evaluationApi } from '@/lib/api'
 import type {
   Dataset,
@@ -242,6 +243,17 @@ const REGRESSION_CORE_METRIC_KEYS = new Set([
   'faithfulness',
   'response_relevancy',
   'context_precision',
+])
+
+const REGRESSION_SUMMARY_INLINE_KEYS = new Set([
+  'items',
+  'total_tokens',
+  'total_cost',
+  'expected_metadata_hit_rate',
+  'expected_metadata_recall',
+  'expected_metadata_cases_total',
+  'expected_metadata_fields_total',
+  'expected_metadata_fields_matched',
 ])
 
 function RegressionMetricPicker({
@@ -506,9 +518,26 @@ function RegressionMetricGuideCard() {
   )
 }
 
+function finiteNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function formatMetricNumber(value: unknown): string {
+  const numeric = finiteNumber(value)
+  return numeric === null ? '待返回' : numeric.toFixed(3)
+}
+
+function formatInteger(value: unknown): string {
+  const numeric = finiteNumber(value)
+  return numeric === null ? '待返回' : String(Math.trunc(numeric))
+}
+
 export function RegressionTestTab({
   embedded = false,
 }: Readonly<{ embedded?: boolean }>) {
+  const searchParams = useSearchParams()
+  const deepLinkDatasetId = searchParams.get('dataset_id') || ''
+  const deepLinkRunId = searchParams.get('run_id') || ''
   const [showGenerationDialog, setShowGenerationDialog] = useState(false)
 
   // Dataset scope (required by backend for cases and runs)
@@ -571,13 +600,21 @@ export function RegressionTestTab({
     )
   }, [runs, selectedDatasetId])
 
+  useEffect(() => {
+    if (deepLinkDatasetId) setSelectedDatasetId(deepLinkDatasetId)
+    if (deepLinkRunId) setSelectedRunId(deepLinkRunId)
+  }, [deepLinkDatasetId, deepLinkRunId])
+
   // Keep selected run in sync with dataset filtering.
   useEffect(() => {
     if (!selectedDatasetId) return
-    if (selectedRunId && visibleRuns.some((r) => r?.id === selectedRunId))
+    if (
+      selectedRunId &&
+      (visibleRuns.some((r) => r?.id === selectedRunId) || selectedRunId === deepLinkRunId)
+    )
       return
     setSelectedRunId(visibleRuns?.[0]?.id || '')
-  }, [selectedDatasetId, selectedRunId, visibleRuns])
+  }, [deepLinkRunId, selectedDatasetId, selectedRunId, visibleRuns])
 
   useEffect(() => {
     const firstId = datasets[0]?.id
@@ -646,8 +683,7 @@ export function RegressionTestTab({
   const displayMetrics = Object.entries(summary)
     .filter(
       ([k, v]) =>
-        !['items', 'total_tokens', 'total_cost'].includes(k) &&
-        typeof v === 'number'
+        !REGRESSION_SUMMARY_INLINE_KEYS.has(k) && finiteNumber(v) !== null
     )
     .map(([k, v]) => ({ key: k, value: Number(v) }))
   const answerComparisonStatus = displayMetrics.some((m) =>
@@ -659,6 +695,29 @@ export function RegressionTestTab({
     typeof summary.retrieval_recall === 'number'
       ? Number(summary.retrieval_recall).toFixed(3)
       : '待返回'
+  const expectedMetadataHitRate = formatMetricNumber(
+    summary.expected_metadata_hit_rate
+  )
+  const expectedMetadataRecall = formatMetricNumber(
+    summary.expected_metadata_recall
+  )
+  const expectedMetadataFieldsMatched = finiteNumber(
+    summary.expected_metadata_fields_matched
+  )
+  const expectedMetadataFieldsTotal = finiteNumber(
+    summary.expected_metadata_fields_total
+  )
+  const expectedMetadataFieldsText =
+    expectedMetadataFieldsMatched !== null || expectedMetadataFieldsTotal !== null
+      ? `${Math.trunc(expectedMetadataFieldsMatched || 0)}/${Math.trunc(expectedMetadataFieldsTotal || 0)}`
+      : '待返回'
+  const hasExpectedMetadataSummary = [
+    summary.expected_metadata_hit_rate,
+    summary.expected_metadata_recall,
+    summary.expected_metadata_cases_total,
+    summary.expected_metadata_fields_total,
+    summary.expected_metadata_fields_matched,
+  ].some((value) => finiteNumber(value) !== null)
   const multimodalSlices = safeRecord(summary.multimodal_slices)
   const multimodalSliceCounts = safeRecord(multimodalSlices.counts)
   const multimodalSliceEvaluatable = safeRecord(multimodalSlices.evaluatable)
@@ -1191,7 +1250,9 @@ export function RegressionTestTab({
               </div>
             )}
 
-            {displayMetrics.length > 0 || multimodalSliceRows.length > 0 ? (
+            {displayMetrics.length > 0 ||
+            multimodalSliceRows.length > 0 ||
+            hasExpectedMetadataSummary ? (
               <div className="mt-4">
                 {displayMetrics.length > 0 ? (
                   <StatsGrid className="lg:grid-cols-3">
@@ -1219,9 +1280,49 @@ export function RegressionTestTab({
                     value={evidenceRecall}
                     tone="success"
                   />
+                  <RegressionInlineStat
+                    label="业务元数据命中"
+                    value={expectedMetadataHitRate}
+                    tone="success"
+                  />
                   <RegressionInlineStat label="Token" value={summaryTokens} />
                   <RegressionInlineStat label="费用" value={summaryCost} />
                 </div>
+                {hasExpectedMetadataSummary ? (
+                  <div className="mt-3 rounded-2xl border border-emerald-200/80 bg-[linear-gradient(180deg,rgba(236,253,245,0.9)_0%,rgba(255,255,255,0.96)_100%)] p-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-foreground">
+                          业务元数据召回
+                        </div>
+                        <div className="mt-0.5 max-w-2xl text-[11px] leading-5 text-muted-foreground">
+                          由插件 Golden 的 expected_metadata 校验召回结果是否带回
+                          插件声明的期望元数据字段；字段定义来自插件规范，平台只负责统计与展示。
+                        </div>
+                      </div>
+                      <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-medium text-emerald-700">
+                        {formatInteger(summary.expected_metadata_cases_total)} cases
+                      </span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <RegressionInlineStat
+                        label="expected_metadata_hit_rate"
+                        value={expectedMetadataHitRate}
+                        tone="success"
+                      />
+                      <RegressionInlineStat
+                        label="expected_metadata_recall"
+                        value={expectedMetadataRecall}
+                        tone="info"
+                      />
+                      <RegressionInlineStat
+                        label="expected_metadata_fields_matched"
+                        value={expectedMetadataFieldsText}
+                        tone="neutral"
+                      />
+                    </div>
+                  </div>
+                ) : null}
                 {multimodalSliceRows.length ? (
                   <div className="mt-3 rounded-2xl border border-slate-200/80 bg-[linear-gradient(180deg,rgba(248,251,255,0.96)_0%,rgba(255,255,255,0.96)_100%)] p-3">
                     <div className="flex items-center justify-between gap-3">
@@ -1362,7 +1463,7 @@ export function RegressionTestTab({
                 <div className="mt-1.5 text-[11px] leading-5 text-muted-foreground">
                   {selectedRunId
                     ? '这条 run 可能仍在处理中，或后端尚未返回 summary 指标。'
-                    : '右上方的运行历史里选中一条 run 后，这里会显示标准答案对比、标准证据命中与质量切片。'}
+                    : '右上方的运行历史里选中一条 run 后，这里会显示标准答案对比、标准证据命中、业务元数据命中与质量切片。'}
                 </div>
               </div>
             )}
@@ -1405,6 +1506,66 @@ export function RegressionTestTab({
                           )}
                         </div>
                       )}
+                      {(() => {
+                        const meta = safeRecord(item.meta)
+                        const missingKeys = Array.isArray(
+                          meta.expected_metadata_missing_keys
+                        )
+                          ? meta.expected_metadata_missing_keys.filter(
+                              (key): key is string =>
+                                typeof key === 'string' && Boolean(key)
+                            )
+                          : []
+                        const fieldsMatched = finiteNumber(
+                          meta.expected_metadata_fields_matched
+                        )
+                        const fieldsTotal = finiteNumber(
+                          meta.expected_metadata_fields_total
+                        )
+                        const hasExpectedMetadata =
+                          typeof meta.expected_metadata_hit === 'boolean' ||
+                          finiteNumber(meta.expected_metadata_recall) !== null ||
+                          fieldsMatched !== null ||
+                          fieldsTotal !== null ||
+                          missingKeys.length > 0
+
+                        if (!hasExpectedMetadata) return null
+
+                        const fieldsText =
+                          fieldsMatched !== null || fieldsTotal !== null
+                            ? `${Math.trunc(fieldsMatched || 0)}/${Math.trunc(fieldsTotal || 0)}`
+                            : '待返回'
+
+                        return (
+                          <details className="mt-2 rounded-md border border-emerald-200/70 bg-emerald-50/40 p-2">
+                            <summary className="cursor-pointer select-none text-[11px] font-medium text-emerald-700">
+                              业务元数据
+                              {typeof meta.expected_metadata_hit === 'boolean'
+                                ? ` · ${meta.expected_metadata_hit ? '命中' : '未命中'}`
+                                : ''}
+                            </summary>
+                            <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+                              <span className="rounded-full border border-emerald-200 bg-card px-2 py-0.5">
+                                expected_metadata_recall:{' '}
+                                {formatMetricNumber(
+                                  meta.expected_metadata_recall
+                                )}
+                              </span>
+                              <span className="rounded-full border border-emerald-200 bg-card px-2 py-0.5">
+                                expected_metadata_fields_matched: {fieldsText}
+                              </span>
+                            </div>
+                            {missingKeys.length ? (
+                              <div className="mt-2 text-[11px] leading-5 text-muted-foreground">
+                                <span className="font-medium text-foreground/80">
+                                  缺失字段:
+                                </span>{' '}
+                                {missingKeys.slice(0, 8).join(', ')}
+                              </div>
+                            ) : null}
+                          </details>
+                        )
+                      })()}
                       {(() => {
                         const exps = item.meta?.explanations
                         if (!exps || typeof exps !== 'object') return null

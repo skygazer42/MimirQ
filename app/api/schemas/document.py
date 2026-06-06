@@ -6,7 +6,9 @@ from enum import Enum
 from typing import Any, Literal, Optional
 from uuid import UUID
 
-from pydantic import AliasChoices, BaseModel, Field, field_validator, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from app.rag.pipeline_plugins.refs import clean_python_plugin_ref
 
 from .base import OrmModel
 
@@ -33,37 +35,51 @@ def _normalize_publication_status(value: object) -> str:
     return "published"
 
 
-def _clean_chunk_strategy_value(key: str, value: Any) -> tuple[str, Any] | None:
+def _clean_primitive_param_value(key: str, value: Any, *, label: str) -> tuple[str, Any] | None:
     if not isinstance(key, str):
-        raise ValueError("chunk_strategy_params keys must be strings")
+        raise ValueError(f"{label} keys must be strings")
     cleaned_key = key.strip()
     if not cleaned_key:
         return None
     if len(cleaned_key) > 80:
-        raise ValueError("chunk_strategy_params key too long (max=80)")
+        raise ValueError(f"{label} key too long (max=80)")
     if value is None or isinstance(value, (bool, int, float)):
         return cleaned_key, value
     if isinstance(value, str):
         if len(value) > 500:
-            raise ValueError("chunk_strategy_params string value too long (max=500)")
+            raise ValueError(f"{label} string value too long (max=500)")
         return cleaned_key, value
-    raise ValueError("chunk_strategy_params values must be JSON primitives")
+    raise ValueError(f"{label} values must be JSON primitives")
 
 
-def _clean_chunk_strategy_params(raw: Any) -> dict[str, Any] | None:
+def _clean_primitive_params(raw: Any, *, label: str) -> dict[str, Any] | None:
     if raw is None:
         return None
     if not isinstance(raw, dict):
-        raise ValueError("chunk_strategy_params must be an object")
+        raise ValueError(f"{label} must be an object")
     if len(raw) > 30:
-        raise ValueError("chunk_strategy_params has too many keys (max=30)")
+        raise ValueError(f"{label} has too many keys (max=30)")
 
     cleaned: dict[str, Any] = {}
     for key, value in raw.items():
-        pair = _clean_chunk_strategy_value(key, value)
+        pair = _clean_primitive_param_value(key, value, label=label)
         if pair is not None:
             cleaned[pair[0]] = pair[1]
     return cleaned or None
+
+
+def _clean_chunk_strategy_params(raw: Any) -> dict[str, Any] | None:
+    return _clean_primitive_params(raw, label="chunk_strategy_params")
+
+
+def _clean_stage_python_plugin_ref(raw: Any, *, field_name: str, expected_stage: str) -> str | None:
+    return clean_python_plugin_ref(
+        raw,
+        field_name=field_name,
+        expected_stage=expected_stage,
+        invalid_message="python plugin ref must be module:function or plugin:<id>@<version>:<stage>",
+        file_path_message="python plugin ref must be an import path or registered plugin ref, not a file path",
+    )
 
 
 def _dedupe_member_ids(raw_members: list[str] | None) -> list[str] | None:
@@ -117,6 +133,9 @@ class GovernanceRegexRule(BaseModel):
 
 class DocumentPipelineOptions(BaseModel):
     """Per-document pipeline options."""
+
+    model_config = ConfigDict(extra="forbid")
+
     governance_enabled: bool | None = None
     governance_remove_toc_lines: bool | None = None
     governance_remove_noise_lines: bool | None = None
@@ -191,6 +210,15 @@ class DocumentPipelineOptions(BaseModel):
     governance_noise_ratio_threshold: float | None = Field(default=None, ge=0.0, le=1.0, description="noise ratio threshold")
     governance_common_lines_min_docs: int | None = Field(default=None, ge=2, le=50, description="common line min docs")
     governance_common_lines_min_ratio: float | None = Field(default=None, ge=0.0, le=1.0, description="common line ratio")
+    governance_python_plugin: str | None = Field(
+        default=None,
+        max_length=240,
+        description="Registered governance plugin ref; legacy module:function refs require PYTHON_PIPELINE_PLUGIN_ALLOW_PREFIXES.",
+    )
+    governance_python_params: dict[str, Any] | None = Field(
+        default=None,
+        description="Small primitive params object passed to the Python governance plugin",
+    )
     parse_fallback_enabled: bool | None = Field(default=None, description="Retry parsing with an alternative backend when output quality is low (PDF only)")
     parse_fallback_min_content_chars: int | None = Field(default=None, ge=0, le=200_000, description="Min alnum/CJK chars to consider parse successful")
     parse_fallback_min_parse_score: float | None = Field(default=None, ge=0.0, le=1.0, description="Min parse-quality score before triggering PDF fallback")
@@ -223,6 +251,15 @@ class DocumentPipelineOptions(BaseModel):
             "Only small JSON objects are allowed (primitive values only)."
         ),
     )
+    chunk_python_plugin: str | None = Field(
+        default=None,
+        max_length=240,
+        description="Registered chunk plugin ref; legacy module:function refs require PYTHON_PIPELINE_PLUGIN_ALLOW_PREFIXES.",
+    )
+    chunk_python_params: dict[str, Any] | None = Field(
+        default=None,
+        description="Small primitive params object passed to the Python chunking plugin",
+    )
     embedding_context_prefix_enabled: bool | None = Field(
         default=None,
         description="Prefix chunk content with lightweight structural context (e.g. header_path) before embedding (vector-only).",
@@ -244,6 +281,15 @@ class DocumentPipelineOptions(BaseModel):
     chunk_vector_enabled: bool | None = None
     bm25_index_enabled: bool | None = None
     kg_enabled: bool | None = None
+    kg_python_plugin: str | None = Field(
+        default=None,
+        max_length=240,
+        description="Registered KG plugin ref; legacy module:function refs require PYTHON_PIPELINE_PLUGIN_ALLOW_PREFIXES.",
+    )
+    kg_python_params: dict[str, Any] | None = Field(
+        default=None,
+        description="Small primitive params object passed to the Python KG plugin",
+    )
     event_vector_enabled: bool | None = None
     entity_vector_enabled: bool | None = None
     # Structured/table ingestion (TAG - Table Augmented Generation).
@@ -301,6 +347,27 @@ class DocumentPipelineOptions(BaseModel):
         - dataset ingestion policy pipeline_patch
         """
         self.chunk_strategy_params = _clean_chunk_strategy_params(self.chunk_strategy_params)
+        self.governance_python_params = _clean_primitive_params(
+            self.governance_python_params,
+            label="governance_python_params",
+        )
+        self.chunk_python_params = _clean_primitive_params(self.chunk_python_params, label="chunk_python_params")
+        self.kg_python_params = _clean_primitive_params(self.kg_python_params, label="kg_python_params")
+        self.governance_python_plugin = _clean_stage_python_plugin_ref(
+            self.governance_python_plugin,
+            field_name="governance_python_plugin",
+            expected_stage="governance",
+        )
+        self.chunk_python_plugin = _clean_stage_python_plugin_ref(
+            self.chunk_python_plugin,
+            field_name="chunk_python_plugin",
+            expected_stage="chunk",
+        )
+        self.kg_python_plugin = _clean_stage_python_plugin_ref(
+            self.kg_python_plugin,
+            field_name="kg_python_plugin",
+            expected_stage="kg",
+        )
         return self
 
 
@@ -728,10 +795,14 @@ class PipelineEffectiveSnapshot(BaseModel):
     governance_noise_ratio_threshold: float = 0.0
     governance_common_lines_min_docs: int = 0
     governance_common_lines_min_ratio: float = 0.0
+    governance_python_plugin: str = ""
+    governance_python_params: dict[str, Any] = Field(default_factory=dict)
     chunk_size: int = 0
     chunk_overlap: int = 0
     chunk_merge_small_min_chars: int = 0
     chunk_strategy_params: dict[str, Any] = Field(default_factory=dict)
+    chunk_python_plugin: str = ""
+    chunk_python_params: dict[str, Any] = Field(default_factory=dict)
     chunk_vector_enabled: bool = False
     bm25_index_enabled: bool = False
     kg_enabled: bool = False
@@ -842,7 +913,8 @@ class DocumentParsedContentResponse(BaseModel):
     """Persisted parsed markdown content for a document (best-effort).
 
     Notes:
-    - This is only available when the ingestion pipeline enables `persist_parsed_content`.
+    - Prefer persisted parsed content when the ingestion pipeline enables `persist_parsed_content`.
+    - Text-like local source files may fall back to original text when parsed content is not cached.
     - The returned markdown is already truncated when persisted (pipeline-controlled), and may be further
       truncated by the API handler via `max_chars` for UI safety.
     """

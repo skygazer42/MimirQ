@@ -18,12 +18,17 @@ import argparse
 import difflib
 import json
 import math
+import re
 import sys
 import time
 from pathlib import Path
 from typing import Any
 
 import httpx
+
+REGISTERED_CHUNK_PLUGIN_REF_RE = re.compile(
+    r"^plugin:[a-z0-9][a-z0-9_.-]{0,63}@[A-Za-z0-9][A-Za-z0-9_.+-]{0,31}:chunk$"
+)
 
 
 def _load_json(path: Path) -> Any:
@@ -39,7 +44,7 @@ def write_text_file(path: Path, content: str) -> None:
     path.write_text(str(content or ""), encoding="utf-8")
 
 
-def coerce_case_bundle(obj: Any) -> tuple[str, list[dict[str, Any]]]:
+def coerce_case_bundle(obj: Any, *, allow_review_only: bool = False) -> tuple[str, list[dict[str, Any]]]:
     """
     Normalize case bundle payloads into: (dataset_id, items[]).
 
@@ -48,18 +53,43 @@ def coerce_case_bundle(obj: Any) -> tuple[str, list[dict[str, Any]]]:
     - Minimal bundle: {"dataset_id":"...","items":[...]}
     - Legacy: [{"dataset_id":"...","question":"...","reference_sources":[...], ...}, ...]
     """
+    def _item_is_review_only_local_sample(item: dict[str, Any]) -> bool:
+        extra = item.get("extra") if isinstance(item.get("extra"), dict) else {}
+        return (
+            item.get("review_only") is True
+            or str(item.get("reference_source_mode") or "").strip() == "local_sample_synthetic"
+            or extra.get("review_only") is True
+            or str(extra.get("reference_source_mode") or "").strip() == "local_sample_synthetic"
+        )
+
+    def _reject_review_only_items(items: list[dict[str, Any]]) -> None:
+        if allow_review_only:
+            return
+        if any(_item_is_review_only_local_sample(item) for item in items):
+            raise ValueError("review_only local Golden items cannot be imported; use --skip-import or generate dataset goldens from indexed chunks")
+
     if isinstance(obj, dict) and isinstance(obj.get("items"), list):
+        if (
+            not allow_review_only
+            and (
+                obj.get("review_only") is True
+                or str(obj.get("reference_source_mode") or "").strip() == "local_sample_synthetic"
+            )
+        ):
+            raise ValueError("review_only local Golden bundles cannot be imported; use --skip-import or generate dataset goldens from indexed chunks")
         ds = str(obj.get("dataset_id") or "").strip()
         if ds:
             items = [x for x in obj.get("items") if isinstance(x, dict)]  # type: ignore[union-attr]
+            _reject_review_only_items(items)
             # Defensive: strip accidental dataset_id field inside each item (API expects dataset_id only at top-level).
             cleaned = [{k: v for k, v in it.items() if k != "dataset_id"} for it in items]
             return ds, cleaned
         # Fall back: accept bundles that forgot top-level dataset_id but include it per item.
-        return coerce_case_bundle(list(obj.get("items") or []))
+        return coerce_case_bundle(list(obj.get("items") or []), allow_review_only=allow_review_only)
 
     if isinstance(obj, list):
         items = [x for x in obj if isinstance(x, dict)]
+        _reject_review_only_items(items)
         dsids = []
         for it in items:
             ds = str(it.get("dataset_id") or "").strip()
@@ -151,6 +181,82 @@ def build_run_create_request_payload(
             payload[key] = overrides.get(key)
 
     return payload
+
+
+def build_plugin_golden_import_payload(
+    *,
+    dataset_id: str,
+    plugin_ref: str,
+    max_items: int,
+    max_chunks: int,
+    include_unmarked_chunks: bool,
+    overwrite: bool,
+) -> dict[str, Any]:
+    clean_plugin_ref = str(plugin_ref or "").strip()
+    if not REGISTERED_CHUNK_PLUGIN_REF_RE.fullmatch(clean_plugin_ref):
+        raise ValueError("plugin_golden_ref must be a registered chunk plugin ref")
+    return {
+        "dataset_id": str(dataset_id),
+        "plugin_ref": clean_plugin_ref,
+        "max_items": int(max_items),
+        "max_chunks": int(max_chunks),
+        "include_unmarked_chunks": bool(include_unmarked_chunks),
+        "overwrite": bool(overwrite),
+    }
+
+
+def extract_plugin_golden_import_case_ids(response: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    import_result = response.get("import_result") if isinstance(response, dict) else None
+    if not isinstance(import_result, dict):
+        raise ValueError("plugin Golden import response missing import_result")
+    if import_result.get("errors"):
+        raise ValueError(f"plugin Golden import returned errors: {json.dumps(import_result.get('errors'), ensure_ascii=False)}")
+
+    raw_ids = import_result.get("case_ids")
+    if not isinstance(raw_ids, list) or not raw_ids:
+        raw_ids = [
+            *(import_result.get("created_case_ids") or []),
+            *(import_result.get("updated_case_ids") or []),
+            *(import_result.get("skipped_case_ids") or []),
+        ]
+
+    case_ids = [str(item).strip() for item in (raw_ids or []) if str(item or "").strip()]
+    if not case_ids:
+        draft = response.get("draft") if isinstance(response.get("draft"), dict) else {}
+        raise ValueError(f"plugin Golden import returned no case ids; draft items={draft.get('items_total')}")
+    return import_result, case_ids
+
+
+def summarize_plugin_golden_source_from_import_response(response: dict[str, Any]) -> dict[str, Any]:
+    draft = response.get("draft") if isinstance(response, dict) else None
+    draft = draft if isinstance(draft, dict) else {}
+    out: dict[str, Any] = {}
+
+    for source_key, target_key in (
+        ("plugin_id", "plugin_id"),
+        ("plugin_version", "plugin_version"),
+        ("plugin_ref", "plugin_ref"),
+    ):
+        value = str(draft.get(source_key) or "").strip()
+        if value:
+            out[target_key] = value
+
+    try:
+        out["draft_items_total"] = int(draft.get("items_total") or 0)
+    except Exception:
+        out["draft_items_total"] = 0
+
+    bundle = draft.get("bundle") if isinstance(draft.get("bundle"), dict) else {}
+    items = bundle.get("items") if isinstance(bundle, dict) else []
+    if isinstance(items, list):
+        for item in items:
+            extra = item.get("extra") if isinstance(item, dict) else None
+            package_hash = str((extra or {}).get("plugin_package_hash") or "").strip() if isinstance(extra, dict) else ""
+            if package_hash:
+                out["plugin_package_hash"] = package_hash
+                break
+
+    return out
 
 
 def parse_metrics_list(raw: Any) -> list[str]:
@@ -586,6 +692,7 @@ def build_regression_gate_report(
     failures: list[str],
     detail: dict[str, Any],
     run_payload: dict[str, Any],
+    case_source: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     run = detail.get("run") if isinstance(detail, dict) else {}
     run = run if isinstance(run, dict) else {}
@@ -607,6 +714,7 @@ def build_regression_gate_report(
         "gate_status": gate_status,
         "thresholds_enabled": bool(thresholds_enabled),
         "matched_case_count": int(matched_case_count or 0),
+        "case_source": dict(case_source or {"kind": "case_bundle"}),
         "metrics": list(metrics or []),
         "summary": dict(summary or {}),
         "retrieval_slices": dict(summary.get("retrieval_slices") or {}) if isinstance(summary, dict) else {},
@@ -628,6 +736,10 @@ def render_regression_gate_markdown(report: dict[str, Any]) -> str:
     failures = [str(x) for x in (payload.get("failures") or []) if str(x or "").strip()]
     notes = [str(x) for x in (payload.get("notes") or []) if str(x or "").strip()]
     qs = payload.get("queryset_health") if isinstance(payload.get("queryset_health"), dict) else {}
+    case_source = payload.get("case_source") if isinstance(payload.get("case_source"), dict) else {}
+    case_source_kind = str(case_source.get("kind") or "case_bundle")
+    plugin_golden_ref = str(case_source.get("plugin_ref") or "").strip()
+    plugin_package_hash = str(case_source.get("plugin_package_hash") or "").strip()
 
     lines = [
         "# Retrieval Regression Gate Report",
@@ -636,6 +748,7 @@ def render_regression_gate_markdown(report: dict[str, Any]) -> str:
         f"- Run status: `{payload.get('run_status') or 'unknown'}`",
         f"- Dataset ID: `{payload.get('dataset_id') or ''}`",
         f"- Run ID: `{payload.get('run_id') or ''}`",
+        f"- Case source: `{case_source_kind}`",
         f"- Matched cases: `{int(payload.get('matched_case_count') or 0)}`",
         f"- Thresholds enabled: `{bool(payload.get('thresholds_enabled'))}`",
         "",
@@ -644,6 +757,11 @@ def render_regression_gate_markdown(report: dict[str, Any]) -> str:
         "| Metric | Value |",
         "| --- | ---: |",
     ]
+    if plugin_golden_ref:
+        lines.insert(8, f"- Plugin Golden ref: `{plugin_golden_ref}`")
+    if plugin_package_hash:
+        insert_at = 9 if plugin_golden_ref else 8
+        lines.insert(insert_at, f"- Plugin package hash: `{plugin_package_hash}`")
 
     rendered_metric = False
     for key, value in sorted((summary or {}).items()):
@@ -814,6 +932,72 @@ def _clamp01(v: float) -> float:
     return max(0.0, min(1.0, float(v)))
 
 
+def normalize_threshold_case_source(case_source: Any) -> dict[str, Any]:
+    """
+    Keep only stable provenance fields that are safe to pin in thresholds files.
+
+    Runtime-only import details such as case ids are intentionally excluded:
+    those identify one import operation, not the plugin package that produced
+    the Golden baseline.
+    """
+    if not isinstance(case_source, dict):
+        return {}
+
+    kind = str(case_source.get("kind") or "").strip()
+    if not kind:
+        return {}
+
+    out: dict[str, Any] = {"kind": kind}
+    if kind != "plugin_golden":
+        return out
+
+    for key in ("plugin_ref", "plugin_id", "plugin_version", "plugin_package_hash"):
+        value = str(case_source.get(key) or "").strip()
+        if value:
+            out[key] = value
+
+    if "draft_items_total" in case_source:
+        try:
+            out["draft_items_total"] = int(case_source.get("draft_items_total") or 0)
+        except Exception:
+            pass
+
+    return out
+
+
+def compare_threshold_case_source(*, expected: Any, actual: Any) -> list[str]:
+    """
+    Return mismatch messages between a thresholds baseline source and this run.
+
+    Backward compatible: thresholds files without case_source do not constrain
+    the run. When a field is present in the thresholds source, the current run
+    must match it exactly.
+    """
+    expected_source = normalize_threshold_case_source(expected)
+    if not expected_source:
+        return []
+
+    actual_source = normalize_threshold_case_source(actual)
+    failures: list[str] = []
+    if not actual_source:
+        return ["thresholds case_source is set but current run has no case_source"]
+
+    expected_kind = str(expected_source.get("kind") or "").strip()
+    actual_kind = str(actual_source.get("kind") or "").strip()
+    if expected_kind and expected_kind != actual_kind:
+        failures.append(f"kind expected {expected_kind!r}, got {actual_kind!r}")
+        return failures
+
+    for key, expected_value in expected_source.items():
+        if key == "kind":
+            continue
+        actual_value = actual_source.get(key)
+        if actual_value != expected_value:
+            failures.append(f"{key} expected {expected_value!r}, got {actual_value!r}")
+
+    return failures
+
+
 def _as_bounds(metric: str, *, baseline: float, rel_drop: float, abs_slack: float) -> dict[str, float]:
     metric_key = str(metric or "").strip().lower()
     baseline = _clamp01(float(baseline))
@@ -836,6 +1020,7 @@ def generate_thresholds_from_summary(
     rel_drop: float = 0.05,
     abs_slack: float = 0.02,
     min_slice_items: int = 5,
+    case_source: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
     Generate a structured thresholds config from a baseline run summary.
@@ -907,7 +1092,7 @@ def generate_thresholds_from_summary(
         if dim_out:
             slices_out[dim_key] = dim_out
 
-    return {
+    cfg: dict[str, Any] = {
         "schema": "mimirq.thresholds.v2",
         "dataset_id": ds,
         "options": {
@@ -918,6 +1103,10 @@ def generate_thresholds_from_summary(
         "metrics": metrics_out,
         "slices": slices_out,
     }
+    threshold_case_source = normalize_threshold_case_source(case_source)
+    if threshold_case_source:
+        cfg["case_source"] = threshold_case_source
+    return cfg
 
 
 def _require(cond: bool, msg: str) -> None:
@@ -956,7 +1145,24 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--user-id", default="", help="X-User-ID header (AUTH_MODE=header)")
     p.add_argument("--bearer", default="", help="Bearer token (AUTH_MODE=jwt)")
 
-    p.add_argument("--cases", type=str, required=True, help="Path to regression cases JSON (export bundle or items array)")
+    p.add_argument("--cases", type=str, default="", help="Path to regression cases JSON (export bundle or items array)")
+    p.add_argument("--dataset-id", type=str, default="", help="Dataset UUID (required when using --plugin-golden-ref)")
+    p.add_argument(
+        "--plugin-golden-ref",
+        type=str,
+        default="",
+        help="Use plugin-generated Golden cases as the case source, e.g. plugin:<id>@<version>:chunk (optional)",
+    )
+    p.add_argument("--plugin-golden-max-items", type=int, default=500, help="Max plugin Golden cases to import (default: %(default)s)")
+    p.add_argument("--plugin-golden-max-chunks", type=int, default=5000, help="Max chunks to inspect for plugin Golden import (default: %(default)s)")
+    p.add_argument(
+        "--plugin-golden-include-unmarked-chunks",
+        action="store_true",
+        help=(
+            "Debug only: request plugin Golden import to inspect unmarked chunks. "
+            "The API rejects this unless PYTHON_PIPELINE_PLUGIN_ALLOW_UNMARKED_GOLDEN_CHUNKS=true."
+        ),
+    )
     p.add_argument("--skip-import", action="store_true", help="Skip importing the cases file (assumes cases already exist)")
     p.add_argument("--overwrite", action="store_true", help="Overwrite existing cases matched by (question + dataset_id)")
 
@@ -1073,7 +1279,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--gen-metrics",
-        default="retrieval_recall,retrieval_hit_at_20,retrieval_mrr,retrieval_ndcg_at_20,multihop_path_completeness,multihop_order_consistency,multihop_chain_hit_rate,abstain_rate",
+        default="retrieval_recall,retrieval_hit_at_20,retrieval_mrr,retrieval_ndcg_at_20,expected_metadata_hit_rate,expected_metadata_recall,multihop_path_completeness,multihop_order_consistency,multihop_chain_hit_rate,abstain_rate",
         help="Comma-separated top-level metrics to generate thresholds for (default: %(default)s)",
     )
     p.add_argument(
@@ -1083,7 +1289,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--gen-slice-metrics",
-        default="retrieval_recall,retrieval_hit_at_20,multihop_path_completeness,multihop_order_consistency,abstain_rate",
+        default="retrieval_recall,retrieval_hit_at_20,expected_metadata_hit_rate,expected_metadata_recall,multihop_path_completeness,multihop_order_consistency,abstain_rate",
         help="Comma-separated slice metrics to generate thresholds for (default: %(default)s)",
     )
     p.add_argument("--gen-rel-drop", type=float, default=0.05, help="Relative slack (default: %(default)s)")
@@ -1157,15 +1363,35 @@ def main() -> int:
     p = build_arg_parser()
     args = p.parse_args()
 
-    cases_path = Path(args.cases)
-    _require(cases_path.exists(), f"cases file not found: {cases_path}")
-    dataset_id, items = coerce_case_bundle(_load_json(cases_path))
-    _require(len(items) > 0, "cases file contains no items")
+    cases_arg = str(args.cases or "").strip()
+    plugin_golden_ref = str(getattr(args, "plugin_golden_ref", "") or "").strip()
+    _require(
+        bool(cases_arg) != bool(plugin_golden_ref),
+        "set exactly one case source: --cases or --plugin-golden-ref",
+    )
+    _require(
+        not (plugin_golden_ref and bool(args.skip_import)),
+        "--skip-import cannot be used with --plugin-golden-ref",
+    )
+
+    items: list[dict[str, Any]] = []
+    if plugin_golden_ref:
+        dataset_id = str(getattr(args, "dataset_id", "") or "").strip()
+        _require(bool(dataset_id), "--dataset-id is required with --plugin-golden-ref")
+    else:
+        cases_path = Path(cases_arg)
+        _require(cases_path.exists(), f"cases file not found: {cases_path}")
+        try:
+            dataset_id, items = coerce_case_bundle(_load_json(cases_path), allow_review_only=bool(args.skip_import))
+        except ValueError as exc:
+            _require(False, str(exc))
+        _require(len(items) > 0, "cases file contains no items")
 
     metrics = parse_metrics_list(args.metrics)
 
     thresholds: dict[str, dict[str, float]] = {}
     slice_thresholds: dict[str, dict[str, dict[str, dict[str, float]]]] = {}
+    threshold_case_source: dict[str, Any] = {}
     if args.thresholds:
         th_path = Path(args.thresholds)
         _require(th_path.exists(), f"thresholds file not found: {th_path}")
@@ -1173,6 +1399,7 @@ def main() -> int:
         if not isinstance(raw_th, dict):
             _require(False, "thresholds must be a JSON object")
         thresholds, slice_thresholds = parse_thresholds_config(raw_th)
+        threshold_case_source = normalize_threshold_case_source(raw_th.get("case_source"))
 
         # Optional dataset_id guardrail (helps avoid applying thresholds from another dataset by accident).
         th_ds = str(raw_th.get("dataset_id") or "").strip()
@@ -1197,55 +1424,108 @@ def main() -> int:
 
     base = str(args.base_url).rstrip("/")
     timeout = httpx.Timeout(30.0)
+    case_source: dict[str, Any] = (
+        {
+            "kind": "plugin_golden",
+            "plugin_ref": plugin_golden_ref,
+            "max_items": int(getattr(args, "plugin_golden_max_items", 500) or 500),
+            "max_chunks": int(getattr(args, "plugin_golden_max_chunks", 5000) or 5000),
+            "include_unmarked_chunks": bool(getattr(args, "plugin_golden_include_unmarked_chunks", False)),
+            "overwrite": bool(args.overwrite),
+        }
+        if plugin_golden_ref
+        else {
+            "kind": "case_bundle",
+            "path": cases_arg,
+            "skip_import": bool(args.skip_import),
+            "overwrite": bool(args.overwrite),
+        }
+    )
 
     with httpx.Client(headers=headers, timeout=timeout) as client:
-        if not args.skip_import:
-            r = client.post(
-                f"{base}/evaluations/ragas/regression/cases/import",
-                json={
-                    "dataset_id": dataset_id,
-                    "overwrite": bool(args.overwrite),
-                    "max_items": min(2000, len(items)),
-                    "items": items,
-                },
-            )
-            r.raise_for_status()
-            imp = r.json()
-            print(f"[regression_gate] import: created={imp.get('created')} updated={imp.get('updated')} skipped={imp.get('skipped')}")
-            if imp.get("errors"):
-                print(f"[regression_gate] import warnings: {len(imp.get('errors') or [])} errors")
-
-        # Resolve case ids by listing and matching (question + dataset_id).
-        want_keys = set()
-        for it in items:
-            q = (str(it.get("question") or "")).strip()
-            if q:
-                want_keys.add(f"{q}\n{dataset_id}")
-
         matched_ids: list[str] = []
-        skip = 0
-        while True:
-            r = client.get(
-                f"{base}/evaluations/ragas/regression/cases",
-                params={"skip": skip, "limit": 200, "dataset_id": dataset_id},
+        if plugin_golden_ref:
+            payload = build_plugin_golden_import_payload(
+                dataset_id=dataset_id,
+                plugin_ref=plugin_golden_ref,
+                max_items=int(getattr(args, "plugin_golden_max_items", 500) or 500),
+                max_chunks=int(getattr(args, "plugin_golden_max_chunks", 5000) or 5000),
+                include_unmarked_chunks=bool(getattr(args, "plugin_golden_include_unmarked_chunks", False)),
+                overwrite=bool(args.overwrite),
             )
+            r = client.post(f"{base}/pipeline/plugins/golden-draft/import", json=payload)
             r.raise_for_status()
-            data = r.json() or {}
-            rows = data.get("items") or []
-            if not rows:
-                break
-            for row in rows:
-                q = (str(row.get("question") or "")).strip()
-                dsid = row.get("dataset_id") or ""
-                key = f"{q}\n{dsid}"
-                if key in want_keys and row.get("id"):
-                    matched_ids.append(str(row["id"]))
-            skip += len(rows)
-            if skip >= int(data.get("total") or 0):
-                break
+            import_response = r.json() or {}
+            try:
+                imp, matched_ids = extract_plugin_golden_import_case_ids(import_response)
+            except ValueError as exc:
+                _require(False, str(exc))
+            case_source.update(summarize_plugin_golden_source_from_import_response(import_response))
+            case_source["plugin_ref"] = str(case_source.get("plugin_ref") or plugin_golden_ref)
+            case_source["import_result"] = {
+                "created": int(imp.get("created") or 0),
+                "updated": int(imp.get("updated") or 0),
+                "skipped": int(imp.get("skipped") or 0),
+                "case_ids": [str(x) for x in (matched_ids or [])],
+            }
+            print(
+                "[regression_gate] plugin golden import: "
+                f"created={imp.get('created')} updated={imp.get('updated')} skipped={imp.get('skipped')}"
+            )
+            print(f"[regression_gate] matched cases: {len(matched_ids)}/{len(matched_ids)}")
+        else:
+            if not args.skip_import:
+                r = client.post(
+                    f"{base}/evaluations/ragas/regression/cases/import",
+                    json={
+                        "dataset_id": dataset_id,
+                        "overwrite": bool(args.overwrite),
+                        "max_items": min(2000, len(items)),
+                        "items": items,
+                    },
+                )
+                r.raise_for_status()
+                imp = r.json()
+                print(f"[regression_gate] import: created={imp.get('created')} updated={imp.get('updated')} skipped={imp.get('skipped')}")
+                if imp.get("errors"):
+                    print(f"[regression_gate] import warnings: {len(imp.get('errors') or [])} errors")
 
-        _require(len(matched_ids) > 0, "no matching cases found after import/list")
-        print(f"[regression_gate] matched cases: {len(matched_ids)}/{len(want_keys)}")
+            # Resolve case ids by listing and matching (question + dataset_id).
+            want_keys = set()
+            for it in items:
+                q = (str(it.get("question") or "")).strip()
+                if q:
+                    want_keys.add(f"{q}\n{dataset_id}")
+
+            skip = 0
+            while True:
+                r = client.get(
+                    f"{base}/evaluations/ragas/regression/cases",
+                    params={"skip": skip, "limit": 200, "dataset_id": dataset_id},
+                )
+                r.raise_for_status()
+                data = r.json() or {}
+                rows = data.get("items") or []
+                if not rows:
+                    break
+                for row in rows:
+                    q = (str(row.get("question") or "")).strip()
+                    dsid = row.get("dataset_id") or ""
+                    key = f"{q}\n{dsid}"
+                    if key in want_keys and row.get("id"):
+                        matched_ids.append(str(row["id"]))
+                skip += len(rows)
+                if skip >= int(data.get("total") or 0):
+                    break
+
+            _require(len(matched_ids) > 0, "no matching cases found after import/list")
+            print(f"[regression_gate] matched cases: {len(matched_ids)}/{len(want_keys)}")
+
+        case_source_failures = compare_threshold_case_source(expected=threshold_case_source, actual=case_source)
+        _require(
+            not case_source_failures,
+            "thresholds case_source mismatch: " + "; ".join(case_source_failures),
+        )
 
         file_overrides: dict[str, Any] = {}
         if str(args.run_overrides_json or "").strip():
@@ -1390,6 +1670,7 @@ def main() -> int:
                 rel_drop=float(args.gen_rel_drop),
                 abs_slack=float(args.gen_abs_slack),
                 min_slice_items=int(args.gen_min_slice_items),
+                case_source=case_source,
             )
             out_json = json.dumps(gen_cfg, ensure_ascii=False, indent=2) + "\n"
             if out_path == "-":
@@ -1420,6 +1701,7 @@ def main() -> int:
                 failures=overall_failures,
                 detail=detail,
                 run_payload=run_payload,
+                case_source=case_source,
             )
             if qs_section:
                 report["queryset_health"] = qs_section
@@ -1455,6 +1737,7 @@ def main() -> int:
             failures=failures,
             detail=detail,
             run_payload=run_payload,
+            case_source=case_source,
         )
         if qs_section:
             report["queryset_health"] = qs_section

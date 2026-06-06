@@ -55,8 +55,17 @@ async def test_governance_analyze_returns_suggestions(monkeypatch: pytest.Monkey
     )
 
     assert isinstance(out.issues, list)
-    assert isinstance(out.suggested_pipeline_patch, dict)
+    patch = out.suggested_pipeline_patch.model_dump(exclude_none=True)
+    assert "business_only_window_chars" not in patch
     # Best-effort heuristic; when it triggers it should suggest enabling unwrap_lines.
     if any(getattr(it, "code", "") == "pdf_soft_line_breaks" for it in out.issues):
-        assert out.suggested_pipeline_patch.get("governance_unwrap_lines") is True
+        assert patch.get("governance_unwrap_lines") is True
 
+
+def test_governance_issue_suggested_patch_openapi_contract_is_typed():
+    from app.api.schemas.pipeline import GovernanceIssue
+
+    schema = GovernanceIssue.model_json_schema()
+    patch_schema = schema["properties"]["suggested_pipeline_patch"]
+
+    assert patch_schema["$ref"].endswith("/DocumentPipelineOptions")

@@ -20,7 +20,10 @@ from collections.abc import Iterable
 from typing import Any
 
 from app.rag.core.logging import get_logger
-from app.rag.evaluation.regression_sample_builder import build_regression_sample
+from app.rag.evaluation.regression_sample_builder import (
+    build_expected_metadata_metrics_summary,
+    build_regression_sample,
+)
 
 logger = get_logger(__name__)
 
@@ -204,7 +207,7 @@ def build_retrieval_gate_summary(items_meta: list[dict[str, Any]]) -> dict[str, 
         else None
     )
 
-    return {
+    out = {
         "retrieval_recall": _mean(m.get("retrieval_recall") for m in (items_meta or []) if isinstance(m, dict)),
         "retrieval_doc_recall": _mean(m.get("retrieval_doc_recall") for m in (items_meta or []) if isinstance(m, dict)),
         "retrieval_family_recall": _mean(m.get("retrieval_family_recall") for m in (items_meta or []) if isinstance(m, dict)),
@@ -236,3 +239,5 @@ def build_retrieval_gate_summary(items_meta: list[dict[str, Any]]) -> dict[str, 
         "provenance_cases_passed": provenance_cases_passed,
         "provenance_cases_failed": provenance_cases_failed,
     }
+    out.update(build_expected_metadata_metrics_summary([m for m in (items_meta or []) if isinstance(m, dict)]))
+    return out

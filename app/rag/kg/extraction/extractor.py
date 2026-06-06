@@ -10,6 +10,8 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
+from langchain_core.documents import Document as LCDocument
+
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.document import DocumentChunk
@@ -36,6 +38,7 @@ from app.rag.kg.provenance import build_event_entity_provenance
 from app.rag.kg.repository import RelationRepository
 from app.rag.kg.utils import get_logger
 from app.rag.llm.factory import create_llm_client
+from app.rag.pipeline_plugins.runtime import apply_kg_python_plugin
 from app.rag.preprocessing.normalization import normalize_text
 from app.services.indexer import Indexer
 from app.services.metrics_logger import log_metrics
@@ -192,6 +195,23 @@ def _compute_content_stats(text: str) -> tuple[str, int]:
     normalized = normalize_text(text or "", normalize_line_endings=True, remove_control_chars=True)
     stripped = (normalized or "").strip()
     return hashlib.sha256(stripped.encode("utf-8", "ignore")).hexdigest(), int(len(stripped))
+
+
+def _document_from_chunk(chunk: DocumentChunk) -> LCDocument:
+    meta = dict(getattr(chunk, "doc_metadata", None) or {})
+    if getattr(chunk, "document_id", None) is not None:
+        meta.setdefault("document_id", str(chunk.document_id))
+    if getattr(chunk, "id", None) is not None:
+        meta.setdefault("chunk_id", str(chunk.id))
+    if getattr(chunk, "chunk_index", None) is not None:
+        meta.setdefault("chunk_index", int(chunk.chunk_index))
+    if getattr(chunk, "page_number", None) is not None:
+        meta.setdefault("page_number", int(chunk.page_number))
+    if getattr(chunk, "start_char", None) is not None:
+        meta.setdefault("start_char", int(chunk.start_char))
+    if getattr(chunk, "end_char", None) is not None:
+        meta.setdefault("end_char", int(chunk.end_char))
+    return LCDocument(page_content=str(getattr(chunk, "content", "") or ""), metadata=meta, id=str(getattr(chunk, "id", "") or ""))
 
 
 def _is_chunk_unchanged(
@@ -385,6 +405,74 @@ class EventExtractor:
                 return []
 
             tenant_id = config.tenant_id or resolved_chunks[0].tenant_id
+            kg_plugin_ref = str(getattr(config, "kg_python_plugin", "") or "").strip()
+            if kg_plugin_ref:
+                replace_existing = bool(getattr(config, "replace_existing", False))
+                plugin_docs = [_document_from_chunk(chunk) for chunk in resolved_chunks]
+                events_to_index = apply_kg_python_plugin(
+                    plugin_docs,
+                    plugin_ref=kg_plugin_ref,
+                    params=dict(getattr(config, "kg_python_params", None) or {}),
+                    context={"tenant_id": str(tenant_id)},
+                )
+                chunk_ids_for_replace = [chunk.id for chunk in resolved_chunks if getattr(chunk, "id", None) is not None]
+                if replace_existing and chunk_ids_for_replace:
+                    try:
+                        RelationRepository(session).delete_relations_for_chunks(
+                            chunk_ids_for_replace,
+                            tenant_id=tenant_id,
+                            commit=False,
+                        )
+                        Indexer(session).delete_event_indexes_for_chunks(
+                            tenant_id=tenant_id,
+                            chunk_ids=chunk_ids_for_replace,
+                            commit=False,
+                            exclude_event_ids=[],
+                            prune_orphan_entities=bool(getattr(config, "prune_orphan_entities", False)),
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("Failed to cleanup previous plugin KG events for chunks: %s", str(exc)[:200])
+
+                if not events_to_index:
+                    elapsed = time.perf_counter() - t0
+                    log_metrics(
+                        {
+                            "event": "kg.extract",
+                            "backend": "python_plugin",
+                            "kg_python_plugin": kg_plugin_ref,
+                            "chunk_count": len(resolved_chunks),
+                            "event_new": 0,
+                            "event_total": 0,
+                            "elapsed_sec": round(float(elapsed), 3),
+                        }
+                    )
+                    if replace_existing and chunk_ids_for_replace:
+                        session.commit()
+                    return []
+
+                indexer = Indexer(session)
+                result = indexer.upsert(
+                    tenant_id=tenant_id,
+                    records=events_to_index,
+                    options=index_options,
+                ).event_result
+                events = result.events if result else []
+                entity_count = len(result.entities) if result else 0
+                elapsed = time.perf_counter() - t0
+                log_metrics(
+                    {
+                        "event": "kg.extract",
+                        "backend": "python_plugin",
+                        "kg_python_plugin": kg_plugin_ref,
+                        "chunk_count": len(resolved_chunks),
+                        "event_new": len(events),
+                        "event_total": len(events),
+                        "entity_total": entity_count,
+                        "elapsed_sec": round(float(elapsed), 3),
+                    }
+                )
+                return events
+
             prompt_template_content: str | None = None
             chosen_template_id: str | None = None
             if config.prompt_template_id or config.prompt_template_key or config.prompt_ab_experiment_key:

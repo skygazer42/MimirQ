@@ -114,6 +114,18 @@ const RULE_PACK_COPY: Record<string, { label: string; description: string }> = {
     label: '聊天导出噪声',
     description: '清理会话导出里的时间戳、系统提示和重复分隔符。',
   },
+  cn_finance_report_artifacts: {
+    label: '金融报告噪声',
+    description: '清理年报、公告、招股书中常见披露声明和证券标识行。',
+  },
+  cn_gov_redhead_artifacts: {
+    label: '政府公文尾部',
+    description: '清理红头公文中的抄送、签发、印发和主题词等低价值行。',
+  },
+  cn_medical_record_artifacts: {
+    label: '医疗记录表头',
+    description: '清理病案号、床号、医生、科室等医疗文档展示性字段。',
+  },
   confluence_jira_noise: {
     label: 'Confluence / Jira 残留',
     description: '清理企业知识库导出的导航、面包屑和页面脚注。',
@@ -122,13 +134,17 @@ const RULE_PACK_COPY: Record<string, { label: string; description: string }> = {
     label: '邮件免责声明',
     description: '删除邮件尾部的保密声明、转发脚注和冗余签名。',
   },
+  feishu_lark_noise: {
+    label: '飞书 / Lark 导出',
+    description: '清理飞书知识库导出的元信息、协作者和导出标识。',
+  },
   markdown_export_noise: {
     label: 'Markdown 导出噪声',
     description: '清理导出工具生成的锚点、空标题和重复标记。',
   },
   notion_export_noise: {
     label: 'Notion 导出噪声',
-    description: '处理 Notion 导出中的块标识、空行和无效引用。',
+    description: '处理 Notion 导出中的创建时间、编辑时间和导出标识。',
   },
   pdf_header_footer_cn: {
     label: '中文 PDF 页眉页脚',

@@ -38,3 +38,12 @@ def test_non_pdf_pdf_backend_falls_back_to_auto(monkeypatch):
     monkeypatch.setattr(settings, "PANDOC_ENABLED", False, raising=False)
     factory = ParserFactory()
     assert factory.resolve_backend(".docx", "basic") == "markitdown"
+
+
+def test_non_pdf_default_advanced_backend_falls_back_when_extension_is_unsupported(monkeypatch):
+    monkeypatch.setattr(settings, "DEFAULT_PARSER_BACKEND", "deepdoc", raising=False)
+    monkeypatch.setattr(settings, "PANDOC_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "LIBREOFFICE_ENABLED", False, raising=False)
+    factory = ParserFactory()
+
+    assert factory.resolve_backend(".doc", None) == "markitdown"

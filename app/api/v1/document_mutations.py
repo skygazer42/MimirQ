@@ -153,7 +153,10 @@ async def patch_document_pipeline(
         documents_module.DatasetService.assert_dataset_writable(db, dataset, account_id)
 
     current_status = str(document.status or "").lower()
-    if current_status in {"pending", "processing"}:
+    if current_status == "processing" or (
+        current_status == "pending"
+        and not documents_module._is_uploaded_only_pending_document(document)
+    ):
         raise HTTPException(status_code=409, detail=f"Cannot edit pipeline for a {current_status} document")
 
     meta = dict(document.doc_metadata or {})

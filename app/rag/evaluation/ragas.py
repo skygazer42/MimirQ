@@ -40,7 +40,11 @@ from app.rag.evaluation.multimodal_slices import (
     classify_regression_case_multimodal_slice,
     summarize_multimodal_regression_slices,
 )
-from app.rag.evaluation.regression_sample_builder import build_regression_item_meta, build_regression_sample
+from app.rag.evaluation.regression_sample_builder import (
+    build_expected_metadata_metrics_summary,
+    build_regression_item_meta,
+    build_regression_sample,
+)
 from app.services.dataset_service import DatasetService
 from app.services.document_access import filter_allowed_document_ids, get_allowed_document_id_sets
 from app.services.prompt_resolver import resolve_prompt_template
@@ -83,6 +87,8 @@ DETERMINISTIC_REGRESSION_METRICS = frozenset(
         "retrieval_hit_at_5",
         "retrieval_hit_at_10",
         "retrieval_hit_at_20",
+        "expected_metadata_hit_rate",
+        "expected_metadata_recall",
         "multihop_path_completeness",
         "multihop_order_consistency",
         "multihop_chain_hit_rate",
@@ -109,6 +115,7 @@ _DETERMINISTIC_SCORE_META_KEYS = {
     "retrieval_hit_at_5": "retrieval_hit_at_5",
     "retrieval_hit_at_10": "retrieval_hit_at_10",
     "retrieval_hit_at_20": "retrieval_hit_at_20",
+    "expected_metadata_recall": "expected_metadata_recall",
     "multihop_path_completeness": "multihop_path_completeness",
     "multihop_order_consistency": "multihop_order_consistency",
 }
@@ -154,6 +161,11 @@ def build_selected_deterministic_scores(metric_names: list[str] | None, meta: di
             continue
         if key == "multihop_chain_hit_rate":
             value = source.get("multihop_chain_hit")
+            if isinstance(value, bool):
+                scores[key] = 1.0 if value else 0.0
+            continue
+        if key == "expected_metadata_hit_rate":
+            value = source.get("expected_metadata_hit")
             if isinstance(value, bool):
                 scores[key] = 1.0 if value else 0.0
             continue
@@ -336,6 +348,158 @@ def _extract_contexts(
     return contexts
 
 
+_REGRESSION_CITATION_METADATA_VIEW_KEYS = (
+    "_evaluable_metadata",
+    "_indexed_metadata",
+    "_display_metadata",
+    "_record_identity",
+)
+
+_REGRESSION_CITATION_METADATA_SCALAR_KEYS = (
+    "pipeline_hash",
+    "doc_pipeline_key",
+    "chunk_strategy",
+    "resolved_chunk_strategy",
+    "chunk_python_plugin",
+    "governance_python_plugin",
+)
+
+
+def _compact_chunk_metadata_for_regression(raw_metadata: Any) -> dict[str, Any]:
+    """
+    Keep regression citation metadata bounded and plugin-contract driven.
+
+    Business-specific fields are supplied by plugins through metadata views; the
+    platform only understands those generic views and a few pipeline identifiers.
+    """
+    if not isinstance(raw_metadata, dict):
+        return {}
+
+    out: dict[str, Any] = {}
+    for view_key in _REGRESSION_CITATION_METADATA_VIEW_KEYS:
+        view = raw_metadata.get(view_key)
+        if not isinstance(view, dict):
+            continue
+        view_copy = _json_safe(dict(view))
+        out[view_key] = view_copy
+        for key, value in view_copy.items():
+            if key not in out:
+                out[key] = value
+
+    for key in _REGRESSION_CITATION_METADATA_SCALAR_KEYS:
+        if key in raw_metadata and key not in out:
+            out[key] = _json_safe(raw_metadata.get(key))
+
+    return out
+
+
+def _enrich_citations_with_chunk_metadata(
+    *,
+    db,
+    tenant_id: UUID,
+    citations: Any,
+    allowed_document_ids: list[UUID] | None = None,
+    dataset_id: UUID | None = None,
+) -> Any:
+    """
+    Attach compact chunk metadata to retrieved citations for deterministic gates.
+
+    Retrieval citations often carry only `chunk_id`/scores to keep chat payloads
+    small. Regression expected_metadata checks need the plugin metadata contract,
+    so evaluation hydrates it from DocumentChunk.doc_metadata just for run items.
+    """
+    if not isinstance(citations, list) or not citations:
+        return citations
+
+    normalized_items: list[Any] = []
+    chunk_ids: list[UUID] = []
+    seen_chunk_ids: set[UUID] = set()
+    for item in citations:
+        if hasattr(item, "model_dump"):
+            try:
+                item = item.model_dump(mode="json")
+            except Exception:
+                logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+        normalized_items.append(item)
+        if not isinstance(item, dict):
+            continue
+        raw_chunk = item.get("chunk_id")
+        try:
+            chunk_id = UUID(str(raw_chunk)) if raw_chunk else None
+        except Exception:
+            chunk_id = None
+        if chunk_id and chunk_id not in seen_chunk_ids:
+            seen_chunk_ids.add(chunk_id)
+            chunk_ids.append(chunk_id)
+
+    if not chunk_ids:
+        return normalized_items
+
+    chunks = (
+        db.query(DocumentChunk)
+        .filter(
+            DocumentChunk.tenant_id == tenant_id,
+            DocumentChunk.id.in_(chunk_ids),
+        )
+        .all()
+    )
+    chunk_map: dict[UUID, DocumentChunk] = {chunk.id: chunk for chunk in (chunks or [])}
+
+    allowed_set: set[UUID] | None = None
+    if allowed_document_ids is not None and (allowed_document_ids or dataset_id is None):
+        allowed_set = set(allowed_document_ids)
+    if dataset_id is not None and chunk_map:
+        candidate_doc_ids = {
+            chunk.document_id
+            for chunk in chunk_map.values()
+            if getattr(chunk, "document_id", None) is not None
+        }
+        if candidate_doc_ids:
+            rows = (
+                db.query(DBDocument.id, DBDocument.dataset_id)
+                .filter(
+                    DBDocument.tenant_id == tenant_id,
+                    DBDocument.id.in_(list(candidate_doc_ids)),
+                )
+                .all()
+            )
+            dataset_doc_ids = {
+                doc_id
+                for doc_id, ds_id in rows
+                if ds_id is not None and str(ds_id) == str(dataset_id)
+            }
+            allowed_set = dataset_doc_ids if allowed_set is None else allowed_set & dataset_doc_ids
+
+    enriched: list[Any] = []
+    for item in normalized_items:
+        if not isinstance(item, dict):
+            enriched.append(item)
+            continue
+
+        out = dict(item)
+        try:
+            chunk_id = UUID(str(out.get("chunk_id"))) if out.get("chunk_id") else None
+        except Exception:
+            chunk_id = None
+        chunk = chunk_map.get(chunk_id) if chunk_id else None
+        if chunk is None:
+            enriched.append(out)
+            continue
+
+        doc_id = getattr(chunk, "document_id", None)
+        if allowed_set is not None and (doc_id is None or doc_id not in allowed_set):
+            enriched.append(out)
+            continue
+
+        compact = _compact_chunk_metadata_for_regression(getattr(chunk, "doc_metadata", None))
+        if compact:
+            existing = out.get("metadata") if isinstance(out.get("metadata"), dict) else {}
+            out["metadata"] = {**compact, **existing}
+        enriched.append(out)
+
+    return enriched
+
+
 def _mean(values: Iterable[float]) -> float | None:
     vals = []
     for v in values:
@@ -471,7 +635,7 @@ def _build_retrieval_metrics_summary(metas: list[dict[str, Any]]) -> dict[str, A
             vals.append(1.0 if bool(v) else 0.0)
         return _mean(vals)
 
-    return {
+    out = {
         "retrieval_recall": _mean(m.get("retrieval_recall") for m in metas),
         "retrieval_mrr": _mean(m.get("retrieval_mrr") for m in metas),
         "retrieval_ndcg_at_10": _mean(m.get("retrieval_ndcg_at_10") for m in metas),
@@ -486,6 +650,8 @@ def _build_retrieval_metrics_summary(metas: list[dict[str, Any]]) -> dict[str, A
         "multihop_chain_hit_rate": _mean_bool("multihop_chain_hit"),
         "abstain_rate": _mean_bool("abstain_triggered"),
     }
+    out.update(build_expected_metadata_metrics_summary(metas))
+    return out
 
 
 def _build_regression_slice_summaries(
@@ -1607,6 +1773,13 @@ def run_regression_ragas_evaluation(
                 multi_query_temperature=rag_params.get("multi_query_temperature"),
                 multi_query_max_chars=rag_params.get("multi_query_max_chars"),
                 enable_hyde=rag_params.get("enable_hyde"),
+                enable_hierarchy_recall=rag_params.get("enable_hierarchy_recall"),
+                hierarchy_family_collapse=rag_params.get("hierarchy_family_collapse"),
+                hierarchy_family_aggregation=rag_params.get("hierarchy_family_aggregation"),
+                hierarchy_tree_dedup=rag_params.get("hierarchy_tree_dedup"),
+                hierarchy_parent_depth=rag_params.get("hierarchy_parent_depth"),
+                hierarchy_sibling_window=rag_params.get("hierarchy_sibling_window"),
+                hierarchy_overfetch_factor=rag_params.get("hierarchy_overfetch_factor"),
                 enable_query_rewrite=rag_params.get("enable_query_rewrite"),
                 query_rewrite_strategy=rag_params.get("query_rewrite_strategy"),
                 query_rewrite_temperature=rag_params.get("query_rewrite_temperature"),
@@ -1663,6 +1836,13 @@ def run_regression_ragas_evaluation(
 
                 response = (graph_result or {}).get("answer") or ""
                 citations = (graph_result or {}).get("citations") or []
+            citations = _enrich_citations_with_chunk_metadata(
+                db=db,
+                tenant_id=tenant_id,
+                allowed_document_ids=scope_doc_ids,
+                dataset_id=scope_dataset_id,
+                citations=citations,
+            )
             contexts = _extract_contexts(
                 db=db,
                 tenant_id=tenant_id,

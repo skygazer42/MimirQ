@@ -33,4 +33,25 @@ describe('Chunk preview workbench scaffold', () => {
     expect(src).toContain('<ChunkPreviewEmptyCanvas />')
     expect(src).not.toContain('{showOriginalPanel ? <OriginalPreview /> : null}\n              <ChunkList />')
   })
+
+  it('keeps the empty upload surface compact and top-aligned', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'index.tsx'), 'utf8')
+
+    expect(src).toContain('data-chunk-empty-intake-panel')
+    expect(src).toContain('items-start')
+    expect(src).toContain('min-h-[9rem]')
+    expect(src).not.toContain('justify-center px-8 py-12')
+    expect(src).not.toContain('text-4xl font-black')
+    expect(src).not.toContain('md:text-5xl')
+    expect(src).not.toContain('min-h-[20rem]')
+  })
+
+  it('fills the lower empty canvas with a chunking flow visual', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'index.tsx'), 'utf8')
+
+    expect(src).toContain('data-chunk-empty-visual-map')
+    expect(src).toContain("t('emptyState.visual.title')")
+    expect(src).toContain("t('emptyState.visual.steps.parse')")
+    expect(src).toContain('lg:grid-cols-[minmax(0,0.82fr)_minmax(24rem,1fr)]')
+  })
 })

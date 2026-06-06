@@ -52,6 +52,8 @@ const DEFAULT_OPTIONS: DocumentPipelineOptions = {
   governance_noise_ratio_threshold: 0.2,
   governance_common_lines_min_docs: 3,
   governance_common_lines_min_ratio: 0.35,
+  governance_python_plugin: undefined,
+  governance_python_params: undefined,
   parse_fallback_enabled: false,
   parse_fallback_min_content_chars: 120,
   parse_fallback_max_retries: 1,
@@ -64,10 +66,14 @@ const DEFAULT_OPTIONS: DocumentPipelineOptions = {
   chunk_overlap: 200,
   chunk_merge_small_min_chars: 0,
   chunk_strategy_params: undefined,
+  chunk_python_plugin: undefined,
+  chunk_python_params: undefined,
   embedding_context_prefix_enabled: false,
   chunk_vector_enabled: true,
   bm25_index_enabled: true,
   kg_enabled: true,
+  kg_python_plugin: undefined,
+  kg_python_params: undefined,
   event_vector_enabled: true,
   entity_vector_enabled: true,
 }
@@ -150,6 +156,11 @@ const normalizeRegexRules = (value: unknown): Array<{ pattern: string; repl: str
   return out
 }
 
+const normalizePluginParams = (value: unknown): Record<string, unknown> | undefined => {
+  const validated = validateChunkStrategyParams(value)
+  return validated.ok ? validated.value : undefined
+}
+
 const normalizeOptions = (raw: unknown): DocumentPipelineOptions => {
   if (!isRecord(raw)) return { ...DEFAULT_OPTIONS }
   const validatedStrategyParams = validateChunkStrategyParams(raw.chunk_strategy_params)
@@ -199,6 +210,8 @@ const normalizeOptions = (raw: unknown): DocumentPipelineOptions => {
     governance_noise_ratio_threshold: toFloat(raw.governance_noise_ratio_threshold) ?? DEFAULT_OPTIONS.governance_noise_ratio_threshold,
     governance_common_lines_min_docs: toInt(raw.governance_common_lines_min_docs) ?? DEFAULT_OPTIONS.governance_common_lines_min_docs,
     governance_common_lines_min_ratio: toFloat(raw.governance_common_lines_min_ratio) ?? DEFAULT_OPTIONS.governance_common_lines_min_ratio,
+    governance_python_plugin: toString(raw.governance_python_plugin) ?? DEFAULT_OPTIONS.governance_python_plugin,
+    governance_python_params: normalizePluginParams(raw.governance_python_params) ?? DEFAULT_OPTIONS.governance_python_params,
     parse_fallback_enabled: toBool(raw.parse_fallback_enabled) ?? DEFAULT_OPTIONS.parse_fallback_enabled,
     parse_fallback_min_content_chars: toInt(raw.parse_fallback_min_content_chars) ?? DEFAULT_OPTIONS.parse_fallback_min_content_chars,
     parse_fallback_max_retries: toInt(raw.parse_fallback_max_retries) ?? DEFAULT_OPTIONS.parse_fallback_max_retries,
@@ -211,10 +224,14 @@ const normalizeOptions = (raw: unknown): DocumentPipelineOptions => {
     chunk_overlap: toInt(raw.chunk_overlap) ?? DEFAULT_OPTIONS.chunk_overlap,
     chunk_merge_small_min_chars: toInt(raw.chunk_merge_small_min_chars) ?? DEFAULT_OPTIONS.chunk_merge_small_min_chars,
     chunk_strategy_params: chunkStrategyParams ?? DEFAULT_OPTIONS.chunk_strategy_params,
+    chunk_python_plugin: toString(raw.chunk_python_plugin) ?? DEFAULT_OPTIONS.chunk_python_plugin,
+    chunk_python_params: normalizePluginParams(raw.chunk_python_params) ?? DEFAULT_OPTIONS.chunk_python_params,
     embedding_context_prefix_enabled: toBool(raw.embedding_context_prefix_enabled) ?? DEFAULT_OPTIONS.embedding_context_prefix_enabled,
     chunk_vector_enabled: toBool(raw.chunk_vector_enabled) ?? DEFAULT_OPTIONS.chunk_vector_enabled,
     bm25_index_enabled: toBool(raw.bm25_index_enabled) ?? DEFAULT_OPTIONS.bm25_index_enabled,
     kg_enabled: toBool(raw.kg_enabled) ?? DEFAULT_OPTIONS.kg_enabled,
+    kg_python_plugin: toString(raw.kg_python_plugin) ?? DEFAULT_OPTIONS.kg_python_plugin,
+    kg_python_params: normalizePluginParams(raw.kg_python_params) ?? DEFAULT_OPTIONS.kg_python_params,
     event_vector_enabled: toBool(raw.event_vector_enabled) ?? DEFAULT_OPTIONS.event_vector_enabled,
     entity_vector_enabled: toBool(raw.entity_vector_enabled) ?? DEFAULT_OPTIONS.entity_vector_enabled,
   }

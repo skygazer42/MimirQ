@@ -1,8 +1,9 @@
 from app.rag.preprocessing.cleaning import clean_markdown
+from app.rag.preprocessing.rule_packs import GOVERNANCE_RULE_PACKS
 from app.rag.preprocessing.rules import build_governance_rules
 
 
-def test_governance_rule_pack_confluence_jira_noise_removes_common_export_lines():
+def test_confluence_jira_noise_removes_source_export_boilerplate():
     text = "\n".join(
         [
             "Powered by Atlassian Confluence",
@@ -27,6 +28,7 @@ def test_governance_rule_pack_confluence_jira_noise_removes_common_export_lines(
     assert "Atlassian Confluence" in baseline.markdown
     assert "Created by Bob" in baseline.markdown
 
+    assert "confluence_jira_noise" in GOVERNANCE_RULE_PACKS
     packed = clean_markdown(
         text,
         rules=build_governance_rules([], rule_packs=["confluence_jira_noise"]),
@@ -42,4 +44,3 @@ def test_governance_rule_pack_confluence_jira_noise_removes_common_export_lines(
     assert "View in Confluence" not in packed.markdown
     assert "# Title" in packed.markdown
     assert "Real content stays." in packed.markdown
-

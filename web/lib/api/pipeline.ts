@@ -29,6 +29,7 @@ import type {
 } from '@/types'
 import type {
   BuiltinProcessingScriptListResponse,
+  OpenApiSchema,
 } from '@/types/backend'
 import type { OpenApiRequestBody } from '@/types/openapi-helpers'
 
@@ -44,6 +45,50 @@ type GovernanceProfileCreateBody = OpenApiRequestBody<
   '/api/v1/pipeline/governance-profiles',
   'post'
 >
+
+type PipelinePluginItemSchema = OpenApiSchema<'PipelinePluginItem'>
+export type PipelinePluginSuggestedPatch = OpenApiSchema<'PipelinePluginSuggestedPatch'>
+type PipelinePluginGoldenDraftRequestSchema = OpenApiSchema<'PipelinePluginGoldenDraftRequest'>
+type PipelinePluginGoldenDraftImportRequestSchema = OpenApiSchema<'PipelinePluginGoldenDraftImportRequest'>
+
+export type PipelinePluginProcessingTemplate = OpenApiSchema<'PipelinePluginProcessingTemplate'>
+export type PipelinePluginProcessingTemplates = OpenApiSchema<'PipelinePluginProcessingTemplates'>
+export type PipelinePluginRefs = OpenApiSchema<'PipelinePluginRefs'>
+export type PipelinePluginStage = NonNullable<PipelinePluginItemSchema['stages']>[number]
+
+export type PipelinePluginItem = Omit<PipelinePluginItemSchema, 'suggested_pipeline_patch' | 'refs' | 'stages'> & {
+  stages: PipelinePluginStage[]
+  refs: PipelinePluginRefs
+  suggested_pipeline_patch: PipelinePluginSuggestedPatch
+}
+
+export type PipelinePluginListError = OpenApiSchema<'PipelinePluginListError'>
+
+export type PipelinePluginListResponse = Omit<OpenApiSchema<'PipelinePluginListResponse'>, 'items' | 'errors'> & {
+  items: PipelinePluginItem[]
+  errors: PipelinePluginListError[]
+}
+
+export type PipelinePluginGoldenDraftRequest = Pick<
+  PipelinePluginGoldenDraftRequestSchema,
+  'dataset_id' | 'plugin_ref'
+> &
+  Partial<Omit<PipelinePluginGoldenDraftRequestSchema, 'dataset_id' | 'plugin_ref'>>
+
+export type PipelinePluginGoldenDraftImportRequest = Pick<
+  PipelinePluginGoldenDraftImportRequestSchema,
+  'dataset_id' | 'plugin_ref'
+> &
+  Partial<Omit<PipelinePluginGoldenDraftImportRequestSchema, 'dataset_id' | 'plugin_ref'>>
+
+export type PipelinePluginGoldenDraftResponse = OpenApiSchema<'PipelinePluginGoldenDraftResponse'>
+
+export type PipelinePluginGoldenDraftImportResponse = OpenApiSchema<'PipelinePluginGoldenDraftImportResponse'>
+
+function normalizeStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.map((item) => String(item ?? '').trim()).filter(Boolean)
+}
 
 function normalizeRegexRuleForApi(rule: { pattern: string; repl?: string; flags?: number }): {
   pattern: string
@@ -91,6 +136,55 @@ function isProcessingScript(value: unknown): value is GovernanceProcessingScript
   )
 }
 
+function isPipelinePluginStage(value: unknown): value is PipelinePluginStage {
+  return value === 'governance' || value === 'chunk' || value === 'kg'
+}
+
+function normalizePipelinePluginRefs(value: unknown): PipelinePluginRefs {
+  const raw = isRecord(value) ? value : {}
+  const refs: PipelinePluginRefs = {}
+  if (typeof raw.governance === 'string' || raw.governance === null) refs.governance = raw.governance
+  if (typeof raw.chunk === 'string' || raw.chunk === null) refs.chunk = raw.chunk
+  if (typeof raw.kg === 'string' || raw.kg === null) refs.kg = raw.kg
+  return refs
+}
+
+function normalizePluginPrimitiveParams(value: unknown): Record<string, string | number | boolean | null> | undefined {
+  if (!isRecord(value)) return undefined
+  const out: Record<string, string | number | boolean | null> = {}
+  for (const [key, param] of Object.entries(value)) {
+    if (!key) continue
+    if (param === null || typeof param === 'string' || typeof param === 'number' || typeof param === 'boolean') {
+      out[key] = param
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
+function normalizePipelinePluginSuggestedPatch(value: unknown): PipelinePluginSuggestedPatch {
+  const raw = isRecord(value) ? value : {}
+  const patch: PipelinePluginSuggestedPatch = {}
+  if (typeof raw.governance_enabled === 'boolean') patch.governance_enabled = raw.governance_enabled
+  if (typeof raw.persist_parsed_content === 'boolean') patch.persist_parsed_content = raw.persist_parsed_content
+  const governanceParams = normalizePluginPrimitiveParams(raw.governance_python_params)
+  if (governanceParams) patch.governance_python_params = governanceParams
+  const chunkParams = normalizePluginPrimitiveParams(raw.chunk_python_params)
+  if (chunkParams) patch.chunk_python_params = chunkParams
+  const kgParams = normalizePluginPrimitiveParams(raw.kg_python_params)
+  if (kgParams) patch.kg_python_params = kgParams
+  return patch
+}
+
+function normalizePipelinePluginItem(value: unknown): PipelinePluginItem {
+  const raw = isRecord(value) ? value : {}
+  return {
+    ...(raw as PipelinePluginItemSchema),
+    stages: Array.isArray(raw.stages) ? raw.stages.filter(isPipelinePluginStage) : [],
+    refs: normalizePipelinePluginRefs(raw.refs),
+    suggested_pipeline_patch: normalizePipelinePluginSuggestedPatch(raw.suggested_pipeline_patch),
+  }
+}
+
 function normalizeGovernanceProfilePayload(payload: unknown): GovernanceProfileOut['payload'] {
   const p = isRecord(payload) ? payload : {}
   const inputFormatsRaw = p.input_formats
@@ -131,6 +225,58 @@ export const pipelineApi = {
       ...data,
       pdf_backends: data.pdf_backends ?? [],
       chunk_strategies: data.chunk_strategies ?? [],
+    }
+  },
+
+  async listPipelinePlugins(): Promise<PipelinePluginListResponse> {
+    const { data } = await apiClient.get('/pipeline/plugins')
+    return {
+      items: Array.isArray(data?.items) ? data.items.map(normalizePipelinePluginItem) : [],
+      errors: Array.isArray(data?.errors)
+        ? data.errors
+            .filter((item: unknown) => isRecord(item))
+            .map((item: Record<string, unknown>) => ({
+              plugin_dir: typeof item.plugin_dir === 'string' ? item.plugin_dir : '',
+              manifest_path: typeof item.manifest_path === 'string' ? item.manifest_path : '',
+              error: typeof item.error === 'string' ? item.error : '',
+            }))
+        : [],
+    }
+  },
+
+  async buildPluginGoldenDraft(
+    payload: PipelinePluginGoldenDraftRequest
+  ): Promise<PipelinePluginGoldenDraftResponse> {
+    const { data } = await apiClient.post('/pipeline/plugins/golden-draft', payload)
+    return {
+      ...data,
+      items_total: typeof data?.items_total === 'number' ? data.items_total : 0,
+      bundle: isRecord(data?.bundle) ? data.bundle : { items: [] },
+    } as PipelinePluginGoldenDraftResponse
+  },
+
+  async generateAndImportPluginGoldenDraft(
+    payload: PipelinePluginGoldenDraftImportRequest
+  ): Promise<PipelinePluginGoldenDraftImportResponse> {
+    const { data } = await apiClient.post('/pipeline/plugins/golden-draft/import', payload)
+    const draft = isRecord(data?.draft) ? data.draft : {}
+    const importResult = isRecord(data?.import_result) ? data.import_result : {}
+    return {
+      draft: {
+        ...draft,
+        items_total: typeof draft.items_total === 'number' ? draft.items_total : 0,
+        bundle: isRecord(draft.bundle) ? draft.bundle : { items: [] },
+      } as PipelinePluginGoldenDraftResponse,
+      import_result: {
+        created: Number(importResult.created ?? 0),
+        updated: Number(importResult.updated ?? 0),
+        skipped: Number(importResult.skipped ?? 0),
+        errors: Array.isArray(importResult.errors) ? importResult.errors : [],
+        created_case_ids: normalizeStringArray(importResult.created_case_ids),
+        updated_case_ids: normalizeStringArray(importResult.updated_case_ids),
+        skipped_case_ids: normalizeStringArray(importResult.skipped_case_ids),
+        case_ids: normalizeStringArray(importResult.case_ids),
+      } as PipelinePluginGoldenDraftImportResponse['import_result'],
     }
   },
 

@@ -1,8 +1,9 @@
 from app.rag.preprocessing.cleaning import clean_markdown
+from app.rag.preprocessing.rule_packs import GOVERNANCE_RULE_PACKS
 from app.rag.preprocessing.rules import build_governance_rules
 
 
-def test_governance_rule_pack_notion_export_noise_removes_export_metadata_lines():
+def test_notion_export_noise_removes_source_export_boilerplate():
     text = "\n".join(
         [
             "Exported from Notion",
@@ -25,6 +26,7 @@ def test_governance_rule_pack_notion_export_noise_removes_export_metadata_lines(
     )
     assert "Exported from Notion" in baseline.markdown
 
+    assert "notion_export_noise" in GOVERNANCE_RULE_PACKS
     packed = clean_markdown(
         text,
         rules=build_governance_rules([], rule_packs=["notion_export_noise"]),

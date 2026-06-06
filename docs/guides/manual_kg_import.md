@@ -12,28 +12,28 @@ Send JSON to `POST /api/v1/kg/imports/preview` for validation, then
 
 ```json
 {
-  "name": "常州政务事项图谱",
-  "import_id": "changzhou_service_items_v1",
+  "name": "业务知识图谱",
+  "import_id": "business_knowledge_v1",
   "dataset_name": "手动知识图谱",
   "replace_existing": false,
   "index_vectors": true,
   "entities": [
-    {"key": "service:permit", "name": "烟草专卖零售许可证新办", "type": "ServiceItem"},
-    {"key": "material:id", "name": "身份证明", "type": "Material"},
-    {"key": "district:cz", "name": "常州市", "type": "District"}
+    {"key": "record:returns", "name": "退换货规则", "type": "KnowledgeRecord"},
+    {"key": "policy:warranty", "name": "质保政策", "type": "Policy"},
+    {"key": "team:support", "name": "客户支持团队", "type": "OwnerDomain"}
   ],
   "relations": [
     {
-      "subject": "service:permit",
-      "predicate": "requires_material",
-      "object": "material:id",
-      "evidence": "办理该事项需要提交身份证明。",
-      "source": "人工审核表第 12 行"
+      "subject": "record:returns",
+      "predicate": "depends_on_policy",
+      "object": "policy:warranty",
+      "evidence": "退换货处理需要先核对质保政策。",
+      "source": "人工审核表第 8 行"
     },
     {
-      "subject": "service:permit",
-      "predicate": "applicable_in",
-      "object": "district:cz"
+      "subject": "record:returns",
+      "predicate": "owned_by",
+      "object": "team:support"
     }
   ]
 }
@@ -62,7 +62,7 @@ Use `GET /api/v1/kg/imports` to list import batches and
 
 ## Recommended Governance
 
-Keep only high-confidence business graph rows in KG. For government-service
-data, import stable service-item structure such as item, region, level, material,
-process step, phone, and online URL. Keep FAQ and long free-text laws in RAG
-documents unless a human has approved explicit links to canonical service items.
+Keep only high-confidence business graph rows in KG. Import stable structure
+such as canonical records, owner domains, policies, process steps, contacts, and
+URLs. Keep FAQ and long free-text policies in RAG documents unless a human has
+approved explicit links to canonical business records.

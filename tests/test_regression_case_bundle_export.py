@@ -91,3 +91,34 @@ def test_export_case_bundle_includes_multihop_fields_when_present():
     item = bundle["items"][0]
     assert item["reasoning_hops"] == ["h1", "h2"]
     assert isinstance(item["evidence_chain"], list) and len(item["evidence_chain"]) == 1
+
+
+def test_export_case_bundle_includes_plugin_extra_metadata():
+    mod = _import_bundle_module()
+
+    dataset_id = uuid4()
+    case = SimpleNamespace(
+        id=uuid4(),
+        tenant_id=uuid4(),
+        dataset_id=dataset_id,
+        question="plugin q",
+        expected_answer=None,
+        tags=["plugin:demo"],
+        reference_sources=[{"document_id": str(uuid4()), "chunk_id": str(uuid4())}],
+        extra={
+            "source": "plugin_golden_draft",
+            "plugin_id": "demo",
+            "expected_metadata": {"source_record_id": "record-1"},
+            "reasoning_hops": ["h1"],
+        },
+    )
+
+    bundle = mod.export_case_bundle([case], dataset_id)
+    item = bundle["items"][0]
+
+    assert item["extra"] == {
+        "source": "plugin_golden_draft",
+        "plugin_id": "demo",
+        "expected_metadata": {"source_record_id": "record-1"},
+    }
+    assert item["reasoning_hops"] == ["h1"]

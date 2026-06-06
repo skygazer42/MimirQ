@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from app.rag.core.filters import summarize_metadata_filter
 from app.rag.core.hashing import stable_hash
 
 _BANNED_KEYS = {
@@ -73,6 +74,13 @@ def build_retrieval_config_fingerprint(*, config: dict[str, Any], schema: str = 
     raw = config if isinstance(config, dict) else {}
     cleaned = _normalize_value(raw)
     cleaned = cleaned if isinstance(cleaned, dict) else {}
+    metadata_filter = raw.get("metadata_filter")
+    if isinstance(metadata_filter, dict) and metadata_filter:
+        metadata_payload = json.dumps(metadata_filter, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
+        cleaned["metadata_filter_hash"] = stable_hash(metadata_payload, length=32)
+        metadata_summary = summarize_metadata_filter(metadata_filter)
+        if metadata_summary:
+            cleaned["metadata_filter_summary"] = metadata_summary
 
     payload = json.dumps(cleaned, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
     digest = stable_hash(payload, length=32)
@@ -84,4 +92,3 @@ def build_retrieval_config_fingerprint(*, config: dict[str, Any], schema: str = 
 
 
 __all__ = ["build_retrieval_config_fingerprint"]
-

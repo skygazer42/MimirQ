@@ -70,6 +70,10 @@ class ReferenceSource(BaseModel):
         description="Composite key `${document_id}:${pipeline_hash}` (optional, for audit/debug)",
     )
     pipeline_hash: str | None = Field(default=None, max_length=64, description="Chunk pipeline hash (optional)")
+    record_identity: dict[str, Any] | None = Field(
+        default=None,
+        description="Plugin-defined stable record identity for record-level recall across re-chunking",
+    )
     quote: str | None = Field(
         default=None,
         max_length=2000,
@@ -128,6 +132,7 @@ class RagasRegressionCaseBundleItem(BaseModel):
     tags: list[str] = Field(default_factory=list)
     reasoning_hops: list[str] = Field(default_factory=list)
     evidence_chain: list[ReferenceSource] = Field(default_factory=list)
+    extra: dict[str, Any] = Field(default_factory=dict, description="Portable extension fields, such as plugin expected metadata")
 
 
 class RagasRegressionCaseImportRequest(BaseModel):
@@ -137,6 +142,19 @@ class RagasRegressionCaseImportRequest(BaseModel):
     overwrite: bool = False
     max_items: int = Field(default=500, ge=1, le=2000)
     items: list[RagasRegressionCaseBundleItem] = Field(..., min_length=1)
+
+
+class RagasRegressionCaseImportResponse(BaseModel):
+    """Result of importing regression cases, including ids that can be evaluated immediately."""
+
+    created: int = 0
+    updated: int = 0
+    skipped: int = 0
+    errors: list[dict[str, Any]] = Field(default_factory=list)
+    created_case_ids: list[UUID] = Field(default_factory=list)
+    updated_case_ids: list[UUID] = Field(default_factory=list)
+    skipped_case_ids: list[UUID] = Field(default_factory=list, description="Existing ids skipped because overwrite=false.")
+    case_ids: list[UUID] = Field(default_factory=list, description="Created ids followed by updated and skipped-existing ids.")
 
 
 class SyntheticHardcaseGenerateRequest(BaseModel):

@@ -34,8 +34,8 @@ def _sanitize_run_id(value: str) -> str:
 
 
 class PandocParser:
-    def __init__(self) -> None:
-        self._enabled = bool(getattr(settings, "PANDOC_ENABLED", False))
+    def __init__(self, *, force_enabled: bool = False, force_libreoffice: bool = False) -> None:
+        self._enabled = bool(force_enabled) or bool(getattr(settings, "PANDOC_ENABLED", False))
         self._cli = (getattr(settings, "PANDOC_CLI", "") or "pandoc").strip() or "pandoc"
         self._timeout_sec = float(getattr(settings, "PANDOC_TIMEOUT_SEC", 180) or 180)
         self._to_format = (getattr(settings, "PANDOC_TO_FORMAT", "") or "gfm").strip() or "gfm"
@@ -43,7 +43,7 @@ class PandocParser:
         self._extract_media = bool(getattr(settings, "PANDOC_EXTRACT_MEDIA", True))
         self._html_use_readability = bool(getattr(settings, "PANDOC_HTML_USE_READABILITY", True))
 
-        self._lo_enabled = bool(getattr(settings, "LIBREOFFICE_ENABLED", False))
+        self._lo_enabled = bool(force_libreoffice) or bool(getattr(settings, "LIBREOFFICE_ENABLED", False))
         self._lo_cli = (getattr(settings, "LIBREOFFICE_CLI", "") or "soffice").strip() or "soffice"
         self._lo_timeout_sec = float(getattr(settings, "LIBREOFFICE_TIMEOUT_SEC", 300) or 300)
 
@@ -118,6 +118,7 @@ class PandocParser:
                 "LibreOffice conversion requested but LIBREOFFICE_ENABLED=false or soffice is missing."
             )
 
+        source_path = file_path.resolve(strict=False)
         ext = file_path.suffix.lower()
         if ext == ".doc":
             target_ext = "docx"
@@ -142,7 +143,7 @@ class PandocParser:
             target_ext,
             "--outdir",
             str(out_dir),
-            str(file_path),
+            str(source_path),
         ]
         try:
             run_resolved_cli(

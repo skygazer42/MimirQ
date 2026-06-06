@@ -88,7 +88,7 @@ Removes common Confluence export noise (line-oriented), e.g.:
 - `View in Confluence`
 
 ### `wechat_mp_noise`
-Removes common WeChat official account (公众号) copy/paste noise (line-oriented), e.g.:
+Removes common WeChat official account copy/paste noise (line-oriented), e.g.:
 - `阅读原文`
 - `点击上方...关注/订阅`
 - `长按...识别二维码...关注`
@@ -112,7 +112,35 @@ Removes common “export/convert tool” headers/footers (line-oriented), e.g.:
 - `Created with ...`
 - `Last updated ...`
 
+### `cn_finance_report_artifacts`
+Removes common A-share annual report / prospectus disclosure noise (line-oriented), e.g.:
+- board / supervisor truthfulness commitments
+- stock code / stock abbreviation lines
+- announcement number lines
+
+### `cn_gov_redhead_artifacts`
+Removes common government redhead-document footer and routing noise (line-oriented), e.g.:
+- `抄送: ...`
+- `签发: ...`
+- `主送: ...`
+- `主题词: ...`
+
+### `cn_medical_record_artifacts`
+Removes common medical-record display fields before downstream masking (line-oriented), e.g.:
+- `病案号: ...`
+- `床号: ...`
+- `主管医生: ...`
+- `科室: ...`
+
+### `feishu_lark_noise`
+Removes common Feishu / Lark knowledge-base export noise (line-oriented), e.g.:
+- `由飞书文档导出`
+- `Powered by Lark`
+- `最后编辑: ...`
+- `协作者: ...`
+
 ## Notes / Safety
 
 - Packs are best-effort heuristics. Always verify with Clean Preview before bulk ingestion.
 - If you see false positives, keep the pack disabled and use a custom Governance Profile with precise regex rules instead.
+- Highly specific business ingestion logic can still live in a pipeline plugin or tenant-owned Governance Profile.

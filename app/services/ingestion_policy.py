@@ -22,11 +22,11 @@ from uuid import UUID
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from app.api.schemas.document import DocumentPipelineOptions
 from app.api.schemas.governance_profile import GovernanceProfileOut
 from app.api.schemas.ingestion_policy import IngestionPolicy, IngestionPreprocessStep, IngestionRule
 from app.core.regex_safety import looks_like_nested_quantifier
 from app.services.governance_profiles_resolver import resolve_governance_profile_ref_effective
+from app.services.pipeline_patch_validator import normalize_document_pipeline_patch
 
 RULE_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.:\-]{0,99}$")
 MAX_RULES = 60
@@ -145,22 +145,12 @@ def _normalize_preprocess_steps(raw: object) -> list[dict]:
 
 
 def _normalize_pipeline_patch(raw: object) -> dict:
-    if raw is None:
-        return {}
-    if not isinstance(raw, dict):
-        raise ValueError("pipeline_patch must be an object")
-    if len(raw) > MAX_PIPELINE_PATCH_KEYS:
-        raise ValueError("pipeline_patch too many keys")
-    allowed = set(DocumentPipelineOptions.model_fields.keys())
-    unknown = [k for k in raw.keys() if k not in allowed]
-    if unknown:
-        unknown_sorted = ", ".join(sorted(map(str, unknown))[:20])
-        raise ValueError(f"pipeline_patch contains unknown keys: {unknown_sorted}")
-    try:
-        validated = DocumentPipelineOptions(**raw)
-    except ValidationError as exc:
-        raise ValueError("invalid pipeline_patch") from exc
-    return validated.model_dump(exclude_none=True)
+    return normalize_document_pipeline_patch(
+        raw,
+        field_label="pipeline_patch",
+        invalid_message="invalid pipeline_patch",
+        max_keys=MAX_PIPELINE_PATCH_KEYS,
+    )
 
 
 def validate_and_normalize_ingestion_policy(policy: IngestionPolicy) -> IngestionPolicy:

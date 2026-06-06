@@ -1,0 +1,58 @@
+{
+  "schema": "mimirq.pipeline_plugin_processing_templates.v1",
+  "plugin_id": "changzhou-gov-service-knowledge",
+  "version": "1.0.0",
+  "description": "常州政务服务知识包的业务治理模板归属清单。业务专项能力只在插件包内维护，MimirQ 平台内置模板库保持业务中立。",
+  "templates": [
+    {
+      "key": "changzhou_gov_qa_split_by_separator",
+      "name": "政务 QA 按分隔符切分",
+      "stage": "governance",
+      "implemented_by": "plugin.py:_split_blocks"
+    },
+    {
+      "key": "changzhou_gov_qa_field_parse",
+      "name": "政务 QA 字段解析",
+      "stage": "governance",
+      "implemented_by": "plugin.py:_govern_qa"
+    },
+    {
+      "key": "changzhou_gov_item_field_parse",
+      "name": "政务事项清单字段解析",
+      "stage": "governance",
+      "implemented_by": "gov_service_items.py:govern_documents"
+    },
+    {
+      "key": "changzhou_gov_url_extract",
+      "name": "政务 URL 抽取",
+      "stage": "governance",
+      "implemented_by": "plugin.py:_extract_urls"
+    },
+    {
+      "key": "changzhou_gov_keyword_extract",
+      "name": "政务关键字/相似问法抽取",
+      "stage": "governance",
+      "implemented_by": "plugin.py:_KEYWORD_RE",
+      "related_implementations": ["plugin.py:_ALIAS_RE"]
+    },
+    {
+      "key": "changzhou_gov_qa_xlsx_header_align",
+      "name": "政务 QA xlsx 表头规范化",
+      "stage": "governance",
+      "implemented_by": "plugin.py:_header_key"
+    },
+    {
+      "key": "changzhou_gov_one_thing_section_chunk",
+      "name": "高效办成一件事章节切块",
+      "stage": "chunk",
+      "implemented_by": "plugin.py:_chunk_one_thing_guide",
+      "related_implementations": ["plugin.py:_chunk_one_thing_operation"]
+    },
+    {
+      "key": "changzhou_gov_service_kg_build",
+      "name": "政务服务 KG 事件构建",
+      "stage": "kg",
+      "implemented_by": "kg_builder.py:build_kg_events"
+    }
+  ]
+}

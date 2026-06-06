@@ -12,6 +12,15 @@ from app.rag.evaluation.multihop import score_multihop_citation_chain
 
 logger = get_logger(__name__)
 
+_EXPECTED_METADATA_PLATFORM_SCALAR_KEYS = {
+    "pipeline_hash",
+    "doc_pipeline_key",
+    "chunk_strategy",
+    "resolved_chunk_strategy",
+    "chunk_python_plugin",
+    "governance_python_plugin",
+}
+
 
 def _get(obj: Any, key: str, default: Any = None) -> Any:
     if obj is None:
@@ -85,6 +94,37 @@ def _stable_citation_key(cit: Any) -> str | None:
     return f"{dk}:{idx}"
 
 
+def _record_identity_key_from_mapping(value: Any) -> str | None:
+    d = _coerce_dict(value)
+    raw = d.get("_record_identity") or d.get("record_identity")
+    if not isinstance(raw, dict):
+        return None
+    key = str(raw.get("key") or "").strip()
+    if key:
+        return key
+    fields = raw.get("fields")
+    if not isinstance(fields, dict) or not fields:
+        return None
+    parts: list[str] = []
+    for name in sorted(str(k) for k in fields):
+        field_value = fields.get(name)
+        if not _value_present(field_value):
+            continue
+        parts.append(f"{name}={field_value}")
+    return "|".join(parts) if parts else None
+
+
+def _record_identity_key(obj: Any) -> str | None:
+    root_key = _record_identity_key_from_mapping(obj)
+    if root_key:
+        return root_key
+    for meta in _citation_metadata_bases(obj):
+        meta_key = _record_identity_key_from_mapping(meta)
+        if meta_key:
+            return meta_key
+    return None
+
+
 def _family_key(obj: Any) -> str | None:
     """
     Best-effort hierarchy family key extractor.
@@ -109,6 +149,182 @@ def _family_key(obj: Any) -> str | None:
         if s:
             return s
     return None
+
+
+def _metadata_value(meta: dict[str, Any], key: str) -> Any:
+    if "." not in key:
+        return meta.get(key)
+    cur: Any = meta
+    for part in key.split("."):
+        if not isinstance(cur, dict):
+            return None
+        cur = cur.get(part)
+    return cur
+
+
+def _value_present(value: Any) -> bool:
+    return value is not None and value != "" and value != []
+
+
+def _expected_metadata_from_case_extra(extra: Any) -> dict[str, Any]:
+    extra_d = extra if isinstance(extra, dict) else {}
+    raw = extra_d.get("expected_metadata")
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, Any] = {}
+    for key, value in raw.items():
+        k = str(key or "").strip()
+        if not k or not _value_present(value):
+            continue
+        out[k] = value
+        if len(out) >= 60:
+            break
+    return out
+
+
+def _citation_metadata_bases(citation: Any) -> list[dict[str, Any]]:
+    root = _coerce_dict(citation)
+    bases: list[dict[str, Any]] = []
+    for candidate in (
+        root,
+        root.get("metadata"),
+        root.get("doc_metadata"),
+        root.get("chunk_metadata"),
+    ):
+        if isinstance(candidate, dict):
+            bases.append(candidate)
+    return bases
+
+
+def _citation_metadata_containers(citation: Any) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    seen: set[int] = set()
+    for base in _citation_metadata_bases(citation):
+        for view_key in ("_evaluable_metadata", "_indexed_metadata", "_display_metadata"):
+            view = base.get(view_key)
+            if isinstance(view, dict) and id(view) not in seen:
+                seen.add(id(view))
+                out.append(view)
+        record_identity = base.get("_record_identity") or base.get("record_identity")
+        if isinstance(record_identity, dict):
+            fields = record_identity.get("fields")
+            if isinstance(fields, dict) and id(fields) not in seen:
+                seen.add(id(fields))
+                out.append(fields)
+        scalar = {
+            key: base.get(key)
+            for key in _EXPECTED_METADATA_PLATFORM_SCALAR_KEYS
+            if key in base and _value_present(base.get(key))
+        }
+        if scalar:
+            out.append(scalar)
+    return out
+
+
+def _values_match(expected: Any, actual: Any) -> bool:
+    if not _value_present(actual):
+        return False
+    if isinstance(expected, dict) or isinstance(actual, dict):
+        return expected == actual
+
+    if isinstance(expected, (list, tuple, set)):
+        expected_values = [str(v).strip() for v in expected if _value_present(v)]
+        if not expected_values:
+            return False
+        if isinstance(actual, (list, tuple, set)):
+            actual_values = {str(v).strip() for v in actual if _value_present(v)}
+            return set(expected_values).issubset(actual_values)
+        return str(actual).strip() in set(expected_values)
+
+    if isinstance(actual, (list, tuple, set)):
+        expected_value = str(expected).strip()
+        return expected_value in {str(v).strip() for v in actual if _value_present(v)}
+
+    return actual == expected or str(actual).strip() == str(expected).strip()
+
+
+def _citation_matches_expected_metadata(citation: Any, expected_metadata: dict[str, Any]) -> bool:
+    if not expected_metadata:
+        return False
+    for key, expected_value in expected_metadata.items():
+        matched = False
+        for meta in _citation_metadata_containers(citation):
+            if _values_match(expected_value, _metadata_value(meta, key)):
+                matched = True
+                break
+        if not matched:
+            return False
+    return True
+
+
+def _expected_metadata_metrics(*, expected_metadata: dict[str, Any], citations: list[Any]) -> dict[str, Any]:
+    if not expected_metadata:
+        return {}
+
+    matched_keys: set[str] = set()
+    for key, expected_value in expected_metadata.items():
+        for citation in citations or []:
+            if any(
+                _values_match(expected_value, _metadata_value(meta, key))
+                for meta in _citation_metadata_containers(citation)
+            ):
+                matched_keys.add(key)
+                break
+
+    fields_total = int(len(expected_metadata))
+    fields_matched = int(len(matched_keys))
+    missing_keys = [key for key in expected_metadata if key not in matched_keys][:20]
+    hit = any(_citation_matches_expected_metadata(citation, expected_metadata) for citation in (citations or []))
+    return {
+        "expected_metadata_hit": bool(hit),
+        "expected_metadata_recall": round(float(fields_matched) / max(1, fields_total), 4),
+        "expected_metadata_fields_total": fields_total,
+        "expected_metadata_fields_matched": fields_matched,
+        "expected_metadata_missing_keys": missing_keys,
+    }
+
+
+def build_expected_metadata_metrics_summary(items_meta: list[dict[str, Any]]) -> dict[str, Any]:
+    cases: list[dict[str, Any]] = []
+    for meta in items_meta or []:
+        if not isinstance(meta, dict):
+            continue
+        if meta.get("expected_metadata_hit") is None and meta.get("expected_metadata_recall") is None:
+            continue
+        cases.append(meta)
+    if not cases:
+        return {}
+
+    hit_values = [
+        1.0 if bool(meta.get("expected_metadata_hit")) else 0.0
+        for meta in cases
+        if meta.get("expected_metadata_hit") is not None
+    ]
+    recall_values: list[float] = []
+    fields_total = 0
+    fields_matched = 0
+    for meta in cases:
+        try:
+            if meta.get("expected_metadata_recall") is not None:
+                recall_values.append(float(meta.get("expected_metadata_recall")))
+        except Exception as exc:
+            logger.debug("Ignoring expected metadata recall coercion failure: %s", exc)
+        try:
+            fields_total += max(0, int(meta.get("expected_metadata_fields_total") or 0))
+        except Exception as exc:
+            logger.debug("Ignoring expected metadata field-total coercion failure: %s", exc)
+        try:
+            fields_matched += max(0, int(meta.get("expected_metadata_fields_matched") or 0))
+        except Exception as exc:
+            logger.debug("Ignoring expected metadata field-matched coercion failure: %s", exc)
+
+    return {
+        "expected_metadata_hit_rate": (round(sum(hit_values) / len(hit_values), 4) if hit_values else None),
+        "expected_metadata_recall": (round(sum(recall_values) / len(recall_values), 4) if recall_values else None),
+        "expected_metadata_cases_total": int(len(cases)),
+        "expected_metadata_fields_total": int(fields_total),
+        "expected_metadata_fields_matched": int(fields_matched),
+    }
 
 
 def _quote_signature(text: Any, *, max_chars: int = 120) -> str | None:
@@ -208,6 +424,9 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
 
     citations = item.get("citations") or []
     retrieved_context_ids = _dedup_ids(citations, key="chunk_id")
+    extra = _get(case, "extra", None)
+    extra_d = extra if isinstance(extra, dict) else {}
+    expected_metadata = _expected_metadata_from_case_extra(extra_d)
 
     citations_ranked: list[Any] = []
     seen_cids: set[str] = set()
@@ -233,24 +452,34 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
     ret_set = set(ret_list)
 
     ref_keys: list[str] = []
+    ref_record_keys: list[str] = []
     ref_quotes: list[str] = []
     for src in reference_sources or []:
         k = _stable_ref_key(src)
         if k:
             ref_keys.append(k)
+        rk = _record_identity_key(src)
+        if rk:
+            ref_record_keys.append(rk)
         qsig = _quote_signature(_coerce_dict(src).get("quote"))
         if qsig:
             ref_quotes.append(qsig)
     ref_key_set = set(ref_keys)
+    ref_record_key_set = set(ref_record_keys)
 
     cit_keys: list[str] = []
+    cit_record_keys: list[str] = []
     cit_texts: list[str] = []
     for c in citations_ranked:
         ck = _stable_citation_key(c)
         if ck:
             cit_keys.append(ck)
+        crk = _record_identity_key(c)
+        if crk:
+            cit_record_keys.append(crk)
         cit_texts.append(_citation_text_for_quote_match(c))
     cit_key_set = set(cit_keys)
+    cit_record_key_set = set(cit_record_keys)
     cit_text_joined = "\n".join([t for t in cit_texts if t]) if cit_texts else ""
 
     def _citation_matches_any_ref(i: int) -> bool:
@@ -263,6 +492,10 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
 
         ck = _stable_citation_key(d)
         if ck and ck in ref_key_set:
+            return True
+
+        crk = _record_identity_key(d)
+        if crk and crk in ref_record_key_set:
             return True
 
         if ref_quotes:
@@ -280,6 +513,9 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
             return True
         k = _stable_ref_key(src)
         if k and k in cit_key_set:
+            return True
+        rk = _record_identity_key(src)
+        if rk and rk in cit_record_key_set:
             return True
         qsig = _quote_signature(d.get("quote"))
         if qsig and cit_text_joined and qsig in cit_text_joined:
@@ -395,8 +631,6 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
         top_rel_f = None
 
     expected_refusal = None
-    extra = _get(case, "extra", None)
-    extra_d = extra if isinstance(extra, dict) else {}
     for key in ("expected_refusal", "should_refuse", "expected_abstain"):
         if key in extra_d:
             expected_refusal = bool(extra_d.get(key))
@@ -490,6 +724,8 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
         "multihop_order_consistency": multihop.get("order_consistency"),
         "multihop_chain_hit": multihop.get("chain_hit"),
     }
+    if expected_metadata:
+        meta.update(_expected_metadata_metrics(expected_metadata=expected_metadata, citations=citations_ranked))
 
     # Per-case explanations (P0): numeric-only, PII-minimal (safe for bundle exports).
     try:
@@ -524,6 +760,11 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
             if missed_ref_ids:
                 msg = msg + f", missed_ids={missed_ref_ids[:3]}"
             explanations["retrieval_recall"] = msg[:220]
+        if expected_metadata and meta.get("expected_metadata_recall") is not None:
+            explanations["expected_metadata"] = (
+                f"fields_matched={int(meta.get('expected_metadata_fields_matched') or 0)}/"
+                f"{int(meta.get('expected_metadata_fields_total') or 0)}"
+            )
 
         if explanations:
             meta["explanations"] = explanations
@@ -557,7 +798,7 @@ def build_regression_item_meta(*, sample_kwargs: dict[str, Any] | None, item_met
     sample = dict(sample_kwargs or {})
     meta = dict(item_meta or {})
 
-    return {
+    out = {
         "reference_context_ids": list(sample.get("reference_context_ids") or []),
         "retrieved_context_ids": list(sample.get("retrieved_context_ids") or []),
         # Slice keys for report slicing (best-effort; derived from evidence document metadata).
@@ -606,3 +847,13 @@ def build_regression_item_meta(*, sample_kwargs: dict[str, Any] | None, item_met
         # LLM-as-judge (optional; enabled per regression run).
         "llm_judge": meta.get("llm_judge"),
     }
+    for key in (
+        "expected_metadata_hit",
+        "expected_metadata_recall",
+        "expected_metadata_fields_total",
+        "expected_metadata_fields_matched",
+        "expected_metadata_missing_keys",
+    ):
+        if key in meta:
+            out[key] = meta.get(key)
+    return out

@@ -8,25 +8,50 @@ from typing import Any
 
 _MAX_FILTER_DEPTH = 8
 _MAX_FILTER_NODES = 200
+_INDEXED_METADATA_KEY = "_indexed_metadata"
+_MISSING = object()
+
+
+def _get_meta_path_value(meta: dict[str, Any], key: str) -> Any:
+    """Return metadata value for a key/path, or `_MISSING` when the path is absent."""
+    if "." not in key:
+        return meta[key] if key in meta else _MISSING
+
+    cur: Any = meta
+    for part in key.split("."):
+        if not isinstance(cur, dict) or part not in cur:
+            return _MISSING
+        cur = cur[part]
+    return cur
 
 
 def _get_meta_value(meta: dict[str, Any], key: str) -> Any:
     """
     Return metadata value for a key, supporting dotted paths.
 
+    If the direct path is absent, schema-declared metadata field filters fall
+    back to the schema-generated `_indexed_metadata` view. Explicit top-level
+    metadata still wins, and callers can always target `_indexed_metadata.foo`
+    directly.
+
     Examples:
         meta = {"a": {"b": 1}}
         _get_meta_value(meta, "a.b") -> 1
     """
-    if "." not in key:
-        return meta.get(key)
+    direct = _get_meta_path_value(meta, key)
+    if direct is not _MISSING:
+        return direct
 
-    cur: Any = meta
-    for part in key.split("."):
-        if not isinstance(cur, dict):
-            return None
-        cur = cur.get(part)
-    return cur
+    if key.startswith("$") or key.startswith("_"):
+        return None
+
+    indexed = meta.get(_INDEXED_METADATA_KEY)
+    if isinstance(indexed, dict):
+        fallback = _get_meta_path_value(indexed, key)
+        if fallback is not _MISSING:
+            return fallback
+
+    return None
 
 
 def _any_in(haystack: Any, needles: Any) -> bool:

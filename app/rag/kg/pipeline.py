@@ -121,6 +121,8 @@ async def extract_events(
     extract_relations: bool | None = None,
     extract_skills: bool | None = None,
     extraction_backend: str | None = None,
+    kg_python_plugin: str | None = None,
+    kg_python_params: dict | None = None,
     replace_existing: bool | None = None,
     prune_orphan_entities: bool | None = None,
 ):
@@ -137,6 +139,8 @@ async def extract_events(
         extract_relations=extract_relations,
         extract_skills=extract_skills,
         extraction_backend=extraction_backend,
+        kg_python_plugin=kg_python_plugin,
+        kg_python_params=kg_python_params,
         replace_existing=replace_existing,
         prune_orphan_entities=prune_orphan_entities,
     )

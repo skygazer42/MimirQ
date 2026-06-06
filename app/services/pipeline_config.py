@@ -11,6 +11,7 @@ from typing import Any
 
 from app.core.config import settings
 from app.core.regex_safety import looks_like_nested_quantifier
+from app.rag.pipeline_plugins.refs import sanitize_python_plugin_ref
 from app.types.indexing import IndexingOptions
 from app.types.pipeline import PipelineEffective, PipelineOptions
 
@@ -98,6 +99,10 @@ def _sanitize_chunk_strategy_params(value: Any) -> dict[str, Any] | None:
         # No nested objects/lists.
 
     return cleaned or None
+
+
+def _sanitize_stage_python_plugin_ref(value: Any, expected_stage: str) -> str | None:
+    return sanitize_python_plugin_ref(value, expected_stage=expected_stage)
 
 
 def _sanitize_regex_rules(value: Any) -> list[dict] | None:
@@ -284,6 +289,8 @@ def parse_pipeline_from_metadata(metadata: dict[str, Any]) -> PipelineOptions:
         governance_noise_ratio_threshold=_coerce_float(governance.get("noise_ratio_threshold")),
         governance_common_lines_min_docs=_coerce_int(governance.get("common_lines_min_docs")),
         governance_common_lines_min_ratio=_coerce_float(governance.get("common_lines_min_ratio")),
+        governance_python_plugin=_sanitize_stage_python_plugin_ref(governance.get("python_plugin"), "governance"),
+        governance_python_params=_sanitize_chunk_strategy_params(governance.get("python_params")),
         parse_fallback_enabled=_coerce_bool(pipeline.get("parse_fallback_enabled")),
         parse_fallback_min_content_chars=_coerce_int(pipeline.get("parse_fallback_min_content_chars")),
         parse_fallback_min_parse_score=_coerce_float(pipeline.get("parse_fallback_min_parse_score")),
@@ -305,6 +312,8 @@ def parse_pipeline_from_metadata(metadata: dict[str, Any]) -> PipelineOptions:
         chunk_overlap=_coerce_int(pipeline.get("chunk_overlap")),
         chunk_merge_small_min_chars=_coerce_int(pipeline.get("chunk_merge_small_min_chars")),
         chunk_strategy_params=_sanitize_chunk_strategy_params(pipeline.get("chunk_strategy_params")),
+        chunk_python_plugin=_sanitize_stage_python_plugin_ref(pipeline.get("chunk_python_plugin"), "chunk"),
+        chunk_python_params=_sanitize_chunk_strategy_params(pipeline.get("chunk_python_params")),
         embedding_context_prefix_enabled=_coerce_bool(index.get("embedding_context_prefix_enabled")),
         embedding_contextual_retrieval_enabled=_coerce_bool(index.get("embedding_contextual_retrieval_enabled")),
         embedding_contextual_retrieval_lazy_mode=_coerce_bool(index.get("embedding_contextual_retrieval_lazy_mode")),
@@ -312,6 +321,8 @@ def parse_pipeline_from_metadata(metadata: dict[str, Any]) -> PipelineOptions:
         chunk_vector_enabled=_coerce_bool(index.get("chunk_vector_enabled")),
         bm25_index_enabled=_coerce_bool(index.get("bm25_index_enabled")),
         kg_enabled=_coerce_bool(index.get("kg_enabled")),
+        kg_python_plugin=_sanitize_stage_python_plugin_ref(pipeline.get("kg_python_plugin"), "kg"),
+        kg_python_params=_sanitize_chunk_strategy_params(pipeline.get("kg_python_params")),
         event_vector_enabled=_coerce_bool(index.get("event_vector_enabled")),
         entity_vector_enabled=_coerce_bool(index.get("entity_vector_enabled")),
         table_store_enabled=_coerce_bool(tables.get("enabled")),
@@ -376,6 +387,22 @@ def build_pipeline_metadata(options: PipelineOptions) -> dict[str, Any] | None:
         sanitized = _sanitize_chunk_strategy_params(options.chunk_strategy_params)
         if sanitized:
             pipeline["chunk_strategy_params"] = sanitized
+    if options.chunk_python_plugin is not None:
+        plugin_ref = _sanitize_stage_python_plugin_ref(options.chunk_python_plugin, "chunk")
+        if plugin_ref:
+            pipeline["chunk_python_plugin"] = plugin_ref
+    if options.chunk_python_params is not None:
+        sanitized = _sanitize_chunk_strategy_params(options.chunk_python_params)
+        if sanitized:
+            pipeline["chunk_python_params"] = sanitized
+    if options.kg_python_plugin is not None:
+        plugin_ref = _sanitize_stage_python_plugin_ref(options.kg_python_plugin, "kg")
+        if plugin_ref:
+            pipeline["kg_python_plugin"] = plugin_ref
+    if options.kg_python_params is not None:
+        sanitized = _sanitize_chunk_strategy_params(options.kg_python_params)
+        if sanitized:
+            pipeline["kg_python_params"] = sanitized
 
     tables: dict[str, Any] = {}
     if options.table_store_enabled is not None:
@@ -510,6 +537,14 @@ def build_pipeline_metadata(options: PipelineOptions) -> dict[str, Any] | None:
         governance["common_lines_min_docs"] = int(options.governance_common_lines_min_docs)
     if options.governance_common_lines_min_ratio is not None:
         governance["common_lines_min_ratio"] = float(options.governance_common_lines_min_ratio)
+    if options.governance_python_plugin is not None:
+        plugin_ref = _sanitize_stage_python_plugin_ref(options.governance_python_plugin, "governance")
+        if plugin_ref:
+            governance["python_plugin"] = plugin_ref
+    if options.governance_python_params is not None:
+        sanitized = _sanitize_chunk_strategy_params(options.governance_python_params)
+        if sanitized:
+            governance["python_params"] = sanitized
     if governance:
         pipeline["governance"] = governance
 
@@ -813,6 +848,8 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         if options.governance_common_lines_min_ratio is not None
         else settings.GOVERNANCE_COMMON_LINES_MIN_RATIO
     )
+    governance_python_plugin = _sanitize_stage_python_plugin_ref(options.governance_python_plugin, "governance") or ""
+    governance_python_params = _sanitize_chunk_strategy_params(options.governance_python_params) or {}
     parse_fallback_enabled = (
         getattr(settings, "PARSE_FALLBACK_ENABLED", False)
         if options.parse_fallback_enabled is None
@@ -911,6 +948,10 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         else None
     )
     chunk_strategy_params = _sanitize_chunk_strategy_params(chunk_strategy_params) or {}
+    chunk_python_plugin = _sanitize_stage_python_plugin_ref(options.chunk_python_plugin, "chunk") or ""
+    chunk_python_params = _sanitize_chunk_strategy_params(options.chunk_python_params) or {}
+    kg_python_plugin = _sanitize_stage_python_plugin_ref(options.kg_python_plugin, "kg") or ""
+    kg_python_params = _sanitize_chunk_strategy_params(options.kg_python_params) or {}
     embedding_context_prefix_enabled = (
         getattr(settings, "EMBEDDING_CONTEXT_PREFIX_ENABLED", False)
         if options.embedding_context_prefix_enabled is None
@@ -1050,6 +1091,8 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         governance_noise_ratio_threshold=float(governance_noise_ratio_threshold),
         governance_common_lines_min_docs=int(governance_common_lines_min_docs),
         governance_common_lines_min_ratio=float(governance_common_lines_min_ratio),
+        governance_python_plugin=str(governance_python_plugin or ""),
+        governance_python_params=dict(governance_python_params),
         parse_fallback_enabled=bool(parse_fallback_enabled),
         parse_fallback_min_content_chars=int(parse_fallback_min_content_chars),
         parse_fallback_min_parse_score=float(parse_fallback_min_parse_score),
@@ -1071,6 +1114,8 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         chunk_overlap=int(chunk_overlap),
         chunk_merge_small_min_chars=int(chunk_merge_small_min_chars),
         chunk_strategy_params=dict(chunk_strategy_params),
+        chunk_python_plugin=str(chunk_python_plugin or ""),
+        chunk_python_params=dict(chunk_python_params),
         embedding_context_prefix_enabled=bool(embedding_context_prefix_enabled),
         embedding_contextual_retrieval_enabled=bool(embedding_contextual_retrieval_enabled),
         embedding_contextual_retrieval_lazy_mode=bool(embedding_contextual_retrieval_lazy_mode),
@@ -1078,6 +1123,8 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         chunk_vector_enabled=_resolve_flag(settings.CHUNK_VECTOR_ENABLED, options.chunk_vector_enabled),
         bm25_index_enabled=_resolve_flag(settings.BM25_INDEX_ENABLED, options.bm25_index_enabled),
         kg_enabled=_resolve_flag(settings.KG_ENABLED, options.kg_enabled),
+        kg_python_plugin=str(kg_python_plugin or ""),
+        kg_python_params=dict(kg_python_params),
         event_vector_enabled=_resolve_flag(settings.EVENT_VECTOR_ENABLED, options.event_vector_enabled),
         entity_vector_enabled=_resolve_flag(settings.ENTITY_VECTOR_ENABLED, options.entity_vector_enabled),
         table_store_enabled=bool(table_store_enabled),
