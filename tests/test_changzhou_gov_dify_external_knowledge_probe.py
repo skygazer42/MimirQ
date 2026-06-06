@@ -177,10 +177,12 @@ def test_collect_probe_report_flags_dify_empty_but_mimirq_direct_ok_without_leak
         timeout=12.0,
         top_k=5,
         progress_fn=progress.append,
+        generated_at="2026-06-07T01:02:03Z",
     )
 
     text = json.dumps(report, ensure_ascii=False)
     assert "external-secret-key" not in text
+    assert report["generated_at"] == "2026-06-07T01:02:03Z"
     assert report["summary"]["cases"] == 1
     assert report["summary"]["dify_hit_empty"] == 1
     assert report["summary"]["mimirq_direct_nonempty"] == 1
