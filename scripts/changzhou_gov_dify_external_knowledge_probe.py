@@ -26,6 +26,7 @@ DEFAULT_EXTERNAL_API_LIMIT = 50
 
 RequestJsonFn = Callable[..., dict[str, Any]]
 RequestMimirqDirectFn = Callable[..., dict[str, Any]]
+ProgressFn = Callable[[dict[str, Any]], None]
 
 
 def _text(value: Any) -> str:
@@ -309,6 +310,11 @@ def evaluate_probe_gate(report: dict[str, Any]) -> dict[str, Any]:
     return {"passed": not failed_conditions, "failed_conditions": failed_conditions}
 
 
+def _emit_progress(progress_fn: ProgressFn | None, payload: dict[str, Any]) -> None:
+    if progress_fn is not None:
+        progress_fn(payload)
+
+
 def collect_probe_report(
     *,
     cases: list[dict[str, Any]],
@@ -320,6 +326,7 @@ def collect_probe_report(
     local_ipv4_addresses: list[str] | None = None,
     timeout: float = 30.0,
     top_k: int = 5,
+    progress_fn: ProgressFn | None = None,
 ) -> dict[str, Any]:
     external_payload = request_json(
         console_base_url=console_base_url,
@@ -343,7 +350,8 @@ def collect_probe_report(
     )
 
     rows: list[dict[str, Any]] = []
-    for case in cases:
+    total = len(cases)
+    for index, case in enumerate(cases, start=1):
         case_id = _text(case.get("id") or case.get("case_id"))
         knowledge_id = _text(case.get("knowledge_id"))
         query = _text(case.get("query"))
@@ -376,6 +384,12 @@ def collect_probe_report(
         dify_count = _records_count(dify_payload)
         direct_count = _records_count(direct_payload)
         direct_schema_errors = validate_dify_external_records_shape(direct_payload) if direct_payload else []
+        diagnosis = _diagnosis(
+            dify_count=dify_count,
+            direct_count=direct_count,
+            missing_dataset=not bool(dataset_id),
+            error=error,
+        )
         rows.append(
             {
                 "id": case_id,
@@ -388,14 +402,22 @@ def collect_probe_report(
                 "mimirq_direct_schema_valid": not direct_schema_errors,
                 "mimirq_direct_schema_errors": direct_schema_errors,
                 "mimirq_direct_first_title": _first_record_title(direct_payload),
-                "diagnosis": _diagnosis(
-                    dify_count=dify_count,
-                    direct_count=direct_count,
-                    missing_dataset=not bool(dataset_id),
-                    error=error,
-                ),
+                "diagnosis": diagnosis,
                 **({"error": error} if error else {}),
             }
+        )
+        _emit_progress(
+            progress_fn,
+            {
+                "stage": "external_probe",
+                "event": "case",
+                "index": index,
+                "total": total,
+                "id": case_id,
+                "dify_hit_records": dify_count,
+                "mimirq_direct_records": direct_count,
+                "diagnosis": diagnosis,
+            },
         )
 
     report = {
@@ -428,6 +450,18 @@ def collect_probe_report(
     return report
 
 
+def _progress_to_stderr(event: dict[str, Any]) -> None:
+    if _text(event.get("event")) != "case":
+        return
+    print(
+        f"[changzhou-dify-external-probe] case {event.get('index')}/{event.get('total')} "
+        f"{_text(event.get('id'))} dify={event.get('dify_hit_records')} "
+        f"mimirq={event.get('mimirq_direct_records')} diagnosis={_text(event.get('diagnosis'))}",
+        file=sys.stderr,
+        flush=True,
+    )
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Probe Dify external knowledge hit-testing against direct MimirQ retrieval.")
     parser.add_argument("--cases", required=True)
@@ -455,6 +489,7 @@ def main(argv: list[str] | None = None) -> int:
             console_token=console_token,
             timeout=float(args.timeout),
             top_k=int(args.top_k),
+            progress_fn=_progress_to_stderr,
         )
     except Exception as exc:  # noqa: BLE001
         print(f"[changzhou-dify-external-probe] ERR: {exc}", file=sys.stderr)
