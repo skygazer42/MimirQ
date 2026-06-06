@@ -321,6 +321,8 @@ def _progress_summary_text(summary: dict[str, Any]) -> str:
         "trace_errors",
         "console_auth_errors",
         "nonempty_retrieval_cases",
+        "node_route_mismatch_cases",
+        "route_compensated_cases",
         "route_mismatch_cases",
     )
     parts = [f"{field}={summary[field]}" for field in fields if field in summary]

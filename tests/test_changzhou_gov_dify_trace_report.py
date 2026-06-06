@@ -154,7 +154,7 @@ def test_collect_trace_report_fetches_message_and_node_executions_without_leakin
     assert report["cases"][0]["answer_node_title"] == "兜底回复"
     assert report["cases"][0]["regions"] == ["未知"]
     assert report["cases"][0]["retrievals"] == [
-        {"title": "新北区政务服务知识检索", "query": "新北区社保卡补卡在哪里办理", "count": 0}
+        {"title": "新北区政务服务知识检索", "query": "新北区社保卡补卡在哪里办理", "count": 0, "result_titles": []}
     ]
 
 
@@ -205,6 +205,64 @@ def test_collect_trace_report_flags_area_route_mismatch() -> None:
     assert report["cases"][0]["expected_retrieval_title_contains"] == "新北区"
     assert report["cases"][0]["route_matched"] is False
     assert report["cases"][0]["region_matched"] is False
+
+
+def test_collect_trace_report_accepts_compensated_area_route_from_result_titles() -> None:
+    mod = _load_module()
+
+    def fake_request_json(*, path: str, **_kwargs) -> dict:  # noqa: ANN003
+        if path.endswith("/messages/msg-1"):
+            return {"workflow_run_id": "run-1", "answer": "ok"}
+        if path.endswith("/workflow-runs/run-1/node-executions"):
+            return {
+                "data": [
+                    {
+                        "title": "常州市政务服务知识检索",
+                        "node_type": "knowledge-retrieval",
+                        "inputs": {"query": "新北区社保卡补卡在哪里办理"},
+                        "outputs": {
+                            "result": [
+                                {
+                                    "title": "01政务服务事项知识/新北区事项清单.txt",
+                                    "content": "办理地点：新北区云河路69号",
+                                }
+                            ]
+                        },
+                    },
+                    {
+                        "title": "区域提取器",
+                        "node_type": "parameter-extractor",
+                        "outputs": {"region": "未知"},
+                    },
+                ]
+            }
+        raise AssertionError(path)
+
+    report = mod.collect_trace_report(
+        answers=[
+            {
+                "id": "case-1",
+                "query": "新北区社保卡补卡在哪里办理",
+                "message_id": "msg-1",
+                "answer": "ok",
+                "dify_inputs": {"areaName": "新北区"},
+            }
+        ],
+        app_id="app-1",
+        console_base_url="https://dify.test/console/api",
+        console_token="secret-console-token",
+        request_json=fake_request_json,
+        timeout=12.0,
+    )
+
+    assert report["summary"]["node_route_mismatch_cases"] == 1
+    assert report["summary"]["route_compensated_cases"] == 1
+    assert report["summary"]["route_mismatch_cases"] == 0
+    assert report["cases"][0]["node_route_matched"] is False
+    assert report["cases"][0]["evidence_route_matched"] is True
+    assert report["cases"][0]["route_compensated"] is True
+    assert report["cases"][0]["route_matched"] is True
+    assert report["cases"][0]["retrievals"][0]["result_titles"] == ["01政务服务事项知识/新北区事项清单.txt"]
 
 
 def test_collect_trace_report_handles_answer_without_message_id() -> None:

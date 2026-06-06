@@ -203,6 +203,54 @@ def test_run_gate_fails_trace_when_dify_routes_to_wrong_area_knowledge() -> None
     assert report["stages"]["trace"]["passed"] is False
 
 
+def test_run_gate_accepts_compensated_dify_node_route_when_evidence_matches_area() -> None:
+    mod = _load_module()
+
+    def collect_answers_fn(**_kwargs):  # noqa: ANN003, ANN202
+        return {
+            "summary": {"cases": 1, "succeeded": 1, "failed": 0},
+            "answers": [{"id": "case-1", "query": "q", "answer": "ok", "message_id": "msg-1"}],
+        }
+
+    def live_eval_fn(**_kwargs):  # noqa: ANN003, ANN202
+        return {
+            "summary": {
+                "cases": 1,
+                "hit_at_3": 1.0,
+                "generated_answer_key_point_recall": 1.0,
+                "generated_answer_fallback_rate": 0.0,
+            }
+        }
+
+    def trace_report_fn(**_kwargs):  # noqa: ANN003, ANN202
+        return {
+            "summary": {
+                "cases": 1,
+                "traced": 1,
+                "fallback_cases": 0,
+                "empty_retrieval_cases": 0,
+                "nonempty_retrieval_cases": 1,
+                "trace_errors": 0,
+                "node_route_mismatch_cases": 1,
+                "route_compensated_cases": 1,
+                "route_mismatch_cases": 0,
+            }
+        }
+
+    report = mod.run_gate(
+        cases=[{"id": "case-1", "query": "q", "dify_inputs": {"areaName": "新北区"}}],
+        workflow=_workflow(),
+        collect_answers_fn=collect_answers_fn,
+        live_eval_fn=live_eval_fn,
+        trace_report_fn=trace_report_fn,
+        thresholds={"generated_answer_key_point_recall": 1.0},
+        maximums={"generated_answer_fallback_rate": 0.0},
+    )
+
+    assert report["summary"]["passed"] is True
+    assert report["stages"]["trace"]["passed"] is True
+
+
 def test_thresholds_from_args_preserves_defaults_and_applies_overrides() -> None:
     mod = _load_module()
     parser = mod.build_arg_parser()
@@ -248,6 +296,22 @@ def test_progress_summary_text_includes_console_auth_errors() -> None:
     mod = _load_module()
 
     assert "console_auth_errors=8" in mod._progress_summary_text({"trace_errors": 8, "console_auth_errors": 8})
+
+
+def test_progress_summary_text_includes_route_compensation_metrics() -> None:
+    mod = _load_module()
+
+    text = mod._progress_summary_text(
+        {
+            "node_route_mismatch_cases": 3,
+            "route_compensated_cases": 3,
+            "route_mismatch_cases": 0,
+        }
+    )
+
+    assert "node_route_mismatch_cases=3" in text
+    assert "route_compensated_cases=3" in text
+    assert "route_mismatch_cases=0" in text
 
 
 def test_load_mimirq_token_prefers_explicit_env_then_env_file(tmp_path: Path) -> None:
