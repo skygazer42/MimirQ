@@ -40,6 +40,8 @@ CHANGZHOU_DIFY_API_KEY_FILE ?= /tmp/dify_remote_app_api_key.json
 CHANGZHOU_DIFY_STORAGE_STATE ?= /tmp/kingdonsoft_dify_storage_state.json
 CHANGZHOU_DIFY_MIMIRQ_BASE_URL ?= http://127.0.0.1:8000
 CHANGZHOU_DIFY_OUT_PREFIX ?= /tmp/changzhou_gov_dify_full_gate
+CHANGZHOU_DIFY_CASES ?= plugins/pipelines/changzhou-gov-service-knowledge/golden_eval_cases.json
+CHANGZHOU_DIFY_EXTRA_ARGS ?=
 
 help:
 	@echo "MimirQ dev commands (run from repo root):"
@@ -255,7 +257,7 @@ parser-status:
 changzhou-dify-full-gate:
 	$(PY) scripts/changzhou_gov_dify_full_gate.py \
 		--app-id "$(CHANGZHOU_DIFY_APP_ID)" \
-		--cases plugins/pipelines/changzhou-gov-service-knowledge/golden_eval_cases.json \
+		--cases "$(CHANGZHOU_DIFY_CASES)" \
 		--dify-base-url "$(CHANGZHOU_DIFY_BASE_URL)" \
 		--dify-api-key-file "$(CHANGZHOU_DIFY_API_KEY_FILE)" \
 		--storage-state "$(CHANGZHOU_DIFY_STORAGE_STATE)" \
@@ -264,7 +266,8 @@ changzhou-dify-full-gate:
 		--answers-out "$(CHANGZHOU_DIFY_OUT_PREFIX)_answers.json" \
 		--eval-out "$(CHANGZHOU_DIFY_OUT_PREFIX)_eval.json" \
 		--trace-out "$(CHANGZHOU_DIFY_OUT_PREFIX)_trace.json" \
-		--summary-out "$(CHANGZHOU_DIFY_OUT_PREFIX)_summary.json"
+		--summary-out "$(CHANGZHOU_DIFY_OUT_PREFIX)_summary.json" \
+		$(CHANGZHOU_DIFY_EXTRA_ARGS)
 
 check-retrieval-profile-compat:
 	$(PY) scripts/check_retrieval_profile_compat.py
