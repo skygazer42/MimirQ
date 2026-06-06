@@ -136,6 +136,8 @@ def test_collect_probe_report_flags_dify_empty_but_mimirq_direct_ok_without_leak
     assert report["summary"]["mimirq_direct_nonempty"] == 1
     assert report["summary"]["mimirq_direct_schema_valid"] == 1
     assert report["summary"]["dify_runtime_empty_but_mimirq_direct_ok"] == 1
+    assert report["gate"]["passed"] is False
+    assert "dify_hit_nonempty" in report["gate"]["failed_conditions"]
     assert report["source"]["endpoint_host"] == "192.168.3.6"
     assert report["source"]["endpoint_host_is_local"] is True
     assert report["source"]["local_ipv4_addresses"] == ["192.168.3.6"]
@@ -144,6 +146,46 @@ def test_collect_probe_report_flags_dify_empty_but_mimirq_direct_ok_without_leak
     assert report["cases"][0]["mimirq_direct_schema_valid"] is True
     assert report["cases"][0]["mimirq_direct_schema_errors"] == []
     assert report["cases"][0]["mimirq_direct_first_title"] == "01政务服务事项知识/新北区事项清单.txt"
+
+
+def test_evaluate_probe_gate_requires_local_endpoint_and_full_nonempty_coverage() -> None:
+    mod = _load_module()
+
+    passing = mod.evaluate_probe_gate(
+        {
+            "source": {"endpoint_host_is_local": True},
+            "summary": {
+                "cases": 2,
+                "dify_hit_nonempty": 2,
+                "mimirq_direct_nonempty": 2,
+                "mimirq_direct_schema_valid": 2,
+                "probe_errors": 0,
+            },
+        }
+    )
+    assert passing == {"passed": True, "failed_conditions": []}
+
+    failing = mod.evaluate_probe_gate(
+        {
+            "source": {"endpoint_host_is_local": False},
+            "summary": {
+                "cases": 2,
+                "dify_hit_nonempty": 1,
+                "mimirq_direct_nonempty": 2,
+                "mimirq_direct_schema_valid": 1,
+                "probe_errors": 1,
+            },
+        }
+    )
+    assert failing == {
+        "passed": False,
+        "failed_conditions": [
+            "endpoint_host_is_local",
+            "dify_hit_nonempty",
+            "mimirq_direct_schema_valid",
+            "probe_errors",
+        ],
+    }
 
 
 def test_validate_dify_external_records_shape_rejects_null_metadata_and_bad_score() -> None:
