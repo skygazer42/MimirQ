@@ -149,6 +149,34 @@ def _write_optional(path: str, payload: dict[str, Any]) -> None:
     Path(path).write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def _stage_report(report: dict[str, Any], stage_name: str) -> dict[str, Any]:
+    stages = report.get("stages") if isinstance(report.get("stages"), dict) else {}
+    stage = stages.get(stage_name) if isinstance(stages.get(stage_name), dict) else {}
+    payload = stage.get("report") if isinstance(stage.get("report"), dict) else {}
+    return payload
+
+
+def write_stage_artifacts(
+    report: dict[str, Any],
+    *,
+    answers_out: str = "",
+    eval_out: str = "",
+    trace_out: str = "",
+) -> dict[str, str]:
+    artifacts: dict[str, str] = {}
+    for artifact_name, stage_name, path in (
+        ("answers", "collect", answers_out),
+        ("eval", "eval", eval_out),
+        ("trace", "trace", trace_out),
+    ):
+        payload = _stage_report(report, stage_name)
+        if not payload or not _text(path):
+            continue
+        _write_optional(path, payload)
+        artifacts[artifact_name] = path
+    return artifacts
+
+
 def compact_summary(report: dict[str, Any], *, artifacts: dict[str, str] | None = None) -> dict[str, Any]:
     stages: dict[str, Any] = {}
     for name, stage in (report.get("stages") or {}).items():
@@ -285,17 +313,16 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[changzhou-dify-full-gate] ERR: {exc}", file=sys.stderr)
         return 1
 
-    _write_optional(str(args.answers_out), (report.get("stages") or {}).get("collect", {}).get("report") or {})
-    _write_optional(str(args.eval_out), (report.get("stages") or {}).get("eval", {}).get("report") or {})
-    _write_optional(str(args.trace_out), (report.get("stages") or {}).get("trace", {}).get("report") or {})
+    artifacts = write_stage_artifacts(
+        report,
+        answers_out=str(args.answers_out),
+        eval_out=str(args.eval_out),
+        trace_out=str(args.trace_out),
+    )
+    artifacts["full"] = str(args.out)
     summary_report = compact_summary(
         report,
-        artifacts={
-            "full": str(args.out),
-            "answers": str(args.answers_out),
-            "eval": str(args.eval_out),
-            "trace": str(args.trace_out),
-        },
+        artifacts=artifacts,
     )
     _write_optional(str(args.summary_out), summary_report)
     text = json.dumps(report, ensure_ascii=False, indent=2)
