@@ -31,6 +31,7 @@ DEFAULT_API_KEY_FILE = "/tmp/dify_app_api_keys_post.json"
 _REQUEST_ATTEMPTS = 3
 RequestJsonFn = Callable[..., dict[str, Any]]
 ProgressFn = Callable[[dict[str, Any]], None]
+_TRACEABLE_DIFY_INPUT_KEYS = {"areaName"}
 
 
 def _text(value: Any) -> str:
@@ -48,6 +49,10 @@ def _case_dify_inputs(case: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(raw, dict):
         return {}
     return {_text(key): value for key, value in raw.items() if _text(key)}
+
+
+def _traceable_case_dify_inputs(case: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in _case_dify_inputs(case).items() if key in _TRACEABLE_DIFY_INPUT_KEYS}
 
 
 def build_dify_payload(
@@ -242,6 +247,9 @@ def collect_answers(
         case_id = _text(case.get("id"))
         query = _text(case.get("query"))
         item: dict[str, Any] = {"id": case_id, "query": query}
+        traceable_inputs = _traceable_case_dify_inputs(case)
+        if traceable_inputs:
+            item["dify_inputs"] = traceable_inputs
         try:
             payload = build_dify_payload(
                 case,

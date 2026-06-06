@@ -139,6 +139,7 @@ def _trace_passed(report: dict[str, Any]) -> bool:
         int(summary.get("trace_errors") or 0) == 0
         and int(summary.get("fallback_cases") or 0) == 0
         and int(summary.get("empty_retrieval_cases") or 0) == 0
+        and int(summary.get("route_mismatch_cases") or 0) == 0
         and int(summary.get("nonempty_retrieval_cases") or 0) == int(summary.get("cases") or 0)
     )
 
@@ -320,6 +321,7 @@ def _progress_summary_text(summary: dict[str, Any]) -> str:
         "trace_errors",
         "console_auth_errors",
         "nonempty_retrieval_cases",
+        "route_mismatch_cases",
     )
     parts = [f"{field}={summary[field]}" for field in fields if field in summary]
     return " ".join(parts)
