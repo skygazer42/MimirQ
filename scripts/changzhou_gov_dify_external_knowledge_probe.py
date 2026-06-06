@@ -11,11 +11,13 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import socket
 import sys
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
 from urllib.request import ProxyHandler, Request, build_opener, urlopen
 
 DEFAULT_CONSOLE_BASE_URL = "https://ai.kingdonsoft.com:5001/console/api"
@@ -28,6 +30,30 @@ RequestMimirqDirectFn = Callable[..., dict[str, Any]]
 
 def _text(value: Any) -> str:
     return str(value or "").strip()
+
+
+def _endpoint_host(endpoint: str) -> str:
+    return _text(urlparse(_text(endpoint)).hostname)
+
+
+def _local_ipv4_addresses() -> list[str]:
+    addresses: set[str] = set()
+    try:
+        for item in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            address = _text(item[4][0] if item and item[4] else "")
+            if address:
+                addresses.add(address)
+    except OSError:
+        pass
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.connect(("8.8.8.8", 80))
+            address = _text(sock.getsockname()[0])
+            if address:
+                addresses.add(address)
+    except OSError:
+        pass
+    return sorted(addresses)
 
 
 def load_console_token(
@@ -273,6 +299,7 @@ def collect_probe_report(
     console_token: str,
     request_json: RequestJsonFn = _request_json,
     request_mimirq_direct: RequestMimirqDirectFn = _request_mimirq_direct,
+    local_ipv4_addresses: list[str] | None = None,
     timeout: float = 30.0,
     top_k: int = 5,
 ) -> dict[str, Any]:
@@ -285,6 +312,8 @@ def collect_probe_report(
     external_api = _select_external_api(external_payload, external_api_id)
     settings = external_api.get("settings") if isinstance(external_api.get("settings"), dict) else {}
     endpoint = _text(settings.get("endpoint"))
+    endpoint_host = _endpoint_host(endpoint)
+    local_addresses = sorted({_text(item) for item in (local_ipv4_addresses or _local_ipv4_addresses()) if _text(item)})
     api_key = _text(settings.get("api_key"))
     bindings = external_api.get("dataset_bindings") if isinstance(external_api.get("dataset_bindings"), list) else []
     dataset_map = build_knowledge_dataset_map(
@@ -359,6 +388,9 @@ def collect_probe_report(
             "external_api_id": _text(external_api.get("id")),
             "external_api_name": _text(external_api.get("name")),
             "endpoint": endpoint,
+            "endpoint_host": endpoint_host,
+            "local_ipv4_addresses": local_addresses,
+            "endpoint_host_is_local": bool(endpoint_host and endpoint_host in local_addresses),
             "dataset_bindings": len(bindings),
         },
         "summary": {
