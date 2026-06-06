@@ -126,6 +126,34 @@ def _answer_key_points(case: dict[str, Any]) -> list[str]:
     return out
 
 
+def _answer_key_point_aliases(case: dict[str, Any]) -> dict[str, list[str]]:
+    expected = case.get("expected") if isinstance(case.get("expected"), dict) else {}
+    raw = expected.get("answer_key_point_aliases")
+    if not isinstance(raw, dict):
+        return {}
+    aliases: dict[str, list[str]] = {}
+    for point, values in raw.items():
+        canonical = _text(point)
+        if not canonical:
+            continue
+        raw_values = values if isinstance(values, list) else [values]
+        clean_values: list[str] = []
+        seen: set[str] = set()
+        for value in raw_values:
+            alias = _text(value)
+            if not alias or alias in seen:
+                continue
+            seen.add(alias)
+            clean_values.append(alias)
+        if clean_values:
+            aliases[canonical] = clean_values
+    return aliases
+
+
+def _quality_point_or_alias_in_text(point: str, text: str, aliases: dict[str, list[str]]) -> bool:
+    return _quality_point_in_text(point, text) or any(_quality_point_in_text(alias, text) for alias in aliases.get(point, []))
+
+
 def _case_answer_context_top_k(case: dict[str, Any]) -> int:
     try:
         return max(1, int(case.get("answer_context_top_k") or 3))
@@ -143,9 +171,10 @@ def _case_min_answer_recall(case: dict[str, Any]) -> float:
 
 def evaluate_answer_quality(case: dict[str, Any], records: list[dict[str, Any]]) -> dict[str, Any]:
     key_points = _answer_key_points(case)
+    aliases = _answer_key_point_aliases(case)
     context_top_k = _case_answer_context_top_k(case)
     context = "\n".join(_text(record.get("content")) for record in (records or [])[:context_top_k])
-    missing = [point for point in key_points if not _quality_point_in_text(point, context)]
+    missing = [point for point in key_points if not _quality_point_or_alias_in_text(point, context, aliases)]
     total = len(key_points)
     matched = total - len(missing)
     recall = (matched / total) if total else 1.0
@@ -184,14 +213,15 @@ def evaluate_generated_answer_quality(
         return {"provided": False}
     fallback = _is_fallback_answer(answer)
     key_points = _answer_key_points(case)
-    missing = [point for point in key_points if not _quality_point_in_text(point, answer)]
+    aliases = _answer_key_point_aliases(case)
+    missing = [point for point in key_points if not _quality_point_or_alias_in_text(point, answer, aliases)]
     total = len(key_points)
     matched = total - len(missing)
     recall = (matched / total) if total else 1.0
     context = "\n".join(_text(record.get("content")) for record in records or [])
     matched_points = [point for point in key_points if point not in missing]
     context_supported = (
-        all(_quality_point_in_text(point, context) for point in matched_points)
+        all(_quality_point_or_alias_in_text(point, context, aliases) for point in matched_points)
         if matched_points
         else bool(context or not key_points)
     )
