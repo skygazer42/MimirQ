@@ -228,6 +228,15 @@ python scripts/changzhou_gov_dify_trace_report.py \
 `inputs` 中传入 `areaName`，或者在 Dify workflow 内给该变量默认值/兜底分支。缺少该
 变量时，Dify 会直接返回 `HTTP 400 invalid_param`，请求不会进入 MimirQ 检索链路。
 
+可以用 workflow lint 直接检查这类“标为非必填但后续直接引用”的 Start 变量：
+
+```bash
+python scripts/changzhou_gov_dify_workflow_lint.py \
+  --app-id 00000000-0000-0000-0000-000000000003 \
+  --storage-state /tmp/dify_console_storage_state.json \
+  --out /tmp/changzhou_gov_dify_workflow_lint.json
+```
+
 如果需要区分“workflow 分支没进正确节点”和“Dify external knowledge runtime
 调用 MimirQ 失败”，用同一套 fixed golden cases 做边界对照：
 
