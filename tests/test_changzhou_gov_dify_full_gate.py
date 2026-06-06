@@ -130,3 +130,33 @@ def test_run_gate_aggregates_collect_eval_and_trace_success() -> None:
     assert report["stages"]["collect"]["passed"] is True
     assert report["stages"]["eval"]["passed"] is True
     assert report["stages"]["trace"]["passed"] is True
+
+
+def test_thresholds_from_args_preserves_defaults_and_applies_overrides() -> None:
+    mod = _load_module()
+    parser = mod.build_arg_parser()
+
+    args = parser.parse_args(
+        [
+            "--app-id",
+            "app-1",
+            "--out",
+            "/tmp/report.json",
+            "--min-hit-at-3",
+            "0.8",
+            "--min-generated-answer-key-point-recall",
+            "0.9",
+            "--max-generated-answer-fallback-rate",
+            "0.2",
+        ]
+    )
+
+    assert mod._thresholds_from_args(args) == {
+        **mod.DEFAULT_THRESHOLDS,
+        "hit_at_3": 0.8,
+        "generated_answer_key_point_recall": 0.9,
+    }
+    assert mod._maximums_from_args(args) == {
+        **mod.DEFAULT_MAXIMUMS,
+        "generated_answer_fallback_rate": 0.2,
+    }
