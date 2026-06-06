@@ -178,6 +178,17 @@ def test_thresholds_from_args_preserves_defaults_and_applies_overrides() -> None
     }
 
 
+def test_format_cli_error_adds_login_hint_for_expired_console_token() -> None:
+    mod = _load_module()
+
+    message = mod._format_cli_error(RuntimeError('HTTP 401: {"code":"unauthorized","message":"Token has expired."}'))
+
+    assert "Token has expired" in message
+    assert "make dify-console-login" in message
+    assert "DIFY_CONSOLE_PASSWORD_FILE" in message
+    assert "secret" not in message.lower()
+
+
 def test_load_mimirq_token_prefers_explicit_env_then_env_file(tmp_path: Path) -> None:
     mod = _load_module()
     env_file = tmp_path / ".env"
