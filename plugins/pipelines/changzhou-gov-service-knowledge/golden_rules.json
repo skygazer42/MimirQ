@@ -47,8 +47,53 @@
       "{case_title}怎么办理？",
       "{case_title}需要哪些材料？"
     ],
+    "one_thing_related_services": [
+      "{case_title}包含哪些事项？",
+      "{case_title}涉及哪些政务服务事项？"
+    ],
+    "one_thing_process": [
+      "{case_title}怎么办理？",
+      "{case_title}办理流程是什么？"
+    ],
+    "one_thing_materials": [
+      "{case_title}需要哪些材料？"
+    ],
+    "one_thing_channels": [
+      "{case_title}在哪里办理？",
+      "{case_title}网上办理地址是什么？"
+    ],
+    "one_thing_conditions": [
+      "{case_title}办理条件是什么？"
+    ],
+    "one_thing_overview": [
+      "{case_title}是什么？"
+    ],
+    "one_thing_operation": [
+      "{case_title}网上办理怎么操作？",
+      "{case_title}操作入口在哪里？"
+    ],
+    "one_thing_operation_entry": [
+      "{case_title}从哪里进入办理？"
+    ],
+    "one_thing_operation_steps": [
+      "{case_title}网上办理怎么操作？",
+      "{case_title}申报步骤是什么？"
+    ],
+    "one_thing_operation_material_upload": [
+      "{case_title}材料怎么上传？"
+    ],
+    "one_thing_operation_query": [
+      "{case_title}怎么查询办理进度？"
+    ],
+    "one_thing_operation_url": [
+      "{case_title}操作手册入口在哪里？"
+    ],
+    "one_thing_operation_notes": [
+      "{case_title}办理注意事项有哪些？"
+    ],
     "qa": [
-      "{question}"
+      "{question}",
+      "{primary_alias}"
     ],
     "regulation_text": [
       "{title}有什么规定？"

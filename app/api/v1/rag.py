@@ -44,6 +44,53 @@ router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 DATASET_REQUIRED_WHEN_DOC_IDS_EMPTY_DETAIL = "dataset_id is required when document_ids is empty"
 NO_ACCESSIBLE_DOCS_FOR_RETRIEVAL_DETAIL = "No accessible documents for retrieval"
+DATASET_ID_AND_DATASET_IDS_CONFLICT_DETAIL = "dataset_id and dataset_ids are mutually exclusive"
+
+
+def _unique_dataset_ids(dataset_ids: list[UUID] | None) -> list[UUID]:
+    seen: set[UUID] = set()
+    out: list[UUID] = []
+    for dataset_id in dataset_ids or []:
+        if dataset_id in seen:
+            continue
+        seen.add(dataset_id)
+        out.append(dataset_id)
+    return out
+
+
+def _assert_dataset_ids_readable(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    dataset_ids: list[UUID],
+) -> None:
+    for dataset_id in dataset_ids:
+        ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
+        DatasetService.assert_dataset_readable(db, ds, account_id)
+
+
+def _merge_dataset_ids_metadata_filter(
+    metadata_filter: dict[str, Any] | None,
+    *,
+    dataset_ids: list[UUID],
+) -> dict[str, Any] | None:
+    if not dataset_ids:
+        return metadata_filter
+
+    dataset_filter: dict[str, Any] = {
+        "dataset_id": {"$in": [str(dataset_id) for dataset_id in dataset_ids]},
+    }
+    if not metadata_filter:
+        return dataset_filter
+    if not isinstance(metadata_filter, dict):
+        return dataset_filter
+
+    existing = dict(metadata_filter)
+    if "dataset_id" not in existing:
+        existing["dataset_id"] = dataset_filter["dataset_id"]
+        return existing
+    return {"$and": [existing, dataset_filter]}
 
 
 def _enforce_non_empty_retrieval_scope(
@@ -53,11 +100,13 @@ def _enforce_non_empty_retrieval_scope(
     account_id: str,
     scope_document_ids: list[UUID],
     scope_dataset_id: UUID | None,
+    scope_dataset_ids: list[UUID] | None = None,
     allow_empty_scope: bool = False,
 ) -> None:
+    dataset_ids = _unique_dataset_ids(scope_dataset_ids)
     if allow_empty_scope and bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True)):
         return
-    if bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True)) and scope_dataset_id is None:
+    if bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True)) and scope_dataset_id is None and not dataset_ids:
         return
     if scope_document_ids:
         return
@@ -81,6 +130,27 @@ def _enforce_non_empty_retrieval_scope(
         if not exists:
             raise HTTPException(status_code=400, detail=NO_ACCESSIBLE_DOCS_FOR_RETRIEVAL_DETAIL)
         return
+
+    if dataset_ids:
+        from app.models.document import Document as DBDocument
+        from app.services.dataset_profile_service import build_dataset_documents_query
+
+        for dataset_id in dataset_ids:
+            _ds, q = build_dataset_documents_query(
+                db,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                dataset_id=dataset_id,
+            )
+            q = q.filter(DBDocument.publication_status == "published")
+            q = q.filter(
+                (DBDocument.status == "completed")
+                | (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true")  # type: ignore[attr-defined]
+            )
+            exists = q.with_entities(DBDocument.id).order_by(DBDocument.updated_at.desc()).limit(1).first()
+            if exists:
+                return
+        raise HTTPException(status_code=400, detail=NO_ACCESSIBLE_DOCS_FOR_RETRIEVAL_DETAIL)
 
     exists = list_accessible_document_ids(db, tenant_id, account_id, status="completed", limit=1)
     if not exists:
@@ -170,6 +240,10 @@ class RetrievePreviewRequest(BaseModel):
     query_image: str | None = Field(default=None, description="Optional explicit image query routed to CLIP image retrieval")
     history: list[HistoryMessage] = Field(default_factory=list)
     dataset_id: UUID | None = None
+    dataset_ids: list[UUID] = Field(
+        default_factory=list,
+        description="Optional multi-dataset retrieval scope for Dify-style knowledge retrieval nodes.",
+    )
     document_ids: list[UUID] = Field(default_factory=list)
     rag_config_template_id: UUID | None = None  # Optional: explicit RAG config template selection.
     rag_config_template_key: str | None = None  # Optional: select latest active template by key.
@@ -369,10 +443,23 @@ async def retrieve_preview(
 
     tenant_qps_meta = enforce_tenant_qps_quota(tenant_id=tenant_id, key="retrieval")
 
+    requested_dataset_ids = _unique_dataset_ids(body.dataset_ids)
+    if body.dataset_id is not None and requested_dataset_ids:
+        raise HTTPException(status_code=400, detail=DATASET_ID_AND_DATASET_IDS_CONFLICT_DETAIL)
+
     scope_dataset_id: UUID | None = None
+    scope_dataset_ids: list[UUID] = []
     scope_document_ids: list[UUID] = []
     if body.document_ids:
         scope_document_ids = filter_allowed_document_ids(db, tenant_id, account_id, body.document_ids)
+    elif requested_dataset_ids:
+        _assert_dataset_ids_readable(
+            db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            dataset_ids=requested_dataset_ids,
+        )
+        scope_dataset_ids = requested_dataset_ids
     elif body.dataset_id:
         # Dataset-scoped retrieval without enumerating all document_ids (scales better).
         ds = DatasetService.get_dataset(db, tenant_id, body.dataset_id)
@@ -391,6 +478,7 @@ async def retrieve_preview(
         account_id=account_id,
         scope_document_ids=scope_document_ids,
         scope_dataset_id=scope_dataset_id,
+        scope_dataset_ids=scope_dataset_ids,
         allow_empty_scope=bool(str(body.query_image or "").strip()),
     )
 
@@ -490,6 +578,11 @@ async def retrieve_preview(
         rag_config_template_meta = None
         rag_config_template_patch_applied_fields = []
 
+    metadata_filter = _merge_dataset_ids_metadata_filter(
+        effective_rag_config.metadata_filter,
+        dataset_ids=scope_dataset_ids,
+    )
+
     state = build_rag_state(
         question=body.query,
         history=[m.model_dump() for m in body.history],
@@ -541,6 +634,7 @@ async def retrieve_preview(
         enable_reranker=effective_rag_config.enable_reranker,
         reranker_provider=effective_rag_config.reranker_provider,
         reranker_top_n=effective_rag_config.reranker_top_n,
+        metadata_filter=metadata_filter,
         visible_evidence_only=effective_rag_config.visible_evidence_only,
         ab_user_key=account_id,
         db=db,
@@ -589,6 +683,8 @@ async def retrieve_preview(
         )
     if rag_config_template_meta:
         metrics.setdefault("rag_config_template", rag_config_template_meta)
+    if scope_dataset_ids:
+        metrics.setdefault("scope_dataset_ids", [str(dataset_id) for dataset_id in scope_dataset_ids])
 
     structure_dataset_id = scope_dataset_id
     if structure_dataset_id is None and scope_document_ids:
@@ -805,6 +901,10 @@ class EvidenceRetrieveRequest(BaseModel):
     query_image: str | None = Field(default=None, description="Optional explicit image query routed to CLIP image retrieval")
     history: list[HistoryMessage] = Field(default_factory=list)
     dataset_id: UUID | None = None
+    dataset_ids: list[UUID] = Field(
+        default_factory=list,
+        description="Optional multi-dataset retrieval scope for Dify-style knowledge retrieval nodes.",
+    )
     document_ids: list[UUID] = Field(default_factory=list)
     rag_config: ChatRAGConfig = Field(default_factory=ChatRAGConfig)
     # Optional deterministic seed for offline replay/regression.
@@ -860,10 +960,23 @@ async def retrieve_evidence(
 
     tenant_qps_meta = enforce_tenant_qps_quota(tenant_id=tenant_id, key="retrieval")
 
+    requested_dataset_ids = _unique_dataset_ids(body.dataset_ids)
+    if body.dataset_id is not None and requested_dataset_ids:
+        raise HTTPException(status_code=400, detail=DATASET_ID_AND_DATASET_IDS_CONFLICT_DETAIL)
+
     scope_dataset_id: UUID | None = None
+    scope_dataset_ids: list[UUID] = []
     scope_document_ids: list[UUID] = []
     if body.document_ids:
         scope_document_ids = filter_allowed_document_ids(db, tenant_id, account_id, body.document_ids)
+    elif requested_dataset_ids:
+        _assert_dataset_ids_readable(
+            db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            dataset_ids=requested_dataset_ids,
+        )
+        scope_dataset_ids = requested_dataset_ids
     elif body.dataset_id:
         ds = DatasetService.get_dataset(db, tenant_id, body.dataset_id)
         DatasetService.assert_dataset_readable(db, ds, account_id)
@@ -882,6 +995,7 @@ async def retrieve_evidence(
         account_id=account_id,
         scope_document_ids=scope_document_ids,
         scope_dataset_id=scope_dataset_id,
+        scope_dataset_ids=scope_dataset_ids,
         allow_empty_scope=bool(str(body.query_image or "").strip()),
     )
 
@@ -914,6 +1028,11 @@ async def retrieve_evidence(
             )
     except Exception:
         dataset_rag_defaults_applied_fields = []
+
+    metadata_filter = _merge_dataset_ids_metadata_filter(
+        effective_rag_config.metadata_filter,
+        dataset_ids=scope_dataset_ids,
+    )
 
     state = build_rag_state(
         question=body.query,
@@ -966,6 +1085,7 @@ async def retrieve_evidence(
         enable_reranker=effective_rag_config.enable_reranker,
         reranker_provider=effective_rag_config.reranker_provider,
         reranker_top_n=effective_rag_config.reranker_top_n,
+        metadata_filter=metadata_filter,
         visible_evidence_only=effective_rag_config.visible_evidence_only,
         ab_user_key=account_id,
         db=db,
@@ -1016,6 +1136,8 @@ async def retrieve_evidence(
     if dataset_rag_defaults_applied_fields:
         metrics.setdefault("dataset_rag_defaults_applied", True)
         metrics.setdefault("dataset_rag_defaults_fields", dataset_rag_defaults_applied_fields)
+    if scope_dataset_ids:
+        metrics.setdefault("scope_dataset_ids", [str(dataset_id) for dataset_id in scope_dataset_ids])
 
     abstain_triggered = bool(primary.get("abstain_triggered") or metrics.get("abstain_triggered") or False)
     abstain_reason = primary.get("abstain_reason") or metrics.get("abstain_reason") or None
@@ -1244,6 +1366,7 @@ async def retrieve_evidence(
                 request_context={
                     "tenant_id": str(tenant_id),
                     "dataset_id": str(scope_dataset_id) if scope_dataset_id else None,
+                    "dataset_ids": [str(dataset_id) for dataset_id in scope_dataset_ids],
                     "document_ids": [str(d) for d in scope_document_ids[:200]],
                     "selected_pass": str(selected_pass),
                 },

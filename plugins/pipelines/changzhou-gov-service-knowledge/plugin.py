@@ -12,13 +12,16 @@ from langchain_core.documents import Document
 _BLOCK_SEPARATOR_RE = re.compile(r"(?:==|--)##########(?:==|--)")
 _TITLE_BRACKET_RE = re.compile(r"^\[(?P<title>.+?)\]\s*$")
 _ALIAS_RE = re.compile(r"==##相似问(?:法)?[：:]\s*(?P<value>.+?)##==")
+_UNLABELED_ALIAS_RE = re.compile(r"==##(?!(?:关键字|关键词|相似问(?:法)?)[：:])(?P<value>.+?)##==")
 _KEYWORD_RE = re.compile(r"==##(?:关键字|关键词)[：:]\s*(?P<value>.+?)##==")
 _QUESTION_RE = re.compile(r"问题[：:]\s*\[?(?P<value>.+?)\]?\s*(?:\n|$)")
+_STRUCTURED_QA_TITLE_RE = re.compile(r"^事项名称[：:]\s*\[?(?P<value>.+?)\]?\s*$", re.MULTILINE)
 _ANSWER_RE = re.compile(
-    r"[\"“”]?\s*答案[\"“”]?\s*[：:](?P<value>.*?)(?=\n\s*(?:来源部门[：:]|==##(?:关键字|相似问(?:法)?)[：:])|\Z)",
+    r"[\"“”]?\s*答案[\"“”]?\s*[：:](?P<value>.*?)(?=\n\s*(?:来源部门[：:]|来源工作表[：:]|==##)|\Z)",
     re.S,
 )
 _DEPARTMENT_RE = re.compile(r"来源部门[：:](?P<value>.+)")
+_SOURCE_SHEET_RE = re.compile(r"来源工作表[：:](?P<value>.+)")
 _OPERATION_TITLE_RE = re.compile(r"^(?P<title>.+?一件事)操作指引\s*$")
 _SECTION_HEADING_RE = re.compile(r"^(第[一二三四五六七八九十百0-9]+[章节条]|[一二三四五六七八九十]+、|\d+[.．、]|0\d)")
 _SOFT_BREAK_RE = re.compile(r"(?<=[。！？；;])")
@@ -31,6 +34,9 @@ _GUIDE_SECTION_LABELS = {
     "申请材料": "materials",
     "办理材料": "materials",
     "材料清单": "materials",
+    "办理渠道": "channels",
+    "办理方式": "channels",
+    "办理地点": "channels",
     "办理条件": "conditions",
     "适用对象": "conditions",
     "服务对象": "conditions",
@@ -47,6 +53,17 @@ _OPERATION_SECTION_LABELS = {
     "进度查询": "operation_query",
     "备注": "operation_notes",
 }
+_ONE_THING_CASE_TITLE_ALIASES = {
+    "开餐饮店一件事": "开办餐饮店“一件事”",
+    "开办餐饮店一件事": "开办餐饮店“一件事”",
+    "社保卡服务一件事": "社会保障卡居民服务“一件事”",
+    "社会保障卡服务一件事": "社会保障卡居民服务“一件事”",
+    "社会保障卡居民服务一件事": "社会保障卡居民服务“一件事”",
+    "企业注销一件事": "企业注销登记“一件事”",
+    "企业注销登记一件事": "企业注销登记“一件事”",
+    "水电气网联合报装一件事": "水电气网联合报装“一件事”",
+    "水电气网联合报装一件事建设单位": "水电气网联合报装“一件事”",
+}
 
 _SERVICE_ITEMS_SECTION = "01政务服务事项知识"
 _ONE_THING_SECTION = "02高效办成一件事"
@@ -56,6 +73,46 @@ _DEPARTMENT_SECTION = "05业务部门常见问题"
 _DISTRICT_QA_SECTION = "06各区常见问题"
 _PLUGIN_KIND = "changzhou_gov_service_knowledge_v1"
 _SOURCE_DEPARTMENT_MAX = 300
+_COMMON_QA_BARE_FILENAMES = {
+    "2026年实施大规模设备更新和消费品以旧换新政策.txt",
+    "全市政务服务中心（便民服务中心）位置及电话.xlsx",
+    "医保局近期问答.xlsx",
+    "常州市本级12345QA.txt",
+    "常州市高频应用知识.xlsx",
+    "常见问题优化补充.txt",
+    "核发居民身份证（首次申领、换领、补领、挂失、进度查询等知识）.txt",
+    "车驾管常见问答.txt",
+}
+_TOPIC_QA_BARE_FILENAMES = {
+    "2026年常州市义务教育学校招生入学常见问题.txt",
+    "汽车置换补贴常见问题.txt",
+    "苏超购票常见问题.txt",
+    "（常州）江苏省城市足球联赛（苏超）交通文旅常见问答.txt",
+}
+_DEPARTMENT_DOMAIN_ROOTS = {"不动产知识库", "公积金知识"}
+_DEPARTMENT_BARE_FILENAME_DOMAINS = {
+    "不动产常见问答.xlsx": "不动产知识库",
+    "其他公积金业务.xlsx": "公积金知识",
+    "工作站.xlsx": "公积金知识",
+    "提取类.xlsx": "公积金知识",
+    "服务网点.xlsx": "公积金知识",
+    "线上业务.xlsx": "公积金知识",
+    "缴存类.xlsx": "公积金知识",
+    "贷款类.xlsx": "公积金知识",
+    "应急局日常问题汇总.docx": "应急局",
+}
+_DISTRICT_QA_FILENAME_SUFFIXES = ("12345QA.txt", "12345QA")
+_REAL_ESTATE_REGULATION_SOURCE_HINTS = (
+    "不动产",
+    "土地管理",
+    "自然资源部",
+    "国土资源部",
+    "宅基地",
+    "集体建设用地",
+    "房屋登记",
+    "权籍调查",
+    "登记暂行条例",
+)
 
 
 def _source(meta: dict[str, Any]) -> str:
@@ -75,9 +132,25 @@ def _source_parts(source: str) -> list[str]:
 
 
 def _knowledge_section(source: str) -> str:
-    for part in _source_parts(source):
+    parts = _source_parts(source)
+    for part in parts:
+        if Path(part).suffix:
+            continue
         if re.match(r"^\d{2}[^0-9]", part):
             return part
+    name = Path(source).name.strip()
+    if name in {"一件事指南.txt", "一件事指南", "一件事操作指引.txt", "一件事操作指引"}:
+        return _ONE_THING_SECTION
+    if name in _COMMON_QA_BARE_FILENAMES:
+        return _COMMON_QA_SECTION
+    if name in _TOPIC_QA_BARE_FILENAMES:
+        return _TOPIC_QA_SECTION
+    if any(name.endswith(suffix) for suffix in _DISTRICT_QA_FILENAME_SUFFIXES):
+        return _DISTRICT_QA_SECTION
+    if any(part in _DEPARTMENT_DOMAIN_ROOTS for part in parts) or name in _DEPARTMENT_BARE_FILENAME_DOMAINS:
+        return _DEPARTMENT_SECTION
+    if _is_real_estate_regulation_source(source):
+        return _DEPARTMENT_SECTION
     return ""
 
 
@@ -87,7 +160,23 @@ def _department_domain(source: str) -> str:
         if part == _DEPARTMENT_SECTION and index + 1 < len(parts):
             candidate = parts[index + 1]
             return "" if Path(candidate).suffix else candidate
+    for part in parts:
+        if part in _DEPARTMENT_DOMAIN_ROOTS:
+            return part
+    name = Path(source).name.strip()
+    if name in _DEPARTMENT_BARE_FILENAME_DOMAINS:
+        return _DEPARTMENT_BARE_FILENAME_DOMAINS[name]
+    if _is_real_estate_regulation_source(source):
+        return "不动产知识库"
     return ""
+
+
+def _is_real_estate_regulation_source(source: str) -> bool:
+    value = str(source or "")
+    suffix = Path(value).suffix.lower()
+    if suffix and suffix not in {".doc", ".docx", ".txt", ".md"}:
+        return False
+    return any(hint in value for hint in _REAL_ESTATE_REGULATION_SOURCE_HINTS)
 
 
 def _district_from_source(source: str, section: str) -> str:
@@ -125,6 +214,31 @@ def _split_list_marker(text: str) -> list[str]:
     return out
 
 
+def _extract_aliases(text: str) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for regex in (_ALIAS_RE, _UNLABELED_ALIAS_RE):
+        for match in regex.finditer(text or ""):
+            for alias in _split_list_marker(match.group("value")):
+                if not alias or alias in seen:
+                    continue
+                seen.add(alias)
+                out.append(alias)
+    return out
+
+
+def _extract_keywords_marker(text: str) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for match in _KEYWORD_RE.finditer(text or ""):
+        for keyword in _split_list_marker(match.group("value")):
+            if not keyword or keyword in seen:
+                continue
+            seen.add(keyword)
+            out.append(keyword)
+    return out
+
+
 def _split_category_path(text: str) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
@@ -141,6 +255,17 @@ def _case_key(title: str) -> str:
     value = str(title or "").strip()
     value = re.sub(r"[“”\"'‘’\s·\-_/（）()【】\[\]]+", "", value)
     return value or str(title or "").strip()
+
+
+def _canonical_one_thing_title(title: str) -> tuple[str, str]:
+    raw = str(title or "").strip()
+    cleaned = _strip_bracket_title(raw)
+    cleaned = re.sub(r"\s*操作指引\s*", "", cleaned).strip()
+    key = _case_key(cleaned)
+    canonical = _ONE_THING_CASE_TITLE_ALIASES.get(key)
+    if canonical:
+        return canonical, cleaned
+    return cleaned, cleaned
 
 
 def _extract_urls(text: str) -> list[str]:
@@ -249,9 +374,63 @@ def _clean_text(text: str) -> str:
         line = raw.strip()
         if not line:
             continue
-        if _ALIAS_RE.fullmatch(line) or _KEYWORD_RE.fullmatch(line):
+        if re.fullmatch(r"==##.+?##==", line):
             continue
         lines.append(line)
+    return "\n".join(lines).strip()
+
+
+def _normalize_excel_parser_rows(text: str) -> str:
+    normalized = str(text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if ";" in normalized and "答案" in normalized and "问题" in normalized:
+        records = [part.strip() for part in re.split(r"\n(?=\[?问题[：:])", normalized) if part.strip()]
+        converted: list[str] = []
+        for record in records:
+            if ";" not in record:
+                converted.append(record)
+                continue
+            sheet = ""
+            if " ——" in record:
+                record, sheet = record.rsplit(" ——", 1)
+                sheet = sheet.strip()
+            fields: list[str] = []
+            for part in record.split(";"):
+                field = part.strip()
+                if not field:
+                    continue
+                field = field.strip("[]").strip()
+                fields.append(field)
+            if not fields:
+                continue
+            converted.extend(fields)
+            if sheet:
+                converted.append(f"来源工作表：{sheet}")
+        return "\n".join(converted).strip()
+
+    lines: list[str] = []
+    for raw in normalized.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if ";" not in line or "答案" not in line or "问题" not in line:
+            lines.append(line)
+            continue
+        sheet = ""
+        if " ——" in line:
+            line, sheet = line.rsplit(" ——", 1)
+            sheet = sheet.strip()
+        fields: list[str] = []
+        for part in line.split(";"):
+            field = part.strip()
+            if not field:
+                continue
+            field = field.strip("[]").strip()
+            fields.append(field)
+        if not fields:
+            continue
+        lines.extend(fields)
+        if sheet:
+            lines.append(f"来源工作表：{sheet}")
     return "\n".join(lines).strip()
 
 
@@ -347,12 +526,13 @@ def _augment_service_item_meta(doc: Document) -> Document:
 def _govern_one_thing_guide(source_doc: Document) -> list[Document]:
     out: list[Document] = []
     for index, block in enumerate(_split_blocks(source_doc.page_content or ""), 1):
-        title = _strip_bracket_title(_first_line(block))
+        title, raw_title = _canonical_one_thing_title(_first_line(block))
         keywords_match = _KEYWORD_RE.search(block)
         keywords = _split_list_marker(keywords_match.group("value")) if keywords_match else []
         text = _clean_text(block)
         meta = _common_meta(source_doc, kind="one_thing_guide", title=title, index=index, text=text)
         meta["case_title"] = title
+        meta["case_title_raw"] = raw_title
         meta["case_key"] = _case_key(title)
         meta["keywords"] = keywords
         sections = _split_named_sections(text, _GUIDE_SECTION_LABELS)
@@ -387,10 +567,11 @@ def _govern_one_thing_operation(source_doc: Document) -> list[Document]:
     for index, block in enumerate(_split_operation_blocks(source_doc.page_content or ""), 1):
         first = _first_line(block)
         match = _OPERATION_TITLE_RE.match(first)
-        title = (match.group("title") if match else first.replace("操作指引", "")).strip()
+        title, raw_title = _canonical_one_thing_title(match.group("title") if match else first)
         text = _clean_text(block)
         meta = _common_meta(source_doc, kind="one_thing_operation", title=title, index=index, text=text)
         meta["case_title"] = title
+        meta["case_title_raw"] = raw_title
         meta["case_key"] = _case_key(title)
         sections = _split_named_sections(text, _OPERATION_SECTION_LABELS)
         meta["operation_steps"] = [
@@ -405,7 +586,12 @@ def _govern_one_thing_operation(source_doc: Document) -> list[Document]:
 
 
 def _clean_question(value: str) -> str:
-    return str(value or "").strip().strip("[]").rstrip("]").strip()
+    cleaned = str(value or "").strip().strip("[]").rstrip("]").strip()
+    cleaned = _BULLET_RE.sub("", cleaned).strip()
+    cleaned = re.sub(r"\*\*(?P<value>.+?)\*\*", r"\g<value>", cleaned)
+    cleaned = re.sub(r"__(?P<value>.+?)__", r"\g<value>", cleaned)
+    cleaned = re.sub(r"`(?P<value>.+?)`", r"\g<value>", cleaned)
+    return cleaned.strip().strip("[]").rstrip("]").strip()
 
 
 def _build_qa_document(
@@ -421,6 +607,8 @@ def _build_qa_document(
     category_path: list[str] | None = None,
     applicable_area: str = "",
     service_url: str = "",
+    valid_from: str = "",
+    valid_to: str = "",
 ) -> Document | None:
     question = _clean_question(question)
     answer = _clean_text(answer)
@@ -433,6 +621,8 @@ def _build_qa_document(
     source_department = _clamp_meta_text(source_department, _SOURCE_DEPARTMENT_MAX)
     applicable_area = _clamp_meta_text(applicable_area, 200)
     service_url = _extract_urls(service_url)[0] if _extract_urls(service_url) else str(service_url or "").strip()
+    valid_from = _clamp_meta_text(valid_from, 120)
+    valid_to = _clamp_meta_text(valid_to, 120)
     lines = [f"问题：{question}"]
     if category_path:
         lines.append(f"业务分类：{'/'.join(category_path)}")
@@ -444,6 +634,10 @@ def _build_qa_document(
         lines.append(f"适用区域：{applicable_area}")
     if service_url:
         lines.append(f"办事链接：{service_url}")
+    if valid_from:
+        lines.append(f"生效时间：{valid_from}")
+    if valid_to:
+        lines.append(f"失效时间：{valid_to}")
     lines.append(f"答案：{answer}")
     if source_department:
         lines.append(f"来源部门：{source_department}")
@@ -454,6 +648,8 @@ def _build_qa_document(
     meta["question"] = question
     meta["answer"] = answer
     meta["aliases"] = aliases
+    if aliases:
+        meta["primary_alias"] = aliases[0]
     meta["keywords"] = keywords
     urls: list[str] = []
     seen_urls: set[str] = set()
@@ -473,27 +669,64 @@ def _build_qa_document(
         meta["applicable_area"] = applicable_area
     if service_url:
         meta["service_url"] = _clamp_meta_text(service_url, 1000)
+    if valid_from:
+        meta["valid_from"] = valid_from
+    if valid_to:
+        meta["valid_to"] = valid_to
     return Document(page_content=text, metadata=meta)
 
 
 def _govern_qa(source_doc: Document) -> list[Document]:
     out: list[Document] = []
-    for index, block in enumerate(_split_blocks(source_doc.page_content or ""), 1):
+    text = _normalize_excel_parser_rows(source_doc.page_content or "")
+    for index, block in enumerate(_split_blocks(text), 1):
         question_match = _QUESTION_RE.search(block)
         answer_match = _ANSWER_RE.search(block)
         if not question_match or not answer_match:
             continue
         dept_match = _DEPARTMENT_RE.search(block)
-        aliases_match = _ALIAS_RE.search(block)
-        keywords_match = _KEYWORD_RE.search(block)
+        sheet_match = _SOURCE_SHEET_RE.search(block)
         doc = _build_qa_document(
             source_doc,
             index=index,
             question=question_match.group("value"),
             answer=answer_match.group("value"),
-            aliases=_split_list_marker(aliases_match.group("value")) if aliases_match else [],
-            keywords=_split_list_marker(keywords_match.group("value")) if keywords_match else [],
+            aliases=_extract_aliases(block),
+            keywords=_extract_keywords_marker(block),
             source_department=dept_match.group("value") if dept_match else "",
+            source_sheet=sheet_match.group("value") if sheet_match else "",
+        )
+        if doc is not None:
+            out.append(doc)
+    return out
+
+
+def _structured_qa_answer(block: str) -> str:
+    lines: list[str] = []
+    for raw in str(block or "").replace("\r\n", "\n").replace("\r", "\n").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if _STRUCTURED_QA_TITLE_RE.match(line) or re.fullmatch(r"==##.+?##==", line):
+            continue
+        lines.append(line)
+    return "\n".join(lines).strip()
+
+
+def _govern_structured_item_qa(source_doc: Document) -> list[Document]:
+    out: list[Document] = []
+    for index, block in enumerate(_split_blocks(source_doc.page_content or ""), 1):
+        title_match = _STRUCTURED_QA_TITLE_RE.search(block)
+        if not title_match:
+            continue
+        answer = _structured_qa_answer(block)
+        doc = _build_qa_document(
+            source_doc,
+            index=index,
+            question=title_match.group("value"),
+            answer=answer,
+            aliases=_extract_aliases(block),
+            keywords=_extract_keywords_marker(block),
         )
         if doc is not None:
             out.append(doc)
@@ -526,6 +759,10 @@ def _header_key(cell: str) -> str:
         return "keywords"
     if "问答提供部门" in value or "来源部门" in value:
         return "source_department"
+    if "内容生效时间" in value or "生效时间" in value:
+        return "valid_from"
+    if "内容失效时间" in value or "失效时间" in value:
+        return "valid_to"
     if "类目路径" in value or "分类路径" in value or "业务分类" in value:
         return "category_path"
     if "适用区域" in value or "适用地区" in value:
@@ -571,6 +808,8 @@ def _parse_markdown_qa_table(source_doc: Document, lines: list[str], sheet: str,
             category_path=_split_category_path(values.get("category_path", "")),
             applicable_area=values.get("applicable_area", ""),
             service_url=values.get("service_url", ""),
+            valid_from=values.get("valid_from", ""),
+            valid_to=values.get("valid_to", ""),
         )
         if doc is not None:
             out.append(doc)
@@ -616,6 +855,8 @@ def _is_loose_qa_heading(line: str) -> bool:
     if not text or _is_answer_marker(text) or len(text) > 40:
         return False
     if text.startswith(("Excel:", "Sheets:", "##", "|", "==")):
+        return False
+    if re.match(r"^\d{1,3}[.．、]\s*", text):
         return False
     if re.search(r"[。！？?；;:：]", text):
         return False
@@ -667,7 +908,7 @@ def _govern_loose_answer_marker_qa(source_doc: Document) -> list[Document]:
 def _govern_long_text(source_doc: Document) -> list[Document]:
     out: list[Document] = []
     source = _source(dict(source_doc.metadata or {}))
-    kind = "regulation_text" if "法规" in source or "不动产" in source else "gov_text"
+    kind = "regulation_text" if "法规" in source or "不动产" in source or _is_real_estate_regulation_source(source) else "gov_text"
     for index, block in enumerate(_split_blocks(source_doc.page_content or ""), 1):
         text = _clean_text(block)
         if not text:
@@ -697,7 +938,8 @@ def govern_documents(
         elif section == _ONE_THING_SECTION:
             out.extend(_govern_one_thing_guide(doc))
         else:
-            qa_records = _govern_qa(doc)
+            qa_records = [*_govern_qa(doc), *_govern_structured_item_qa(doc)]
+            qa_records.sort(key=lambda item: int((item.metadata or {}).get("source_record_index") or 0))
             if not qa_records:
                 qa_records = _govern_markdown_table_qa(doc)
             if not qa_records:
@@ -765,8 +1007,85 @@ def _chunk_kind(kind: str) -> str:
     }.get(kind, "gov_text_section")
 
 
-def _one_thing_chunk_content(*, case_title: str, label: str, content: str) -> str:
+def _qa_search_anchor(meta: dict[str, Any]) -> str:
+    question = str(meta.get("question") or "").strip()
+    primary_alias = str(meta.get("primary_alias") or "").strip()
+    aliases = [str(item).strip() for item in (meta.get("aliases") or []) if str(item).strip()]
+    keywords = [str(item).strip() for item in (meta.get("keywords") or []) if str(item).strip()]
+    topic = str(meta.get("source_topic") or "").strip()
+    department = str(meta.get("source_department") or "").strip()
+    parts = [question]
+    if primary_alias:
+        parts.append(primary_alias)
+    parts.extend(alias for alias in aliases[:3] if alias and alias != primary_alias)
+    if keywords:
+        parts.append(f"关键字：{'、'.join(keywords[:6])}")
+    if topic:
+        parts.append(f"主题：{topic}")
+    if department:
+        parts.append(f"来源部门：{department}")
+    deduped = [item for item in dict.fromkeys(parts) if item]
+    return f"检索锚点：{'；'.join(deduped)}" if deduped else ""
+
+
+def _chunk_qa(doc: Document, *, max_chars: int, start_index: int) -> list[Document]:
+    meta = dict(doc.metadata or {})
+    anchor = _qa_search_anchor(meta)
+    body_max = max(400, max_chars - len(anchor) - 2) if anchor else max_chars
+    parts = _split_for_chunk(doc.page_content or "", body_max)
+    chunks: list[Document] = []
+    for local_index, part in enumerate(parts, 1):
+        chunk_meta = dict(meta)
+        chunk_meta.update(
+            {
+                "chunk_strategy": _PLUGIN_KIND,
+                "chunk_kind": "qa_pair",
+                "chunk_index": start_index + len(chunks),
+                "source_chunk_index": local_index,
+            }
+        )
+        if anchor:
+            chunk_meta["qa_anchor"] = anchor
+        if len(parts) > 1:
+            chunk_meta["chunk_part_index"] = local_index
+            chunk_meta["chunk_part_total"] = len(parts)
+        content = f"{anchor}\n{part}".strip() if anchor else part
+        chunks.append(Document(page_content=content, metadata=chunk_meta))
+    return chunks
+
+
+_ONE_THING_SECTION_QUERY_HINTS = {
+    "related_services": ["涉及事项", "包含哪些事项", "联办事项"],
+    "process": ["办理须知", "办理流程", "怎么办理"],
+    "materials": ["申请材料", "办理材料", "需要哪些材料"],
+    "channels": ["办理渠道", "网上办理地址", "在哪里办理"],
+    "conditions": ["受理条件", "办理条件", "申请条件"],
+    "operation_entry": ["系统入口", "办理入口", "从哪里进入办理"],
+    "operation_steps": ["申报流程", "申报步骤", "网上办理怎么操作"],
+    "operation_material_upload": ["材料上传", "上传材料", "附件上传"],
+    "operation_query": ["进度查询", "结果查询", "查询办理进度"],
+    "operation_url": ["在线入口", "网上办理地址", "操作手册入口"],
+    "operation_notes": ["备注", "注意事项", "办理注意事项"],
+    "overview": ["事项概览", "一件事介绍"],
+}
+
+
+def _one_thing_search_anchor(*, case_title: str, section_type: str, label: str) -> str:
+    title = str(case_title or "").strip()
+    case_key = _case_key(title)
+    hints = [str(label or "").strip(), *_ONE_THING_SECTION_QUERY_HINTS.get(section_type, [])]
+    deduped_hints = [item for item in dict.fromkeys(hints) if item]
+    parts = [item for item in [title, case_key] if item]
+    if deduped_hints:
+        parts.append(f"章节意图：{'、'.join(deduped_hints)}")
+    return f"检索锚点：{'；'.join(parts)}"
+
+
+def _one_thing_chunk_content(*, case_title: str, section_type: str, label: str, content: str) -> str:
     lines = [f"一件事：{case_title}"]
+    anchor = _one_thing_search_anchor(case_title=case_title, section_type=section_type, label=label)
+    if anchor:
+        lines.append(anchor)
     if label:
         lines.append(f"章节：{label}")
     lines.append(str(content or "").strip())
@@ -787,6 +1106,9 @@ def _one_thing_chunk_meta(
     meta["case_key"] = str(meta.get("case_key") or _case_key(str(meta.get("case_title") or ""))).strip()
     meta["section_type"] = section_type
     meta["section_label"] = label
+    meta["retrieval_intents"] = list(
+        dict.fromkeys(item for item in [label, *_ONE_THING_SECTION_QUERY_HINTS.get(section_type, [])] if item)
+    )
     meta["chunk_strategy"] = _PLUGIN_KIND
     meta["chunk_kind"] = f"one_thing_{section_type}"
     meta["chunk_index"] = chunk_index
@@ -826,7 +1148,12 @@ def _emit_one_thing_section_chunks(
         content = str(section.get("content") or "").strip()
         if not section_type or not content:
             continue
-        rendered = _one_thing_chunk_content(case_title=case_title, label=label, content=content)
+        rendered = _one_thing_chunk_content(
+            case_title=case_title,
+            section_type=section_type,
+            label=label,
+            content=content,
+        )
         parts = _split_for_chunk(rendered, max_chars)
         for local_index, part in enumerate(parts, 1):
             meta = _one_thing_chunk_meta(
@@ -891,6 +1218,9 @@ def _chunk_generic(documents: list[Document], *, max_chars: int) -> list[Documen
             continue
         if kind == "one_thing_operation":
             chunks.extend(_chunk_one_thing_operation(source_doc, max_chars=max_chars, start_index=len(chunks)))
+            continue
+        if kind == "qa":
+            chunks.extend(_chunk_qa(source_doc, max_chars=max_chars, start_index=len(chunks)))
             continue
         for local_index, content in enumerate(_split_for_chunk(source_doc.page_content or "", max_chars), 1):
             chunk_meta = dict(meta)

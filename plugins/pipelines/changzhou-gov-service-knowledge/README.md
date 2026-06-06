@@ -67,6 +67,36 @@ processing_templates.json
   - 兼容“问题行 + 答：”格式的松散 FAQ 文档。
   - 使用文档主题和中间标题形成 `category_path`，避免整份部门文档退化成大块长文。
 
+## Dify 知识库映射
+
+MimirQ 的 Dify external knowledge adapter 支持平台通用的 `knowledge_id -> dataset_ids`
+映射。简单场景可以直接配置成数据集 ID 或 ID 列表；需要按查询临时扩展数据集时，
+可以配置 `query_routes`，不需要把政务区县逻辑写死在平台代码里。
+
+常州“小畅”工作流里，`changzhou_city_service` 是本级兜底检索节点。由于 Dify
+固定工作流的区县参数提取可能失败，查询里出现明确区县词时，MimirQ 会先查对应区县
+数据集，再查本级兜底数据集：
+
+```json
+{
+  "changzhou_city_service": {
+    "dataset_ids": ["<city-dataset-id>"],
+    "query_routes": [
+      {
+        "terms": ["新北区", "新北"],
+        "dataset_ids": ["<xinbei-service-item-dataset-id>", "<xinbei-qa-dataset-id>"],
+        "mode": "prepend"
+      }
+    ]
+  }
+}
+```
+
+`mode=prepend` 表示把命中的区县数据集放在本级库前面；`append` 表示追加；
+`replace` 表示只查路由命中的数据集。该配置应写入系统设置中的
+`DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON`，插件只负责生成可检索的 chunk、metadata、
+KG 和 Golden，不持有生产数据集 ID。
+
 ## 本地测试
 
 ```bash
@@ -78,7 +108,7 @@ python scripts/pipeline_plugin_runner.py test plugins/pipelines/changzhou-gov-se
 ```
 
 脚本或 manifest 改动后需要重新运行测试，否则系统会把插件标记为 `stale`，前端不能选择执行。
-测试报告还会生成 `golden_draft` 摘要；当前样例应生成 7 条 Golden 草稿问题。
+测试报告还会生成 `golden_draft` 摘要；当前样例应生成 20 条 Golden 草稿问题。
 如果该字段缺失或 `passed=false`，系统会把插件标记为 `golden_missing`。
 
 导出完整 Golden 草稿：
@@ -95,3 +125,148 @@ python scripts/pipeline_plugin_runner.py golden-draft plugins/pipelines/changzho
 生产导入 Golden 必须先把文件入库，再通过后端 `pipeline/plugins/golden-draft/import` 从真实切片生成并导入。
 Golden case 的 `extra` 会保留 `plugin_id/plugin_version/plugin_ref/plugin_package_hash`
 和 `expected_metadata`，后续评估异常时可以追踪到具体插件版本与包内容。
+
+## 固定 Golden 评估
+
+固定评估集：
+
+```text
+plugins/pipelines/changzhou-gov-service-knowledge/golden_eval_cases.json
+```
+
+每个 case 可以携带 `dify_inputs`，用于给固定 Dify workflow 的 START 变量传值，
+例如 `"dify_inputs": {"areaName": "经开区"}`。这只影响真实 Dify App
+答案采集，不改变 MimirQ 检索评估。
+
+只评估 MimirQ Dify external knowledge 检索与证据可回答性：
+
+```bash
+DIFY_EXTERNAL_KNOWLEDGE_API_KEY=... \
+python scripts/changzhou_gov_golden_eval.py \
+  --min-hit-at-1 1 \
+  --min-answer-grounding-rate 1 \
+  --min-answer-key-point-recall 1 \
+  --out /tmp/changzhou_gov_golden_eval.json
+```
+
+采集固定 Dify App workflow 的真实生成答案，不修改 workflow：
+
+```bash
+python scripts/changzhou_gov_collect_dify_answers.py \
+  --base-url https://ai.kingdonsoft.com:5001/v1 \
+  --api-key-file /tmp/dify_remote_app_api_key.json \
+  --mode chat \
+  --out /tmp/changzhou_gov_dify_answers.json
+```
+
+用同一套 key points 评估生成答案：
+
+```bash
+DIFY_EXTERNAL_KNOWLEDGE_API_KEY=... \
+python scripts/changzhou_gov_golden_eval.py \
+  --answers /tmp/changzhou_gov_dify_answers.json \
+  --min-hit-at-1 1 \
+  --min-answer-grounding-rate 1 \
+  --min-answer-key-point-recall 1 \
+  --min-generated-answer-grounding-rate 1 \
+  --min-generated-answer-key-point-recall 1 \
+  --min-generated-answer-context-supported-rate 1 \
+  --max-generated-answer-fallback-rate 0 \
+  --out /tmp/changzhou_gov_golden_eval_with_answers.json
+```
+
+门禁不通过时脚本返回退出码 `3`，用于 CI 或发布前本地检查。
+
+评估输出包含三层指标：
+
+- `hit_at_1` / `hit_at_3` / `mrr`：检索排序是否命中正确 chunk。
+- `answer_grounding_rate` / `answer_key_point_recall`：top-k 证据是否足够回答。
+- `generated_answer_grounding_rate` / `generated_answer_key_point_recall`：真实生成答案是否覆盖关键答案点。
+- `generated_answer_fallback_rate`：真实生成答案是否退回“小畅只能答复...”兜底话术。
+
+生成答案评分会规范化标点、emoji、空白和 `【字段名】` 这类 Dify 模板格式，避免把
+`办理地点：...` 与 `📍【办理地点】：...` 误判为不同内容；但事实未出现的关键点
+仍会计入 `missing_key_points`。
+
+### Dify workflow 诊断口径
+
+`changzhou_gov_collect_dify_answers.py` 会在 answers[] 中保留 Dify 返回的
+`conversation_id`、`message_id`、`task_id` 等非敏感运行标识，方便去 Dify
+Console Logs 追踪。不要把 App API Key、Console Token、Authorization header
+写入报告或提交到代码库。
+
+如果 public API 没有直接返回 `workflow_run_id`，可用 Console API 查询：
+
+```text
+GET /console/api/apps/{app_id}/messages/{message_id}
+GET /console/api/apps/{app_id}/workflow-runs/{workflow_run_id}/node-executions
+```
+
+也可以直接生成节点级诊断报告：
+
+```bash
+python scripts/changzhou_gov_dify_trace_report.py \
+  --answers /tmp/changzhou_gov_dify_answers.json \
+  --app-id 3c1c8b66-94c1-44fb-a09c-b1856d970eb7 \
+  --storage-state /tmp/kingdonsoft_dify_storage_state.json \
+  --out /tmp/changzhou_gov_dify_trace_report.json
+```
+
+报告中的 `empty_retrieval_cases` 表示 Dify workflow 内部知识检索节点全部返回空，
+`fallback_cases` 表示最终进入兜底答案节点。
+
+如果需要区分“workflow 分支没进正确节点”和“Dify external knowledge runtime
+调用 MimirQ 失败”，用同一套 fixed golden cases 做边界对照：
+
+```bash
+python scripts/changzhou_gov_dify_external_knowledge_probe.py \
+  --cases plugins/pipelines/changzhou-gov-service-knowledge/golden_eval_cases.json \
+  --external-api-id f3b0eafd-4ccc-45a4-a1f2-b340fa8c9c13 \
+  --storage-state /tmp/kingdonsoft_dify_storage_state.json \
+  --out /tmp/changzhou_gov_dify_external_probe.json \
+  --timeout 60 \
+  --top-k 5
+```
+
+该报告会读取 Dify Console 中 external knowledge API 的 endpoint 和 api key，
+再分别调用 Dify dataset `external-hit-testing` 与 MimirQ `/retrieval` 直查。
+报告只保留 endpoint、dataset、命中数量和首条标题，不输出或保存 api key。
+`dify_runtime_empty_but_mimirq_direct_ok` 表示同一个 case 在 Dify 数据集召回测试为空，
+但同一 endpoint/key 直打 MimirQ 有结果，失败边界在 Dify external knowledge runtime
+到 MimirQ endpoint 之间，通常优先检查 Dify worker/container 的网络、代理与
+`NO_PROXY` 配置。
+
+如果 `dify_hit_nonempty > 0` 且 `mimirq_direct_nonempty > 0`，但 workflow trace
+仍然显示 `empty_retrieval_cases > 0`，失败边界已经不在 MimirQ endpoint。
+Dify 1.11 的 workflow external retrieval 分支会读取 external dataset 的持久化
+`retrieval_model` 参数；如果 external dataset 详情只展示默认
+`external_retrieval_model`，但未实际持久化，workflow 节点可能在毫秒级返回空数组，
+且节点状态仍是 `succeeded`。此时在 Dify Console 中保存该 external dataset 的
+`external_retrieval_model`（例如 `top_k=10, score_threshold=0,
+score_threshold_enabled=false`），并保留原 `external_knowledge_id` /
+`external_knowledge_api_id` 绑定，再重新跑 trace。
+
+此时不要先改 workflow。优先在 Dify 后端运行环境执行以下只读检查：
+
+```bash
+# 在 Dify api/worker 容器或 systemd 进程环境里检查代理。
+env | grep -iE 'http_proxy|https_proxy|all_proxy|no_proxy'
+
+# 用 Dify external knowledge API 配置里的 api key 测同一 endpoint。
+curl --noproxy '*' -sS \
+  -H 'Authorization: Bearer <DIFY_EXTERNAL_KNOWLEDGE_API_KEY>' \
+  -H 'Content-Type: application/json' \
+  -d '{"knowledge_id":"changzhou_新北区_service","query":"新北区社保卡补卡在哪里办理","retrieval_setting":{"top_k":5,"score_threshold":0}}' \
+  http://192.168.3.6:8000/api/v1/integrations/dify/retrieval
+```
+
+如果 `--noproxy '*'` 有结果，但 Dify 页面/Console hit-testing 仍为空，
+需要把 Dify api/worker 的 `NO_PROXY/no_proxy` 加上 `192.168.0.0/16,192.168.3.6`
+并重启 Dify 后端运行进程。若容器内 curl 本身无法连通，则需要给 Dify 所在主机或容器
+提供能访问 MimirQ 的地址（同网段 LAN 地址、反向代理地址或部署后的 MimirQ 服务地址）。
+
+当前远程 Dify 固定 workflow 曾经的失败模式是：MimirQ golden 检索 gate 通过，
+Dify dataset `external-hit-testing` 也通过，但 Dify workflow 内部知识检索节点
+毫秒级返回空数组，随后进入 `兜底回复`。根因是 external dataset 的
+`external_retrieval_model` 未持久化到 workflow 实际读取的检索参数；保存 9 个
+MimirQ external dataset 的检索参数后，节点 trace 恢复为非空，兜底率降为 0。

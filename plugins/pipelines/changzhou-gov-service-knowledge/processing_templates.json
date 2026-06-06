@@ -17,6 +17,12 @@
       "implemented_by": "plugin.py:_govern_qa"
     },
     {
+      "key": "changzhou_gov_common_qa_structured_item_parse",
+      "name": "常见问题中事项式 QA 解析",
+      "stage": "governance",
+      "implemented_by": "plugin.py:_govern_structured_item_qa"
+    },
+    {
       "key": "changzhou_gov_item_field_parse",
       "name": "政务事项清单字段解析",
       "stage": "governance",

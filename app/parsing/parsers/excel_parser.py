@@ -57,9 +57,9 @@ class ExcelParser:
     def __init__(
         self,
         *,
-        max_sheets: int = 3,
-        max_rows: int = 50,
-        max_cols: int = 20,
+        max_sheets: int = 0,
+        max_rows: int = 0,
+        max_cols: int = 0,
         max_cell_chars: int = 2000,
     ) -> None:
         self.max_sheets = int(max_sheets or 0)

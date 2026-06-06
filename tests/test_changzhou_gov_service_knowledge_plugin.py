@@ -247,6 +247,89 @@ def test_changzhou_plugin_governs_one_thing_guides_and_operations():
     assert op_records[0].metadata["case_title"] == "残疾人服务“一件事”"
 
 
+def test_changzhou_plugin_canonicalizes_one_thing_case_aliases():
+    guide_source = "/data/temp50/20260522政务服务智能客服知识/02高效办成一件事/一件事指南.txt"
+    guide_text = """[开办餐饮店“一件事”]
+涉及事项
+食品经营许可、营业执照
+==##########==
+[社会保障卡居民服务“一件事”]
+涉及事项
+社会保障卡申领、补领
+==##########==
+[企业注销登记“一件事”]
+涉及事项
+企业注销登记、税务注销
+==##########==
+[水电气网联合报装“一件事”]
+涉及事项
+供水报装、供电报装
+"""
+    op_source = "/data/temp50/20260522政务服务智能客服知识/02高效办成一件事/一件事操作指引.txt"
+    op_text = """开餐饮店“一件事”操作指引
+一、系统入口
+1.进入高效办成一件事专区。
+--##########--
+社保卡服务“一件事”操作指引
+一、系统入口
+1.进入高效办成一件事专区。
+--##########--
+企业注销“一件事”操作指引
+一、系统入口
+1.进入高效办成一件事专区。
+--##########--
+水电气网联合报装“一件事”操作指引（建设单位）
+一、系统入口
+1.进入高效办成一件事专区。
+"""
+
+    guide_records = _run_governance(Document(page_content=guide_text, metadata={"source": guide_source}))
+    op_records = _run_governance(Document(page_content=op_text, metadata={"source": op_source}))
+    guide_by_key = {doc.metadata["case_key"]: doc.metadata["case_title"] for doc in guide_records}
+
+    assert [doc.metadata["case_title"] for doc in op_records] == [
+        "开办餐饮店“一件事”",
+        "社会保障卡居民服务“一件事”",
+        "企业注销登记“一件事”",
+        "水电气网联合报装“一件事”",
+    ]
+    assert all(doc.metadata.get("case_title_raw") for doc in op_records)
+    assert all(doc.metadata["case_key"] in guide_by_key for doc in op_records)
+
+
+def test_changzhou_plugin_infers_one_thing_section_from_bare_uploaded_filenames():
+    descriptor = describe_plugin_dir(PLUGIN_DIR, require_test_report=False)
+    guide_text = """[残疾人服务“一件事”]
+涉及事项
+残疾人证新办、困难残疾人生活补贴
+申请材料
+1.居民身份证
+"""
+    op_text = """残疾人服务“一件事”操作指引
+一、系统入口
+1.访问江苏政务服务网常州综合服务旗舰店（https://cz.jszwfw.gov.cn/）。
+二、申报流程
+1.点击残疾人服务“一件事”模块。
+"""
+
+    guide_records = _run_governance(Document(page_content=guide_text, metadata={"source": "一件事指南.txt"}))
+    op_records = _run_governance(Document(page_content=op_text, metadata={"source": "一件事操作指引.txt"}))
+    chunks = _run_chunk([*guide_records, *op_records])
+
+    assert [doc.metadata["knowledge_section"] for doc in [*guide_records, *op_records]] == [
+        "02高效办成一件事",
+        "02高效办成一件事",
+    ]
+    assert {chunk.metadata.get("chunk_kind") for chunk in chunks} >= {
+        "one_thing_related_services",
+        "one_thing_materials",
+        "one_thing_operation_entry",
+        "one_thing_operation_steps",
+    }
+    assert validate_documents_metadata(guide_records + op_records, metadata_schema=descriptor.metadata_schema, stage="governance")["ok"]
+    assert validate_documents_metadata(chunks, metadata_schema=descriptor.metadata_schema, stage="chunk")["ok"]
+
+
 def test_changzhou_plugin_chunks_one_thing_guides_by_business_sections():
     source = "/data/temp50/20260522政务服务智能客服知识/02高效办成一件事/一件事指南.txt"
     text = """[残疾人服务“一件事”]
@@ -264,13 +347,16 @@ def test_changzhou_plugin_chunks_one_thing_guides_by_business_sections():
 （1）残疾人证办理
 ①申请人本人居民身份证（电子证照库共享，免提交）
 ②申请人本人居民户口簿（电子证照库共享，免提交）
+办理渠道
+1.登录江苏政务服务网常州综合服务旗舰店**<https://cz.jszwfw.gov.cn/>**在线申请。
+2.各级政务服务中心专窗提供咨询服务。
 """
 
     records = _run_governance(Document(page_content=text, metadata={"source": source}))
     chunks = _run_chunk(records)
 
     sections = {chunk.metadata.get("section_type"): chunk for chunk in chunks}
-    assert {"related_services", "process", "materials"}.issubset(sections)
+    assert {"related_services", "process", "materials", "channels"}.issubset(sections)
     assert sections["related_services"].metadata["related_services"] == [
         "残疾人证新办",
         "困难残疾人生活补贴",
@@ -281,6 +367,12 @@ def test_changzhou_plugin_chunks_one_thing_guides_by_business_sections():
         "申请人本人居民身份证（电子证照库共享，免提交）",
         "申请人本人居民户口簿（电子证照库共享，免提交）",
     ]
+    assert "检索锚点：" in sections["materials"].page_content
+    assert "残疾人服务一件事" in sections["materials"].page_content
+    assert "需要哪些材料" in sections["materials"].page_content
+    assert "办理渠道" not in sections["materials"].page_content
+    assert sections["channels"].metadata["urls"] == ["https://cz.jszwfw.gov.cn/"]
+    assert "网上办理地址" in sections["channels"].page_content
     assert all(chunk.metadata.get("case_key") == "残疾人服务一件事" for chunk in chunks)
     assert all(chunk.metadata.get("chunk_kind") == f"one_thing_{chunk.metadata.get('section_type')}" for chunk in chunks)
 
@@ -310,6 +402,11 @@ def test_changzhou_plugin_chunks_one_thing_operations_by_entry_steps_and_urls():
         "登录后点击在线办理。",
         "上传申报材料。",
     ]
+    assert "检索锚点：" in sections["operation_steps"].page_content
+    assert "残疾人服务一件事" in sections["operation_steps"].page_content
+    assert "网上办理怎么操作" in sections["operation_steps"].page_content
+    assert "申报步骤" in sections["operation_steps"].page_content
+    assert sections["operation_steps"].metadata["retrieval_intents"] == ["申报流程", "申报步骤", "网上办理怎么操作"]
     assert sections["operation_steps"].metadata["step_no"] == 1
 
 
@@ -397,6 +494,24 @@ def test_changzhou_plugin_governs_qa_records():
     assert chunks[0].metadata["chunk_kind"] == "qa_pair"
 
 
+def test_changzhou_plugin_infers_district_qa_section_from_bare_filename():
+    source = "天宁区12345QA.txt"
+    text = """问题：[请问《独生子女父母光荣证》补办是否收费]
+答案：不收费
+来源部门：常州市天宁区雕庄街道办事处
+"""
+
+    records = _run_governance(Document(page_content=text, metadata={"source": source}))
+    chunks = _run_chunk(records)
+
+    assert len(records) == 1
+    assert records[0].metadata["knowledge_section"] == "06各区常见问题"
+    assert records[0].metadata["district"] == "天宁区"
+    assert records[0].metadata["source_topic"] == "天宁区12345QA"
+    assert chunks[0].metadata["knowledge_section"] == "06各区常见问题"
+    assert chunks[0].metadata["district"] == "天宁区"
+
+
 def test_changzhou_plugin_clamps_long_qa_source_department_to_schema_limit():
     descriptor = describe_plugin_dir(PLUGIN_DIR, require_test_report=False)
     source = "/data/temp50/20260522政务服务智能客服知识/06各区常见问题/新北区12345QA.txt"
@@ -448,6 +563,23 @@ def test_changzhou_plugin_governs_qa_keywords_alias_variants_urls_and_topic():
     assert ("GovKnowledgeTopic", "2026年常州市义务教育学校招生入学常见问题", "source_topic") in entity_pairs
 
 
+def test_changzhou_plugin_infers_topic_qa_section_from_bare_uploaded_filenames():
+    source = "苏超购票常见问题.txt"
+    text = """问题：[2026年苏超常规赛赛程安排]
+==##相似问法：江苏省城市足球联赛2026赛季常规赛赛程##==
+答案：江苏省城市足球联赛（简称“苏超”）2026赛季常规赛赛程正式发布。
+"""
+
+    records = _run_governance(Document(page_content=text, metadata={"source": source}))
+    chunks = _run_chunk(records)
+
+    assert len(records) == 1
+    assert records[0].metadata["knowledge_section"] == "04专题常见问答"
+    assert records[0].metadata["source_topic"] == "苏超购票常见问题"
+    assert chunks[0].metadata["knowledge_section"] == "04专题常见问答"
+    assert "主题：苏超购票常见问题" in chunks[0].page_content
+
+
 def test_changzhou_plugin_governs_markdown_table_qa_rows_from_excel():
     source = "/data/temp50/20260522政务服务智能客服知识/03常州市常见问题/常州市高频应用知识.xlsx"
     text = """Excel: 常州市高频应用知识.xlsx
@@ -482,6 +614,76 @@ Sheets: 高频应用
     assert ("Url", "https://gjjyw.changzhou.gov.cn/wt/login", "url") in entity_pairs
 
 
+def test_changzhou_plugin_infers_common_qa_section_from_bare_uploaded_filenames():
+    source = "常州市本级12345QA.txt"
+    text = """问题：[常州市市长质量奖如何申报？]
+答案：每年上半年在常州市人民政府官网和市场监督管理局官网公布申报公告。
+来源部门：常州市市场监督管理局
+"""
+
+    records = _run_governance(Document(page_content=text, metadata={"source": source}))
+
+    assert len(records) == 1
+    assert records[0].metadata["knowledge_section"] == "03常州市常见问题"
+    assert records[0].metadata["source_topic"] == "常州市本级12345QA"
+
+
+def test_changzhou_plugin_governs_common_qa_structured_item_records():
+    source = "/data/temp50/20260522政务服务智能客服知识/03常州市常见问题/核发居民身份证（首次申领、换领、补领、挂失、进度查询等知识）.txt"
+    text = """事项名称：[核发居民身份证（换领）]
+==##相似问法：身份证到期怎么换、线上换领身份证##==
+受理条件：本省户籍人员凭居民身份证办理；省外户籍人员凭居民身份证和居住证明材料办理。
+办理材料：居民身份证
+办理流程：携带本人原居民身份证到就近的派出所或便民服务中心办理。
+在线办理地址：通过“苏服办”APP网上办理（仅限本省户籍居民换补领）
+注意事项：身份证到期可以提前3-6个月办理。
+"""
+
+    records = _run_governance(Document(page_content=text, metadata={"source": source}))
+    chunks = _run_chunk(records)
+
+    assert len(records) == 1
+    assert records[0].metadata["gov_knowledge_type"] == "qa"
+    assert records[0].metadata["question"] == "核发居民身份证（换领）"
+    assert records[0].metadata["aliases"] == ["身份证到期怎么换", "线上换领身份证"]
+    assert records[0].metadata["primary_alias"] == "身份证到期怎么换"
+    assert "受理条件：本省户籍人员凭居民身份证办理" in records[0].metadata["answer"]
+    assert "办理材料：居民身份证" in chunks[0].page_content
+    assert chunks[0].metadata["chunk_kind"] == "qa_pair"
+
+
+def test_changzhou_plugin_captures_unlabeled_common_qa_alias_markers():
+    source = "/data/temp50/20260522政务服务智能客服知识/03常州市常见问题/常见问题优化补充.txt"
+    text = """问题：[办理无房证明]
+==##如何办理无房证明？常州无房证明怎么在线办理、如何申请无房证明？##==
+答案：可以登录苏服办APP，在首页找到“不动产业务”，通过身份验证后办理。
+"""
+
+    records = _run_governance(Document(page_content=text, metadata={"source": source}))
+
+    assert len(records) == 1
+    assert records[0].metadata["aliases"] == [
+        "如何办理无房证明？常州无房证明怎么在线办理",
+        "如何申请无房证明？",
+    ]
+    assert records[0].metadata["primary_alias"] == "如何办理无房证明？常州无房证明怎么在线办理"
+
+
+def test_changzhou_plugin_repeats_qa_search_anchor_on_split_chunks():
+    source = "/data/temp50/20260522政务服务智能客服知识/03常州市常见问题/常见问题优化补充.txt"
+    answer = "第一段说明。" + "补充办理说明。" * 420
+    text = f"""问题：[汽车置换补贴多久到账？]
+==##相似问法：汽车补贴什么时候能发、置换补贴到账时间##==
+答案：{answer}
+"""
+
+    chunks = _run_chunk(_run_governance(Document(page_content=text, metadata={"source": source})))
+
+    assert len(chunks) > 1
+    assert all("检索锚点：汽车置换补贴多久到账？" in chunk.page_content for chunk in chunks)
+    assert all("汽车补贴什么时候能发" in chunk.page_content for chunk in chunks)
+
+
 def test_changzhou_plugin_governs_excel_tables_with_title_row_before_header():
     source = "/data/temp50/20260522政务服务智能客服知识/03常州市常见问题/医保局近期问答.xlsx"
     text = """Excel: 医保局近期问答.xlsx
@@ -504,7 +706,24 @@ Sheets: 问答导出
     assert records[0].metadata["question"] == "职工医保参保人员的个人账户划入标准是多少？"
     assert records[0].metadata["source_department"] == "常州市医疗保障局"
     assert records[0].metadata["source_sheet"] == "问答导出"
+    assert records[0].metadata["valid_from"] == "2020-09-01 00:00:00"
+    assert records[0].metadata["valid_to"] == "长期有效"
     assert all(chunk.metadata["chunk_kind"] == "qa_pair" for chunk in chunks)
+
+
+def test_changzhou_plugin_governs_excel_parser_semicolon_rows():
+    source = "/data/temp50/20260522政务服务智能客服知识/03常州市常见问题/全市政务服务中心（便民服务中心）位置及电话.xlsx"
+    text = "[问题：常州市数据局位置]; ==##相似问法：常州市数据局地址、在哪里、在什么地方##==; 答案：常州市天宁区锦绣路2号 ——位置"
+
+    records = _run_governance(Document(page_content=text, metadata={"source": source, "file_type": "xlsx"}))
+    chunks = _run_chunk(records)
+
+    assert len(records) == 1
+    assert records[0].metadata["question"] == "常州市数据局位置"
+    assert records[0].metadata["aliases"] == ["常州市数据局地址", "在哪里", "在什么地方"]
+    assert records[0].metadata["answer"] == "常州市天宁区锦绣路2号"
+    assert records[0].metadata["source_sheet"] == "位置"
+    assert chunks[0].metadata["source_sheet"] == "位置"
 
 
 def test_changzhou_plugin_preserves_department_table_business_metadata():
@@ -536,6 +755,79 @@ Sheets: Sheet1
     assert ("Keyword", "个人业务", "keyword") in entity_pairs
     assert ("Region", "常州全市", "applicable_area") in entity_pairs
     assert ("Url", "https://gjj.changzhou.gov.cn/", "url") in entity_pairs
+
+
+def test_changzhou_plugin_infers_department_section_from_relative_upload_paths():
+    source = "公积金知识/线上业务.xlsx"
+    text = """Excel: 线上业务.xlsx
+Sheets: Sheet1
+
+## Sheet: Sheet1
+
+| 问题 | 答案 | 相似问法 | 关键词 | 适用区域 | 办事链接 | 来源部门 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 线上业务渠道 | 可通过常州住房公积金微信公众号办理。 | 公积金线上入口 | 个人业务 | 常州全市 | https://gjj.changzhou.gov.cn/ | 公积金中心 |
+"""
+
+    records = _run_governance(Document(page_content=text, metadata={"source": source, "file_type": "xlsx"}))
+    chunks = _run_chunk(records)
+
+    assert len(records) == 1
+    assert records[0].metadata["knowledge_section"] == "05业务部门常见问题"
+    assert records[0].metadata["department_domain"] == "公积金知识"
+    assert records[0].metadata["source_topic"] == "线上业务"
+    assert chunks[0].metadata["knowledge_section"] == "05业务部门常见问题"
+
+
+def test_changzhou_plugin_infers_emergency_department_from_bare_filename():
+    source = "应急局日常问题汇总.docx"
+    text = """用户管理
+企业员工密码输入错误5次，无法再输入密码。
+答：企业可通过重置密码，刷新输入限制次数。
+"""
+
+    records = _run_governance(Document(page_content=text, metadata={"source": source, "file_type": "docx"}))
+
+    assert len(records) == 1
+    assert records[0].metadata["knowledge_section"] == "05业务部门常见问题"
+    assert records[0].metadata["department_domain"] == "应急局"
+    assert records[0].metadata["source_topic"] == "应急局日常问题汇总"
+    assert records[0].metadata["category_path"] == ["应急局日常问题汇总", "用户管理"]
+
+
+def test_changzhou_plugin_cleans_numbered_emergency_loose_qa():
+    source = "应急局日常问题汇总.docx"
+    text = """粉尘企业在粉尘专项中，无清扫任务
+1. **“应清尽清”显示不符合**
+答：查看集中除尘器是否在室内，在室内不符合。
+2. **粉尘清扫记录看不到**
+答：进入粉尘专项模块查看清扫记录。
+"""
+
+    records = _run_governance(Document(page_content=text, metadata={"source": source, "file_type": "docx"}))
+    chunks = _run_chunk(records)
+
+    assert len(records) == 2
+    assert records[0].metadata["question"] == "“应清尽清”显示不符合"
+    assert records[0].metadata["category_path"] == ["应急局日常问题汇总", "粉尘企业在粉尘专项中，无清扫任务"]
+    assert chunks[0].metadata["qa_anchor"].startswith("检索锚点：“应清尽清”显示不符合")
+    assert "1. **" not in chunks[0].page_content
+
+
+def test_changzhou_plugin_infers_department_regulation_from_bare_filename():
+    source = "10.自然资源部关于取消一批证明事项的公告（自然资源部公告2019年第23号）.docx"
+    text = """自然资源部关于取消一批证明事项的公告
+第一条 取消申请材料中的部分证明事项。
+"""
+
+    records = _run_governance(Document(page_content=text, metadata={"source": source, "file_type": "docx"}))
+    chunks = _run_chunk(records)
+
+    assert len(records) == 1
+    assert records[0].metadata["knowledge_section"] == "05业务部门常见问题"
+    assert records[0].metadata["department_domain"] == "不动产知识库"
+    assert records[0].metadata["gov_knowledge_type"] == "regulation_text"
+    assert chunks[0].metadata["knowledge_section"] == "05业务部门常见问题"
 
 
 def test_changzhou_plugin_preserves_real_estate_category_path_from_table():
@@ -602,6 +894,39 @@ def test_changzhou_golden_rules_use_record_level_expected_metadata():
     ]
 
 
+def test_changzhou_golden_rules_cover_one_thing_section_chunks():
+    golden_rules = json.loads((PLUGIN_DIR / "golden_rules.json").read_text(encoding="utf-8"))
+    templates = golden_rules["query_templates"]
+
+    assert {
+        "one_thing_related_services",
+        "one_thing_process",
+        "one_thing_materials",
+        "one_thing_channels",
+        "one_thing_conditions",
+        "one_thing_operation_entry",
+        "one_thing_operation_steps",
+        "one_thing_operation_url",
+        "one_thing_operation_notes",
+    }.issubset(templates)
+
+
+def test_changzhou_plugin_sample_includes_one_thing_operation_branch():
+    raw_items = json.loads((PLUGIN_DIR / "sample.json").read_text(encoding="utf-8"))
+    sample_docs = [
+        Document(page_content=item["page_content"], metadata=dict(item.get("metadata") or {}))
+        for item in raw_items
+    ]
+    records: list[Document] = []
+    for doc in sample_docs:
+        records.extend(_run_governance(doc))
+    chunks = _run_chunk(records)
+
+    assert any(record.metadata.get("gov_knowledge_type") == "one_thing_operation" for record in records)
+    assert any(chunk.metadata.get("chunk_kind") == "one_thing_operation_steps" for chunk in chunks)
+    assert any(chunk.metadata.get("chunk_kind") == "one_thing_operation_url" for chunk in chunks)
+
+
 def test_changzhou_plugin_marks_long_regulation_text_as_section_chunks():
     source = "/data/temp50/20260522政务服务智能客服知识/05业务部门常见问题/不动产知识库/不动产法规汇编/法规汇编/二、行政法规/二、行政法规.txt"
     text = """中华人民共和国不动产登记暂行条例
@@ -638,6 +963,15 @@ def test_changzhou_plugin_preserves_multiline_regulation_titles():
     records = _run_governance(Document(page_content=text, metadata={"source": source}))
 
     assert records[0].metadata["title"] == "最高人民法院关于破产企业国有划拨土地使用权应否列入破产财产等问题的批复"
+
+
+def test_changzhou_plugin_disables_builtin_governance_after_plugin_governance():
+    descriptor = describe_plugin_dir(PLUGIN_DIR, require_test_report=False)
+
+    assert descriptor.suggested_pipeline_patch["governance_enabled"] is False
+    assert descriptor.suggested_pipeline_patch["persist_parsed_content"] is True
+    assert descriptor.refs["governance"]
+    assert descriptor.refs["chunk"]
 
 
 def test_changzhou_plugin_is_executable_after_local_report():
