@@ -128,6 +128,23 @@ def _result_count(outputs: Any) -> int | None:
     return None
 
 
+def _result_titles(outputs: Any) -> list[str]:
+    if not isinstance(outputs, dict):
+        return []
+    result = outputs.get("result")
+    if not isinstance(result, list):
+        return []
+    titles: list[str] = []
+    for item in result:
+        if not isinstance(item, dict):
+            continue
+        metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+        title = _text(item.get("title") or item.get("document_name") or metadata.get("document_name") or metadata.get("title"))
+        if title:
+            titles.append(title)
+    return titles
+
+
 def _expected_area(answer_item: dict[str, Any]) -> str:
     inputs = answer_item.get("dify_inputs")
     if isinstance(inputs, dict):
@@ -167,16 +184,32 @@ def _add_route_diagnostics(answer_item: dict[str, Any], summary: dict[str, Any])
         return {}
     expected_title = _expected_retrieval_title_contains(expected_area)
     retrievals = summary.get("retrievals") if isinstance(summary.get("retrievals"), list) else []
-    titles = [_text(item.get("title")) for item in retrievals if isinstance(item, dict)]
-    route_matched = any(expected_title in title for title in titles if title) if expected_title else True
+    node_titles = [_text(item.get("title")) for item in retrievals if isinstance(item, dict)]
+    result_titles = [
+        title
+        for item in retrievals
+        if isinstance(item, dict)
+        for title in item.get("result_titles", [])
+        if _text(title)
+    ]
+    node_route_matched = any(expected_title in title for title in node_titles if title) if expected_title else True
+    evidence_route_matched = (
+        any(expected_title in _text(title) for title in result_titles) if expected_title and result_titles else None
+    )
+    route_matched = bool(node_route_matched or evidence_route_matched is True)
     regions = summary.get("regions") if isinstance(summary.get("regions"), list) else []
     region_values = _region_texts(regions)
     region_matched = any(expected_area == value for value in region_values) if region_values else None
     out: dict[str, Any] = {
         "expected_area": expected_area,
         "expected_retrieval_title_contains": expected_title,
+        "node_route_matched": node_route_matched,
         "route_matched": route_matched,
     }
+    if evidence_route_matched is not None:
+        out["evidence_route_matched"] = evidence_route_matched
+    if node_route_matched is False and evidence_route_matched is True:
+        out["route_compensated"] = True
     if region_matched is not None:
         out["region_matched"] = region_matched
     return out
@@ -197,6 +230,7 @@ def _summarize_executions(executions: list[dict[str, Any]]) -> dict[str, Any]:
                     "title": title,
                     "query": _text(inputs.get("query")),
                     "count": _result_count(outputs),
+                    "result_titles": _result_titles(outputs),
                 }
             )
         if "区域提取器" in title and isinstance(outputs, dict):
@@ -325,6 +359,8 @@ def collect_trace_report(
     expected_area_cases = sum(1 for item in traced_cases if _text(item.get("expected_area")))
     if expected_area_cases:
         summary["expected_area_cases"] = expected_area_cases
+        summary["node_route_mismatch_cases"] = sum(1 for item in traced_cases if item.get("node_route_matched") is False)
+        summary["route_compensated_cases"] = sum(1 for item in traced_cases if item.get("route_compensated") is True)
         summary["route_mismatch_cases"] = sum(1 for item in traced_cases if item.get("route_matched") is False)
         summary["region_mismatch_cases"] = sum(1 for item in traced_cases if item.get("region_matched") is False)
     upstream_error_cases = sum(1 for item in cases if item.get("upstream_error"))

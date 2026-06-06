@@ -219,11 +219,12 @@ python scripts/changzhou_gov_dify_trace_report.py \
 ```
 
 报告中的 `empty_retrieval_cases` 表示 Dify workflow 内部知识检索节点全部返回空，
-`fallback_cases` 表示最终进入兜底答案节点。`route_mismatch_cases` 表示 case 已传
-`dify_inputs.areaName`，但 Dify workflow 实际命中的知识检索节点标题没有进入对应
-区域知识库，例如期望 `经开区政务服务知识检索` 却走到 `常州市政务服务知识检索`。
-这类问题即使生成答案碰巧正确，也说明固定“小畅” workflow 没有按 MimirQ 的分区
-知识库路由，readiness gate 会在 trace 阶段失败。
+`fallback_cases` 表示最终进入兜底答案节点。`node_route_mismatch_cases` 表示 case
+已传 `dify_inputs.areaName`，但 Dify workflow 节点标题仍显示走了本级节点，例如期望
+`经开区政务服务知识检索` 却执行 `常州市政务服务知识检索`。如果该节点返回的证据
+标题已经由 MimirQ `query_routes` 纠偏到目标区县，则计入 `route_compensated_cases`，
+不算最终失败。`route_mismatch_cases` 表示节点和实际证据都没有命中目标区县，
+readiness gate 会在 trace 阶段失败。
 
 如果 answers 报告里出现 `error_kind=missing_start_variable`，例如
 `missing_variable=areaName`，失败边界在 Dify workflow 入参，不在 MimirQ 检索。
