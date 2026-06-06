@@ -40,6 +40,7 @@ def test_build_readiness_summary_combines_probe_and_full_gate() -> None:
             "stage_count": 4,
             "root_cause_stage": "",
             "root_cause_reason": "",
+            "next_action": "",
         },
         "stages": {
             "collect": {"passed": True, "summary": {"cases": 12, "succeeded": 12, "failed": 0}},
@@ -88,6 +89,7 @@ def test_build_readiness_summary_combines_probe_and_full_gate() -> None:
             "stage_count": 4,
             "root_cause_stage": "",
             "root_cause_reason": "",
+            "next_action": "",
         },
         "artifacts": {
             "knowledge_map": "/tmp/map.json",
@@ -156,6 +158,7 @@ def test_build_readiness_summary_marks_failed_source() -> None:
         "stage_count": 4,
         "root_cause_stage": "knowledge_map",
         "root_cause_reason": "route_missing:经开区",
+        "next_action": "Run make changzhou-dify-knowledge-map-check and fix DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON.",
     }
     assert summary["knowledge_map"]["status"] == "failed"
     assert summary["console_auth"] == {
@@ -186,6 +189,7 @@ def test_auth_failure_marks_downstream_stages_skipped() -> None:
         "stage_count": 4,
         "root_cause_stage": "console_auth",
         "root_cause_reason": "token_expired",
+        "next_action": "Refresh Dify console login with DIFY_CONSOLE_EMAIL and DIFY_CONSOLE_PASSWORD_FILE, then run make dify-console-login.",
     }
     assert summary["knowledge_map"]["status"] == "passed"
     assert summary["console_auth"]["status"] == "failed"
@@ -223,6 +227,7 @@ def test_main_writes_failed_summary_when_input_artifacts_are_missing(tmp_path: P
         "stage_count": 4,
         "root_cause_stage": "knowledge_map",
         "root_cause_reason": "missing_or_invalid_knowledge_map",
+        "next_action": "Run make changzhou-dify-knowledge-map-check and fix DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON.",
     }
     assert report["knowledge_map"]["passed"] is False
     assert report["knowledge_map"]["status"] == "failed"
