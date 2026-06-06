@@ -11,6 +11,7 @@ import os
 import sys
 import time
 from collections.abc import Callable
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -25,6 +26,10 @@ RequestJsonFn = Callable[..., dict[str, Any]]
 
 def _text(value: Any) -> str:
     return str(value or "").strip()
+
+
+def _utc_now_text() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def extract_console_token(payload: dict[str, Any]) -> str:
@@ -104,6 +109,7 @@ def check_storage_state(
             "reason": "token_expired",
             "storage_state": str(storage_state),
             "ttl_seconds": ttl_seconds,
+            "min_ttl_seconds": int(min_ttl_seconds),
         }
     if ttl_seconds < int(min_ttl_seconds):
         return {
@@ -224,7 +230,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeout", type=float, default=30.0)
     parser.add_argument("--check", action="store_true", help="Validate the existing storage_state token without logging in.")
     parser.add_argument("--min-ttl-seconds", type=int, default=900)
+    parser.add_argument("--out", default="", help="Optional JSON report path.")
     return parser
+
+
+def _emit_report(report: dict[str, Any], out: str) -> None:
+    safe_report = dict(report)
+    safe_report.setdefault("generated_at", _utc_now_text())
+    text = json.dumps(safe_report, ensure_ascii=False, indent=2)
+    if _text(out):
+        Path(_text(out)).write_text(text + "\n", encoding="utf-8")
+    print(text)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -240,7 +256,7 @@ def main(argv: list[str] | None = None) -> int:
                 "DIFY_CONSOLE_EMAIL=<email> DIFY_CONSOLE_PASSWORD_FILE=/tmp/dify_console_password.txt "
                 "make dify-console-login."
             )
-        print(json.dumps(report, ensure_ascii=False, indent=2))
+        _emit_report(report, str(args.out))
         return 0 if report.get("valid") is True else 1
     email = _text(args.email)
     password = _load_password(password=str(args.password), password_file=str(args.password_file))
@@ -262,7 +278,7 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:  # noqa: BLE001
         print(f"[dify-console-login] ERR: {exc}", file=sys.stderr)
         return 1
-    print(json.dumps(report, ensure_ascii=False, indent=2))
+    _emit_report(report, str(args.out))
     return 0
 
 

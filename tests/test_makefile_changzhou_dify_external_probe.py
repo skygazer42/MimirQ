@@ -55,6 +55,29 @@ def test_changzhou_dify_knowledge_map_check_target_is_overridable() -> None:
     assert '--out "/tmp/map.json"' in command
 
 
+def test_dify_console_check_target_writes_report() -> None:
+    result = subprocess.run(
+        [
+            "make",
+            "-n",
+            "dify-console-check",
+            "DIFY_CONSOLE_CHECK_OUT=/tmp/auth.json",
+            "DIFY_CONSOLE_MIN_TTL_SECONDS=123",
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    command = result.stdout
+    assert "scripts/dify_console_login.py" in command
+    assert "--check" in command
+    assert "--min-ttl-seconds 123" in command
+    assert '--out "/tmp/auth.json"' in command
+
+
 def test_changzhou_dify_readiness_gate_runs_probe_before_full_gate() -> None:
     result = subprocess.run(
         [
@@ -68,6 +91,7 @@ def test_changzhou_dify_readiness_gate_runs_probe_before_full_gate() -> None:
             "CHANGZHOU_DIFY_READINESS_OUT=/tmp/readiness.json",
             "CHANGZHOU_DIFY_KNOWLEDGE_MAP_ENV_FILE=/tmp/custom.env",
             "CHANGZHOU_DIFY_KNOWLEDGE_MAP_OUT=/tmp/map.json",
+            "DIFY_CONSOLE_CHECK_OUT=/tmp/auth.json",
         ],
         cwd=REPO_ROOT,
         check=False,
@@ -81,6 +105,7 @@ def test_changzhou_dify_readiness_gate_runs_probe_before_full_gate() -> None:
     assert 'rm -f "/tmp/probe.json" "/tmp/full_gate.json" "/tmp/full_gate_answers.json"' in command
     assert '"/tmp/full_gate_eval.json" "/tmp/full_gate_trace.json" "/tmp/full_gate_summary.json" "/tmp/readiness.json"' in command
     assert '"/tmp/map.json"' in command
+    assert '"/tmp/auth.json"' in command
     assert "make changzhou-dify-knowledge-map-check" in command
     assert "make dify-console-check" in command
     assert "map_rc=$?" in command
@@ -99,9 +124,11 @@ def test_changzhou_dify_readiness_gate_runs_probe_before_full_gate() -> None:
     assert full_gate_index < summary_index
     assert '--env-file "/tmp/custom.env"' in command
     assert '--out "/tmp/map.json"' in command
+    assert '--out "/tmp/auth.json"' in command
     assert '--cases "/tmp/custom_cases.json"' in command
     assert '--out "/tmp/probe.json"' in command
     assert '--external-probe "/tmp/probe.json"' in command
+    assert '--console-auth "/tmp/auth.json"' in command
     assert '--full-summary "/tmp/full_gate_summary.json"' in command
     assert "--min-hit-at-3 0.8" in command
     assert "--min-generated-answer-grounding-rate 0.9" in command

@@ -39,6 +39,7 @@ DIFY_CONSOLE_ORIGIN ?= https://ai.kingdonsoft.com:3000
 DIFY_CONSOLE_EMAIL ?=
 DIFY_CONSOLE_PASSWORD_FILE ?=
 DIFY_CONSOLE_MIN_TTL_SECONDS ?= 900
+DIFY_CONSOLE_CHECK_OUT ?= /tmp/dify_console_check.json
 CHANGZHOU_DIFY_APP_ID ?= 3c1c8b66-94c1-44fb-a09c-b1856d970eb7
 CHANGZHOU_DIFY_BASE_URL ?= https://ai.kingdonsoft.com:5001/v1
 CHANGZHOU_DIFY_API_KEY_FILE ?= /tmp/dify_remote_app_api_key.json
@@ -284,7 +285,8 @@ dify-console-check:
 	$(PY) scripts/dify_console_login.py \
 		--storage-state "$(CHANGZHOU_DIFY_STORAGE_STATE)" \
 		--check \
-		--min-ttl-seconds $(DIFY_CONSOLE_MIN_TTL_SECONDS)
+		--min-ttl-seconds $(DIFY_CONSOLE_MIN_TTL_SECONDS) \
+		--out "$(DIFY_CONSOLE_CHECK_OUT)"
 
 changzhou-dify-external-probe:
 	$(PY) scripts/changzhou_gov_dify_external_knowledge_probe.py \
@@ -306,7 +308,7 @@ changzhou-dify-readiness-gate:
 	@set +e; \
 	rm -f "$(CHANGZHOU_DIFY_PROBE_OUT)" "$(CHANGZHOU_DIFY_OUT_PREFIX).json" "$(CHANGZHOU_DIFY_OUT_PREFIX)_answers.json" \
 		"$(CHANGZHOU_DIFY_OUT_PREFIX)_eval.json" "$(CHANGZHOU_DIFY_OUT_PREFIX)_trace.json" "$(CHANGZHOU_DIFY_OUT_PREFIX)_summary.json" "$(CHANGZHOU_DIFY_READINESS_OUT)" \
-		"$(CHANGZHOU_DIFY_KNOWLEDGE_MAP_OUT)"; \
+		"$(CHANGZHOU_DIFY_KNOWLEDGE_MAP_OUT)" "$(DIFY_CONSOLE_CHECK_OUT)"; \
 	$(MAKE) changzhou-dify-knowledge-map-check; map_rc=$$?; \
 	if [ $$map_rc -eq 0 ]; then \
 		$(MAKE) dify-console-check; auth_rc=$$?; \
@@ -331,6 +333,7 @@ changzhou-dify-readiness-gate:
 changzhou-dify-readiness-summary:
 	$(PY) scripts/changzhou_gov_dify_readiness_summary.py \
 		--knowledge-map "$(CHANGZHOU_DIFY_KNOWLEDGE_MAP_OUT)" \
+		--console-auth "$(DIFY_CONSOLE_CHECK_OUT)" \
 		--external-probe "$(CHANGZHOU_DIFY_PROBE_OUT)" \
 		--full-summary "$(CHANGZHOU_DIFY_OUT_PREFIX)_summary.json" \
 		--answers "$(CHANGZHOU_DIFY_OUT_PREFIX)_answers.json" \
