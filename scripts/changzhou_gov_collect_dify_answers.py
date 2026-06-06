@@ -14,6 +14,7 @@ import os
 import sys
 import time
 from collections.abc import Callable, Mapping
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -34,6 +35,10 @@ ProgressFn = Callable[[dict[str, Any]], None]
 
 def _text(value: Any) -> str:
     return str(value or "").strip()
+
+
+def _utc_now_text() -> str:
+    return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def _case_dify_inputs(case: dict[str, Any]) -> dict[str, Any]:
@@ -228,6 +233,7 @@ def collect_answers(
     request_json: RequestJsonFn = _request_json,
     interval_sec: float = 0.0,
     progress_fn: ProgressFn | None = None,
+    generated_at: str = "",
 ) -> dict[str, Any]:
     answers: list[dict[str, Any]] = []
     url = _api_url(base_url, mode=mode)
@@ -279,6 +285,7 @@ def collect_answers(
         summary["missing_start_variable_errors"] = missing_variable_errors
     return {
         "schema": "mimirq.changzhou_gov_service_knowledge.generated_answers.v1",
+        "generated_at": _text(generated_at) or _utc_now_text(),
         "source": {
             "provider": "dify",
             "mode": str(mode),

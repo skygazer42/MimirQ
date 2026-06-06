@@ -14,6 +14,7 @@ import os
 import socket
 import sys
 from collections.abc import Callable, Mapping
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -37,6 +38,10 @@ ProgressFn = Callable[[dict[str, Any]], None]
 
 def _text(value: Any) -> str:
     return str(value or "").strip()
+
+
+def _utc_now_text() -> str:
+    return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def _format_cli_error(exc: Exception) -> str:
@@ -344,6 +349,7 @@ def collect_probe_report(
     timeout: float = 30.0,
     top_k: int = 5,
     progress_fn: ProgressFn | None = None,
+    generated_at: str = "",
 ) -> dict[str, Any]:
     external_payload = request_json(
         console_base_url=console_base_url,
@@ -439,6 +445,7 @@ def collect_probe_report(
 
     report = {
         "schema": "mimirq.changzhou_gov_service_knowledge.dify_external_knowledge_probe.v1",
+        "generated_at": _text(generated_at) or _utc_now_text(),
         "source": {
             "provider": "dify",
             "console_base_url": console_base_url.rstrip("/"),

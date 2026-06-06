@@ -229,11 +229,13 @@ def test_collect_answers_returns_answers_json_with_errors() -> None:
         timeout=12.0,
         request_json=fake_request,
         progress_fn=progress.append,
+        generated_at="2026-06-07T01:02:03Z",
     )
 
     assert calls[0][0] == "http://dify.test/v1/chat-messages"
     assert calls[0][1]["query"] == "good"
     assert calls[0][2] == "token"
+    assert report["generated_at"] == "2026-06-07T01:02:03Z"
     assert report["summary"] == {"cases": 2, "succeeded": 1, "failed": 1}
     assert report["answers"][0]["answer"] == "answer for good"
     assert report["answers"][0]["conversation_id"] == "conv-1"
