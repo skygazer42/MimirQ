@@ -114,3 +114,28 @@ def test_lint_workflow_does_not_report_required_or_defaulted_start_variables() -
     assert required_report["hidden_required_start_variables"] == []
     assert defaulted_report["summary"]["hidden_required_start_variables"] == 0
     assert defaulted_report["hidden_required_start_variables"] == []
+
+
+def test_lint_workflow_reports_cases_missing_hidden_required_inputs() -> None:
+    mod = _load_module()
+
+    report = mod.lint_workflow(
+        _workflow(),
+        cases=[
+            {"id": "ok-case", "query": "经开区社保卡补卡在哪里办理", "dify_inputs": {"areaName": "经开区"}},
+            {"id": "bad-case", "query": "经开区社保卡补卡在哪里办理"},
+            {"id": "fallback-key", "query": "天宁区社保卡补卡在哪里办理", "app_inputs": {"areaName": "天宁区"}},
+        ],
+    )
+
+    assert report["summary"]["case_inputs_checked"] == 3
+    assert report["summary"]["case_input_violations"] == 1
+    assert report["case_input_violations"] == [
+        {
+            "id": "bad-case",
+            "query": "经开区社保卡补卡在哪里办理",
+            "missing_inputs": ["areaName"],
+            "selectors": ["1711528914102.areaName"],
+            "recommendation": "Add dify_inputs.areaName for this case before calling the Dify App API.",
+        }
+    ]

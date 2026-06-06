@@ -233,9 +233,13 @@ python scripts/changzhou_gov_dify_trace_report.py \
 ```bash
 python scripts/changzhou_gov_dify_workflow_lint.py \
   --app-id 00000000-0000-0000-0000-000000000003 \
+  --cases plugins/pipelines/changzhou-gov-service-knowledge/golden_eval_cases.json \
   --storage-state /tmp/dify_console_storage_state.json \
   --out /tmp/changzhou_gov_dify_workflow_lint.json
 ```
+
+传入 `--cases` 后，报告会额外输出 `case_input_violations`，用于在调用 Dify 前发现
+golden/boundary case 是否漏传 `dify_inputs.areaName`。
 
 如果需要区分“workflow 分支没进正确节点”和“Dify external knowledge runtime
 调用 MimirQ 失败”，用同一套 fixed golden cases 做边界对照：
