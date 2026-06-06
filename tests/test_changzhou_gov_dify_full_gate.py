@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -205,3 +206,68 @@ def test_compact_summary_keeps_stage_metrics_and_artifact_paths_without_full_rep
     }
     assert "large answer" not in str(summary)
     assert "large content" not in str(summary)
+
+
+def test_write_stage_artifacts_skips_outputs_for_stages_that_did_not_run(tmp_path: Path) -> None:
+    mod = _load_module()
+    report = {
+        "summary": {"passed": False, "failed_stages": ["preflight"], "stage_count": 1},
+        "stages": {
+            "preflight": {
+                "passed": False,
+                "summary": {"case_input_violations": 1},
+                "report": {"summary": {"case_input_violations": 1}},
+            }
+        },
+    }
+    answers_path = tmp_path / "answers.json"
+    eval_path = tmp_path / "eval.json"
+    trace_path = tmp_path / "trace.json"
+
+    artifacts = mod.write_stage_artifacts(
+        report,
+        answers_out=str(answers_path),
+        eval_out=str(eval_path),
+        trace_out=str(trace_path),
+    )
+
+    assert artifacts == {}
+    assert not answers_path.exists()
+    assert not eval_path.exists()
+    assert not trace_path.exists()
+
+
+def test_write_stage_artifacts_writes_only_present_stage_reports(tmp_path: Path) -> None:
+    mod = _load_module()
+    report = {
+        "summary": {"passed": False, "failed_stages": ["eval"], "stage_count": 3},
+        "stages": {
+            "collect": {
+                "passed": True,
+                "summary": {"cases": 1, "succeeded": 1, "failed": 0},
+                "report": {"summary": {"cases": 1}, "answers": [{"id": "case-1"}]},
+            },
+            "eval": {
+                "passed": False,
+                "summary": {"generated_answer_key_point_recall": 0.5},
+                "report": {"summary": {"generated_answer_key_point_recall": 0.5}},
+            },
+        },
+    }
+    answers_path = tmp_path / "answers.json"
+    eval_path = tmp_path / "eval.json"
+    trace_path = tmp_path / "trace.json"
+
+    artifacts = mod.write_stage_artifacts(
+        report,
+        answers_out=str(answers_path),
+        eval_out=str(eval_path),
+        trace_out=str(trace_path),
+    )
+
+    assert artifacts == {"answers": str(answers_path), "eval": str(eval_path)}
+    assert json.loads(answers_path.read_text(encoding="utf-8"))["summary"] == {"cases": 1}
+    assert json.loads(eval_path.read_text(encoding="utf-8"))["summary"] == {
+        "generated_answer_key_point_recall": 0.5
+    }
+    assert not trace_path.exists()
