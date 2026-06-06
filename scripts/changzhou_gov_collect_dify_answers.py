@@ -27,6 +27,7 @@ from scripts.changzhou_gov_golden_eval import DEFAULT_CASES, load_cases  # noqa:
 
 DEFAULT_DIFY_BASE_URL = "http://127.0.0.1/v1"
 DEFAULT_API_KEY_FILE = "/tmp/dify_app_api_keys_post.json"
+_REQUEST_ATTEMPTS = 3
 RequestJsonFn = Callable[..., dict[str, Any]]
 ProgressFn = Callable[[dict[str, Any]], None]
 
@@ -181,14 +182,17 @@ def _request_json(*, url: str, payload: dict[str, Any], api_key: str, timeout: f
             "Accept": "application/json",
         },
     )
-    try:
-        with urlopen(request, timeout=timeout) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"HTTP {exc.code}: {body[:800]}") from exc
-    except URLError as exc:
-        raise RuntimeError(f"request failed: {exc}") from exc
+    last_error: URLError | None = None
+    for _attempt in range(_REQUEST_ATTEMPTS):
+        try:
+            with urlopen(request, timeout=timeout) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            raise RuntimeError(f"HTTP {exc.code}: {body[:800]}") from exc
+        except URLError as exc:
+            last_error = exc
+    raise RuntimeError(f"request failed: {last_error}") from last_error
 
 
 def load_api_key(api_key: str, api_key_file: str, *, env: Mapping[str, str] | None = None) -> str:

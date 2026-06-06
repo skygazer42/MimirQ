@@ -4,6 +4,7 @@ import importlib.util
 import json
 import sys
 from pathlib import Path
+from urllib.error import URLError
 
 
 def _load_module():
@@ -161,6 +162,42 @@ def test_load_api_key_file_reads_token_without_leaking_shape(tmp_path: Path) -> 
     key_path.write_text(json.dumps({"token": "app-secret-token"}), encoding="utf-8")
 
     assert mod.load_api_key("", str(key_path), env={}) == "app-secret-token"
+
+
+def test_request_json_retries_transient_url_errors(monkeypatch) -> None:
+    mod = _load_module()
+    calls = 0
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self) -> bytes:
+            return json.dumps({"answer": "ok"}).encode("utf-8")
+
+    def fake_urlopen(_request, timeout: float):
+        nonlocal calls
+        calls += 1
+        assert timeout == 12.0
+        if calls == 1:
+            raise URLError("temporary ssl eof")
+        return FakeResponse()
+
+    monkeypatch.setattr(mod, "urlopen", fake_urlopen)
+
+    assert (
+        mod._request_json(
+            url="https://dify.test/v1/chat-messages",
+            payload={"query": "q"},
+            api_key="secret-token",
+            timeout=12.0,
+        )
+        == {"answer": "ok"}
+    )
+    assert calls == 2
 
 
 def test_collect_answers_returns_answers_json_with_errors() -> None:

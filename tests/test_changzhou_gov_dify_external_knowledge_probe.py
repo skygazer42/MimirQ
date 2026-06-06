@@ -4,6 +4,7 @@ import importlib.util
 import json
 import sys
 from pathlib import Path
+from urllib.error import URLError
 
 
 def _load_module():
@@ -58,6 +59,42 @@ def test_build_knowledge_dataset_map_reads_external_dataset_details() -> None:
         "top_k": 2,
         "score_threshold": 0.0,
     }
+
+
+def test_request_json_retries_transient_url_errors(monkeypatch) -> None:
+    mod = _load_module()
+    calls = 0
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self) -> bytes:
+            return json.dumps({"data": []}).encode("utf-8")
+
+    def fake_urlopen(_request, timeout: float):
+        nonlocal calls
+        calls += 1
+        assert timeout == 12.0
+        if calls == 1:
+            raise URLError("temporary ssl eof")
+        return FakeResponse()
+
+    monkeypatch.setattr(mod, "urlopen", fake_urlopen)
+
+    assert (
+        mod._request_json(
+            console_base_url="https://dify.test/console/api",
+            console_token="secret-console-token",
+            path="/datasets/external-knowledge-api?page=1&limit=50",
+            timeout=12.0,
+        )
+        == {"data": []}
+    )
+    assert calls == 2
 
 
 def test_collect_probe_report_flags_dify_empty_but_mimirq_direct_ok_without_leaking_key() -> None:
