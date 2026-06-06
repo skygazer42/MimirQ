@@ -299,7 +299,10 @@ def get_dataset_analysis_png_task_endpoint(
     """Return the status of a dataset analysis PNG export task."""
     DatasetService.ensure_member(db, tenant_id, account_id)
     DatasetService.get_dataset(db, tenant_id, dataset_id)
-    return get_dataset_analysis_png_task_status(task_id=task_id)
+    try:
+        return get_dataset_analysis_png_task_status(task_id=task_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="PNG export task not found") from exc
 
 
 @router.get("/{dataset_id}/analysis/export-tasks/{task_id}/result.png", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -314,8 +317,14 @@ def get_dataset_analysis_png_task_result_endpoint(
     """Return the PNG result for a completed dataset analysis export task."""
     DatasetService.ensure_member(db, tenant_id, account_id)
     DatasetService.get_dataset(db, tenant_id, dataset_id)
-    status = get_dataset_analysis_png_task_status(task_id=task_id)
+    try:
+        status = get_dataset_analysis_png_task_status(task_id=task_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="PNG export task not found") from exc
     if str(status.get("status") or "") != "done":
         raise HTTPException(status_code=409, detail="PNG export task is not finished")
-    payload = get_dataset_analysis_png_result(task_id=task_id)
+    try:
+        payload = get_dataset_analysis_png_result(task_id=task_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="PNG export task result not found") from exc
     return Response(content=payload, media_type="image/png")
