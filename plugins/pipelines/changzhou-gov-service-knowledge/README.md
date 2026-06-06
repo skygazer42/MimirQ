@@ -243,6 +243,24 @@ python scripts/changzhou_gov_dify_workflow_lint.py \
 golden/boundary case 是否漏传 `dify_inputs.areaName`。`--case-inputs-only` 只把 case
 缺入参作为失败退出码，仍会在报告里保留 workflow 本身的隐性必填警告。
 
+推荐用 full gate 串起完整远程验证：case 入参 preflight -> Dify 真实回答采集 ->
+MimirQ 直查 golden eval -> Dify workflow trace。
+命令需要 `DIFY_EXTERNAL_KNOWLEDGE_API_KEY` 环境变量，或显式传入 `--mimirq-token`。
+
+```bash
+python scripts/changzhou_gov_dify_full_gate.py \
+  --app-id 3c1c8b66-94c1-44fb-a09c-b1856d970eb7 \
+  --cases plugins/pipelines/changzhou-gov-service-knowledge/golden_eval_cases.json \
+  --dify-base-url https://ai.kingdonsoft.com:5001/v1 \
+  --dify-api-key-file /tmp/dify_remote_app_api_key.json \
+  --storage-state /tmp/kingdonsoft_dify_storage_state.json \
+  --mimirq-base-url http://127.0.0.1:8000 \
+  --out /tmp/changzhou_gov_dify_full_gate.json
+```
+
+该 gate 默认要求 `hit_at_3=1.0`、直接证据关键点召回 `1.0`、生成答案关键点召回
+`1.0`、生成答案 fallback 率 `0`，并要求 Dify trace 无空检索/兜底/trace 错误。
+
 如果需要区分“workflow 分支没进正确节点”和“Dify external knowledge runtime
 调用 MimirQ 失败”，用同一套 fixed golden cases 做边界对照：
 
