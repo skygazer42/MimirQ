@@ -1,4 +1,4 @@
-.PHONY: help init up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload web test test-web test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check api-docs-build diagnostics db-upgrade db-revision verify enterprise-checks parser-status dify-console-login changzhou-dify-external-probe changzhou-dify-full-gate changzhou-dify-readiness-gate check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
+.PHONY: help init up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload web test test-web test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check api-docs-build diagnostics db-upgrade db-revision verify enterprise-checks parser-status dify-console-login changzhou-dify-external-probe changzhou-dify-full-gate changzhou-dify-readiness-summary changzhou-dify-readiness-gate check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
 
 # Prefer project venv when available so local dev doesn't depend on global tooling.
 PY := python3
@@ -52,6 +52,7 @@ CHANGZHOU_DIFY_EXTERNAL_API_ID ?=
 CHANGZHOU_DIFY_PROBE_OUT ?= /tmp/changzhou_gov_dify_external_probe.json
 CHANGZHOU_DIFY_PROBE_TOP_K ?= 5
 CHANGZHOU_DIFY_PROBE_TIMEOUT ?= 45
+CHANGZHOU_DIFY_READINESS_OUT ?= /tmp/changzhou_gov_dify_readiness_summary.json
 
 help:
 	@echo "MimirQ dev commands (run from repo root):"
@@ -122,7 +123,7 @@ help:
 	@echo "  make dify-console-login - refresh Dify console storage state for trace gates"
 	@echo "  make changzhou-dify-external-probe - compare Dify external hit-testing with direct MimirQ retrieval"
 	@echo "  make changzhou-dify-full-gate - run Changzhou Dify/MimirQ remote golden gate"
-	@echo "  make changzhou-dify-readiness-gate - run external probe, then full Dify/MimirQ golden gate"
+	@echo "  make changzhou-dify-readiness-gate - run external probe, full Dify/MimirQ gate, and write readiness summary"
 	@echo "  make check-retrieval-profile-compat - validate retrieval profile + reranker compatibility"
 	@echo "  make check-queryset-health-policy - validate query-set health threshold policy JSON"
 	@echo "  make check-parsing-proof-governance - validate broader parsing-proof governance JSON"
@@ -286,7 +287,16 @@ changzhou-dify-external-probe:
 		--out "$(CHANGZHOU_DIFY_PROBE_OUT)"
 
 changzhou-dify-readiness-gate: CHANGZHOU_DIFY_EFFECTIVE_EXTRA_ARGS = $(CHANGZHOU_DIFY_EXTRA_ARGS) $(CHANGZHOU_DIFY_READINESS_EXTRA_ARGS)
-changzhou-dify-readiness-gate: changzhou-dify-external-probe changzhou-dify-full-gate
+changzhou-dify-readiness-gate: changzhou-dify-external-probe changzhou-dify-full-gate changzhou-dify-readiness-summary
+
+changzhou-dify-readiness-summary:
+	$(PY) scripts/changzhou_gov_dify_readiness_summary.py \
+		--external-probe "$(CHANGZHOU_DIFY_PROBE_OUT)" \
+		--full-summary "$(CHANGZHOU_DIFY_OUT_PREFIX)_summary.json" \
+		--answers "$(CHANGZHOU_DIFY_OUT_PREFIX)_answers.json" \
+		--eval "$(CHANGZHOU_DIFY_OUT_PREFIX)_eval.json" \
+		--trace "$(CHANGZHOU_DIFY_OUT_PREFIX)_trace.json" \
+		--out "$(CHANGZHOU_DIFY_READINESS_OUT)"
 
 changzhou-dify-full-gate:
 	$(PY) scripts/changzhou_gov_dify_full_gate.py \
