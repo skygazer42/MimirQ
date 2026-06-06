@@ -1,4 +1,4 @@
-.PHONY: help init up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload web test test-web test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check api-docs-build diagnostics db-upgrade db-revision verify enterprise-checks parser-status check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
+.PHONY: help init up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload web test test-web test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check api-docs-build diagnostics db-upgrade db-revision verify enterprise-checks parser-status changzhou-dify-full-gate check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
 
 # Prefer project venv when available so local dev doesn't depend on global tooling.
 PY := python3
@@ -34,6 +34,12 @@ COMPOSE_WEB := docker compose --env-file .env -f docker/docker-compose.yml -f do
 COMPOSE_LITE := docker compose --env-file .env -f docker/docker-compose.lite.yml
 COMPOSE_RETRIEVAL_DEV := docker compose --env-file .env -f docker/docker-compose.retrieval-dev.yml
 QUERYSET_HEALTH_POLICY ?= ci/queryset_health_policy.v1.json
+CHANGZHOU_DIFY_APP_ID ?= 3c1c8b66-94c1-44fb-a09c-b1856d970eb7
+CHANGZHOU_DIFY_BASE_URL ?= https://ai.kingdonsoft.com:5001/v1
+CHANGZHOU_DIFY_API_KEY_FILE ?= /tmp/dify_remote_app_api_key.json
+CHANGZHOU_DIFY_STORAGE_STATE ?= /tmp/kingdonsoft_dify_storage_state.json
+CHANGZHOU_DIFY_MIMIRQ_BASE_URL ?= http://127.0.0.1:8000
+CHANGZHOU_DIFY_OUT_PREFIX ?= /tmp/changzhou_gov_dify_full_gate
 
 help:
 	@echo "MimirQ dev commands (run from repo root):"
@@ -101,6 +107,7 @@ help:
 	@echo "  make verify    - api-check + web lint/typecheck + backend compileall"
 	@echo "  make enterprise-checks - verify + backend/web tests (CI-like)"
 	@echo "  make parser-status - print parser backend availability"
+	@echo "  make changzhou-dify-full-gate - run Changzhou Dify/MimirQ remote golden gate"
 	@echo "  make check-retrieval-profile-compat - validate retrieval profile + reranker compatibility"
 	@echo "  make check-queryset-health-policy - validate query-set health threshold policy JSON"
 	@echo "  make check-parsing-proof-governance - validate broader parsing-proof governance JSON"
@@ -244,6 +251,20 @@ perf-smoke:
 
 parser-status:
 	$(PY) scripts/check_parsers.py
+
+changzhou-dify-full-gate:
+	$(PY) scripts/changzhou_gov_dify_full_gate.py \
+		--app-id "$(CHANGZHOU_DIFY_APP_ID)" \
+		--cases plugins/pipelines/changzhou-gov-service-knowledge/golden_eval_cases.json \
+		--dify-base-url "$(CHANGZHOU_DIFY_BASE_URL)" \
+		--dify-api-key-file "$(CHANGZHOU_DIFY_API_KEY_FILE)" \
+		--storage-state "$(CHANGZHOU_DIFY_STORAGE_STATE)" \
+		--mimirq-base-url "$(CHANGZHOU_DIFY_MIMIRQ_BASE_URL)" \
+		--out "$(CHANGZHOU_DIFY_OUT_PREFIX).json" \
+		--answers-out "$(CHANGZHOU_DIFY_OUT_PREFIX)_answers.json" \
+		--eval-out "$(CHANGZHOU_DIFY_OUT_PREFIX)_eval.json" \
+		--trace-out "$(CHANGZHOU_DIFY_OUT_PREFIX)_trace.json" \
+		--summary-out "$(CHANGZHOU_DIFY_OUT_PREFIX)_summary.json"
 
 check-retrieval-profile-compat:
 	$(PY) scripts/check_retrieval_profile_compat.py

@@ -12,7 +12,7 @@ import argparse
 import json
 import os
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -56,6 +56,46 @@ DEFAULT_MAXIMUMS = {"generated_answer_fallback_rate": 0.0}
 
 def _text(value: Any) -> str:
     return str(value or "").strip()
+
+
+def _env_file_values(path: str) -> dict[str, str]:
+    env_path = Path(_text(path))
+    if not env_path.is_file():
+        return {}
+    values: dict[str, str] = {}
+    for line in env_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, value = stripped.split("=", 1)
+        values[key.strip()] = value.strip().strip('"').strip("'")
+    return values
+
+
+def load_mimirq_token(
+    explicit_token: str,
+    *,
+    env: Mapping[str, str] | None = None,
+    env_file: str = ".env",
+) -> str:
+    explicit = _text(explicit_token)
+    if explicit:
+        return explicit
+    source_env = env if env is not None else os.environ
+    env_token = _text(source_env.get("DIFY_EXTERNAL_KNOWLEDGE_API_KEY"))
+    if env_token:
+        return env_token
+    env_tokens = _text(source_env.get("DIFY_EXTERNAL_KNOWLEDGE_API_KEYS"))
+    if env_tokens:
+        return _text(env_tokens.split(",", 1)[0])
+    file_values = _env_file_values(env_file)
+    file_token = _text(file_values.get("DIFY_EXTERNAL_KNOWLEDGE_API_KEY"))
+    if file_token:
+        return file_token
+    file_tokens = _text(file_values.get("DIFY_EXTERNAL_KNOWLEDGE_API_KEYS"))
+    if file_tokens:
+        return _text(file_tokens.split(",", 1)[0])
+    return ""
 
 
 def _answers_by_id(answers_report: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -259,7 +299,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_arg_parser().parse_args(argv)
     dify_api_key = load_api_key(str(args.dify_api_key), str(args.dify_api_key_file))
     console_token = load_console_token(str(args.console_token), str(args.storage_state))
-    mimirq_token = _text(args.mimirq_token)
+    mimirq_token = load_mimirq_token(str(args.mimirq_token))
     if not dify_api_key:
         print("DIFY_APP_API_KEY, --dify-api-key, or --dify-api-key-file is required", file=sys.stderr)
         return 2

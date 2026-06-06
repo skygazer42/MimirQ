@@ -35,6 +35,9 @@ The Makefile is the source of truth for common workflows; these scripts are the 
   - Example: `python scripts/plugin_golden_closed_loop_smoke.py --base-url http://127.0.0.1:8000 --dataset-id <dataset_uuid>`
 - `plugin_corpus_closed_loop_smoke.py`: live plugin-backed corpus ingest + Golden regression smoke from a local directory
   - Example: `python scripts/plugin_corpus_closed_loop_smoke.py --base-url http://127.0.0.1:8000 --source-dir /path/to/domain-corpus --plugin-ref plugin:<plugin-id>@<version>:chunk --include-source-root-name --overwrite-goldens`
+- `changzhou_gov_dify_full_gate.py`: run the Changzhou government-service Dify/MimirQ golden gate (preflight, generated answers, direct eval, workflow trace)
+  - Recommended: `make changzhou-dify-full-gate`
+  - Reads `DIFY_EXTERNAL_KNOWLEDGE_API_KEY` / `DIFY_EXTERNAL_KNOWLEDGE_API_KEYS` from the environment or repo `.env`; Dify App key and console storage state default to `/tmp/dify_remote_app_api_key.json` and `/tmp/kingdonsoft_dify_storage_state.json`.
 - `clean.py`: remove local caches/artifacts (used by `make clean`)
   - Example: `python scripts/clean.py`
 
