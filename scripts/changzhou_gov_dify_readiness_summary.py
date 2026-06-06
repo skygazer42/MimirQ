@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -20,8 +20,16 @@ def _clean_artifacts(artifacts: dict[str, str]) -> dict[str, str]:
     return {key: value for key, value in artifacts.items() if _text(value)}
 
 
+def _artifact_generated_at(artifact_reports: dict[str, dict[str, Any]]) -> dict[str, str]:
+    return {
+        key: _text(report.get("generated_at"))
+        for key, report in artifact_reports.items()
+        if isinstance(report, dict) and _text(report.get("generated_at"))
+    }
+
+
 def _utc_now_text() -> str:
-    return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def _external_probe_section(report: dict[str, Any]) -> dict[str, Any]:
@@ -62,6 +70,7 @@ def build_readiness_summary(
     full_gate_summary: dict[str, Any],
     artifacts: dict[str, str],
     generated_at: str = "",
+    artifact_reports: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     external_section = _external_probe_section(external_probe)
     full_section = _full_gate_section(full_gate_summary)
@@ -70,7 +79,7 @@ def build_readiness_summary(
         failed_stages.append("external_probe")
     if full_section["passed"] is not True:
         failed_stages.append("full_gate")
-    return {
+    report = {
         "schema": SCHEMA,
         "generated_at": _text(generated_at) or _utc_now_text(),
         "summary": {
@@ -82,6 +91,16 @@ def build_readiness_summary(
         "external_probe": external_section,
         "full_gate": full_section,
     }
+    generated_by_artifact = _artifact_generated_at(
+        artifact_reports
+        or {
+            "external_probe": external_probe,
+            "full_gate": full_gate_summary,
+        }
+    )
+    if generated_by_artifact:
+        report["artifact_generated_at"] = generated_by_artifact
+    return report
 
 
 def _load_json(path: str) -> dict[str, Any]:
@@ -104,16 +123,19 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_arg_parser().parse_args(argv)
+    artifact_paths = {
+        "external_probe": str(args.external_probe),
+        "full_gate": str(args.full_summary),
+        "answers": str(args.answers),
+        "eval": str(args.eval),
+        "trace": str(args.trace),
+    }
+    artifact_reports = {key: _load_json(path) for key, path in artifact_paths.items() if _text(path)}
     report = build_readiness_summary(
-        external_probe=_load_json(str(args.external_probe)),
-        full_gate_summary=_load_json(str(args.full_summary)),
-        artifacts={
-            "external_probe": str(args.external_probe),
-            "full_gate": str(args.full_summary),
-            "answers": str(args.answers),
-            "eval": str(args.eval),
-            "trace": str(args.trace),
-        },
+        external_probe=artifact_reports.get("external_probe", {}),
+        full_gate_summary=artifact_reports.get("full_gate", {}),
+        artifacts=artifact_paths,
+        artifact_reports=artifact_reports,
     )
     text = json.dumps(report, ensure_ascii=False, indent=2)
     Path(str(args.out)).write_text(text + "\n", encoding="utf-8")

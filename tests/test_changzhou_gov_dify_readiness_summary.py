@@ -140,3 +140,52 @@ def test_main_writes_failed_summary_when_input_artifacts_are_missing(tmp_path: P
     assert report["summary"] == {"passed": False, "failed_stages": ["external_probe", "full_gate"], "stage_count": 2}
     assert report["external_probe"]["passed"] is False
     assert report["full_gate"]["passed"] is False
+
+
+def test_main_collects_artifact_generated_at_values(tmp_path: Path) -> None:
+    mod = _load_module()
+    external_probe = tmp_path / "external.json"
+    full_summary = tmp_path / "full_summary.json"
+    answers = tmp_path / "answers.json"
+    eval_report = tmp_path / "eval.json"
+    trace = tmp_path / "trace.json"
+    out = tmp_path / "readiness.json"
+
+    external_probe.write_text(
+        json.dumps({"generated_at": "2026-06-07T01:00:00Z", "gate": {"passed": True, "failed_conditions": []}}),
+        encoding="utf-8",
+    )
+    full_summary.write_text(
+        json.dumps({"generated_at": "2026-06-07T01:04:00Z", "summary": {"passed": True, "failed_stages": []}}),
+        encoding="utf-8",
+    )
+    answers.write_text(json.dumps({"generated_at": "2026-06-07T01:01:00Z"}), encoding="utf-8")
+    eval_report.write_text(json.dumps({"generated_at": "2026-06-07T01:02:00Z"}), encoding="utf-8")
+    trace.write_text(json.dumps({"generated_at": "2026-06-07T01:03:00Z"}), encoding="utf-8")
+
+    rc = mod.main(
+        [
+            "--external-probe",
+            str(external_probe),
+            "--full-summary",
+            str(full_summary),
+            "--answers",
+            str(answers),
+            "--eval",
+            str(eval_report),
+            "--trace",
+            str(trace),
+            "--out",
+            str(out),
+        ]
+    )
+
+    assert rc == 0
+    report = json.loads(out.read_text(encoding="utf-8"))
+    assert report["artifact_generated_at"] == {
+        "external_probe": "2026-06-07T01:00:00Z",
+        "answers": "2026-06-07T01:01:00Z",
+        "eval": "2026-06-07T01:02:00Z",
+        "trace": "2026-06-07T01:03:00Z",
+        "full_gate": "2026-06-07T01:04:00Z",
+    }

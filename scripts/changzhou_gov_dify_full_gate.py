@@ -13,7 +13,7 @@ import json
 import os
 import sys
 from collections.abc import Callable, Mapping
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -66,7 +66,7 @@ def _text(value: Any) -> str:
 
 
 def _utc_now_text() -> str:
-    return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def _format_cli_error(exc: Exception) -> str:
@@ -318,6 +318,7 @@ def _progress_summary_text(summary: dict[str, Any]) -> str:
         "hit_at_3",
         "generated_answer_key_point_recall",
         "trace_errors",
+        "console_auth_errors",
         "nonempty_retrieval_cases",
     )
     parts = [f"{field}={summary[field]}" for field in fields if field in summary]

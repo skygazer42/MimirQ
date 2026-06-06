@@ -174,6 +174,28 @@ def test_collect_trace_report_handles_answer_without_message_id() -> None:
     assert report["cases"][0]["error"] == "missing message_id"
 
 
+def test_collect_trace_report_classifies_console_auth_errors() -> None:
+    mod = _load_module()
+
+    def fake_request_json(**_kwargs):  # noqa: ANN003, ANN202
+        raise RuntimeError('HTTP 401: {"code":"unauthorized","message":"Token has expired.","status":401}')
+
+    report = mod.collect_trace_report(
+        answers=[{"id": "case-1", "query": "q", "message_id": "msg-1", "answer": "a"}],
+        app_id="app-1",
+        console_base_url="https://dify.test/console/api",
+        console_token="secret-console-token",
+        request_json=fake_request_json,
+        timeout=12.0,
+        generated_at="2026-06-07T01:02:03Z",
+    )
+
+    assert report["summary"]["trace_errors"] == 1
+    assert report["summary"]["console_auth_errors"] == 1
+    assert report["cases"][0]["error_kind"] == "dify_console_auth"
+    assert report["cases"][0]["error"] == 'HTTP 401: {"code":"unauthorized","message":"Token has expired.","status":401}'
+
+
 def test_collect_trace_report_preserves_upstream_missing_variable_error() -> None:
     mod = _load_module()
 

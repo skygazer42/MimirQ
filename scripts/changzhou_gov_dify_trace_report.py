@@ -8,7 +8,7 @@ import json
 import os
 import sys
 from collections.abc import Callable, Mapping
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -31,12 +31,17 @@ def _text(value: Any) -> str:
 
 
 def _utc_now_text() -> str:
-    return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def _is_fallback_answer(answer: str) -> bool:
     text = _text(answer)
     return bool(text) and all(marker in text for marker in _FALLBACK_ANSWER_MARKERS)
+
+
+def _is_console_auth_error(message: Any) -> bool:
+    text = _text(message).lower()
+    return "http 401" in text or "token has expired" in text or "unauthorized" in text
 
 
 def load_console_token(
@@ -234,7 +239,11 @@ def collect_trace_report(
                 )
             )
         except Exception as exc:  # noqa: BLE001
-            cases.append({"id": item.get("id"), "query": item.get("query"), "error": str(exc)})
+            error = str(exc)
+            row = {"id": item.get("id"), "query": item.get("query"), "error": error}
+            if _is_console_auth_error(error):
+                row["error_kind"] = "dify_console_auth"
+            cases.append(row)
 
     traced_cases = [item for item in cases if not item.get("error")]
     retrieval_cases = [item for item in traced_cases if isinstance(item.get("retrievals"), list)]
@@ -262,6 +271,9 @@ def collect_trace_report(
     missing_variable_errors = sum(1 for item in cases if item.get("error_kind") == "missing_start_variable")
     if missing_variable_errors:
         summary["missing_start_variable_errors"] = missing_variable_errors
+    console_auth_errors = sum(1 for item in cases if item.get("error_kind") == "dify_console_auth")
+    if console_auth_errors:
+        summary["console_auth_errors"] = console_auth_errors
     return {
         "schema": "mimirq.changzhou_gov_service_knowledge.dify_trace_report.v1",
         "generated_at": _text(generated_at) or _utc_now_text(),

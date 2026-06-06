@@ -189,6 +189,12 @@ def test_format_cli_error_adds_login_hint_for_expired_console_token() -> None:
     assert "secret" not in message.lower()
 
 
+def test_progress_summary_text_includes_console_auth_errors() -> None:
+    mod = _load_module()
+
+    assert "console_auth_errors=8" in mod._progress_summary_text({"trace_errors": 8, "console_auth_errors": 8})
+
+
 def test_load_mimirq_token_prefers_explicit_env_then_env_file(tmp_path: Path) -> None:
     mod = _load_module()
     env_file = tmp_path / ".env"
