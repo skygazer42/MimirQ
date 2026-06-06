@@ -28,6 +28,7 @@ from scripts.changzhou_gov_golden_eval import DEFAULT_CASES, load_cases  # noqa:
 DEFAULT_DIFY_BASE_URL = "http://127.0.0.1/v1"
 DEFAULT_API_KEY_FILE = "/tmp/dify_app_api_keys_post.json"
 RequestJsonFn = Callable[..., dict[str, Any]]
+ProgressFn = Callable[[dict[str, Any]], None]
 
 
 def _text(value: Any) -> str:
@@ -222,10 +223,12 @@ def collect_answers(
     timeout: float,
     request_json: RequestJsonFn = _request_json,
     interval_sec: float = 0.0,
+    progress_fn: ProgressFn | None = None,
 ) -> dict[str, Any]:
     answers: list[dict[str, Any]] = []
     url = _api_url(base_url, mode=mode)
-    for case in cases:
+    total = len(cases)
+    for index, case in enumerate(cases, start=1):
         case_id = _text(case.get("id"))
         query = _text(case.get("query"))
         item: dict[str, Any] = {"id": case_id, "query": query}
@@ -248,6 +251,17 @@ def collect_answers(
             item.update({"answer": "", "ok": False, "error": error})
             item.update(diagnose_dify_error(error))
         answers.append(item)
+        if progress_fn is not None:
+            progress_fn(
+                {
+                    "stage": "collect",
+                    "event": "case",
+                    "index": index,
+                    "total": total,
+                    "id": case_id,
+                    "ok": bool(item.get("ok")),
+                }
+            )
         if interval_sec > 0:
             time.sleep(float(interval_sec))
     succeeded = sum(1 for item in answers if item.get("ok") is True)

@@ -166,6 +166,7 @@ def test_load_api_key_file_reads_token_without_leaking_shape(tmp_path: Path) -> 
 def test_collect_answers_returns_answers_json_with_errors() -> None:
     mod = _load_module()
     calls: list[tuple[str, dict, str]] = []
+    progress: list[dict] = []
 
     def fake_request(*, url: str, payload: dict, api_key: str, timeout: float) -> dict:
         calls.append((url, payload, api_key))
@@ -190,6 +191,7 @@ def test_collect_answers_returns_answers_json_with_errors() -> None:
         workflow_query_key="query",
         timeout=12.0,
         request_json=fake_request,
+        progress_fn=progress.append,
     )
 
     assert calls[0][0] == "http://dify.test/v1/chat-messages"
@@ -200,6 +202,10 @@ def test_collect_answers_returns_answers_json_with_errors() -> None:
     assert report["answers"][0]["conversation_id"] == "conv-1"
     assert report["answers"][0]["message_id"] == "msg-1"
     assert report["answers"][1]["error"] == "boom"
+    assert progress == [
+        {"stage": "collect", "event": "case", "index": 1, "total": 2, "id": "ok-case", "ok": True},
+        {"stage": "collect", "event": "case", "index": 2, "total": 2, "id": "bad-case", "ok": False},
+    ]
 
 
 def test_collect_answers_classifies_missing_start_variable_errors() -> None:
