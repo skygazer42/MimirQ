@@ -165,11 +165,47 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeout", type=float, default=120.0)
     parser.add_argument("--interval-sec", type=float, default=0.0)
     parser.add_argument("--user", default="mimirq-full-gate")
+    parser.add_argument("--min-hit-at-1", type=float, default=None)
+    parser.add_argument("--min-hit-at-3", type=float, default=None)
+    parser.add_argument("--min-hit-at-5", type=float, default=None)
+    parser.add_argument("--min-mrr", type=float, default=None)
+    parser.add_argument("--min-answer-grounding-rate", type=float, default=None)
+    parser.add_argument("--min-answer-key-point-recall", type=float, default=None)
+    parser.add_argument("--min-generated-answer-grounding-rate", type=float, default=None)
+    parser.add_argument("--min-generated-answer-key-point-recall", type=float, default=None)
+    parser.add_argument("--min-generated-answer-context-supported-rate", type=float, default=None)
+    parser.add_argument("--max-generated-answer-fallback-rate", type=float, default=None)
     parser.add_argument("--out", required=True)
     parser.add_argument("--answers-out", default="")
     parser.add_argument("--eval-out", default="")
     parser.add_argument("--trace-out", default="")
     return parser
+
+
+def _thresholds_from_args(args: argparse.Namespace) -> dict[str, float]:
+    thresholds = dict(DEFAULT_THRESHOLDS)
+    pairs = {
+        "hit_at_1": args.min_hit_at_1,
+        "hit_at_3": args.min_hit_at_3,
+        "hit_at_5": args.min_hit_at_5,
+        "mrr": args.min_mrr,
+        "answer_grounding_rate": args.min_answer_grounding_rate,
+        "answer_key_point_recall": args.min_answer_key_point_recall,
+        "generated_answer_grounding_rate": args.min_generated_answer_grounding_rate,
+        "generated_answer_key_point_recall": args.min_generated_answer_key_point_recall,
+        "generated_answer_context_supported_rate": args.min_generated_answer_context_supported_rate,
+    }
+    thresholds.update({metric: float(value) for metric, value in pairs.items() if value is not None})
+    return thresholds
+
+
+def _maximums_from_args(args: argparse.Namespace) -> dict[str, float]:
+    maximums = dict(DEFAULT_MAXIMUMS)
+    pairs = {
+        "generated_answer_fallback_rate": args.max_generated_answer_fallback_rate,
+    }
+    maximums.update({metric: float(value) for metric, value in pairs.items() if value is not None})
+    return maximums
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -223,6 +259,8 @@ def main(argv: list[str] | None = None) -> int:
                 "console_token": console_token,
                 "timeout": float(args.timeout),
             },
+            thresholds=_thresholds_from_args(args),
+            maximums=_maximums_from_args(args),
         )
     except Exception as exc:  # noqa: BLE001
         print(f"[changzhou-dify-full-gate] ERR: {exc}", file=sys.stderr)
