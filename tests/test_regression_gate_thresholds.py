@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -160,6 +161,56 @@ def test_generate_thresholds_from_summary_includes_top_and_slice_bounds() -> Non
     # Only include buckets with enough items.
     assert "pdf" in cfg["slices"]["file_type"]
     assert "md" not in cfg["slices"]["file_type"]
+
+
+def test_generate_thresholds_from_summary_preserves_plugin_case_source_without_run_ids() -> None:
+    mod = _load_module()
+
+    cfg = mod.generate_thresholds_from_summary(  # type: ignore[attr-defined]
+        dataset_id="d",
+        summary={
+            "items": 2,
+            "expected_metadata_hit_rate": 1.0,
+            "expected_metadata_recall": 1.0,
+        },
+        metrics=["expected_metadata_hit_rate", "expected_metadata_recall"],
+        case_source={
+            "kind": "plugin_golden",
+            "plugin_ref": "plugin:demo-service@1.0.0:chunk",
+            "plugin_id": "demo-service",
+            "plugin_version": "1.0.0",
+            "plugin_package_hash": "pkg_hash_abc123",
+            "draft_items_total": 2,
+            "import_result": {
+                "created": 2,
+                "updated": 0,
+                "case_ids": ["case-a", "case-b"],
+            },
+        },
+    )
+
+    assert cfg["case_source"] == {
+        "kind": "plugin_golden",
+        "plugin_ref": "plugin:demo-service@1.0.0:chunk",
+        "plugin_id": "demo-service",
+        "plugin_version": "1.0.0",
+        "plugin_package_hash": "pkg_hash_abc123",
+        "draft_items_total": 2,
+    }
+    assert "import_result" not in cfg["case_source"]
+    assert "case_ids" not in json.dumps(cfg["case_source"], ensure_ascii=False)
+
+
+def test_default_threshold_generation_includes_plugin_expected_metadata_metrics() -> None:
+    mod = _load_module()
+
+    parser = mod.build_arg_parser()  # type: ignore[attr-defined]
+    args = parser.parse_args(["--cases", "cases.json"])
+
+    assert "expected_metadata_hit_rate" in mod.parse_metrics_list(args.gen_metrics)  # type: ignore[attr-defined]
+    assert "expected_metadata_recall" in mod.parse_metrics_list(args.gen_metrics)  # type: ignore[attr-defined]
+    assert "expected_metadata_hit_rate" in mod.parse_metrics_list(args.gen_slice_metrics)  # type: ignore[attr-defined]
+    assert "expected_metadata_recall" in mod.parse_metrics_list(args.gen_slice_metrics)  # type: ignore[attr-defined]
 
 
 def test_empty_metrics_is_allowed_for_threshold_generation_without_gate() -> None:

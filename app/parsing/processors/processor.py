@@ -64,6 +64,8 @@ from app.rag.core.metadata import (
     normalize_section_metadata,
 )
 from app.rag.kg.pipeline import extract_events
+from app.rag.pipeline_plugins.registry import derive_registered_stage_plugin_ref
+from app.rag.pipeline_plugins.runtime import apply_chunk_python_plugin, apply_governance_python_plugin
 from app.rag.preprocessing.markdown_canonical import canonicalize_markdown
 from app.rag.preprocessing.near_dedup import add_simhashes, find_near_duplicate, with_near_dedup_index
 from app.rag.preprocessing.normalization import normalize_text
@@ -128,6 +130,47 @@ class ParseResult:
     resolved_chunk_strategy: str
     documents: list[Document] | None = None
     chunks: list[Document] | None = None
+
+
+def _logical_source_from_db_document(db_document: Any, *, file_path: Path) -> str:
+    meta = getattr(db_document, "doc_metadata", None)
+    meta = dict(meta or {}) if isinstance(meta, dict) else {}
+    user_meta = meta.get("user") if isinstance(meta.get("user"), dict) else {}
+    for value in (
+        meta.get("source_path"),
+        user_meta.get("source_rel_path") if isinstance(user_meta, dict) else None,
+        getattr(db_document, "filename", None),
+        file_path.name,
+    ):
+        text = str(value or "").strip()
+        if text:
+            return text
+    return str(file_path)
+
+
+def _attach_logical_source_metadata(
+    documents: list[Document] | None,
+    *,
+    db_document: Any,
+    file_path: Path,
+) -> list[Document]:
+    if not documents:
+        return []
+    source = _logical_source_from_db_document(db_document, file_path=file_path)
+    filename = str(getattr(db_document, "filename", None) or file_path.name or "").strip()
+    out: list[Document] = []
+    for doc in documents:
+        meta = dict(doc.metadata or {})
+        parser_source = str(meta.get("source") or "").strip()
+        if parser_source and parser_source != source:
+            meta.setdefault("parser_source", parser_source)
+        meta["source"] = source
+        meta["source_path"] = source
+        if filename:
+            meta.setdefault("filename", filename)
+            meta.setdefault("file_name", filename)
+        out.append(Document(page_content=doc.page_content or "", metadata=meta, id=getattr(doc, "id", None)))
+    return out
 
 
 @dataclass(frozen=True)
@@ -605,6 +648,15 @@ def _chunk_asset_indices(chunks: list[Document]) -> list[int]:
     return asset_indices
 
 
+def _chunk_has_record_identity(chunk: Document) -> bool:
+    return _chunk_record_identity_key(chunk) is not None
+
+
+def _should_skip_near_dedup_for_chunk(chunk: Document) -> bool:
+    meta = chunk.metadata if isinstance(getattr(chunk, "metadata", None), dict) else {}
+    return _chunk_has_asset(meta) or _chunk_has_record_identity(chunk)
+
+
 def _truncate_head_chunks(
     chunks: list[Document],
     *,
@@ -658,6 +710,14 @@ def _truncate_chunks_for_limit(
 ) -> tuple[list[Document], dict[str, Any]]:
     if max_chunks <= 0 or not chunks or len(chunks) <= max_chunks:
         return chunks, {"strategy": (strategy or "head").strip().lower() or "head", "asset_total": 0, "asset_kept": 0}
+    if any(_chunk_has_record_identity(chunk) for chunk in chunks):
+        asset_indices = _chunk_asset_indices(chunks)
+        return chunks, {
+            "strategy": "record_identity_preserved",
+            "asset_total": int(len(asset_indices)),
+            "asset_kept": int(len(asset_indices)),
+            "truncation_skipped": True,
+        }
 
     strategy_norm = (strategy or "head").strip().lower() or "head"
     asset_indices = _chunk_asset_indices(chunks)
@@ -805,6 +865,23 @@ def _chunk_mergeable(chunk: Document) -> bool:
     return not (meta.get("chunk_role") or meta.get("parent_id"))
 
 
+def _chunk_record_identity_key(chunk: Document) -> str | None:
+    meta = getattr(chunk, "metadata", None) or {}
+    record_identity = meta.get("_record_identity") if isinstance(meta, dict) else None
+    if not isinstance(record_identity, dict):
+        return None
+    key = str(record_identity.get("key") or "").strip()
+    return key or None
+
+
+def _chunks_share_record_identity_boundary(first: Document, second: Document) -> bool:
+    first_key = _chunk_record_identity_key(first)
+    second_key = _chunk_record_identity_key(second)
+    if first_key or second_key:
+        return bool(first_key and second_key and first_key == second_key)
+    return True
+
+
 def _local_chunk_range(meta: dict[str, Any], *, base: int) -> tuple[int, int] | None:
     # Prefer explicitly stored locals (set by offset rebase stage).
     start_local = meta.get("start_char_local")
@@ -825,6 +902,56 @@ def _local_chunk_range(meta: dict[str, Any], *, base: int) -> tuple[int, int] | 
     return start_i, end_i
 
 
+_MERGED_CHUNK_STALE_CONTENT_METADATA_KEYS = (
+    "content_hash",
+    "content_hash_algo",
+    "content_len",
+    "simhash64",
+    "simhash_algo",
+    "chunk_quality",
+    "chunk_semantic_role",
+    "chunk_type",
+    "structure",
+)
+
+
+def _retrieval_text_for_merge(chunk: Document, meta: dict[str, Any]) -> str:
+    retrieval_text = meta.get("_retrieval_text")
+    if isinstance(retrieval_text, str) and retrieval_text.strip():
+        return retrieval_text.strip()
+    return str(chunk.page_content or "").strip()
+
+
+def _refresh_merged_chunk_content_metadata(
+    meta: dict[str, Any],
+    *,
+    first: Document,
+    second: Document,
+    first_meta: dict[str, Any],
+    second_meta: dict[str, Any],
+    merged_content: str,
+) -> None:
+    for key in _MERGED_CHUNK_STALE_CONTENT_METADATA_KEYS:
+        meta.pop(key, None)
+
+    first_has_retrieval = isinstance(first_meta.get("_retrieval_text"), str) and bool(str(first_meta["_retrieval_text"]).strip())
+    second_has_retrieval = isinstance(second_meta.get("_retrieval_text"), str) and bool(str(second_meta["_retrieval_text"]).strip())
+    if first_has_retrieval or second_has_retrieval:
+        pieces = [
+            text
+            for text in (
+                _retrieval_text_for_merge(first, first_meta),
+                _retrieval_text_for_merge(second, second_meta),
+            )
+            if text
+        ]
+        meta["_retrieval_text"] = "\n\n".join(pieces)
+        meta["_retrieval_display_content"] = str(merged_content or "")
+    else:
+        meta.pop("_retrieval_text", None)
+        meta.pop("_retrieval_display_content", None)
+
+
 def _merge_two_small_chunks(
     first: Document,
     second: Document,
@@ -836,6 +963,8 @@ def _merge_two_small_chunks(
     text = page_text.get(page_index)
     base = int(page_base.get(page_index) or 0)
     if text is None:
+        return None
+    if not _chunks_share_record_identity_boundary(first, second):
         return None
 
     first_meta = dict(getattr(first, "metadata", None) or {})
@@ -855,8 +984,17 @@ def _merge_two_small_chunks(
     first_meta["end_char"] = base + end_local
     first_meta["offsets_rebased"] = True
     first_meta["merged_small_chunks"] = int(first_meta.get("merged_small_chunks") or 0) + 1
+    merged_content = text[start_local:end_local]
+    _refresh_merged_chunk_content_metadata(
+        first_meta,
+        first=first,
+        second=second,
+        first_meta=first_meta,
+        second_meta=second_meta,
+        merged_content=merged_content,
+    )
 
-    return Document(page_content=text[start_local:end_local], metadata=first_meta, id=getattr(first, "id", None))
+    return Document(page_content=merged_content, metadata=first_meta, id=getattr(first, "id", None))
 
 
 def _merge_with_pending_small_chunk(
@@ -1235,7 +1373,7 @@ class ParsingStage:
             return ParseResult(
                 resolved_backend=resolved_backend,
                 resolved_chunk_strategy=resolved_chunk_strategy,
-                chunks=chunks,
+                chunks=_attach_logical_source_metadata(chunks, db_document=db_document, file_path=file_path),
             )
 
         logger.info("Parsing document: %s", file_path)
@@ -1381,6 +1519,8 @@ class ParsingStage:
                 for item in (parsed.get("documents") or [])
                 if isinstance(item, dict)
             ]
+
+        documents = _attach_logical_source_metadata(documents, db_document=db_document, file_path=file_path)
 
         # Persist parse provenance for audit/debug (best-effort).
         try:
@@ -1757,11 +1897,27 @@ class ChunkingStage:
         chunk_size: int,
         chunk_overlap: int,
         chunk_strategy_params: dict[str, Any] | None = None,
+        chunk_python_plugin: str = "",
+        chunk_python_params: dict[str, Any] | None = None,
     ) -> ChunkingResult:
         logger.info("Chunking document into smaller pieces...")
         if chunk_overlap >= chunk_size:
             raise ValueError("chunk_overlap must be less than chunk_size")
         params = dict(chunk_strategy_params or {})
+        plugin_ref = str(chunk_python_plugin or "").strip()
+        if plugin_ref:
+            plugin_params = {**params, **dict(chunk_python_params or {})}
+            chunks = apply_chunk_python_plugin(
+                documents,
+                plugin_ref=plugin_ref,
+                params=plugin_params,
+                context={
+                    "chunk_strategy": chunk_strategy,
+                    "chunk_size": int(chunk_size),
+                    "chunk_overlap": int(chunk_overlap),
+                },
+            )
+            return ChunkingResult(chunks=chunks)
 
         def _to_bool(v: object) -> bool | None:
             if v is None:
@@ -1896,13 +2052,28 @@ class ChunkDedupStage:
             or bool(meta.get("img_id") or meta.get("image_id") or meta.get("image_url"))
         )
 
+    @staticmethod
+    def _record_identity_key(meta: dict[str, Any]) -> str | None:
+        record_identity = meta.get("_record_identity")
+        if not isinstance(record_identity, dict):
+            return None
+        key = str(record_identity.get("key") or "").strip()
+        return key or None
+
     @classmethod
-    def _duplicate_text_chunk(cls, *, digest: str, meta: dict[str, Any], seen: set[str]) -> bool:
+    def _duplicate_text_chunk(
+        cls,
+        *,
+        digest: str,
+        meta: dict[str, Any],
+        seen: set[tuple[str, str | None]],
+    ) -> bool:
         if cls._chunk_has_asset(meta):
             return False
-        if digest in seen:
+        dedup_key = (digest, cls._record_identity_key(meta))
+        if dedup_key in seen:
             return True
-        seen.add(digest)
+        seen.add(dedup_key)
         return False
 
     def run(self, *, chunks: list[Document], enabled: bool) -> ChunkDedupResult:
@@ -1916,7 +2087,7 @@ class ChunkDedupStage:
         if not enabled or not chunks:
             return ChunkDedupResult(chunks=chunks, duplicates_dropped=0)
 
-        seen: set[str] = set()
+        seen: set[tuple[str, str | None]] = set()
         out: list[Document] = []
         dropped = 0
 
@@ -1983,7 +2154,8 @@ class ChunkAssetStage:
             meta["document_id"] = str(document_id)
             meta["chunk_index"] = idx
             meta["parser_backend"] = resolved_backend
-            meta["chunk_strategy"] = resolved_chunk_strategy
+            meta.setdefault("chunk_strategy", resolved_chunk_strategy)
+            meta["resolved_chunk_strategy"] = resolved_chunk_strategy
             meta.setdefault("chunk_key", f"{str(document_id)}:{idx}")
             normalize_section_metadata(meta)
             ensure_hierarchy_overlay_metadata(
@@ -3144,6 +3316,26 @@ class DocumentProcessorService:
                 resolved_backend = parsed.resolved_backend
                 resolved_chunk_strategy = parsed.resolved_chunk_strategy
 
+            if parsed is not None:
+                parsed = ParseResult(
+                    resolved_backend=parsed.resolved_backend,
+                    resolved_chunk_strategy=parsed.resolved_chunk_strategy,
+                    documents=_attach_logical_source_metadata(
+                        parsed.documents,
+                        db_document=db_document,
+                        file_path=file_path,
+                    )
+                    if parsed.documents is not None
+                    else None,
+                    chunks=_attach_logical_source_metadata(
+                        parsed.chunks,
+                        db_document=db_document,
+                        file_path=file_path,
+                    )
+                    if parsed.chunks is not None
+                    else None,
+                )
+
             if (
                 not resumed_from_checkpoint
                 and not resumed_from_parse_cache
@@ -3396,12 +3588,28 @@ class DocumentProcessorService:
                         items=parsed_chunks,
                         enabled=bool(pipeline_effective.governance_enabled),
                         kwargs=governance_kwargs,
-                    )
+                )
                 _add_stage_duration("governance", (time.perf_counter() - t0) * 1000)
                 chunks = gov.items
                 governance_stats = gov.stats
 
-                if bool(pipeline_effective.governance_enabled):
+                governance_plugin_ref = str(getattr(pipeline_effective, "governance_python_plugin", "") or "").strip()
+                if governance_plugin_ref:
+                    t0 = time.perf_counter()
+                    with metrics_span("ingest.governance_python_plugin", enabled=True):
+                        chunks = apply_governance_python_plugin(
+                            chunks,
+                            plugin_ref=governance_plugin_ref,
+                            params=dict(getattr(pipeline_effective, "governance_python_params", {}) or {}),
+                            context={
+                                "document_id": str(document_id),
+                                "tenant_id": str(tenant_id),
+                                "stage": "post_governance_chunks",
+                            },
+                        )
+                    _add_stage_duration("governance_python_plugin", (time.perf_counter() - t0) * 1000)
+
+                if bool(pipeline_effective.governance_enabled) or governance_plugin_ref:
                     try:
                         governance_audit_patch = self._build_governance_audit_metadata_patch(
                             before_items=parsed_chunks,
@@ -3489,7 +3697,7 @@ class DocumentProcessorService:
                         "chunk_strategy": resolved_chunk_strategy,
                     }
 
-                if bool(pipeline_effective.governance_enabled) and chunks:
+                if (bool(pipeline_effective.governance_enabled) or governance_plugin_ref) and chunks:
                     try:
                         self._record_governance_enrichment_metadata(
                             db,
@@ -3506,6 +3714,22 @@ class DocumentProcessorService:
                     parsed_documents = normalize_stage.run(items=parsed_documents or [])
                 _add_stage_duration("normalize", (time.perf_counter() - t0) * 1000)
                 parsed_documents_before_governance = parsed_documents
+                governance_plugin_ref = str(getattr(pipeline_effective, "governance_python_plugin", "") or "").strip()
+                if governance_plugin_ref:
+                    t0 = time.perf_counter()
+                    with metrics_span("ingest.governance_python_plugin", enabled=True):
+                        parsed_documents = apply_governance_python_plugin(
+                            parsed_documents,
+                            plugin_ref=governance_plugin_ref,
+                            params=dict(getattr(pipeline_effective, "governance_python_params", {}) or {}),
+                            context={
+                                "document_id": str(document_id),
+                                "tenant_id": str(tenant_id),
+                                "stage": "pre_builtin_governance_documents",
+                            },
+                        )
+                    _add_stage_duration("governance_python_plugin", (time.perf_counter() - t0) * 1000)
+
                 t0 = time.perf_counter()
                 with metrics_span("ingest.governance", enabled=bool(pipeline_effective.governance_enabled)):
                     gov = governance_stage.run(
@@ -3517,10 +3741,7 @@ class DocumentProcessorService:
                 parsed_documents = gov.items
                 governance_stats = gov.stats
 
-                # Ensure stable per-doc indices so we can rebase chunk offsets into joined-text coordinates.
-                _ensure_ingest_page_indices(parsed_documents)
-
-                if bool(pipeline_effective.governance_enabled):
+                if bool(pipeline_effective.governance_enabled) or governance_plugin_ref:
                     try:
                         governance_audit_patch = self._build_governance_audit_metadata_patch(
                             before_items=parsed_documents_before_governance,
@@ -3529,6 +3750,9 @@ class DocumentProcessorService:
                     except Exception as exc:  # noqa: BLE001
                         logger.warning("Failed to record governance audit metadata: %s", str(exc)[:200])
                         governance_audit_patch = None
+
+                # Ensure stable per-doc indices so we can rebase chunk offsets into joined-text coordinates.
+                _ensure_ingest_page_indices(parsed_documents)
 
                 # Optional: persist parsed markdown (raw+clean) for audit/debug.
                 if bool(getattr(pipeline_effective, "persist_parsed_content", False)):
@@ -3637,7 +3861,7 @@ class DocumentProcessorService:
                         "chunk_strategy": resolved_chunk_strategy,
                     }
 
-                if bool(pipeline_effective.governance_enabled) and parsed_documents:
+                if (bool(pipeline_effective.governance_enabled) or governance_plugin_ref) and parsed_documents:
                     try:
                         self._record_governance_enrichment_metadata(
                             db,
@@ -3666,6 +3890,8 @@ class DocumentProcessorService:
                         chunk_size=int(pipeline_effective.chunk_size),
                         chunk_overlap=int(pipeline_effective.chunk_overlap),
                         chunk_strategy_params=dict(getattr(pipeline_effective, "chunk_strategy_params", {}) or {}),
+                        chunk_python_plugin=str(getattr(pipeline_effective, "chunk_python_plugin", "") or ""),
+                        chunk_python_params=dict(getattr(pipeline_effective, "chunk_python_params", {}) or {}),
                     )
                 chunks = _rebase_chunk_offsets_by_page_index(
                     documents=parsed_documents,
@@ -3778,7 +4004,7 @@ class DocumentProcessorService:
                         nonlocal near_dedup_dropped, sample_match
                         for c in chunks:
                             meta = c.metadata if isinstance(getattr(c, "metadata", None), dict) else {}
-                            if _chunk_has_asset(meta):
+                            if _should_skip_near_dedup_for_chunk(c):
                                 kept_chunks.append(c)
                                 continue
 
@@ -4227,6 +4453,13 @@ class DocumentProcessorService:
                         except Exception:
                             logger.warning("Invalid KG_EXTRACT_PROMPT_TEMPLATE_ID: %s", raw_tid[:50])
                     try:
+                        kg_python_plugin_ref = str(getattr(pipeline_effective, "kg_python_plugin", "") or "").strip()
+                        if not kg_python_plugin_ref:
+                            kg_python_plugin_ref = derive_registered_stage_plugin_ref(
+                                str(getattr(pipeline_effective, "chunk_python_plugin", "") or "").strip(),
+                                "kg",
+                            )
+                        kg_python_params = dict(getattr(pipeline_effective, "kg_python_params", {}) or {})
                         events = await extract_events(
                             chunk_ids,
                             tenant_id=tenant_id,
@@ -4235,9 +4468,17 @@ class DocumentProcessorService:
                             prompt_template_id=prompt_template_id,
                             prompt_template_key=(getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_KEY", "") or "").strip() or None,
                             prompt_ab_experiment_key=(getattr(settings, "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY", "") or "").strip() or None,
+                            kg_python_plugin=kg_python_plugin_ref,
+                            kg_python_params=kg_python_params,
                         )
                         logger.info("KG extracted %s events for document %s", len(events), document_id)
-                        log_metrics({"event": "ingest.kg.completed", "event_count": len(events)})
+                        log_metrics(
+                            {
+                                "event": "ingest.kg.completed",
+                                "event_count": len(events),
+                                "kg_python_plugin": kg_python_plugin_ref,
+                            }
+                        )
                     except Exception as exc:  # noqa: BLE001
                         logger.warning("KG extraction failed for document %s: %s", document_id, str(exc)[:200])
 
@@ -4994,6 +5235,13 @@ class DocumentProcessorService:
         if not db_doc:
             return
 
+        kg_python_plugin = str(getattr(effective, "kg_python_plugin", "") or "").strip()
+        if not kg_python_plugin:
+            kg_python_plugin = derive_registered_stage_plugin_ref(
+                str(getattr(effective, "chunk_python_plugin", "") or "").strip(),
+                "kg",
+            )
+        kg_python_params = dict(getattr(effective, "kg_python_params", {}) or {})
         metadata = dict(db_doc.doc_metadata or {})
         metadata["pipeline_effective"] = {
             "governance_enabled": bool(effective.governance_enabled),
@@ -5006,10 +5254,16 @@ class DocumentProcessorService:
             "governance_noise_ratio_threshold": float(effective.governance_noise_ratio_threshold),
             "governance_common_lines_min_docs": int(effective.governance_common_lines_min_docs),
             "governance_common_lines_min_ratio": float(effective.governance_common_lines_min_ratio),
+            "governance_python_plugin": str(getattr(effective, "governance_python_plugin", "") or ""),
+            "governance_python_params": dict(getattr(effective, "governance_python_params", {}) or {}),
             "chunk_size": int(effective.chunk_size),
             "chunk_overlap": int(effective.chunk_overlap),
             "chunk_merge_small_min_chars": int(getattr(effective, "chunk_merge_small_min_chars", 0) or 0),
             "chunk_strategy_params": dict(getattr(effective, "chunk_strategy_params", {}) or {}),
+            "chunk_python_plugin": str(getattr(effective, "chunk_python_plugin", "") or ""),
+            "chunk_python_params": dict(getattr(effective, "chunk_python_params", {}) or {}),
+            "kg_python_plugin": kg_python_plugin,
+            "kg_python_params": kg_python_params,
             "chunk_vector_enabled": bool(effective.chunk_vector_enabled),
             "bm25_index_enabled": bool(effective.bm25_index_enabled),
             "kg_enabled": bool(effective.kg_enabled),

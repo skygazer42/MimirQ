@@ -1007,6 +1007,31 @@ def _compute_pipeline_hash(doc_metadata: dict) -> str:
     return hashlib.sha256(raw).hexdigest()[:16]
 
 
+def _is_uploaded_only_pending_document(document: Any) -> bool:
+    """
+    True for files registered by upload-only mode but not yet queued/processed.
+
+    Those documents are persisted as `status=pending` so they appear in ingestion
+    lists, but they are not active processing jobs. Reingest may safely patch
+    their pipeline and start processing them later.
+    """
+    if str(getattr(document, "status", "") or "").strip().lower() != "pending":
+        return False
+
+    meta = getattr(document, "doc_metadata", None)
+    meta = meta if isinstance(meta, dict) else {}
+    if str(meta.get("ingest_stage") or "").strip() != "uploaded_only":
+        return False
+    if str(meta.get("task_id") or "").strip():
+        return False
+
+    current_stage = str(getattr(document, "current_stage", "") or "").strip().lower()
+    if current_stage and current_stage not in {"uploaded_only", "registered"}:
+        return False
+
+    return not bool(meta.get("active_pipeline_ready"))
+
+
 @dataclass(frozen=True)
 class PipelineOptionOverrides:
     governance_enabled: bool | None = None

@@ -14,26 +14,45 @@ def test_regression_metric_split_keeps_ragas_and_deterministic_metrics_separate(
             "hallucination_rate",
             "response_relevancy",
             "quote_verifiability",
+            "expected_metadata_hit_rate",
+            "expected_metadata_recall",
         ]
     )
 
     assert "citation_accuracy" in DETERMINISTIC_REGRESSION_METRICS
     assert "hallucination_rate" in DETERMINISTIC_REGRESSION_METRICS
     assert "quote_verifiability" in DETERMINISTIC_REGRESSION_METRICS
+    assert "expected_metadata_hit_rate" in DETERMINISTIC_REGRESSION_METRICS
+    assert "expected_metadata_recall" in DETERMINISTIC_REGRESSION_METRICS
     assert split.ragas == ["faithfulness", "response_relevancy"]
-    assert split.deterministic == ["citation_accuracy", "hallucination_rate", "quote_verifiability"]
+    assert split.deterministic == [
+        "citation_accuracy",
+        "hallucination_rate",
+        "quote_verifiability",
+        "expected_metadata_hit_rate",
+        "expected_metadata_recall",
+    ]
 
 
 def test_selected_deterministic_scores_maps_product_metric_aliases() -> None:
     from app.rag.evaluation.ragas import build_selected_deterministic_scores
 
     scores = build_selected_deterministic_scores(
-        ["atomic_faithfulness", "hallucination_rate", "citation_coverage", "quote_verifiability"],
+        [
+            "atomic_faithfulness",
+            "hallucination_rate",
+            "citation_coverage",
+            "quote_verifiability",
+            "expected_metadata_hit_rate",
+            "expected_metadata_recall",
+        ],
         {
             "faithfulness_det": 0.75,
             "hallucination_rate": 0.25,
             "citation_coverage": 0.5,
             "quote_verifiability": 1.0,
+            "expected_metadata_hit": True,
+            "expected_metadata_recall": 0.8,
         },
     )
 
@@ -42,4 +61,6 @@ def test_selected_deterministic_scores_maps_product_metric_aliases() -> None:
         "hallucination_rate": 0.25,
         "citation_coverage": 0.5,
         "quote_verifiability": 1.0,
+        "expected_metadata_hit_rate": 1.0,
+        "expected_metadata_recall": 0.8,
     }

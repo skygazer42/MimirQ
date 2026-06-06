@@ -1,0 +1,35 @@
+{
+  "schema": "mimirq.retrieval_text_schema.v1",
+  "stages": {
+    "chunk": {
+      "fields": [
+        {"metadata": "knowledge_section", "label": "知识栏目"},
+        {"metadata": "gov_knowledge_type", "label": "知识类型"},
+        {"metadata": "district", "label": "地区"},
+        {"metadata": "department_domain", "label": "部门领域"},
+        {"metadata": "source_department", "label": "来源部门"},
+        {"metadata": "source_topic", "label": "来源主题"},
+        {"metadata": "source_sheet", "label": "来源工作表"},
+        {"metadata": "category_path", "label": "业务分类路径"},
+        {"metadata": "category_leaf", "label": "业务分类"},
+        {"metadata": "applicable_area", "label": "适用区域"},
+        {"metadata": "service_url", "label": "办事链接"},
+        {"metadata": "service_name", "label": "事项名称"},
+        {"metadata": "service_aliases", "label": "事项相似问法"},
+        {"metadata": "case_title", "label": "一件事主题"},
+        {"metadata": "section_type", "label": "一件事章节类型"},
+        {"metadata": "section_label", "label": "一件事章节"},
+        {"metadata": "related_services", "label": "涉及事项"},
+        {"metadata": "materials", "label": "材料"},
+        {"metadata": "operation_steps", "label": "操作步骤"},
+        {"metadata": "urls", "label": "链接"},
+        {"metadata": "question", "label": "问题"},
+        {"metadata": "aliases", "label": "相似问法"},
+        {"metadata": "keywords", "label": "关键字"},
+        {"metadata": "title", "label": "标题"},
+        {"metadata": "chunk_kind", "label": "切块类型"},
+        {"content": true, "label": "内容"}
+      ]
+    }
+  }
+}

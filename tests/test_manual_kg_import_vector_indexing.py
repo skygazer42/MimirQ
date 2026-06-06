@@ -58,18 +58,18 @@ def test_manual_kg_import_embeds_events_and_entities(monkeypatch):
     event = KgSourceEvent(
         id=uuid4(),
         tenant_id=UUID(int=1),
-        title="事项关系",
-        summary="办理对象关系",
-        content="企业设立登记需要提交申请材料。",
+        title="Demo relation",
+        summary="Record to requirement relation",
+        content="Account renewal requires a signed request.",
         content_vector=None,
     )
     entity = KgEntity(
         id=uuid4(),
         tenant_id=UUID(int=1),
-        name="企业设立登记",
-        type="ServiceItem",
-        description="政务服务事项",
-        normalized_name="企业设立登记",
+        name="Account renewal",
+        type="DemoRecord",
+        description="Demo business record",
+        normalized_name="account_renewal",
         vector=None,
     )
 
@@ -88,8 +88,8 @@ def test_manual_kg_import_embeds_events_and_entities(monkeypatch):
     assert out["event_vectors"] == 1
     assert out["entity_vectors"] == 1
     assert embedded_texts == [
-        "事项关系\n办理对象关系\n企业设立登记需要提交申请材料。",
-        "企业设立登记\nServiceItem\n政务服务事项",
+        "Demo relation\nRecord to requirement relation\nAccount renewal requires a signed request.",
+        "Account renewal\nDemoRecord\nDemo business record",
     ]
     assert event.content_vector == [1.0, 0.5]
     assert entity.vector == [2.0, 0.5]

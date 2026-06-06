@@ -92,6 +92,52 @@ def test_processor_treats_element_kind_table_as_table_segment() -> None:
     assert _is_table_segment_metadata({"element_kind": "table"}) is True
 
 
+def test_record_pipeline_effective_keeps_kg_params_separate_from_chunk_params() -> None:
+    from app.parsing.processors.processor import DocumentProcessorService
+    from app.services.pipeline_config import resolve_pipeline_effective
+    from app.types.pipeline import PipelineOptions
+
+    tenant_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+    db_doc = SimpleNamespace(id=document_id, tenant_id=tenant_id, doc_metadata={})
+
+    class _Query:
+        def filter(self, *_args):  # noqa: ANN002
+            return self
+
+        def first(self):  # noqa: ANN201
+            return db_doc
+
+    class _DB:
+        def query(self, *_args):  # noqa: ANN002
+            return _Query()
+
+        def commit(self) -> None:
+            return None
+
+        def refresh(self, _obj) -> None:  # noqa: ANN001
+            return None
+
+    effective = resolve_pipeline_effective(
+        request_overrides=PipelineOptions(
+            chunk_python_plugin="plugin:demo@1.0.0:chunk",
+            chunk_python_params={"chunk_only": 1600},
+            kg_python_plugin="plugin:demo@1.0.0:kg",
+        )
+    )
+
+    DocumentProcessorService()._record_pipeline_effective(  # type: ignore[attr-defined]
+        _DB(),
+        tenant_id,
+        document_id,
+        effective,
+    )
+
+    recorded = db_doc.doc_metadata["pipeline_effective"]
+    assert recorded["chunk_python_params"] == {"chunk_only": 1600}
+    assert recorded["kg_python_params"] == {}
+
+
 def test_processor_preserves_parser_table_geometry_in_table_store_metadata(monkeypatch, tmp_path):  # noqa: ANN001
     from app.core.config import settings
     from app.parsing.processors.processor import DocumentProcessorService

@@ -31,6 +31,10 @@ The Makefile is the source of truth for common workflows; these scripts are the 
 - `api_smoke.py`: smoke test OpenAPI endpoints against a running backend (usually docker)
   - Example: `python scripts/api_smoke.py --help`
   - Live parser example: `python scripts/api_smoke.py --skip-llm-test --skip-mineru --live-parser-backends deepseek_ocr --live-parser-fixture runs/deepseek_ocr_smoke.pdf`
+- `plugin_golden_closed_loop_smoke.py`: live plugin Golden import + retrieval-only regression smoke for an already-ingested dataset
+  - Example: `python scripts/plugin_golden_closed_loop_smoke.py --base-url http://127.0.0.1:8000 --dataset-id <dataset_uuid>`
+- `plugin_corpus_closed_loop_smoke.py`: live plugin-backed corpus ingest + Golden regression smoke from a local directory
+  - Example: `python scripts/plugin_corpus_closed_loop_smoke.py --base-url http://127.0.0.1:8000 --source-dir /path/to/domain-corpus --plugin-ref plugin:<plugin-id>@<version>:chunk --include-source-root-name --overwrite-goldens`
 - `clean.py`: remove local caches/artifacts (used by `make clean`)
   - Example: `python scripts/clean.py`
 
@@ -47,6 +51,7 @@ The Makefile is the source of truth for common workflows; these scripts are the 
 
 - `benchmark_io_concurrency.py`: local benchmarking helper
 - `chunk_preview_batch_eval.py`: batch evaluate chunk preview behavior
+- `remote_chunking_matrix.py`: live chunking matrix against a running API; set `MIMIRQ_REMOTE_LONG_PDF_FIXTURE=/path/to/long.pdf` to reuse a local long PDF, or set `MIMIRQ_REMOTE_FIXTURE_DOWNLOADS=1` to download the RFC sample.
 - `convert_text_encoding.py`: best-effort text encoding conversion utility
 - `backfill_kg_event_vector_metadata.py`: re-upsert KG event vectors to backfill Milvus metadata fields (`pipeline_hash`, `doc_pipeline_key`)
 - `learn_fusion_weights_offline.py`: grid-search fusion weights (vector/bm25/lexical/sparse) offline via Evidence API
@@ -57,6 +62,8 @@ The Makefile is the source of truth for common workflows; these scripts are the 
 - `mine_hard_negatives_from_traces.py`: mine PII-safe hard negatives from `event=rag_trace` metrics logs (outputs `mimirq.hard_negatives.v1` JSONL)
 - `access_graph_diff.py`: diff two access-graph exports (NDJSON/JSON) and output a bounded PII-safe change summary (for access reviews)
 - `regression_gate.py`: enforce regression thresholds from evaluation outputs
+  - Plugin Golden source example: `python scripts/regression_gate.py --dataset-id <dataset_uuid> --plugin-golden-ref plugin:<id>@<version>:chunk --metrics "" --thresholds ci/plugin.thresholds.json`
+  - Generated Plugin Golden thresholds preserve compact `case_source` provenance and reject plugin ref/package-hash mismatches before starting a run.
 - `release_gate.py`: combine regression gate + SLO snapshot + cost budgets into a single release gate (CI/staging)
 - `train_ltr_from_regression_cases.py`: train an xgboost LTR reranker model from regression cases via Evidence API (retrieval-only)
   - Writes a sidecar manifest by default: `<out-model>.manifest.json` (can be disabled with `--no-manifest`)

@@ -1,0 +1,57 @@
+{
+  "schema": "mimirq.golden_rules.v1",
+  "expected_metadata": [
+    "source_record_id",
+    "gov_knowledge_type",
+    "knowledge_section"
+  ],
+  "template_selector_fields": [
+    "chunk_kind",
+    "gov_knowledge_type"
+  ],
+  "tag_fields": [
+    "gov_knowledge_type",
+    "chunk_kind"
+  ],
+  "query_templates": {
+    "service_item_full": [
+      "{service_name}需要什么材料？",
+      "{service_name}在哪里办理？",
+      "{service_name}咨询电话是多少？",
+      "{service_name}能不能网上办？"
+    ],
+    "service_basic": [
+      "{service_name}在哪里办理？",
+      "{service_name}能不能网上办？"
+    ],
+    "service_condition": [
+      "{service_name}受理条件是什么？"
+    ],
+    "service_materials": [
+      "{service_name}需要什么材料？"
+    ],
+    "service_process": [
+      "{service_name}怎么办理？"
+    ],
+    "service_contact": [
+      "{service_name}咨询电话是多少？",
+      "{service_name}网上办理入口在哪里？"
+    ],
+    "service_item": [
+      "{service_name}需要什么材料？",
+      "{service_name}在哪里办理？",
+      "{service_name}咨询电话是多少？",
+      "{service_name}能不能网上办？"
+    ],
+    "one_thing_guide": [
+      "{case_title}怎么办理？",
+      "{case_title}需要哪些材料？"
+    ],
+    "qa": [
+      "{question}"
+    ],
+    "regulation_text": [
+      "{title}有什么规定？"
+    ]
+  }
+}

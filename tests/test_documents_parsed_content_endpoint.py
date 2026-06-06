@@ -75,6 +75,50 @@ async def test_documents_parsed_content_returns_available_and_truncates(monkeypa
 
 
 @pytest.mark.asyncio
+async def test_documents_parsed_content_falls_back_to_local_text_source(monkeypatch: pytest.MonkeyPatch, tmp_path):
+    from app.api.v1 import document_content as content_module
+    from app.models.document import Document as DBDocument
+    from app.models.document import DocumentParsedContent
+    from app.services.dataset_service import DatasetService
+
+    tenant_id = UUID(int=1)
+    document_id = UUID(int=2)
+    tenant_dir = tmp_path / str(tenant_id)
+    tenant_dir.mkdir()
+    source = tenant_dir / "sample.txt"
+    source.write_text("hello txt cache fallback", encoding="utf-8")
+
+    doc = SimpleNamespace(
+        id=document_id,
+        tenant_id=tenant_id,
+        dataset_id=None,
+        doc_metadata={},
+        file_type="txt",
+        filename="sample.txt",
+        file_path=str(source),
+    )
+
+    monkeypatch.setattr(content_module.settings, "UPLOAD_DIR", str(tmp_path), raising=True)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda _db, _tenant_id, _account_id: None, raising=True)
+
+    db = _FakeDB({DBDocument: doc, DocumentParsedContent: None})
+    out = await content_module.get_document_parsed_content(
+        document_id=document_id,
+        max_chars=10,
+        tenant_id=tenant_id,
+        account_id="u",
+        db=db,
+    )
+
+    assert out.available is True
+    assert out.markdown_content == "hello txt "
+    assert out.original_markdown_content == "hello txt "
+    assert out.markdown_truncated is True
+    assert out.original_markdown_truncated is True
+    assert out.persisted_meta == {}
+
+
+@pytest.mark.asyncio
 async def test_documents_parsed_content_returns_unavailable_when_missing(monkeypatch: pytest.MonkeyPatch):
     from app.api.v1.documents import get_document_parsed_content
     from app.models.document import Document as DBDocument
@@ -126,4 +170,3 @@ async def test_documents_parsed_content_404_when_document_missing(monkeypatch: p
         )
 
     assert exc.value.status_code == 404
-

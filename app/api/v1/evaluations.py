@@ -39,6 +39,7 @@ from app.api.schemas.regression import (
     RagasRegressionAblationBatchResponse,
     RagasRegressionCaseCreateRequest,
     RagasRegressionCaseImportRequest,
+    RagasRegressionCaseImportResponse,
     RagasRegressionCaseList,
     RagasRegressionCaseOut,
     RagasRegressionCasePatchRequest,
@@ -730,7 +731,11 @@ async def export_ragas_regression_cases(
     return export_case_bundle(items, dataset_id)
 
 
-@router.post("/ragas/regression/cases/import", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/ragas/regression/cases/import",
+    response_model=RagasRegressionCaseImportResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 async def import_ragas_regression_cases(
     payload: RagasRegressionCaseImportRequest,
     *,
@@ -766,6 +771,14 @@ async def import_ragas_regression_cases(
     updated = 0
     skipped = int(plan.get("skipped") or 0)
     errors: list[dict[str, Any]] = list(plan.get("errors") or [])
+    created_case_ids: list[UUID] = []
+    updated_case_ids: list[UUID] = []
+    skipped_case_ids: list[UUID] = []
+
+    for question in plan.get("skipped_existing_questions") or []:
+        row = by_question.get(str(question or "").strip())
+        if row is not None:
+            skipped_case_ids.append(row.id)
 
     for item in plan.get("create_items") or []:
         try:
@@ -776,7 +789,9 @@ async def import_ragas_regression_cases(
                 dataset_id=payload.dataset_id,
                 reference_sources=item.get("reference_sources") or [],
             )
+            case_id = uuid4()
             row = RagasRegressionCase(
+                id=case_id,
                 tenant_id=tenant_id,
                 dataset_id=payload.dataset_id,
                 question=str(item.get("question") or "").strip(),
@@ -784,7 +799,7 @@ async def import_ragas_regression_cases(
                 reference_sources=reference_sources,
                 tags=list(item.get("tags") or []),
                 extra=_merge_regression_case_extra(
-                    base_extra=None,
+                    base_extra=item.get("extra"),
                     reasoning_hops=item.get("reasoning_hops"),
                     evidence_chain=item.get("evidence_chain"),
                 ),
@@ -792,6 +807,7 @@ async def import_ragas_regression_cases(
             )
             db.add(row)
             created += 1
+            created_case_ids.append(case_id)
         except HTTPException as exc:
             skipped += 1
             errors.append({"question": item.get("question"), "error": exc.detail})
@@ -817,13 +833,18 @@ async def import_ragas_regression_cases(
             row.expected_answer = item.get("expected_answer")
             row.tags = list(item.get("tags") or [])
             row.reference_sources = reference_sources
+            merged_base_extra = dict(row.extra) if isinstance(row.extra, dict) else {}
+            incoming_extra = item.get("extra")
+            if isinstance(incoming_extra, dict):
+                merged_base_extra.update(incoming_extra)
             row.extra = _merge_regression_case_extra(
-                base_extra=row.extra,
+                base_extra=merged_base_extra,
                 reasoning_hops=item.get("reasoning_hops"),
                 evidence_chain=item.get("evidence_chain"),
             )
             db.add(row)
             updated += 1
+            updated_case_ids.append(row.id)
         except HTTPException as exc:
             skipped += 1
             errors.append({"question": question, "error": exc.detail})
@@ -831,9 +852,19 @@ async def import_ragas_regression_cases(
             skipped += 1
             errors.append({"question": question, "error": str(exc)[:200]})
 
+    db.flush()
     db.commit()
 
-    return {"created": created, "updated": updated, "skipped": skipped, "errors": errors}
+    return {
+        "created": created,
+        "updated": updated,
+        "skipped": skipped,
+        "errors": errors,
+        "created_case_ids": created_case_ids,
+        "updated_case_ids": updated_case_ids,
+        "skipped_case_ids": skipped_case_ids,
+        "case_ids": [*created_case_ids, *updated_case_ids, *skipped_case_ids],
+    }
 
 
 @router.post("/ragas/regression/cases/synthetic-hardcases", response_model=SyntheticHardcaseGenerateResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)

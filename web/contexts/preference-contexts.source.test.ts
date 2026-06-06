@@ -29,4 +29,21 @@ describe('preference contexts', () => {
     expect(pipelineSrc).toContain('event_vector_enabled: true,')
     expect(pipelineSrc).toContain('entity_vector_enabled: true,')
   })
+
+  it('persists Python governance, chunk, and KG plugin pipeline options', () => {
+    const pipelineSrc = fs.readFileSync(path.resolve(__dirname, 'pipeline-options-context.tsx'), 'utf8')
+
+    expect(pipelineSrc).toContain('governance_python_plugin: undefined,')
+    expect(pipelineSrc).toContain('governance_python_params: undefined,')
+    expect(pipelineSrc).toContain('chunk_python_plugin: undefined,')
+    expect(pipelineSrc).toContain('chunk_python_params: undefined,')
+    expect(pipelineSrc).toContain('kg_python_plugin: undefined,')
+    expect(pipelineSrc).toContain('kg_python_params: undefined,')
+    expect(pipelineSrc).toContain('governance_python_plugin: toString(raw.governance_python_plugin)')
+    expect(pipelineSrc).toContain('governance_python_params: normalizePluginParams(raw.governance_python_params)')
+    expect(pipelineSrc).toContain('chunk_python_plugin: toString(raw.chunk_python_plugin)')
+    expect(pipelineSrc).toContain('chunk_python_params: normalizePluginParams(raw.chunk_python_params)')
+    expect(pipelineSrc).toContain('kg_python_plugin: toString(raw.kg_python_plugin)')
+    expect(pipelineSrc).toContain('kg_python_params: normalizePluginParams(raw.kg_python_params)')
+  })
 })

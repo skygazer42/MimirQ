@@ -4,19 +4,11 @@
 'use client'
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import Link from 'next/link'
 import {
   Settings,
   Folder,
-  Upload,
-  FileIcon,
-  FileText,
-  FileSpreadsheet,
-  FileType,
   FileCode2,
-  FileArchive,
-  FileJson,
-  FileImage,
-  Trash2,
   Check,
   AlertCircle,
   Sparkles,
@@ -43,8 +35,7 @@ import { useChunkPreview } from '@/components/chunk-preview/context'
 import { ChunkStrategyDropdown } from '@/components/business/chunk-strategy-dropdown'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
-import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
-import { datasetApi, pipelineApi } from '@/lib/api'
+import { datasetApi, evaluationApi, pipelineApi } from '@/lib/api'
 import { SEPARATOR_PRESET_OPTIONS } from '@/components/chunk-preview/constants'
 import { IngestionPreviewDetailsDialog } from '@/components/chunk-preview/components/ingestion-preview-details-dialog'
 import { ChunkPresetPanel } from '@/components/chunk-preview/components/chunk-preset-panel'
@@ -58,6 +49,7 @@ import type {
   IngestionPreviewResponse,
   JsonObject,
 } from '@/types'
+import type { PipelinePluginItem, PipelinePluginListError, PipelinePluginSuggestedPatch } from '@/lib/api/pipeline'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts'
 
 function clampInt(value: number, min: number, max: number) {
@@ -65,17 +57,17 @@ function clampInt(value: number, min: number, max: number) {
 }
 
 const DATASET_DEFAULT_VALUE = '__mimirq_dataset_default__'
+const PYTHON_PLUGIN_NONE_VALUE = '__mimirq_python_plugin_none__'
+const REGISTERED_PLUGIN_BASE_PIPELINE_PATCH: DocumentPipelineOptions = {
+  governance_enabled: true,
+  persist_parsed_content: true,
+}
 
 type SidebarVariant = 'panel' | 'dialog' | 'pane'
 type SidebarProps = Readonly<{ variant?: SidebarVariant }>
 type HistogramDatum = { label: string; min: number | null; max: number | null; count: number }
 type AccentTone = 'sky' | 'amber' | 'emerald' | 'violet' | 'cyan'
 type SidebarToneStyle = { chip: string; icon: string; note: string; panel: string }
-type FileVisual = {
-  icon: LucideIcon
-  shellClassName: string
-  iconClassName: string
-}
 type EmptyFileListLabels = {
   syncing: string
   emptyDataset: string
@@ -112,11 +104,6 @@ const SIDEBAR_TONE_STYLES: Record<AccentTone, SidebarToneStyle> = {
   violet: SIDEBAR_BASE_TONE,
   cyan: SIDEBAR_BASE_TONE,
 }
-
-const SIDEBAR_FILE_ICON_STYLE = {
-  shellClassName: 'border-border/55 bg-background/72 text-muted-foreground',
-  iconClassName: 'text-muted-foreground',
-} satisfies Omit<FileVisual, 'icon'>
 
 function getEmptyFileListLabel({
   scopeSyncLoading,
@@ -169,67 +156,39 @@ function getRecommendationTargetLabel(
   return labels[target] ?? target
 }
 
-function getFileVisual(file: { displayName?: string; originalFileType?: string } | null | undefined): FileVisual {
-  const rawType = String(file?.originalFileType || '').toLowerCase().replace(/^\./, '')
-  const name = String(file?.displayName || '').toLowerCase()
-  const ext = rawType || /\.([a-z0-9]+)(?:$|\?)/.exec(name)?.[1] || ''
-
-  if (ext === 'pdf') {
-    return {
-      icon: FileText,
-      ...SIDEBAR_FILE_ICON_STYLE,
-    }
-  }
-  if (['doc', 'docx', 'rtf'].includes(ext)) {
-    return {
-      icon: FileType,
-      ...SIDEBAR_FILE_ICON_STYLE,
-    }
-  }
-  if (['xls', 'xlsx', 'csv', 'tsv'].includes(ext)) {
-    return {
-      icon: FileSpreadsheet,
-      ...SIDEBAR_FILE_ICON_STYLE,
-    }
-  }
-  if (['md', 'markdown', 'txt'].includes(ext)) {
-    return {
-      icon: FileText,
-      ...SIDEBAR_FILE_ICON_STYLE,
-    }
-  }
-  if (['html', 'htm', 'xml'].includes(ext)) {
-    return {
-      icon: FileCode2,
-      ...SIDEBAR_FILE_ICON_STYLE,
-    }
-  }
-  if (['json', 'jsonl'].includes(ext)) {
-    return {
-      icon: FileJson,
-      ...SIDEBAR_FILE_ICON_STYLE,
-    }
-  }
-  if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'tiff'].includes(ext)) {
-    return {
-      icon: FileImage,
-      ...SIDEBAR_FILE_ICON_STYLE,
-    }
-  }
-  if (['zip', 'tar', 'gz', '7z', 'rar'].includes(ext)) {
-    return {
-      icon: FileArchive,
-      ...SIDEBAR_FILE_ICON_STYLE,
-    }
-  }
-  return {
-    icon: FileIcon,
-    ...SIDEBAR_FILE_ICON_STYLE,
-  }
-}
-
 function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback
+}
+
+function getPluginParams(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return value as Record<string, unknown>
+}
+
+function getPrimitivePluginParams(value: unknown): Record<string, string | number | boolean | null> | undefined {
+  const params = getPluginParams(value)
+  const out: Record<string, string | number | boolean | null> = {}
+  for (const [key, param] of Object.entries(params)) {
+    if (!key) continue
+    if (param === null || typeof param === 'string' || typeof param === 'number' || typeof param === 'boolean') {
+      out[key] = param
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
+function getPluginSuggestedPipelinePatch(value: unknown): PipelinePluginSuggestedPatch {
+  const raw = getPluginParams(value)
+  const patch: PipelinePluginSuggestedPatch = {}
+  if (typeof raw.governance_enabled === 'boolean') patch.governance_enabled = raw.governance_enabled
+  if (typeof raw.persist_parsed_content === 'boolean') patch.persist_parsed_content = raw.persist_parsed_content
+  const governanceParams = getPrimitivePluginParams(raw.governance_python_params)
+  if (governanceParams) patch.governance_python_params = governanceParams
+  const chunkParams = getPrimitivePluginParams(raw.chunk_python_params)
+  if (chunkParams) patch.chunk_python_params = chunkParams
+  const kgParams = getPrimitivePluginParams(raw.kg_python_params)
+  if (kgParams) patch.kg_python_params = kgParams
+  return patch
 }
 
 function SidebarChip({
@@ -310,29 +269,6 @@ function SidebarPanel({
   )
 }
 
-function SidebarIconButton({
-  tone = 'sky',
-  className,
-  children,
-  ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & Readonly<{ tone?: AccentTone }>) {
-  return (
-    <Button
-      variant="ghost"
-      size="sm"
-      className={cn(
-        'h-7 w-7 rounded-lg border p-0 shadow-none transition-colors',
-        SIDEBAR_TONE_STYLES[tone].icon,
-        'hover:brightness-[0.98] dark:hover:brightness-110',
-        className
-      )}
-      {...props}
-    >
-      {children}
-    </Button>
-  )
-}
-
 export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
   const t = useTranslations('ChunkPreview')
   const {
@@ -367,8 +303,6 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
     selectedIngestFileIds,
     setCurrentFileIndex,
     removeFile,
-    clearFiles,
-    addFiles,
     setDatasetId,
     updateSettings,
     updatePerfSettings,
@@ -612,6 +546,17 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
   const [ingestionLoading, setIngestionLoading] = useState(false)
   const [ingestionError, setIngestionError] = useState<string | null>(null)
   const [ingestionDetailsOpen, setIngestionDetailsOpen] = useState(false)
+  const [pipelinePlugins, setPipelinePlugins] = useState<PipelinePluginItem[]>([])
+  const [pipelinePluginRegistryErrors, setPipelinePluginRegistryErrors] = useState<PipelinePluginListError[]>([])
+  const [pipelinePluginsLoading, setPipelinePluginsLoading] = useState(false)
+  const [pipelinePluginsError, setPipelinePluginsError] = useState<string | null>(null)
+  const [goldenImportLoading, setGoldenImportLoading] = useState(false)
+  const [goldenRegressionLoading, setGoldenRegressionLoading] = useState(false)
+  const [lastGoldenRegressionRun, setLastGoldenRegressionRun] = useState<{
+    id: string
+    href: string
+    caseCount: number
+  } | null>(null)
 
   const applyPipelinePatch = (
     patch: DocumentPipelineOptions | JsonObject | null | undefined,
@@ -638,6 +583,175 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
     return true
   }
 
+  const pythonPluginActive = Boolean(
+    pipelineCtx.options.governance_python_plugin ||
+      pipelineCtx.options.chunk_python_plugin ||
+      pipelineCtx.options.kg_python_plugin
+  )
+  const governancePluginOptions = useMemo(
+    () => pipelinePlugins.filter((plugin) => Boolean(plugin.refs.governance)),
+    [pipelinePlugins]
+  )
+  const chunkPluginOptions = useMemo(
+    () => pipelinePlugins.filter((plugin) => Boolean(plugin.refs.chunk)),
+    [pipelinePlugins]
+  )
+  const kgPluginOptions = useMemo(
+    () => pipelinePlugins.filter((plugin) => Boolean(plugin.refs.kg)),
+    [pipelinePlugins]
+  )
+  const unreadyPluginCount = pipelinePlugins.filter((plugin) => !plugin.executable).length
+  const firstPluginRegistryError = pipelinePluginRegistryErrors[0]
+  const governancePluginValue = pipelineCtx.options.governance_python_plugin || PYTHON_PLUGIN_NONE_VALUE
+  const chunkPluginValue = pipelineCtx.options.chunk_python_plugin || PYTHON_PLUGIN_NONE_VALUE
+  const kgPluginValue = pipelineCtx.options.kg_python_plugin || PYTHON_PLUGIN_NONE_VALUE
+  const governancePluginListed = governancePluginOptions.some(
+    (plugin) => plugin.refs.governance === pipelineCtx.options.governance_python_plugin
+  )
+  const chunkPluginListed = chunkPluginOptions.some(
+    (plugin) => plugin.refs.chunk === pipelineCtx.options.chunk_python_plugin
+  )
+  const kgPluginListed = kgPluginOptions.some(
+    (plugin) => plugin.refs.kg === pipelineCtx.options.kg_python_plugin
+  )
+  const selectedChunkPlugin = useMemo(
+    () => chunkPluginOptions.find((plugin) => plugin.refs.chunk === pipelineCtx.options.chunk_python_plugin) || null,
+    [chunkPluginOptions, pipelineCtx.options.chunk_python_plugin]
+  )
+  const selectedGovernancePlugin = useMemo(
+    () =>
+      governancePluginOptions.find((plugin) => plugin.refs.governance === pipelineCtx.options.governance_python_plugin) ||
+      null,
+    [governancePluginOptions, pipelineCtx.options.governance_python_plugin]
+  )
+  const selectedKgPlugin = useMemo(
+    () => kgPluginOptions.find((plugin) => plugin.refs.kg === pipelineCtx.options.kg_python_plugin) || null,
+    [kgPluginOptions, pipelineCtx.options.kg_python_plugin]
+  )
+  const selectedGoldenPlugin = selectedChunkPlugin?.contract?.golden?.enabled ? selectedChunkPlugin : null
+  const selectedGoldenPluginRef = selectedChunkPlugin?.refs.chunk || ''
+  const selectedAuditPlugin = selectedChunkPlugin || selectedGovernancePlugin || selectedKgPlugin
+  const selectedAuditPackageHash = String(selectedAuditPlugin?.package_hash || '').trim()
+  const selectedAuditReportOwner =
+    selectedAuditPlugin?.test_report?.plugin_id && selectedAuditPlugin?.test_report?.version
+      ? `${selectedAuditPlugin.test_report.plugin_id}@${selectedAuditPlugin.test_report.version}`
+      : ''
+  const selectedAuditTestedAt = String(selectedAuditPlugin?.test_report?.tested_at || '').trim()
+  const selectedAuditGoldenTotal = selectedAuditPlugin?.test_report?.golden_draft?.items_total
+  const canImportGoldenDraft = Boolean(
+    datasetId &&
+    selectedGoldenPluginRef &&
+    selectedGoldenPlugin?.executable &&
+    selectedGoldenPlugin.contract?.golden?.enabled &&
+    !goldenImportLoading
+  )
+  const selectedPipelinePlugin = selectedChunkPlugin || selectedGovernancePlugin || selectedKgPlugin
+  const selectedPluginProcessingTemplates = Array.isArray(selectedPipelinePlugin?.processing_templates?.templates)
+    ? selectedPipelinePlugin.processing_templates.templates.filter((template) => template.key && template.name)
+    : []
+  const selectedPipelinePluginPatch = useMemo<DocumentPipelineOptions | null>(() => {
+    if (!selectedPipelinePlugin) return null
+    return {
+      ...REGISTERED_PLUGIN_BASE_PIPELINE_PATCH,
+      ...getPluginSuggestedPipelinePatch(selectedPipelinePlugin.suggested_pipeline_patch),
+      ...(selectedPipelinePlugin.refs.governance ? { governance_python_plugin: selectedPipelinePlugin.refs.governance } : {}),
+      ...(selectedPipelinePlugin.refs.chunk ? { chunk_python_plugin: selectedPipelinePlugin.refs.chunk } : {}),
+      ...(selectedPipelinePlugin.refs.kg ? { kg_python_plugin: selectedPipelinePlugin.refs.kg } : {}),
+    }
+  }, [selectedPipelinePlugin])
+
+  const applySelectedPipelinePlugin = () => {
+    if (!selectedPipelinePluginPatch || !selectedPipelinePlugin) {
+      toast.error(t('sidebar.pythonPlugins.applySelectedPluginMissing'))
+      return
+    }
+    applyPipelinePatch(selectedPipelinePluginPatch, {
+      successMessage: t('sidebar.pythonPlugins.applySelectedSuccess', {
+        name: `${selectedPipelinePlugin.name} v${selectedPipelinePlugin.version}`,
+      })
+    })
+  }
+
+  const clearPythonPlugins = () => {
+    pipelineCtx.setEnabled(true)
+    pipelineCtx.updateOption('governance_python_plugin', undefined)
+    pipelineCtx.updateOption('governance_python_params', undefined)
+    pipelineCtx.updateOption('chunk_python_plugin', undefined)
+    pipelineCtx.updateOption('chunk_python_params', undefined)
+    pipelineCtx.updateOption('kg_python_plugin', undefined)
+    pipelineCtx.updateOption('kg_python_params', undefined)
+    toast.success(t('sidebar.pythonPlugins.clearSuccess'))
+  }
+
+  const handleImportPluginGoldenDraft = async ({ runRegression = false }: { runRegression?: boolean } = {}) => {
+    if (!datasetId) {
+      toast.error(t('sidebar.pythonPlugins.importGoldenSelectDataset'))
+      return
+    }
+    if (!selectedGoldenPluginRef) {
+      toast.error(t('sidebar.pythonPlugins.importGoldenNoPlugin'))
+      return
+    }
+    if (goldenImportLoading || goldenRegressionLoading) return
+
+    const setLoading = runRegression ? setGoldenRegressionLoading : setGoldenImportLoading
+    setLoading(true)
+    try {
+      const result = await pipelineApi.generateAndImportPluginGoldenDraft({
+        dataset_id: datasetId,
+        plugin_ref: selectedGoldenPluginRef,
+        max_items: 500,
+        overwrite: false,
+      })
+      const caseIds = result.import_result.case_ids ?? []
+      const imported = caseIds.length
+      if (result.draft.items_total <= 0 || imported <= 0) {
+        toast.info(t('sidebar.pythonPlugins.importGoldenEmpty'))
+        return
+      }
+      if (runRegression) {
+        if (caseIds.length <= 0) {
+          toast.info(t('sidebar.pythonPlugins.importGoldenRunNoCases'))
+          return
+        }
+        const run = await evaluationApi.createRegressionRun({
+          dataset_id: datasetId,
+          case_ids: caseIds,
+          metrics: [],
+          use_llm_judge: false,
+          skip_empty_contexts: true,
+          enable_hierarchy_recall: true,
+          hierarchy_sibling_window: 2,
+          hierarchy_overfetch_factor: 4,
+          max_cases: Math.max(1, Math.min(caseIds.length, 500)),
+        })
+        setLastGoldenRegressionRun({
+          id: run.id,
+          href: `/evaluations?tab=regression&dataset_id=${encodeURIComponent(datasetId)}&run_id=${encodeURIComponent(run.id)}`,
+          caseCount: caseIds.length,
+        })
+        toast.success(
+          t('sidebar.pythonPlugins.importGoldenRunSuccess', {
+            count: caseIds.length,
+            runId: run.id.slice(0, 8),
+          })
+        )
+        return
+      }
+      toast.success(
+        t('sidebar.pythonPlugins.importGoldenSuccess', {
+          created: result.import_result.created,
+          updated: result.import_result.updated,
+          skipped: result.import_result.skipped,
+        })
+      )
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, t('sidebar.pythonPlugins.importGoldenError')))
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const buildPreviewSettingsPatch = (patch: JsonObject): PreviewSettingsPatch => {
     const next: PreviewSettingsPatch = {}
     if (typeof patch.chunk_size === 'number' && Number.isFinite(patch.chunk_size)) next.chunkSize = Math.trunc(patch.chunk_size)
@@ -655,6 +769,30 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
     if (typeof patch.max_chunks === 'number' && Number.isFinite(patch.max_chunks)) next.maxChunks = Math.trunc(patch.max_chunks)
     return next
   }
+
+  useEffect(() => {
+    let alive = true
+    setPipelinePluginsLoading(true)
+    setPipelinePluginsError(null)
+    pipelineApi.listPipelinePlugins()
+      .then((res) => {
+        if (!alive) return
+        setPipelinePlugins(res.items || [])
+        setPipelinePluginRegistryErrors(res.errors || [])
+      })
+      .catch((error: unknown) => {
+        if (!alive) return
+        setPipelinePluginsError(getErrorMessage(error, t('sidebar.pythonPlugins.loadError')))
+        setPipelinePluginRegistryErrors([])
+      })
+      .finally(() => {
+        if (!alive) return
+        setPipelinePluginsLoading(false)
+      })
+    return () => {
+      alive = false
+    }
+  }, [t])
 
   useEffect(() => {
     let alive = true
@@ -713,7 +851,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
             </div>
             <div
               className={cn(
-                'flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-widest transition-all shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] antialiased',
+                'flex shrink-0 whitespace-nowrap items-center gap-1.5 rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-widest transition-all shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] antialiased',
                 datasetId
                   ? 'border-primary/30 bg-primary/10 text-primary'
                   : 'border-border/60 bg-background/90 text-muted-foreground/90'
@@ -802,7 +940,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
 
           <div
             data-chunk-file-queue
-            className="rounded-2xl border border-border/55 bg-[linear-gradient(180deg,hsl(var(--background)/0.94),hsl(var(--muted)/0.2))] p-2 shadow-[0_12px_30px_-28px_rgba(15,23,42,0.45)]"
+            className="rounded-2xl border border-border/45 bg-background/70 p-2 shadow-none"
           >
             <div className="flex items-center justify-between gap-3">
               <SidebarSectionHeader
@@ -810,73 +948,12 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                 label={t('sidebar.fileList.title', { count: fileList.length })}
                 tone="sky"
               />
-              <div className="flex items-center gap-1">
-                <SidebarIconButton
-                  tone="sky"
-                  onClick={() => document.getElementById('add-file-input')?.click()}
-                  aria-label={t('sidebar.fileList.addFile')}
-                  title={t('sidebar.fileList.addFile')}
-                >
-                  <Upload className="w-3.5 h-3.5 text-primary" />
-                </SidebarIconButton>
-                <SidebarIconButton
-                  tone="amber"
-                  onClick={() => {
-                    clearFiles()
-                    toast.success(t('sidebar.fileList.clearFilesSuccess'))
-                  }}
-                  className="text-destructive/80"
-                  disabled={fileList.length === 0}
-                  aria-label={t('sidebar.fileList.clearFiles')}
-                  title={t('sidebar.fileList.clearFiles')}
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </SidebarIconButton>
-              </div>
-              <input
-                id="add-file-input"
-                type="file"
-                accept={UPLOAD_ACCEPT}
-                multiple
-                className="hidden"
-                onChange={(e) => {
-                  const files = e.target.files ? Array.from(e.target.files) : []
-                  if (files.length > 0) addFiles(files)
-                  e.target.value = ''
-                }}
-              />
             </div>
 
-            <div className="mt-2 flex items-center justify-between gap-2 rounded-xl border border-border/40 bg-background/72 px-2 py-1.5">
-              <div className="flex min-w-0 items-center gap-1.5">
-                <span
-                  className={cn(
-                    'h-1.5 w-1.5 shrink-0 rounded-full',
-                    selectedIngestCount > 0 ? 'bg-primary shadow-[0_0_0_3px_hsl(var(--primary)/0.12)]' : 'bg-muted-foreground/35'
-                  )}
-                />
-                <span className="min-w-0 truncate text-[10px] font-medium text-muted-foreground/85">
-                  {selectedIngestCount > 0
-                    ? t('sidebar.fileList.batchIngestSelected', {
-                        count: selectedIngestCount,
-                      })
-                    : t('sidebar.fileList.batchIngestIdle')}
-                </span>
-              </div>
-              <Button
-                type="button"
-                size="sm"
-                variant={selectedIngestCount > 0 ? 'default' : 'outline'}
-                onClick={submitSelectedFiles}
-                disabled={selectedIngestCount === 0 || isSubmitting}
-                className="h-6 shrink-0 rounded-lg px-2 text-[10px] shadow-none"
-              >
-                {selectedIngestCount > 0 ? t('sidebar.fileList.batchIngest') : t('sidebar.fileList.batchIngestShort')}
-              </Button>
-            </div>
-          </div>
-
-          <div className="max-h-[216px] space-y-1 overflow-y-auto overscroll-contain rounded-2xl border border-border/45 bg-[linear-gradient(180deg,hsl(var(--background)/0.82),hsl(var(--muted)/0.14))] p-1 no-scrollbar">
+            <div
+              data-chunk-file-list
+              className="mt-2 max-h-[216px] space-y-1 overflow-y-auto overscroll-contain rounded-xl border border-border/35 bg-muted/10 p-1 no-scrollbar"
+            >
             {sortedFileList.length === 0 ? (
               <div className="rounded-xl border border-dashed border-border/60 bg-muted/20 px-3 py-4 text-center">
                 <div className="text-[11px] font-medium text-foreground/75">
@@ -915,16 +992,14 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                 fileSizeLabel,
                 fileSourceLabel,
               ].filter(Boolean).join(' · ')
-              const fileVisual = getFileVisual(f)
-              const FileVisualIcon = fileVisual.icon
               return (
                 <div
                   key={f.id}
                   className={cn(
                     'group relative overflow-hidden rounded-xl border text-[10px] transition-[background,border,box-shadow] duration-150',
                     isActive
-                      ? 'border-primary/35 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--primary)/0.08))] shadow-sm ring-1 ring-primary/25'
-                      : 'border-transparent bg-transparent hover:border-primary/18 hover:bg-primary/7'
+                      ? 'border-primary/18 bg-background/78 shadow-none'
+                      : 'border-transparent bg-background/45 hover:border-border/40 hover:bg-background/70'
                   )}
                 >
                   <button
@@ -933,18 +1008,8 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                       if (fileIndex >= 0) setCurrentFileIndex(fileIndex)
                     }}
                     aria-label={t('sidebar.fileList.selectFile', { name: f.displayName })}
-                    className="grid w-full min-w-0 cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-xl py-1.5 pl-2 pr-12 text-left focus-ring"
+                    className="block w-full min-w-0 cursor-pointer rounded-xl py-2 pl-2.5 pr-24 text-left focus-ring"
                   >
-                    <span
-                      className={cn(
-                        'grid h-7 w-7 shrink-0 place-items-center rounded-lg border',
-                        isActive
-                          ? 'border-primary/25 bg-primary/10 text-primary'
-                          : fileVisual.shellClassName
-                      )}
-                    >
-                      <FileVisualIcon className={cn('h-3.5 w-3.5', isActive ? 'text-primary' : fileVisual.iconClassName)} />
-                    </span>
                     <span className="min-w-0">
                       <span className="flex min-w-0 items-center gap-1">
                         <span
@@ -982,14 +1047,14 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                       if (fileIndex >= 0) removeFile(fileIndex)
                     }}
                     className={cn(
-                      'absolute right-1.5 top-1/2 -translate-y-1/2 cursor-pointer rounded-lg p-1 text-muted-foreground/70 opacity-0 transition-colors transition-opacity duration-150 motion-reduce:transition-none',
-                      'hover:bg-destructive/10 hover:text-destructive focus-ring focus-visible:opacity-100 group-hover:opacity-100',
-                      isActive ? 'opacity-100' : ''
+                      'absolute right-1.5 top-1/2 -translate-y-1/2 cursor-pointer rounded-md px-1.5 py-1 text-[9px] font-bold text-muted-foreground/62 opacity-0 transition-colors transition-opacity duration-150 motion-reduce:transition-none',
+                      'hover:bg-destructive/8 hover:text-destructive focus-ring focus-visible:opacity-100 group-hover:opacity-100',
+                      isActive ? 'opacity-80' : ''
                     )}
                     aria-label={t('sidebar.fileList.removeFile', { name: f.displayName })}
                     title={t('sidebar.fileList.removeFile', { name: f.displayName })}
                   >
-                    <Trash2 className="w-3 h-3" />
+                    {t('sidebar.fileList.removeShort')}
                   </button>
                   <button
                     type="button"
@@ -998,18 +1063,47 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                     aria-label={t('sidebar.fileList.toggleForIngest', { name: f.displayName })}
                     title={t('sidebar.fileList.toggleForIngest', { name: f.displayName })}
                     className={cn(
-                      'absolute right-7 top-1/2 grid h-5 w-5 -translate-y-1/2 cursor-pointer place-items-center rounded-lg border text-[9px] opacity-0 transition-colors transition-opacity duration-150 motion-reduce:transition-none focus-ring focus-visible:opacity-100 group-hover:opacity-100',
+                      'absolute right-10 top-1/2 h-5 -translate-y-1/2 cursor-pointer rounded-md border px-1.5 text-[9px] font-bold opacity-0 transition-colors transition-opacity duration-150 motion-reduce:transition-none focus-ring focus-visible:opacity-100 group-hover:opacity-100',
                       isSelectedForIngest || isActive ? 'opacity-100' : '',
                       isSelectedForIngest
-                        ? 'border-primary/45 bg-primary text-primary-foreground shadow-sm'
-                        : 'border-border/70 bg-background/90 text-muted-foreground hover:border-primary/35 hover:bg-primary/10 hover:text-primary'
+                        ? 'border-primary/25 bg-primary/10 text-primary shadow-none'
+                        : 'border-border/40 bg-background/70 text-muted-foreground hover:border-primary/20 hover:bg-background hover:text-primary'
                     )}
                   >
-                    {isSelectedForIngest ? <Check className="h-3 w-3" /> : null}
+                    {isSelectedForIngest ? t('sidebar.fileList.selectedForIngestShort') : t('sidebar.fileList.selectForIngestShort')}
                   </button>
                 </div>
               )
             })}
+            </div>
+
+            <div className="mt-2 flex items-center justify-between gap-2 rounded-xl border border-border/35 bg-muted/10 px-2 py-1.5 shadow-none">
+              <div className="flex min-w-0 items-center gap-1.5">
+                <span
+                  className={cn(
+                    'h-1.5 w-1.5 shrink-0 rounded-full',
+                    selectedIngestCount > 0 ? 'bg-primary shadow-[0_0_0_3px_hsl(var(--primary)/0.12)]' : 'bg-muted-foreground/35'
+                  )}
+                />
+                <span className="min-w-0 truncate text-[10px] font-medium text-muted-foreground/85">
+                  {selectedIngestCount > 0
+                    ? t('sidebar.fileList.batchIngestSelected', {
+                        count: selectedIngestCount,
+                      })
+                    : t('sidebar.fileList.batchIngestIdle')}
+                </span>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant={selectedIngestCount > 0 ? 'default' : 'outline'}
+                onClick={submitSelectedFiles}
+                disabled={selectedIngestCount === 0 || isSubmitting}
+                className="h-6 shrink-0 rounded-lg px-2 text-[10px] shadow-none"
+              >
+                {selectedIngestCount > 0 ? t('sidebar.fileList.batchIngest') : t('sidebar.fileList.batchIngestShort')}
+              </Button>
+            </div>
           </div>
 
           <div className="h-px bg-border/45" />
@@ -1924,6 +2018,316 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                 </div>
               </div>
               <SidebarChip tone="violet">入库</SidebarChip>
+            </div>
+
+            <div
+              data-python-pipeline-plugin-panel
+              className="space-y-2.5 rounded-xl border border-border/45 bg-background/52 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-start gap-2">
+                  <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-lg border border-accent/20 bg-accent/8 text-accent">
+                    <FileCode2 className="h-3.5 w-3.5" strokeWidth={2.6} />
+                  </span>
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-bold leading-4 text-foreground/86">{t('sidebar.pythonPlugins.title')}</div>
+                    <div className="text-[9.5px] font-medium leading-3.5 text-muted-foreground/72">
+                      {t('sidebar.pythonPlugins.description')}
+                    </div>
+                  </div>
+                </div>
+                <SidebarChip tone={pythonPluginActive ? 'violet' : 'amber'}>
+                  {pythonPluginActive ? t('sidebar.pythonPlugins.active') : t('sidebar.pythonPlugins.inactive')}
+                </SidebarChip>
+              </div>
+
+              <div className="grid gap-2">
+                <label className="grid gap-1">
+                  <span className="text-[10px] font-bold text-muted-foreground/82">{t('sidebar.pythonPlugins.governancePluginLabel')}</span>
+                  <Select
+                    value={governancePluginValue}
+                    onValueChange={(value) => {
+                      pipelineCtx.setEnabled(true)
+                      pipelineCtx.updateOption(
+                        'governance_python_plugin',
+                        value === PYTHON_PLUGIN_NONE_VALUE ? undefined : value
+                      )
+                    }}
+                  >
+                    <SelectTrigger className="h-8 rounded-lg bg-background/75 text-[10.5px] font-bold">
+                      <SelectValue placeholder={t('sidebar.pythonPlugins.selectPlaceholder')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={PYTHON_PLUGIN_NONE_VALUE}>
+                        {t('sidebar.pythonPlugins.none')}
+                      </SelectItem>
+                      {pipelineCtx.options.governance_python_plugin && !governancePluginListed ? (
+                        <SelectItem value={pipelineCtx.options.governance_python_plugin}>
+                          {t('sidebar.pythonPlugins.currentImportPath')}
+                        </SelectItem>
+                      ) : null}
+                      {governancePluginOptions.map((plugin) => (
+                        <SelectItem
+                          key={`${plugin.id}@${plugin.version}:governance`}
+                          value={plugin.refs.governance || ''}
+                          disabled={!plugin.executable}
+                        >
+                          {plugin.name} v{plugin.version}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </label>
+                <label className="grid gap-1">
+                  <span className="text-[10px] font-bold text-muted-foreground/82">{t('sidebar.pythonPlugins.chunkPluginLabel')}</span>
+                  <Select
+                    value={chunkPluginValue}
+                    onValueChange={(value) => {
+                      pipelineCtx.setEnabled(true)
+                      pipelineCtx.updateOption(
+                        'chunk_python_plugin',
+                        value === PYTHON_PLUGIN_NONE_VALUE ? undefined : value
+                      )
+                    }}
+                  >
+                    <SelectTrigger className="h-8 rounded-lg bg-background/75 text-[10.5px] font-bold">
+                      <SelectValue placeholder={t('sidebar.pythonPlugins.selectPlaceholder')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={PYTHON_PLUGIN_NONE_VALUE}>
+                        {t('sidebar.pythonPlugins.none')}
+                      </SelectItem>
+                      {pipelineCtx.options.chunk_python_plugin && !chunkPluginListed ? (
+                        <SelectItem value={pipelineCtx.options.chunk_python_plugin}>
+                          {t('sidebar.pythonPlugins.currentImportPath')}
+                        </SelectItem>
+                      ) : null}
+                      {chunkPluginOptions.map((plugin) => (
+                        <SelectItem
+                          key={`${plugin.id}@${plugin.version}:chunk`}
+                          value={plugin.refs.chunk || ''}
+                          disabled={!plugin.executable}
+                        >
+                          {plugin.name} v{plugin.version}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </label>
+                <label className="grid gap-1">
+                  <span className="text-[10px] font-bold text-muted-foreground/82">{t('sidebar.pythonPlugins.kgPluginLabel')}</span>
+                  <Select
+                    value={kgPluginValue}
+                    onValueChange={(value) => {
+                      pipelineCtx.setEnabled(true)
+                      pipelineCtx.updateOption(
+                        'kg_python_plugin',
+                        value === PYTHON_PLUGIN_NONE_VALUE ? undefined : value
+                      )
+                    }}
+                  >
+                    <SelectTrigger className="h-8 rounded-lg bg-background/75 text-[10.5px] font-bold">
+                      <SelectValue placeholder={t('sidebar.pythonPlugins.selectPlaceholder')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={PYTHON_PLUGIN_NONE_VALUE}>
+                        {t('sidebar.pythonPlugins.none')}
+                      </SelectItem>
+                      {pipelineCtx.options.kg_python_plugin && !kgPluginListed ? (
+                        <SelectItem value={pipelineCtx.options.kg_python_plugin}>
+                          {t('sidebar.pythonPlugins.currentImportPath')}
+                        </SelectItem>
+                      ) : null}
+                      {kgPluginOptions.map((plugin) => (
+                        <SelectItem
+                          key={`${plugin.id}@${plugin.version}:kg`}
+                          value={plugin.refs.kg || ''}
+                          disabled={!plugin.executable}
+                        >
+                          {plugin.name} v{plugin.version}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </label>
+                {pipelinePluginsLoading ? (
+                  <SidebarNote tone="violet">{t('sidebar.pythonPlugins.loading')}</SidebarNote>
+                ) : pipelinePluginsError ? (
+                  <SidebarNote tone="amber">{pipelinePluginsError}</SidebarNote>
+                ) : pipelinePlugins.length === 0 ? (
+                  <SidebarNote tone="amber">{t('sidebar.pythonPlugins.empty')}</SidebarNote>
+                ) : unreadyPluginCount > 0 ? (
+                  <SidebarNote tone="amber">
+                    {t('sidebar.pythonPlugins.unreadyCount', { count: unreadyPluginCount })}
+                  </SidebarNote>
+                ) : null}
+                {!pipelinePluginsLoading && pipelinePluginRegistryErrors.length > 0 ? (
+                  <SidebarNote tone="amber">
+                    {t('sidebar.pythonPlugins.registryErrorCount', {
+                      count: pipelinePluginRegistryErrors.length,
+                      path: firstPluginRegistryError?.plugin_dir || '-',
+                    })}
+                  </SidebarNote>
+                ) : null}
+                {selectedAuditPlugin ? (
+                  <div
+                    data-python-pipeline-plugin-audit
+                    className="grid gap-1 rounded-lg border border-border/40 bg-muted/12 px-2 py-1.5 text-[9.5px] font-medium leading-3.5 text-muted-foreground/72"
+                  >
+                    <div className="flex min-w-0 items-center justify-between gap-2">
+                      <span className="truncate font-bold text-foreground/72">
+                        {t('sidebar.pythonPlugins.auditTitle')}
+                      </span>
+                      <span className="shrink-0 font-mono text-muted-foreground/80">
+                        {selectedAuditPackageHash ? selectedAuditPackageHash.slice(0, 12) : '-'}
+                      </span>
+                    </div>
+                    <div className="flex min-w-0 items-center justify-between gap-2">
+                      <span className="truncate">
+                        {selectedAuditTestedAt
+                          ? t('sidebar.pythonPlugins.auditTestedAt', { value: selectedAuditTestedAt })
+                          : t('sidebar.pythonPlugins.auditUntested')}
+                      </span>
+                      {typeof selectedAuditGoldenTotal === 'number' ? (
+                        <span className="shrink-0">
+                          {t('sidebar.pythonPlugins.auditGoldenCount', { count: selectedAuditGoldenTotal })}
+                        </span>
+                      ) : null}
+                    </div>
+                    {selectedAuditReportOwner ? (
+                      <div className="truncate font-mono text-[9px] text-muted-foreground/70">
+                        {t('sidebar.pythonPlugins.auditReportOwner', { value: selectedAuditReportOwner })}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+                {selectedPipelinePlugin ? (
+                  <div
+                    data-python-pipeline-plugin-templates
+                    className="grid gap-1.5 rounded-lg border border-border/40 bg-background/45 px-2 py-1.5 text-[9.5px] leading-3.5"
+                  >
+                    <div className="flex min-w-0 items-center justify-between gap-2">
+                      <span className="truncate text-[10px] font-bold text-foreground/75">
+                        {t('sidebar.pythonPlugins.processingTemplatesTitle')}
+                      </span>
+                      <SidebarChip tone="violet">
+                        {selectedPluginProcessingTemplates.length}
+                      </SidebarChip>
+                    </div>
+                    <div className="text-[9px] font-medium leading-3 text-muted-foreground/68">
+                      {t('sidebar.pythonPlugins.processingTemplatesHint')}
+                    </div>
+                    {selectedPluginProcessingTemplates.length ? (
+                      <div className="grid gap-1">
+                        {selectedPluginProcessingTemplates.slice(0, 6).map((template) => (
+                          <div
+                            key={template.key}
+                            className="flex min-w-0 items-center justify-between gap-2 rounded-md border border-border/35 bg-muted/18 px-1.5 py-1"
+                          >
+                            <span className="truncate font-semibold text-foreground/72">
+                              {template.name}
+                            </span>
+                            <span className="shrink-0 rounded-full border border-border/40 bg-background/70 px-1.5 py-0.5 font-mono text-[8px] uppercase text-muted-foreground/72">
+                              {template.stage}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-md border border-border/35 bg-muted/18 px-1.5 py-1 text-muted-foreground/70">
+                        {t('sidebar.pythonPlugins.processingTemplatesEmpty')}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+                {selectedGoldenPlugin?.contract?.golden?.enabled ? (
+                  <div className="grid gap-1.5 rounded-lg border border-border/40 bg-muted/12 px-2 py-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="min-w-0 text-[10px] font-bold text-muted-foreground/82">
+                        {t('sidebar.pythonPlugins.goldenTitle')}
+                      </span>
+                      <SidebarChip tone="violet">
+                        {selectedGoldenPlugin.name} v{selectedGoldenPlugin.version}
+                      </SidebarChip>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-7 justify-center rounded-lg px-2 text-[10.5px] shadow-none"
+                        disabled={!canImportGoldenDraft || goldenImportLoading || goldenRegressionLoading}
+                        onClick={() => handleImportPluginGoldenDraft()}
+                      >
+                        {goldenImportLoading ? (
+                          <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                        ) : (
+                          <Sparkles className="mr-1.5 h-3 w-3" />
+                        )}
+                        {t('sidebar.pythonPlugins.importGolden')}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-7 justify-center rounded-lg px-2 text-[10.5px] shadow-none"
+                        disabled={!canImportGoldenDraft || goldenImportLoading || goldenRegressionLoading}
+                        onClick={() => handleImportPluginGoldenDraft({ runRegression: true })}
+                      >
+                        {goldenRegressionLoading ? (
+                          <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                        ) : (
+                          <BarChart3 className="mr-1.5 h-3 w-3" />
+                        )}
+                        {t('sidebar.pythonPlugins.importAndRunGolden')}
+                      </Button>
+                    </div>
+                    <div className="text-[9.5px] font-medium leading-3.5 text-muted-foreground/70">
+                      {datasetId ? t('sidebar.pythonPlugins.importGoldenHint') : t('sidebar.pythonPlugins.importGoldenSelectDataset')}
+                    </div>
+                    {lastGoldenRegressionRun ? (
+                      <div className="flex items-center justify-between gap-2 rounded-lg border border-primary/15 bg-primary/5 px-2 py-1.5">
+                        <div className="min-w-0">
+                          <div className="truncate text-[10px] font-bold text-primary">
+                            Run {lastGoldenRegressionRun.id.slice(0, 8)}
+                          </div>
+                          <div className="text-[9px] font-medium text-muted-foreground/70">
+                            {t('sidebar.pythonPlugins.goldenRunCaseCount', {
+                              count: lastGoldenRegressionRun.caseCount,
+                            })}
+                          </div>
+                        </div>
+                        <Button asChild size="sm" variant="outline" className="h-6 shrink-0 rounded-lg px-2 text-[10px] shadow-none">
+                          <Link href={lastGoldenRegressionRun.href}>
+                            {t('sidebar.pythonPlugins.viewGoldenRun')}
+                          </Link>
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-7 rounded-lg px-2 text-[10.5px] shadow-none"
+                  disabled={pipelinePluginsLoading || !selectedPipelinePluginPatch}
+                  onClick={applySelectedPipelinePlugin}
+                >
+                  {t('sidebar.pythonPlugins.applySelected')}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 rounded-lg px-2 text-[10.5px] shadow-none"
+                  disabled={!pythonPluginActive}
+                  onClick={clearPythonPlugins}
+                >
+                  {t('sidebar.pythonPlugins.clear')}
+                </Button>
+              </div>
             </div>
             
             <div className="rounded-xl border border-border/40 bg-background/40 p-1">

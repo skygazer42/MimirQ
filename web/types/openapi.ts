@@ -674,7 +674,8 @@ export interface paths {
          * @description Get persisted parsed markdown content (raw+clean) for a document.
          *
          *     Availability:
-         *     - Only present when the ingestion pipeline enables `persist_parsed_content`.
+         *     - Prefer persisted parsed content when the ingestion pipeline enables it.
+         *     - For local text-like source files, fall back to the original text when no parsed cache exists.
          *     - When unavailable, returns `available=false` with empty strings.
          */
         get: operations["get_document_parsed_content_api_v1_documents__document_id__parsed_content_get"];
@@ -5016,6 +5017,73 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pipeline/plugins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Pipeline Plugins Endpoint
+         * @description List registered local pipeline plugins.
+         *
+         *     Plugins become executable only after their package manifest is published and
+         *     the local runner report matches the current package hash.
+         */
+        get: operations["list_pipeline_plugins_endpoint_api_v1_pipeline_plugins_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pipeline/plugins/golden-draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Build Pipeline Plugin Golden Draft
+         * @description Build a review-only regression case bundle from chunks produced by a plugin.
+         *
+         *     This endpoint does not import or persist golden cases. Review the returned
+         *     bundle, then import it through the regression case import API or the
+         *     pipeline-side golden-draft/import helper.
+         */
+        post: operations["build_pipeline_plugin_golden_draft_api_v1_pipeline_plugins_golden_draft_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pipeline/plugins/golden-draft/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Pipeline Plugin Golden Draft
+         * @description Build a plugin golden draft bundle and import it into regression cases.
+         */
+        post: operations["import_pipeline_plugin_golden_draft_api_v1_pipeline_plugins_golden_draft_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/pipeline/capabilities": {
         parameters: {
             query?: never;
@@ -7849,6 +7917,11 @@ export interface components {
              * @default false
              */
             precheck_only: boolean;
+            /**
+             * Upload Only
+             * @default false
+             */
+            upload_only: boolean;
             /** User Metadata Map */
             user_metadata_map?: string | null;
             /**
@@ -9343,10 +9416,7 @@ export interface components {
             diff_truncated: boolean;
             /** Issues */
             issues?: components["schemas"]["GovernanceIssue"][];
-            /** Suggested Pipeline Patch */
-            suggested_pipeline_patch?: {
-                [key: string]: unknown;
-            };
+            suggested_pipeline_patch?: components["schemas"]["DocumentPipelineOptions"];
         };
         /** CleanPreviewRuleStat */
         CleanPreviewRuleStat: {
@@ -13485,7 +13555,8 @@ export interface components {
          * @description Persisted parsed markdown content for a document (best-effort).
          *
          *     Notes:
-         *     - This is only available when the ingestion pipeline enables `persist_parsed_content`.
+         *     - Prefer persisted parsed content when the ingestion pipeline enables `persist_parsed_content`.
+         *     - Text-like local source files may fall back to original text when parsed content is not cached.
          *     - The returned markdown is already truncated when persisted (pipeline-controlled), and may be further
          *       truncated by the API handler via `max_chars` for UI safety.
          */
@@ -13744,6 +13815,18 @@ export interface components {
              */
             governance_common_lines_min_ratio?: number | null;
             /**
+             * Governance Python Plugin
+             * @description Registered governance plugin ref; legacy module:function refs require PYTHON_PIPELINE_PLUGIN_ALLOW_PREFIXES.
+             */
+            governance_python_plugin?: string | null;
+            /**
+             * Governance Python Params
+             * @description Small primitive params object passed to the Python governance plugin
+             */
+            governance_python_params?: {
+                [key: string]: unknown;
+            } | null;
+            /**
              * Parse Fallback Enabled
              * @description Retry parsing with an alternative backend when output quality is low (PDF only)
              */
@@ -13851,6 +13934,18 @@ export interface components {
                 [key: string]: unknown;
             } | null;
             /**
+             * Chunk Python Plugin
+             * @description Registered chunk plugin ref; legacy module:function refs require PYTHON_PIPELINE_PLUGIN_ALLOW_PREFIXES.
+             */
+            chunk_python_plugin?: string | null;
+            /**
+             * Chunk Python Params
+             * @description Small primitive params object passed to the Python chunking plugin
+             */
+            chunk_python_params?: {
+                [key: string]: unknown;
+            } | null;
+            /**
              * Embedding Context Prefix Enabled
              * @description Prefix chunk content with lightweight structural context (e.g. header_path) before embedding (vector-only).
              */
@@ -13871,6 +13966,18 @@ export interface components {
             bm25_index_enabled?: boolean | null;
             /** Kg Enabled */
             kg_enabled?: boolean | null;
+            /**
+             * Kg Python Plugin
+             * @description Registered KG plugin ref; legacy module:function refs require PYTHON_PIPELINE_PLUGIN_ALLOW_PREFIXES.
+             */
+            kg_python_plugin?: string | null;
+            /**
+             * Kg Python Params
+             * @description Small primitive params object passed to the Python KG plugin
+             */
+            kg_python_params?: {
+                [key: string]: unknown;
+            } | null;
             /** Event Vector Enabled */
             event_vector_enabled?: boolean | null;
             /** Entity Vector Enabled */
@@ -15577,10 +15684,7 @@ export interface components {
             input_lines: number;
             /** Issues */
             issues?: components["schemas"]["GovernanceIssue"][];
-            /** Suggested Pipeline Patch */
-            suggested_pipeline_patch?: {
-                [key: string]: unknown;
-            };
+            suggested_pipeline_patch?: components["schemas"]["DocumentPipelineOptions"];
         };
         /** GovernanceCommonLineCandidate */
         GovernanceCommonLineCandidate: {
@@ -15741,13 +15845,8 @@ export interface components {
              * @description Best-effort samples (may be truncated)
              */
             samples?: string[];
-            /**
-             * Suggested Pipeline Patch
-             * @description Best-effort suggested pipeline patch (DocumentPipelineOptions shape).
-             */
-            suggested_pipeline_patch?: {
-                [key: string]: unknown;
-            };
+            /** @description Best-effort suggested pipeline patch (DocumentPipelineOptions shape). */
+            suggested_pipeline_patch?: components["schemas"]["DocumentPipelineOptions"];
         };
         /**
          * GovernanceProcessingScript
@@ -18630,6 +18729,52 @@ export interface components {
              */
             vl_server: string;
         };
+        /**
+         * MinioConfig
+         * @description MinIO / S3-compatible object storage config.
+         */
+        MinioConfig: {
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /**
+             * Endpoint
+             * @default localhost:9000
+             */
+            endpoint: string;
+            /**
+             * Access Key
+             * @default
+             */
+            access_key: string;
+            /**
+             * Secret Key
+             * @default
+             */
+            secret_key: string;
+            /**
+             * Bucket Name
+             * @default mimirq
+             */
+            bucket_name: string;
+            /**
+             * Use Ssl
+             * @default false
+             */
+            use_ssl: boolean;
+            /**
+             * Documents Enabled
+             * @default false
+             */
+            documents_enabled: boolean;
+            /**
+             * Image Max Bytes
+             * @default 0
+             */
+            image_max_bytes: number;
+        };
         /** MinioStatus */
         MinioStatus: {
             /** Status */
@@ -19200,6 +19345,15 @@ export interface components {
              */
             governance_common_lines_min_ratio: number;
             /**
+             * Governance Python Plugin
+             * @default
+             */
+            governance_python_plugin: string;
+            /** Governance Python Params */
+            governance_python_params?: {
+                [key: string]: unknown;
+            };
+            /**
              * Chunk Size
              * @default 0
              */
@@ -19216,6 +19370,15 @@ export interface components {
             chunk_merge_small_min_chars: number;
             /** Chunk Strategy Params */
             chunk_strategy_params?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Chunk Python Plugin
+             * @default
+             */
+            chunk_python_plugin: string;
+            /** Chunk Python Params */
+            chunk_python_params?: {
                 [key: string]: unknown;
             };
             /**
@@ -19243,6 +19406,406 @@ export interface components {
              * @default false
              */
             entity_vector_enabled: boolean;
+        };
+        /** PipelinePluginContractSummary */
+        PipelinePluginContractSummary: {
+            metadata?: components["schemas"]["PipelinePluginMetadataContractSummary"];
+            retrieval_text?: components["schemas"]["PipelinePluginRetrievalTextContractSummary"];
+            golden?: components["schemas"]["PipelinePluginGoldenContractSummary"];
+        };
+        /** PipelinePluginGoldenContractSummary */
+        PipelinePluginGoldenContractSummary: {
+            /** Schema */
+            schema?: string | null;
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+        };
+        /** PipelinePluginGoldenDraftImportRequest */
+        PipelinePluginGoldenDraftImportRequest: {
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /**
+             * Plugin Ref
+             * @description Registered pipeline plugin ref, e.g. plugin:<id>@<version>:chunk.
+             */
+            plugin_ref: string;
+            /**
+             * Max Items
+             * @default 200
+             */
+            max_items: number;
+            /**
+             * Max Chunks
+             * @default 5000
+             */
+            max_chunks: number;
+            /**
+             * Include Unmarked Chunks
+             * @description Debug-only escape hatch. By default only chunks marked with the selected plugin ref are used; true requires PYTHON_PIPELINE_PLUGIN_ALLOW_UNMARKED_GOLDEN_CHUNKS=true.
+             * @default false
+             */
+            include_unmarked_chunks: boolean;
+            /**
+             * Overwrite
+             * @description Overwrite existing regression cases with the same question.
+             * @default false
+             */
+            overwrite: boolean;
+        };
+        /** PipelinePluginGoldenDraftImportResponse */
+        PipelinePluginGoldenDraftImportResponse: {
+            draft: components["schemas"]["PipelinePluginGoldenDraftResponse"];
+            import_result: components["schemas"]["PipelinePluginGoldenDraftImportResult"];
+        };
+        /** PipelinePluginGoldenDraftImportResult */
+        PipelinePluginGoldenDraftImportResult: {
+            /**
+             * Created
+             * @default 0
+             */
+            created: number;
+            /**
+             * Updated
+             * @default 0
+             */
+            updated: number;
+            /**
+             * Skipped
+             * @default 0
+             */
+            skipped: number;
+            /** Errors */
+            errors?: {
+                [key: string]: unknown;
+            }[];
+            /** Created Case Ids */
+            created_case_ids?: string[];
+            /** Updated Case Ids */
+            updated_case_ids?: string[];
+            /**
+             * Skipped Case Ids
+             * @description Existing ids skipped because overwrite=false.
+             */
+            skipped_case_ids?: string[];
+            /**
+             * Case Ids
+             * @description Created ids followed by updated and skipped-existing ids.
+             */
+            case_ids?: string[];
+        };
+        /** PipelinePluginGoldenDraftRequest */
+        PipelinePluginGoldenDraftRequest: {
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /**
+             * Plugin Ref
+             * @description Registered pipeline plugin ref, e.g. plugin:<id>@<version>:chunk.
+             */
+            plugin_ref: string;
+            /**
+             * Max Items
+             * @default 200
+             */
+            max_items: number;
+            /**
+             * Max Chunks
+             * @default 5000
+             */
+            max_chunks: number;
+            /**
+             * Include Unmarked Chunks
+             * @description Debug-only escape hatch. By default only chunks marked with the selected plugin ref are used; true requires PYTHON_PIPELINE_PLUGIN_ALLOW_UNMARKED_GOLDEN_CHUNKS=true.
+             * @default false
+             */
+            include_unmarked_chunks: boolean;
+        };
+        /** PipelinePluginGoldenDraftResponse */
+        PipelinePluginGoldenDraftResponse: {
+            /**
+             * Dataset Id
+             * Format: uuid
+             */
+            dataset_id: string;
+            /** Plugin Id */
+            plugin_id: string;
+            /** Plugin Version */
+            plugin_version: string;
+            /** Plugin Ref */
+            plugin_ref: string;
+            /**
+             * Items Total
+             * @default 0
+             */
+            items_total: number;
+            /** Bundle */
+            bundle?: {
+                [key: string]: unknown;
+            };
+        };
+        /** PipelinePluginGoldenTestSummary */
+        PipelinePluginGoldenTestSummary: {
+            /**
+             * Passed
+             * @default false
+             */
+            passed: boolean;
+            /**
+             * Items Total
+             * @default 0
+             */
+            items_total: number;
+            /** Sample Questions */
+            sample_questions?: string[];
+        };
+        /** PipelinePluginItem */
+        PipelinePluginItem: {
+            /** Id */
+            id: string;
+            /** Version */
+            version: string;
+            /** Name */
+            name: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Published
+             * @default false
+             */
+            published: boolean;
+            /**
+             * Executable
+             * @default false
+             */
+            executable: boolean;
+            /**
+             * Test Status
+             * @default
+             */
+            test_status: string;
+            /**
+             * Package Hash
+             * @default
+             */
+            package_hash: string;
+            test_report?: components["schemas"]["PipelinePluginTestReportSummary"];
+            /** Stages */
+            stages?: ("governance" | "chunk" | "kg")[];
+            refs?: components["schemas"]["PipelinePluginRefs"];
+            contract?: components["schemas"]["PipelinePluginContractSummary"];
+            processing_templates?: components["schemas"]["PipelinePluginProcessingTemplates"];
+            suggested_pipeline_patch?: components["schemas"]["PipelinePluginSuggestedPatch"];
+        };
+        /** PipelinePluginListError */
+        PipelinePluginListError: {
+            /** Plugin Dir */
+            plugin_dir: string;
+            /**
+             * Manifest Path
+             * @default
+             */
+            manifest_path: string;
+            /** Error */
+            error: string;
+        };
+        /** PipelinePluginListResponse */
+        PipelinePluginListResponse: {
+            /** Items */
+            items?: components["schemas"]["PipelinePluginItem"][];
+            /** Errors */
+            errors?: components["schemas"]["PipelinePluginListError"][];
+        };
+        /** PipelinePluginMetadataContractSummary */
+        PipelinePluginMetadataContractSummary: {
+            /** Schema */
+            schema?: string | null;
+            /** Fields */
+            fields?: string[];
+            /** Required Fields */
+            required_fields?: string[];
+            /** Filterable Fields */
+            filterable_fields?: string[];
+            /** Display Fields */
+            display_fields?: string[];
+            /** Evaluable Fields */
+            evaluable_fields?: string[];
+            /** Record Identity Fields */
+            record_identity_fields?: string[];
+        };
+        /** PipelinePluginProcessingTemplate */
+        PipelinePluginProcessingTemplate: {
+            /**
+             * Key
+             * @default
+             */
+            key: string;
+            /**
+             * Name
+             * @default
+             */
+            name: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Stage
+             * @default governance
+             * @enum {string}
+             */
+            stage: "governance" | "chunk" | "kg";
+            /**
+             * Implemented By
+             * @default
+             */
+            implemented_by: string;
+            /** Related Implementations */
+            related_implementations?: string[];
+        };
+        /** PipelinePluginProcessingTemplates */
+        PipelinePluginProcessingTemplates: {
+            /**
+             * Schema
+             * @default
+             */
+            schema: string;
+            /**
+             * Plugin Id
+             * @default
+             */
+            plugin_id: string;
+            /**
+             * Version
+             * @default
+             */
+            version: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Templates */
+            templates?: components["schemas"]["PipelinePluginProcessingTemplate"][];
+        };
+        /** PipelinePluginRefs */
+        PipelinePluginRefs: {
+            /** Governance */
+            governance?: string | null;
+            /** Chunk */
+            chunk?: string | null;
+            /** Kg */
+            kg?: string | null;
+        };
+        /** PipelinePluginRetrievalTextContractSummary */
+        PipelinePluginRetrievalTextContractSummary: {
+            /** Schema */
+            schema?: string | null;
+            /** Stages */
+            stages?: string[];
+        };
+        /** PipelinePluginSuggestedPatch */
+        PipelinePluginSuggestedPatch: {
+            /**
+             * Governance Enabled
+             * @description Enable the platform governance stage before plugin governance runs.
+             */
+            governance_enabled?: boolean | null;
+            /**
+             * Governance Python Params
+             * @description Small primitive params object passed to the governance plugin.
+             */
+            governance_python_params?: {
+                [key: string]: string | number | boolean | null;
+            } | null;
+            /**
+             * Chunk Python Params
+             * @description Small primitive params object passed to the chunk plugin.
+             */
+            chunk_python_params?: {
+                [key: string]: string | number | boolean | null;
+            } | null;
+            /**
+             * Kg Python Params
+             * @description Small primitive params object passed to the KG plugin.
+             */
+            kg_python_params?: {
+                [key: string]: string | number | boolean | null;
+            } | null;
+            /**
+             * Persist Parsed Content
+             * @description Persist parsed content when the plugin flow needs parsed markdown auditing.
+             */
+            persist_parsed_content?: boolean | null;
+        };
+        /** PipelinePluginTestReportSummary */
+        PipelinePluginTestReportSummary: {
+            /**
+             * Plugin Id
+             * @default
+             */
+            plugin_id: string;
+            /**
+             * Version
+             * @default
+             */
+            version: string;
+            /**
+             * Package Hash
+             * @default
+             */
+            package_hash: string;
+            /**
+             * Tested At
+             * @default
+             */
+            tested_at: string;
+            /**
+             * Passed
+             * @default false
+             */
+            passed: boolean;
+            /** Stages */
+            stages?: {
+                [key: string]: components["schemas"]["PipelinePluginTestStageSummary"];
+            };
+            golden_draft?: components["schemas"]["PipelinePluginGoldenTestSummary"];
+        };
+        /** PipelinePluginTestStageSummary */
+        PipelinePluginTestStageSummary: {
+            /**
+             * Passed
+             * @default false
+             */
+            passed: boolean;
+            /**
+             * Input Count
+             * @default 0
+             */
+            input_count: number;
+            /**
+             * Output Count
+             * @default 0
+             */
+            output_count: number;
+            /**
+             * Output Chars
+             * @default 0
+             */
+            output_chars: number;
+            /** Metadata Ok */
+            metadata_ok?: boolean | null;
         };
         /** PipelineVersionSummary */
         PipelineVersionSummary: {
@@ -20778,6 +21341,13 @@ export interface components {
             reasoning_hops?: string[];
             /** Evidence Chain */
             evidence_chain?: components["schemas"]["ReferenceSource"][];
+            /**
+             * Extra
+             * @description Portable extension fields, such as plugin expected metadata
+             */
+            extra?: {
+                [key: string]: unknown;
+            };
         };
         /** RagasRegressionCaseCreateRequest */
         RagasRegressionCaseCreateRequest: {
@@ -20852,6 +21422,45 @@ export interface components {
             max_items: number;
             /** Items */
             items: components["schemas"]["RagasRegressionCaseBundleItem"][];
+        };
+        /**
+         * RagasRegressionCaseImportResponse
+         * @description Result of importing regression cases, including ids that can be evaluated immediately.
+         */
+        RagasRegressionCaseImportResponse: {
+            /**
+             * Created
+             * @default 0
+             */
+            created: number;
+            /**
+             * Updated
+             * @default 0
+             */
+            updated: number;
+            /**
+             * Skipped
+             * @default 0
+             */
+            skipped: number;
+            /** Errors */
+            errors?: {
+                [key: string]: unknown;
+            }[];
+            /** Created Case Ids */
+            created_case_ids?: string[];
+            /** Updated Case Ids */
+            updated_case_ids?: string[];
+            /**
+             * Skipped Case Ids
+             * @description Existing ids skipped because overwrite=false.
+             */
+            skipped_case_ids?: string[];
+            /**
+             * Case Ids
+             * @description Created ids followed by updated and skipped-existing ids.
+             */
+            case_ids?: string[];
         };
         /** RagasRegressionCaseList */
         RagasRegressionCaseList: {
@@ -21466,6 +22075,13 @@ export interface components {
              * @description Chunk pipeline hash (optional)
              */
             pipeline_hash?: string | null;
+            /**
+             * Record Identity
+             * @description Plugin-defined stable record identity for record-level recall across re-chunking
+             */
+            record_identity?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Quote
              * @description Evidence excerpt (optional; used as fallback when chunk_id becomes stale)
@@ -22111,6 +22727,7 @@ export interface components {
             llm: components["schemas"]["LLMConfig"];
             embedding: components["schemas"]["EmbeddingConfig"];
             milvus: components["schemas"]["MilvusConfig"];
+            minio: components["schemas"]["MinioConfig"];
             rag: components["schemas"]["RAGConfig"];
             cache: components["schemas"]["CacheConfig"];
             url_ingest: components["schemas"]["UrlIngestConfig"];
@@ -22825,6 +23442,7 @@ export interface components {
             llm?: components["schemas"]["LLMConfig"] | null;
             embedding?: components["schemas"]["EmbeddingConfig"] | null;
             milvus?: components["schemas"]["MilvusConfig"] | null;
+            minio?: components["schemas"]["MinioConfig"] | null;
             rag?: components["schemas"]["RAGConfig"] | null;
             cache?: components["schemas"]["CacheConfig"] | null;
             url_ingest?: components["schemas"]["UrlIngestConfig"] | null;
@@ -40202,7 +40820,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["RagasRegressionCaseImportResponse"];
                 };
             };
             /** @description Bad Request */
@@ -43459,6 +44077,205 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_pipeline_plugins_endpoint_api_v1_pipeline_plugins_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PipelinePluginListResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    build_pipeline_plugin_golden_draft_api_v1_pipeline_plugins_golden_draft_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PipelinePluginGoldenDraftRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PipelinePluginGoldenDraftResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_pipeline_plugin_golden_draft_api_v1_pipeline_plugins_golden_draft_import_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PipelinePluginGoldenDraftImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PipelinePluginGoldenDraftImportResponse"];
                 };
             };
             /** @description Bad Request */

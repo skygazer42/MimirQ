@@ -36,6 +36,35 @@ def test_metadata_filter_dot_paths_and_list_overlap() -> None:
     assert not match_metadata_filter(meta, {"tags": {"$nin": ["a"]}})
 
 
+def test_metadata_filter_falls_back_to_indexed_metadata_view() -> None:
+    meta = {
+        "_indexed_metadata": {
+            "business_type": "demo_service",
+            "district": "north-region",
+            "aliases": ["就业", "创业"],
+        }
+    }
+
+    assert match_metadata_filter(meta, {"business_type": "demo_service"})
+    assert match_metadata_filter(meta, {"district": {"$contains": "north"}})
+    assert match_metadata_filter(meta, {"aliases": {"$in": ["创业"]}})
+    assert match_metadata_filter(meta, {"$and": [{"business_type": "demo_service"}, {"district": "north-region"}]})
+    assert not match_metadata_filter(meta, {"missing_business_field": {"$exists": True}})
+    assert match_metadata_filter(meta, {"missing_business_field": {"$exists": False}})
+
+
+def test_metadata_filter_keeps_explicit_top_level_metadata_precedence() -> None:
+    meta = {
+        "district": "south-region",
+        "_indexed_metadata": {
+            "district": "north-region",
+        },
+    }
+
+    assert match_metadata_filter(meta, {"district": "south-region"})
+    assert not match_metadata_filter(meta, {"district": "north-region"})
+
+
 def test_metadata_filter_contains_list_values() -> None:
     meta = {"labels": ["Apple", "Banana", "Cherry"]}
 

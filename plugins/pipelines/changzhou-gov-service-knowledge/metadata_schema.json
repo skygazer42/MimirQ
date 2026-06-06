@@ -1,0 +1,304 @@
+{
+  "schema": "mimirq.metadata_schema.v1",
+  "record_identity": ["knowledge_section", "source_record_id"],
+  "fields": [
+    {
+      "name": "gov_knowledge_plugin",
+      "type": "string",
+      "required": true,
+      "stages": ["governance", "chunk"],
+      "filterable": true,
+      "display": true,
+      "max_length": 120
+    },
+    {
+      "name": "gov_knowledge_type",
+      "type": "string",
+      "required": true,
+      "stages": ["governance", "chunk"],
+      "filterable": true,
+      "display": true,
+      "evaluable": true,
+      "enum": ["service_item", "one_thing_guide", "one_thing_operation", "qa", "regulation_text", "gov_text"]
+    },
+    {
+      "name": "knowledge_root",
+      "type": "string",
+      "required": true,
+      "stages": ["governance", "chunk"],
+      "display": true,
+      "max_length": 120
+    },
+    {
+      "name": "knowledge_section",
+      "type": "string",
+      "required": true,
+      "stages": ["governance", "chunk"],
+      "filterable": true,
+      "display": true,
+      "evaluable": true,
+      "max_length": 120
+    },
+    {
+      "name": "source_file",
+      "type": "string",
+      "required": true,
+      "stages": ["governance", "chunk"],
+      "display": true,
+      "max_length": 1000
+    },
+    {
+      "name": "source_record_id",
+      "type": "string",
+      "required": true,
+      "stages": ["governance", "chunk"],
+      "filterable": true,
+      "display": true,
+      "evaluable": true,
+      "max_length": 120
+    },
+    {
+      "name": "source_record_index",
+      "type": "integer",
+      "required": true,
+      "stages": ["governance", "chunk"],
+      "display": true
+    },
+    {
+      "name": "chunk_kind",
+      "type": "string",
+      "required": true,
+      "stages": ["chunk"],
+      "filterable": true,
+      "display": true,
+      "evaluable": true,
+      "max_length": 120
+    },
+    {
+      "name": "chunk_strategy",
+      "type": "string",
+      "required": true,
+      "stages": ["chunk"],
+      "display": true,
+      "max_length": 120
+    },
+    {
+      "name": "chunk_index",
+      "type": "integer",
+      "required": true,
+      "stages": ["chunk"],
+      "display": true
+    },
+    {
+      "name": "service_name",
+      "type": "string",
+      "required": false,
+      "stages": ["governance", "chunk"],
+      "filterable": true,
+      "display": true,
+      "evaluable": true,
+      "max_length": 300
+    },
+    {
+      "name": "service_aliases",
+      "type": "array",
+      "required": false,
+      "stages": ["governance", "chunk"],
+      "display": true,
+      "evaluable": true
+    },
+    {
+      "name": "case_title",
+      "type": "string",
+      "required": false,
+      "stages": ["governance", "chunk"],
+      "filterable": true,
+      "display": true,
+      "evaluable": true,
+      "max_length": 300
+    },
+    {
+      "name": "case_key",
+      "type": "string",
+      "required": false,
+      "stages": ["governance", "chunk"],
+      "filterable": true,
+      "display": true,
+      "evaluable": true,
+      "max_length": 300
+    },
+    {
+      "name": "section_type",
+      "type": "string",
+      "required": false,
+      "stages": ["chunk"],
+      "filterable": true,
+      "display": true,
+      "evaluable": true,
+      "max_length": 120
+    },
+    {
+      "name": "section_label",
+      "type": "string",
+      "required": false,
+      "stages": ["chunk"],
+      "display": true,
+      "max_length": 120
+    },
+    {
+      "name": "related_services",
+      "type": "array",
+      "required": false,
+      "stages": ["governance", "chunk"],
+      "display": true,
+      "evaluable": true
+    },
+    {
+      "name": "materials",
+      "type": "array",
+      "required": false,
+      "stages": ["governance", "chunk"],
+      "display": true,
+      "evaluable": true
+    },
+    {
+      "name": "operation_steps",
+      "type": "array",
+      "required": false,
+      "stages": ["governance", "chunk"],
+      "display": true,
+      "evaluable": true
+    },
+    {
+      "name": "urls",
+      "type": "array",
+      "required": false,
+      "stages": ["governance", "chunk"],
+      "display": true
+    },
+    {
+      "name": "step_no",
+      "type": "integer",
+      "required": false,
+      "stages": ["chunk"],
+      "display": true
+    },
+    {
+      "name": "question",
+      "type": "string",
+      "required": false,
+      "stages": ["governance", "chunk"],
+      "display": true,
+      "evaluable": true,
+      "max_length": 1000
+    },
+    {
+      "name": "aliases",
+      "type": "array",
+      "required": false,
+      "stages": ["governance", "chunk"],
+      "display": true,
+      "evaluable": true
+    },
+    {
+      "name": "keywords",
+      "type": "array",
+      "required": false,
+      "stages": ["governance", "chunk"],
+      "display": true,
+      "evaluable": true
+    },
+    {
+      "name": "title",
+      "type": "string",
+      "required": false,
+      "stages": ["governance", "chunk"],
+      "filterable": true,
+      "display": true,
+      "evaluable": true,
+      "max_length": 500
+    },
+    {
+      "name": "district",
+      "type": "string",
+      "required": false,
+      "stages": ["governance", "chunk"],
+      "filterable": true,
+      "display": true,
+      "max_length": 80
+    },
+    {
+      "name": "department_domain",
+      "type": "string",
+      "required": false,
+      "stages": ["governance", "chunk"],
+      "filterable": true,
+      "display": true,
+      "max_length": 200
+    },
+    {
+      "name": "source_department",
+      "type": "string",
+      "required": false,
+      "stages": ["governance", "chunk"],
+      "filterable": true,
+      "display": true,
+      "max_length": 300
+    },
+    {
+      "name": "source_topic",
+      "type": "string",
+      "required": false,
+      "stages": ["governance", "chunk"],
+      "filterable": true,
+      "display": true,
+      "evaluable": true,
+      "max_length": 500
+    },
+    {
+      "name": "source_sheet",
+      "type": "string",
+      "required": false,
+      "stages": ["governance", "chunk"],
+      "filterable": true,
+      "display": true,
+      "max_length": 200
+    },
+    {
+      "name": "category_path",
+      "type": "array",
+      "required": false,
+      "stages": ["governance", "chunk"],
+      "display": true,
+      "evaluable": true
+    },
+    {
+      "name": "category_leaf",
+      "type": "string",
+      "required": false,
+      "stages": ["governance", "chunk"],
+      "filterable": true,
+      "display": true,
+      "evaluable": true,
+      "max_length": 200
+    },
+    {
+      "name": "applicable_area",
+      "type": "string",
+      "required": false,
+      "stages": ["governance", "chunk"],
+      "filterable": true,
+      "display": true,
+      "evaluable": true,
+      "max_length": 200
+    },
+    {
+      "name": "service_url",
+      "type": "string",
+      "required": false,
+      "stages": ["governance", "chunk"],
+      "display": true,
+      "max_length": 1000
+    }
+  ]
+}

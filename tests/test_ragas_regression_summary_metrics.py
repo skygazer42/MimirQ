@@ -72,3 +72,34 @@ def test_regression_gate_summary_skips_missing_values() -> None:
     assert summary["retrieval_ndcg_at_10"] is None
     assert summary["retrieval_ndcg_at_20"] is None
     assert summary["abstain_rate"] == pytest.approx(0.0)
+
+
+def test_regression_gate_summary_includes_expected_metadata_metrics() -> None:
+    from app.rag.evaluation import ragas as ragas_mod
+
+    items = [
+        {
+            "item_meta": {
+                "expected_metadata_hit": True,
+                "expected_metadata_recall": 1.0,
+                "expected_metadata_fields_total": 2,
+                "expected_metadata_fields_matched": 2,
+            }
+        },
+        {
+            "item_meta": {
+                "expected_metadata_hit": False,
+                "expected_metadata_recall": 0.5,
+                "expected_metadata_fields_total": 2,
+                "expected_metadata_fields_matched": 1,
+            }
+        },
+    ]
+
+    summary = ragas_mod._build_regression_gate_summary(items)  # noqa: SLF001
+
+    assert summary["expected_metadata_hit_rate"] == pytest.approx(0.5)
+    assert summary["expected_metadata_recall"] == pytest.approx(0.75)
+    assert summary["expected_metadata_cases_total"] == 2
+    assert summary["expected_metadata_fields_total"] == 4
+    assert summary["expected_metadata_fields_matched"] == 3

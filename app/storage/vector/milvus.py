@@ -21,10 +21,22 @@ logger = get_logger("storage.vector.milvus")
 _MILVUS_MAX_VARCHAR_BYTES = 65_535
 _MILVUS_EXPR_MAX_CHARS = 8000
 _MILVUS_EXPR_AND = " and "
+_MILVUS_EXPR_OR = " or "
 _MILVUS_FALLBACK_LOG_MESSAGE = "Ignoring non-critical Milvus fallback failure: %s"
 _MILVUS_FIELD_NAME_RE = re.compile(r"^[A-Za-z_]\w*$")
 _MILVUS_WARNED_WRITE_COMPAT_FALLBACK = False
 _MILVUS_WARNED_SEARCH_EXPR_FALLBACK = False
+_INDEXED_METADATA_VIEW_KEY = "_indexed_metadata"
+_INDEXED_METADATA_FILTERS_KEY = "__indexed_metadata_filters__"
+_INDEXED_METADATA_SLOT_COUNT = 16
+_INDEXED_METADATA_SLOT_FIELD_PAIRS = tuple(
+    (f"indexed_meta_{idx:02d}_key", f"indexed_meta_{idx:02d}_value")
+    for idx in range(1, _INDEXED_METADATA_SLOT_COUNT + 1)
+)
+_INDEXED_METADATA_VALUE_EXPR_FIELD = _INDEXED_METADATA_SLOT_FIELD_PAIRS[0][1]
+_INDEXED_METADATA_SLOT_FIELDS = frozenset(
+    field for pair in _INDEXED_METADATA_SLOT_FIELD_PAIRS for field in pair
+)
 
 # Safe allowlist for metadata expr pushdown (must exist in collection schema).
 _MILVUS_NUMERIC_FIELDS = frozenset({"chunk_index", "page_number"})
@@ -49,6 +61,7 @@ _MILVUS_STRING_FIELDS = frozenset(
         "name",
         "title",
     }
+    | _INDEXED_METADATA_SLOT_FIELDS
 )
 _MILVUS_ALLOWED_FILTER_FIELDS = _MILVUS_NUMERIC_FIELDS | _MILVUS_STRING_FIELDS
 
@@ -71,6 +84,7 @@ _DOC_VECTOR_METADATA_FIELDS = frozenset(
         "image_id",
         "image_url",
     }
+    | _INDEXED_METADATA_SLOT_FIELDS
 )
 
 # Public-facing aliases commonly used in the retrieval layer.
@@ -78,6 +92,112 @@ _MILVUS_FILTER_KEY_ALIASES: dict[str, str] = {
     "page": "page_number",
     "img_url": "image_url",
 }
+
+
+def _normalize_indexed_metadata_filter_key(raw_key: str) -> str | None:
+    key = str(raw_key or "").strip()
+    if not key:
+        return None
+    prefix = f"{_INDEXED_METADATA_VIEW_KEY}."
+    if key.startswith(prefix):
+        field = key[len(prefix) :].strip()
+        return field or None
+    if key.startswith("$") or key.startswith("_") or "." in key:
+        return None
+    return key
+
+
+def _stringify_indexed_metadata_value(value: Any) -> str:
+    text = str(value).strip()
+    if not text:
+        return ""
+    return text[:_MILVUS_MAX_VARCHAR_BYTES]
+
+
+def _iter_indexed_metadata_slot_items(meta: dict[str, Any]) -> list[tuple[str, str]]:
+    indexed = meta.get(_INDEXED_METADATA_VIEW_KEY)
+    if not isinstance(indexed, dict):
+        return []
+
+    items: list[tuple[str, str]] = []
+    for raw_key, raw_value in sorted(indexed.items(), key=lambda item: str(item[0])):
+        key = str(raw_key or "").strip()
+        if not key:
+            continue
+        values = raw_value if isinstance(raw_value, (list, tuple, set)) else [raw_value]
+        for value in values:
+            if value in (None, "", [], {}):
+                continue
+            normalized_value = _stringify_indexed_metadata_value(value)
+            if not normalized_value:
+                continue
+            items.append((key[:512], normalized_value))
+            if len(items) >= _INDEXED_METADATA_SLOT_COUNT:
+                return items
+    return items
+
+
+def _flatten_indexed_metadata_slots(meta: dict[str, Any]) -> dict[str, str]:
+    slots = {
+        field_name: ""
+        for key_field, value_field in _INDEXED_METADATA_SLOT_FIELD_PAIRS
+        for field_name in (key_field, value_field)
+    }
+    for (key_field, value_field), (key, value) in zip(
+        _INDEXED_METADATA_SLOT_FIELD_PAIRS,
+        _iter_indexed_metadata_slot_items(meta),
+        strict=False,
+    ):
+        slots[key_field] = key
+        slots[value_field] = value
+    return slots
+
+
+def _rehydrate_indexed_metadata_slots(meta: dict[str, Any]) -> dict[str, Any]:
+    out = dict(meta or {})
+    if isinstance(out.get(_INDEXED_METADATA_VIEW_KEY), dict):
+        return out
+
+    indexed: dict[str, Any] = {}
+    for key_field, value_field in _INDEXED_METADATA_SLOT_FIELD_PAIRS:
+        key = str(out.get(key_field) or "").strip()
+        value = str(out.get(value_field) or "").strip()
+        if not key or not value:
+            continue
+        existing = indexed.get(key)
+        if existing is None:
+            indexed[key] = value
+        elif isinstance(existing, list):
+            existing.append(value)
+        else:
+            indexed[key] = [existing, value]
+    if indexed:
+        out[_INDEXED_METADATA_VIEW_KEY] = indexed
+    return out
+
+
+def _milvus_client_filter_spec(supported_filter: dict[str, Any]) -> dict[str, Any]:
+    out = {
+        key: value
+        for key, value in (supported_filter or {}).items()
+        if key != _INDEXED_METADATA_FILTERS_KEY
+    }
+    for item in supported_filter.get(_INDEXED_METADATA_FILTERS_KEY, []) or []:
+        if not isinstance(item, dict):
+            continue
+        field = str(item.get("field") or "").strip()
+        if not field:
+            continue
+        out[field] = item.get("condition")
+    return out
+
+
+def _milvus_scalar_client_filter_spec(supported_filter: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in (supported_filter or {}).items()
+        if key != _INDEXED_METADATA_FILTERS_KEY
+    }
 
 
 def _sanitize_milvus_metadata_filter(
@@ -100,6 +220,12 @@ def _sanitize_milvus_metadata_filter(
     cleaned: dict[str, Any] = {}
     for raw_key, condition in metadata_filter.items():
         if not isinstance(raw_key, str):
+            continue
+        indexed_field = _normalize_indexed_metadata_filter_key(raw_key)
+        if indexed_field and indexed_field not in allowed:
+            cleaned.setdefault(_INDEXED_METADATA_FILTERS_KEY, []).append(
+                {"field": indexed_field, "condition": condition}
+            )
             continue
         if "." in raw_key:
             continue
@@ -237,6 +363,53 @@ def _milvus_in_list_expr(field: str, values: Any) -> str | None:
     return f"[{', '.join(items)}]"
 
 
+def _indexed_metadata_value_expr(condition: Any) -> str | None:
+    if isinstance(condition, dict):
+        if "$eq" in condition:
+            return _milvus_value_expr(_INDEXED_METADATA_VALUE_EXPR_FIELD, condition.get("$eq"))
+        if "$in" in condition:
+            return _milvus_in_list_expr(_INDEXED_METADATA_VALUE_EXPR_FIELD, condition.get("$in"))
+        return None
+    return _milvus_value_expr(_INDEXED_METADATA_VALUE_EXPR_FIELD, condition)
+
+
+def _indexed_metadata_slot_expr(field: str, condition: Any) -> str | None:
+    normalized_field = str(field or "").strip()
+    if not normalized_field:
+        return None
+
+    value_expr = _indexed_metadata_value_expr(condition)
+    if value_expr is None:
+        return None
+
+    value_op = "in" if isinstance(condition, dict) and "$in" in condition else "=="
+    slot_parts: list[str] = []
+    for key_field, value_field in _INDEXED_METADATA_SLOT_FIELD_PAIRS:
+        key_expr = _milvus_value_expr(key_field, normalized_field)
+        if key_expr is None:
+            continue
+        slot_parts.append(f"({key_field} == {key_expr} and {value_field} {value_op} {value_expr})")
+    if not slot_parts:
+        return None
+    return f"({_MILVUS_EXPR_OR.join(slot_parts)})"
+
+
+def _indexed_metadata_filter_exprs(indexed_filters: Any) -> list[str]:
+    if not isinstance(indexed_filters, list):
+        return []
+    parts: list[str] = []
+    for item in indexed_filters:
+        if not isinstance(item, dict):
+            continue
+        expr = _indexed_metadata_slot_expr(
+            field=str(item.get("field") or ""),
+            condition=item.get("condition"),
+        )
+        if expr:
+            parts.append(expr)
+    return parts
+
+
 def _build_milvus_metadata_expr(metadata_filter: dict[str, Any] | None) -> str | None:
     """Best-effort translation of metadata_filter into Milvus expr (AND semantics)."""
     if not metadata_filter or not isinstance(metadata_filter, dict):
@@ -245,6 +418,9 @@ def _build_milvus_metadata_expr(metadata_filter: dict[str, Any] | None) -> str |
     parts: list[str] = []
     for key, condition in metadata_filter.items():
         if not isinstance(key, str):
+            continue
+        if key == _INDEXED_METADATA_FILTERS_KEY:
+            parts.extend(_indexed_metadata_filter_exprs(condition))
             continue
         if "." in key:
             continue
@@ -432,6 +608,7 @@ class MilvusAdapter:
             meta = dict(item.get("metadata") or {})
             for key in reserved_fields:
                 meta.pop(key, None)
+            meta.update(_flatten_indexed_metadata_slots(meta))
             metadatas.append(meta)
         metadatas = _normalize_milvus_metadata_batch(metadatas)
 
@@ -590,6 +767,7 @@ class MilvusAdapter:
 
         supported_filter = _sanitize_milvus_metadata_filter(metadata_filter)
         metadata_expr = _build_milvus_metadata_expr(supported_filter)
+        metadata_expr_fallback = False
         if expr and metadata_expr:
             combined_expr = f"({expr}) and ({metadata_expr})"
         else:
@@ -603,21 +781,31 @@ class MilvusAdapter:
             )
         except Exception:
             # Fallback: ignore pushdown on schema/expr mismatch; still apply client-side filtering.
+            metadata_expr_fallback = bool(metadata_expr)
             results = self._store.similarity_search_with_score_by_vector(
                 embedding=query_vector,
                 k=top_k,
                 expr=expr,
             )
-        return [
-            {
-                "id": doc.id,
-                "metadata": doc.metadata or {},
-                "score": float(score),
-                "content": doc.page_content,
-            }
-            for doc, score in results
-            if not supported_filter or _match_metadata_filter(doc.metadata or {}, supported_filter)
-        ]
+        client_filter = (
+            _milvus_scalar_client_filter_spec(supported_filter)
+            if metadata_expr_fallback
+            else _milvus_client_filter_spec(supported_filter)
+        )
+        out: list[dict[str, Any]] = []
+        for doc, score in results:
+            meta = _rehydrate_indexed_metadata_slots(doc.metadata or {})
+            if client_filter and not _match_metadata_filter(meta, client_filter):
+                continue
+            out.append(
+                {
+                    "id": doc.id,
+                    "metadata": meta,
+                    "score": float(score),
+                    "content": doc.page_content,
+                }
+            )
+        return out
 
 
 _milvus_adapter_cache: dict[tuple[str, str, str], MilvusAdapter] = {}
@@ -780,19 +968,21 @@ class MilvusVectorStore:
                 global _MILVUS_WARNED_WRITE_COMPAT_FALLBACK
                 if not _MILVUS_WARNED_WRITE_COMPAT_FALLBACK:
                     logger.warning(
-                        "Milvus add_texts failed; retrying without dataset_id/embedding_space_hash (schema fallback). err=%s",
+                        "Milvus add_texts failed; retrying without optional scalar metadata fields (schema fallback). err=%s",
                         str(exc)[:200],
                     )
                     _MILVUS_WARNED_WRITE_COMPAT_FALLBACK = True
                 try:
                     from app.storage.vector.milvus_prometheus_metrics import observe_milvus_write_compat_fallback
 
-                    observe_milvus_write_compat_fallback(dropped_fields="dataset_id_embedding_space_hash")
+                    observe_milvus_write_compat_fallback(dropped_fields="dataset_id_embedding_space_hash_indexed_meta_slots")
                 except Exception as exc:
                     logger.debug(_MILVUS_FALLBACK_LOG_MESSAGE, exc)
                 for m in metadatas_norm:
                     m.pop("dataset_id", None)
                     m.pop("embedding_space_hash", None)
+                    for slot_field in _INDEXED_METADATA_SLOT_FIELDS:
+                        m.pop(slot_field, None)
                 pks = self._store.add_texts(texts=texts, metadatas=metadatas_norm, ids=ids)
             return [str(pk) for pk in pks]
 
@@ -835,6 +1025,7 @@ class MilvusVectorStore:
                     "img_id": str(img_id)[:500],
                     "image_id": str(image_id)[:500],
                     "image_url": str(image_url)[:2000],
+                    **_flatten_indexed_metadata_slots(meta),
                 }
             )
 
@@ -871,6 +1062,7 @@ class MilvusVectorStore:
         )
         base_expr = self._build_expr(document_ids=document_ids, tenant_id=tenant_id)
         metadata_expr = _build_milvus_metadata_expr(supported_filter)
+        metadata_expr_fallback = False
         if base_expr and metadata_expr:
             combined_expr = f"({base_expr}) and ({metadata_expr})"
         else:
@@ -880,6 +1072,7 @@ class MilvusVectorStore:
             results = self._store.similarity_search_with_score(query, k=top_k * 2, expr=combined_expr)
         except Exception as exc:
             # Fallback for legacy collections / unsupported expr clauses.
+            metadata_expr_fallback = bool(metadata_expr)
             global _MILVUS_WARNED_SEARCH_EXPR_FALLBACK
             if not _MILVUS_WARNED_SEARCH_EXPR_FALLBACK:
                 logger.warning(
@@ -898,35 +1091,44 @@ class MilvusVectorStore:
                 logger.debug(_MILVUS_FALLBACK_LOG_MESSAGE, exc)
             results = self._store.similarity_search_with_score(query, k=top_k * 2, expr=base_expr)
 
+        client_filter = (
+            _milvus_scalar_client_filter_spec(supported_filter)
+            if metadata_expr_fallback
+            else _milvus_client_filter_spec(supported_filter)
+        )
         formatted: list[dict[str, Any]] = []
         for doc, score in results:
             if score < score_threshold:
                 continue
-            meta = doc.metadata or {}
-            if supported_filter and not _match_metadata_filter(meta, supported_filter):
+            meta = _rehydrate_indexed_metadata_slots(doc.metadata or {})
+            if client_filter and not _match_metadata_filter(meta, client_filter):
                 continue
             chunk_id = meta.get("chunk_id")
+            out_meta = {
+                "tenant_id": meta.get("tenant_id"),
+                "dataset_id": meta.get("dataset_id"),
+                "embedding_space_hash": meta.get("embedding_space_hash"),
+                "document_id": meta.get("document_id"),
+                "source": meta.get("source", "unknown"),
+                "page": meta.get("page_number"),
+                "page_number": meta.get("page_number"),
+                "chunk_index": meta.get("chunk_index"),
+                "chunk_id": chunk_id,
+                "pipeline_hash": meta.get("pipeline_hash"),
+                "doc_pipeline_key": meta.get("doc_pipeline_key"),
+                "img_id": meta.get("img_id") or meta.get("image_id"),
+                "image_id": meta.get("image_id") or meta.get("img_id"),
+                "image_url": meta.get("image_url") or meta.get("img_url"),
+                "score": float(score),
+            }
+            indexed_metadata = meta.get(_INDEXED_METADATA_VIEW_KEY)
+            if isinstance(indexed_metadata, dict) and indexed_metadata:
+                out_meta[_INDEXED_METADATA_VIEW_KEY] = indexed_metadata
             formatted.append(
                 {
                     "chunk_id": chunk_id,
                     "content": doc.page_content,
-                    "metadata": {
-                        "tenant_id": meta.get("tenant_id"),
-                        "dataset_id": meta.get("dataset_id"),
-                        "embedding_space_hash": meta.get("embedding_space_hash"),
-                        "document_id": meta.get("document_id"),
-                        "source": meta.get("source", "unknown"),
-                        "page": meta.get("page_number"),
-                        "page_number": meta.get("page_number"),
-                        "chunk_index": meta.get("chunk_index"),
-                        "chunk_id": chunk_id,
-                        "pipeline_hash": meta.get("pipeline_hash"),
-                        "doc_pipeline_key": meta.get("doc_pipeline_key"),
-                        "img_id": meta.get("img_id") or meta.get("image_id"),
-                        "image_id": meta.get("image_id") or meta.get("img_id"),
-                        "image_url": meta.get("image_url") or meta.get("img_url"),
-                        "score": float(score),
-                    },
+                    "metadata": out_meta,
                     "score": float(score),
                 }
             )

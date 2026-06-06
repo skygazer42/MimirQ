@@ -61,6 +61,11 @@ from app.api.schemas.pipeline import (
     PipelineCapabilitiesResponse,
     PipelineChunkPreviewRequest,
     PipelineChunkPreviewResponse,
+    PipelinePluginGoldenDraftImportRequest,
+    PipelinePluginGoldenDraftImportResponse,
+    PipelinePluginGoldenDraftRequest,
+    PipelinePluginGoldenDraftResponse,
+    PipelinePluginListResponse,
     ZipWithImagesResponse,
 )
 from app.api.utils.response_headers import download_response_headers
@@ -68,10 +73,11 @@ from app.api.utils.upload import save_upload_file
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.optional_deps import check_dependency
+from app.core.pipeline_versions import build_doc_pipeline_key, get_active_pipeline_hash
 from app.core.regex_runtime import RegexSubstitutionTimeoutError
 from app.core.regex_safety import RegexRulesValidationError, validate_regex_rules
 from app.models.document import Document as DBDocument
-from app.models.document import DocumentParsedContent
+from app.models.document import DocumentChunk, DocumentParsedContent
 from app.models.governance_profile import GovernanceProfile as DBGovernanceProfile
 from app.parsing.backends import normalize_parser_backend
 from app.parsing.factory import ParserFactory
@@ -86,6 +92,13 @@ from app.rag.core.errors import ConfigError
 from app.rag.core.logging import get_logger
 from app.rag.llm.factory import create_llm_client
 from app.rag.llm.models import LLMMessage, LLMRole
+from app.rag.pipeline_plugins.golden_drafts import build_golden_draft_bundle_from_chunks
+from app.rag.pipeline_plugins.registry import (
+    PipelinePluginRegistryError,
+    default_plugin_directories,
+    list_pipeline_plugins_with_errors,
+    resolve_registered_plugin_descriptor,
+)
 from app.rag.preprocessing.boilerplate import remove_markdown_boilerplate
 from app.rag.preprocessing.cleaning import (
     RegexRule,
@@ -2146,6 +2159,338 @@ def _pipeline_chunk_strategy_info(name: str) -> ChunkStrategyInfo:
     return ChunkStrategyInfo(name=strategy, available=bool(available), notes=decorate_chunk_strategy_note(strategy, notes))
 
 
+def _safe_pipeline_plugin_error_path(path: Path | None, roots: Iterable[Path]) -> str:
+    if path is None:
+        return ""
+    try:
+        resolved = path.expanduser().resolve()
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return path.name or str(path)
+
+    for root in sorted((Path(item).expanduser() for item in roots), key=lambda item: len(str(item)), reverse=True):
+        try:
+            rel = resolved.relative_to(root.resolve())
+        except (OSError, RuntimeError, TypeError, ValueError):
+            continue
+        rel_text = rel.as_posix()
+        return rel_text if rel_text and rel_text != "." else resolved.name
+    return resolved.name
+
+
+@router.get(
+    "/plugins",
+    response_model=PipelinePluginListResponse,
+    response_model_exclude_none=True,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
+async def list_pipeline_plugins_endpoint():
+    """
+    List registered local pipeline plugins.
+
+    Plugins become executable only after their package manifest is published and
+    the local runner report matches the current package hash.
+    """
+    plugins, errors = list_pipeline_plugins_with_errors()
+    plugin_roots = default_plugin_directories()
+    items = []
+    for plugin in plugins:
+        items.append(
+            {
+                "id": plugin.id,
+                "version": plugin.version,
+                "name": plugin.name,
+                "description": plugin.description,
+                "published": plugin.published,
+                "executable": plugin.executable,
+                "test_status": plugin.test_status,
+                "package_hash": plugin.package_hash,
+                "test_report": plugin.test_report,
+                "stages": sorted(plugin.entries.keys()),
+                "refs": plugin.refs,
+                "contract": plugin.contract_summary,
+                "processing_templates": plugin.processing_templates,
+                "suggested_pipeline_patch": plugin.suggested_pipeline_patch,
+            }
+        )
+    return {
+        "items": items,
+        "errors": [
+            {
+                "plugin_dir": _safe_pipeline_plugin_error_path(error.plugin_dir, plugin_roots),
+                "manifest_path": _safe_pipeline_plugin_error_path(error.manifest_path, plugin_roots),
+                "error": error.error,
+            }
+            for error in errors
+        ],
+    }
+
+
+def _plugin_marker_refs(plugin_ref: str, descriptor: Any) -> set[str]:
+    refs = {str(plugin_ref or "").strip()}
+    raw_refs = getattr(descriptor, "refs", {}) or {}
+    if isinstance(raw_refs, dict):
+        refs.update(str(value or "").strip() for value in raw_refs.values())
+    return {ref for ref in refs if ref}
+
+
+def _assert_pipeline_plugin_ready_for_golden(plugin_ref: str, descriptor: Any) -> None:
+    if getattr(descriptor, "published", True) is not True or getattr(descriptor, "executable", True) is not True:
+        plugin_id = str(getattr(descriptor, "id", "") or plugin_ref)
+        version = str(getattr(descriptor, "version", "") or "")
+        status = str(getattr(descriptor, "test_status", "") or "unknown")
+        qualified = f"{plugin_id}@{version}" if version else plugin_id
+        raise HTTPException(
+            status_code=409,
+            detail=f"plugin '{qualified}' is not executable; local test report status is {status}",
+        )
+
+
+def _assert_unmarked_plugin_golden_chunks_allowed(include_unmarked_chunks: bool) -> None:
+    if not include_unmarked_chunks:
+        return
+    if bool(getattr(settings, "PYTHON_PIPELINE_PLUGIN_ALLOW_UNMARKED_GOLDEN_CHUNKS", False)):
+        return
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            "include_unmarked_chunks requires "
+            "PYTHON_PIPELINE_PLUGIN_ALLOW_UNMARKED_GOLDEN_CHUNKS=true; "
+            "plugin Golden drafts normally use only chunks produced by the selected plugin"
+        ),
+    )
+
+
+def _chunk_marked_by_plugin(meta: dict[str, Any], plugin_refs: set[str]) -> bool:
+    if not plugin_refs:
+        return False
+    for key in ("chunk_python_plugin", "governance_python_plugin"):
+        value = str(meta.get(key) or "").strip()
+        if value and value in plugin_refs:
+            return True
+    return False
+
+
+def _active_doc_pipeline_key(document_id: UUID, doc_metadata: dict[str, Any]) -> str | None:
+    active_hash = get_active_pipeline_hash(doc_metadata)
+    return build_doc_pipeline_key(document_id, active_hash) if active_hash else None
+
+
+def _chunk_matches_active_pipeline(chunk_meta: dict[str, Any], active_key: str | None) -> bool:
+    if not active_key:
+        return True
+    chunk_key = str(chunk_meta.get("doc_pipeline_key") or "").strip()
+    return not chunk_key or chunk_key == active_key
+
+
+def _load_plugin_golden_draft_chunks(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    plugin_refs: set[str],
+    max_chunks: int,
+    include_unmarked_chunks: bool = False,
+) -> list[DocumentChunk]:
+    cap = max(1, min(50_000, int(max_chunks or 5000)))
+    rows = (
+        db.query(DocumentChunk, DBDocument)
+        .join(
+            DBDocument,
+            and_(DBDocument.id == DocumentChunk.document_id, DBDocument.tenant_id == DocumentChunk.tenant_id),
+        )
+        .filter(
+            DocumentChunk.tenant_id == tenant_id,
+            DBDocument.tenant_id == tenant_id,
+            DBDocument.dataset_id == dataset_id,
+            DBDocument.status == "completed",
+            DBDocument.publication_status == "published",
+            DBDocument.archived_at.is_(None),
+            DBDocument.disabled_at.is_(None),
+            DocumentChunk.disabled_at.is_(None),
+        )
+        .order_by(DocumentChunk.document_id.asc(), DocumentChunk.chunk_index.asc())
+        .limit(cap)
+        .all()
+    )
+    chunks: list[DocumentChunk] = []
+    for chunk, document in rows:
+        chunk_meta = dict(getattr(chunk, "doc_metadata", None) or {})
+        if not include_unmarked_chunks and not _chunk_marked_by_plugin(chunk_meta, plugin_refs):
+            continue
+        doc_meta = dict(getattr(document, "doc_metadata", None) or {})
+        if not _chunk_matches_active_pipeline(chunk_meta, _active_doc_pipeline_key(document.id, doc_meta)):
+            continue
+        chunks.append(chunk)
+    return chunks
+
+
+def _build_plugin_golden_draft_response(
+    *,
+    dataset_id: UUID,
+    plugin_ref: str,
+    descriptor: Any,
+    chunks: Iterable[DocumentChunk],
+    max_items: int,
+) -> PipelinePluginGoldenDraftResponse:
+    plugin_id = str(getattr(descriptor, "id", ""))
+    bundle = build_golden_draft_bundle_from_chunks(
+        dataset_id=dataset_id,
+        chunks=chunks,
+        golden_rules=getattr(descriptor, "golden_rules", {}) or {},
+        plugin_id=plugin_id,
+        plugin_version=str(getattr(descriptor, "version", "")),
+        plugin_ref=plugin_ref,
+        plugin_package_hash=str(getattr(descriptor, "package_hash", "")),
+        max_items=max_items,
+    )
+    return PipelinePluginGoldenDraftResponse(
+        dataset_id=dataset_id,
+        plugin_id=plugin_id,
+        plugin_version=str(getattr(descriptor, "version", "")),
+        plugin_ref=plugin_ref,
+        items_total=len(bundle.get("items") or []),
+        bundle=bundle,
+    )
+
+
+async def _import_plugin_golden_draft_bundle(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    dataset_id: UUID,
+    bundle: dict[str, Any],
+    overwrite: bool,
+    max_items: int,
+) -> dict[str, Any]:
+    items = bundle.get("items") if isinstance(bundle, dict) else []
+    if not isinstance(items, list) or not items:
+        return {
+            "created": 0,
+            "updated": 0,
+            "skipped": 0,
+            "errors": [],
+            "created_case_ids": [],
+            "updated_case_ids": [],
+            "case_ids": [],
+        }
+
+    from app.api.schemas.regression import RagasRegressionCaseImportRequest
+    from app.api.v1.evaluations import import_ragas_regression_cases
+
+    payload = RagasRegressionCaseImportRequest(
+        dataset_id=dataset_id,
+        overwrite=bool(overwrite),
+        max_items=max(1, min(2000, int(max_items or 500))),
+        items=items,
+    )
+    result = await import_ragas_regression_cases(
+        payload,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        db=db,
+    )
+    return result if isinstance(result, dict) else dict(result)
+
+
+@router.post(
+    "/plugins/golden-draft",
+    response_model=PipelinePluginGoldenDraftResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
+async def build_pipeline_plugin_golden_draft(
+    payload: PipelinePluginGoldenDraftRequest,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> PipelinePluginGoldenDraftResponse:
+    """
+    Build a review-only regression case bundle from chunks produced by a plugin.
+
+    This endpoint does not import or persist golden cases. Review the returned
+    bundle, then import it through the regression case import API or the
+    pipeline-side golden-draft/import helper.
+    """
+    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset = DatasetService.get_dataset(db, tenant_id, payload.dataset_id)
+    DatasetService.assert_dataset_readable(db, dataset, account_id)
+
+    try:
+        descriptor = resolve_registered_plugin_descriptor(payload.plugin_ref)
+    except PipelinePluginRegistryError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    _assert_pipeline_plugin_ready_for_golden(payload.plugin_ref, descriptor)
+    _assert_unmarked_plugin_golden_chunks_allowed(payload.include_unmarked_chunks)
+
+    chunks = _load_plugin_golden_draft_chunks(
+        db=db,
+        tenant_id=tenant_id,
+        dataset_id=payload.dataset_id,
+        plugin_refs=_plugin_marker_refs(payload.plugin_ref, descriptor),
+        max_chunks=payload.max_chunks,
+        include_unmarked_chunks=payload.include_unmarked_chunks,
+    )
+    return _build_plugin_golden_draft_response(
+        dataset_id=payload.dataset_id,
+        plugin_ref=payload.plugin_ref,
+        descriptor=descriptor,
+        chunks=chunks,
+        max_items=payload.max_items,
+    )
+
+
+@router.post(
+    "/plugins/golden-draft/import",
+    response_model=PipelinePluginGoldenDraftImportResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
+async def import_pipeline_plugin_golden_draft(
+    payload: PipelinePluginGoldenDraftImportRequest,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> PipelinePluginGoldenDraftImportResponse:
+    """Build a plugin golden draft bundle and import it into regression cases."""
+    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset = DatasetService.get_dataset(db, tenant_id, payload.dataset_id)
+    DatasetService.assert_dataset_writable(db, dataset, account_id)
+
+    try:
+        descriptor = resolve_registered_plugin_descriptor(payload.plugin_ref)
+    except PipelinePluginRegistryError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    _assert_pipeline_plugin_ready_for_golden(payload.plugin_ref, descriptor)
+    _assert_unmarked_plugin_golden_chunks_allowed(payload.include_unmarked_chunks)
+
+    chunks = _load_plugin_golden_draft_chunks(
+        db=db,
+        tenant_id=tenant_id,
+        dataset_id=payload.dataset_id,
+        plugin_refs=_plugin_marker_refs(payload.plugin_ref, descriptor),
+        max_chunks=payload.max_chunks,
+        include_unmarked_chunks=payload.include_unmarked_chunks,
+    )
+    draft = _build_plugin_golden_draft_response(
+        dataset_id=payload.dataset_id,
+        plugin_ref=payload.plugin_ref,
+        descriptor=descriptor,
+        chunks=chunks,
+        max_items=payload.max_items,
+    )
+    import_result = await _import_plugin_golden_draft_bundle(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_id=payload.dataset_id,
+        bundle=draft.bundle,
+        overwrite=payload.overwrite,
+        max_items=payload.max_items,
+    )
+    return PipelinePluginGoldenDraftImportResponse(draft=draft, import_result=import_result)
+
+
 @router.get("/capabilities", response_model=PipelineCapabilitiesResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def get_pipeline_capabilities(
     *,
@@ -2929,7 +3274,12 @@ async def chunk_preview(
     return PipelineChunkPreviewResponse(**chunks)
 
 
-@router.post("/clean-preview", response_model=CleanPreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/clean-preview",
+    response_model=CleanPreviewResponse,
+    response_model_exclude_none=True,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 async def clean_preview(
     body: CleanPreviewRequest,
     *,
@@ -3079,7 +3429,12 @@ async def learn_common_lines(
     )
 
 
-@router.post("/governance-analyze", response_model=GovernanceAnalyzeResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post(
+    "/governance-analyze",
+    response_model=GovernanceAnalyzeResponse,
+    response_model_exclude_none=True,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
 async def governance_analyze(
     body: GovernanceAnalyzeRequest,
     *,
@@ -3426,17 +3781,17 @@ async def upload_zip_with_images(
         raise HTTPException(status_code=400, detail="Invalid dataset_id") from exc
     dataset = DatasetService.get_dataset(db, tenant_id, dataset_uuid)
     DatasetService.assert_dataset_writable(db, dataset, account_id)
-    
+
     # Save to a temporary file.
     temp_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "temp_zip"
     temp_dir.mkdir(parents=True, exist_ok=True)
-    
+
     temp_zip_path = temp_dir / f"{uuid.uuid4()}.zip"
-    
+
     try:
         # Write to a temporary file (streamed, size-limited).
         await save_upload_file(file, temp_zip_path, max_bytes=settings.MAX_FILE_SIZE)
-        
+
         # Process ZIP: extract images and upload to MinIO.
         doc_id = document_id or file.filename.rsplit('.', 1)[0]
         result = zip_image_processor.process_zip_with_images(
@@ -3445,7 +3800,7 @@ async def upload_zip_with_images(
             dataset_id=dataset_id,
             document_id=doc_id
         )
-        
+
         return {
             "markdown": result["markdown"],
             "images": result["images"],
@@ -3453,7 +3808,7 @@ async def upload_zip_with_images(
             "dataset_id": dataset_id,
             "document_id": doc_id,
         }
-        
+
     except HTTPException:
         raise
     except (ValueError, zipfile.BadZipFile) as e:

@@ -25,6 +25,10 @@ from app.rag.embedding import create_langchain_embeddings_from_config
 from app.rag.embedding.utils import embedding_space_hash_for_config
 from app.rag.kg.models import KgEntity, KgEventEntity, KgRelation, KgSourceEvent
 from app.rag.kg.provenance import build_event_entity_provenance
+from app.rag.pipeline_plugins.contracts import (
+    RETRIEVAL_DISPLAY_CONTENT_METADATA_KEY,
+    RETRIEVAL_TEXT_METADATA_KEY,
+)
 from app.rag.preprocessing.normalization import normalize_text
 from app.rag.retriever import hybrid_retriever
 from app.services.dataset_embedding_config import (
@@ -290,6 +294,22 @@ def _ensure_chunk_metadata(
     )
 
     return meta
+
+
+def _chunk_index_content(content: str, metadata: dict[str, Any] | None) -> tuple[str, dict[str, Any]]:
+    """
+    Return text used for retrieval indexes while preserving clean display content.
+
+    Business plugins may produce a recall-optimized `_retrieval_text` that includes
+    labels/aliases/structured fields. The stored chunk body remains the clean content.
+    """
+    meta = dict(metadata or {})
+    raw_index_text = meta.get(RETRIEVAL_TEXT_METADATA_KEY)
+    index_text = str(raw_index_text or "").strip() if isinstance(raw_index_text, str) else ""
+    if not index_text:
+        return str(content or ""), meta
+    meta.setdefault(RETRIEVAL_DISPLAY_CONTENT_METADATA_KEY, str(content or ""))
+    return index_text, meta
 
 
 def _should_prefix_embedding(meta: dict[str, Any]) -> bool:
@@ -1073,6 +1093,8 @@ class Indexer:
 
         for c, meta, chunk_id in prepared_chunks:
             chunk_ids.append(chunk_id)
+            raw_body = c.content or ""
+            embed_text, meta = _chunk_index_content(raw_body, meta)
             normalized_chunks.append(
                 ChunkInput(
                     content=c.content,
@@ -1082,8 +1104,6 @@ class Indexer:
                     end_char=c.end_char,
                 )
             )
-            raw_body = c.content or ""
-            embed_text = raw_body
             if (
                 contextual_retrieval_enabled
                 and raw_body
@@ -1882,7 +1902,8 @@ class Indexer:
             meta.setdefault("page", db_chunk.page_number)
             meta.setdefault("image_id", meta.get("image_id"))
             meta.setdefault("image_url", meta.get("image_url"))
-            bm25_docs.append(LCDocument(page_content=db_chunk.content, id=str(db_chunk.id), metadata=meta))
+            page_content, meta = _chunk_index_content(db_chunk.content or "", meta)
+            bm25_docs.append(LCDocument(page_content=page_content, id=str(db_chunk.id), metadata=meta))
 
         hybrid_retriever.upsert_bm25_documents(bm25_docs, tenant_id=tenant_id)
 

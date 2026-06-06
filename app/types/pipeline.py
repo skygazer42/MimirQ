@@ -62,6 +62,8 @@ class PipelineOptions:
     governance_noise_ratio_threshold: float | None = None
     governance_common_lines_min_docs: int | None = None
     governance_common_lines_min_ratio: float | None = None
+    governance_python_plugin: str | None = None
+    governance_python_params: dict[str, Any] | None = None
     parse_fallback_enabled: bool | None = None
     parse_fallback_min_content_chars: int | None = None
     parse_fallback_min_parse_score: float | None = None
@@ -84,6 +86,8 @@ class PipelineOptions:
     chunk_merge_small_min_chars: int | None = None
     # Strategy-specific chunking params (best-effort; kept small & declarative by API validation).
     chunk_strategy_params: dict[str, Any] | None = None
+    chunk_python_plugin: str | None = None
+    chunk_python_params: dict[str, Any] | None = None
     # When enabled, prefix chunk content with lightweight structural context (e.g. header_path)
     # before computing embeddings. Does not change stored chunk.content (DB); affects vector similarity only.
     embedding_context_prefix_enabled: bool | None = None
@@ -99,6 +103,8 @@ class PipelineOptions:
     chunk_vector_enabled: bool | None = None
     bm25_index_enabled: bool | None = None
     kg_enabled: bool | None = None
+    kg_python_plugin: str | None = None
+    kg_python_params: dict[str, Any] | None = None
     event_vector_enabled: bool | None = None
     entity_vector_enabled: bool | None = None
     # Structured/table store (TAG).
@@ -168,6 +174,8 @@ class PipelineEffective:
     governance_noise_ratio_threshold: float
     governance_common_lines_min_docs: int
     governance_common_lines_min_ratio: float
+    governance_python_plugin: str
+    governance_python_params: dict[str, Any]
     parse_fallback_enabled: bool
     parse_fallback_min_content_chars: int
     parse_fallback_min_parse_score: float
@@ -189,6 +197,8 @@ class PipelineEffective:
     chunk_overlap: int
     chunk_merge_small_min_chars: int
     chunk_strategy_params: dict[str, Any]
+    chunk_python_plugin: str
+    chunk_python_params: dict[str, Any]
     embedding_context_prefix_enabled: bool
     embedding_contextual_retrieval_enabled: bool
     embedding_contextual_retrieval_lazy_mode: bool
@@ -196,6 +206,8 @@ class PipelineEffective:
     chunk_vector_enabled: bool
     bm25_index_enabled: bool
     kg_enabled: bool
+    kg_python_plugin: str
+    kg_python_params: dict[str, Any]
     event_vector_enabled: bool
     entity_vector_enabled: bool
     table_store_enabled: bool

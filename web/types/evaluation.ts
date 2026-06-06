@@ -94,6 +94,9 @@ export interface RegressionCaseBundleItem {
   expected_answer?: string | null
   tags: string[]
   reference_sources: ReferenceSource[]
+  reasoning_hops?: string[]
+  evidence_chain?: ReferenceSource[]
+  extra?: JsonObject
 }
 
 export interface RegressionCaseBundleV1 {
@@ -107,6 +110,10 @@ export interface RegressionCaseImportResponse {
   updated: number
   skipped: number
   errors: JsonObject[]
+  created_case_ids: string[]
+  updated_case_ids: string[]
+  skipped_case_ids: string[]
+  case_ids: string[]
 }
 
 export interface RegressionCaseList {

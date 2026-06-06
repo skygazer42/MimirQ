@@ -27,6 +27,13 @@ def test_build_retrieval_config_fingerprint_strips_sensitive_fields_and_hashes_s
 
     for k in ("question", "query", "document_ids", "dataset_id", "tenant_id", "account_id", "metadata_filter"):
         assert k not in cfg1
+    assert isinstance(cfg1.get("metadata_filter_hash"), str) and cfg1.get("metadata_filter_hash")
+    assert cfg1.get("metadata_filter_summary") == {
+        "keys_count": 1,
+        "keys_sample": ["page"],
+        "ops": {"$gte": 1},
+    }
+    assert "10" not in str(cfg1)
 
     # Changing only question-like text should not affect the fingerprint.
     fp2 = build_retrieval_config_fingerprint(
@@ -36,11 +43,12 @@ def test_build_retrieval_config_fingerprint_strips_sensitive_fields_and_hashes_s
             "top_k": 5,
             "score_threshold": 0.0,
             "question": "different",
+            "metadata_filter": {"page": {"$gte": 10}},
         }
     )
     assert fp2.get("hash") == fp1.get("hash")
 
-    # Changing retrieval config must affect the fingerprint.
+    # Changing retrieval config or filter values must affect the fingerprint.
     fp3 = build_retrieval_config_fingerprint(
         config={
             "requested_retrieval_mode": "vector",
@@ -50,6 +58,17 @@ def test_build_retrieval_config_fingerprint_strips_sensitive_fields_and_hashes_s
         }
     )
     assert fp3.get("hash") != fp1.get("hash")
+
+    fp4 = build_retrieval_config_fingerprint(
+        config={
+            "requested_retrieval_mode": "vector",
+            "retrieval_mode": "vector",
+            "top_k": 5,
+            "score_threshold": 0.0,
+            "metadata_filter": {"page": {"$gte": 11}},
+        }
+    )
+    assert fp4.get("hash") != fp1.get("hash")
 
 
 def test_build_retrieval_config_fingerprint_keeps_hierarchy_recall_knobs() -> None:

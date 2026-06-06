@@ -910,6 +910,9 @@ class Settings(BaseSettings):
     RETRIEVAL_NEAR_DEDUP_MAX_COMPARE: int = 60
     # Per-document diversity (0 disables)
     RETRIEVAL_MAX_CHUNKS_PER_DOC: int = 3
+    # Per plugin-declared business record identity (0 disables). Applies only
+    # when chunk metadata contains the generic `_record_identity` view.
+    RETRIEVAL_MAX_CHUNKS_PER_RECORD_IDENTITY: int = 2
     # Per-page diversity within a document (0 disables). Only applies when a chunk has page_number/page metadata.
     RETRIEVAL_MAX_CHUNKS_PER_PAGE: int = 0
     # Metadata filtering for vector search
@@ -1558,6 +1561,19 @@ class Settings(BaseSettings):
     GOVERNANCE_COMMON_LINES_MIN_RATIO: float = 0.35
     # Best-effort runtime guard for governance regex substitutions (ReDoS mitigation).
     GOVERNANCE_REGEX_TIMEOUT_MS: int = 100
+    # Comma-separated import prefixes allowed for legacy runtime Python plugin refs.
+    # Blank by default so business logic lives in registered plugin packages.
+    PYTHON_PIPELINE_PLUGIN_ALLOW_PREFIXES: str = ""
+    # Comma-separated external plugin directories scanned at runtime. New
+    # published+tested plugin packages can be added without restarting the API.
+    PYTHON_PIPELINE_PLUGIN_DIRS: str = "plugins/pipelines"
+    # Require the local runner report to match the current plugin package hash
+    # before a registered plugin can execute.
+    PYTHON_PIPELINE_PLUGIN_REQUIRE_TEST_REPORT: bool = True
+    # Debug-only escape hatch for generating plugin Golden drafts from chunks
+    # that were not produced by the selected plugin. Keep disabled in normal
+    # operation so plugin Golden cases stay tied to plugin-owned chunk outputs.
+    PYTHON_PIPELINE_PLUGIN_ALLOW_UNMARKED_GOLDEN_CHUNKS: bool = False
     # Optional governance extensions (safe defaults; can be overridden per-dataset/document pipeline config).
     GOVERNANCE_REMOVE_BOILERPLATE: bool = False
     GOVERNANCE_REMOVE_IMAGES: str = "none"  # none | decorative | all
@@ -2372,6 +2388,8 @@ class Settings(BaseSettings):
             raise ValueError("RETRIEVAL_NEAR_DEDUP_MAX_COMPARE must be >= 0")
         if int(getattr(self, "RETRIEVAL_MAX_CHUNKS_PER_DOC", 0) or 0) < 0:
             raise ValueError("RETRIEVAL_MAX_CHUNKS_PER_DOC must be >= 0")
+        if int(getattr(self, "RETRIEVAL_MAX_CHUNKS_PER_RECORD_IDENTITY", 0) or 0) < 0:
+            raise ValueError("RETRIEVAL_MAX_CHUNKS_PER_RECORD_IDENTITY must be >= 0")
         if int(getattr(self, "RETRIEVAL_MAX_CHUNKS_PER_PAGE", 0) or 0) < 0:
             raise ValueError("RETRIEVAL_MAX_CHUNKS_PER_PAGE must be >= 0")
         if int(getattr(self, "RETRIEVAL_MIN_DISTINCT_DOCS", 0) or 0) < 0:

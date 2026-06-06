@@ -1501,15 +1501,25 @@ function SelectedFilesTable({
   if (!rows.length) return null
 
   return (
-    <div className={cn('mt-2 rounded-[1.2rem] shadow-[0_12px_30px_hsl(var(--primary)/0.04)]', TABLE_SHELL_CLASS)}>
-      <div className="flex items-center justify-between border-b border-border/50 px-3 py-1.5">
+    <div
+      data-selected-files-table="stable"
+      className={cn('mt-2 flex h-[10.75rem] flex-col rounded-[1.2rem] shadow-[0_12px_30px_hsl(var(--primary)/0.04)]', TABLE_SHELL_CLASS)}
+    >
+      <div className="flex h-10 shrink-0 items-center justify-between border-b border-border/50 px-3 py-1.5">
         <div className="text-sm font-semibold text-foreground">已选文件（{rows.length}）</div>
         <Button variant="ghost" className="h-7 rounded-[0.85rem] px-2 text-xs text-muted-foreground hover:bg-background/72" onClick={onClear} disabled={!rows.length}>
           清空列表
         </Button>
       </div>
-      <div className="max-h-[7.5rem] overflow-auto">
-        <table className="w-full text-left text-xs">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]">
+        <table className="w-full table-fixed text-left text-xs">
+          <colgroup>
+            <col className="w-[46%]" />
+            <col className="w-[16%]" />
+            <col className="w-[12%]" />
+            <col className="w-[16%]" />
+            <col className="w-[10%]" />
+          </colgroup>
           <thead className={cn('sticky top-0', TABLE_HEAD_CLASS)}>
             <tr>
               <th className="px-3 py-1.5 font-medium">文件名</th>
@@ -1527,11 +1537,11 @@ function SelectedFilesTable({
                     <span className="flex size-6 shrink-0 items-center justify-center rounded-[0.8rem] border border-border/60 bg-primary/10 text-primary">
                       <Icon className="size-3.5" />
                     </span>
-                    <span className="truncate font-medium text-foreground">{file.name}</span>
+                    <span className="min-w-0 truncate font-medium text-foreground" title={file.name}>{file.name}</span>
                   </div>
                 </td>
-                <td className="px-2.5 py-1.5 font-mono text-muted-foreground">{formatFileSize(file.size)}</td>
-                <td className="px-2.5 py-1.5 text-muted-foreground">{formatFileType(file)}</td>
+                <td className="truncate px-2.5 py-1.5 font-mono text-muted-foreground">{formatFileSize(file.size)}</td>
+                <td className="truncate px-2.5 py-1.5 text-muted-foreground">{formatFileType(file)}</td>
                 <td className="px-2.5 py-1.5 text-muted-foreground">本地上传</td>
                 <td className="px-2.5 py-1.5">
                   <Button
@@ -1550,7 +1560,7 @@ function SelectedFilesTable({
           </tbody>
         </table>
       </div>
-      <div className="border-t border-border/50 px-3 py-1.5 text-xs text-muted-foreground">
+      <div className="h-8 shrink-0 border-t border-border/50 px-3 py-1.5 text-xs text-muted-foreground">
         共 {rows.length} 个文件，合计 {formatFileSize(totalBytes)}
       </div>
     </div>

@@ -84,6 +84,45 @@ def test_builtin_prompt_templates_inherit_formal_plan_rules() -> None:
     assert "refusal" in testgen
 
 
+def test_builtin_prompt_library_keeps_common_vertical_templates_without_task_specific_terms() -> None:
+    from app.rag.llm.prompts.builtin_library import list_builtin_prompt_templates
+
+    builtins = list_builtin_prompt_templates()
+    keys = {template.template_key for template in builtins}
+    joined = "\n".join(
+        "\n".join(
+            [
+                template.template_key,
+                template.name,
+                template.description,
+                template.category,
+                template.content,
+                " ".join(template.tags),
+            ]
+        )
+        for template in builtins
+    )
+
+    assert {
+        "vertical_finance_annual_report_zh",
+        "vertical_legal_clause_compare_zh",
+        "vertical_legal_redline_zh",
+        "vertical_government_redhead_zh",
+    }.issubset(keys)
+    for forbidden in (
+        "常州",
+        "经开区",
+        "天宁区",
+        "新北区",
+        "公积金",
+        "不动产",
+        "一件事一次办",
+        "12345QA",
+        "苏服办",
+    ):
+        assert forbidden not in joined
+
+
 def test_builtin_prompt_templates_compile_with_langchain_f_string_format() -> None:
     from langchain_core.prompts import PromptTemplate
 

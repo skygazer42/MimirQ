@@ -1,0 +1,53 @@
+{
+  "plugin_id": "changzhou-gov-service-knowledge",
+  "version": "1.0.0",
+  "package_hash": "4000bad49ee3aaccf5d9862743949775cd7afdb1ced1aa39ee800a82f57c6e77",
+  "tested_at": "2026-06-05T18:03:09.006036+00:00",
+  "passed": true,
+  "stages": {
+    "governance": {
+      "passed": true,
+      "input_count": 7,
+      "output_count": 7,
+      "output_chars": 757,
+      "metadata_validation": {
+        "ok": true,
+        "checked": 7,
+        "errors": []
+      }
+    },
+    "chunk": {
+      "passed": true,
+      "input_count": 7,
+      "output_count": 8,
+      "output_chars": 764,
+      "metadata_validation": {
+        "ok": true,
+        "checked": 8,
+        "errors": []
+      }
+    },
+    "kg": {
+      "passed": true,
+      "input_count": 8,
+      "output_count": 8,
+      "output_chars": 764,
+      "kg_validation": {
+        "ok": true,
+        "checked": 8,
+        "errors": []
+      }
+    }
+  },
+  "golden_draft": {
+    "passed": true,
+    "items_total": 11,
+    "sample_questions": [
+      "社会保障卡补卡需要什么材料？",
+      "社会保障卡补卡在哪里办理？",
+      "社会保障卡补卡咨询电话是多少？",
+      "社会保障卡补卡能不能网上办？",
+      "住宅专项维修资金的交存标准是多少？"
+    ]
+  }
+}

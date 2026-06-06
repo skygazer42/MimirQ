@@ -71,6 +71,16 @@ LEXICAL_DB_SEARCH_FAILED_LOG = "Lexical DB search failed: %s"
 NON_CRITICAL_RETRIEVER_FALLBACK_LOG = "Ignoring non-critical retriever fallback failure: %s"
 _RETRIEVAL_DISPLAY_CONTENT_KEY = "_retrieval_display_content"
 _RETRIEVAL_QUESTIONS_CHANNEL_KEY = "_retrieval_questions_channel_applied"
+_INDEXED_METADATA_KEY = "_indexed_metadata"
+_DISPLAY_METADATA_KEY = "_display_metadata"
+_EVALUABLE_METADATA_KEY = "_evaluable_metadata"
+_RECORD_IDENTITY_METADATA_KEY = "_record_identity"
+_PLATFORM_METADATA_VIEW_KEYS = (
+    _INDEXED_METADATA_KEY,
+    _DISPLAY_METADATA_KEY,
+    _EVALUABLE_METADATA_KEY,
+    _RECORD_IDENTITY_METADATA_KEY,
+)
 
 
 @dataclass(frozen=True)
@@ -97,6 +107,7 @@ class HybridSearchOptions:
 class _DedupRuntime:
     threshold: float
     max_compare: int
+    max_chunks_per_record_identity: int
     near_enabled: bool
     near_thr: int
     near_max_compare: int
@@ -108,9 +119,11 @@ class _DedupState:
     seen_chunk_ids: set[str]
     seen_content_hashes: set[str]
     seen_fingerprints: set[str]
+    record_identity_counts: dict[str, int]
     kept: list[dict[str, Any]]
     kept_tokens_by_doc: dict[str, list[set[str]]]
     kept_simhashes: list[int]
+    dropped_record_identity: int = 0
     dropped_near: int = 0
     dropped_content_hash: int = 0
 
@@ -160,6 +173,7 @@ class HybridRetriever(BaseRetriever):
     dedup_jaccard_threshold: float = settings.RETRIEVAL_DEDUP_JACCARD_THRESHOLD
     dedup_max_compare: int = settings.RETRIEVAL_DEDUP_MAX_COMPARE
     max_chunks_per_doc: int = settings.RETRIEVAL_MAX_CHUNKS_PER_DOC
+    max_chunks_per_record_identity: int = getattr(settings, "RETRIEVAL_MAX_CHUNKS_PER_RECORD_IDENTITY", 2)
     max_chunks_per_page: int = getattr(settings, "RETRIEVAL_MAX_CHUNKS_PER_PAGE", 0)
     min_distinct_docs: int = settings.RETRIEVAL_MIN_DISTINCT_DOCS
     tenant_id: UUID | None = None
@@ -501,6 +515,71 @@ class HybridRetriever(BaseRetriever):
             if len(out) >= max(1, int(max_items or 1)):
                 break
         return out
+
+    @staticmethod
+    def _format_metadata_view_value(value: Any) -> str:
+        if value in (None, "", [], {}):
+            return ""
+
+        def _clean(raw: Any) -> str:
+            return re.sub(r"\s+", " ", str(raw).strip())
+
+        if isinstance(value, (list, tuple, set)):
+            parts: list[str] = []
+            for item in value:
+                cleaned = _clean(item)
+                if cleaned:
+                    parts.append(cleaned)
+            return ", ".join(parts[:5])
+        if isinstance(value, dict):
+            parts = []
+            for k, v in sorted(value.items(), key=lambda item: str(item[0])):
+                if v in (None, "", [], {}):
+                    continue
+                cleaned_key = _clean(k)
+                cleaned_value = _clean(v)
+                if cleaned_key and cleaned_value:
+                    parts.append(f"{cleaned_key}={cleaned_value}")
+            return ", ".join(parts[:5])
+        return _clean(value)
+
+    @staticmethod
+    def _metadata_view_header_lines(metadata: dict[str, Any], *, max_fields: int = 12) -> list[str]:
+        lines: list[str] = []
+        seen: set[tuple[str, str]] = set()
+        for view_key in (_DISPLAY_METADATA_KEY, _EVALUABLE_METADATA_KEY):
+            view = metadata.get(view_key)
+            if not isinstance(view, dict):
+                continue
+            for raw_key, raw_value in sorted(view.items(), key=lambda item: str(item[0])):
+                key = str(raw_key).strip()
+                if not key:
+                    continue
+                value = HybridRetriever._format_metadata_view_value(raw_value)
+                if not value:
+                    continue
+                marker = (key, value)
+                if marker in seen:
+                    continue
+                seen.add(marker)
+                lines.append(f"- {key}: {value[:200]}")
+                if len(lines) >= max(1, int(max_fields or 1)):
+                    return lines
+        return lines
+
+    @staticmethod
+    def _rerank_text_from_result(result: dict[str, Any]) -> str:
+        content = str(result.get("content") or "").strip()
+        metadata = result.get("metadata") if isinstance(result, dict) else None
+        if not isinstance(metadata, dict):
+            return content
+        lines = HybridRetriever._metadata_view_header_lines(metadata)
+        if not lines:
+            return content
+        header = "Metadata:\n" + "\n".join(lines)
+        if not content:
+            return header
+        return f"{header}\n\n{content}"
 
     def _augment_retrieval_corpus_text(self, *, content: str, metadata: dict[str, Any]) -> tuple[str, bool]:
         base = str(content or "")
@@ -2272,6 +2351,27 @@ class HybridRetriever(BaseRetriever):
             and not self._match_metadata_filter(metadata, metadata_filter)
         )
 
+    @staticmethod
+    def _candidate_metadata_from_doc(meta: dict[str, Any], *, chunk_id: Any = None) -> dict[str, Any]:
+        out = {
+            "tenant_id": meta.get("tenant_id"),
+            "dataset_id": meta.get("dataset_id"),
+            "document_id": meta.get("document_id"),
+            "source": meta.get("source", "unknown"),
+            "page": meta.get("page"),
+            "page_number": meta.get("page_number"),
+            "chunk_index": meta.get("chunk_index"),
+            "chunk_id": meta.get("chunk_id") or chunk_id,
+            "img_id": meta.get("img_id"),
+            "image_id": meta.get("image_id"),
+            "image_url": meta.get("image_url"),
+        }
+        for key in _PLATFORM_METADATA_VIEW_KEYS:
+            value = meta.get(key)
+            if isinstance(value, dict) and value:
+                out[key] = value
+        return out
+
     def _bm25_result_from_doc(
         self,
         *,
@@ -2281,23 +2381,18 @@ class HybridRetriever(BaseRetriever):
         question_channel_score: float,
     ) -> dict[str, Any]:
         meta = doc.metadata or {}
-        return {
-            "chunk_id": doc.id,
-            "content": self._result_content_from_doc(doc),
-            "metadata": {
-                "tenant_id": meta.get("tenant_id"),
-                "document_id": meta.get("document_id"),
-                "source": meta.get("source", "unknown"),
-                "page": meta.get("page"),
-                "chunk_index": meta.get("chunk_index"),
-                "chunk_id": meta.get("chunk_id") or doc.id,
-                "img_id": meta.get("img_id"),
-                "image_id": meta.get("image_id"),
-                "image_url": meta.get("image_url"),
+        out_meta = self._candidate_metadata_from_doc(meta, chunk_id=doc.id)
+        out_meta.update(
+            {
                 "bm25_score": float(final_score),
                 "bm25_score_raw": float(raw_score),
                 "question_channel_score": float(question_channel_score),
-            },
+            }
+        )
+        return {
+            "chunk_id": doc.id,
+            "content": self._result_content_from_doc(doc),
+            "metadata": out_meta,
             "score": float(final_score),
         }
 
@@ -2768,22 +2863,13 @@ class HybridRetriever(BaseRetriever):
                 matcher=self._match_metadata_filter,
             ):
                 continue
+            out_meta = self._candidate_metadata_from_doc(meta, chunk_id=doc.id)
+            out_meta["sparse_score"] = float(score)
             results.append(
                 {
                     "chunk_id": doc.id,
                     "content": self._result_content_from_doc(doc),
-                    "metadata": {
-                        "tenant_id": meta.get("tenant_id"),
-                        "document_id": meta.get("document_id"),
-                        "source": meta.get("source", "unknown"),
-                        "page": meta.get("page"),
-                        "chunk_index": meta.get("chunk_index"),
-                        "chunk_id": meta.get("chunk_id") or doc.id,
-                        "img_id": meta.get("img_id"),
-                        "image_id": meta.get("image_id"),
-                        "image_url": meta.get("image_url"),
-                        "sparse_score": float(score),
-                    },
+                    "metadata": out_meta,
                     "score": float(score),
                 }
             )
@@ -4307,7 +4393,7 @@ class HybridRetriever(BaseRetriever):
                     id_to_doc: dict[str, dict[str, Any]] = {}
                     for doc in merged_results[:candidates_n]:
                         rid = self._result_key(doc)
-                        text = (doc.get("content") or "").strip()
+                        text = self._rerank_text_from_result(doc)
                         if not rid or not text:
                             continue
                         meta = dict(doc.get("metadata") or {})
@@ -6189,6 +6275,36 @@ class HybridRetriever(BaseRetriever):
         return False
 
     @staticmethod
+    def _record_identity_dedup_key(meta: dict[str, Any]) -> str | None:
+        record_identity = meta.get(_RECORD_IDENTITY_METADATA_KEY)
+        if not isinstance(record_identity, dict):
+            return None
+        key = str(record_identity.get("key") or "").strip()
+        if not key:
+            return None
+        scope = str(meta.get("dataset_id") or meta.get("document_id") or "").strip()
+        return f"{scope}:{key}" if scope else key
+
+    @staticmethod
+    def _record_identity_over_cap(
+        meta: dict[str, Any],
+        *,
+        max_chunks_per_record_identity: int,
+        record_identity_counts: dict[str, int],
+    ) -> bool:
+        cap = max(0, int(max_chunks_per_record_identity or 0))
+        if cap <= 0:
+            return False
+        key = HybridRetriever._record_identity_dedup_key(meta)
+        if not key:
+            return False
+        current = int(record_identity_counts.get(key, 0) or 0)
+        if current >= cap:
+            return True
+        record_identity_counts[key] = current + 1
+        return False
+
+    @staticmethod
     def _is_near_duplicate_simhash(
         meta: dict[str, Any],
         *,
@@ -6250,6 +6366,8 @@ class HybridRetriever(BaseRetriever):
         near_max_compare: int,
         dropped_near: int,
         dropped_content_hash: int,
+        dropped_record_identity: int,
+        max_chunks_per_record_identity: int,
     ) -> None:
         try:
             if isinstance(self._last_channel_metrics, dict):
@@ -6262,6 +6380,8 @@ class HybridRetriever(BaseRetriever):
                 dedup_meta["near_dedup_hamming_threshold"] = int(near_thr)
                 dedup_meta["near_dedup_max_compare"] = int(near_max_compare)
                 dedup_meta["content_hash_dropped"] = int(dropped_content_hash)
+                dedup_meta["record_identity_dropped"] = int(dropped_record_identity)
+                dedup_meta["max_chunks_per_record_identity"] = int(max_chunks_per_record_identity)
         except Exception as exc:
             logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
 
@@ -6271,6 +6391,7 @@ class HybridRetriever(BaseRetriever):
         return _DedupRuntime(
             threshold=threshold,
             max_compare=max_compare,
+            max_chunks_per_record_identity=max(0, int(getattr(self, "max_chunks_per_record_identity", 0) or 0)),
             near_enabled=near_enabled,
             near_thr=near_thr,
             near_max_compare=near_max_compare,
@@ -6283,6 +6404,7 @@ class HybridRetriever(BaseRetriever):
             seen_chunk_ids=set(),
             seen_content_hashes=set(),
             seen_fingerprints=set(),
+            record_identity_counts={},
             kept=[],
             kept_tokens_by_doc={},
             kept_simhashes=[],
@@ -6332,6 +6454,14 @@ class HybridRetriever(BaseRetriever):
         ):
             return
 
+        if self._record_identity_over_cap(
+            meta,
+            max_chunks_per_record_identity=runtime.max_chunks_per_record_identity,
+            record_identity_counts=state.record_identity_counts,
+        ):
+            state.dropped_record_identity += 1
+            return
+
         state.kept.append(result)
         self._remember_near_simhash(meta, near_enabled=runtime.near_enabled, kept_simhashes=state.kept_simhashes)
 
@@ -6351,6 +6481,8 @@ class HybridRetriever(BaseRetriever):
             near_max_compare=runtime.near_max_compare,
             dropped_near=state.dropped_near,
             dropped_content_hash=state.dropped_content_hash,
+            dropped_record_identity=state.dropped_record_identity,
+            max_chunks_per_record_identity=runtime.max_chunks_per_record_identity,
         )
         return state.kept
 

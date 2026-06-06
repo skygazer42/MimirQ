@@ -48,7 +48,6 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 WORD_FIXTURE = REPO_ROOT / "tests/fixtures/parsing_golden_broader/word_project_brief_docx/input/sample.docx"
 XLSX_FIXTURE = REPO_ROOT / "tests/fixtures/parsing_golden_broader/excel_budget_sheet_xlsx/input/sample.xlsx"
 SMALL_PDF_FIXTURE = REPO_ROOT / "tests/fixtures/parsing_golden_broader/mixed_layout_pdf/input/sample.pdf"
-LONG_PDF_FALLBACK = REPO_ROOT / "artifacts/production-readiness/20260522-020117/corpus/rfc9000-quic.pdf"
 LONG_PDF_URL = "https://www.rfc-editor.org/rfc/rfc9000.pdf"
 DOCUMENT_CHUNK_LIST_LIMIT = 2000
 
@@ -56,8 +55,12 @@ DOCUMENT_CHUNK_LIST_LIMIT = 2000
 def maybe_copy_or_download_long_pdf(target_dir: Path) -> Path:
     target_dir.mkdir(parents=True, exist_ok=True)
     target = target_dir / "rfc9000-quic.pdf"
-    if LONG_PDF_FALLBACK.exists():
-        shutil.copy2(LONG_PDF_FALLBACK, target)
+    configured_fixture = str(os.getenv("MIMIRQ_REMOTE_LONG_PDF_FIXTURE", "") or "").strip()
+    if configured_fixture:
+        source = Path(configured_fixture).expanduser()
+        if not source.is_file():
+            raise FileNotFoundError(f"MIMIRQ_REMOTE_LONG_PDF_FIXTURE does not exist: {source}")
+        shutil.copy2(source, target)
         return target
     if str(os.getenv("MIMIRQ_REMOTE_FIXTURE_DOWNLOADS", "") or "").strip().lower() not in {"1", "true", "yes", "on"}:
         shutil.copy2(SMALL_PDF_FIXTURE, target)

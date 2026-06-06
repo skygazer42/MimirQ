@@ -363,14 +363,15 @@ class ParserFactory:
         """
         Resolve the actual parser to use based on file type and user selection.
         """
+        explicit_backend = bool(str(parser_backend or "").strip())
         normalized = normalize_parser_backend(parser_backend or settings.DEFAULT_PARSER_BACKEND or "auto") or "auto"
         file_ext = file_ext.lower()
 
         if file_ext != ".pdf":
-            return self._resolve_non_pdf_backend(file_ext=file_ext, backend=normalized)
+            return self._resolve_non_pdf_backend(file_ext=file_ext, backend=normalized, explicit_backend=explicit_backend)
         return self._resolve_pdf_backend(normalized)
 
-    def _resolve_non_pdf_backend(self, *, file_ext: str, backend: str) -> str:
+    def _resolve_non_pdf_backend(self, *, file_ext: str, backend: str, explicit_backend: bool = True) -> str:
         direct_backend = self._direct_non_pdf_backend(file_ext=file_ext, backend=backend)
         if direct_backend:
             return direct_backend
@@ -379,6 +380,9 @@ class ParserFactory:
 
         backend = self._normalize_non_pdf_backend(backend)
         if backend in {"", "auto"}:
+            return self._resolve_auto_non_pdf_backend(file_ext)
+
+        if not explicit_backend and not self._non_pdf_backend_supports_extension(backend=backend, file_ext=file_ext):
             return self._resolve_auto_non_pdf_backend(file_ext)
 
         self._validate_non_pdf_backend(backend=backend, file_ext=file_ext)
@@ -442,6 +446,13 @@ class ParserFactory:
         supported_extensions, message = rule
         if file_ext not in supported_extensions:
             raise ValueError(message)
+
+    def _non_pdf_backend_supports_extension(self, *, backend: str, file_ext: str) -> bool:
+        rule = self.NON_PDF_BACKEND_EXTENSION_RULES.get(backend)
+        if not rule:
+            return True
+        supported_extensions, _message = rule
+        return file_ext in supported_extensions
 
     def _resolve_pdf_backend(self, backend: str) -> str:
         if backend not in self.SUPPORTED_PDF_BACKENDS:
@@ -967,6 +978,8 @@ class ParserFactory:
             return self._parse_json_file(file_path), "json"
         if file_ext in {EPUB_EXTENSION, RTF_EXTENSION, ODT_EXTENSION}:
             return self._parse_extended_office_fallback(file_path)
+        if file_ext in {".doc", ".ppt"}:
+            return self._try_legacy_office_pandoc_fallback(file_path)
         if file_ext == ".pdf":
             return self._get_pdf_parser("basic").parse(file_path), "basic"
         return None, "markitdown"
@@ -980,6 +993,20 @@ class ParserFactory:
         if bool(getattr(settings, "PANDOC_ENABLED", False)):
             return self._get_pandoc_parser().parse(file_path), "pandoc"
         return None, "markitdown"
+
+    @staticmethod
+    def _try_legacy_office_pandoc_fallback(file_path: Path) -> tuple[list[Document] | None, str]:
+        from app.parsing.parsers.pandoc_parser import PandocParser
+
+        try:
+            return PandocParser(force_enabled=True, force_libreoffice=True).parse(file_path), "pandoc"
+        except Exception as exc:
+            logger.warning(
+                "[parse] Legacy Office Pandoc fallback also failed for %s: %s",
+                str(file_path.name),
+                str(exc)[:200],
+            )
+            return None, "markitdown"
 
     @staticmethod
     def _parse_docx_file(file_path: Path) -> list[Document]:

@@ -203,7 +203,10 @@ async def retry_document_processing(
         documents_module.DatasetService.assert_dataset_writable(db, dataset, account_id)
 
     current_status = str(document.status or "").lower()
-    if current_status in {"pending", "processing"}:
+    if current_status == "processing" or (
+        current_status == "pending"
+        and not documents_module._is_uploaded_only_pending_document(document)
+    ):
         raise HTTPException(status_code=409, detail=f"Cannot retry a {current_status} document")
     if current_status == "completed" and not force:
         raise HTTPException(status_code=409, detail="Document is already completed (use force=true to reprocess)")

@@ -60,6 +60,7 @@ from app.rag.kg.schemas import (
     KGSearchResponse,
     KGStatsResponse,
 )
+from app.rag.pipeline_plugins.registry import derive_registered_stage_plugin_ref
 from app.services.dataset_service import DatasetService
 from app.services.document_access import filter_allowed_document_ids, list_accessible_document_ids
 from app.services.metrics_logger import log_metrics
@@ -197,6 +198,8 @@ class KGExtractionEffectiveOptions:
     prompt_template_id: UUID | None
     prompt_template_key: str | None
     prompt_ab_experiment_key: str | None
+    kg_python_plugin: str | None
+    kg_python_params: dict[str, Any]
     replace_existing: bool
     prune_orphan_entities: bool
     extract_relations: bool | None
@@ -3997,7 +4000,21 @@ def _default_prompt_template_id() -> UUID | None:
     return None
 
 
+def _document_kg_python_plugin(document: DBDocument) -> tuple[str | None, dict[str, Any]]:
+    meta = getattr(document, "doc_metadata", None)
+    meta_dict = meta if isinstance(meta, dict) else {}
+    effective = meta_dict.get("pipeline_effective") if isinstance(meta_dict.get("pipeline_effective"), dict) else {}
+    explicit = str(effective.get("kg_python_plugin") or "").strip()
+    params = effective.get("kg_python_params") if isinstance(effective.get("kg_python_params"), dict) else {}
+    if explicit:
+        return explicit, dict(params)
+    chunk_ref = str(effective.get("chunk_python_plugin") or "").strip()
+    kg_ref = derive_registered_stage_plugin_ref(chunk_ref, "kg")
+    return (kg_ref or None), dict(params)
+
+
 def _effective_kg_extraction_options(document: DBDocument, options: KGExtractionOptions) -> KGExtractionEffectiveOptions:
+    kg_python_plugin, kg_python_params = _document_kg_python_plugin(document)
     return KGExtractionEffectiveOptions(
         pipeline_hash=_selected_extraction_pipeline_hash(document, options),
         prompt_template_id=options.prompt_template_id or _default_prompt_template_id(),
@@ -4011,6 +4028,8 @@ def _effective_kg_extraction_options(document: DBDocument, options: KGExtraction
             or (getattr(settings, "KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY", "") or "").strip()
             or None
         ),
+        kg_python_plugin=kg_python_plugin,
+        kg_python_params=kg_python_params,
         replace_existing=bool(
             settings.KG_EXTRACT_REPLACE_EXISTING if options.replace_existing is None else options.replace_existing
         ),
@@ -4040,6 +4059,7 @@ def _extraction_audit_details(
         "prune_orphan_entities": bool(effective.prune_orphan_entities),
         "extract_relations": effective.extract_relations,
         "extract_skills": effective.extract_skills,
+        "kg_python_plugin": effective.kg_python_plugin,
     }
     if task_id is not None:
         details["task_id"] = str(task_id)
@@ -4152,6 +4172,8 @@ async def _run_sync_kg_extraction(
             extract_relations=effective.extract_relations,
             extract_skills=effective.extract_skills,
             extraction_backend=effective.extraction_backend,
+            kg_python_plugin=effective.kg_python_plugin,
+            kg_python_params=effective.kg_python_params,
             replace_existing=effective.replace_existing,
             prune_orphan_entities=effective.prune_orphan_entities,
         )

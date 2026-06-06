@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from scripts.remote_chunking_matrix import (
     evaluate_preview_summary,
     evaluate_profile_summary,
+    maybe_copy_or_download_long_pdf,
     prepare_fixture_files,
     summarize_preview_result,
 )
@@ -16,6 +19,24 @@ def test_remote_chunking_matrix_prepare_fixture_files_covers_required_file_famil
     long_case = next(case for case in cases if case["name"] == "rfc9000_long_pdf")
     assert long_case["preview_include_chunks"] is False
     assert long_case["parser_backend"] == "magicpdf"
+
+
+def test_remote_chunking_matrix_uses_configured_long_pdf_fixture(tmp_path, monkeypatch) -> None:
+    custom_pdf = tmp_path / "custom-long.pdf"
+    custom_pdf.write_bytes(b"%PDF-1.7\ncustom long fixture\n")
+    monkeypatch.setenv("MIMIRQ_REMOTE_LONG_PDF_FIXTURE", str(custom_pdf))
+    monkeypatch.delenv("MIMIRQ_REMOTE_FIXTURE_DOWNLOADS", raising=False)
+
+    copied = maybe_copy_or_download_long_pdf(tmp_path / "fixtures")
+
+    assert copied.read_bytes() == custom_pdf.read_bytes()
+
+
+def test_remote_chunking_matrix_does_not_pin_historical_artifact_paths() -> None:
+    source = Path("scripts/remote_chunking_matrix.py").read_text(encoding="utf-8")
+
+    assert "artifacts/production-readiness" not in source
+    assert "20260522" not in source
 
 
 def test_remote_chunking_matrix_summarize_preview_result_extracts_core_metrics() -> None:

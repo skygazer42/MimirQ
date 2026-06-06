@@ -21,7 +21,25 @@ def _coerce_bundle_item(raw: Any) -> dict[str, Any]:
         "reference_sources": getattr(raw, "reference_sources", None),
         "reasoning_hops": getattr(raw, "reasoning_hops", None),
         "evidence_chain": getattr(raw, "evidence_chain", None),
+        "extra": getattr(raw, "extra", None),
     }
+
+
+def _portable_extra(extra: Any) -> dict[str, Any]:
+    if not isinstance(extra, dict):
+        return {}
+    out = dict(extra)
+    out.pop("reasoning_hops", None)
+    out.pop("evidence_chain", None)
+    return out
+
+
+def _is_review_only_local_sample_item(payload: dict[str, Any]) -> bool:
+    extra = payload.get("extra")
+    extra = extra if isinstance(extra, dict) else {}
+    if extra.get("review_only") is True:
+        return True
+    return str(extra.get("reference_source_mode") or "").strip() == "local_sample_synthetic"
 
 
 def export_case_bundle(cases: Sequence[Any], dataset_id: UUID) -> dict[str, Any]:
@@ -60,6 +78,9 @@ def export_case_bundle(cases: Sequence[Any], dataset_id: UUID) -> dict[str, Any]
             chain = [x for x in evidence_chain if isinstance(x, dict)]
             if chain:
                 items[-1]["evidence_chain"] = chain[:20]
+        portable_extra = _portable_extra(extra)
+        if portable_extra:
+            items[-1]["extra"] = portable_extra
 
     # Stable ordering is useful for diffs/reviews.
     items.sort(key=lambda it: (it.get("question") or ""))
@@ -94,6 +115,7 @@ def plan_case_import(
 
     create_items: list[dict[str, Any]] = []
     update_items: list[dict[str, Any]] = []
+    skipped_existing_questions: list[str] = []
 
     seen: set[str] = set()
 
@@ -113,12 +135,22 @@ def plan_case_import(
 
         payload["question"] = question
 
+        if _is_review_only_local_sample_item(payload):
+            skipped += 1
+            errors.append({
+                "index": idx,
+                "question": question,
+                "error": "review_only local sample Golden items cannot be imported; generate dataset goldens from indexed chunks",
+            })
+            continue
+
         if question in existing_questions:
             if overwrite:
                 updated += 1
                 update_items.append(payload)
             else:
                 skipped += 1
+                skipped_existing_questions.append(question)
             continue
 
         created += 1
@@ -136,4 +168,5 @@ def plan_case_import(
         "errors": errors,
         "create_items": create_items,
         "update_items": update_items,
+        "skipped_existing_questions": skipped_existing_questions,
     }

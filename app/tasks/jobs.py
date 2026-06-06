@@ -1011,6 +1011,7 @@ async def extract_kg_job(
     from app.models.dataset import Dataset
     from app.models.document import DocumentChunk
     from app.rag.kg.pipeline import extract_events
+    from app.rag.pipeline_plugins.registry import derive_registered_stage_plugin_ref
     from app.services.pipeline_config import build_indexing_options, resolve_pipeline_effective
 
     t0 = time.perf_counter()
@@ -1173,6 +1174,13 @@ async def extract_kg_job(
             request_overrides=None,
         )
         index_options = build_indexing_options(effective)
+        kg_python_plugin_ref = str(getattr(effective, "kg_python_plugin", "") or "").strip()
+        if not kg_python_plugin_ref:
+            kg_python_plugin_ref = derive_registered_stage_plugin_ref(
+                str(getattr(effective, "chunk_python_plugin", "") or "").strip(),
+                "kg",
+            )
+        kg_python_params = dict(getattr(effective, "kg_python_params", {}) or {})
 
         events = await extract_events(
             [c.id for c in chunks],
@@ -1182,6 +1190,8 @@ async def extract_kg_job(
             ab_user_key=requested_by,
             extract_relations=extract_relations,
             extract_skills=extract_skills,
+            kg_python_plugin=kg_python_plugin_ref,
+            kg_python_params=kg_python_params,
             replace_existing=replace_existing,
             prune_orphan_entities=prune_orphan_entities,
         )

@@ -1,0 +1,23 @@
+{
+  "id": "changzhou-gov-service-knowledge",
+  "version": "1.0.0",
+  "name": "常州政务服务知识",
+  "description": "面向 20260522 政务服务智能客服知识包的事项清单、一件事、常见问答和法规文本治理/切块规则。",
+  "status": "published",
+  "metadata_schema": "metadata_schema.json",
+  "retrieval_text_schema": "retrieval_text_schema.json",
+  "golden_rules": "golden_rules.json",
+  "processing_templates": "processing_templates.json",
+  "suggested_pipeline_patch": {
+    "governance_enabled": true,
+    "chunk_python_params": {
+      "max_record_chars": 1500
+    },
+    "persist_parsed_content": true
+  },
+  "entry": {
+    "governance": "plugin.py:govern_documents",
+    "chunk": "plugin.py:chunk_documents",
+    "kg": "kg_builder.py:build_kg_events"
+  }
+}

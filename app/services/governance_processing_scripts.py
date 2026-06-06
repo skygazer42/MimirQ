@@ -390,16 +390,10 @@ def audit(text: str) -> AuditReport:
 
 
 _GOV_QA_SPLIT_BY_SEPARATOR = '''"""
-政务客服 QA 单元切分(模板)
+问答单元切分(模板)
 
-把常州 12345 / 政务服务 / 一件事指南等知识库文件,按统一分隔符
-"==##########==" 切分为 QA 单元列表;去除空白单元,保留行内换行。
-
-适用文件:
-- 12345QA.txt(常州市本级/各区)
-- 专题常见问答.txt
-- 一件事指南.txt
-- 事项清单.txt
+把问答、指南、说明类知识库文件按统一分隔符
+"==##########==" 切分为独立知识单元;去除空白单元,保留单元内换行。
 
 NOTE: 该脚本仅作模板展示,入库管道不会自动执行。
 """
@@ -410,37 +404,33 @@ _SEPARATOR = re.compile(r"^\\s*==##+==\\s*$", re.MULTILINE)
 
 
 def split_units(text: str) -> list[str]:
-    """按 ==##########== 分隔符切出 QA 单元,保留单元内换行。"""
+    """按 ==##########== 分隔符切出知识单元,保留单元内换行。"""
     if not text:
         return []
-    parts = _SEPARATOR.split(text)
-    units = [p.strip() for p in parts if p and p.strip()]
-    return units
+    return [part.strip() for part in _SEPARATOR.split(text) if part and part.strip()]
 '''
 
 
 _GOV_QA_FIELD_PARSE = '''"""
-政务 12345 QA 字段解析(模板)
+问答字段解析(模板)
 
-把单个 QA 单元(由 ==##########== 切分而来)解析成结构化字典:
-- question: "问题：[xxx]" 中的方括号内容
+把单个问答单元解析成结构化字典:
+- question: "问题：[xxx]" 或 "问题：xxx"
 - answer: "答案：xxx" 起到下一个识别字段或文末
 - source_dept: "来源部门：xxx"
 - aliases: "==##相似问法：xxx##==" 内逗号/顿号分隔
-- links: 文本中 **<http(s)://...>** 双星包裹 URL 列表
-
-适用文件: 12345QA.txt / 专题问答.txt / 操作指引.txt 等。
+- links: 文本中的 http(s) URL 列表
 
 NOTE: 该脚本仅作模板展示,入库管道不会自动执行。
 """
 
 import re
 
-_QUESTION_RE = re.compile(r"问题[：:]\\s*\\[([^\\]]+)\\]")
+_QUESTION_RE = re.compile(r"问题[：:]\\s*(?:\\[([^\\]]+)\\]|([^\\n]+))")
 _ANSWER_RE = re.compile(r"答案[：:]\\s*(.*?)(?=\\n(?:来源部门|==##|$))", re.DOTALL)
 _SOURCE_RE = re.compile(r"来源部门[：:]\\s*([^\\n]+)")
 _ALIASES_RE = re.compile(r"==##\\s*相似问法[：:]([^#]+)##==")
-_LINK_RE = re.compile(r"\\*\\*<((?:https?://)[^>]+)>\\*\\*")
+_LINK_RE = re.compile(r"(?:https?://)[^\\s)>）]+")
 
 
 def parse_qa_unit(unit: str) -> dict:
@@ -449,9 +439,9 @@ def parse_qa_unit(unit: str) -> dict:
     source_m = _SOURCE_RE.search(unit)
     aliases_m = _ALIASES_RE.search(unit)
     aliases_raw = (aliases_m.group(1) if aliases_m else "").strip()
-    aliases = [a.strip() for a in re.split(r"[、,，]", aliases_raw) if a.strip()]
+    aliases = [item.strip() for item in re.split(r"[、,，]", aliases_raw) if item.strip()]
     return {
-        "question": (question_m.group(1).strip() if question_m else ""),
+        "question": ((question_m.group(1) or question_m.group(2)).strip() if question_m else ""),
         "answer": (answer_m.group(1).strip() if answer_m else ""),
         "source_dept": (source_m.group(1).strip() if source_m else ""),
         "aliases": aliases,
@@ -461,84 +451,80 @@ def parse_qa_unit(unit: str) -> dict:
 
 
 _GOV_ITEM_FIELD_PARSE = '''"""
-政务服务事项清单字段解析(模板)
+键值条目字段解析(模板)
 
-把常州事项清单 .txt(8 个区/市)的单个事项单元
-(由 ==##########== 分隔)解析为结构化字典,涵盖 13+ 标准字段:
-
-  事项名称 / 行使层级 / 办理形式 / 办理地点 / 办理时间
-  受理条件 / 办件类型 / 法定办结时限 / 承诺办结时限
-  收费情况 / 咨询方式 / 监督投诉方式 / 办理材料
-  办理流程 / 在线办理地址
+把形如 "[标题：xxx]" 加多行 "字段：内容" 的条目解析为结构化字典。
+字段名由文本自身决定,平台模板不内置任何业务字段集合。
 
 NOTE: 该脚本仅作模板展示,入库管道不会自动执行。
 """
 
 import re
 
-_FIELD_KEYS = (
-    "事项名称", "行使层级", "办理形式", "办理地点", "办理时间",
-    "受理条件", "办件类型", "法定办结时限", "承诺办结时限",
-    "收费情况", "咨询方式", "监督投诉方式", "办理材料",
-    "办理流程", "在线办理地址",
-)
-_TITLE_RE = re.compile(r"\\[\\s*事项名称[：:]\\s*([^\\]]+)\\]")
+_TITLE_RE = re.compile(r"\\[\\s*([^：:\\]]{1,40})[：:]\\s*([^\\]]+)\\]")
+_FIELD_LINE_RE = re.compile(r"^([^：:\\n]{1,40})[：:]\\s*(.*)$")
 
 
-def parse_item_unit(unit: str) -> dict:
+def parse_key_value_unit(unit: str) -> dict:
     title_m = _TITLE_RE.search(unit)
-    result: dict[str, str] = {"事项名称": title_m.group(1).strip() if title_m else ""}
-    for key in _FIELD_KEYS[1:]:
-        pat = re.compile(
-            rf"^{re.escape(key)}[：:]\\s*(.*?)(?=^(?:{'|'.join(re.escape(k) for k in _FIELD_KEYS)})[：:]|\\Z)",
-            re.DOTALL | re.MULTILINE,
-        )
-        m = pat.search(unit)
-        if m:
-            result[key] = m.group(1).strip()
+    result: dict[str, str] = {}
+    if title_m:
+        result[title_m.group(1).strip()] = title_m.group(2).strip()
+
+    current_key = ""
+    current_value: list[str] = []
+
+    def flush() -> None:
+        nonlocal current_key, current_value
+        if current_key:
+            result[current_key] = "\\n".join(line.rstrip() for line in current_value).strip()
+        current_key = ""
+        current_value = []
+
+    for line in unit.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        match = _FIELD_LINE_RE.match(stripped)
+        if match:
+            flush()
+            current_key = match.group(1).strip()
+            current_value = [match.group(2).strip()]
+        elif current_key:
+            current_value.append(stripped)
+    flush()
     return result
 '''
 
 
 _GOV_PHONE_NORMALIZE = '''"""
-常州政务电话规范化(模板)
+联系电话规范化(模板)
 
-把文本中政务电话写法统一为可点击的规范形态:
-- "0519-12345" / "0519 12345" / "(0519)12345" / "0519 - 12345" → "0519-12345"
-- 单独 "12345" 政务服务热线 → "12345(政务服务热线)"
-- 0519-xxxxxxxx(8 位) / 0519-xxxxxxx(7 位) 区号补齐
+把中文资料中的联系电话写法统一为可检索的规范形态:
+- "(区号)号码" / "区号 号码" / "区号-号码" -> "区号-号码"
+- 多个电话间的中文顿号、分号可在下游继续拆分。
 
 NOTE: 该脚本仅作模板展示,入库管道不会自动执行。
 """
 
 import re
 
-_AREA_PHONE = re.compile(r"[\\(（]?\\s*0519\\s*[\\)）]?[\\s\\-]*(\\d{7,8})")
-_BARE_12345 = re.compile(r"(?<!\\d)12345(?!\\d)")
+_AREA_PHONE = re.compile(r"[\\(（]?\\s*(0\\d{2,3})\\s*[\\)）]?[\\s\\-]*(\\d{7,8})")
 
 
 def normalize(text: str) -> str:
-    def _fix_area(m: "re.Match[str]") -> str:
-        return f"0519-{m.group(1)}"
-    text = _AREA_PHONE.sub(_fix_area, text)
-    # 仅对裸 12345 标注,避免改坏已规范化的 0519-12345
-    text = re.sub(
-        r"(?<!\\-)" + _BARE_12345.pattern,
-        "12345(政务服务热线)",
-        text,
-    )
-    return text
+    def _fix_area(match: "re.Match[str]") -> str:
+        return f"{match.group(1)}-{match.group(2)}"
+    return _AREA_PHONE.sub(_fix_area, text)
 '''
 
 
 _GOV_URL_UNWRAP = '''"""
-政务文档双星包裹 URL 解包(模板)
+文档 URL 解包(模板)
 
-把 markdown 中的 "**<https://example.com>**" 这种双星包裹 + 尖括号
-的链接形式,解包为标准 markdown 链接 "[example.com](https://example.com)";
-保留 URL 作为文字便于检索召回。
-
-适用文件: 12345QA.txt / 事项清单.txt(在线办理地址)等。
+把 markdown 中的 "**<https://example.com/path>**" 或 "<https://...>"
+解包为标准 markdown 链接 "[example.com](https://...)";
+保留 host 作为可检索文字。
 
 NOTE: 该脚本仅作模板展示,入库管道不会自动执行。
 """
@@ -546,30 +532,29 @@ NOTE: 该脚本仅作模板展示,入库管道不会自动执行。
 import re
 from urllib.parse import urlparse
 
-_BOLD_BRACKETED = re.compile(r"\\*\\*<((?:https?://)[^>\\s]+)>\\*\\*")
+_BRACKETED = re.compile(r"(?:\\*\\*)?<((?:https?://)[^>\\s]+)>(?:\\*\\*)?")
 
 
 def unwrap(text: str) -> str:
-    def _sub(m: "re.Match[str]") -> str:
-        url = m.group(1)
+    def _sub(match: "re.Match[str]") -> str:
+        url = match.group(1)
         try:
             host = urlparse(url).netloc or url
         except Exception:
             host = url
         return f"[{host}]({url})"
-    return _BOLD_BRACKETED.sub(_sub, text)
+    return _BRACKETED.sub(_sub, text)
 '''
 
 
 _GOV_KEYWORD_EXTRACT = '''"""
-政务文档元数据关键字抽取(模板)
+关键字/相似问法抽取(模板)
 
-抽取以下两种政务知识库内嵌元数据块:
+抽取以下两种知识库内嵌元数据块:
   ==##关键字：xxx、yyy、zzz##==
   ==##相似问法：xxx、yyy##==
 
-返回 {"keywords": [...], "aliases": [...]},便于灌入 chunk metadata
-做 HyDE 检索召回扩展。
+返回 {"keywords": [...], "aliases": [...]},便于写入 chunk metadata。
 
 NOTE: 该脚本仅作模板展示,入库管道不会自动执行。
 """
@@ -581,16 +566,16 @@ _AL_RE = re.compile(r"==##\\s*相似问法[：:]([^#]+)##==")
 
 
 def _split(raw: str) -> list[str]:
-    return [s.strip() for s in re.split(r"[、,，;；]", raw) if s.strip()]
+    return [value.strip() for value in re.split(r"[、,，;；]", raw) if value.strip()]
 
 
 def extract(text: str) -> dict:
     keywords: list[str] = []
     aliases: list[str] = []
-    for m in _KW_RE.finditer(text):
-        keywords.extend(_split(m.group(1)))
-    for m in _AL_RE.finditer(text):
-        aliases.extend(_split(m.group(1)))
+    for match in _KW_RE.finditer(text):
+        keywords.extend(_split(match.group(1)))
+    for match in _AL_RE.finditer(text):
+        aliases.extend(_split(match.group(1)))
     return {
         "keywords": sorted(set(keywords)),
         "aliases": sorted(set(aliases)),
@@ -599,38 +584,24 @@ def extract(text: str) -> dict:
 
 
 _GOV_QA_XLSX_HEADER_ALIGN = '''"""
-政务 QA xlsx 表头多变异统一(模板)
+问答 xlsx 表头统一(模板)
 
-不同部门导出的 xlsx 表头差异:
-- 公积金: 问题 / 答案 / 相似问法 / 关键词 / 适用区域 / 办事链接
-- 不动产: 类目路径 / 问题 / 相似问法 / 答案
-- 医保:   序号 / 问答标题 / 问答答案 / 内容生效时间 / 内容失效时间 / 问答提供部门
-- 高频:   问题 / 相似问法 / 答案
-
-此脚本把多变表头映射为统一字段名,接入下游 RAG 元数据:
-  question / answer / aliases / keywords / region / link / source_dept / category / valid_from / valid_to
+不同业务部门导出的 xlsx 表头常有差异。此脚本把多变表头映射为统一字段名:
+question / answer / aliases / keywords / region / link / source_dept
+category / valid_from / valid_to。
 
 NOTE: 该脚本仅作模板展示,入库管道不会自动执行。
 """
 
 HEADER_MAP = {
-    # 问题
     "问题": "question", "问答标题": "question", "标题": "question",
-    # 答案
     "答案": "answer", "问答答案": "answer", "答复内容": "answer",
-    # 相似问法
     "相似问法": "aliases", "相似问题": "aliases", "问法": "aliases",
-    # 关键词
     "关键词": "keywords", "关键字": "keywords",
-    # 区域
     "适用区域": "region", "区域": "region", "适用范围": "region",
-    # 链接
-    "办事链接": "link", "链接": "link", "URL": "link", "网址": "link",
-    # 来源部门
-    "来源部门": "source_dept", "问答提供部门": "source_dept", "提供部门": "source_dept",
-    # 分类
+    "链接": "link", "URL": "link", "网址": "link",
+    "来源": "source", "提供方": "source", "出处": "source",
     "类目路径": "category", "类目": "category", "分类": "category",
-    # 生效失效
     "内容生效时间": "valid_from", "生效时间": "valid_from",
     "内容失效时间": "valid_to", "失效时间": "valid_to",
 }
@@ -639,26 +610,20 @@ HEADER_MAP = {
 def align_row(headers: list[str], row: list) -> dict:
     """按 HEADER_MAP 把 row 转为规范化字段字典;未识别的表头保留原名。"""
     out: dict = {}
-    for h, v in zip(headers, row):
-        key = HEADER_MAP.get(str(h or "").strip(), str(h or "").strip())
+    for header, value in zip(headers, row):
+        raw = str(header or "").strip()
+        key = HEADER_MAP.get(raw, raw)
         if key:
-            out[key] = v
+            out[key] = value
     return out
 '''
 
 
 _GOV_TERM_CANONICALIZE = '''"""
-政务专名规范化(模板)
+专名规范化(模板)
 
-把常州/江苏政务知识库中常见的术语异写统一为权威写法,
-便于嵌入向量和 BM25 检索一致命中。
-
-示例:
-- 苏服办APP / 苏服办应用 / 苏服办app → 苏服办
-- 江苏政务服务网 / 江苏政务网 → 江苏政务服务网
-- 苏证通APP / 苏证通app → 苏证通
-- 常州市本级 / 常州本级 / 市本级 → 常州市本级
-- 12345政务热线 / 12345热线 → 12345 政务服务热线
+把知识库中的常见术语异写统一为权威写法,便于嵌入向量和关键词检索一致命中。
+生产使用时应在业务插件或治理配置中维护本地权威词表,不要把具体业务词表写入平台。
 
 NOTE: 该脚本仅作模板展示,入库管道不会自动执行。
 """
@@ -666,19 +631,15 @@ NOTE: 该脚本仅作模板展示,入库管道不会自动执行。
 import re
 
 _RULES: list[tuple[re.Pattern, str]] = [
-    (re.compile(r"苏服办\\s*(?:APP|app|应用)"), "苏服办"),
-    (re.compile(r"江苏政务网"), "江苏政务服务网"),
-    (re.compile(r"苏证通\\s*(?:APP|app)"), "苏证通"),
-    (re.compile(r"(?<!常州)市本级"), "常州市本级"),
-    (re.compile(r"常州本级"), "常州市本级"),
-    (re.compile(r"12345\\s*(?:政务)?\\s*热线"), "12345 政务服务热线"),
-    (re.compile(r"政务服务中心\\s*(?:大厅)?"), "政务服务中心"),
+    # 示例规则: 生产词表应由业务插件或治理配置提供。
+    (re.compile(r"知识库\\s*系统"), "知识库系统"),
+    (re.compile(r"RAG\\s*平台", re.IGNORECASE), "RAG 平台"),
 ]
 
 
 def canonicalize(text: str) -> str:
-    for pat, repl in _RULES:
-        text = pat.sub(repl, text)
+    for pattern, replacement in _RULES:
+        text = pattern.sub(replacement, text)
     return text
 '''
 
@@ -756,78 +717,77 @@ _BUILTIN_PROCESSING_SCRIPTS: tuple[BuiltinProcessingScript, ...] = (
         content=_PII_PLACEHOLDER_AUDIT,
         tags=["builtin", "pii", "audit", "compliance"],
     ),
-    # ---------- 政务客服垂直(常州 12345 / 政务事项 / 一件事) ----------
     BuiltinProcessingScript(
         key="gov_qa_split_by_separator",
-        name="政务 QA 按分隔符切分",
-        description="按 ==##########== 分隔符切分常州 12345 / 政务知识库文件为 QA 单元列表。模板代码,不会被入库管道执行。",
+        name="问答按分隔符切分",
+        description="按 ==##########== 分隔符切分问答、指南、说明类文件为知识单元。模板代码,不会被入库管道执行。",
         language="python",
         stage="post_parse",
         content=_GOV_QA_SPLIT_BY_SEPARATOR,
-        tags=["builtin", "zh", "gov", "12345", "split"],
+        tags=["builtin", "zh", "qa", "split"],
     ),
     BuiltinProcessingScript(
         key="gov_qa_field_parse",
-        name="政务 12345 QA 字段解析",
-        description="把单个 QA 单元解析为 {question, answer, source_dept, aliases, links} 结构化字典。模板代码,不会被入库管道执行。",
+        name="问答字段解析",
+        description="把单个问答单元解析为 question/answer/source_dept/aliases/links 等结构化字段。模板代码,不会被入库管道执行。",
         language="python",
         stage="post_parse",
         content=_GOV_QA_FIELD_PARSE,
-        tags=["builtin", "zh", "gov", "12345", "field_parse"],
+        tags=["builtin", "zh", "qa", "field_parse"],
     ),
     BuiltinProcessingScript(
         key="gov_item_field_parse",
-        name="政务事项清单字段解析",
-        description="解析常州事项清单 14+ 标准字段(事项名称/办理形式/办件类型/法定办结时限/在线办理地址等)。模板代码,不会被入库管道执行。",
+        name="键值条目字段解析",
+        description="解析由文本自身声明字段名的键值条目;平台不内置任何业务字段集合。模板代码,不会被入库管道执行。",
         language="python",
         stage="post_parse",
         content=_GOV_ITEM_FIELD_PARSE,
-        tags=["builtin", "zh", "gov", "item_list", "field_parse"],
+        tags=["builtin", "zh", "key_value", "field_parse"],
     ),
     BuiltinProcessingScript(
         key="gov_phone_normalize",
-        name="常州政务电话规范化",
-        description="把 (0519) / 0519 / 0519- 多种写法的政务电话统一为 0519-xxxxxxxx;裸 12345 标注为政务服务热线。模板代码,不会被入库管道执行。",
+        name="联系电话规范化",
+        description="把区号、座机号码等多种联系电话写法统一为区号-号码形态。模板代码,不会被入库管道执行。",
         language="python",
         stage="post_parse",
         content=_GOV_PHONE_NORMALIZE,
-        tags=["builtin", "zh", "gov", "phone", "normalize"],
+        tags=["builtin", "zh", "phone", "normalize"],
     ),
     BuiltinProcessingScript(
         key="gov_url_unwrap",
-        name="政务文档双星包裹 URL 解包",
-        description="把 **<https://xxx>** 双星包裹解为标准 markdown [host](url),保留 host 作为可检索文字。模板代码,不会被入库管道执行。",
+        name="文档 URL 解包",
+        description="把尖括号或加粗包裹的 URL 解为标准 markdown 链接,保留 host 作为可检索文字。模板代码,不会被入库管道执行。",
         language="python",
         stage="post_parse",
         content=_GOV_URL_UNWRAP,
-        tags=["builtin", "zh", "gov", "url_unwrap", "markdown"],
+        tags=["builtin", "zh", "url_unwrap", "markdown"],
     ),
     BuiltinProcessingScript(
         key="gov_keyword_extract",
-        name="政务关键字/相似问法抽取",
-        description="抽取 ==##关键字##== / ==##相似问法##== 元数据块为 {keywords, aliases} 列表,灌入 chunk metadata 做 HyDE 召回扩展。模板代码,不会被入库管道执行。",
+        name="关键字/相似问法抽取",
+        description="抽取 ==##关键字##== / ==##相似问法##== 元数据块为 keywords/aliases 列表。模板代码,不会被入库管道执行。",
         language="python",
         stage="post_parse",
         content=_GOV_KEYWORD_EXTRACT,
-        tags=["builtin", "zh", "gov", "metadata", "keyword"],
+        tags=["builtin", "zh", "metadata", "keyword"],
     ),
     BuiltinProcessingScript(
         key="gov_qa_xlsx_header_align",
-        name="政务 QA xlsx 表头规范化",
-        description="把公积金/不动产/医保/高频不同部门 xlsx 表头(问题/问答标题/问答答案/相似问法/适用区域 等)统一为 question/answer/aliases/region 等规范字段。模板代码,不会被入库管道执行。",
+        name="问答 xlsx 表头规范化",
+        description="把不同来源导出的问答表头统一为 question/answer/aliases/region/link/source_dept 等字段。模板代码,不会被入库管道执行。",
         language="python",
         stage="post_parse",
         content=_GOV_QA_XLSX_HEADER_ALIGN,
-        tags=["builtin", "zh", "gov", "xlsx", "header_align"],
+        tags=["builtin", "zh", "xlsx", "header_align"],
     ),
     BuiltinProcessingScript(
         key="gov_term_canonicalize",
-        name="政务专名规范化",
-        description="苏服办 APP / 江苏政务网 / 苏证通 APP / 市本级 / 12345 热线 等专名统一为权威写法,提升检索一致命中。模板代码,不会被入库管道执行。",
+        name="专名规范化",
+        description="提供通用术语异写归一模板;具体业务词表应放在业务插件或治理配置中。模板代码,不会被入库管道执行。",
         language="python",
         stage="post_governance",
         content=_GOV_TERM_CANONICALIZE,
-        tags=["builtin", "zh", "gov", "term_canonicalize"],
+        tags=["builtin", "zh", "term_canonicalize"],
     ),
 )
 

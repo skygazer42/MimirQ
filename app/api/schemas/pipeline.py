@@ -5,10 +5,20 @@ Defines data models for document parsing, chunking, and other pipeline operation
 
 from __future__ import annotations
 
+import re
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.api.schemas.document import DocumentPipelineOptions
+
+PipelinePluginStage = Literal["governance", "chunk", "kg"]
+PipelinePluginParamValue = str | int | float | bool | None
+
+_REGISTERED_CHUNK_PLUGIN_REF_RE = re.compile(
+    r"^plugin:[a-z0-9][a-z0-9_.-]{0,63}@[A-Za-z0-9][A-Za-z0-9_.+-]{0,31}:chunk$"
+)
 
 
 class ImageInfo(BaseModel):
@@ -121,8 +131,8 @@ class GovernanceIssue(BaseModel):
     message: str = Field(..., min_length=1, max_length=400)
     count: int = Field(default=0, ge=0, le=10_000_000)
     samples: list[str] = Field(default_factory=list, description="Best-effort samples (may be truncated)")
-    suggested_pipeline_patch: dict[str, Any] = Field(
-        default_factory=dict,
+    suggested_pipeline_patch: DocumentPipelineOptions = Field(
+        default_factory=DocumentPipelineOptions,
         description="Best-effort suggested pipeline patch (DocumentPipelineOptions shape).",
     )
 
@@ -262,7 +272,7 @@ class CleanPreviewResponse(BaseModel):
     diff_unified: str | None = None
     diff_truncated: bool = False
     issues: list[GovernanceIssue] = Field(default_factory=list)
-    suggested_pipeline_patch: dict[str, Any] = Field(default_factory=dict)
+    suggested_pipeline_patch: DocumentPipelineOptions = Field(default_factory=DocumentPipelineOptions)
 
 
 class CleanRulesResponse(BaseModel):
@@ -405,7 +415,7 @@ class GovernanceAnalyzeResponse(BaseModel):
     input_chars: int = 0
     input_lines: int = 0
     issues: list[GovernanceIssue] = Field(default_factory=list)
-    suggested_pipeline_patch: dict[str, Any] = Field(default_factory=dict)
+    suggested_pipeline_patch: DocumentPipelineOptions = Field(default_factory=DocumentPipelineOptions)
 
 
 class ZipImageInfo(BaseModel):
@@ -420,3 +430,213 @@ class ZipWithImagesResponse(BaseModel):
     image_count: int
     dataset_id: str
     document_id: str
+
+
+class PipelinePluginTestStageSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    passed: bool = False
+    input_count: int = 0
+    output_count: int = 0
+    output_chars: int = 0
+    metadata_ok: bool | None = None
+
+
+class PipelinePluginGoldenTestSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    passed: bool = False
+    items_total: int = 0
+    sample_questions: list[str] = Field(default_factory=list)
+
+
+class PipelinePluginTestReportSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    plugin_id: str = ""
+    version: str = ""
+    package_hash: str = ""
+    tested_at: str = ""
+    passed: bool = False
+    stages: dict[str, PipelinePluginTestStageSummary] = Field(default_factory=dict)
+    golden_draft: PipelinePluginGoldenTestSummary = Field(default_factory=PipelinePluginGoldenTestSummary)
+
+
+class PipelinePluginMetadataContractSummary(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    schema_name: str | None = Field(default=None, alias="schema")
+    fields: list[str] = Field(default_factory=list)
+    required_fields: list[str] = Field(default_factory=list)
+    filterable_fields: list[str] = Field(default_factory=list)
+    display_fields: list[str] = Field(default_factory=list)
+    evaluable_fields: list[str] = Field(default_factory=list)
+    record_identity_fields: list[str] = Field(default_factory=list)
+
+
+class PipelinePluginRetrievalTextContractSummary(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    schema_name: str | None = Field(default=None, alias="schema")
+    stages: list[str] = Field(default_factory=list)
+
+
+class PipelinePluginGoldenContractSummary(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    schema_name: str | None = Field(default=None, alias="schema")
+    enabled: bool = False
+
+
+class PipelinePluginContractSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    metadata: PipelinePluginMetadataContractSummary = Field(default_factory=PipelinePluginMetadataContractSummary)
+    retrieval_text: PipelinePluginRetrievalTextContractSummary = Field(
+        default_factory=PipelinePluginRetrievalTextContractSummary
+    )
+    golden: PipelinePluginGoldenContractSummary = Field(default_factory=PipelinePluginGoldenContractSummary)
+
+
+class PipelinePluginProcessingTemplate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    key: str = ""
+    name: str = ""
+    description: str = ""
+    stage: Literal["governance", "chunk", "kg"] = "governance"
+    implemented_by: str = ""
+    related_implementations: list[str] = Field(default_factory=list)
+
+
+class PipelinePluginRefs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    governance: str | None = None
+    chunk: str | None = None
+    kg: str | None = None
+
+
+class PipelinePluginProcessingTemplates(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    schema_name: str = Field(default="", alias="schema")
+    plugin_id: str = ""
+    version: str = ""
+    description: str = ""
+    templates: list[PipelinePluginProcessingTemplate] = Field(default_factory=list)
+
+
+class PipelinePluginSuggestedPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    governance_enabled: bool | None = Field(
+        default=None,
+        description="Enable the platform governance stage before plugin governance runs.",
+    )
+    governance_python_params: dict[str, PipelinePluginParamValue] | None = Field(
+        default=None,
+        description="Small primitive params object passed to the governance plugin.",
+    )
+    chunk_python_params: dict[str, PipelinePluginParamValue] | None = Field(
+        default=None,
+        description="Small primitive params object passed to the chunk plugin.",
+    )
+    kg_python_params: dict[str, PipelinePluginParamValue] | None = Field(
+        default=None,
+        description="Small primitive params object passed to the KG plugin.",
+    )
+    persist_parsed_content: bool | None = Field(
+        default=None,
+        description="Persist parsed content when the plugin flow needs parsed markdown auditing.",
+    )
+
+
+class PipelinePluginItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    version: str
+    name: str
+    description: str = ""
+    published: bool = False
+    executable: bool = False
+    test_status: str = ""
+    package_hash: str = ""
+    test_report: PipelinePluginTestReportSummary = Field(default_factory=PipelinePluginTestReportSummary)
+    stages: list[PipelinePluginStage] = Field(default_factory=list)
+    refs: PipelinePluginRefs = Field(default_factory=PipelinePluginRefs)
+    contract: PipelinePluginContractSummary = Field(default_factory=PipelinePluginContractSummary)
+    processing_templates: PipelinePluginProcessingTemplates = Field(default_factory=PipelinePluginProcessingTemplates)
+    suggested_pipeline_patch: PipelinePluginSuggestedPatch = Field(default_factory=PipelinePluginSuggestedPatch)
+
+
+class PipelinePluginListError(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    plugin_dir: str
+    manifest_path: str = ""
+    error: str
+
+
+class PipelinePluginListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[PipelinePluginItem] = Field(default_factory=list)
+    errors: list[PipelinePluginListError] = Field(default_factory=list)
+
+
+class PipelinePluginGoldenDraftRequest(BaseModel):
+    dataset_id: UUID
+    plugin_ref: str = Field(
+        ...,
+        min_length=1,
+        max_length=240,
+        description="Registered pipeline plugin ref, e.g. plugin:<id>@<version>:chunk.",
+    )
+    max_items: int = Field(default=200, ge=1, le=2000)
+    max_chunks: int = Field(default=5000, ge=1, le=50_000)
+    include_unmarked_chunks: bool = Field(
+        default=False,
+        description=(
+            "Debug-only escape hatch. By default only chunks marked with the selected plugin ref are used; "
+            "true requires PYTHON_PIPELINE_PLUGIN_ALLOW_UNMARKED_GOLDEN_CHUNKS=true."
+        ),
+    )
+
+    @field_validator("plugin_ref")
+    @classmethod
+    def _validate_chunk_plugin_ref(cls, value: str) -> str:
+        ref = str(value or "").strip()
+        if not _REGISTERED_CHUNK_PLUGIN_REF_RE.fullmatch(ref):
+            raise ValueError("plugin_ref must be a registered chunk plugin ref")
+        return ref
+
+
+class PipelinePluginGoldenDraftImportRequest(PipelinePluginGoldenDraftRequest):
+    overwrite: bool = Field(default=False, description="Overwrite existing regression cases with the same question.")
+
+
+class PipelinePluginGoldenDraftImportResult(BaseModel):
+    created: int = 0
+    updated: int = 0
+    skipped: int = 0
+    errors: list[dict[str, Any]] = Field(default_factory=list)
+    created_case_ids: list[UUID] = Field(default_factory=list)
+    updated_case_ids: list[UUID] = Field(default_factory=list)
+    skipped_case_ids: list[UUID] = Field(default_factory=list, description="Existing ids skipped because overwrite=false.")
+    case_ids: list[UUID] = Field(default_factory=list, description="Created ids followed by updated and skipped-existing ids.")
+
+
+class PipelinePluginGoldenDraftResponse(BaseModel):
+    dataset_id: UUID
+    plugin_id: str
+    plugin_version: str
+    plugin_ref: str
+    items_total: int = 0
+    bundle: dict[str, Any] = Field(default_factory=dict)
+
+
+class PipelinePluginGoldenDraftImportResponse(BaseModel):
+    draft: PipelinePluginGoldenDraftResponse
+    import_result: PipelinePluginGoldenDraftImportResult

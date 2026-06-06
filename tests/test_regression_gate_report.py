@@ -37,6 +37,14 @@ def test_build_regression_gate_report_includes_channel_attribution() -> None:
         ok=False,
         failures=["retrieval_recall=0.2000 < min 0.3000"],
         run_payload={"retrieval_mode": "hybrid"},
+        case_source={
+            "kind": "plugin_golden",
+            "plugin_ref": "plugin:demo-service@1.0.0:chunk",
+            "plugin_id": "demo-service",
+            "plugin_version": "1.0.0",
+            "plugin_package_hash": "pkg_hash_abc123",
+            "import_result": {"created": 2, "updated": 0, "skipped": 0},
+        },
         detail={
             "run": {
                 "status": "completed",
@@ -61,6 +69,12 @@ def test_build_regression_gate_report_includes_channel_attribution() -> None:
     )
 
     assert report["gate_status"] == "fail"
+    assert report["case_source"]["kind"] == "plugin_golden"
+    assert report["case_source"]["plugin_ref"] == "plugin:demo-service@1.0.0:chunk"
+    assert report["case_source"]["plugin_id"] == "demo-service"
+    assert report["case_source"]["plugin_version"] == "1.0.0"
+    assert report["case_source"]["plugin_package_hash"] == "pkg_hash_abc123"
+    assert report["case_source"]["import_result"]["created"] == 2
     assert report["channel_attribution"]["totals"]["vector"] == 1
     assert report["channel_attribution"]["totals"]["bm25"] == 1
     assert report["channel_attribution"]["totals"]["lexical"] == 1
@@ -81,6 +95,11 @@ def test_render_regression_gate_markdown_renders_summary_and_failures() -> None:
             "run_id": "run-1",
             "matched_case_count": 2,
             "thresholds_enabled": True,
+            "case_source": {
+                "kind": "plugin_golden",
+                "plugin_ref": "plugin:demo-service@1.0.0:chunk",
+                "plugin_package_hash": "pkg_hash_abc123",
+            },
             "summary": {"retrieval_recall": 0.2},
             "channel_attribution": {"totals": {"vector": 1, "bm25": 2, "lexical": 0, "sparse": 0, "multi": 0}},
             "multihop": {
@@ -95,6 +114,9 @@ def test_render_regression_gate_markdown_renders_summary_and_failures() -> None:
 
     assert "# Retrieval Regression Gate Report" in markdown
     assert "`fail`" in markdown
+    assert "Case source: `plugin_golden`" in markdown
+    assert "Plugin Golden ref: `plugin:demo-service@1.0.0:chunk`" in markdown
+    assert "Plugin package hash: `pkg_hash_abc123`" in markdown
     assert "| retrieval_recall | 0.2000 |" in markdown
     assert "| bm25 | 2 |" in markdown
     assert "retrieval_recall=0.2000 < min 0.3000" in markdown

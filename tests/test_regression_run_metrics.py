@@ -42,3 +42,28 @@ def test_retrieval_gate_summary_includes_parse_quality_slo_fields() -> None:
     assert summary["retrieval_family_recall"] == pytest.approx(0.5)
     assert summary["retrieval_doc_hit_rate"] == pytest.approx(0.5)
     assert summary["retrieval_family_hit_rate"] == pytest.approx(0.5)
+
+
+def test_retrieval_gate_summary_includes_expected_metadata_metrics() -> None:
+    summary = build_retrieval_gate_summary(
+        [
+            {
+                "expected_metadata_hit": True,
+                "expected_metadata_recall": 1.0,
+                "expected_metadata_fields_total": 2,
+                "expected_metadata_fields_matched": 2,
+            },
+            {
+                "expected_metadata_hit": False,
+                "expected_metadata_recall": 0.5,
+                "expected_metadata_fields_total": 2,
+                "expected_metadata_fields_matched": 1,
+            },
+        ]
+    )
+
+    assert summary["expected_metadata_hit_rate"] == pytest.approx(0.5)
+    assert summary["expected_metadata_recall"] == pytest.approx(0.75)
+    assert summary["expected_metadata_cases_total"] == 2
+    assert summary["expected_metadata_fields_total"] == 4
+    assert summary["expected_metadata_fields_matched"] == 3
