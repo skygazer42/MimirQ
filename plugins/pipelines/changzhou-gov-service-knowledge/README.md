@@ -97,6 +97,18 @@ MimirQ 的 Dify external knowledge adapter 支持平台通用的 `knowledge_id -
 `DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON`，插件只负责生成可检索的 chunk、metadata、
 KG 和 Golden，不持有生产数据集 ID。
 
+上线前可先跑本地静态校验，避免缺区县 route 时才在远端 Dify trace 里暴露：
+
+```bash
+make changzhou-dify-knowledge-map-check
+```
+
+该检查会验证 `changzhou_city_service` 至少配置了本级数据集，且 7 个区县
+（新北区、经开区、天宁区、武进区、溧阳市、金坛区、钟楼区）都有完整
+`query_routes` 别名和非空数据集，同时检查对应的
+`changzhou_<区县>_service` knowledge id 存在。它只读取配置并输出计数/失败条件，
+不会打印完整生产数据集映射。
+
 ## 本地测试
 
 ```bash
