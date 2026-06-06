@@ -1,4 +1,4 @@
-.PHONY: help init up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload web test test-web test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check api-docs-build diagnostics db-upgrade db-revision verify enterprise-checks parser-status dify-console-login dify-console-check changzhou-dify-external-probe changzhou-dify-full-gate changzhou-dify-readiness-summary changzhou-dify-readiness-gate check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
+.PHONY: help init up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload web test test-web test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check api-docs-build diagnostics db-upgrade db-revision verify enterprise-checks parser-status dify-console-login dify-console-check changzhou-dify-knowledge-map-check changzhou-dify-external-probe changzhou-dify-full-gate changzhou-dify-readiness-summary changzhou-dify-readiness-gate check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
 
 # Prefer project venv when available so local dev doesn't depend on global tooling.
 PY := python3
@@ -54,6 +54,8 @@ CHANGZHOU_DIFY_PROBE_OUT ?= /tmp/changzhou_gov_dify_external_probe.json
 CHANGZHOU_DIFY_PROBE_TOP_K ?= 5
 CHANGZHOU_DIFY_PROBE_TIMEOUT ?= 45
 CHANGZHOU_DIFY_READINESS_OUT ?= /tmp/changzhou_gov_dify_readiness_summary.json
+CHANGZHOU_DIFY_KNOWLEDGE_MAP_ENV_FILE ?= .env
+CHANGZHOU_DIFY_KNOWLEDGE_MAP_OUT ?= /tmp/changzhou_gov_dify_knowledge_map_check.json
 
 help:
 	@echo "MimirQ dev commands (run from repo root):"
@@ -122,6 +124,7 @@ help:
 	@echo "  make enterprise-checks - verify + backend/web tests (CI-like)"
 	@echo "  make parser-status - print parser backend availability"
 	@echo "  make dify-console-login - refresh Dify console storage state for trace gates"
+	@echo "  make changzhou-dify-knowledge-map-check - validate local Changzhou Dify knowledge map routes"
 	@echo "  make changzhou-dify-external-probe - compare Dify external hit-testing with direct MimirQ retrieval"
 	@echo "  make changzhou-dify-full-gate - run Changzhou Dify/MimirQ remote golden gate"
 	@echo "  make changzhou-dify-readiness-gate - run external probe, full Dify/MimirQ gate, and write readiness summary"
@@ -293,13 +296,24 @@ changzhou-dify-external-probe:
 		--top-k $(CHANGZHOU_DIFY_PROBE_TOP_K) \
 		--out "$(CHANGZHOU_DIFY_PROBE_OUT)"
 
+changzhou-dify-knowledge-map-check:
+	$(PY) scripts/changzhou_gov_dify_knowledge_map_check.py \
+		--env-file "$(CHANGZHOU_DIFY_KNOWLEDGE_MAP_ENV_FILE)" \
+		--out "$(CHANGZHOU_DIFY_KNOWLEDGE_MAP_OUT)"
+
 changzhou-dify-readiness-gate: CHANGZHOU_DIFY_EFFECTIVE_EXTRA_ARGS = $(CHANGZHOU_DIFY_EXTRA_ARGS) $(CHANGZHOU_DIFY_READINESS_EXTRA_ARGS)
 changzhou-dify-readiness-gate:
 	@set +e; \
 	rm -f "$(CHANGZHOU_DIFY_PROBE_OUT)" "$(CHANGZHOU_DIFY_OUT_PREFIX).json" "$(CHANGZHOU_DIFY_OUT_PREFIX)_answers.json" \
-		"$(CHANGZHOU_DIFY_OUT_PREFIX)_eval.json" "$(CHANGZHOU_DIFY_OUT_PREFIX)_trace.json" "$(CHANGZHOU_DIFY_OUT_PREFIX)_summary.json" "$(CHANGZHOU_DIFY_READINESS_OUT)"; \
-	$(MAKE) dify-console-check; auth_rc=$$?; \
-	if [ $$auth_rc -eq 0 ]; then \
+		"$(CHANGZHOU_DIFY_OUT_PREFIX)_eval.json" "$(CHANGZHOU_DIFY_OUT_PREFIX)_trace.json" "$(CHANGZHOU_DIFY_OUT_PREFIX)_summary.json" "$(CHANGZHOU_DIFY_READINESS_OUT)" \
+		"$(CHANGZHOU_DIFY_KNOWLEDGE_MAP_OUT)"; \
+	$(MAKE) changzhou-dify-knowledge-map-check; map_rc=$$?; \
+	if [ $$map_rc -eq 0 ]; then \
+		$(MAKE) dify-console-check; auth_rc=$$?; \
+	else \
+		auth_rc=1; \
+	fi; \
+	if [ $$map_rc -eq 0 ] && [ $$auth_rc -eq 0 ]; then \
 		$(MAKE) changzhou-dify-external-probe; probe_rc=$$?; \
 	else \
 		probe_rc=1; \
@@ -310,12 +324,13 @@ changzhou-dify-readiness-gate:
 		full_rc=1; \
 	fi; \
 	$(MAKE) changzhou-dify-readiness-summary; summary_rc=$$?; \
-	if [ $$auth_rc -ne 0 ] || [ $$probe_rc -ne 0 ] || [ $$full_rc -ne 0 ] || [ $$summary_rc -ne 0 ]; then \
+	if [ $$map_rc -ne 0 ] || [ $$auth_rc -ne 0 ] || [ $$probe_rc -ne 0 ] || [ $$full_rc -ne 0 ] || [ $$summary_rc -ne 0 ]; then \
 		exit 1; \
 	fi
 
 changzhou-dify-readiness-summary:
 	$(PY) scripts/changzhou_gov_dify_readiness_summary.py \
+		--knowledge-map "$(CHANGZHOU_DIFY_KNOWLEDGE_MAP_OUT)" \
 		--external-probe "$(CHANGZHOU_DIFY_PROBE_OUT)" \
 		--full-summary "$(CHANGZHOU_DIFY_OUT_PREFIX)_summary.json" \
 		--answers "$(CHANGZHOU_DIFY_OUT_PREFIX)_answers.json" \
