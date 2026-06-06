@@ -65,6 +65,12 @@ def _graph_nodes(workflow: dict[str, Any]) -> list[dict[str, Any]]:
     return [node for node in nodes if isinstance(node, dict)]
 
 
+def _selector_text(value: Any) -> str:
+    if not _is_selector(value):
+        return ""
+    return f"{value[0]}.{value[1]}"
+
+
 def _start_variables(nodes: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     variables: dict[str, dict[str, Any]] = {}
     for node in nodes:
@@ -90,6 +96,77 @@ def _start_variables(nodes: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
                 "has_default": _has_default(variable),
             }
     return variables
+
+
+def _node_by_id(nodes: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    return {_text(node.get("id")): node for node in nodes if _text(node.get("id"))}
+
+
+def _condition_values_for_selector(cases: list[Any], selector: str) -> list[str]:
+    values: list[str] = []
+    for case in cases:
+        if not isinstance(case, dict):
+            continue
+        for condition in case.get("conditions") or []:
+            if not isinstance(condition, dict):
+                continue
+            if _selector_text(condition.get("variable_selector")) != selector:
+                continue
+            value = _text(condition.get("value"))
+            if value and value not in values:
+                values.append(value)
+    return values
+
+
+def _area_route_warnings(nodes: list[dict[str, Any]], start_variables: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    expected_selector = ""
+    for selector, variable in start_variables.items():
+        if _text(variable.get("variable")) == "areaName":
+            expected_selector = selector
+            break
+    if not expected_selector:
+        return []
+
+    nodes_by_id = _node_by_id(nodes)
+    warnings: list[dict[str, Any]] = []
+    for node in nodes:
+        data = _node_data(node)
+        if data.get("type") != "if-else" or "区域" not in _text(data.get("title")):
+            continue
+        cases = data.get("cases") if isinstance(data.get("cases"), list) else []
+        selectors = sorted(
+            {
+                selector
+                for case in cases
+                if isinstance(case, dict)
+                for condition in case.get("conditions") or []
+                if isinstance(condition, dict)
+                for selector in [_selector_text(condition.get("variable_selector"))]
+                if selector
+            }
+        )
+        for selector in selectors:
+            if selector == expected_selector:
+                continue
+            source_node_id = selector.split(".", 1)[0]
+            source_data = _node_data(nodes_by_id.get(source_node_id, {}))
+            warnings.append(
+                {
+                    "routing_node_id": _text(node.get("id")),
+                    "routing_node_title": _text(data.get("title")),
+                    "selector": selector,
+                    "expected_selector": expected_selector,
+                    "source_node_id": source_node_id,
+                    "source_node_title": _text(source_data.get("title")),
+                    "source_node_type": _text(source_data.get("type")),
+                    "condition_values": _condition_values_for_selector(cases, selector),
+                    "recommendation": (
+                        "Route regional knowledge from inputs.areaName directly, "
+                        "or normalize it deterministically before the area branch."
+                    ),
+                }
+            )
+    return warnings
 
 
 def _iter_references(value: Any, *, path: str) -> list[tuple[str, str]]:
@@ -155,6 +232,7 @@ def _case_input_violations(
 def lint_workflow(workflow: dict[str, Any], *, cases: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     nodes = _graph_nodes(workflow)
     start_variables = _start_variables(nodes)
+    area_route_warnings = _area_route_warnings(nodes, start_variables)
     references_by_selector: dict[str, list[dict[str, Any]]] = {selector: [] for selector in start_variables}
 
     for node_index, node in enumerate(nodes):
@@ -203,6 +281,9 @@ def lint_workflow(workflow: dict[str, Any], *, cases: list[dict[str, Any]] | Non
         "summary": summary,
         "hidden_required_start_variables": hidden_required,
     }
+    if area_route_warnings:
+        summary["area_route_warnings"] = len(area_route_warnings)
+        report["area_route_warnings"] = area_route_warnings
     if cases is not None:
         case_violations = _case_input_violations(cases, hidden_required)
         summary["case_inputs_checked"] = len(cases)
