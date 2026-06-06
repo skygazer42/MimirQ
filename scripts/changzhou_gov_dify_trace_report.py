@@ -22,6 +22,7 @@ _FALLBACK_ANSWER_MARKERS = (
     "超出领域的问题",
     "暂时无法回答",
 )
+_REQUEST_ATTEMPTS = 3
 
 
 def _text(value: Any) -> str:
@@ -71,14 +72,17 @@ def _request_json(*, console_base_url: str, console_token: str, path: str, timeo
             "Accept": "application/json",
         },
     )
-    try:
-        with urlopen(request, timeout=timeout) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"HTTP {exc.code}: {body[:800]}") from exc
-    except URLError as exc:
-        raise RuntimeError(f"request failed: {exc}") from exc
+    last_error: URLError | None = None
+    for _attempt in range(_REQUEST_ATTEMPTS):
+        try:
+            with urlopen(request, timeout=timeout) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            raise RuntimeError(f"HTTP {exc.code}: {body[:800]}") from exc
+        except URLError as exc:
+            last_error = exc
+    raise RuntimeError(f"request failed: {last_error}") from last_error
 
 
 def load_answers(path: str) -> list[dict[str, Any]]:
