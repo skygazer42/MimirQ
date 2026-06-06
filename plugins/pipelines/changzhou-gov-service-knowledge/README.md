@@ -255,11 +255,13 @@ python scripts/changzhou_gov_dify_full_gate.py \
   --dify-api-key-file /tmp/dify_remote_app_api_key.json \
   --storage-state /tmp/dify_console_storage_state.json \
   --mimirq-base-url http://127.0.0.1:8000 \
-  --out /tmp/changzhou_gov_dify_full_gate.json
+  --out /tmp/changzhou_gov_dify_full_gate.json \
+  --summary-out /tmp/changzhou_gov_dify_full_gate_summary.json
 ```
 
 该 gate 默认要求 `hit_at_3=1.0`、直接证据关键点召回 `1.0`、生成答案关键点召回
 `1.0`、生成答案 fallback 率 `0`，并要求 Dify trace 无空检索/兜底/trace 错误。
+`--summary-out` 只保留各阶段结论、关键指标和 artifact 路径，适合留档或发给团队快速确认。
 如需跑更宽松的边界套件，可以显式传入 `--min-hit-at-3`、
 `--min-generated-answer-key-point-recall`、`--max-generated-answer-fallback-rate`
 等阈值覆盖默认 gate。

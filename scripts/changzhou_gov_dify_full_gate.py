@@ -149,6 +149,24 @@ def _write_optional(path: str, payload: dict[str, Any]) -> None:
     Path(path).write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def compact_summary(report: dict[str, Any], *, artifacts: dict[str, str] | None = None) -> dict[str, Any]:
+    stages: dict[str, Any] = {}
+    for name, stage in (report.get("stages") or {}).items():
+        if not isinstance(stage, dict):
+            continue
+        stages[name] = {
+            "passed": bool(stage.get("passed")),
+            "summary": stage.get("summary") if isinstance(stage.get("summary"), dict) else {},
+        }
+    clean_artifacts = {key: value for key, value in (artifacts or {}).items() if _text(value)}
+    return {
+        "schema": "mimirq.changzhou_gov_service_knowledge.dify_full_gate.summary.v1",
+        "summary": report.get("summary") if isinstance(report.get("summary"), dict) else {},
+        "artifacts": clean_artifacts,
+        "stages": stages,
+    }
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the full Changzhou Dify/MimirQ golden gate.")
     parser.add_argument("--cases", default=DEFAULT_CASES)
@@ -179,6 +197,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--answers-out", default="")
     parser.add_argument("--eval-out", default="")
     parser.add_argument("--trace-out", default="")
+    parser.add_argument("--summary-out", default="")
     return parser
 
 
@@ -269,6 +288,16 @@ def main(argv: list[str] | None = None) -> int:
     _write_optional(str(args.answers_out), (report.get("stages") or {}).get("collect", {}).get("report") or {})
     _write_optional(str(args.eval_out), (report.get("stages") or {}).get("eval", {}).get("report") or {})
     _write_optional(str(args.trace_out), (report.get("stages") or {}).get("trace", {}).get("report") or {})
+    summary_report = compact_summary(
+        report,
+        artifacts={
+            "full": str(args.out),
+            "answers": str(args.answers_out),
+            "eval": str(args.eval_out),
+            "trace": str(args.trace_out),
+        },
+    )
+    _write_optional(str(args.summary_out), summary_report)
     text = json.dumps(report, ensure_ascii=False, indent=2)
     Path(str(args.out)).write_text(text + "\n", encoding="utf-8")
     print(text)
