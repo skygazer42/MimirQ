@@ -142,6 +142,68 @@ def test_lint_workflow_reports_cases_missing_hidden_required_inputs() -> None:
     ]
 
 
+def test_lint_workflow_warns_when_area_route_ignores_start_area_name() -> None:
+    mod = _load_module()
+    workflow = {
+        "graph": {
+            "nodes": [
+                {
+                    "id": "start-1",
+                    "data": {
+                        "type": "start",
+                        "title": "Start",
+                        "variables": [{"label": "区域", "required": False, "type": "text-input", "variable": "areaName"}],
+                    },
+                },
+                {
+                    "id": "extract-1",
+                    "data": {
+                        "type": "parameter-extractor",
+                        "title": "区域提取器",
+                        "query": ["sys", "query"],
+                        "parameters": [{"name": "region", "type": "string"}],
+                    },
+                },
+                {
+                    "id": "route-1",
+                    "data": {
+                        "type": "if-else",
+                        "title": "区域条件分支",
+                        "cases": [
+                            {
+                                "conditions": [
+                                    {
+                                        "variable_selector": ["extract-1", "region"],
+                                        "comparison_operator": "contains",
+                                        "value": "新北",
+                                    }
+                                ]
+                            }
+                        ],
+                    },
+                },
+            ]
+        }
+    }
+
+    report = mod.lint_workflow(workflow)
+
+    assert report["summary"]["area_route_warnings"] == 1
+    assert report["area_route_warnings"] == [
+        {
+            "routing_node_id": "route-1",
+            "routing_node_title": "区域条件分支",
+            "selector": "extract-1.region",
+            "expected_selector": "start-1.areaName",
+            "source_node_id": "extract-1",
+            "source_node_title": "区域提取器",
+            "source_node_type": "parameter-extractor",
+            "condition_values": ["新北"],
+            "recommendation": "Route regional knowledge from inputs.areaName directly, or normalize it deterministically before the area branch.",
+        }
+    ]
+
+
 def test_main_case_inputs_only_ignores_workflow_warning_when_cases_are_complete(tmp_path: Path) -> None:
     mod = _load_module()
     workflow_path = tmp_path / "workflow.json"

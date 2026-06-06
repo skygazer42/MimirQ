@@ -246,6 +246,11 @@ python scripts/changzhou_gov_dify_workflow_lint.py \
 传入 `--cases` 后，报告会额外输出 `case_input_violations`，用于在调用 Dify 前发现
 golden/boundary case 是否漏传 `dify_inputs.areaName`。`--case-inputs-only` 只把 case
 缺入参作为失败退出码，仍会在报告里保留 workflow 本身的隐性必填警告。
+报告中的 `area_route_warnings` 用于发现另一类隐患：case 已传 `areaName`，但区域
+条件分支没有直接使用 Start 变量，而是使用 LLM/parameter-extractor 的派生区域值。
+当前“小畅” workflow 的静态风险是 `区域条件分支` 读取
+`1742969146738.region`，不是 `1711528914102.areaName`；因此即使入参完整，区域
+提取器失败时仍可能落到市本级知识检索节点。
 
 推荐用 full gate 串起完整远程验证：case 入参 preflight -> Dify 真实回答采集 ->
 MimirQ 直查 golden eval -> Dify workflow trace。
