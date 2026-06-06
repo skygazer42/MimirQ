@@ -62,6 +62,7 @@ def test_build_knowledge_dataset_map_reads_external_dataset_details() -> None:
 
 def test_collect_probe_report_flags_dify_empty_but_mimirq_direct_ok_without_leaking_key() -> None:
     mod = _load_module()
+    progress: list[dict] = []
 
     def fake_request_json(**kwargs):  # noqa: ANN003, ANN202
         path = kwargs["path"]
@@ -127,6 +128,7 @@ def test_collect_probe_report_flags_dify_empty_but_mimirq_direct_ok_without_leak
         local_ipv4_addresses=["192.168.3.6"],
         timeout=12.0,
         top_k=5,
+        progress_fn=progress.append,
     )
 
     text = json.dumps(report, ensure_ascii=False)
@@ -146,6 +148,18 @@ def test_collect_probe_report_flags_dify_empty_but_mimirq_direct_ok_without_leak
     assert report["cases"][0]["mimirq_direct_schema_valid"] is True
     assert report["cases"][0]["mimirq_direct_schema_errors"] == []
     assert report["cases"][0]["mimirq_direct_first_title"] == "01政务服务事项知识/新北区事项清单.txt"
+    assert progress == [
+        {
+            "stage": "external_probe",
+            "event": "case",
+            "index": 1,
+            "total": 1,
+            "id": "case-1",
+            "dify_hit_records": 0,
+            "mimirq_direct_records": 1,
+            "diagnosis": "dify_runtime_empty_but_mimirq_direct_ok",
+        }
+    ]
 
 
 def test_evaluate_probe_gate_requires_local_endpoint_and_full_nonempty_coverage() -> None:
