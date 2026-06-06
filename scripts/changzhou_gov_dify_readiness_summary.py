@@ -108,6 +108,25 @@ def _root_cause_reason(stage: str, section: dict[str, Any]) -> str:
     return f"{stage}_failed"
 
 
+def _next_action(stage: str, reason: str) -> str:
+    if not stage:
+        return ""
+    if stage == "console_auth":
+        return (
+            "Refresh Dify console login with DIFY_CONSOLE_EMAIL and DIFY_CONSOLE_PASSWORD_FILE, "
+            "then run make dify-console-login."
+        )
+    if stage == "knowledge_map":
+        return "Run make changzhou-dify-knowledge-map-check and fix DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON."
+    if stage == "external_probe":
+        if reason == "endpoint_host_is_local":
+            return "Ensure Dify external knowledge endpoint points to a MimirQ URL reachable from the Dify server."
+        return "Run make changzhou-dify-external-probe and inspect /tmp/changzhou_gov_dify_external_probe.json."
+    if stage == "full_gate":
+        return "Run make changzhou-dify-full-gate and inspect the failed stage artifact under CHANGZHOU_DIFY_OUT_PREFIX."
+    return "Inspect the readiness artifact for the failed stage."
+
+
 def build_readiness_summary(
     *,
     knowledge_map: dict[str, Any] | None = None,
@@ -144,6 +163,7 @@ def build_readiness_summary(
             blocker = stage
     root_cause_stage = failed_stages[0] if failed_stages else ""
     root_cause_reason = _root_cause_reason(root_cause_stage, sections_by_stage[root_cause_stage]) if root_cause_stage else ""
+    next_action = _next_action(root_cause_stage, root_cause_reason)
     report = {
         "schema": SCHEMA,
         "generated_at": _text(generated_at) or _utc_now_text(),
@@ -154,6 +174,7 @@ def build_readiness_summary(
             "stage_count": 2 + int(knowledge_section is not None) + int(console_section is not None),
             "root_cause_stage": root_cause_stage,
             "root_cause_reason": root_cause_reason,
+            "next_action": next_action,
         },
         "artifacts": _clean_artifacts(artifacts),
     }
