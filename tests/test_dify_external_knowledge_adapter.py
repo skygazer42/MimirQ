@@ -220,6 +220,195 @@ def test_dify_retrieval_prefers_full_chunk_content_over_short_citation_snippet(
     )
 
     assert res.status_code == 200, res.text
+    content = res.json()["records"][0]["content"]
+    assert content.startswith("答案要点：")
+    assert "事项名称：社会保障卡补卡" in content
+    assert "办理地点：新北区政务服务中心" in content
+    assert "咨询方式：0519-12333" in content
+    assert content.endswith(full_content)
+
+
+def test_dify_retrieval_prepends_structured_answer_hints_for_fee_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    token = "dify-test-token"
+    dataset_id = uuid.uuid4()
+    full_content = (
+        "区县：经开区\n"
+        "事项名称：社会保障卡补卡\n"
+        "办理地点：常州市锦绣路2号常州市政务服务中心1号楼一楼C区2-9号窗口\n"
+        "收费情况：不收费\n"
+        "咨询方式：0519-12333，0519-85519290"
+    )
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        f'{{"jingkai": "{dataset_id}"}}',
+        raising=False,
+    )
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+
+    async def _fake_retrieve_dataset_citations(**_kwargs):  # noqa: ANN003, ANN202
+        return [
+            {
+                "chunk_content": full_content,
+                "relevance_score": 0.73,
+                "document_name": "经开区事项清单.txt",
+                "chunk_id": str(uuid.uuid4()),
+                "dataset_id": str(dataset_id),
+            }
+        ]
+
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/integrations/dify/retrieval",
+        headers=_auth(token),
+        json={
+            "knowledge_id": "jingkai",
+            "query": "经开区社保卡补卡在哪里办理",
+            "retrieval_setting": {"top_k": 1, "score_threshold": 0.0},
+        },
+    )
+
+    assert res.status_code == 200, res.text
+    content = res.json()["records"][0]["content"]
+    hint = content.split("\n\n原始证据：", 1)[0]
+    assert "办理地点：常州市锦绣路2号常州市政务服务中心1号楼一楼C区2-9号窗口" in hint
+    assert "收费情况：不收费" in hint
+    assert "咨询方式：0519-12333，0519-85519290" in hint
+    assert full_content in content
+
+
+def test_dify_retrieval_prepends_qa_answer_hints_for_long_answers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    token = "dify-test-token"
+    dataset_id = uuid.uuid4()
+    full_content = (
+        "检索锚点：汽车置换更新；以旧换新；购车补贴；主题：常州市高频应用知识\n"
+        "问题：汽车置换更新\n"
+        "答案：汽车置换更新可以在苏服办APP进行2025年补贴申请，可以申请两种类型的补贴："
+        "1.卖旧置换更新补贴；2.报废置换更新补贴。申请完成后可在我的申请查看进度。"
+    )
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        f'{{"city": "{dataset_id}"}}',
+        raising=False,
+    )
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+
+    async def _fake_retrieve_dataset_citations(**_kwargs):  # noqa: ANN003, ANN202
+        return [
+            {
+                "chunk_content": full_content,
+                "relevance_score": 0.73,
+                "document_name": "常州市高频应用知识.xlsx",
+                "chunk_id": str(uuid.uuid4()),
+                "dataset_id": str(dataset_id),
+            }
+        ]
+
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/integrations/dify/retrieval",
+        headers=_auth(token),
+        json={
+            "knowledge_id": "city",
+            "query": "汽车置换补贴怎么申请",
+            "retrieval_setting": {"top_k": 1, "score_threshold": 0.0},
+        },
+    )
+
+    assert res.status_code == 200, res.text
+    content = res.json()["records"][0]["content"]
+    hint = content.split("\n\n原始证据：", 1)[0]
+    assert "苏服办APP" in hint
+    assert "2025年补贴申请" in hint
+    assert "卖旧置换更新补贴" in hint
+    assert "报废置换更新补贴" in hint
+    assert content.endswith(full_content)
+
+
+def test_dify_retrieval_does_not_prepend_service_hints_for_weak_service_match(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    token = "dify-test-token"
+    dataset_id = uuid.uuid4()
+    full_content = (
+        "事项名称：社会保障卡密码修改与重置\n"
+        "办理地点：常州市政务服务中心\n"
+        "收费情况：不收费\n"
+        "咨询方式：0519-12333"
+    )
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        f'{{"city": "{dataset_id}"}}',
+        raising=False,
+    )
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+
+    async def _fake_retrieve_dataset_citations(**_kwargs):  # noqa: ANN003, ANN202
+        return [
+            {
+                "chunk_content": full_content,
+                "relevance_score": 0.73,
+                "document_name": "常州市事项清单.txt",
+                "chunk_id": str(uuid.uuid4()),
+                "dataset_id": str(dataset_id),
+                "metadata": {"service_name": "社会保障卡密码修改与重置"},
+            }
+        ]
+
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/integrations/dify/retrieval",
+        headers=_auth(token),
+        json={
+            "knowledge_id": "city",
+            "query": "企业员工密码输入错误5次怎么办",
+            "retrieval_setting": {"top_k": 1, "score_threshold": 0.0},
+        },
+    )
+
+    assert res.status_code == 200, res.text
     assert res.json()["records"][0]["content"] == full_content
 
 

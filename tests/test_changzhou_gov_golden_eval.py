@@ -196,6 +196,42 @@ def test_evaluate_case_normalizes_generated_answer_labels_without_hiding_missing
     }
 
 
+def test_evaluate_case_matches_structured_key_point_values_without_requiring_label() -> None:
+    mod = _load_module()
+    case = {
+        "id": "xinbei-social-card-reissue",
+        "query": "新北区社保卡补卡在哪里办理",
+        "expected": {
+            "answer_key_points": [
+                "办理地点：新北区云河路69号",
+                "咨询方式：0519-88516920",
+                "收费情况：不收费",
+            ],
+        },
+    }
+    records = [
+        {
+            "title": "01政务服务事项知识/新北区事项清单.txt",
+            "content": "办理地点：新北区云河路69号\n咨询方式：0519-88516920\n收费情况：不收费",
+            "metadata": {},
+        }
+    ]
+    answer_item = {"answer": "新北区社保卡补卡在新北区云河路69号办理，全程不收费。"}
+
+    result = mod.evaluate_case(case, records, generated_answer=answer_item)
+
+    assert result["generated_answer_quality"] == {
+        "provided": True,
+        "fallback": False,
+        "key_points_total": 3,
+        "key_points_matched": 2,
+        "key_point_recall": 2 / 3,
+        "grounded": False,
+        "context_supported": True,
+        "missing_key_points": ["咨询方式：0519-88516920"],
+    }
+
+
 def test_evaluate_case_flags_fallback_generated_answer() -> None:
     mod = _load_module()
     case = {
