@@ -8,6 +8,7 @@ import json
 import os
 import sys
 from collections.abc import Callable, Mapping
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -27,6 +28,10 @@ _REQUEST_ATTEMPTS = 3
 
 def _text(value: Any) -> str:
     return str(value or "").strip()
+
+
+def _utc_now_text() -> str:
+    return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def _is_fallback_answer(answer: str) -> bool:
@@ -213,6 +218,7 @@ def collect_trace_report(
     console_token: str,
     request_json: RequestJsonFn = _request_json,
     timeout: float = 30.0,
+    generated_at: str = "",
 ) -> dict[str, Any]:
     cases: list[dict[str, Any]] = []
     for item in answers:
@@ -258,6 +264,7 @@ def collect_trace_report(
         summary["missing_start_variable_errors"] = missing_variable_errors
     return {
         "schema": "mimirq.changzhou_gov_service_knowledge.dify_trace_report.v1",
+        "generated_at": _text(generated_at) or _utc_now_text(),
         "source": {
             "provider": "dify",
             "console_base_url": console_base_url.rstrip("/"),

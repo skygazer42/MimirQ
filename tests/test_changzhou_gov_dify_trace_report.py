@@ -135,10 +135,12 @@ def test_collect_trace_report_fetches_message_and_node_executions_without_leakin
         console_token="secret-console-token",
         request_json=fake_request_json,
         timeout=12.0,
+        generated_at="2026-06-07T01:02:03Z",
     )
 
     text = json.dumps(report, ensure_ascii=False)
     assert "secret-console-token" not in text
+    assert report["generated_at"] == "2026-06-07T01:02:03Z"
     assert calls == ["/apps/app-1/messages/msg-1", "/apps/app-1/workflow-runs/run-1/node-executions"]
     assert report["summary"] == {
         "cases": 1,

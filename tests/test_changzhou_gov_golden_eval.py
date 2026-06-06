@@ -268,6 +268,43 @@ def test_evaluate_case_matches_key_point_aliases_for_generated_answers() -> None
     }
 
 
+def test_run_live_eval_report_includes_generated_at(monkeypatch) -> None:
+    mod = _load_module()
+
+    def fake_request_json(**_kwargs):  # noqa: ANN003, ANN202
+        return {
+            "records": [
+                {
+                    "title": "01政务服务事项知识/新北区事项清单.txt",
+                    "content": "事项名称：社会保障卡补卡",
+                    "metadata": {},
+                }
+            ]
+        }
+
+    monkeypatch.setattr(mod, "_request_json", fake_request_json)
+
+    report = mod.run_live_eval(
+        cases=[
+            {
+                "id": "case-1",
+                "knowledge_id": "changzhou_新北区_service",
+                "query": "新北区社保卡补卡在哪里办理",
+                "expected": {"content_contains": ["事项名称：社会保障卡补卡"]},
+            }
+        ],
+        base_url="http://mimirq.test",
+        token="secret-token",
+        top_k=5,
+        timeout=12.0,
+        generated_at="2026-06-07T01:02:03Z",
+    )
+
+    assert report["generated_at"] == "2026-06-07T01:02:03Z"
+    assert report["summary"]["cases"] == 1
+    assert report["results"][0]["hit_rank"] == 1
+
+
 def test_evaluate_case_flags_fallback_generated_answer() -> None:
     mod = _load_module()
     case = {

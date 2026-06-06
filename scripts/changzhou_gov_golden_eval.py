@@ -13,6 +13,7 @@ import json
 import os
 import sys
 import unicodedata
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -41,6 +42,10 @@ _FALLBACK_ANSWER_MARKERS = (
 
 def _text(value: Any) -> str:
     return str(value or "").strip()
+
+
+def _utc_now_text() -> str:
+    return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def _normalize_quality_text(value: Any) -> str:
@@ -446,6 +451,7 @@ def run_live_eval(
     top_k: int,
     timeout: float,
     answers: dict[str, dict[str, Any]] | None = None,
+    generated_at: str = "",
 ) -> dict[str, Any]:
     results: list[dict[str, Any]] = []
     answers_by_id = dict(answers or {})
@@ -467,7 +473,11 @@ def run_live_eval(
                 generated_answer=answers_by_id.get(_text(case.get("id"))),
             )
         )
-    return {"summary": summarize_results(results), "results": results}
+    return {
+        "generated_at": _text(generated_at) or _utc_now_text(),
+        "summary": summarize_results(results),
+        "results": results,
+    }
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
