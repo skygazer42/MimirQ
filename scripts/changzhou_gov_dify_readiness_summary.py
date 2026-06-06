@@ -90,6 +90,24 @@ def _with_status(section: dict[str, Any], *, blocker: str) -> dict[str, Any]:
     return out
 
 
+def _root_cause_reason(stage: str, section: dict[str, Any]) -> str:
+    if stage == "console_auth":
+        return _text(section.get("reason")) or "console_auth_failed"
+    conditions = section.get("failed_conditions")
+    if isinstance(conditions, list) and conditions:
+        return _text(conditions[0]) or f"{stage}_failed"
+    summary = section.get("summary") if isinstance(section.get("summary"), dict) else {}
+    summary_conditions = summary.get("failed_conditions")
+    if isinstance(summary_conditions, list) and summary_conditions:
+        return _text(summary_conditions[0]) or f"{stage}_failed"
+    failed = section.get("failed_stages")
+    if isinstance(failed, list) and failed:
+        return f"{stage}:{_text(failed[0])}"
+    if stage == "knowledge_map":
+        return "missing_or_invalid_knowledge_map"
+    return f"{stage}_failed"
+
+
 def build_readiness_summary(
     *,
     knowledge_map: dict[str, Any] | None = None,
@@ -124,6 +142,8 @@ def build_readiness_summary(
         if with_status["status"] == "failed":
             failed_stages.append(stage)
             blocker = stage
+    root_cause_stage = failed_stages[0] if failed_stages else ""
+    root_cause_reason = _root_cause_reason(root_cause_stage, sections_by_stage[root_cause_stage]) if root_cause_stage else ""
     report = {
         "schema": SCHEMA,
         "generated_at": _text(generated_at) or _utc_now_text(),
@@ -132,6 +152,8 @@ def build_readiness_summary(
             "failed_stages": failed_stages,
             "skipped_stages": skipped_stages,
             "stage_count": 2 + int(knowledge_section is not None) + int(console_section is not None),
+            "root_cause_stage": root_cause_stage,
+            "root_cause_reason": root_cause_reason,
         },
         "artifacts": _clean_artifacts(artifacts),
     }

@@ -33,7 +33,14 @@ def test_build_readiness_summary_combines_probe_and_full_gate() -> None:
         },
     }
     full_gate = {
-        "summary": {"passed": True, "failed_stages": [], "skipped_stages": [], "stage_count": 4},
+        "summary": {
+            "passed": True,
+            "failed_stages": [],
+            "skipped_stages": [],
+            "stage_count": 4,
+            "root_cause_stage": "",
+            "root_cause_reason": "",
+        },
         "stages": {
             "collect": {"passed": True, "summary": {"cases": 12, "succeeded": 12, "failed": 0}},
             "eval": {
@@ -74,7 +81,14 @@ def test_build_readiness_summary_combines_probe_and_full_gate() -> None:
     assert summary == {
         "schema": "mimirq.changzhou_gov_service_knowledge.dify_readiness_summary.v1",
         "generated_at": "2026-06-07T01:02:03Z",
-        "summary": {"passed": True, "failed_stages": [], "skipped_stages": [], "stage_count": 4},
+        "summary": {
+            "passed": True,
+            "failed_stages": [],
+            "skipped_stages": [],
+            "stage_count": 4,
+            "root_cause_stage": "",
+            "root_cause_reason": "",
+        },
         "artifacts": {
             "knowledge_map": "/tmp/map.json",
             "console_auth": "/tmp/auth.json",
@@ -140,6 +154,8 @@ def test_build_readiness_summary_marks_failed_source() -> None:
         "failed_stages": ["knowledge_map"],
         "skipped_stages": ["console_auth", "external_probe", "full_gate"],
         "stage_count": 4,
+        "root_cause_stage": "knowledge_map",
+        "root_cause_reason": "route_missing:经开区",
     }
     assert summary["knowledge_map"]["status"] == "failed"
     assert summary["console_auth"] == {
@@ -168,6 +184,8 @@ def test_auth_failure_marks_downstream_stages_skipped() -> None:
         "failed_stages": ["console_auth"],
         "skipped_stages": ["external_probe", "full_gate"],
         "stage_count": 4,
+        "root_cause_stage": "console_auth",
+        "root_cause_reason": "token_expired",
     }
     assert summary["knowledge_map"]["status"] == "passed"
     assert summary["console_auth"]["status"] == "failed"
@@ -203,6 +221,8 @@ def test_main_writes_failed_summary_when_input_artifacts_are_missing(tmp_path: P
         "failed_stages": ["knowledge_map"],
         "skipped_stages": ["console_auth", "external_probe", "full_gate"],
         "stage_count": 4,
+        "root_cause_stage": "knowledge_map",
+        "root_cause_reason": "missing_or_invalid_knowledge_map",
     }
     assert report["knowledge_map"]["passed"] is False
     assert report["knowledge_map"]["status"] == "failed"

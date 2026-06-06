@@ -46,7 +46,7 @@ The Makefile is the source of truth for common workflows; these scripts are the 
 - `changzhou_gov_dify_full_gate.py`: run the Changzhou government-service Dify/MimirQ golden gate (preflight, generated answers, direct eval, workflow trace)
   - Recommended: `make changzhou-dify-full-gate`
   - End-to-end readiness: `make changzhou-dify-readiness-gate` runs the local knowledge-map preflight, Dify console token check, strict external probe, then the full generated-answer/direct-eval/trace gate with generated-answer grounding/key-point recall thresholds defaulting to `0.9` to avoid failing on harmless wording variance, and writes `/tmp/changzhou_gov_dify_readiness_summary.json`.
-  - If an upstream stage fails, the readiness summary reports only the root cause in `failed_stages`; downstream stages are marked `status=skipped` with `blocked_by=<stage>`, so expired Dify console auth is not hidden behind skipped probe/full-gate stages.
+  - If an upstream stage fails, the readiness summary reports only the root cause in `failed_stages` and `root_cause_stage/root_cause_reason`; downstream stages are marked `status=skipped` with `blocked_by=<stage>`, so expired Dify console auth is not hidden behind skipped probe/full-gate stages.
   - Override cases or thresholds without editing the Makefile: `CHANGZHOU_DIFY_CASES=/tmp/boundary_cases.json CHANGZHOU_DIFY_EXTRA_ARGS='--min-hit-at-3 0.8' make changzhou-dify-full-gate`
   - Reads `DIFY_EXTERNAL_KNOWLEDGE_API_KEY` / `DIFY_EXTERNAL_KNOWLEDGE_API_KEYS` from the environment or repo `.env`; Dify App key and console storage state default to `/tmp/dify_remote_app_api_key.json` and `/tmp/dify_console_storage_state.json`.
 - `clean.py`: remove local caches/artifacts (used by `make clean`)
