@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,10 @@ def _text(value: Any) -> str:
 
 def _clean_artifacts(artifacts: dict[str, str]) -> dict[str, str]:
     return {key: value for key, value in artifacts.items() if _text(value)}
+
+
+def _utc_now_text() -> str:
+    return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def _external_probe_section(report: dict[str, Any]) -> dict[str, Any]:
@@ -56,6 +61,7 @@ def build_readiness_summary(
     external_probe: dict[str, Any],
     full_gate_summary: dict[str, Any],
     artifacts: dict[str, str],
+    generated_at: str = "",
 ) -> dict[str, Any]:
     external_section = _external_probe_section(external_probe)
     full_section = _full_gate_section(full_gate_summary)
@@ -66,6 +72,7 @@ def build_readiness_summary(
         failed_stages.append("full_gate")
     return {
         "schema": SCHEMA,
+        "generated_at": _text(generated_at) or _utc_now_text(),
         "summary": {
             "passed": not failed_stages,
             "failed_stages": failed_stages,

@@ -61,10 +61,12 @@ def test_build_readiness_summary_combines_probe_and_full_gate() -> None:
         external_probe=external_probe,
         full_gate_summary=full_gate,
         artifacts={"external_probe": "/tmp/probe.json", "full_gate": "/tmp/full_summary.json"},
+        generated_at="2026-06-07T01:02:03Z",
     )
 
     assert summary == {
         "schema": "mimirq.changzhou_gov_service_knowledge.dify_readiness_summary.v1",
+        "generated_at": "2026-06-07T01:02:03Z",
         "summary": {"passed": True, "failed_stages": [], "stage_count": 2},
         "artifacts": {"external_probe": "/tmp/probe.json", "full_gate": "/tmp/full_summary.json"},
         "external_probe": {
@@ -112,6 +114,7 @@ def test_build_readiness_summary_marks_failed_source() -> None:
         external_probe={"gate": {"passed": False, "failed_conditions": ["endpoint_host_is_local"]}},
         full_gate_summary={"summary": {"passed": True, "failed_stages": []}},
         artifacts={},
+        generated_at="2026-06-07T01:02:03Z",
     )
 
     assert summary["summary"] == {"passed": False, "failed_stages": ["external_probe"], "stage_count": 2}
