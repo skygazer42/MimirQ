@@ -33,7 +33,7 @@ def test_build_readiness_summary_combines_probe_and_full_gate() -> None:
         },
     }
     full_gate = {
-        "summary": {"passed": True, "failed_stages": [], "stage_count": 4},
+        "summary": {"passed": True, "failed_stages": [], "skipped_stages": [], "stage_count": 4},
         "stages": {
             "collect": {"passed": True, "summary": {"cases": 12, "succeeded": 12, "failed": 0}},
             "eval": {
@@ -74,17 +74,18 @@ def test_build_readiness_summary_combines_probe_and_full_gate() -> None:
     assert summary == {
         "schema": "mimirq.changzhou_gov_service_knowledge.dify_readiness_summary.v1",
         "generated_at": "2026-06-07T01:02:03Z",
-        "summary": {"passed": True, "failed_stages": [], "stage_count": 4},
+        "summary": {"passed": True, "failed_stages": [], "skipped_stages": [], "stage_count": 4},
         "artifacts": {
             "knowledge_map": "/tmp/map.json",
             "console_auth": "/tmp/auth.json",
             "external_probe": "/tmp/probe.json",
             "full_gate": "/tmp/full_summary.json",
         },
-        "knowledge_map": {"passed": True, "failed_conditions": [], "summary": {"passed": True, "failed_conditions": [], "route_count": 7}},
-        "console_auth": {"passed": True, "reason": "ok", "ttl_seconds": 1800, "min_ttl_seconds": 900},
+        "knowledge_map": {"passed": True, "status": "passed", "failed_conditions": [], "summary": {"passed": True, "failed_conditions": [], "route_count": 7}},
+        "console_auth": {"passed": True, "status": "passed", "reason": "ok", "ttl_seconds": 1800, "min_ttl_seconds": 900},
         "external_probe": {
             "passed": True,
+            "status": "passed",
             "failed_conditions": [],
             "endpoint": "http://192.168.3.6:8000/api/v1/integrations/dify",
             "endpoint_host": "192.168.3.6",
@@ -94,6 +95,7 @@ def test_build_readiness_summary_combines_probe_and_full_gate() -> None:
         },
         "full_gate": {
             "passed": True,
+            "status": "passed",
             "failed_stages": [],
             "summary": full_gate["summary"],
             "stages": {
@@ -135,15 +137,44 @@ def test_build_readiness_summary_marks_failed_source() -> None:
 
     assert summary["summary"] == {
         "passed": False,
-        "failed_stages": ["knowledge_map", "console_auth", "external_probe"],
+        "failed_stages": ["knowledge_map"],
+        "skipped_stages": ["console_auth", "external_probe", "full_gate"],
         "stage_count": 4,
     }
+    assert summary["knowledge_map"]["status"] == "failed"
     assert summary["console_auth"] == {
         "passed": False,
-        "reason": "token_expires_soon",
-        "ttl_seconds": 500,
-        "min_ttl_seconds": 900,
+        "status": "skipped",
+        "blocked_by": "knowledge_map",
     }
+    assert summary["external_probe"]["status"] == "skipped"
+    assert summary["external_probe"]["blocked_by"] == "knowledge_map"
+
+
+def test_auth_failure_marks_downstream_stages_skipped() -> None:
+    mod = _load_module()
+
+    summary = mod.build_readiness_summary(
+        knowledge_map={"summary": {"passed": True, "failed_conditions": [], "route_count": 7}},
+        console_auth={"valid": False, "reason": "token_expired", "ttl_seconds": -10, "min_ttl_seconds": 900},
+        external_probe={},
+        full_gate_summary={},
+        artifacts={},
+        generated_at="2026-06-07T01:02:03Z",
+    )
+
+    assert summary["summary"] == {
+        "passed": False,
+        "failed_stages": ["console_auth"],
+        "skipped_stages": ["external_probe", "full_gate"],
+        "stage_count": 4,
+    }
+    assert summary["knowledge_map"]["status"] == "passed"
+    assert summary["console_auth"]["status"] == "failed"
+    assert summary["external_probe"]["status"] == "skipped"
+    assert summary["external_probe"]["blocked_by"] == "console_auth"
+    assert summary["full_gate"]["status"] == "skipped"
+    assert summary["full_gate"]["blocked_by"] == "console_auth"
 
 
 def test_main_writes_failed_summary_when_input_artifacts_are_missing(tmp_path: Path) -> None:
@@ -169,13 +200,18 @@ def test_main_writes_failed_summary_when_input_artifacts_are_missing(tmp_path: P
     report = json.loads(out.read_text(encoding="utf-8"))
     assert report["summary"] == {
         "passed": False,
-        "failed_stages": ["knowledge_map", "console_auth", "external_probe", "full_gate"],
+        "failed_stages": ["knowledge_map"],
+        "skipped_stages": ["console_auth", "external_probe", "full_gate"],
         "stage_count": 4,
     }
     assert report["knowledge_map"]["passed"] is False
-    assert report["console_auth"]["passed"] is False
-    assert report["external_probe"]["passed"] is False
-    assert report["full_gate"]["passed"] is False
+    assert report["knowledge_map"]["status"] == "failed"
+    assert report["console_auth"]["status"] == "skipped"
+    assert report["console_auth"]["blocked_by"] == "knowledge_map"
+    assert report["external_probe"]["status"] == "skipped"
+    assert report["external_probe"]["blocked_by"] == "knowledge_map"
+    assert report["full_gate"]["status"] == "skipped"
+    assert report["full_gate"]["blocked_by"] == "knowledge_map"
 
 
 def test_main_collects_artifact_generated_at_values(tmp_path: Path) -> None:

@@ -82,6 +82,14 @@ def _full_gate_section(report: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _with_status(section: dict[str, Any], *, blocker: str) -> dict[str, Any]:
+    if blocker:
+        return {"passed": False, "status": "skipped", "blocked_by": blocker}
+    out = dict(section)
+    out["status"] = "passed" if section.get("passed") is True else "failed"
+    return out
+
+
 def build_readiness_summary(
     *,
     knowledge_map: dict[str, Any] | None = None,
@@ -96,31 +104,43 @@ def build_readiness_summary(
     console_section = _console_auth_section(console_auth or {}) if console_auth is not None else None
     external_section = _external_probe_section(external_probe)
     full_section = _full_gate_section(full_gate_summary)
+    staged_sections: list[tuple[str, dict[str, Any]]] = []
+    if knowledge_section is not None:
+        staged_sections.append(("knowledge_map", knowledge_section))
+    if console_section is not None:
+        staged_sections.append(("console_auth", console_section))
+    staged_sections.extend((("external_probe", external_section), ("full_gate", full_section)))
+
+    blocker = ""
     failed_stages: list[str] = []
-    if knowledge_section is not None and knowledge_section["passed"] is not True:
-        failed_stages.append("knowledge_map")
-    if console_section is not None and console_section["passed"] is not True:
-        failed_stages.append("console_auth")
-    if external_section["passed"] is not True:
-        failed_stages.append("external_probe")
-    if full_section["passed"] is not True:
-        failed_stages.append("full_gate")
+    skipped_stages: list[str] = []
+    sections_by_stage: dict[str, dict[str, Any]] = {}
+    for stage, section in staged_sections:
+        with_status = _with_status(section, blocker=blocker)
+        sections_by_stage[stage] = with_status
+        if with_status["status"] == "skipped":
+            skipped_stages.append(stage)
+            continue
+        if with_status["status"] == "failed":
+            failed_stages.append(stage)
+            blocker = stage
     report = {
         "schema": SCHEMA,
         "generated_at": _text(generated_at) or _utc_now_text(),
         "summary": {
             "passed": not failed_stages,
             "failed_stages": failed_stages,
+            "skipped_stages": skipped_stages,
             "stage_count": 2 + int(knowledge_section is not None) + int(console_section is not None),
         },
         "artifacts": _clean_artifacts(artifacts),
     }
     if knowledge_section is not None:
-        report["knowledge_map"] = knowledge_section
+        report["knowledge_map"] = sections_by_stage["knowledge_map"]
     if console_section is not None:
-        report["console_auth"] = console_section
-    report["external_probe"] = external_section
-    report["full_gate"] = full_section
+        report["console_auth"] = sections_by_stage["console_auth"]
+    report["external_probe"] = sections_by_stage["external_probe"]
+    report["full_gate"] = sections_by_stage["full_gate"]
     generated_by_artifact = _artifact_generated_at(
         artifact_reports
         or {
