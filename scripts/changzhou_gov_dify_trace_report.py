@@ -24,6 +24,7 @@ _FALLBACK_ANSWER_MARKERS = (
     "暂时无法回答",
 )
 _REQUEST_ATTEMPTS = 3
+_CITY_AREA_NAMES = {"常州市本级", "常州市", "常州全市", "全市"}
 
 
 def _text(value: Any) -> str:
@@ -127,6 +128,60 @@ def _result_count(outputs: Any) -> int | None:
     return None
 
 
+def _expected_area(answer_item: dict[str, Any]) -> str:
+    inputs = answer_item.get("dify_inputs")
+    if isinstance(inputs, dict):
+        value = _text(inputs.get("areaName"))
+        if value:
+            return value
+    return _text(answer_item.get("expected_area"))
+
+
+def _expected_retrieval_title_contains(expected_area: str) -> str:
+    area = _text(expected_area)
+    if not area:
+        return ""
+    if area in _CITY_AREA_NAMES:
+        return "常州市"
+    return area
+
+
+def _region_texts(regions: list[Any]) -> list[str]:
+    out: list[str] = []
+    for region in regions:
+        if isinstance(region, dict):
+            for key in ("region", "area"):
+                value = _text(region.get(key))
+                if value:
+                    out.append(value)
+        else:
+            value = _text(region)
+            if value:
+                out.append(value)
+    return out
+
+
+def _add_route_diagnostics(answer_item: dict[str, Any], summary: dict[str, Any]) -> dict[str, Any]:
+    expected_area = _expected_area(answer_item)
+    if not expected_area:
+        return {}
+    expected_title = _expected_retrieval_title_contains(expected_area)
+    retrievals = summary.get("retrievals") if isinstance(summary.get("retrievals"), list) else []
+    titles = [_text(item.get("title")) for item in retrievals if isinstance(item, dict)]
+    route_matched = any(expected_title in title for title in titles if title) if expected_title else True
+    regions = summary.get("regions") if isinstance(summary.get("regions"), list) else []
+    region_values = _region_texts(regions)
+    region_matched = any(expected_area == value for value in region_values) if region_values else None
+    out: dict[str, Any] = {
+        "expected_area": expected_area,
+        "expected_retrieval_title_contains": expected_title,
+        "route_matched": route_matched,
+    }
+    if region_matched is not None:
+        out["region_matched"] = region_matched
+    return out
+
+
 def _summarize_executions(executions: list[dict[str, Any]]) -> dict[str, Any]:
     retrievals: list[dict[str, Any]] = []
     regions: list[Any] = []
@@ -205,6 +260,7 @@ def _trace_answer(
     executions = _execution_rows(node_payload)
     summary = _summarize_executions(executions)
     answer = _text(message.get("answer") or answer_item.get("answer"))
+    route_diagnostics = _add_route_diagnostics(answer_item, summary)
     return {
         "id": case_id,
         "query": query,
@@ -212,6 +268,7 @@ def _trace_answer(
         "workflow_run_id": workflow_run_id,
         "fallback": _is_fallback_answer(answer),
         **summary,
+        **route_diagnostics,
     }
 
 
@@ -265,6 +322,11 @@ def collect_trace_report(
         "nonempty_retrieval_cases": len(nonempty_retrieval_cases),
         "trace_errors": sum(1 for item in cases if item.get("error")),
     }
+    expected_area_cases = sum(1 for item in traced_cases if _text(item.get("expected_area")))
+    if expected_area_cases:
+        summary["expected_area_cases"] = expected_area_cases
+        summary["route_mismatch_cases"] = sum(1 for item in traced_cases if item.get("route_matched") is False)
+        summary["region_mismatch_cases"] = sum(1 for item in traced_cases if item.get("region_matched") is False)
     upstream_error_cases = sum(1 for item in cases if item.get("upstream_error"))
     if upstream_error_cases:
         summary["upstream_error_cases"] = upstream_error_cases

@@ -158,6 +158,55 @@ def test_collect_trace_report_fetches_message_and_node_executions_without_leakin
     ]
 
 
+def test_collect_trace_report_flags_area_route_mismatch() -> None:
+    mod = _load_module()
+
+    def fake_request_json(*, path: str, **_kwargs) -> dict:  # noqa: ANN003
+        if path.endswith("/messages/msg-1"):
+            return {"workflow_run_id": "run-1", "answer": "ok"}
+        if path.endswith("/workflow-runs/run-1/node-executions"):
+            return {
+                "data": [
+                    {
+                        "title": "常州市政务服务知识检索",
+                        "node_type": "knowledge-retrieval",
+                        "inputs": {"query": "新北区社保卡补卡在哪里办理"},
+                        "outputs": {"result": [{"content": "hit"}]},
+                    },
+                    {
+                        "title": "区域提取器",
+                        "node_type": "parameter-extractor",
+                        "outputs": {"region": "未知"},
+                    },
+                ]
+            }
+        raise AssertionError(path)
+
+    report = mod.collect_trace_report(
+        answers=[
+            {
+                "id": "case-1",
+                "query": "新北区社保卡补卡在哪里办理",
+                "message_id": "msg-1",
+                "answer": "ok",
+                "dify_inputs": {"areaName": "新北区"},
+            }
+        ],
+        app_id="app-1",
+        console_base_url="https://dify.test/console/api",
+        console_token="secret-console-token",
+        request_json=fake_request_json,
+        timeout=12.0,
+    )
+
+    assert report["summary"]["route_mismatch_cases"] == 1
+    assert report["summary"]["region_mismatch_cases"] == 1
+    assert report["cases"][0]["expected_area"] == "新北区"
+    assert report["cases"][0]["expected_retrieval_title_contains"] == "新北区"
+    assert report["cases"][0]["route_matched"] is False
+    assert report["cases"][0]["region_matched"] is False
+
+
 def test_collect_trace_report_handles_answer_without_message_id() -> None:
     mod = _load_module()
 

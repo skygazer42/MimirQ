@@ -247,6 +247,35 @@ def test_collect_answers_returns_answers_json_with_errors() -> None:
     ]
 
 
+def test_collect_answers_preserves_traceable_area_input_without_leaking_other_inputs() -> None:
+    mod = _load_module()
+
+    def fake_request(**_kwargs):  # noqa: ANN003, ANN202
+        return {"answer": "ok", "message_id": "msg-1"}
+
+    report = mod.collect_answers(
+        cases=[
+            {
+                "id": "case-1",
+                "query": "新北区社保卡补卡在哪里办理",
+                "dify_inputs": {"areaName": "新北区", "operatorToken": "secret-should-not-be-reported"},
+            }
+        ],
+        base_url="http://dify.test/v1",
+        api_key="token",
+        mode="chat",
+        user="tester",
+        response_mode="blocking",
+        workflow_query_key="query",
+        timeout=12.0,
+        request_json=fake_request,
+    )
+
+    assert report["answers"][0]["dify_inputs"] == {"areaName": "新北区"}
+    assert "operatorToken" not in json.dumps(report, ensure_ascii=False)
+    assert "secret-should-not-be-reported" not in json.dumps(report, ensure_ascii=False)
+
+
 def test_collect_answers_classifies_missing_start_variable_errors() -> None:
     mod = _load_module()
 
