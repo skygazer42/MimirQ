@@ -53,9 +53,13 @@ def test_changzhou_dify_readiness_gate_runs_probe_before_full_gate() -> None:
     command = result.stdout
     probe_index = command.index("scripts/changzhou_gov_dify_external_knowledge_probe.py")
     full_gate_index = command.index("scripts/changzhou_gov_dify_full_gate.py")
+    summary_index = command.index("scripts/changzhou_gov_dify_readiness_summary.py")
     assert probe_index < full_gate_index
+    assert full_gate_index < summary_index
     assert '--cases "/tmp/custom_cases.json"' in command
     assert '--out "/tmp/probe.json"' in command
+    assert '--external-probe "/tmp/probe.json"' in command
+    assert '--full-summary "/tmp/changzhou_gov_dify_full_gate_summary.json"' in command
     assert "--min-hit-at-3 0.8" in command
     assert "--min-generated-answer-grounding-rate 0.9" in command
     assert "--min-generated-answer-key-point-recall 0.9" in command
