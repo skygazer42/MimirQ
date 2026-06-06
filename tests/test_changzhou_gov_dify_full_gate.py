@@ -160,3 +160,48 @@ def test_thresholds_from_args_preserves_defaults_and_applies_overrides() -> None
         **mod.DEFAULT_MAXIMUMS,
         "generated_answer_fallback_rate": 0.2,
     }
+
+
+def test_compact_summary_keeps_stage_metrics_and_artifact_paths_without_full_reports() -> None:
+    mod = _load_module()
+    full_report = {
+        "summary": {"passed": True, "failed_stages": [], "stage_count": 4},
+        "stages": {
+            "collect": {
+                "passed": True,
+                "summary": {"cases": 1, "succeeded": 1, "failed": 0},
+                "report": {"answers": [{"id": "case-1", "answer": "large answer"}]},
+            },
+            "eval": {
+                "passed": True,
+                "summary": {"hit_at_3": 1.0, "generated_answer_key_point_recall": 1.0},
+                "report": {"results": [{"id": "case-1", "matched_record": {"content": "large content"}}]},
+            },
+        },
+    }
+
+    summary = mod.compact_summary(
+        full_report,
+        artifacts={
+            "full": "/tmp/full.json",
+            "answers": "/tmp/answers.json",
+            "eval": "/tmp/eval.json",
+            "trace": "",
+        },
+    )
+
+    assert summary == {
+        "schema": "mimirq.changzhou_gov_service_knowledge.dify_full_gate.summary.v1",
+        "summary": {"passed": True, "failed_stages": [], "stage_count": 4},
+        "artifacts": {
+            "full": "/tmp/full.json",
+            "answers": "/tmp/answers.json",
+            "eval": "/tmp/eval.json",
+        },
+        "stages": {
+            "collect": {"passed": True, "summary": {"cases": 1, "succeeded": 1, "failed": 0}},
+            "eval": {"passed": True, "summary": {"hit_at_3": 1.0, "generated_answer_key_point_recall": 1.0}},
+        },
+    }
+    assert "large answer" not in str(summary)
+    assert "large content" not in str(summary)
