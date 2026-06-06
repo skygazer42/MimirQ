@@ -23,6 +23,7 @@ from urllib.request import ProxyHandler, Request, build_opener, urlopen
 DEFAULT_CONSOLE_BASE_URL = "https://ai.kingdonsoft.com:5001/console/api"
 DEFAULT_STORAGE_STATE = "/tmp/kingdonsoft_dify_storage_state.json"
 DEFAULT_EXTERNAL_API_LIMIT = 50
+_REQUEST_ATTEMPTS = 3
 
 RequestJsonFn = Callable[..., dict[str, Any]]
 RequestMimirqDirectFn = Callable[..., dict[str, Any]]
@@ -108,15 +109,18 @@ def _request_json(
         method=method,
         headers=headers,
     )
-    try:
-        with urlopen(request, timeout=timeout) as response:
-            body = response.read().decode("utf-8")
-            return json.loads(body) if body else {}
-    except HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"HTTP {exc.code}: {body[:800]}") from exc
-    except URLError as exc:
-        raise RuntimeError(f"request failed: {exc}") from exc
+    last_error: URLError | None = None
+    for _attempt in range(_REQUEST_ATTEMPTS):
+        try:
+            with urlopen(request, timeout=timeout) as response:
+                body = response.read().decode("utf-8")
+                return json.loads(body) if body else {}
+        except HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            raise RuntimeError(f"HTTP {exc.code}: {body[:800]}") from exc
+        except URLError as exc:
+            last_error = exc
+    raise RuntimeError(f"request failed: {last_error}") from last_error
 
 
 def _request_mimirq_direct(
