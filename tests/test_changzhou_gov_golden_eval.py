@@ -232,6 +232,42 @@ def test_evaluate_case_matches_structured_key_point_values_without_requiring_lab
     }
 
 
+def test_evaluate_case_matches_key_point_aliases_for_generated_answers() -> None:
+    mod = _load_module()
+    case = {
+        "id": "city-car-replacement-subsidy",
+        "query": "汽车置换补贴怎么申请",
+        "expected": {
+            "answer_key_points": ["卖旧置换更新补贴", "报废置换更新补贴"],
+            "answer_key_point_aliases": {
+                "卖旧置换更新补贴": ["卖旧置换"],
+                "报废置换更新补贴": ["报废置换"],
+            },
+        },
+    }
+    records = [
+        {
+            "title": "03常州市常见问题/常州市高频应用知识.xlsx",
+            "content": "可以申请两种类型的补贴：卖旧置换更新补贴、报废置换更新补贴。",
+            "metadata": {},
+        }
+    ]
+    answer_item = {"answer": "补贴分为卖旧置换和报废置换两种类型。"}
+
+    result = mod.evaluate_case(case, records, generated_answer=answer_item)
+
+    assert result["generated_answer_quality"] == {
+        "provided": True,
+        "fallback": False,
+        "key_points_total": 2,
+        "key_points_matched": 2,
+        "key_point_recall": 1.0,
+        "grounded": True,
+        "context_supported": True,
+        "missing_key_points": [],
+    }
+
+
 def test_evaluate_case_flags_fallback_generated_answer() -> None:
     mod = _load_module()
     case = {
