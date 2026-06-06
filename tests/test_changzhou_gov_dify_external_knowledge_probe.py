@@ -124,6 +124,7 @@ def test_collect_probe_report_flags_dify_empty_but_mimirq_direct_ok_without_leak
         console_token="console-secret",
         request_json=fake_request_json,
         request_mimirq_direct=fake_mimirq_direct,
+        local_ipv4_addresses=["192.0.2.6"],
         timeout=12.0,
         top_k=5,
     )
@@ -135,6 +136,9 @@ def test_collect_probe_report_flags_dify_empty_but_mimirq_direct_ok_without_leak
     assert report["summary"]["mimirq_direct_nonempty"] == 1
     assert report["summary"]["mimirq_direct_schema_valid"] == 1
     assert report["summary"]["dify_runtime_empty_but_mimirq_direct_ok"] == 1
+    assert report["source"]["endpoint_host"] == "192.0.2.6"
+    assert report["source"]["endpoint_host_is_local"] is True
+    assert report["source"]["local_ipv4_addresses"] == ["192.0.2.6"]
     assert report["cases"][0]["diagnosis"] == "dify_runtime_empty_but_mimirq_direct_ok"
     assert report["cases"][0]["dify_dataset_id"] == "ds-xinbei"
     assert report["cases"][0]["mimirq_direct_schema_valid"] is True
