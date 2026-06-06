@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -139,3 +140,71 @@ def test_lint_workflow_reports_cases_missing_hidden_required_inputs() -> None:
             "recommendation": "Add dify_inputs.areaName for this case before calling the Dify App API.",
         }
     ]
+
+
+def test_main_case_inputs_only_ignores_workflow_warning_when_cases_are_complete(tmp_path: Path) -> None:
+    mod = _load_module()
+    workflow_path = tmp_path / "workflow.json"
+    cases_path = tmp_path / "cases.json"
+    out_path = tmp_path / "report.json"
+    workflow_path.write_text(json.dumps(_workflow(), ensure_ascii=False), encoding="utf-8")
+    cases_path.write_text(
+        json.dumps(
+            {
+                "cases": [
+                    {
+                        "id": "ok-case",
+                        "query": "经开区社保卡补卡在哪里办理",
+                        "dify_inputs": {"areaName": "经开区"},
+                    }
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code = mod.main(
+        [
+            "--workflow-json",
+            str(workflow_path),
+            "--cases",
+            str(cases_path),
+            "--case-inputs-only",
+            "--out",
+            str(out_path),
+        ]
+    )
+
+    report = json.loads(out_path.read_text(encoding="utf-8"))
+    assert exit_code == 0
+    assert report["summary"]["hidden_required_start_variables"] == 1
+    assert report["summary"]["case_input_violations"] == 0
+
+
+def test_main_case_inputs_only_fails_when_cases_miss_inputs(tmp_path: Path) -> None:
+    mod = _load_module()
+    workflow_path = tmp_path / "workflow.json"
+    cases_path = tmp_path / "cases.json"
+    out_path = tmp_path / "report.json"
+    workflow_path.write_text(json.dumps(_workflow(), ensure_ascii=False), encoding="utf-8")
+    cases_path.write_text(
+        json.dumps({"cases": [{"id": "bad-case", "query": "经开区社保卡补卡在哪里办理"}]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    exit_code = mod.main(
+        [
+            "--workflow-json",
+            str(workflow_path),
+            "--cases",
+            str(cases_path),
+            "--case-inputs-only",
+            "--out",
+            str(out_path),
+        ]
+    )
+
+    report = json.loads(out_path.read_text(encoding="utf-8"))
+    assert exit_code == 1
+    assert report["summary"]["case_input_violations"] == 1
