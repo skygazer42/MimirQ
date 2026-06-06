@@ -221,6 +221,13 @@ python scripts/changzhou_gov_dify_trace_report.py \
 报告中的 `empty_retrieval_cases` 表示 Dify workflow 内部知识检索节点全部返回空，
 `fallback_cases` 表示最终进入兜底答案节点。
 
+如果 answers 报告里出现 `error_kind=missing_start_variable`，例如
+`missing_variable=areaName`，失败边界在 Dify workflow 入参，不在 MimirQ 检索。
+当前固定“小畅” workflow 的 Start 节点虽然把 `areaName` 标为非必填，但后续节点会
+直接引用 `#1711528914102.areaName#`；因此生产调用 `/v1/chat-messages` 时仍需要在
+`inputs` 中传入 `areaName`，或者在 Dify workflow 内给该变量默认值/兜底分支。缺少该
+变量时，Dify 会直接返回 `HTTP 400 invalid_param`，请求不会进入 MimirQ 检索链路。
+
 如果需要区分“workflow 分支没进正确节点”和“Dify external knowledge runtime
 调用 MimirQ 失败”，用同一套 fixed golden cases 做边界对照：
 
