@@ -1,8 +1,18 @@
+import base64
 import json
+import time
 from pathlib import Path
 from typing import Any
 
 from scripts import dify_console_login as mod
+
+
+def _jwt_with_exp(exp: int) -> str:
+    def encode(payload: dict[str, Any]) -> str:
+        data = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        return base64.urlsafe_b64encode(data).decode("ascii").rstrip("=")
+
+    return f"{encode({'alg': 'none'})}.{encode({'exp': exp})}."
 
 
 def test_extract_console_token_accepts_nested_dify_login_response() -> None:
@@ -23,6 +33,65 @@ def test_build_storage_state_uses_playwright_local_storage_shape() -> None:
             }
         ],
     }
+
+
+def test_check_storage_state_reports_valid_expiring_and_expired_tokens(tmp_path: Path) -> None:
+    now = int(time.time())
+    valid_state = tmp_path / "valid.json"
+    expiring_state = tmp_path / "expiring.json"
+    expired_state = tmp_path / "expired.json"
+    valid_state.write_text(
+        json.dumps(
+            mod.build_storage_state(
+                console_origin="https://ai.kingdonsoft.com:3000",
+                console_token=_jwt_with_exp(now + 1800),
+            )
+        ),
+        encoding="utf-8",
+    )
+    expiring_state.write_text(
+        json.dumps(
+            mod.build_storage_state(
+                console_origin="https://ai.kingdonsoft.com:3000",
+                console_token=_jwt_with_exp(now + 60),
+            )
+        ),
+        encoding="utf-8",
+    )
+    expired_state.write_text(
+        json.dumps(
+            mod.build_storage_state(
+                console_origin="https://ai.kingdonsoft.com:3000",
+                console_token=_jwt_with_exp(now - 60),
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    assert mod.check_storage_state(storage_state=valid_state, min_ttl_seconds=600)["valid"] is True
+    assert mod.check_storage_state(storage_state=expiring_state, min_ttl_seconds=600)["valid"] is False
+    assert mod.check_storage_state(storage_state=expiring_state, min_ttl_seconds=600)["reason"] == "token_expires_soon"
+    assert mod.check_storage_state(storage_state=expired_state, min_ttl_seconds=600)["reason"] == "token_expired"
+
+
+def test_check_storage_state_handles_missing_malformed_and_non_jwt_state(tmp_path: Path) -> None:
+    missing_state = tmp_path / "missing.json"
+    malformed_state = tmp_path / "malformed.json"
+    non_jwt_state = tmp_path / "non-jwt.json"
+    malformed_state.write_text("{", encoding="utf-8")
+    non_jwt_state.write_text(
+        json.dumps(
+            mod.build_storage_state(
+                console_origin="https://ai.kingdonsoft.com:3000",
+                console_token="not-a-jwt",
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    assert mod.check_storage_state(storage_state=missing_state, min_ttl_seconds=600)["reason"] == "missing_token"
+    assert mod.check_storage_state(storage_state=malformed_state, min_ttl_seconds=600)["reason"] == "missing_token"
+    assert mod.check_storage_state(storage_state=non_jwt_state, min_ttl_seconds=600)["reason"] == "missing_exp"
 
 
 def test_refresh_storage_state_logs_in_validates_profile_and_writes_state(tmp_path: Path) -> None:

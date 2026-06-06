@@ -4,9 +4,12 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import json
 import os
 import sys
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -47,6 +50,75 @@ def build_storage_state(*, console_origin: str, console_token: str) -> dict[str,
                 "localStorage": [{"name": "console_token", "value": console_token}],
             }
         ],
+    }
+
+
+def _decode_jwt_payload(token: str) -> dict[str, Any]:
+    parts = _text(token).split(".")
+    if len(parts) < 2:
+        return {}
+    payload = parts[1] + "=" * ((4 - len(parts[1]) % 4) % 4)
+    try:
+        decoded = base64.urlsafe_b64decode(payload.encode("ascii"))
+        value = json.loads(decoded.decode("utf-8"))
+    except (binascii.Error, ValueError, UnicodeDecodeError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _load_console_token_from_storage_state(storage_state: str | os.PathLike[str]) -> str:
+    state_path = Path(storage_state)
+    if not state_path.is_file():
+        return ""
+    try:
+        payload = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    for origin in payload.get("origins") or []:
+        if not isinstance(origin, dict):
+            continue
+        for item in origin.get("localStorage") or []:
+            if isinstance(item, dict) and item.get("name") == "console_token":
+                return _text(item.get("value"))
+    return ""
+
+
+def check_storage_state(
+    *,
+    storage_state: str | os.PathLike[str],
+    min_ttl_seconds: int,
+    now: int | None = None,
+) -> dict[str, Any]:
+    token = _load_console_token_from_storage_state(storage_state)
+    if not token:
+        return {"valid": False, "reason": "missing_token", "storage_state": str(storage_state)}
+    payload = _decode_jwt_payload(token)
+    exp = payload.get("exp")
+    if not isinstance(exp, int):
+        return {"valid": False, "reason": "missing_exp", "storage_state": str(storage_state)}
+    current = int(time.time() if now is None else now)
+    ttl_seconds = exp - current
+    if ttl_seconds <= 0:
+        return {
+            "valid": False,
+            "reason": "token_expired",
+            "storage_state": str(storage_state),
+            "ttl_seconds": ttl_seconds,
+        }
+    if ttl_seconds < int(min_ttl_seconds):
+        return {
+            "valid": False,
+            "reason": "token_expires_soon",
+            "storage_state": str(storage_state),
+            "ttl_seconds": ttl_seconds,
+            "min_ttl_seconds": int(min_ttl_seconds),
+        }
+    return {
+        "valid": True,
+        "reason": "ok",
+        "storage_state": str(storage_state),
+        "ttl_seconds": ttl_seconds,
+        "min_ttl_seconds": int(min_ttl_seconds),
     }
 
 
@@ -150,11 +222,26 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--password-file", default=os.getenv("DIFY_CONSOLE_PASSWORD_FILE") or "")
     parser.add_argument("--storage-state", default=DEFAULT_STORAGE_STATE)
     parser.add_argument("--timeout", type=float, default=30.0)
+    parser.add_argument("--check", action="store_true", help="Validate the existing storage_state token without logging in.")
+    parser.add_argument("--min-ttl-seconds", type=int, default=900)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_arg_parser().parse_args(argv)
+    if bool(args.check):
+        report = check_storage_state(
+            storage_state=str(args.storage_state),
+            min_ttl_seconds=int(args.min_ttl_seconds),
+        )
+        if report.get("valid") is not True:
+            report["hint"] = (
+                "Refresh Dify console login with "
+                "DIFY_CONSOLE_EMAIL=<email> DIFY_CONSOLE_PASSWORD_FILE=/tmp/dify_console_password.txt "
+                "make dify-console-login."
+            )
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+        return 0 if report.get("valid") is True else 1
     email = _text(args.email)
     password = _load_password(password=str(args.password), password_file=str(args.password_file))
     if not email:
