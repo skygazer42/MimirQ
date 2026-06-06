@@ -109,6 +109,66 @@ def extract_dify_response_refs(response: dict[str, Any]) -> dict[str, str]:
     return out
 
 
+def _extract_http_error_payload(message: str) -> dict[str, Any]:
+    prefix = "HTTP "
+    if not message.startswith(prefix):
+        return {}
+    marker = ": "
+    marker_index = message.find(marker)
+    if marker_index < 0:
+        return {}
+    status_text = message[len(prefix) : marker_index].strip()
+    payload_text = message[marker_index + len(marker) :].strip()
+    out: dict[str, Any] = {}
+    if status_text.isdigit():
+        out["http_status"] = int(status_text)
+    if payload_text.startswith("{"):
+        try:
+            payload = json.loads(payload_text)
+        except json.JSONDecodeError:
+            payload = {}
+        if isinstance(payload, dict):
+            code = _text(payload.get("code"))
+            detail = _text(payload.get("message"))
+            if code:
+                out["dify_error_code"] = code
+            if detail:
+                out["dify_error_message"] = detail
+    return out
+
+
+def _extract_missing_variable_selector(message: str) -> str:
+    start_marker = "Variable #"
+    start = message.find(start_marker)
+    if start < 0:
+        return ""
+    start += len(start_marker)
+    end = message.find("# not found", start)
+    if end < 0:
+        return ""
+    return message[start:end].strip()
+
+
+def diagnose_dify_error(message: str) -> dict[str, Any]:
+    """Return non-secret, structured diagnostics for common Dify API errors."""
+    text = _text(message)
+    if not text:
+        return {}
+    out = _extract_http_error_payload(text)
+    detail = _text(out.get("dify_error_message")) or text
+    selector = _extract_missing_variable_selector(detail)
+    if selector:
+        variable = selector.rsplit(".", 1)[-1].strip()
+        out.update(
+            {
+                "error_kind": "missing_start_variable",
+                "missing_variable_selector": selector,
+                "missing_variable": variable,
+            }
+        )
+    return out
+
+
 def _request_json(*, url: str, payload: dict[str, Any], api_key: str, timeout: float) -> dict[str, Any]:
     request = Request(
         url,
@@ -184,11 +244,21 @@ def collect_answers(
             if not answer:
                 item["error"] = "empty answer"
         except Exception as exc:  # noqa: BLE001
-            item.update({"answer": "", "ok": False, "error": str(exc)})
+            error = str(exc)
+            item.update({"answer": "", "ok": False, "error": error})
+            item.update(diagnose_dify_error(error))
         answers.append(item)
         if interval_sec > 0:
             time.sleep(float(interval_sec))
     succeeded = sum(1 for item in answers if item.get("ok") is True)
+    missing_variable_errors = sum(1 for item in answers if item.get("error_kind") == "missing_start_variable")
+    summary: dict[str, Any] = {
+        "cases": len(answers),
+        "succeeded": succeeded,
+        "failed": len(answers) - succeeded,
+    }
+    if missing_variable_errors:
+        summary["missing_start_variable_errors"] = missing_variable_errors
     return {
         "schema": "mimirq.changzhou_gov_service_knowledge.generated_answers.v1",
         "source": {
@@ -197,11 +267,7 @@ def collect_answers(
             "base_url": str(base_url).rstrip("/"),
             "endpoint_url": url,
         },
-        "summary": {
-            "cases": len(answers),
-            "succeeded": succeeded,
-            "failed": len(answers) - succeeded,
-        },
+        "summary": summary,
         "answers": answers,
     }
 

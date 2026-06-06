@@ -155,7 +155,22 @@ def _trace_answer(
     query = _text(answer_item.get("query"))
     message_id = _text(answer_item.get("message_id"))
     if not message_id:
-        return {"id": case_id, "query": query, "error": "missing message_id"}
+        out: dict[str, Any] = {"id": case_id, "query": query, "error": "missing message_id"}
+        upstream_error = _text(answer_item.get("error"))
+        if upstream_error:
+            out["upstream_error"] = upstream_error
+        for key in (
+            "error_kind",
+            "http_status",
+            "dify_error_code",
+            "dify_error_message",
+            "missing_variable_selector",
+            "missing_variable",
+        ):
+            value = answer_item.get(key)
+            if value not in (None, ""):
+                out[key] = value
+        return out
 
     message = request_json(
         console_base_url=console_base_url,
@@ -223,6 +238,20 @@ def collect_trace_report(
         for item in retrieval_cases
         if any((entry.get("count") or 0) > 0 for entry in item.get("retrievals") or [])
     ]
+    summary: dict[str, Any] = {
+        "cases": len(cases),
+        "traced": len(traced_cases),
+        "fallback_cases": sum(1 for item in traced_cases if bool(item.get("fallback"))),
+        "empty_retrieval_cases": len(empty_retrieval_cases),
+        "nonempty_retrieval_cases": len(nonempty_retrieval_cases),
+        "trace_errors": sum(1 for item in cases if item.get("error")),
+    }
+    upstream_error_cases = sum(1 for item in cases if item.get("upstream_error"))
+    if upstream_error_cases:
+        summary["upstream_error_cases"] = upstream_error_cases
+    missing_variable_errors = sum(1 for item in cases if item.get("error_kind") == "missing_start_variable")
+    if missing_variable_errors:
+        summary["missing_start_variable_errors"] = missing_variable_errors
     return {
         "schema": "mimirq.changzhou_gov_service_knowledge.dify_trace_report.v1",
         "source": {
@@ -230,14 +259,7 @@ def collect_trace_report(
             "console_base_url": console_base_url.rstrip("/"),
             "app_id": app_id,
         },
-        "summary": {
-            "cases": len(cases),
-            "traced": len(traced_cases),
-            "fallback_cases": sum(1 for item in traced_cases if bool(item.get("fallback"))),
-            "empty_retrieval_cases": len(empty_retrieval_cases),
-            "nonempty_retrieval_cases": len(nonempty_retrieval_cases),
-            "trace_errors": sum(1 for item in cases if item.get("error")),
-        },
+        "summary": summary,
         "cases": cases,
     }
 

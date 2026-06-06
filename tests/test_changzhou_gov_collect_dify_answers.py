@@ -136,6 +136,25 @@ def test_extract_response_refs_supports_chat_and_workflow_shapes() -> None:
     }
 
 
+def test_diagnose_dify_error_extracts_missing_start_variable() -> None:
+    mod = _load_module()
+
+    detail = (
+        'HTTP 400: {"code": "invalid_param", '
+        '"message": "Run failed: Variable #1711528914102.areaName# not found", '
+        '"status": 400}'
+    )
+
+    assert mod.diagnose_dify_error(detail) == {
+        "http_status": 400,
+        "dify_error_code": "invalid_param",
+        "dify_error_message": "Run failed: Variable #1711528914102.areaName# not found",
+        "error_kind": "missing_start_variable",
+        "missing_variable_selector": "1711528914102.areaName",
+        "missing_variable": "areaName",
+    }
+
+
 def test_load_api_key_file_reads_token_without_leaking_shape(tmp_path: Path) -> None:
     mod = _load_module()
     key_path = tmp_path / "key.json"
@@ -181,6 +200,39 @@ def test_collect_answers_returns_answers_json_with_errors() -> None:
     assert report["answers"][0]["conversation_id"] == "conv-1"
     assert report["answers"][0]["message_id"] == "msg-1"
     assert report["answers"][1]["error"] == "boom"
+
+
+def test_collect_answers_classifies_missing_start_variable_errors() -> None:
+    mod = _load_module()
+
+    def fake_request(**_kwargs):  # noqa: ANN003, ANN202
+        raise RuntimeError(
+            'HTTP 400: {"code": "invalid_param", '
+            '"message": "Run failed: Variable #1711528914102.areaName# not found", '
+            '"status": 400}'
+        )
+
+    report = mod.collect_answers(
+        cases=[{"id": "case-1", "query": "经开区社保卡补卡在哪里办理"}],
+        base_url="http://dify.test/v1",
+        api_key="token",
+        mode="chat",
+        user="tester",
+        response_mode="blocking",
+        workflow_query_key="query",
+        timeout=12.0,
+        request_json=fake_request,
+    )
+
+    assert report["summary"] == {
+        "cases": 1,
+        "succeeded": 0,
+        "failed": 1,
+        "missing_start_variable_errors": 1,
+    }
+    assert report["answers"][0]["error_kind"] == "missing_start_variable"
+    assert report["answers"][0]["missing_variable_selector"] == "1711528914102.areaName"
+    assert report["answers"][0]["missing_variable"] == "areaName"
 
 
 def test_collect_answers_report_includes_endpoint_without_api_key() -> None:

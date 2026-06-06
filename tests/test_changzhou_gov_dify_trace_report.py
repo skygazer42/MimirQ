@@ -133,3 +133,35 @@ def test_collect_trace_report_handles_answer_without_message_id() -> None:
 
     assert report["summary"]["trace_errors"] == 1
     assert report["cases"][0]["error"] == "missing message_id"
+
+
+def test_collect_trace_report_preserves_upstream_missing_variable_error() -> None:
+    mod = _load_module()
+
+    report = mod.collect_trace_report(
+        answers=[
+            {
+                "id": "case-1",
+                "query": "经开区社保卡补卡在哪里办理",
+                "error": 'HTTP 400: {"code": "invalid_param", "message": "Run failed: Variable #1711528914102.areaName# not found"}',
+                "error_kind": "missing_start_variable",
+                "http_status": 400,
+                "dify_error_code": "invalid_param",
+                "dify_error_message": "Run failed: Variable #1711528914102.areaName# not found",
+                "missing_variable_selector": "1711528914102.areaName",
+                "missing_variable": "areaName",
+            }
+        ],
+        app_id="app-1",
+        console_base_url="https://dify.test/console/api",
+        console_token="secret-console-token",
+        request_json=lambda **_kwargs: {},
+        timeout=12.0,
+    )
+
+    assert report["summary"]["trace_errors"] == 1
+    assert report["summary"]["upstream_error_cases"] == 1
+    assert report["summary"]["missing_start_variable_errors"] == 1
+    assert report["cases"][0]["error"] == "missing message_id"
+    assert report["cases"][0]["error_kind"] == "missing_start_variable"
+    assert report["cases"][0]["missing_variable"] == "areaName"
