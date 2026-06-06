@@ -38,6 +38,9 @@ The Makefile is the source of truth for common workflows; these scripts are the 
 - `dify_console_login.py`: refresh the Dify console Playwright `storage_state` used by workflow trace diagnostics
   - Recommended: `DIFY_CONSOLE_EMAIL=<email> DIFY_CONSOLE_PASSWORD_FILE=/tmp/dify_console_password.txt make dify-console-login`
   - Avoid putting Dify console passwords in repository files or shell history; the script writes only `console_token` localStorage state to `/tmp/dify_console_storage_state.json` by default.
+- `changzhou_gov_dify_external_knowledge_probe.py`: compare Dify external hit-testing with direct MimirQ retrieval for the same Changzhou golden cases
+  - Recommended after `make dify-console-login`: `make changzhou-dify-external-probe`
+  - Override output or a specific Dify external API id: `CHANGZHOU_DIFY_EXTERNAL_API_ID=<external_api_id> CHANGZHOU_DIFY_PROBE_OUT=/tmp/probe.json make changzhou-dify-external-probe`
 - `changzhou_gov_dify_full_gate.py`: run the Changzhou government-service Dify/MimirQ golden gate (preflight, generated answers, direct eval, workflow trace)
   - Recommended: `make changzhou-dify-full-gate`
   - Override cases or thresholds without editing the Makefile: `CHANGZHOU_DIFY_CASES=/tmp/boundary_cases.json CHANGZHOU_DIFY_EXTRA_ARGS='--min-hit-at-3 0.8' make changzhou-dify-full-gate`
