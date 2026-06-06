@@ -287,7 +287,18 @@ changzhou-dify-external-probe:
 		--out "$(CHANGZHOU_DIFY_PROBE_OUT)"
 
 changzhou-dify-readiness-gate: CHANGZHOU_DIFY_EFFECTIVE_EXTRA_ARGS = $(CHANGZHOU_DIFY_EXTRA_ARGS) $(CHANGZHOU_DIFY_READINESS_EXTRA_ARGS)
-changzhou-dify-readiness-gate: changzhou-dify-external-probe changzhou-dify-full-gate changzhou-dify-readiness-summary
+changzhou-dify-readiness-gate:
+	@set +e; \
+	$(MAKE) changzhou-dify-external-probe; probe_rc=$$?; \
+	if [ $$probe_rc -eq 0 ]; then \
+		$(MAKE) changzhou-dify-full-gate CHANGZHOU_DIFY_EFFECTIVE_EXTRA_ARGS="$(CHANGZHOU_DIFY_EXTRA_ARGS) $(CHANGZHOU_DIFY_READINESS_EXTRA_ARGS)"; full_rc=$$?; \
+	else \
+		full_rc=1; \
+	fi; \
+	$(MAKE) changzhou-dify-readiness-summary; summary_rc=$$?; \
+	if [ $$probe_rc -ne 0 ] || [ $$full_rc -ne 0 ] || [ $$summary_rc -ne 0 ]; then \
+		exit 1; \
+	fi
 
 changzhou-dify-readiness-summary:
 	$(PY) scripts/changzhou_gov_dify_readiness_summary.py \

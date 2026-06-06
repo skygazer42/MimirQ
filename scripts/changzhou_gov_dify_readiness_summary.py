@@ -78,6 +78,8 @@ def build_readiness_summary(
 
 
 def _load_json(path: str) -> dict[str, Any]:
+    if not Path(path).is_file():
+        return {}
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
     return payload if isinstance(payload, dict) else {}
 
