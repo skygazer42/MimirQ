@@ -188,6 +188,12 @@ python scripts/changzhou_gov_golden_eval.py \
 `办理地点：...` 与 `📍【办理地点】：...` 误判为不同内容；但事实未出现的关键点
 仍会计入 `missing_key_points`。
 
+MimirQ Dify external knowledge adapter 会在返回给 Dify 的 records 里临时前置
+`答案要点`，把结构化 QA 的 `答案` 或事项字段里的 `办理地点/收费情况/咨询方式`
+放到原始证据前面，降低 Dify 生成时遗漏关键字段的概率。该前置内容不写回 chunk，
+也不改变向量库原文。对事项类记录，只有事项名或别名与用户 query 明确匹配时才会
+生成问题/答案式前置，避免弱相关事项被 Dify 过度展开。
+
 ### Dify workflow 诊断口径
 
 `changzhou_gov_collect_dify_answers.py` 会在 answers[] 中保留 Dify 返回的

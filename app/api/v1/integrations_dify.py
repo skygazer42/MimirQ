@@ -63,6 +63,23 @@ _METADATA_KEYS = (
 _PUBLIC_METADATA_VIEW_KEYS = ("_evaluable_metadata", "_display_metadata")
 _RETRIEVAL_INTENT_KEYS = ("retrieval_intents", "query_intents", "intent_terms")
 _MIN_SPECIFIC_INTENT_CHARS = 7
+_ANSWER_HIGHLIGHT_KEYS = ("answer_highlights", "answer_key_points", "summary_points")
+_STRUCTURED_ANSWER_LABELS = (
+    "答案",
+    "事项名称",
+    "问题",
+    "办理地点",
+    "收费情况",
+    "咨询方式",
+    "办理时间",
+    "受理条件",
+    "在线办理地址",
+)
+_SERVICE_HINT_LABELS = ("事项名称", "办理地点", "收费情况", "咨询方式", "办理时间", "受理条件")
+_QA_HINT_LABELS = ("问题", "答案")
+_MAX_HINT_VALUE_CHARS = 700
+_MAX_QA_HINT_VALUE_CHARS = 420
+_SERVICE_TERM_SYNONYMS = (("社会保障卡", "社保卡"),)
 
 
 class _DifyErrorRoute(APIRoute):
@@ -501,6 +518,132 @@ def _metadata_terms(value: Any) -> list[str]:
     return out
 
 
+def _clamp_hint_value(value: str, *, limit: int = _MAX_HINT_VALUE_CHARS) -> str:
+    text = str(value or "").strip()
+    if len(text) <= limit:
+        return text
+    return f"{text[:limit].rstrip()}..."
+
+
+def _field_line_parts(line: str) -> tuple[str, str] | None:
+    text = str(line or "").strip()
+    if not text:
+        return None
+    colon_positions = [index for index in (text.find("："), text.find(":")) if index >= 0]
+    if not colon_positions:
+        return None
+    split_at = min(colon_positions)
+    label = text[:split_at].strip()
+    value = text[split_at + 1 :].strip()
+    if not label or not value or len(label) > 20:
+        return None
+    return label, value
+
+
+def _structured_fields_from_content(content: str) -> dict[str, str]:
+    fields: dict[str, str] = {}
+    for line in str(content or "").splitlines():
+        parts = _field_line_parts(line)
+        if parts is None:
+            continue
+        label, value = parts
+        if label not in _STRUCTURED_ANSWER_LABELS or label in fields:
+            continue
+        limit = _MAX_QA_HINT_VALUE_CHARS if label == "答案" else _MAX_HINT_VALUE_CHARS
+        fields[label] = _clamp_hint_value(value, limit=limit)
+    return fields
+
+
+def _metadata_answer_highlights(metadata: dict[str, Any]) -> list[str]:
+    highlights: list[str] = []
+    seen: set[str] = set()
+    for layer in [metadata, *[metadata.get(key) for key in _PUBLIC_METADATA_VIEW_KEYS]]:
+        if not isinstance(layer, dict):
+            continue
+        for key in _ANSWER_HIGHLIGHT_KEYS:
+            for value in _metadata_terms(layer.get(key)):
+                text = _clamp_hint_value(value)
+                if not text or text in seen:
+                    continue
+                seen.add(text)
+                highlights.append(text)
+    return highlights
+
+
+def _normalize_match_term(value: Any) -> str:
+    text = str(value or "").strip().casefold()
+    for source, target in _SERVICE_TERM_SYNONYMS:
+        text = text.replace(source.casefold(), target.casefold())
+    out: list[str] = []
+    for char in text:
+        if char.isspace():
+            continue
+        if re.match(r"[\W_]", char, flags=re.UNICODE):
+            continue
+        out.append(char)
+    return "".join(out)
+
+
+def _service_candidate_terms(fields: dict[str, str], metadata: dict[str, Any]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for value in (fields.get("事项名称"),):
+        text = str(value or "").strip()
+        if text and text not in seen:
+            seen.add(text)
+            out.append(text)
+    for layer in [metadata, *[metadata.get(key) for key in _PUBLIC_METADATA_VIEW_KEYS]]:
+        if not isinstance(layer, dict):
+            continue
+        for key in ("service_name", "service_aliases", "aliases", "primary_alias"):
+            for value in _metadata_terms(layer.get(key)):
+                if value in seen:
+                    continue
+                seen.add(value)
+                out.append(value)
+    return out
+
+
+def _service_hint_matches_query(fields: dict[str, str], metadata: dict[str, Any], *, query: str) -> bool:
+    query_term = _normalize_match_term(query)
+    if not query_term:
+        return True
+    for candidate in _service_candidate_terms(fields, metadata):
+        term = _normalize_match_term(candidate)
+        if len(term) >= 4 and (term in query_term or query_term in term):
+            return True
+    return False
+
+
+def _answer_hints_from_fields(fields: dict[str, str], *, query: str = "") -> list[str]:
+    if "答案" in fields:
+        return [f"{label}：{fields[label]}" for label in _QA_HINT_LABELS if fields.get(label)]
+    if "事项名称" in fields or "办理地点" in fields:
+        service_bits = [f"{label}：{fields[label]}" for label in _SERVICE_HINT_LABELS if fields.get(label)]
+        question = str(query or "").strip()
+        if question:
+            return [f"问题：{question}", f"答案：{'；'.join(service_bits)}"]
+        return service_bits
+    return [f"{label}：{value}" for label, value in fields.items()]
+
+
+def _content_with_answer_hints(content: str, metadata: dict[str, Any], *, query: str = "") -> str:
+    body = str(content or "").strip()
+    if not body or body.startswith("答案要点："):
+        return body
+    fields = _structured_fields_from_content(body)
+    if ("事项名称" in fields or "办理地点" in fields) and not _service_hint_matches_query(
+        fields,
+        metadata,
+        query=query,
+    ):
+        return body
+    hints = _metadata_answer_highlights(metadata) or _answer_hints_from_fields(fields, query=query)
+    if not hints:
+        return body
+    return f"答案要点：{'；'.join(hints)}\n\n原始证据：\n{body}"
+
+
 def _record_retrieval_intents(record: dict[str, Any]) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
@@ -540,7 +683,7 @@ def _sort_records_for_query(records: list[dict[str, Any]], *, query: str) -> Non
     )
 
 
-def _citation_to_dify_record(citation: dict[str, Any], *, dataset_id: UUID | None) -> dict[str, Any]:
+def _citation_to_dify_record(citation: dict[str, Any], *, dataset_id: UUID | None, query: str = "") -> dict[str, Any]:
     content = _first_non_empty(citation, _CONTENT_KEYS)
     title = _first_non_empty(citation, _TITLE_KEYS) or "Untitled"
 
@@ -553,6 +696,7 @@ def _citation_to_dify_record(citation: dict[str, Any], *, dataset_id: UUID | Non
         value = citation.get(key)
         if value is not None and value != "":
             metadata[key] = value
+    content = _content_with_answer_hints(content, metadata, query=query)
 
     return {
         "content": content,
@@ -621,7 +765,7 @@ async def retrieve_external_knowledge(
         chunk_id = _citation_chunk_id(citation)
         if chunk_id and chunk_content_map.get(chunk_id):
             citation = {**citation, "content": chunk_content_map[chunk_id]}
-        record = _citation_to_dify_record(citation, dataset_id=fallback_dataset_id)
+        record = _citation_to_dify_record(citation, dataset_id=fallback_dataset_id, query=body.query)
         if str(record.get("content") or "").strip():
             records.append(record)
 

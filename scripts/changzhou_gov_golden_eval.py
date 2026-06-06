@@ -56,9 +56,23 @@ def _normalize_quality_text(value: Any) -> str:
     return "".join(out)
 
 
+def _quality_point_value(point: str) -> str:
+    text = _text(point)
+    colon_positions = [index for index in (text.find("："), text.find(":")) if index >= 0]
+    if not colon_positions:
+        return ""
+    split_at = min(colon_positions)
+    return text[split_at + 1 :].strip()
+
+
 def _quality_point_in_text(point: str, text: str) -> bool:
     normalized_point = _normalize_quality_text(point)
-    return bool(normalized_point) and normalized_point in _normalize_quality_text(text)
+    normalized_text = _normalize_quality_text(text)
+    if normalized_point and normalized_point in normalized_text:
+        return True
+    normalized_value = _normalize_quality_text(_quality_point_value(point))
+    return len(normalized_value) >= 2 and normalized_value in normalized_text
+
 
 
 def _contains_all(value: Any, expected: list[Any]) -> bool:
