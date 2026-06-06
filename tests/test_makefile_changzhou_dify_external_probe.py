@@ -56,12 +56,16 @@ def test_changzhou_dify_readiness_gate_runs_probe_before_full_gate() -> None:
     assert "set +e" in command
     assert 'rm -f "/tmp/probe.json" "/tmp/full_gate.json" "/tmp/full_gate_answers.json"' in command
     assert '"/tmp/full_gate_eval.json" "/tmp/full_gate_trace.json" "/tmp/full_gate_summary.json" "/tmp/readiness.json"' in command
+    assert "make dify-console-check" in command
+    assert "auth_rc=$?" in command
     assert "probe_rc=$?" in command
     assert "full_rc=$?" in command
     assert "summary_rc=$?" in command
+    auth_index = command.index("scripts/dify_console_login.py")
     probe_index = command.index("scripts/changzhou_gov_dify_external_knowledge_probe.py")
     full_gate_index = command.index("scripts/changzhou_gov_dify_full_gate.py")
     summary_index = command.index("scripts/changzhou_gov_dify_readiness_summary.py")
+    assert auth_index < probe_index
     assert probe_index < full_gate_index
     assert full_gate_index < summary_index
     assert '--cases "/tmp/custom_cases.json"' in command
