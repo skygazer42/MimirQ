@@ -77,10 +77,12 @@ def test_run_gate_stops_before_dify_calls_when_case_inputs_are_missing() -> None
 def test_run_gate_aggregates_collect_eval_and_trace_success() -> None:
     mod = _load_module()
     calls: list[str] = []
+    progress: list[dict] = []
 
     def collect_answers_fn(**kwargs):  # noqa: ANN003, ANN202
         calls.append("collect")
         assert kwargs["cases"][0]["id"] == "ok-case"
+        kwargs["progress_fn"]({"stage": "collect", "event": "case", "index": 1, "total": 1, "id": "ok-case", "ok": True})
         return {
             "summary": {"cases": 1, "succeeded": 1, "failed": 0},
             "answers": [{"id": "ok-case", "query": "q", "answer": "a", "message_id": "msg-1"}],
@@ -120,9 +122,21 @@ def test_run_gate_aggregates_collect_eval_and_trace_success() -> None:
         trace_report_fn=trace_report_fn,
         thresholds={"generated_answer_key_point_recall": 1.0},
         maximums={"generated_answer_fallback_rate": 0.0},
+        progress_fn=progress.append,
     )
 
     assert calls == ["collect", "eval", "trace"]
+    assert progress == [
+        {"stage": "preflight", "event": "start", "cases": 1},
+        {"stage": "preflight", "event": "done", "passed": True, "summary": report["stages"]["preflight"]["summary"]},
+        {"stage": "collect", "event": "start", "cases": 1},
+        {"stage": "collect", "event": "case", "index": 1, "total": 1, "id": "ok-case", "ok": True},
+        {"stage": "collect", "event": "done", "passed": True, "summary": {"cases": 1, "succeeded": 1, "failed": 0}},
+        {"stage": "eval", "event": "start", "cases": 1},
+        {"stage": "eval", "event": "done", "passed": True, "summary": report["stages"]["eval"]["summary"]},
+        {"stage": "trace", "event": "start", "cases": 1},
+        {"stage": "trace", "event": "done", "passed": True, "summary": report["stages"]["trace"]["summary"]},
+    ]
     assert report["summary"] == {
         "passed": True,
         "failed_stages": [],

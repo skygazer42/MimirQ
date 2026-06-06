@@ -43,6 +43,7 @@ from scripts.changzhou_gov_golden_eval import (  # noqa: E402
 CollectAnswersFn = Callable[..., dict[str, Any]]
 LiveEvalFn = Callable[..., dict[str, Any]]
 TraceReportFn = Callable[..., dict[str, Any]]
+ProgressFn = Callable[[dict[str, Any]], None]
 
 DEFAULT_THRESHOLDS = {
     "hit_at_3": 1.0,
@@ -128,6 +129,11 @@ def _stage(passed: bool, report: dict[str, Any]) -> dict[str, Any]:
     return {"passed": bool(passed), "summary": report.get("summary") or {}, "report": report}
 
 
+def _emit_progress(progress_fn: ProgressFn | None, payload: dict[str, Any]) -> None:
+    if progress_fn is not None:
+        progress_fn(payload)
+
+
 def _finalize(stages: dict[str, dict[str, Any]]) -> dict[str, Any]:
     failed = [name for name, stage in stages.items() if stage.get("passed") is not True]
     return {
@@ -153,19 +159,45 @@ def run_gate(
     collect_kwargs: dict[str, Any] | None = None,
     eval_kwargs: dict[str, Any] | None = None,
     trace_kwargs: dict[str, Any] | None = None,
+    progress_fn: ProgressFn | None = None,
 ) -> dict[str, Any]:
     stages: dict[str, dict[str, Any]] = {}
+    case_count = len(cases)
+    _emit_progress(progress_fn, {"stage": "preflight", "event": "start", "cases": case_count})
     preflight = lint_workflow(workflow, cases=cases)
     preflight_passed = int((preflight.get("summary") or {}).get("case_input_violations") or 0) == 0
     stages["preflight"] = _stage(preflight_passed, preflight)
+    _emit_progress(
+        progress_fn,
+        {
+            "stage": "preflight",
+            "event": "done",
+            "passed": preflight_passed,
+            "summary": stages["preflight"]["summary"],
+        },
+    )
     if not preflight_passed:
         return _finalize(stages)
 
-    answers_report = collect_answers_fn(cases=cases, **(collect_kwargs or {}))
+    _emit_progress(progress_fn, {"stage": "collect", "event": "start", "cases": case_count})
+    effective_collect_kwargs = dict(collect_kwargs or {})
+    if progress_fn is not None and "progress_fn" not in effective_collect_kwargs:
+        effective_collect_kwargs["progress_fn"] = progress_fn
+    answers_report = collect_answers_fn(cases=cases, **effective_collect_kwargs)
     stages["collect"] = _stage(_collect_passed(answers_report), answers_report)
+    _emit_progress(
+        progress_fn,
+        {
+            "stage": "collect",
+            "event": "done",
+            "passed": stages["collect"]["passed"],
+            "summary": stages["collect"]["summary"],
+        },
+    )
     if stages["collect"]["passed"] is not True:
         return _finalize(stages)
 
+    _emit_progress(progress_fn, {"stage": "eval", "event": "start", "cases": case_count})
     eval_report = live_eval_fn(cases=cases, answers=_answers_by_id(answers_report), **(eval_kwargs or {}))
     eval_summary = eval_report.get("summary") if isinstance(eval_report.get("summary"), dict) else {}
     eval_report["gate"] = evaluate_quality_gate(
@@ -174,12 +206,31 @@ def run_gate(
         maximums or DEFAULT_MAXIMUMS,
     )
     stages["eval"] = _stage(bool((eval_report.get("gate") or {}).get("passed")), eval_report)
+    _emit_progress(
+        progress_fn,
+        {
+            "stage": "eval",
+            "event": "done",
+            "passed": stages["eval"]["passed"],
+            "summary": stages["eval"]["summary"],
+        },
+    )
     if stages["eval"]["passed"] is not True:
         return _finalize(stages)
 
+    _emit_progress(progress_fn, {"stage": "trace", "event": "start", "cases": case_count})
     answers = answers_report.get("answers") if isinstance(answers_report.get("answers"), list) else []
     trace_report = trace_report_fn(answers=answers, **(trace_kwargs or {}))
     stages["trace"] = _stage(_trace_passed(trace_report), trace_report)
+    _emit_progress(
+        progress_fn,
+        {
+            "stage": "trace",
+            "event": "done",
+            "passed": stages["trace"]["passed"],
+            "summary": stages["trace"]["summary"],
+        },
+    )
     return _finalize(stages)
 
 
@@ -233,6 +284,50 @@ def compact_summary(report: dict[str, Any], *, artifacts: dict[str, str] | None 
         "artifacts": clean_artifacts,
         "stages": stages,
     }
+
+
+def _progress_summary_text(summary: dict[str, Any]) -> str:
+    fields = (
+        "cases",
+        "succeeded",
+        "failed",
+        "hit_at_3",
+        "generated_answer_key_point_recall",
+        "trace_errors",
+        "nonempty_retrieval_cases",
+    )
+    parts = [f"{field}={summary[field]}" for field in fields if field in summary]
+    return " ".join(parts)
+
+
+def _progress_to_stderr(event: dict[str, Any]) -> None:
+    stage = _text(event.get("stage"))
+    kind = _text(event.get("event"))
+    if kind == "case":
+        status = "ok" if event.get("ok") is True else "failed"
+        print(
+            f"[changzhou-dify-full-gate] {stage} case {event.get('index')}/{event.get('total')} "
+            f"{_text(event.get('id'))} {status}",
+            file=sys.stderr,
+            flush=True,
+        )
+        return
+    if kind == "start":
+        print(
+            f"[changzhou-dify-full-gate] {stage} start cases={event.get('cases')}",
+            file=sys.stderr,
+            flush=True,
+        )
+        return
+    if kind == "done":
+        summary = event.get("summary") if isinstance(event.get("summary"), dict) else {}
+        detail = _progress_summary_text(summary)
+        suffix = f" {detail}" if detail else ""
+        print(
+            f"[changzhou-dify-full-gate] {stage} done passed={bool(event.get('passed'))}{suffix}",
+            file=sys.stderr,
+            flush=True,
+        )
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -348,6 +443,7 @@ def main(argv: list[str] | None = None) -> int:
             },
             thresholds=_thresholds_from_args(args),
             maximums=_maximums_from_args(args),
+            progress_fn=_progress_to_stderr,
         )
     except Exception as exc:  # noqa: BLE001
         print(f"[changzhou-dify-full-gate] ERR: {exc}", file=sys.stderr)
