@@ -119,7 +119,8 @@ def _dataset_pipeline_out(ds: Dataset) -> DocumentPipelineOptions | None:
     if not isinstance(meta, dict):
         return None
     opts = parse_pipeline_from_metadata(meta)
-    data = {k: getattr(opts, k) for k in opts.__dataclass_fields__}  # type: ignore[attr-defined]
+    public_fields = set(DocumentPipelineOptions.model_fields)
+    data = {k: getattr(opts, k) for k in opts.__dataclass_fields__ if k in public_fields}  # type: ignore[attr-defined]
     # Only return if any pipeline override exists
     if not any(v is not None for v in data.values()):
         return None

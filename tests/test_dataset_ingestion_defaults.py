@@ -53,6 +53,56 @@ def test_dataset_create_persists_and_normalizes_ingestion_defaults(monkeypatch):
     assert out.default_chunk_strategy == "outline"
 
 
+def test_dataset_create_pipeline_response_ignores_internal_only_options(monkeypatch):  # noqa: ANN001
+    from app.api.schemas.dataset import DatasetCreate
+    from app.api.v1.datasets import create_dataset
+    from app.services.dataset_service import DatasetService
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+
+    class _Dataset:
+        def __init__(self) -> None:
+            self.id = dataset_id
+            self.tenant_id = tenant_id
+            self.name = "Demo"
+            self.description = None
+            self.permission = "all_team_members"
+            self.owner_id = "test-account"
+            self.dataset_metadata = {
+                "pipeline": {
+                    "chunk_size": 512,
+                    "index": {
+                        "embedding_contextual_retrieval_enabled": True,
+                        "embedding_contextual_retrieval_lazy_mode": True,
+                    },
+                    "images": {
+                        "caption_enabled": True,
+                        "ocr_enabled": True,
+                        "ocr_max_chars": 1200,
+                        "ocr_max_images": 8,
+                    },
+                }
+            }
+
+    ds = _Dataset()
+
+    monkeypatch.setattr(DatasetService, "create_dataset", lambda **_kwargs: ds, raising=True)
+
+    out = create_dataset(
+        payload=DatasetCreate(name="Demo"),
+        tenant_id=tenant_id,
+        account_id="test-account",
+        db=_DummyDB(),
+    )
+
+    assert out.pipeline is not None
+    assert out.pipeline.chunk_size == 512
+    assert out.pipeline.embedding_contextual_retrieval_enabled is True
+    assert not hasattr(out.pipeline, "embedding_contextual_retrieval_lazy_mode")
+    assert not hasattr(out.pipeline, "image_ocr_enabled")
+
+
 def test_dataset_create_rejects_unknown_parser_backend(monkeypatch):  # noqa: ANN001
     from app.api.schemas.dataset import DatasetCreate
     from app.api.v1.datasets import create_dataset

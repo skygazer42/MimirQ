@@ -6,6 +6,8 @@ from typing import Any
 from langchain_core.documents import Document
 
 _KG_BUILDER = "changzhou_gov_service_knowledge_v1"
+_KG_ENTITY_NAME_MAX = 500
+_KG_EVENT_TITLE_MAX = 255
 _MATERIAL_BOUNDARY_RE = re.compile(r"\s+(?=\d{1,3}[、.．])")
 _LEADING_NUMBER_RE = re.compile(r"^\d{1,3}[、.．]\s*")
 _TEXT_SPLIT_RE = re.compile(r"[、,，；;]\s*")
@@ -90,12 +92,13 @@ def _entity(
     description: Any = "",
     evidence_quote: Any = "",
 ) -> dict[str, Any] | None:
-    text = _text(name)
-    if not text:
+    raw_name = _text(name)
+    if not raw_name:
         return None
+    text = _clamp(raw_name, _KG_ENTITY_NAME_MAX)
     return {
         "name": text,
-        "normalized_name": text.casefold(),
+        "normalized_name": _clamp(raw_name.casefold(), _KG_ENTITY_NAME_MAX),
         "type": type_,
         "role": role,
         "description": _clamp(description, 300),
@@ -198,7 +201,7 @@ def _service_item_event(doc: Document, meta: dict[str, Any], index: int) -> dict
 
     return {
         "source_index": index,
-        "title": f"政务事项：{service_name}{title_suffix}",
+        "title": _clamp(f"政务事项：{service_name}{title_suffix}", _KG_EVENT_TITLE_MAX),
         "summary": summary,
         "content": content,
         "references": _base_references(meta),
@@ -247,7 +250,7 @@ def _qa_event(doc: Document, meta: dict[str, Any], index: int) -> dict[str, Any]
         entities.append(_entity(url, "Url", role="url"))
     return {
         "source_index": index,
-        "title": f"政务问答：{question}",
+        "title": _clamp(f"政务问答：{question}", _KG_EVENT_TITLE_MAX),
         "summary": _clamp(answer or content, 240),
         "content": content,
         "references": _base_references(meta),
@@ -294,7 +297,7 @@ def _one_thing_event(doc: Document, meta: dict[str, Any], index: int) -> dict[st
     title_suffix = f"｜{section_label or section_type}" if section_type else ""
     return {
         "source_index": index,
-        "title": f"高效办成一件事：{case_title}{title_suffix}",
+        "title": _clamp(f"高效办成一件事：{case_title}{title_suffix}", _KG_EVENT_TITLE_MAX),
         "summary": _clamp(content, 240),
         "content": content,
         "references": _base_references(meta),
@@ -322,7 +325,7 @@ def _text_event(doc: Document, meta: dict[str, Any], index: int) -> dict[str, An
     )
     return {
         "source_index": index,
-        "title": f"政务知识：{title}",
+        "title": _clamp(f"政务知识：{title}", _KG_EVENT_TITLE_MAX),
         "summary": _clamp(content, 240),
         "content": content,
         "references": _base_references(meta),

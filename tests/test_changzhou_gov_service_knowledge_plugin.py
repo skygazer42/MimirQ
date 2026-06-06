@@ -350,6 +350,28 @@ def test_changzhou_plugin_builds_structured_one_thing_kg_entities():
     assert ("Url", "https://czqjd.jszwfw.gov.cn/course?id=4066", "url") in entity_pairs
 
 
+def test_changzhou_plugin_kg_labels_fit_storage_limits():
+    source = "/path/to/gov-service-knowledge/04专题常见问答/超长问答.txt"
+    long_question = "如何办理" + "超长政务事项" * 80
+    long_answer = "请按政策材料要求办理。" + "补充说明" * 120
+    long_url = "https://example.com/" + ("very-long-path/" * 60)
+    text = f"""问题：[{long_question}]
+答案：{long_answer}
+来源部门：常州市测试部门
+更多信息：{long_url}
+"""
+
+    chunks = _run_chunk(_run_governance(Document(page_content=text, metadata={"source": source})))
+    events = _run_kg(chunks)
+
+    assert events
+    assert all(len(str(event.get("title") or "")) <= 255 for event in events)
+    for event in events:
+        for entity in event.get("entities", []):
+            assert len(str(entity.get("name") or "")) <= 500
+            assert len(str(entity.get("normalized_name") or "")) <= 500
+
+
 def test_changzhou_plugin_governs_qa_records():
     source = "/path/to/gov-service-knowledge/06各区常见问题/经开区12345QA.txt"
     text = """问题：[住宅专项维修资金的交存标准是多少？]

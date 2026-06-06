@@ -76,3 +76,30 @@ def test_dataset_analysis_png_task_endpoints_exist(monkeypatch):  # noqa: ANN001
     assert res3.status_code == 200, res3.text
     assert res3.content.startswith(b"\x89PNG\r\n\x1a\n")
     assert "image/png" in res3.headers["content-type"]
+
+
+def test_dataset_analysis_png_missing_task_returns_not_found(monkeypatch):  # noqa: ANN001
+    dataset_id = uuid.uuid4()
+
+    import app.api.v1.dataset_analysis as module
+
+    class _Dataset:
+        id = dataset_id
+        name = "Dataset PNG"
+
+    monkeypatch.setattr(module.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(module.DatasetService, "get_dataset", lambda *_a, **_k: _Dataset(), raising=True)
+    monkeypatch.setattr(module, "get_dataset_analysis_png_task_status", lambda **_kwargs: (_ for _ in ()).throw(KeyError("missing")), raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_tenant_id] = _override_get_tenant_id
+    app.dependency_overrides[get_current_account_id] = _override_get_current_account_id
+    app.include_router(module.router, prefix="/api/v1/datasets")
+    client = TestClient(app)
+
+    res = client.get(f"/api/v1/datasets/{dataset_id}/analysis/export-tasks/missing")
+    assert res.status_code == 404, res.text
+
+    res2 = client.get(f"/api/v1/datasets/{dataset_id}/analysis/export-tasks/missing/result.png")
+    assert res2.status_code == 404, res2.text
