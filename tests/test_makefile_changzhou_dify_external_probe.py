@@ -42,6 +42,8 @@ def test_changzhou_dify_readiness_gate_runs_probe_before_full_gate() -> None:
             "CHANGZHOU_DIFY_CASES=/tmp/custom_cases.json",
             "CHANGZHOU_DIFY_EXTRA_ARGS=--min-hit-at-3 0.8",
             "CHANGZHOU_DIFY_PROBE_OUT=/tmp/probe.json",
+            "CHANGZHOU_DIFY_OUT_PREFIX=/tmp/full_gate",
+            "CHANGZHOU_DIFY_READINESS_OUT=/tmp/readiness.json",
         ],
         cwd=REPO_ROOT,
         check=False,
@@ -52,6 +54,8 @@ def test_changzhou_dify_readiness_gate_runs_probe_before_full_gate() -> None:
     assert result.returncode == 0, result.stderr
     command = result.stdout
     assert "set +e" in command
+    assert 'rm -f "/tmp/probe.json" "/tmp/full_gate.json" "/tmp/full_gate_answers.json"' in command
+    assert '"/tmp/full_gate_eval.json" "/tmp/full_gate_trace.json" "/tmp/full_gate_summary.json" "/tmp/readiness.json"' in command
     assert "probe_rc=$?" in command
     assert "full_rc=$?" in command
     assert "summary_rc=$?" in command
@@ -63,7 +67,7 @@ def test_changzhou_dify_readiness_gate_runs_probe_before_full_gate() -> None:
     assert '--cases "/tmp/custom_cases.json"' in command
     assert '--out "/tmp/probe.json"' in command
     assert '--external-probe "/tmp/probe.json"' in command
-    assert '--full-summary "/tmp/changzhou_gov_dify_full_gate_summary.json"' in command
+    assert '--full-summary "/tmp/full_gate_summary.json"' in command
     assert "--min-hit-at-3 0.8" in command
     assert "--min-generated-answer-grounding-rate 0.9" in command
     assert "--min-generated-answer-key-point-recall 0.9" in command
