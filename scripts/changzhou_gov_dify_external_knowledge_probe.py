@@ -291,6 +291,24 @@ def _external_hit_testing_payload(*, query: str, top_k: int, mapped: dict[str, A
     }
 
 
+def evaluate_probe_gate(report: dict[str, Any]) -> dict[str, Any]:
+    source = report.get("source") if isinstance(report.get("source"), dict) else {}
+    summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
+    cases = int(summary.get("cases") or 0)
+    failed_conditions: list[str] = []
+    if source.get("endpoint_host_is_local") is not True:
+        failed_conditions.append("endpoint_host_is_local")
+    if int(summary.get("dify_hit_nonempty") or 0) != cases:
+        failed_conditions.append("dify_hit_nonempty")
+    if int(summary.get("mimirq_direct_nonempty") or 0) != cases:
+        failed_conditions.append("mimirq_direct_nonempty")
+    if int(summary.get("mimirq_direct_schema_valid") or 0) != cases:
+        failed_conditions.append("mimirq_direct_schema_valid")
+    if int(summary.get("probe_errors") or 0) != 0:
+        failed_conditions.append("probe_errors")
+    return {"passed": not failed_conditions, "failed_conditions": failed_conditions}
+
+
 def collect_probe_report(
     *,
     cases: list[dict[str, Any]],
@@ -380,7 +398,7 @@ def collect_probe_report(
             }
         )
 
-    return {
+    report = {
         "schema": "mimirq.changzhou_gov_service_knowledge.dify_external_knowledge_probe.v1",
         "source": {
             "provider": "dify",
@@ -406,6 +424,8 @@ def collect_probe_report(
         },
         "cases": rows,
     }
+    report["gate"] = evaluate_probe_gate(report)
+    return report
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -442,7 +462,7 @@ def main(argv: list[str] | None = None) -> int:
     text = json.dumps(report, ensure_ascii=False, indent=2)
     Path(str(args.out)).write_text(text + "\n", encoding="utf-8")
     print(text)
-    return 0 if int((report.get("summary") or {}).get("probe_errors") or 0) == 0 else 1
+    return 0 if bool((report.get("gate") or {}).get("passed")) else 1
 
 
 if __name__ == "__main__":
