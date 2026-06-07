@@ -270,6 +270,32 @@ def test_changzhou_dify_readiness_status_target_is_overridable() -> None:
     assert "|| true" in command
 
 
+def test_changzhou_dify_readiness_evidence_target_is_overridable() -> None:
+    result = subprocess.run(
+        [
+            "make",
+            "-n",
+            "changzhou-dify-readiness-evidence",
+            "CHANGZHOU_DIFY_READINESS_OUT=/tmp/readiness.json",
+            "CHANGZHOU_DIFY_READINESS_EVIDENCE_OUT=/tmp/evidence.md",
+            "DIFY_CONSOLE_UI_BASE_URL=https://example.test/brainai",
+            "CHANGZHOU_DIFY_APP_ID=app-1",
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    command = result.stdout
+    assert "scripts/changzhou_gov_dify_readiness_status.py" in command
+    assert '--summary "/tmp/readiness.json"' in command
+    assert '--markdown-out "/tmp/evidence.md"' in command
+    assert '--console-ui-base-url "https://example.test/brainai"' in command
+    assert '--app-id "app-1"' in command
+
+
 def test_changzhou_dify_readiness_gate_runs_probe_before_full_gate() -> None:
     result = subprocess.run(
         [

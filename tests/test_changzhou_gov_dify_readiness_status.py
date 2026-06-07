@@ -62,6 +62,99 @@ def test_format_status_prints_passed_summary() -> None:
     assert "Root cause:" not in text
 
 
+def test_format_markdown_evidence_uses_metrics_without_raw_answers() -> None:
+    mod = _load_module()
+    report = {
+        "generated_at": "2026-06-07T04:49:28Z",
+        "summary": {"passed": True, "failed_stages": [], "stage_count": 5},
+        "artifacts": {
+            "readiness": "/tmp/readiness.json",
+            "answers": "/tmp/answers.json",
+        },
+        "artifact_generated_at": {"full_gate": "2026-06-07T04:49:27Z"},
+        "knowledge_map": {"status": "passed", "summary": {"route_count": 7, "city_dataset_count": 5}},
+        "mimirq_direct": {
+            "status": "passed",
+            "summary": {"cases": 13, "hit_at_1": 1.0, "answer_grounding_rate": 1.0},
+            "source": {"base_url": "http://192.168.3.6:8000", "base_host": "192.168.3.6"},
+        },
+        "external_probe": {
+            "status": "passed",
+            "endpoint_host": "192.168.3.6",
+            "boundary": {"verdict": "dify_external_boundary_ok"},
+            "summary": {"cases": 13, "dify_hit_nonempty": 13, "probe_errors": 0},
+        },
+        "full_gate": {
+            "status": "passed",
+            "stages": {
+                "eval": {
+                    "summary": {
+                        "generated_answer_policy_clean_rate": 1.0,
+                        "generated_answer_grounding_rate": 1.0,
+                        "generated_answer_fallback_rate": 0.0,
+                    }
+                },
+                "trace": {
+                    "summary": {
+                        "empty_retrieval_cases": 0,
+                        "route_mismatch_cases": 0,
+                        "trace_errors": 0,
+                    }
+                },
+            },
+        },
+        "answers": [
+            {
+                "query": "新北区社保卡补卡在哪里办理",
+                "answer": "这段真实回答不应进入 Markdown evidence",
+            }
+        ],
+    }
+
+    text = mod.format_markdown_evidence(
+        report,
+        console_ui_base_url="https://ai.kingdonsoft.com:3000/brainai",
+        app_id="app-1",
+    )
+
+    assert "# Changzhou Dify/MimirQ Readiness Evidence" in text
+    assert "**Status:** PASSED" in text
+    assert "dify_external_boundary_ok" in text
+    assert "generated_answer_policy_clean_rate" in text
+    assert "route_mismatch_cases" in text
+    assert "| route_mismatch_cases | 0 |" in text
+    assert "| empty_retrieval_cases | 0 |" in text
+    assert "probe_errors=0" in text
+    assert "/tmp/readiness.json" in text
+    assert "https://ai.kingdonsoft.com:3000/brainai/app/app-1/workflow" in text
+    assert "新北区社保卡补卡在哪里办理" not in text
+    assert "这段真实回答不应进入 Markdown evidence" not in text
+
+
+def test_main_writes_markdown_evidence(tmp_path: Path) -> None:
+    mod = _load_module()
+    summary_path = tmp_path / "readiness.json"
+    markdown_path = tmp_path / "evidence.md"
+    summary_path.write_text(
+        json.dumps(
+            {
+                "generated_at": "2026-06-07T04:49:28Z",
+                "summary": {"passed": True, "failed_stages": [], "stage_count": 5},
+                "external_probe": {"boundary": {"verdict": "dify_external_boundary_ok"}},
+                "full_gate": {"stages": {"trace": {"summary": {"route_mismatch_cases": 0}}}},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    rc = mod.main(["--summary", str(summary_path), "--markdown-out", str(markdown_path)])
+
+    assert rc == 0
+    text = markdown_path.read_text(encoding="utf-8")
+    assert "# Changzhou Dify/MimirQ Readiness Evidence" in text
+    assert "**Status:** PASSED" in text
+
+
 def test_format_status_prints_console_ui_urls_with_base_path() -> None:
     mod = _load_module()
     report = {"summary": {"passed": True}}

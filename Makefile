@@ -1,4 +1,4 @@
-.PHONY: help init up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload web test test-web test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check api-docs-build diagnostics db-upgrade db-revision verify enterprise-checks parser-status dify-console-login dify-console-check dify-console-ensure changzhou-dify-knowledge-map-check changzhou-dify-mimirq-direct-gate changzhou-dify-external-probe changzhou-dify-workflow-lint changzhou-dify-workflow-sync-dry-run changzhou-dify-workflow-sync-apply changzhou-dify-full-gate changzhou-dify-readiness-summary changzhou-dify-readiness-status changzhou-dify-readiness-gate check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
+.PHONY: help init up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload web test test-web test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check api-docs-build diagnostics db-upgrade db-revision verify enterprise-checks parser-status dify-console-login dify-console-check dify-console-ensure changzhou-dify-knowledge-map-check changzhou-dify-mimirq-direct-gate changzhou-dify-external-probe changzhou-dify-workflow-lint changzhou-dify-workflow-sync-dry-run changzhou-dify-workflow-sync-apply changzhou-dify-full-gate changzhou-dify-readiness-summary changzhou-dify-readiness-status changzhou-dify-readiness-evidence changzhou-dify-readiness-gate check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
 
 # Prefer project venv when available so local dev doesn't depend on global tooling.
 PY := python3
@@ -59,6 +59,7 @@ CHANGZHOU_DIFY_MIMIRQ_ENV_FILE ?= .env
 CHANGZHOU_DIFY_MIMIRQ_DIRECT_OUT ?= /tmp/changzhou_gov_dify_mimirq_direct_gate.json
 CHANGZHOU_DIFY_MIMIRQ_DIRECT_EXTRA_ARGS ?= --min-hit-at-1 1 --min-answer-grounding-rate 1 --min-answer-key-point-recall 1
 CHANGZHOU_DIFY_READINESS_OUT ?= /tmp/changzhou_gov_dify_readiness_summary.json
+CHANGZHOU_DIFY_READINESS_EVIDENCE_OUT ?= /tmp/changzhou_gov_dify_readiness_evidence.md
 CHANGZHOU_DIFY_KNOWLEDGE_MAP_ENV_FILE ?= .env
 CHANGZHOU_DIFY_KNOWLEDGE_MAP_OUT ?= /tmp/changzhou_gov_dify_knowledge_map_check.json
 CHANGZHOU_DIFY_WORKFLOW_LINT_OUT ?= /tmp/changzhou_gov_dify_workflow_lint.json
@@ -145,6 +146,7 @@ help:
 	@echo "  make changzhou-dify-full-gate - run Changzhou Dify/MimirQ remote golden gate"
 	@echo "  make changzhou-dify-readiness-gate - run external probe, full Dify/MimirQ gate, and write readiness summary"
 	@echo "  make changzhou-dify-readiness-status - print compact readiness status from the latest summary"
+	@echo "  make changzhou-dify-readiness-evidence - write PII-safe Markdown readiness evidence"
 	@echo "  make check-retrieval-profile-compat - validate retrieval profile + reranker compatibility"
 	@echo "  make check-queryset-health-policy - validate query-set health threshold policy JSON"
 	@echo "  make check-parsing-proof-governance - validate broader parsing-proof governance JSON"
@@ -424,6 +426,13 @@ changzhou-dify-readiness-status:
 		--summary "$(CHANGZHOU_DIFY_READINESS_OUT)" \
 		--console-ui-base-url "$(DIFY_CONSOLE_UI_BASE_URL)" \
 		--app-id "$(CHANGZHOU_DIFY_APP_ID)" || true
+
+changzhou-dify-readiness-evidence:
+	$(PY) scripts/changzhou_gov_dify_readiness_status.py \
+		--summary "$(CHANGZHOU_DIFY_READINESS_OUT)" \
+		--console-ui-base-url "$(DIFY_CONSOLE_UI_BASE_URL)" \
+		--app-id "$(CHANGZHOU_DIFY_APP_ID)" \
+		--markdown-out "$(CHANGZHOU_DIFY_READINESS_EVIDENCE_OUT)"
 
 changzhou-dify-full-gate:
 	$(PY) scripts/changzhou_gov_dify_full_gate.py \

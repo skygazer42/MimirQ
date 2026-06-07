@@ -168,6 +168,152 @@ def _full_gate_warning_detail_items(report: dict[str, Any]) -> list[str]:
     return out
 
 
+def _metric(summary: dict[str, Any], key: str) -> str:
+    value = summary.get(key)
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int | float):
+        return str(value)
+    if isinstance(value, str):
+        return _text(value)
+    return ""
+
+
+def _stage_status(report: dict[str, Any], stage: str) -> str:
+    section = report.get(stage)
+    if not isinstance(section, dict):
+        return "unknown"
+    return _text(section.get("status")) or ("passed" if section.get("passed") is True else "failed")
+
+
+def _markdown_table(headers: list[str], rows: list[list[str]]) -> list[str]:
+    lines = [
+        "| " + " | ".join(headers) + " |",
+        "| " + " | ".join("---" for _header in headers) + " |",
+    ]
+    lines.extend("| " + " | ".join(_text(cell).replace("\n", " ") for cell in row) + " |" for row in rows)
+    return lines
+
+
+def format_markdown_evidence(
+    report: dict[str, Any],
+    *,
+    console_ui_base_url: str = "",
+    app_id: str = "",
+) -> str:
+    """Return a PII-safe Markdown evidence summary from readiness aggregate metrics."""
+    summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
+    artifacts = report.get("artifacts") if isinstance(report.get("artifacts"), dict) else {}
+    artifact_times = report.get("artifact_generated_at") if isinstance(report.get("artifact_generated_at"), dict) else {}
+    knowledge_map = report.get("knowledge_map") if isinstance(report.get("knowledge_map"), dict) else {}
+    mimirq_direct = report.get("mimirq_direct") if isinstance(report.get("mimirq_direct"), dict) else {}
+    external_probe = report.get("external_probe") if isinstance(report.get("external_probe"), dict) else {}
+    full_gate = report.get("full_gate") if isinstance(report.get("full_gate"), dict) else {}
+    full_gate_stages = full_gate.get("stages") if isinstance(full_gate.get("stages"), dict) else {}
+    full_eval = full_gate_stages.get("eval") if isinstance(full_gate_stages.get("eval"), dict) else {}
+    full_trace = full_gate_stages.get("trace") if isinstance(full_gate_stages.get("trace"), dict) else {}
+
+    knowledge_summary = knowledge_map.get("summary") if isinstance(knowledge_map.get("summary"), dict) else {}
+    direct_summary = mimirq_direct.get("summary") if isinstance(mimirq_direct.get("summary"), dict) else {}
+    external_summary = external_probe.get("summary") if isinstance(external_probe.get("summary"), dict) else {}
+    boundary = external_probe.get("boundary") if isinstance(external_probe.get("boundary"), dict) else {}
+    eval_summary = full_eval.get("summary") if isinstance(full_eval.get("summary"), dict) else {}
+    trace_summary = full_trace.get("summary") if isinstance(full_trace.get("summary"), dict) else {}
+
+    passed = summary.get("passed") is True
+    lines = [
+        "# Changzhou Dify/MimirQ Readiness Evidence",
+        "",
+        f"**Status:** {'PASSED' if passed else 'FAILED'}",
+    ]
+    generated_at = _text(report.get("generated_at"))
+    if generated_at:
+        lines.append(f"**Generated at:** {generated_at}")
+    if _text(console_ui_base_url):
+        lines.append(f"**Dify console UI:** {_join_url(console_ui_base_url, 'apps')}")
+        if _text(app_id):
+            lines.append(f"**Dify workflow UI:** {_join_url(console_ui_base_url, 'app', app_id, 'workflow')}")
+    next_action = _text(summary.get("next_action"))
+    if next_action:
+        lines.append(f"**Next action:** {next_action}")
+    lines.extend(
+        [
+            "",
+            "## Stage Summary",
+            "",
+            *_markdown_table(
+                ["Stage", "Status", "Evidence"],
+                [
+                    [
+                        "knowledge_map",
+                        _stage_status(report, "knowledge_map"),
+                        f"routes={_metric(knowledge_summary, 'route_count')}; "
+                        f"district_ids={_metric(knowledge_summary, 'district_knowledge_ids_checked')}",
+                    ],
+                    [
+                        "mimirq_direct",
+                        _stage_status(report, "mimirq_direct"),
+                        f"cases={_metric(direct_summary, 'cases')}; hit_at_1={_metric(direct_summary, 'hit_at_1')}; "
+                        f"answer_grounding_rate={_metric(direct_summary, 'answer_grounding_rate')}",
+                    ],
+                    [
+                        "console_auth",
+                        _stage_status(report, "console_auth"),
+                        f"ttl_seconds={_metric(report.get('console_auth', {}), 'ttl_seconds')}",
+                    ],
+                    [
+                        "external_probe",
+                        _stage_status(report, "external_probe"),
+                        f"verdict={_text(boundary.get('verdict'))}; "
+                        f"dify_hit_nonempty={_metric(external_summary, 'dify_hit_nonempty')}; "
+                        f"probe_errors={_metric(external_summary, 'probe_errors')}",
+                    ],
+                    [
+                        "full_gate",
+                        _stage_status(report, "full_gate"),
+                        f"generated_answer_policy_clean_rate="
+                        f"{_metric(eval_summary, 'generated_answer_policy_clean_rate')}; "
+                        f"route_mismatch_cases={_metric(trace_summary, 'route_mismatch_cases')}; "
+                        f"empty_retrieval_cases={_metric(trace_summary, 'empty_retrieval_cases')}",
+                    ],
+                ],
+            ),
+            "",
+            "## Full Gate Metrics",
+            "",
+            *_markdown_table(
+                ["Metric", "Value"],
+                [
+                    ["generated_answer_grounding_rate", _metric(eval_summary, "generated_answer_grounding_rate")],
+                    ["generated_answer_key_point_recall", _metric(eval_summary, "generated_answer_key_point_recall")],
+                    ["generated_answer_policy_clean_rate", _metric(eval_summary, "generated_answer_policy_clean_rate")],
+                    ["generated_answer_fallback_rate", _metric(eval_summary, "generated_answer_fallback_rate")],
+                    ["trace_errors", _metric(trace_summary, "trace_errors")],
+                    ["route_mismatch_cases", _metric(trace_summary, "route_mismatch_cases")],
+                    ["empty_retrieval_cases", _metric(trace_summary, "empty_retrieval_cases")],
+                ],
+            ),
+        ]
+    )
+    if artifacts:
+        lines.extend(["", "## Artifacts", ""])
+        for key, value in artifacts.items():
+            if _text(value):
+                timestamp = _text(artifact_times.get(key))
+                suffix = f" ({timestamp})" if timestamp else ""
+                lines.append(f"- `{key}`: `{value}`{suffix}")
+    lines.extend(
+        [
+            "",
+            "## Safety",
+            "",
+            "This evidence summary is PII-safe: it includes aggregate metrics and artifact paths only, "
+            "not raw queries, generated answers, tokens, passwords, or API keys.",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
 def format_status(
     report: dict[str, Any],
     *,
@@ -264,6 +410,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Optional Dify console UI base URL, including any frontend base path such as /brainai.",
     )
     parser.add_argument("--app-id", default="", help="Optional Dify app id used to print the workflow UI URL.")
+    parser.add_argument("--markdown-out", default="", help="Optional path to write a PII-safe Markdown evidence summary.")
     return parser
 
 
@@ -281,6 +428,17 @@ def main(argv: list[str] | None = None) -> int:
         app_id=str(args.app_id),
     )
     print(text)
+    if _text(args.markdown_out):
+        markdown_path = Path(str(args.markdown_out))
+        markdown_path.parent.mkdir(parents=True, exist_ok=True)
+        markdown_path.write_text(
+            format_markdown_evidence(
+                report,
+                console_ui_base_url=str(args.console_ui_base_url),
+                app_id=str(args.app_id),
+            ),
+            encoding="utf-8",
+        )
     summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
     return 0 if summary.get("passed") is True else 1
 
