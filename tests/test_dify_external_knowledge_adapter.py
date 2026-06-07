@@ -346,11 +346,73 @@ def test_dify_retrieval_prepends_qa_answer_hints_for_long_answers(
 
     assert res.status_code == 200, res.text
     content = res.json()["records"][0]["content"]
+    first_line = content.splitlines()[0]
+    assert first_line == "必答要点：回答申请/入口/类型类问题时必须保留这些选项名称：卖旧置换更新补贴、报废置换更新补贴"
     hint = content.split("\n\n原始证据：", 1)[0]
     assert "苏服办APP" in hint
     assert "2025年补贴申请" in hint
     assert "卖旧置换更新补贴" in hint
     assert "报废置换更新补贴" in hint
+    assert content.endswith(full_content)
+
+
+def test_dify_retrieval_frontloads_enumerated_options_from_existing_answer_hints(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    token = "dify-test-token"
+    dataset_id = uuid.uuid4()
+    full_content = (
+        "答案要点：答案：汽车置换更新可以在苏服办APP进行2025年补贴申请，"
+        "可以申请两种类型的补贴： 1.卖旧置换更新补贴（旧车卖出后置换新车，"
+        "从此入口发起补贴申请） 2.报废置换更新补贴（旧车报废后置换新车，"
+        "从此入口发起补贴申请）。\n\n原始证据：\n答案：同上"
+    )
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        f'{{"city": "{dataset_id}"}}',
+        raising=False,
+    )
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+
+    async def _fake_retrieve_dataset_citations(**_kwargs):  # noqa: ANN003, ANN202
+        return [
+            {
+                "chunk_content": full_content,
+                "relevance_score": 0.73,
+                "document_name": "常州市高频应用知识.xlsx",
+                "chunk_id": str(uuid.uuid4()),
+                "dataset_id": str(dataset_id),
+            }
+        ]
+
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/integrations/dify/retrieval",
+        headers=_auth(token),
+        json={
+            "knowledge_id": "city",
+            "query": "汽车置换补贴怎么申请",
+            "retrieval_setting": {"top_k": 1, "score_threshold": 0.0},
+        },
+    )
+
+    assert res.status_code == 200, res.text
+    content = res.json()["records"][0]["content"]
+    first_line = content.splitlines()[0]
+    assert first_line == "必答要点：回答申请/入口/类型类问题时必须保留这些选项名称：卖旧置换更新补贴、报废置换更新补贴"
     assert content.endswith(full_content)
 
 
