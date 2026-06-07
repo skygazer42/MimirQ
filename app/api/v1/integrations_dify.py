@@ -13,6 +13,7 @@ import hmac
 import json
 import logging
 import re
+import time
 from dataclasses import dataclass
 from typing import Annotated, Any
 from uuid import UUID
@@ -104,6 +105,7 @@ _SERVICE_TERM_SYNONYMS = (("社会保障卡", "社保卡"),)
 _ENUMERATION_INTRO_TERMS = ("类型", "类别", "方式", "入口")
 _ENUMERATION_QUERY_TERMS = ("申请", "入口", "类型", "类别", "哪些", "什么", "如何")
 _NAMED_WAY_MARKERS = {1: "方式一", 2: "方式二", 3: "方式三", 4: "方式四"}
+_DIAGNOSTIC_QUERY_PREVIEW_CHARS = 120
 
 
 class _DifyErrorRoute(APIRoute):
@@ -542,6 +544,29 @@ def _metadata_terms(value: Any) -> list[str]:
     return out
 
 
+def _request_client_ip(request: Request) -> str:
+    forwarded_for = str(request.headers.get("x-forwarded-for") or "").strip()
+    if forwarded_for:
+        first = forwarded_for.split(",", 1)[0].strip()
+        if first:
+            return first
+    return str(getattr(getattr(request, "client", None), "host", "") or "").strip()
+
+
+def _diagnostic_query_hash(query: str) -> str:
+    text = str(query or "").strip()
+    if not text:
+        return ""
+    return hashlib.sha256(text.encode("utf-8", "ignore")).hexdigest()[:16]
+
+
+def _diagnostic_query_preview(query: str) -> str:
+    text = " ".join(str(query or "").split())
+    if len(text) <= _DIAGNOSTIC_QUERY_PREVIEW_CHARS:
+        return text
+    return f"{text[:_DIAGNOSTIC_QUERY_PREVIEW_CHARS].rstrip()}..."
+
+
 def _clamp_hint_value(value: str, *, limit: int = _MAX_HINT_VALUE_CHARS) -> str:
     text = str(value or "").strip()
     if len(text) <= limit:
@@ -916,36 +941,105 @@ async def _retrieve_dataset_citations(
 
 @router.post("/retrieval", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 async def retrieve_external_knowledge(
+    request: Request,
     body: DifyExternalKnowledgeRequest,
     actor: Annotated[_DifyActor, Depends(_require_dify_actor)],
     db: Annotated[Session, Depends(get_db)],
 ) -> DifyExternalKnowledgeResponse:
+    started = time.perf_counter()
     dataset_ids = _resolve_knowledge_dataset_ids(body.knowledge_id, query=body.query)
     configured_max = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX", 50) or 50)
     top_k = max(1, min(int(body.retrieval_setting.top_k), configured_max))
     score_threshold = _clamp_score(body.retrieval_setting.score_threshold)
     metadata_filter = _metadata_condition_to_filter(body.metadata_condition)
+    log_extra_base = {
+        "event": "dify_external_retrieval",
+        "client_ip": _request_client_ip(request),
+        "knowledge_id": str(body.knowledge_id or "").strip(),
+        "query_hash": _diagnostic_query_hash(body.query),
+        "query_preview": _diagnostic_query_preview(body.query),
+        "query_chars": len(str(body.query or "")),
+        "top_k": top_k,
+        "score_threshold": score_threshold,
+        "dataset_count": len(dataset_ids),
+        "metadata_filter": bool(metadata_filter),
+    }
 
     records: list[dict[str, Any]] = []
-    citations = await _retrieve_dataset_citations(
-        db=db,
-        tenant_id=actor.tenant_id,
-        account_id=actor.account_id,
-        dataset_ids=dataset_ids,
-        query=body.query,
-        top_k=top_k,
-        score_threshold=score_threshold,
-        metadata_filter=metadata_filter,
-    )
-    fallback_dataset_id = dataset_ids[0] if dataset_ids else None
-    chunk_content_map = _load_chunk_content_map(db=db, tenant_id=actor.tenant_id, citations=citations)
-    for citation in citations:
-        chunk_id = _citation_chunk_id(citation)
-        if chunk_id and chunk_content_map.get(chunk_id):
-            citation = {**citation, "content": chunk_content_map[chunk_id]}
-        record = _citation_to_dify_record(citation, dataset_id=fallback_dataset_id, query=body.query)
-        if str(record.get("content") or "").strip():
-            records.append(record)
+    citation_count = 0
+    try:
+        citations = await _retrieve_dataset_citations(
+            db=db,
+            tenant_id=actor.tenant_id,
+            account_id=actor.account_id,
+            dataset_ids=dataset_ids,
+            query=body.query,
+            top_k=top_k,
+            score_threshold=score_threshold,
+            metadata_filter=metadata_filter,
+        )
+        citation_count = len(citations)
+        fallback_dataset_id = dataset_ids[0] if dataset_ids else None
+        chunk_content_map = _load_chunk_content_map(db=db, tenant_id=actor.tenant_id, citations=citations)
+        for citation in citations:
+            chunk_id = _citation_chunk_id(citation)
+            if chunk_id and chunk_content_map.get(chunk_id):
+                citation = {**citation, "content": chunk_content_map[chunk_id]}
+            record = _citation_to_dify_record(citation, dataset_id=fallback_dataset_id, query=body.query)
+            if str(record.get("content") or "").strip():
+                records.append(record)
 
-    _sort_records_for_query(records, query=body.query)
-    return DifyExternalKnowledgeResponse(records=[DifyExternalKnowledgeRecord(**record) for record in records[:top_k]])
+        _sort_records_for_query(records, query=body.query)
+        response_records = [DifyExternalKnowledgeRecord(**record) for record in records[:top_k]]
+        elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
+        record_count = len(response_records)
+        logger.info(
+            "Dify external retrieval completed client_ip=%s knowledge_id=%s query_hash=%s "
+            "query_preview=%r top_k=%s score_threshold=%s dataset_count=%s citations=%s records=%s "
+            "elapsed_ms=%s metadata_filter=%s",
+            log_extra_base["client_ip"],
+            log_extra_base["knowledge_id"],
+            log_extra_base["query_hash"],
+            log_extra_base["query_preview"],
+            top_k,
+            score_threshold,
+            len(dataset_ids),
+            citation_count,
+            record_count,
+            elapsed_ms,
+            bool(metadata_filter),
+            extra={
+                **log_extra_base,
+                "phase": "finished",
+                "citation_count": citation_count,
+                "record_count": record_count,
+                "elapsed_ms": elapsed_ms,
+            },
+        )
+        return DifyExternalKnowledgeResponse(records=response_records)
+    except Exception:
+        elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
+        logger.exception(
+            "Dify external retrieval failed client_ip=%s knowledge_id=%s query_hash=%s "
+            "query_preview=%r top_k=%s score_threshold=%s dataset_count=%s citations=%s records=%s "
+            "elapsed_ms=%s metadata_filter=%s",
+            log_extra_base["client_ip"],
+            log_extra_base["knowledge_id"],
+            log_extra_base["query_hash"],
+            log_extra_base["query_preview"],
+            top_k,
+            score_threshold,
+            len(dataset_ids),
+            citation_count,
+            len(records),
+            elapsed_ms,
+            bool(metadata_filter),
+            extra={
+                **log_extra_base,
+                "phase": "failed",
+                "citation_count": citation_count,
+                "record_count": len(records),
+                "elapsed_ms": elapsed_ms,
+            },
+        )
+        raise
