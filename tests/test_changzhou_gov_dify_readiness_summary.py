@@ -33,6 +33,12 @@ def test_build_readiness_summary_combines_probe_and_full_gate() -> None:
             "mimirq_direct_schema_valid": 12,
             "probe_errors": 0,
         },
+        "boundary": {
+            "endpoint_config_ok": True,
+            "local_mimirq_direct_ok": True,
+            "dify_hit_testing_ok": True,
+            "verdict": "dify_external_boundary_ok",
+        },
     }
     full_gate = {
         "summary": {
@@ -122,6 +128,7 @@ def test_build_readiness_summary_combines_probe_and_full_gate() -> None:
             "endpoint_host_is_loopback": False,
             "external_api_name": "MimirQ-192.168.3.6",
             "summary": external_probe["summary"],
+            "boundary": external_probe["boundary"],
         },
         "full_gate": {
             "passed": True,

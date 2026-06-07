@@ -195,6 +195,12 @@ def test_collect_probe_report_flags_dify_empty_but_mimirq_direct_ok_without_leak
     assert report["source"]["endpoint_host_matches_local_machine"] is True
     assert report["source"]["endpoint_host_is_loopback"] is False
     assert report["source"]["local_ipv4_addresses"] == ["192.168.3.6"]
+    assert report["boundary"] == {
+        "endpoint_config_ok": True,
+        "local_mimirq_direct_ok": True,
+        "dify_hit_testing_ok": False,
+        "verdict": "dify_runtime_empty_but_mimirq_direct_ok",
+    }
     assert report["cases"][0]["diagnosis"] == "dify_runtime_empty_but_mimirq_direct_ok"
     assert report["cases"][0]["dify_dataset_id"] == "ds-xinbei"
     assert report["cases"][0]["mimirq_direct_schema_valid"] is True
@@ -275,6 +281,34 @@ def test_evaluate_probe_gate_allows_nonlocal_routable_endpoint_when_hits_pass() 
     )
 
     assert gate == {"passed": True, "failed_conditions": []}
+
+
+def test_probe_boundary_verdict_passes_when_dify_and_direct_hits_pass() -> None:
+    mod = _load_module()
+
+    boundary = mod.build_boundary_verdict(
+        {
+            "source": {
+                "endpoint": "http://192.168.3.6:8000/api/v1/integrations/dify",
+                "endpoint_host_is_loopback": False,
+            },
+            "summary": {
+                "cases": 2,
+                "dify_hit_nonempty": 2,
+                "mimirq_direct_nonempty": 2,
+                "mimirq_direct_schema_valid": 2,
+                "dify_runtime_empty_but_mimirq_direct_ok": 0,
+                "probe_errors": 0,
+            },
+        }
+    )
+
+    assert boundary == {
+        "endpoint_config_ok": True,
+        "local_mimirq_direct_ok": True,
+        "dify_hit_testing_ok": True,
+        "verdict": "dify_external_boundary_ok",
+    }
 
 
 def test_validate_dify_external_records_shape_rejects_null_metadata_and_bad_score() -> None:

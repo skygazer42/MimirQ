@@ -347,6 +347,36 @@ def evaluate_probe_gate(report: dict[str, Any]) -> dict[str, Any]:
     return {"passed": not failed_conditions, "failed_conditions": failed_conditions}
 
 
+def build_boundary_verdict(report: dict[str, Any]) -> dict[str, Any]:
+    source = report.get("source") if isinstance(report.get("source"), dict) else {}
+    summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
+    cases = int(summary.get("cases") or 0)
+    endpoint_config_ok = bool(_text(source.get("endpoint"))) and source.get("endpoint_host_is_loopback") is not True
+    local_mimirq_direct_ok = (
+        cases > 0
+        and int(summary.get("mimirq_direct_nonempty") or 0) == cases
+        and int(summary.get("mimirq_direct_schema_valid") or 0) == cases
+        and int(summary.get("probe_errors") or 0) == 0
+    )
+    dify_hit_testing_ok = cases > 0 and int(summary.get("dify_hit_nonempty") or 0) == cases
+    if endpoint_config_ok and local_mimirq_direct_ok and dify_hit_testing_ok:
+        verdict = "dify_external_boundary_ok"
+    elif not endpoint_config_ok:
+        verdict = "endpoint_config_invalid"
+    elif local_mimirq_direct_ok and int(summary.get("dify_runtime_empty_but_mimirq_direct_ok") or 0) > 0:
+        verdict = "dify_runtime_empty_but_mimirq_direct_ok"
+    elif not local_mimirq_direct_ok:
+        verdict = "mimirq_direct_unhealthy"
+    else:
+        verdict = "dify_hit_testing_unhealthy"
+    return {
+        "endpoint_config_ok": endpoint_config_ok,
+        "local_mimirq_direct_ok": local_mimirq_direct_ok,
+        "dify_hit_testing_ok": dify_hit_testing_ok,
+        "verdict": verdict,
+    }
+
+
 def _emit_progress(progress_fn: ProgressFn | None, payload: dict[str, Any]) -> None:
     if progress_fn is not None:
         progress_fn(payload)
@@ -490,6 +520,7 @@ def collect_probe_report(
         "cases": rows,
     }
     report["gate"] = evaluate_probe_gate(report)
+    report["boundary"] = build_boundary_verdict(report)
     return report
 
 

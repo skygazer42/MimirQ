@@ -90,6 +90,11 @@ def format_status(
     passed_stages = _stages_with_status(report, "passed")
     if passed_stages:
         lines.append(f"Passed stages: {', '.join(passed_stages)}")
+    external_probe = report.get("external_probe") if isinstance(report.get("external_probe"), dict) else {}
+    boundary = external_probe.get("boundary") if isinstance(external_probe.get("boundary"), dict) else {}
+    boundary_verdict = _text(boundary.get("verdict"))
+    if boundary_verdict:
+        lines.append(f"Boundary: {boundary_verdict}")
     skipped = _text_list(summary.get("skipped_stages"))
     if skipped:
         lines.append(f"Skipped stages: {', '.join(skipped)}")

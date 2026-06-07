@@ -43,12 +43,13 @@ The Makefile is the source of truth for common workflows; these scripts are the 
   - Local route preflight: `make changzhou-dify-knowledge-map-check` validates `DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON` before remote Dify calls.
   - Recommended after `make dify-console-login`: `make changzhou-dify-external-probe`
   - Override output or a specific Dify external API id: `CHANGZHOU_DIFY_EXTERNAL_API_ID=<external_api_id> CHANGZHOU_DIFY_PROBE_OUT=/tmp/probe.json make changzhou-dify-external-probe`
-  - The command exits non-zero unless the Dify endpoint host is local, all cases have non-empty Dify hit-testing results, direct MimirQ retrieval is non-empty, and direct records match Dify's external knowledge schema.
+  - The command exits non-zero unless the Dify endpoint host is non-loopback, all cases have non-empty Dify hit-testing results, direct MimirQ retrieval is non-empty, and direct records match Dify's external knowledge schema.
+  - The JSON report includes `boundary.verdict`; `dify_external_boundary_ok` means endpoint config, local direct retrieval, and Dify dataset hit-testing all passed.
 - `changzhou_gov_dify_full_gate.py`: run the Changzhou government-service Dify/MimirQ golden gate (preflight, generated answers, direct eval, workflow trace)
   - Recommended: `make changzhou-dify-full-gate`
   - End-to-end readiness: `make changzhou-dify-readiness-gate` runs the local knowledge-map preflight, Dify console token check, strict external probe, then the full generated-answer/direct-eval/trace gate with generated-answer grounding/key-point recall thresholds defaulting to `0.9` to avoid failing on harmless wording variance, and writes `/tmp/changzhou_gov_dify_readiness_summary.json`.
   - If an upstream stage fails, the readiness summary reports only the root cause in `failed_stages`, `root_cause_stage/root_cause_reason`, and `next_action`; downstream stages are marked `status=skipped` with `blocked_by=<stage>`, so expired Dify console auth is not hidden behind skipped probe/full-gate stages.
-  - Quick diagnosis: `make changzhou-dify-readiness-status` prints the latest summary's pass/fail state, freshness, root cause, next action, skipped stages, and artifact paths.
+  - Quick diagnosis: `make changzhou-dify-readiness-status` prints the latest summary's pass/fail state, freshness, boundary verdict, root cause, next action, skipped stages, and artifact paths.
   - Override cases or thresholds without editing the Makefile: `CHANGZHOU_DIFY_CASES=/tmp/boundary_cases.json CHANGZHOU_DIFY_EXTRA_ARGS='--min-hit-at-3 0.8' make changzhou-dify-full-gate`
   - Reads `DIFY_EXTERNAL_KNOWLEDGE_API_KEY` / `DIFY_EXTERNAL_KNOWLEDGE_API_KEYS` from the environment or repo `.env`; Dify App key and console storage state default to `/tmp/dify_remote_app_api_key.json` and `/tmp/kingdonsoft_dify_storage_state.json`.
 - `clean.py`: remove local caches/artifacts (used by `make clean`)

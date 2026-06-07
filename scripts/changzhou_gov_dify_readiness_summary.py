@@ -35,7 +35,7 @@ def _utc_now_text() -> str:
 def _external_probe_section(report: dict[str, Any]) -> dict[str, Any]:
     source = report.get("source") if isinstance(report.get("source"), dict) else {}
     gate = report.get("gate") if isinstance(report.get("gate"), dict) else {}
-    return {
+    out = {
         "passed": bool(gate.get("passed")),
         "failed_conditions": gate.get("failed_conditions") if isinstance(gate.get("failed_conditions"), list) else [],
         "endpoint": _text(source.get("endpoint")),
@@ -46,6 +46,10 @@ def _external_probe_section(report: dict[str, Any]) -> dict[str, Any]:
         "external_api_name": _text(source.get("external_api_name")),
         "summary": report.get("summary") if isinstance(report.get("summary"), dict) else {},
     }
+    boundary = report.get("boundary") if isinstance(report.get("boundary"), dict) else {}
+    if boundary:
+        out["boundary"] = boundary
+    return out
 
 
 def _knowledge_map_section(report: dict[str, Any]) -> dict[str, Any]:

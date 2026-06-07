@@ -51,12 +51,14 @@ def test_format_status_prints_passed_summary() -> None:
     mod = _load_module()
     report = {
         "summary": {"passed": True, "failed_stages": [], "skipped_stages": []},
+        "external_probe": {"boundary": {"verdict": "dify_external_boundary_ok"}},
         "artifacts": {"readiness": "/tmp/readiness.json"},
     }
 
     text = mod.format_status(report)
 
     assert text.splitlines()[0] == "Changzhou Dify readiness: PASSED"
+    assert "Boundary: dify_external_boundary_ok" in text
     assert "Root cause:" not in text
 
 
