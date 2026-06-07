@@ -37,16 +37,19 @@ The Makefile is the source of truth for common workflows; these scripts are the 
   - Example: `python scripts/plugin_corpus_closed_loop_smoke.py --base-url http://127.0.0.1:8000 --source-dir /path/to/domain-corpus --plugin-ref plugin:<plugin-id>@<version>:chunk --include-source-root-name --overwrite-goldens`
 - `changzhou_gov_plugin_chunk_report.py`: local Changzhou plugin governance/chunk/KG review report for the 01-06 sample families
   - Example: `make changzhou-gov-plugin-chunk-report`
-  - Outputs `/tmp/changzhou_gov_plugin_chunk_report.json` and `/tmp/changzhou_gov_plugin_chunk_report.md`; it does not write the database, vector store, or KG store.
+  - Outputs local raw `/tmp/changzhou_gov_plugin_chunk_report.json` and `/tmp/changzhou_gov_plugin_chunk_report.md`; it may include chunk previews for debugging and does not write the database, vector store, or KG store.
+- `changzhou_gov_plugin_chunk_evidence.py`: sanitized Changzhou plugin chunk/KG evidence for delivery handoff
+  - Example: `make changzhou-gov-plugin-chunk-evidence`
+  - Outputs `/tmp/changzhou_gov_plugin_chunk_evidence.json` and `/tmp/changzhou_gov_plugin_chunk_evidence.md` with aggregate section/chunk/KG metrics only.
 - `pipeline_plugin_runner.py`: local plugin contract test and Golden draft generator
   - Example: `make changzhou-gov-plugin-test-report`
   - Outputs local raw `/tmp/changzhou_gov_plugin_test_report.json`, which may include Golden draft sample questions for debugging.
 - `changzhou_gov_plugin_test_evidence.py`: sanitized Changzhou plugin test evidence for delivery handoff
   - Example: `make changzhou-gov-plugin-test-evidence`
   - Outputs `/tmp/changzhou_gov_plugin_test_evidence.json` and `/tmp/changzhou_gov_plugin_test_evidence.md` with stage pass states and Golden draft counts only.
-- `changzhou_gov_delivery_pack.py`: combined handoff index for the Changzhou plugin chunk report and Dify/MimirQ readiness evidence
+- `changzhou_gov_delivery_pack.py`: combined handoff index for the Changzhou plugin evidence and Dify/MimirQ readiness evidence
   - Example: `make changzhou-gov-delivery-pack`
-  - Outputs `/tmp/changzhou_gov_delivery_pack.json` and `/tmp/changzhou_gov_delivery_pack.md`; it copies aggregate metrics and artifact paths only, including plugin test/Golden counts without sample questions.
+  - Outputs `/tmp/changzhou_gov_delivery_pack.json` and `/tmp/changzhou_gov_delivery_pack.md`; it copies aggregate metrics and sanitized artifact paths only, including plugin chunk/KG and test/Golden counts without sample content.
   - Defaults to a 30-minute readiness freshness gate; override with `CHANGZHOU_GOV_DELIVERY_PACK_MAX_READINESS_AGE_MINUTES=<minutes>` when intentionally reviewing older artifacts.
   - Use `make changzhou-gov-delivery-pack-refresh` for delivery handoff: it runs `changzhou-dify-readiness-gate-quiet` first, sending raw Dify/MimirQ gate output to `/tmp/changzhou_gov_dify_readiness_gate.log`.
 - `dify_console_login.py`: refresh the Dify console Playwright `storage_state` used by workflow trace diagnostics

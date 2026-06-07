@@ -141,6 +141,9 @@ make changzhou-gov-plugin-chunk-report
 该报告只跑插件样例和插件契约，不写数据库、向量库或 KG 存储。它用于审查每类源文件
 治理后形成哪些业务记录、切出哪些 `chunk_kind`、metadata 覆盖哪些字段，以及 KG
 实体类型是否符合预期。生产入库证据仍以真实入库任务、索引结果和 Golden gate 为准。
+该 raw report 可能包含切块样例预览；交付时使用 `make changzhou-gov-plugin-chunk-evidence`
+生成 `/tmp/changzhou_gov_plugin_chunk_evidence.json` 和 `.md`，只保留 section/chunk/KG
+聚合指标和字段矩阵。
 
 导出完整 Golden 草稿：
 
