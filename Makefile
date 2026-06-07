@@ -1,4 +1,4 @@
-.PHONY: help init up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload web test test-web test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check api-docs-build diagnostics db-upgrade db-revision verify enterprise-checks parser-status dify-console-login dify-console-check changzhou-dify-knowledge-map-check changzhou-dify-mimirq-direct-gate changzhou-dify-external-probe changzhou-dify-full-gate changzhou-dify-readiness-summary changzhou-dify-readiness-status changzhou-dify-readiness-gate check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
+.PHONY: help init up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload web test test-web test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check api-docs-build diagnostics db-upgrade db-revision verify enterprise-checks parser-status dify-console-login dify-console-check dify-console-ensure changzhou-dify-knowledge-map-check changzhou-dify-mimirq-direct-gate changzhou-dify-external-probe changzhou-dify-full-gate changzhou-dify-readiness-summary changzhou-dify-readiness-status changzhou-dify-readiness-gate check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
 
 # Prefer project venv when available so local dev doesn't depend on global tooling.
 PY := python3
@@ -129,6 +129,7 @@ help:
 	@echo "  make enterprise-checks - verify + backend/web tests (CI-like)"
 	@echo "  make parser-status - print parser backend availability"
 	@echo "  make dify-console-login - refresh Dify console storage state for trace gates"
+	@echo "  make dify-console-ensure - check Dify console storage state, refreshing it when credentials are provided"
 	@echo "  make changzhou-dify-knowledge-map-check - validate local Changzhou Dify knowledge map routes"
 	@echo "  make changzhou-dify-mimirq-direct-gate - run MimirQ-only Changzhou golden retrieval gate"
 	@echo "  make changzhou-dify-external-probe - compare Dify external hit-testing with direct MimirQ retrieval"
@@ -296,6 +297,20 @@ dify-console-check:
 		--min-ttl-seconds $(DIFY_CONSOLE_MIN_TTL_SECONDS) \
 		--out "$(DIFY_CONSOLE_CHECK_OUT)"
 
+dify-console-ensure:
+	@set +e; \
+	$(MAKE) dify-console-check; rc=$$?; \
+	if [ $$rc -eq 0 ]; then \
+		exit 0; \
+	fi; \
+	if [ -n "$(DIFY_CONSOLE_EMAIL)" ] && [ -n "$(DIFY_CONSOLE_PASSWORD_FILE)" ] && [ -f "$(DIFY_CONSOLE_PASSWORD_FILE)" ]; then \
+		echo "Dify console storage state is invalid or expiring; refreshing with configured credentials."; \
+		$(MAKE) dify-console-login; \
+	else \
+		echo "Dify console storage state is invalid or expiring, and DIFY_CONSOLE_EMAIL/DIFY_CONSOLE_PASSWORD_FILE are not both available."; \
+		exit $$rc; \
+	fi
+
 changzhou-dify-external-probe:
 	$(PY) scripts/changzhou_gov_dify_external_knowledge_probe.py \
 		--cases "$(CHANGZHOU_DIFY_CASES)" \
@@ -334,7 +349,7 @@ changzhou-dify-readiness-gate:
 		direct_rc=1; \
 	fi; \
 	if [ $$map_rc -eq 0 ] && [ $$direct_rc -eq 0 ]; then \
-		$(MAKE) dify-console-check; auth_rc=$$?; \
+		$(MAKE) dify-console-ensure; auth_rc=$$?; \
 	else \
 		auth_rc=1; \
 	fi; \

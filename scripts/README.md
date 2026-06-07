@@ -37,6 +37,7 @@ The Makefile is the source of truth for common workflows; these scripts are the 
   - Example: `python scripts/plugin_corpus_closed_loop_smoke.py --base-url http://127.0.0.1:8000 --source-dir /path/to/domain-corpus --plugin-ref plugin:<plugin-id>@<version>:chunk --include-source-root-name --overwrite-goldens`
 - `dify_console_login.py`: refresh the Dify console Playwright `storage_state` used by workflow trace diagnostics
   - Recommended: `DIFY_CONSOLE_EMAIL=<email> DIFY_CONSOLE_PASSWORD_FILE=/tmp/dify_console_password.txt make dify-console-login`
+  - `make dify-console-ensure` first validates the existing storage state; if it is expired or expiring and both `DIFY_CONSOLE_EMAIL` plus `DIFY_CONSOLE_PASSWORD_FILE` are configured, it refreshes the state automatically.
   - Avoid putting Dify console passwords in repository files or shell history; the script writes only `console_token` localStorage state to `/tmp/kingdonsoft_dify_storage_state.json` by default.
   - The Kingdonsoft Dify console web UI is served under the `/brainai` base path, for example `https://ai.kingdonsoft.com:3000/brainai/apps`. Keep `DIFY_CONSOLE_ORIGIN=https://ai.kingdonsoft.com:3000` because browser storage state is keyed by origin, not by path.
 - `changzhou_gov_dify_external_knowledge_probe.py`: compare Dify external hit-testing with direct MimirQ retrieval for the same Changzhou golden cases

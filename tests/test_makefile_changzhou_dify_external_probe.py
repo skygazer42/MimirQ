@@ -134,6 +134,34 @@ def test_dify_console_login_target_writes_report() -> None:
     assert "--min-ttl-seconds 123" in command
 
 
+def test_dify_console_ensure_target_checks_then_can_refresh() -> None:
+    result = subprocess.run(
+        [
+            "make",
+            "-n",
+            "dify-console-ensure",
+            "DIFY_CONSOLE_EMAIL=operator@example.com",
+            "DIFY_CONSOLE_PASSWORD_FILE=/tmp/dify-console-password.txt",
+            "DIFY_CONSOLE_CHECK_OUT=/tmp/auth.json",
+            "DIFY_CONSOLE_MIN_TTL_SECONDS=123",
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    command = result.stdout
+    assert "make dify-console-check" in command
+    assert "make dify-console-login" in command
+    assert "Dify console storage state is invalid or expiring; refreshing with configured credentials." in command
+    assert '--out "/tmp/auth.json"' in command
+    assert "--min-ttl-seconds 123" in command
+    assert "operator@example.com" in command
+    assert "/tmp/dify-console-password.txt" in command
+
+
 def test_changzhou_dify_readiness_status_target_is_overridable() -> None:
     result = subprocess.run(
         [
@@ -191,6 +219,7 @@ def test_changzhou_dify_readiness_gate_runs_probe_before_full_gate() -> None:
     assert '"/tmp/auth.json"' in command
     assert "make changzhou-dify-knowledge-map-check" in command
     assert "make changzhou-dify-mimirq-direct-gate" in command
+    assert "make dify-console-ensure" in command
     assert "make dify-console-check" in command
     assert "map_rc=$?" in command
     assert "direct_rc=$?" in command
