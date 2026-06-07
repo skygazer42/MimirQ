@@ -162,6 +162,8 @@ def _eval_warning_cases(report: dict[str, Any]) -> dict[str, list[str]]:
             continue
         if quality.get("grounded") is False:
             warning_cases.setdefault("eval.generated_answer_missing", []).append(case_id)
+        if quality.get("policy_clean") is False:
+            warning_cases.setdefault("eval.generated_answer_policy_violation", []).append(case_id)
         if quality.get("fallback") is True:
             warning_cases.setdefault("eval.generated_answer_fallback", []).append(case_id)
     return warning_cases
@@ -288,6 +290,16 @@ def _eval_warning_diagnosis_details(report: dict[str, Any]) -> dict[str, dict[st
             if missing_key_points:
                 case_details.append(f"missing_key_points={','.join(missing_key_points)}")
             details.setdefault("eval.generated_answer_missing", {})[case_id] = case_details
+        if quality.get("policy_clean") is False:
+            forbidden_phrases = [
+                _text(value)
+                for value in quality.get("forbidden_phrases", [])
+                if _text(value)
+            ] if isinstance(quality.get("forbidden_phrases"), list) else []
+            case_details = ["policy_clean=false"]
+            if forbidden_phrases:
+                case_details = [f"forbidden_phrases={','.join(forbidden_phrases)}"]
+            details.setdefault("eval.generated_answer_policy_violation", {})[case_id] = case_details
         if quality.get("fallback") is True:
             details.setdefault("eval.generated_answer_fallback", {})[case_id] = ["fallback=true"]
     return details

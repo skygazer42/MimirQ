@@ -149,8 +149,40 @@ def test_evaluate_case_scores_generated_answer_against_key_points() -> None:
         "key_point_recall": 0.5,
         "grounded": False,
         "context_supported": True,
+        "policy_clean": True,
+        "forbidden_phrases": [],
         "missing_key_points": ["0519-88516920"],
     }
+
+
+def test_evaluate_case_flags_generated_answer_instruction_leakage() -> None:
+    mod = _load_module()
+    case = {
+        "id": "one-thing-social-card-operation",
+        "query": "社会保障卡居民服务一件事网上办理怎么操作",
+        "expected": {
+            "answer_key_points": ["选择“个人登录”"],
+        },
+    }
+    records = [
+        {
+            "title": "02高效办成一件事/一件事操作指引.txt",
+            "content": "1.点击社会保障卡居民服务“一件事”模块。选择“个人登录”。",
+            "metadata": {},
+        }
+    ]
+    answer_item = {
+        "answer": (
+            "必须按顺序包含以下标题：\n"
+            "1. 点击社会保障卡居民服务“一件事”模块，选择“个人登录”。"
+        )
+    }
+
+    result = mod.evaluate_case(case, records, generated_answer=answer_item)
+
+    assert result["generated_answer_quality"]["policy_clean"] is False
+    assert result["generated_answer_quality"]["grounded"] is False
+    assert result["generated_answer_quality"]["forbidden_phrases"] == ["必须按顺序包含以下标题"]
 
 
 def test_evaluate_case_normalizes_generated_answer_labels_without_hiding_missing_facts() -> None:
@@ -193,6 +225,8 @@ def test_evaluate_case_normalizes_generated_answer_labels_without_hiding_missing
         "key_point_recall": 2 / 3,
         "grounded": False,
         "context_supported": True,
+        "policy_clean": True,
+        "forbidden_phrases": [],
         "missing_key_points": ["收费情况：不收费"],
     }
 
@@ -229,6 +263,8 @@ def test_evaluate_case_matches_structured_key_point_values_without_requiring_lab
         "key_point_recall": 2 / 3,
         "grounded": False,
         "context_supported": True,
+        "policy_clean": True,
+        "forbidden_phrases": [],
         "missing_key_points": ["咨询方式：0519-88516920"],
     }
 
@@ -265,6 +301,8 @@ def test_evaluate_case_matches_key_point_aliases_for_generated_answers() -> None
         "key_point_recall": 1.0,
         "grounded": True,
         "context_supported": True,
+        "policy_clean": True,
+        "forbidden_phrases": [],
         "missing_key_points": [],
     }
 

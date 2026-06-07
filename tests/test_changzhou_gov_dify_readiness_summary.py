@@ -415,6 +415,8 @@ def test_main_collects_artifact_generated_at_values(tmp_path: Path) -> None:
                             "provided": True,
                             "fallback": False,
                             "grounded": False,
+                            "policy_clean": False,
+                            "forbidden_phrases": ["必须按顺序包含以下标题"],
                             "missing_key_points": ["2025年补贴申请"],
                         },
                     }
@@ -495,6 +497,7 @@ def test_main_collects_artifact_generated_at_values(tmp_path: Path) -> None:
     }
     assert report["full_gate"]["warning_cases"] == {
         "eval.generated_answer_missing": ["city-car-replacement-subsidy"],
+        "eval.generated_answer_policy_violation": ["city-car-replacement-subsidy"],
         "trace.node_route_mismatch": ["xinbei-social-card-reissue-location"],
         "trace.route_compensated": ["xinbei-social-card-reissue-location"],
         "trace.region_mismatch": ["xinbei-social-card-reissue-location"],
@@ -508,6 +511,11 @@ def test_main_collects_artifact_generated_at_values(tmp_path: Path) -> None:
             "city-car-replacement-subsidy": [
                 "grounded=false",
                 "missing_key_points=2025年补贴申请",
+            ]
+        },
+        "eval.generated_answer_policy_violation": {
+            "city-car-replacement-subsidy": [
+                "forbidden_phrases=必须按顺序包含以下标题",
             ]
         },
         "dify_area_extractor_empty": {
