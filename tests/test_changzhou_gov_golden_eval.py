@@ -297,6 +297,34 @@ def test_city_car_replacement_generated_answer_matches_2025_application_alias() 
     assert result["generated_answer_quality"]["missing_key_points"] == []
 
 
+def test_city_car_replacement_generated_answer_matches_2025_policy_date_alias() -> None:
+    mod = _load_module()
+    payload = json.loads(Path("plugins/pipelines/changzhou-gov-service-knowledge/golden_eval_cases.json").read_text())
+    cases = payload.get("cases") if isinstance(payload, dict) else []
+    case = next(item for item in cases if item.get("id") == "city-car-replacement-subsidy")
+    records = [
+        {
+            "title": "03常州市常见问题/常州市高频应用知识.xlsx",
+            "content": (
+                "汽车置换更新可以在苏服办APP申请，可以申请卖旧置换更新补贴和报废置换更新补贴。"
+                "转让车辆须在2025年1月8日前登记在本人名下。"
+            ),
+            "metadata": {},
+        }
+    ]
+    answer_item = {
+        "answer": (
+            "您可通过苏服办APP搜索汽车置换更新应用进行申请，补贴分为卖旧置换和报废置换两种类型。"
+            "旧车需在2025年1月8日前登记。"
+        )
+    }
+
+    result = mod.evaluate_case(case, records, generated_answer=answer_item)
+
+    assert result["generated_answer_quality"]["grounded"] is True
+    assert result["generated_answer_quality"]["missing_key_points"] == []
+
+
 def test_run_live_eval_report_includes_generated_at(monkeypatch) -> None:
     mod = _load_module()
 
