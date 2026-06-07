@@ -33,6 +33,32 @@ def test_changzhou_dify_external_probe_target_is_overridable() -> None:
     assert '--out "/tmp/probe.json"' in command
 
 
+def test_changzhou_gov_plugin_chunk_report_target_is_overridable() -> None:
+    result = subprocess.run(
+        [
+            "make",
+            "-n",
+            "changzhou-gov-plugin-chunk-report",
+            "CHANGZHOU_GOV_PLUGIN_DIR=/tmp/plugin",
+            "CHANGZHOU_GOV_PLUGIN_SAMPLE=/tmp/sample.json",
+            "CHANGZHOU_GOV_PLUGIN_CHUNK_REPORT_OUT=/tmp/report.json",
+            "CHANGZHOU_GOV_PLUGIN_CHUNK_REPORT_MD=/tmp/report.md",
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    command = result.stdout
+    assert "scripts/changzhou_gov_plugin_chunk_report.py" in command
+    assert '--plugin-dir "/tmp/plugin"' in command
+    assert '--input "/tmp/sample.json"' in command
+    assert '--json-out "/tmp/report.json"' in command
+    assert '--markdown-out "/tmp/report.md"' in command
+
+
 def test_changzhou_dify_knowledge_map_check_target_is_overridable() -> None:
     result = subprocess.run(
         [

@@ -123,6 +123,21 @@ python scripts/pipeline_plugin_runner.py test plugins/pipelines/changzhou-gov-se
 测试报告还会生成 `golden_draft` 摘要；当前样例应生成 20 条 Golden 草稿问题。
 如果该字段缺失或 `passed=false`，系统会把插件标记为 `golden_missing`。
 
+生成可审查的 01-06 治理 / 切块 / KG 样例报告：
+
+```bash
+make changzhou-gov-plugin-chunk-report
+```
+
+默认输出：
+
+- `/tmp/changzhou_gov_plugin_chunk_report.json`
+- `/tmp/changzhou_gov_plugin_chunk_report.md`
+
+该报告只跑插件样例和插件契约，不写数据库、向量库或 KG 存储。它用于审查每类源文件
+治理后形成哪些业务记录、切出哪些 `chunk_kind`、metadata 覆盖哪些字段，以及 KG
+实体类型是否符合预期。生产入库证据仍以真实入库任务、索引结果和 Golden gate 为准。
+
 导出完整 Golden 草稿：
 
 ```bash
