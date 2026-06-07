@@ -36,12 +36,13 @@ def _plugin_test_payload() -> dict:
 def test_build_delivery_pack_combines_plugin_and_readiness_without_raw_answers(tmp_path: Path) -> None:
     mod = _load_module()
     plugin_report = tmp_path / "plugin_report.json"
+    plugin_chunk_evidence = tmp_path / "plugin_chunk_evidence.json"
+    plugin_chunk_evidence_md = tmp_path / "plugin_chunk_evidence.md"
     plugin_test_report = tmp_path / "plugin_test_report.json"
     plugin_test_evidence = tmp_path / "plugin_test_evidence.json"
     readiness_summary = tmp_path / "readiness_summary.json"
-    plugin_md = tmp_path / "plugin_report.md"
     readiness_md = tmp_path / "readiness_evidence.md"
-    plugin_md.write_text("# Plugin report\n", encoding="utf-8")
+    plugin_chunk_evidence_md.write_text("# Plugin chunk evidence\n", encoding="utf-8")
     readiness_md.write_text("# Readiness evidence\n", encoding="utf-8")
     _write_json(
         plugin_report,
@@ -69,6 +70,24 @@ def test_build_delivery_pack_combines_plugin_and_readiness_without_raw_answers(t
                     "metadata_fields": ["case_title", "section_type"],
                     "kg_entity_types": ["OneThingCase", "OperationStep"],
                 },
+            ],
+        },
+    )
+    _write_json(
+        plugin_chunk_evidence,
+        {
+            "schema": "mimirq.changzhou_gov.plugin_chunk_evidence.v1",
+            "passed": True,
+            "summary": {"input_documents": 8, "governed_records": 8, "chunks": 11, "kg_events": 11, "sections": 6},
+            "sections": [
+                {
+                    "knowledge_section": "01政务服务事项知识",
+                    "governed_records": 1,
+                    "chunks": 1,
+                    "chunk_kinds": {"service_item_full": 1},
+                    "metadata_fields": ["district", "service_name"],
+                    "kg_entity_types": ["ServiceItem", "District"],
+                }
             ],
         },
     )
@@ -118,9 +137,10 @@ def test_build_delivery_pack_combines_plugin_and_readiness_without_raw_answers(t
 
     pack = mod.build_delivery_pack(
         plugin_report_path=plugin_report,
+        plugin_chunk_evidence_path=plugin_chunk_evidence,
+        plugin_chunk_evidence_markdown_path=plugin_chunk_evidence_md,
         plugin_test_report_path=plugin_test_report,
         plugin_test_evidence_path=plugin_test_evidence,
-        plugin_markdown_path=plugin_md,
         readiness_summary_path=readiness_summary,
         readiness_evidence_path=readiness_md,
         max_readiness_age_minutes=0,
@@ -130,8 +150,13 @@ def test_build_delivery_pack_combines_plugin_and_readiness_without_raw_answers(t
     assert pack["schema"] == "mimirq.changzhou_gov.delivery_pack.v1"
     assert pack["passed"] is True
     assert pack["summary"]["plugin_test_passed"] is True
+    assert pack["summary"]["plugin_chunk_evidence_passed"] is True
     assert pack["summary"]["plugin_golden_draft_passed"] is True
     assert pack["summary"]["plugin_golden_draft_items"] == 20
+    assert "plugin_chunk_evidence_json" in pack["artifacts"]
+    assert "plugin_chunk_evidence_markdown" in pack["artifacts"]
+    assert "plugin_chunk_report_json" not in pack["artifacts"]
+    assert "plugin_chunk_report_markdown" not in pack["artifacts"]
     assert "plugin_test_evidence_json" in pack["artifacts"]
     assert "plugin_test_report_json" not in pack["artifacts"]
     assert pack["summary"]["plugin_chunks"] == 11
@@ -153,6 +178,7 @@ def test_build_delivery_pack_combines_plugin_and_readiness_without_raw_answers(t
 def test_main_writes_delivery_pack_json_and_markdown(tmp_path: Path) -> None:
     mod = _load_module()
     plugin_report = tmp_path / "plugin_report.json"
+    plugin_chunk_evidence = tmp_path / "plugin_chunk_evidence.json"
     plugin_test_report = tmp_path / "plugin_test_report.json"
     plugin_test_evidence = tmp_path / "plugin_test_evidence.json"
     readiness_summary = tmp_path / "readiness_summary.json"
@@ -167,6 +193,7 @@ def test_main_writes_delivery_pack_json_and_markdown(tmp_path: Path) -> None:
             "sections": [],
         },
     )
+    _write_json(plugin_chunk_evidence, {"passed": True})
     _write_json(plugin_test_report, _plugin_test_payload())
     _write_json(plugin_test_evidence, {"passed": True})
     _write_json(
@@ -182,6 +209,8 @@ def test_main_writes_delivery_pack_json_and_markdown(tmp_path: Path) -> None:
         [
             "--plugin-report",
             str(plugin_report),
+            "--plugin-chunk-evidence",
+            str(plugin_chunk_evidence),
             "--plugin-test-report",
             str(plugin_test_report),
             "--plugin-test-evidence",
@@ -203,6 +232,7 @@ def test_main_writes_delivery_pack_json_and_markdown(tmp_path: Path) -> None:
 def test_delivery_pack_fails_stale_readiness_summary(tmp_path: Path) -> None:
     mod = _load_module()
     plugin_report = tmp_path / "plugin_report.json"
+    plugin_chunk_evidence = tmp_path / "plugin_chunk_evidence.json"
     plugin_test_report = tmp_path / "plugin_test_report.json"
     plugin_test_evidence = tmp_path / "plugin_test_evidence.json"
     readiness_summary = tmp_path / "readiness_summary.json"
@@ -214,6 +244,7 @@ def test_delivery_pack_fails_stale_readiness_summary(tmp_path: Path) -> None:
             "sections": [],
         },
     )
+    _write_json(plugin_chunk_evidence, {"passed": True})
     _write_json(plugin_test_report, _plugin_test_payload())
     _write_json(plugin_test_evidence, {"passed": True})
     _write_json(
@@ -227,6 +258,7 @@ def test_delivery_pack_fails_stale_readiness_summary(tmp_path: Path) -> None:
 
     pack = mod.build_delivery_pack(
         plugin_report_path=plugin_report,
+        plugin_chunk_evidence_path=plugin_chunk_evidence,
         plugin_test_report_path=plugin_test_report,
         plugin_test_evidence_path=plugin_test_evidence,
         readiness_summary_path=readiness_summary,
@@ -242,6 +274,7 @@ def test_delivery_pack_fails_stale_readiness_summary(tmp_path: Path) -> None:
 def test_delivery_pack_fails_incomplete_plugin_test_report(tmp_path: Path) -> None:
     mod = _load_module()
     plugin_report = tmp_path / "plugin_report.json"
+    plugin_chunk_evidence = tmp_path / "plugin_chunk_evidence.json"
     plugin_test_report = tmp_path / "plugin_test_report.json"
     plugin_test_evidence = tmp_path / "plugin_test_evidence.json"
     readiness_summary = tmp_path / "readiness_summary.json"
@@ -253,6 +286,7 @@ def test_delivery_pack_fails_incomplete_plugin_test_report(tmp_path: Path) -> No
             "sections": [],
         },
     )
+    _write_json(plugin_chunk_evidence, {"passed": True})
     incomplete = _plugin_test_payload()
     incomplete["stages"].pop("kg")
     _write_json(plugin_test_report, incomplete)
@@ -268,6 +302,7 @@ def test_delivery_pack_fails_incomplete_plugin_test_report(tmp_path: Path) -> No
 
     pack = mod.build_delivery_pack(
         plugin_report_path=plugin_report,
+        plugin_chunk_evidence_path=plugin_chunk_evidence,
         plugin_test_report_path=plugin_test_report,
         plugin_test_evidence_path=plugin_test_evidence,
         readiness_summary_path=readiness_summary,
