@@ -4,6 +4,10 @@
 
 > 原则：**默认 PII-safe**。诊断优先使用计数/哈希/指标，避免直接打印用户 query / 文档原文。
 
+专项接入 runbook：
+
+- Changzhou Dify/MimirQ readiness：`docs/deployment/changzhou_dify_readiness_runbook.md`
+
 ---
 
 <a id="rb-health"></a>

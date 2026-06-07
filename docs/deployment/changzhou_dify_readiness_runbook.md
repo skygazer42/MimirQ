@@ -1,0 +1,208 @@
+# Changzhou Dify/MimirQ Readiness Runbook
+
+本 runbook 面向常州政务知识库接入 Dify 的运维与交付验证。目标是用一组可复跑命令证明：
+
+- MimirQ 直连检索质量可用。
+- Dify external knowledge 能命中 MimirQ。
+- Dify workflow 草稿没有会泄漏给用户的 prompt 模板控制语。
+- Dify App 真实回答、检索路由、trace 结果全部通过 golden gate。
+
+> 安全边界：不要把 token、password 或 API key 写入文档、commit 或工单。所有凭据通过本机文件或环境变量传入。
+
+---
+
+## 1. 前置条件
+
+默认生产验证目标：
+
+```bash
+export CHANGZHOU_DIFY_MIMIRQ_BASE_URL=http://192.168.3.6:8000
+export DIFY_CONSOLE_EMAIL='<operator-email>'
+export DIFY_CONSOLE_PASSWORD_FILE=/tmp/dify_console_password.txt
+```
+
+本机需要存在：
+
+- `/tmp/dify_console_password.txt`：Dify console 登录密码文件。
+- `/tmp/dify_remote_app_api_key.json`：Dify App API key 文件。
+- `/tmp/kingdonsoft_dify_storage_state.json`：Dify console storage state，失效时由 `make dify-console-ensure` 自动刷新。
+- `.env`：MimirQ external knowledge key / Dify knowledge map 等本地配置。
+
+先刷新或确认 Dify console 登录态：
+
+```bash
+DIFY_CONSOLE_EMAIL="$DIFY_CONSOLE_EMAIL" \
+DIFY_CONSOLE_PASSWORD_FILE="$DIFY_CONSOLE_PASSWORD_FILE" \
+make dify-console-ensure
+```
+
+---
+
+## 2. 一键 readiness gate
+
+标准复跑命令：
+
+```bash
+DIFY_CONSOLE_EMAIL="$DIFY_CONSOLE_EMAIL" \
+DIFY_CONSOLE_PASSWORD_FILE="$DIFY_CONSOLE_PASSWORD_FILE" \
+make changzhou-dify-readiness-gate \
+  CHANGZHOU_DIFY_MIMIRQ_BASE_URL="$CHANGZHOU_DIFY_MIMIRQ_BASE_URL"
+```
+
+通过标准：
+
+- `summary.passed=true`
+- `failed_stages=[]`
+- `stage_count=5`
+- `knowledge_map.status=passed`
+- `mimirq_direct.status=passed`
+- `console_auth.status=passed`
+- `external_probe.status=passed`
+- `full_gate.status=passed`
+
+主报告：
+
+- `/tmp/changzhou_gov_dify_readiness_summary.json`
+
+快速查看摘要：
+
+```bash
+make changzhou-dify-readiness-status
+```
+
+---
+
+## 3. Gate 分层含义
+
+`make changzhou-dify-readiness-gate` 按顺序运行：
+
+1. `make changzhou-dify-knowledge-map-check`
+   - 验证 Dify external knowledge map、本级知识库、区县 route 和区县 knowledge id。
+   - 失败先修 `.env` 里的 `DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON`。
+
+2. `make changzhou-dify-mimirq-direct-gate`
+   - 直接打 MimirQ `/api/v1/integrations/dify`，不经过 Dify App。
+   - 关键指标：`hit_at_1=1.0`、`answer_grounding_rate=1.0`、`answer_key_point_recall=1.0`。
+   - 失败说明 MimirQ 入库、插件切块、metadata、索引或检索策略有问题。
+
+3. `make dify-console-ensure`
+   - 验证 console token 未过期；需要 trace 和 workflow draft 读取。
+
+4. `make changzhou-dify-external-probe`
+   - 通过 Dify console 的 hit-testing 入口验证 external knowledge 边界。
+   - 关键结论：`dify_external_boundary_ok`。
+   - 若 `dify_runtime_empty_but_mimirq_direct_ok > 0`，通常是 Dify external endpoint、dataset binding 或网络访问问题。
+
+5. `make changzhou-dify-full-gate`
+   - 调 Dify App API 做真实回答采集，再用 MimirQ direct retrieval 做质量评估，并拉取 Dify workflow trace。
+   - 关键指标：
+     - `generated_answer_policy_clean_rate`
+     - `generated_answer_grounding_rate`
+     - `generated_answer_key_point_recall`
+     - `fallback_cases`
+     - `empty_retrieval_cases`
+     - `route_mismatch_cases`
+
+---
+
+## 4. 关键 artifacts
+
+统一 readiness summary 会引用这些文件：
+
+- `/tmp/changzhou_gov_dify_knowledge_map_check.json`
+- `/tmp/changzhou_gov_dify_mimirq_direct_gate.json`
+- `/tmp/dify_console_check.json`
+- `/tmp/changzhou_gov_dify_external_probe.json`
+- `/tmp/changzhou_gov_dify_full_gate_summary.json`
+- `/tmp/changzhou_gov_dify_full_gate_answers.json`
+- `/tmp/changzhou_gov_dify_full_gate_eval.json`
+- `/tmp/changzhou_gov_dify_full_gate_trace.json`
+- `/tmp/changzhou_gov_dify_readiness_summary.json`
+
+这些文件在 `/tmp`，用于当前机器上的交付证据和排障，不应提交到 git。
+
+---
+
+## 5. Dify workflow 草稿修复流程
+
+先 lint 当前 Dify workflow 草稿并生成清洗稿：
+
+```bash
+make changzhou-dify-workflow-lint
+```
+
+输出：
+
+- `/tmp/changzhou_gov_dify_workflow_lint.json`
+- `/tmp/changzhou_gov_dify_workflow_sanitized.json`
+
+再 dry-run 同步。该步骤默认不写远程 Dify，只生成当前草稿 backup 和将要 POST 的 payload：
+
+```bash
+make changzhou-dify-workflow-sync-dry-run
+```
+
+输出：
+
+- `/tmp/changzhou_gov_dify_workflow_current_draft_backup.json`
+- `/tmp/changzhou_gov_dify_workflow_sync_payload.json`
+- `/tmp/changzhou_gov_dify_workflow_sync.json`
+
+确认 payload 后才显式写草稿：
+
+```bash
+make changzhou-dify-workflow-sync-apply
+```
+
+只有显式运行 `make changzhou-dify-workflow-sync-apply` 才会写 Dify 草稿。`make changzhou-dify-workflow-sync-dry-run` 默认不写远程 Dify。
+
+写入后必须复跑：
+
+```bash
+make changzhou-dify-workflow-lint
+make changzhou-dify-readiness-gate CHANGZHOU_DIFY_MIMIRQ_BASE_URL="$CHANGZHOU_DIFY_MIMIRQ_BASE_URL"
+```
+
+---
+
+## 6. 回滚
+
+如果 `sync-apply` 后 Dify App 表现异常，先保留现场 artifacts，再用 backup 回滚。
+
+1. 找到写入前 backup：
+
+```bash
+ls -lh /tmp/changzhou_gov_dify_workflow_current_draft_backup.json
+```
+
+2. 将 backup 作为 workflow JSON 做 dry-run，确认 payload：
+
+```bash
+CHANGZHOU_DIFY_WORKFLOW_SANITIZED_OUT=/tmp/changzhou_gov_dify_workflow_current_draft_backup.json \
+CHANGZHOU_DIFY_WORKFLOW_SYNC_OUT=/tmp/changzhou_gov_dify_workflow_rollback_dry_run.json \
+make changzhou-dify-workflow-sync-dry-run
+```
+
+3. 确认后再显式 apply 回滚：
+
+```bash
+CHANGZHOU_DIFY_WORKFLOW_SANITIZED_OUT=/tmp/changzhou_gov_dify_workflow_current_draft_backup.json \
+CHANGZHOU_DIFY_WORKFLOW_SYNC_OUT=/tmp/changzhou_gov_dify_workflow_rollback_apply.json \
+make changzhou-dify-workflow-sync-apply
+```
+
+4. 回滚后复跑 readiness gate。
+
+---
+
+## 7. 常见失败定位
+
+| 失败位置 | 优先看 | 处理方向 |
+| --- | --- | --- |
+| `knowledge_map.failed_conditions` 非空 | `/tmp/changzhou_gov_dify_knowledge_map_check.json` | 修 `.env` 的 Dify knowledge map、区县 route 或 dataset ids |
+| `mimirq_direct.hit_at_1 < 1.0` | `/tmp/changzhou_gov_dify_mimirq_direct_gate.json` | 查插件切块、metadata、入库数据、索引和 MimirQ 检索策略 |
+| `console_auth.passed=false` | `/tmp/dify_console_check.json` | 用 `DIFY_CONSOLE_EMAIL` 和 `DIFY_CONSOLE_PASSWORD_FILE` 重新 `make dify-console-login` |
+| `external_probe.boundary.verdict != dify_external_boundary_ok` | `/tmp/changzhou_gov_dify_external_probe.json` | 查 Dify external endpoint 是否指向可达的 MimirQ URL，避免 localhost/错误主机 |
+| `full_gate.preflight.case_input_violations > 0` | `/tmp/changzhou_gov_dify_full_gate_summary.json` | 给 golden cases 补 `dify_inputs.areaName` |
+| `generated_answer_policy_clean_rate < 1.0` | `/tmp/changzhou_gov_dify_full_gate_answers.json` | 查 Dify prompt 是否泄漏模板控制语，重新跑 workflow lint/sync |
+| `route_mismatch_cases > 0` | `/tmp/changzhou_gov_dify_full_gate_trace.json` | 查 Dify workflow 区域分支是否使用 Start.areaName 或等价确定性路由 |
