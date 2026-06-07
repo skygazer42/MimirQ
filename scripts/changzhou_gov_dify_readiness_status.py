@@ -21,6 +21,14 @@ def _text_list(value: Any) -> list[str]:
     return [_text(item) for item in value if _text(item)]
 
 
+def _join_url(base_url: str, *parts: str) -> str:
+    base = _text(base_url).rstrip("/")
+    if not base:
+        return ""
+    suffix = "/".join(_text(part).strip("/") for part in parts if _text(part).strip("/"))
+    return f"{base}/{suffix}" if suffix else base
+
+
 def _load_json(path: str) -> dict[str, Any]:
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
     return payload if isinstance(payload, dict) else {}
@@ -165,6 +173,8 @@ def format_status(
     *,
     now: datetime | None = None,
     max_age_minutes: int | None = 30,
+    console_ui_base_url: str = "",
+    app_id: str = "",
 ) -> str:
     summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
     artifacts = report.get("artifacts") if isinstance(report.get("artifacts"), dict) else {}
@@ -174,6 +184,10 @@ def format_status(
     generated_at = _text(report.get("generated_at"))
     if generated_at:
         lines.append(f"Generated at: {generated_at}")
+    if _text(console_ui_base_url):
+        lines.append(f"Dify console UI: {_join_url(console_ui_base_url, 'apps')}")
+        if _text(app_id):
+            lines.append(f"Dify workflow UI: {_join_url(console_ui_base_url, 'app', app_id, 'workflow')}")
     if max_age_minutes and max_age_minutes > 0:
         if generated_at:
             lines.append(_freshness_line(generated_at, now=now or datetime.now(timezone.utc), max_age_minutes=max_age_minutes))
@@ -244,6 +258,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=30,
         help="Warn when the summary generated_at is older than this many minutes. Use 0 to disable.",
     )
+    parser.add_argument(
+        "--console-ui-base-url",
+        default="",
+        help="Optional Dify console UI base URL, including any frontend base path such as /brainai.",
+    )
+    parser.add_argument("--app-id", default="", help="Optional Dify app id used to print the workflow UI URL.")
     return parser
 
 
@@ -254,7 +274,12 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, json.JSONDecodeError) as exc:
         print(f"Changzhou Dify readiness: UNKNOWN\nRoot cause: summary_read_error ({exc})", file=sys.stderr)
         return 2
-    text = format_status(report, max_age_minutes=args.max_age_minutes)
+    text = format_status(
+        report,
+        max_age_minutes=args.max_age_minutes,
+        console_ui_base_url=str(args.console_ui_base_url),
+        app_id=str(args.app_id),
+    )
     print(text)
     summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
     return 0 if summary.get("passed") is True else 1

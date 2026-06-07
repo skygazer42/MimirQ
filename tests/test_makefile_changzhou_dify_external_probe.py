@@ -141,6 +141,8 @@ def test_changzhou_dify_readiness_status_target_is_overridable() -> None:
             "-n",
             "changzhou-dify-readiness-status",
             "CHANGZHOU_DIFY_READINESS_OUT=/tmp/readiness.json",
+            "DIFY_CONSOLE_UI_BASE_URL=https://example.test/brainai",
+            "CHANGZHOU_DIFY_APP_ID=app-1",
         ],
         cwd=REPO_ROOT,
         check=False,
@@ -152,6 +154,8 @@ def test_changzhou_dify_readiness_status_target_is_overridable() -> None:
     command = result.stdout
     assert "scripts/changzhou_gov_dify_readiness_status.py" in command
     assert '--summary "/tmp/readiness.json"' in command
+    assert '--console-ui-base-url "https://example.test/brainai"' in command
+    assert '--app-id "app-1"' in command
     assert "|| true" in command
 
 

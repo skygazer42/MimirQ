@@ -36,6 +36,7 @@ COMPOSE_RETRIEVAL_DEV := docker compose --env-file .env -f docker/docker-compose
 QUERYSET_HEALTH_POLICY ?= ci/queryset_health_policy.v1.json
 DIFY_CONSOLE_BASE_URL ?= https://ai.kingdonsoft.com:5001/console/api
 DIFY_CONSOLE_ORIGIN ?= https://ai.kingdonsoft.com:3000
+DIFY_CONSOLE_UI_BASE_URL ?= https://ai.kingdonsoft.com:3000/brainai
 DIFY_CONSOLE_EMAIL ?=
 DIFY_CONSOLE_PASSWORD_FILE ?=
 DIFY_CONSOLE_MIN_TTL_SECONDS ?= 900
@@ -366,7 +367,9 @@ changzhou-dify-readiness-summary:
 
 changzhou-dify-readiness-status:
 	$(PY) scripts/changzhou_gov_dify_readiness_status.py \
-		--summary "$(CHANGZHOU_DIFY_READINESS_OUT)" || true
+		--summary "$(CHANGZHOU_DIFY_READINESS_OUT)" \
+		--console-ui-base-url "$(DIFY_CONSOLE_UI_BASE_URL)" \
+		--app-id "$(CHANGZHOU_DIFY_APP_ID)" || true
 
 changzhou-dify-full-gate:
 	$(PY) scripts/changzhou_gov_dify_full_gate.py \
