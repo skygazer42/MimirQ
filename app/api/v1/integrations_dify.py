@@ -89,6 +89,7 @@ _MAX_QA_HINT_VALUE_CHARS = 420
 _SERVICE_TERM_SYNONYMS = (("社会保障卡", "社保卡"),)
 _ENUMERATION_INTRO_TERMS = ("类型", "类别", "方式", "入口")
 _ENUMERATION_QUERY_TERMS = ("申请", "入口", "类型", "类别", "哪些", "什么")
+_NAMED_WAY_MARKERS = {1: "方式一", 2: "方式二", 3: "方式三", 4: "方式四"}
 
 
 class _DifyErrorRoute(APIRoute):
@@ -637,7 +638,7 @@ def _answer_hints_from_fields(fields: dict[str, str], *, query: str = "") -> lis
 
 
 def _find_numbered_marker(text: str, number: int, *, start: int) -> tuple[int, str]:
-    markers = (
+    markers = [
         f"{number}.",
         f"{number}、",
         f"{number}．",
@@ -645,7 +646,10 @@ def _find_numbered_marker(text: str, number: int, *, start: int) -> tuple[int, s
         f"{number}）",
         f"({number})",
         f"（{number}）",
-    )
+    ]
+    named_marker = _NAMED_WAY_MARKERS.get(number)
+    if named_marker:
+        markers.append(named_marker)
     best_index = -1
     best_marker = ""
     for marker in markers:
@@ -667,10 +671,13 @@ def _extract_numbered_option_terms(text: str, *, max_terms: int = 4) -> list[str
         if marker_index < 0:
             break
         start = marker_index + len(marker)
-        while start < len(normalized) and normalized[start].isspace():
+        while start < len(normalized) and (normalized[start].isspace() or normalized[start] in "，、,:："):
             start += 1
         end = start
-        while end < len(normalized) and normalized[end] not in "（(：:；;。":
+        stop_chars = "（(：:；;。"
+        if marker.startswith("方式"):
+            stop_chars += "，,"
+        while end < len(normalized) and normalized[end] not in stop_chars:
             end += 1
         term = normalized[start:end].strip()
         if 2 <= len(term) <= 40:
@@ -683,12 +690,14 @@ def _enumerated_answer_hints(content: str, *, query: str = "") -> list[str]:
     text = str(content or "").strip()
     if not text:
         return []
-    first_marker_index, _marker = _find_numbered_marker(" ".join(text.split()), 1, start=0)
+    first_marker_index, marker = _find_numbered_marker(" ".join(text.split()), 1, start=0)
     if first_marker_index < 0:
         return []
     prefix = " ".join(text.split())[:first_marker_index][-90:]
     query_text = str(query or "").strip()
-    if not any(term in prefix for term in _ENUMERATION_INTRO_TERMS):
+    if not any(term in prefix for term in _ENUMERATION_INTRO_TERMS) and not any(
+        marker.startswith(term) for term in _ENUMERATION_INTRO_TERMS
+    ):
         return []
     if query_text and not any(term in query_text for term in _ENUMERATION_QUERY_TERMS):
         return []
