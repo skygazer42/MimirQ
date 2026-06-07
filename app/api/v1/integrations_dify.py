@@ -87,6 +87,8 @@ _QA_HINT_LABELS = ("问题", "答案")
 _MAX_HINT_VALUE_CHARS = 700
 _MAX_QA_HINT_VALUE_CHARS = 420
 _SERVICE_TERM_SYNONYMS = (("社会保障卡", "社保卡"),)
+_ENUMERATION_INTRO_TERMS = ("类型", "类别", "方式", "入口")
+_ENUMERATION_QUERY_TERMS = ("申请", "入口", "类型", "类别", "哪些", "什么")
 
 
 class _DifyErrorRoute(APIRoute):
@@ -634,9 +636,69 @@ def _answer_hints_from_fields(fields: dict[str, str], *, query: str = "") -> lis
     return [f"{label}：{value}" for label, value in fields.items()]
 
 
+def _find_numbered_marker(text: str, number: int, *, start: int) -> tuple[int, str]:
+    markers = (f"{number}.", f"{number}、", f"{number}．", f"({number})", f"（{number}）")
+    best_index = -1
+    best_marker = ""
+    for marker in markers:
+        index = text.find(marker, start)
+        if index < 0:
+            continue
+        if best_index < 0 or index < best_index:
+            best_index = index
+            best_marker = marker
+    return best_index, best_marker
+
+
+def _extract_numbered_option_terms(text: str, *, max_terms: int = 4) -> list[str]:
+    normalized = " ".join(str(text or "").split())
+    terms: list[str] = []
+    cursor = 0
+    for number in range(1, max_terms + 1):
+        marker_index, marker = _find_numbered_marker(normalized, number, start=cursor)
+        if marker_index < 0:
+            break
+        start = marker_index + len(marker)
+        while start < len(normalized) and normalized[start].isspace():
+            start += 1
+        end = start
+        while end < len(normalized) and normalized[end] not in "（(：:；;。":
+            end += 1
+        term = normalized[start:end].strip()
+        if 2 <= len(term) <= 40:
+            terms.append(term)
+        cursor = end
+    return terms
+
+
+def _enumerated_answer_hints(content: str, *, query: str = "") -> list[str]:
+    text = str(content or "").strip()
+    if not text:
+        return []
+    first_marker_index, _marker = _find_numbered_marker(" ".join(text.split()), 1, start=0)
+    if first_marker_index < 0:
+        return []
+    prefix = " ".join(text.split())[:first_marker_index][-90:]
+    query_text = str(query or "").strip()
+    if not any(term in prefix for term in _ENUMERATION_INTRO_TERMS):
+        return []
+    if query_text and not any(term in query_text for term in _ENUMERATION_QUERY_TERMS):
+        return []
+    terms = _extract_numbered_option_terms(text)
+    if len(terms) < 2:
+        return []
+    return [f"必答要点：回答申请/入口/类型类问题时必须保留这些选项名称：{'、'.join(terms)}"]
+
+
 def _content_with_answer_hints(content: str, metadata: dict[str, Any], *, query: str = "") -> str:
     body = str(content or "").strip()
-    if not body or body.startswith("答案要点："):
+    if not body:
+        return body
+    enumerated_hints = _enumerated_answer_hints(body, query=query)
+    enumerated_prefix = "；".join(enumerated_hints)
+    if body.startswith("答案要点："):
+        if enumerated_prefix and not body.startswith(enumerated_prefix):
+            return f"{enumerated_prefix}\n\n{body}"
         return body
     fields = _structured_fields_from_content(body)
     if ("事项名称" in fields or "办理地点" in fields) and not _service_hint_matches_query(
@@ -646,8 +708,12 @@ def _content_with_answer_hints(content: str, metadata: dict[str, Any], *, query:
     ):
         return body
     hints = _metadata_answer_highlights(metadata) or _answer_hints_from_fields(fields, query=query)
-    if not hints:
+    if not hints and not enumerated_prefix:
         return body
+    if enumerated_prefix and not hints:
+        return f"{enumerated_prefix}\n\n原始证据：\n{body}"
+    if enumerated_prefix:
+        return f"{enumerated_prefix}\n\n答案要点：{'；'.join(hints)}\n\n原始证据：\n{body}"
     return f"答案要点：{'；'.join(hints)}\n\n原始证据：\n{body}"
 
 
