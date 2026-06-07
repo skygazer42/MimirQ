@@ -80,6 +80,22 @@ make changzhou-dify-readiness-evidence
 
 - `/tmp/changzhou_gov_dify_readiness_evidence.md`
 
+生成交付总索引（插件切块证据 + Dify readiness 证据）：
+
+```bash
+make changzhou-gov-delivery-pack
+```
+
+输出：
+
+- `/tmp/changzhou_gov_delivery_pack.json`
+- `/tmp/changzhou_gov_delivery_pack.md`
+
+该命令会刷新本地插件 01-06 切块审查报告，再读取 readiness summary/evidence
+生成总索引；不会调用远端 Dify，不会写数据库、向量库或 KG 存储。默认要求
+readiness summary 生成时间不超过 30 分钟，超时会标记 `readiness_fresh=false`
+并返回失败，避免把旧 gate 结果当成交付证据。
+
 ---
 
 ## 3. Gate 分层含义
@@ -129,6 +145,10 @@ make changzhou-dify-readiness-evidence
 - `/tmp/changzhou_gov_dify_full_gate_trace.json`
 - `/tmp/changzhou_gov_dify_readiness_summary.json`
 - `/tmp/changzhou_gov_dify_readiness_evidence.md`
+- `/tmp/changzhou_gov_plugin_chunk_report.json`
+- `/tmp/changzhou_gov_plugin_chunk_report.md`
+- `/tmp/changzhou_gov_delivery_pack.json`
+- `/tmp/changzhou_gov_delivery_pack.md`
 
 这些文件在 `/tmp`，用于当前机器上的交付证据和排障，不应提交到 git。
 

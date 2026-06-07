@@ -38,6 +38,10 @@ The Makefile is the source of truth for common workflows; these scripts are the 
 - `changzhou_gov_plugin_chunk_report.py`: local Changzhou plugin governance/chunk/KG review report for the 01-06 sample families
   - Example: `make changzhou-gov-plugin-chunk-report`
   - Outputs `/tmp/changzhou_gov_plugin_chunk_report.json` and `/tmp/changzhou_gov_plugin_chunk_report.md`; it does not write the database, vector store, or KG store.
+- `changzhou_gov_delivery_pack.py`: combined handoff index for the Changzhou plugin chunk report and Dify/MimirQ readiness evidence
+  - Example: `make changzhou-gov-delivery-pack`
+  - Outputs `/tmp/changzhou_gov_delivery_pack.json` and `/tmp/changzhou_gov_delivery_pack.md`; it copies aggregate metrics and artifact paths only.
+  - Defaults to a 30-minute readiness freshness gate; override with `CHANGZHOU_GOV_DELIVERY_PACK_MAX_READINESS_AGE_MINUTES=<minutes>` when intentionally reviewing older artifacts.
 - `dify_console_login.py`: refresh the Dify console Playwright `storage_state` used by workflow trace diagnostics
   - Recommended: `DIFY_CONSOLE_EMAIL=<email> DIFY_CONSOLE_PASSWORD_FILE=/tmp/dify_console_password.txt make dify-console-login`
   - `make dify-console-ensure` first validates the existing storage state; if it is expired or expiring and both `DIFY_CONSOLE_EMAIL` plus `DIFY_CONSOLE_PASSWORD_FILE` are configured, it refreshes the state automatically.
