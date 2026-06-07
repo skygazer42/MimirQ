@@ -9,6 +9,7 @@ import math
 import re
 import threading
 import time
+import unicodedata
 from collections import Counter, OrderedDict
 from dataclasses import dataclass, replace
 from typing import Any, ClassVar, cast
@@ -81,6 +82,123 @@ _PLATFORM_METADATA_VIEW_KEYS = (
     _EVALUABLE_METADATA_KEY,
     _RECORD_IDENTITY_METADATA_KEY,
 )
+_METADATA_EXACT_ANCHOR_SKIP_FIELD_PARTS = (
+    "id",
+    "uuid",
+    "hash",
+    "path",
+    "file",
+    "url",
+    "pipeline",
+    "strategy",
+    "plugin",
+    "index",
+)
+_HEXISH_VALUE_RE = re.compile(r"^[a-f0-9]{12,}$", flags=re.IGNORECASE)
+_CJK_CHAR_RE = re.compile(r"[\u4e00-\u9fff]")
+_SPACE_RE = re.compile(r"\s+")
+_FIELD_PART_RE = re.compile(r"[^a-z0-9]+")
+
+
+def _normalize_exact_anchor(value: Any, *, compact: bool = False) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        text = unicodedata.normalize("NFKC", text)
+    except Exception as exc:
+        logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+    text = _SPACE_RE.sub(" ", text.casefold()).strip()
+    return _SPACE_RE.sub("", text) if compact else text
+
+
+def _iter_metadata_exact_anchor_values(meta: dict[str, Any]) -> list[tuple[str, str]]:
+    out: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def add(field: str, value: Any) -> None:
+        field_s = str(field or "").strip()
+        if not field_s:
+            return
+        values: list[Any]
+        if isinstance(value, (list, tuple)):
+            values = list(value)
+        else:
+            values = [value]
+        for item in values:
+            if not isinstance(item, str):
+                continue
+            text = item.strip()
+            if not text:
+                continue
+            key = (field_s, text)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(key)
+
+    for view_key in (_EVALUABLE_METADATA_KEY, _DISPLAY_METADATA_KEY, _INDEXED_METADATA_KEY):
+        view = meta.get(view_key)
+        if isinstance(view, dict):
+            for field, value in view.items():
+                add(str(field), value)
+
+    for field, value in meta.items():
+        field_s = str(field or "").strip()
+        if not field_s or field_s.startswith("_"):
+            continue
+        add(field_s, value)
+
+    return out
+
+
+def _looks_like_metadata_exact_anchor(field: str, text: str) -> bool:
+    field_norm = str(field or "").strip().lower()
+    field_parts = {p for p in _FIELD_PART_RE.split(field_norm) if p}
+    if field_parts.intersection(_METADATA_EXACT_ANCHOR_SKIP_FIELD_PARTS):
+        return False
+    if field_norm.endswith(("_id", "_ids", "-id", ".id")):
+        return False
+
+    normalized = _normalize_exact_anchor(text)
+    if len(normalized) < 4 or len(normalized) > 160:
+        return False
+    if "://" in normalized or "/" in normalized or "\\" in normalized:
+        return False
+    if _HEXISH_VALUE_RE.fullmatch(normalized.replace("-", "")):
+        return False
+    if normalized.isdigit():
+        return False
+
+    cjk_count = len(_CJK_CHAR_RE.findall(normalized))
+    if cjk_count:
+        return cjk_count >= 4
+    if "_" in normalized and " " not in normalized:
+        return False
+    return len(normalized) >= 8
+
+
+def _metadata_exact_anchor_match(query: str, meta: dict[str, Any]) -> dict[str, Any]:
+    query_norm = _normalize_exact_anchor(query, compact=True)
+    if not query_norm:
+        return {}
+
+    best: dict[str, Any] = {}
+    for field, anchor_text in _iter_metadata_exact_anchor_values(meta):
+        if not _looks_like_metadata_exact_anchor(field, anchor_text):
+            continue
+        anchor_norm = _normalize_exact_anchor(anchor_text, compact=True)
+        if not anchor_norm or anchor_norm not in query_norm:
+            continue
+        score = min(1.0, max(0.45, float(len(anchor_norm)) / float(max(1, len(query_norm)))))
+        current = float(best.get("score") or 0.0)
+        if score > current or (score == current and len(anchor_norm) > len(str(best.get("value") or ""))):
+            best = {
+                "field": str(field),
+                "value": str(anchor_text),
+                "score": round(float(score), 6),
+            }
+    return best
 
 
 @dataclass(frozen=True)
@@ -4468,6 +4586,11 @@ class HybridRetriever(BaseRetriever):
 
                             ordered = []
                             used: set[str] = set()
+                            boosted_after_rerank = 0
+                            phrase_boost_weight = max(
+                                0.0,
+                                float(getattr(settings, "RETRIEVAL_EXACT_PHRASE_RERANK_BOOST", 0.35) or 0.0),
+                            )
                             for rid in result.ordered_ids:
                                 d = id_to_doc.get(rid)
                                 if not d or rid in used:
@@ -4476,12 +4599,31 @@ class HybridRetriever(BaseRetriever):
                                 new_doc = dict(d)
                                 new_doc["retrieval_score"] = float(new_doc.get("score", 0.0) or 0.0)
                                 if rid in result.score_map:
-                                    new_doc["rerank_score"] = float(result.score_map[rid])
-                                    new_doc["score"] = float(result.score_map[rid])
+                                    rerank_score = float(result.score_map[rid])
+                                    new_doc["rerank_score"] = rerank_score
+                                    phrase_boost = float(new_doc.get("exact_phrase_boost") or 0.0)
+                                    meta_for_anchor = dict(new_doc.get("metadata") or {})
+                                    metadata_match = _metadata_exact_anchor_match(query, meta_for_anchor)
+                                    metadata_boost = 0.0
+                                    if metadata_match:
+                                        metadata_boost = float(metadata_match.get("score") or 0.0) * phrase_boost_weight
+                                        new_doc["metadata_exact_match_score"] = float(metadata_match.get("score") or 0.0)
+                                        new_doc["metadata_exact_match_boost"] = float(metadata_boost)
+                                        new_doc["metadata_exact_match_field"] = str(metadata_match.get("field") or "")
+                                        new_doc["metadata_exact_match_value"] = str(metadata_match.get("value") or "")
+                                    final_score = min(1.0, float(rerank_score) + float(phrase_boost) + float(metadata_boost))
+                                    new_doc["score"] = float(final_score)
+                                    if phrase_boost > 0.0 or metadata_boost > 0.0:
+                                        new_doc["rerank_score_final"] = float(final_score)
+                                        boosted_after_rerank += 1
                                 new_doc["reranker_provider"] = rerank_provider
                                 new_doc["rerank_elapsed_sec"] = round(float(rerank_elapsed), 3)
                                 new_doc["rerank_model_used"] = result.model_used
                                 ordered.append(new_doc)
+
+                            if boosted_after_rerank > 0:
+                                ordered = sorted(ordered, key=lambda x: (-float(x.get("score", 0.0) or 0.0), self._result_key(x)))
+                                rerank_meta["post_rerank_exact_boosted"] = int(boosted_after_rerank)
 
                             # Append candidates not returned by reranker (maintain original order)
                             for doc in merged_results[:candidates_n]:
@@ -5846,6 +5988,18 @@ class HybridRetriever(BaseRetriever):
                 meta["chunk_type_boost"] = r.get("chunk_type_boost")
             if "keyword_score" in r:
                 meta["keyword_score"] = r.get("keyword_score")
+            for key in (
+                "exact_phrase_score",
+                "exact_phrase_boost",
+                "exact_phrase_matches",
+                "metadata_exact_match_score",
+                "metadata_exact_match_boost",
+                "metadata_exact_match_field",
+                "metadata_exact_match_value",
+                "rerank_score_final",
+            ):
+                if key in r:
+                    meta[key] = r.get(key)
             if "rerank_score" in r:
                 meta["rerank_score"] = r.get("rerank_score")
             if "retrieval_score" in r:

@@ -679,6 +679,11 @@ def _citation_scores(meta: dict[str, Any]) -> dict[str, Any]:
         "rerank_score": meta.get("rerank_score"),
         "retrieval_score": meta.get("retrieval_score"),
         "rerank_score_calibrated": meta.get("rerank_score_calibrated"),
+        "rerank_score_final": meta.get("rerank_score_final"),
+        "exact_phrase_score": meta.get("exact_phrase_score"),
+        "exact_phrase_boost": meta.get("exact_phrase_boost"),
+        "metadata_exact_match_score": meta.get("metadata_exact_match_score"),
+        "metadata_exact_match_boost": meta.get("metadata_exact_match_boost"),
     }
 
 
@@ -893,6 +898,12 @@ def _base_citation(
         "rerank_score": _rounded_optional(scores.get("rerank_score"), digits=3),
         "retrieval_score": _rounded_optional(scores.get("retrieval_score"), digits=3),
         "rerank_score_calibrated": _rounded_optional(scores.get("rerank_score_calibrated"), digits=6),
+        "rerank_score_final": _rounded_optional(scores.get("rerank_score_final"), digits=6),
+        "exact_phrase_score": _rounded_optional(scores.get("exact_phrase_score"), digits=6),
+        "exact_phrase_boost": _rounded_optional(scores.get("exact_phrase_boost"), digits=6),
+        "metadata_exact_match_score": _rounded_optional(scores.get("metadata_exact_match_score"), digits=6),
+        "metadata_exact_match_boost": _rounded_optional(scores.get("metadata_exact_match_boost"), digits=6),
+        "metadata_exact_match_field": meta.get("metadata_exact_match_field"),
         "reranker_provider": meta.get("reranker_provider"),
         "rerank_elapsed_sec": meta.get("rerank_elapsed_sec"),
         "rerank_model_used": meta.get("rerank_model_used"),
