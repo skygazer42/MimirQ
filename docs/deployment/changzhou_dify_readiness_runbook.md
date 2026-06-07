@@ -143,7 +143,10 @@ Golden case，并启动 retrieval-only regression。它会写数据库、向量�
 `/tmp/changzhou_gov_plugin_corpus_closed_loop_report.json` 是本机 raw report，可能包含
 source path、document id、case id 和文件名；交付时使用
 `/tmp/changzhou_gov_plugin_corpus_closed_loop_evidence.json` 和 `.md`，只保留文档/切片聚合、
-插件包 provenance 和 Golden 检索聚合指标。
+插件包 provenance 和 Golden 检索聚合指标。默认 evidence gate 要求
+`retrieval_recall>=1.0`、`retrieval_hit_at_3>=0.8`、`expected_metadata_hit_rate=1.0`
+和 `expected_metadata_recall=1.0`；`retrieval_hit_at_1`、MRR 和 NDCG 会展示出来用于判断首位排序质量，
+但不默认作为失败条件。
 
 ---
 

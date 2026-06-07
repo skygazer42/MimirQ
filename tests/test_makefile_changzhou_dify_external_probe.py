@@ -179,6 +179,10 @@ def test_changzhou_gov_plugin_corpus_closed_loop_evidence_target_is_overridable(
             "CHANGZHOU_GOV_CORPUS_REPORT_OUT=/tmp/corpus-raw.json",
             "CHANGZHOU_GOV_CORPUS_EVIDENCE_OUT=/tmp/corpus-evidence.json",
             "CHANGZHOU_GOV_CORPUS_EVIDENCE_MD=/tmp/corpus-evidence.md",
+            "CHANGZHOU_GOV_CORPUS_MIN_RETRIEVAL_RECALL=0.95",
+            "CHANGZHOU_GOV_CORPUS_MIN_RETRIEVAL_HIT_AT_3=0.75",
+            "CHANGZHOU_GOV_CORPUS_MIN_EXPECTED_METADATA_HIT_RATE=0.9",
+            "CHANGZHOU_GOV_CORPUS_MIN_EXPECTED_METADATA_RECALL=0.85",
         ],
         cwd=REPO_ROOT,
         check=False,
@@ -192,6 +196,10 @@ def test_changzhou_gov_plugin_corpus_closed_loop_evidence_target_is_overridable(
     assert '--input "/tmp/corpus-raw.json"' in command
     assert '--json-out "/tmp/corpus-evidence.json"' in command
     assert '--markdown-out "/tmp/corpus-evidence.md"' in command
+    assert "--min-retrieval-recall 0.95" in command
+    assert "--min-retrieval-hit-at-3 0.75" in command
+    assert "--min-expected-metadata-hit-rate 0.9" in command
+    assert "--min-expected-metadata-recall 0.85" in command
 
 
 def test_changzhou_gov_delivery_pack_target_is_overridable() -> None:

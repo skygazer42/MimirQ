@@ -90,6 +90,10 @@ CHANGZHOU_GOV_CORPUS_GOLDEN_MAX_ITEMS ?= 200
 CHANGZHOU_GOV_CORPUS_GOLDEN_MAX_CHUNKS ?= 5000
 CHANGZHOU_GOV_CORPUS_PROCESSING_TIMEOUT ?= 1800
 CHANGZHOU_GOV_CORPUS_POLL_INTERVAL ?= 2
+CHANGZHOU_GOV_CORPUS_MIN_RETRIEVAL_RECALL ?= 1.0
+CHANGZHOU_GOV_CORPUS_MIN_RETRIEVAL_HIT_AT_3 ?= 0.8
+CHANGZHOU_GOV_CORPUS_MIN_EXPECTED_METADATA_HIT_RATE ?= 1.0
+CHANGZHOU_GOV_CORPUS_MIN_EXPECTED_METADATA_RECALL ?= 1.0
 CHANGZHOU_GOV_CORPUS_EXTRA_ARGS ?=
 CHANGZHOU_GOV_DELIVERY_PACK_OUT ?= /tmp/changzhou_gov_delivery_pack.json
 CHANGZHOU_GOV_DELIVERY_PACK_MD ?= /tmp/changzhou_gov_delivery_pack.md
@@ -414,7 +418,11 @@ changzhou-gov-plugin-corpus-closed-loop-evidence:
 	$(PY) scripts/plugin_corpus_closed_loop_evidence.py \
 		--input "$(CHANGZHOU_GOV_CORPUS_REPORT_OUT)" \
 		--json-out "$(CHANGZHOU_GOV_CORPUS_EVIDENCE_OUT)" \
-		--markdown-out "$(CHANGZHOU_GOV_CORPUS_EVIDENCE_MD)"
+		--markdown-out "$(CHANGZHOU_GOV_CORPUS_EVIDENCE_MD)" \
+		--min-retrieval-recall $(CHANGZHOU_GOV_CORPUS_MIN_RETRIEVAL_RECALL) \
+		--min-retrieval-hit-at-3 $(CHANGZHOU_GOV_CORPUS_MIN_RETRIEVAL_HIT_AT_3) \
+		--min-expected-metadata-hit-rate $(CHANGZHOU_GOV_CORPUS_MIN_EXPECTED_METADATA_HIT_RATE) \
+		--min-expected-metadata-recall $(CHANGZHOU_GOV_CORPUS_MIN_EXPECTED_METADATA_RECALL)
 
 changzhou-gov-delivery-pack: changzhou-gov-plugin-chunk-evidence changzhou-gov-plugin-test-evidence changzhou-dify-readiness-evidence
 	$(PY) scripts/changzhou_gov_delivery_pack.py \
