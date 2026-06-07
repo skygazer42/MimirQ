@@ -249,6 +249,38 @@ def _metadata_exact_anchor_match(query: str, meta: dict[str, Any]) -> dict[str, 
     }
 
 
+def _query_looks_like_cjk_metadata_anchor(query: str) -> bool:
+    normalized = _normalize_exact_anchor(query)
+    if not normalized:
+        return False
+    # Chinese FAQ/title questions often need exact metadata recall. Keep this
+    # CJK-scoped so generic English hybrid queries do not always pay the DB cost.
+    if len(_CJK_CHAR_RE.findall(normalized)) < 4:
+        return False
+    return _looks_like_metadata_exact_anchor("question", normalized)
+
+
+def _results_contain_metadata_exact_anchor(query: str, results: list[dict[str, Any]], *, limit: int | None = None) -> bool:
+    candidates = list(results or [])
+    if limit is not None and int(limit or 0) > 0:
+        candidates = sorted(
+            candidates,
+            key=lambda item: (
+                -_float_or_default(item.get("score") if isinstance(item, dict) else None, 0.0),
+                str(item.get("chunk_id") if isinstance(item, dict) else ""),
+            ),
+        )[: int(limit)]
+    for result in candidates:
+        if not isinstance(result, dict):
+            continue
+        meta = result.get("metadata")
+        if not isinstance(meta, dict):
+            continue
+        if _metadata_exact_anchor_match(query, meta):
+            return True
+    return False
+
+
 def _float_or_default(value: Any, default: float = 0.0) -> float:
     try:
         return float(value)
@@ -4219,8 +4251,26 @@ class HybridRetriever(BaseRetriever):
             # Running pg_trgm on every query is expensive on large datasets, so keep it
             # as a recall safety net unless explicitly configured to run in parallel.
             primary_candidate_count = len(vector_results or []) + len(bm25_results or [])
+            metadata_exact_fallback_enabled = bool(
+                getattr(settings, "LEXICAL_DB_HYBRID_METADATA_EXACT_FALLBACK_ENABLED", True)
+            )
+            metadata_exact_anchor_like_query = bool(
+                metadata_exact_fallback_enabled and _query_looks_like_cjk_metadata_anchor(query)
+            )
+            primary_has_metadata_exact_anchor = False
+            if metadata_exact_anchor_like_query:
+                primary_has_metadata_exact_anchor = _results_contain_metadata_exact_anchor(
+                    query,
+                    list(vector_results or []) + list(bm25_results or []),
+                    limit=max(1, int(top_k or 0)),
+                )
+            metadata_exact_fallback = bool(
+                lexical_hybrid_fallback_only
+                and metadata_exact_anchor_like_query
+            )
             should_run_lexical = bool(want_lexical) and (
                 not lexical_hybrid_fallback_only or primary_candidate_count < max(1, int(top_k or 0))
+                or metadata_exact_fallback
             )
             if should_run_lexical:
                 t0 = time.perf_counter()
@@ -4232,7 +4282,12 @@ class HybridRetriever(BaseRetriever):
                         tenant_id=tenant_id,
                         metadata_filter=bm25_filter,
                     )
-                    lexical_run_reason = "hybrid_parallel" if not lexical_hybrid_fallback_only else "hybrid_fallback"
+                    if not lexical_hybrid_fallback_only:
+                        lexical_run_reason = "hybrid_parallel"
+                    elif metadata_exact_fallback:
+                        lexical_run_reason = "hybrid_metadata_exact_fallback"
+                    else:
+                        lexical_run_reason = "hybrid_fallback"
                 except Exception as exc:
                     logger.warning(LEXICAL_DB_SEARCH_FAILED_LOG, exc)
                     lexical_results = []
@@ -4241,6 +4296,13 @@ class HybridRetriever(BaseRetriever):
                     lexical_elapsed_ms += (time.perf_counter() - t0) * 1000
             elif want_lexical:
                 lexical_run_reason = "skipped_primary_candidates_sufficient"
+            if want_lexical and isinstance(self._last_channel_metrics, dict):
+                self._last_channel_metrics["lexical_metadata_exact_fallback"] = {
+                    "enabled": bool(metadata_exact_fallback_enabled),
+                    "query_anchor_like": bool(metadata_exact_anchor_like_query),
+                    "primary_has_exact_anchor": bool(primary_has_metadata_exact_anchor),
+                    "triggered": bool(metadata_exact_fallback),
+                }
 
         # 2c) Optional sparse channel (SPLADE-style)
         sparse_results: list[dict[str, Any]] = []
@@ -4398,6 +4460,53 @@ class HybridRetriever(BaseRetriever):
                 meta["chunk_id"] = mapped
                 r["metadata"] = meta
 
+        # Promote exact metadata anchors before score normalization/fusion. This protects
+        # FAQ/title-style chunks when dense/BM25 channels find semantically similar
+        # distractors and lexical DB returns equal raw FTS scores.
+        metadata_exact_pre_fusion_stats: dict[str, Any] = {
+            "enabled": bool(getattr(settings, "RETRIEVAL_METADATA_EXACT_PRE_FUSION_ENABLED", True)),
+            "annotated": 0,
+            "promoted": 0,
+        }
+        if bool(metadata_exact_pre_fusion_stats["enabled"]) and query:
+            phrase_boost_weight = max(
+                0.0,
+                float(getattr(settings, "RETRIEVAL_EXACT_PHRASE_RERANK_BOOST", 0.35) or 0.0),
+            )
+            for channel_name, channel_results in (
+                ("vector", vector_results),
+                ("bm25", bm25_results),
+                ("lexical", lexical_results),
+                ("sparse", sparse_results),
+            ):
+                channel_annotated = 0
+                channel_promoted = 0
+                for item in channel_results or []:
+                    if not isinstance(item, dict):
+                        continue
+                    before = _float_or_default(item.get("score"), 0.0)
+                    if _apply_metadata_exact_anchor_to_result(
+                        query=query,
+                        result=item,
+                        phrase_boost_weight=phrase_boost_weight,
+                        promote_score=True,
+                    ):
+                        channel_annotated += 1
+                        after = _float_or_default(item.get("score"), 0.0)
+                        if after > before:
+                            channel_promoted += 1
+                if channel_annotated:
+                    metadata_exact_pre_fusion_stats[channel_name] = {
+                        "annotated": int(channel_annotated),
+                        "promoted": int(channel_promoted),
+                    }
+                    metadata_exact_pre_fusion_stats["annotated"] = int(
+                        metadata_exact_pre_fusion_stats.get("annotated", 0) or 0
+                    ) + int(channel_annotated)
+                    metadata_exact_pre_fusion_stats["promoted"] = int(
+                        metadata_exact_pre_fusion_stats.get("promoted", 0) or 0
+                    ) + int(channel_promoted)
+
         # Per-query channel metrics (best-effort): used by evidence/debug endpoints.
         try:
             lexical_methods: Counter[str] = Counter()
@@ -4497,6 +4606,7 @@ class HybridRetriever(BaseRetriever):
                         "pg_trgm_available": self._lexical_pg_trgm_available,
                         "methods": dict(lexical_methods),
                     },
+                    "metadata_exact_pre_fusion": dict(metadata_exact_pre_fusion_stats),
                     "colpali": {
                         "enabled": bool(want_colpali),
                         "used": bool(colpali_results),
@@ -4559,6 +4669,19 @@ class HybridRetriever(BaseRetriever):
                 self._last_channel_metrics["merged_pre_dedup"] = len(merged_results or [])
         except Exception as exc:
             logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+
+        exact_anchor_pre_dedup_stats: dict[str, Any] = {}
+        merged_results = self._apply_metadata_exact_anchor_post_ordering(
+            query,
+            merged_results,
+            stats=exact_anchor_pre_dedup_stats,
+        )
+        if exact_anchor_pre_dedup_stats:
+            try:
+                if isinstance(self._last_channel_metrics, dict):
+                    self._last_channel_metrics["metadata_exact_pre_dedup_ordering"] = exact_anchor_pre_dedup_stats
+            except Exception as exc:
+                logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
 
         merged_results = self._deduplicate_results(merged_results)
 
