@@ -280,7 +280,9 @@ dify-console-login:
 		--console-origin "$(DIFY_CONSOLE_ORIGIN)" \
 		--email "$(DIFY_CONSOLE_EMAIL)" \
 		--password-file "$(DIFY_CONSOLE_PASSWORD_FILE)" \
-		--storage-state "$(CHANGZHOU_DIFY_STORAGE_STATE)"
+		--storage-state "$(CHANGZHOU_DIFY_STORAGE_STATE)" \
+		--min-ttl-seconds $(DIFY_CONSOLE_MIN_TTL_SECONDS) \
+		--out "$(DIFY_CONSOLE_CHECK_OUT)"
 
 dify-console-check:
 	$(PY) scripts/dify_console_login.py \

@@ -273,11 +273,17 @@ def main(argv: list[str] | None = None) -> int:
             email=email,
             password=password,
             storage_state=str(args.storage_state),
+            request_json=_request_json,
             timeout=float(args.timeout),
         )
     except Exception as exc:  # noqa: BLE001
         print(f"[dify-console-login] ERR: {exc}", file=sys.stderr)
         return 1
+    check_report = check_storage_state(
+        storage_state=str(args.storage_state),
+        min_ttl_seconds=int(args.min_ttl_seconds),
+    )
+    report = {**report, **check_report}
     _emit_report(report, str(args.out))
     return 0
 
