@@ -88,7 +88,7 @@ _MAX_HINT_VALUE_CHARS = 700
 _MAX_QA_HINT_VALUE_CHARS = 420
 _SERVICE_TERM_SYNONYMS = (("社会保障卡", "社保卡"),)
 _ENUMERATION_INTRO_TERMS = ("类型", "类别", "方式", "入口")
-_ENUMERATION_QUERY_TERMS = ("申请", "入口", "类型", "类别", "哪些", "什么")
+_ENUMERATION_QUERY_TERMS = ("申请", "入口", "类型", "类别", "哪些", "什么", "如何")
 _NAMED_WAY_MARKERS = {1: "方式一", 2: "方式二", 3: "方式三", 4: "方式四"}
 
 
