@@ -206,6 +206,11 @@ MimirQ Dify external knowledge adapter 会在返回给 Dify 的 records 里临�
 也不改变向量库原文。对事项类记录，只有事项名或别名与用户 query 明确匹配时才会
 生成问题/答案式前置，避免弱相关事项被 Dify 过度展开。
 
+当证据中存在“类型/类别/方式/入口”等枚举上下文，并紧跟 `1.`、`1、`、`（1）`
+等编号选项时，adapter 还会临时前置 `必答要点`，要求 Dify 生成答案保留这些选项名。
+这用于防止固定 Dify workflow 在概括长 QA 时漏掉实质选项，例如“卖旧置换更新补贴”
+和“报废置换更新补贴”。触发条件是通用文本结构和查询意图，不写死常州或补贴词。
+
 ### Dify workflow 诊断口径
 
 `changzhou_gov_collect_dify_answers.py` 会在 answers[] 中保留 Dify 返回的
