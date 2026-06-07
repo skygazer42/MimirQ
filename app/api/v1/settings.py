@@ -484,7 +484,7 @@ class DifyExternalKnowledgeConfig(BaseModel):
     tenant_id: str = ""
     account_id: str = _SYSTEM_DIFY_ACCOUNT_ID
     knowledge_map_json: str = ""
-    top_k_max: int = Field(default=50, ge=1, le=200)
+    top_k_max: int = Field(default=5, ge=1, le=200)
     endpoint_path: str = "/api/v1/integrations/dify/retrieval"
 
 
@@ -888,7 +888,7 @@ def _apply_runtime_settings(env_vars: dict[str, str], updated_keys: list[str]) -
     if "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX" in updated_keys and "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX" in env_vars:
         settings.DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX = _parse_int(
             env_vars["DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX"],
-            default=int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX", 50) or 50),
+            default=int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX", 5) or 5),
         )
 
 
@@ -1151,7 +1151,7 @@ async def get_settings(
             tenant_id=str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", "") or ""),
             account_id=str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "") or _SYSTEM_DIFY_ACCOUNT_ID),
             knowledge_map_json=str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON", "") or ""),
-            top_k_max=int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX", 50) or 50),
+            top_k_max=int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX", 5) or 5),
             endpoint_path="/api/v1/integrations/dify/retrieval",
         ),
     )
@@ -1625,7 +1625,7 @@ async def update_settings(
                     raise HTTPException(status_code=400, detail="DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON must be a JSON object")
             env_vars["DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON"] = knowledge_map_json
 
-            top_k_max = int(df.top_k_max or 50)
+            top_k_max = int(df.top_k_max or 5)
             if top_k_max < 1 or top_k_max > 200:
                 raise HTTPException(status_code=400, detail="DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX must be between 1 and 200")
             env_vars["DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX"] = str(top_k_max)

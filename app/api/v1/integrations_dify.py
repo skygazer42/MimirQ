@@ -22,12 +22,13 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.api.schemas.chat import ChatRAGConfig
 from app.core.config import settings
 from app.core.database import get_db
-from app.models.document import DocumentChunk
+from app.models.document import Document, DocumentChunk
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +107,37 @@ _ENUMERATION_INTRO_TERMS = ("类型", "类别", "方式", "入口")
 _ENUMERATION_QUERY_TERMS = ("申请", "入口", "类型", "类别", "哪些", "什么", "如何")
 _NAMED_WAY_MARKERS = {1: "方式一", 2: "方式二", 3: "方式三", 4: "方式四"}
 _DIAGNOSTIC_QUERY_PREVIEW_CHARS = 120
+_FAST_CHUNK_QUERY_NGRAM_MIN = 2
+_FAST_CHUNK_QUERY_NGRAM_MAX = 8
+_FAST_CHUNK_MIN_SCORE = 2.0
+_FAST_CHUNK_SCORE_NORMALIZER = 24.0
+_FAST_CHUNK_INTENT_GROUPS = {
+    "apply": ("申请", "办理", "申报", "领取", "怎么申请", "如何申请", "怎么办理", "如何办理", "怎么操作"),
+    "materials": ("材料", "带什么", "需要什么", "所需材料", "证明材料"),
+    "status": ("进度", "多久", "到账", "审核", "失败", "修改", "多少钱", "标准", "怎么算", "时限", "发放", "放款"),
+}
+_FAST_CHUNK_ENTITY_FAMILIES = {
+    "id_card_reissue": ("身份证补领", "身份证补办", "补领身份证", "补办身份证", "居民身份证补领"),
+}
+_FAST_CHUNK_SQL_PREFILTER_MAX_TERMS = 40
+_FAST_CHUNK_SQL_PREFILTER_MIN_ROWS = 20
+_FAST_CHUNK_SQL_PREFILTER_LOW_VALUE_TERMS = {
+    "哪里",
+    "哪里办",
+    "在哪里",
+    "在哪",
+    "办理",
+    "怎么",
+    "如何",
+    "需要",
+    "哪些",
+    "什么",
+    "多少",
+    "是否",
+    "可以",
+    "请问",
+}
+_FAST_CHUNK_SQL_PREFILTER_TWO_CHAR_MARKERS = ("区", "卡", "证", "险", "金", "费", "税", "医", "车", "房", "学", "企", "户")
 
 
 class _DifyErrorRoute(APIRoute):
@@ -516,6 +548,358 @@ def _load_chunk_content_map(
         text = str(content or "").strip()
         if text:
             out[str(chunk_id)] = text
+    return out
+
+
+def _fast_chunk_query_terms(query: str) -> list[str]:
+    normalized = _normalize_match_term(query)
+    if not normalized:
+        return []
+    terms: set[str] = {normalized}
+    max_size = min(_FAST_CHUNK_QUERY_NGRAM_MAX, len(normalized))
+    for size in range(max_size, _FAST_CHUNK_QUERY_NGRAM_MIN - 1, -1):
+        for start in range(0, len(normalized) - size + 1):
+            term = normalized[start : start + size]
+            if term:
+                terms.add(term)
+    return sorted(terms, key=lambda item: (-len(item), item))
+
+
+def _fast_chunk_sql_prefilter_terms(query: str) -> list[str]:
+    normalized = _normalize_match_term(query)
+    if not normalized:
+        return []
+
+    terms: list[str] = []
+
+    def add(raw: str) -> None:
+        term = _normalize_sql_prefilter_term(raw)
+        if len(term) < 2 or term in terms or term in _FAST_CHUNK_SQL_PREFILTER_LOW_VALUE_TERMS:
+            return
+        terms.append(term)
+
+    for canonical, alias in _SERVICE_TERM_SYNONYMS:
+        canonical_norm = _normalize_match_term(canonical)
+        alias_norm = _normalize_match_term(alias)
+        if (canonical_norm and canonical_norm in normalized) or (alias_norm and alias_norm in normalized):
+            add(canonical)
+            add(alias)
+
+    for size in (4, 3, 5, 2):
+        if len(normalized) < size:
+            continue
+        for start in range(0, len(normalized) - size + 1):
+            term = normalized[start : start + size]
+            if size == 2 and not any(marker in term for marker in _FAST_CHUNK_SQL_PREFILTER_TWO_CHAR_MARKERS):
+                continue
+            add(term)
+            if len(terms) >= _FAST_CHUNK_SQL_PREFILTER_MAX_TERMS:
+                return terms
+    return terms
+
+
+def _sql_like_contains_pattern(term: str) -> str:
+    escaped = str(term or "").replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
+def _normalize_sql_prefilter_term(value: Any) -> str:
+    text = str(value or "").strip().casefold()
+    out: list[str] = []
+    for char in text:
+        if char.isspace():
+            continue
+        if re.match(r"[\W_]", char, flags=re.UNICODE):
+            continue
+        out.append(char)
+    return "".join(out)
+
+
+def _fast_chunk_metadata_values(metadata: dict[str, Any]) -> list[tuple[str, str]]:
+    values: list[tuple[str, str]] = []
+    layers = [metadata, *[metadata.get(key) for key in _PUBLIC_METADATA_VIEW_KEYS]]
+    for layer in layers:
+        if not isinstance(layer, dict):
+            continue
+        for key in (
+            *_METADATA_ANCHOR_KEYS,
+            *_RETRIEVAL_INTENT_KEYS,
+            *_REGION_ANCHOR_KEYS,
+            *_ANSWER_HIGHLIGHT_KEYS,
+            "category_path",
+            "category_leaf",
+            "section_type",
+            "chunk_kind",
+            "source_file",
+            "knowledge_section",
+            "gov_knowledge_type",
+        ):
+            for term in _metadata_terms(layer.get(key)):
+                values.append((key, term))
+    return values
+
+
+def _fast_chunk_intent_groups(text: str) -> set[str]:
+    normalized = _normalize_match_term(text)
+    groups: set[str] = set()
+    for group, terms in _FAST_CHUNK_INTENT_GROUPS.items():
+        if any(_normalize_match_term(term) in normalized for term in terms):
+            groups.add(group)
+    return groups
+
+
+def _fast_chunk_entity_families(text: str) -> set[str]:
+    normalized = _normalize_match_term(text)
+    families: set[str] = set()
+    for family, terms in _FAST_CHUNK_ENTITY_FAMILIES.items():
+        if any(_normalize_match_term(term) in normalized for term in terms):
+            families.add(family)
+    return families
+
+
+def _fast_chunk_intent_alignment_score(*, query: str, candidate_text: str) -> float:
+    query_groups = _fast_chunk_intent_groups(query)
+    if not query_groups:
+        return 0.0
+    candidate_groups = _fast_chunk_intent_groups(candidate_text)
+    score = 0.0
+    for group in query_groups:
+        if group in candidate_groups:
+            score += 14.0
+        else:
+            score -= 8.0
+    if "apply" in query_groups and "status" in candidate_groups:
+        score -= 24.0
+    if "materials" in query_groups and "materials" not in candidate_groups:
+        score -= 18.0
+    return score
+
+
+def _fast_chunk_entity_alignment_score(*, query: str, candidate_text: str) -> float:
+    query_families = _fast_chunk_entity_families(query)
+    if not query_families:
+        return 0.0
+    candidate_families = _fast_chunk_entity_families(candidate_text)
+    missing = query_families - candidate_families
+    return -12.0 * len(missing)
+
+
+def _metadata_text(metadata: dict[str, Any], *keys: str) -> str:
+    parts: list[str] = []
+    for key in keys:
+        for value in _metadata_terms(metadata.get(key)):
+            parts.append(value)
+    return "\n".join(parts)
+
+
+def _fast_chunk_material_answer_score(*, query: str, content: str, metadata: dict[str, Any]) -> float:
+    if "materials" not in _fast_chunk_intent_groups(query):
+        return 0.0
+    question_text = _metadata_text(metadata, "question")
+    answer_text = _metadata_text(metadata, "answer", "answer_highlights", "answer_key_points")
+    question_norm = _normalize_match_term(question_text)
+    answer_norm = _normalize_match_term(answer_text)
+    content_norm = _normalize_match_term(content)
+    has_material_question = "材料" in question_norm or "材料" in content_norm
+    has_material_answer = "材料" in answer_norm or any(
+        term in answer_norm for term in ("居民户口簿", "身份证件", "证明材料", "居住证", "护照")
+    )
+    question_bonus = 26.0 if "材料" in question_norm else 0.0
+    if has_material_question and has_material_answer:
+        return 34.0 + question_bonus
+    if has_material_question:
+        return 14.0 + question_bonus
+    return -24.0
+
+
+def _fast_chunk_identity_key(chunk: DocumentChunk, document: Document) -> str:
+    metadata = dict(getattr(chunk, "doc_metadata", None) or {})
+    raw_identity = metadata.get("_record_identity")
+    if isinstance(raw_identity, dict) and str(raw_identity.get("key") or "").strip():
+        return str(raw_identity.get("key")).strip()
+    source_record_id = str(metadata.get("source_record_id") or "").strip()
+    knowledge_section = str(metadata.get("knowledge_section") or "").strip()
+    if source_record_id:
+        return f"{knowledge_section}|{source_record_id}"
+    return f"{getattr(document, 'id', '')}:{getattr(chunk, 'chunk_index', '')}"
+
+
+def _fast_chunk_candidate_score(*, query: str, content: str, metadata: dict[str, Any]) -> float:
+    query_norm = _normalize_match_term(query)
+    if not query_norm:
+        return 0.0
+    content_norm = _normalize_match_term(content)
+    score = 0.0
+    candidate_text = content
+    metadata_values = _fast_chunk_metadata_values(metadata)
+    if metadata_values:
+        candidate_text = "\n".join([content, *[term for _key, term in metadata_values]])
+    score += _fast_chunk_intent_alignment_score(query=query, candidate_text=candidate_text)
+    score += _fast_chunk_entity_alignment_score(query=query, candidate_text=candidate_text)
+    score += _fast_chunk_material_answer_score(query=query, content=content, metadata=metadata)
+
+    for key, raw_term in metadata_values:
+        term = _normalize_match_term(raw_term)
+        if len(term) < 2:
+            continue
+        if term == query_norm:
+            score += 18.0
+        elif term in query_norm:
+            score += 8.0 + min(len(term), 16) / 2.0
+        elif query_norm in term:
+            score += 7.0 + min(len(query_norm), 16) / 3.0
+        else:
+            overlap = _longest_common_substring_length(query_norm, term)
+            if overlap >= 8:
+                score += 7.0 + overlap / 2.0
+            elif overlap >= 4 and key in {"question", "service_name", "case_title", "primary_alias"}:
+                score += 3.0 + overlap / 2.0
+
+        if key == "question" and len(term) >= 4:
+            overlap = _longest_common_substring_length(query_norm, term)
+            if overlap >= _MIN_REGIONAL_QUESTION_OVERLAP_CHARS:
+                score += 8.0
+        elif key in _REGION_ANCHOR_KEYS and term in query_norm:
+            score += 5.0
+        elif key in _RETRIEVAL_INTENT_KEYS and term in query_norm:
+            score += 4.0
+
+    seen_terms: set[str] = set()
+    for term in _fast_chunk_query_terms(query):
+        if term in seen_terms or len(term) < _FAST_CHUNK_QUERY_NGRAM_MIN:
+            continue
+        seen_terms.add(term)
+        if term in content_norm:
+            score += min(len(term), 8) / 2.0
+
+    fields = _structured_fields_from_content(content)
+    if fields:
+        if _service_hint_matches_query(fields, metadata, query=query):
+            score += 8.0
+        if "答案" in fields and any(term in content_norm for term in _fast_chunk_query_terms(query)[:8]):
+            score += 3.0
+
+    return score
+
+
+def _fast_chunk_score_to_relevance(score: float) -> float:
+    if score <= 0:
+        return 0.0
+    return min(1.0, 0.35 + (score / _FAST_CHUNK_SCORE_NORMALIZER))
+
+
+def _retrieve_fast_chunk_citations(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    dataset_ids: list[UUID],
+    query: str,
+    top_k: int,
+    metadata_filter: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    if metadata_filter:
+        return []
+    if not bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_CHUNK_SEARCH_ENABLED", True)):
+        return []
+
+    max_chunks = max(100, int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_CHUNK_SEARCH_MAX_CHUNKS", 6000) or 6000))
+    try:
+        base_query = (
+            db.query(DocumentChunk, Document)
+            .join(Document, Document.id == DocumentChunk.document_id)
+            .filter(
+                DocumentChunk.tenant_id == tenant_id,
+                Document.tenant_id == tenant_id,
+                Document.dataset_id.in_(dataset_ids),
+                DocumentChunk.disabled_at.is_(None),
+                Document.disabled_at.is_(None),
+            )
+            .order_by(Document.id.asc(), DocumentChunk.chunk_index.asc())
+        )
+        prefilter_terms = _fast_chunk_sql_prefilter_terms(query)
+        rows = []
+        if prefilter_terms:
+            prefilter_limit = min(max_chunks, max(top_k * 120, 600))
+            rows = (
+                base_query.filter(
+                    or_(
+                        *[
+                            DocumentChunk.content.ilike(_sql_like_contains_pattern(term), escape="\\")
+                            for term in prefilter_terms
+                        ]
+                    )
+                )
+                .limit(prefilter_limit)
+                .all()
+            )
+        if len(rows) < min(max(top_k, _FAST_CHUNK_SQL_PREFILTER_MIN_ROWS), max_chunks):
+            rows = base_query.limit(max_chunks).all()
+    except Exception:  # noqa: BLE001
+        logger.warning("Dify fast chunk search failed; falling back to RAG retrieval", exc_info=True)
+        return []
+
+    ranked: list[tuple[float, DocumentChunk, Document]] = []
+    for chunk, document in rows:
+        metadata = dict(getattr(chunk, "doc_metadata", None) or {})
+        content = str(getattr(chunk, "content", "") or "")
+        score = _fast_chunk_candidate_score(query=query, content=content, metadata=metadata)
+        if score < _FAST_CHUNK_MIN_SCORE:
+            continue
+        ranked.append((score, chunk, document))
+
+    ranked.sort(
+        key=lambda item: (
+            item[0],
+            -int(getattr(item[1], "chunk_index", 0) or 0),
+        ),
+        reverse=True,
+    )
+    grouped: dict[str, list[tuple[float, DocumentChunk, Document]]] = {}
+    for item in ranked:
+        _score, chunk, document = item
+        grouped.setdefault(_fast_chunk_identity_key(chunk, document), []).append(item)
+    for items in grouped.values():
+        items.sort(key=lambda item: int(getattr(item[1], "chunk_index", 0) or 0))
+
+    selected: list[tuple[float, DocumentChunk, Document]] = []
+    selected_ids: set[str] = set()
+    sibling_cap = max(1, min(3, int(top_k or 1)))
+    for item in ranked:
+        _score, chunk, document = item
+        chunk_id = str(getattr(chunk, "id", "") or "")
+        if chunk_id in selected_ids:
+            continue
+        identity = _fast_chunk_identity_key(chunk, document)
+        group = grouped.get(identity) or [item]
+        ordered_group = [item, *[candidate for candidate in group if str(getattr(candidate[1], "id", "") or "") != chunk_id]]
+        for candidate in ordered_group[:sibling_cap]:
+            candidate_chunk_id = str(getattr(candidate[1], "id", "") or "")
+            if candidate_chunk_id in selected_ids:
+                continue
+            selected_ids.add(candidate_chunk_id)
+            selected.append(candidate)
+            if len(selected) >= max(top_k * 4, top_k):
+                break
+        if len(selected) >= max(top_k * 4, top_k):
+            break
+
+    out: list[dict[str, Any]] = []
+    for score, chunk, document in selected:
+        metadata = dict(getattr(chunk, "doc_metadata", None) or {})
+        dataset_id = getattr(document, "dataset_id", None)
+        out.append(
+            {
+                "chunk_content": str(getattr(chunk, "content", "") or ""),
+                "relevance_score": _fast_chunk_score_to_relevance(score),
+                "keyword_score": _fast_chunk_score_to_relevance(score),
+                "document_name": str((getattr(document, "doc_metadata", None) or {}).get("source_path") or getattr(document, "filename", "") or ""),
+                "document_id": str(getattr(document, "id", "") or ""),
+                "chunk_id": str(getattr(chunk, "id", "") or ""),
+                "dataset_id": str(dataset_id or ""),
+                "page_number": getattr(chunk, "page_number", None),
+                "metadata": metadata,
+            }
+        )
     return out
 
 
@@ -948,7 +1332,7 @@ async def retrieve_external_knowledge(
 ) -> DifyExternalKnowledgeResponse:
     started = time.perf_counter()
     dataset_ids = _resolve_knowledge_dataset_ids(body.knowledge_id, query=body.query)
-    configured_max = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX", 50) or 50)
+    configured_max = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX", 5) or 5)
     top_k = max(1, min(int(body.retrieval_setting.top_k), configured_max))
     score_threshold = _clamp_score(body.retrieval_setting.score_threshold)
     metadata_filter = _metadata_condition_to_filter(body.metadata_condition)
@@ -967,17 +1351,29 @@ async def retrieve_external_knowledge(
 
     records: list[dict[str, Any]] = []
     citation_count = 0
+    retrieval_path = "rag"
     try:
-        citations = await _retrieve_dataset_citations(
+        citations = _retrieve_fast_chunk_citations(
             db=db,
             tenant_id=actor.tenant_id,
-            account_id=actor.account_id,
             dataset_ids=dataset_ids,
             query=body.query,
             top_k=top_k,
-            score_threshold=score_threshold,
             metadata_filter=metadata_filter,
         )
+        if citations:
+            retrieval_path = "fast_chunk"
+        else:
+            citations = await _retrieve_dataset_citations(
+                db=db,
+                tenant_id=actor.tenant_id,
+                account_id=actor.account_id,
+                dataset_ids=dataset_ids,
+                query=body.query,
+                top_k=top_k,
+                score_threshold=score_threshold,
+                metadata_filter=metadata_filter,
+            )
         citation_count = len(citations)
         fallback_dataset_id = dataset_ids[0] if dataset_ids else None
         chunk_content_map = _load_chunk_content_map(db=db, tenant_id=actor.tenant_id, citations=citations)
@@ -996,7 +1392,7 @@ async def retrieve_external_knowledge(
         logger.info(
             "Dify external retrieval completed client_ip=%s knowledge_id=%s query_hash=%s "
             "query_preview=%r top_k=%s score_threshold=%s dataset_count=%s citations=%s records=%s "
-            "elapsed_ms=%s metadata_filter=%s",
+            "elapsed_ms=%s metadata_filter=%s retrieval_path=%s",
             log_extra_base["client_ip"],
             log_extra_base["knowledge_id"],
             log_extra_base["query_hash"],
@@ -1008,12 +1404,14 @@ async def retrieve_external_knowledge(
             record_count,
             elapsed_ms,
             bool(metadata_filter),
+            retrieval_path,
             extra={
                 **log_extra_base,
                 "phase": "finished",
                 "citation_count": citation_count,
                 "record_count": record_count,
                 "elapsed_ms": elapsed_ms,
+                "retrieval_path": retrieval_path,
             },
         )
         return DifyExternalKnowledgeResponse(records=response_records)
@@ -1022,7 +1420,7 @@ async def retrieve_external_knowledge(
         logger.exception(
             "Dify external retrieval failed client_ip=%s knowledge_id=%s query_hash=%s "
             "query_preview=%r top_k=%s score_threshold=%s dataset_count=%s citations=%s records=%s "
-            "elapsed_ms=%s metadata_filter=%s",
+            "elapsed_ms=%s metadata_filter=%s retrieval_path=%s",
             log_extra_base["client_ip"],
             log_extra_base["knowledge_id"],
             log_extra_base["query_hash"],
@@ -1034,12 +1432,14 @@ async def retrieve_external_knowledge(
             len(records),
             elapsed_ms,
             bool(metadata_filter),
+            retrieval_path,
             extra={
                 **log_extra_base,
                 "phase": "failed",
                 "citation_count": citation_count,
                 "record_count": len(records),
                 "elapsed_ms": elapsed_ms,
+                "retrieval_path": retrieval_path,
             },
         )
         raise
