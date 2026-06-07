@@ -73,6 +73,7 @@ def _console_auth_section(report: dict[str, Any]) -> dict[str, Any]:
 def _mimirq_direct_section(report: dict[str, Any]) -> dict[str, Any]:
     gate = report.get("gate") if isinstance(report.get("gate"), dict) else {}
     summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
+    source = report.get("source") if isinstance(report.get("source"), dict) else {}
     failed_conditions: list[str] = []
     checks = gate.get("checks") if isinstance(gate.get("checks"), list) else []
     for check in checks:
@@ -82,11 +83,14 @@ def _mimirq_direct_section(report: dict[str, Any]) -> dict[str, Any]:
         failed_conditions.append(f"quality_gate_failed:{metric}")
     if not gate and not summary:
         failed_conditions.append("mimirq_direct_report_missing")
-    return {
+    out = {
         "passed": gate.get("passed") is True,
         "failed_conditions": failed_conditions,
         "summary": summary,
     }
+    if source:
+        out["source"] = source
+    return out
 
 
 def _full_gate_section(report: dict[str, Any]) -> dict[str, Any]:

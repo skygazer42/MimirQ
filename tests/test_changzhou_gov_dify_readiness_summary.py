@@ -78,6 +78,7 @@ def test_build_readiness_summary_combines_probe_and_full_gate() -> None:
         mimirq_direct={
             "gate": {"passed": True, "failed": 0, "checks": []},
             "summary": {"cases": 12, "hit_at_1": 1.0, "answer_grounding_rate": 1.0},
+            "source": {"base_url": "http://192.0.2.6:8000", "base_host": "192.0.2.6"},
         },
         console_auth={"valid": True, "reason": "ok", "ttl_seconds": 1800, "min_ttl_seconds": 900},
         external_probe=external_probe,
@@ -115,6 +116,7 @@ def test_build_readiness_summary_combines_probe_and_full_gate() -> None:
             "status": "passed",
             "failed_conditions": [],
             "summary": {"cases": 12, "hit_at_1": 1.0, "answer_grounding_rate": 1.0},
+            "source": {"base_url": "http://192.0.2.6:8000", "base_host": "192.0.2.6"},
         },
         "console_auth": {"passed": True, "status": "passed", "reason": "ok", "ttl_seconds": 1800, "min_ttl_seconds": 900},
         "external_probe": {
