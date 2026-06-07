@@ -181,7 +181,10 @@ make changzhou-gov-plugin-corpus-closed-loop-evidence
 如需复用既有数据集，传 `CHANGZHOU_GOV_CORPUS_DATASET_ID=<dataset_uuid>`，否则会创建隔离测试数据集。
 raw report 可能包含本地 source path、文件名、document id 和 case id；交付时使用
 `/tmp/changzhou_gov_plugin_corpus_closed_loop_evidence.json` 和 `.md`，只保留文档/切片聚合、
-插件包 provenance 和 Golden 检索聚合指标。
+插件包 provenance 和 Golden 检索聚合指标。默认 evidence gate 会展示 `retrieval_hit_at_1`、
+`retrieval_hit_at_3`、MRR、NDCG 和 metadata 命中/召回；其中 `hit@3>=0.8`、
+`retrieval_recall>=1.0`、`expected_metadata_hit_rate=1.0`、`expected_metadata_recall=1.0`
+是默认通过条件，`hit@1` 用于观察首位排序质量。
 
 ## 固定 Golden 评估
 

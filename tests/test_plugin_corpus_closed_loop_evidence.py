@@ -51,7 +51,13 @@ def _raw_report() -> dict:
             "case_ids": ["case-raw-1", "case-raw-2", "case-raw-3"],
             "summary": {
                 "items": 3,
+                "retrieval_mrr": 0.7,
                 "retrieval_recall": 1.0,
+                "retrieval_hit_at_1": 0.5,
+                "retrieval_hit_at_3": 1.0,
+                "retrieval_hit_at_5": 1.0,
+                "retrieval_hit_at_10": 1.0,
+                "retrieval_ndcg_at_10": 0.8,
                 "expected_metadata_cases_total": 3,
                 "expected_metadata_hit_rate": 1.0,
                 "expected_metadata_recall": 1.0,
@@ -107,6 +113,9 @@ def test_build_evidence_sanitizes_raw_corpus_smoke_details(tmp_path: Path) -> No
         "errors": 0,
     }
     assert evidence["golden"]["summary"]["expected_metadata_hit_rate"] == 1.0
+    assert evidence["golden"]["summary"]["retrieval_hit_at_1"] == 0.5
+    assert evidence["golden"]["summary"]["retrieval_hit_at_3"] == 1.0
+    assert evidence["golden"]["summary"]["retrieval_mrr"] == 0.7
 
     for forbidden in (
         "/data/temp50",
@@ -154,3 +163,16 @@ def test_evidence_fails_when_expected_metadata_recall_is_below_threshold(tmp_pat
 
     assert evidence["passed"] is False
     assert "expected_metadata_recall" in evidence["failed_checks"]
+
+
+def test_evidence_fails_when_retrieval_hit_at_3_is_below_threshold(tmp_path: Path) -> None:
+    mod = _load_module()
+    raw = _raw_report()
+    raw["golden"]["summary"]["retrieval_hit_at_3"] = 0.5
+    raw_path = tmp_path / "raw.json"
+    _write_json(raw_path, raw)
+
+    evidence = mod.build_evidence(raw_path)
+
+    assert evidence["passed"] is False
+    assert "retrieval_hit_at_3" in evidence["failed_checks"]

@@ -17,7 +17,15 @@ DEFAULT_MARKDOWN_OUT = "/tmp/plugin_corpus_closed_loop_evidence.md"
 
 SUMMARY_METRIC_KEYS = (
     "items",
+    "retrieval_mrr",
     "retrieval_recall",
+    "retrieval_hit_at_1",
+    "retrieval_hit_at_3",
+    "retrieval_hit_at_5",
+    "retrieval_hit_at_10",
+    "retrieval_hit_at_20",
+    "retrieval_ndcg_at_10",
+    "retrieval_ndcg_at_20",
     "expected_metadata_cases_total",
     "expected_metadata_hit_rate",
     "expected_metadata_recall",
@@ -128,6 +136,8 @@ def _failed_checks(
     golden: dict[str, Any],
     min_expected_metadata_hit_rate: float,
     min_expected_metadata_recall: float,
+    min_retrieval_recall: float,
+    min_retrieval_hit_at_3: float,
 ) -> list[str]:
     failed: list[str] = []
     if summary["uploaded_count"] <= 0:
@@ -146,6 +156,10 @@ def _failed_checks(
         failed.append("golden_case_count")
 
     metrics = _golden_summary(golden)
+    if _float_value(metrics.get("retrieval_recall")) < float(min_retrieval_recall):
+        failed.append("retrieval_recall")
+    if _float_value(metrics.get("retrieval_hit_at_3")) < float(min_retrieval_hit_at_3):
+        failed.append("retrieval_hit_at_3")
     if _float_value(metrics.get("expected_metadata_cases_total")) <= 0:
         failed.append("expected_metadata_cases_total")
     if _float_value(metrics.get("expected_metadata_fields_total")) <= 0:
@@ -162,6 +176,8 @@ def build_evidence(
     *,
     min_expected_metadata_hit_rate: float = 1.0,
     min_expected_metadata_recall: float = 1.0,
+    min_retrieval_recall: float = 1.0,
+    min_retrieval_hit_at_3: float = 0.8,
 ) -> dict[str, Any]:
     report = _load_json(raw_report_path)
     documents = _list_value(report.get("documents"))
@@ -173,6 +189,8 @@ def build_evidence(
         golden=golden,
         min_expected_metadata_hit_rate=float(min_expected_metadata_hit_rate),
         min_expected_metadata_recall=float(min_expected_metadata_recall),
+        min_retrieval_recall=float(min_retrieval_recall),
+        min_retrieval_hit_at_3=float(min_retrieval_hit_at_3),
     )
     return {
         "schema": SCHEMA,
@@ -248,7 +266,20 @@ def format_markdown(evidence: dict[str, Any]) -> str:
         "## Golden Retrieval",
         "",
         *_markdown_table(
-            ["cases", "created", "updated", "skipped", "errors", "metadata_hit_rate", "metadata_recall"],
+            [
+                "cases",
+                "created",
+                "updated",
+                "skipped",
+                "errors",
+                "mrr",
+                "hit@1",
+                "hit@3",
+                "hit@5",
+                "recall",
+                "metadata_hit_rate",
+                "metadata_recall",
+            ],
             [
                 [
                     _text(golden.get("case_count")),
@@ -256,6 +287,11 @@ def format_markdown(evidence: dict[str, Any]) -> str:
                     _text(import_counts.get("updated")),
                     _text(import_counts.get("skipped")),
                     _text(import_counts.get("errors")),
+                    _text(golden_summary.get("retrieval_mrr")),
+                    _text(golden_summary.get("retrieval_hit_at_1")),
+                    _text(golden_summary.get("retrieval_hit_at_3")),
+                    _text(golden_summary.get("retrieval_hit_at_5")),
+                    _text(golden_summary.get("retrieval_recall")),
                     _text(golden_summary.get("expected_metadata_hit_rate")),
                     _text(golden_summary.get("expected_metadata_recall")),
                 ]
@@ -285,6 +321,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--markdown-out", default=DEFAULT_MARKDOWN_OUT)
     parser.add_argument("--min-expected-metadata-hit-rate", type=float, default=1.0)
     parser.add_argument("--min-expected-metadata-recall", type=float, default=1.0)
+    parser.add_argument("--min-retrieval-recall", type=float, default=1.0)
+    parser.add_argument("--min-retrieval-hit-at-3", type=float, default=0.8)
     return parser
 
 
@@ -295,6 +333,8 @@ def main(argv: list[str] | None = None) -> int:
             args.input,
             min_expected_metadata_hit_rate=float(args.min_expected_metadata_hit_rate),
             min_expected_metadata_recall=float(args.min_expected_metadata_recall),
+            min_retrieval_recall=float(args.min_retrieval_recall),
+            min_retrieval_hit_at_3=float(args.min_retrieval_hit_at_3),
         )
     except Exception as exc:  # noqa: BLE001
         print(f"[plugin-corpus-closed-loop-evidence] ERROR: {exc}", file=sys.stderr)
