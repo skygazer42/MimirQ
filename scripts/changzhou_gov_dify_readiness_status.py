@@ -87,6 +87,7 @@ def _full_gate_warning_items(report: dict[str, Any]) -> list[str]:
         ),
     }
     out: list[str] = []
+    covered_case_keys: set[str] = set()
     for stage, metrics in watched_metrics.items():
         section = stages.get(stage) if isinstance(stages.get(stage), dict) else {}
         stage_summary = section.get("summary") if isinstance(section.get("summary"), dict) else {}
@@ -94,6 +95,30 @@ def _full_gate_warning_items(report: dict[str, Any]) -> list[str]:
             item = _nonzero_metric(stage_summary, metric)
             if item:
                 out.append(f"{stage}.{item}")
+                suffix = "_cases" if metric.endswith("_cases") else ""
+                metric_base = metric[: -len(suffix)] if suffix else metric
+                covered_case_keys.add(f"{stage}.{metric_base}")
+    warning_cases = full_gate.get("warning_cases") if isinstance(full_gate.get("warning_cases"), dict) else {}
+    for key, value in warning_cases.items():
+        clean_key = _text(key)
+        if not clean_key or clean_key in covered_case_keys or not isinstance(value, list):
+            continue
+        case_count = len([item for item in value if _text(item)])
+        if case_count:
+            out.append(f"{clean_key}_cases={case_count}")
+    return out
+
+
+def _full_gate_warning_case_items(report: dict[str, Any]) -> list[str]:
+    full_gate = report.get("full_gate") if isinstance(report.get("full_gate"), dict) else {}
+    warning_cases = full_gate.get("warning_cases") if isinstance(full_gate.get("warning_cases"), dict) else {}
+    out: list[str] = []
+    for key, value in warning_cases.items():
+        if not isinstance(value, list):
+            continue
+        case_ids = [_text(item) for item in value if _text(item)]
+        if case_ids:
+            out.append(f"{_text(key)}={','.join(case_ids)}")
     return out
 
 
@@ -149,6 +174,9 @@ def format_status(
     warning_items = _full_gate_warning_items(report)
     if warning_items:
         lines.append(f"Warnings: {'; '.join(warning_items)}")
+    warning_case_items = _full_gate_warning_case_items(report)
+    if warning_case_items:
+        lines.append(f"Warning cases: {'; '.join(warning_case_items)}")
     skipped = _text_list(summary.get("skipped_stages"))
     if skipped:
         lines.append(f"Skipped stages: {', '.join(skipped)}")
