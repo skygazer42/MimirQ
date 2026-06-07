@@ -1,4 +1,4 @@
-.PHONY: help init up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload web test test-web test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check api-docs-build diagnostics db-upgrade db-revision verify enterprise-checks parser-status dify-console-login dify-console-check dify-console-ensure changzhou-dify-knowledge-map-check changzhou-dify-mimirq-direct-gate changzhou-dify-external-probe changzhou-dify-full-gate changzhou-dify-readiness-summary changzhou-dify-readiness-status changzhou-dify-readiness-gate check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
+.PHONY: help init up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload web test test-web test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check api-docs-build diagnostics db-upgrade db-revision verify enterprise-checks parser-status dify-console-login dify-console-check dify-console-ensure changzhou-dify-knowledge-map-check changzhou-dify-mimirq-direct-gate changzhou-dify-external-probe changzhou-dify-workflow-lint changzhou-dify-workflow-sync-dry-run changzhou-dify-workflow-sync-apply changzhou-dify-full-gate changzhou-dify-readiness-summary changzhou-dify-readiness-status changzhou-dify-readiness-gate check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
 
 # Prefer project venv when available so local dev doesn't depend on global tooling.
 PY := python3
@@ -61,6 +61,12 @@ CHANGZHOU_DIFY_MIMIRQ_DIRECT_EXTRA_ARGS ?= --min-hit-at-1 1 --min-answer-groundi
 CHANGZHOU_DIFY_READINESS_OUT ?= /tmp/changzhou_gov_dify_readiness_summary.json
 CHANGZHOU_DIFY_KNOWLEDGE_MAP_ENV_FILE ?= .env
 CHANGZHOU_DIFY_KNOWLEDGE_MAP_OUT ?= /tmp/changzhou_gov_dify_knowledge_map_check.json
+CHANGZHOU_DIFY_WORKFLOW_LINT_OUT ?= /tmp/changzhou_gov_dify_workflow_lint.json
+CHANGZHOU_DIFY_WORKFLOW_SANITIZED_OUT ?= /tmp/changzhou_gov_dify_workflow_sanitized.json
+CHANGZHOU_DIFY_WORKFLOW_BACKUP_OUT ?= /tmp/changzhou_gov_dify_workflow_current_draft_backup.json
+CHANGZHOU_DIFY_WORKFLOW_PAYLOAD_OUT ?= /tmp/changzhou_gov_dify_workflow_sync_payload.json
+CHANGZHOU_DIFY_WORKFLOW_SYNC_OUT ?= /tmp/changzhou_gov_dify_workflow_sync.json
+CHANGZHOU_DIFY_WORKFLOW_SYNC_EXTRA_ARGS ?=
 
 help:
 	@echo "MimirQ dev commands (run from repo root):"
@@ -133,6 +139,9 @@ help:
 	@echo "  make changzhou-dify-knowledge-map-check - validate local Changzhou Dify knowledge map routes"
 	@echo "  make changzhou-dify-mimirq-direct-gate - run MimirQ-only Changzhou golden retrieval gate"
 	@echo "  make changzhou-dify-external-probe - compare Dify external hit-testing with direct MimirQ retrieval"
+	@echo "  make changzhou-dify-workflow-lint - lint and write a sanitized Changzhou Dify draft workflow JSON"
+	@echo "  make changzhou-dify-workflow-sync-dry-run - stage Changzhou Dify draft sync without writing remote state"
+	@echo "  make changzhou-dify-workflow-sync-apply - explicitly write the staged Changzhou Dify draft workflow"
 	@echo "  make changzhou-dify-full-gate - run Changzhou Dify/MimirQ remote golden gate"
 	@echo "  make changzhou-dify-readiness-gate - run external probe, full Dify/MimirQ gate, and write readiness summary"
 	@echo "  make changzhou-dify-readiness-status - print compact readiness status from the latest summary"
@@ -320,6 +329,36 @@ changzhou-dify-external-probe:
 		--timeout $(CHANGZHOU_DIFY_PROBE_TIMEOUT) \
 		--top-k $(CHANGZHOU_DIFY_PROBE_TOP_K) \
 		--out "$(CHANGZHOU_DIFY_PROBE_OUT)"
+
+changzhou-dify-workflow-lint:
+	$(PY) scripts/changzhou_gov_dify_workflow_lint.py \
+		--app-id "$(CHANGZHOU_DIFY_APP_ID)" \
+		--storage-state "$(CHANGZHOU_DIFY_STORAGE_STATE)" \
+		--cases "$(CHANGZHOU_DIFY_CASES)" \
+		--preflight-gate \
+		--out "$(CHANGZHOU_DIFY_WORKFLOW_LINT_OUT)" \
+		--patched-workflow-out "$(CHANGZHOU_DIFY_WORKFLOW_SANITIZED_OUT)"
+
+changzhou-dify-workflow-sync-dry-run:
+	$(PY) scripts/changzhou_gov_dify_workflow_sync.py \
+		--app-id "$(CHANGZHOU_DIFY_APP_ID)" \
+		--workflow-json "$(CHANGZHOU_DIFY_WORKFLOW_SANITIZED_OUT)" \
+		--storage-state "$(CHANGZHOU_DIFY_STORAGE_STATE)" \
+		--backup-out "$(CHANGZHOU_DIFY_WORKFLOW_BACKUP_OUT)" \
+		--payload-out "$(CHANGZHOU_DIFY_WORKFLOW_PAYLOAD_OUT)" \
+		--out "$(CHANGZHOU_DIFY_WORKFLOW_SYNC_OUT)" \
+		$(CHANGZHOU_DIFY_WORKFLOW_SYNC_EXTRA_ARGS)
+
+changzhou-dify-workflow-sync-apply:
+	$(PY) scripts/changzhou_gov_dify_workflow_sync.py \
+		--app-id "$(CHANGZHOU_DIFY_APP_ID)" \
+		--workflow-json "$(CHANGZHOU_DIFY_WORKFLOW_SANITIZED_OUT)" \
+		--storage-state "$(CHANGZHOU_DIFY_STORAGE_STATE)" \
+		--backup-out "$(CHANGZHOU_DIFY_WORKFLOW_BACKUP_OUT)" \
+		--payload-out "$(CHANGZHOU_DIFY_WORKFLOW_PAYLOAD_OUT)" \
+		--out "$(CHANGZHOU_DIFY_WORKFLOW_SYNC_OUT)" \
+		--apply \
+		$(CHANGZHOU_DIFY_WORKFLOW_SYNC_EXTRA_ARGS)
 
 changzhou-dify-knowledge-map-check:
 	$(PY) scripts/changzhou_gov_dify_knowledge_map_check.py \

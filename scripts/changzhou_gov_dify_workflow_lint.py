@@ -490,6 +490,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Exit non-zero only for case input violations; keep workflow warnings in the report.",
     )
+    parser.add_argument(
+        "--preflight-gate",
+        action="store_true",
+        help="Exit non-zero for the same workflow issues that block changzhou-dify-full-gate preflight.",
+    )
     parser.add_argument("--app-id", default="")
     parser.add_argument("--console-base-url", default=os.getenv("DIFY_CONSOLE_API_BASE_URL") or DEFAULT_CONSOLE_BASE_URL)
     parser.add_argument("--console-token", default=os.getenv("DIFY_CONSOLE_TOKEN") or "")
@@ -546,7 +551,11 @@ def main(argv: list[str] | None = None) -> int:
     Path(str(args.out)).write_text(text + "\n", encoding="utf-8")
     print(text)
     summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
-    if bool(args.case_inputs_only):
+    if bool(args.preflight_gate):
+        issue_count = int(summary.get("case_input_violations") or 0) + int(
+            summary.get("prompt_template_leak_warnings") or 0
+        )
+    elif bool(args.case_inputs_only):
         issue_count = int(summary.get("case_input_violations") or 0)
     else:
         issue_count = int(summary.get("hidden_required_start_variables") or 0) + int(
