@@ -29,6 +29,22 @@ from scripts.changzhou_gov_dify_trace_report import (  # noqa: E402
 )
 
 _TEMPLATE_REF_RE = re.compile(r"#([^#.\s]+)\.([^#\s]+)#")
+_PROMPT_TEMPLATE_FORBIDDEN_PHRASES = (
+    "必须按顺序包含以下标题",
+    "必须按以下格式输出常见问题",
+    "知识库内容中有",
+    "输出此部分内容",
+    "暂无相关常见问题QA知识",
+)
+_PROMPT_TEMPLATE_REPLACEMENTS = (
+    ("必须按顺序包含以下标题", "请按以下标题顺序组织答案"),
+    ("必须按以下格式输出常见问题", "请按以下格式整理常见问题"),
+    ("知识库内容中有一件事系统操作指引相关内容，输出此部分内容", "如检索结果包含一件事系统操作指引，请补充对应内容"),
+    ("知识库内容中有常见问题QA知识相关内容，输出此部分内容", "如检索结果包含常见问题QA，请整理为常见问答"),
+    ("知识库内容中有", "如检索结果包含"),
+    ("输出此部分内容", "请整理为用户可读内容"),
+    ("暂无相关常见问题QA知识", "如无相关常见问题，可省略常见问答部分"),
+)
 
 
 def _text(value: Any) -> str:
@@ -224,6 +240,90 @@ def patch_area_route_selectors(workflow: dict[str, Any]) -> tuple[dict[str, Any]
     return patched_workflow, patches
 
 
+def _prompt_template_texts(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    texts: list[dict[str, Any]] = []
+    for node_index, node in enumerate(nodes):
+        data = _node_data(node)
+        prompt_template = data.get("prompt_template")
+        if not isinstance(prompt_template, list):
+            continue
+        for prompt_index, prompt in enumerate(prompt_template):
+            if not isinstance(prompt, dict):
+                continue
+            text = _text(prompt.get("text"))
+            if not text:
+                continue
+            texts.append(
+                {
+                    "node_index": node_index,
+                    "prompt_index": prompt_index,
+                    "node_id": _text(node.get("id")),
+                    "node_title": _text(data.get("title")),
+                    "node_type": _text(data.get("type")),
+                    "path": f"graph.nodes[{node_index}].data.prompt_template[{prompt_index}].text",
+                    "text": text,
+                }
+            )
+    return texts
+
+
+def _forbidden_prompt_phrases(text: str) -> list[str]:
+    return [phrase for phrase in _PROMPT_TEMPLATE_FORBIDDEN_PHRASES if phrase in text]
+
+
+def _prompt_template_leak_warnings(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    warnings: list[dict[str, Any]] = []
+    for item in _prompt_template_texts(nodes):
+        forbidden = _forbidden_prompt_phrases(_text(item.get("text")))
+        if not forbidden:
+            continue
+        warnings.append(
+            {
+                "node_id": item["node_id"],
+                "node_title": item["node_title"],
+                "node_type": item["node_type"],
+                "path": item["path"],
+                "forbidden_phrases": forbidden,
+                "recommendation": (
+                    "Rewrite the prompt as model instructions only; "
+                    "do not include user-visible template-control phrases."
+                ),
+            }
+        )
+    return warnings
+
+
+def _sanitize_prompt_template_text(text: str) -> str:
+    cleaned = text
+    for old, new in _PROMPT_TEMPLATE_REPLACEMENTS:
+        cleaned = cleaned.replace(old, new)
+    return cleaned
+
+
+def patch_prompt_template_leaks(workflow: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Return a workflow copy with prompt-template control phrases rewritten."""
+    patched_workflow = copy.deepcopy(workflow)
+    patches: list[dict[str, Any]] = []
+    nodes = _graph_nodes(patched_workflow)
+    for item in _prompt_template_texts(nodes):
+        text = _text(item.get("text"))
+        forbidden = _forbidden_prompt_phrases(text)
+        if not forbidden:
+            continue
+        node_index = int(item["node_index"])
+        prompt_index = int(item["prompt_index"])
+        nodes[node_index]["data"]["prompt_template"][prompt_index]["text"] = _sanitize_prompt_template_text(text)
+        patches.append(
+            {
+                "node_id": item["node_id"],
+                "node_title": item["node_title"],
+                "path": item["path"],
+                "forbidden_phrases": forbidden,
+            }
+        )
+    return patched_workflow, patches
+
+
 def _iter_references(value: Any, *, path: str) -> list[tuple[str, str]]:
     references: list[tuple[str, str]] = []
     if isinstance(value, str):
@@ -288,6 +388,7 @@ def lint_workflow(workflow: dict[str, Any], *, cases: list[dict[str, Any]] | Non
     nodes = _graph_nodes(workflow)
     start_variables = _start_variables(nodes)
     area_route_warnings = _area_route_warnings(nodes, start_variables)
+    prompt_template_leak_warnings = _prompt_template_leak_warnings(nodes)
     references_by_selector: dict[str, list[dict[str, Any]]] = {selector: [] for selector in start_variables}
 
     for node_index, node in enumerate(nodes):
@@ -339,6 +440,9 @@ def lint_workflow(workflow: dict[str, Any], *, cases: list[dict[str, Any]] | Non
     if area_route_warnings:
         summary["area_route_warnings"] = len(area_route_warnings)
         report["area_route_warnings"] = area_route_warnings
+    if prompt_template_leak_warnings:
+        summary["prompt_template_leak_warnings"] = len(prompt_template_leak_warnings)
+        report["prompt_template_leak_warnings"] = prompt_template_leak_warnings
     if cases is not None:
         case_violations = _case_input_violations(cases, hidden_required)
         summary["case_inputs_checked"] = len(cases)
@@ -424,6 +528,7 @@ def main(argv: list[str] | None = None) -> int:
         report = lint_workflow(workflow, cases=cases)
         if _text(args.patched_workflow_out):
             patched_workflow, patches = patch_area_route_selectors(workflow)
+            patched_workflow, prompt_patches = patch_prompt_template_leaks(patched_workflow)
             Path(str(args.patched_workflow_out)).write_text(
                 json.dumps(patched_workflow, ensure_ascii=False, indent=2) + "\n",
                 encoding="utf-8",
@@ -431,6 +536,8 @@ def main(argv: list[str] | None = None) -> int:
             summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
             summary["area_route_patches"] = len(patches)
             report["area_route_patches"] = patches
+            summary["prompt_template_leak_patches"] = len(prompt_patches)
+            report["prompt_template_leak_patches"] = prompt_patches
     except Exception as exc:  # noqa: BLE001
         print(f"[changzhou-dify-workflow-lint] ERR: {exc}", file=sys.stderr)
         return 1
@@ -444,6 +551,8 @@ def main(argv: list[str] | None = None) -> int:
     else:
         issue_count = int(summary.get("hidden_required_start_variables") or 0) + int(
             summary.get("case_input_violations") or 0
+        ) + int(
+            summary.get("prompt_template_leak_warnings") or 0
         )
     return 0 if issue_count == 0 else 1
 

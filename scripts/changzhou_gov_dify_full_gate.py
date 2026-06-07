@@ -185,7 +185,11 @@ def run_gate(
     case_count = len(cases)
     _emit_progress(progress_fn, {"stage": "preflight", "event": "start", "cases": case_count})
     preflight = lint_workflow(workflow, cases=cases)
-    preflight_passed = int((preflight.get("summary") or {}).get("case_input_violations") or 0) == 0
+    preflight_summary = preflight.get("summary") if isinstance(preflight.get("summary"), dict) else {}
+    preflight_passed = (
+        int(preflight_summary.get("case_input_violations") or 0) == 0
+        and int(preflight_summary.get("prompt_template_leak_warnings") or 0) == 0
+    )
     stages["preflight"] = _stage(preflight_passed, preflight)
     _emit_progress(
         progress_fn,

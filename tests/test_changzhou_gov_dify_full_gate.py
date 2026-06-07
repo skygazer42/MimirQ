@@ -49,6 +49,17 @@ def _workflow() -> dict:
     }
 
 
+def _prompt_leak_workflow() -> dict:
+    workflow = _workflow()
+    workflow["graph"]["nodes"][1]["data"]["prompt_template"] = [
+        {
+            "role": "system",
+            "text": "必须按顺序包含以下标题：📌【涉及事项】（知识库内容中有常见问题QA知识相关内容，输出此部分内容）",
+        }
+    ]
+    return workflow
+
+
 def test_run_gate_stops_before_dify_calls_when_case_inputs_are_missing() -> None:
     mod = _load_module()
 
@@ -72,6 +83,31 @@ def test_run_gate_stops_before_dify_calls_when_case_inputs_are_missing() -> None
     }
     assert report["stages"]["preflight"]["passed"] is False
     assert report["stages"]["preflight"]["summary"]["case_input_violations"] == 1
+
+
+def test_run_gate_stops_before_dify_calls_when_prompt_template_leaks() -> None:
+    mod = _load_module()
+
+    def must_not_collect(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+        raise AssertionError("collect should not run")
+
+    report = mod.run_gate(
+        cases=[{"id": "ok-case", "query": "q", "dify_inputs": {"areaName": "经开区"}}],
+        workflow=_prompt_leak_workflow(),
+        collect_answers_fn=must_not_collect,
+        live_eval_fn=lambda **_kwargs: {},
+        trace_report_fn=lambda **_kwargs: {},
+        thresholds={"generated_answer_key_point_recall": 1.0},
+        maximums={"generated_answer_fallback_rate": 0.0},
+    )
+
+    assert report["summary"] == {
+        "passed": False,
+        "failed_stages": ["preflight"],
+        "stage_count": 1,
+    }
+    assert report["stages"]["preflight"]["passed"] is False
+    assert report["stages"]["preflight"]["summary"]["prompt_template_leak_warnings"] == 1
 
 
 def test_run_gate_aggregates_collect_eval_and_trace_success() -> None:
