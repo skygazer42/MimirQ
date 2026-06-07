@@ -9,6 +9,7 @@ request reaches MimirQ retrieval. This script keeps that boundary diagnosable.
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import os
 import re
@@ -167,6 +168,60 @@ def _area_route_warnings(nodes: list[dict[str, Any]], start_variables: dict[str,
                 }
             )
     return warnings
+
+
+def patch_area_route_selectors(workflow: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Return a workflow copy with regional route conditions bound to Start.areaName."""
+    patched_workflow = copy.deepcopy(workflow)
+    original_nodes = _graph_nodes(workflow)
+    start_variables = _start_variables(original_nodes)
+    warnings = _area_route_warnings(original_nodes, start_variables)
+    if not warnings:
+        return patched_workflow, []
+
+    selectors_by_route: dict[str, dict[str, str]] = {}
+    for warning in warnings:
+        routing_node_id = _text(warning.get("routing_node_id"))
+        selector = _text(warning.get("selector"))
+        expected_selector = _text(warning.get("expected_selector"))
+        if not routing_node_id or not selector or not expected_selector:
+            continue
+        selectors_by_route.setdefault(routing_node_id, {})[selector] = expected_selector
+
+    patches: list[dict[str, Any]] = []
+    for node in _graph_nodes(patched_workflow):
+        node_id = _text(node.get("id"))
+        replacements = selectors_by_route.get(node_id)
+        if not replacements:
+            continue
+        data = _node_data(node)
+        cases = data.get("cases") if isinstance(data.get("cases"), list) else []
+        patched_counts = {selector: 0 for selector in replacements}
+        for case in cases:
+            if not isinstance(case, dict):
+                continue
+            for condition in case.get("conditions") or []:
+                if not isinstance(condition, dict):
+                    continue
+                selector = _selector_text(condition.get("variable_selector"))
+                expected_selector = replacements.get(selector)
+                if not expected_selector:
+                    continue
+                condition["variable_selector"] = expected_selector.split(".", 1)
+                patched_counts[selector] += 1
+        for selector, count in patched_counts.items():
+            if count <= 0:
+                continue
+            patches.append(
+                {
+                    "routing_node_id": node_id,
+                    "routing_node_title": _text(data.get("title")),
+                    "from_selector": selector,
+                    "to_selector": replacements[selector],
+                    "conditions_patched": count,
+                }
+            )
+    return patched_workflow, patches
 
 
 def _iter_references(value: Any, *, path: str) -> list[tuple[str, str]]:
@@ -337,6 +392,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--storage-state", default=DEFAULT_STORAGE_STATE)
     parser.add_argument("--timeout", type=float, default=30.0)
     parser.add_argument("--out", required=True)
+    parser.add_argument(
+        "--patched-workflow-out",
+        default="",
+        help="Write a local workflow JSON copy with regional route conditions patched to Start.areaName.",
+    )
     return parser
 
 
@@ -362,6 +422,15 @@ def main(argv: list[str] | None = None) -> int:
             )
         cases = _load_cases(str(args.cases)) if _text(args.cases) else None
         report = lint_workflow(workflow, cases=cases)
+        if _text(args.patched_workflow_out):
+            patched_workflow, patches = patch_area_route_selectors(workflow)
+            Path(str(args.patched_workflow_out)).write_text(
+                json.dumps(patched_workflow, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
+            summary["area_route_patches"] = len(patches)
+            report["area_route_patches"] = patches
     except Exception as exc:  # noqa: BLE001
         print(f"[changzhou-dify-workflow-lint] ERR: {exc}", file=sys.stderr)
         return 1
