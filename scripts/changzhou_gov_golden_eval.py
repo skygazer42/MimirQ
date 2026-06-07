@@ -33,12 +33,19 @@ _QUALITY_GATE_METRICS = (
     "generated_answer_grounding_rate",
     "generated_answer_key_point_recall",
     "generated_answer_context_supported_rate",
+    "generated_answer_policy_clean_rate",
 )
 _QUALITY_GATE_MAX_METRICS = ("generated_answer_fallback_rate",)
 _FALLBACK_ANSWER_MARKERS = (
     "只能答复常州市政务服务领域",
     "超出领域的问题",
     "暂时无法回答",
+)
+_GENERATED_ANSWER_FORBIDDEN_PHRASES = (
+    "必须按顺序包含以下标题",
+    "知识库内容中有",
+    "输出此部分内容",
+    "暂无相关常见问题QA知识",
 )
 
 
@@ -246,6 +253,11 @@ def _is_fallback_answer(answer: str) -> bool:
     return bool(text) and all(marker in text for marker in _FALLBACK_ANSWER_MARKERS)
 
 
+def _forbidden_generated_answer_phrases(answer: str) -> list[str]:
+    text = _text(answer)
+    return [phrase for phrase in _GENERATED_ANSWER_FORBIDDEN_PHRASES if phrase in text]
+
+
 def evaluate_generated_answer_quality(
     case: dict[str, Any],
     records: list[dict[str, Any]],
@@ -255,6 +267,8 @@ def evaluate_generated_answer_quality(
     if not answer:
         return {"provided": False}
     fallback = _is_fallback_answer(answer)
+    forbidden_phrases = _forbidden_generated_answer_phrases(answer)
+    policy_clean = not forbidden_phrases
     key_points = _answer_key_points(case)
     aliases = _answer_key_point_aliases(case)
     missing = [point for point in key_points if not _quality_point_or_alias_in_text(point, answer, aliases)]
@@ -274,8 +288,10 @@ def evaluate_generated_answer_quality(
         "key_points_total": total,
         "key_points_matched": matched,
         "key_point_recall": recall,
-        "grounded": (not fallback) and recall >= _case_min_answer_recall(case),
+        "grounded": (not fallback) and policy_clean and recall >= _case_min_answer_recall(case),
         "context_supported": context_supported,
+        "policy_clean": policy_clean,
+        "forbidden_phrases": forbidden_phrases,
         "missing_key_points": missing,
     }
 
@@ -360,6 +376,11 @@ def summarize_results(results: list[dict[str, Any]]) -> dict[str, Any]:
             if generated_items
             else 0.0
         ),
+        "generated_answer_policy_clean_rate": (
+            sum(1 for item in generated_items if bool((item or {}).get("policy_clean", True))) / len(generated_items)
+            if generated_items
+            else 0.0
+        ),
         "generated_answer_missing_cases": sum(1 for item in generated_items if not bool((item or {}).get("grounded"))),
         "generated_answer_fallback_rate": (
             sum(1 for item in generated_items if bool((item or {}).get("fallback"))) / len(generated_items)
@@ -367,6 +388,9 @@ def summarize_results(results: list[dict[str, Any]]) -> dict[str, Any]:
             else 0.0
         ),
         "generated_answer_fallback_cases": sum(1 for item in generated_items if bool((item or {}).get("fallback"))),
+        "generated_answer_policy_violation_cases": sum(
+            1 for item in generated_items if not bool((item or {}).get("policy_clean", True))
+        ),
     }
 
 
@@ -557,6 +581,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--min-generated-answer-grounding-rate", type=float, default=None)
     parser.add_argument("--min-generated-answer-key-point-recall", type=float, default=None)
     parser.add_argument("--min-generated-answer-context-supported-rate", type=float, default=None)
+    parser.add_argument("--min-generated-answer-policy-clean-rate", type=float, default=None)
     parser.add_argument("--max-generated-answer-fallback-rate", type=float, default=None)
     parser.add_argument("--out", default="")
     return parser
@@ -573,6 +598,7 @@ def _thresholds_from_args(args: argparse.Namespace) -> dict[str, float]:
         "generated_answer_grounding_rate": args.min_generated_answer_grounding_rate,
         "generated_answer_key_point_recall": args.min_generated_answer_key_point_recall,
         "generated_answer_context_supported_rate": args.min_generated_answer_context_supported_rate,
+        "generated_answer_policy_clean_rate": args.min_generated_answer_policy_clean_rate,
     }
     return {metric: float(value) for metric, value in pairs.items() if value is not None}
 

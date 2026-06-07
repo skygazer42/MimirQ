@@ -183,6 +183,7 @@ python scripts/changzhou_gov_golden_eval.py \
   --min-generated-answer-grounding-rate 1 \
   --min-generated-answer-key-point-recall 1 \
   --min-generated-answer-context-supported-rate 1 \
+  --min-generated-answer-policy-clean-rate 1 \
   --max-generated-answer-fallback-rate 0 \
   --out /tmp/changzhou_gov_golden_eval_with_answers.json
 ```
@@ -194,6 +195,7 @@ python scripts/changzhou_gov_golden_eval.py \
 - `hit_at_1` / `hit_at_3` / `mrr`：检索排序是否命中正确 chunk。
 - `answer_grounding_rate` / `answer_key_point_recall`：top-k 证据是否足够回答。
 - `generated_answer_grounding_rate` / `generated_answer_key_point_recall`：真实生成答案是否覆盖关键答案点。
+- `generated_answer_policy_clean_rate`：真实生成答案是否避免泄漏内部模板/提示词约束。
 - `generated_answer_fallback_rate`：真实生成答案是否退回“小畅只能答复...”兜底话术。
 
 生成答案评分会规范化标点、emoji、空白和 `【字段名】` 这类 Dify 模板格式，避免把
@@ -287,11 +289,11 @@ python scripts/changzhou_gov_dify_full_gate.py \
 ```
 
 该 gate 默认要求 `hit_at_3=1.0`、直接证据关键点召回 `1.0`、生成答案关键点召回
-`1.0`、生成答案 fallback 率 `0`，并要求 Dify trace 无空检索/兜底/trace 错误。
+`1.0`、生成答案 policy clean 率 `1.0`、生成答案 fallback 率 `0`，并要求 Dify trace 无空检索/兜底/trace 错误。
 `--summary-out` 只保留各阶段结论、关键指标和 artifact 路径，适合留档或发给团队快速确认。
 如果 gate 提前失败，summary 只列出已经实际写出的阶段 artifact，不会生成空的 answers/eval/trace 报告。
 如需跑更宽松的边界套件，可以显式传入 `--min-hit-at-3`、
-`--min-generated-answer-key-point-recall`、`--max-generated-answer-fallback-rate`
+`--min-generated-answer-key-point-recall`、`--min-generated-answer-policy-clean-rate`、`--max-generated-answer-fallback-rate`
 等阈值覆盖默认 gate。
 
 如果需要区分“workflow 分支没进正确节点”和“Dify external knowledge runtime

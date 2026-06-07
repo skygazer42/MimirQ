@@ -52,6 +52,7 @@ DEFAULT_THRESHOLDS = {
     "generated_answer_grounding_rate": 1.0,
     "generated_answer_key_point_recall": 1.0,
     "generated_answer_context_supported_rate": 1.0,
+    "generated_answer_policy_clean_rate": 1.0,
 }
 DEFAULT_MAXIMUMS = {"generated_answer_fallback_rate": 0.0}
 _CONSOLE_LOGIN_HINT = (
@@ -384,6 +385,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--min-generated-answer-grounding-rate", type=float, default=None)
     parser.add_argument("--min-generated-answer-key-point-recall", type=float, default=None)
     parser.add_argument("--min-generated-answer-context-supported-rate", type=float, default=None)
+    parser.add_argument("--min-generated-answer-policy-clean-rate", type=float, default=None)
     parser.add_argument("--max-generated-answer-fallback-rate", type=float, default=None)
     parser.add_argument("--out", required=True)
     parser.add_argument("--answers-out", default="")
@@ -405,6 +407,7 @@ def _thresholds_from_args(args: argparse.Namespace) -> dict[str, float]:
         "generated_answer_grounding_rate": args.min_generated_answer_grounding_rate,
         "generated_answer_key_point_recall": args.min_generated_answer_key_point_recall,
         "generated_answer_context_supported_rate": args.min_generated_answer_context_supported_rate,
+        "generated_answer_policy_clean_rate": args.min_generated_answer_policy_clean_rate,
     }
     thresholds.update({metric: float(value) for metric, value in pairs.items() if value is not None})
     return thresholds
