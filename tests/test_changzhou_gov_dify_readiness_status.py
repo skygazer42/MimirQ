@@ -92,6 +92,7 @@ def test_format_status_prints_non_blocking_full_gate_warnings() -> None:
         "summary": {"passed": True},
         "full_gate": {
             "warning_cases": {
+                "eval.generated_answer_missing": ["city-car-replacement-subsidy"],
                 "trace.route_compensated": [
                     "xinbei-social-card-reissue-location",
                     "jingkai-social-card-reissue-location",
@@ -106,6 +107,12 @@ def test_format_status_prints_non_blocking_full_gate_warnings() -> None:
                 "dify_area_extractor_empty": ["xinbei-social-card-reissue-location"],
             },
             "warning_diagnosis_details": {
+                "eval.generated_answer_missing": {
+                    "city-car-replacement-subsidy": [
+                        "grounded=false",
+                        "missing_key_points=2025年补贴申请",
+                    ]
+                },
                 "dify_area_extractor_empty": {
                     "xinbei-social-card-reissue-location": [
                         "区域提取器: Failed to extract result from function call or text response, using empty result.",
@@ -115,7 +122,7 @@ def test_format_status_prints_non_blocking_full_gate_warnings() -> None:
             },
             "stages": {
                 "preflight": {"summary": {"area_route_warnings": 1, "case_input_violations": 0}},
-                "eval": {"summary": {"generated_answer_missing_cases": 0, "generated_answer_fallback_cases": 0}},
+                "eval": {"summary": {"generated_answer_missing_cases": 1, "generated_answer_fallback_cases": 0}},
                 "trace": {
                     "summary": {
                         "node_route_mismatch_cases": 3,
@@ -135,12 +142,14 @@ def test_format_status_prints_non_blocking_full_gate_warnings() -> None:
 
     assert (
         "Warnings: preflight.area_route_warnings=1; "
+        "eval.generated_answer_missing_cases=1; "
         "trace.node_route_mismatch_cases=3; "
         "trace.route_compensated_cases=3; "
         "trace.region_mismatch_cases=3"
     ) in text
     assert (
-        "Warning cases: trace.route_compensated=xinbei-social-card-reissue-location,jingkai-social-card-reissue-location; "
+        "Warning cases: eval.generated_answer_missing=city-car-replacement-subsidy; "
+        "trace.route_compensated=xinbei-social-card-reissue-location,jingkai-social-card-reissue-location; "
         "trace.region_mismatch=xinbei-social-card-reissue-location"
     ) in text
     assert (
@@ -149,7 +158,9 @@ def test_format_status_prints_non_blocking_full_gate_warnings() -> None:
         "dify_area_extractor_empty=xinbei-social-card-reissue-location"
     ) in text
     assert (
-        "Warning detail: dify_area_extractor_empty=xinbei-social-card-reissue-location["
+        "Warning detail: eval.generated_answer_missing=city-car-replacement-subsidy["
+        "grounded=false | missing_key_points=2025年补贴申请]; "
+        "dify_area_extractor_empty=xinbei-social-card-reissue-location["
         "区域提取器: Failed to extract result from function call or text response, using empty result. | "
         "区域提取器: area=<empty>]"
     ) in text

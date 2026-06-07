@@ -133,6 +133,25 @@ def _trace_warning_cases(report: dict[str, Any]) -> dict[str, list[str]]:
     return warning_cases
 
 
+def _eval_warning_cases(report: dict[str, Any]) -> dict[str, list[str]]:
+    results = report.get("results") if isinstance(report.get("results"), list) else []
+    warning_cases: dict[str, list[str]] = {}
+    for item in results:
+        if not isinstance(item, dict):
+            continue
+        case_id = _text(item.get("id") or item.get("case_id"))
+        if not case_id:
+            continue
+        quality = item.get("generated_answer_quality")
+        if not isinstance(quality, dict) or quality.get("provided") is not True:
+            continue
+        if quality.get("grounded") is False:
+            warning_cases.setdefault("eval.generated_answer_missing", []).append(case_id)
+        if quality.get("fallback") is True:
+            warning_cases.setdefault("eval.generated_answer_fallback", []).append(case_id)
+    return warning_cases
+
+
 def _region_extractor_empty(item: dict[str, Any]) -> bool:
     regions = item.get("regions") if isinstance(item.get("regions"), list) else []
     for region in regions:
@@ -232,6 +251,53 @@ def _trace_warning_diagnosis_details(report: dict[str, Any]) -> dict[str, dict[s
     return details
 
 
+def _eval_warning_diagnosis_details(report: dict[str, Any]) -> dict[str, dict[str, list[str]]]:
+    results = report.get("results") if isinstance(report.get("results"), list) else []
+    details: dict[str, dict[str, list[str]]] = {}
+    for item in results:
+        if not isinstance(item, dict):
+            continue
+        case_id = _text(item.get("id") or item.get("case_id"))
+        if not case_id:
+            continue
+        quality = item.get("generated_answer_quality")
+        if not isinstance(quality, dict) or quality.get("provided") is not True:
+            continue
+        if quality.get("grounded") is False:
+            case_details = ["grounded=false"]
+            missing_key_points = [
+                _text(value)
+                for value in quality.get("missing_key_points", [])
+                if _text(value)
+            ] if isinstance(quality.get("missing_key_points"), list) else []
+            if missing_key_points:
+                case_details.append(f"missing_key_points={','.join(missing_key_points)}")
+            details.setdefault("eval.generated_answer_missing", {})[case_id] = case_details
+        if quality.get("fallback") is True:
+            details.setdefault("eval.generated_answer_fallback", {})[case_id] = ["fallback=true"]
+    return details
+
+
+def _merge_case_map(*maps: dict[str, list[str]]) -> dict[str, list[str]]:
+    merged: dict[str, list[str]] = {}
+    for item_map in maps:
+        for key, values in item_map.items():
+            for value in values:
+                _append_unique(merged.setdefault(key, []), value)
+    return merged
+
+
+def _merge_detail_map(*maps: dict[str, dict[str, list[str]]]) -> dict[str, dict[str, list[str]]]:
+    merged: dict[str, dict[str, list[str]]] = {}
+    for item_map in maps:
+        for key, cases in item_map.items():
+            for case_id, values in cases.items():
+                target_values = merged.setdefault(key, {}).setdefault(case_id, [])
+                for value in values:
+                    _append_unique(target_values, value)
+    return merged
+
+
 def _with_status(section: dict[str, Any], *, blocker: str) -> dict[str, Any]:
     if blocker:
         return {"passed": False, "status": "skipped", "blocked_by": blocker}
@@ -295,17 +361,26 @@ def build_readiness_summary(
     console_section = _console_auth_section(console_auth or {}) if console_auth is not None else None
     external_section = _external_probe_section(external_probe)
     full_section = _full_gate_section(full_gate_summary)
+    eval_report = (artifact_reports or {}).get("eval", {})
     trace_report = (artifact_reports or {}).get("trace", {})
     if isinstance(trace_report, dict):
-        warning_cases = _trace_warning_cases(trace_report)
-        if warning_cases:
-            full_section["warning_cases"] = warning_cases
         warning_diagnoses = _trace_warning_diagnoses(trace_report)
         if warning_diagnoses:
             full_section["warning_diagnoses"] = warning_diagnoses
-        warning_diagnosis_details = _trace_warning_diagnosis_details(trace_report)
-        if warning_diagnosis_details:
-            full_section["warning_diagnosis_details"] = warning_diagnosis_details
+    warning_case_maps: list[dict[str, list[str]]] = []
+    warning_detail_maps: list[dict[str, dict[str, list[str]]]] = []
+    if isinstance(eval_report, dict):
+        warning_case_maps.append(_eval_warning_cases(eval_report))
+        warning_detail_maps.append(_eval_warning_diagnosis_details(eval_report))
+    if isinstance(trace_report, dict):
+        warning_case_maps.append(_trace_warning_cases(trace_report))
+        warning_detail_maps.append(_trace_warning_diagnosis_details(trace_report))
+    warning_cases = _merge_case_map(*warning_case_maps)
+    if warning_cases:
+        full_section["warning_cases"] = warning_cases
+    warning_diagnosis_details = _merge_detail_map(*warning_detail_maps)
+    if warning_diagnosis_details:
+        full_section["warning_diagnosis_details"] = warning_diagnosis_details
     staged_sections: list[tuple[str, dict[str, Any]]] = []
     if knowledge_section is not None:
         staged_sections.append(("knowledge_map", knowledge_section))

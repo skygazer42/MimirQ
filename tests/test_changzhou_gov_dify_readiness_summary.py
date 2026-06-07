@@ -361,7 +361,25 @@ def test_main_collects_artifact_generated_at_values(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     answers.write_text(json.dumps({"generated_at": "2026-06-07T01:01:00Z"}), encoding="utf-8")
-    eval_report.write_text(json.dumps({"generated_at": "2026-06-07T01:02:00Z"}), encoding="utf-8")
+    eval_report.write_text(
+        json.dumps(
+            {
+                "generated_at": "2026-06-07T01:02:00Z",
+                "results": [
+                    {
+                        "id": "city-car-replacement-subsidy",
+                        "generated_answer_quality": {
+                            "provided": True,
+                            "fallback": False,
+                            "grounded": False,
+                            "missing_key_points": ["2025年补贴申请"],
+                        },
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
     trace.write_text(
         json.dumps(
             {
@@ -433,6 +451,7 @@ def test_main_collects_artifact_generated_at_values(tmp_path: Path) -> None:
         "full_gate": "2026-06-07T01:04:00Z",
     }
     assert report["full_gate"]["warning_cases"] == {
+        "eval.generated_answer_missing": ["city-car-replacement-subsidy"],
         "trace.node_route_mismatch": ["xinbei-social-card-reissue-location"],
         "trace.route_compensated": ["xinbei-social-card-reissue-location"],
         "trace.region_mismatch": ["xinbei-social-card-reissue-location"],
@@ -442,6 +461,12 @@ def test_main_collects_artifact_generated_at_values(tmp_path: Path) -> None:
         "dify_area_extractor_empty": ["xinbei-social-card-reissue-location"],
     }
     assert report["full_gate"]["warning_diagnosis_details"] == {
+        "eval.generated_answer_missing": {
+            "city-car-replacement-subsidy": [
+                "grounded=false",
+                "missing_key_points=2025年补贴申请",
+            ]
+        },
         "dify_area_extractor_empty": {
             "xinbei-social-card-reissue-location": [
                 "区域提取器: region=未知",
