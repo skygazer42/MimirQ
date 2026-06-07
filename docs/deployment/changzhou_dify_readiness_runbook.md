@@ -49,6 +49,21 @@ make changzhou-dify-readiness-gate \
   CHANGZHOU_DIFY_MIMIRQ_BASE_URL="$CHANGZHOU_DIFY_MIMIRQ_BASE_URL"
 ```
 
+交付/协作时建议使用静默版，避免终端刷出原始 query、生成答案和证据正文：
+
+```bash
+DIFY_CONSOLE_EMAIL="$DIFY_CONSOLE_EMAIL" \
+DIFY_CONSOLE_PASSWORD_FILE="$DIFY_CONSOLE_PASSWORD_FILE" \
+make changzhou-dify-readiness-gate-quiet \
+  CHANGZHOU_DIFY_MIMIRQ_BASE_URL="$CHANGZHOU_DIFY_MIMIRQ_BASE_URL"
+```
+
+静默版会把 raw stdout/stderr 写到本机：
+
+- `/tmp/changzhou_gov_dify_readiness_gate.log`
+
+该 log 只用于本机排障，不应作为可分享交付材料。
+
 通过标准：
 
 - `summary.passed=true`
@@ -84,6 +99,15 @@ make changzhou-dify-readiness-evidence
 
 ```bash
 make changzhou-gov-delivery-pack
+```
+
+若需要先刷新远端 readiness gate 再生成交付总索引，使用：
+
+```bash
+DIFY_CONSOLE_EMAIL="$DIFY_CONSOLE_EMAIL" \
+DIFY_CONSOLE_PASSWORD_FILE="$DIFY_CONSOLE_PASSWORD_FILE" \
+make changzhou-gov-delivery-pack-refresh \
+  CHANGZHOU_DIFY_MIMIRQ_BASE_URL="$CHANGZHOU_DIFY_MIMIRQ_BASE_URL"
 ```
 
 输出：
@@ -145,6 +169,7 @@ readiness summary 生成时间不超过 30 分钟，超时会标记 `readiness_f
 - `/tmp/changzhou_gov_dify_full_gate_trace.json`
 - `/tmp/changzhou_gov_dify_readiness_summary.json`
 - `/tmp/changzhou_gov_dify_readiness_evidence.md`
+- `/tmp/changzhou_gov_dify_readiness_gate.log`
 - `/tmp/changzhou_gov_plugin_chunk_report.json`
 - `/tmp/changzhou_gov_plugin_chunk_report.md`
 - `/tmp/changzhou_gov_delivery_pack.json`

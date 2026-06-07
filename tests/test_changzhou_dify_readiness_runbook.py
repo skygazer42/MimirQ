@@ -8,9 +8,11 @@ def test_changzhou_dify_readiness_runbook_documents_reproducible_gate_flow() -> 
 
     assert "# Changzhou Dify/MimirQ Readiness Runbook" in text
     assert "make changzhou-dify-readiness-gate" in text
+    assert "make changzhou-dify-readiness-gate-quiet" in text
     assert "make changzhou-dify-readiness-status" in text
     assert "make changzhou-dify-readiness-evidence" in text
     assert "make changzhou-gov-delivery-pack" in text
+    assert "make changzhou-gov-delivery-pack-refresh" in text
     assert "make changzhou-dify-workflow-lint" in text
     assert "make changzhou-dify-workflow-sync-dry-run" in text
     assert "make changzhou-dify-workflow-sync-apply" in text
@@ -19,6 +21,7 @@ def test_changzhou_dify_readiness_runbook_documents_reproducible_gate_flow() -> 
     assert "CHANGZHOU_DIFY_MIMIRQ_BASE_URL" in text
     assert "/tmp/changzhou_gov_dify_readiness_summary.json" in text
     assert "/tmp/changzhou_gov_dify_readiness_evidence.md" in text
+    assert "/tmp/changzhou_gov_dify_readiness_gate.log" in text
     assert "/tmp/changzhou_gov_plugin_chunk_report.md" in text
     assert "/tmp/changzhou_gov_delivery_pack.md" in text
     assert "/tmp/changzhou_gov_dify_workflow_current_draft_backup.json" in text
