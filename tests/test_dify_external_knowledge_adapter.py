@@ -416,6 +416,61 @@ def test_dify_retrieval_frontloads_enumerated_options_from_existing_answer_hints
     assert content.endswith(full_content)
 
 
+def test_dify_retrieval_frontloads_options_with_closing_parenthesis_markers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    token = "dify-test-token"
+    dataset_id = uuid.uuid4()
+    full_content = "答案：服务支持两种入口：1）网页端入口；2）移动端入口。"
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        f'{{"city": "{dataset_id}"}}',
+        raising=False,
+    )
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+
+    async def _fake_retrieve_dataset_citations(**_kwargs):  # noqa: ANN003, ANN202
+        return [
+            {
+                "chunk_content": full_content,
+                "relevance_score": 0.73,
+                "document_name": "入口说明.txt",
+                "chunk_id": str(uuid.uuid4()),
+                "dataset_id": str(dataset_id),
+            }
+        ]
+
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/integrations/dify/retrieval",
+        headers=_auth(token),
+        json={
+            "knowledge_id": "city",
+            "query": "有哪些入口",
+            "retrieval_setting": {"top_k": 1, "score_threshold": 0.0},
+        },
+    )
+
+    assert res.status_code == 200, res.text
+    content = res.json()["records"][0]["content"]
+    first_line = content.splitlines()[0]
+    assert first_line == "必答要点：回答申请/入口/类型类问题时必须保留这些选项名称：网页端入口、移动端入口"
+    assert content.endswith(full_content)
+
+
 def test_dify_retrieval_does_not_treat_numbered_process_steps_as_answer_options(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

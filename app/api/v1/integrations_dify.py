@@ -637,7 +637,15 @@ def _answer_hints_from_fields(fields: dict[str, str], *, query: str = "") -> lis
 
 
 def _find_numbered_marker(text: str, number: int, *, start: int) -> tuple[int, str]:
-    markers = (f"{number}.", f"{number}、", f"{number}．", f"({number})", f"（{number}）")
+    markers = (
+        f"{number}.",
+        f"{number}、",
+        f"{number}．",
+        f"{number})",
+        f"{number}）",
+        f"({number})",
+        f"（{number}）",
+    )
     best_index = -1
     best_marker = ""
     for marker in markers:
