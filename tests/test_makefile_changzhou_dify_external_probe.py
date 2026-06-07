@@ -78,6 +78,27 @@ def test_dify_console_check_target_writes_report() -> None:
     assert '--out "/tmp/auth.json"' in command
 
 
+def test_changzhou_dify_readiness_status_target_is_overridable() -> None:
+    result = subprocess.run(
+        [
+            "make",
+            "-n",
+            "changzhou-dify-readiness-status",
+            "CHANGZHOU_DIFY_READINESS_OUT=/tmp/readiness.json",
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    command = result.stdout
+    assert "scripts/changzhou_gov_dify_readiness_status.py" in command
+    assert '--summary "/tmp/readiness.json"' in command
+    assert "|| true" in command
+
+
 def test_changzhou_dify_readiness_gate_runs_probe_before_full_gate() -> None:
     result = subprocess.run(
         [
