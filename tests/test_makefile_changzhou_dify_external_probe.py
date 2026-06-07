@@ -91,6 +91,44 @@ def test_changzhou_gov_delivery_pack_target_is_overridable() -> None:
     assert '--markdown-out "/tmp/pack.md"' in command
 
 
+def test_changzhou_dify_readiness_gate_quiet_redirects_raw_output_to_log() -> None:
+    result = subprocess.run(
+        [
+            "make",
+            "-n",
+            "changzhou-dify-readiness-gate-quiet",
+            "CHANGZHOU_DIFY_READINESS_LOG=/tmp/readiness.log",
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    command = result.stdout
+    assert "changzhou-dify-readiness-gate" in command
+    assert '>"/tmp/readiness.log" 2>&1' in command
+    assert "changzhou-dify-readiness-status" in command
+    assert "Readiness raw log: /tmp/readiness.log" in command
+
+
+def test_changzhou_gov_delivery_pack_refresh_runs_quiet_gate_before_pack() -> None:
+    result = subprocess.run(
+        ["make", "-n", "changzhou-gov-delivery-pack-refresh"],
+        cwd=REPO_ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    command = result.stdout
+    quiet_index = command.index('changzhou-dify-readiness-gate >"')
+    pack_index = command.index("scripts/changzhou_gov_delivery_pack.py")
+    assert quiet_index < pack_index
+
+
 def test_changzhou_dify_knowledge_map_check_target_is_overridable() -> None:
     result = subprocess.run(
         [
