@@ -11,10 +11,12 @@ from typing import Any
 SCHEMA = "mimirq.changzhou_gov.delivery_pack.v1"
 DEFAULT_PLUGIN_REPORT = "/tmp/changzhou_gov_plugin_chunk_report.json"
 DEFAULT_PLUGIN_MARKDOWN = "/tmp/changzhou_gov_plugin_chunk_report.md"
+DEFAULT_PLUGIN_TEST_REPORT = "/tmp/changzhou_gov_plugin_test_report.json"
 DEFAULT_READINESS_SUMMARY = "/tmp/changzhou_gov_dify_readiness_summary.json"
 DEFAULT_READINESS_EVIDENCE = "/tmp/changzhou_gov_dify_readiness_evidence.md"
 DEFAULT_JSON_OUT = "/tmp/changzhou_gov_delivery_pack.json"
 DEFAULT_MARKDOWN_OUT = "/tmp/changzhou_gov_delivery_pack.md"
+REQUIRED_PLUGIN_TEST_STAGES = ("governance", "chunk", "kg")
 
 
 def _text(value: Any) -> str:
@@ -150,9 +152,34 @@ def _readiness_metrics(readiness: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _plugin_test_summary(plugin_test_report: dict[str, Any]) -> dict[str, Any]:
+    stages = plugin_test_report.get("stages") if isinstance(plugin_test_report.get("stages"), dict) else {}
+    stage_status: dict[str, bool] = {}
+    failed_stages: list[str] = []
+    for name, value in sorted(stages.items()):
+        stage_passed = isinstance(value, dict) and value.get("passed") is True
+        stage_status[str(name)] = stage_passed
+        if not stage_passed:
+            failed_stages.append(str(name))
+    missing_stages = [stage for stage in REQUIRED_PLUGIN_TEST_STAGES if stage not in stage_status]
+    golden_draft = _nested_dict(plugin_test_report, "golden_draft")
+    return {
+        "passed": plugin_test_report.get("passed") is True and not failed_stages and not missing_stages,
+        "stage_count": len(stage_status),
+        "stages": stage_status,
+        "failed_stages": failed_stages,
+        "missing_stages": missing_stages,
+        "golden_draft": {
+            "passed": golden_draft.get("passed") is True,
+            "items_total": int(golden_draft.get("items_total") or 0),
+        },
+    }
+
+
 def build_delivery_pack(
     *,
     plugin_report_path: str | Path = DEFAULT_PLUGIN_REPORT,
+    plugin_test_report_path: str | Path = DEFAULT_PLUGIN_TEST_REPORT,
     plugin_markdown_path: str | Path = DEFAULT_PLUGIN_MARKDOWN,
     readiness_summary_path: str | Path = DEFAULT_READINESS_SUMMARY,
     readiness_evidence_path: str | Path = DEFAULT_READINESS_EVIDENCE,
@@ -160,12 +187,17 @@ def build_delivery_pack(
     now: datetime | None = None,
 ) -> dict[str, Any]:
     plugin_report = _load_json(plugin_report_path)
+    plugin_test_report = _load_json(plugin_test_report_path)
     readiness = _load_json(readiness_summary_path)
     plugin_summary = _nested_dict(plugin_report, "summary")
+    plugin_test = _plugin_test_summary(plugin_test_report)
+    plugin_golden = _nested_dict(plugin_test, "golden_draft")
     readiness_summary = _nested_dict(readiness, "summary")
     readiness_metrics = _readiness_metrics(readiness)
     plugin_sections = _plugin_sections(plugin_report)
     plugin_passed = plugin_report.get("passed") is True
+    plugin_test_passed = plugin_test.get("passed") is True
+    plugin_golden_passed = plugin_golden.get("passed") is True
     readiness_passed = readiness_summary.get("passed") is True
     freshness = _freshness(
         _text(readiness.get("generated_at")),
@@ -175,9 +207,18 @@ def build_delivery_pack(
     return {
         "schema": SCHEMA,
         "generated_at": datetime.now(UTC).isoformat(),
-        "passed": bool(plugin_passed and readiness_passed and freshness.get("fresh") is True),
+        "passed": bool(
+            plugin_passed
+            and plugin_test_passed
+            and plugin_golden_passed
+            and readiness_passed
+            and freshness.get("fresh") is True
+        ),
         "summary": {
             "plugin_passed": plugin_passed,
+            "plugin_test_passed": plugin_test_passed,
+            "plugin_golden_draft_passed": plugin_golden_passed,
+            "plugin_golden_draft_items": int(plugin_golden.get("items_total") or 0),
             "readiness_passed": readiness_passed,
             "readiness_fresh": freshness.get("fresh") is True,
             "plugin_sections": int(plugin_summary.get("sections") or len(plugin_sections)),
@@ -192,6 +233,7 @@ def build_delivery_pack(
         "artifacts": {
             "plugin_chunk_report_json": _artifact(plugin_report_path, label="plugin chunk report JSON"),
             "plugin_chunk_report_markdown": _artifact(plugin_markdown_path, label="plugin chunk report Markdown"),
+            "plugin_test_report_json": _artifact(plugin_test_report_path, label="plugin test report JSON"),
             "dify_readiness_summary_json": _artifact(readiness_summary_path, label="Dify readiness summary JSON"),
             "dify_readiness_evidence_markdown": _artifact(
                 readiness_evidence_path,
@@ -204,6 +246,7 @@ def build_delivery_pack(
             "package_hash": _text(_nested_dict(plugin_report, "plugin").get("package_hash")),
             "generated_at": _text(plugin_report.get("generated_at")),
             "sections": plugin_sections,
+            "test": plugin_test,
         },
         "readiness": {
             "generated_at": _text(readiness.get("generated_at")),
@@ -235,6 +278,8 @@ def format_markdown_pack(pack: dict[str, Any]) -> str:
     summary = pack.get("summary") if isinstance(pack.get("summary"), dict) else {}
     artifacts = pack.get("artifacts") if isinstance(pack.get("artifacts"), dict) else {}
     plugin = pack.get("plugin") if isinstance(pack.get("plugin"), dict) else {}
+    plugin_test = plugin.get("test") if isinstance(plugin.get("test"), dict) else {}
+    plugin_golden = plugin_test.get("golden_draft") if isinstance(plugin_test.get("golden_draft"), dict) else {}
     readiness = pack.get("readiness") if isinstance(pack.get("readiness"), dict) else {}
     metrics = readiness.get("metrics") if isinstance(readiness.get("metrics"), dict) else {}
     freshness = readiness.get("freshness") if isinstance(readiness.get("freshness"), dict) else {}
@@ -250,6 +295,8 @@ def format_markdown_pack(pack: dict[str, Any]) -> str:
         *_markdown_table(
             [
                 "plugin_passed",
+                "plugin_test_passed",
+                "golden_items",
                 "readiness_passed",
                 "readiness_fresh",
                 "sections",
@@ -261,6 +308,8 @@ def format_markdown_pack(pack: dict[str, Any]) -> str:
             [
                 [
                     _text(summary.get("plugin_passed")),
+                    _text(summary.get("plugin_test_passed")),
+                    _text(summary.get("plugin_golden_draft_items")),
                     _text(summary.get("readiness_passed")),
                     _text(summary.get("readiness_fresh")),
                     _text(summary.get("plugin_sections")),
@@ -269,6 +318,20 @@ def format_markdown_pack(pack: dict[str, Any]) -> str:
                     _text(summary.get("plugin_kg_events")),
                     _text(summary.get("readiness_boundary")),
                 ]
+            ],
+        ),
+        "",
+        "## Plugin Contract Test",
+        "",
+        *_markdown_table(
+            ["Metric", "Value"],
+            [
+                ["passed", _text(plugin_test.get("passed"))],
+                ["stage_count", _text(plugin_test.get("stage_count"))],
+                ["failed_stages", ", ".join(plugin_test.get("failed_stages") or [])],
+                ["missing_stages", ", ".join(plugin_test.get("missing_stages") or [])],
+                ["golden_draft_passed", _text(plugin_golden.get("passed"))],
+                ["golden_draft_items", _text(plugin_golden.get("items_total"))],
             ],
         ),
         "",
@@ -329,6 +392,7 @@ def format_markdown_pack(pack: dict[str, Any]) -> str:
         "",
         "```bash",
         "make changzhou-gov-plugin-chunk-report",
+        "make changzhou-gov-plugin-test-report",
         "make changzhou-dify-readiness-evidence",
         "make changzhou-gov-delivery-pack",
         "```",
@@ -336,7 +400,8 @@ def format_markdown_pack(pack: dict[str, Any]) -> str:
         "## Safety",
         "",
         "This delivery pack intentionally includes aggregate metrics, section matrices, and artifact paths only. "
-        "It does not copy plugin example previews, raw Dify queries, generated answers, tokens, passwords, or API keys.",
+        "It does not copy plugin example previews, Golden draft sample questions, raw Dify queries, generated answers, "
+        "tokens, passwords, or API keys.",
     ]
     return "\n".join(lines) + "\n"
 
@@ -350,6 +415,7 @@ def _write_text(path: str | Path, text: str) -> None:
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Build a Changzhou Gov delivery evidence pack index.")
     parser.add_argument("--plugin-report", default=DEFAULT_PLUGIN_REPORT)
+    parser.add_argument("--plugin-test-report", default=DEFAULT_PLUGIN_TEST_REPORT)
     parser.add_argument("--plugin-markdown", default=DEFAULT_PLUGIN_MARKDOWN)
     parser.add_argument("--readiness-summary", default=DEFAULT_READINESS_SUMMARY)
     parser.add_argument("--readiness-evidence", default=DEFAULT_READINESS_EVIDENCE)
@@ -364,6 +430,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         pack = build_delivery_pack(
             plugin_report_path=args.plugin_report,
+            plugin_test_report_path=args.plugin_test_report,
             plugin_markdown_path=args.plugin_markdown,
             readiness_summary_path=args.readiness_summary,
             readiness_evidence_path=args.readiness_evidence,

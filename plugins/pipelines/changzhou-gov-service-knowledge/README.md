@@ -122,6 +122,8 @@ python scripts/pipeline_plugin_runner.py test plugins/pipelines/changzhou-gov-se
 脚本或 manifest 改动后需要重新运行测试，否则系统会把插件标记为 `stale`，前端不能选择执行。
 测试报告还会生成 `golden_draft` 摘要；当前样例应生成 20 条 Golden 草稿问题。
 如果该字段缺失或 `passed=false`，系统会把插件标记为 `golden_missing`。
+交付时可用 `make changzhou-gov-plugin-test-report` 输出
+`/tmp/changzhou_gov_plugin_test_report.json`，供 delivery pack 汇总插件 stage 和 Golden 草稿指标。
 
 生成可审查的 01-06 治理 / 切块 / KG 样例报告：
 

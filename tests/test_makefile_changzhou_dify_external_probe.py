@@ -59,6 +59,34 @@ def test_changzhou_gov_plugin_chunk_report_target_is_overridable() -> None:
     assert '--markdown-out "/tmp/report.md"' in command
 
 
+def test_changzhou_gov_plugin_test_report_target_is_overridable() -> None:
+    result = subprocess.run(
+        [
+            "make",
+            "-n",
+            "changzhou-gov-plugin-test-report",
+            "CHANGZHOU_GOV_PLUGIN_DIR=/tmp/plugin",
+            "CHANGZHOU_GOV_PLUGIN_SAMPLE=/tmp/sample.json",
+            "CHANGZHOU_GOV_PLUGIN_TEST_REPORT_OUT=/tmp/test-report.json",
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    command = result.stdout
+    assert "scripts/pipeline_plugin_runner.py test" in command
+    assert '"/tmp/plugin"' in command
+    assert '--input "/tmp/sample.json"' in command
+    assert "--stage governance" in command
+    assert "--stage chunk" in command
+    assert "--stage kg" in command
+    assert "--no-write-report" in command
+    assert '>"/tmp/test-report.json"' in command
+
+
 def test_changzhou_gov_delivery_pack_target_is_overridable() -> None:
     result = subprocess.run(
         [
@@ -67,6 +95,7 @@ def test_changzhou_gov_delivery_pack_target_is_overridable() -> None:
             "changzhou-gov-delivery-pack",
             "CHANGZHOU_GOV_PLUGIN_CHUNK_REPORT_OUT=/tmp/plugin.json",
             "CHANGZHOU_GOV_PLUGIN_CHUNK_REPORT_MD=/tmp/plugin.md",
+            "CHANGZHOU_GOV_PLUGIN_TEST_REPORT_OUT=/tmp/plugin-test.json",
             "CHANGZHOU_DIFY_READINESS_OUT=/tmp/readiness.json",
             "CHANGZHOU_DIFY_READINESS_EVIDENCE_OUT=/tmp/readiness.md",
             "CHANGZHOU_GOV_DELIVERY_PACK_OUT=/tmp/pack.json",
@@ -83,6 +112,7 @@ def test_changzhou_gov_delivery_pack_target_is_overridable() -> None:
     command = result.stdout
     assert "scripts/changzhou_gov_delivery_pack.py" in command
     assert '--plugin-report "/tmp/plugin.json"' in command
+    assert '--plugin-test-report "/tmp/plugin-test.json"' in command
     assert '--plugin-markdown "/tmp/plugin.md"' in command
     assert '--readiness-summary "/tmp/readiness.json"' in command
     assert '--readiness-evidence "/tmp/readiness.md"' in command

@@ -21,9 +21,22 @@ def _write_json(path: Path, payload: dict) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _plugin_test_payload() -> dict:
+    return {
+        "passed": True,
+        "stages": {
+            "governance": {"passed": True},
+            "chunk": {"passed": True},
+            "kg": {"passed": True},
+        },
+        "golden_draft": {"passed": True, "items_total": 20},
+    }
+
+
 def test_build_delivery_pack_combines_plugin_and_readiness_without_raw_answers(tmp_path: Path) -> None:
     mod = _load_module()
     plugin_report = tmp_path / "plugin_report.json"
+    plugin_test_report = tmp_path / "plugin_test_report.json"
     readiness_summary = tmp_path / "readiness_summary.json"
     plugin_md = tmp_path / "plugin_report.md"
     readiness_md = tmp_path / "readiness_evidence.md"
@@ -59,6 +72,11 @@ def test_build_delivery_pack_combines_plugin_and_readiness_without_raw_answers(t
         },
     )
     _write_json(
+        plugin_test_report,
+        _plugin_test_payload()
+        | {"golden_draft": {"passed": True, "items_total": 20, "sample_questions": ["真实 Golden 草稿问题不能进入交付包"]}},
+    )
+    _write_json(
         readiness_summary,
         {
             "generated_at": "2026-06-07T04:49:28Z",
@@ -87,6 +105,7 @@ def test_build_delivery_pack_combines_plugin_and_readiness_without_raw_answers(t
 
     pack = mod.build_delivery_pack(
         plugin_report_path=plugin_report,
+        plugin_test_report_path=plugin_test_report,
         plugin_markdown_path=plugin_md,
         readiness_summary_path=readiness_summary,
         readiness_evidence_path=readiness_md,
@@ -96,6 +115,9 @@ def test_build_delivery_pack_combines_plugin_and_readiness_without_raw_answers(t
 
     assert pack["schema"] == "mimirq.changzhou_gov.delivery_pack.v1"
     assert pack["passed"] is True
+    assert pack["summary"]["plugin_test_passed"] is True
+    assert pack["summary"]["plugin_golden_draft_passed"] is True
+    assert pack["summary"]["plugin_golden_draft_items"] == 20
     assert pack["summary"]["plugin_chunks"] == 11
     assert pack["summary"]["readiness_boundary"] == "dify_external_boundary_ok"
     assert "01政务服务事项知识" in text
@@ -104,14 +126,18 @@ def test_build_delivery_pack_combines_plugin_and_readiness_without_raw_answers(t
     assert "dify_external_boundary_ok" in text
     assert "| route_mismatch_cases | 0 |" in text
     assert "| empty_retrieval_cases | 0 |" in text
+    assert "make changzhou-gov-plugin-test-report" in text
+    assert "Golden draft sample questions" in text
     assert "真实用户问题不能进入交付包" not in text
     assert "真实生成答案不能进入交付包" not in text
+    assert "真实 Golden 草稿问题不能进入交付包" not in text
     assert "raw sample preview should not be copied" not in text
 
 
 def test_main_writes_delivery_pack_json_and_markdown(tmp_path: Path) -> None:
     mod = _load_module()
     plugin_report = tmp_path / "plugin_report.json"
+    plugin_test_report = tmp_path / "plugin_test_report.json"
     readiness_summary = tmp_path / "readiness_summary.json"
     json_out = tmp_path / "delivery_pack.json"
     markdown_out = tmp_path / "delivery_pack.md"
@@ -124,6 +150,7 @@ def test_main_writes_delivery_pack_json_and_markdown(tmp_path: Path) -> None:
             "sections": [],
         },
     )
+    _write_json(plugin_test_report, _plugin_test_payload())
     _write_json(
         readiness_summary,
         {
@@ -137,6 +164,8 @@ def test_main_writes_delivery_pack_json_and_markdown(tmp_path: Path) -> None:
         [
             "--plugin-report",
             str(plugin_report),
+            "--plugin-test-report",
+            str(plugin_test_report),
             "--readiness-summary",
             str(readiness_summary),
             "--json-out",
@@ -154,6 +183,7 @@ def test_main_writes_delivery_pack_json_and_markdown(tmp_path: Path) -> None:
 def test_delivery_pack_fails_stale_readiness_summary(tmp_path: Path) -> None:
     mod = _load_module()
     plugin_report = tmp_path / "plugin_report.json"
+    plugin_test_report = tmp_path / "plugin_test_report.json"
     readiness_summary = tmp_path / "readiness_summary.json"
     _write_json(
         plugin_report,
@@ -163,6 +193,7 @@ def test_delivery_pack_fails_stale_readiness_summary(tmp_path: Path) -> None:
             "sections": [],
         },
     )
+    _write_json(plugin_test_report, _plugin_test_payload())
     _write_json(
         readiness_summary,
         {
@@ -174,6 +205,7 @@ def test_delivery_pack_fails_stale_readiness_summary(tmp_path: Path) -> None:
 
     pack = mod.build_delivery_pack(
         plugin_report_path=plugin_report,
+        plugin_test_report_path=plugin_test_report,
         readiness_summary_path=readiness_summary,
         now=datetime(2026, 6, 7, 5, 30, tzinfo=UTC),
         max_readiness_age_minutes=30,
@@ -182,3 +214,39 @@ def test_delivery_pack_fails_stale_readiness_summary(tmp_path: Path) -> None:
     assert pack["passed"] is False
     assert pack["summary"]["readiness_fresh"] is False
     assert pack["readiness"]["freshness"]["status"] == "STALE"
+
+
+def test_delivery_pack_fails_incomplete_plugin_test_report(tmp_path: Path) -> None:
+    mod = _load_module()
+    plugin_report = tmp_path / "plugin_report.json"
+    plugin_test_report = tmp_path / "plugin_test_report.json"
+    readiness_summary = tmp_path / "readiness_summary.json"
+    _write_json(
+        plugin_report,
+        {
+            "passed": True,
+            "summary": {"input_documents": 1, "governed_records": 1, "chunks": 1, "kg_events": 1, "sections": 1},
+            "sections": [],
+        },
+    )
+    incomplete = _plugin_test_payload()
+    incomplete["stages"].pop("kg")
+    _write_json(plugin_test_report, incomplete)
+    _write_json(
+        readiness_summary,
+        {
+            "generated_at": datetime.now(UTC).isoformat(),
+            "summary": {"passed": True},
+            "external_probe": {"boundary": {"verdict": "ok"}},
+        },
+    )
+
+    pack = mod.build_delivery_pack(
+        plugin_report_path=plugin_report,
+        plugin_test_report_path=plugin_test_report,
+        readiness_summary_path=readiness_summary,
+    )
+
+    assert pack["passed"] is False
+    assert pack["summary"]["plugin_test_passed"] is False
+    assert pack["plugin"]["test"]["missing_stages"] == ["kg"]
