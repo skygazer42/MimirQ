@@ -122,6 +122,8 @@ class RAGState(TypedDict, total=False):
     query_rewrite_max_chars: int | None
     sparse_retrieval_enabled: bool | None
     sparse_retrieval_provider: str | None
+    lexical_db_hybrid_metadata_exact_fallback_enabled: bool | None
+    metadata_exact_db_fallback_enabled: bool | None
     alpha: float
     enable_weight_rerank: bool
     fusion_strategy: str | None
@@ -229,6 +231,10 @@ def _retrieve_cache_key(state: dict[str, Any]) -> str:
         "enable_kg_chunk_boost": state.get("enable_kg_chunk_boost"),
         "kg_chunk_boost_weight": state.get("kg_chunk_boost_weight"),
         "kg_chunk_boost_max_promoted": state.get("kg_chunk_boost_max_promoted"),
+        "lexical_db_hybrid_metadata_exact_fallback_enabled": state.get(
+            "lexical_db_hybrid_metadata_exact_fallback_enabled"
+        ),
+        "metadata_exact_db_fallback_enabled": state.get("metadata_exact_db_fallback_enabled"),
         "query_rewrite_strategy": state.get("query_rewrite_strategy"),
         "query_rewrite_temperature": state.get("query_rewrite_temperature"),
         "query_rewrite_max_chars": state.get("query_rewrite_max_chars"),
@@ -1381,6 +1387,8 @@ class RagStateBuildOptions:
     query_rewrite_max_chars: int | None = None
     sparse_retrieval_enabled: bool | None = None
     sparse_retrieval_provider: str | None = None
+    lexical_db_hybrid_metadata_exact_fallback_enabled: bool | None = None
+    metadata_exact_db_fallback_enabled: bool | None = None
     alpha: float = settings.RETRIEVAL_DEFAULT_ALPHA
     fusion_strategy: str | None = None
     fusion_budgets: dict[str, int] | None = None
@@ -1471,6 +1479,10 @@ def build_rag_state(
     query_rewrite_max_chars = resolved.query_rewrite_max_chars
     sparse_retrieval_enabled = resolved.sparse_retrieval_enabled
     sparse_retrieval_provider = resolved.sparse_retrieval_provider
+    lexical_db_hybrid_metadata_exact_fallback_enabled = (
+        resolved.lexical_db_hybrid_metadata_exact_fallback_enabled
+    )
+    metadata_exact_db_fallback_enabled = resolved.metadata_exact_db_fallback_enabled
     alpha = resolved.alpha
     fusion_strategy = resolved.fusion_strategy
     fusion_budgets = resolved.fusion_budgets
@@ -1655,6 +1667,10 @@ def build_rag_state(
         "reranker_top_n": reranker_top_n,
         "sparse_retrieval_enabled": sparse_retrieval_enabled,
         "sparse_retrieval_provider": sparse_retrieval_provider,
+        "lexical_db_hybrid_metadata_exact_fallback_enabled": (
+            lexical_db_hybrid_metadata_exact_fallback_enabled
+        ),
+        "metadata_exact_db_fallback_enabled": metadata_exact_db_fallback_enabled,
         "metadata_filter": metadata_filter,
         "max_tokens": max_tokens,
         "format_instructions": format_instructions,

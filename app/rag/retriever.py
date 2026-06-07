@@ -479,6 +479,8 @@ class HybridRetriever(BaseRetriever):
     enable_hierarchy_recall: bool = False
     hierarchy_family_collapse: bool = False
     hierarchy_overfetch_factor: int = max(1, int(getattr(settings, "HIERARCHY_RECALL_OVERFETCH_FACTOR", 4) or 4))
+    lexical_db_hybrid_metadata_exact_fallback_enabled: bool | None = None
+    metadata_exact_db_fallback_enabled: bool | None = None
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -3455,18 +3457,90 @@ class HybridRetriever(BaseRetriever):
             )
 
     @staticmethod
-    def _lexical_dataset_scope(metadata_filter: dict[str, Any] | None) -> tuple[UUID | None, str | None]:
-        dataset_uuid: UUID | None = None
-        dataset_str: str | None = None
-        if isinstance(metadata_filter, dict):
-            ds_raw = metadata_filter.get("dataset_id")
-            if isinstance(ds_raw, str) and ds_raw.strip():
-                dataset_str = ds_raw.strip()
-                try:
-                    dataset_uuid = UUID(dataset_str)
-                except (TypeError, ValueError, AttributeError):
-                    dataset_uuid = None
-        return dataset_uuid, dataset_str
+    def _coerce_dataset_scope_values(raw: Any) -> list[UUID]:
+        values: list[Any]
+        if isinstance(raw, dict):
+            if "$eq" in raw:
+                values = [raw.get("$eq")]
+            elif "$in" in raw and isinstance(raw.get("$in"), list | tuple | set):
+                values = list(raw.get("$in") or [])
+            else:
+                values = []
+        elif isinstance(raw, list | tuple | set):
+            values = list(raw)
+        else:
+            values = [raw]
+
+        dataset_uuids: list[UUID] = []
+        seen: set[str] = set()
+        for item in values:
+            text = str(item or "").strip()
+            if not text:
+                continue
+            try:
+                dataset_uuid = UUID(text)
+            except (TypeError, ValueError, AttributeError):
+                continue
+            key = str(dataset_uuid)
+            if key in seen:
+                continue
+            seen.add(key)
+            dataset_uuids.append(dataset_uuid)
+        return dataset_uuids
+
+    @classmethod
+    def _collect_lexical_dataset_scope(cls, metadata_filter: dict[str, Any] | None) -> list[UUID]:
+        if not isinstance(metadata_filter, dict) or not metadata_filter:
+            return []
+
+        direct = cls._coerce_dataset_scope_values(metadata_filter.get("dataset_id"))
+        if direct:
+            return direct
+
+        and_parts = metadata_filter.get("$and")
+        if isinstance(and_parts, list):
+            scoped: list[UUID] = []
+            seen: set[str] = set()
+            for part in and_parts:
+                if not isinstance(part, dict):
+                    continue
+                for dataset_uuid in cls._collect_lexical_dataset_scope(part):
+                    key = str(dataset_uuid)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    scoped.append(dataset_uuid)
+            if scoped:
+                return scoped
+
+        or_parts = metadata_filter.get("$or")
+        if isinstance(or_parts, list) and or_parts:
+            scoped_parts: list[list[UUID]] = []
+            for part in or_parts:
+                if not isinstance(part, dict):
+                    return []
+                part_scope = cls._collect_lexical_dataset_scope(part)
+                if not part_scope:
+                    return []
+                scoped_parts.append(part_scope)
+            scoped: list[UUID] = []
+            seen: set[str] = set()
+            for part_scope in scoped_parts:
+                for dataset_uuid in part_scope:
+                    key = str(dataset_uuid)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    scoped.append(dataset_uuid)
+            return scoped
+
+        return []
+
+    @classmethod
+    def _lexical_dataset_scope(cls, metadata_filter: dict[str, Any] | None) -> tuple[list[UUID] | None, str | None]:
+        dataset_uuids = cls._collect_lexical_dataset_scope(metadata_filter)
+        dataset_str = str(dataset_uuids[0]) if dataset_uuids else None
+        return (dataset_uuids or None), dataset_str
 
     @staticmethod
     def _lexical_search_config(top_k: int) -> tuple[str, int, bool, int]:
@@ -3484,7 +3558,7 @@ class HybridRetriever(BaseRetriever):
         db: Session,
         *,
         tenant_uuid: UUID,
-        dataset_uuid: UUID | None,
+        dataset_uuid: UUID | list[UUID] | None,
         document_ids: list[UUID] | None,
     ) -> Any:
         query = (
@@ -3505,7 +3579,12 @@ class HybridRetriever(BaseRetriever):
             .filter(DocumentChunk.disabled_at.is_(None))
             .filter(DocumentChunk.tenant_id == tenant_uuid)
         )
-        if dataset_uuid is not None:
+        if isinstance(dataset_uuid, list):
+            if len(dataset_uuid) == 1:
+                query = query.filter(DBDocument.dataset_id == dataset_uuid[0])
+            elif dataset_uuid:
+                query = query.filter(DBDocument.dataset_id.in_(dataset_uuid))
+        elif dataset_uuid is not None:
             query = query.filter(DBDocument.dataset_id == dataset_uuid)
         if document_ids:
             query = query.filter(DocumentChunk.document_id.in_(document_ids))
@@ -3582,7 +3661,7 @@ class HybridRetriever(BaseRetriever):
         *,
         db: Session,
         tenant_uuid: UUID,
-        dataset_uuid: UUID | None,
+        dataset_uuid: UUID | list[UUID] | None,
         document_ids: list[UUID] | None,
         fts_config: str,
         raw_query: str,
@@ -3638,7 +3717,7 @@ class HybridRetriever(BaseRetriever):
         *,
         db: Session,
         tenant_uuid: UUID,
-        dataset_uuid: UUID | None,
+        dataset_uuid: UUID | list[UUID] | None,
         document_ids: list[UUID] | None,
         raw_query: str,
         fetch_k: int,
@@ -3914,7 +3993,11 @@ class HybridRetriever(BaseRetriever):
         raw_query = str(query or "").strip()
         if not raw_query:
             return []
-        if not bool(getattr(settings, "RETRIEVAL_METADATA_EXACT_DB_FALLBACK_ENABLED", True)):
+        if self.metadata_exact_db_fallback_enabled is not None:
+            metadata_exact_db_enabled = bool(self.metadata_exact_db_fallback_enabled)
+        else:
+            metadata_exact_db_enabled = bool(getattr(settings, "RETRIEVAL_METADATA_EXACT_DB_FALLBACK_ENABLED", True))
+        if not metadata_exact_db_enabled:
             return []
 
         tenant_uuid = self._resolve_tenant_uuid(tenant_id)
@@ -4406,8 +4489,10 @@ class HybridRetriever(BaseRetriever):
             # Running pg_trgm on every query is expensive on large datasets, so keep it
             # as a recall safety net unless explicitly configured to run in parallel.
             primary_candidate_count = len(vector_results or []) + len(bm25_results or [])
-            metadata_exact_fallback_enabled = bool(
-                getattr(settings, "LEXICAL_DB_HYBRID_METADATA_EXACT_FALLBACK_ENABLED", True)
+            metadata_exact_fallback_enabled = (
+                bool(self.lexical_db_hybrid_metadata_exact_fallback_enabled)
+                if self.lexical_db_hybrid_metadata_exact_fallback_enabled is not None
+                else bool(getattr(settings, "LEXICAL_DB_HYBRID_METADATA_EXACT_FALLBACK_ENABLED", True))
             )
             metadata_exact_anchor_like_query = bool(
                 metadata_exact_fallback_enabled and _query_looks_like_cjk_metadata_anchor(query)
@@ -4453,8 +4538,10 @@ class HybridRetriever(BaseRetriever):
                 lexical_run_reason = "skipped_primary_candidates_sufficient"
 
             metadata_exact_db_results: list[dict[str, Any]] = []
-            metadata_exact_db_enabled = bool(
-                getattr(settings, "RETRIEVAL_METADATA_EXACT_DB_FALLBACK_ENABLED", True)
+            metadata_exact_db_enabled = (
+                bool(self.metadata_exact_db_fallback_enabled)
+                if self.metadata_exact_db_fallback_enabled is not None
+                else bool(getattr(settings, "RETRIEVAL_METADATA_EXACT_DB_FALLBACK_ENABLED", True))
             )
             metadata_exact_db_reason = "not_run"
             if metadata_exact_db_enabled and metadata_exact_fallback:

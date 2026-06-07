@@ -97,6 +97,42 @@ def test_request_json_retries_transient_url_errors(monkeypatch) -> None:
     assert calls == 2
 
 
+def test_request_json_retries_transient_read_timeout(monkeypatch) -> None:
+    mod = _load_module()
+    calls = 0
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self) -> bytes:
+            return json.dumps({"data": []}).encode("utf-8")
+
+    def fake_urlopen(_request, timeout: float):
+        nonlocal calls
+        calls += 1
+        assert timeout == 12.0
+        if calls == 1:
+            raise TimeoutError("The read operation timed out")
+        return FakeResponse()
+
+    monkeypatch.setattr(mod, "urlopen", fake_urlopen)
+
+    assert (
+        mod._request_json(
+            console_base_url="https://dify.test/console/api",
+            console_token="secret-console-token",
+            path="/datasets/external-knowledge-api?page=1&limit=50",
+            timeout=12.0,
+        )
+        == {"data": []}
+    )
+    assert calls == 2
+
+
 def test_format_cli_error_adds_login_hint_for_expired_console_token() -> None:
     mod = _load_module()
 
@@ -218,6 +254,74 @@ def test_collect_probe_report_flags_dify_empty_but_mimirq_direct_ok_without_leak
             "diagnosis": "dify_runtime_empty_but_mimirq_direct_ok",
         }
     ]
+
+
+def test_collect_probe_report_retries_transient_case_read_timeout() -> None:
+    mod = _load_module()
+    hit_attempts = 0
+    direct_attempts = 0
+
+    def fake_request_json(**kwargs):  # noqa: ANN003, ANN202
+        nonlocal hit_attempts
+        path = kwargs["path"]
+        if path == "/datasets/external-knowledge-api?page=1&limit=50":
+            return {
+                "data": [
+                    {
+                        "id": "api-1",
+                        "name": "MimirQ-192.168.3.6",
+                        "settings": {
+                            "endpoint": "http://192.168.3.6:8000/api/v1/integrations/dify",
+                            "api_key": "external-secret-key",
+                        },
+                        "dataset_bindings": [{"id": "ds-city", "name": "MimirQ-常州市政务服务知识检索"}],
+                    }
+                ]
+            }
+        if path == "/datasets/ds-city":
+            return {
+                "id": "ds-city",
+                "name": "MimirQ-常州市政务服务知识检索",
+                "provider": "external",
+                "external_knowledge_info": {"external_knowledge_id": "changzhou_city_service"},
+            }
+        if path == "/datasets/ds-city/external-hit-testing":
+            hit_attempts += 1
+            if hit_attempts == 1:
+                raise TimeoutError("The read operation timed out")
+            return {"records": [{"title": "常州市本级12345QA.txt", "score": 0.9, "content": "查询进度"}]}
+        raise AssertionError(path)
+
+    def fake_mimirq_direct(**_kwargs):  # noqa: ANN003, ANN202
+        nonlocal direct_attempts
+        direct_attempts += 1
+        return {"records": [{"title": "常州市本级12345QA.txt", "score": 0.9, "content": "查询进度"}]}
+
+    report = mod.collect_probe_report(
+        cases=[
+            {
+                "id": "case-1",
+                "knowledge_id": "changzhou_city_service",
+                "query": "如何查询身份证办理进度？",
+            }
+        ],
+        external_api_id="api-1",
+        console_base_url="https://dify.test/console/api",
+        console_token="console-secret",
+        request_json=fake_request_json,
+        request_mimirq_direct=fake_mimirq_direct,
+        local_ipv4_addresses=["192.168.3.6"],
+        timeout=12.0,
+        top_k=5,
+    )
+
+    assert hit_attempts == 2
+    assert direct_attempts == 1
+    assert report["summary"]["probe_errors"] == 0
+    assert report["summary"]["dify_hit_nonempty"] == 1
+    assert report["summary"]["mimirq_direct_nonempty"] == 1
+    assert report["gate"]["passed"] is True
+    assert report["cases"][0]["diagnosis"] == "dify_hit_testing_ok"
 
 
 def test_evaluate_probe_gate_rejects_loopback_endpoint_and_incomplete_coverage() -> None:

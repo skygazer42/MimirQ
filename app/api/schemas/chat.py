@@ -375,6 +375,10 @@ class ChatRAGConfig(BaseModel):
 
     # Optional: metadata filter for vector search / retrieval scoping
     metadata_filter: dict[str, Any] | None = None
+    # Request-level budget controls for expensive hybrid fallback channels.
+    # None keeps server defaults; False is used by low-latency external retrieval integrations.
+    lexical_db_hybrid_metadata_exact_fallback_enabled: bool | None = None
+    metadata_exact_db_fallback_enabled: bool | None = None
 
     model_config = ConfigDict(extra="ignore")
 

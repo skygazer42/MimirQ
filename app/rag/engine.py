@@ -851,6 +851,12 @@ Requirements:
         enable_kg_chunk_boost = getattr(rag_config, "enable_kg_chunk_boost", None)
         kg_chunk_boost_weight = getattr(rag_config, "kg_chunk_boost_weight", None)
         kg_chunk_boost_max_promoted = getattr(rag_config, "kg_chunk_boost_max_promoted", None)
+        lexical_db_hybrid_metadata_exact_fallback_enabled = getattr(
+            rag_config,
+            "lexical_db_hybrid_metadata_exact_fallback_enabled",
+            None,
+        )
+        metadata_exact_db_fallback_enabled = getattr(rag_config, "metadata_exact_db_fallback_enabled", None)
         enable_hierarchy_recall = rag_config.enable_hierarchy_recall
         hierarchy_family_collapse = rag_config.hierarchy_family_collapse
         hierarchy_family_aggregation = rag_config.hierarchy_family_aggregation
@@ -1772,6 +1778,10 @@ Requirements:
                 "dataset_id": dataset_id,
                 "document_ids": document_ids,
                 "metadata_filter": metadata_filter,
+                "lexical_db_hybrid_metadata_exact_fallback_enabled": (
+                    lexical_db_hybrid_metadata_exact_fallback_enabled
+                ),
+                "metadata_exact_db_fallback_enabled": metadata_exact_db_fallback_enabled,
                 "retrieval_mode": mode_used,
                 "retrieval_profile": profile_norm or None,
                 "context_neighbor_window": profile_applied.get("context_neighbor_window"),

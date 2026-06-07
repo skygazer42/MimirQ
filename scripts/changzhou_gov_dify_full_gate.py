@@ -244,7 +244,10 @@ def run_gate(
 
     _emit_progress(progress_fn, {"stage": "trace", "event": "start", "cases": case_count})
     answers = answers_report.get("answers") if isinstance(answers_report.get("answers"), list) else []
-    trace_report = trace_report_fn(answers=answers, **(trace_kwargs or {}))
+    effective_trace_kwargs = dict(trace_kwargs or {})
+    if progress_fn is not None and "progress_fn" not in effective_trace_kwargs:
+        effective_trace_kwargs["progress_fn"] = progress_fn
+    trace_report = trace_report_fn(answers=answers, **effective_trace_kwargs)
     stages["trace"] = _stage(_trace_passed(trace_report), trace_report)
     _emit_progress(
         progress_fn,
@@ -378,6 +381,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--mimirq-token", default=os.getenv("DIFY_EXTERNAL_KNOWLEDGE_API_KEY") or "")
     parser.add_argument("--top-k", type=int, default=10)
     parser.add_argument("--timeout", type=float, default=120.0)
+    parser.add_argument("--trace-timeout", type=float, default=float(os.getenv("CHANGZHOU_DIFY_TRACE_TIMEOUT", "15")))
     parser.add_argument("--interval-sec", type=float, default=0.0)
     parser.add_argument("--user", default="mimirq-full-gate")
     parser.add_argument("--min-hit-at-1", type=float, default=None)
@@ -475,7 +479,7 @@ def main(argv: list[str] | None = None) -> int:
                 "app_id": str(args.app_id),
                 "console_base_url": str(args.console_base_url),
                 "console_token": console_token,
-                "timeout": float(args.timeout),
+                "timeout": float(args.trace_timeout),
             },
             thresholds=_thresholds_from_args(args),
             maximums=_maximums_from_args(args),

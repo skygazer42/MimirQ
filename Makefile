@@ -51,6 +51,7 @@ CHANGZHOU_DIFY_CASES ?= plugins/pipelines/changzhou-gov-service-knowledge/golden
 CHANGZHOU_DIFY_EXTRA_ARGS ?=
 CHANGZHOU_DIFY_EFFECTIVE_EXTRA_ARGS ?= $(CHANGZHOU_DIFY_EXTRA_ARGS)
 CHANGZHOU_DIFY_READINESS_EXTRA_ARGS ?= --min-generated-answer-grounding-rate 0.9 --min-generated-answer-key-point-recall 0.9
+CHANGZHOU_DIFY_TRACE_TIMEOUT ?= 15
 CHANGZHOU_DIFY_EXTERNAL_API_ID ?=
 CHANGZHOU_DIFY_PROBE_OUT ?= /tmp/changzhou_gov_dify_external_probe.json
 CHANGZHOU_DIFY_PROBE_TOP_K ?= 5
@@ -565,6 +566,7 @@ changzhou-dify-full-gate:
 		--eval-out "$(CHANGZHOU_DIFY_OUT_PREFIX)_eval.json" \
 		--trace-out "$(CHANGZHOU_DIFY_OUT_PREFIX)_trace.json" \
 		--summary-out "$(CHANGZHOU_DIFY_OUT_PREFIX)_summary.json" \
+		--trace-timeout "$(CHANGZHOU_DIFY_TRACE_TIMEOUT)" \
 		$(CHANGZHOU_DIFY_EFFECTIVE_EXTRA_ARGS)
 
 check-retrieval-profile-compat:

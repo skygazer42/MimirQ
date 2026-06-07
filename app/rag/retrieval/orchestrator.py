@@ -2521,6 +2521,10 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
         "dataset_id": state.get("dataset_id"),
         "document_ids": state.get("document_ids"),
         "metadata_filter": state.get("metadata_filter"),
+        "lexical_db_hybrid_metadata_exact_fallback_enabled": state.get(
+            "lexical_db_hybrid_metadata_exact_fallback_enabled"
+        ),
+        "metadata_exact_db_fallback_enabled": state.get("metadata_exact_db_fallback_enabled"),
         "enable_hierarchy_recall": bool(hierarchy_recall_enabled),
         "hierarchy_family_collapse": bool(hierarchy_family_collapse),
         "hierarchy_overfetch_factor": int(hierarchy_overfetch_factor),
