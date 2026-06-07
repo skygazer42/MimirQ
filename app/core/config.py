@@ -808,7 +808,9 @@ class Settings(BaseSettings):
     DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID: str = ""
     DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID: str = "system:dify"
     DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON: str = ""
-    DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX: int = 50
+    DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX: int = 5
+    DIFY_EXTERNAL_KNOWLEDGE_FAST_CHUNK_SEARCH_ENABLED: bool = True
+    DIFY_EXTERNAL_KNOWLEDGE_FAST_CHUNK_SEARCH_MAX_CHUNKS: int = 6000
 
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     PASSWORD_MIN_LENGTH: int = 8
@@ -2271,7 +2273,7 @@ class Settings(BaseSettings):
                 except ValueError as exc:
                     raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID must be a UUID") from exc
 
-            top_k_max = int(getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX", 50) or 0)
+            top_k_max = int(getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX", 5) or 0)
             if top_k_max < 1 or top_k_max > 200:
                 raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX must be between 1 and 200")
 
