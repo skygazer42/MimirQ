@@ -124,6 +124,27 @@ make changzhou-gov-delivery-pack-refresh \
 或 KG 存储。默认要求 readiness summary 生成时间不超过 30 分钟，超时会标记
 `readiness_fresh=false` 并返回失败，避免把旧 gate 结果当成交付证据。
 
+如果要证明真实语料已经经过插件治理/切块/KG、写入索引，并且 Golden 检索闭环通过，
+显式运行 corpus closed-loop gate：
+
+```bash
+make changzhou-gov-plugin-corpus-closed-loop-smoke \
+  CHANGZHOU_DIFY_MIMIRQ_BASE_URL="$CHANGZHOU_DIFY_MIMIRQ_BASE_URL" \
+  CHANGZHOU_GOV_CORPUS_SOURCE_DIR="/path/to/20260522政务服务智能客服知识" \
+  CHANGZHOU_GOV_CORPUS_EXTRA_ARGS="--include-source-root-name --overwrite-goldens"
+
+make changzhou-gov-plugin-corpus-closed-loop-evidence
+```
+
+该 gate 会上传本地语料、触发插件 pipeline、等待文档处理/切片完成、从真实切片导入
+Golden case，并启动 retrieval-only regression。它会写数据库、向量索引和 KG/事件索引；
+因此不放进默认 delivery-pack-refresh，避免无意创建或污染数据集。若不传
+`CHANGZHOU_GOV_CORPUS_DATASET_ID`，脚本会创建隔离测试数据集。
+`/tmp/changzhou_gov_plugin_corpus_closed_loop_report.json` 是本机 raw report，可能包含
+source path、document id、case id 和文件名；交付时使用
+`/tmp/changzhou_gov_plugin_corpus_closed_loop_evidence.json` 和 `.md`，只保留文档/切片聚合、
+插件包 provenance 和 Golden 检索聚合指标。
+
 ---
 
 ## 3. Gate 分层含义
@@ -178,6 +199,8 @@ make changzhou-gov-delivery-pack-refresh \
 - `/tmp/changzhou_gov_plugin_chunk_evidence.md`
 - `/tmp/changzhou_gov_plugin_test_evidence.json`
 - `/tmp/changzhou_gov_plugin_test_evidence.md`
+- `/tmp/changzhou_gov_plugin_corpus_closed_loop_evidence.json`（显式 corpus gate 后生成）
+- `/tmp/changzhou_gov_plugin_corpus_closed_loop_evidence.md`（显式 corpus gate 后生成）
 - `/tmp/changzhou_gov_delivery_pack.json`
 - `/tmp/changzhou_gov_delivery_pack.md`
 
