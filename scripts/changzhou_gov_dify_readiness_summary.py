@@ -146,6 +146,53 @@ def _region_extractor_empty(item: dict[str, Any]) -> bool:
     return False
 
 
+def _append_unique(out: list[str], value: str) -> None:
+    clean = _text(value)
+    if clean and clean not in out:
+        out.append(clean)
+
+
+def _empty_marker(value: Any) -> str:
+    text = _text(value)
+    return text if text else "<empty>"
+
+
+def _region_extractor_detail_texts(item: dict[str, Any]) -> list[str]:
+    details: list[str] = []
+    extractors = item.get("region_extractors") if isinstance(item.get("region_extractors"), list) else []
+    for extractor in extractors:
+        if not isinstance(extractor, dict):
+            continue
+        title = _text(extractor.get("title")) or "区域提取器"
+        if "region" in extractor:
+            region = _empty_marker(extractor.get("region"))
+            if region == "未知" or region == "<empty>":
+                _append_unique(details, f"{title}: region={region}")
+        reason = _text(extractor.get("reason"))
+        if reason:
+            _append_unique(details, f"{title}: {reason}")
+        if "area" in extractor and not _text(extractor.get("area")):
+            _append_unique(details, f"{title}: area=<empty>")
+    if details:
+        return details
+
+    regions = item.get("regions") if isinstance(item.get("regions"), list) else []
+    for region in regions:
+        if isinstance(region, dict):
+            reason = _text(region.get("__reason"))
+            if reason:
+                _append_unique(details, f"区域提取器: {reason}")
+            for key in ("region", "area"):
+                if key in region:
+                    value = _empty_marker(region.get(key))
+                    if value == "未知" or value == "<empty>":
+                        _append_unique(details, f"区域提取器: {key}={value}")
+            continue
+        if _text(region) == "未知":
+            _append_unique(details, "区域提取器: region=未知")
+    return details
+
+
 def _trace_warning_diagnoses(report: dict[str, Any]) -> dict[str, list[str]]:
     cases = report.get("cases") if isinstance(report.get("cases"), list) else []
     diagnoses: dict[str, list[str]] = {}
@@ -167,6 +214,22 @@ def _trace_warning_diagnoses(report: dict[str, Any]) -> dict[str, list[str]]:
         if item.get("fallback") is True:
             diagnoses.setdefault("fallback", []).append(case_id)
     return diagnoses
+
+
+def _trace_warning_diagnosis_details(report: dict[str, Any]) -> dict[str, dict[str, list[str]]]:
+    cases = report.get("cases") if isinstance(report.get("cases"), list) else []
+    details: dict[str, dict[str, list[str]]] = {}
+    for item in cases:
+        if not isinstance(item, dict):
+            continue
+        case_id = _text(item.get("id") or item.get("case_id"))
+        if not case_id:
+            continue
+        if item.get("region_matched") is False and _region_extractor_empty(item):
+            case_details = _region_extractor_detail_texts(item)
+            if case_details:
+                details.setdefault("dify_area_extractor_empty", {})[case_id] = case_details
+    return details
 
 
 def _with_status(section: dict[str, Any], *, blocker: str) -> dict[str, Any]:
@@ -240,6 +303,9 @@ def build_readiness_summary(
         warning_diagnoses = _trace_warning_diagnoses(trace_report)
         if warning_diagnoses:
             full_section["warning_diagnoses"] = warning_diagnoses
+        warning_diagnosis_details = _trace_warning_diagnosis_details(trace_report)
+        if warning_diagnosis_details:
+            full_section["warning_diagnosis_details"] = warning_diagnosis_details
     staged_sections: list[tuple[str, dict[str, Any]]] = []
     if knowledge_section is not None:
         staged_sections.append(("knowledge_map", knowledge_section))

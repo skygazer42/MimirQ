@@ -137,6 +137,29 @@ def _full_gate_warning_diagnosis_items(report: dict[str, Any]) -> list[str]:
     return out
 
 
+def _full_gate_warning_detail_items(report: dict[str, Any]) -> list[str]:
+    full_gate = report.get("full_gate") if isinstance(report.get("full_gate"), dict) else {}
+    warning_details = (
+        full_gate.get("warning_diagnosis_details")
+        if isinstance(full_gate.get("warning_diagnosis_details"), dict)
+        else {}
+    )
+    out: list[str] = []
+    for key, cases in warning_details.items():
+        if not isinstance(cases, dict):
+            continue
+        case_items: list[str] = []
+        for case_id, values in cases.items():
+            if not isinstance(values, list):
+                continue
+            details = [_text(item) for item in values if _text(item)]
+            if details and _text(case_id):
+                case_items.append(f"{_text(case_id)}[{' | '.join(details)}]")
+        if case_items:
+            out.append(f"{_text(key)}={','.join(case_items)}")
+    return out
+
+
 def format_status(
     report: dict[str, Any],
     *,
@@ -195,6 +218,9 @@ def format_status(
     warning_diagnosis_items = _full_gate_warning_diagnosis_items(report)
     if warning_diagnosis_items:
         lines.append(f"Warning diagnosis: {'; '.join(warning_diagnosis_items)}")
+    warning_detail_items = _full_gate_warning_detail_items(report)
+    if warning_detail_items:
+        lines.append(f"Warning detail: {'; '.join(warning_detail_items)}")
     skipped = _text_list(summary.get("skipped_stages"))
     if skipped:
         lines.append(f"Skipped stages: {', '.join(skipped)}")
