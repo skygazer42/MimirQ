@@ -373,6 +373,14 @@ def test_main_collects_artifact_generated_at_values(tmp_path: Path) -> None:
                         "route_compensated": True,
                         "route_matched": True,
                         "region_matched": False,
+                        "regions": [
+                            "未知",
+                            {
+                                "__is_success": 0,
+                                "__reason": "Failed to extract result from function call or text response, using empty result.",
+                                "area": "",
+                            },
+                        ],
                         "fallback": False,
                     },
                     {
@@ -428,4 +436,8 @@ def test_main_collects_artifact_generated_at_values(tmp_path: Path) -> None:
         "trace.node_route_mismatch": ["xinbei-social-card-reissue-location"],
         "trace.route_compensated": ["xinbei-social-card-reissue-location"],
         "trace.region_mismatch": ["xinbei-social-card-reissue-location"],
+    }
+    assert report["full_gate"]["warning_diagnoses"] == {
+        "route_compensated_by_retrieval_evidence": ["xinbei-social-card-reissue-location"],
+        "dify_area_extractor_empty": ["xinbei-social-card-reissue-location"],
     }
