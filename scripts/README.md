@@ -35,6 +35,10 @@ The Makefile is the source of truth for common workflows; these scripts are the 
   - Example: `python scripts/plugin_golden_closed_loop_smoke.py --base-url http://127.0.0.1:8000 --dataset-id <dataset_uuid>`
 - `plugin_corpus_closed_loop_smoke.py`: live plugin-backed corpus ingest + Golden regression smoke from a local directory
   - Example: `python scripts/plugin_corpus_closed_loop_smoke.py --base-url http://127.0.0.1:8000 --source-dir /path/to/domain-corpus --plugin-ref plugin:<plugin-id>@<version>:chunk --include-source-root-name --overwrite-goldens`
+  - The raw JSON can include local source paths, filenames, document ids, and case ids; keep it local.
+- `plugin_corpus_closed_loop_evidence.py`: sanitized evidence from a raw plugin corpus closed-loop smoke report
+  - Example: `python scripts/plugin_corpus_closed_loop_evidence.py --input /tmp/plugin_corpus_closed_loop_report.json --json-out /tmp/plugin_corpus_closed_loop_evidence.json --markdown-out /tmp/plugin_corpus_closed_loop_evidence.md`
+  - Outputs aggregate document/chunk counts, plugin package provenance, and Golden retrieval metrics without raw filenames, document ids, case ids, questions, or chunk text.
 - `changzhou_gov_plugin_chunk_report.py`: local Changzhou plugin governance/chunk/KG review report for the 01-06 sample families
   - Example: `make changzhou-gov-plugin-chunk-report`
   - Outputs local raw `/tmp/changzhou_gov_plugin_chunk_report.json` and `/tmp/changzhou_gov_plugin_chunk_report.md`; it may include chunk previews for debugging and does not write the database, vector store, or KG store.

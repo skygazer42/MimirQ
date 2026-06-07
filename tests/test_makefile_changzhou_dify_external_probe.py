@@ -135,6 +135,65 @@ def test_changzhou_gov_plugin_test_evidence_target_is_overridable() -> None:
     assert '--markdown-out "/tmp/test-evidence.md"' in command
 
 
+def test_changzhou_gov_plugin_corpus_closed_loop_smoke_target_is_explicit_and_overridable() -> None:
+    result = subprocess.run(
+        [
+            "make",
+            "-n",
+            "changzhou-gov-plugin-corpus-closed-loop-smoke",
+            "CHANGZHOU_DIFY_MIMIRQ_BASE_URL=http://192.168.3.6:8000",
+            "CHANGZHOU_GOV_CORPUS_SOURCE_DIR=/tmp/gov-corpus",
+            "CHANGZHOU_GOV_CORPUS_DATASET_ID=dataset-1",
+            "CHANGZHOU_GOV_PLUGIN_REF=plugin:demo-runtime-plugin@1.0.0:chunk",
+            "CHANGZHOU_GOV_CORPUS_REPORT_OUT=/tmp/corpus-raw.json",
+            "CHANGZHOU_GOV_CORPUS_MAX_FILES=2",
+            "CHANGZHOU_GOV_CORPUS_EXTENSIONS=.txt,.docx",
+            "CHANGZHOU_GOV_CORPUS_EXTRA_ARGS=--include-source-root-name --overwrite-goldens",
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    command = result.stdout
+    assert "Set CHANGZHOU_GOV_CORPUS_SOURCE_DIR=" in command
+    assert "scripts/plugin_corpus_closed_loop_smoke.py" in command
+    assert '--base-url "http://192.168.3.6:8000"' in command
+    assert '--source-dir "/tmp/gov-corpus"' in command
+    assert '--dataset-id "dataset-1"' in command
+    assert '--plugin-ref "plugin:demo-runtime-plugin@1.0.0:chunk"' in command
+    assert '--extensions ".txt,.docx"' in command
+    assert "--max-files 2" in command
+    assert "--include-source-root-name --overwrite-goldens" in command
+    assert '>"/tmp/corpus-raw.json"' in command
+
+
+def test_changzhou_gov_plugin_corpus_closed_loop_evidence_target_is_overridable() -> None:
+    result = subprocess.run(
+        [
+            "make",
+            "-n",
+            "changzhou-gov-plugin-corpus-closed-loop-evidence",
+            "CHANGZHOU_GOV_CORPUS_REPORT_OUT=/tmp/corpus-raw.json",
+            "CHANGZHOU_GOV_CORPUS_EVIDENCE_OUT=/tmp/corpus-evidence.json",
+            "CHANGZHOU_GOV_CORPUS_EVIDENCE_MD=/tmp/corpus-evidence.md",
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    command = result.stdout
+    assert "scripts/plugin_corpus_closed_loop_evidence.py" in command
+    assert '--input "/tmp/corpus-raw.json"' in command
+    assert '--json-out "/tmp/corpus-evidence.json"' in command
+    assert '--markdown-out "/tmp/corpus-evidence.md"' in command
+
+
 def test_changzhou_gov_delivery_pack_target_is_overridable() -> None:
     result = subprocess.run(
         [
@@ -211,6 +270,21 @@ def test_changzhou_gov_delivery_pack_refresh_runs_quiet_gate_before_pack() -> No
     quiet_index = command.index('changzhou-dify-readiness-gate >"')
     pack_index = command.index("scripts/changzhou_gov_delivery_pack.py")
     assert quiet_index < pack_index
+
+
+def test_changzhou_gov_delivery_pack_refresh_does_not_run_live_corpus_smoke() -> None:
+    result = subprocess.run(
+        ["make", "-n", "changzhou-gov-delivery-pack-refresh"],
+        cwd=REPO_ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    command = result.stdout
+    assert "scripts/plugin_corpus_closed_loop_smoke.py" not in command
+    assert "scripts/plugin_corpus_closed_loop_evidence.py" not in command
 
 
 def test_changzhou_dify_knowledge_map_check_target_is_overridable() -> None:

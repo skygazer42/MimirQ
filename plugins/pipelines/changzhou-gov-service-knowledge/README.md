@@ -160,6 +160,29 @@ python scripts/pipeline_plugin_runner.py golden-draft plugins/pipelines/changzho
 Golden case 的 `extra` 会保留 `plugin_id/plugin_version/plugin_ref/plugin_package_hash`
 和 `expected_metadata`，后续评估异常时可以追踪到具体插件版本与包内容。
 
+## 真实语料闭环
+
+本地样例报告只证明插件契约、01-06 样例治理/切块/KG 和 Golden 草稿生成正常；
+它不会写数据库、向量库或 KG。要证明真实语料入库后的检索质量，需要显式跑 corpus
+closed-loop gate：
+
+```bash
+make changzhou-gov-plugin-corpus-closed-loop-smoke \
+  CHANGZHOU_DIFY_MIMIRQ_BASE_URL=http://127.0.0.1:8000 \
+  CHANGZHOU_GOV_CORPUS_SOURCE_DIR=/path/to/20260522政务服务智能客服知识 \
+  CHANGZHOU_GOV_CORPUS_EXTRA_ARGS="--include-source-root-name --overwrite-goldens"
+
+make changzhou-gov-plugin-corpus-closed-loop-evidence
+```
+
+该 gate 会上传语料、用当前注册插件 ref 执行 governance/chunk/KG、等待文档完成并确认
+每个非空文档有切片，然后从真实切片导入 Golden 并启动 retrieval-only regression。
+默认 `CHANGZHOU_GOV_PLUGIN_REF=plugin:changzhou-gov-service-knowledge@1.0.0:chunk`；
+如需复用既有数据集，传 `CHANGZHOU_GOV_CORPUS_DATASET_ID=<dataset_uuid>`，否则会创建隔离测试数据集。
+raw report 可能包含本地 source path、文件名、document id 和 case id；交付时使用
+`/tmp/changzhou_gov_plugin_corpus_closed_loop_evidence.json` 和 `.md`，只保留文档/切片聚合、
+插件包 provenance 和 Golden 检索聚合指标。
+
 ## 固定 Golden 评估
 
 固定评估集：
