@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import warnings
 from collections import Counter, defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
@@ -14,6 +15,14 @@ from langchain_core.documents import Document
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+
+# This is a local review/report tool. Keep production config warnings in the
+# service path, but avoid polluting handoff reports when SECRET_KEY is unset.
+warnings.filterwarnings(
+    "ignore",
+    message=r"SECRET_KEY is not configured\..*",
+    category=UserWarning,
+)
 
 from app.rag.pipeline_plugins.local_runner import load_plugin_test_input  # noqa: E402
 from app.rag.pipeline_plugins.registry import describe_plugin_dir  # noqa: E402
