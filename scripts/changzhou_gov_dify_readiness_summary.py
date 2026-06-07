@@ -66,6 +66,25 @@ def _console_auth_section(report: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _mimirq_direct_section(report: dict[str, Any]) -> dict[str, Any]:
+    gate = report.get("gate") if isinstance(report.get("gate"), dict) else {}
+    summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
+    failed_conditions: list[str] = []
+    checks = gate.get("checks") if isinstance(gate.get("checks"), list) else []
+    for check in checks:
+        if not isinstance(check, dict) or check.get("passed") is True:
+            continue
+        metric = _text(check.get("metric")) or "quality_metric"
+        failed_conditions.append(f"quality_gate_failed:{metric}")
+    if not gate and not summary:
+        failed_conditions.append("mimirq_direct_report_missing")
+    return {
+        "passed": gate.get("passed") is True,
+        "failed_conditions": failed_conditions,
+        "summary": summary,
+    }
+
+
 def _full_gate_section(report: dict[str, Any]) -> dict[str, Any]:
     summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
     stages: dict[str, Any] = {}
@@ -120,6 +139,8 @@ def _next_action(stage: str, reason: str) -> str:
         )
     if stage == "knowledge_map":
         return "Run make changzhou-dify-knowledge-map-check and fix DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON."
+    if stage == "mimirq_direct":
+        return "Run make changzhou-dify-mimirq-direct-gate and inspect /tmp/changzhou_gov_dify_mimirq_direct_gate.json."
     if stage == "external_probe":
         if reason in {"endpoint_missing", "endpoint_host_is_loopback"}:
             return "Set Dify external knowledge endpoint to a MimirQ URL reachable from the Dify server, not localhost."
@@ -132,6 +153,7 @@ def _next_action(stage: str, reason: str) -> str:
 def build_readiness_summary(
     *,
     knowledge_map: dict[str, Any] | None = None,
+    mimirq_direct: dict[str, Any] | None = None,
     console_auth: dict[str, Any] | None = None,
     external_probe: dict[str, Any],
     full_gate_summary: dict[str, Any],
@@ -140,12 +162,15 @@ def build_readiness_summary(
     artifact_reports: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     knowledge_section = _knowledge_map_section(knowledge_map or {}) if knowledge_map is not None else None
+    mimirq_section = _mimirq_direct_section(mimirq_direct or {}) if mimirq_direct is not None else None
     console_section = _console_auth_section(console_auth or {}) if console_auth is not None else None
     external_section = _external_probe_section(external_probe)
     full_section = _full_gate_section(full_gate_summary)
     staged_sections: list[tuple[str, dict[str, Any]]] = []
     if knowledge_section is not None:
         staged_sections.append(("knowledge_map", knowledge_section))
+    if mimirq_section is not None:
+        staged_sections.append(("mimirq_direct", mimirq_section))
     if console_section is not None:
         staged_sections.append(("console_auth", console_section))
     staged_sections.extend((("external_probe", external_section), ("full_gate", full_section)))
@@ -173,7 +198,7 @@ def build_readiness_summary(
             "passed": not failed_stages,
             "failed_stages": failed_stages,
             "skipped_stages": skipped_stages,
-            "stage_count": 2 + int(knowledge_section is not None) + int(console_section is not None),
+            "stage_count": len(staged_sections),
             "root_cause_stage": root_cause_stage,
             "root_cause_reason": root_cause_reason,
             "next_action": next_action,
@@ -182,6 +207,8 @@ def build_readiness_summary(
     }
     if knowledge_section is not None:
         report["knowledge_map"] = sections_by_stage["knowledge_map"]
+    if mimirq_section is not None:
+        report["mimirq_direct"] = sections_by_stage["mimirq_direct"]
     if console_section is not None:
         report["console_auth"] = sections_by_stage["console_auth"]
     report["external_probe"] = sections_by_stage["external_probe"]
@@ -190,6 +217,7 @@ def build_readiness_summary(
         artifact_reports
         or {
             "knowledge_map": knowledge_map or {},
+            "mimirq_direct": mimirq_direct or {},
             "console_auth": console_auth or {},
             "external_probe": external_probe,
             "full_gate": full_gate_summary,
@@ -210,6 +238,7 @@ def _load_json(path: str) -> dict[str, Any]:
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Build a compact Changzhou Dify readiness summary.")
     parser.add_argument("--knowledge-map", default="")
+    parser.add_argument("--mimirq-direct", default="")
     parser.add_argument("--console-auth", default="")
     parser.add_argument("--external-probe", required=True)
     parser.add_argument("--full-summary", required=True)
@@ -224,6 +253,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_arg_parser().parse_args(argv)
     artifact_paths = {
         "knowledge_map": str(args.knowledge_map),
+        "mimirq_direct": str(args.mimirq_direct),
         "console_auth": str(args.console_auth),
         "external_probe": str(args.external_probe),
         "full_gate": str(args.full_summary),
@@ -234,6 +264,7 @@ def main(argv: list[str] | None = None) -> int:
     artifact_reports = {key: _load_json(path) for key, path in artifact_paths.items() if _text(path)}
     report = build_readiness_summary(
         knowledge_map=artifact_reports.get("knowledge_map") if _text(args.knowledge_map) else None,
+        mimirq_direct=artifact_reports.get("mimirq_direct") if _text(args.mimirq_direct) else None,
         console_auth=artifact_reports.get("console_auth") if _text(args.console_auth) else None,
         external_probe=artifact_reports.get("external_probe", {}),
         full_gate_summary=artifact_reports.get("full_gate", {}),

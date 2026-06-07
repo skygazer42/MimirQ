@@ -165,6 +165,7 @@ def test_changzhou_dify_readiness_gate_runs_probe_before_full_gate() -> None:
             "CHANGZHOU_DIFY_EXTRA_ARGS=--min-hit-at-3 0.8",
             "CHANGZHOU_DIFY_PROBE_OUT=/tmp/probe.json",
             "CHANGZHOU_DIFY_OUT_PREFIX=/tmp/full_gate",
+            "CHANGZHOU_DIFY_MIMIRQ_DIRECT_OUT=/tmp/direct.json",
             "CHANGZHOU_DIFY_READINESS_OUT=/tmp/readiness.json",
             "CHANGZHOU_DIFY_KNOWLEDGE_MAP_ENV_FILE=/tmp/custom.env",
             "CHANGZHOU_DIFY_KNOWLEDGE_MAP_OUT=/tmp/map.json",
@@ -182,30 +183,37 @@ def test_changzhou_dify_readiness_gate_runs_probe_before_full_gate() -> None:
     assert 'rm -f "/tmp/probe.json" "/tmp/full_gate.json" "/tmp/full_gate_answers.json"' in command
     assert '"/tmp/full_gate_eval.json" "/tmp/full_gate_trace.json" "/tmp/full_gate_summary.json" "/tmp/readiness.json"' in command
     assert '"/tmp/map.json"' in command
+    assert '"/tmp/direct.json"' in command
     assert '"/tmp/auth.json"' in command
     assert "make changzhou-dify-knowledge-map-check" in command
+    assert "make changzhou-dify-mimirq-direct-gate" in command
     assert "make dify-console-check" in command
     assert "map_rc=$?" in command
+    assert "direct_rc=$?" in command
     assert "auth_rc=$?" in command
     assert "probe_rc=$?" in command
     assert "full_rc=$?" in command
     assert "summary_rc=$?" in command
     map_index = command.index("scripts/changzhou_gov_dify_knowledge_map_check.py")
+    direct_index = command.index("scripts/changzhou_gov_golden_eval.py")
     auth_index = command.index("scripts/dify_console_login.py")
     probe_index = command.index("scripts/changzhou_gov_dify_external_knowledge_probe.py")
     full_gate_index = command.index("scripts/changzhou_gov_dify_full_gate.py")
     summary_index = command.index("scripts/changzhou_gov_dify_readiness_summary.py")
-    assert map_index < auth_index
+    assert map_index < direct_index
+    assert direct_index < auth_index
     assert auth_index < probe_index
     assert probe_index < full_gate_index
     assert full_gate_index < summary_index
     assert '--env-file "/tmp/custom.env"' in command
     assert '--out "/tmp/map.json"' in command
+    assert '--out "/tmp/direct.json"' in command
     assert '--out "/tmp/auth.json"' in command
     assert '--cases "/tmp/custom_cases.json"' in command
     assert '--out "/tmp/probe.json"' in command
     assert '--external-probe "/tmp/probe.json"' in command
     assert '--console-auth "/tmp/auth.json"' in command
+    assert '--mimirq-direct "/tmp/direct.json"' in command
     assert '--full-summary "/tmp/full_gate_summary.json"' in command
     assert "--min-hit-at-3 0.8" in command
     assert "--min-generated-answer-grounding-rate 0.9" in command

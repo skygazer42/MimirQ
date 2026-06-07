@@ -69,6 +69,10 @@ def test_build_readiness_summary_combines_probe_and_full_gate() -> None:
 
     summary = mod.build_readiness_summary(
         knowledge_map={"summary": {"passed": True, "failed_conditions": [], "route_count": 7}},
+        mimirq_direct={
+            "gate": {"passed": True, "failed": 0, "checks": []},
+            "summary": {"cases": 12, "hit_at_1": 1.0, "answer_grounding_rate": 1.0},
+        },
         console_auth={"valid": True, "reason": "ok", "ttl_seconds": 1800, "min_ttl_seconds": 900},
         external_probe=external_probe,
         full_gate_summary=full_gate,
@@ -88,7 +92,7 @@ def test_build_readiness_summary_combines_probe_and_full_gate() -> None:
             "passed": True,
             "failed_stages": [],
             "skipped_stages": [],
-            "stage_count": 4,
+            "stage_count": 5,
             "root_cause_stage": "",
             "root_cause_reason": "",
             "next_action": "",
@@ -100,6 +104,12 @@ def test_build_readiness_summary_combines_probe_and_full_gate() -> None:
             "full_gate": "/tmp/full_summary.json",
         },
         "knowledge_map": {"passed": True, "status": "passed", "failed_conditions": [], "summary": {"passed": True, "failed_conditions": [], "route_count": 7}},
+        "mimirq_direct": {
+            "passed": True,
+            "status": "passed",
+            "failed_conditions": [],
+            "summary": {"cases": 12, "hit_at_1": 1.0, "answer_grounding_rate": 1.0},
+        },
         "console_auth": {"passed": True, "status": "passed", "reason": "ok", "ttl_seconds": 1800, "min_ttl_seconds": 900},
         "external_probe": {
             "passed": True,
@@ -179,6 +189,7 @@ def test_auth_failure_marks_downstream_stages_skipped() -> None:
 
     summary = mod.build_readiness_summary(
         knowledge_map={"summary": {"passed": True, "failed_conditions": [], "route_count": 7}},
+        mimirq_direct={"gate": {"passed": True, "failed": 0, "checks": []}, "summary": {"hit_at_1": 1.0}},
         console_auth={"valid": False, "reason": "token_expired", "ttl_seconds": -10, "min_ttl_seconds": 900},
         external_probe={},
         full_gate_summary={},
@@ -190,17 +201,53 @@ def test_auth_failure_marks_downstream_stages_skipped() -> None:
         "passed": False,
         "failed_stages": ["console_auth"],
         "skipped_stages": ["external_probe", "full_gate"],
-        "stage_count": 4,
+        "stage_count": 5,
         "root_cause_stage": "console_auth",
         "root_cause_reason": "token_expired",
         "next_action": "Refresh Dify console login with DIFY_CONSOLE_EMAIL and DIFY_CONSOLE_PASSWORD_FILE, then run make dify-console-login.",
     }
     assert summary["knowledge_map"]["status"] == "passed"
+    assert summary["mimirq_direct"]["status"] == "passed"
     assert summary["console_auth"]["status"] == "failed"
     assert summary["external_probe"]["status"] == "skipped"
     assert summary["external_probe"]["blocked_by"] == "console_auth"
     assert summary["full_gate"]["status"] == "skipped"
     assert summary["full_gate"]["blocked_by"] == "console_auth"
+
+
+def test_mimirq_direct_failure_blocks_dify_remote_stages() -> None:
+    mod = _load_module()
+
+    summary = mod.build_readiness_summary(
+        knowledge_map={"summary": {"passed": True, "failed_conditions": [], "route_count": 7}},
+        mimirq_direct={
+            "gate": {
+                "passed": False,
+                "failed": 1,
+                "checks": [{"metric": "hit_at_1", "actual": 0.9, "minimum": 1.0, "passed": False}],
+            },
+            "summary": {"cases": 12, "hit_at_1": 0.9},
+        },
+        console_auth={"valid": True, "reason": "ok", "ttl_seconds": 1800, "min_ttl_seconds": 900},
+        external_probe={"gate": {"passed": True, "failed_conditions": []}},
+        full_gate_summary={"summary": {"passed": True, "failed_stages": []}},
+        artifacts={},
+        generated_at="2026-06-07T01:02:03Z",
+    )
+
+    assert summary["summary"] == {
+        "passed": False,
+        "failed_stages": ["mimirq_direct"],
+        "skipped_stages": ["console_auth", "external_probe", "full_gate"],
+        "stage_count": 5,
+        "root_cause_stage": "mimirq_direct",
+        "root_cause_reason": "quality_gate_failed:hit_at_1",
+        "next_action": "Run make changzhou-dify-mimirq-direct-gate and inspect /tmp/changzhou_gov_dify_mimirq_direct_gate.json.",
+    }
+    assert summary["knowledge_map"]["status"] == "passed"
+    assert summary["mimirq_direct"]["status"] == "failed"
+    assert summary["console_auth"]["status"] == "skipped"
+    assert summary["console_auth"]["blocked_by"] == "mimirq_direct"
 
 
 def test_loopback_external_endpoint_gets_specific_next_action() -> None:
@@ -277,6 +324,7 @@ def test_main_collects_artifact_generated_at_values(tmp_path: Path) -> None:
     external_probe = tmp_path / "external.json"
     full_summary = tmp_path / "full_summary.json"
     knowledge_map = tmp_path / "map.json"
+    mimirq_direct = tmp_path / "mimirq_direct.json"
     console_auth = tmp_path / "auth.json"
     answers = tmp_path / "answers.json"
     eval_report = tmp_path / "eval.json"
@@ -289,6 +337,10 @@ def test_main_collects_artifact_generated_at_values(tmp_path: Path) -> None:
     )
     console_auth.write_text(
         json.dumps({"generated_at": "2026-06-07T00:59:30Z", "valid": True, "reason": "ok", "ttl_seconds": 1800}),
+        encoding="utf-8",
+    )
+    mimirq_direct.write_text(
+        json.dumps({"generated_at": "2026-06-07T00:59:45Z", "gate": {"passed": True, "checks": []}}),
         encoding="utf-8",
     )
     external_probe.write_text(
@@ -311,6 +363,8 @@ def test_main_collects_artifact_generated_at_values(tmp_path: Path) -> None:
             str(knowledge_map),
             "--console-auth",
             str(console_auth),
+            "--mimirq-direct",
+            str(mimirq_direct),
             "--full-summary",
             str(full_summary),
             "--answers",
@@ -329,6 +383,7 @@ def test_main_collects_artifact_generated_at_values(tmp_path: Path) -> None:
     assert report["artifact_generated_at"] == {
         "knowledge_map": "2026-06-07T00:59:00Z",
         "console_auth": "2026-06-07T00:59:30Z",
+        "mimirq_direct": "2026-06-07T00:59:45Z",
         "external_probe": "2026-06-07T01:00:00Z",
         "answers": "2026-06-07T01:01:00Z",
         "eval": "2026-06-07T01:02:00Z",
