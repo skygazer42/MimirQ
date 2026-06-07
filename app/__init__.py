@@ -9,6 +9,7 @@ import importlib
 import os
 import re
 import sys
+import warnings
 from datetime import timezone
 from importlib import metadata as _metadata
 from importlib import resources as _resources
@@ -102,7 +103,13 @@ def _ensure_pkg_resources_available() -> None:
     """
 
     try:
-        import pkg_resources  # type: ignore  # noqa: F401
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message=r"pkg_resources is deprecated as an API\..*",
+                category=UserWarning,
+            )
+            import pkg_resources  # type: ignore  # noqa: F401
 
         return
     except ImportError:

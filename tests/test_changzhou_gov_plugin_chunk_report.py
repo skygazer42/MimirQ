@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -100,3 +103,38 @@ def test_main_writes_json_and_markdown_reports(tmp_path: Path) -> None:
     payload = json.loads(json_path.read_text(encoding="utf-8"))
     assert payload["passed"] is True
     assert "01政务服务事项知识" in markdown_path.read_text(encoding="utf-8")
+
+
+def test_cli_does_not_emit_local_secret_key_warning(tmp_path: Path) -> None:
+    json_path = tmp_path / "chunk_report.json"
+    markdown_path = tmp_path / "chunk_report.md"
+    env = dict(os.environ)
+    env["PYTHONWARNINGS"] = "default"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT_PATH),
+            "--plugin-dir",
+            str(PLUGIN_DIR),
+            "--input",
+            str(SAMPLE_PATH),
+            "--json-out",
+            str(json_path),
+            "--markdown-out",
+            str(markdown_path),
+            "--max-examples-per-section",
+            "1",
+            "--preview-chars",
+            "80",
+        ],
+        cwd=REPO_ROOT,
+        env=env,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "SECRET_KEY is not configured" not in result.stderr
+    assert "pkg_resources is deprecated" not in result.stderr

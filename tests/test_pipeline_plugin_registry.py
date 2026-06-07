@@ -440,6 +440,7 @@ def test_pipeline_plugin_runner_exports_local_golden_draft_bundle(tmp_path: Path
     )
 
     assert res.returncode == 0, res.stderr
+    assert "SECRET_KEY is not configured" not in res.stderr
     bundle = json.loads(out_path.read_text(encoding="utf-8"))
     assert bundle["schema"] == "mimirq.regression_cases.v1"
     assert bundle["dataset_id"] == "00000000-0000-0000-0000-000000000123"

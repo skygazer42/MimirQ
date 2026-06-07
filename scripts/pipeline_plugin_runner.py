@@ -4,12 +4,20 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import warnings
 from pathlib import Path
 from uuid import UUID
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+
+# This CLI runs local plugin checks/drafts, not the production API service.
+warnings.filterwarnings(
+    "ignore",
+    message=r"SECRET_KEY is not configured\..*",
+    category=UserWarning,
+)
 
 from app.rag.pipeline_plugins.local_runner import (  # noqa: E402
     build_pipeline_plugin_golden_draft_from_sample,
