@@ -125,7 +125,6 @@ def _trace_warning_cases(report: dict[str, Any]) -> dict[str, list[str]]:
             "trace.route_compensated": item.get("route_compensated") is True,
             "trace.route_mismatch": item.get("route_matched") is False,
             "trace.region_mismatch": item.get("region_matched") is False,
-            "trace.evidence_route_mismatch": item.get("evidence_route_matched") is False,
             "trace.fallback": item.get("fallback") is True,
         }
         for key, matched in checks.items():
