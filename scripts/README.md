@@ -38,6 +38,7 @@ The Makefile is the source of truth for common workflows; these scripts are the 
 - `dify_console_login.py`: refresh the Dify console Playwright `storage_state` used by workflow trace diagnostics
   - Recommended: `DIFY_CONSOLE_EMAIL=<email> DIFY_CONSOLE_PASSWORD_FILE=/tmp/dify_console_password.txt make dify-console-login`
   - Avoid putting Dify console passwords in repository files or shell history; the script writes only `console_token` localStorage state to `/tmp/kingdonsoft_dify_storage_state.json` by default.
+  - The Kingdonsoft Dify console web UI is served under the `/brainai` base path, for example `https://ai.kingdonsoft.com:3000/brainai/apps`. Keep `DIFY_CONSOLE_ORIGIN=https://ai.kingdonsoft.com:3000` because browser storage state is keyed by origin, not by path.
 - `changzhou_gov_dify_external_knowledge_probe.py`: compare Dify external hit-testing with direct MimirQ retrieval for the same Changzhou golden cases
   - MimirQ-only preflight: `make changzhou-dify-mimirq-direct-gate` runs the same golden retrieval cases directly against MimirQ using `DIFY_EXTERNAL_KNOWLEDGE_API_KEY(S)` from `.env`, without Dify console auth.
   - Local route preflight: `make changzhou-dify-knowledge-map-check` validates `DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON` before remote Dify calls.
