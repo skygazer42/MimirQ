@@ -259,6 +259,49 @@ def test_mimirq_direct_failure_blocks_dify_remote_stages() -> None:
     assert summary["console_auth"]["blocked_by"] == "mimirq_direct"
 
 
+def test_build_readiness_summary_prefers_latest_eval_artifact_summary() -> None:
+    mod = _load_module()
+
+    summary = mod.build_readiness_summary(
+        knowledge_map={"summary": {"passed": True, "failed_conditions": [], "route_count": 7}},
+        mimirq_direct={"gate": {"passed": True, "failed": 0, "checks": []}, "summary": {"hit_at_1": 1.0}},
+        console_auth={"valid": True, "reason": "ok", "ttl_seconds": 1800, "min_ttl_seconds": 900},
+        external_probe={"gate": {"passed": True, "failed_conditions": []}},
+        full_gate_summary={
+            "summary": {"passed": True, "failed_stages": []},
+            "stages": {
+                "eval": {
+                    "passed": True,
+                    "summary": {
+                        "generated_answer_grounding_rate": 0.9166666666666666,
+                        "generated_answer_key_point_recall": 0.9714285714285714,
+                        "generated_answer_missing_cases": 1,
+                    },
+                }
+            },
+        },
+        artifacts={},
+        artifact_reports={
+            "eval": {
+                "summary": {
+                    "generated_answer_grounding_rate": 1.0,
+                    "generated_answer_key_point_recall": 1.0,
+                    "generated_answer_missing_cases": 0,
+                },
+                "results": [],
+            }
+        },
+        generated_at="2026-06-07T01:02:03Z",
+    )
+
+    assert summary["full_gate"]["stages"]["eval"]["summary"] == {
+        "generated_answer_grounding_rate": 1.0,
+        "generated_answer_key_point_recall": 1.0,
+        "generated_answer_missing_cases": 0,
+    }
+    assert "warning_cases" not in summary["full_gate"]
+
+
 def test_loopback_external_endpoint_gets_specific_next_action() -> None:
     mod = _load_module()
 

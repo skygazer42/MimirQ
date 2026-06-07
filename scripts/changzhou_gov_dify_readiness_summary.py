@@ -111,6 +111,21 @@ def _full_gate_section(report: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _overlay_stage_summary(section: dict[str, Any], stage_name: str, report: dict[str, Any]) -> None:
+    summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
+    if not summary:
+        return
+    stages = section.setdefault("stages", {})
+    if not isinstance(stages, dict):
+        return
+    stage = stages.get(stage_name) if isinstance(stages.get(stage_name), dict) else {}
+    gate = report.get("gate") if isinstance(report.get("gate"), dict) else {}
+    stages[stage_name] = {
+        "passed": gate.get("passed") if "passed" in gate else bool(stage.get("passed", True)),
+        "summary": summary,
+    }
+
+
 def _trace_warning_cases(report: dict[str, Any]) -> dict[str, list[str]]:
     cases = report.get("cases") if isinstance(report.get("cases"), list) else []
     warning_cases: dict[str, list[str]] = {}
@@ -363,6 +378,8 @@ def build_readiness_summary(
     full_section = _full_gate_section(full_gate_summary)
     eval_report = (artifact_reports or {}).get("eval", {})
     trace_report = (artifact_reports or {}).get("trace", {})
+    if isinstance(eval_report, dict):
+        _overlay_stage_summary(full_section, "eval", eval_report)
     if isinstance(trace_report, dict):
         warning_diagnoses = _trace_warning_diagnoses(trace_report)
         if warning_diagnoses:
