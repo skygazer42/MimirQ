@@ -153,13 +153,13 @@ plugins/pipelines/changzhou-gov-service-knowledge/golden_eval_cases.json
 只评估 MimirQ Dify external knowledge 检索与证据可回答性：
 
 ```bash
-DIFY_EXTERNAL_KNOWLEDGE_API_KEY=... \
-python scripts/changzhou_gov_golden_eval.py \
-  --min-hit-at-1 1 \
-  --min-answer-grounding-rate 1 \
-  --min-answer-key-point-recall 1 \
-  --out /tmp/changzhou_gov_golden_eval.json
+make changzhou-dify-mimirq-direct-gate
 ```
+
+该命令只直打 MimirQ `/api/v1/integrations/dify/retrieval`，不依赖 Dify Console
+登录态；token 默认从 `.env` 的 `DIFY_EXTERNAL_KNOWLEDGE_API_KEY` 或
+`DIFY_EXTERNAL_KNOWLEDGE_API_KEYS` 读取，不会出现在命令行。默认输出
+`/tmp/changzhou_gov_dify_mimirq_direct_gate.json`。
 
 采集固定 Dify App workflow 的真实生成答案，不修改 workflow：
 

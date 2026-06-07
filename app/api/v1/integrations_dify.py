@@ -63,6 +63,13 @@ _METADATA_KEYS = (
 _PUBLIC_METADATA_VIEW_KEYS = ("_evaluable_metadata", "_display_metadata")
 _RETRIEVAL_INTENT_KEYS = ("retrieval_intents", "query_intents", "intent_terms")
 _MIN_SPECIFIC_INTENT_CHARS = 7
+_SECTION_TYPE_INTENT_FALLBACKS = {
+    "operation_entry": ("系统入口", "办理入口", "从哪里进入办理"),
+    "operation_steps": ("申报流程", "申报步骤", "网上办理怎么操作", "操作步骤"),
+    "operation_material_upload": ("材料上传", "上传材料", "附件上传"),
+    "operation_query": ("进度查询", "结果查询", "查询办理进度"),
+    "operation_url": ("在线入口", "网上办理地址", "操作手册入口"),
+}
 _ANSWER_HIGHLIGHT_KEYS = ("answer_highlights", "answer_key_points", "summary_points")
 _STRUCTURED_ANSWER_LABELS = (
     "答案",
@@ -654,6 +661,14 @@ def _record_retrieval_intents(record: dict[str, Any]) -> list[str]:
                     continue
                 seen.add(term)
                 out.append(term)
+        section_type = str(metadata.get("section_type") or metadata.get("chunk_kind") or "").strip()
+        if section_type.startswith("one_thing_"):
+            section_type = section_type.removeprefix("one_thing_")
+        for term in _SECTION_TYPE_INTENT_FALLBACKS.get(section_type, ()):
+            if term in seen:
+                continue
+            seen.add(term)
+            out.append(term)
     return out
 
 

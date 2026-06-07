@@ -481,7 +481,7 @@ def test_dify_retrieval_uses_plugin_retrieval_intents_for_tie_breaking(
     assert records[1]["content"] == "入口说明正文"
 
 
-def test_dify_retrieval_ignores_content_search_anchor_without_metadata_intents(
+def test_dify_retrieval_uses_section_type_intent_fallback_without_metadata_intents(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import app.api.v1.integrations_dify as dify_api
@@ -514,6 +514,66 @@ def test_dify_retrieval_ignores_content_search_anchor_without_metadata_intents(
                 "document_name": "一件事操作指引.txt",
                 "chunk_id": str(uuid.uuid4()),
                 "metadata": {"section_type": "operation_steps"},
+            },
+        ]
+
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/integrations/dify/retrieval",
+        headers=_auth(token),
+        json={
+            "knowledge_id": "city",
+            "query": "社会保障卡居民服务一件事网上办理怎么操作",
+            "retrieval_setting": {"top_k": 2, "score_threshold": 0.0},
+        },
+    )
+
+    assert res.status_code == 200, res.text
+    records = res.json()["records"]
+    assert "步骤说明正文" in records[0]["content"]
+    assert "入口说明正文" in records[1]["content"]
+
+
+def test_dify_retrieval_ignores_content_search_anchor_without_metadata_hints(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    token = "dify-test-token"
+    dataset_id = uuid.uuid4()
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        f'{{"city": "{dataset_id}"}}',
+        raising=False,
+    )
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+
+    async def _fake_retrieve_dataset_citations(**_kwargs):  # noqa: ANN003, ANN202
+        return [
+            {
+                "chunk_content": "检索锚点：社会保障卡居民服务一件事；章节意图：在线入口、操作手册入口\n入口说明正文",
+                "relevance_score": 0.73,
+                "document_name": "一件事操作指引.txt",
+                "chunk_id": str(uuid.uuid4()),
+                "metadata": {},
+            },
+            {
+                "chunk_content": "检索锚点：社会保障卡居民服务一件事；章节意图：申报流程、网上办理怎么操作\n步骤说明正文",
+                "relevance_score": 0.73,
+                "document_name": "一件事操作指引.txt",
+                "chunk_id": str(uuid.uuid4()),
+                "metadata": {},
             },
         ]
 
