@@ -59,6 +59,13 @@ def _next_key(meta: dict[str, Any]) -> str:
     return _sig(meta.get("hierarchy_next_sibling_key") or meta.get("next_chunk_key"))
 
 
+def _record_identity_key(meta: dict[str, Any]) -> str:
+    raw = meta.get("_record_identity") or meta.get("record_identity")
+    if not isinstance(raw, dict):
+        return ""
+    return _sig(raw.get("key"))
+
+
 def _score(meta: dict[str, Any]) -> float:
     for k in ("score", "retrieval_score", "rerank_score", "vector_score", "bm25_score"):
         v = meta.get(k)
@@ -246,6 +253,7 @@ def expand_hierarchy_context(
     added = 0
     added_parents = 0
     added_siblings = 0
+    skipped_cross_record_siblings = 0
 
     def _append(doc: Document) -> None:
         if doc is None:
@@ -256,8 +264,16 @@ def expand_hierarchy_context(
         expanded.append(doc)
         seen.add(dk)
 
-    def _add(doc: Document, *, role: str, neighbor_of: str | None, base_score: float, score_scale: float) -> None:
-        nonlocal added, added_parents, added_siblings
+    def _add(
+        doc: Document,
+        *,
+        role: str,
+        neighbor_of: str | None,
+        base_score: float,
+        score_scale: float,
+        anchor_meta: dict[str, Any] | None = None,
+    ) -> None:
+        nonlocal added, added_parents, added_siblings, skipped_cross_record_siblings
         if doc is None:
             return
         if cap and added >= cap:
@@ -270,6 +286,13 @@ def expand_hierarchy_context(
         if dk in seen:
             return
         meta = dict(getattr(doc, "metadata", None) or {})
+        if str(role or "") == "hierarchy_sibling":
+            anchor_identity = _record_identity_key(anchor_meta or {})
+            if anchor_identity:
+                sibling_identity = _record_identity_key(meta)
+                if sibling_identity != anchor_identity:
+                    skipped_cross_record_siblings += 1
+                    return
         meta["retrieval_role"] = str(role or "").strip() or "hierarchy"
         if neighbor_of is not None and str(neighbor_of).strip():
             meta["neighbor_of"] = str(neighbor_of).strip()
@@ -320,6 +343,7 @@ def expand_hierarchy_context(
                 neighbor_of=anchor_chunk_id or None,
                 base_score=anchor_score,
                 score_scale=0.92,
+                anchor_meta=ameta,
             )
 
         prev_keys = list(prev_keys_by_anchor.get(ak) or [])
@@ -334,6 +358,7 @@ def expand_hierarchy_context(
                 neighbor_of=anchor_chunk_id or None,
                 base_score=anchor_score,
                 score_scale=0.85,
+                anchor_meta=ameta,
             )
 
         _append(d)
@@ -348,6 +373,7 @@ def expand_hierarchy_context(
                 neighbor_of=anchor_chunk_id or None,
                 base_score=anchor_score,
                 score_scale=0.85,
+                anchor_meta=ameta,
             )
 
     meta_out = {
@@ -358,6 +384,7 @@ def expand_hierarchy_context(
         "added_docs": int(added),
         "added_parents": int(added_parents),
         "added_siblings": int(added_siblings),
+        "skipped_cross_record_siblings": int(skipped_cross_record_siblings),
         "max_added_docs": int(cap),
         "cache_size": int(len(cache)),
     }

@@ -13,6 +13,7 @@ def _mk(
     next_key: str | None = None,
     chunk_id: str | None = None,
     score: float = 1.0,
+    record_key: str | None = None,
 ) -> Document:
     meta = {
         "document_id": document_id,
@@ -25,6 +26,12 @@ def _mk(
         "hierarchy_next_sibling_key": next_key,
         "score": float(score),
     }
+    if record_key:
+        meta["_record_identity"] = {
+            "schema": "mimirq.record_identity.v1",
+            "key": record_key,
+            "fields": {"source_record_id": record_key},
+        }
     return Document(page_content=node_key, metadata=meta, id=meta["chunk_id"])
 
 
@@ -153,3 +160,59 @@ def test_expand_hierarchy_context_does_not_duplicate_original_docs() -> None:
     assert meta["enabled"] is True
     assert meta["added_docs"] == 1
 
+
+def test_expand_hierarchy_context_does_not_cross_record_identity_for_siblings() -> None:
+    from app.rag.retrieval.hierarchy_expand import expand_hierarchy_context
+
+    anchor = _mk(
+        document_id="d1",
+        chunk_index=1,
+        node_key="record-b",
+        parent_key=None,
+        prev_key="record-a",
+        next_key="record-c",
+        chunk_id="bid",
+        score=1.0,
+        record_key="record-b",
+    )
+    prev_sib = _mk(
+        document_id="d1",
+        chunk_index=0,
+        node_key="record-a",
+        parent_key=None,
+        next_key="record-b",
+        chunk_id="aid",
+        score=0.1,
+        record_key="record-a",
+    )
+    next_sib = _mk(
+        document_id="d1",
+        chunk_index=2,
+        node_key="record-c",
+        parent_key=None,
+        prev_key="record-b",
+        chunk_id="cid",
+        score=0.1,
+        record_key="record-c",
+    )
+
+    store = {
+        ("d1", "record-a"): prev_sib,
+        ("d1", "record-c"): next_sib,
+    }
+
+    def fetch(pairs):  # noqa: ANN001
+        return {p: store[p] for p in pairs if p in store}
+
+    out, meta = expand_hierarchy_context(
+        [anchor],
+        parent_depth=0,
+        sibling_window=1,
+        fetch_by_key=fetch,
+        max_added_docs=20,
+    )
+
+    assert [d.page_content for d in out] == ["record-b"]
+    assert meta["enabled"] is True
+    assert meta["added_docs"] == 0
+    assert meta["skipped_cross_record_siblings"] == 2

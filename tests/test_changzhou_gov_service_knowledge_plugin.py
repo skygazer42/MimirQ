@@ -5,7 +5,7 @@ from pathlib import Path
 
 from langchain_core.documents import Document
 
-from app.rag.pipeline_plugins.contracts import validate_documents_metadata
+from app.rag.pipeline_plugins.contracts import apply_retrieval_text_schema, validate_documents_metadata
 from app.rag.pipeline_plugins.registry import describe_plugin_dir, load_descriptor_stage_callable
 
 PLUGIN_DIR = Path("plugins/pipelines/changzhou-gov-service-knowledge")
@@ -127,6 +127,45 @@ def test_changzhou_plugin_governs_service_item_records():
     assert records[0].metadata["service_name"] == "社会保障卡补卡"
     assert "utm_source" not in records[0].metadata["online_url"]
     assert chunks[0].metadata["chunk_kind"] == "service_item_full"
+
+
+def test_changzhou_service_item_chunks_include_retrieval_anchor_text():
+    source = "/data/temp50/20260522政务服务智能客服知识/01政务服务事项知识/经开区事项清单.txt"
+    text = """[事项名称：社会保障卡补卡]
+行使层级：市级
+办理形式：窗口办理,网上办理
+办理地点：常州市政务服务中心
+受理条件：已办理社会保障卡正式挂失的持卡人。
+办理材料：1、居民身份证件（必要）
+咨询方式：0519-12333
+在线办理地址：**<http://cz.jszwfw.gov.cn/item?webId=5>**
+==##相似问法：补办社保卡、社保卡丢失##==
+"""
+
+    records = _run_governance(Document(page_content=text, metadata={"source": source}))
+    chunks = _run_chunk(records)
+    chunk = chunks[0]
+    retrieval_schema = json.loads((PLUGIN_DIR / "retrieval_text_schema.json").read_text(encoding="utf-8"))
+    indexed_chunk = apply_retrieval_text_schema(chunks, retrieval_text_schema=retrieval_schema, stage="chunk")[0]
+    retrieval_text = indexed_chunk.metadata.get("_retrieval_text")
+
+    assert chunk.page_content.startswith("区县：经开区\n事项名称：社会保障卡补卡")
+    assert "_retrieval_text" not in chunk.metadata
+    assert isinstance(retrieval_text, str)
+    assert "事项名称：社会保障卡补卡" in retrieval_text
+    assert "区县：经开区" in retrieval_text
+    assert "补办社保卡" in retrieval_text
+    assert "社会保障卡补卡需要什么材料" in retrieval_text
+    assert "社会保障卡补卡在哪里办理" in retrieval_text
+    assert "社会保障卡补卡咨询电话是多少" in retrieval_text
+    assert "社会保障卡补卡能不能网上办" in retrieval_text
+    assert chunk.metadata["retrieval_intents"] == [
+        "社会保障卡补卡需要什么材料",
+        "社会保障卡补卡在哪里办理",
+        "社会保障卡补卡咨询电话是多少",
+        "社会保障卡补卡能不能网上办",
+        "社会保障卡补卡怎么办理",
+    ]
 
 
 def test_changzhou_plugin_builds_service_item_kg_events():

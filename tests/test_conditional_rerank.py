@@ -34,6 +34,20 @@ class _CountingReranker(BaseReranker):
         return RerankResult(ordered_ids=ordered, score_map=score_map, provider="stub", model_used="stub")
 
 
+@dataclass
+class _FixedScoreReranker(BaseReranker):
+    scores_by_service_name: dict[str, float]
+
+    def rerank(self, query: str, candidates: Sequence[RerankCandidate], **kwargs: Any) -> RerankResult:  # noqa: ARG002
+        scores: dict[str, float] = {}
+        for c in candidates:
+            meta = c.metadata if isinstance(c.metadata, dict) else {}
+            service_name = str(meta.get("service_name") or "").strip()
+            scores[str(c.id)] = float(self.scores_by_service_name.get(service_name, 0.0))
+        ordered = sorted(scores, key=lambda cid: (-float(scores[cid]), cid))
+        return RerankResult(ordered_ids=ordered, score_map=scores, provider="stub", model_used="stub")
+
+
 def _mk_candidate(*, dataset_id: str, score: float, index: int) -> dict[str, Any]:
     return {
         "chunk_id": str(uuid4()),
@@ -145,3 +159,55 @@ def test_retriever_keeps_reranker_when_confidence_gate_is_not_met(monkeypatch: p
     rerank = channels.get("rerank") or {}
     assert rerank.get("used") is True
     assert rerank.get("skip_reason") is None
+
+
+def test_retriever_promotes_exact_metadata_anchor_after_api_rerank(monkeypatch: pytest.MonkeyPatch) -> None:
+    retriever = _build_vector_retriever()
+    ds_id = str(retriever.dataset_id)
+    query = "文艺表演团体变更地址咨询电话是多少？"
+
+    monkeypatch.setattr(settings, "RETRIEVAL_OVERFETCH_MULTIPLIER", 1, raising=False)
+    monkeypatch.setattr(settings, "RETRIEVAL_OVERFETCH_MAX_K", 0, raising=False)
+    monkeypatch.setattr(settings, "LEXICAL_DB_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "BM25_INDEX_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "RERANK_CONDITIONAL_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "RETRIEVAL_EXACT_PHRASE_RERANK_BOOST", 0.35, raising=False)
+
+    wrong = _mk_candidate(dataset_id=ds_id, score=0.90, index=0)
+    wrong["content"] = "事项名称：演出场所经营单位变更法人或主要负责人\n咨询方式：12345"
+    wrong["metadata"]["service_name"] = "演出场所经营单位变更法人或主要负责人"
+    wrong["metadata"]["_evaluable_metadata"] = {"service_name": "演出场所经营单位变更法人或主要负责人"}
+
+    correct = _mk_candidate(dataset_id=ds_id, score=0.89, index=1)
+    correct["content"] = "事项名称：文艺表演团体变更地址\n咨询方式：0519-12345"
+    correct["metadata"]["service_name"] = "文艺表演团体变更地址"
+    correct["metadata"]["_evaluable_metadata"] = {"service_name": "文艺表演团体变更地址"}
+
+    stub_store = _StubVectorStore(results=[wrong, correct])
+    monkeypatch.setattr("app.storage.vector.factory.get_vector_store", lambda: stub_store, raising=True)
+    monkeypatch.setattr("app.rag.retriever.get_vector_store", lambda: stub_store, raising=False)
+
+    monkeypatch.setattr(HybridRetriever, "_enrich_results_with_db_metadata", lambda _self, r, **_k: r, raising=True)
+    monkeypatch.setattr(HybridRetriever, "_expand_results_with_neighbors", lambda _self, r: r, raising=True)
+    monkeypatch.setattr(HybridRetriever, "_auto_merge_parent_child", lambda _self, r: r, raising=True)
+
+    monkeypatch.setattr(
+        "app.rag.retriever.get_reranker",
+        lambda _provider: _FixedScoreReranker(
+            scores_by_service_name={
+                "演出场所经营单位变更法人或主要负责人": 0.728,
+                "文艺表演团体变更地址": 0.727,
+            }
+        ),
+        raising=True,
+    )
+
+    docs = retriever._get_relevant_documents(
+        query,
+        run_manager=CallbackManagerForRetrieverRun.get_noop_manager(),
+    )
+
+    assert docs[0].metadata["service_name"] == "文艺表演团体变更地址"
+    assert docs[0].metadata["rerank_score"] == pytest.approx(0.727)
+    assert docs[0].metadata["metadata_exact_match_field"] == "service_name"
+    assert float(docs[0].metadata["metadata_exact_match_boost"]) > 0.0

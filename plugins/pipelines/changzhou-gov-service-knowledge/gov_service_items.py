@@ -50,6 +50,13 @@ _CHUNK_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("service_process", ("办理流程",)),
     ("service_contact", ("咨询方式", "监督投诉方式", "在线办理地址")),
 )
+_SERVICE_RETRIEVAL_INTENTS = (
+    "需要什么材料",
+    "在哪里办理",
+    "咨询电话是多少",
+    "能不能网上办",
+    "怎么办理",
+)
 
 
 def _source_name(meta: dict[str, Any]) -> str:
@@ -270,6 +277,19 @@ def _prefix(doc: Document) -> str:
     return "\n".join(lines).strip()
 
 
+def _service_retrieval_intents(doc: Document) -> list[str]:
+    meta = dict(doc.metadata or {})
+    title = str(meta.get("service_name") or "").strip()
+    if not title:
+        return list(_SERVICE_RETRIEVAL_INTENTS)
+    return [f"{title}{intent}" for intent in _SERVICE_RETRIEVAL_INTENTS]
+
+
+def _with_service_retrieval_meta(doc: Document, meta: dict[str, Any]) -> dict[str, Any]:
+    meta["retrieval_intents"] = _service_retrieval_intents(doc)
+    return meta
+
+
 def _split_value_units(value: str) -> list[str]:
     text = str(value or "").strip()
     if not text:
@@ -372,6 +392,7 @@ def chunk_documents(
         if len(text_for_chunk) <= max_record_chars:
             meta = _base_chunk_meta(doc, chunk_kind="service_item_full", chunk_index=chunk_index)
             meta = _with_offsets(doc, meta, text_for_chunk)
+            meta = _with_service_retrieval_meta(doc, meta)
             chunks.append(Document(page_content=text_for_chunk, metadata=meta))
             chunk_index += 1
             continue
@@ -387,12 +408,14 @@ def chunk_documents(
                     meta["chunk_part_index"] = part_index
                     meta["chunk_part_total"] = len(contents)
                 meta = _with_offsets(doc, meta, content)
+                meta = _with_service_retrieval_meta(doc, meta)
                 chunks.append(Document(page_content=content, metadata=meta))
                 chunk_index += 1
                 emitted = True
         if not emitted:
             meta = _base_chunk_meta(doc, chunk_kind="service_item_full", chunk_index=chunk_index)
             meta = _with_offsets(doc, meta, text)
+            meta = _with_service_retrieval_meta(doc, meta)
             chunks.append(Document(page_content=text, metadata=meta))
             chunk_index += 1
 
