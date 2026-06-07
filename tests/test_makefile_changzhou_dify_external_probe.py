@@ -147,7 +147,9 @@ def test_changzhou_gov_plugin_corpus_closed_loop_smoke_target_is_explicit_and_ov
             "CHANGZHOU_GOV_PLUGIN_REF=plugin:demo-runtime-plugin@1.0.0:chunk",
             "CHANGZHOU_GOV_CORPUS_REPORT_OUT=/tmp/corpus-raw.json",
             "CHANGZHOU_GOV_CORPUS_MAX_FILES=2",
+            "CHANGZHOU_GOV_CORPUS_UPLOAD_BATCH_SIZE=1",
             "CHANGZHOU_GOV_CORPUS_EXTENSIONS=.txt,.docx",
+            "CHANGZHOU_GOV_CORPUS_HTTP_TIMEOUT=600",
             "CHANGZHOU_GOV_CORPUS_EXTRA_ARGS=--include-source-root-name --overwrite-goldens",
         ],
         cwd=REPO_ROOT,
@@ -166,6 +168,8 @@ def test_changzhou_gov_plugin_corpus_closed_loop_smoke_target_is_explicit_and_ov
     assert '--plugin-ref "plugin:demo-runtime-plugin@1.0.0:chunk"' in command
     assert '--extensions ".txt,.docx"' in command
     assert "--max-files 2" in command
+    assert "--upload-batch-size 1" in command
+    assert "--timeout 600" in command
     assert "--include-source-root-name --overwrite-goldens" in command
     assert '>"/tmp/corpus-raw.json"' in command
 
