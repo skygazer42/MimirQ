@@ -17,6 +17,7 @@ from urllib.request import Request, urlopen
 DEFAULT_CONSOLE_BASE_URL = "https://dify.example.com:5001/console/api"
 DEFAULT_STORAGE_STATE = "/tmp/dify_console_storage_state.json"
 RequestJsonFn = Callable[..., dict[str, Any]]
+ProgressFn = Callable[[dict[str, Any]], None]
 
 _FALLBACK_ANSWER_MARKERS = (
     "只能答复常州市政务服务领域",
@@ -83,7 +84,7 @@ def _request_json(*, console_base_url: str, console_token: str, path: str, timeo
             "Accept": "application/json",
         },
     )
-    last_error: URLError | None = None
+    last_error: Exception | None = None
     for _attempt in range(_REQUEST_ATTEMPTS):
         try:
             with urlopen(request, timeout=timeout) as response:
@@ -91,7 +92,7 @@ def _request_json(*, console_base_url: str, console_token: str, path: str, timeo
         except HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace")
             raise RuntimeError(f"HTTP {exc.code}: {body[:800]}") from exc
-        except URLError as exc:
+        except (TimeoutError, URLError) as exc:
             last_error = exc
     raise RuntimeError(f"request failed: {last_error}") from last_error
 
@@ -276,7 +277,8 @@ def _trace_answer(
     case_id = _text(answer_item.get("id") or answer_item.get("case_id"))
     query = _text(answer_item.get("query"))
     message_id = _text(answer_item.get("message_id"))
-    if not message_id:
+    workflow_run_id = _text(answer_item.get("workflow_run_id"))
+    if not message_id and not workflow_run_id:
         out: dict[str, Any] = {"id": case_id, "query": query, "error": "missing message_id"}
         upstream_error = _text(answer_item.get("error"))
         if upstream_error:
@@ -294,13 +296,15 @@ def _trace_answer(
                 out[key] = value
         return out
 
-    message = request_json(
-        console_base_url=console_base_url,
-        console_token=console_token,
-        path=_message_path(app_id, message_id),
-        timeout=timeout,
-    )
-    workflow_run_id = _text(message.get("workflow_run_id") or answer_item.get("workflow_run_id"))
+    message: dict[str, Any] = {}
+    if not workflow_run_id:
+        message = request_json(
+            console_base_url=console_base_url,
+            console_token=console_token,
+            path=_message_path(app_id, message_id),
+            timeout=timeout,
+        )
+        workflow_run_id = _text(message.get("workflow_run_id"))
     if not workflow_run_id:
         return {"id": case_id, "query": query, "message_id": message_id, "error": "missing workflow_run_id"}
 
@@ -333,27 +337,40 @@ def collect_trace_report(
     console_token: str,
     request_json: RequestJsonFn = _request_json,
     timeout: float = 30.0,
+    progress_fn: ProgressFn | None = None,
     generated_at: str = "",
 ) -> dict[str, Any]:
     cases: list[dict[str, Any]] = []
-    for item in answers:
+    total = len(answers)
+    for index, item in enumerate(answers, start=1):
+        case_id = _text(item.get("id") or item.get("case_id"))
         try:
-            cases.append(
-                _trace_answer(
-                    item,
-                    app_id=app_id,
-                    console_base_url=console_base_url,
-                    console_token=console_token,
-                    request_json=request_json,
-                    timeout=timeout,
-                )
+            row = _trace_answer(
+                item,
+                app_id=app_id,
+                console_base_url=console_base_url,
+                console_token=console_token,
+                request_json=request_json,
+                timeout=timeout,
             )
+            cases.append(row)
         except Exception as exc:  # noqa: BLE001
             error = str(exc)
             row = {"id": item.get("id"), "query": item.get("query"), "error": error}
             if _is_console_auth_error(error):
                 row["error_kind"] = "dify_console_auth"
             cases.append(row)
+        if progress_fn is not None:
+            progress_fn(
+                {
+                    "stage": "trace",
+                    "event": "case",
+                    "index": index,
+                    "total": total,
+                    "id": case_id,
+                    "ok": not bool(cases[-1].get("error")),
+                }
+            )
 
     traced_cases = [item for item in cases if not item.get("error")]
     retrieval_cases = [item for item in traced_cases if isinstance(item.get("retrievals"), list)]

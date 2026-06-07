@@ -140,7 +140,7 @@ def _request_json(
         method=method,
         headers=headers,
     )
-    last_error: URLError | None = None
+    last_error: Exception | None = None
     for _attempt in range(_REQUEST_ATTEMPTS):
         try:
             with urlopen(request, timeout=timeout) as response:
@@ -149,7 +149,7 @@ def _request_json(
         except HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace")
             raise RuntimeError(f"HTTP {exc.code}: {body[:800]}") from exc
-        except URLError as exc:
+        except (TimeoutError, URLError) as exc:
             last_error = exc
     raise RuntimeError(f"request failed: {last_error}") from last_error
 
@@ -430,27 +430,34 @@ def collect_probe_report(
         dify_payload: dict[str, Any] = {}
         direct_payload: dict[str, Any] = {}
         error = ""
-        try:
-            if dataset_id:
-                dify_payload = request_json(
-                    console_base_url=console_base_url,
-                    console_token=console_token,
-                    path=f"/datasets/{dataset_id}/external-hit-testing",
-                    timeout=timeout,
-                    method="POST",
-                    payload=_external_hit_testing_payload(query=query, top_k=top_k, mapped=mapped),
-                )
-            if endpoint and api_key and knowledge_id and query:
-                direct_payload = request_mimirq_direct(
-                    endpoint=endpoint,
-                    api_key=api_key,
-                    knowledge_id=knowledge_id,
-                    query=query,
-                    top_k=top_k,
-                    timeout=timeout,
-                )
-        except Exception as exc:  # noqa: BLE001
-            error = str(exc)
+        for attempt in range(_REQUEST_ATTEMPTS):
+            dify_payload = {}
+            direct_payload = {}
+            error = ""
+            try:
+                if dataset_id:
+                    dify_payload = request_json(
+                        console_base_url=console_base_url,
+                        console_token=console_token,
+                        path=f"/datasets/{dataset_id}/external-hit-testing",
+                        timeout=timeout,
+                        method="POST",
+                        payload=_external_hit_testing_payload(query=query, top_k=top_k, mapped=mapped),
+                    )
+                if endpoint and api_key and knowledge_id and query:
+                    direct_payload = request_mimirq_direct(
+                        endpoint=endpoint,
+                        api_key=api_key,
+                        knowledge_id=knowledge_id,
+                        query=query,
+                        top_k=top_k,
+                        timeout=timeout,
+                    )
+                break
+            except Exception as exc:  # noqa: BLE001
+                error = str(exc)
+                if attempt >= _REQUEST_ATTEMPTS - 1:
+                    break
         dify_count = _records_count(dify_payload)
         direct_count = _records_count(direct_payload)
         direct_schema_errors = validate_dify_external_records_shape(direct_payload) if direct_payload else []

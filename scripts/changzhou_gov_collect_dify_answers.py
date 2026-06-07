@@ -192,7 +192,7 @@ def _request_json(*, url: str, payload: dict[str, Any], api_key: str, timeout: f
             "Accept": "application/json",
         },
     )
-    last_error: URLError | None = None
+    last_error: Exception | None = None
     for _attempt in range(_REQUEST_ATTEMPTS):
         try:
             with urlopen(request, timeout=timeout) as response:
@@ -200,7 +200,7 @@ def _request_json(*, url: str, payload: dict[str, Any], api_key: str, timeout: f
         except HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace")
             raise RuntimeError(f"HTTP {exc.code}: {body[:800]}") from exc
-        except URLError as exc:
+        except (TimeoutError, URLError) as exc:
             last_error = exc
     raise RuntimeError(f"request failed: {last_error}") from last_error
 

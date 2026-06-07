@@ -619,6 +619,7 @@ def test_changzhou_dify_readiness_gate_runs_probe_before_full_gate() -> None:
     assert '--out "/tmp/auth.json"' in command
     assert '--cases "/tmp/custom_cases.json"' in command
     assert '--out "/tmp/probe.json"' in command
+    assert '--trace-timeout "15"' in command
     assert '--external-probe "/tmp/probe.json"' in command
     assert '--console-auth "/tmp/auth.json"' in command
     assert '--mimirq-direct "/tmp/direct.json"' in command

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from app.core.config import settings
 from app.rag.retriever import HybridRetriever
@@ -296,6 +296,92 @@ def test_hybrid_mode_skips_lexical_db_when_primary_channels_are_sufficient(monke
     assert channels["lexical_db"]["used"] is False
     assert channels["lexical_db"]["run_reason"] == "skipped_primary_candidates_sufficient"
     assert channels["timing"]["lexical_ms"] == 0.0
+
+
+def test_hybrid_mode_can_disable_cjk_metadata_exact_fallback_per_request(monkeypatch) -> None:  # noqa: ANN001
+    monkeypatch.setattr(settings, "LEXICAL_DB_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "LEXICAL_DB_HYBRID_FALLBACK_ONLY", True, raising=False)
+    monkeypatch.setattr(settings, "BM25_INDEX_ENABLED", True, raising=False)
+
+    retriever = HybridRetriever(
+        tenant_id=uuid4(),
+        account_id="acct",
+        lexical_db_hybrid_metadata_exact_fallback_enabled=False,
+        metadata_exact_db_fallback_enabled=False,
+    )
+    calls: list[str] = []
+    query = "企业在网上申报有何要求"
+
+    class _StubVectorStore:
+        def search(self, **_kwargs):  # noqa: ANN003
+            calls.append("vector")
+            return [
+                _metadata_question_hit("doc-vector-1", question="企业在网上申报有何要求？"),
+                _metadata_question_hit("doc-vector-2", question="从事贸易的企业如何申报？"),
+            ]
+
+    monkeypatch.setattr("app.rag.retriever.get_vector_store", lambda: _StubVectorStore(), raising=True)
+    monkeypatch.setattr(
+        retriever,
+        "_search_bm25",
+        lambda **_kwargs: calls.append("bm25")
+        or [
+            _metadata_question_hit("doc-bm25-1", question="如何在网上申报"),
+            _metadata_question_hit("doc-bm25-2", question="企业如何在线申请办理注册登记？"),
+        ],
+        raising=True,
+    )
+    monkeypatch.setattr(
+        retriever,
+        "_search_lexical_db",
+        lambda **_kwargs: calls.append("lexical") or [_metadata_question_hit("doc-lexical", question=query)],
+        raising=True,
+    )
+    monkeypatch.setattr(
+        retriever,
+        "_search_metadata_exact_anchor_db",
+        lambda **_kwargs: calls.append("metadata_exact") or [_metadata_question_hit("doc-exact", question=query)],
+        raising=True,
+    )
+
+    results = retriever._hybrid_search(
+        query=query,
+        top_k=3,
+        score_threshold=0.0,
+        tenant_id=retriever.tenant_id,
+        retrieval_mode="hybrid",
+    )
+
+    assert calls == ["vector", "bm25"]
+    assert len(results) == 3
+    channels = retriever._last_channel_metrics
+    assert channels["lexical_db"]["used"] is False
+    assert channels["lexical_db"]["run_reason"] == "skipped_primary_candidates_sufficient"
+    assert channels["lexical_metadata_exact_fallback"] == {
+        "enabled": False,
+        "query_anchor_like": False,
+        "primary_has_exact_anchor": False,
+        "triggered": False,
+    }
+    assert channels["metadata_exact_db"] == {
+        "enabled": False,
+        "used": False,
+        "candidates": 0,
+        "run_reason": "disabled",
+    }
+
+
+def test_lexical_dataset_scope_extracts_dataset_id_in_filter() -> None:
+    dataset_a = uuid4()
+    dataset_b = uuid4()
+
+    dataset_scope, dataset_label = HybridRetriever._lexical_dataset_scope(
+        {"dataset_id": {"$in": [str(dataset_a), str(dataset_b), "not-a-uuid"]}}
+    )
+
+    assert dataset_scope == [dataset_a, dataset_b]
+    assert dataset_label == str(dataset_a)
+    assert all(isinstance(item, UUID) for item in dataset_scope)
 
 
 def test_hybrid_mode_uses_lexical_db_when_cjk_exact_metadata_anchor_is_missing(monkeypatch) -> None:  # noqa: ANN001

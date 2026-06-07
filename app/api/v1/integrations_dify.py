@@ -799,7 +799,7 @@ def _retrieve_fast_chunk_citations(
 ) -> list[dict[str, Any]]:
     if metadata_filter:
         return []
-    if not bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_CHUNK_SEARCH_ENABLED", True)):
+    if not bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_CHUNK_SEARCH_ENABLED", False)):
         return []
 
     max_chunks = max(100, int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_CHUNK_SEARCH_MAX_CHUNKS", 6000) or 6000))
@@ -1312,6 +1312,8 @@ async def _retrieve_dataset_citations(
         enable_reranker=False,
         reranker_provider="none",
         reranker_top_n=max(1, int(top_k or 1)),
+        lexical_db_hybrid_metadata_exact_fallback_enabled=False,
+        metadata_exact_db_fallback_enabled=False,
     )
 
     response = await retrieve_evidence(
@@ -1353,14 +1355,16 @@ async def retrieve_external_knowledge(
     citation_count = 0
     retrieval_path = "rag"
     try:
-        citations = _retrieve_fast_chunk_citations(
-            db=db,
-            tenant_id=actor.tenant_id,
-            dataset_ids=dataset_ids,
-            query=body.query,
-            top_k=top_k,
-            metadata_filter=metadata_filter,
-        )
+        citations = []
+        if bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_CHUNK_SEARCH_ENABLED", False)):
+            citations = _retrieve_fast_chunk_citations(
+                db=db,
+                tenant_id=actor.tenant_id,
+                dataset_ids=dataset_ids,
+                query=body.query,
+                top_k=top_k,
+                metadata_filter=metadata_filter,
+            )
         if citations:
             retrieval_path = "fast_chunk"
         else:

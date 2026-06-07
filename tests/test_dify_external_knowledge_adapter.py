@@ -129,6 +129,64 @@ async def test_dify_direct_retrieval_uses_low_latency_reranker_free_config(
     assert rag_config.enable_reranker is False
     assert rag_config.reranker_provider == "none"
     assert rag_config.reranker_top_n == 5
+    assert rag_config.lexical_db_hybrid_metadata_exact_fallback_enabled is False
+    assert rag_config.metadata_exact_db_fallback_enabled is False
+
+
+def test_dify_retrieval_defaults_to_rag_path_not_fast_chunk(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    token = "dify-test-token"
+    dataset_id = uuid.uuid4()
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        f'{{"city": "{dataset_id}"}}',
+        raising=False,
+    )
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_CHUNK_SEARCH_ENABLED", False, raising=False)
+
+    def _fast_chunk_should_not_run(**_kwargs):  # noqa: ANN003, ANN202
+        raise AssertionError("fast chunk path should stay disabled by default")
+
+    async def _fake_retrieve_dataset_citations(**_kwargs):  # noqa: ANN003, ANN202
+        return [
+            {
+                "chunk_content": "问题：如何查询身份证办理进度？\n答案：下载苏证通 APP 查询。",
+                "relevance_score": 0.88,
+                "document_name": "常州市本级12345QA.txt",
+                "document_id": str(uuid.uuid4()),
+                "chunk_id": str(uuid.uuid4()),
+                "dataset_id": str(dataset_id),
+            }
+        ]
+
+    monkeypatch.setattr(dify_api, "_retrieve_fast_chunk_citations", _fast_chunk_should_not_run, raising=True)
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/integrations/dify/retrieval",
+        headers=_auth(token),
+        json={
+            "knowledge_id": "city",
+            "query": "如何查询身份证办理进度？",
+            "retrieval_setting": {"top_k": 5, "score_threshold": 0.0},
+        },
+    )
+
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert [record["title"] for record in body["records"]] == ["常州市本级12345QA.txt"]
 
 
 def test_dify_retrieval_maps_knowledge_id_to_multiple_datasets(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -344,6 +402,7 @@ def test_dify_retrieval_uses_fast_chunk_candidates_before_slow_rag(monkeypatch: 
         raising=False,
     )
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_CHUNK_SEARCH_ENABLED", True, raising=False)
 
     def _fake_fast_chunk_citations(**_kwargs):  # noqa: ANN003, ANN202
         return [

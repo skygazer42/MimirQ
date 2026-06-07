@@ -317,6 +317,27 @@ def test_thresholds_from_args_preserves_defaults_and_applies_overrides() -> None
     }
 
 
+def test_arg_parser_separates_trace_timeout_from_main_timeout() -> None:
+    mod = _load_module()
+    parser = mod.build_arg_parser()
+
+    args = parser.parse_args(
+        [
+            "--app-id",
+            "app-1",
+            "--out",
+            "/tmp/report.json",
+            "--timeout",
+            "120",
+            "--trace-timeout",
+            "15",
+        ]
+    )
+
+    assert args.timeout == 120.0
+    assert args.trace_timeout == 15.0
+
+
 def test_format_cli_error_adds_login_hint_for_expired_console_token() -> None:
     mod = _load_module()
 

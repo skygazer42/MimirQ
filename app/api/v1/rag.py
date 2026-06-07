@@ -622,6 +622,10 @@ async def retrieve_preview(
         enable_kg_chunk_boost=effective_rag_config.enable_kg_chunk_boost,
         kg_chunk_boost_weight=effective_rag_config.kg_chunk_boost_weight,
         kg_chunk_boost_max_promoted=effective_rag_config.kg_chunk_boost_max_promoted,
+        lexical_db_hybrid_metadata_exact_fallback_enabled=(
+            effective_rag_config.lexical_db_hybrid_metadata_exact_fallback_enabled
+        ),
+        metadata_exact_db_fallback_enabled=effective_rag_config.metadata_exact_db_fallback_enabled,
         alpha=effective_rag_config.alpha,
         fusion_strategy=effective_rag_config.fusion_strategy,
         fusion_budgets=effective_rag_config.fusion_budgets,
@@ -1073,6 +1077,10 @@ async def retrieve_evidence(
         enable_kg_chunk_boost=effective_rag_config.enable_kg_chunk_boost,
         kg_chunk_boost_weight=effective_rag_config.kg_chunk_boost_weight,
         kg_chunk_boost_max_promoted=effective_rag_config.kg_chunk_boost_max_promoted,
+        lexical_db_hybrid_metadata_exact_fallback_enabled=(
+            effective_rag_config.lexical_db_hybrid_metadata_exact_fallback_enabled
+        ),
+        metadata_exact_db_fallback_enabled=effective_rag_config.metadata_exact_db_fallback_enabled,
         alpha=effective_rag_config.alpha,
         fusion_strategy=effective_rag_config.fusion_strategy,
         fusion_budgets=effective_rag_config.fusion_budgets,

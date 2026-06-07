@@ -809,7 +809,7 @@ class Settings(BaseSettings):
     DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID: str = "system:dify"
     DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON: str = ""
     DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX: int = 5
-    DIFY_EXTERNAL_KNOWLEDGE_FAST_CHUNK_SEARCH_ENABLED: bool = True
+    DIFY_EXTERNAL_KNOWLEDGE_FAST_CHUNK_SEARCH_ENABLED: bool = False
     DIFY_EXTERNAL_KNOWLEDGE_FAST_CHUNK_SEARCH_MAX_CHUNKS: int = 6000
 
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
@@ -1020,6 +1020,9 @@ class Settings(BaseSettings):
     LEXICAL_DB_ENABLED: bool = True
     # Hybrid/MMR modes use lexical DB as a fallback by default; keyword mode remains lexical-first.
     LEXICAL_DB_HYBRID_FALLBACK_ONLY: bool = True
+    # Enables the expensive CJK metadata-anchor lexical fallback in hybrid/MMR modes.
+    # External low-latency callers can disable this per request without changing global recall defaults.
+    LEXICAL_DB_HYBRID_METADATA_EXACT_FALLBACK_ENABLED: bool = True
     # In keyword-only mode, lexical DB is the primary keyword channel by default.
     # BM25 stays available as an opt-in secondary channel for recall comparison/back-compat.
     RETRIEVAL_KEYWORD_BM25_SECONDARY_ENABLED: bool = False

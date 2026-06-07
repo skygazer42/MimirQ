@@ -165,6 +165,50 @@ def test_collect_trace_report_fetches_message_and_node_executions_without_leakin
     ]
 
 
+def test_collect_trace_report_reuses_collected_workflow_run_id_and_emits_progress() -> None:
+    mod = _load_module()
+    calls: list[str] = []
+    progress: list[dict] = []
+
+    def fake_request_json(*, path: str, **_kwargs) -> dict:  # noqa: ANN003
+        calls.append(path)
+        if path.endswith("/workflow-runs/run-1/node-executions"):
+            return {
+                "data": [
+                    {
+                        "title": "经开区政务服务知识检索",
+                        "node_type": "knowledge-retrieval",
+                        "inputs": {"query": "经开区社保卡补卡在哪里办理"},
+                        "outputs": {"result": [{"content": "hit"}]},
+                    }
+                ]
+            }
+        raise AssertionError(path)
+
+    report = mod.collect_trace_report(
+        answers=[
+            {
+                "id": "case-1",
+                "query": "经开区社保卡补卡在哪里办理",
+                "message_id": "msg-1",
+                "workflow_run_id": "run-1",
+                "answer": "ok",
+            }
+        ],
+        app_id="app-1",
+        console_base_url="https://dify.test/console/api",
+        console_token="secret-console-token",
+        request_json=fake_request_json,
+        timeout=12.0,
+        progress_fn=progress.append,
+    )
+
+    assert calls == ["/apps/app-1/workflow-runs/run-1/node-executions"]
+    assert progress == [{"stage": "trace", "event": "case", "index": 1, "total": 1, "id": "case-1", "ok": True}]
+    assert report["summary"]["trace_errors"] == 0
+    assert report["summary"]["nonempty_retrieval_cases"] == 1
+
+
 def test_collect_trace_report_flags_area_route_mismatch() -> None:
     mod = _load_module()
 
