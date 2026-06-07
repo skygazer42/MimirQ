@@ -1,4 +1,4 @@
-.PHONY: help init up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload web test test-web test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check api-docs-build diagnostics db-upgrade db-revision verify enterprise-checks parser-status dify-console-login dify-console-check dify-console-ensure changzhou-gov-plugin-chunk-report changzhou-gov-plugin-test-report changzhou-gov-delivery-pack changzhou-gov-delivery-pack-refresh changzhou-dify-knowledge-map-check changzhou-dify-mimirq-direct-gate changzhou-dify-external-probe changzhou-dify-workflow-lint changzhou-dify-workflow-sync-dry-run changzhou-dify-workflow-sync-apply changzhou-dify-full-gate changzhou-dify-readiness-summary changzhou-dify-readiness-status changzhou-dify-readiness-evidence changzhou-dify-readiness-gate changzhou-dify-readiness-gate-quiet check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
+.PHONY: help init up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload web test test-web test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check api-docs-build diagnostics db-upgrade db-revision verify enterprise-checks parser-status dify-console-login dify-console-check dify-console-ensure changzhou-gov-plugin-chunk-report changzhou-gov-plugin-test-report changzhou-gov-plugin-test-evidence changzhou-gov-delivery-pack changzhou-gov-delivery-pack-refresh changzhou-dify-knowledge-map-check changzhou-dify-mimirq-direct-gate changzhou-dify-external-probe changzhou-dify-workflow-lint changzhou-dify-workflow-sync-dry-run changzhou-dify-workflow-sync-apply changzhou-dify-full-gate changzhou-dify-readiness-summary changzhou-dify-readiness-status changzhou-dify-readiness-evidence changzhou-dify-readiness-gate changzhou-dify-readiness-gate-quiet check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
 
 # Prefer project venv when available so local dev doesn't depend on global tooling.
 PY := python3
@@ -74,6 +74,8 @@ CHANGZHOU_GOV_PLUGIN_SAMPLE ?= plugins/pipelines/changzhou-gov-service-knowledge
 CHANGZHOU_GOV_PLUGIN_CHUNK_REPORT_OUT ?= /tmp/changzhou_gov_plugin_chunk_report.json
 CHANGZHOU_GOV_PLUGIN_CHUNK_REPORT_MD ?= /tmp/changzhou_gov_plugin_chunk_report.md
 CHANGZHOU_GOV_PLUGIN_TEST_REPORT_OUT ?= /tmp/changzhou_gov_plugin_test_report.json
+CHANGZHOU_GOV_PLUGIN_TEST_EVIDENCE_OUT ?= /tmp/changzhou_gov_plugin_test_evidence.json
+CHANGZHOU_GOV_PLUGIN_TEST_EVIDENCE_MD ?= /tmp/changzhou_gov_plugin_test_evidence.md
 CHANGZHOU_GOV_DELIVERY_PACK_OUT ?= /tmp/changzhou_gov_delivery_pack.json
 CHANGZHOU_GOV_DELIVERY_PACK_MD ?= /tmp/changzhou_gov_delivery_pack.md
 CHANGZHOU_GOV_DELIVERY_PACK_MAX_READINESS_AGE_MINUTES ?= 30
@@ -148,6 +150,7 @@ help:
 	@echo "  make dify-console-ensure - check Dify console storage state, refreshing it when credentials are provided"
 	@echo "  make changzhou-gov-plugin-chunk-report - write Changzhou plugin governance/chunk/KG review report"
 	@echo "  make changzhou-gov-plugin-test-report - write Changzhou plugin local test + Golden draft report"
+	@echo "  make changzhou-gov-plugin-test-evidence - write shareable sanitized plugin test evidence"
 	@echo "  make changzhou-gov-delivery-pack - write combined Changzhou plugin + Dify readiness handoff pack"
 	@echo "  make changzhou-gov-delivery-pack-refresh - quietly refresh remote readiness, then write delivery pack"
 	@echo "  make changzhou-dify-knowledge-map-check - validate local Changzhou Dify knowledge map routes"
@@ -362,10 +365,17 @@ changzhou-gov-plugin-test-report:
 		--stage kg \
 		--no-write-report >"$(CHANGZHOU_GOV_PLUGIN_TEST_REPORT_OUT)"
 
-changzhou-gov-delivery-pack: changzhou-gov-plugin-chunk-report changzhou-gov-plugin-test-report changzhou-dify-readiness-evidence
+changzhou-gov-plugin-test-evidence: changzhou-gov-plugin-test-report
+	$(PY) scripts/changzhou_gov_plugin_test_evidence.py \
+		--input "$(CHANGZHOU_GOV_PLUGIN_TEST_REPORT_OUT)" \
+		--json-out "$(CHANGZHOU_GOV_PLUGIN_TEST_EVIDENCE_OUT)" \
+		--markdown-out "$(CHANGZHOU_GOV_PLUGIN_TEST_EVIDENCE_MD)"
+
+changzhou-gov-delivery-pack: changzhou-gov-plugin-chunk-report changzhou-gov-plugin-test-evidence changzhou-dify-readiness-evidence
 	$(PY) scripts/changzhou_gov_delivery_pack.py \
 		--plugin-report "$(CHANGZHOU_GOV_PLUGIN_CHUNK_REPORT_OUT)" \
 		--plugin-test-report "$(CHANGZHOU_GOV_PLUGIN_TEST_REPORT_OUT)" \
+		--plugin-test-evidence "$(CHANGZHOU_GOV_PLUGIN_TEST_EVIDENCE_OUT)" \
 		--plugin-markdown "$(CHANGZHOU_GOV_PLUGIN_CHUNK_REPORT_MD)" \
 		--readiness-summary "$(CHANGZHOU_DIFY_READINESS_OUT)" \
 		--readiness-evidence "$(CHANGZHOU_DIFY_READINESS_EVIDENCE_OUT)" \

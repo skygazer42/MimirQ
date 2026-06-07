@@ -12,6 +12,7 @@ SCHEMA = "mimirq.changzhou_gov.delivery_pack.v1"
 DEFAULT_PLUGIN_REPORT = "/tmp/changzhou_gov_plugin_chunk_report.json"
 DEFAULT_PLUGIN_MARKDOWN = "/tmp/changzhou_gov_plugin_chunk_report.md"
 DEFAULT_PLUGIN_TEST_REPORT = "/tmp/changzhou_gov_plugin_test_report.json"
+DEFAULT_PLUGIN_TEST_EVIDENCE = "/tmp/changzhou_gov_plugin_test_evidence.json"
 DEFAULT_READINESS_SUMMARY = "/tmp/changzhou_gov_dify_readiness_summary.json"
 DEFAULT_READINESS_EVIDENCE = "/tmp/changzhou_gov_dify_readiness_evidence.md"
 DEFAULT_JSON_OUT = "/tmp/changzhou_gov_delivery_pack.json"
@@ -180,6 +181,7 @@ def build_delivery_pack(
     *,
     plugin_report_path: str | Path = DEFAULT_PLUGIN_REPORT,
     plugin_test_report_path: str | Path = DEFAULT_PLUGIN_TEST_REPORT,
+    plugin_test_evidence_path: str | Path = DEFAULT_PLUGIN_TEST_EVIDENCE,
     plugin_markdown_path: str | Path = DEFAULT_PLUGIN_MARKDOWN,
     readiness_summary_path: str | Path = DEFAULT_READINESS_SUMMARY,
     readiness_evidence_path: str | Path = DEFAULT_READINESS_EVIDENCE,
@@ -188,6 +190,7 @@ def build_delivery_pack(
 ) -> dict[str, Any]:
     plugin_report = _load_json(plugin_report_path)
     plugin_test_report = _load_json(plugin_test_report_path)
+    plugin_test_evidence = _load_json(plugin_test_evidence_path)
     readiness = _load_json(readiness_summary_path)
     plugin_summary = _nested_dict(plugin_report, "summary")
     plugin_test = _plugin_test_summary(plugin_test_report)
@@ -197,6 +200,7 @@ def build_delivery_pack(
     plugin_sections = _plugin_sections(plugin_report)
     plugin_passed = plugin_report.get("passed") is True
     plugin_test_passed = plugin_test.get("passed") is True
+    plugin_test_evidence_passed = plugin_test_evidence.get("passed") is True
     plugin_golden_passed = plugin_golden.get("passed") is True
     readiness_passed = readiness_summary.get("passed") is True
     freshness = _freshness(
@@ -210,6 +214,7 @@ def build_delivery_pack(
         "passed": bool(
             plugin_passed
             and plugin_test_passed
+            and plugin_test_evidence_passed
             and plugin_golden_passed
             and readiness_passed
             and freshness.get("fresh") is True
@@ -217,6 +222,7 @@ def build_delivery_pack(
         "summary": {
             "plugin_passed": plugin_passed,
             "plugin_test_passed": plugin_test_passed,
+            "plugin_test_evidence_passed": plugin_test_evidence_passed,
             "plugin_golden_draft_passed": plugin_golden_passed,
             "plugin_golden_draft_items": int(plugin_golden.get("items_total") or 0),
             "readiness_passed": readiness_passed,
@@ -233,7 +239,7 @@ def build_delivery_pack(
         "artifacts": {
             "plugin_chunk_report_json": _artifact(plugin_report_path, label="plugin chunk report JSON"),
             "plugin_chunk_report_markdown": _artifact(plugin_markdown_path, label="plugin chunk report Markdown"),
-            "plugin_test_report_json": _artifact(plugin_test_report_path, label="plugin test report JSON"),
+            "plugin_test_evidence_json": _artifact(plugin_test_evidence_path, label="plugin test evidence JSON"),
             "dify_readiness_summary_json": _artifact(readiness_summary_path, label="Dify readiness summary JSON"),
             "dify_readiness_evidence_markdown": _artifact(
                 readiness_evidence_path,
@@ -296,6 +302,7 @@ def format_markdown_pack(pack: dict[str, Any]) -> str:
             [
                 "plugin_passed",
                 "plugin_test_passed",
+                "plugin_test_evidence_passed",
                 "golden_items",
                 "readiness_passed",
                 "readiness_fresh",
@@ -309,6 +316,7 @@ def format_markdown_pack(pack: dict[str, Any]) -> str:
                 [
                     _text(summary.get("plugin_passed")),
                     _text(summary.get("plugin_test_passed")),
+                    _text(summary.get("plugin_test_evidence_passed")),
                     _text(summary.get("plugin_golden_draft_items")),
                     _text(summary.get("readiness_passed")),
                     _text(summary.get("readiness_fresh")),
@@ -416,6 +424,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Build a Changzhou Gov delivery evidence pack index.")
     parser.add_argument("--plugin-report", default=DEFAULT_PLUGIN_REPORT)
     parser.add_argument("--plugin-test-report", default=DEFAULT_PLUGIN_TEST_REPORT)
+    parser.add_argument("--plugin-test-evidence", default=DEFAULT_PLUGIN_TEST_EVIDENCE)
     parser.add_argument("--plugin-markdown", default=DEFAULT_PLUGIN_MARKDOWN)
     parser.add_argument("--readiness-summary", default=DEFAULT_READINESS_SUMMARY)
     parser.add_argument("--readiness-evidence", default=DEFAULT_READINESS_EVIDENCE)
@@ -431,6 +440,7 @@ def main(argv: list[str] | None = None) -> int:
         pack = build_delivery_pack(
             plugin_report_path=args.plugin_report,
             plugin_test_report_path=args.plugin_test_report,
+            plugin_test_evidence_path=args.plugin_test_evidence,
             plugin_markdown_path=args.plugin_markdown,
             readiness_summary_path=args.readiness_summary,
             readiness_evidence_path=args.readiness_evidence,

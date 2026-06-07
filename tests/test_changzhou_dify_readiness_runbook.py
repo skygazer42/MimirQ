@@ -12,6 +12,7 @@ def test_changzhou_dify_readiness_runbook_documents_reproducible_gate_flow() -> 
     assert "make changzhou-dify-readiness-status" in text
     assert "make changzhou-dify-readiness-evidence" in text
     assert "make changzhou-gov-plugin-test-report" in text
+    assert "make changzhou-gov-plugin-test-evidence" in text
     assert "make changzhou-gov-delivery-pack" in text
     assert "make changzhou-gov-delivery-pack-refresh" in text
     assert "make changzhou-dify-workflow-lint" in text
@@ -24,13 +25,15 @@ def test_changzhou_dify_readiness_runbook_documents_reproducible_gate_flow() -> 
     assert "/tmp/changzhou_gov_dify_readiness_evidence.md" in text
     assert "/tmp/changzhou_gov_dify_readiness_gate.log" in text
     assert "/tmp/changzhou_gov_plugin_chunk_report.md" in text
-    assert "/tmp/changzhou_gov_plugin_test_report.json" in text
+    assert "/tmp/changzhou_gov_plugin_test_evidence.json" in text
+    assert "/tmp/changzhou_gov_plugin_test_evidence.md" in text
     assert "/tmp/changzhou_gov_delivery_pack.md" in text
     assert "/tmp/changzhou_gov_dify_workflow_current_draft_backup.json" in text
     assert "/tmp/changzhou_gov_dify_workflow_sync_payload.json" in text
     assert "dify_external_boundary_ok" in text
     assert "generated_answer_policy_clean_rate" in text
     assert "route_mismatch_cases" in text
+    assert "raw report" in text
 
 
 def test_changzhou_dify_readiness_runbook_documents_safe_apply_and_rollback_boundaries() -> None:

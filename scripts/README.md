@@ -40,7 +40,10 @@ The Makefile is the source of truth for common workflows; these scripts are the 
   - Outputs `/tmp/changzhou_gov_plugin_chunk_report.json` and `/tmp/changzhou_gov_plugin_chunk_report.md`; it does not write the database, vector store, or KG store.
 - `pipeline_plugin_runner.py`: local plugin contract test and Golden draft generator
   - Example: `make changzhou-gov-plugin-test-report`
-  - Outputs `/tmp/changzhou_gov_plugin_test_report.json` with governance/chunk/KG stage pass states plus Golden draft aggregate counts.
+  - Outputs local raw `/tmp/changzhou_gov_plugin_test_report.json`, which may include Golden draft sample questions for debugging.
+- `changzhou_gov_plugin_test_evidence.py`: sanitized Changzhou plugin test evidence for delivery handoff
+  - Example: `make changzhou-gov-plugin-test-evidence`
+  - Outputs `/tmp/changzhou_gov_plugin_test_evidence.json` and `/tmp/changzhou_gov_plugin_test_evidence.md` with stage pass states and Golden draft counts only.
 - `changzhou_gov_delivery_pack.py`: combined handoff index for the Changzhou plugin chunk report and Dify/MimirQ readiness evidence
   - Example: `make changzhou-gov-delivery-pack`
   - Outputs `/tmp/changzhou_gov_delivery_pack.json` and `/tmp/changzhou_gov_delivery_pack.md`; it copies aggregate metrics and artifact paths only, including plugin test/Golden counts without sample questions.

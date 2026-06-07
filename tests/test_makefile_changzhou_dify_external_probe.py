@@ -87,6 +87,30 @@ def test_changzhou_gov_plugin_test_report_target_is_overridable() -> None:
     assert '>"/tmp/test-report.json"' in command
 
 
+def test_changzhou_gov_plugin_test_evidence_target_is_overridable() -> None:
+    result = subprocess.run(
+        [
+            "make",
+            "-n",
+            "changzhou-gov-plugin-test-evidence",
+            "CHANGZHOU_GOV_PLUGIN_TEST_REPORT_OUT=/tmp/test-report.json",
+            "CHANGZHOU_GOV_PLUGIN_TEST_EVIDENCE_OUT=/tmp/test-evidence.json",
+            "CHANGZHOU_GOV_PLUGIN_TEST_EVIDENCE_MD=/tmp/test-evidence.md",
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    command = result.stdout
+    assert "scripts/changzhou_gov_plugin_test_evidence.py" in command
+    assert '--input "/tmp/test-report.json"' in command
+    assert '--json-out "/tmp/test-evidence.json"' in command
+    assert '--markdown-out "/tmp/test-evidence.md"' in command
+
+
 def test_changzhou_gov_delivery_pack_target_is_overridable() -> None:
     result = subprocess.run(
         [
@@ -96,6 +120,7 @@ def test_changzhou_gov_delivery_pack_target_is_overridable() -> None:
             "CHANGZHOU_GOV_PLUGIN_CHUNK_REPORT_OUT=/tmp/plugin.json",
             "CHANGZHOU_GOV_PLUGIN_CHUNK_REPORT_MD=/tmp/plugin.md",
             "CHANGZHOU_GOV_PLUGIN_TEST_REPORT_OUT=/tmp/plugin-test.json",
+            "CHANGZHOU_GOV_PLUGIN_TEST_EVIDENCE_OUT=/tmp/plugin-test-evidence.json",
             "CHANGZHOU_DIFY_READINESS_OUT=/tmp/readiness.json",
             "CHANGZHOU_DIFY_READINESS_EVIDENCE_OUT=/tmp/readiness.md",
             "CHANGZHOU_GOV_DELIVERY_PACK_OUT=/tmp/pack.json",
@@ -113,6 +138,7 @@ def test_changzhou_gov_delivery_pack_target_is_overridable() -> None:
     assert "scripts/changzhou_gov_delivery_pack.py" in command
     assert '--plugin-report "/tmp/plugin.json"' in command
     assert '--plugin-test-report "/tmp/plugin-test.json"' in command
+    assert '--plugin-test-evidence "/tmp/plugin-test-evidence.json"' in command
     assert '--plugin-markdown "/tmp/plugin.md"' in command
     assert '--readiness-summary "/tmp/readiness.json"' in command
     assert '--readiness-evidence "/tmp/readiness.md"' in command
