@@ -1027,6 +1027,12 @@ class Settings(BaseSettings):
     LEXICAL_DB_FETCH_MULTIPLIER: int = 4
     LEXICAL_DB_MAX_CANDIDATES: int = 200
     LEXICAL_DB_TRGM_MIN_QUERY_CHARS: int = 3
+    # Dataset-scoped metadata exact fallback for CJK FAQ/title anchors.
+    # This is a candidate safety net for plugin-provided `_evaluable_metadata`
+    # fields such as question/aliases/service_name when content lexical search
+    # is diluted by broad semantic matches.
+    RETRIEVAL_METADATA_EXACT_DB_FALLBACK_ENABLED: bool = True
+    RETRIEVAL_METADATA_EXACT_DB_MAX_CANDIDATES: int = 80
 
     # Optional sparse retrieval channel (SPLADE-style scaffolding).
     #

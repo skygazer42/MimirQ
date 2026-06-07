@@ -97,13 +97,16 @@ class CorpusApiClient(LiveApiClient):
         }
         url = _join_url(self.base_url, path)
         with file.path.open("rb") as fh:
-            response = requests.post(
-                url,
-                data=data,
-                files={"file": (file.rel_path, fh)},
-                headers=headers,
-                timeout=self.timeout_sec,
-            )
+            try:
+                response = requests.post(
+                    url,
+                    data=data,
+                    files={"file": (file.rel_path, fh)},
+                    headers=headers,
+                    timeout=self.timeout_sec,
+                )
+            except requests.RequestException as exc:
+                raise RuntimeError(f"POST {url} failed for {file.rel_path}: {exc}") from exc
         if not 200 <= int(response.status_code) < 300:
             raise RuntimeError(
                 f"POST {url} failed for {file.rel_path}: HTTP {response.status_code}: {response.text[:800]}"
@@ -154,6 +157,7 @@ def discover_corpus_files(
     skip_empty: bool = True,
     max_files: int = 0,
     include_root_name: bool = False,
+    include_hidden: bool = False,
 ) -> tuple[list[CorpusFile], list[dict[str, Any]]]:
     root = Path(source_dir).expanduser().resolve()
     if not root.exists() or not root.is_dir():
@@ -163,9 +167,11 @@ def discover_corpus_files(
     files: list[CorpusFile] = []
     skipped: list[dict[str, Any]] = []
     for path in sorted(p for p in root.rglob("*") if p.is_file()):
+        local_rel = path.relative_to(root)
+        if not include_hidden and any(part.startswith(".") for part in local_rel.parts):
+            continue
         if path.suffix.lower() not in allowed:
             continue
-        local_rel = path.relative_to(root)
         rel = (Path(root.name) / local_rel).as_posix() if include_root_name else local_rel.as_posix()
         size = int(path.stat().st_size)
         if skip_empty and size <= 0:
@@ -393,6 +399,8 @@ def run_corpus_closed_loop_smoke(
     skip_empty: bool,
     max_files: int,
     include_root_name: bool,
+    include_hidden: bool,
+    upload_batch_size: int,
     processing_timeout_sec: float,
     poll_interval_sec: float,
     golden_max_items: int,
@@ -405,6 +413,7 @@ def run_corpus_closed_loop_smoke(
         skip_empty=skip_empty,
         max_files=max_files,
         include_root_name=include_root_name,
+        include_hidden=include_hidden,
     )
     if not files:
         raise RuntimeError(f"no supported corpus files found under {source_dir}")
@@ -420,21 +429,46 @@ def run_corpus_closed_loop_smoke(
             kg_plugin_ref=kg_plugin_ref,
         )
 
-    uploaded = upload_corpus_files(
-        client,
-        files,
-        dataset_id=resolved_dataset_id,
-        chunk_plugin_ref=chunk_plugin_ref,
-        pipeline_patch=pipeline_patch,
-        governance_plugin_ref=governance_plugin_ref,
-        kg_plugin_ref=kg_plugin_ref,
-    )
-    documents = wait_for_uploaded_documents(
-        client,
-        uploaded,
-        timeout_sec=processing_timeout_sec,
-        poll_interval_sec=poll_interval_sec,
-    )
+    uploaded: list[UploadedDocument] = []
+    documents: list[dict[str, Any]] = []
+    batch_size = max(0, int(upload_batch_size or 0))
+    if batch_size <= 0:
+        uploaded = upload_corpus_files(
+            client,
+            files,
+            dataset_id=resolved_dataset_id,
+            chunk_plugin_ref=chunk_plugin_ref,
+            pipeline_patch=pipeline_patch,
+            governance_plugin_ref=governance_plugin_ref,
+            kg_plugin_ref=kg_plugin_ref,
+        )
+        documents = wait_for_uploaded_documents(
+            client,
+            uploaded,
+            timeout_sec=processing_timeout_sec,
+            poll_interval_sec=poll_interval_sec,
+        )
+    else:
+        for start in range(0, len(files), batch_size):
+            batch = files[start : start + batch_size]
+            batch_uploaded = upload_corpus_files(
+                client,
+                batch,
+                dataset_id=resolved_dataset_id,
+                chunk_plugin_ref=chunk_plugin_ref,
+                pipeline_patch=pipeline_patch,
+                governance_plugin_ref=governance_plugin_ref,
+                kg_plugin_ref=kg_plugin_ref,
+            )
+            uploaded.extend(batch_uploaded)
+            documents.extend(
+                wait_for_uploaded_documents(
+                    client,
+                    batch_uploaded,
+                    timeout_sec=processing_timeout_sec,
+                    poll_interval_sec=poll_interval_sec,
+                )
+            )
     golden: ClosedLoopResult = run_closed_loop_smoke(
         client=client,
         dataset_id=resolved_dataset_id,
@@ -582,7 +616,18 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Prefix uploaded source_rel_path values with the source directory name.",
     )
+    parser.add_argument(
+        "--include-hidden",
+        action="store_true",
+        help="Include files under hidden directories and hidden files. Defaults to false to skip editor/conversion artifacts.",
+    )
     parser.add_argument("--max-files", type=int, default=0, help="Limit uploaded files for smoke debugging. 0 means all.")
+    parser.add_argument(
+        "--upload-batch-size",
+        type=int,
+        default=0,
+        help="Upload all files before waiting when 0; otherwise upload and wait for this many files at a time.",
+    )
     parser.add_argument(
         "--base-url",
         default=os.getenv("MIMIRQ_API_BASE_URL") or os.getenv("BACKEND_BASE_URL") or "http://127.0.0.1:8000",
@@ -629,6 +674,8 @@ def main(argv: list[str] | None = None) -> int:
             skip_empty=not bool(args.include_empty_files),
             max_files=int(args.max_files),
             include_root_name=bool(args.include_source_root_name),
+            include_hidden=bool(args.include_hidden),
+            upload_batch_size=int(args.upload_batch_size or 0),
             processing_timeout_sec=float(args.processing_timeout),
             poll_interval_sec=float(args.poll_interval),
             golden_max_items=int(args.golden_max_items),

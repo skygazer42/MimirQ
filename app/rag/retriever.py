@@ -21,6 +21,8 @@ from langchain_core.callbacks import AsyncCallbackManagerForRetrieverRun, Callba
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
 from pydantic import ConfigDict, Field, PrivateAttr
+from sqlalchemy import Text as SQLText
+from sqlalchemy import cast as sql_cast
 from sqlalchemy import func, or_, text, tuple_
 from sqlalchemy.orm import Session
 
@@ -3788,6 +3790,159 @@ class HybridRetriever(BaseRetriever):
             except Exception as exc:
                 logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
 
+    @staticmethod
+    def _escape_sql_like_term(value: str) -> str:
+        return str(value or "").replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+    def _metadata_exact_result_from_row(
+        self,
+        row: Any,
+        *,
+        query: str,
+        dataset_str: str | None,
+        metadata_filter: dict[str, Any] | None,
+    ) -> tuple[str, dict[str, Any]] | None:
+        try:
+            (
+                chunk_id,
+                content,
+                doc_metadata,
+                tenant_uuid_row,
+                document_uuid_row,
+                chunk_index,
+                page_number,
+            ) = row
+        except (TypeError, ValueError, AttributeError):
+            return None
+
+        meta = dict(doc_metadata or {})
+        metadata_match = _metadata_exact_anchor_match(query, meta)
+        if not metadata_match:
+            return None
+
+        cid = str(chunk_id)
+        match_score = float(metadata_match.get("score") or 0.0)
+        meta.setdefault("tenant_id", str(tenant_uuid_row))
+        meta.setdefault("document_id", str(document_uuid_row))
+        meta.setdefault("chunk_index", int(chunk_index) if chunk_index is not None else None)
+        meta.setdefault("chunk_id", cid)
+        meta.setdefault("source", meta.get("source", "unknown"))
+        if dataset_str:
+            meta.setdefault("dataset_id", dataset_str)
+        if page_number is not None and not meta.get("page"):
+            meta["page"] = page_number
+        meta.setdefault("lexical_method", "metadata_exact")
+        meta["metadata_exact_candidate"] = True
+        meta["metadata_exact_candidate_field"] = str(metadata_match.get("field") or "")
+        meta["metadata_exact_candidate_fields"] = list(metadata_match.get("fields") or [])
+        meta["metadata_exact_candidate_score"] = float(match_score)
+        if metadata_filter and not self._match_metadata_filter(meta, metadata_filter):
+            return None
+        return cid, {
+            "chunk_id": cid,
+            "content": content or "",
+            "metadata": meta,
+            "score": max(1.0, float(match_score)),
+        }
+
+    def _search_metadata_exact_anchor_db_with_session(
+        self,
+        *,
+        db: Session,
+        query: str,
+        top_k: int,
+        tenant_uuid: UUID,
+        document_ids: list[UUID] | None = None,
+        metadata_filter: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        raw_query = str(query or "").strip()
+        if not raw_query or not _query_looks_like_cjk_metadata_anchor(raw_query):
+            return []
+
+        dataset_uuid, dataset_str = self._lexical_dataset_scope(metadata_filter)
+        limit = max(1, int(top_k or 1))
+        cap = max(1, int(getattr(settings, "RETRIEVAL_METADATA_EXACT_DB_MAX_CANDIDATES", 80) or 80))
+        fetch_k = min(cap, max(limit, limit * 4))
+        pattern = f"%{self._escape_sql_like_term(raw_query)}%"
+
+        rows = (
+            self._lexical_base_query(
+                db,
+                tenant_uuid=tenant_uuid,
+                dataset_uuid=dataset_uuid,
+                document_ids=document_ids,
+            )
+            .filter(sql_cast(DocumentChunk.doc_metadata, SQLText).ilike(pattern, escape="\\"))
+            .limit(fetch_k)
+            .all()
+        )
+
+        results_by_id: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            parsed = self._metadata_exact_result_from_row(
+                row,
+                query=raw_query,
+                dataset_str=dataset_str,
+                metadata_filter=metadata_filter,
+            )
+            if parsed is None:
+                continue
+            cid, result = parsed
+            results_by_id[cid] = result
+
+        if not results_by_id:
+            return []
+
+        results = list(results_by_id.values())
+        results.sort(
+            key=lambda item: (
+                -float((item.get("metadata") or {}).get("metadata_exact_candidate_score") or 0.0),
+                str(item.get("chunk_id") or ""),
+            )
+        )
+        return results[:limit]
+
+    def _search_metadata_exact_anchor_db(
+        self,
+        *,
+        query: str,
+        top_k: int = 10,
+        document_ids: list[UUID] | None = None,
+        tenant_id: UUID | None = None,
+        metadata_filter: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        raw_query = str(query or "").strip()
+        if not raw_query:
+            return []
+        if not bool(getattr(settings, "RETRIEVAL_METADATA_EXACT_DB_FALLBACK_ENABLED", True)):
+            return []
+
+        tenant_uuid = self._resolve_tenant_uuid(tenant_id)
+        if tenant_uuid is None:
+            return []
+
+        db = SessionLocal()
+        try:
+            bind = db.get_bind()
+            if not bind or getattr(getattr(bind, "dialect", None), "name", "") != "postgresql":
+                return []
+            return self._search_metadata_exact_anchor_db_with_session(
+                db=db,
+                query=raw_query,
+                top_k=top_k,
+                tenant_uuid=tenant_uuid,
+                document_ids=document_ids,
+                metadata_filter=metadata_filter,
+            )
+        except Exception as exc:
+            logger.debug("Metadata exact DB fallback failed: %s", exc)
+            return []
+        finally:
+            try:
+                db.close()
+            except Exception as exc:
+                logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+
     def _hybrid_search(
         self,
         query: str,
@@ -4296,12 +4451,66 @@ class HybridRetriever(BaseRetriever):
                     lexical_elapsed_ms += (time.perf_counter() - t0) * 1000
             elif want_lexical:
                 lexical_run_reason = "skipped_primary_candidates_sufficient"
+
+            metadata_exact_db_results: list[dict[str, Any]] = []
+            metadata_exact_db_enabled = bool(
+                getattr(settings, "RETRIEVAL_METADATA_EXACT_DB_FALLBACK_ENABLED", True)
+            )
+            metadata_exact_db_reason = "not_run"
+            if metadata_exact_db_enabled and metadata_exact_fallback:
+                lexical_has_metadata_exact_anchor = _results_contain_metadata_exact_anchor(
+                    query,
+                    lexical_results,
+                    limit=max(1, int(top_k or 0)),
+                )
+                if lexical_has_metadata_exact_anchor:
+                    metadata_exact_db_reason = "lexical_has_exact_anchor"
+                else:
+                    t0 = time.perf_counter()
+                    try:
+                        metadata_exact_db_results = self._search_metadata_exact_anchor_db(
+                            query=query,
+                            top_k=fetch_k,
+                            document_ids=document_ids,
+                            tenant_id=tenant_id,
+                            metadata_filter=bm25_filter,
+                        )
+                        metadata_exact_db_reason = "hybrid_metadata_exact_fallback"
+                    except Exception as exc:
+                        logger.debug("Metadata exact DB fallback failed: %s", exc)
+                        metadata_exact_db_results = []
+                        metadata_exact_db_reason = "error"
+                    finally:
+                        lexical_elapsed_ms += (time.perf_counter() - t0) * 1000
+
+                if metadata_exact_db_results:
+                    seen_chunk_ids = {
+                        str((item.get("metadata") or {}).get("chunk_id") or item.get("chunk_id") or "")
+                        for item in lexical_results
+                        if isinstance(item, dict)
+                    }
+                    for item in metadata_exact_db_results:
+                        cid = str((item.get("metadata") or {}).get("chunk_id") or item.get("chunk_id") or "")
+                        if cid and cid in seen_chunk_ids:
+                            continue
+                        if cid:
+                            seen_chunk_ids.add(cid)
+                        lexical_results.append(item)
+            elif not metadata_exact_db_enabled:
+                metadata_exact_db_reason = "disabled"
+
             if want_lexical and isinstance(self._last_channel_metrics, dict):
                 self._last_channel_metrics["lexical_metadata_exact_fallback"] = {
                     "enabled": bool(metadata_exact_fallback_enabled),
                     "query_anchor_like": bool(metadata_exact_anchor_like_query),
                     "primary_has_exact_anchor": bool(primary_has_metadata_exact_anchor),
                     "triggered": bool(metadata_exact_fallback),
+                }
+                self._last_channel_metrics["metadata_exact_db"] = {
+                    "enabled": bool(metadata_exact_db_enabled),
+                    "used": bool(metadata_exact_db_results),
+                    "candidates": int(len(metadata_exact_db_results or [])),
+                    "run_reason": metadata_exact_db_reason,
                 }
 
         # 2c) Optional sparse channel (SPLADE-style)
@@ -4898,6 +5107,19 @@ class HybridRetriever(BaseRetriever):
                 self._last_channel_metrics["returned_top_k"] = int(min(int(top_k or 0), after_diversity))
         except Exception as exc:
             logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+
+        metadata_exact_final_stats: dict[str, Any] = {}
+        merged_results = self._apply_metadata_exact_anchor_post_ordering(
+            query,
+            merged_results,
+            stats=metadata_exact_final_stats,
+        )
+        if metadata_exact_final_stats:
+            try:
+                if isinstance(self._last_channel_metrics, dict):
+                    self._last_channel_metrics["metadata_exact_final_ordering"] = metadata_exact_final_stats
+            except Exception as exc:
+                logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
         out = merged_results[:top_k]
 
         if cache_eligible and (not cache_hit) and cache_key and out:

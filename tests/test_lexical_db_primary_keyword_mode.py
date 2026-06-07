@@ -94,6 +94,7 @@ def test_keyword_mode_can_run_bm25_as_secondary_after_lexical(monkeypatch) -> No
     monkeypatch.setattr(settings, "RETRIEVAL_KEYWORD_BM25_SECONDARY_ENABLED", True, raising=False)
 
     retriever = HybridRetriever(tenant_id=uuid4(), account_id="acct")
+    retriever.enable_reranker = False
     calls: list[str] = []
 
     monkeypatch.setattr(
@@ -404,6 +405,118 @@ def test_hybrid_mode_still_uses_lexical_db_when_cjk_exact_metadata_anchor_is_pre
         "primary_has_exact_anchor": True,
         "triggered": True,
     }
+
+
+def test_hybrid_metadata_exact_fallback_adds_metadata_anchor_candidates_when_lexical_misses(monkeypatch) -> None:  # noqa: ANN001
+    monkeypatch.setattr(settings, "LEXICAL_DB_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "LEXICAL_DB_HYBRID_FALLBACK_ONLY", True, raising=False)
+    monkeypatch.setattr(settings, "BM25_INDEX_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "RETRIEVAL_METADATA_EXACT_DB_FALLBACK_ENABLED", True, raising=False)
+
+    retriever = HybridRetriever(tenant_id=uuid4(), account_id="acct")
+    calls: list[str] = []
+    query = "不动产业务"
+
+    class _StubVectorStore:
+        def search(self, **_kwargs):  # noqa: ANN003
+            calls.append("vector")
+            return [_bm25_hit("doc-regulation", score=0.95)]
+
+    metadata_hit = _metadata_question_hit("doc-faq", question=query, score=1.0)
+    metadata_hit["metadata"] = {
+        **dict(metadata_hit["metadata"]),  # type: ignore[arg-type]
+        "lexical_method": "metadata_exact",
+        "gov_knowledge_type": "qa",
+        "_evaluable_metadata": {"question": query, "gov_knowledge_type": "qa"},
+    }
+
+    monkeypatch.setattr("app.rag.retriever.get_vector_store", lambda: _StubVectorStore(), raising=True)
+    monkeypatch.setattr(
+        retriever,
+        "_search_bm25",
+        lambda **_kwargs: calls.append("bm25") or [_bm25_hit("doc-service", score=0.9)],
+        raising=True,
+    )
+    monkeypatch.setattr(
+        retriever,
+        "_search_lexical_db",
+        lambda **_kwargs: calls.append("lexical") or [_lexical_hit("doc-lexical-distractor", score=0.8)],
+        raising=True,
+    )
+    monkeypatch.setattr(
+        retriever,
+        "_search_metadata_exact_anchor_db",
+        lambda **_kwargs: calls.append("metadata_exact") or [metadata_hit],
+        raising=True,
+    )
+
+    results = retriever._hybrid_search(
+        query=query,
+        top_k=3,
+        score_threshold=0.0,
+        tenant_id=retriever.tenant_id,
+        retrieval_mode="hybrid",
+    )
+
+    assert calls == ["vector", "bm25", "lexical", "metadata_exact"]
+    assert results[0]["document_id"] == "doc-faq"
+    assert results[0]["metadata_exact_match_field"] == "question"
+
+    channels = retriever._last_channel_metrics
+    assert channels["metadata_exact_db"] == {
+        "enabled": True,
+        "used": True,
+        "candidates": 1,
+        "run_reason": "hybrid_metadata_exact_fallback",
+    }
+
+
+def test_hybrid_reapplies_metadata_exact_ordering_after_weight_rerank(monkeypatch) -> None:  # noqa: ANN001
+    monkeypatch.setattr(settings, "LEXICAL_DB_ENABLED", True, raising=False)
+    monkeypatch.setattr(settings, "LEXICAL_DB_HYBRID_FALLBACK_ONLY", True, raising=False)
+    monkeypatch.setattr(settings, "BM25_INDEX_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "RERANK_CONDITIONAL_ENABLED", False, raising=False)
+
+    retriever = HybridRetriever(tenant_id=uuid4(), account_id="acct")
+    query = "不动产业务"
+
+    class _StubVectorStore:
+        def search(self, **_kwargs):  # noqa: ANN003
+            return [
+                {
+                    "document_id": "doc-regulation",
+                    "chunk_id": "doc-regulation:0",
+                    "content": "不动产登记暂行条例实施细则",
+                    "score": 0.99,
+                    "metadata": {"document_id": "doc-regulation", "chunk_id": "doc-regulation:0", "chunk_index": 0},
+                    "vector_score": 0.99,
+                }
+            ]
+
+    monkeypatch.setattr("app.rag.retriever.get_vector_store", lambda: _StubVectorStore(), raising=True)
+    monkeypatch.setattr(
+        retriever,
+        "_search_lexical_db",
+        lambda **_kwargs: [_metadata_question_hit("doc-faq", question=query, score=0.2)],
+        raising=True,
+    )
+    monkeypatch.setattr(retriever, "_search_metadata_exact_anchor_db", lambda **_kwargs: [], raising=True)
+
+    results = retriever._hybrid_search(
+        query=query,
+        top_k=2,
+        score_threshold=0.0,
+        tenant_id=retriever.tenant_id,
+        retrieval_mode="hybrid",
+        enable_weight_rerank=True,
+    )
+
+    assert results[0]["document_id"] == "doc-faq"
+    assert results[0]["metadata_exact_match_field"] == "question"
+    channels = retriever._last_channel_metrics
+    assert channels["metadata_exact_pre_dedup_ordering"]["applied"] is True
+    assert channels["metadata_exact_final_ordering"]["applied"] is True
+    assert channels["metadata_exact_final_ordering"]["annotated"] == 1
 
 
 def test_hybrid_mode_uses_lexical_db_when_primary_channels_are_insufficient(monkeypatch) -> None:  # noqa: ANN001

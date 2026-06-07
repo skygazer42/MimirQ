@@ -67,6 +67,43 @@ def test_discovers_supported_corpus_files_and_reports_empty_skips(tmp_path: Path
     assert skipped == [{"path": "空.txt", "reason": "empty_file", "size": 0}]
 
 
+def test_discovery_skips_hidden_paths_by_default(tmp_path: Path) -> None:
+    mod = _load_module()
+    visible = tmp_path / "record.txt"
+    hidden_dir_file = tmp_path / ".pandoc" / "converted.docx"
+    hidden_file = tmp_path / ".scratch.txt"
+    hidden_dir_file.parent.mkdir()
+    visible.write_text("record content", encoding="utf-8")
+    hidden_dir_file.write_bytes(b"docx")
+    hidden_file.write_text("scratch", encoding="utf-8")
+
+    files, skipped = mod.discover_corpus_files(tmp_path, extensions={".txt", ".docx"}, skip_empty=True)
+
+    assert skipped == []
+    assert [item.rel_path for item in files] == ["record.txt"]
+
+
+def test_discovery_can_include_hidden_paths_when_explicit(tmp_path: Path) -> None:
+    mod = _load_module()
+    visible = tmp_path / "record.txt"
+    hidden_dir_file = tmp_path / ".pandoc" / "converted.docx"
+    hidden_file = tmp_path / ".scratch.txt"
+    hidden_dir_file.parent.mkdir()
+    visible.write_text("record content", encoding="utf-8")
+    hidden_dir_file.write_bytes(b"docx")
+    hidden_file.write_text("scratch", encoding="utf-8")
+
+    files, skipped = mod.discover_corpus_files(
+        tmp_path,
+        extensions={".txt", ".docx"},
+        skip_empty=True,
+        include_hidden=True,
+    )
+
+    assert skipped == []
+    assert [item.rel_path for item in files] == [".pandoc/converted.docx", ".scratch.txt", "record.txt"]
+
+
 def test_discovery_does_not_treat_numbered_roots_as_special_by_default(tmp_path: Path) -> None:
     mod = _load_module()
     root = tmp_path / "04topic-faq"
@@ -319,6 +356,78 @@ def test_explicit_pipeline_patch_json_rejects_activation_refs() -> None:
         )
 
 
+def test_corpus_smoke_uploads_and_waits_in_batches(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    mod = _load_module()
+    for name in ("a.txt", "b.txt", "c.txt"):
+        (tmp_path / name).write_text(name, encoding="utf-8")
+    calls: list[tuple[str, list[str]]] = []
+
+    monkeypatch.setattr(mod, "create_dataset", lambda *_args, **_kwargs: "dataset-1", raising=True)
+
+    def fake_upload(_client, files, **_kwargs):  # noqa: ANN001, ANN003
+        rel_paths = [item.rel_path for item in files]
+        calls.append(("upload", rel_paths))
+        return [
+            mod.UploadedDocument(
+                document_id=f"doc-{item.rel_path}",
+                file=item,
+                upload_status="pending",
+            )
+            for item in files
+        ]
+
+    def fake_wait(_client, uploaded, **_kwargs):  # noqa: ANN001, ANN003
+        rel_paths = [item.file.rel_path for item in uploaded]
+        calls.append(("wait", rel_paths))
+        return [{"document_id": item.document_id, "source_rel_path": item.file.rel_path} for item in uploaded]
+
+    def fake_closed_loop(**_kwargs):  # noqa: ANN003
+        return mod.ClosedLoopResult(
+            dataset_id="dataset-1",
+            plugin_ref="plugin:demo-runtime-plugin@1.0.0:chunk",
+            run_id="run-1",
+            case_ids=[],
+            summary={},
+            import_result={},
+            plugin_source={},
+        )
+
+    monkeypatch.setattr(mod, "upload_corpus_files", fake_upload, raising=True)
+    monkeypatch.setattr(mod, "wait_for_uploaded_documents", fake_wait, raising=True)
+    monkeypatch.setattr(mod, "run_closed_loop_smoke", fake_closed_loop, raising=True)
+
+    result = mod.run_corpus_closed_loop_smoke(
+        client=object(),
+        source_dir=tmp_path,
+        dataset_id="",
+        dataset_name="Dataset",
+        chunk_plugin_ref="plugin:demo-runtime-plugin@1.0.0:chunk",
+        pipeline_patch={},
+        governance_plugin_ref="",
+        kg_plugin_ref="",
+        extensions=".txt",
+        skip_empty=True,
+        max_files=0,
+        include_root_name=False,
+        include_hidden=False,
+        upload_batch_size=2,
+        processing_timeout_sec=1,
+        poll_interval_sec=0,
+        golden_max_items=1,
+        golden_max_chunks=10,
+        overwrite_goldens=False,
+    )
+
+    assert calls == [
+        ("upload", ["a.txt", "b.txt"]),
+        ("wait", ["a.txt", "b.txt"]),
+        ("upload", ["c.txt"]),
+        ("wait", ["c.txt"]),
+    ]
+    assert result.uploaded_count == 3
+    assert [item["source_rel_path"] for item in result.documents] == ["a.txt", "b.txt", "c.txt"]
+
+
 def test_corpus_api_client_retries_rate_limited_json(monkeypatch: pytest.MonkeyPatch) -> None:
     mod = _load_module()
     calls = 0
@@ -339,6 +448,23 @@ def test_corpus_api_client_retries_rate_limited_json(monkeypatch: pytest.MonkeyP
     assert client.json("GET", "/api/v1/health") == {"ok": True}
     assert calls == 2
     assert sleeps == [1.0]
+
+
+def test_upload_file_wraps_request_errors_with_source_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    mod = _load_module()
+    src = tmp_path / "05" / "large.docx"
+    src.parent.mkdir()
+    src.write_bytes(b"docx")
+    item = mod.CorpusFile(path=src, rel_path="05/large.docx", size=src.stat().st_size)
+
+    def fail_post(*_args, **_kwargs):  # noqa: ANN002, ANN003
+        raise mod.requests.exceptions.ReadTimeout("read timed out")
+
+    monkeypatch.setattr(mod.requests, "post", fail_post, raising=True)
+    client = mod.CorpusApiClient(base_url="http://127.0.0.1:8000", timeout_sec=1)
+
+    with pytest.raises(RuntimeError, match="05/large\\.docx"):
+        client.upload_file("/api/v1/documents/upload", data={"dataset_id": "dataset-1"}, file=item)
 
 
 class _FakeClient:

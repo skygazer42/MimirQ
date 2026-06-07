@@ -170,6 +170,8 @@ closed-loop gate：
 make changzhou-gov-plugin-corpus-closed-loop-smoke \
   CHANGZHOU_DIFY_MIMIRQ_BASE_URL=http://127.0.0.1:8000 \
   CHANGZHOU_GOV_CORPUS_SOURCE_DIR=/path/to/20260522政务服务智能客服知识 \
+  CHANGZHOU_GOV_CORPUS_HTTP_TIMEOUT=600 \
+  CHANGZHOU_GOV_CORPUS_UPLOAD_BATCH_SIZE=1 \
   CHANGZHOU_GOV_CORPUS_EXTRA_ARGS="--include-source-root-name --overwrite-goldens"
 
 make changzhou-gov-plugin-corpus-closed-loop-evidence
@@ -177,6 +179,10 @@ make changzhou-gov-plugin-corpus-closed-loop-evidence
 
 该 gate 会上传语料、用当前注册插件 ref 执行 governance/chunk/KG、等待文档完成并确认
 每个非空文档有切片，然后从真实切片导入 Golden 并启动 retrieval-only regression。
+默认会跳过隐藏文件和隐藏目录（例如转换工具产生的 `.pandoc` 中间产物）；如需诊断这类文件，
+可以给底层脚本传 `--include-hidden`。
+大语料或长文档建议设置 `CHANGZHOU_GOV_CORPUS_UPLOAD_BATCH_SIZE=1` 或较小批次，
+避免上传请求在后端同步解析/索引大文件时被 HTTP read timeout 中断。
 默认 `CHANGZHOU_GOV_PLUGIN_REF=plugin:changzhou-gov-service-knowledge@1.0.0:chunk`；
 如需复用既有数据集，传 `CHANGZHOU_GOV_CORPUS_DATASET_ID=<dataset_uuid>`，否则会创建隔离测试数据集。
 raw report 可能包含本地 source path、文件名、document id 和 case id；交付时使用
