@@ -252,20 +252,25 @@ readiness gate 会在 trace 阶段失败。
 `inputs` 中传入 `areaName`，或者在 Dify workflow 内给该变量默认值/兜底分支。缺少该
 变量时，Dify 会直接返回 `HTTP 400 invalid_param`，请求不会进入 MimirQ 检索链路。
 
-可以用 workflow lint 直接检查这类“标为非必填但后续直接引用”的 Start 变量：
+可以用 workflow lint 直接检查这类“标为非必填但后续直接引用”的 Start 变量，也会扫描
+LLM prompt 是否包含可能泄漏到用户答案里的模板控制语句：
 
 ```bash
 python scripts/changzhou_gov_dify_workflow_lint.py \
   --app-id 00000000-0000-0000-0000-000000000003 \
   --cases plugins/pipelines/changzhou-gov-service-knowledge/golden_eval_cases.json \
-  --case-inputs-only \
   --storage-state /tmp/dify_console_storage_state.json \
-  --out /tmp/changzhou_gov_dify_workflow_lint.json
+  --out /tmp/changzhou_gov_dify_workflow_lint.json \
+  --patched-workflow-out /tmp/changzhou_gov_dify_workflow_sanitized.json
 ```
 
 传入 `--cases` 后，报告会额外输出 `case_input_violations`，用于在调用 Dify 前发现
 golden/boundary case 是否漏传 `dify_inputs.areaName`。`--case-inputs-only` 只把 case
 缺入参作为失败退出码，仍会在报告里保留 workflow 本身的隐性必填警告。
+报告中的 `prompt_template_leak_warnings` 用于发现 Dify LLM 节点 prompt 里把
+“必须按顺序包含以下标题”“知识库内容中有...输出此部分内容”等内部模板说明写进
+system prompt 的问题；这些词一旦被模型照抄，会让 `generated_answer_policy_clean_rate`
+失败。`--patched-workflow-out` 只写本地 JSON，不会修改远程 Dify workflow，可用于导入前审查。
 报告中的 `area_route_warnings` 用于发现另一类隐患：case 已传 `areaName`，但区域
 条件分支没有直接使用 Start 变量，而是使用 LLM/parameter-extractor 的派生区域值。
 当前“小畅” workflow 的静态风险是 `区域条件分支` 读取

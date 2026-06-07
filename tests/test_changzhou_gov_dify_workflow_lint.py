@@ -190,6 +190,47 @@ def test_patch_area_route_selectors_rewrites_route_to_start_area_name_without_mu
     assert mod.lint_workflow(patched)["summary"].get("area_route_warnings", 0) == 0
 
 
+def test_lint_workflow_reports_prompt_template_leakage() -> None:
+    mod = _load_module()
+
+    report = mod.lint_workflow(_prompt_leak_workflow())
+
+    assert report["summary"]["prompt_template_leak_warnings"] == 1
+    assert report["prompt_template_leak_warnings"] == [
+        {
+            "node_id": "llm-1",
+            "node_title": "LLM综合回复（一件事及QA）",
+            "node_type": "llm",
+            "path": "graph.nodes[0].data.prompt_template[0].text",
+            "forbidden_phrases": ["必须按顺序包含以下标题", "知识库内容中有", "输出此部分内容"],
+            "recommendation": "Rewrite the prompt as model instructions only; do not include user-visible template-control phrases.",
+        }
+    ]
+
+
+def test_patch_prompt_template_leaks_rewrites_prompt_without_mutating_source() -> None:
+    mod = _load_module()
+    workflow = _prompt_leak_workflow()
+
+    patched, patches = mod.patch_prompt_template_leaks(workflow)
+
+    original_text = workflow["graph"]["nodes"][0]["data"]["prompt_template"][0]["text"]
+    patched_text = patched["graph"]["nodes"][0]["data"]["prompt_template"][0]["text"]
+    assert "必须按顺序包含以下标题" in original_text
+    assert "必须按顺序包含以下标题" not in patched_text
+    assert "知识库内容中有" not in patched_text
+    assert "输出此部分内容" not in patched_text
+    assert patches == [
+        {
+            "node_id": "llm-1",
+            "node_title": "LLM综合回复（一件事及QA）",
+            "path": "graph.nodes[0].data.prompt_template[0].text",
+            "forbidden_phrases": ["必须按顺序包含以下标题", "知识库内容中有", "输出此部分内容"],
+        }
+    ]
+    assert mod.lint_workflow(patched)["summary"].get("prompt_template_leak_warnings", 0) == 0
+
+
 def test_main_writes_patched_workflow_for_area_route_warnings(tmp_path: Path) -> None:
     mod = _load_module()
     workflow_path = tmp_path / "workflow.json"
@@ -215,6 +256,33 @@ def test_main_writes_patched_workflow_for_area_route_warnings(tmp_path: Path) ->
     assert report["summary"]["area_route_patches"] == 1
     assert report["area_route_patches"][0]["conditions_patched"] == 1
     assert patched_report["summary"].get("area_route_warnings", 0) == 0
+
+
+def test_main_writes_patched_workflow_for_prompt_template_leaks(tmp_path: Path) -> None:
+    mod = _load_module()
+    workflow_path = tmp_path / "workflow.json"
+    out_path = tmp_path / "report.json"
+    patched_path = tmp_path / "workflow.patched.json"
+    workflow_path.write_text(json.dumps(_prompt_leak_workflow(), ensure_ascii=False), encoding="utf-8")
+
+    exit_code = mod.main(
+        [
+            "--workflow-json",
+            str(workflow_path),
+            "--out",
+            str(out_path),
+            "--patched-workflow-out",
+            str(patched_path),
+        ]
+    )
+
+    report = json.loads(out_path.read_text(encoding="utf-8"))
+    patched = json.loads(patched_path.read_text(encoding="utf-8"))
+    patched_report = mod.lint_workflow(patched)
+    assert exit_code == 1
+    assert report["summary"]["prompt_template_leak_warnings"] == 1
+    assert report["summary"]["prompt_template_leak_patches"] == 1
+    assert patched_report["summary"].get("prompt_template_leak_warnings", 0) == 0
 
 
 def _area_route_workflow() -> dict:
@@ -256,6 +324,32 @@ def _area_route_workflow() -> dict:
                         ],
                     },
                 },
+            ]
+        }
+    }
+
+
+def _prompt_leak_workflow() -> dict:
+    return {
+        "graph": {
+            "nodes": [
+                {
+                    "id": "llm-1",
+                    "data": {
+                        "type": "llm",
+                        "title": "LLM综合回复（一件事及QA）",
+                        "prompt_template": [
+                            {
+                                "role": "system",
+                                "text": (
+                                    "### 应答模版\n"
+                                    "必须按顺序包含以下标题：📌【涉及事项】→📋【办理须知】\n"
+                                    "一件事系统操作指引说明（知识库内容中有一件事系统操作指引相关内容，输出此部分内容）"
+                                ),
+                            }
+                        ],
+                    },
+                }
             ]
         }
     }
