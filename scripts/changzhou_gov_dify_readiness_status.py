@@ -28,8 +28,12 @@ def _load_json(path: str) -> dict[str, Any]:
 def format_status(report: dict[str, Any]) -> str:
     summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
     artifacts = report.get("artifacts") if isinstance(report.get("artifacts"), dict) else {}
+    artifact_times = report.get("artifact_generated_at") if isinstance(report.get("artifact_generated_at"), dict) else {}
     passed = summary.get("passed") is True
     lines = [f"Changzhou Dify readiness: {'PASSED' if passed else 'FAILED'}"]
+    generated_at = _text(report.get("generated_at"))
+    if generated_at:
+        lines.append(f"Generated at: {generated_at}")
     if not passed:
         root_stage = _text(summary.get("root_cause_stage")) or ",".join(_text_list(summary.get("failed_stages")))
         root_reason = _text(summary.get("root_cause_reason"))
@@ -41,6 +45,10 @@ def format_status(report: dict[str, Any]) -> str:
     skipped = _text_list(summary.get("skipped_stages"))
     if skipped:
         lines.append(f"Skipped stages: {', '.join(skipped)}")
+    if artifact_times:
+        time_items = [f"{key}={value}" for key, value in artifact_times.items() if _text(value)]
+        if time_items:
+            lines.append(f"Artifact times: {'; '.join(time_items)}")
     if artifacts:
         artifact_items = [f"{key}={value}" for key, value in artifacts.items() if _text(value)]
         if artifact_items:
