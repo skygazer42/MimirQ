@@ -78,6 +78,28 @@ def test_dify_console_check_target_writes_report() -> None:
     assert '--out "/tmp/auth.json"' in command
 
 
+def test_dify_console_login_target_writes_report() -> None:
+    result = subprocess.run(
+        [
+            "make",
+            "-n",
+            "dify-console-login",
+            "DIFY_CONSOLE_CHECK_OUT=/tmp/auth.json",
+            "DIFY_CONSOLE_MIN_TTL_SECONDS=123",
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    command = result.stdout
+    assert "scripts/dify_console_login.py" in command
+    assert '--out "/tmp/auth.json"' in command
+    assert "--min-ttl-seconds 123" in command
+
+
 def test_changzhou_dify_readiness_status_target_is_overridable() -> None:
     result = subprocess.run(
         [

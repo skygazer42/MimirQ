@@ -175,3 +175,57 @@ def test_refresh_storage_state_logs_in_validates_profile_and_writes_state(tmp_pa
         console_origin="https://dify.example.com:3000",
         console_token="console-token",
     )
+
+
+def test_login_cli_writes_post_refresh_check_report_without_token(tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001
+    now = int(time.time())
+    storage_state = tmp_path / "state.json"
+    password_file = tmp_path / "password.txt"
+    out = tmp_path / "login-report.json"
+    password_file.write_text("secret", encoding="utf-8")
+
+    def fake_request_json(
+        *,
+        console_base_url: str,
+        path: str,
+        method: str,
+        payload: dict[str, Any] | None,
+        console_token: str,
+        timeout: float,
+    ) -> dict[str, Any]:
+        if path == "/login":
+            return {"data": {"access_token": _jwt_with_exp(now + 1800)}}
+        if path == "/account/profile":
+            return {"email": "operator@example.com", "id": "account-id"}
+        raise AssertionError(path)
+
+    monkeypatch.setattr(mod, "_request_json", fake_request_json)
+
+    rc = mod.main(
+        [
+            "--console-base-url",
+            "https://dify.example.com:5001/console/api",
+            "--console-origin",
+            "https://dify.example.com:3000",
+            "--email",
+            "operator@example.com",
+            "--password-file",
+            str(password_file),
+            "--storage-state",
+            str(storage_state),
+            "--out",
+            str(out),
+            "--min-ttl-seconds",
+            "900",
+        ]
+    )
+
+    assert rc == 0
+    report = json.loads(out.read_text(encoding="utf-8"))
+    assert report["valid"] is True
+    assert report["reason"] == "ok"
+    assert report["ttl_seconds"] > 0
+    assert report["min_ttl_seconds"] == 900
+    assert report["profile_email"] == "operator@example.com"
+    assert "console_token" not in out.read_text(encoding="utf-8")
+    assert "secret" not in out.read_text(encoding="utf-8")
