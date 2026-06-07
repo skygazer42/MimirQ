@@ -325,14 +325,19 @@ changzhou-dify-readiness-gate:
 	@set +e; \
 	rm -f "$(CHANGZHOU_DIFY_PROBE_OUT)" "$(CHANGZHOU_DIFY_OUT_PREFIX).json" "$(CHANGZHOU_DIFY_OUT_PREFIX)_answers.json" \
 		"$(CHANGZHOU_DIFY_OUT_PREFIX)_eval.json" "$(CHANGZHOU_DIFY_OUT_PREFIX)_trace.json" "$(CHANGZHOU_DIFY_OUT_PREFIX)_summary.json" "$(CHANGZHOU_DIFY_READINESS_OUT)" \
-		"$(CHANGZHOU_DIFY_KNOWLEDGE_MAP_OUT)" "$(DIFY_CONSOLE_CHECK_OUT)"; \
+		"$(CHANGZHOU_DIFY_KNOWLEDGE_MAP_OUT)" "$(CHANGZHOU_DIFY_MIMIRQ_DIRECT_OUT)" "$(DIFY_CONSOLE_CHECK_OUT)"; \
 	$(MAKE) changzhou-dify-knowledge-map-check; map_rc=$$?; \
 	if [ $$map_rc -eq 0 ]; then \
+		$(MAKE) changzhou-dify-mimirq-direct-gate; direct_rc=$$?; \
+	else \
+		direct_rc=1; \
+	fi; \
+	if [ $$map_rc -eq 0 ] && [ $$direct_rc -eq 0 ]; then \
 		$(MAKE) dify-console-check; auth_rc=$$?; \
 	else \
 		auth_rc=1; \
 	fi; \
-	if [ $$map_rc -eq 0 ] && [ $$auth_rc -eq 0 ]; then \
+	if [ $$map_rc -eq 0 ] && [ $$direct_rc -eq 0 ] && [ $$auth_rc -eq 0 ]; then \
 		$(MAKE) changzhou-dify-external-probe; probe_rc=$$?; \
 	else \
 		probe_rc=1; \
@@ -343,13 +348,14 @@ changzhou-dify-readiness-gate:
 		full_rc=1; \
 	fi; \
 	$(MAKE) changzhou-dify-readiness-summary; summary_rc=$$?; \
-	if [ $$map_rc -ne 0 ] || [ $$auth_rc -ne 0 ] || [ $$probe_rc -ne 0 ] || [ $$full_rc -ne 0 ] || [ $$summary_rc -ne 0 ]; then \
+	if [ $$map_rc -ne 0 ] || [ $$direct_rc -ne 0 ] || [ $$auth_rc -ne 0 ] || [ $$probe_rc -ne 0 ] || [ $$full_rc -ne 0 ] || [ $$summary_rc -ne 0 ]; then \
 		exit 1; \
 	fi
 
 changzhou-dify-readiness-summary:
 	$(PY) scripts/changzhou_gov_dify_readiness_summary.py \
 		--knowledge-map "$(CHANGZHOU_DIFY_KNOWLEDGE_MAP_OUT)" \
+		--mimirq-direct "$(CHANGZHOU_DIFY_MIMIRQ_DIRECT_OUT)" \
 		--console-auth "$(DIFY_CONSOLE_CHECK_OUT)" \
 		--external-probe "$(CHANGZHOU_DIFY_PROBE_OUT)" \
 		--full-summary "$(CHANGZHOU_DIFY_OUT_PREFIX)_summary.json" \

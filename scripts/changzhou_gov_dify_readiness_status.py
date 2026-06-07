@@ -50,6 +50,16 @@ def _freshness_line(generated_at: str, *, now: datetime, max_age_minutes: int) -
     return f"Freshness: fresh (age={age_minutes}m, max={max_age_minutes}m)"
 
 
+def _stages_with_status(report: dict[str, Any], status: str) -> list[str]:
+    stages = ("knowledge_map", "mimirq_direct", "console_auth", "external_probe", "full_gate")
+    out: list[str] = []
+    for stage in stages:
+        section = report.get(stage)
+        if isinstance(section, dict) and _text(section.get("status")) == status:
+            out.append(stage)
+    return out
+
+
 def format_status(
     report: dict[str, Any],
     *,
@@ -77,6 +87,9 @@ def format_status(
         next_action = _text(summary.get("next_action"))
         if next_action:
             lines.append(f"Next action: {next_action}")
+    passed_stages = _stages_with_status(report, "passed")
+    if passed_stages:
+        lines.append(f"Passed stages: {', '.join(passed_stages)}")
     skipped = _text_list(summary.get("skipped_stages"))
     if skipped:
         lines.append(f"Skipped stages: {', '.join(skipped)}")
