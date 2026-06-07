@@ -178,6 +178,22 @@ def _region_texts(regions: list[Any]) -> list[str]:
     return out
 
 
+def _region_extractor_summary(title: str, node_type: str, outputs: dict[str, Any]) -> dict[str, Any]:
+    summary: dict[str, Any] = {
+        "title": title,
+        "node_type": node_type,
+    }
+    if "__is_success" in outputs:
+        summary["success"] = bool(outputs.get("__is_success"))
+    reason = _text(outputs.get("__reason"))
+    if reason:
+        summary["reason"] = reason
+    for key in ("region", "area"):
+        if key in outputs:
+            summary[key] = _text(outputs.get(key))
+    return summary
+
+
 def _add_route_diagnostics(answer_item: dict[str, Any], summary: dict[str, Any]) -> dict[str, Any]:
     expected_area = _expected_area(answer_item)
     if not expected_area:
@@ -218,6 +234,7 @@ def _add_route_diagnostics(answer_item: dict[str, Any], summary: dict[str, Any])
 def _summarize_executions(executions: list[dict[str, Any]]) -> dict[str, Any]:
     retrievals: list[dict[str, Any]] = []
     regions: list[Any] = []
+    region_extractors: list[dict[str, Any]] = []
     answer_node_title = ""
     for execution in executions:
         title = _text(execution.get("title"))
@@ -236,11 +253,13 @@ def _summarize_executions(executions: list[dict[str, Any]]) -> dict[str, Any]:
         if "区域提取器" in title and isinstance(outputs, dict):
             region = outputs.get("region") or outputs.get("area") or outputs
             regions.append(region)
+            region_extractors.append(_region_extractor_summary(title, node_type, outputs))
         if node_type == "answer" and not answer_node_title:
             answer_node_title = title
     return {
         "answer_node_title": answer_node_title,
         "regions": regions,
+        "region_extractors": region_extractors,
         "retrievals": retrievals,
     }
 
