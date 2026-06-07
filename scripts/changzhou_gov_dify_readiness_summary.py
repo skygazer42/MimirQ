@@ -41,6 +41,8 @@ def _external_probe_section(report: dict[str, Any]) -> dict[str, Any]:
         "endpoint": _text(source.get("endpoint")),
         "endpoint_host": _text(source.get("endpoint_host")),
         "endpoint_host_is_local": bool(source.get("endpoint_host_is_local")),
+        "endpoint_host_matches_local_machine": bool(source.get("endpoint_host_matches_local_machine")),
+        "endpoint_host_is_loopback": bool(source.get("endpoint_host_is_loopback")),
         "external_api_name": _text(source.get("external_api_name")),
         "summary": report.get("summary") if isinstance(report.get("summary"), dict) else {},
     }
@@ -119,8 +121,8 @@ def _next_action(stage: str, reason: str) -> str:
     if stage == "knowledge_map":
         return "Run make changzhou-dify-knowledge-map-check and fix DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON."
     if stage == "external_probe":
-        if reason == "endpoint_host_is_local":
-            return "Ensure Dify external knowledge endpoint points to a MimirQ URL reachable from the Dify server."
+        if reason in {"endpoint_missing", "endpoint_host_is_loopback"}:
+            return "Set Dify external knowledge endpoint to a MimirQ URL reachable from the Dify server, not localhost."
         return "Run make changzhou-dify-external-probe and inspect /tmp/changzhou_gov_dify_external_probe.json."
     if stage == "full_gate":
         return "Run make changzhou-dify-full-gate and inspect the failed stage artifact under CHANGZHOU_DIFY_OUT_PREFIX."
