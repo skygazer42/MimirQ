@@ -441,3 +441,12 @@ def test_main_collects_artifact_generated_at_values(tmp_path: Path) -> None:
         "route_compensated_by_retrieval_evidence": ["xinbei-social-card-reissue-location"],
         "dify_area_extractor_empty": ["xinbei-social-card-reissue-location"],
     }
+    assert report["full_gate"]["warning_diagnosis_details"] == {
+        "dify_area_extractor_empty": {
+            "xinbei-social-card-reissue-location": [
+                "区域提取器: region=未知",
+                "区域提取器: Failed to extract result from function call or text response, using empty result.",
+                "区域提取器: area=<empty>",
+            ]
+        }
+    }
