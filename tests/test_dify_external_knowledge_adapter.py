@@ -21,6 +21,44 @@ def _auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+@pytest.mark.asyncio
+async def test_dify_direct_retrieval_uses_low_latency_reranker_free_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+    import app.api.v1.rag as rag_api
+
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(dify_api.settings, "ENABLE_RERANKER", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "RERANKER_PROVIDER", "openai", raising=False)
+
+    async def _fake_retrieve_evidence(**kwargs):  # noqa: ANN003, ANN202
+        captured["rag_config"] = kwargs["body"].rag_config
+
+        class _Response:
+            citations: list[dict[str, object]] = []
+
+        return _Response()
+
+    monkeypatch.setattr(rag_api, "retrieve_evidence", _fake_retrieve_evidence, raising=True)
+
+    await dify_api._retrieve_dataset_citations(
+        db=_DummyDB(),
+        tenant_id=uuid.uuid4(),
+        account_id="system:dify",
+        dataset_ids=[uuid.uuid4()],
+        query="经开区在哪里办理企业社会保险登记",
+        top_k=5,
+        score_threshold=0.0,
+    )
+
+    rag_config = captured["rag_config"]
+    assert rag_config.enable_reranker is False
+    assert rag_config.reranker_provider == "none"
+    assert rag_config.reranker_top_n == 5
+
+
 def test_dify_retrieval_maps_knowledge_id_to_multiple_datasets(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.api.v1.integrations_dify as dify_api
 
@@ -772,6 +810,149 @@ def test_dify_retrieval_uses_plugin_retrieval_intents_for_tie_breaking(
     assert records[1]["content"] == "入口说明正文"
 
 
+def test_dify_retrieval_prefers_metadata_question_anchor_for_tie_breaking(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    token = "dify-test-token"
+    dataset_id = uuid.uuid4()
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        f'{{"city": "{dataset_id}"}}',
+        raising=False,
+    )
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+
+    async def _fake_retrieve_dataset_citations(**_kwargs):  # noqa: ANN003, ANN202
+        return [
+            {
+                "chunk_content": "一件事：教育入学。章节：申请材料。户口簿、合法固定住所证件。",
+                "relevance_score": 0.73,
+                "document_name": "02高效办成一件事/一件事指南.txt",
+                "chunk_id": str(uuid.uuid4()),
+                "metadata": {
+                    "chunk_kind": "one_thing_materials",
+                    "section_type": "materials",
+                    "case_title": "教育入学“一件事”",
+                },
+            },
+            {
+                "chunk_content": "问题：小学入学需要哪些材料？\n答案：凭户口簿、合法固定住所证件，到所在学区小学办理报名手续。",
+                "relevance_score": 0.73,
+                "document_name": "04专题常见问答/2026年常州市义务教育学校招生入学常见问题.txt",
+                "chunk_id": str(uuid.uuid4()),
+                "metadata": {
+                    "_evaluable_metadata": {
+                        "question": "小学入学需要哪些材料？",
+                        "aliases": ["上小学要准备什么材料", "小学报名需要带什么"],
+                        "chunk_kind": "qa_pair",
+                        "knowledge_section": "04专题常见问答",
+                    }
+                },
+            },
+        ]
+
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/integrations/dify/retrieval",
+        headers=_auth(token),
+        json={
+            "knowledge_id": "city",
+            "query": "小学入学需要哪些材料",
+            "retrieval_setting": {"top_k": 2, "score_threshold": 0.0},
+        },
+    )
+
+    assert res.status_code == 200, res.text
+    records = res.json()["records"]
+    assert records[0]["metadata"]["_evaluable_metadata"]["question"] == "小学入学需要哪些材料？"
+    assert records[1]["metadata"]["chunk_kind"] == "one_thing_materials"
+
+
+def test_dify_retrieval_prefers_regional_qa_question_anchor_over_service_item_tie(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    token = "dify-test-token"
+    dataset_id = uuid.uuid4()
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        f'{{"jingkai": "{dataset_id}"}}',
+        raising=False,
+    )
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+
+    async def _fake_retrieve_dataset_citations(**_kwargs):  # noqa: ANN003, ANN202
+        return [
+            {
+                "chunk_content": "事项名称：企业社会保险登记\n办理地点：常州市政务服务中心窗口",
+                "relevance_score": 0.73,
+                "document_name": "01政务服务事项知识/经开区事项清单.txt",
+                "chunk_id": str(uuid.uuid4()),
+                "metadata": {
+                    "district": "经开区",
+                    "service_name": "企业社会保险登记",
+                    "chunk_kind": "service_item",
+                    "knowledge_section": "01政务服务事项知识",
+                },
+            },
+            {
+                "chunk_content": "问题：请问可以在哪里办理企业社会保险登记？\n答案：可到常州经开区政务服务中心办理。",
+                "relevance_score": 0.73,
+                "document_name": "06各区常见问题/经开区12345QA.txt",
+                "chunk_id": str(uuid.uuid4()),
+                "metadata": {
+                    "district": "经开区",
+                    "_evaluable_metadata": {
+                        "question": "请问可以在哪里办理企业社会保险登记？",
+                        "chunk_kind": "qa_pair",
+                        "knowledge_section": "06各区常见问题",
+                    },
+                },
+            },
+        ]
+
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/integrations/dify/retrieval",
+        headers=_auth(token),
+        json={
+            "knowledge_id": "jingkai",
+            "query": "经开区在哪里办理企业社会保险登记",
+            "retrieval_setting": {"top_k": 2, "score_threshold": 0.0},
+        },
+    )
+
+    assert res.status_code == 200, res.text
+    records = res.json()["records"]
+    assert records[0]["metadata"]["_evaluable_metadata"]["question"] == "请问可以在哪里办理企业社会保险登记？"
+    assert records[1]["metadata"]["service_name"] == "企业社会保险登记"
+
+
 def test_dify_retrieval_uses_section_type_intent_fallback_without_metadata_intents(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -830,6 +1011,67 @@ def test_dify_retrieval_uses_section_type_intent_fallback_without_metadata_inten
     records = res.json()["records"]
     assert "步骤说明正文" in records[0]["content"]
     assert "入口说明正文" in records[1]["content"]
+
+
+def test_dify_retrieval_section_type_intent_can_beat_small_score_gap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    token = "dify-test-token"
+    dataset_id = uuid.uuid4()
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        f'{{"city": "{dataset_id}"}}',
+        raising=False,
+    )
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+
+    async def _fake_retrieve_dataset_citations(**_kwargs):  # noqa: ANN003, ANN202
+        return [
+            {
+                "chunk_content": "入口说明正文",
+                "relevance_score": 0.81,
+                "document_name": "一件事操作指引.txt",
+                "chunk_id": str(uuid.uuid4()),
+                "metadata": {"section_type": "operation_entry"},
+            },
+            {
+                "chunk_content": "步骤说明正文",
+                "relevance_score": 0.77,
+                "document_name": "一件事操作指引.txt",
+                "chunk_id": str(uuid.uuid4()),
+                "metadata": {"section_type": "operation_steps"},
+            },
+        ]
+
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/integrations/dify/retrieval",
+        headers=_auth(token),
+        json={
+            "knowledge_id": "city",
+            "query": "社会保障卡居民服务一件事网上办理怎么操作",
+            "retrieval_setting": {"top_k": 2, "score_threshold": 0.0},
+        },
+    )
+
+    assert res.status_code == 200, res.text
+    records = res.json()["records"]
+    assert records[0]["content"] == "步骤说明正文"
+    assert records[0]["metadata"]["section_type"] == "operation_steps"
+    assert records[1]["content"] == "入口说明正文"
 
 
 def test_dify_retrieval_ignores_content_search_anchor_without_metadata_hints(
