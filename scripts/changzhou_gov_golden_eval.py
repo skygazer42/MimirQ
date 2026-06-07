@@ -9,6 +9,7 @@ or chunk appears in the returned records.
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import os
 import sys
@@ -17,7 +18,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.parse import urlparse
+from urllib.request import ProxyHandler, Request, build_opener, urlopen
 
 DEFAULT_CASES = "plugins/pipelines/changzhou-gov-service-knowledge/golden_eval_cases.json"
 QUALITY_GATE_EXIT_CODE = 3
@@ -456,6 +458,25 @@ def load_answer_map(path: str) -> dict[str, dict[str, Any]]:
     raise ValueError("answers file must be an object, an object with answers[], or an answers[] list")
 
 
+def _should_bypass_proxy(url: str) -> bool:
+    host = _text(urlparse(url).hostname).lower()
+    if not host:
+        return False
+    if host == "localhost" or host.endswith(".localhost"):
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return bool(ip.is_loopback or ip.is_private or ip.is_link_local)
+
+
+def _open_request(request: Request, *, timeout: float):
+    if _should_bypass_proxy(request.full_url):
+        return build_opener(ProxyHandler({})).open(request, timeout=timeout)
+    return urlopen(request, timeout=timeout)
+
+
 def _request_json(*, base_url: str, token: str, payload: dict[str, Any], timeout: float) -> dict[str, Any]:
     url = f"{base_url.rstrip('/')}/api/v1/integrations/dify/retrieval"
     data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -470,7 +491,7 @@ def _request_json(*, base_url: str, token: str, payload: dict[str, Any], timeout
         },
     )
     try:
-        with urlopen(request, timeout=timeout) as response:
+        with _open_request(request, timeout=timeout) as response:
             return json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")

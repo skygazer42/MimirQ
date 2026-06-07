@@ -305,6 +305,49 @@ def test_run_live_eval_report_includes_generated_at(monkeypatch) -> None:
     assert report["results"][0]["hit_rank"] == 1
 
 
+def test_request_json_bypasses_proxy_for_private_mimirq_url(monkeypatch) -> None:
+    mod = _load_module()
+    calls: dict[str, object] = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self) -> bytes:
+            return b'{"records":[]}'
+
+    class FakeOpener:
+        def open(self, request, *, timeout: float):
+            calls["url"] = request.full_url
+            calls["timeout"] = timeout
+            return FakeResponse()
+
+    def fake_build_opener(*handlers):
+        calls["handlers"] = handlers
+        return FakeOpener()
+
+    def fail_urlopen(*_args, **_kwargs):
+        raise AssertionError("private MimirQ URLs must bypass environment proxies")
+
+    monkeypatch.setattr(mod, "urlopen", fail_urlopen)
+    monkeypatch.setattr(mod, "build_opener", fake_build_opener, raising=False)
+
+    result = mod._request_json(
+        base_url="http://192.168.3.6:8000",
+        token="secret-token",
+        payload={"knowledge_id": "changzhou_city_service", "query": "社保卡"},
+        timeout=12.0,
+    )
+
+    assert result == {"records": []}
+    assert calls["url"] == "http://192.168.3.6:8000/api/v1/integrations/dify/retrieval"
+    assert calls["timeout"] == 12.0
+    assert calls["handlers"]
+
+
 def test_load_token_reads_env_file_without_shell_exposure(tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001
     mod = _load_module()
     monkeypatch.delenv("DIFY_EXTERNAL_KNOWLEDGE_API_KEY", raising=False)
