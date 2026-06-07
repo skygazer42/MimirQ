@@ -211,3 +211,141 @@ def test_retriever_promotes_exact_metadata_anchor_after_api_rerank(monkeypatch: 
     assert docs[0].metadata["rerank_score"] == pytest.approx(0.727)
     assert docs[0].metadata["metadata_exact_match_field"] == "service_name"
     assert float(docs[0].metadata["metadata_exact_match_boost"]) > 0.0
+
+
+def test_retriever_combines_title_and_intent_metadata_anchors_after_api_rerank(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    retriever = _build_vector_retriever()
+    ds_id = str(retriever.dataset_id)
+    query = "开办餐饮店一件事办理注意事项有哪些？"
+
+    monkeypatch.setattr(settings, "RETRIEVAL_OVERFETCH_MULTIPLIER", 1, raising=False)
+    monkeypatch.setattr(settings, "RETRIEVAL_OVERFETCH_MAX_K", 0, raising=False)
+    monkeypatch.setattr(settings, "LEXICAL_DB_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "BM25_INDEX_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "RERANK_CONDITIONAL_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "RETRIEVAL_EXACT_PHRASE_RERANK_BOOST", 0.35, raising=False)
+
+    guide = _mk_candidate(dataset_id=ds_id, score=0.90, index=0)
+    guide["content"] = "一件事：开办餐饮店“一件事”\n章节：涉及事项"
+    guide["metadata"]["case_title"] = "开办餐饮店“一件事”"
+    guide["metadata"]["section_type"] = "related_services"
+    guide["metadata"]["_evaluable_metadata"] = {
+        "case_title": "开办餐饮店“一件事”",
+        "retrieval_intents": ["涉及事项", "联办事项"],
+    }
+
+    notes = _mk_candidate(dataset_id=ds_id, score=0.89, index=1)
+    notes["content"] = "一件事：开办餐饮店“一件事”\n章节：备注\n按页面提示提交。"
+    notes["metadata"]["case_title"] = "开办餐饮店“一件事”"
+    notes["metadata"]["section_type"] = "operation_notes"
+    notes["metadata"]["_evaluable_metadata"] = {
+        "case_title": "开办餐饮店“一件事”",
+        "retrieval_intents": ["备注", "注意事项", "办理注意事项"],
+    }
+
+    stub_store = _StubVectorStore(results=[guide, notes])
+    monkeypatch.setattr("app.storage.vector.factory.get_vector_store", lambda: stub_store, raising=True)
+    monkeypatch.setattr("app.rag.retriever.get_vector_store", lambda: stub_store, raising=False)
+
+    monkeypatch.setattr(HybridRetriever, "_enrich_results_with_db_metadata", lambda _self, r, **_k: r, raising=True)
+    monkeypatch.setattr(HybridRetriever, "_expand_results_with_neighbors", lambda _self, r: r, raising=True)
+    monkeypatch.setattr(HybridRetriever, "_auto_merge_parent_child", lambda _self, r: r, raising=True)
+
+    # Use section_type-aware fixed scores without adding a second fake reranker class.
+    class _SectionScoreReranker(BaseReranker):
+        def rerank(self, query: str, candidates: Sequence[RerankCandidate], **kwargs: Any) -> RerankResult:  # noqa: ARG002
+            scores = {}
+            for c in candidates:
+                meta = c.metadata if isinstance(c.metadata, dict) else {}
+                scores[str(c.id)] = 0.729 if meta.get("section_type") == "related_services" else 0.724
+            ordered = sorted(scores, key=lambda cid: (-float(scores[cid]), cid))
+            return RerankResult(ordered_ids=ordered, score_map=scores, provider="stub", model_used="stub")
+
+    monkeypatch.setattr("app.rag.retriever.get_reranker", lambda _provider: _SectionScoreReranker(), raising=True)
+
+    docs = retriever._get_relevant_documents(
+        query,
+        run_manager=CallbackManagerForRetrieverRun.get_noop_manager(),
+    )
+
+    assert docs[0].metadata["section_type"] == "operation_notes"
+    assert "case_title" in docs[0].metadata["metadata_exact_match_fields"]
+    assert "retrieval_intents" in docs[0].metadata["metadata_exact_match_fields"]
+    assert float(docs[0].metadata["metadata_exact_match_boost"]) > float(docs[1].metadata["metadata_exact_match_boost"])
+
+
+def test_retriever_promotes_post_expansion_intent_anchor_over_title_only_hit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    retriever = _build_vector_retriever()
+    ds_id = str(retriever.dataset_id)
+    query = "开办餐饮店“一件事”办理注意事项有哪些？"
+
+    monkeypatch.setattr(settings, "RETRIEVAL_OVERFETCH_MULTIPLIER", 1, raising=False)
+    monkeypatch.setattr(settings, "RETRIEVAL_OVERFETCH_MAX_K", 0, raising=False)
+    monkeypatch.setattr(settings, "LEXICAL_DB_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "BM25_INDEX_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "RERANK_CONDITIONAL_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "RETRIEVAL_EXACT_PHRASE_RERANK_BOOST", 0.35, raising=False)
+
+    guide = _mk_candidate(dataset_id=ds_id, score=0.90, index=0)
+    guide["content"] = "一件事：开办餐饮店“一件事”\n章节：涉及事项"
+    guide["metadata"]["case_key"] = "开办餐饮店一件事"
+    guide["metadata"]["case_title"] = "开办餐饮店“一件事”"
+    guide["metadata"]["case_title_raw"] = "开办餐饮店“一件事”"
+    guide["metadata"]["section_type"] = "related_services"
+    guide["metadata"]["_evaluable_metadata"] = {
+        "case_key": "开办餐饮店一件事",
+        "case_title": "开办餐饮店“一件事”",
+        "case_title_raw": "开办餐饮店“一件事”",
+        "retrieval_intents": ["涉及事项", "联办事项"],
+    }
+
+    notes = _mk_candidate(dataset_id=ds_id, score=0.0, index=1)
+    notes.pop("score", None)
+    notes["content"] = "一件事：开办餐饮店“一件事”\n章节：备注\n按页面提示提交。"
+    notes["metadata"]["case_key"] = "开办餐饮店一件事"
+    notes["metadata"]["case_title"] = "开办餐饮店“一件事”"
+    notes["metadata"]["case_title_raw"] = "开办餐饮店“一件事”"
+    notes["metadata"]["section_type"] = "operation_notes"
+    notes["metadata"]["retrieval_role"] = "neighbor"
+    notes["metadata"]["_evaluable_metadata"] = {
+        "case_key": "开办餐饮店一件事",
+        "case_title": "开办餐饮店“一件事”",
+        "case_title_raw": "开办餐饮店“一件事”",
+        "retrieval_intents": ["备注", "注意事项", "办理注意事项"],
+    }
+
+    stub_store = _StubVectorStore(results=[guide])
+    monkeypatch.setattr("app.storage.vector.factory.get_vector_store", lambda: stub_store, raising=True)
+    monkeypatch.setattr("app.rag.retriever.get_vector_store", lambda: stub_store, raising=False)
+
+    monkeypatch.setattr(HybridRetriever, "_enrich_results_with_db_metadata", lambda _self, r, **_k: r, raising=True)
+    monkeypatch.setattr(HybridRetriever, "_expand_results_with_neighbors", lambda _self, r: list(r) + [notes], raising=True)
+    monkeypatch.setattr(HybridRetriever, "_auto_merge_parent_child", lambda _self, r: r, raising=True)
+
+    class _GuideOnlyReranker(BaseReranker):
+        def rerank(self, query: str, candidates: Sequence[RerankCandidate], **kwargs: Any) -> RerankResult:  # noqa: ARG002
+            ordered = [str(c.id) for c in candidates]
+            return RerankResult(
+                ordered_ids=ordered,
+                score_map={cid: 0.729 for cid in ordered},
+                provider="stub",
+                model_used="stub",
+            )
+
+    monkeypatch.setattr("app.rag.retriever.get_reranker", lambda _provider: _GuideOnlyReranker(), raising=True)
+
+    docs = retriever._get_relevant_documents(
+        query,
+        run_manager=CallbackManagerForRetrieverRun.get_noop_manager(),
+    )
+
+    assert docs[0].metadata["section_type"] == "operation_notes"
+    assert docs[0].metadata["metadata_exact_match_promoted_score"] == pytest.approx(0.675)
+    assert "retrieval_intents" in docs[0].metadata["metadata_exact_match_fields"]
+    assert float(docs[0].metadata["metadata_exact_match_score"]) > float(docs[1].metadata["metadata_exact_match_score"])
+    post_stats = (retriever._last_debug_metrics or {}).get("metadata_exact_anchor_post") or {}
+    assert post_stats["top_changed"] is True

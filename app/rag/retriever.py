@@ -93,11 +93,19 @@ _METADATA_EXACT_ANCHOR_SKIP_FIELD_PARTS = (
     "strategy",
     "plugin",
     "index",
+    "keyword",
+    "keywords",
+)
+_METADATA_EXACT_ANCHOR_SKIP_FIELD_PREFIXES = (
+    "metadata_exact_match",
+    "exact_phrase",
+    "rerank",
 )
 _HEXISH_VALUE_RE = re.compile(r"^[a-f0-9]{12,}$", flags=re.IGNORECASE)
 _CJK_CHAR_RE = re.compile(r"[\u4e00-\u9fff]")
 _SPACE_RE = re.compile(r"\s+")
 _FIELD_PART_RE = re.compile(r"[^a-z0-9]+")
+_COMPACT_ANCHOR_DROP_RE = re.compile(r"[\s\"'“”‘’`´＂＇《》〈〉【】\[\]（）(){}]+")
 
 
 def _normalize_exact_anchor(value: Any, *, compact: bool = False) -> str:
@@ -109,7 +117,7 @@ def _normalize_exact_anchor(value: Any, *, compact: bool = False) -> str:
     except Exception as exc:
         logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
     text = _SPACE_RE.sub(" ", text.casefold()).strip()
-    return _SPACE_RE.sub("", text) if compact else text
+    return _COMPACT_ANCHOR_DROP_RE.sub("", text) if compact else text
 
 
 def _iter_metadata_exact_anchor_values(meta: dict[str, Any]) -> list[tuple[str, str]]:
@@ -154,6 +162,8 @@ def _iter_metadata_exact_anchor_values(meta: dict[str, Any]) -> list[tuple[str, 
 
 def _looks_like_metadata_exact_anchor(field: str, text: str) -> bool:
     field_norm = str(field or "").strip().lower()
+    if any(field_norm.startswith(prefix) for prefix in _METADATA_EXACT_ANCHOR_SKIP_FIELD_PREFIXES):
+        return False
     field_parts = {p for p in _FIELD_PART_RE.split(field_norm) if p}
     if field_parts.intersection(_METADATA_EXACT_ANCHOR_SKIP_FIELD_PARTS):
         return False
@@ -183,7 +193,7 @@ def _metadata_exact_anchor_match(query: str, meta: dict[str, Any]) -> dict[str, 
     if not query_norm:
         return {}
 
-    best: dict[str, Any] = {}
+    matches: list[dict[str, Any]] = []
     for field, anchor_text in _iter_metadata_exact_anchor_values(meta):
         if not _looks_like_metadata_exact_anchor(field, anchor_text):
             continue
@@ -191,14 +201,90 @@ def _metadata_exact_anchor_match(query: str, meta: dict[str, Any]) -> dict[str, 
         if not anchor_norm or anchor_norm not in query_norm:
             continue
         score = min(1.0, max(0.45, float(len(anchor_norm)) / float(max(1, len(query_norm)))))
-        current = float(best.get("score") or 0.0)
-        if score > current or (score == current and len(anchor_norm) > len(str(best.get("value") or ""))):
-            best = {
+        matches.append(
+            {
                 "field": str(field),
                 "value": str(anchor_text),
                 "score": round(float(score), 6),
+                "norm": anchor_norm,
             }
-    return best
+        )
+
+    if not matches:
+        return {}
+
+    # Same metadata field can expose nested aliases, e.g. "注意事项" and
+    # "办理注意事项". Keep the longest per field to avoid double-counting a
+    # single business intent, while still allowing title + intent to combine.
+    filtered: list[dict[str, Any]] = []
+    seen_norms: set[str] = set()
+    for item in sorted(matches, key=lambda x: (-len(str(x.get("norm") or "")), -float(x.get("score") or 0.0))):
+        field = str(item.get("field") or "")
+        norm = str(item.get("norm") or "")
+        if any(str(kept.get("field") or "") == field and norm in str(kept.get("norm") or "") for kept in filtered):
+            continue
+        if norm in seen_norms:
+            continue
+        seen_norms.add(norm)
+        filtered.append(item)
+
+    ranked = sorted(
+        filtered,
+        key=lambda x: (-float(x.get("score") or 0.0), -len(str(x.get("norm") or "")), str(x.get("field") or "")),
+    )
+    primary = ranked[0]
+    aggregate = float(primary.get("score") or 0.0)
+    aggregate += 0.5 * sum(float(item.get("score") or 0.0) for item in ranked[1:])
+    aggregate = min(1.0, aggregate)
+
+    fields = list(dict.fromkeys(str(item.get("field") or "") for item in ranked if str(item.get("field") or "")))
+    values = [str(item.get("value") or "") for item in ranked if str(item.get("value") or "")]
+    return {
+        "field": str(primary.get("field") or ""),
+        "value": str(primary.get("value") or ""),
+        "score": round(float(aggregate), 6),
+        "primary_score": round(float(primary.get("score") or 0.0), 6),
+        "fields": fields[:8],
+        "values": values[:8],
+    }
+
+
+def _float_or_default(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def _apply_metadata_exact_anchor_to_result(
+    *,
+    query: str,
+    result: dict[str, Any],
+    phrase_boost_weight: float,
+    promote_score: bool = False,
+) -> bool:
+    meta_for_anchor = dict(result.get("metadata") or {})
+    metadata_match = _metadata_exact_anchor_match(query, meta_for_anchor)
+    if not metadata_match:
+        return False
+
+    match_score = float(metadata_match.get("score") or 0.0)
+    metadata_boost = match_score * max(0.0, float(phrase_boost_weight or 0.0))
+    result["metadata_exact_match_score"] = match_score
+    result["metadata_exact_match_primary_score"] = float(metadata_match.get("primary_score") or 0.0)
+    result["metadata_exact_match_boost"] = float(metadata_boost)
+    result["metadata_exact_match_field"] = str(metadata_match.get("field") or "")
+    result["metadata_exact_match_value"] = str(metadata_match.get("value") or "")
+    result["metadata_exact_match_fields"] = list(metadata_match.get("fields") or [])
+    result["metadata_exact_match_values"] = list(metadata_match.get("values") or [])
+
+    if promote_score:
+        current_score = _float_or_default(result.get("score"), 0.0)
+        promoted_score = max(current_score, match_score)
+        if promoted_score > current_score:
+            result["score"] = round(float(promoted_score), 6)
+            result["metadata_exact_match_promoted_score"] = round(float(promoted_score), 6)
+    return True
 
 
 @dataclass(frozen=True)
@@ -4602,15 +4688,13 @@ class HybridRetriever(BaseRetriever):
                                     rerank_score = float(result.score_map[rid])
                                     new_doc["rerank_score"] = rerank_score
                                     phrase_boost = float(new_doc.get("exact_phrase_boost") or 0.0)
-                                    meta_for_anchor = dict(new_doc.get("metadata") or {})
-                                    metadata_match = _metadata_exact_anchor_match(query, meta_for_anchor)
                                     metadata_boost = 0.0
-                                    if metadata_match:
-                                        metadata_boost = float(metadata_match.get("score") or 0.0) * phrase_boost_weight
-                                        new_doc["metadata_exact_match_score"] = float(metadata_match.get("score") or 0.0)
-                                        new_doc["metadata_exact_match_boost"] = float(metadata_boost)
-                                        new_doc["metadata_exact_match_field"] = str(metadata_match.get("field") or "")
-                                        new_doc["metadata_exact_match_value"] = str(metadata_match.get("value") or "")
+                                    if _apply_metadata_exact_anchor_to_result(
+                                        query=query,
+                                        result=new_doc,
+                                        phrase_boost_weight=phrase_boost_weight,
+                                    ):
+                                        metadata_boost = float(new_doc.get("metadata_exact_match_boost") or 0.0)
                                     final_score = min(1.0, float(rerank_score) + float(phrase_boost) + float(metadata_boost))
                                     new_doc["score"] = float(final_score)
                                     if phrase_boost > 0.0 or metadata_boost > 0.0:
@@ -5731,6 +5815,77 @@ class HybridRetriever(BaseRetriever):
 
         return out
 
+    def _apply_metadata_exact_anchor_post_ordering(
+        self,
+        query: str,
+        results: list[dict[str, Any]],
+        *,
+        stats: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        if not query or not results:
+            if stats is not None:
+                stats["applied"] = False
+                stats["reason"] = "empty"
+            return results
+
+        phrase_boost_weight = max(
+            0.0,
+            float(getattr(settings, "RETRIEVAL_EXACT_PHRASE_RERANK_BOOST", 0.35) or 0.0),
+        )
+        annotated: list[tuple[dict[str, Any], int]] = []
+        annotated_count = 0
+        promoted_count = 0
+        for pos, result in enumerate(results):
+            item = dict(result)
+            changed = _apply_metadata_exact_anchor_to_result(
+                query=query,
+                result=item,
+                phrase_boost_weight=phrase_boost_weight,
+                promote_score=True,
+            )
+            if changed:
+                annotated_count += 1
+                if item.get("metadata_exact_match_promoted_score") is not None:
+                    promoted_count += 1
+            else:
+                item = result
+            annotated.append((item, pos))
+
+        if annotated_count <= 0:
+            if stats is not None:
+                stats["applied"] = False
+                stats["annotated"] = 0
+            return results
+
+        before_top = self._result_key(annotated[0][0]) if annotated else ""
+        best_anchor_score = max(
+            _float_or_default(item.get("metadata_exact_match_score"), 0.0) for item, _pos in annotated
+        )
+
+        def sort_key(pair: tuple[dict[str, Any], int]) -> tuple[float, float, int]:
+            item, pos = pair
+            if best_anchor_score >= 0.65:
+                return (
+                    -_float_or_default(item.get("metadata_exact_match_score"), 0.0),
+                    -_float_or_default(item.get("score"), 0.0),
+                    int(pos),
+                )
+            return (
+                -_float_or_default(item.get("score"), 0.0),
+                -_float_or_default(item.get("metadata_exact_match_score"), 0.0),
+                int(pos),
+            )
+
+        annotated.sort(key=sort_key)
+        ordered = [item for item, _pos in annotated]
+        after_top = self._result_key(ordered[0]) if ordered else ""
+        if stats is not None:
+            stats["applied"] = True
+            stats["annotated"] = int(annotated_count)
+            stats["score_promoted"] = int(promoted_count)
+            stats["top_changed"] = bool(before_top and after_top and before_top != after_top)
+        return ordered
+
     def _get_relevant_documents(
         self,
         query: str,
@@ -5947,6 +6102,15 @@ class HybridRetriever(BaseRetriever):
             results = self._enrich_results_with_db_metadata(results, stats=enrich2)
         debug["enrich_pass2"] = enrich2
 
+        exact_anchor_post_stats: dict[str, Any] = {}
+        results = self._apply_metadata_exact_anchor_post_ordering(
+            query,
+            results,
+            stats=exact_anchor_post_stats,
+        )
+        if exact_anchor_post_stats:
+            debug["metadata_exact_anchor_post"] = exact_anchor_post_stats
+
         # Optional: lifecycle governance-aware retrieval policy (disabled by default).
         gov_stats: dict[str, Any] = {}
         results = self._apply_governance_policy(results, stats=gov_stats)
@@ -5993,9 +6157,13 @@ class HybridRetriever(BaseRetriever):
                 "exact_phrase_boost",
                 "exact_phrase_matches",
                 "metadata_exact_match_score",
+                "metadata_exact_match_primary_score",
                 "metadata_exact_match_boost",
                 "metadata_exact_match_field",
                 "metadata_exact_match_value",
+                "metadata_exact_match_fields",
+                "metadata_exact_match_values",
+                "metadata_exact_match_promoted_score",
                 "rerank_score_final",
             ):
                 if key in r:
