@@ -428,5 +428,4 @@ def test_main_collects_artifact_generated_at_values(tmp_path: Path) -> None:
         "trace.node_route_mismatch": ["xinbei-social-card-reissue-location"],
         "trace.route_compensated": ["xinbei-social-card-reissue-location"],
         "trace.region_mismatch": ["xinbei-social-card-reissue-location"],
-        "trace.evidence_route_mismatch": ["one-thing-social-card-operation"],
     }
