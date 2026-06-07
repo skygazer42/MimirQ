@@ -9,6 +9,7 @@ def test_changzhou_dify_readiness_runbook_documents_reproducible_gate_flow() -> 
     assert "# Changzhou Dify/MimirQ Readiness Runbook" in text
     assert "make changzhou-dify-readiness-gate" in text
     assert "make changzhou-dify-readiness-status" in text
+    assert "make changzhou-dify-readiness-evidence" in text
     assert "make changzhou-dify-workflow-lint" in text
     assert "make changzhou-dify-workflow-sync-dry-run" in text
     assert "make changzhou-dify-workflow-sync-apply" in text
@@ -16,6 +17,7 @@ def test_changzhou_dify_readiness_runbook_documents_reproducible_gate_flow() -> 
     assert "DIFY_CONSOLE_PASSWORD_FILE" in text
     assert "CHANGZHOU_DIFY_MIMIRQ_BASE_URL" in text
     assert "/tmp/changzhou_gov_dify_readiness_summary.json" in text
+    assert "/tmp/changzhou_gov_dify_readiness_evidence.md" in text
     assert "/tmp/changzhou_gov_dify_workflow_current_draft_backup.json" in text
     assert "/tmp/changzhou_gov_dify_workflow_sync_payload.json" in text
     assert "dify_external_boundary_ok" in text

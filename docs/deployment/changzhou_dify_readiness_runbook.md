@@ -70,6 +70,16 @@ make changzhou-dify-readiness-gate \
 make changzhou-dify-readiness-status
 ```
 
+生成可分享的 PII-safe Markdown 证据：
+
+```bash
+make changzhou-dify-readiness-evidence
+```
+
+输出：
+
+- `/tmp/changzhou_gov_dify_readiness_evidence.md`
+
 ---
 
 ## 3. Gate 分层含义
@@ -118,6 +128,7 @@ make changzhou-dify-readiness-status
 - `/tmp/changzhou_gov_dify_full_gate_eval.json`
 - `/tmp/changzhou_gov_dify_full_gate_trace.json`
 - `/tmp/changzhou_gov_dify_readiness_summary.json`
+- `/tmp/changzhou_gov_dify_readiness_evidence.md`
 
 这些文件在 `/tmp`，用于当前机器上的交付证据和排障，不应提交到 git。
 
