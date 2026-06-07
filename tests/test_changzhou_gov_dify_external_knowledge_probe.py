@@ -192,6 +192,8 @@ def test_collect_probe_report_flags_dify_empty_but_mimirq_direct_ok_without_leak
     assert "dify_hit_nonempty" in report["gate"]["failed_conditions"]
     assert report["source"]["endpoint_host"] == "192.0.2.6"
     assert report["source"]["endpoint_host_is_local"] is True
+    assert report["source"]["endpoint_host_matches_local_machine"] is True
+    assert report["source"]["endpoint_host_is_loopback"] is False
     assert report["source"]["local_ipv4_addresses"] == ["192.0.2.6"]
     assert report["cases"][0]["diagnosis"] == "dify_runtime_empty_but_mimirq_direct_ok"
     assert report["cases"][0]["dify_dataset_id"] == "ds-xinbei"
@@ -212,12 +214,12 @@ def test_collect_probe_report_flags_dify_empty_but_mimirq_direct_ok_without_leak
     ]
 
 
-def test_evaluate_probe_gate_requires_local_endpoint_and_full_nonempty_coverage() -> None:
+def test_evaluate_probe_gate_rejects_loopback_endpoint_and_incomplete_coverage() -> None:
     mod = _load_module()
 
     passing = mod.evaluate_probe_gate(
         {
-            "source": {"endpoint_host_is_local": True},
+            "source": {"endpoint": "https://mimirq.example.com/api/v1/integrations/dify", "endpoint_host_is_loopback": False},
             "summary": {
                 "cases": 2,
                 "dify_hit_nonempty": 2,
@@ -231,7 +233,7 @@ def test_evaluate_probe_gate_requires_local_endpoint_and_full_nonempty_coverage(
 
     failing = mod.evaluate_probe_gate(
         {
-            "source": {"endpoint_host_is_local": False},
+            "source": {"endpoint": "http://127.0.0.1:8000/api/v1/integrations/dify", "endpoint_host_is_loopback": True},
             "summary": {
                 "cases": 2,
                 "dify_hit_nonempty": 1,
@@ -244,12 +246,35 @@ def test_evaluate_probe_gate_requires_local_endpoint_and_full_nonempty_coverage(
     assert failing == {
         "passed": False,
         "failed_conditions": [
-            "endpoint_host_is_local",
+            "endpoint_host_is_loopback",
             "dify_hit_nonempty",
             "mimirq_direct_schema_valid",
             "probe_errors",
         ],
     }
+
+
+def test_evaluate_probe_gate_allows_nonlocal_routable_endpoint_when_hits_pass() -> None:
+    mod = _load_module()
+
+    gate = mod.evaluate_probe_gate(
+        {
+            "source": {
+                "endpoint": "https://mimirq.internal/api/v1/integrations/dify",
+                "endpoint_host_is_loopback": False,
+                "endpoint_host_matches_local_machine": False,
+            },
+            "summary": {
+                "cases": 1,
+                "dify_hit_nonempty": 1,
+                "mimirq_direct_nonempty": 1,
+                "mimirq_direct_schema_valid": 1,
+                "probe_errors": 0,
+            },
+        }
+    )
+
+    assert gate == {"passed": True, "failed_conditions": []}
 
 
 def test_validate_dify_external_records_shape_rejects_null_metadata_and_bad_score() -> None:

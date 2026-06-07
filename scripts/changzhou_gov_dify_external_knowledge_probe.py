@@ -9,6 +9,7 @@ is returning empty results.
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import os
 import socket
@@ -54,6 +55,18 @@ def _format_cli_error(exc: Exception) -> str:
 
 def _endpoint_host(endpoint: str) -> str:
     return _text(urlparse(_text(endpoint)).hostname)
+
+
+def _endpoint_host_is_loopback(host: str) -> bool:
+    host_text = _text(host).lower()
+    if not host_text:
+        return False
+    if host_text == "localhost" or host_text.endswith(".localhost"):
+        return True
+    try:
+        return ipaddress.ip_address(host_text).is_loopback
+    except ValueError:
+        return False
 
 
 def _local_ipv4_addresses() -> list[str]:
@@ -319,8 +332,10 @@ def evaluate_probe_gate(report: dict[str, Any]) -> dict[str, Any]:
     summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
     cases = int(summary.get("cases") or 0)
     failed_conditions: list[str] = []
-    if source.get("endpoint_host_is_local") is not True:
-        failed_conditions.append("endpoint_host_is_local")
+    if not _text(source.get("endpoint")):
+        failed_conditions.append("endpoint_missing")
+    if source.get("endpoint_host_is_loopback") is True:
+        failed_conditions.append("endpoint_host_is_loopback")
     if int(summary.get("dify_hit_nonempty") or 0) != cases:
         failed_conditions.append("dify_hit_nonempty")
     if int(summary.get("mimirq_direct_nonempty") or 0) != cases:
@@ -361,7 +376,9 @@ def collect_probe_report(
     settings = external_api.get("settings") if isinstance(external_api.get("settings"), dict) else {}
     endpoint = _text(settings.get("endpoint"))
     endpoint_host = _endpoint_host(endpoint)
+    endpoint_host_matches_local_machine = False
     local_addresses = sorted({_text(item) for item in (local_ipv4_addresses or _local_ipv4_addresses()) if _text(item)})
+    endpoint_host_matches_local_machine = bool(endpoint_host and endpoint_host in local_addresses)
     api_key = _text(settings.get("api_key"))
     bindings = external_api.get("dataset_bindings") if isinstance(external_api.get("dataset_bindings"), list) else []
     dataset_map = build_knowledge_dataset_map(
@@ -454,7 +471,9 @@ def collect_probe_report(
             "endpoint": endpoint,
             "endpoint_host": endpoint_host,
             "local_ipv4_addresses": local_addresses,
-            "endpoint_host_is_local": bool(endpoint_host and endpoint_host in local_addresses),
+            "endpoint_host_is_local": endpoint_host_matches_local_machine,
+            "endpoint_host_matches_local_machine": endpoint_host_matches_local_machine,
+            "endpoint_host_is_loopback": _endpoint_host_is_loopback(endpoint_host),
             "dataset_bindings": len(bindings),
         },
         "summary": {

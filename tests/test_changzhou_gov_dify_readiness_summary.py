@@ -23,6 +23,8 @@ def test_build_readiness_summary_combines_probe_and_full_gate() -> None:
             "endpoint": "http://192.0.2.6:8000/api/v1/integrations/dify",
             "endpoint_host": "192.0.2.6",
             "endpoint_host_is_local": True,
+            "endpoint_host_matches_local_machine": True,
+            "endpoint_host_is_loopback": False,
         },
         "summary": {
             "cases": 12,
@@ -106,6 +108,8 @@ def test_build_readiness_summary_combines_probe_and_full_gate() -> None:
             "endpoint": "http://192.0.2.6:8000/api/v1/integrations/dify",
             "endpoint_host": "192.0.2.6",
             "endpoint_host_is_local": True,
+            "endpoint_host_matches_local_machine": True,
+            "endpoint_host_is_loopback": False,
             "external_api_name": "MimirQ-192.0.2.6",
             "summary": external_probe["summary"],
         },
@@ -145,7 +149,7 @@ def test_build_readiness_summary_marks_failed_source() -> None:
     summary = mod.build_readiness_summary(
         knowledge_map={"summary": {"passed": False, "failed_conditions": ["route_missing:经开区"]}},
         console_auth={"valid": False, "reason": "token_expires_soon", "ttl_seconds": 500, "min_ttl_seconds": 900},
-        external_probe={"gate": {"passed": False, "failed_conditions": ["endpoint_host_is_local"]}},
+        external_probe={"gate": {"passed": False, "failed_conditions": ["endpoint_host_is_loopback"]}},
         full_gate_summary={"summary": {"passed": True, "failed_stages": []}},
         artifacts={},
         generated_at="2026-06-07T01:02:03Z",
@@ -197,6 +201,35 @@ def test_auth_failure_marks_downstream_stages_skipped() -> None:
     assert summary["external_probe"]["blocked_by"] == "console_auth"
     assert summary["full_gate"]["status"] == "skipped"
     assert summary["full_gate"]["blocked_by"] == "console_auth"
+
+
+def test_loopback_external_endpoint_gets_specific_next_action() -> None:
+    mod = _load_module()
+
+    summary = mod.build_readiness_summary(
+        knowledge_map={"summary": {"passed": True, "failed_conditions": [], "route_count": 7}},
+        console_auth={"valid": True, "reason": "ok", "ttl_seconds": 1800, "min_ttl_seconds": 900},
+        external_probe={
+            "gate": {"passed": False, "failed_conditions": ["endpoint_host_is_loopback"]},
+            "source": {
+                "endpoint": "http://127.0.0.1:8000/api/v1/integrations/dify",
+                "endpoint_host": "127.0.0.1",
+                "endpoint_host_is_loopback": True,
+            },
+        },
+        full_gate_summary={"summary": {"passed": True, "failed_stages": []}},
+        artifacts={},
+        generated_at="2026-06-07T01:02:03Z",
+    )
+
+    assert summary["summary"]["failed_stages"] == ["external_probe"]
+    assert summary["summary"]["root_cause_reason"] == "endpoint_host_is_loopback"
+    assert summary["summary"]["next_action"] == (
+        "Set Dify external knowledge endpoint to a MimirQ URL reachable from the Dify server, not localhost."
+    )
+    assert summary["external_probe"]["endpoint_host_is_loopback"] is True
+    assert summary["full_gate"]["status"] == "skipped"
+    assert summary["full_gate"]["blocked_by"] == "external_probe"
 
 
 def test_main_writes_failed_summary_when_input_artifacts_are_missing(tmp_path: Path) -> None:

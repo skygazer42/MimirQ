@@ -305,6 +305,8 @@ python scripts/changzhou_gov_dify_external_knowledge_probe.py \
 该报告会读取 Dify Console 中 external knowledge API 的 endpoint 和 api key，
 再分别调用 Dify dataset `external-hit-testing` 与 MimirQ `/retrieval` 直查。
 报告只保留 endpoint、dataset、命中数量和首条标题，不输出或保存 api key。
+endpoint 可以是 Dify 后端可访问的内网 IP、域名或反向代理地址；`localhost` /
+`127.0.0.1` / `::1` 会被 gate 判定为不可用于远端 Dify 回调。
 `dify_runtime_empty_but_mimirq_direct_ok` 表示同一个 case 在 Dify 数据集召回测试为空，
 但同一 endpoint/key 直打 MimirQ 有结果，失败边界在 Dify external knowledge runtime
 到 MimirQ endpoint 之间，通常优先检查 Dify worker/container 的网络、代理与
