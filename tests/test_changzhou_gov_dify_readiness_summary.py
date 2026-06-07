@@ -362,7 +362,32 @@ def test_main_collects_artifact_generated_at_values(tmp_path: Path) -> None:
     )
     answers.write_text(json.dumps({"generated_at": "2026-06-07T01:01:00Z"}), encoding="utf-8")
     eval_report.write_text(json.dumps({"generated_at": "2026-06-07T01:02:00Z"}), encoding="utf-8")
-    trace.write_text(json.dumps({"generated_at": "2026-06-07T01:03:00Z"}), encoding="utf-8")
+    trace.write_text(
+        json.dumps(
+            {
+                "generated_at": "2026-06-07T01:03:00Z",
+                "cases": [
+                    {
+                        "id": "xinbei-social-card-reissue-location",
+                        "node_route_matched": False,
+                        "route_compensated": True,
+                        "route_matched": True,
+                        "region_matched": False,
+                        "fallback": False,
+                    },
+                    {
+                        "id": "one-thing-social-card-operation",
+                        "node_route_matched": True,
+                        "route_matched": True,
+                        "evidence_route_matched": False,
+                        "region_matched": True,
+                        "fallback": False,
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
 
     rc = mod.main(
         [
@@ -398,4 +423,10 @@ def test_main_collects_artifact_generated_at_values(tmp_path: Path) -> None:
         "eval": "2026-06-07T01:02:00Z",
         "trace": "2026-06-07T01:03:00Z",
         "full_gate": "2026-06-07T01:04:00Z",
+    }
+    assert report["full_gate"]["warning_cases"] == {
+        "trace.node_route_mismatch": ["xinbei-social-card-reissue-location"],
+        "trace.route_compensated": ["xinbei-social-card-reissue-location"],
+        "trace.region_mismatch": ["xinbei-social-card-reissue-location"],
+        "trace.evidence_route_mismatch": ["one-thing-social-card-operation"],
     }

@@ -111,6 +111,29 @@ def _full_gate_section(report: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _trace_warning_cases(report: dict[str, Any]) -> dict[str, list[str]]:
+    cases = report.get("cases") if isinstance(report.get("cases"), list) else []
+    warning_cases: dict[str, list[str]] = {}
+    for item in cases:
+        if not isinstance(item, dict):
+            continue
+        case_id = _text(item.get("id") or item.get("case_id"))
+        if not case_id:
+            continue
+        checks = {
+            "trace.node_route_mismatch": item.get("node_route_matched") is False,
+            "trace.route_compensated": item.get("route_compensated") is True,
+            "trace.route_mismatch": item.get("route_matched") is False,
+            "trace.region_mismatch": item.get("region_matched") is False,
+            "trace.evidence_route_mismatch": item.get("evidence_route_matched") is False,
+            "trace.fallback": item.get("fallback") is True,
+        }
+        for key, matched in checks.items():
+            if matched:
+                warning_cases.setdefault(key, []).append(case_id)
+    return warning_cases
+
+
 def _with_status(section: dict[str, Any], *, blocker: str) -> dict[str, Any]:
     if blocker:
         return {"passed": False, "status": "skipped", "blocked_by": blocker}
@@ -174,6 +197,11 @@ def build_readiness_summary(
     console_section = _console_auth_section(console_auth or {}) if console_auth is not None else None
     external_section = _external_probe_section(external_probe)
     full_section = _full_gate_section(full_gate_summary)
+    trace_report = (artifact_reports or {}).get("trace", {})
+    if isinstance(trace_report, dict):
+        warning_cases = _trace_warning_cases(trace_report)
+        if warning_cases:
+            full_section["warning_cases"] = warning_cases
     staged_sections: list[tuple[str, dict[str, Any]]] = []
     if knowledge_section is not None:
         staged_sections.append(("knowledge_map", knowledge_section))

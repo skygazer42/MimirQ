@@ -91,6 +91,14 @@ def test_format_status_prints_non_blocking_full_gate_warnings() -> None:
     report = {
         "summary": {"passed": True},
         "full_gate": {
+            "warning_cases": {
+                "trace.route_compensated": [
+                    "xinbei-social-card-reissue-location",
+                    "jingkai-social-card-reissue-location",
+                ],
+                "trace.region_mismatch": ["xinbei-social-card-reissue-location"],
+                "trace.evidence_route_mismatch": ["one-thing-social-card-operation"],
+            },
             "stages": {
                 "preflight": {"summary": {"area_route_warnings": 1, "case_input_violations": 0}},
                 "eval": {"summary": {"generated_answer_missing_cases": 0, "generated_answer_fallback_cases": 0}},
@@ -116,6 +124,12 @@ def test_format_status_prints_non_blocking_full_gate_warnings() -> None:
         "trace.node_route_mismatch_cases=3; "
         "trace.route_compensated_cases=3; "
         "trace.region_mismatch_cases=3"
+    ) in text
+    assert "trace.evidence_route_mismatch_cases=1" in text
+    assert (
+        "Warning cases: trace.route_compensated=xinbei-social-card-reissue-location,jingkai-social-card-reissue-location; "
+        "trace.region_mismatch=xinbei-social-card-reissue-location; "
+        "trace.evidence_route_mismatch=one-thing-social-card-operation"
     ) in text
     assert "trace.route_mismatch_cases=0" not in text
 
