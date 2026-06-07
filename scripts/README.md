@@ -35,6 +35,9 @@ The Makefile is the source of truth for common workflows; these scripts are the 
   - Example: `python scripts/plugin_golden_closed_loop_smoke.py --base-url http://127.0.0.1:8000 --dataset-id <dataset_uuid>`
 - `plugin_corpus_closed_loop_smoke.py`: live plugin-backed corpus ingest + Golden regression smoke from a local directory
   - Example: `python scripts/plugin_corpus_closed_loop_smoke.py --base-url http://127.0.0.1:8000 --source-dir /path/to/domain-corpus --plugin-ref plugin:<plugin-id>@<version>:chunk --include-source-root-name --overwrite-goldens`
+- `changzhou_gov_plugin_chunk_report.py`: local Changzhou plugin governance/chunk/KG review report for the 01-06 sample families
+  - Example: `make changzhou-gov-plugin-chunk-report`
+  - Outputs `/tmp/changzhou_gov_plugin_chunk_report.json` and `/tmp/changzhou_gov_plugin_chunk_report.md`; it does not write the database, vector store, or KG store.
 - `dify_console_login.py`: refresh the Dify console Playwright `storage_state` used by workflow trace diagnostics
   - Recommended: `DIFY_CONSOLE_EMAIL=<email> DIFY_CONSOLE_PASSWORD_FILE=/tmp/dify_console_password.txt make dify-console-login`
   - `make dify-console-ensure` first validates the existing storage state; if it is expired or expiring and both `DIFY_CONSOLE_EMAIL` plus `DIFY_CONSOLE_PASSWORD_FILE` are configured, it refreshes the state automatically.
