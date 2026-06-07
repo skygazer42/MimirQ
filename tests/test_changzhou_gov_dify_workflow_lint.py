@@ -144,7 +144,81 @@ def test_lint_workflow_reports_cases_missing_hidden_required_inputs() -> None:
 
 def test_lint_workflow_warns_when_area_route_ignores_start_area_name() -> None:
     mod = _load_module()
-    workflow = {
+    workflow = _area_route_workflow()
+
+    report = mod.lint_workflow(workflow)
+
+    assert report["summary"]["area_route_warnings"] == 1
+    assert report["area_route_warnings"] == [
+        {
+            "routing_node_id": "route-1",
+            "routing_node_title": "区域条件分支",
+            "selector": "extract-1.region",
+            "expected_selector": "start-1.areaName",
+            "source_node_id": "extract-1",
+            "source_node_title": "区域提取器",
+            "source_node_type": "parameter-extractor",
+            "condition_values": ["新北"],
+            "recommendation": "Route regional knowledge from inputs.areaName directly, or normalize it deterministically before the area branch.",
+        }
+    ]
+
+
+def test_patch_area_route_selectors_rewrites_route_to_start_area_name_without_mutating_source() -> None:
+    mod = _load_module()
+    workflow = _area_route_workflow()
+
+    patched, patches = mod.patch_area_route_selectors(workflow)
+
+    assert workflow["graph"]["nodes"][2]["data"]["cases"][0]["conditions"][0]["variable_selector"] == [
+        "extract-1",
+        "region",
+    ]
+    assert patched["graph"]["nodes"][2]["data"]["cases"][0]["conditions"][0]["variable_selector"] == [
+        "start-1",
+        "areaName",
+    ]
+    assert patches == [
+        {
+            "routing_node_id": "route-1",
+            "routing_node_title": "区域条件分支",
+            "from_selector": "extract-1.region",
+            "to_selector": "start-1.areaName",
+            "conditions_patched": 1,
+        }
+    ]
+    assert mod.lint_workflow(patched)["summary"].get("area_route_warnings", 0) == 0
+
+
+def test_main_writes_patched_workflow_for_area_route_warnings(tmp_path: Path) -> None:
+    mod = _load_module()
+    workflow_path = tmp_path / "workflow.json"
+    out_path = tmp_path / "report.json"
+    patched_path = tmp_path / "workflow.patched.json"
+    workflow_path.write_text(json.dumps(_area_route_workflow(), ensure_ascii=False), encoding="utf-8")
+
+    exit_code = mod.main(
+        [
+            "--workflow-json",
+            str(workflow_path),
+            "--out",
+            str(out_path),
+            "--patched-workflow-out",
+            str(patched_path),
+        ]
+    )
+
+    report = json.loads(out_path.read_text(encoding="utf-8"))
+    patched = json.loads(patched_path.read_text(encoding="utf-8"))
+    patched_report = mod.lint_workflow(patched)
+    assert exit_code == 0
+    assert report["summary"]["area_route_patches"] == 1
+    assert report["area_route_patches"][0]["conditions_patched"] == 1
+    assert patched_report["summary"].get("area_route_warnings", 0) == 0
+
+
+def _area_route_workflow() -> dict:
+    return {
         "graph": {
             "nodes": [
                 {
@@ -185,23 +259,6 @@ def test_lint_workflow_warns_when_area_route_ignores_start_area_name() -> None:
             ]
         }
     }
-
-    report = mod.lint_workflow(workflow)
-
-    assert report["summary"]["area_route_warnings"] == 1
-    assert report["area_route_warnings"] == [
-        {
-            "routing_node_id": "route-1",
-            "routing_node_title": "区域条件分支",
-            "selector": "extract-1.region",
-            "expected_selector": "start-1.areaName",
-            "source_node_id": "extract-1",
-            "source_node_title": "区域提取器",
-            "source_node_type": "parameter-extractor",
-            "condition_values": ["新北"],
-            "recommendation": "Route regional knowledge from inputs.areaName directly, or normalize it deterministically before the area branch.",
-        }
-    ]
 
 
 def test_main_case_inputs_only_ignores_workflow_warning_when_cases_are_complete(tmp_path: Path) -> None:
