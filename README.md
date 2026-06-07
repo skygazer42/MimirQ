@@ -362,30 +362,13 @@ cd web && pnpm lint && pnpm test
 
 ```bash
 # 生成已清洗 workflow JSON（不写远程 Dify）
-python scripts/changzhou_gov_dify_workflow_lint.py \
-  --app-id "$DIFY_APP_ID" \
-  --storage-state /tmp/dify_console_storage_state.json \
-  --out /tmp/changzhou_dify_workflow_lint.json \
-  --patched-workflow-out /tmp/changzhou_dify_workflow_sanitized.json
+make changzhou-dify-workflow-lint
 
 # 生成当前草稿备份和将要 POST 的 payload（默认不写远程 Dify）
-python scripts/changzhou_gov_dify_workflow_sync.py \
-  --app-id "$DIFY_APP_ID" \
-  --workflow-json /tmp/changzhou_dify_workflow_sanitized.json \
-  --storage-state /tmp/dify_console_storage_state.json \
-  --backup-out /tmp/changzhou_dify_workflow_current_draft_backup.json \
-  --payload-out /tmp/changzhou_dify_workflow_sync_payload.json \
-  --out /tmp/changzhou_dify_workflow_sync_dry_run.json
+make changzhou-dify-workflow-sync-dry-run
 
 # 确认 payload 后才显式写入 Dify 草稿
-python scripts/changzhou_gov_dify_workflow_sync.py \
-  --app-id "$DIFY_APP_ID" \
-  --workflow-json /tmp/changzhou_dify_workflow_sanitized.json \
-  --storage-state /tmp/dify_console_storage_state.json \
-  --backup-out /tmp/changzhou_dify_workflow_current_draft_backup.json \
-  --payload-out /tmp/changzhou_dify_workflow_sync_payload.json \
-  --out /tmp/changzhou_dify_workflow_sync_apply.json \
-  --apply
+make changzhou-dify-workflow-sync-apply
 ```
 
 ---

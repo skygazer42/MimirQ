@@ -89,6 +89,89 @@ def test_changzhou_dify_mimirq_direct_gate_target_is_overridable_without_token_o
     assert "DIFY_EXTERNAL_KNOWLEDGE_API_KEY" not in command
 
 
+def test_changzhou_dify_workflow_lint_target_is_overridable() -> None:
+    result = subprocess.run(
+        [
+            "make",
+            "-n",
+            "changzhou-dify-workflow-lint",
+            "CHANGZHOU_DIFY_APP_ID=app-1",
+            "CHANGZHOU_DIFY_CASES=/tmp/custom_cases.json",
+            "CHANGZHOU_DIFY_WORKFLOW_LINT_OUT=/tmp/workflow_lint.json",
+            "CHANGZHOU_DIFY_WORKFLOW_SANITIZED_OUT=/tmp/workflow_sanitized.json",
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    command = result.stdout
+    assert "scripts/changzhou_gov_dify_workflow_lint.py" in command
+    assert '--app-id "app-1"' in command
+    assert '--storage-state "/tmp/dify_console_storage_state.json"' in command
+    assert '--cases "/tmp/custom_cases.json"' in command
+    assert "--preflight-gate" in command
+    assert '--out "/tmp/workflow_lint.json"' in command
+    assert '--patched-workflow-out "/tmp/workflow_sanitized.json"' in command
+
+
+def test_changzhou_dify_workflow_sync_dry_run_target_is_overridable_without_apply() -> None:
+    result = subprocess.run(
+        [
+            "make",
+            "-n",
+            "changzhou-dify-workflow-sync-dry-run",
+            "CHANGZHOU_DIFY_APP_ID=app-1",
+            "CHANGZHOU_DIFY_WORKFLOW_SANITIZED_OUT=/tmp/workflow_sanitized.json",
+            "CHANGZHOU_DIFY_WORKFLOW_BACKUP_OUT=/tmp/workflow_backup.json",
+            "CHANGZHOU_DIFY_WORKFLOW_PAYLOAD_OUT=/tmp/workflow_payload.json",
+            "CHANGZHOU_DIFY_WORKFLOW_SYNC_OUT=/tmp/workflow_sync.json",
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    command = result.stdout
+    assert "scripts/changzhou_gov_dify_workflow_sync.py" in command
+    assert '--app-id "app-1"' in command
+    assert '--workflow-json "/tmp/workflow_sanitized.json"' in command
+    assert '--storage-state "/tmp/dify_console_storage_state.json"' in command
+    assert '--backup-out "/tmp/workflow_backup.json"' in command
+    assert '--payload-out "/tmp/workflow_payload.json"' in command
+    assert '--out "/tmp/workflow_sync.json"' in command
+    assert "--apply" not in command
+
+
+def test_changzhou_dify_workflow_sync_apply_target_is_explicit() -> None:
+    result = subprocess.run(
+        [
+            "make",
+            "-n",
+            "changzhou-dify-workflow-sync-apply",
+            "CHANGZHOU_DIFY_APP_ID=app-1",
+            "CHANGZHOU_DIFY_WORKFLOW_SANITIZED_OUT=/tmp/workflow_sanitized.json",
+            "CHANGZHOU_DIFY_WORKFLOW_SYNC_OUT=/tmp/workflow_sync_apply.json",
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    command = result.stdout
+    assert "scripts/changzhou_gov_dify_workflow_sync.py" in command
+    assert '--app-id "app-1"' in command
+    assert '--workflow-json "/tmp/workflow_sanitized.json"' in command
+    assert '--out "/tmp/workflow_sync_apply.json"' in command
+    assert "--apply" in command
+
+
 def test_dify_console_check_target_writes_report() -> None:
     result = subprocess.run(
         [
