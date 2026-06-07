@@ -62,6 +62,21 @@ def test_format_status_prints_passed_summary() -> None:
     assert "Root cause:" not in text
 
 
+def test_format_status_prints_console_ui_urls_with_base_path() -> None:
+    mod = _load_module()
+    report = {"summary": {"passed": True}}
+
+    text = mod.format_status(
+        report,
+        max_age_minutes=0,
+        console_ui_base_url="https://dify.example.com:3000/brainai/",
+        app_id="app-1",
+    )
+
+    assert "Dify console UI: https://dify.example.com:3000/brainai/apps" in text
+    assert "Dify workflow UI: https://dify.example.com:3000/brainai/app/app-1/workflow" in text
+
+
 def test_format_status_prints_mimirq_direct_source_match_state() -> None:
     mod = _load_module()
 
