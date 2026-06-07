@@ -62,6 +62,30 @@ def test_format_status_prints_passed_summary() -> None:
     assert "Root cause:" not in text
 
 
+def test_format_status_prints_mimirq_direct_source_match_state() -> None:
+    mod = _load_module()
+
+    matching = mod.format_status(
+        {
+            "summary": {"passed": True},
+            "mimirq_direct": {"source": {"base_url": "http://192.168.3.6:8000", "base_host": "192.168.3.6"}},
+            "external_probe": {"endpoint_host": "192.168.3.6"},
+        },
+        max_age_minutes=0,
+    )
+    mismatching = mod.format_status(
+        {
+            "summary": {"passed": True},
+            "mimirq_direct": {"source": {"base_url": "http://127.0.0.1:8000", "base_host": "127.0.0.1"}},
+            "external_probe": {"endpoint_host": "192.168.3.6"},
+        },
+        max_age_minutes=0,
+    )
+
+    assert "MimirQ direct base: http://192.168.3.6:8000 (matches external endpoint host)" in matching
+    assert "MimirQ direct base: http://127.0.0.1:8000 (differs from external endpoint host 192.168.3.6)" in mismatching
+
+
 def test_format_status_marks_stale_reports() -> None:
     mod = _load_module()
     report = {

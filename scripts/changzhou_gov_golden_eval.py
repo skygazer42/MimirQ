@@ -512,6 +512,7 @@ def run_live_eval(
 ) -> dict[str, Any]:
     results: list[dict[str, Any]] = []
     answers_by_id = dict(answers or {})
+    clean_base_url = base_url.rstrip("/")
     for case in cases:
         payload = {
             "knowledge_id": case["knowledge_id"],
@@ -521,7 +522,7 @@ def run_live_eval(
                 "score_threshold": float(case.get("score_threshold") or 0.0),
             },
         }
-        response = _request_json(base_url=base_url, token=token, payload=payload, timeout=timeout)
+        response = _request_json(base_url=clean_base_url, token=token, payload=payload, timeout=timeout)
         records = response.get("records") if isinstance(response, dict) else []
         results.append(
             evaluate_case(
@@ -532,6 +533,7 @@ def run_live_eval(
         )
     return {
         "generated_at": _text(generated_at) or _utc_now_text(),
+        "source": {"base_url": clean_base_url, "base_host": _text(urlparse(clean_base_url).hostname)},
         "summary": summarize_results(results),
         "results": results,
     }

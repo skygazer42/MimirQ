@@ -301,6 +301,7 @@ def test_run_live_eval_report_includes_generated_at(monkeypatch) -> None:
     )
 
     assert report["generated_at"] == "2026-06-07T01:02:03Z"
+    assert report["source"] == {"base_url": "http://mimirq.test", "base_host": "mimirq.test"}
     assert report["summary"]["cases"] == 1
     assert report["results"][0]["hit_rank"] == 1
 

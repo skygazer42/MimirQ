@@ -95,6 +95,20 @@ def format_status(
     boundary_verdict = _text(boundary.get("verdict"))
     if boundary_verdict:
         lines.append(f"Boundary: {boundary_verdict}")
+    mimirq_direct = report.get("mimirq_direct") if isinstance(report.get("mimirq_direct"), dict) else {}
+    mimirq_source = mimirq_direct.get("source") if isinstance(mimirq_direct.get("source"), dict) else {}
+    direct_base_url = _text(mimirq_source.get("base_url"))
+    direct_base_host = _text(mimirq_source.get("base_host"))
+    external_endpoint_host = _text(external_probe.get("endpoint_host"))
+    if direct_base_url:
+        if external_endpoint_host and direct_base_host and direct_base_host != external_endpoint_host:
+            lines.append(
+                f"MimirQ direct base: {direct_base_url} (differs from external endpoint host {external_endpoint_host})"
+            )
+        elif external_endpoint_host and direct_base_host == external_endpoint_host:
+            lines.append(f"MimirQ direct base: {direct_base_url} (matches external endpoint host)")
+        else:
+            lines.append(f"MimirQ direct base: {direct_base_url}")
     skipped = _text_list(summary.get("skipped_stages"))
     if skipped:
         lines.append(f"Skipped stages: {', '.join(skipped)}")
