@@ -15,6 +15,11 @@ def _load_module():
 def test_format_status_prints_failed_root_cause_and_next_action() -> None:
     mod = _load_module()
     report = {
+        "generated_at": "2026-06-06T23:56:19Z",
+        "artifact_generated_at": {
+            "knowledge_map": "2026-06-06T23:56:18Z",
+            "console_auth": "2026-06-06T23:56:19Z",
+        },
         "summary": {
             "passed": False,
             "root_cause_stage": "console_auth",
@@ -28,9 +33,11 @@ def test_format_status_prints_failed_root_cause_and_next_action() -> None:
     text = mod.format_status(report)
 
     assert "Changzhou Dify readiness: FAILED" in text
+    assert "Generated at: 2026-06-06T23:56:19Z" in text
     assert "Root cause: console_auth (token_expired)" in text
     assert "Next action: Refresh Dify console login" in text
     assert "Skipped stages: external_probe, full_gate" in text
+    assert "Artifact times: knowledge_map=2026-06-06T23:56:18Z; console_auth=2026-06-06T23:56:19Z" in text
     assert "console_auth=/tmp/dify_console_check.json" in text
 
 
