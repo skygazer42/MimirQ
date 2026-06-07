@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 
 import pytest
@@ -19,6 +20,77 @@ def _override_get_db():  # noqa: ANN202
 
 def _auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
+
+
+def test_dify_retrieval_logs_request_diagnostics(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    token = "dify-test-token"
+    dataset_id = uuid.uuid4()
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        f'{{"city": "{dataset_id}"}}',
+        raising=False,
+    )
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+
+    async def _fake_retrieve_dataset_citations(**_kwargs):  # noqa: ANN003, ANN202
+        return [
+            {
+                "chunk_content": "问题：如何查询身份证办理进度？\n答案：下载苏证通 APP 查询。",
+                "relevance_score": 1.0,
+                "document_name": "常州市本级12345QA.txt",
+                "metadata": {"question": "如何查询身份证办理进度？"},
+            }
+        ]
+
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    client = TestClient(app)
+    caplog.set_level(logging.INFO, logger=dify_api.logger.name)
+
+    res = client.post(
+        "/api/v1/integrations/dify/retrieval",
+        headers={**_auth(token), "X-Forwarded-For": "10.168.2.251, 127.0.0.1"},
+        json={
+            "knowledge_id": "city",
+            "query": "如何查询身份证办理进度？",
+            "retrieval_setting": {"top_k": 5, "score_threshold": 0.0},
+        },
+    )
+
+    assert res.status_code == 200, res.text
+    finished = [
+        record
+        for record in caplog.records
+        if getattr(record, "event", "") == "dify_external_retrieval" and getattr(record, "phase", "") == "finished"
+    ]
+    assert finished, "Expected Dify retrieval diagnostic log"
+    record = finished[-1]
+    assert record.client_ip == "10.168.2.251"
+    assert record.knowledge_id == "city"
+    assert record.query_preview == "如何查询身份证办理进度？"
+    assert record.query_hash
+    assert record.top_k == 5
+    assert record.dataset_count == 1
+    assert record.citation_count == 1
+    assert record.record_count == 1
+    assert record.elapsed_ms >= 0
+    message = record.getMessage()
+    assert "client_ip=10.168.2.251" in message
+    assert "knowledge_id=city" in message
+    assert "records=1" in message
 
 
 @pytest.mark.asyncio
