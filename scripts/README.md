@@ -39,6 +39,7 @@ The Makefile is the source of truth for common workflows; these scripts are the 
   - Recommended: `DIFY_CONSOLE_EMAIL=<email> DIFY_CONSOLE_PASSWORD_FILE=/tmp/dify_console_password.txt make dify-console-login`
   - Avoid putting Dify console passwords in repository files or shell history; the script writes only `console_token` localStorage state to `/tmp/kingdonsoft_dify_storage_state.json` by default.
 - `changzhou_gov_dify_external_knowledge_probe.py`: compare Dify external hit-testing with direct MimirQ retrieval for the same Changzhou golden cases
+  - MimirQ-only preflight: `make changzhou-dify-mimirq-direct-gate` runs the same golden retrieval cases directly against MimirQ using `DIFY_EXTERNAL_KNOWLEDGE_API_KEY(S)` from `.env`, without Dify console auth.
   - Local route preflight: `make changzhou-dify-knowledge-map-check` validates `DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON` before remote Dify calls.
   - Recommended after `make dify-console-login`: `make changzhou-dify-external-probe`
   - Override output or a specific Dify external API id: `CHANGZHOU_DIFY_EXTERNAL_API_ID=<external_api_id> CHANGZHOU_DIFY_PROBE_OUT=/tmp/probe.json make changzhou-dify-external-probe`

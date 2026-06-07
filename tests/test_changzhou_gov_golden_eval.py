@@ -305,6 +305,17 @@ def test_run_live_eval_report_includes_generated_at(monkeypatch) -> None:
     assert report["results"][0]["hit_rank"] == 1
 
 
+def test_load_token_reads_env_file_without_shell_exposure(tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001
+    mod = _load_module()
+    monkeypatch.delenv("DIFY_EXTERNAL_KNOWLEDGE_API_KEY", raising=False)
+    monkeypatch.delenv("DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", raising=False)
+    env_file = tmp_path / ".env"
+    env_file.write_text("DIFY_EXTERNAL_KNOWLEDGE_API_KEYS=file-first,file-second\n", encoding="utf-8")
+
+    assert mod.load_token("", env_file=str(env_file)) == "file-first"
+    assert mod.load_token("explicit-token", env_file=str(env_file)) == "explicit-token"
+
+
 def test_evaluate_case_flags_fallback_generated_answer() -> None:
     mod = _load_module()
     case = {

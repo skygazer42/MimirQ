@@ -48,6 +48,42 @@ def _utc_now_text() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
+def _env_file_values(path: str) -> dict[str, str]:
+    env_path = Path(_text(path))
+    if not env_path.is_file():
+        return {}
+    values: dict[str, str] = {}
+    for raw_line in env_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if key:
+            values[key] = value.strip().strip('"').strip("'")
+    return values
+
+
+def load_token(explicit_token: str, *, env_file: str = ".env") -> str:
+    explicit = _text(explicit_token)
+    if explicit:
+        return explicit
+    env_token = _text(os.getenv("DIFY_EXTERNAL_KNOWLEDGE_API_KEY"))
+    if env_token:
+        return env_token
+    env_tokens = _text(os.getenv("DIFY_EXTERNAL_KNOWLEDGE_API_KEYS"))
+    if env_tokens:
+        return _text(env_tokens.split(",", 1)[0])
+    file_values = _env_file_values(env_file)
+    file_token = _text(file_values.get("DIFY_EXTERNAL_KNOWLEDGE_API_KEY"))
+    if file_token:
+        return file_token
+    file_tokens = _text(file_values.get("DIFY_EXTERNAL_KNOWLEDGE_API_KEYS"))
+    if file_tokens:
+        return _text(file_tokens.split(",", 1)[0])
+    return ""
+
+
 def _normalize_quality_text(value: Any) -> str:
     text = unicodedata.normalize("NFKC", _text(value)).lower()
     out: list[str] = []
@@ -484,7 +520,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run Changzhou plugin golden retrieval evaluation against MimirQ.")
     parser.add_argument("--cases", default=DEFAULT_CASES)
     parser.add_argument("--base-url", default=os.getenv("MIMIRQ_API_BASE_URL") or "http://127.0.0.1:8000")
-    parser.add_argument("--token", default=os.getenv("DIFY_EXTERNAL_KNOWLEDGE_API_KEY") or "")
+    parser.add_argument("--token", default="", help="Dify external knowledge bearer token; defaults to env or --env-file.")
+    parser.add_argument("--env-file", default=".env", help="Env file used to load DIFY_EXTERNAL_KNOWLEDGE_API_KEY(S).")
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument("--timeout", type=float, default=90.0)
     parser.add_argument("--answers", default="", help="Optional generated-answer JSON to score against the same cases.")
@@ -526,9 +563,9 @@ def _maximums_from_args(args: argparse.Namespace) -> dict[str, float]:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_arg_parser().parse_args(argv)
-    token = _text(args.token)
+    token = load_token(str(args.token), env_file=str(args.env_file))
     if not token:
-        print("DIFY_EXTERNAL_KNOWLEDGE_API_KEY or --token is required", file=sys.stderr)
+        print("DIFY_EXTERNAL_KNOWLEDGE_API_KEY(S), --token, or --env-file with token is required", file=sys.stderr)
         return 2
     try:
         report = run_live_eval(
