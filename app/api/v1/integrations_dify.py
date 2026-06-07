@@ -62,7 +62,21 @@ _METADATA_KEYS = (
 )
 _PUBLIC_METADATA_VIEW_KEYS = ("_evaluable_metadata", "_display_metadata")
 _RETRIEVAL_INTENT_KEYS = ("retrieval_intents", "query_intents", "intent_terms")
+_METADATA_ANCHOR_KEYS = (
+    "question",
+    "aliases",
+    "primary_alias",
+    "service_name",
+    "service_aliases",
+    "case_title",
+    "source_topic",
+    "title",
+)
+_REGION_ANCHOR_KEYS = ("district", "applicable_area")
+_MIN_REGIONAL_QUESTION_OVERLAP_CHARS = 8
 _MIN_SPECIFIC_INTENT_CHARS = 7
+_INTENT_MATCH_BONUS = 0.06
+_INTENT_MATCH_BONUS_MAX = 0.18
 _SECTION_TYPE_INTENT_FALLBACKS = {
     "operation_entry": ("系统入口", "办理入口", "从哪里进入办理"),
     "operation_steps": ("申报流程", "申报步骤", "网上办理怎么操作", "操作步骤"),
@@ -594,6 +608,42 @@ def _normalize_match_term(value: Any) -> str:
     return "".join(out)
 
 
+def _longest_common_substring_length(left: str, right: str) -> int:
+    if not left or not right:
+        return 0
+    previous = [0] * (len(right) + 1)
+    best = 0
+    for left_char in left:
+        current = [0] * (len(right) + 1)
+        for index, right_char in enumerate(right, start=1):
+            if left_char != right_char:
+                continue
+            current[index] = previous[index - 1] + 1
+            best = max(best, current[index])
+        previous = current
+    return best
+
+
+def _record_region_terms(record: dict[str, Any]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for metadata in _iter_record_metadata_layers(record):
+        for key in _REGION_ANCHOR_KEYS:
+            for term in _metadata_terms(metadata.get(key)):
+                normalized = _normalize_match_term(term)
+                if len(normalized) < 2 or normalized in seen:
+                    continue
+                seen.add(normalized)
+                out.append(normalized)
+    return out
+
+
+def _record_has_query_region_anchor(record: dict[str, Any], *, query_term: str) -> bool:
+    if not query_term:
+        return False
+    return any(region in query_term for region in _record_region_terms(record))
+
+
 def _service_candidate_terms(fields: dict[str, str], metadata: dict[str, Any]) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
@@ -771,12 +821,39 @@ def _record_intent_bonus(record: dict[str, Any], *, query: str) -> float:
         folded = term.casefold()
         if folded and (folded in query_text or query_text in folded):
             matches += 1
-    return min(0.02 * matches, 0.08)
+    return min(_INTENT_MATCH_BONUS * matches, _INTENT_MATCH_BONUS_MAX)
+
+
+def _record_metadata_anchor_bonus(record: dict[str, Any], *, query: str) -> float:
+    query_term = _normalize_match_term(query)
+    if len(query_term) < 4:
+        return 0.0
+    best = 0.0
+    has_query_region = _record_has_query_region_anchor(record, query_term=query_term)
+    for metadata in _iter_record_metadata_layers(record):
+        for key in _METADATA_ANCHOR_KEYS:
+            for term in _metadata_terms(metadata.get(key)):
+                candidate = _normalize_match_term(term)
+                if len(candidate) < 4:
+                    continue
+                if candidate == query_term:
+                    best = max(best, 0.14)
+                elif candidate in query_term or query_term in candidate:
+                    best = max(best, 0.08)
+                elif key == "question" and has_query_region:
+                    overlap = _longest_common_substring_length(query_term, candidate)
+                    if overlap >= _MIN_REGIONAL_QUESTION_OVERLAP_CHARS:
+                        best = max(best, 0.12)
+    return best
 
 
 def _sort_records_for_query(records: list[dict[str, Any]], *, query: str) -> None:
     records.sort(
-        key=lambda item: float(item.get("score") or 0.0) + _record_intent_bonus(item, query=query),
+        key=lambda item: (
+            float(item.get("score") or 0.0)
+            + _record_metadata_anchor_bonus(item, query=query)
+            + _record_intent_bonus(item, query=query)
+        ),
         reverse=True,
     )
 
@@ -823,6 +900,9 @@ async def _retrieve_dataset_citations(
         retrieval_mode="hybrid",
         visible_evidence_only=True,
         metadata_filter=metadata_filter,
+        enable_reranker=False,
+        reranker_provider="none",
+        reranker_top_n=max(1, int(top_k or 1)),
     )
 
     response = await retrieve_evidence(
