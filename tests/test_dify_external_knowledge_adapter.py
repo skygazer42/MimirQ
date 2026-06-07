@@ -517,7 +517,7 @@ def test_dify_retrieval_frontloads_named_way_markers_from_real_qa_shape(
         headers=_auth(token),
         json={
             "knowledge_id": "city",
-            "query": "身份证办证进度查询有哪些方式",
+            "query": "如何查询身份证办理进度？",
             "retrieval_setting": {"top_k": 1, "score_threshold": 0.0},
         },
     )

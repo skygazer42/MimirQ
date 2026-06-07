@@ -142,6 +142,20 @@
       }
     },
     {
+      "id": "city-id-card-progress-query-methods",
+      "knowledge_id": "changzhou_city_service",
+      "query": "如何查询身份证办理进度？",
+      "dify_inputs": {"areaName": "常州市本级"},
+      "expected": {
+        "title_contains": ["常州市本级12345QA"],
+        "content_contains": ["如何查询身份证办理进度", "苏证通", "江苏公安微警务"],
+        "answer_key_points": ["苏证通", "江苏公安微警务", "身份证办理查询"],
+        "answer_key_point_aliases": {
+          "身份证办理查询": ["身份证办证进度", "身份证办理进度"]
+        }
+      }
+    },
+    {
       "id": "emergency-account-password-reset",
       "knowledge_id": "changzhou_city_service",
       "query": "企业员工密码输入错误5次怎么办",
