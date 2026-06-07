@@ -133,6 +133,42 @@ def _trace_warning_cases(report: dict[str, Any]) -> dict[str, list[str]]:
     return warning_cases
 
 
+def _region_extractor_empty(item: dict[str, Any]) -> bool:
+    regions = item.get("regions") if isinstance(item.get("regions"), list) else []
+    for region in regions:
+        if isinstance(region, dict):
+            area = _text(region.get("area") or region.get("region"))
+            if region.get("__is_success") == 0 or not area:
+                return True
+            continue
+        if _text(region) == "未知":
+            return True
+    return False
+
+
+def _trace_warning_diagnoses(report: dict[str, Any]) -> dict[str, list[str]]:
+    cases = report.get("cases") if isinstance(report.get("cases"), list) else []
+    diagnoses: dict[str, list[str]] = {}
+    for item in cases:
+        if not isinstance(item, dict):
+            continue
+        case_id = _text(item.get("id") or item.get("case_id"))
+        if not case_id:
+            continue
+        if item.get("route_compensated") is True:
+            diagnoses.setdefault("route_compensated_by_retrieval_evidence", []).append(case_id)
+        if item.get("region_matched") is False:
+            if _region_extractor_empty(item):
+                diagnoses.setdefault("dify_area_extractor_empty", []).append(case_id)
+            else:
+                diagnoses.setdefault("region_mismatch", []).append(case_id)
+        if item.get("route_matched") is False:
+            diagnoses.setdefault("route_mismatch", []).append(case_id)
+        if item.get("fallback") is True:
+            diagnoses.setdefault("fallback", []).append(case_id)
+    return diagnoses
+
+
 def _with_status(section: dict[str, Any], *, blocker: str) -> dict[str, Any]:
     if blocker:
         return {"passed": False, "status": "skipped", "blocked_by": blocker}
@@ -201,6 +237,9 @@ def build_readiness_summary(
         warning_cases = _trace_warning_cases(trace_report)
         if warning_cases:
             full_section["warning_cases"] = warning_cases
+        warning_diagnoses = _trace_warning_diagnoses(trace_report)
+        if warning_diagnoses:
+            full_section["warning_diagnoses"] = warning_diagnoses
     staged_sections: list[tuple[str, dict[str, Any]]] = []
     if knowledge_section is not None:
         staged_sections.append(("knowledge_map", knowledge_section))
