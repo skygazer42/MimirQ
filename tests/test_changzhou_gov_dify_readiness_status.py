@@ -86,6 +86,40 @@ def test_format_status_prints_mimirq_direct_source_match_state() -> None:
     assert "MimirQ direct base: http://127.0.0.1:8000 (differs from external endpoint host 192.0.2.6)" in mismatching
 
 
+def test_format_status_prints_non_blocking_full_gate_warnings() -> None:
+    mod = _load_module()
+    report = {
+        "summary": {"passed": True},
+        "full_gate": {
+            "stages": {
+                "preflight": {"summary": {"area_route_warnings": 1, "case_input_violations": 0}},
+                "eval": {"summary": {"generated_answer_missing_cases": 0, "generated_answer_fallback_cases": 0}},
+                "trace": {
+                    "summary": {
+                        "node_route_mismatch_cases": 3,
+                        "route_compensated_cases": 3,
+                        "route_mismatch_cases": 0,
+                        "region_mismatch_cases": 3,
+                        "fallback_cases": 0,
+                        "empty_retrieval_cases": 0,
+                        "trace_errors": 0,
+                    }
+                },
+            }
+        },
+    }
+
+    text = mod.format_status(report, max_age_minutes=0)
+
+    assert (
+        "Warnings: preflight.area_route_warnings=1; "
+        "trace.node_route_mismatch_cases=3; "
+        "trace.route_compensated_cases=3; "
+        "trace.region_mismatch_cases=3"
+    ) in text
+    assert "trace.route_mismatch_cases=0" not in text
+
+
 def test_format_status_marks_stale_reports() -> None:
     mod = _load_module()
     report = {

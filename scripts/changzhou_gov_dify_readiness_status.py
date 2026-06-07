@@ -60,6 +60,43 @@ def _stages_with_status(report: dict[str, Any], status: str) -> list[str]:
     return out
 
 
+def _nonzero_metric(summary: dict[str, Any], metric: str) -> str:
+    value = summary.get(metric)
+    if not isinstance(value, int | float) or value == 0:
+        return ""
+    return f"{metric}={value}"
+
+
+def _full_gate_warning_items(report: dict[str, Any]) -> list[str]:
+    full_gate = report.get("full_gate") if isinstance(report.get("full_gate"), dict) else {}
+    stages = full_gate.get("stages") if isinstance(full_gate.get("stages"), dict) else {}
+    watched_metrics = {
+        "preflight": ("area_route_warnings", "case_input_violations"),
+        "eval": (
+            "generated_answer_missing_cases",
+            "generated_answer_fallback_cases",
+        ),
+        "trace": (
+            "node_route_mismatch_cases",
+            "route_compensated_cases",
+            "route_mismatch_cases",
+            "region_mismatch_cases",
+            "fallback_cases",
+            "empty_retrieval_cases",
+            "trace_errors",
+        ),
+    }
+    out: list[str] = []
+    for stage, metrics in watched_metrics.items():
+        section = stages.get(stage) if isinstance(stages.get(stage), dict) else {}
+        stage_summary = section.get("summary") if isinstance(section.get("summary"), dict) else {}
+        for metric in metrics:
+            item = _nonzero_metric(stage_summary, metric)
+            if item:
+                out.append(f"{stage}.{item}")
+    return out
+
+
 def format_status(
     report: dict[str, Any],
     *,
@@ -109,6 +146,9 @@ def format_status(
             lines.append(f"MimirQ direct base: {direct_base_url} (matches external endpoint host)")
         else:
             lines.append(f"MimirQ direct base: {direct_base_url}")
+    warning_items = _full_gate_warning_items(report)
+    if warning_items:
+        lines.append(f"Warnings: {'; '.join(warning_items)}")
     skipped = _text_list(summary.get("skipped_stages"))
     if skipped:
         lines.append(f"Skipped stages: {', '.join(skipped)}")
