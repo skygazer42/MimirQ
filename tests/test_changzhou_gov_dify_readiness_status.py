@@ -1,5 +1,6 @@
 import importlib.util
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -34,6 +35,7 @@ def test_format_status_prints_failed_root_cause_and_next_action() -> None:
 
     assert "Changzhou Dify readiness: FAILED" in text
     assert "Generated at: 2026-06-06T23:56:19Z" in text
+    assert "Freshness:" in text
     assert "Root cause: console_auth (token_expired)" in text
     assert "Next action: Refresh Dify console login" in text
     assert "Skipped stages: external_probe, full_gate" in text
@@ -52,6 +54,39 @@ def test_format_status_prints_passed_summary() -> None:
 
     assert text.splitlines()[0] == "Changzhou Dify readiness: PASSED"
     assert "Root cause:" not in text
+
+
+def test_format_status_marks_stale_reports() -> None:
+    mod = _load_module()
+    report = {
+        "generated_at": "2026-06-06T23:00:00Z",
+        "summary": {"passed": True},
+    }
+
+    text = mod.format_status(report, now=datetime(2026, 6, 7, 0, 0, tzinfo=UTC), max_age_minutes=30)
+
+    assert "Freshness: STALE (age=60m, max=30m)" in text
+
+
+def test_format_status_marks_fresh_reports() -> None:
+    mod = _load_module()
+    report = {
+        "generated_at": "2026-06-06T23:50:00Z",
+        "summary": {"passed": True},
+    }
+
+    text = mod.format_status(report, now=datetime(2026, 6, 7, 0, 0, tzinfo=UTC), max_age_minutes=30)
+
+    assert "Freshness: fresh (age=10m, max=30m)" in text
+
+
+def test_format_status_marks_missing_generated_at_unknown() -> None:
+    mod = _load_module()
+    report = {"summary": {"passed": True}}
+
+    text = mod.format_status(report, now=datetime(2026, 6, 7, 0, 0, tzinfo=UTC), max_age_minutes=30)
+
+    assert "Freshness: unknown (missing generated_at)" in text
 
 
 def test_main_returns_nonzero_for_failed_summary(tmp_path: Path, capsys) -> None:  # noqa: ANN001
