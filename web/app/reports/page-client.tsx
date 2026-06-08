@@ -558,7 +558,6 @@ function formatRetrievalAuditMetric(value: unknown): string {
 function retrievalAuditMetricRows(
   retrievalAudit: RetrievalAudit | null | undefined
 ): RetrievalAuditMetricRow[] {
-  const metrics = retrievalAudit?.gates?.[0]?.metrics || {}
   const fields = [
     ['hit_at_1', 'hit@1'],
     ['hit_at_3', 'hit@3'],
@@ -568,13 +567,20 @@ function retrievalAuditMetricRows(
     ['retrieval_noise_rate', 'noise'],
     ['kg_noise_rate', 'KG noise'],
   ]
-  return fields
-    .filter(([key]) => Object.prototype.hasOwnProperty.call(metrics, key))
-    .map(([key, label]) => ({
-      key,
-      label,
-      value: formatRetrievalAuditMetric(metrics[key]),
-    }))
+  const rows: RetrievalAuditMetricRow[] = []
+  for (const gate of retrievalAudit?.gates || []) {
+    const metrics = gate.metrics || {}
+    const gateName = String(gate.name || 'gate').trim() || 'gate'
+    for (const [key, label] of fields) {
+      if (!Object.prototype.hasOwnProperty.call(metrics, key)) continue
+      rows.push({
+        key: `${gateName}:${key}`,
+        label: `${label} · ${gateName}`,
+        value: formatRetrievalAuditMetric(metrics[key]),
+      })
+    }
+  }
+  return rows
 }
 
 function retrievalAuditFailureText(
