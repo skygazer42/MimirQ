@@ -1773,6 +1773,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/datasets/{dataset_id}/retrieval-audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Dataset Retrieval Audit
+         * @description Persist a sanitized retrieval audit snapshot for dataset reports.
+         */
+        put: operations["put_dataset_retrieval_audit_api_v1_datasets__dataset_id__retrieval_audit_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/datasets/{dataset_id}/clone": {
         parameters: {
             query?: never;
@@ -12352,6 +12372,7 @@ export interface components {
             parse_risk_summary?: components["schemas"]["DatasetParseRiskSummaryOut"] | null;
             kg_stats?: components["schemas"]["DatasetKGStatsOut"] | null;
             latest_regression_run?: components["schemas"]["DatasetRegressionRunSummaryOut"] | null;
+            retrieval_audit?: components["schemas"]["DatasetRetrievalAuditOut"] | null;
             must_recall_summary?: components["schemas"]["DatasetMustRecallSummaryOut"] | null;
             hierarchy_recall_summary?: components["schemas"]["DatasetHierarchyRecallSummaryOut"] | null;
             /** Precheck Summary */
@@ -12392,6 +12413,54 @@ export interface components {
              * @description Keep at most N pipeline versions per doc
              */
             max_versions?: number | null;
+        };
+        /**
+         * DatasetRetrievalAuditGateOut
+         * @description One retrieval-readiness evidence source summarized without raw content.
+         */
+        DatasetRetrievalAuditGateOut: {
+            /** Name */
+            name: string;
+            /**
+             * Status
+             * @default unavailable
+             */
+            status: string;
+            /** Metrics */
+            metrics?: {
+                [key: string]: unknown;
+            };
+            /** Failed Conditions */
+            failed_conditions?: string[];
+            /** Generated At */
+            generated_at?: string | null;
+            /** Source */
+            source?: string | null;
+        };
+        /**
+         * DatasetRetrievalAuditOut
+         * @description Generic retrieval-readiness snapshot assembled from platform evidence.
+         */
+        DatasetRetrievalAuditOut: {
+            /**
+             * Status
+             * @default unavailable
+             */
+            status: string;
+            /** Plugin Refs */
+            plugin_refs?: string[];
+            /** Plugin Package Hashes */
+            plugin_package_hashes?: string[];
+            /** Gates */
+            gates?: components["schemas"]["DatasetRetrievalAuditGateOut"][];
+            /** Failure Categories */
+            failure_categories?: {
+                [key: string]: number;
+            };
+            /** Kg Recommendation */
+            kg_recommendation?: string | null;
+            /** Recommended Next Action */
+            recommended_next_action?: string | null;
         };
         /** DatasetTableRoutingPolicyAudit */
         DatasetTableRoutingPolicyAudit: {
@@ -12703,6 +12772,18 @@ export interface components {
              * @default 0
              */
             score_threshold: number;
+            /** Enable Kg Query Expansion */
+            enable_kg_query_expansion?: boolean | null;
+            /** Enable Kg Chunk Injection */
+            enable_kg_chunk_injection?: boolean | null;
+            /** Kg Chunk Injection Max Chunks */
+            kg_chunk_injection_max_chunks?: number | null;
+            /** Enable Kg Chunk Boost */
+            enable_kg_chunk_boost?: boolean | null;
+            /** Kg Chunk Boost Weight */
+            kg_chunk_boost_weight?: number | null;
+            /** Kg Chunk Boost Max Promoted */
+            kg_chunk_boost_max_promoted?: number | null;
         };
         /**
          * DocumentAccessInfo
@@ -19813,10 +19894,14 @@ export interface components {
             schema?: string | null;
             /** Query Expansion Fields */
             query_expansion_fields?: string[];
+            /** Query Expansion Value Fields */
+            query_expansion_value_fields?: string[];
             /** Filter Fields */
             filter_fields?: string[];
             /** Boost Fields */
             boost_fields?: string[];
+            /** Anchor Fields */
+            anchor_fields?: string[];
             /** Rerank Features */
             rerank_features?: string[];
             /**
@@ -19824,6 +19909,11 @@ export interface components {
              * @default false
              */
             fallback_enabled: boolean;
+            /**
+             * Response Compaction Enabled
+             * @default false
+             */
+            response_compaction_enabled: boolean;
         };
         /** PipelinePluginRetrievalTextContractSummary */
         PipelinePluginRetrievalTextContractSummary: {
@@ -30911,6 +31001,82 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DatasetOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_dataset_retrieval_audit_api_v1_datasets__dataset_id__retrieval_audit_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path: {
+                dataset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetRetrievalAuditOut"];
                 };
             };
             /** @description Bad Request */
