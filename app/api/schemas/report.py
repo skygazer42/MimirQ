@@ -267,7 +267,7 @@ class DatasetReportDataProvenanceOut(BaseModel):
             "pipeline_versions": "documents.metadata.pipeline_hash",
             "kg": "kg_tables",
             "regression": "regression_runs",
-            "retrieval_audit": "regression_runs.summary",
+            "retrieval_audit": "regression_runs.summary + datasets.metadata.retrieval_audit",
             "precheck": "dataset_precheck_scan_runs",
         }
     )
