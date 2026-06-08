@@ -69,6 +69,7 @@ make changzhou-dify-readiness-gate-quiet \
 - `summary.passed=true`
 - `failed_stages=[]`
 - `stage_count=5`
+- `retrieval_audit.status=passed`
 - `knowledge_map.status=passed`
 - `mimirq_direct.status=passed`
 - `console_auth.status=passed`
@@ -197,6 +198,12 @@ top10/top20，但不应把宽候选池 precision 当作最终回答上下文质�
      - `fallback_cases`
      - `empty_retrieval_cases`
      - `route_mismatch_cases`
+
+readiness summary 还会额外输出通用 `retrieval_audit` 片段，字段对齐 MimirQ dataset report
+的 retrieval audit 合约：`status`、`plugin_refs`、`plugin_package_hashes`、`gates`、
+`failure_categories` 和 `recommended_next_action`。这个片段只包含聚合 gate、metric 和
+插件 provenance，不包含 raw query、生成答案、chunk 正文或凭据；平台后续可以直接消费该
+片段，而不需要理解常州 workflow 的业务结构。
 
 ---
 

@@ -218,6 +218,26 @@ def _kg_compare_summary_text(kg_compare: dict[str, Any]) -> str:
     return "; ".join(part for part in parts if not part.endswith("="))
 
 
+def _retrieval_audit_summary_text(report: dict[str, Any]) -> str:
+    audit = report.get("retrieval_audit") if isinstance(report.get("retrieval_audit"), dict) else {}
+    if not audit:
+        return ""
+    plugin_refs = audit.get("plugin_refs") if isinstance(audit.get("plugin_refs"), list) else []
+    hashes = audit.get("plugin_package_hashes") if isinstance(audit.get("plugin_package_hashes"), list) else []
+    gates = audit.get("gates") if isinstance(audit.get("gates"), list) else []
+    categories = audit.get("failure_categories") if isinstance(audit.get("failure_categories"), dict) else {}
+    parts = [
+        f"status={_text(audit.get('status')) or 'unknown'}",
+        f"plugin_refs={len([item for item in plugin_refs if _text(item)])}",
+        f"package_hashes={len([item for item in hashes if _text(item)])}",
+        f"gates={len([item for item in gates if isinstance(item, dict)])}",
+    ]
+    failures = [_text(key) for key in categories if _text(key)]
+    if failures:
+        parts.append(f"failures={','.join(failures)}")
+    return "; ".join(parts)
+
+
 def _markdown_table(headers: list[str], rows: list[list[str]]) -> list[str]:
     lines = [
         "| " + " | ".join(headers) + " |",
@@ -407,6 +427,9 @@ def format_status(
     knowledge_plugins = _knowledge_plugin_ref_summary(knowledge_summary)
     if knowledge_plugins:
         lines.append(f"Knowledge map plugins: {knowledge_plugins}")
+    retrieval_audit_text = _retrieval_audit_summary_text(report)
+    if retrieval_audit_text:
+        lines.append(f"Retrieval audit: {retrieval_audit_text}")
     kg_compare = report.get("kg_compare") if isinstance(report.get("kg_compare"), dict) else {}
     kg_compare_text = _kg_compare_summary_text(kg_compare)
     if kg_compare_text:
