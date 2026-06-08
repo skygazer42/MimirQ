@@ -60,6 +60,7 @@ from app.api.schemas.ingestion_policy import (
     IngestionRuleTableRoutingAudit,
     TableRoutingSettingAudit,
 )
+from app.api.schemas.report import DatasetRetrievalAuditOut
 from app.api.utils.response_headers import download_response_headers, set_download_content_disposition
 from app.core.config import settings
 from app.core.database import SessionLocal, get_db
@@ -94,6 +95,7 @@ from app.services.ingestion_policy import (
 from app.services.pipeline_config import parse_pipeline_from_metadata, upsert_pipeline_metadata
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 from app.services.report_html import render_dataset_profile_html
+from app.services.report_service import sanitize_retrieval_audit_snapshot
 from app.services.retention_policy import parse_retention_policy_from_metadata, upsert_retention_policy_metadata
 from app.services.tenant_group_service import TenantGroupService
 from app.tasks.queue import enqueue_dataset_profile_scan
@@ -1263,6 +1265,55 @@ def import_dataset_config(
         db.commit()
 
     return _dataset_out(db, tenant_id, ds)
+
+
+@router.put(
+    "/{dataset_id}/retrieval-audit",
+    response_model=DatasetRetrievalAuditOut,
+    response_model_exclude_none=True,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
+def put_dataset_retrieval_audit(
+    dataset_id: UUID,
+    payload: dict[str, Any],
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Persist a sanitized retrieval audit snapshot for dataset reports."""
+    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    DatasetService.assert_dataset_writable(db, dataset, account_id)
+
+    try:
+        audit = sanitize_retrieval_audit_snapshot(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    meta = dict(getattr(dataset, "dataset_metadata", None) or {})
+    meta["retrieval_audit"] = audit.model_dump(mode="json")
+    dataset.dataset_metadata = meta
+    db.commit()
+    db.refresh(dataset)
+
+    with contextlib.suppress(Exception):
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=account_id,
+            action="dataset.retrieval_audit.put",
+            resource_type="dataset",
+            resource_id=str(dataset.id),
+            details={
+                "status": str(audit.status or ""),
+                "gate_count": len(audit.gates),
+                "plugin_ref_count": len(audit.plugin_refs),
+                "failure_categories": dict(audit.failure_categories or {}),
+            },
+        )
+        db.commit()
+
+    return audit
 
 
 @router.post("/{dataset_id}/clone", response_model=DatasetOut, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
