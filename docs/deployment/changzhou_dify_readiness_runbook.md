@@ -115,6 +115,16 @@ make changzhou-gov-delivery-pack-refresh \
   CHANGZHOU_DIFY_MIMIRQ_BASE_URL="$CHANGZHOU_DIFY_MIMIRQ_BASE_URL"
 ```
 
+若生产交付要求同时刷新 readiness、写回 retrieval audit、并强制证明 report 已消费该证据，
+使用显式带副作用的目标：
+
+```bash
+make changzhou-gov-delivery-pack-refresh-with-audit \
+  CHANGZHOU_GOV_CORPUS_DATASET_ID="$DATASET_ID" \
+  CHANGZHOU_DIFY_MIMIRQ_BASE_URL="$CHANGZHOU_DIFY_MIMIRQ_BASE_URL" \
+  MIMIRQ_API_TOKEN="$MIMIRQ_API_TOKEN"
+```
+
 输出：
 
 - `/tmp/changzhou_gov_delivery_pack.json`
@@ -125,6 +135,9 @@ make changzhou-gov-delivery-pack-refresh \
 再读取 readiness summary/evidence 和可选的 persisted retrieval audit 结果生成总索引；
 不会调用远端 Dify，不会写数据库、向量库或 KG 存储。默认要求 readiness summary 生成时间不超过 30 分钟，超时会标记
 `readiness_fresh=false` 并返回失败，避免把旧 gate 结果当成交付证据。
+`changzhou-gov-delivery-pack-refresh-with-audit` 是例外：它会调用
+`changzhou-dify-readiness-persist-audit` 写入数据集 metadata，并要求 delivery pack 中的
+`readiness_audit_report_verified=true`。
 如果生产交付必须证明 retrieval audit 已写回 report，可在生成 pack 时加：
 
 ```bash
