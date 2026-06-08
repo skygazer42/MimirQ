@@ -109,6 +109,23 @@ def _expected_metadata(meta: dict[str, Any], golden_rules: dict[str, Any]) -> di
     return out
 
 
+def _answer_key_points(meta: dict[str, Any], golden_rules: dict[str, Any]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for field in _rule_fields(golden_rules, "answer_key_point_fields"):
+        raw = _metadata_value(meta, field)
+        values = raw if isinstance(raw, list | tuple | set) else [raw]
+        for value in values:
+            text = _text(value)
+            if not text or text in seen:
+                continue
+            seen.add(text)
+            out.append(text[:500])
+            if len(out) >= 80:
+                return out
+    return out
+
+
 def _reference_source(chunk: Any, meta: dict[str, Any]) -> dict[str, Any]:
     document_id = getattr(chunk, "document_id", None) or meta.get("document_id")
     chunk_id = getattr(chunk, "id", None) or meta.get("chunk_id")
@@ -190,22 +207,26 @@ def build_golden_draft_bundle_from_chunks(
         expected = _expected_metadata(meta, golden_rules)
         if expected is None:
             continue
+        answer_key_points = _answer_key_points(meta, golden_rules)
         for template in _templates_for_chunk(meta, golden_rules):
             question = _format_question(template, meta)
             if not question or question in seen_questions:
                 continue
             seen_questions.add(question)
+            extra = {
+                "source": "plugin_golden_draft",
+                **plugin_extra,
+                "expected_metadata": expected,
+            }
+            if answer_key_points:
+                extra["answer_key_points"] = answer_key_points
             items.append(
                 {
                     "question": question,
                     "expected_answer": _text(getattr(chunk, "content", None)) or None,
                     "reference_sources": [_reference_source(chunk, meta)],
                     "tags": _tags(plugin_id, meta, golden_rules),
-                    "extra": {
-                        "source": "plugin_golden_draft",
-                        **plugin_extra,
-                        "expected_metadata": expected,
-                    },
+                    "extra": extra,
                 }
             )
             if len(items) >= cap:

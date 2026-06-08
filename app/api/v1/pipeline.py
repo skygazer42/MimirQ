@@ -61,6 +61,8 @@ from app.api.schemas.pipeline import (
     PipelineCapabilitiesResponse,
     PipelineChunkPreviewRequest,
     PipelineChunkPreviewResponse,
+    PipelinePluginChunkReportRequest,
+    PipelinePluginChunkReportResponse,
     PipelinePluginGoldenDraftImportRequest,
     PipelinePluginGoldenDraftImportResponse,
     PipelinePluginGoldenDraftRequest,
@@ -98,6 +100,9 @@ from app.rag.pipeline_plugins.registry import (
     default_plugin_directories,
     list_pipeline_plugins_with_errors,
     resolve_registered_plugin_descriptor,
+)
+from app.rag.pipeline_plugins.reports import (
+    build_pipeline_plugin_chunk_report as build_pipeline_plugin_chunk_report_data,
 )
 from app.rag.preprocessing.boilerplate import remove_markdown_boilerplate
 from app.rag.preprocessing.cleaning import (
@@ -2233,7 +2238,7 @@ def _plugin_marker_refs(plugin_ref: str, descriptor: Any) -> set[str]:
     return {ref for ref in refs if ref}
 
 
-def _assert_pipeline_plugin_ready_for_golden(plugin_ref: str, descriptor: Any) -> None:
+def _assert_pipeline_plugin_executable(plugin_ref: str, descriptor: Any) -> None:
     if getattr(descriptor, "published", True) is not True or getattr(descriptor, "executable", True) is not True:
         plugin_id = str(getattr(descriptor, "id", "") or plugin_ref)
         version = str(getattr(descriptor, "version", "") or "")
@@ -2243,6 +2248,71 @@ def _assert_pipeline_plugin_ready_for_golden(plugin_ref: str, descriptor: Any) -
             status_code=409,
             detail=f"plugin '{qualified}' is not executable; local test report status is {status}",
         )
+
+
+def _assert_pipeline_plugin_ready_for_golden(plugin_ref: str, descriptor: Any) -> None:
+    _assert_pipeline_plugin_executable(plugin_ref, descriptor)
+
+
+def _resolve_plugin_relative_input_path(plugin_dir: Path, input_path: str) -> Path:
+    raw = str(input_path or "").strip() or "sample.json"
+    candidate = Path(raw)
+    if candidate.is_absolute() or ".." in candidate.parts:
+        raise HTTPException(status_code=400, detail="input_path must stay inside the plugin directory")
+    try:
+        plugin_root = plugin_dir.expanduser().resolve()
+        resolved = (plugin_root / candidate).resolve()
+        resolved.relative_to(plugin_root)
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="input_path must stay inside the plugin directory") from exc
+    if not resolved.is_file():
+        raise HTTPException(status_code=404, detail="plugin chunk report input_path not found")
+    return resolved
+
+
+@router.post(
+    "/plugins/chunk-report",
+    response_model=PipelinePluginChunkReportResponse,
+    response_model_by_alias=True,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
+async def build_pipeline_plugin_chunk_report_endpoint(
+    payload: PipelinePluginChunkReportRequest,
+    *,
+    account_id: Annotated[str, Depends(get_current_account_id)],
+) -> PipelinePluginChunkReportResponse:
+    """
+    Build a review-only governance/chunk/KG report for a registered plugin sample.
+
+    The sample path is scoped to the plugin directory. This API executes local
+    plugin code, so callers select a registered plugin ref rather than arbitrary
+    host paths.
+    """
+    _ = account_id
+    try:
+        descriptor = resolve_registered_plugin_descriptor(payload.plugin_ref)
+    except PipelinePluginRegistryError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    _assert_pipeline_plugin_executable(payload.plugin_ref, descriptor)
+    input_path = _resolve_plugin_relative_input_path(descriptor.plugin_dir, payload.input_path)
+    try:
+        report = build_pipeline_plugin_chunk_report_data(
+            descriptor.plugin_dir,
+            input_path=input_path,
+            max_examples_per_section=payload.max_examples_per_section,
+            preview_chars=payload.preview_chars,
+            governance_params=payload.governance_params,
+            chunk_params=payload.chunk_params,
+            kg_params=payload.kg_params,
+            section_metadata_keys=tuple(payload.section_metadata_keys or ()),
+            title_metadata_keys=tuple(payload.title_metadata_keys or ()),
+            metadata_highlight_keys=tuple(payload.metadata_highlight_keys or ()),
+        )
+    except PipelinePluginRegistryError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"failed to build plugin chunk report: {exc}") from exc
+    return PipelinePluginChunkReportResponse.model_validate(report)
 
 
 def _assert_unmarked_plugin_golden_chunks_allowed(include_unmarked_chunks: bool) -> None:

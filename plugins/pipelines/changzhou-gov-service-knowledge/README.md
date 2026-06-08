@@ -22,11 +22,15 @@ plugin:changzhou-gov-service-knowledge@1.0.0:kg
 ```text
 metadata_schema.json
 retrieval_text_schema.json
+retrieval_policy.json
 golden_rules.json
 processing_templates.json
 ```
 
 `processing_templates.json` 记录本业务包的治理模板归属。常州政务、公积金、不动产、应急局等专项规则只在该插件包内维护，平台内置治理模板库保持业务中立。
+`retrieval_policy.json` 声明本插件哪些 metadata 可用于 query expansion、filter、boost、anchor demotion、rerank 和弱证据 fallback；它不写生产数据集 ID，也不写 Dify workflow 路由。
+其中 `query_expansion_values` 把本业务的 `section_type` 值映射为查询意图词，例如 `operation_steps -> 申报流程/网上办理怎么操作`。平台只读取这个通用映射，不在 Dify adapter 内硬编码政务词表。
+其中 `anchor_fields` 只声明区县别名到 `district` metadata 的通用锚点关系：当 query 明确包含某个区县，而候选 chunk 的 `district` 是另一个区县时，平台可做有界降权；query 没有区县词或 chunk 没有 `district` 时不做惩罚。
 
 ## 规则
 
@@ -95,7 +99,7 @@ MimirQ 的 Dify external knowledge adapter 支持平台通用的 `knowledge_id -
 `mode=prepend` 表示把命中的区县数据集放在本级库前面；`append` 表示追加；
 `replace` 表示只查路由命中的数据集。该配置应写入系统设置中的
 `DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON`，插件只负责生成可检索的 chunk、metadata、
-KG 和 Golden，不持有生产数据集 ID。
+retrieval policy、KG 和 Golden，不持有生产数据集 ID。
 
 上线前可先跑本地静态校验，避免缺区县 route 时才在远端 Dify trace 里暴露：
 
@@ -247,6 +251,8 @@ python scripts/changzhou_gov_golden_eval.py \
 评估输出包含三层指标：
 
 - `hit_at_1` / `hit_at_3` / `mrr`：检索排序是否命中正确 chunk。
+- `expected_metadata_case_rate`：声明了 `expected.metadata` 的 case 覆盖率；当前内置 13 条 Dify golden case 已全部声明 metadata，覆盖率为 `1.0`，`changzhou-retrieval` profile 默认要求 `1.0`。
+- `top_1_expected_metadata_match_rate` / `top_3_expected_metadata_match_rate`：声明了 `expected.metadata` 的 case，顶部证据是否落在期望地区、知识类型或业务 metadata 范围内；`changzhou-retrieval` profile 默认要求 top1 `0.95`、top3/top5 `0.98`，也可通过 `--min-top-*-expected-metadata-match-rate` 显式覆盖。
 - `answer_grounding_rate` / `answer_key_point_recall`：top-k 证据是否足够回答。
 - `generated_answer_grounding_rate` / `generated_answer_key_point_recall`：真实生成答案是否覆盖关键答案点。
 - `generated_answer_policy_clean_rate`：真实生成答案是否避免泄漏内部模板/提示词约束。

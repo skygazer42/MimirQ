@@ -68,6 +68,7 @@ class _FakeDB:
         self._document_rows = list(document_rows or [])
         self._document_chunks = list(document_chunks or [])
         self.added = []
+        self.commit_snapshots = []
 
     def query(self, *models):  # noqa: ANN002
         model = models[0] if models else None
@@ -95,6 +96,12 @@ class _FakeDB:
         self.added.append(obj)
 
     def commit(self) -> None:
+        self.commit_snapshots.append(
+            {
+                "status": getattr(self._run, "status", None),
+                "summary": dict(getattr(self._run, "summary", {}) or {}),
+            }
+        )
         return None
 
     def close(self) -> None:
@@ -151,6 +158,7 @@ def test_regression_eval_supports_retrieval_only_mode(monkeypatch: pytest.Monkey
 
     # Inject deterministic retrieval meta (no ragas needed).
     def _fake_build_regression_sample(_case, _eval_item):
+        assert _eval_item.get("citation_eval_limit") == 7
         return {}, {"retrieval_recall": 1.0, "retrieval_hit_at_10": True, "retrieval_hit_at_20": True, "abstain_triggered": False}
 
     monkeypatch.setattr(mod, "build_regression_sample", _fake_build_regression_sample)
@@ -187,7 +195,7 @@ def test_regression_eval_supports_retrieval_only_mode(monkeypatch: pytest.Monkey
         metric_names=[],  # retrieval-only
         skip_empty_contexts=False,
         max_cases=10,
-        rag_params={},
+        rag_params={"top_k": 7},
     )
 
     assert run.status == "completed", run.error_message
@@ -196,6 +204,16 @@ def test_regression_eval_supports_retrieval_only_mode(monkeypatch: pytest.Monkey
     assert run.summary.get("retrieval_hit_at_10") == pytest.approx(1.0)
     assert run.summary.get("retrieval_hit_at_20") == pytest.approx(1.0)
     assert (run.params or {}).get("mode") == "retrieval_only"
+    assert any(
+        (snapshot.get("summary") or {}).get("progress") == {
+            "mode": "retrieval_only",
+            "processed_cases": 1,
+            "total_cases": 1,
+            "evaluable_items": 1,
+            "percent": 1.0,
+        }
+        for snapshot in fake_db.commit_snapshots
+    )
 
 
 def test_regression_eval_retrieval_only_scores_plugin_expected_metadata(monkeypatch: pytest.MonkeyPatch) -> None:

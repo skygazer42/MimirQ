@@ -303,13 +303,17 @@ def _poll_regression_run(
         detail = client.json(
             "GET",
             f"/api/v1/evaluations/ragas/regression/runs/{run_id}",
-            query={"include_items": "true", "include_contexts": "false"},
+            query={"include_items": "false", "include_contexts": "false"},
         )
         last_detail = detail
         run = _extract_run(detail)
         status = str(run.get("status") or "").strip().lower()
         if status == "completed":
-            return detail
+            return client.json(
+                "GET",
+                f"/api/v1/evaluations/ragas/regression/runs/{run_id}",
+                query={"include_items": "true", "include_contexts": "false"},
+            )
         if status in {"failed", "error", "cancelled", "canceled"}:
             raise RuntimeError(f"regression run {run_id} ended with status={status}: {_snippet(run)}")
         if time.monotonic() >= deadline:
@@ -334,6 +338,7 @@ def run_closed_loop_smoke(
     enable_hierarchy_recall: bool = True,
     hierarchy_sibling_window: int = 2,
     hierarchy_overfetch_factor: int = 4,
+    regression_top_k: int = 20,
 ) -> ClosedLoopResult:
     selected_ref = str(plugin_ref or "").strip()
     if not selected_ref:
@@ -366,6 +371,7 @@ def run_closed_loop_smoke(
         "use_llm_judge": False,
         "skip_empty_contexts": True,
         "max_cases": max(1, min(500, len(case_ids), int(max_items))),
+        "top_k": max(1, min(50, int(regression_top_k or 20))),
     }
     if enable_hierarchy_recall:
         run_payload.update(
@@ -442,6 +448,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--hierarchy-sibling-window", type=int, default=2)
     parser.add_argument("--hierarchy-overfetch-factor", type=int, default=4)
+    parser.add_argument(
+        "--regression-top-k",
+        type=int,
+        default=20,
+        help="Retrieval-only regression top_k/citation evaluation window. Default keeps recall-friendly backend behavior.",
+    )
     return parser
 
 
@@ -471,6 +483,7 @@ def main(argv: list[str] | None = None) -> int:
             enable_hierarchy_recall=not bool(args.disable_hierarchy_recall),
             hierarchy_sibling_window=int(args.hierarchy_sibling_window),
             hierarchy_overfetch_factor=int(args.hierarchy_overfetch_factor),
+            regression_top_k=int(args.regression_top_k),
         )
     except Exception as exc:  # noqa: BLE001
         print(f"[plugin-golden-smoke] ERR: {exc}", file=sys.stderr)

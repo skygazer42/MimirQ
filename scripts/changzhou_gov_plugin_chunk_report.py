@@ -5,12 +5,8 @@ import argparse
 import json
 import sys
 import warnings
-from collections import Counter, defaultdict
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-
-from langchain_core.documents import Document
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -24,27 +20,13 @@ warnings.filterwarnings(
     category=UserWarning,
 )
 
-from app.rag.pipeline_plugins.local_runner import load_plugin_test_input  # noqa: E402
-from app.rag.pipeline_plugins.registry import describe_plugin_dir  # noqa: E402
-from app.rag.pipeline_plugins.runtime import (  # noqa: E402
-    apply_chunk_python_plugin,
-    apply_governance_python_plugin,
-    apply_kg_python_plugin,
-)
+from app.rag.pipeline_plugins.reports import build_pipeline_plugin_chunk_report  # noqa: E402
 
 SCHEMA = "mimirq.changzhou_gov_service_knowledge.chunk_report.v1"
 DEFAULT_PLUGIN_DIR = "plugins/pipelines/changzhou-gov-service-knowledge"
 DEFAULT_SAMPLE = "plugins/pipelines/changzhou-gov-service-knowledge/sample.json"
 DEFAULT_JSON_OUT = "/tmp/changzhou_gov_plugin_chunk_report.json"
 DEFAULT_MARKDOWN_OUT = "/tmp/changzhou_gov_plugin_chunk_report.md"
-_RESERVED_VIEW_KEYS = {
-    "_indexed_metadata",
-    "_display_metadata",
-    "_evaluable_metadata",
-    "_record_identity",
-    "_retrieval_text",
-    "_retrieval_display_content",
-}
 _METADATA_HIGHLIGHT_KEYS = (
     "gov_knowledge_type",
     "district",
@@ -60,6 +42,14 @@ _METADATA_HIGHLIGHT_KEYS = (
     "service_url",
     "urls",
 )
+_TITLE_METADATA_KEYS = (
+    "service_name",
+    "case_title",
+    "question",
+    "source_topic",
+    "category_leaf",
+    "source_sheet",
+)
 
 
 def _text(value: Any) -> str:
@@ -73,107 +63,6 @@ def _clean_one_line(value: Any, *, limit: int = 160) -> str:
     return text[: max(0, limit - 1)].rstrip() + "..."
 
 
-def _source(value: dict[str, Any]) -> str:
-    for key in ("source", "source_file", "source_path", "filename", "file_name"):
-        text = _text(value.get(key))
-        if text:
-            return text
-    return ""
-
-
-def _section(doc: Document) -> str:
-    meta = dict(doc.metadata or {})
-    section = _text(meta.get("knowledge_section"))
-    if section:
-        return section
-    source = _source(meta)
-    for part in Path(source).parts:
-        if len(part) >= 2 and part[:2].isdigit():
-            return part
-    return "未识别"
-
-
-def _title(doc: Document) -> str:
-    meta = dict(doc.metadata or {})
-    for key in ("service_name", "case_title", "question", "source_topic", "category_leaf", "source_sheet"):
-        value = meta.get(key)
-        if isinstance(value, list):
-            value = " / ".join(_text(item) for item in value if _text(item))
-        text = _text(value)
-        if text:
-            return _clean_one_line(text, limit=100)
-    first_line = next((line.strip() for line in _text(doc.page_content).splitlines() if line.strip()), "")
-    return _clean_one_line(first_line, limit=100)
-
-
-def _metadata_fields(documents: list[Document]) -> list[str]:
-    fields: set[str] = set()
-    for doc in documents:
-        for key in dict(doc.metadata or {}):
-            if key in _RESERVED_VIEW_KEYS or key.startswith("_"):
-                continue
-            fields.add(str(key))
-    return sorted(fields)
-
-
-def _metadata_focus(meta: dict[str, Any]) -> dict[str, Any]:
-    out: dict[str, Any] = {}
-    for key in _METADATA_HIGHLIGHT_KEYS:
-        value = meta.get(key)
-        if isinstance(value, str) and value.strip():
-            out[key] = _clean_one_line(value, limit=120)
-        elif isinstance(value, list):
-            values = [_clean_one_line(item, limit=80) for item in value if _text(item)]
-            if values:
-                out[key] = values[:8]
-    return out
-
-
-def _chunk_example(doc: Document, *, preview_chars: int) -> dict[str, Any]:
-    meta = dict(doc.metadata or {})
-    return {
-        "title": _title(doc),
-        "chunk_kind": _text(meta.get("chunk_kind")) or "unknown",
-        "gov_knowledge_type": _text(meta.get("gov_knowledge_type")),
-        "section_type": _text(meta.get("section_type")),
-        "content_chars": len(doc.page_content or ""),
-        "metadata_focus": _metadata_focus(meta),
-        "content_preview": _clean_one_line(doc.page_content, limit=max(40, int(preview_chars or 0))),
-    }
-
-
-def _event_section(event: Any) -> str:
-    extra = getattr(event, "extra_data", None)
-    if isinstance(extra, dict):
-        section = _text(extra.get("knowledge_section"))
-        if section:
-            return section
-    references = getattr(event, "references", None)
-    if isinstance(references, dict):
-        source = _text(references.get("source") or references.get("source_file") or references.get("source_path"))
-        for part in Path(source).parts:
-            if len(part) >= 2 and part[:2].isdigit():
-                return part
-    return "未识别"
-
-
-def _entity_types(events: list[Any]) -> list[str]:
-    types: set[str] = set()
-    for event in events:
-        entities = getattr(event, "entities", None)
-        if not isinstance(entities, list):
-            continue
-        for entity in entities:
-            value = _text(getattr(entity, "type", ""))
-            if value:
-                types.add(value)
-    return sorted(types)
-
-
-def _as_count_dict(counter: Counter[str]) -> dict[str, int]:
-    return {key: counter[key] for key in sorted(counter)}
-
-
 def build_chunk_report(
     plugin_dir: str | Path = DEFAULT_PLUGIN_DIR,
     *,
@@ -182,83 +71,26 @@ def build_chunk_report(
     preview_chars: int = 180,
     chunk_params: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    plugin_path = Path(plugin_dir)
-    sample_path = Path(input_path)
-    descriptor = describe_plugin_dir(plugin_path, require_test_report=False)
-    input_documents = load_plugin_test_input(sample_path)
-    context = {"plugin_directories": [plugin_path], "require_test_report": False}
-    governed = apply_governance_python_plugin(
-        input_documents,
-        plugin_ref=descriptor.refs["governance"],
-        context=context,
-    )
-    chunks = apply_chunk_python_plugin(
-        governed,
-        plugin_ref=descriptor.refs["chunk"],
-        params=dict(chunk_params or {}),
-        context=context,
-    )
-    events = apply_kg_python_plugin(
-        chunks,
-        plugin_ref=descriptor.refs["kg"],
-        context=context,
-    )
-
-    records_by_section: dict[str, list[Document]] = defaultdict(list)
-    chunks_by_section: dict[str, list[Document]] = defaultdict(list)
-    events_by_section: dict[str, list[Any]] = defaultdict(list)
-    for doc in governed:
-        records_by_section[_section(doc)].append(doc)
-    for doc in chunks:
-        chunks_by_section[_section(doc)].append(doc)
-    for event in events:
-        events_by_section[_event_section(event)].append(event)
-
-    section_names = sorted(set(records_by_section) | set(chunks_by_section) | set(events_by_section))
-    sections: list[dict[str, Any]] = []
-    for section in section_names:
-        section_records = records_by_section.get(section, [])
-        section_chunks = chunks_by_section.get(section, [])
-        section_events = events_by_section.get(section, [])
-        chunk_kinds = Counter(_text(doc.metadata.get("chunk_kind")) or "unknown" for doc in section_chunks)
-        gov_types = Counter(_text(doc.metadata.get("gov_knowledge_type")) or "unknown" for doc in section_records)
-        sections.append(
-            {
-                "knowledge_section": section,
-                "governed_records": len(section_records),
-                "chunks": len(section_chunks),
-                "kg_events": len(section_events),
-                "gov_knowledge_types": _as_count_dict(gov_types),
-                "chunk_kinds": _as_count_dict(chunk_kinds),
-                "metadata_fields": _metadata_fields([*section_records, *section_chunks]),
-                "kg_entity_types": _entity_types(section_events),
-                "examples": [
-                    _chunk_example(doc, preview_chars=preview_chars)
-                    for doc in section_chunks[: max(0, int(max_examples_per_section or 0))]
-                ],
-            }
-        )
-
-    return {
-        "schema": SCHEMA,
-        "generated_at": datetime.now(UTC).isoformat(),
-        "passed": True,
-        "plugin": {
-            "id": descriptor.id,
-            "version": descriptor.version,
-            "package_hash": descriptor.package_hash,
-            "dir": str(plugin_path),
-            "input": str(sample_path),
+    report = build_pipeline_plugin_chunk_report(
+        plugin_dir,
+        input_path=input_path,
+        schema=SCHEMA,
+        max_examples_per_section=max_examples_per_section,
+        preview_chars=preview_chars,
+        chunk_params=chunk_params,
+        section_metadata_keys=("knowledge_section",),
+        title_metadata_keys=_TITLE_METADATA_KEYS,
+        metadata_highlight_keys=_METADATA_HIGHLIGHT_KEYS,
+        record_type_metadata_key="gov_knowledge_type",
+        extra_example_metadata_fields={
+            "gov_knowledge_type": "gov_knowledge_type",
+            "section_type": "section_type",
         },
-        "summary": {
-            "input_documents": len(input_documents),
-            "governed_records": len(governed),
-            "chunks": len(chunks),
-            "kg_events": len(events),
-            "sections": len(sections),
-        },
-        "sections": sections,
-    }
+    )
+    for section in report.get("sections") or []:
+        if isinstance(section, dict) and "record_type_counts" in section:
+            section["gov_knowledge_types"] = section.pop("record_type_counts")
+    return report
 
 
 def _join_counts(values: dict[str, int]) -> str:

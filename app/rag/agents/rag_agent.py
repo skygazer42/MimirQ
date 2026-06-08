@@ -33,6 +33,7 @@ _RAG_STATE_BUILD_KEYS = {
     "question",
     "history",
     "document_ids",
+    "dataset_ids",
     "tenant_id",
     "account_id",
     "dataset_id",
@@ -113,6 +114,7 @@ class AgenticStreamRequest:
     tenant_id: UUID | None = None
     account_id: str | None = None
     dataset_id: UUID | None = None
+    dataset_ids: list[UUID] | None = None
     top_k: int = 5
     score_threshold: float = 0.7
     retrieval_mode: str = "hybrid"
@@ -133,6 +135,7 @@ _AGENTIC_STREAM_REQUEST_KEYS = {
     "history",
     "conversation_id",
     "document_ids",
+    "dataset_ids",
     "tenant_id",
     "account_id",
     "dataset_id",
@@ -166,6 +169,7 @@ def resolve_agentic_stream_request(
             history=legacy_overrides.get("history"),
             conversation_id=legacy_overrides.get("conversation_id"),
             document_ids=legacy_overrides.get("document_ids"),
+            dataset_ids=legacy_overrides.get("dataset_ids"),
             tenant_id=legacy_overrides.get("tenant_id"),
             account_id=legacy_overrides.get("account_id"),
             dataset_id=legacy_overrides.get("dataset_id"),
@@ -402,6 +406,7 @@ class AgenticRAGRunner:
         tenant_id = stream_request.tenant_id
         account_id = stream_request.account_id
         dataset_id = stream_request.dataset_id
+        dataset_ids = stream_request.dataset_ids
         top_k = stream_request.top_k
         score_threshold = stream_request.score_threshold
         retrieval_mode = stream_request.retrieval_mode
@@ -435,6 +440,7 @@ class AgenticRAGRunner:
                 "question": question,
                 "history": history,
                 "document_ids": document_ids,
+                "dataset_ids": dataset_ids,
                 "tenant_id": tenant_id,
                 "account_id": account_id,
                 "dataset_id": dataset_id,

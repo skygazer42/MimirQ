@@ -100,3 +100,126 @@ def test_build_regression_sample_includes_reference_context_ids_and_abstain_meta
         "multihop_order_consistency": None,
         "multihop_chain_hit": None,
     }
+
+
+def test_build_regression_sample_limits_citation_precision_to_eval_window():
+    from app.rag.evaluation.regression_sample_builder import build_regression_sample  # noqa: WPS433
+
+    doc_id = uuid4()
+    ref_chunk = uuid4()
+    noise_chunk_a = uuid4()
+    noise_chunk_b = uuid4()
+    noise_chunk_c = uuid4()
+
+    case = SimpleNamespace(
+        expected_answer=None,
+        reference_sources=[
+            {"document_id": str(doc_id), "chunk_id": str(ref_chunk), "quote": "ref a"},
+        ],
+    )
+    item = {
+        "question": "q",
+        "response": "",
+        "retrieved_contexts": ["ctx"] * 4,
+        "citation_eval_limit": 2,
+        "citations": [
+            {"chunk_id": str(ref_chunk), "document_id": str(doc_id)},
+            {"chunk_id": str(noise_chunk_a), "document_id": str(doc_id)},
+            {"chunk_id": str(noise_chunk_b), "document_id": str(doc_id)},
+            {"chunk_id": str(noise_chunk_c), "document_id": str(doc_id)},
+        ],
+    }
+
+    sample_kwargs, meta = build_regression_sample(case, item)
+
+    assert sample_kwargs["retrieved_context_ids"] == [str(ref_chunk), str(noise_chunk_a)]
+    assert meta["retrieval_recall"] == 1.0
+    assert meta["retrieval_hit_at_1"] is True
+    assert meta["citation_accuracy"] == 0.5
+    assert meta["citation_total_count"] == 4
+    assert meta["citation_evaluated_count"] == 2
+    assert meta["citation_eval_limit"] == 2
+    assert meta["explanations"]["citation_accuracy"] == "relevant_citations=1/2, evaluated_top=2, total=4"
+
+
+def test_build_regression_sample_scores_effective_contexts_from_answer_key_points():
+    from app.rag.evaluation.regression_sample_builder import build_regression_sample  # noqa: WPS433
+
+    doc_id = uuid4()
+    ref_chunk = uuid4()
+    noise_chunk = uuid4()
+
+    case = SimpleNamespace(
+        expected_answer="Alpha permit requires identity proof.",
+        reference_sources=[
+            {"document_id": str(doc_id), "chunk_id": str(ref_chunk), "quote": "Alpha permit requires identity proof."},
+        ],
+        extra={
+            "answer_key_points": ["identity proof"],
+            "answer_key_point_aliases": {"identity proof": ["ID proof"]},
+        },
+    )
+    item = {
+        "question": "What does the alpha permit require?",
+        "response": "",
+        "retrieved_contexts": ["Alpha permit requires ID proof.", "Alpha permit office hours."],
+        "citation_eval_limit": 2,
+        "citations": [
+            {
+                "chunk_id": str(ref_chunk),
+                "document_id": str(doc_id),
+                "chunk_content": "Alpha permit snippet.",
+            },
+            {
+                "chunk_id": str(noise_chunk),
+                "document_id": str(doc_id),
+                "chunk_content": "Alpha permit office hours.",
+            },
+        ],
+    }
+
+    _sample_kwargs, meta = build_regression_sample(case, item)
+
+    assert meta["citation_accuracy"] == 0.5
+    assert meta["retrieval_effective_context_rate"] == 0.5
+    assert meta["retrieval_noise_rate"] == 0.5
+    assert meta["retrieval_effective_records"] == 1
+    assert meta["retrieval_evaluated_records"] == 2
+    assert meta["explanations"]["retrieval_effective_context_rate"] == "effective_records=1/2"
+
+
+def test_build_regression_sample_ndcg_is_capped_for_duplicate_record_identity_hits():
+    from app.rag.evaluation.regression_sample_builder import build_regression_sample  # noqa: WPS433
+
+    record_identity = {
+        "schema": "mimirq.record_identity.v1",
+        "key": "source_record_id=record-1",
+        "fields": {"source_record_id": "record-1"},
+    }
+    case = SimpleNamespace(
+        expected_answer=None,
+        reference_sources=[
+            {
+                "document_id": "doc-1",
+                "chunk_id": "ref-chunk",
+                "quote": "record answer",
+                "_record_identity": record_identity,
+            }
+        ],
+    )
+    item = {
+        "question": "q",
+        "response": "",
+        "retrieved_contexts": ["record answer", "record details"],
+        "citations": [
+            {"chunk_id": "chunk-a", "document_id": "doc-1", "_record_identity": record_identity},
+            {"chunk_id": "chunk-b", "document_id": "doc-1", "_record_identity": record_identity},
+        ],
+    }
+
+    _sample_kwargs, meta = build_regression_sample(case, item)
+
+    assert meta["retrieval_recall"] == 1.0
+    assert meta["citation_accuracy"] == 1.0
+    assert meta["retrieval_ndcg_at_10"] == 1.0
+    assert meta["retrieval_ndcg_at_20"] == 1.0

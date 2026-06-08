@@ -21,6 +21,7 @@ from app.rag.pipeline_plugins.contracts import (
     PipelinePluginContractError,
     summarize_contracts,
     validate_golden_rules_metadata_fields,
+    validate_retrieval_policy_metadata_fields,
     validate_retrieval_text_schema_metadata_fields,
 )
 from app.services.pipeline_patch_validator import normalize_document_pipeline_patch
@@ -56,13 +57,32 @@ _SUPPORTED_MANIFEST_FIELDS = {
     "metadata_schema",
     "retrieval_text_schema",
     "golden_rules",
+    "retrieval_policy",
     "processing_templates",
     "suggested_pipeline_patch",
 }
 _SUPPORTED_CONTRACT_FIELDS = {
     "metadata_schema": {"schema", "fields", "record_identity"},
     "retrieval_text_schema": {"schema", "stages"},
-    "golden_rules": {"schema", "expected_metadata", "template_selector_fields", "tag_fields", "query_templates"},
+    "golden_rules": {
+        "schema",
+        "expected_metadata",
+        "answer_key_point_fields",
+        "template_selector_fields",
+        "tag_fields",
+        "query_templates",
+    },
+    "retrieval_policy": {
+        "schema",
+        "query_expansion_fields",
+        "query_expansion_values",
+        "filter_fields",
+        "boost_fields",
+        "anchor_fields",
+        "rerank_features",
+        "fallback",
+        "response_compaction",
+    },
     "processing_templates": {"schema", "plugin_id", "version", "description", "templates"},
 }
 _PLUGIN_DOC_FILENAMES = {
@@ -124,6 +144,7 @@ class PipelinePluginDescriptor:
     metadata_schema: dict[str, Any] = field(default_factory=dict)
     retrieval_text_schema: dict[str, Any] = field(default_factory=dict)
     golden_rules: dict[str, Any] = field(default_factory=dict)
+    retrieval_policy: dict[str, Any] = field(default_factory=dict)
     processing_templates: dict[str, Any] = field(default_factory=dict)
     contract_summary: dict[str, Any] = field(default_factory=dict)
     suggested_pipeline_patch: dict[str, Any] = field(default_factory=dict)
@@ -254,7 +275,13 @@ def _manifest_entries(raw: dict[str, Any]) -> dict[str, PipelinePluginEntry]:
 
 def _manifest_contract_paths(raw: dict[str, Any]) -> dict[str, str]:
     out: dict[str, str] = {}
-    for key in ("metadata_schema", "retrieval_text_schema", "golden_rules", "processing_templates"):
+    for key in (
+        "metadata_schema",
+        "retrieval_text_schema",
+        "golden_rules",
+        "retrieval_policy",
+        "processing_templates",
+    ):
         value = raw.get(key)
         if value is None:
             continue
@@ -976,6 +1003,11 @@ def describe_plugin_dir(plugin_dir: Path, *, require_test_report: bool | None = 
         if "golden_rules" in contract_paths
         else {}
     )
+    retrieval_policy = (
+        _load_contract_json(plugin_dir, contract_paths["retrieval_policy"])
+        if "retrieval_policy" in contract_paths
+        else {}
+    )
     processing_templates = (
         _load_contract_json(plugin_dir, contract_paths["processing_templates"])
         if "processing_templates" in contract_paths
@@ -1002,6 +1034,13 @@ def describe_plugin_dir(plugin_dir: Path, *, require_test_report: bool | None = 
             expected_schema="mimirq.golden_rules.v1",
             supported_fields=_SUPPORTED_CONTRACT_FIELDS["golden_rules"],
         )
+    if "retrieval_policy" in contract_paths:
+        _validate_declared_contract_schema(
+            retrieval_policy,
+            contract_name="retrieval_policy",
+            expected_schema="mimirq.retrieval_policy.v1",
+            supported_fields=_SUPPORTED_CONTRACT_FIELDS["retrieval_policy"],
+        )
     if "processing_templates" in contract_paths:
         _validate_declared_contract_schema(
             processing_templates,
@@ -1022,12 +1061,17 @@ def describe_plugin_dir(plugin_dir: Path, *, require_test_report: bool | None = 
             metadata_schema=metadata_schema,
         )
         validate_golden_rules_metadata_fields(golden_rules=golden_rules, metadata_schema=metadata_schema)
+        validate_retrieval_policy_metadata_fields(
+            retrieval_policy=retrieval_policy,
+            metadata_schema=metadata_schema,
+        )
     except PipelinePluginContractError as exc:
         raise PipelinePluginRegistryError(str(exc)) from exc
     contract_summary = summarize_contracts(
         metadata_schema=metadata_schema,
         retrieval_text_schema=retrieval_text_schema,
         golden_rules=golden_rules,
+        retrieval_policy=retrieval_policy,
     )
     package_hash = compute_plugin_package_hash(plugin_dir, manifest_path, entries, contract_paths)
     report = _load_test_report(plugin_dir)
@@ -1065,6 +1109,7 @@ def describe_plugin_dir(plugin_dir: Path, *, require_test_report: bool | None = 
         metadata_schema=metadata_schema,
         retrieval_text_schema=retrieval_text_schema,
         golden_rules=golden_rules,
+        retrieval_policy=retrieval_policy,
         processing_templates=processing_templates,
         contract_summary=contract_summary,
         suggested_pipeline_patch=suggested_pipeline_patch,

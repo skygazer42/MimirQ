@@ -16,7 +16,7 @@ def test_build_citations_exposes_plugin_metadata_views_without_private_fields() 
                 "source": "一件事操作指引.txt",
                 "score": 0.9,
                 "section_type": "should-not-leak",
-                "_display_metadata": {"case_title": "社会保障卡居民服务“一件事”"},
+                "_display_metadata": {"case_title": "服务卡居民服务“一件事”"},
                 "_evaluable_metadata": {
                     "section_type": "operation_steps",
                     "retrieval_intents": ["网上办理怎么操作", "申报步骤"],
@@ -30,7 +30,7 @@ def test_build_citations_exposes_plugin_metadata_views_without_private_fields() 
 
     assert citations
     metadata = citations[0]["metadata"]
-    assert metadata["case_title"] == "社会保障卡居民服务“一件事”"
+    assert metadata["case_title"] == "服务卡居民服务“一件事”"
     assert metadata["section_type"] == "operation_steps"
     assert metadata["retrieval_intents"] == ["网上办理怎么操作", "申报步骤"]
     assert metadata["_evaluable_metadata"]["section_type"] == "operation_steps"

@@ -29,4 +29,5 @@ def test_bm25_disabled_short_circuits_keyword_search(monkeypatch):  # noqa: ANN0
     monkeypatch.setattr(settings, "BM25_INDEX_ENABLED", False)
     results = retriever._search_bm25(query="hello", top_k=5, tenant_id=tenant_id)
     assert results == []
-
+    assert retriever._last_bm25_status["index_enabled"] is False
+    assert retriever._last_bm25_status["reason"] == "index_disabled"

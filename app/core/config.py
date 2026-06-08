@@ -809,6 +809,22 @@ class Settings(BaseSettings):
     DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID: str = "system:dify"
     DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON: str = ""
     DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX: int = 5
+    DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MIN: int = 20
+    DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MULTIPLIER: int = 4
+    DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX: int = 50
+    DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_SCOPE_ENABLED: bool = True
+    DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_RECORDS: int = 1
+    DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_TOP_SCORE: float = 0.45
+    DIFY_EXTERNAL_KNOWLEDGE_COMPACT_HIGH_CONFIDENCE_ENABLED: bool = True
+    DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_TOP_SCORE: float = 0.7
+    DIFY_EXTERNAL_KNOWLEDGE_COMPACT_RELATIVE_SCORE_FLOOR: float = 0.65
+    DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_RECORDS: int = 1
+    DIFY_EXTERNAL_KNOWLEDGE_KG_QUERY_EXPANSION_ENABLED: bool = False
+    DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_INJECTION_ENABLED: bool = False
+    DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_INJECTION_MAX_CHUNKS: int = 3
+    DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_BOOST_ENABLED: bool = False
+    DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_BOOST_WEIGHT: float = 0.25
+    DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_BOOST_MAX_PROMOTED: int = 2
 
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     PASSWORD_MIN_LENGTH: int = 8
@@ -913,6 +929,13 @@ class Settings(BaseSettings):
     # Per plugin-declared business record identity (0 disables). Applies only
     # when chunk metadata contains the generic `_record_identity` view.
     RETRIEVAL_MAX_CHUNKS_PER_RECORD_IDENTITY: int = 2
+    # Optional final-context compaction. Disabled by default unless a retrieval
+    # policy or deployment config opts in, because returning fewer than top_k is
+    # a precision-over-recall tradeoff.
+    RETRIEVAL_COMPACT_HIGH_CONFIDENCE_ENABLED: bool = False
+    RETRIEVAL_COMPACT_MIN_TOP_SCORE: float = 0.8
+    RETRIEVAL_COMPACT_RELATIVE_SCORE_FLOOR: float = 0.65
+    RETRIEVAL_COMPACT_MIN_RECORDS: int = 1
     # Per-page diversity within a document (0 disables). Only applies when a chunk has page_number/page metadata.
     RETRIEVAL_MAX_CHUNKS_PER_PAGE: int = 0
     # Metadata filtering for vector search
@@ -1333,6 +1356,8 @@ class Settings(BaseSettings):
     BM25_LAZY_BUILD_FULL_TENANT: bool = False
     # Upper bound for lazy-built chunks (0 disables the cap).
     BM25_LAZY_BUILD_MAX_CHUNKS: int = 8000
+    # Above this scope size, ingestion defers BM25 retriever rebuild to first query (0 disables the cap).
+    BM25_EAGER_UPSERT_MAX_CHUNKS: int = 8000
     # Startup BM25 bootstrap (can be expensive; prefer lazy-build for large deployments).
     BM25_STARTUP_BUILD_ENABLED: bool = False
     # Upper bound for startup-built chunks across the whole instance (0 disables the cap).
@@ -2277,6 +2302,57 @@ class Settings(BaseSettings):
             top_k_max = int(getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX", 5) or 0)
             if top_k_max < 1 or top_k_max > 200:
                 raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX must be between 1 and 200")
+            internal_top_k_min = int(getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MIN", 20) or 0)
+            if internal_top_k_min < 1 or internal_top_k_min > 200:
+                raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MIN must be between 1 and 200")
+            internal_top_k_multiplier = int(
+                getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MULTIPLIER", 4) or 0
+            )
+            if internal_top_k_multiplier < 1 or internal_top_k_multiplier > 20:
+                raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MULTIPLIER must be between 1 and 20")
+            internal_top_k_max = int(getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX", 50) or 0)
+            if internal_top_k_max < 1 or internal_top_k_max > 200:
+                raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX must be between 1 and 200")
+            if internal_top_k_max < top_k_max:
+                raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX must be >= DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX")
+            if internal_top_k_max < internal_top_k_min:
+                raise ValueError(
+                    "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX must be >= DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MIN"
+                )
+            primary_min_records = int(getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_RECORDS", 1) or 0)
+            if primary_min_records < 1 or primary_min_records > top_k_max:
+                raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_RECORDS must be between 1 and TOP_K_MAX")
+            primary_min_top_score = float(
+                getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_TOP_SCORE", 0.45) or 0.0
+            )
+            if primary_min_top_score < 0.0 or primary_min_top_score > 2.0:
+                raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_TOP_SCORE must be between 0 and 2")
+            compact_min_top_score = float(
+                getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_TOP_SCORE", 0.7) or 0.0
+            )
+            if compact_min_top_score < 0.0 or compact_min_top_score > 2.0:
+                raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_TOP_SCORE must be between 0 and 2")
+            compact_relative_floor = float(
+                getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_RELATIVE_SCORE_FLOOR", 0.65) or 0.0
+            )
+            if compact_relative_floor < 0.0 or compact_relative_floor > 1.0:
+                raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_COMPACT_RELATIVE_SCORE_FLOOR must be between 0 and 1")
+            compact_min_records = int(getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_RECORDS", 1) or 0)
+            if compact_min_records < 1 or compact_min_records > top_k_max:
+                raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_RECORDS must be between 1 and TOP_K_MAX")
+            kg_injection_max_chunks = int(
+                getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_INJECTION_MAX_CHUNKS", 3) or 0
+            )
+            if kg_injection_max_chunks < 0 or kg_injection_max_chunks > 50:
+                raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_INJECTION_MAX_CHUNKS must be between 0 and 50")
+            kg_boost_weight = float(getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_BOOST_WEIGHT", 0.25) or 0.0)
+            if kg_boost_weight < 0.0 or kg_boost_weight > 1.0:
+                raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_BOOST_WEIGHT must be between 0 and 1")
+            kg_boost_max_promoted = int(
+                getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_BOOST_MAX_PROMOTED", 2) or 0
+            )
+            if kg_boost_max_promoted < 0 or kg_boost_max_promoted > 20:
+                raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_BOOST_MAX_PROMOTED must be between 0 and 20")
 
         # Security: Validate SECRET_KEY (required for JWT verification)
         if auth_mode == "jwt":
@@ -2399,6 +2475,14 @@ class Settings(BaseSettings):
             raise ValueError("RETRIEVAL_MAX_CHUNKS_PER_DOC must be >= 0")
         if int(getattr(self, "RETRIEVAL_MAX_CHUNKS_PER_RECORD_IDENTITY", 0) or 0) < 0:
             raise ValueError("RETRIEVAL_MAX_CHUNKS_PER_RECORD_IDENTITY must be >= 0")
+        compact_min_top_score = float(getattr(self, "RETRIEVAL_COMPACT_MIN_TOP_SCORE", 0.8) or 0.8)
+        if compact_min_top_score < 0.0 or compact_min_top_score > 2.0:
+            raise ValueError("RETRIEVAL_COMPACT_MIN_TOP_SCORE must be between 0 and 2")
+        compact_relative_floor = float(getattr(self, "RETRIEVAL_COMPACT_RELATIVE_SCORE_FLOOR", 0.65) or 0.65)
+        if compact_relative_floor < 0.0 or compact_relative_floor > 1.0:
+            raise ValueError("RETRIEVAL_COMPACT_RELATIVE_SCORE_FLOOR must be between 0 and 1")
+        if int(getattr(self, "RETRIEVAL_COMPACT_MIN_RECORDS", 1) or 1) < 1:
+            raise ValueError("RETRIEVAL_COMPACT_MIN_RECORDS must be >= 1")
         if int(getattr(self, "RETRIEVAL_MAX_CHUNKS_PER_PAGE", 0) or 0) < 0:
             raise ValueError("RETRIEVAL_MAX_CHUNKS_PER_PAGE must be >= 0")
         if int(getattr(self, "RETRIEVAL_MIN_DISTINCT_DOCS", 0) or 0) < 0:
@@ -2460,6 +2544,8 @@ class Settings(BaseSettings):
 
         if int(getattr(self, "BM25_CACHE_MAX_TENANTS", 0) or 0) < 0:
             raise ValueError("BM25_CACHE_MAX_TENANTS must be >= 0")
+        if int(getattr(self, "BM25_EAGER_UPSERT_MAX_CHUNKS", 0) or 0) < 0:
+            raise ValueError("BM25_EAGER_UPSERT_MAX_CHUNKS must be >= 0")
         if int(getattr(self, "BM25_TOKENIZE_CJK_OOV_MAX_TERM_CHARS", 0) or 0) < 2:
             raise ValueError("BM25_TOKENIZE_CJK_OOV_MAX_TERM_CHARS must be >= 2")
         if int(getattr(self, "BM25_TOKENIZE_CJK_OOV_MAX_EXTRA_TOKENS", 0) or 0) < 0:

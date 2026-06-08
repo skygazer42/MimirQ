@@ -15,6 +15,7 @@ from app.core.config import settings
 from app.core.constants import EmbeddingProviders, MilvusConfig
 from app.rag.core.filters import match_metadata_filter as _match_metadata_filter
 from app.rag.core.logging import get_logger
+from app.rag.pipeline_plugins.contracts import INDEXED_METADATA_KEY
 
 logger = get_logger("storage.vector.milvus")
 
@@ -26,7 +27,7 @@ _MILVUS_FALLBACK_LOG_MESSAGE = "Ignoring non-critical Milvus fallback failure: %
 _MILVUS_FIELD_NAME_RE = re.compile(r"^[A-Za-z_]\w*$")
 _MILVUS_WARNED_WRITE_COMPAT_FALLBACK = False
 _MILVUS_WARNED_SEARCH_EXPR_FALLBACK = False
-_INDEXED_METADATA_VIEW_KEY = "_indexed_metadata"
+_INDEXED_METADATA_VIEW_KEY = INDEXED_METADATA_KEY
 _INDEXED_METADATA_FILTERS_KEY = "__indexed_metadata_filters__"
 _INDEXED_METADATA_SLOT_COUNT = 16
 _INDEXED_METADATA_SLOT_FIELD_PAIRS = tuple(

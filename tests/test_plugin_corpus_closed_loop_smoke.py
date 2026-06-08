@@ -135,6 +135,56 @@ def test_discovery_can_include_source_root_name_when_explicit(tmp_path: Path) ->
     assert [item.rel_path for item in files] == ["04topic-faq/admissions.txt"]
 
 
+def test_discovery_can_sample_each_corpus_group_with_source_root_prefix(tmp_path: Path) -> None:
+    mod = _load_module()
+    root = tmp_path / "domain-corpus"
+    for section in ("01", "02", "06"):
+        section_dir = root / section
+        section_dir.mkdir(parents=True)
+        for index in range(3):
+            (section_dir / f"record-{index}.txt").write_text(f"{section} record {index}", encoding="utf-8")
+
+    files, skipped = mod.discover_corpus_files(
+        root,
+        extensions={".txt"},
+        skip_empty=True,
+        include_root_name=True,
+        max_files_per_group=1,
+    )
+
+    assert [item.rel_path for item in files] == [
+        "domain-corpus/01/record-0.txt",
+        "domain-corpus/02/record-0.txt",
+        "domain-corpus/06/record-0.txt",
+    ]
+    assert {item["reason"] for item in skipped} == {"group_sample_limit"}
+
+
+def test_discovery_can_sample_nested_corpus_groups(tmp_path: Path) -> None:
+    mod = _load_module()
+    root = tmp_path / "domain-corpus"
+    for group in ("05/real-estate", "05/fund", "06/district"):
+        group_dir = root / group
+        group_dir.mkdir(parents=True)
+        for index in range(2):
+            (group_dir / f"record-{index}.txt").write_text(f"{group} record {index}", encoding="utf-8")
+
+    files, skipped = mod.discover_corpus_files(
+        root,
+        extensions={".txt"},
+        skip_empty=True,
+        max_files_per_group=1,
+        sample_group_depth=2,
+    )
+
+    assert [item.rel_path for item in files] == [
+        "05/fund/record-0.txt",
+        "05/real-estate/record-0.txt",
+        "06/district/record-0.txt",
+    ]
+    assert {item["group"] for item in skipped} == {"05/fund", "05/real-estate", "06/district"}
+
+
 def test_upload_form_carries_registered_plugin_pipeline(tmp_path: Path) -> None:
     mod = _load_module()
     src = tmp_path / "01" / "record.txt"
@@ -381,7 +431,8 @@ def test_corpus_smoke_uploads_and_waits_in_batches(tmp_path: Path, monkeypatch: 
         calls.append(("wait", rel_paths))
         return [{"document_id": item.document_id, "source_rel_path": item.file.rel_path} for item in uploaded]
 
-    def fake_closed_loop(**_kwargs):  # noqa: ANN003
+    def fake_closed_loop(**kwargs):  # noqa: ANN003
+        assert kwargs["regression_top_k"] == 5
         return mod.ClosedLoopResult(
             dataset_id="dataset-1",
             plugin_ref="plugin:demo-runtime-plugin@1.0.0:chunk",
@@ -408,6 +459,8 @@ def test_corpus_smoke_uploads_and_waits_in_batches(tmp_path: Path, monkeypatch: 
         extensions=".txt",
         skip_empty=True,
         max_files=0,
+        max_files_per_group=0,
+        sample_group_depth=1,
         include_root_name=False,
         include_hidden=False,
         upload_batch_size=2,
@@ -415,6 +468,7 @@ def test_corpus_smoke_uploads_and_waits_in_batches(tmp_path: Path, monkeypatch: 
         poll_interval_sec=0,
         golden_max_items=1,
         golden_max_chunks=10,
+        regression_top_k=5,
         overwrite_goldens=False,
     )
 
@@ -446,6 +500,28 @@ def test_corpus_api_client_retries_rate_limited_json(monkeypatch: pytest.MonkeyP
     client = mod.CorpusApiClient(base_url="http://127.0.0.1:8000")
 
     assert client.json("GET", "/api/v1/health") == {"ok": True}
+    assert calls == 2
+    assert sleeps == [1.0]
+
+
+def test_corpus_api_client_retries_transient_get_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    mod = _load_module()
+    calls = 0
+    sleeps: list[float] = []
+
+    def fake_json(self, method, path, *, payload=None, query=None):  # noqa: ANN001
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise TimeoutError("timed out")
+        return {"ok": True}
+
+    monkeypatch.setattr(mod.LiveApiClient, "json", fake_json, raising=True)
+    monkeypatch.setattr(mod.time, "sleep", lambda seconds: sleeps.append(float(seconds)), raising=True)
+
+    client = mod.CorpusApiClient(base_url="http://127.0.0.1:8000")
+
+    assert client.json("GET", "/api/v1/documents/doc-1") == {"ok": True}
     assert calls == 2
     assert sleeps == [1.0]
 

@@ -63,6 +63,13 @@ def _raw_report() -> dict:
                 "expected_metadata_recall": 1.0,
                 "expected_metadata_fields_total": 9,
                 "expected_metadata_fields_matched": 9,
+                "citation_accuracy": 0.75,
+                "citation_coverage": 1.0,
+                "retrieval_effective_context_rate": 0.9,
+                "retrieval_noise_rate": 0.1,
+                "citation_eval_limit_avg": 5.0,
+                "citation_evaluated_count_avg": 5.0,
+                "citation_total_count_avg": 12.0,
             },
             "import_result": {
                 "created": 3,
@@ -116,6 +123,12 @@ def test_build_evidence_sanitizes_raw_corpus_smoke_details(tmp_path: Path) -> No
     assert evidence["golden"]["summary"]["retrieval_hit_at_1"] == 0.5
     assert evidence["golden"]["summary"]["retrieval_hit_at_3"] == 1.0
     assert evidence["golden"]["summary"]["retrieval_mrr"] == 0.7
+    assert evidence["golden"]["summary"]["citation_accuracy"] == 0.75
+    assert evidence["golden"]["summary"]["citation_coverage"] == 1.0
+    assert evidence["golden"]["summary"]["retrieval_effective_context_rate"] == 0.9
+    assert evidence["golden"]["summary"]["retrieval_noise_rate"] == 0.1
+    assert evidence["golden"]["summary"]["citation_eval_limit_avg"] == 5.0
+    assert evidence["golden"]["summary"]["citation_total_count_avg"] == 12.0
 
     for forbidden in (
         "/data/temp50",
@@ -152,6 +165,23 @@ def test_main_writes_corpus_closed_loop_evidence(tmp_path: Path) -> None:
     assert "# Plugin Corpus Closed Loop Evidence" in markdown_out.read_text(encoding="utf-8")
 
 
+def test_markdown_preserves_zero_counts(tmp_path: Path) -> None:
+    mod = _load_module()
+    raw_path = tmp_path / "raw.json"
+    raw = _raw_report()
+    raw["golden"]["import_result"] = {
+        "created": 0,
+        "updated": 3,
+        "skipped": 0,
+        "errors": [],
+    }
+    _write_json(raw_path, raw)
+
+    markdown = mod.format_markdown(mod.build_evidence(raw_path))
+
+    assert "| 3 | 0 | 3 | 0 | 0 |" in markdown
+
+
 def test_evidence_fails_when_expected_metadata_recall_is_below_threshold(tmp_path: Path) -> None:
     mod = _load_module()
     raw = _raw_report()
@@ -176,3 +206,32 @@ def test_evidence_fails_when_retrieval_hit_at_3_is_below_threshold(tmp_path: Pat
 
     assert evidence["passed"] is False
     assert "retrieval_hit_at_3" in evidence["failed_checks"]
+
+
+def test_evidence_fails_when_citation_accuracy_is_below_configured_threshold(tmp_path: Path) -> None:
+    mod = _load_module()
+    raw = _raw_report()
+    raw["golden"]["summary"]["citation_accuracy"] = 0.4
+    raw_path = tmp_path / "raw.json"
+    _write_json(raw_path, raw)
+
+    evidence = mod.build_evidence(raw_path, min_citation_accuracy=0.8)
+
+    assert evidence["passed"] is False
+    assert "citation_accuracy" in evidence["failed_checks"]
+
+
+def test_evidence_fails_when_citation_gate_enabled_without_eval_window(tmp_path: Path) -> None:
+    mod = _load_module()
+    raw = _raw_report()
+    summary = raw["golden"]["summary"]
+    summary.pop("citation_eval_limit_avg")
+    summary.pop("citation_evaluated_count_avg")
+    summary.pop("citation_total_count_avg")
+    raw_path = tmp_path / "raw.json"
+    _write_json(raw_path, raw)
+
+    evidence = mod.build_evidence(raw_path, min_citation_accuracy=0.5)
+
+    assert evidence["passed"] is False
+    assert "citation_eval_window" in evidence["failed_checks"]

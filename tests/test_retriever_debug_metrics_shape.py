@@ -78,3 +78,9 @@ def test_retriever_debug_metrics_include_channel_timing_and_counts(monkeypatch: 
 
     for key in ("vector_candidates", "bm25_candidates"):
         assert key in counts
+
+    channels = debug.get("channels")
+    assert isinstance(channels, dict)
+    bm25 = channels.get("bm25")
+    assert isinstance(bm25, dict)
+    assert isinstance(bm25.get("status"), dict)

@@ -85,6 +85,7 @@ class RAGState(TypedDict, total=False):
     question: str
     history: list[dict[str, str]]
     document_ids: list[UUID] | None
+    dataset_ids: list[UUID] | None
     tenant_id: UUID | None
     request_id: str | None
     top_k: int
@@ -1349,6 +1350,7 @@ class RagStateBuildOptions:
     request_id: str | None = None
     account_id: str | None = None
     dataset_id: UUID | None = None
+    dataset_ids: list[UUID] | None = None
     top_k: int = 5
     score_threshold: float = 0.7
     retrieval_mode: str = "hybrid"
@@ -1441,6 +1443,7 @@ def build_rag_state(
     request_id = resolved.request_id
     account_id = resolved.account_id
     dataset_id = resolved.dataset_id
+    dataset_ids = resolved.dataset_ids
     top_k = resolved.top_k
     score_threshold = resolved.score_threshold
     retrieval_mode = resolved.retrieval_mode
@@ -1613,6 +1616,7 @@ def build_rag_state(
         "question": question,
         "history": history or [],
         "document_ids": document_ids,
+        "dataset_ids": dataset_ids,
         "tenant_id": tenant_id,
         "request_id": request_id,
         "account_id": account_id,

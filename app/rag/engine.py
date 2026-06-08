@@ -86,6 +86,8 @@ from app.rag.retrieval.contract import resolve_retrieval_contract_policy
 from app.rag.retrieval.orchestrator import (
     _apply_kg_chunk_boost,
     _fetch_document_chunks_for_kg_injection,
+    _merge_kg_docs_preserving_main,
+    _resolve_kg_scope,
 )
 from app.rag.retrieval.source_labels import maybe_build_source_identification_answer
 from app.rag.retriever import hybrid_retriever
@@ -107,6 +109,7 @@ class RAGChatContext:
     tenant_id: UUID | None = None
     account_id: str | None = None
     dataset_id: UUID | None = None
+    dataset_ids: list[UUID] | None = None
     request_id: str | None = None
 
 
@@ -132,6 +135,7 @@ _STREAM_CONTEXT_KEYS = {
     "tenant_id",
     "account_id",
     "dataset_id",
+    "dataset_ids",
     "request_id",
 }
 _STREAM_RESPONSE_KEYS = {"structured_output", "structured_preset"}
@@ -671,7 +675,10 @@ Requirements:
         out: list[Document] = []
         for d in docs:
             meta = dict(d.metadata or {})
-            meta.setdefault("retrieval_role", role)
+            if str(role or "").strip() == "main":
+                meta.setdefault("retrieval_role", "main")
+            else:
+                meta["retrieval_role"] = str(role or "").strip() or "main"
             out.append(
                 Document(
                     page_content=d.page_content,
@@ -822,6 +829,7 @@ Requirements:
         tenant_id = context.tenant_id
         account_id = context.account_id
         dataset_id = context.dataset_id
+        dataset_ids = context.dataset_ids
         request_id = context.request_id
 
         metadata_filter = rag_config.metadata_filter
@@ -943,6 +951,7 @@ Requirements:
                     history=history,
                     conversation_id=conversation_id,
                     document_ids=document_ids,
+                    dataset_ids=dataset_ids,
                     tenant_id=tenant_id,
                     account_id=account_id,
                     dataset_id=dataset_id,
@@ -1443,22 +1452,32 @@ Requirements:
             kg_query_expansion_queries: list[str] = []
             kg_query_expansion_entity_names: list[str] = []
             try:
+                kg_document_ids, kg_dataset_id, kg_dataset_ids = _resolve_kg_scope(
+                    {
+                        "document_ids": document_ids,
+                        "dataset_id": dataset_id,
+                        "dataset_ids": dataset_ids,
+                    }
+                )
                 if (
                     kg_query_expansion_enabled
                     and bool(getattr(settings, "KG_ENABLED", False))
                     and bool(getattr(settings, "KG_CHAT_ENABLED", False))
                     and tenant_id is not None
-                    and ((document_ids is not None and len(document_ids) > 0) or dataset_id is not None)
-                    and (account_id is not None or dataset_id is None)
+                    and (kg_document_ids or kg_dataset_id is not None or kg_dataset_ids)
+                    and (account_id is not None or (kg_dataset_id is None and not kg_dataset_ids))
                 ):
                     t0 = time.time()
-                    kg_result_cached = await kg_search(
-                        query=query_for_retrieval,
-                        tenant_id=tenant_id,
-                        document_ids=list(document_ids or []) or None,
-                        dataset_id=(dataset_id if not document_ids else None),
-                        account_id=account_id,
-                    )
+                    kg_kwargs = {
+                        "query": query_for_retrieval,
+                        "tenant_id": tenant_id,
+                        "document_ids": kg_document_ids or None,
+                        "dataset_id": kg_dataset_id,
+                        "account_id": account_id,
+                    }
+                    if kg_dataset_ids:
+                        kg_kwargs["dataset_ids"] = kg_dataset_ids
+                    kg_result_cached = await kg_search(**kg_kwargs)
                     kg_query_expansion_elapsed = time.time() - t0
 
                     entities = (kg_result_cached or {}).get("entities") or []
@@ -2034,21 +2053,31 @@ Requirements:
             kg_chunk_boost_meta: dict[str, Any] = {"enabled": False, "reason": "not_run"}
             kg_chunks_injected = 0
             try:
+                kg_document_ids, kg_dataset_id, kg_dataset_ids = _resolve_kg_scope(
+                    {
+                        "document_ids": document_ids,
+                        "dataset_id": dataset_id,
+                        "dataset_ids": dataset_ids,
+                    }
+                )
                 if (
                     bool(kg_chunk_injection_enabled)
                     and bool(getattr(settings, "KG_ENABLED", False))
                     and bool(getattr(settings, "KG_CHAT_ENABLED", False))
                     and db is not None
                     and tenant_id is not None
-                    and (document_ids or dataset_id is not None)
+                    and (kg_document_ids or kg_dataset_id is not None or kg_dataset_ids)
                 ):
-                    kg_result_cached = kg_result_cached or await kg_search(
-                        query=query_for_retrieval,
-                        tenant_id=tenant_id,
-                        document_ids=(document_ids or None),
-                        dataset_id=(dataset_id if not document_ids else None),
-                        account_id=(account_id if not document_ids else None),
-                    )
+                    kg_kwargs = {
+                        "query": query_for_retrieval,
+                        "tenant_id": tenant_id,
+                        "document_ids": kg_document_ids or None,
+                        "dataset_id": kg_dataset_id,
+                        "account_id": account_id if not kg_document_ids else None,
+                    }
+                    if kg_dataset_ids:
+                        kg_kwargs["dataset_ids"] = kg_dataset_ids
+                    kg_result_cached = kg_result_cached or await kg_search(**kg_kwargs)
                     kg_events = (kg_result_cached or {}).get("events") or []
                     max_chunks = int(kg_chunk_injection_max_chunks_i or 0) or 5
 
@@ -2078,14 +2107,17 @@ Requirements:
                             break
 
                     if chunk_ids:
-                        rows = _fetch_document_chunks_for_kg_injection(
-                            db=db,
-                            tenant_id=tenant_id,
-                            account_id=account_id,
-                            dataset_id=dataset_id,
-                            document_ids=list(document_ids or []),
-                            chunk_ids=chunk_ids,
-                        )
+                        fetch_kwargs = {
+                            "db": db,
+                            "tenant_id": tenant_id,
+                            "account_id": account_id,
+                            "dataset_id": kg_dataset_id,
+                            "document_ids": kg_document_ids,
+                            "chunk_ids": chunk_ids,
+                        }
+                        if kg_dataset_ids:
+                            fetch_kwargs["dataset_ids"] = kg_dataset_ids
+                        rows = _fetch_document_chunks_for_kg_injection(**fetch_kwargs)
                         chunk_by_id: dict[UUID, Any] = {
                             ch.id: ch
                             for ch in (rows or [])
@@ -2125,15 +2157,7 @@ Requirements:
                             )
 
                         if kg_docs:
-                            seen_keys: set[str] = set()
-                            merged: list[Document] = []
-                            for doc in (kg_docs + (docs or [])):
-                                key = self._doc_key(doc)
-                                if key in seen_keys:
-                                    continue
-                                seen_keys.add(key)
-                                merged.append(doc)
-                            docs = merged
+                            docs = _merge_kg_docs_preserving_main(docs, kg_docs)
                             kg_chunks_injected = len(kg_docs)
             except Exception:
                 kg_result_cached = None

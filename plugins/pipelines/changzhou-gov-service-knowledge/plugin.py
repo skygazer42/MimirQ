@@ -11,9 +11,22 @@ from langchain_core.documents import Document
 
 _BLOCK_SEPARATOR_RE = re.compile(r"(?:==|--)##########(?:==|--)")
 _TITLE_BRACKET_RE = re.compile(r"^\[(?P<title>.+?)\]\s*$")
-_ALIAS_RE = re.compile(r"==##相似问(?:法)?[：:]\s*(?P<value>.+?)##==")
-_UNLABELED_ALIAS_RE = re.compile(r"==##(?!(?:关键字|关键词|相似问(?:法)?)[：:])(?P<value>.+?)##==")
-_KEYWORD_RE = re.compile(r"==##(?:关键字|关键词)[：:]\s*(?P<value>.+?)##==")
+_FIELD_BOUNDARY_PATTERN = (
+    r"(?:问题|答案|来源部门|问答提供部门|来源工作表|关键字|关键词|相似问(?:法)?|"
+    r"类目路径（多级类目用/分隔）|类目路径|分类路径|业务分类|适用区域|适用地区|"
+    r"办事链接|办理链接|服务链接|内容生效时间|生效时间|内容失效时间|失效时间)"
+)
+_ALIAS_RE = re.compile(r"==##相似问(?:法)?[：:]\s*(?P<value>.+?)##==", re.S)
+_ALIAS_FIELD_RE = re.compile(
+    rf"(?:^|\n)\s*相似问(?:法)?[：:]\s*(?P<value>.*?)(?=\n\s*{_FIELD_BOUNDARY_PATTERN}[：:]|\Z)",
+    re.S,
+)
+_UNLABELED_ALIAS_RE = re.compile(r"==##(?!(?:关键字|关键词|相似问(?:法)?)[：:])(?P<value>.+?)##==", re.S)
+_KEYWORD_RE = re.compile(r"==##(?:关键字|关键词)[：:]\s*(?P<value>.+?)##==", re.S)
+_KEYWORD_FIELD_RE = re.compile(
+    rf"(?:^|\n)\s*(?:关键字|关键词)[：:]\s*(?P<value>.*?)(?=\n\s*{_FIELD_BOUNDARY_PATTERN}[：:]|\Z)",
+    re.S,
+)
 _QUESTION_RE = re.compile(r"问题[：:]\s*\[?(?P<value>.+?)\]?\s*(?:\n|$)")
 _STRUCTURED_QA_TITLE_RE = re.compile(r"^事项名称[：:]\s*\[?(?P<value>.+?)\]?\s*$", re.MULTILINE)
 _ANSWER_RE = re.compile(
@@ -25,6 +38,7 @@ _SOURCE_SHEET_RE = re.compile(r"来源工作表[：:](?P<value>.+)")
 _OPERATION_TITLE_RE = re.compile(r"^(?P<title>.+?一件事)操作指引\s*$")
 _SECTION_HEADING_RE = re.compile(r"^(第[一二三四五六七八九十百0-9]+[章节条]|[一二三四五六七八九十]+、|\d+[.．、]|0\d)")
 _SOFT_BREAK_RE = re.compile(r"(?<=[。！？；;])")
+_COLLAPSED_CHINESE_ALIAS_SEPARATOR_RE = re.compile(r"(?<=[\u4e00-\u9fff？?。！!，,])\s+(?=[\u4e00-\u9fff])")
 _URL_RE = re.compile(r"https?://[^\s>*）)】]+", re.IGNORECASE)
 _BULLET_RE = re.compile(r"^(?:\d{1,3}[.．、]\s*|[①②③④⑤⑥⑦⑧⑨⑩]\s*|（\d{1,3}）\s*|\(\d{1,3}\)\s*)")
 _GUIDE_SECTION_LABELS = {
@@ -205,21 +219,29 @@ def _clean_marker_value(text: str) -> str:
 def _split_list_marker(text: str) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
-    for part in re.split(r"[、,，；;]", _clean_marker_value(text)):
-        value = _clean_marker_value(part)
-        if not value or value in seen:
-            continue
-        seen.add(value)
-        out.append(value)
+    cleaned = re.sub(r"(?i)<br\s*/?>", "\n", str(text or "").replace("\r\n", "\n").replace("\r", "\n"))
+    for part in re.split(r"[\n、；;]+", _clean_marker_value(cleaned)):
+        for item in re.split(r"(?<=[？?。！!])\s+", part.strip()):
+            value = _clean_marker_value(item)
+            if not value or value in seen:
+                continue
+            seen.add(value)
+            out.append(value)
     return out
+
+
+def _split_alias_marker(text: str) -> list[str]:
+    cleaned = re.sub(r"(?i)<br\s*/?>", "\n", str(text or "").replace("\r\n", "\n").replace("\r", "\n"))
+    cleaned = _COLLAPSED_CHINESE_ALIAS_SEPARATOR_RE.sub("\n", cleaned)
+    return _split_list_marker(cleaned)
 
 
 def _extract_aliases(text: str) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
-    for regex in (_ALIAS_RE, _UNLABELED_ALIAS_RE):
+    for regex in (_ALIAS_RE, _ALIAS_FIELD_RE, _UNLABELED_ALIAS_RE):
         for match in regex.finditer(text or ""):
-            for alias in _split_list_marker(match.group("value")):
+            for alias in _split_alias_marker(match.group("value")):
                 if not alias or alias in seen:
                     continue
                 seen.add(alias)
@@ -230,12 +252,13 @@ def _extract_aliases(text: str) -> list[str]:
 def _extract_keywords_marker(text: str) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
-    for match in _KEYWORD_RE.finditer(text or ""):
-        for keyword in _split_list_marker(match.group("value")):
-            if not keyword or keyword in seen:
-                continue
-            seen.add(keyword)
-            out.append(keyword)
+    for regex in (_KEYWORD_RE, _KEYWORD_FIELD_RE):
+        for match in regex.finditer(text or ""):
+            for keyword in _split_list_marker(match.group("value")):
+                if not keyword or keyword in seen:
+                    continue
+                seen.add(keyword)
+                out.append(keyword)
     return out
 
 
@@ -801,7 +824,7 @@ def _parse_markdown_qa_table(source_doc: Document, lines: list[str], sheet: str,
             index=start_index + len(out),
             question=values.get("question", ""),
             answer=values.get("answer", ""),
-            aliases=_split_list_marker(values.get("aliases", "")),
+            aliases=_split_alias_marker(values.get("aliases", "")),
             keywords=_split_list_marker(values.get("keywords", "")),
             source_department=values.get("source_department", ""),
             source_sheet=sheet,

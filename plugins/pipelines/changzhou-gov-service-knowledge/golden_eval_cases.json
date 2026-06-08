@@ -10,6 +10,13 @@
       "expected": {
         "title_contains": ["新北区事项清单"],
         "content_contains": ["事项名称：社会保障卡补卡", "办理地点：新北区"],
+        "metadata": {
+          "gov_knowledge_type": "service_item",
+          "knowledge_section": "01政务服务事项知识",
+          "chunk_kind": "service_item_full",
+          "district": "新北区",
+          "service_name": "社会保障卡补卡"
+        },
         "answer_key_points": [
           "办理地点：新北区云河路69 号新北区政务服务中心三楼18、19号窗口",
           "咨询方式：0519-88516920",
@@ -25,6 +32,13 @@
       "expected": {
         "title_contains": ["经开区事项清单"],
         "content_contains": ["事项名称：社会保障卡补卡", "办理地点："],
+        "metadata": {
+          "gov_knowledge_type": "service_item",
+          "knowledge_section": "01政务服务事项知识",
+          "chunk_kind": "service_item_full",
+          "district": "经开区",
+          "service_name": "社会保障卡补卡"
+        },
         "answer_key_points": [
           "办理地点：常州市锦绣路2号常州市政务服务中心1号楼一楼C区2-9号窗口",
           "咨询方式：0519-12333",
@@ -40,6 +54,13 @@
       "expected": {
         "title_contains": ["天宁区12345QA"],
         "content_contains": ["请问我可以在哪里补办社会保障卡"],
+        "metadata": {
+          "gov_knowledge_type": "qa",
+          "knowledge_section": "06各区常见问题",
+          "chunk_kind": "qa_pair",
+          "district": "天宁区",
+          "source_topic": "天宁区12345QA"
+        },
         "answer_key_points": ["0519-88817001", "雕庄街道为民服务中心"]
       }
     },
@@ -51,6 +72,13 @@
       "expected": {
         "title_contains": ["经开区12345QA"],
         "content_contains": ["请问可以在哪里办理企业社会保险登记"],
+        "metadata": {
+          "gov_knowledge_type": "qa",
+          "knowledge_section": "06各区常见问题",
+          "chunk_kind": "qa_pair",
+          "district": "经开区",
+          "source_topic": "经开区12345QA"
+        },
         "answer_key_points": ["常州经开区政务服务中心一楼大厅C区", "东方东路168号"]
       }
     },
@@ -62,6 +90,13 @@
       "expected": {
         "title_contains": ["经开区12345QA"],
         "content_contains": ["住宅专项维修资金的交存标准", "每平方米120元"],
+        "metadata": {
+          "gov_knowledge_type": "qa",
+          "knowledge_section": "06各区常见问题",
+          "chunk_kind": "qa_pair",
+          "district": "经开区",
+          "source_topic": "经开区12345QA"
+        },
         "answer_key_points": ["2008年3月24日以后", "每平方米120元", "每平方米60元"]
       }
     },
@@ -73,6 +108,12 @@
       "expected": {
         "title_contains": ["常州市高频应用知识"],
         "content_contains": ["汽车置换更新", "补贴申请"],
+        "metadata": {
+          "gov_knowledge_type": "qa",
+          "knowledge_section": "03常州市常见问题",
+          "chunk_kind": "qa_pair",
+          "source_topic": "常州市高频应用知识"
+        },
         "answer_key_points": ["苏服办APP", "2025年补贴申请", "卖旧置换更新补贴", "报废置换更新补贴"],
         "answer_key_point_aliases": {
           "2025年补贴申请": ["2025年汽车置换更新补贴申请", "2025年1月8日"],
@@ -89,6 +130,12 @@
       "expected": {
         "title_contains": ["义务教育学校招生入学常见问题"],
         "content_contains": ["小学入学需要哪些材料"],
+        "metadata": {
+          "gov_knowledge_type": "qa",
+          "knowledge_section": "04专题常见问答",
+          "chunk_kind": "qa_pair",
+          "source_topic": "2026年常州市义务教育学校招生入学常见问题"
+        },
         "answer_key_points": ["户口簿", "合法固定住所证件", "所在学区小学"]
       }
     },
@@ -100,6 +147,13 @@
       "expected": {
         "title_contains": ["线上业务"],
         "content_contains": ["线上业务渠道", "微信公众号"],
+        "metadata": {
+          "gov_knowledge_type": "qa",
+          "knowledge_section": "05业务部门常见问题",
+          "chunk_kind": "qa_pair",
+          "source_topic": "线上业务",
+          "department_domain": "公积金知识"
+        },
         "answer_key_points": ["“常州住房公积金”微信公众号", "我的常州APP", "江苏政务服务网"]
       }
     },
@@ -111,6 +165,12 @@
       "expected": {
         "title_contains": ["一件事操作指引"],
         "content_contains": ["社会保障卡居民服务", "申报流程"],
+        "metadata": {
+          "gov_knowledge_type": "one_thing_operation",
+          "knowledge_section": "02高效办成一件事",
+          "case_title": "社会保障卡居民服务“一件事”",
+          "section_type": "operation_steps"
+        },
         "answer_key_points": ["点击社会保障卡居民服务“一件事”模块", "选择“个人登录”", "补卡申请流程"]
       }
     },
@@ -122,6 +182,12 @@
       "expected": {
         "title_contains": ["一件事指南"],
         "content_contains": ["开办餐饮店", "材料"],
+        "metadata": {
+          "gov_knowledge_type": "one_thing_guide",
+          "knowledge_section": "02高效办成一件事",
+          "case_title": "开办餐饮店“一件事”",
+          "section_type": "materials"
+        },
         "answer_key_points": ["开办餐饮店“一件事”申请表", "法定代表人(负责人)身份证明", "食品安全自查"]
       }
     },
@@ -133,6 +199,12 @@
       "expected": {
         "title_contains": ["居民身份证"],
         "content_contains": ["居民身份证补领", "省内通办"],
+        "metadata": {
+          "gov_knowledge_type": "qa",
+          "knowledge_section": "03常州市常见问题",
+          "chunk_kind": "qa_pair",
+          "source_topic": "核发居民身份证（首次申领、换领、补领、挂失、进度查询等知识）"
+        },
         "answer_key_points": [
           "居民户口簿",
           "有效身份证件之一",
@@ -149,6 +221,12 @@
       "expected": {
         "title_contains": ["常州市本级12345QA"],
         "content_contains": ["如何查询身份证办理进度", "苏证通", "江苏公安微警务"],
+        "metadata": {
+          "gov_knowledge_type": "qa",
+          "knowledge_section": "03常州市常见问题",
+          "chunk_kind": "qa_pair",
+          "source_topic": "常州市本级12345QA"
+        },
         "answer_key_points": ["苏证通", "江苏公安微警务", "身份证办理查询"],
         "answer_key_point_aliases": {
           "身份证办理查询": ["身份证办证进度", "身份证办理进度"]
@@ -163,6 +241,12 @@
       "expected": {
         "title_contains": ["应急局日常问题汇总"],
         "content_contains": ["重置密码"],
+        "metadata": {
+          "gov_knowledge_type": "qa",
+          "knowledge_section": "05业务部门常见问题",
+          "chunk_kind": "qa_pair",
+          "source_topic": "应急局日常问题汇总"
+        },
         "answer_key_points": ["重置密码", "刷新输入限制次数"]
       }
     }

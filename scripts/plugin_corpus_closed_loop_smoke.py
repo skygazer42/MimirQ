@@ -80,6 +80,10 @@ class CorpusApiClient(LiveApiClient):
         for attempt in range(1, 8):
             try:
                 return super().json(method, path, payload=payload, query=query)
+            except TimeoutError as exc:
+                if str(method or "").upper() != "GET" or attempt >= 7:
+                    raise RuntimeError(f"{method} {path} timed out after transient retries") from exc
+                time.sleep(_retry_after_seconds(exc, attempt=attempt))
             except RuntimeError as exc:
                 if not _is_rate_limit_error(exc) or attempt >= 7:
                     raise
@@ -156,6 +160,8 @@ def discover_corpus_files(
     extensions: set[str] | list[str] | tuple[str, ...] | str | None = None,
     skip_empty: bool = True,
     max_files: int = 0,
+    max_files_per_group: int = 0,
+    sample_group_depth: int = 1,
     include_root_name: bool = False,
     include_hidden: bool = False,
 ) -> tuple[list[CorpusFile], list[dict[str, Any]]]:
@@ -166,6 +172,9 @@ def discover_corpus_files(
     allowed = _normalize_extensions(extensions)
     files: list[CorpusFile] = []
     skipped: list[dict[str, Any]] = []
+    group_counts: dict[str, int] = {}
+    per_group_cap = max(0, int(max_files_per_group or 0))
+    group_depth = max(1, int(sample_group_depth or 1))
     for path in sorted(p for p in root.rglob("*") if p.is_file()):
         local_rel = path.relative_to(root)
         if not include_hidden and any(part.startswith(".") for part in local_rel.parts):
@@ -177,6 +186,14 @@ def discover_corpus_files(
         if skip_empty and size <= 0:
             skipped.append({"path": rel, "reason": "empty_file", "size": size})
             continue
+        if per_group_cap > 0:
+            parent_parts = local_rel.parent.parts
+            group_key = "/".join(parent_parts[:group_depth]) if parent_parts and parent_parts != (".",) else "."
+            current_count = group_counts.get(group_key, 0)
+            if current_count >= per_group_cap:
+                skipped.append({"path": rel, "reason": "group_sample_limit", "size": size, "group": group_key})
+                continue
+            group_counts[group_key] = current_count + 1
         files.append(CorpusFile(path=path, rel_path=rel, size=size))
         if max_files > 0 and len(files) >= max_files:
             break
@@ -398,6 +415,8 @@ def run_corpus_closed_loop_smoke(
     extensions: str,
     skip_empty: bool,
     max_files: int,
+    max_files_per_group: int,
+    sample_group_depth: int,
     include_root_name: bool,
     include_hidden: bool,
     upload_batch_size: int,
@@ -405,6 +424,7 @@ def run_corpus_closed_loop_smoke(
     poll_interval_sec: float,
     golden_max_items: int,
     golden_max_chunks: int,
+    regression_top_k: int,
     overwrite_goldens: bool,
 ) -> CorpusClosedLoopResult:
     files, skipped = discover_corpus_files(
@@ -412,6 +432,8 @@ def run_corpus_closed_loop_smoke(
         extensions=extensions,
         skip_empty=skip_empty,
         max_files=max_files,
+        max_files_per_group=max_files_per_group,
+        sample_group_depth=sample_group_depth,
         include_root_name=include_root_name,
         include_hidden=include_hidden,
     )
@@ -479,6 +501,7 @@ def run_corpus_closed_loop_smoke(
         overwrite=overwrite_goldens,
         poll_timeout_sec=processing_timeout_sec,
         poll_interval_sec=poll_interval_sec,
+        regression_top_k=regression_top_k,
     )
     return CorpusClosedLoopResult(
         dataset_id=resolved_dataset_id,
@@ -623,6 +646,22 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--max-files", type=int, default=0, help="Limit uploaded files for smoke debugging. 0 means all.")
     parser.add_argument(
+        "--max-files-per-group",
+        type=int,
+        default=0,
+        help=(
+            "Limit uploaded files per first-level corpus group after filtering. "
+            "0 means no per-group sampling. Grouping uses paths relative to --source-dir, "
+            "so --include-source-root-name does not collapse every file into one group."
+        ),
+    )
+    parser.add_argument(
+        "--sample-group-depth",
+        type=int,
+        default=1,
+        help="Number of path levels under --source-dir used for --max-files-per-group grouping.",
+    )
+    parser.add_argument(
         "--upload-batch-size",
         type=int,
         default=0,
@@ -641,6 +680,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--poll-interval", type=float, default=float(os.getenv("MIMIRQ_POLL_INTERVAL_SEC") or "2"))
     parser.add_argument("--golden-max-items", type=int, default=200)
     parser.add_argument("--golden-max-chunks", type=int, default=5000)
+    parser.add_argument(
+        "--regression-top-k",
+        type=int,
+        default=20,
+        help="Retrieval-only Golden regression top_k/citation evaluation window.",
+    )
     parser.add_argument("--overwrite-goldens", action="store_true")
     return parser
 
@@ -673,6 +718,8 @@ def main(argv: list[str] | None = None) -> int:
             extensions=str(args.extensions or ""),
             skip_empty=not bool(args.include_empty_files),
             max_files=int(args.max_files),
+            max_files_per_group=int(args.max_files_per_group),
+            sample_group_depth=int(args.sample_group_depth),
             include_root_name=bool(args.include_source_root_name),
             include_hidden=bool(args.include_hidden),
             upload_batch_size=int(args.upload_batch_size or 0),
@@ -680,6 +727,7 @@ def main(argv: list[str] | None = None) -> int:
             poll_interval_sec=float(args.poll_interval),
             golden_max_items=int(args.golden_max_items),
             golden_max_chunks=int(args.golden_max_chunks),
+            regression_top_k=int(args.regression_top_k),
             overwrite_goldens=bool(args.overwrite_goldens),
         )
     except Exception as exc:  # noqa: BLE001

@@ -90,6 +90,81 @@ def test_sparse_index_incremental_upsert_encodes_only_new_docs(monkeypatch: pyte
     assert encode_calls[1] == ["beta"]
 
 
+def test_bm25_upsert_infers_dataset_scope_from_document_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    Ingestion uses the singleton hybrid_retriever without setting retriever.dataset_id.
+    BM25 updates must still stay dataset-scoped when chunks carry dataset_id metadata;
+    otherwise each ingested document rebuilds a growing tenant-wide BM25 corpus.
+    """
+    monkeypatch.setattr(settings, "SPARSE_RETRIEVAL_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "COLBERT_RETRIEVAL_ENABLED", False, raising=False)
+
+    tenant_id = _mk_uuid("tenant:bm25:dataset-scope")
+    dataset_id = _mk_uuid("dataset:bm25:dataset-scope")
+    document_id = _mk_uuid("doc:bm25:dataset-scope")
+    chunk_id = _mk_uuid("chunk:bm25:dataset-scope")
+    retriever = HybridRetriever()
+
+    retriever.upsert_bm25_documents(
+        [
+            Document(
+                page_content="dataset scoped chunk",
+                id=str(chunk_id),
+                metadata={
+                    "tenant_id": str(tenant_id),
+                    "dataset_id": str(dataset_id),
+                    "document_id": str(document_id),
+                    "chunk_index": 0,
+                    "chunk_id": str(chunk_id),
+                },
+            )
+        ],
+        tenant_id=tenant_id,
+    )
+
+    tenant_key = retriever._tenant_key(tenant_id)
+    dataset_key = f"{tenant_key}:dataset:{dataset_id}"
+    assert dataset_key in retriever._bm25_docs
+    assert tenant_key not in retriever._bm25_docs
+
+
+def test_bm25_upsert_defers_rebuild_when_dataset_scope_exceeds_eager_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Large corpus ingestion must not rebuild the whole dataset BM25 retriever after every document.
+    Once the scope exceeds the eager limit, keep docs cached and defer retriever construction.
+    """
+    monkeypatch.setattr(settings, "BM25_EAGER_UPSERT_MAX_CHUNKS", 1, raising=False)
+    monkeypatch.setattr(settings, "SPARSE_RETRIEVAL_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "COLBERT_RETRIEVAL_ENABLED", False, raising=False)
+
+    tenant_id = _mk_uuid("tenant:bm25:eager-limit")
+    dataset_id = _mk_uuid("dataset:bm25:eager-limit")
+    document_id = _mk_uuid("doc:bm25:eager-limit")
+    retriever = HybridRetriever(tenant_id=tenant_id, dataset_id=dataset_id)
+
+    docs = [
+        Document(
+            page_content="alpha",
+            id=str(_mk_uuid("chunk:bm25:eager-limit:alpha")),
+            metadata={"tenant_id": str(tenant_id), "dataset_id": str(dataset_id), "document_id": str(document_id), "chunk_index": 0},
+        ),
+        Document(
+            page_content="beta",
+            id=str(_mk_uuid("chunk:bm25:eager-limit:beta")),
+            metadata={"tenant_id": str(tenant_id), "dataset_id": str(dataset_id), "document_id": str(document_id), "chunk_index": 1},
+        ),
+    ]
+
+    retriever.upsert_bm25_documents(docs, tenant_id=tenant_id)
+
+    cache_key = f"{retriever._tenant_key(tenant_id)}:dataset:{dataset_id}"
+    assert len(retriever._bm25_docs[cache_key]) == 2
+    assert cache_key not in retriever._bm25_retrievers
+    assert retriever._chunk_id_lookup[cache_key]
+
+
 def test_colbert_ann_incremental_upsert_encodes_only_new_docs(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     Production goal (Wave2):

@@ -108,6 +108,143 @@ def _load_engine() -> KGEngine:
         return _engine
 
 
+def _dedupe_uuid_list(values: Iterable[UUID] | None) -> list[UUID]:
+    out: list[UUID] = []
+    seen: set[UUID] = set()
+    for value in values or []:
+        try:
+            item = value if isinstance(value, UUID) else UUID(str(value))
+        except Exception:
+            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            continue
+        if item in seen:
+            continue
+        seen.add(item)
+        out.append(item)
+    return out
+
+
+def _kg_result_item_key(item: dict[str, Any], fields: tuple[str, ...]) -> str:
+    for field in fields:
+        value = str(item.get(field) or "").strip()
+        if value:
+            return f"{field}:{value}"
+    return stable_hash(str(sorted(item.items())), length=24)
+
+
+def _kg_item_score(item: dict[str, Any]) -> float:
+    for field in ("score", "weight", "relevance_score"):
+        try:
+            return float(item.get(field) or 0.0)
+        except (TypeError, ValueError, AttributeError):
+            continue
+    return 0.0
+
+
+def _merge_kg_dataset_shard_results(
+    shards: list[tuple[UUID, dict[str, Any] | None, str | None]],
+) -> dict[str, Any]:
+    events_by_key: dict[str, dict[str, Any]] = {}
+    entities_by_key: dict[str, dict[str, Any]] = {}
+    clues_by_key: dict[str, Any] = {}
+    community_reports: list[Any] = []
+    global_summaries: list[str] = []
+    shard_stats: list[dict[str, Any]] = []
+    errors = 0
+    merge_order = 0
+
+    for dataset_id, result, error in shards:
+        if error:
+            errors += 1
+            shard_stats.append({"dataset_id": str(dataset_id), "error": str(error)[:200]})
+            continue
+        data = result if isinstance(result, dict) else {}
+        events = data.get("events") if isinstance(data.get("events"), list) else []
+        entities = data.get("entities") if isinstance(data.get("entities"), list) else []
+        clues = data.get("clues") if isinstance(data.get("clues"), list) else []
+        shard_stats.append(
+            {
+                "dataset_id": str(dataset_id),
+                "events": len(events),
+                "entities": len(entities),
+                "clues": len(clues),
+            }
+        )
+
+        for event in events:
+            if not isinstance(event, dict):
+                continue
+            enriched = dict(event)
+            enriched.setdefault("dataset_id", str(dataset_id))
+            key = _kg_result_item_key(enriched, ("id", "event_id", "chunk_id"))
+            current = events_by_key.get(key)
+            if current is None:
+                enriched["_merge_order"] = merge_order
+                merge_order += 1
+                events_by_key[key] = enriched
+            elif _kg_item_score(enriched) > _kg_item_score(current):
+                enriched["_merge_order"] = current.get("_merge_order", merge_order)
+                events_by_key[key] = enriched
+
+        for entity in entities:
+            if not isinstance(entity, dict):
+                continue
+            key = _kg_result_item_key(entity, ("entity_id", "id", "name", "normalized_name"))
+            current = entities_by_key.get(key)
+            if current is None:
+                enriched_entity = dict(entity)
+                enriched_entity["_merge_order"] = merge_order
+                merge_order += 1
+                entities_by_key[key] = enriched_entity
+            elif _kg_item_score(entity) > _kg_item_score(current):
+                enriched_entity = dict(entity)
+                enriched_entity["_merge_order"] = current.get("_merge_order", merge_order)
+                entities_by_key[key] = enriched_entity
+
+        for clue in clues:
+            clues_by_key.setdefault(stable_hash(str(clue), length=24), clue)
+
+        reports = data.get("community_reports")
+        if isinstance(reports, list):
+            community_reports.extend(reports)
+        summary = str(data.get("global_summary") or "").strip()
+        if summary:
+            global_summaries.append(summary)
+
+    max_events = max(1, int(getattr(settings, "KG_SEARCH_MULTI_DATASET_MAX_EVENTS", 80) or 80))
+    max_entities = max(1, int(getattr(settings, "KG_SEARCH_MULTI_DATASET_MAX_ENTITIES", 80) or 80))
+    events = sorted(
+        events_by_key.values(),
+        key=lambda item: (-_kg_item_score(item), int(item.get("_merge_order", 0) or 0)),
+    )[:max_events]
+    entities = sorted(
+        entities_by_key.values(),
+        key=lambda item: (-_kg_item_score(item), int(item.get("_merge_order", 0) or 0)),
+    )[:max_entities]
+    for item in [*events, *entities]:
+        if isinstance(item, dict):
+            item.pop("_merge_order", None)
+    clues = list(clues_by_key.values())
+
+    return {
+        "events": events,
+        "entities": entities,
+        "clues": clues,
+        "stats": {
+            "multi_dataset_scope": True,
+            "dataset_shards": len(shards),
+            "dataset_shards_with_events": sum(1 for _dataset_id, result, _error in shards if result and result.get("events")),
+            "dataset_shard_errors": errors,
+            "dataset_shard_stats": shard_stats[:50],
+            "candidates": len(events),
+            "clues_returned": len(clues),
+        },
+        "community_reports": community_reports[:50],
+        "global_summary": "\n\n".join(global_summaries[:5]),
+        "query": {"scope": "multi_dataset"},
+    }
+
+
 async def extract_events(
     chunk_ids: Iterable[UUID],
     tenant_id: UUID | None = None,
@@ -151,9 +288,34 @@ async def kg_search(
     tenant_id: UUID | None = None,
     document_ids: list[UUID] | None = None,
     dataset_id: UUID | None = None,
+    dataset_ids: list[UUID] | None = None,
     account_id: str | None = None,
     query_mode: str | None = None,
 ) -> dict:
+    scoped_dataset_ids = _dedupe_uuid_list(dataset_ids)
+    if document_ids or dataset_id is not None:
+        scoped_dataset_ids = []
+    if len(scoped_dataset_ids) == 1:
+        dataset_id = scoped_dataset_ids[0]
+        scoped_dataset_ids = []
+    if scoped_dataset_ids:
+        shards: list[tuple[UUID, dict[str, Any] | None, str | None]] = []
+        for scoped_dataset_id in scoped_dataset_ids:
+            try:
+                result = await kg_search(
+                    query=query,
+                    tenant_id=tenant_id,
+                    document_ids=None,
+                    dataset_id=scoped_dataset_id,
+                    dataset_ids=None,
+                    account_id=account_id,
+                    query_mode=query_mode,
+                )
+                shards.append((scoped_dataset_id, result if isinstance(result, dict) else {}, None))
+            except Exception as exc:  # noqa: BLE001
+                shards.append((scoped_dataset_id, None, str(exc)[:200]))
+        return _merge_kg_dataset_shard_results(shards)
+
     default_mode = str(getattr(settings, "KG_SEARCH_QUERY_MODE_DEFAULT", "auto") or "auto")
     requested_mode = normalize_kg_query_mode(query_mode, default=default_mode)
     classifier_enabled = bool(getattr(settings, "KG_SEARCH_QUERY_MODE_CLASSIFIER_ENABLED", True))

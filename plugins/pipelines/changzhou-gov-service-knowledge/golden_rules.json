@@ -5,6 +5,11 @@
     "gov_knowledge_type",
     "knowledge_section"
   ],
+  "answer_key_point_fields": [
+    "answer",
+    "materials",
+    "operation_steps"
+  ],
   "template_selector_fields": [
     "chunk_kind",
     "gov_knowledge_type"

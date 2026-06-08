@@ -6,6 +6,7 @@
   "status": "published",
   "metadata_schema": "metadata_schema.json",
   "retrieval_text_schema": "retrieval_text_schema.json",
+  "retrieval_policy": "retrieval_policy.json",
   "golden_rules": "golden_rules.json",
   "processing_templates": "processing_templates.json",
   "suggested_pipeline_patch": {

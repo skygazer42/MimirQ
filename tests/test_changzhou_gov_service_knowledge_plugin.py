@@ -99,6 +99,40 @@ def test_changzhou_processing_templates_point_to_plugin_implementations():
             assert f"def {symbol}" in source or f"{symbol} =" in source
 
 
+def test_changzhou_retrieval_policy_declares_platform_consumable_fields():
+    descriptor = describe_plugin_dir(PLUGIN_DIR, require_test_report=False)
+    summary = descriptor.contract_summary["retrieval_policy"]
+
+    assert descriptor.retrieval_policy["schema"] == "mimirq.retrieval_policy.v1"
+    assert "service_name" in summary["query_expansion_fields"]
+    assert "question" in summary["query_expansion_fields"]
+    assert "section_type" in summary["query_expansion_value_fields"]
+    assert "district" in summary["filter_fields"]
+    assert "gov_knowledge_type" in summary["filter_fields"]
+    assert "question" in summary["boost_fields"]
+    assert "district" in summary["anchor_fields"]
+    assert "chunk_kind" in summary["rerank_features"]
+    assert summary["fallback_enabled"] is True
+    assert summary["response_compaction_enabled"] is True
+    boost_matches = {
+        str(item.get("metadata")): str(item.get("match") or "")
+        for item in descriptor.retrieval_policy.get("boost_fields", [])
+        if isinstance(item, dict)
+    }
+    assert boost_matches["question"] == "fuzzy_overlap"
+    assert boost_matches["aliases"] == "fuzzy_overlap"
+    assert boost_matches["service_aliases"] == "fuzzy_overlap"
+    value_terms = {
+        str(item.get("value")): set(item.get("terms") or [])
+        for item in descriptor.retrieval_policy.get("query_expansion_values", [])
+        if item.get("metadata") == "section_type"
+    }
+    assert {"申请材料", "需要哪些材料", "材料清单"}.issubset(value_terms["materials"])
+    assert {"办理流程", "怎么办理"}.issubset(value_terms["process"])
+    assert {"涉及事项", "包含哪些事项"}.issubset(value_terms["related_services"])
+    assert {"办理渠道", "在哪里办理"}.issubset(value_terms["channels"])
+
+
 def test_changzhou_plugin_governs_service_item_records():
     source = "/data/temp50/20260522政务服务智能客服知识/01政务服务事项知识/经开区事项清单.txt"
     text = """[事项名称：社会保障卡补卡]
@@ -165,6 +199,63 @@ def test_changzhou_service_item_chunks_include_retrieval_anchor_text():
         "社会保障卡补卡咨询电话是多少",
         "社会保障卡补卡能不能网上办",
         "社会保障卡补卡怎么办理",
+    ]
+
+
+def test_changzhou_department_qa_splits_sentence_aliases_from_xlsx_markdown():
+    source = "/data/temp50/20260522政务服务智能客服知识/05业务部门常见问题/不动产知识库/不动产常见问答.xlsx"
+    text = """Excel: 不动产常见问答.xlsx
+Sheets: 可导入版本
+
+## Sheet: 可导入版本
+
+| 问题 | 相似问法 | 答案 | 业务分类 |
+| --- | --- | --- | --- |
+| 抵押权注销登记需要哪些申请材料？ | 办理抵押权注销登记需要带哪些材料？ 申请注销抵押权登记需要提交什么资料？ 抵押权注销手续要准备哪些证件和文件？ | 需提交登记申请书、申请人身份证明。 | 常州/抵押权登记 |
+"""
+
+    records = _run_governance(Document(page_content=text, metadata={"source": source}))
+
+    assert records[0].metadata["aliases"] == [
+        "办理抵押权注销登记需要带哪些材料？",
+        "申请注销抵押权登记需要提交什么资料？",
+        "抵押权注销手续要准备哪些证件和文件？",
+    ]
+
+
+def test_changzhou_department_qa_splits_newline_aliases_from_xlsx_markdown():
+    source = "/data/temp50/20260522政务服务智能客服知识/05业务部门常见问题/不动产知识库/不动产常见问答.xlsx"
+    text = """[类目路径：常州/其他]; [问题：不动产登记交易中心地址和联系方式]; [相似问法：请问不动产登记交易中心的地址在哪里，联系电话是多少
+不动产登记交易中心的具体位置和联系电话是多少
+我想知道不动产登记交易中心的详细地址和联系方式]; [答案：电话：0519-12345。] ——可导入版本"""
+
+    records = _run_governance(Document(page_content=text, metadata={"source": source, "file_type": "xlsx"}))
+
+    assert records[0].metadata["aliases"] == [
+        "请问不动产登记交易中心的地址在哪里，联系电话是多少",
+        "不动产登记交易中心的具体位置和联系电话是多少",
+        "我想知道不动产登记交易中心的详细地址和联系方式",
+    ]
+
+
+def test_changzhou_department_qa_splits_collapsed_whitespace_aliases_from_xlsx_markdown():
+    source = "/data/temp50/20260522政务服务智能客服知识/05业务部门常见问题/不动产知识库/不动产常见问答.xlsx"
+    text = """Excel: 不动产常见问答.xlsx
+Sheets: 可导入版本
+
+## Sheet: 可导入版本
+
+| 类目路径（多级类目用/分隔） | 问题 | 相似问法 | 答案 |
+| --- | --- | --- | --- |
+| 常州/其他 | 不动产登记交易中心地址和联系方式 | 请问不动产登记交易中心的地址在哪里，联系电话是多少 不动产登记交易中心的具体位置和联系电话是多少 我想知道不动产登记交易中心的详细地址和联系方式 | 电话：0519-12345。 |
+"""
+
+    records = _run_governance(Document(page_content=text, metadata={"source": source, "file_type": "xlsx"}))
+
+    assert records[0].metadata["aliases"] == [
+        "请问不动产登记交易中心的地址在哪里，联系电话是多少",
+        "不动产登记交易中心的具体位置和联系电话是多少",
+        "我想知道不动产登记交易中心的详细地址和联系方式",
     ]
 
 

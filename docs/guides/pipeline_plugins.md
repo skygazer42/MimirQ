@@ -26,6 +26,7 @@ Recommended contract files:
 ```text
 metadata_schema.json
 retrieval_text_schema.json
+retrieval_policy.json
 golden_rules.json
 sample.json
 README.md
@@ -66,6 +67,7 @@ selected/executed until the runner is executed again.
   "status": "published",
   "metadata_schema": "metadata_schema.json",
   "retrieval_text_schema": "retrieval_text_schema.json",
+  "retrieval_policy": "retrieval_policy.json",
   "golden_rules": "golden_rules.json",
   "processing_templates": "processing_templates.json",
   "suggested_pipeline_patch": {
@@ -85,13 +87,13 @@ selected/executed until the runner is executed again.
 
 Manifest top-level fields are a closed platform contract. Do not add business-specific top-level fields such as region, domain, record type, or custom limits. Put business fields in `metadata_schema.json`, behavior in plugin code, and small runtime knobs under `governance_python_params`, `chunk_python_params`, or `kg_python_params`.
 Contract file fields must be non-empty relative paths when present:
-`metadata_schema`, `retrieval_text_schema`, `golden_rules`, and
+`metadata_schema`, `retrieval_text_schema`, `retrieval_policy`, `golden_rules`, and
 `processing_templates` either point to a local JSON file or are omitted
 entirely.
 Contract file fields must be strings; non-string values are rejected before file
 resolution.
 Contract JSON top-level fields are closed platform contracts.
-Do not add business-specific top-level fields to `metadata_schema.json`, `retrieval_text_schema.json`, `golden_rules.json`, or `processing_templates.json`; put business metadata under `metadata_schema.fields`, retrieval composition under `retrieval_text_schema.stages`, evaluation declarations under the supported Golden rule arrays/templates, and operator-facing business template provenance under `processing_templates.templates`.
+Do not add business-specific top-level fields to `metadata_schema.json`, `retrieval_text_schema.json`, `retrieval_policy.json`, `golden_rules.json`, or `processing_templates.json`; put business metadata under `metadata_schema.fields`, retrieval composition under `retrieval_text_schema.stages`, retrieval strategy hints under `retrieval_policy`, evaluation declarations under the supported Golden rule arrays/templates, and operator-facing business template provenance under `processing_templates.templates`.
 `processing_templates.json` is a plugin-owned template provenance contract:
 MimirQ validates and exposes the declared `templates[]`, but does not copy those
 business templates into platform built-ins.
@@ -394,6 +396,90 @@ string or numeric shortcuts are rejected before recall text is built.
 Use this for aliases, titles, section names, and business labels that improve
 recall. Do not drop source content; the source content remains the display and
 evidence body.
+
+## Retrieval Policy
+
+`retrieval_policy.json` declares how plugin metadata can be consumed by generic
+retrieval planning and ranking. It is not a business code hook, does not contain
+dataset ids, and must not encode Dify/workflow-specific routing. The platform
+validates field references against `metadata_schema.json` so adapters and
+retrievers can later consume the same contract without hard-coding business
+field names.
+
+```json
+{
+  "schema": "mimirq.retrieval_policy.v1",
+  "query_expansion_fields": ["record_title", "aliases", "keywords"],
+  "query_expansion_values": [
+    { "metadata": "segment_type", "value": "steps", "terms": ["setup steps", "operation guide"] },
+    { "metadata": "record_type", "values": ["faq", "help"], "terms": ["help center"] }
+  ],
+  "filter_fields": ["business_type", "record_type", "segment_type"],
+  "boost_fields": [
+    { "metadata": "record_title", "weight": 1.8, "match": "contains" },
+    { "metadata": "aliases", "weight": 1.5, "match": "overlap" }
+  ],
+  "anchor_fields": [
+    {
+      "metadata": "region",
+      "weight": 2.0,
+      "aliases": {
+        "north": ["north", "north district"],
+        "south": ["south", "south district"]
+      }
+    }
+  ],
+  "rerank_features": ["business_type", "record_type", "segment_type"],
+  "fallback": {
+    "enabled": true,
+    "expand_top_k_multiplier": 2
+  }
+}
+```
+
+Use `query_expansion_values` when a metadata value represents a business-specific
+intent that should add recall/ranking terms. The platform treats it as data:
+if a record has `segment_type=steps`, the terms are available to generic
+retrieval policy scoring without adding adapter code for that business.
+
+`query_expansion_fields`, `filter_fields`, `anchor_fields`, and
+`rerank_features` must reference metadata field names declared by
+`metadata_schema.json` and available at the `chunk` stage. `filter_fields` must
+reference fields marked `filterable: true`; this keeps policy filters aligned
+with `_indexed_metadata` and vector-store pushdown support.
+Adapters may also use values from `query_expansion_fields` as bounded ranking
+hints when the user query already contains those metadata terms. This keeps
+business synonyms and titles inside plugin metadata while letting the platform
+rank candidates without hard-coded business field names.
+When a Dify knowledge map entry declares `plugin_refs`, the adapter also uses
+the referenced plugins' `filter_fields` as an allowlist for Dify
+`metadata_condition` pushdown. Without `plugin_refs`, legacy metadata filters
+keep their existing behavior for compatibility.
+Adapters may use `rerank_features` as weaker bounded ranking features when the
+query contains values from those declared metadata fields. Use explicit
+`boost_fields` when a business field should carry stronger or weighted ranking
+intent.
+
+`anchor_fields[]` entries let a plugin declare query-scoping anchors such as
+region, product line, department, or jurisdiction. When the query clearly
+matches one declared anchor value but a candidate record carries a different
+value for the same metadata field, adapters may apply a bounded demotion. The
+platform only understands the generic `metadata`, `weight`, and `aliases`
+contract; the plugin owns the actual business values and aliases.
+
+`boost_fields[]` entries are objects with `metadata`, optional `weight`, and
+optional `match`. Supported match modes are `exact`, `contains`, and `overlap`.
+Weights must be positive and bounded. These are planner/reranker hints, not a
+guarantee that every retrieval profile will apply them.
+
+`fallback.enabled` and `fallback.expand_top_k_multiplier` describe whether the
+generic planner may widen recall when first-pass evidence is weak. This remains
+platform-owned execution policy; the plugin only declares that widening is
+acceptable for this business package.
+Dify adapter entries with `plugin_refs` apply the largest enabled fallback
+multiplier from the referenced plugins to the internal candidate window, still
+bounded by `DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX`; the external `top_k`
+returned to Dify is unchanged.
 
 ## Golden Rules
 

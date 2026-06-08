@@ -12,6 +12,7 @@ import time
 import unicodedata
 from collections import Counter, OrderedDict
 from dataclasses import dataclass, replace
+from functools import lru_cache
 from typing import Any, ClassVar, cast
 from uuid import UUID
 
@@ -38,11 +39,23 @@ from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
 from app.rag.core.retrieval_profiles import is_recall_first_profile
 from app.rag.embedding.utils import current_embedding_space_hash
+from app.rag.pipeline_plugins.contracts import (
+    DISPLAY_METADATA_KEY,
+    EVALUABLE_METADATA_KEY,
+    INDEXED_METADATA_KEY,
+    METADATA_SCHEMA_VIEW_KEYS,
+    RECORD_IDENTITY_METADATA_KEY,
+)
 from app.rag.preprocessing.stopwords import STOPWORDS
 from app.rag.preprocessing.tokenization import tokenize_for_bm25
 from app.rag.reranker.factory import get_reranker
 from app.rag.reranker.types import RerankCandidate
 from app.rag.retrieval.context_expansion import expand_ranked_chunk_results
+from app.rag.retrieval.planner import compact_high_confidence_items, retrieval_policy_response_compaction
+from app.rag.retrieval.plugin_policy import (
+    record_retrieval_policy_bonus,
+    records_retrieval_policy_diagnostics,
+)
 from app.rag.retrieval.query_phrase_match import query_phrase_match
 from app.rag.retrieval.sibling_expand import select_document_expansion_mode
 from app.rag.retrieval.source_labels import derive_document_title, should_replace_source_label
@@ -74,16 +87,12 @@ LEXICAL_DB_SEARCH_FAILED_LOG = "Lexical DB search failed: %s"
 NON_CRITICAL_RETRIEVER_FALLBACK_LOG = "Ignoring non-critical retriever fallback failure: %s"
 _RETRIEVAL_DISPLAY_CONTENT_KEY = "_retrieval_display_content"
 _RETRIEVAL_QUESTIONS_CHANNEL_KEY = "_retrieval_questions_channel_applied"
-_INDEXED_METADATA_KEY = "_indexed_metadata"
-_DISPLAY_METADATA_KEY = "_display_metadata"
-_EVALUABLE_METADATA_KEY = "_evaluable_metadata"
-_RECORD_IDENTITY_METADATA_KEY = "_record_identity"
-_PLATFORM_METADATA_VIEW_KEYS = (
-    _INDEXED_METADATA_KEY,
-    _DISPLAY_METADATA_KEY,
-    _EVALUABLE_METADATA_KEY,
-    _RECORD_IDENTITY_METADATA_KEY,
-)
+_PIPELINE_PLUGIN_METADATA_KEYS = ("chunk_python_plugin", "governance_python_plugin", "kg_python_plugin")
+_INDEXED_METADATA_KEY = INDEXED_METADATA_KEY
+_DISPLAY_METADATA_KEY = DISPLAY_METADATA_KEY
+_EVALUABLE_METADATA_KEY = EVALUABLE_METADATA_KEY
+_RECORD_IDENTITY_METADATA_KEY = RECORD_IDENTITY_METADATA_KEY
+_PLATFORM_METADATA_VIEW_KEYS = METADATA_SCHEMA_VIEW_KEYS
 _METADATA_EXACT_ANCHOR_SKIP_FIELD_PARTS = (
     "id",
     "uuid",
@@ -500,6 +509,8 @@ class HybridRetriever(BaseRetriever):
     # Per-query retrieval channel metrics (vector/BM25/lexical DB) for attribution/debugging.
     # Populated by `_hybrid_search` and embedded into `_last_debug_metrics` by `_get_relevant_documents`.
     _last_channel_metrics: dict[str, Any] = PrivateAttr(default_factory=dict)
+    # Last BM25 readiness/lazy-build status for current query (PII-safe, no ids/query text).
+    _last_bm25_status: dict[str, Any] = PrivateAttr(default_factory=dict)
     # Doc/page diversity caps (max chunks per doc/page, min distinct docs) effects for the last call.
     # PII-safe: numeric only (no ids, no query text).
     _last_diversity_caps: dict[str, Any] = PrivateAttr(default_factory=dict)
@@ -1765,6 +1776,13 @@ class HybridRetriever(BaseRetriever):
         except (TypeError, ValueError, AttributeError):
             return 0
 
+    @staticmethod
+    def _bm25_eager_upsert_max_chunks() -> int:
+        try:
+            return max(0, int(getattr(settings, "BM25_EAGER_UPSERT_MAX_CHUNKS", 0) or 0))
+        except (TypeError, ValueError, AttributeError):
+            return 0
+
     def _touch_bm25_cache(self, tenant_key: str) -> None:
         """
         Mark a tenant BM25 cache as recently used and evict LRU indices if needed.
@@ -1999,6 +2017,15 @@ class HybridRetriever(BaseRetriever):
             return True
         if not self._can_lazy_build_scope(document_ids=document_ids, dataset_id=dataset_id):
             return False
+
+        if existing_retriever is None and existing_docs is not None and existing_docs:
+            self._build_bm25_index_from_documents(existing_docs, tenant_id=tenant_uuid, cache_key=cache_key)
+            logger.info(
+                "BM25 lazy-built %s cached chunks for scope %s",
+                len(existing_docs),
+                cache_key,
+            )
+            return True
 
         max_chunks = max(0, int(getattr(settings, "BM25_LAZY_BUILD_MAX_CHUNKS", 0) or 0))
         db = SessionLocal()
@@ -2272,6 +2299,22 @@ class HybridRetriever(BaseRetriever):
         return [self._prepare_retrieval_document(doc) for doc in docs if doc is not None]
 
     @staticmethod
+    def _infer_single_dataset_scope_from_docs(docs: list[Document]) -> UUID | None:
+        dataset_ids: set[UUID] = set()
+        for doc in docs:
+            meta = doc.metadata or {}
+            raw_dataset_id = meta.get("dataset_id")
+            if raw_dataset_id in (None, ""):
+                continue
+            try:
+                dataset_ids.add(UUID(str(raw_dataset_id)))
+            except (TypeError, ValueError):
+                return None
+            if len(dataset_ids) > 1:
+                return None
+        return next(iter(dataset_ids)) if dataset_ids else None
+
+    @staticmethod
     def _merge_bm25_scope_docs(existing: list[Document], upsert_docs: list[Document]) -> list[Document]:
         merged: dict[str, Document] = {str(d.id): d for d in existing if d.id is not None}
         for d in upsert_docs:
@@ -2301,6 +2344,13 @@ class HybridRetriever(BaseRetriever):
             k=10,
         )
         self._bm25_retrievers[cache_key] = retriever
+        self._bm25_docs[cache_key] = merged_docs
+        self._refresh_bm25_doc_ids(cache_key, merged_docs)
+        self._chunk_id_lookup[cache_key] = self._build_chunk_id_lookup(merged_docs)
+        self._touch_bm25_cache(cache_key)
+
+    def _defer_bm25_scope_index(self, *, cache_key: str, merged_docs: list[Document]) -> None:
+        self._bm25_retrievers.pop(cache_key, None)
         self._bm25_docs[cache_key] = merged_docs
         self._refresh_bm25_doc_ids(cache_key, merged_docs)
         self._chunk_id_lookup[cache_key] = self._build_chunk_id_lookup(merged_docs)
@@ -2369,13 +2419,23 @@ class HybridRetriever(BaseRetriever):
 
         cache_key = self._bm25_scope_key(
             tenant_id=tenant_uuid,
-            dataset_id=self.dataset_id,
+            dataset_id=self.dataset_id or self._infer_single_dataset_scope_from_docs(upsert_docs),
             document_ids=None,
         )
         existing = self._bm25_docs.get(cache_key) or []
         merged_docs = self._merge_bm25_scope_docs(existing, upsert_docs)
-        self._replace_bm25_scope_index(cache_key=cache_key, merged_docs=merged_docs)
-        logger.info("BM25 index updated to %s chunks for scope %s", len(merged_docs), cache_key)
+        eager_limit = self._bm25_eager_upsert_max_chunks()
+        if eager_limit > 0 and len(merged_docs) > eager_limit:
+            self._defer_bm25_scope_index(cache_key=cache_key, merged_docs=merged_docs)
+            logger.info(
+                "BM25 index rebuild deferred for scope %s chunks=%s eager_limit=%s",
+                cache_key,
+                len(merged_docs),
+                eager_limit,
+            )
+        else:
+            self._replace_bm25_scope_index(cache_key=cache_key, merged_docs=merged_docs)
+            logger.info("BM25 index updated to %s chunks for scope %s", len(merged_docs), cache_key)
 
         self._sync_sparse_index_after_bm25_upsert(
             cache_key=cache_key,
@@ -2569,11 +2629,16 @@ class HybridRetriever(BaseRetriever):
         *,
         tenant_id: UUID | None,
         document_ids: list[UUID] | None,
+        metadata_filter: dict[str, Any] | None = None,
     ) -> tuple[UUID | None, UUID | None, str | None]:
         tenant_uuid = self._resolve_tenant_uuid(tenant_id)
         if tenant_uuid is None:
             return None, None, None
         dataset_scope_id = self._dataset_scope_id(document_ids)
+        if dataset_scope_id is None and not (document_ids or []):
+            dataset_scope = self._collect_lexical_dataset_scope(metadata_filter)
+            if len(dataset_scope) == 1:
+                dataset_scope_id = dataset_scope[0]
         cache_key = self._bm25_scope_key(
             tenant_id=tenant_uuid,
             dataset_id=dataset_scope_id,
@@ -2594,9 +2659,19 @@ class HybridRetriever(BaseRetriever):
             _tenant_id=tenant_uuid,
             _dataset_id=dataset_scope_id,
         )
-        if current_version and self._bm25_cache_versions.get(cache_key) != current_version:
+        if not current_version:
+            return None
+
+        cached_version = self._bm25_cache_versions.get(cache_key)
+        if cached_version is None and (
+            self._bm25_retrievers.get(cache_key) is not None or bool(self._bm25_docs.get(cache_key))
+        ):
+            self._bm25_cache_versions[cache_key] = current_version
+            return current_version
+
+        if cached_version is not None and cached_version != current_version:
             self._clear_bm25_cache_key(cache_key)
-        return current_version or None
+        return current_version
 
     def _ensure_bm25_search_index(
         self,
@@ -2609,13 +2684,44 @@ class HybridRetriever(BaseRetriever):
         retriever = self._bm25_retrievers.get(cache_key)
         docs = self._bm25_docs.get(cache_key)
         if retriever is not None and docs is not None:
+            self._last_bm25_status.update(
+                {
+                    "cache_ready_before": True,
+                    "cache_ready_after": True,
+                    "lazy_build_attempted": False,
+                    "lazy_build_success": False,
+                    "reason": "cache_hit",
+                }
+            )
             return retriever, docs
-        self._lazy_build_bm25_index(
+        lazy_attempted = self._bm25_lazy_build_enabled() and self._can_lazy_build_scope(
+            document_ids=document_ids,
+            dataset_id=dataset_scope_id,
+        )
+        lazy_success = self._lazy_build_bm25_index(
             tenant_id=tenant_uuid,
             document_ids=document_ids,
             dataset_id=dataset_scope_id,
         )
-        return self._bm25_retrievers.get(cache_key), self._bm25_docs.get(cache_key)
+        retriever = self._bm25_retrievers.get(cache_key)
+        docs = self._bm25_docs.get(cache_key)
+        cache_ready_after = bool(retriever is not None and docs is not None)
+        if cache_ready_after:
+            reason = "lazy_build_success" if lazy_attempted else "cache_ready"
+        elif not lazy_attempted:
+            reason = "lazy_build_not_available"
+        else:
+            reason = "lazy_build_failed_or_empty"
+        self._last_bm25_status.update(
+            {
+                "cache_ready_before": False,
+                "cache_ready_after": cache_ready_after,
+                "lazy_build_attempted": bool(lazy_attempted),
+                "lazy_build_success": bool(lazy_success and cache_ready_after),
+                "reason": reason,
+            }
+        )
+        return retriever, docs
 
     def _bm25_result_allowed(
         self,
@@ -2634,6 +2740,7 @@ class HybridRetriever(BaseRetriever):
 
     @staticmethod
     def _candidate_metadata_from_doc(meta: dict[str, Any], *, chunk_id: Any = None) -> dict[str, Any]:
+        pipeline_meta = meta.get("pipeline") if isinstance(meta.get("pipeline"), dict) else {}
         out = {
             "tenant_id": meta.get("tenant_id"),
             "dataset_id": meta.get("dataset_id"),
@@ -2647,6 +2754,10 @@ class HybridRetriever(BaseRetriever):
             "image_id": meta.get("image_id"),
             "image_url": meta.get("image_url"),
         }
+        for key in _PIPELINE_PLUGIN_METADATA_KEYS:
+            value = meta.get(key) or pipeline_meta.get(key)
+            if value:
+                out[key] = value
         for key in _PLATFORM_METADATA_VIEW_KEYS:
             value = meta.get(key)
             if isinstance(value, dict) and value:
@@ -2712,14 +2823,43 @@ class HybridRetriever(BaseRetriever):
         metadata_filter: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """BM25 keyword retrieval (internal use, returns dicts with scores)."""
+        self._last_bm25_status = {
+            "index_enabled": bool(getattr(settings, "BM25_INDEX_ENABLED", True)),
+            "lazy_build_enabled": bool(self._bm25_lazy_build_enabled()),
+            "lazy_build_full_tenant": bool(getattr(settings, "BM25_LAZY_BUILD_FULL_TENANT", False)),
+            "lazy_build_max_chunks": max(0, int(getattr(settings, "BM25_LAZY_BUILD_MAX_CHUNKS", 0) or 0)),
+            "cache_ready_before": False,
+            "cache_ready_after": False,
+            "lazy_build_attempted": False,
+            "lazy_build_success": False,
+            "scope": "unknown",
+            "reason": "not_run",
+        }
         if not bool(getattr(settings, "BM25_INDEX_ENABLED", True)):
+            self._last_bm25_status["reason"] = "index_disabled"
             return []
 
         tenant_uuid, dataset_scope_id, cache_key = self._bm25_search_scope(
             tenant_id=tenant_id,
             document_ids=document_ids,
+            metadata_filter=metadata_filter,
+        )
+        if document_ids:
+            scope_kind = "documents"
+        elif dataset_scope_id is not None:
+            scope_kind = "dataset"
+        else:
+            scope_kind = "tenant"
+        self._last_bm25_status.update(
+            {
+                "scope": scope_kind,
+                "cache_key_type": scope_kind,
+                "document_scope_count": len(document_ids or []),
+                "dataset_scope": bool(dataset_scope_id is not None),
+            }
         )
         if tenant_uuid is None or cache_key is None:
+            self._last_bm25_status["reason"] = "missing_tenant_or_scope"
             return []
 
         current_version = self._refresh_bm25_dataset_cache_version(
@@ -2735,11 +2875,19 @@ class HybridRetriever(BaseRetriever):
         )
         if retriever is None or docs is None:
             logger.warning("BM25 index not initialized, skipping keyword search")
+            self._last_bm25_status["cache_ready_after"] = False
+            self._last_bm25_status.setdefault("reason", "index_unavailable")
             return []
         if dataset_scope_id is not None and current_version:
             self._bm25_cache_versions[cache_key] = current_version
 
         self._touch_bm25_cache(cache_key)
+        self._last_bm25_status.update(
+            {
+                "cache_ready_after": True,
+                "indexed_docs": len(docs or []),
+            }
+        )
 
         allowed_ids = {str(doc_id) for doc_id in document_ids} if document_ids else None
         processed_query = retriever.preprocess_func(query)
@@ -2752,7 +2900,15 @@ class HybridRetriever(BaseRetriever):
             allowed_ids=allowed_ids,
             metadata_filter=metadata_filter,
         )
-        return self._top_scored_results(results, top_k)
+        out = self._top_scored_results(results, top_k)
+        self._last_bm25_status.update(
+            {
+                "query_tokens": len(query_tokens),
+                "candidates": len(out),
+                "reason": "ok",
+            }
+        )
+        return out
 
     def _search_colpali_retriever(
         self,
@@ -4890,6 +5046,7 @@ class HybridRetriever(BaseRetriever):
                         "candidates": len(bm25_results or []),
                         "index_enabled": bool(bm25_index_enabled),
                         "filter_applied": bool(bm25_filter),
+                        "status": dict(self._last_bm25_status or {}),
                     },
                     "lexical_db": {
                         "enabled": bool(want_lexical) and bool(lexical_db_enabled),
@@ -6555,6 +6712,10 @@ class HybridRetriever(BaseRetriever):
             debug["family_collapse"] = collapse_stats
 
         debug["final_results"] = len(results or [])
+        compact_stats: dict[str, Any] = {}
+        results = self._compact_high_confidence_results(results, top_k=requested_k, stats=compact_stats)
+        if compact_stats:
+            debug["context_compaction"] = compact_stats
         stitch_enabled = bool(getattr(settings, "RAG_CONTEXT_STITCHING_ENABLED", False))
         debug["stitching_enabled"] = stitch_enabled
         prefix = list(results[:requested_k]) if results else []
@@ -6861,6 +7022,160 @@ class HybridRetriever(BaseRetriever):
         run_manager: AsyncCallbackManagerForRetrieverRun,
     ) -> list[Document]:
         return self._get_relevant_documents(query, run_manager=CallbackManagerForRetrieverRun.get_noop_manager())
+
+    def _compact_high_confidence_results(
+        self,
+        results: list[dict[str, Any]],
+        *,
+        top_k: int,
+        stats: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        limited = list(results or [])[: max(1, int(top_k or 1))]
+        policy_config: dict[str, Any] = {"enabled": False}
+        policy_plugin_ref = ""
+        for result in limited:
+            plugin_ref = self._result_plugin_ref(result)
+            if not plugin_ref:
+                continue
+            candidate_config = retrieval_policy_response_compaction(self._retrieval_policy_for_plugin_ref(plugin_ref))
+            if candidate_config.get("enabled") is True:
+                policy_config = candidate_config
+                policy_plugin_ref = plugin_ref
+                break
+
+        enabled = bool(
+            getattr(settings, "RETRIEVAL_COMPACT_HIGH_CONFIDENCE_ENABLED", False)
+            or policy_config.get("enabled") is True
+        )
+        if stats is not None:
+            stats.clear()
+            stats["enabled"] = bool(enabled)
+            stats["before"] = int(len(limited))
+            stats["after"] = int(len(limited))
+            stats["dropped"] = 0
+            stats["source"] = "policy" if policy_config.get("enabled") is True else "settings"
+            if policy_plugin_ref:
+                stats["plugin_ref"] = policy_plugin_ref
+        if not limited or not enabled:
+            return limited
+
+        min_top_score = float(
+            policy_config.get("min_top_score", getattr(settings, "RETRIEVAL_COMPACT_MIN_TOP_SCORE", 0.8)) or 0.8
+        )
+        relative_score_floor = float(
+            policy_config.get(
+                "relative_score_floor",
+                getattr(settings, "RETRIEVAL_COMPACT_RELATIVE_SCORE_FLOOR", 0.65),
+            )
+            or 0.65
+        )
+        min_records = int(
+            policy_config.get("min_records", getattr(settings, "RETRIEVAL_COMPACT_MIN_RECORDS", 1)) or 1
+        )
+        compacted = list(
+            compact_high_confidence_items(
+                limited,
+                scores=[_float_or_default(item.get("score"), 0.0) for item in limited],
+                top_k=top_k,
+                enabled=True,
+                min_top_score=min_top_score,
+                relative_score_floor=relative_score_floor,
+                min_items=min_records,
+            )
+        )
+        if stats is not None:
+            stats["after"] = int(len(compacted))
+            stats["dropped"] = int(max(0, len(limited) - len(compacted)))
+            stats["min_top_score"] = float(min_top_score)
+            stats["relative_score_floor"] = float(relative_score_floor)
+            stats["min_records"] = int(min_records)
+        return compacted
+
+    @staticmethod
+    def _result_metadata_layers(result: dict[str, Any]) -> list[dict[str, Any]]:
+        meta = result.get("metadata")
+        if not isinstance(meta, dict):
+            return []
+        layers = [meta]
+        for key in _PLATFORM_METADATA_VIEW_KEYS:
+            nested = meta.get(key)
+            if isinstance(nested, dict) and nested:
+                layers.append(nested)
+        return layers
+
+    @staticmethod
+    def _result_plugin_ref(result: dict[str, Any]) -> str:
+        for metadata in HybridRetriever._result_metadata_layers(result):
+            for key in _PIPELINE_PLUGIN_METADATA_KEYS:
+                value = str(metadata.get(key) or "").strip()
+                if value:
+                    return value
+        return ""
+
+    @staticmethod
+    @lru_cache(maxsize=128)
+    def _retrieval_policy_for_plugin_ref(plugin_ref: str) -> dict[str, Any]:
+        ref = str(plugin_ref or "").strip()
+        if not ref.startswith("plugin:"):
+            return {}
+        try:
+            from app.rag.pipeline_plugins.registry import resolve_registered_plugin_descriptor
+
+            descriptor = resolve_registered_plugin_descriptor(ref)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+            return {}
+        policy = getattr(descriptor, "retrieval_policy", None)
+        if isinstance(policy, dict) and policy.get("schema") == "mimirq.retrieval_policy.v1":
+            return dict(policy)
+        return {}
+
+    def _apply_plugin_retrieval_policy(
+        self,
+        results: list[dict[str, Any]],
+        *,
+        query: str | None,
+    ) -> list[dict[str, Any]]:
+        out = list(results or [])
+        query_text = str(query or "").strip()
+        if not out or not query_text:
+            return out
+
+        bonuses: list[float] = []
+        adjusted = 0
+        for result in out:
+            bonus = record_retrieval_policy_bonus(
+                result,
+                query=query_text,
+                plugin_ref_for_record=self._result_plugin_ref,
+                metadata_layers_for_record=self._result_metadata_layers,
+                policy_resolver=self._retrieval_policy_for_plugin_ref,
+            )
+            if not bonus:
+                continue
+            current_score = _float_or_default(result.get("score"), 0.0)
+            result["retrieval_policy_bonus"] = round(float(bonus), 6)
+            result["score"] = float(current_score) + float(bonus)
+            adjusted += 1
+            bonuses.append(float(bonus))
+
+        diagnostics = records_retrieval_policy_diagnostics(
+            out,
+            query=query_text,
+            plugin_ref_for_record=self._result_plugin_ref,
+            metadata_layers_for_record=self._result_metadata_layers,
+            policy_resolver=self._retrieval_policy_for_plugin_ref,
+        )
+        if int(diagnostics.get("retrieval_policy_record_count") or 0) > 0 and isinstance(self._last_channel_metrics, dict):
+            diagnostics["score_adjusted_record_count"] = int(adjusted)
+            diagnostics["max_bonus"] = round(float(max(bonuses) if bonuses else 0.0), 6)
+            diagnostics["min_bonus"] = round(float(min(bonuses) if bonuses else 0.0), 6)
+            diagnostics["avg_bonus"] = round(float(sum(bonuses) / len(bonuses)) if bonuses else 0.0, 6)
+            self._last_channel_metrics["retrieval_policy"] = diagnostics
+
+        if adjusted <= 0:
+            return out
+        return sorted(out, key=lambda item: (-_float_or_default(item.get("score"), 0.0), self._result_key(item)))
 
     def _result_key(self, result: dict[str, Any]) -> str:
         meta = result.get("metadata") or {}
@@ -7914,7 +8229,7 @@ class HybridRetriever(BaseRetriever):
                     self._result_key(item),
                 )
 
-            return sorted(merged.values(), key=_sort_key)
+            return self._apply_plugin_retrieval_policy(sorted(merged.values(), key=_sort_key), query=query)
 
         if fusion in ("budgeted_rrf", "budget_rrf"):
             def _rank_sort_key(r: dict[str, Any]) -> tuple[float, str]:
@@ -8183,7 +8498,7 @@ class HybridRetriever(BaseRetriever):
                     }
             except Exception as exc:
                 logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
-            return prefix + rest
+            return self._apply_plugin_retrieval_policy(prefix + rest, query=query)
 
         if fusion in ("weighted", "weighted_linear", "weighted_sum"):
             def _coerce_weights(raw: Any) -> dict[str, float]:
@@ -8287,7 +8602,7 @@ class HybridRetriever(BaseRetriever):
                         self._result_key(item),
                     )
 
-                return sorted(merged.values(), key=_sort_key)
+                return self._apply_plugin_retrieval_policy(sorted(merged.values(), key=_sort_key), query=query)
 
         merged: dict[str, dict[str, Any]] = {}
         keys = sorted(set(vector_norm.keys()) | set(bm25_norm.keys()) | set(lexical_norm.keys()) | set(sparse_norm.keys()))
@@ -8355,7 +8670,7 @@ class HybridRetriever(BaseRetriever):
                 self._result_key(item),
             )
 
-        return sorted(merged.values(), key=_sort_key)
+        return self._apply_plugin_retrieval_policy(sorted(merged.values(), key=_sort_key), query=query)
 
     def _weight_rerank(
         self,

@@ -405,10 +405,30 @@ class EventExtractor:
                 return []
 
             tenant_id = config.tenant_id or resolved_chunks[0].tenant_id
+            max_chunks_per_document = max(0, int(getattr(settings, "KG_EXTRACT_MAX_CHUNKS_PER_DOCUMENT", 0) or 0))
+            chunk_budget_strategy = str(
+                getattr(settings, "KG_EXTRACT_MAX_CHUNKS_PER_DOCUMENT_STRATEGY", "uniform") or "uniform"
+            ).strip().lower() or "uniform"
+            budgeted_chunks = resolved_chunks
+            budget_stats_by_doc: dict[object, dict[str, int | str]] = {}
+            budget_skipped_chunk_ids: set[object] = set()
+            if max_chunks_per_document > 0:
+                budgeted_chunks, budget_stats_by_doc = _apply_document_chunk_budget(
+                    resolved_chunks,
+                    max_chunks_per_document=max_chunks_per_document,
+                    strategy=chunk_budget_strategy,
+                )
+                kept_budget_ids = {getattr(chunk, "id", None) for chunk in budgeted_chunks}
+                budget_skipped_chunk_ids = {
+                    getattr(chunk, "id", None)
+                    for chunk in resolved_chunks
+                    if getattr(chunk, "id", None) not in kept_budget_ids
+                }
+
             kg_plugin_ref = str(getattr(config, "kg_python_plugin", "") or "").strip()
             if kg_plugin_ref:
                 replace_existing = bool(getattr(config, "replace_existing", False))
-                plugin_docs = [_document_from_chunk(chunk) for chunk in resolved_chunks]
+                plugin_docs = [_document_from_chunk(chunk) for chunk in budgeted_chunks]
                 events_to_index = apply_kg_python_plugin(
                     plugin_docs,
                     plugin_ref=kg_plugin_ref,
@@ -441,6 +461,10 @@ class EventExtractor:
                             "backend": "python_plugin",
                             "kg_python_plugin": kg_plugin_ref,
                             "chunk_count": len(resolved_chunks),
+                            "chunk_processed": int(len(budgeted_chunks)),
+                            "chunk_budget_skipped": int(len(budget_skipped_chunk_ids)),
+                            "chunk_budget_strategy": chunk_budget_strategy,
+                            "chunk_budget_max_per_document": int(max_chunks_per_document),
                             "event_new": 0,
                             "event_total": 0,
                             "elapsed_sec": round(float(elapsed), 3),
@@ -448,6 +472,19 @@ class EventExtractor:
                     )
                     if replace_existing and chunk_ids_for_replace:
                         session.commit()
+                    self._writeback_document_metadata(
+                        session=session,
+                        tenant_id=tenant_id,
+                        chunks=resolved_chunks,
+                        kept_events=[],
+                        skipped_chunk_ids=set(),
+                        budget_skipped_chunk_ids=budget_skipped_chunk_ids,
+                        skipped_short_chunk_ids=set(),
+                        failed_chunk_ids=set(),
+                        retry_chunk_ids=set(),
+                        budget_stats_by_doc=budget_stats_by_doc,
+                        alias_stats_by_doc={},
+                    )
                     return []
 
                 indexer = Indexer(session)
@@ -460,16 +497,33 @@ class EventExtractor:
                 entity_count = len(result.entities) if result else 0
                 elapsed = time.perf_counter() - t0
                 log_metrics(
-                    {
-                        "event": "kg.extract",
-                        "backend": "python_plugin",
-                        "kg_python_plugin": kg_plugin_ref,
-                        "chunk_count": len(resolved_chunks),
-                        "event_new": len(events),
-                        "event_total": len(events),
-                        "entity_total": entity_count,
-                        "elapsed_sec": round(float(elapsed), 3),
-                    }
+                        {
+                            "event": "kg.extract",
+                            "backend": "python_plugin",
+                            "kg_python_plugin": kg_plugin_ref,
+                            "chunk_count": len(resolved_chunks),
+                            "chunk_processed": int(len(budgeted_chunks)),
+                            "chunk_budget_skipped": int(len(budget_skipped_chunk_ids)),
+                            "chunk_budget_strategy": chunk_budget_strategy,
+                            "chunk_budget_max_per_document": int(max_chunks_per_document),
+                            "event_new": len(events),
+                            "event_total": len(events),
+                            "entity_total": entity_count,
+                            "elapsed_sec": round(float(elapsed), 3),
+                        }
+                    )
+                self._writeback_document_metadata(
+                    session=session,
+                    tenant_id=tenant_id,
+                    chunks=resolved_chunks,
+                    kept_events=events,
+                    skipped_chunk_ids=set(),
+                    budget_skipped_chunk_ids=budget_skipped_chunk_ids,
+                    skipped_short_chunk_ids=set(),
+                    failed_chunk_ids=set(),
+                    retry_chunk_ids=set(),
+                    budget_stats_by_doc=budget_stats_by_doc,
+                    alias_stats_by_doc={},
                 )
                 return events
 
@@ -528,10 +582,6 @@ class EventExtractor:
             )
             max_events_per_chunk = max(1, int(getattr(settings, "KG_EXTRACT_MAX_EVENTS_PER_CHUNK", 6) or 6))
             max_entities_per_event = max(1, int(getattr(settings, "KG_EXTRACT_MAX_ENTITIES_PER_EVENT", 30) or 30))
-            max_chunks_per_document = max(0, int(getattr(settings, "KG_EXTRACT_MAX_CHUNKS_PER_DOCUMENT", 0) or 0))
-            chunk_budget_strategy = str(
-                getattr(settings, "KG_EXTRACT_MAX_CHUNKS_PER_DOCUMENT_STRATEGY", "uniform") or "uniform"
-            ).strip().lower() or "uniform"
             embed_batch_size = max(1, int(getattr(settings, "KG_EXTRACT_EMBED_BATCH_SIZE", 128) or 128))
 
             sem = asyncio.Semaphore(max_concurrency)
@@ -570,7 +620,6 @@ class EventExtractor:
             failed_chunk_ids: set[object] = set()
             succeeded_chunk_ids: set[object] = set()
             skipped_chunk_ids: set[object] = set()
-            budget_skipped_chunk_ids: set[object] = set()
             skipped_short_chunk_ids: set[object] = set()
             retry_chunk_ids: set[object] = set()
             retry_attempts_total = 0
@@ -582,21 +631,6 @@ class EventExtractor:
                 "kg_prompt_template_key": _normalize_prompt_selector_value(config.prompt_template_key),
                 "kg_prompt_ab_experiment_key": _normalize_prompt_selector_value(config.prompt_ab_experiment_key),
             }
-
-            budgeted_chunks = resolved_chunks
-            budget_stats_by_doc: dict[object, dict[str, int | str]] = {}
-            if max_chunks_per_document > 0:
-                budgeted_chunks, budget_stats_by_doc = _apply_document_chunk_budget(
-                    resolved_chunks,
-                    max_chunks_per_document=max_chunks_per_document,
-                    strategy=chunk_budget_strategy,
-                )
-                kept_budget_ids = {getattr(chunk, "id", None) for chunk in budgeted_chunks}
-                budget_skipped_chunk_ids = {
-                    getattr(chunk, "id", None)
-                    for chunk in resolved_chunks
-                    if getattr(chunk, "id", None) not in kept_budget_ids
-                }
 
             # Ensure chunk hashes/keys exist even if upstream parsing didn't inject them.
             chunk_hash_by_id: dict[object, str] = {}
