@@ -211,6 +211,7 @@ export interface DatasetRetrievalAudit {
   plugin_package_hashes: string[]
   gates: DatasetRetrievalAuditGate[]
   failure_categories: Record<string, number>
+  kg_recommendation?: string | null
   recommended_next_action?: string | null
 }
 

@@ -212,6 +212,7 @@ def test_build_readiness_summary_combines_probe_and_full_gate() -> None:
                 },
             ],
             "failure_categories": {},
+            "kg_recommendation": "full_kg_assist",
             "recommended_next_action": None,
         },
         "knowledge_map": {
@@ -612,6 +613,7 @@ def test_kg_compare_failure_blocks_dify_remote_stages() -> None:
     }
     assert summary["kg_compare"]["status"] == "failed"
     assert summary["kg_compare"]["failed_conditions"] == ["quality_gate_failed:kg_noise_rate", "metric_regressed:hit_at_1"]
+    assert summary["retrieval_audit"]["kg_recommendation"] == "none"
     assert summary["console_auth"]["status"] == "skipped"
     assert summary["console_auth"]["blocked_by"] == "kg_compare"
 

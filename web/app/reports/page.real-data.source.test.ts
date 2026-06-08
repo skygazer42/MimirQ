@@ -13,6 +13,8 @@ describe('reports page real data wiring', () => {
     expect(src).toContain('report?.data_provenance')
     expect(src).toContain('report?.retrieval_audit')
     expect(src).toContain('Retrieval Audit')
+    expect(src).toContain('kg_recommendation')
+    expect(src).toContain('KG 建议')
     expect(src).toContain('expected_metadata_hit_rate')
     expect(src).toContain('retrieval_effective_context_rate')
     expect(src).toContain('真实后端数据')

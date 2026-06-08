@@ -449,6 +449,38 @@ def _audit_next_action(categories: dict[str, int]) -> str | None:
     return f"Fix {joined} before enabling production retrieval."
 
 
+def _kg_recommendation_from_gates(gates: list[dict[str, Any]]) -> str | None:
+    for gate in gates:
+        if not isinstance(gate, dict):
+            continue
+        name = _text(gate.get("name"))
+        source = _text(gate.get("source"))
+        metrics = gate.get("metrics") if isinstance(gate.get("metrics"), dict) else {}
+        is_kg_gate = name == "kg_compare" or "kg_compare" in source
+        if not is_kg_gate and not any(key in metrics for key in ("candidate_gate_passed", "compared_metrics", "kg_noise_rate")):
+            continue
+        candidate_passed = metrics.get("candidate_gate_passed")
+        compared_metrics = metrics.get("compared_metrics")
+        kg_noise = metrics.get("kg_noise_rate")
+        failed_conditions = gate.get("failed_conditions") if isinstance(gate.get("failed_conditions"), list) else []
+        if (
+            candidate_passed is False
+            or _text(gate.get("status")) in {"failed", "error"}
+            or failed_conditions
+            or isinstance(kg_noise, int | float)
+            and float(kg_noise) > 0.1
+        ):
+            return "none"
+        if (
+            candidate_passed is True
+            and isinstance(compared_metrics, int | float)
+            and int(compared_metrics) > 0
+            and (not isinstance(kg_noise, int | float) or float(kg_noise) <= 0.1)
+        ):
+            return "full_kg_assist"
+    return None
+
+
 def _build_retrieval_audit(
     *,
     summary: dict[str, Any],
@@ -494,8 +526,9 @@ def _build_retrieval_audit(
         )
 
     categories = _audit_failure_categories(gates)
+    kg_recommendation = _kg_recommendation_from_gates(gates)
     raw_sections = [section for section in (knowledge_map_raw or {}, mimirq_direct_raw or {}) if isinstance(section, dict)]
-    return {
+    audit = {
         "status": "failed" if summary.get("passed") is not True or categories else "passed",
         "plugin_refs": _audit_plugin_refs(*raw_sections),
         "plugin_package_hashes": _audit_plugin_package_hashes(*raw_sections),
@@ -503,6 +536,9 @@ def _build_retrieval_audit(
         "failure_categories": categories,
         "recommended_next_action": _audit_next_action(categories),
     }
+    if kg_recommendation:
+        audit["kg_recommendation"] = kg_recommendation
+    return audit
 
 
 def _empty_marker(value: Any) -> str:
