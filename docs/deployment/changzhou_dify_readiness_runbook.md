@@ -207,18 +207,22 @@ readiness summary 还会额外输出通用 `retrieval_audit` 片段，字段对�
 
 如需把该证据固化到某个数据集报告中，可把 summary 里的 `retrieval_audit` 写回数据集
 metadata。后端会再次按平台白名单裁剪，只保存聚合 gate、metric、插件 provenance 和失败
-分类，不保存 raw query、chunk 正文或凭据：
+分类，不保存 raw query、chunk 正文或凭据。推荐使用可复跑 Make target，避免人工复制
+curl 时误带 raw 字段或 token：
 
 ```bash
-jq '.retrieval_audit' /tmp/changzhou_gov_dify_readiness_summary.json \
-  | curl -sS -X PUT "$MIMIRQ_BASE_URL/api/v1/datasets/$DATASET_ID/retrieval-audit" \
-      -H "Authorization: Bearer $MIMIRQ_API_TOKEN" \
-      -H "Content-Type: application/json" \
-      --data-binary @-
+make changzhou-dify-readiness-persist-audit \
+  CHANGZHOU_GOV_CORPUS_DATASET_ID="$DATASET_ID" \
+  CHANGZHOU_DIFY_MIMIRQ_BASE_URL="$CHANGZHOU_DIFY_MIMIRQ_BASE_URL" \
+  MIMIRQ_API_TOKEN="$MIMIRQ_API_TOKEN"
 ```
 
-写入后，`/api/v1/reports/datasets/$DATASET_ID` 会把该持久化证据和最新 regression run
-证据合并展示；平台仍只理解通用 retrieval audit 合约，不依赖常州或 Dify 的业务结构。
+该 target 读取 `CHANGZHOU_DIFY_READINESS_OUT`（默认
+`/tmp/changzhou_gov_dify_readiness_summary.json`），本地先按平台合约裁剪一次，再调用
+`PUT /api/v1/datasets/$DATASET_ID/retrieval-audit`。响应默认写到
+`/tmp/changzhou_gov_dify_readiness_persist_audit.json`。写入后，
+`/api/v1/reports/datasets/$DATASET_ID` 会把该持久化证据和最新 regression run 证据合并展示；
+平台仍只理解通用 retrieval audit 合约，不依赖常州或 Dify 的业务结构。
 
 ---
 

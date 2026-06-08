@@ -11,6 +11,7 @@ def test_changzhou_dify_readiness_runbook_documents_reproducible_gate_flow() -> 
     assert "make changzhou-dify-readiness-gate-quiet" in text
     assert "make changzhou-dify-readiness-status" in text
     assert "make changzhou-dify-readiness-evidence" in text
+    assert "make changzhou-dify-readiness-persist-audit" in text
     assert "make changzhou-dify-kg-compare-gate" in text
     assert "make changzhou-gov-plugin-chunk-evidence" in text
     assert "make changzhou-gov-plugin-test-report" in text
