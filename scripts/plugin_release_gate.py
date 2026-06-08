@@ -104,6 +104,20 @@ def _summarize_chunk_report(report: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _chunk_readiness_details(chunk_summary: dict[str, Any]) -> dict[str, Any]:
+    readiness = chunk_summary.get("readiness") if isinstance(chunk_summary.get("readiness"), dict) else {}
+    checks = readiness.get("checks") if isinstance(readiness.get("checks"), list) else []
+    failed = [
+        str(check.get("name"))
+        for check in checks
+        if isinstance(check, dict) and check.get("required") is not False and check.get("passed") is not True and check.get("name")
+    ]
+    return {
+        "readiness_status": str(readiness.get("status") or "unavailable"),
+        "failed_readiness_checks": failed,
+    }
+
+
 def _declared_stages(descriptor: PipelinePluginDescriptor, stages: Sequence[str] | None) -> list[str]:
     if stages:
         return [stage for stage in _STAGE_ORDER if stage in set(stages)]
@@ -191,7 +205,13 @@ def build_plugin_release_gate_report(
         )
         chunk_summary = _summarize_chunk_report(chunk_report)
         chunk_ready = (chunk_summary.get("readiness") or {}).get("status") == "passed"
-        checks.append(_check("chunk_report_ready", passed=chunk_ready))
+        checks.append(
+            _check(
+                "chunk_report_ready",
+                passed=chunk_ready,
+                details=_chunk_readiness_details(chunk_summary),
+            )
+        )
     else:
         checks.append(
             _check(

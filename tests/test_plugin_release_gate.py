@@ -260,6 +260,10 @@ def test_plugin_release_gate_fails_when_required_chunk_stage_emits_no_chunks(tmp
     assert report["passed"] is False
     checks = {check["name"]: check for check in report["checks"]}
     assert checks["chunk_report_ready"]["passed"] is False
+    assert checks["chunk_report_ready"]["details"] == {
+        "readiness_status": "failed",
+        "failed_readiness_checks": ["chunks_present", "kg_events_present"],
+    }
     assert checks["local_test_report_current"]["passed"] is False
     readiness_checks = {check["name"]: check for check in report["chunk_report"]["readiness"]["checks"]}
     assert readiness_checks["chunks_present"]["passed"] is False
