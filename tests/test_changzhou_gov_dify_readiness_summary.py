@@ -375,6 +375,51 @@ def test_readiness_summary_exports_generic_retrieval_audit_failure_categories() 
     assert "plugin_package_hash" not in json.dumps(direct_gate["metrics"], ensure_ascii=False)
 
 
+def test_readiness_summary_categorizes_external_adapter_binding_failure() -> None:
+    mod = _load_module()
+
+    summary = mod.build_readiness_summary(
+        knowledge_map={
+            "summary": {"passed": True, "failed_conditions": [], "route_count": 1},
+            "plugin_refs": {
+                "checked": [
+                    {
+                        "knowledge_id": "demo_knowledge",
+                        "plugin_ref": "plugin:demo-release-plugin@1.0.0:chunk",
+                    }
+                ]
+            },
+        },
+        mimirq_direct={
+            "gate": {"passed": True, "failed": 0, "checks": []},
+            "summary": {"cases": 3, "hit_at_1": 1.0, "mimirq_direct_nonempty": 3},
+        },
+        kg_compare=None,
+        console_auth={"valid": True, "reason": "ok", "ttl_seconds": 1800, "min_ttl_seconds": 900},
+        external_probe={
+            "gate": {"passed": False, "failed_conditions": ["external_boundary_failed"]},
+            "summary": {
+                "cases": 3,
+                "mimirq_direct_nonempty": 3,
+                "dify_hit_nonempty": 0,
+                "probe_errors": 0,
+            },
+            "source": {"endpoint": "http://mimirq.example/api/v1/integrations/dify"},
+            "boundary": {"verdict": "dify_external_boundary_failed"},
+        },
+        full_gate_summary={"summary": {"passed": True, "failed_stages": []}, "stages": {}},
+        artifacts={},
+        generated_at="2026-06-07T01:02:03Z",
+    )
+
+    assert summary["summary"]["failed_stages"] == ["external_probe"]
+    assert summary["retrieval_audit"]["failure_categories"] == {"adapter": 1}
+    assert (
+        summary["retrieval_audit"]["recommended_next_action"]
+        == "Fix Dify binding before enabling production retrieval."
+    )
+
+
 def test_build_readiness_summary_marks_failed_source() -> None:
     mod = _load_module()
 

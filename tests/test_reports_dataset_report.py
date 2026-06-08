@@ -192,6 +192,45 @@ def test_dataset_retrieval_audit_summary_uses_dataset_metadata_snapshot_without_
     assert audit.recommended_next_action == "Fix metadata scope and KG noise before enabling production retrieval."
 
 
+def test_dataset_retrieval_audit_summary_categorizes_adapter_binding_failure() -> None:
+    from app.services.report_service import _build_retrieval_audit_summary
+
+    audit = _build_retrieval_audit_summary(
+        latest_regression_run=None,
+        dataset_metadata={
+            "retrieval_audit": {
+                "status": "failed",
+                "gates": [
+                    {
+                        "name": "mimirq_direct",
+                        "status": "passed",
+                        "source": "external_readiness:mimirq_direct",
+                        "metrics": {
+                            "cases": 12,
+                            "hit_at_1": 1.0,
+                        },
+                    },
+                    {
+                        "name": "external_probe",
+                        "status": "failed",
+                        "source": "external_readiness:external_probe",
+                        "metrics": {
+                            "dify_hit_nonempty": 0,
+                            "probe_errors": 0,
+                        },
+                        "failed_conditions": ["endpoint_host_is_loopback"],
+                    }
+                ],
+            }
+        },
+    )
+
+    assert audit is not None
+    assert audit.status == "failed"
+    assert audit.failure_categories == {"adapter": 1}
+    assert audit.recommended_next_action == "Fix adapter binding before enabling production retrieval."
+
+
 def test_dataset_retrieval_audit_summary_merges_regression_and_dataset_metadata_snapshot() -> None:
     from app.api.schemas.report import DatasetRegressionRunSummaryOut
     from app.services.report_service import _build_retrieval_audit_summary
