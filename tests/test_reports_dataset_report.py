@@ -278,6 +278,64 @@ def test_dataset_retrieval_audit_summary_merges_regression_and_dataset_metadata_
     assert audit.recommended_next_action == "Fix content absence and KG noise before enabling production retrieval."
 
 
+def test_dataset_retrieval_audit_summary_surfaces_kg_enablement_recommendation() -> None:
+    from app.services.report_service import _build_retrieval_audit_summary
+
+    audit = _build_retrieval_audit_summary(
+        latest_regression_run=None,
+        dataset_metadata={
+            "retrieval_audit": {
+                "status": "passed",
+                "gates": [
+                    {
+                        "name": "kg_compare",
+                        "status": "passed",
+                        "metrics": {
+                            "candidate_gate_passed": True,
+                            "compared_metrics": 14,
+                            "kg_noise_rate": 0.05,
+                        },
+                        "failed_conditions": [],
+                        "source": "external_readiness:kg_compare",
+                    }
+                ],
+            }
+        },
+    )
+
+    assert audit is not None
+    assert audit.kg_recommendation == "full_kg_assist"
+
+
+def test_dataset_retrieval_audit_summary_keeps_kg_disabled_when_compare_regresses() -> None:
+    from app.services.report_service import _build_retrieval_audit_summary
+
+    audit = _build_retrieval_audit_summary(
+        latest_regression_run=None,
+        dataset_metadata={
+            "retrieval_audit": {
+                "status": "failed",
+                "gates": [
+                    {
+                        "name": "kg_compare",
+                        "status": "failed",
+                        "metrics": {
+                            "candidate_gate_passed": False,
+                            "compared_metrics": 14,
+                            "kg_noise_rate": 0.2,
+                        },
+                        "failed_conditions": ["metric_regressed:hit_at_1"],
+                        "source": "external_readiness:kg_compare",
+                    }
+                ],
+            }
+        },
+    )
+
+    assert audit is not None
+    assert audit.kg_recommendation == "none"
+
+
 def test_dataset_report_metadata_replaces_raw_retrieval_audit_with_safe_snapshot() -> None:
     from app.services.report_service import _build_retrieval_audit_summary, _safe_dataset_report_metadata
 

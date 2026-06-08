@@ -247,6 +247,7 @@ class DatasetRetrievalAuditOut(BaseModel):
     plugin_package_hashes: list[str] = Field(default_factory=list)
     gates: list[DatasetRetrievalAuditGateOut] = Field(default_factory=list)
     failure_categories: dict[str, int] = Field(default_factory=dict)
+    kg_recommendation: str | None = None
     recommended_next_action: str | None = None
 
 

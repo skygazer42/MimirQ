@@ -221,9 +221,9 @@ top10/top20，但不应把宽候选池 precision 当作最终回答上下文质�
 
 readiness summary 还会额外输出通用 `retrieval_audit` 片段，字段对齐 MimirQ dataset report
 的 retrieval audit 合约：`status`、`plugin_refs`、`plugin_package_hashes`、`gates`、
-`failure_categories` 和 `recommended_next_action`。这个片段只包含聚合 gate、metric 和
-插件 provenance，不包含 raw query、生成答案、chunk 正文或凭据；平台后续可以直接消费该
-片段，而不需要理解常州 workflow 的业务结构。
+`failure_categories`、`kg_recommendation` 和 `recommended_next_action`。这个片段只包含聚合
+gate、metric、KG-on/off 建议和插件 provenance，不包含 raw query、生成答案、chunk 正文或凭据；
+平台后续可以直接消费该片段，而不需要理解常州 workflow 的业务结构。
 
 如需把该证据固化到某个数据集报告中，可把 summary 里的 `retrieval_audit` 写回数据集
 metadata。后端会再次按平台白名单裁剪，只保存聚合 gate、metric、插件 provenance 和失败

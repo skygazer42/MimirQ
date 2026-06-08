@@ -136,6 +136,12 @@ _RETRIEVAL_AUDIT_FAILURE_CATEGORY_ORDER = (
     "kg_noise",
     "adapter",
 )
+_RETRIEVAL_AUDIT_KG_RECOMMENDATIONS = {
+    "full_kg_assist",
+    "query_expansion_only",
+    "boost_only",
+    "none",
+}
 
 
 @dataclass(frozen=True)
@@ -460,6 +466,13 @@ def _retrieval_audit_next_action(categories: dict[str, int]) -> str:
     return f"Fix {joined} before enabling production retrieval."
 
 
+def _retrieval_audit_safe_kg_recommendation(raw: Any) -> str | None:
+    text = str(raw or "").strip()
+    if text in _RETRIEVAL_AUDIT_KG_RECOMMENDATIONS:
+        return text
+    return None
+
+
 def _retrieval_audit_safe_categories(raw: Any) -> dict[str, int]:
     if not isinstance(raw, dict):
         return {}
@@ -504,6 +517,38 @@ def _retrieval_audit_failure_categories_from_gates(gates: list[DatasetRetrievalA
     for key, value in combined_categories.items():
         categories.setdefault(key, value)
     return _retrieval_audit_safe_categories(categories)
+
+
+def _retrieval_audit_kg_recommendation_from_gate(gate: DatasetRetrievalAuditGateOut) -> str | None:
+    metrics = dict(gate.metrics or {})
+    is_kg_gate = gate.name == "kg_compare" or "kg_compare" in str(gate.source or "")
+    if not is_kg_gate and not any(key in metrics for key in ("candidate_gate_passed", "compared_metrics", "kg_noise_rate")):
+        return None
+
+    candidate_passed = metrics.get("candidate_gate_passed")
+    compared_metrics = _safe_int(metrics.get("compared_metrics"))
+    kg_noise = _summary_ratio(metrics, "kg_noise_rate")
+    status = str(gate.status or "").strip().lower()
+    failed_conditions = [str(item or "").strip() for item in gate.failed_conditions or [] if str(item or "").strip()]
+
+    if (
+        candidate_passed is False
+        or status in {"failed", "error"}
+        or failed_conditions
+        or (kg_noise is not None and kg_noise > 0.1)
+    ):
+        return "none"
+    if candidate_passed is True and compared_metrics > 0 and (kg_noise is None or kg_noise <= 0.1):
+        return "full_kg_assist"
+    return None
+
+
+def _retrieval_audit_kg_recommendation_from_gates(gates: list[DatasetRetrievalAuditGateOut]) -> str | None:
+    for gate in gates:
+        recommendation = _retrieval_audit_kg_recommendation_from_gate(gate)
+        if recommendation:
+            return recommendation
+    return None
 
 
 def _retrieval_audit_gate_from_metadata(raw: Any) -> DatasetRetrievalAuditGateOut | None:
@@ -565,6 +610,8 @@ def _retrieval_audit_from_dataset_metadata(dataset_metadata: dict[str, Any] | No
         plugin_package_hashes=_safe_report_list(raw.get("plugin_package_hashes"), max_items=20, max_len=160),
         gates=gates,
         failure_categories=failure_categories,
+        kg_recommendation=_retrieval_audit_safe_kg_recommendation(raw.get("kg_recommendation"))
+        or _retrieval_audit_kg_recommendation_from_gates(gates),
         recommended_next_action=_retrieval_audit_next_action(failure_categories),
     )
 
@@ -605,6 +652,7 @@ def _retrieval_audit_from_regression_run(
         plugin_package_hashes=plugin_hashes,
         gates=[gate],
         failure_categories=failure_categories,
+        kg_recommendation=_retrieval_audit_kg_recommendation_from_gates([gate]),
         recommended_next_action=_retrieval_audit_next_action(failure_categories),
     )
 
@@ -639,6 +687,16 @@ def _merge_retrieval_audits(*audits: DatasetRetrievalAuditOut | None) -> Dataset
         ),
         gates=gates,
         failure_categories=failure_categories,
+        kg_recommendation=next(
+            (
+                recommendation
+                for audit in valid
+                for recommendation in [_retrieval_audit_safe_kg_recommendation(audit.kg_recommendation)]
+                if recommendation
+            ),
+            None,
+        )
+        or _retrieval_audit_kg_recommendation_from_gates(gates),
         recommended_next_action=_retrieval_audit_next_action(failure_categories),
     )
 

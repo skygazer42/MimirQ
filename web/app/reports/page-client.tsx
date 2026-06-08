@@ -594,6 +594,19 @@ function retrievalAuditHashText(
   return hashes.map((hash) => shortPipelineHash(hash)).slice(0, 2).join(' / ')
 }
 
+function retrievalAuditKgRecommendationText(
+  retrievalAudit: RetrievalAudit | null | undefined
+): string {
+  const recommendation = retrievalAudit?.kg_recommendation || ''
+  const labels: Record<string, string> = {
+    full_kg_assist: '可启用完整 KG',
+    query_expansion_only: '仅启用查询扩展',
+    boost_only: '仅启用 KG boost',
+    none: '保持关闭',
+  }
+  return labels[recommendation] || '未评估'
+}
+
 function DataPill({
   icon: Icon,
   label,
@@ -987,7 +1000,7 @@ function RetrievalAuditPanel({
         </Badge>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-4">
+      <div className="grid gap-3 md:grid-cols-5">
         <MiniRiskCard
           label="审计状态"
           value={status}
@@ -1005,6 +1018,12 @@ function RetrievalAuditPanel({
           value={retrievalAuditHashText(retrievalAudit)}
           sub={`${pluginRefs.length} plugin refs`}
           tone={pluginRefs.length ? 'blue' : 'slate'}
+        />
+        <MiniRiskCard
+          label="KG 建议"
+          value={retrievalAuditKgRecommendationText(retrievalAudit)}
+          sub="KG-on/off compare"
+          tone={retrievalAudit?.kg_recommendation === 'full_kg_assist' ? 'green' : 'slate'}
         />
         <MiniRiskCard
           label="门禁证据"
