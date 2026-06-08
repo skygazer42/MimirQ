@@ -630,6 +630,42 @@ def test_changzhou_dify_readiness_evidence_target_is_overridable() -> None:
     assert '--app-id "app-1"' in command
 
 
+def test_changzhou_dify_readiness_persist_audit_target_is_overridable() -> None:
+    result = subprocess.run(
+        [
+            "make",
+            "-n",
+            "changzhou-dify-readiness-persist-audit",
+            "CHANGZHOU_DIFY_READINESS_OUT=/tmp/readiness.json",
+            "CHANGZHOU_DIFY_MIMIRQ_BASE_URL=http://mimirq.test",
+            "CHANGZHOU_GOV_CORPUS_DATASET_ID=00000000-0000-0000-0000-000000000123",
+            "CHANGZHOU_DIFY_READINESS_AUDIT_OUT=/tmp/persisted-audit.json",
+            "MIMIRQ_TENANT_ID=tenant-1",
+            "MIMIRQ_ACCOUNT_ID=account-1",
+            "MIMIRQ_USER_ID=user-1",
+            "MIMIRQ_API_TOKEN=token-1",
+            "MIMIRQ_API_TIMEOUT=13",
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    command = result.stdout
+    assert "scripts/persist_retrieval_audit_snapshot.py" in command
+    assert '--summary "/tmp/readiness.json"' in command
+    assert '--base-url "http://mimirq.test"' in command
+    assert '--dataset-id "00000000-0000-0000-0000-000000000123"' in command
+    assert '--tenant-id "tenant-1"' in command
+    assert '--account-id "account-1"' in command
+    assert '--user-id "user-1"' in command
+    assert '--bearer "token-1"' in command
+    assert "--timeout 13" in command
+    assert '--out "/tmp/persisted-audit.json"' in command
+
+
 def test_changzhou_dify_kg_compare_gate_target_is_overridable() -> None:
     result = subprocess.run(
         [
