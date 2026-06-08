@@ -149,6 +149,7 @@ def test_changzhou_gov_plugin_corpus_closed_loop_smoke_target_is_explicit_and_ov
             "CHANGZHOU_GOV_CORPUS_MAX_FILES=2",
             "CHANGZHOU_GOV_CORPUS_UPLOAD_BATCH_SIZE=1",
             "CHANGZHOU_GOV_CORPUS_EXTENSIONS=.txt,.docx",
+            "CHANGZHOU_GOV_CORPUS_REGRESSION_TOP_K=5",
             "CHANGZHOU_GOV_CORPUS_HTTP_TIMEOUT=600",
             "CHANGZHOU_GOV_CORPUS_EXTRA_ARGS=--include-source-root-name --overwrite-goldens",
         ],
@@ -169,6 +170,7 @@ def test_changzhou_gov_plugin_corpus_closed_loop_smoke_target_is_explicit_and_ov
     assert '--extensions ".txt,.docx"' in command
     assert "--max-files 2" in command
     assert "--upload-batch-size 1" in command
+    assert "--regression-top-k 5" in command
     assert "--timeout 600" in command
     assert "--include-source-root-name --overwrite-goldens" in command
     assert '>"/tmp/corpus-raw.json"' in command
@@ -187,6 +189,8 @@ def test_changzhou_gov_plugin_corpus_closed_loop_evidence_target_is_overridable(
             "CHANGZHOU_GOV_CORPUS_MIN_RETRIEVAL_HIT_AT_3=0.75",
             "CHANGZHOU_GOV_CORPUS_MIN_EXPECTED_METADATA_HIT_RATE=0.9",
             "CHANGZHOU_GOV_CORPUS_MIN_EXPECTED_METADATA_RECALL=0.85",
+            "CHANGZHOU_GOV_CORPUS_MIN_CITATION_ACCURACY=0.7",
+            "CHANGZHOU_GOV_CORPUS_MIN_CITATION_COVERAGE=0.95",
         ],
         cwd=REPO_ROOT,
         check=False,
@@ -204,6 +208,8 @@ def test_changzhou_gov_plugin_corpus_closed_loop_evidence_target_is_overridable(
     assert "--min-retrieval-hit-at-3 0.75" in command
     assert "--min-expected-metadata-hit-rate 0.9" in command
     assert "--min-expected-metadata-recall 0.85" in command
+    assert "--min-citation-accuracy 0.7" in command
+    assert "--min-citation-coverage 0.95" in command
 
 
 def test_changzhou_gov_delivery_pack_target_is_overridable() -> None:
@@ -353,6 +359,68 @@ def test_changzhou_dify_mimirq_direct_gate_target_is_overridable_without_token_o
     assert "--min-hit-at-3 0.8" in command
     assert "--token" not in command
     assert "DIFY_EXTERNAL_KNOWLEDGE_API_KEY" not in command
+
+
+def test_changzhou_dify_mimirq_direct_kg_mode_targets_are_overridable_without_token() -> None:
+    result = subprocess.run(
+        [
+            "make",
+            "-n",
+            "changzhou-dify-mimirq-direct-kg-on-gate",
+            "CHANGZHOU_DIFY_CASES=/tmp/custom_cases.json",
+            "CHANGZHOU_DIFY_MIMIRQ_BASE_URL=http://192.168.3.6:8000",
+            "CHANGZHOU_DIFY_MIMIRQ_ENV_FILE=/tmp/custom.env",
+            "CHANGZHOU_DIFY_MIMIRQ_DIRECT_KG_ON_OUT=/tmp/kg-on.json",
+            "CHANGZHOU_DIFY_MIMIRQ_DIRECT_EXTRA_ARGS=--min-hit-at-3 0.8",
+            "CHANGZHOU_DIFY_PROBE_TOP_K=7",
+            "CHANGZHOU_DIFY_PROBE_TIMEOUT=13",
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    command = result.stdout
+    assert "scripts/changzhou_gov_golden_eval.py" in command
+    assert '--cases "/tmp/custom_cases.json"' in command
+    assert '--base-url "http://192.168.3.6:8000"' in command
+    assert '--env-file "/tmp/custom.env"' in command
+    assert "--top-k 7" in command
+    assert "--timeout 13" in command
+    assert "--kg-mode on" in command
+    assert '--out "/tmp/kg-on.json"' in command
+    assert "--min-hit-at-3 0.8" in command
+    assert "--token" not in command
+    assert "DIFY_EXTERNAL_KNOWLEDGE_API_KEY" not in command
+
+
+def test_changzhou_dify_kg_on_off_gate_generates_reports_before_compare() -> None:
+    result = subprocess.run(
+        [
+            "make",
+            "-n",
+            "changzhou-dify-kg-on-off-gate",
+            "CHANGZHOU_DIFY_MIMIRQ_DIRECT_KG_OFF_OUT=/tmp/kg-off.json",
+            "CHANGZHOU_DIFY_MIMIRQ_DIRECT_KG_ON_OUT=/tmp/kg-on.json",
+            "CHANGZHOU_DIFY_KG_COMPARE_OUT=/tmp/kg-compare.json",
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    command = result.stdout
+    off_index = command.index("changzhou-dify-mimirq-direct-kg-off-gate")
+    on_index = command.index("changzhou-dify-mimirq-direct-kg-on-gate")
+    compare_index = command.index("changzhou-dify-kg-compare-gate")
+    assert off_index < on_index < compare_index
+    assert "CHANGZHOU_DIFY_KG_BASELINE_REPORT=\"/tmp/kg-off.json\"" in command
+    assert "CHANGZHOU_DIFY_KG_CANDIDATE_REPORT=\"/tmp/kg-on.json\"" in command
+    assert "CHANGZHOU_DIFY_KG_COMPARE_OUT=\"/tmp/kg-compare.json\"" in command
 
 
 def test_changzhou_dify_workflow_lint_target_is_overridable() -> None:
@@ -562,6 +630,32 @@ def test_changzhou_dify_readiness_evidence_target_is_overridable() -> None:
     assert '--app-id "app-1"' in command
 
 
+def test_changzhou_dify_kg_compare_gate_target_is_overridable() -> None:
+    result = subprocess.run(
+        [
+            "make",
+            "-n",
+            "changzhou-dify-kg-compare-gate",
+            "CHANGZHOU_DIFY_KG_BASELINE_REPORT=/tmp/kg-off.json",
+            "CHANGZHOU_DIFY_KG_CANDIDATE_REPORT=/tmp/kg-on.json",
+            "CHANGZHOU_DIFY_KG_COMPARE_OUT=/tmp/kg-compare.json",
+            "CHANGZHOU_DIFY_KG_COMPARE_EXTRA_ARGS=--quality-profile changzhou-retrieval --max-quality-drop 0.01",
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    command = result.stdout
+    assert "scripts/changzhou_gov_golden_eval.py" in command
+    assert '--baseline-report "/tmp/kg-off.json"' in command
+    assert '--candidate-report "/tmp/kg-on.json"' in command
+    assert '--out "/tmp/kg-compare.json"' in command
+    assert "--quality-profile changzhou-retrieval --max-quality-drop 0.01" in command
+
+
 def test_changzhou_dify_readiness_gate_runs_probe_before_full_gate() -> None:
     result = subprocess.run(
         [
@@ -574,6 +668,7 @@ def test_changzhou_dify_readiness_gate_runs_probe_before_full_gate() -> None:
             "CHANGZHOU_DIFY_OUT_PREFIX=/tmp/full_gate",
             "CHANGZHOU_DIFY_MIMIRQ_DIRECT_OUT=/tmp/direct.json",
             "CHANGZHOU_DIFY_READINESS_OUT=/tmp/readiness.json",
+            "CHANGZHOU_DIFY_KG_COMPARE_OUT=/tmp/kg-compare.json",
             "CHANGZHOU_DIFY_KNOWLEDGE_MAP_ENV_FILE=/tmp/custom.env",
             "CHANGZHOU_DIFY_KNOWLEDGE_MAP_OUT=/tmp/map.json",
             "DIFY_CONSOLE_CHECK_OUT=/tmp/auth.json",
@@ -623,6 +718,7 @@ def test_changzhou_dify_readiness_gate_runs_probe_before_full_gate() -> None:
     assert '--external-probe "/tmp/probe.json"' in command
     assert '--console-auth "/tmp/auth.json"' in command
     assert '--mimirq-direct "/tmp/direct.json"' in command
+    assert '--kg-compare "/tmp/kg-compare.json"' in command
     assert '--full-summary "/tmp/full_gate_summary.json"' in command
     assert "--min-hit-at-3 0.8" in command
     assert "--min-generated-answer-grounding-rate 0.9" in command

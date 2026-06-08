@@ -59,7 +59,7 @@ def _freshness_line(generated_at: str, *, now: datetime, max_age_minutes: int) -
 
 
 def _stages_with_status(report: dict[str, Any], status: str) -> list[str]:
-    stages = ("knowledge_map", "mimirq_direct", "console_auth", "external_probe", "full_gate")
+    stages = ("knowledge_map", "mimirq_direct", "kg_compare", "console_auth", "external_probe", "full_gate")
     out: list[str] = []
     for stage in stages:
         section = report.get(stage)
@@ -179,11 +179,43 @@ def _metric(summary: dict[str, Any], key: str) -> str:
     return ""
 
 
+def _knowledge_plugin_ref_summary(summary: dict[str, Any], *, raw_labels: bool = False) -> str:
+    metrics = [
+        ("checked", "plugin_refs_checked"),
+        ("invalid", "plugin_refs_invalid"),
+        ("missing_policy", "plugin_refs_missing_retrieval_policy"),
+    ]
+    parts: list[str] = []
+    for label, key in metrics:
+        value = _metric(summary, key)
+        if value:
+            parts.append(f"{key if raw_labels else label}={value}")
+    return "; ".join(parts)
+
+
 def _stage_status(report: dict[str, Any], stage: str) -> str:
     section = report.get(stage)
     if not isinstance(section, dict):
         return "unknown"
     return _text(section.get("status")) or ("passed" if section.get("passed") is True else "failed")
+
+
+def _kg_compare_summary_text(kg_compare: dict[str, Any]) -> str:
+    if not isinstance(kg_compare, dict) or not kg_compare:
+        return ""
+    summary = kg_compare.get("summary") if isinstance(kg_compare.get("summary"), dict) else {}
+    candidate_gate = kg_compare.get("candidate_gate") if isinstance(kg_compare.get("candidate_gate"), dict) else {}
+    parts = [
+        f"candidate_gate={_metric(summary, 'candidate_gate_passed')}",
+        f"compared_metrics={_metric(summary, 'compared_metrics')}",
+    ]
+    checks = candidate_gate.get("checks") if isinstance(candidate_gate.get("checks"), list) else []
+    for check in checks:
+        if not isinstance(check, dict) or _text(check.get("metric")) != "kg_noise_rate":
+            continue
+        parts.append(f"kg_noise_rate={_metric(check, 'actual')}")
+        break
+    return "; ".join(part for part in parts if not part.endswith("="))
 
 
 def _markdown_table(headers: list[str], rows: list[list[str]]) -> list[str]:
@@ -207,6 +239,7 @@ def format_markdown_evidence(
     artifact_times = report.get("artifact_generated_at") if isinstance(report.get("artifact_generated_at"), dict) else {}
     knowledge_map = report.get("knowledge_map") if isinstance(report.get("knowledge_map"), dict) else {}
     mimirq_direct = report.get("mimirq_direct") if isinstance(report.get("mimirq_direct"), dict) else {}
+    kg_compare = report.get("kg_compare") if isinstance(report.get("kg_compare"), dict) else {}
     external_probe = report.get("external_probe") if isinstance(report.get("external_probe"), dict) else {}
     full_gate = report.get("full_gate") if isinstance(report.get("full_gate"), dict) else {}
     full_gate_stages = full_gate.get("stages") if isinstance(full_gate.get("stages"), dict) else {}
@@ -248,13 +281,21 @@ def format_markdown_evidence(
                         "knowledge_map",
                         _stage_status(report, "knowledge_map"),
                         f"routes={_metric(knowledge_summary, 'route_count')}; "
-                        f"district_ids={_metric(knowledge_summary, 'district_knowledge_ids_checked')}",
+                        f"district_ids={_metric(knowledge_summary, 'district_knowledge_ids_checked')}; "
+                        f"{_knowledge_plugin_ref_summary(knowledge_summary, raw_labels=True)}",
                     ],
                     [
                         "mimirq_direct",
                         _stage_status(report, "mimirq_direct"),
                         f"cases={_metric(direct_summary, 'cases')}; hit_at_1={_metric(direct_summary, 'hit_at_1')}; "
-                        f"answer_grounding_rate={_metric(direct_summary, 'answer_grounding_rate')}",
+                        f"answer_grounding_rate={_metric(direct_summary, 'answer_grounding_rate')}; "
+                        f"effective_context_rate={_metric(direct_summary, 'retrieval_effective_context_rate')}; "
+                        f"noise_rate={_metric(direct_summary, 'retrieval_noise_rate')}",
+                    ],
+                    [
+                        "kg_compare",
+                        _stage_status(report, "kg_compare"),
+                        _kg_compare_summary_text(kg_compare),
                     ],
                     [
                         "console_auth",
@@ -284,6 +325,12 @@ def format_markdown_evidence(
             *_markdown_table(
                 ["Metric", "Value"],
                 [
+                    ["hit_at_1", _metric(eval_summary, "hit_at_1")],
+                    ["hit_at_3", _metric(eval_summary, "hit_at_3")],
+                    ["answer_grounding_rate", _metric(eval_summary, "answer_grounding_rate")],
+                    ["answer_key_point_recall", _metric(eval_summary, "answer_key_point_recall")],
+                    ["retrieval_effective_context_rate", _metric(eval_summary, "retrieval_effective_context_rate")],
+                    ["retrieval_noise_rate", _metric(eval_summary, "retrieval_noise_rate")],
                     ["generated_answer_grounding_rate", _metric(eval_summary, "generated_answer_grounding_rate")],
                     ["generated_answer_key_point_recall", _metric(eval_summary, "generated_answer_key_point_recall")],
                     ["generated_answer_policy_clean_rate", _metric(eval_summary, "generated_answer_policy_clean_rate")],
@@ -355,8 +402,18 @@ def format_status(
     boundary_verdict = _text(boundary.get("verdict"))
     if boundary_verdict:
         lines.append(f"Boundary: {boundary_verdict}")
+    knowledge_map = report.get("knowledge_map") if isinstance(report.get("knowledge_map"), dict) else {}
+    knowledge_summary = knowledge_map.get("summary") if isinstance(knowledge_map.get("summary"), dict) else {}
+    knowledge_plugins = _knowledge_plugin_ref_summary(knowledge_summary)
+    if knowledge_plugins:
+        lines.append(f"Knowledge map plugins: {knowledge_plugins}")
+    kg_compare = report.get("kg_compare") if isinstance(report.get("kg_compare"), dict) else {}
+    kg_compare_text = _kg_compare_summary_text(kg_compare)
+    if kg_compare_text:
+        lines.append(f"KG compare: status={_stage_status(report, 'kg_compare')}; {kg_compare_text}")
     mimirq_direct = report.get("mimirq_direct") if isinstance(report.get("mimirq_direct"), dict) else {}
     mimirq_source = mimirq_direct.get("source") if isinstance(mimirq_direct.get("source"), dict) else {}
+    direct_summary = mimirq_direct.get("summary") if isinstance(mimirq_direct.get("summary"), dict) else {}
     direct_base_url = _text(mimirq_source.get("base_url"))
     direct_base_host = _text(mimirq_source.get("base_host"))
     external_endpoint_host = _text(external_probe.get("endpoint_host"))
@@ -369,6 +426,20 @@ def format_status(
             lines.append(f"MimirQ direct base: {direct_base_url} (matches external endpoint host)")
         else:
             lines.append(f"MimirQ direct base: {direct_base_url}")
+    full_gate = report.get("full_gate") if isinstance(report.get("full_gate"), dict) else {}
+    full_stages = full_gate.get("stages") if isinstance(full_gate.get("stages"), dict) else {}
+    full_eval = full_stages.get("eval") if isinstance(full_stages.get("eval"), dict) else {}
+    eval_summary = full_eval.get("summary") if isinstance(full_eval.get("summary"), dict) else {}
+    retrieval_quality_parts = [
+        f"direct.hit_at_1={_metric(direct_summary, 'hit_at_1')}",
+        f"direct.effective_context_rate={_metric(direct_summary, 'retrieval_effective_context_rate')}",
+        f"direct.noise_rate={_metric(direct_summary, 'retrieval_noise_rate')}",
+        f"full.effective_context_rate={_metric(eval_summary, 'retrieval_effective_context_rate')}",
+        f"full.noise_rate={_metric(eval_summary, 'retrieval_noise_rate')}",
+    ]
+    retrieval_quality = "; ".join(part for part in retrieval_quality_parts if not part.endswith("="))
+    if retrieval_quality:
+        lines.append(f"Retrieval quality: {retrieval_quality}")
     warning_items = _full_gate_warning_items(report)
     if warning_items:
         lines.append(f"Warnings: {'; '.join(warning_items)}")

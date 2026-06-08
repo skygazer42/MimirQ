@@ -317,6 +317,31 @@ def test_thresholds_from_args_preserves_defaults_and_applies_overrides() -> None
     }
 
 
+def test_thresholds_from_args_can_apply_retrieval_quality_profile() -> None:
+    mod = _load_module()
+    parser = mod.build_arg_parser()
+
+    args = parser.parse_args(
+        [
+            "--app-id",
+            "app-1",
+            "--out",
+            "/tmp/report.json",
+            "--quality-profile",
+            "changzhou-retrieval",
+        ]
+    )
+
+    thresholds = mod._thresholds_from_args(args)
+    maximums = mod._maximums_from_args(args)
+    assert thresholds["hit_at_1"] == 0.95
+    assert thresholds["hit_at_3"] == 1.0
+    assert thresholds["retrieval_effective_context_rate"] == 0.9
+    assert thresholds["generated_answer_key_point_recall"] == 1.0
+    assert maximums["retrieval_noise_rate"] == 0.1
+    assert maximums["generated_answer_fallback_rate"] == 0.0
+
+
 def test_arg_parser_separates_trace_timeout_from_main_timeout() -> None:
     mod = _load_module()
     parser = mod.build_arg_parser()

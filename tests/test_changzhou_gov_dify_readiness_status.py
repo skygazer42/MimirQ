@@ -72,11 +72,35 @@ def test_format_markdown_evidence_uses_metrics_without_raw_answers() -> None:
             "answers": "/tmp/answers.json",
         },
         "artifact_generated_at": {"full_gate": "2026-06-07T04:49:27Z"},
-        "knowledge_map": {"status": "passed", "summary": {"route_count": 7, "city_dataset_count": 5}},
+        "knowledge_map": {
+            "status": "passed",
+            "summary": {
+                "route_count": 7,
+                "city_dataset_count": 5,
+                "plugin_refs_checked": 2,
+                "plugin_refs_invalid": 0,
+                "plugin_refs_missing_retrieval_policy": 0,
+            },
+        },
         "mimirq_direct": {
             "status": "passed",
-            "summary": {"cases": 13, "hit_at_1": 1.0, "answer_grounding_rate": 1.0},
+            "summary": {
+                "cases": 13,
+                "hit_at_1": 1.0,
+                "answer_grounding_rate": 1.0,
+                "retrieval_effective_context_rate": 0.94,
+                "retrieval_noise_rate": 0.06,
+            },
             "source": {"base_url": "http://192.168.3.6:8000", "base_host": "192.168.3.6"},
+        },
+        "kg_compare": {
+            "status": "passed",
+            "summary": {"candidate_gate_passed": True, "compared_metrics": 14},
+            "candidate_gate": {
+                "checks": [
+                    {"metric": "kg_noise_rate", "actual": 0.05, "maximum": 0.1, "passed": True},
+                ]
+            },
         },
         "external_probe": {
             "status": "passed",
@@ -92,6 +116,12 @@ def test_format_markdown_evidence_uses_metrics_without_raw_answers() -> None:
                         "generated_answer_policy_clean_rate": 1.0,
                         "generated_answer_grounding_rate": 1.0,
                         "generated_answer_fallback_rate": 0.0,
+                        "hit_at_1": 0.95,
+                        "hit_at_3": 0.99,
+                        "answer_grounding_rate": 1.0,
+                        "answer_key_point_recall": 1.0,
+                        "retrieval_effective_context_rate": 0.94,
+                        "retrieval_noise_rate": 0.06,
                     }
                 },
                 "trace": {
@@ -121,7 +151,15 @@ def test_format_markdown_evidence_uses_metrics_without_raw_answers() -> None:
     assert "**Status:** PASSED" in text
     assert "dify_external_boundary_ok" in text
     assert "generated_answer_policy_clean_rate" in text
+    assert "effective_context_rate=0.94" in text
+    assert "noise_rate=0.06" in text
+    assert "| retrieval_effective_context_rate | 0.94 |" in text
+    assert "| retrieval_noise_rate | 0.06 |" in text
     assert "route_mismatch_cases" in text
+    assert "plugin_refs_checked=2" in text
+    assert "plugin_refs_invalid=0" in text
+    assert "plugin_refs_missing_retrieval_policy=0" in text
+    assert "| kg_compare | passed | candidate_gate=true; compared_metrics=14; kg_noise_rate=0.05 |" in text
     assert "| route_mismatch_cases | 0 |" in text
     assert "| empty_retrieval_cases | 0 |" in text
     assert "probe_errors=0" in text
@@ -192,6 +230,89 @@ def test_format_status_prints_mimirq_direct_source_match_state() -> None:
 
     assert "MimirQ direct base: http://192.168.3.6:8000 (matches external endpoint host)" in matching
     assert "MimirQ direct base: http://127.0.0.1:8000 (differs from external endpoint host 192.168.3.6)" in mismatching
+
+
+def test_format_status_prints_retrieval_quality_summary() -> None:
+    mod = _load_module()
+
+    text = mod.format_status(
+        {
+            "summary": {"passed": True},
+            "mimirq_direct": {
+                "status": "passed",
+                "summary": {
+                    "hit_at_1": 0.95,
+                    "retrieval_effective_context_rate": 0.94,
+                    "retrieval_noise_rate": 0.06,
+                },
+            },
+            "full_gate": {
+                "status": "passed",
+                "stages": {
+                    "eval": {
+                        "summary": {
+                            "retrieval_effective_context_rate": 0.93,
+                            "retrieval_noise_rate": 0.07,
+                        }
+                    }
+                },
+            },
+        },
+        max_age_minutes=0,
+    )
+
+    assert (
+        "Retrieval quality: direct.hit_at_1=0.95; direct.effective_context_rate=0.94; "
+        "direct.noise_rate=0.06; full.effective_context_rate=0.93; full.noise_rate=0.07"
+    ) in text
+
+
+def test_format_status_prints_kg_compare_summary() -> None:
+    mod = _load_module()
+
+    text = mod.format_status(
+        {
+            "summary": {"passed": True},
+            "kg_compare": {
+                "status": "passed",
+                "summary": {
+                    "candidate_gate_passed": True,
+                    "compared_metrics": 14,
+                    "candidate_cases": 13,
+                },
+                "candidate_gate": {
+                    "checks": [
+                        {"metric": "kg_noise_rate", "actual": 0.05, "maximum": 0.1, "passed": True},
+                    ]
+                },
+            },
+        },
+        max_age_minutes=0,
+    )
+
+    assert "KG compare: status=passed; candidate_gate=true; compared_metrics=14; kg_noise_rate=0.05" in text
+    assert "Passed stages: kg_compare" in text
+
+
+def test_format_status_prints_knowledge_map_plugin_ref_summary() -> None:
+    mod = _load_module()
+
+    text = mod.format_status(
+        {
+            "summary": {"passed": False},
+            "knowledge_map": {
+                "status": "failed",
+                "summary": {
+                    "plugin_refs_checked": 2,
+                    "plugin_refs_invalid": 1,
+                    "plugin_refs_missing_retrieval_policy": 1,
+                },
+            },
+        },
+        max_age_minutes=0,
+    )
+
+    assert "Knowledge map plugins: checked=2; invalid=1; missing_policy=1" in text
 
 
 def test_format_status_prints_non_blocking_full_gate_warnings() -> None:

@@ -62,6 +62,9 @@ def test_complete_changzhou_knowledge_map_passes() -> None:
         "route_count": 7,
         "district_routes_checked": 7,
         "district_knowledge_ids_checked": 7,
+        "plugin_refs_checked": 0,
+        "plugin_refs_invalid": 0,
+        "plugin_refs_missing_retrieval_policy": 0,
     }
     assert report["district_routes"]["missing"] == []
     assert report["district_knowledge_ids"]["missing"] == []
@@ -82,6 +85,100 @@ def test_missing_alias_and_district_mapping_fail_with_actionable_conditions() ->
     assert report["district_knowledge_ids"]["missing"] == ["changzhou_经开区_service"]
 
 
+def test_plugin_refs_with_retrieval_policy_are_reported(monkeypatch) -> None:
+    mod = _load_module()
+    payload = _complete_map()
+    plugin_ref = "plugin:demo-service@1.0.0:chunk"
+    payload["changzhou_city_service"]["plugin_refs"] = [plugin_ref]
+
+    monkeypatch.setattr(
+        mod,
+        "resolve_plugin_retrieval_policy",
+        lambda ref: {"schema": "mimirq.retrieval_policy.v1"} if ref == plugin_ref else {},
+        raising=False,
+    )
+
+    report = mod.check_knowledge_map(payload, generated_at="2026-06-06T00:00:00Z")
+
+    assert report["summary"]["passed"] is True
+    assert report["summary"]["plugin_refs_checked"] == 1
+    assert report["summary"]["plugin_refs_invalid"] == 0
+    assert report["summary"]["plugin_refs_missing_retrieval_policy"] == 0
+    assert report["plugin_refs"] == {
+        "checked": [{"knowledge_id": "changzhou_city_service", "plugin_ref": plugin_ref}],
+        "invalid": [],
+        "missing_retrieval_policy": [],
+    }
+
+
+def test_district_knowledge_mapping_object_can_carry_plugin_refs(monkeypatch) -> None:
+    mod = _load_module()
+    payload = _complete_map()
+    plugin_ref = "plugin:demo-service@1.0.0:chunk"
+    payload["changzhou_经开区_service"] = {
+        "dataset_ids": ["经开区-事项", "经开区-问答", "city-dataset"],
+        "plugin_refs": [plugin_ref],
+    }
+
+    monkeypatch.setattr(
+        mod,
+        "resolve_plugin_retrieval_policy",
+        lambda ref: {"schema": "mimirq.retrieval_policy.v1"} if ref == plugin_ref else {},
+        raising=False,
+    )
+
+    report = mod.check_knowledge_map(payload, generated_at="2026-06-06T00:00:00Z")
+
+    assert report["summary"]["passed"] is True
+    assert report["district_knowledge_ids"]["dataset_ids_missing"] == []
+    assert report["summary"]["plugin_refs_checked"] == 1
+    assert report["plugin_refs"]["checked"] == [
+        {"knowledge_id": "changzhou_经开区_service", "plugin_ref": plugin_ref}
+    ]
+
+
+def test_plugin_refs_without_retrieval_policy_fail_with_actionable_conditions(monkeypatch) -> None:
+    mod = _load_module()
+    payload = _complete_map()
+    plugin_ref = "plugin:demo-service@1.0.0:chunk"
+    payload["changzhou_city_service"]["plugin_refs"] = [plugin_ref]
+
+    monkeypatch.setattr(mod, "resolve_plugin_retrieval_policy", lambda _ref: {}, raising=False)
+
+    report = mod.check_knowledge_map(payload, generated_at="2026-06-06T00:00:00Z")
+
+    assert report["summary"]["passed"] is False
+    assert report["summary"]["plugin_refs_checked"] == 1
+    assert report["summary"]["plugin_refs_invalid"] == 0
+    assert report["summary"]["plugin_refs_missing_retrieval_policy"] == 1
+    assert (
+        "plugin_retrieval_policy_missing:changzhou_city_service:plugin:demo-service@1.0.0:chunk"
+        in report["summary"]["failed_conditions"]
+    )
+    assert report["plugin_refs"]["missing_retrieval_policy"] == [
+        {"knowledge_id": "changzhou_city_service", "plugin_ref": plugin_ref}
+    ]
+
+
+def test_invalid_plugin_refs_fail_before_registry_lookup(monkeypatch) -> None:
+    mod = _load_module()
+    payload = _complete_map()
+    payload["changzhou_city_service"]["plugin_refs"] = ["demo-service"]
+    calls: list[str] = []
+
+    monkeypatch.setattr(mod, "resolve_plugin_retrieval_policy", lambda ref: calls.append(ref) or {}, raising=False)
+
+    report = mod.check_knowledge_map(payload, generated_at="2026-06-06T00:00:00Z")
+
+    assert report["summary"]["passed"] is False
+    assert report["summary"]["plugin_refs_checked"] == 1
+    assert report["summary"]["plugin_refs_invalid"] == 1
+    assert report["summary"]["plugin_refs_missing_retrieval_policy"] == 0
+    assert "plugin_ref_invalid:changzhou_city_service:demo-service" in report["summary"]["failed_conditions"]
+    assert report["plugin_refs"]["invalid"] == [{"knowledge_id": "changzhou_city_service", "plugin_ref": "demo-service"}]
+    assert calls == []
+
+
 def test_cli_loads_env_file_and_writes_report(tmp_path: Path) -> None:
     mod = _load_module()
     env_file = tmp_path / ".env"
@@ -98,3 +195,39 @@ def test_cli_loads_env_file_and_writes_report(tmp_path: Path) -> None:
     report = json.loads(out.read_text(encoding="utf-8"))
     assert report["summary"]["passed"] is True
     assert report["summary"]["route_count"] == 7
+
+
+def test_cli_resolves_plugin_refs_from_repo_root(tmp_path: Path) -> None:
+    import subprocess
+    import sys
+
+    plugin_ref = "plugin:changzhou-gov-service-knowledge@1.0.0:chunk"
+    payload = _complete_map()
+    payload["changzhou_city_service"]["plugin_refs"] = [plugin_ref]
+    env_file = tmp_path / ".env"
+    out = tmp_path / "report.json"
+    env_file.write_text(
+        "IGNORED=1\n"
+        f"DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON='{json.dumps(payload, ensure_ascii=False)}'\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/changzhou_gov_dify_knowledge_map_check.py",
+            "--env-file",
+            str(env_file),
+            "--out",
+            str(out),
+        ],
+        check=False,
+        cwd=Path.cwd(),
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    report = json.loads(out.read_text(encoding="utf-8"))
+    assert report["summary"]["plugin_refs_checked"] == 1
+    assert report["summary"]["plugin_refs_missing_retrieval_policy"] == 0

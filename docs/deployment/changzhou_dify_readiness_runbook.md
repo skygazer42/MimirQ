@@ -145,8 +145,15 @@ source path、document id、case id 和文件名；交付时使用
 `/tmp/changzhou_gov_plugin_corpus_closed_loop_evidence.json` 和 `.md`，只保留文档/切片聚合、
 插件包 provenance 和 Golden 检索聚合指标。默认 evidence gate 要求
 `retrieval_recall>=1.0`、`retrieval_hit_at_3>=0.8`、`expected_metadata_hit_rate=1.0`
-和 `expected_metadata_recall=1.0`；`retrieval_hit_at_1`、MRR 和 NDCG 会展示出来用于判断首位排序质量，
-但不默认作为失败条件。
+和 `expected_metadata_recall=1.0`；`retrieval_hit_at_1`、MRR、NDCG、`citation_accuracy`
+和 `citation_coverage` 会展示出来用于判断首位排序和引用质量。citation 阈值默认不作为失败条件，
+需要发布级引用质量门禁时可通过 `CHANGZHOU_GOV_CORPUS_MIN_CITATION_ACCURACY` 和
+`CHANGZHOU_GOV_CORPUS_MIN_CITATION_COVERAGE` 显式设置。corpus evidence 还会展示
+`citation_eval_limit_avg`、`citation_evaluated_count_avg` 和 `citation_total_count_avg`，
+用于区分最终 top-k 评测窗口和层级召回扩展候选池规模。Changzhou corpus gate 默认
+`CHANGZHOU_GOV_CORPUS_REGRESSION_TOP_K=5`，对齐 Dify 常用 top-k 消费窗口，并默认要求
+`CHANGZHOU_GOV_CORPUS_MIN_CITATION_ACCURACY=0.5`；若要做更宽的召回审计，可显式改成
+top10/top20，但不应把宽候选池 precision 当作最终回答上下文质量。
 
 ---
 
@@ -155,7 +162,8 @@ source path、document id、case id 和文件名；交付时使用
 `make changzhou-dify-readiness-gate` 按顺序运行：
 
 1. `make changzhou-dify-knowledge-map-check`
-   - 验证 Dify external knowledge map、本级知识库、区县 route 和区县 knowledge id。
+   - 验证 Dify external knowledge map、本级知识库、区县 route、区县 knowledge id，以及声明的 `plugin_refs` 是否具备可用 `retrieval_policy`。
+   - `summary.plugin_refs_checked`、`summary.plugin_refs_invalid`、`summary.plugin_refs_missing_retrieval_policy` 可直接用于定位插件绑定问题，并会进入 readiness status / Markdown evidence。
    - 失败先修 `.env` 里的 `DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON`。
 
 2. `make changzhou-dify-mimirq-direct-gate`
@@ -163,15 +171,24 @@ source path、document id、case id 和文件名；交付时使用
    - 关键指标：`hit_at_1=1.0`、`answer_grounding_rate=1.0`、`answer_key_point_recall=1.0`。
    - 失败说明 MimirQ 入库、插件切块、metadata、索引或检索策略有问题。
 
-3. `make dify-console-ensure`
+3. 可选：`make changzhou-dify-kg-on-off-gate`
+   - 先用 `--kg-mode off/on` 分别请求 MimirQ direct gate，生成 KG-off 与 KG-on golden report，再做 saved-report 对比。
+   - `--kg-mode` 是 MimirQ direct-gate 扩展：`default` 继承服务配置；`off/on` 用请求级 KG override 覆盖 Dify adapter 的 KG 查询扩展、KG chunk 注入与 KG boost。
+   - 已有报告也可直接比较：
+     `CHANGZHOU_DIFY_KG_BASELINE_REPORT=/tmp/kg-off.json CHANGZHOU_DIFY_KG_CANDIDATE_REPORT=/tmp/kg-on.json CHANGZHOU_DIFY_KG_COMPARE_OUT=/tmp/changzhou_gov_dify_kg_compare.json make changzhou-dify-kg-compare-gate`
+   - 候选报告必须通过 `changzhou-retrieval` profile，且不能降低 hit、grounding、effective context、metadata match 等基线指标。
+   - `kg_noise_rate` 走候选报告绝对上限，默认 `<= 0.1`，不和 KG-off 的 0 噪声做不合理比较。
+   - 若设置 `CHANGZHOU_DIFY_KG_COMPARE_OUT=/tmp/changzhou_gov_dify_kg_compare.json`，`make changzhou-dify-readiness-summary` 会把它纳入 `kg_compare` 阶段；失败会阻断后续远端 Dify gate。
+
+4. `make dify-console-ensure`
    - 验证 console token 未过期；需要 trace 和 workflow draft 读取。
 
-4. `make changzhou-dify-external-probe`
+5. `make changzhou-dify-external-probe`
    - 通过 Dify console 的 hit-testing 入口验证 external knowledge 边界。
    - 关键结论：`dify_external_boundary_ok`。
    - 若 `dify_runtime_empty_but_mimirq_direct_ok > 0`，通常是 Dify external endpoint、dataset binding 或网络访问问题。
 
-5. `make changzhou-dify-full-gate`
+6. `make changzhou-dify-full-gate`
    - 调 Dify App API 做真实回答采集，再用 MimirQ direct retrieval 做质量评估，并拉取 Dify workflow trace。
    - 关键指标：
      - `generated_answer_policy_clean_rate`
@@ -189,6 +206,7 @@ source path、document id、case id 和文件名；交付时使用
 
 - `/tmp/changzhou_gov_dify_knowledge_map_check.json`
 - `/tmp/changzhou_gov_dify_mimirq_direct_gate.json`
+- `/tmp/changzhou_gov_dify_kg_compare.json`
 - `/tmp/dify_console_check.json`
 - `/tmp/changzhou_gov_dify_external_probe.json`
 - `/tmp/changzhou_gov_dify_full_gate_summary.json`
@@ -291,7 +309,7 @@ make changzhou-dify-workflow-sync-apply
 
 | 失败位置 | 优先看 | 处理方向 |
 | --- | --- | --- |
-| `knowledge_map.failed_conditions` 非空 | `/tmp/changzhou_gov_dify_knowledge_map_check.json` | 修 `.env` 的 Dify knowledge map、区县 route 或 dataset ids |
+| `knowledge_map.failed_conditions` 非空 | `/tmp/changzhou_gov_dify_knowledge_map_check.json` | 修 `.env` 的 Dify knowledge map、区县 route、dataset ids 或 `plugin_refs` |
 | `mimirq_direct.hit_at_1 < 1.0` | `/tmp/changzhou_gov_dify_mimirq_direct_gate.json` | 查插件切块、metadata、入库数据、索引和 MimirQ 检索策略 |
 | `console_auth.passed=false` | `/tmp/dify_console_check.json` | 用 `DIFY_CONSOLE_EMAIL` 和 `DIFY_CONSOLE_PASSWORD_FILE` 重新 `make dify-console-login` |
 | `external_probe.boundary.verdict != dify_external_boundary_ok` | `/tmp/changzhou_gov_dify_external_probe.json` | 查 Dify external endpoint 是否指向可达的 MimirQ URL，避免 localhost/错误主机 |

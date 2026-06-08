@@ -11,6 +11,7 @@ def test_changzhou_dify_readiness_runbook_documents_reproducible_gate_flow() -> 
     assert "make changzhou-dify-readiness-gate-quiet" in text
     assert "make changzhou-dify-readiness-status" in text
     assert "make changzhou-dify-readiness-evidence" in text
+    assert "make changzhou-dify-kg-compare-gate" in text
     assert "make changzhou-gov-plugin-chunk-evidence" in text
     assert "make changzhou-gov-plugin-test-report" in text
     assert "make changzhou-gov-plugin-test-evidence" in text
@@ -25,6 +26,7 @@ def test_changzhou_dify_readiness_runbook_documents_reproducible_gate_flow() -> 
     assert "/tmp/changzhou_gov_dify_readiness_summary.json" in text
     assert "/tmp/changzhou_gov_dify_readiness_evidence.md" in text
     assert "/tmp/changzhou_gov_dify_readiness_gate.log" in text
+    assert "/tmp/changzhou_gov_dify_kg_compare.json" in text
     assert "/tmp/changzhou_gov_plugin_chunk_evidence.json" in text
     assert "/tmp/changzhou_gov_plugin_chunk_evidence.md" in text
     assert "/tmp/changzhou_gov_plugin_test_evidence.json" in text
@@ -34,6 +36,7 @@ def test_changzhou_dify_readiness_runbook_documents_reproducible_gate_flow() -> 
     assert "/tmp/changzhou_gov_dify_workflow_sync_payload.json" in text
     assert "dify_external_boundary_ok" in text
     assert "generated_answer_policy_clean_rate" in text
+    assert "kg_noise_rate" in text
     assert "route_mismatch_cases" in text
     assert "raw report" in text
 
