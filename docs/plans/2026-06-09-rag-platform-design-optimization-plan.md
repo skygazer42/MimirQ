@@ -23,6 +23,77 @@ MimirQ already has the right foundation:
 
 The remaining design risk is not lack of algorithms. The risk is that the best evidence still lives across scripts, `/tmp` artifacts, readiness runbooks, and plugin-specific commands. Production operators need a first-class retrieval audit trail inside the platform, and future business plugins need the same gates without changing platform code.
 
+## Design Philosophy Decision Matrix
+
+Use this matrix when deciding whether a behavior belongs in MimirQ core, a
+pipeline plugin, or a deployment adapter.
+
+| Decision Area | Platform Core Responsibility | Plugin Package Responsibility | Deployment / Adapter Responsibility | Primary Optimization Lever |
+| --- | --- | --- | --- | --- |
+| Business record interpretation | Validate contracts, execute stages, persist standard assets. Platform core must not learn business meanings. | Plugin packages own business interpretation, record boundaries, normalization, aliases, and business metadata. | Bind the selected plugin refs to the target dataset and record package provenance. | Improve plugin governance fixtures and `metadata_schema.json`. |
+| Chunk granularity | Store chunks, metadata views, provenance, index state, and audit evidence without knowing the business type. | Decide whether a source becomes one chunk, several evidence chunks, FAQ pairs, table records, or workflow steps. | Run plugin chunk reports and corpus gates before publishing. | Optimize chunk completeness and answer-bearing evidence coverage. |
+| Retrieval policy | Apply a generic policy helper for candidate sources, metadata filters, boosts, and rerank features. | Declare query expansion fields, filter fields, anchors, boost fields, and fallback hints in `retrieval_policy.json`. | Pass dataset scope and optional runtime profile; do not add business ranking code. | Tune retrieval policy and Golden thresholds before touching adapter code. |
+| KG assist | Consume generic KG events as expansion, injection, or ranking features; never return final answers directly from KG. | Emit evidence-backed entities, aliases, relations, and event provenance from chunked documents. | Enable KG only after KG-off/KG-on comparison proves no quality regression. | Reduce KG noise and require evidence-linked relations. |
+| External workflow integration | Return evidence chunks, scores, safe metadata, and trace. | Stay unaware of Dify or other external workflow implementations. | Deployment adapters own external binding and network evidence, including knowledge-id to dataset-id mapping. | Fix boundary, timeout, auth, and scope issues without adding fast paths. |
+| Release quality | Assemble generic retrieval audit snapshots, regression summaries, and failure categories. | Provide Golden cases or Golden-generation rules that express the business expected evidence. | Publish delivery packs and readiness summaries from persisted gate evidence. | Optimize evidence retrieval before answer generation. |
+
+The deciding question is: "Would a second unrelated business need this exact
+branch in platform code?" If no, it belongs in a plugin package or deployment
+configuration. If yes, it should be expressed as a stable contract or shared
+executor behavior, not as a business-specific shortcut.
+
+## Optimization Priority Ladder
+
+When retrieval quality is poor, fix layers in this order. Later layers cannot
+repair missing or badly structured evidence from earlier layers.
+
+1. Corpus fit: verify that the answer really exists in the selected dataset and
+   that the dataset scope is correct.
+2. Record identity and metadata schema: make sure the plugin emits stable
+   `record_identity`, filterable fields, display fields, and evaluable fields.
+3. Chunk evidence completeness: ensure chunks contain self-contained answer
+   evidence, source provenance, and parent record linkage.
+4. Hybrid retrieval policy: tune vector, BM25, sparse, metadata filters, anchors,
+   and boosts through generic `retrieval_policy.json` hints.
+5. Rerank: improve ordering after recall is sufficient; do not use rerank to
+   hide missing candidate evidence.
+6. KG assist: enable query expansion, chunk injection, or KG boost only when
+   saved KG-on/off evidence shows hit, metadata match, and noise stay within
+   thresholds.
+7. External adapter latency and binding: tune top-k limits, timeouts, streaming,
+   and Dify knowledge mapping after native MimirQ retrieval is proven.
+8. Answer generation: adjust prompt or downstream chat behavior only after the
+   retrieved evidence is correct.
+
+This order is intentional: answer quality should be downstream of retrieval
+evidence quality. If a question has an answer in the knowledge base, the primary
+platform obligation is to retrieve strongly related answer-bearing chunks.
+
+## Options Considered
+
+### Option A: Platform-specialized business routes
+
+Put government-specific records, districts, FAQ categories, workflow terms, or
+known aliases directly into `app/` and Dify adapter code. This can improve one
+demo quickly, but it makes MimirQ a business application instead of a reusable
+RAG platform. It also makes future domains compete for runtime branches and
+prevents neutral evaluation.
+
+### Option B: Raw generic splitter and generic retrieval only
+
+Avoid plugin behavior and rely on default parsing, generic chunk sizes, vector
+search, and rerank. This keeps the platform simple, but it loses the business
+record boundaries and metadata needed for precise recall, scope filtering,
+Golden evaluation, and explainable KG assist.
+
+### Option C: Contract-first plugin system
+
+Use plugins for business governance, chunking, metadata, KG events, retrieval
+hints, and Golden cases; keep the platform responsible for validation,
+execution, indexing, retrieval, audit, and release gates. This is the recommended
+design because it preserves platform neutrality while still allowing each
+business package to encode the information needed for high-quality recall.
+
 ## Design Principles To Enforce
 
 1. Platform code must stay business-neutral. Any terms like districts, service items, FAQ sections, department categories, or one-thing guides belong in plugin packages, tests, scripts, or docs.
