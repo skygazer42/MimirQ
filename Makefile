@@ -118,6 +118,7 @@ CHANGZHOU_GOV_CORPUS_EXTRA_ARGS ?=
 CHANGZHOU_GOV_DELIVERY_PACK_OUT ?= /tmp/changzhou_gov_delivery_pack.json
 CHANGZHOU_GOV_DELIVERY_PACK_MD ?= /tmp/changzhou_gov_delivery_pack.md
 CHANGZHOU_GOV_DELIVERY_PACK_MAX_READINESS_AGE_MINUTES ?= 30
+CHANGZHOU_GOV_DELIVERY_PACK_REQUIRE_READINESS_AUDIT ?= 0
 MIMIRQ_TENANT_ID ?= 00000000-0000-0000-0000-000000000000
 MIMIRQ_ACCOUNT_ID ?= demo
 MIMIRQ_USER_ID ?= demo
@@ -478,6 +479,8 @@ changzhou-gov-delivery-pack: changzhou-gov-plugin-chunk-evidence changzhou-gov-p
 		--plugin-test-evidence "$(CHANGZHOU_GOV_PLUGIN_TEST_EVIDENCE_OUT)" \
 		--readiness-summary "$(CHANGZHOU_DIFY_READINESS_OUT)" \
 		--readiness-evidence "$(CHANGZHOU_DIFY_READINESS_EVIDENCE_OUT)" \
+		--readiness-audit "$(CHANGZHOU_DIFY_READINESS_AUDIT_OUT)" \
+		$(if $(filter 1 true yes,$(CHANGZHOU_GOV_DELIVERY_PACK_REQUIRE_READINESS_AUDIT)),--require-readiness-audit-persisted) \
 		--max-readiness-age-minutes $(CHANGZHOU_GOV_DELIVERY_PACK_MAX_READINESS_AGE_MINUTES) \
 		--json-out "$(CHANGZHOU_GOV_DELIVERY_PACK_OUT)" \
 		--markdown-out "$(CHANGZHOU_GOV_DELIVERY_PACK_MD)"

@@ -102,6 +102,7 @@ make changzhou-dify-readiness-evidence
 make changzhou-gov-plugin-chunk-evidence
 make changzhou-gov-plugin-test-report
 make changzhou-gov-plugin-test-evidence
+make changzhou-dify-readiness-persist-audit CHANGZHOU_GOV_CORPUS_DATASET_ID="$DATASET_ID"
 make changzhou-gov-delivery-pack
 ```
 
@@ -121,9 +122,15 @@ make changzhou-gov-delivery-pack-refresh \
 
 该命令会刷新本地插件 01-06 切块 raw 审查报告、去掉样例内容的 plugin chunk evidence、
 插件 local test/Golden draft raw 报告、以及去掉 Golden 样例问题的 plugin test evidence，
-再读取 readiness summary/evidence 生成总索引；不会调用远端 Dify，不会写数据库、向量库
-或 KG 存储。默认要求 readiness summary 生成时间不超过 30 分钟，超时会标记
+再读取 readiness summary/evidence 和可选的 persisted retrieval audit 结果生成总索引；
+不会调用远端 Dify，不会写数据库、向量库或 KG 存储。默认要求 readiness summary 生成时间不超过 30 分钟，超时会标记
 `readiness_fresh=false` 并返回失败，避免把旧 gate 结果当成交付证据。
+如果生产交付必须证明 retrieval audit 已写回 report，可在生成 pack 时加：
+
+```bash
+make changzhou-gov-delivery-pack \
+  CHANGZHOU_GOV_DELIVERY_PACK_REQUIRE_READINESS_AUDIT=1
+```
 
 如果要证明真实语料已经经过插件治理/切块/KG、写入索引，并且 Golden 检索闭环通过，
 显式运行 corpus closed-loop gate：
