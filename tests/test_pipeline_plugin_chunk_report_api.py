@@ -163,6 +163,9 @@ def test_pipeline_plugin_chunk_report_endpoint_returns_review_report(monkeypatch
         "chunks_present": True,
         "metadata_fields_present": True,
         "kg_events_present": True,
+        "governance_metadata_contract_valid": True,
+        "chunk_metadata_contract_valid": True,
+        "kg_metadata_contract_valid": True,
     }
     assert body["sections"][0]["knowledge_section"] == "alpha"
     assert body["sections"][0]["examples"][0]["title"] == "Alpha record"
@@ -183,7 +186,7 @@ def test_pipeline_plugin_chunk_report_response_schema_exposes_readiness_contract
 
     checks_ref = readiness_schema["properties"]["checks"]["items"]["$ref"]
     check_schema = schema["$defs"][checks_ref.rsplit("/", 1)[-1]]
-    assert set(check_schema["properties"]) == {"name", "passed", "value", "required"}
+    assert set(check_schema["properties"]) == {"name", "passed", "value", "required", "errors"}
 
 
 def test_pipeline_plugin_chunk_report_endpoint_rejects_input_path_escape(monkeypatch, tmp_path: Path) -> None:  # noqa: ANN001

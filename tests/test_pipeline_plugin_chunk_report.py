@@ -189,3 +189,40 @@ def test_generic_plugin_chunk_report_runs_stages_and_hides_platform_metadata_vie
         "answer_kind": "full_record",
     }
     assert "_indexed_metadata" not in alpha["examples"][0]["metadata_focus"]
+
+
+def test_generic_plugin_chunk_report_fails_when_chunk_metadata_contract_is_violated(tmp_path: Path) -> None:
+    from app.rag.pipeline_plugins.reports import build_pipeline_plugin_chunk_report
+
+    plugin_dir, input_path = _write_report_plugin(tmp_path)
+    metadata_schema_path = plugin_dir / "metadata_schema.json"
+    metadata_schema = json.loads(metadata_schema_path.read_text(encoding="utf-8"))
+    metadata_schema["fields"].append(
+        {
+            "name": "answer_detail",
+            "type": "string",
+            "required": True,
+            "stages": ["chunk"],
+            "filterable": True,
+            "display": True,
+            "evaluable": True,
+        }
+    )
+    metadata_schema_path.write_text(json.dumps(metadata_schema, ensure_ascii=False), encoding="utf-8")
+
+    report = build_pipeline_plugin_chunk_report(
+        plugin_dir,
+        input_path=input_path,
+        section_metadata_keys=("section_label",),
+        title_metadata_keys=("record_label",),
+    )
+
+    assert report["passed"] is False
+    assert report["readiness"]["status"] == "failed"
+    readiness_checks = {check["name"]: check for check in report["readiness"]["checks"]}
+    assert readiness_checks["governance_metadata_contract_valid"]["passed"] is True
+    assert readiness_checks["chunk_metadata_contract_valid"]["passed"] is False
+    assert readiness_checks["chunk_metadata_contract_valid"]["value"] == 2
+    assert readiness_checks["chunk_metadata_contract_valid"]["errors"] == [
+        {"reason": "plugin metadata contract failed for answer_detail: required"}
+    ]
