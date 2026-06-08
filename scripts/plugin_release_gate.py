@@ -137,6 +137,10 @@ def _chunk_readiness_details(chunk_summary: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _safe_failure_reason(prefix: str, exc: BaseException) -> str:
+    return f"{prefix}: {type(exc).__name__}"
+
+
 def _declared_stages(descriptor: PipelinePluginDescriptor, stages: Sequence[str] | None) -> list[str]:
     if stages:
         return [stage for stage in _STAGE_ORDER if stage in set(stages)]
@@ -217,21 +221,34 @@ def build_plugin_release_gate_report(
 
     chunk_summary: dict[str, Any] = {"summary": {}, "readiness": {"status": "failed", "checks": []}}
     if "governance" in descriptor.entries and "chunk" in descriptor.entries:
-        chunk_report = build_pipeline_plugin_chunk_report(
-            plugin_path,
-            input_path=sample_path,
-            max_examples_per_section=0,
-            preview_chars=40,
-        )
-        chunk_summary = _summarize_chunk_report(chunk_report)
-        chunk_ready = (chunk_summary.get("readiness") or {}).get("status") == "passed"
-        checks.append(
-            _check(
-                "chunk_report_ready",
-                passed=chunk_ready,
-                details=_chunk_readiness_details(chunk_summary),
+        try:
+            chunk_report = build_pipeline_plugin_chunk_report(
+                plugin_path,
+                input_path=sample_path,
+                max_examples_per_section=0,
+                preview_chars=40,
             )
-        )
+        except Exception as exc:  # noqa: BLE001
+            checks.append(
+                _check(
+                    "chunk_report_ready",
+                    passed=False,
+                    details={
+                        "reason": _safe_failure_reason("chunk report generation failed", exc),
+                        **_chunk_readiness_details(chunk_summary),
+                    },
+                )
+            )
+        else:
+            chunk_summary = _summarize_chunk_report(chunk_report)
+            chunk_ready = (chunk_summary.get("readiness") or {}).get("status") == "passed"
+            checks.append(
+                _check(
+                    "chunk_report_ready",
+                    passed=chunk_ready,
+                    details=_chunk_readiness_details(chunk_summary),
+                )
+            )
     else:
         checks.append(
             _check(

@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 
-def _write_release_plugin(tmp_path: Path, *, empty_chunks: bool = False) -> tuple[Path, Path]:
+def _write_release_plugin(tmp_path: Path, *, empty_chunks: bool = False, raise_chunk: bool = False) -> tuple[Path, Path]:
     plugin_dir = tmp_path / "plugins" / "demo-release-plugin"
     plugin_dir.mkdir(parents=True)
     (plugin_dir / "mimirq-plugin.json").write_text(
@@ -129,7 +129,12 @@ def _write_release_plugin(tmp_path: Path, *, empty_chunks: bool = False) -> tupl
         ),
         encoding="utf-8",
     )
-    chunk_body = "    return []" if empty_chunks else (
+    if raise_chunk:
+        chunk_body = "    raise RuntimeError('chunk stage boom')"
+    elif empty_chunks:
+        chunk_body = "    return []"
+    else:
+        chunk_body = (
         "    return [\n"
         "        Document(\n"
         "            page_content=doc.page_content,\n"
@@ -137,7 +142,7 @@ def _write_release_plugin(tmp_path: Path, *, empty_chunks: bool = False) -> tupl
         "        )\n"
         "        for doc in documents\n"
         "    ]"
-    )
+        )
     (plugin_dir / "plugin.py").write_text(
         f"""
 from langchain_core.documents import Document
@@ -276,3 +281,23 @@ def test_plugin_release_gate_fails_when_required_chunk_stage_emits_no_chunks(tmp
     assert checks["local_test_report_current"]["passed"] is False
     readiness_checks = {check["name"]: check for check in report["chunk_report"]["readiness"]["checks"]}
     assert readiness_checks["chunks_present"]["passed"] is False
+
+
+def test_plugin_release_gate_returns_safe_report_when_chunk_report_generation_errors(tmp_path: Path) -> None:
+    from scripts.plugin_release_gate import build_plugin_release_gate_report
+
+    plugin_dir, sample_path = _write_release_plugin(tmp_path, raise_chunk=True)
+
+    report = build_plugin_release_gate_report(plugin_dir, sample_path=sample_path)
+
+    assert report["passed"] is False
+    assert "chunk_report_ready" in report["summary"]["failed_required_checks"]
+    checks = {check["name"]: check for check in report["checks"]}
+    assert checks["chunk_report_ready"]["passed"] is False
+    assert checks["chunk_report_ready"]["details"] == {
+        "reason": "chunk report generation failed: RuntimeError",
+        "readiness_status": "failed",
+        "failed_readiness_checks": [],
+    }
+    assert report["chunk_report"] == {"summary": {}, "readiness": {"status": "failed", "checks": []}}
+    assert "TOP SECRET RAW SENTINEL" not in json.dumps(report, ensure_ascii=False)
