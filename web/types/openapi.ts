@@ -19521,6 +19521,34 @@ export interface components {
              */
             entity_vector_enabled: boolean;
         };
+        /** PipelinePluginChunkReportReadiness */
+        PipelinePluginChunkReportReadiness: {
+            /**
+             * Status
+             * @default failed
+             * @enum {string}
+             */
+            status: "passed" | "failed";
+            /** Checks */
+            checks?: components["schemas"]["PipelinePluginChunkReportReadinessCheck"][];
+        };
+        /** PipelinePluginChunkReportReadinessCheck */
+        PipelinePluginChunkReportReadinessCheck: {
+            /** Name */
+            name: string;
+            /** Passed */
+            passed: boolean;
+            /**
+             * Value
+             * @default 0
+             */
+            value: number;
+            /**
+             * Required
+             * @default true
+             */
+            required: boolean;
+        };
         /** PipelinePluginChunkReportRequest */
         PipelinePluginChunkReportRequest: {
             /**
@@ -19579,6 +19607,7 @@ export interface components {
             summary?: {
                 [key: string]: unknown;
             };
+            readiness?: components["schemas"]["PipelinePluginChunkReportReadiness"];
             /** Sections */
             sections?: {
                 [key: string]: unknown;

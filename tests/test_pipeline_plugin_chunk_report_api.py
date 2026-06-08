@@ -169,6 +169,23 @@ def test_pipeline_plugin_chunk_report_endpoint_returns_review_report(monkeypatch
     assert body["sections"][0]["examples"][0]["metadata_focus"]["answer_kind"] == "full_record"
 
 
+def test_pipeline_plugin_chunk_report_response_schema_exposes_readiness_contract() -> None:
+    from app.api.schemas.pipeline import PipelinePluginChunkReportResponse
+
+    schema = PipelinePluginChunkReportResponse.model_json_schema()
+    properties = schema["properties"]
+
+    assert "readiness" in properties
+    readiness_ref = properties["readiness"]["$ref"]
+    readiness_schema = schema["$defs"][readiness_ref.rsplit("/", 1)[-1]]
+    assert "status" in readiness_schema["properties"]
+    assert "checks" in readiness_schema["properties"]
+
+    checks_ref = readiness_schema["properties"]["checks"]["items"]["$ref"]
+    check_schema = schema["$defs"][checks_ref.rsplit("/", 1)[-1]]
+    assert set(check_schema["properties"]) == {"name", "passed", "value", "required"}
+
+
 def test_pipeline_plugin_chunk_report_endpoint_rejects_input_path_escape(monkeypatch, tmp_path: Path) -> None:  # noqa: ANN001
     from app.rag.pipeline_plugins.local_runner import run_pipeline_plugin_test
 
