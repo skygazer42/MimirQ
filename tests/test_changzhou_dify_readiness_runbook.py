@@ -18,6 +18,7 @@ def test_changzhou_dify_readiness_runbook_documents_reproducible_gate_flow() -> 
     assert "make changzhou-gov-plugin-test-evidence" in text
     assert "make changzhou-gov-delivery-pack" in text
     assert "make changzhou-gov-delivery-pack-refresh" in text
+    assert "make changzhou-gov-delivery-pack-refresh-with-audit" in text
     assert "make changzhou-dify-workflow-lint" in text
     assert "make changzhou-dify-workflow-sync-dry-run" in text
     assert "make changzhou-dify-workflow-sync-apply" in text

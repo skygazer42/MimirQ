@@ -294,6 +294,31 @@ def test_changzhou_gov_delivery_pack_refresh_runs_quiet_gate_before_pack() -> No
     assert quiet_index < pack_index
 
 
+def test_changzhou_gov_delivery_pack_refresh_with_audit_runs_explicit_writeback_before_pack() -> None:
+    result = subprocess.run(
+        [
+            "make",
+            "-n",
+            "changzhou-gov-delivery-pack-refresh-with-audit",
+            "CHANGZHOU_GOV_CORPUS_DATASET_ID=00000000-0000-0000-0000-000000000123",
+        ],
+        cwd=REPO_ROOT,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    command = result.stdout
+    quiet_index = command.index('changzhou-dify-readiness-gate >"')
+    persist_index = command.index("scripts/persist_retrieval_audit_snapshot.py")
+    pack_index = command.index("scripts/changzhou_gov_delivery_pack.py")
+    assert quiet_index < persist_index < pack_index
+    assert '--dataset-id "00000000-0000-0000-0000-000000000123"' in command
+    assert "--verify-report" in command
+    assert "--require-readiness-audit-persisted" in command
+
+
 def test_changzhou_gov_delivery_pack_refresh_does_not_run_live_corpus_smoke() -> None:
     result = subprocess.run(
         ["make", "-n", "changzhou-gov-delivery-pack-refresh"],
