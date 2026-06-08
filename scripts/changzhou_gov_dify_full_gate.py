@@ -36,8 +36,11 @@ from scripts.changzhou_gov_dify_trace_report import (  # noqa: E402
 from scripts.changzhou_gov_dify_workflow_lint import _fetch_draft_workflow, lint_workflow  # noqa: E402
 from scripts.changzhou_gov_golden_eval import (  # noqa: E402
     DEFAULT_CASES,
+    QUALITY_PROFILES,
     evaluate_quality_gate,
     load_cases,
+    quality_profile_maximums,
+    quality_profile_thresholds,
     run_live_eval,
 )
 
@@ -384,16 +387,24 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--trace-timeout", type=float, default=float(os.getenv("CHANGZHOU_DIFY_TRACE_TIMEOUT", "15")))
     parser.add_argument("--interval-sec", type=float, default=0.0)
     parser.add_argument("--user", default="mimirq-full-gate")
+    parser.add_argument(
+        "--quality-profile",
+        choices=QUALITY_PROFILES,
+        default="none",
+        help="Named retrieval quality gate defaults; explicit threshold flags override profile values.",
+    )
     parser.add_argument("--min-hit-at-1", type=float, default=None)
     parser.add_argument("--min-hit-at-3", type=float, default=None)
     parser.add_argument("--min-hit-at-5", type=float, default=None)
     parser.add_argument("--min-mrr", type=float, default=None)
     parser.add_argument("--min-answer-grounding-rate", type=float, default=None)
     parser.add_argument("--min-answer-key-point-recall", type=float, default=None)
+    parser.add_argument("--min-retrieval-effective-context-rate", type=float, default=None)
     parser.add_argument("--min-generated-answer-grounding-rate", type=float, default=None)
     parser.add_argument("--min-generated-answer-key-point-recall", type=float, default=None)
     parser.add_argument("--min-generated-answer-context-supported-rate", type=float, default=None)
     parser.add_argument("--min-generated-answer-policy-clean-rate", type=float, default=None)
+    parser.add_argument("--max-retrieval-noise-rate", type=float, default=None)
     parser.add_argument("--max-generated-answer-fallback-rate", type=float, default=None)
     parser.add_argument("--out", required=True)
     parser.add_argument("--answers-out", default="")
@@ -404,7 +415,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def _thresholds_from_args(args: argparse.Namespace) -> dict[str, float]:
-    thresholds = dict(DEFAULT_THRESHOLDS)
+    thresholds = {**quality_profile_thresholds(str(args.quality_profile or "none")), **DEFAULT_THRESHOLDS}
     pairs = {
         "hit_at_1": args.min_hit_at_1,
         "hit_at_3": args.min_hit_at_3,
@@ -412,6 +423,7 @@ def _thresholds_from_args(args: argparse.Namespace) -> dict[str, float]:
         "mrr": args.min_mrr,
         "answer_grounding_rate": args.min_answer_grounding_rate,
         "answer_key_point_recall": args.min_answer_key_point_recall,
+        "retrieval_effective_context_rate": args.min_retrieval_effective_context_rate,
         "generated_answer_grounding_rate": args.min_generated_answer_grounding_rate,
         "generated_answer_key_point_recall": args.min_generated_answer_key_point_recall,
         "generated_answer_context_supported_rate": args.min_generated_answer_context_supported_rate,
@@ -422,8 +434,9 @@ def _thresholds_from_args(args: argparse.Namespace) -> dict[str, float]:
 
 
 def _maximums_from_args(args: argparse.Namespace) -> dict[str, float]:
-    maximums = dict(DEFAULT_MAXIMUMS)
+    maximums = {**quality_profile_maximums(str(args.quality_profile or "none")), **DEFAULT_MAXIMUMS}
     pairs = {
+        "retrieval_noise_rate": args.max_retrieval_noise_rate,
         "generated_answer_fallback_rate": args.max_generated_answer_fallback_rate,
     }
     maximums.update({metric: float(value) for metric, value in pairs.items() if value is not None})

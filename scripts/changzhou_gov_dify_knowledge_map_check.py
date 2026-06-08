@@ -12,10 +12,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 SCHEMA = "mimirq.changzhou_gov_service_knowledge.dify_knowledge_map_check.v1"
 CITY_KNOWLEDGE_ID = "changzhou_city_service"
 MAP_ENV_NAME = "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON"
 VALID_ROUTE_MODES = {"prepend", "append", "replace"}
+RETRIEVAL_POLICY_SCHEMA = "mimirq.retrieval_policy.v1"
 REQUIRED_DISTRICT_TERMS: dict[str, tuple[str, ...]] = {
     "新北区": ("新北区", "新北"),
     "经开区": ("经开区", "经开"),
@@ -39,6 +44,34 @@ def _text_list(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
     return [_text(item) for item in value if _text(item)]
+
+
+def _plugin_refs(value: Any) -> list[str]:
+    if not isinstance(value, dict):
+        return []
+    raw_refs = value.get("plugin_refs") or value.get("pipeline_plugin_refs") or value.get("plugin_ref")
+    refs = raw_refs if isinstance(raw_refs, list | tuple | set) else [raw_refs]
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in refs:
+        ref = _text(raw)
+        if not ref or ref in seen:
+            continue
+        seen.add(ref)
+        out.append(ref)
+    return out
+
+
+def _mapping_dataset_ids(value: Any) -> list[str]:
+    if isinstance(value, dict):
+        for key in ("dataset_ids", "datasets", "dataset_id"):
+            if key in value:
+                return _mapping_dataset_ids(value.get(key))
+        return []
+    if isinstance(value, list | tuple | set):
+        return [_text(item) for item in value if _text(item)]
+    text = _text(value)
+    return [text] if text else []
 
 
 def _clean_env_value(value: str) -> str:
@@ -95,6 +128,22 @@ def _district_knowledge_id(district: str) -> str:
     return f"changzhou_{district}_service"
 
 
+def resolve_plugin_retrieval_policy(plugin_ref: str) -> dict[str, Any]:
+    ref = _text(plugin_ref)
+    if not ref.startswith("plugin:"):
+        return {}
+    try:
+        from app.rag.pipeline_plugins.registry import resolve_registered_plugin_descriptor
+
+        descriptor = resolve_registered_plugin_descriptor(ref)
+    except Exception:  # noqa: BLE001
+        return {}
+    policy = getattr(descriptor, "retrieval_policy", None)
+    if isinstance(policy, dict) and policy.get("schema") == RETRIEVAL_POLICY_SCHEMA:
+        return policy
+    return {}
+
+
 def check_knowledge_map(payload: dict[str, Any], *, generated_at: str = "") -> dict[str, Any]:
     failed_conditions: list[str] = []
     city_mapping = payload.get(CITY_KNOWLEDGE_ID)
@@ -103,7 +152,7 @@ def check_knowledge_map(payload: dict[str, Any], *, generated_at: str = "") -> d
     if not isinstance(city_mapping, dict):
         failed_conditions.append(f"knowledge_id_missing:{CITY_KNOWLEDGE_ID}")
     else:
-        city_dataset_ids = _text_list(city_mapping.get("dataset_ids"))
+        city_dataset_ids = _mapping_dataset_ids(city_mapping)
         routes_raw = city_mapping.get("query_routes")
         routes = routes_raw if isinstance(routes_raw, list) else []
         if not city_dataset_ids:
@@ -127,7 +176,7 @@ def check_knowledge_map(payload: dict[str, Any], *, generated_at: str = "") -> d
             incomplete_routes.append({"district": district, "missing_terms": missing_terms})
             for term in missing_terms:
                 failed_conditions.append(f"route_terms_missing:{district}:{term}")
-        if not _text_list(route.get("dataset_ids")):
+        if not _mapping_dataset_ids(route):
             route_dataset_missing.append(district)
             failed_conditions.append(f"route_dataset_ids_missing:{district}")
         mode = _text(route.get("mode") or "prepend")
@@ -139,13 +188,28 @@ def check_knowledge_map(payload: dict[str, Any], *, generated_at: str = "") -> d
     empty_knowledge_ids: list[str] = []
     for district in REQUIRED_DISTRICT_TERMS:
         knowledge_id = _district_knowledge_id(district)
-        dataset_ids = _text_list(payload.get(knowledge_id))
+        dataset_ids = _mapping_dataset_ids(payload.get(knowledge_id))
         if knowledge_id not in payload:
             missing_knowledge_ids.append(knowledge_id)
             failed_conditions.append(f"district_knowledge_id_missing:{knowledge_id}")
         elif not dataset_ids:
             empty_knowledge_ids.append(knowledge_id)
             failed_conditions.append(f"district_knowledge_dataset_ids_missing:{knowledge_id}")
+
+    checked_plugin_refs: list[dict[str, str]] = []
+    invalid_plugin_refs: list[dict[str, str]] = []
+    missing_policy_plugin_refs: list[dict[str, str]] = []
+    for knowledge_id, mapping in payload.items():
+        for plugin_ref in _plugin_refs(mapping):
+            item = {"knowledge_id": _text(knowledge_id), "plugin_ref": plugin_ref}
+            checked_plugin_refs.append(item)
+            if not plugin_ref.startswith("plugin:"):
+                invalid_plugin_refs.append(item)
+                failed_conditions.append(f"plugin_ref_invalid:{knowledge_id}:{plugin_ref}")
+                continue
+            if not resolve_plugin_retrieval_policy(plugin_ref):
+                missing_policy_plugin_refs.append(item)
+                failed_conditions.append(f"plugin_retrieval_policy_missing:{knowledge_id}:{plugin_ref}")
 
     district_count = len(REQUIRED_DISTRICT_TERMS)
     return {
@@ -158,6 +222,9 @@ def check_knowledge_map(payload: dict[str, Any], *, generated_at: str = "") -> d
             "route_count": len(routes),
             "district_routes_checked": district_count,
             "district_knowledge_ids_checked": district_count,
+            "plugin_refs_checked": len(checked_plugin_refs),
+            "plugin_refs_invalid": len(invalid_plugin_refs),
+            "plugin_refs_missing_retrieval_policy": len(missing_policy_plugin_refs),
         },
         "city": {
             "knowledge_id": CITY_KNOWLEDGE_ID,
@@ -174,6 +241,11 @@ def check_knowledge_map(payload: dict[str, Any], *, generated_at: str = "") -> d
             "required": [_district_knowledge_id(district) for district in REQUIRED_DISTRICT_TERMS],
             "missing": missing_knowledge_ids,
             "dataset_ids_missing": empty_knowledge_ids,
+        },
+        "plugin_refs": {
+            "checked": checked_plugin_refs,
+            "invalid": invalid_plugin_refs,
+            "missing_retrieval_policy": missing_policy_plugin_refs,
         },
     }
 
@@ -202,6 +274,9 @@ def main(argv: list[str] | None = None) -> int:
                 "route_count": 0,
                 "district_routes_checked": len(REQUIRED_DISTRICT_TERMS),
                 "district_knowledge_ids_checked": len(REQUIRED_DISTRICT_TERMS),
+                "plugin_refs_checked": 0,
+                "plugin_refs_invalid": 0,
+                "plugin_refs_missing_retrieval_policy": 0,
             },
             "error": _text(exc),
         }

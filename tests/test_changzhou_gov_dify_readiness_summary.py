@@ -193,6 +193,64 @@ def test_build_readiness_summary_marks_failed_source() -> None:
     assert summary["external_probe"]["blocked_by"] == "knowledge_map"
 
 
+def test_plugin_ref_invalid_gets_specific_next_action() -> None:
+    mod = _load_module()
+
+    summary = mod.build_readiness_summary(
+        knowledge_map={
+            "summary": {
+                "passed": False,
+                "failed_conditions": ["plugin_ref_invalid:changzhou_city_service:demo-service"],
+                "plugin_refs_checked": 1,
+                "plugin_refs_invalid": 1,
+                "plugin_refs_missing_retrieval_policy": 0,
+            }
+        },
+        external_probe={},
+        full_gate_summary={},
+        artifacts={},
+        generated_at="2026-06-07T01:02:03Z",
+    )
+
+    assert summary["summary"]["root_cause_stage"] == "knowledge_map"
+    assert summary["summary"]["root_cause_reason"] == "plugin_ref_invalid:changzhou_city_service:demo-service"
+    assert summary["summary"]["next_action"] == (
+        "Fix DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON plugin_refs to registered plugin:<name>@<version> refs, "
+        "then run make changzhou-dify-knowledge-map-check."
+    )
+
+
+def test_plugin_ref_missing_retrieval_policy_gets_specific_next_action() -> None:
+    mod = _load_module()
+
+    summary = mod.build_readiness_summary(
+        knowledge_map={
+            "summary": {
+                "passed": False,
+                "failed_conditions": [
+                    "plugin_retrieval_policy_missing:changzhou_city_service:plugin:demo-service@1.0.0:chunk"
+                ],
+                "plugin_refs_checked": 1,
+                "plugin_refs_invalid": 0,
+                "plugin_refs_missing_retrieval_policy": 1,
+            }
+        },
+        external_probe={},
+        full_gate_summary={},
+        artifacts={},
+        generated_at="2026-06-07T01:02:03Z",
+    )
+
+    assert summary["summary"]["root_cause_stage"] == "knowledge_map"
+    assert summary["summary"]["root_cause_reason"] == (
+        "plugin_retrieval_policy_missing:changzhou_city_service:plugin:demo-service@1.0.0:chunk"
+    )
+    assert summary["summary"]["next_action"] == (
+        "Add a mimirq.retrieval_policy.v1 retrieval_policy to the referenced plugin manifest, "
+        "then run make changzhou-dify-knowledge-map-check."
+    )
+
+
 def test_auth_failure_marks_downstream_stages_skipped() -> None:
     mod = _load_module()
 
@@ -257,6 +315,85 @@ def test_mimirq_direct_failure_blocks_dify_remote_stages() -> None:
     assert summary["mimirq_direct"]["status"] == "failed"
     assert summary["console_auth"]["status"] == "skipped"
     assert summary["console_auth"]["blocked_by"] == "mimirq_direct"
+
+
+def test_kg_compare_failure_blocks_dify_remote_stages() -> None:
+    mod = _load_module()
+
+    summary = mod.build_readiness_summary(
+        knowledge_map={"summary": {"passed": True, "failed_conditions": [], "route_count": 7}},
+        mimirq_direct={"gate": {"passed": True, "failed": 0, "checks": []}, "summary": {"hit_at_1": 1.0}},
+        kg_compare={
+            "summary": {
+                "passed": False,
+                "failed": 2,
+                "candidate_gate_passed": False,
+                "compared_metrics": 14,
+            },
+            "candidate_gate": {
+                "passed": False,
+                "checks": [{"metric": "kg_noise_rate", "actual": 0.2, "maximum": 0.1, "passed": False}],
+            },
+            "checks": [{"metric": "hit_at_1", "passed": False}],
+        },
+        console_auth={"valid": True, "reason": "ok", "ttl_seconds": 1800, "min_ttl_seconds": 900},
+        external_probe={"gate": {"passed": True, "failed_conditions": []}},
+        full_gate_summary={"summary": {"passed": True, "failed_stages": []}},
+        artifacts={"kg_compare": "/tmp/kg_compare.json"},
+        generated_at="2026-06-07T01:02:03Z",
+    )
+
+    assert summary["summary"] == {
+        "passed": False,
+        "failed_stages": ["kg_compare"],
+        "skipped_stages": ["console_auth", "external_probe", "full_gate"],
+        "stage_count": 6,
+        "root_cause_stage": "kg_compare",
+        "root_cause_reason": "quality_gate_failed:kg_noise_rate",
+        "next_action": "Run the KG-off/KG-on golden comparison and inspect /tmp/changzhou_gov_dify_kg_compare.json.",
+    }
+    assert summary["kg_compare"]["status"] == "failed"
+    assert summary["kg_compare"]["failed_conditions"] == ["quality_gate_failed:kg_noise_rate", "metric_regressed:hit_at_1"]
+    assert summary["console_auth"]["status"] == "skipped"
+    assert summary["console_auth"]["blocked_by"] == "kg_compare"
+
+
+def test_full_gate_eval_quality_failure_surfaces_failed_metric() -> None:
+    mod = _load_module()
+
+    summary = mod.build_readiness_summary(
+        knowledge_map={"summary": {"passed": True, "failed_conditions": [], "route_count": 7}},
+        mimirq_direct={"gate": {"passed": True, "failed": 0, "checks": []}, "summary": {"hit_at_1": 1.0}},
+        console_auth={"valid": True, "reason": "ok", "ttl_seconds": 1800, "min_ttl_seconds": 900},
+        external_probe={"gate": {"passed": True, "failed_conditions": []}},
+        full_gate_summary={"summary": {"passed": False, "failed_stages": ["eval"]}},
+        artifact_reports={
+            "eval": {
+                "gate": {
+                    "passed": False,
+                    "checks": [
+                        {
+                            "metric": "retrieval_noise_rate",
+                            "actual": 0.39,
+                            "maximum": 0.1,
+                            "passed": False,
+                        }
+                    ],
+                },
+                "summary": {"retrieval_noise_rate": 0.39},
+            }
+        },
+        artifacts={},
+        generated_at="2026-06-07T01:02:03Z",
+    )
+
+    assert summary["summary"]["failed_stages"] == ["full_gate"]
+    assert summary["summary"]["root_cause_stage"] == "full_gate"
+    assert summary["summary"]["root_cause_reason"] == "quality_gate_failed:retrieval_noise_rate"
+    assert summary["full_gate"]["failed_conditions"] == ["quality_gate_failed:retrieval_noise_rate"]
+    assert summary["full_gate"]["stages"]["eval"]["failed_conditions"] == [
+        "quality_gate_failed:retrieval_noise_rate"
+    ]
 
 
 def test_build_readiness_summary_prefers_latest_eval_artifact_summary() -> None:
@@ -526,3 +663,44 @@ def test_main_collects_artifact_generated_at_values(tmp_path: Path) -> None:
             ]
         }
     }
+
+
+def test_main_collects_optional_kg_compare_artifact(tmp_path: Path) -> None:
+    mod = _load_module()
+    external_probe = tmp_path / "external.json"
+    full_summary = tmp_path / "full_summary.json"
+    kg_compare = tmp_path / "kg_compare.json"
+    out = tmp_path / "readiness.json"
+    external_probe.write_text(json.dumps({"gate": {"passed": True, "failed_conditions": []}}), encoding="utf-8")
+    full_summary.write_text(json.dumps({"summary": {"passed": True, "failed_stages": []}}), encoding="utf-8")
+    kg_compare.write_text(
+        json.dumps(
+            {
+                "generated_at": "2026-06-07T01:05:00Z",
+                "summary": {"passed": True, "failed": 0, "candidate_gate_passed": True, "compared_metrics": 14},
+                "candidate_gate": {"passed": True, "checks": []},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    rc = mod.main(
+        [
+            "--kg-compare",
+            str(kg_compare),
+            "--external-probe",
+            str(external_probe),
+            "--full-summary",
+            str(full_summary),
+            "--out",
+            str(out),
+        ]
+    )
+
+    report = json.loads(out.read_text(encoding="utf-8"))
+    assert rc == 0
+    assert report["summary"]["passed"] is True
+    assert report["summary"]["stage_count"] == 3
+    assert report["kg_compare"]["status"] == "passed"
+    assert report["artifacts"]["kg_compare"] == str(kg_compare)
+    assert report["artifact_generated_at"]["kg_compare"] == "2026-06-07T01:05:00Z"
