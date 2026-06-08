@@ -49,7 +49,12 @@ import type {
   IngestionPreviewResponse,
   JsonObject,
 } from '@/types'
-import type { PipelinePluginItem, PipelinePluginListError, PipelinePluginSuggestedPatch } from '@/lib/api/pipeline'
+import type {
+  PipelinePluginChunkReportResponse,
+  PipelinePluginItem,
+  PipelinePluginListError,
+  PipelinePluginSuggestedPatch,
+} from '@/lib/api/pipeline'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts'
 
 function clampInt(value: number, min: number, max: number) {
@@ -163,6 +168,11 @@ function getErrorMessage(error: unknown, fallback: string): string {
 function getPluginParams(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
   return value as Record<string, unknown>
+}
+
+function getReportNumber(value: Record<string, unknown> | undefined, key: string): number {
+  const n = Number(value?.[key] ?? 0)
+  return Number.isFinite(n) ? n : 0
 }
 
 function getPrimitivePluginParams(value: unknown): Record<string, string | number | boolean | null> | undefined {
@@ -552,6 +562,8 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
   const [pipelinePluginsError, setPipelinePluginsError] = useState<string | null>(null)
   const [goldenImportLoading, setGoldenImportLoading] = useState(false)
   const [goldenRegressionLoading, setGoldenRegressionLoading] = useState(false)
+  const [pluginChunkReportLoading, setPluginChunkReportLoading] = useState(false)
+  const [pluginChunkReport, setPluginChunkReport] = useState<PipelinePluginChunkReportResponse | null>(null)
   const [lastGoldenRegressionRun, setLastGoldenRegressionRun] = useState<{
     id: string
     href: string
@@ -630,6 +642,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
   )
   const selectedGoldenPlugin = selectedChunkPlugin?.contract?.golden?.enabled ? selectedChunkPlugin : null
   const selectedGoldenPluginRef = selectedChunkPlugin?.refs.chunk || ''
+  const selectedChunkPluginRef = selectedGoldenPluginRef
   const selectedAuditPlugin = selectedChunkPlugin || selectedGovernancePlugin || selectedKgPlugin
   const selectedAuditPackageHash = String(selectedAuditPlugin?.package_hash || '').trim()
   const selectedAuditReportOwner =
@@ -749,6 +762,29 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
       toast.error(getErrorMessage(error, t('sidebar.pythonPlugins.importGoldenError')))
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleBuildPluginChunkReport = async () => {
+    if (!selectedChunkPluginRef) {
+      toast.error(t('sidebar.pythonPlugins.chunkReportNoPlugin'))
+      return
+    }
+    if (pluginChunkReportLoading) return
+    setPluginChunkReportLoading(true)
+    try {
+      const report = await pipelineApi.buildPluginChunkReport({
+        plugin_ref: selectedChunkPluginRef,
+        input_path: 'sample.json',
+        max_examples_per_section: 2,
+        preview_chars: 180,
+      })
+      setPluginChunkReport(report)
+      toast.success(t('sidebar.pythonPlugins.chunkReportSuccess'))
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, t('sidebar.pythonPlugins.chunkReportError')))
+    } finally {
+      setPluginChunkReportLoading(false)
     }
   }
 
@@ -2197,6 +2233,57 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                     {selectedAuditReportOwner ? (
                       <div className="truncate font-mono text-[9px] text-muted-foreground/70">
                         {t('sidebar.pythonPlugins.auditReportOwner', { value: selectedAuditReportOwner })}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+                {selectedChunkPlugin ? (
+                  <div
+                    data-python-pipeline-plugin-chunk-report
+                    className="grid gap-1.5 rounded-lg border border-border/40 bg-background/50 px-2 py-2 text-[9.5px] leading-3.5"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-[10px] font-bold text-foreground/75">
+                        {t('sidebar.pythonPlugins.chunkReportTitle')}
+                      </span>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-6 shrink-0 rounded-lg px-2 text-[10px] shadow-none"
+                        disabled={!selectedChunkPluginRef || pluginChunkReportLoading}
+                        onClick={handleBuildPluginChunkReport}
+                      >
+                        {pluginChunkReportLoading ? (
+                          <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                        ) : (
+                          <Check className="mr-1.5 h-3 w-3" />
+                        )}
+                        {t('sidebar.pythonPlugins.chunkReportBuild')}
+                      </Button>
+                    </div>
+                    <div className="text-[9px] font-medium leading-3 text-muted-foreground/68">
+                      {t('sidebar.pythonPlugins.chunkReportHint')}
+                    </div>
+                    {pluginChunkReport ? (
+                      <div className="grid gap-1 rounded-md border border-border/35 bg-muted/18 px-1.5 py-1 text-muted-foreground/76">
+                        <div className="font-semibold text-foreground/72">
+                          {t('sidebar.pythonPlugins.chunkReportSummary', {
+                            records: getReportNumber(pluginChunkReport.summary, 'governed_records'),
+                            chunks: getReportNumber(pluginChunkReport.summary, 'chunks'),
+                            kgEvents: getReportNumber(pluginChunkReport.summary, 'kg_events'),
+                          })}
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {pluginChunkReport.sections.slice(0, 4).map((section) => (
+                            <span
+                              key={section.knowledge_section}
+                              className="rounded-full border border-border/35 bg-background/65 px-1.5 py-0.5 font-mono text-[8px] text-muted-foreground/75"
+                            >
+                              {section.knowledge_section || '-'} · {section.chunks}
+                            </span>
+                          ))}
+                        </div>
                       </div>
                     ) : null}
                   </div>

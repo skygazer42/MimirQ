@@ -48,6 +48,8 @@ type GovernanceProfileCreateBody = OpenApiRequestBody<
 
 type PipelinePluginItemSchema = OpenApiSchema<'PipelinePluginItem'>
 export type PipelinePluginSuggestedPatch = OpenApiSchema<'PipelinePluginSuggestedPatch'>
+type PipelinePluginChunkReportRequestSchema = OpenApiSchema<'PipelinePluginChunkReportRequest'>
+type PipelinePluginChunkReportResponseSchema = OpenApiSchema<'PipelinePluginChunkReportResponse'>
 type PipelinePluginGoldenDraftRequestSchema = OpenApiSchema<'PipelinePluginGoldenDraftRequest'>
 type PipelinePluginGoldenDraftImportRequestSchema = OpenApiSchema<'PipelinePluginGoldenDraftImportRequest'>
 
@@ -84,6 +86,37 @@ export type PipelinePluginGoldenDraftImportRequest = Pick<
 export type PipelinePluginGoldenDraftResponse = OpenApiSchema<'PipelinePluginGoldenDraftResponse'>
 
 export type PipelinePluginGoldenDraftImportResponse = OpenApiSchema<'PipelinePluginGoldenDraftImportResponse'>
+
+export type PipelinePluginChunkReportExample = {
+  title: string
+  chunk_kind: string
+  content_chars: number
+  metadata_focus: Record<string, unknown>
+  content_preview: string
+} & Record<string, unknown>
+
+export type PipelinePluginChunkReportSection = {
+  knowledge_section: string
+  governed_records: number
+  chunks: number
+  kg_events: number
+  chunk_kinds: Record<string, number>
+  metadata_fields: string[]
+  kg_entity_types: string[]
+  examples: PipelinePluginChunkReportExample[]
+} & Record<string, unknown>
+
+export type PipelinePluginChunkReportRequest = Pick<PipelinePluginChunkReportRequestSchema, 'plugin_ref'> &
+  Partial<Omit<PipelinePluginChunkReportRequestSchema, 'plugin_ref'>>
+
+export type PipelinePluginChunkReportResponse = Omit<
+  PipelinePluginChunkReportResponseSchema,
+  'plugin' | 'summary' | 'sections'
+> & {
+  plugin: Record<string, unknown>
+  summary: Record<string, unknown>
+  sections: PipelinePluginChunkReportSection[]
+}
 
 function normalizeStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return []
@@ -185,6 +218,56 @@ function normalizePipelinePluginItem(value: unknown): PipelinePluginItem {
   }
 }
 
+function normalizeNumberRecord(value: unknown): Record<string, number> {
+  if (!isRecord(value)) return {}
+  const out: Record<string, number> = {}
+  for (const [key, item] of Object.entries(value)) {
+    if (!key) continue
+    const n = Number(item)
+    if (Number.isFinite(n)) out[key] = n
+  }
+  return out
+}
+
+function normalizePipelinePluginChunkReportExample(value: unknown): PipelinePluginChunkReportExample {
+  const raw = isRecord(value) ? value : {}
+  return {
+    ...raw,
+    title: typeof raw.title === 'string' ? raw.title : '',
+    chunk_kind: typeof raw.chunk_kind === 'string' ? raw.chunk_kind : 'unknown',
+    content_chars: Number(raw.content_chars ?? 0),
+    metadata_focus: isRecord(raw.metadata_focus) ? raw.metadata_focus : {},
+    content_preview: typeof raw.content_preview === 'string' ? raw.content_preview : '',
+  }
+}
+
+function normalizePipelinePluginChunkReportSection(value: unknown): PipelinePluginChunkReportSection {
+  const raw = isRecord(value) ? value : {}
+  return {
+    ...raw,
+    knowledge_section: typeof raw.knowledge_section === 'string' ? raw.knowledge_section : '',
+    governed_records: Number(raw.governed_records ?? 0),
+    chunks: Number(raw.chunks ?? 0),
+    kg_events: Number(raw.kg_events ?? 0),
+    chunk_kinds: normalizeNumberRecord(raw.chunk_kinds),
+    metadata_fields: normalizeStringArray(raw.metadata_fields),
+    kg_entity_types: normalizeStringArray(raw.kg_entity_types),
+    examples: Array.isArray(raw.examples) ? raw.examples.map(normalizePipelinePluginChunkReportExample) : [],
+  }
+}
+
+function normalizePipelinePluginChunkReport(value: unknown): PipelinePluginChunkReportResponse {
+  const raw = isRecord(value) ? value : {}
+  return {
+    schema: typeof raw.schema === 'string' ? raw.schema : '',
+    generated_at: typeof raw.generated_at === 'string' ? raw.generated_at : '',
+    passed: raw.passed === true,
+    plugin: isRecord(raw.plugin) ? raw.plugin : {},
+    summary: isRecord(raw.summary) ? raw.summary : {},
+    sections: Array.isArray(raw.sections) ? raw.sections.map(normalizePipelinePluginChunkReportSection) : [],
+  }
+}
+
 function normalizeGovernanceProfilePayload(payload: unknown): GovernanceProfileOut['payload'] {
   const p = isRecord(payload) ? payload : {}
   const inputFormatsRaw = p.input_formats
@@ -278,6 +361,13 @@ export const pipelineApi = {
         case_ids: normalizeStringArray(importResult.case_ids),
       } as PipelinePluginGoldenDraftImportResponse['import_result'],
     }
+  },
+
+  async buildPluginChunkReport(
+    payload: PipelinePluginChunkReportRequest
+  ): Promise<PipelinePluginChunkReportResponse> {
+    const { data } = await apiClient.post('/pipeline/plugins/chunk-report', payload)
+    return normalizePipelinePluginChunkReport(data)
   },
 
   async governanceAnalyze(params: GovernanceAnalyzeRequest): Promise<GovernanceAnalyzeResponse> {

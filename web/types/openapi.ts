@@ -5040,6 +5040,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pipeline/plugins/chunk-report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Build Pipeline Plugin Chunk Report Endpoint
+         * @description Build a review-only governance/chunk/KG report for a registered plugin sample.
+         *
+         *     The sample path is scoped to the plugin directory. This API executes local
+         *     plugin code, so callers select a registered plugin ref rather than arbitrary
+         *     host paths.
+         */
+        post: operations["build_pipeline_plugin_chunk_report_endpoint_api_v1_pipeline_plugins_chunk_report_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/pipeline/plugins/golden-draft": {
         parameters: {
             query?: never;
@@ -8290,6 +8314,10 @@ export interface components {
             metadata_filter?: {
                 [key: string]: unknown;
             } | null;
+            /** Lexical Db Hybrid Metadata Exact Fallback Enabled */
+            lexical_db_hybrid_metadata_exact_fallback_enabled?: boolean | null;
+            /** Metadata Exact Db Fallback Enabled */
+            metadata_exact_db_fallback_enabled?: boolean | null;
         };
         /**
          * ChatRequest
@@ -12624,7 +12652,7 @@ export interface components {
             knowledge_map_json: string;
             /**
              * Top K Max
-             * @default 50
+             * @default 5
              */
             top_k_max: number;
             /**
@@ -15114,6 +15142,11 @@ export interface components {
             history?: components["schemas"]["HistoryMessage"][];
             /** Dataset Id */
             dataset_id?: string | null;
+            /**
+             * Dataset Ids
+             * @description Optional multi-dataset retrieval scope for Dify-style knowledge retrieval nodes.
+             */
+            dataset_ids?: string[];
             /** Document Ids */
             document_ids?: string[];
             rag_config?: components["schemas"]["ChatRAGConfig"];
@@ -19407,11 +19440,77 @@ export interface components {
              */
             entity_vector_enabled: boolean;
         };
+        /** PipelinePluginChunkReportRequest */
+        PipelinePluginChunkReportRequest: {
+            /**
+             * Plugin Ref
+             * @description Registered chunk plugin ref, e.g. plugin:<id>@<version>:chunk.
+             */
+            plugin_ref: string;
+            /**
+             * Input Path
+             * @description Sample JSON path relative to the plugin directory.
+             * @default sample.json
+             */
+            input_path: string;
+            /**
+             * Max Examples Per Section
+             * @default 2
+             */
+            max_examples_per_section: number;
+            /**
+             * Preview Chars
+             * @default 180
+             */
+            preview_chars: number;
+            /** Governance Params */
+            governance_params?: {
+                [key: string]: string | number | boolean | null;
+            };
+            /** Chunk Params */
+            chunk_params?: {
+                [key: string]: string | number | boolean | null;
+            };
+            /** Kg Params */
+            kg_params?: {
+                [key: string]: string | number | boolean | null;
+            };
+            /** Section Metadata Keys */
+            section_metadata_keys?: string[];
+            /** Title Metadata Keys */
+            title_metadata_keys?: string[];
+            /** Metadata Highlight Keys */
+            metadata_highlight_keys?: string[];
+        };
+        /** PipelinePluginChunkReportResponse */
+        PipelinePluginChunkReportResponse: {
+            /** Schema */
+            schema: string;
+            /** Generated At */
+            generated_at: string;
+            /** Passed */
+            passed: boolean;
+            /** Plugin */
+            plugin?: {
+                [key: string]: unknown;
+            };
+            /** Summary */
+            summary?: {
+                [key: string]: unknown;
+            };
+            /** Sections */
+            sections?: {
+                [key: string]: unknown;
+            }[];
+        } & {
+            [key: string]: unknown;
+        };
         /** PipelinePluginContractSummary */
         PipelinePluginContractSummary: {
             metadata?: components["schemas"]["PipelinePluginMetadataContractSummary"];
             retrieval_text?: components["schemas"]["PipelinePluginRetrievalTextContractSummary"];
             golden?: components["schemas"]["PipelinePluginGoldenContractSummary"];
+            retrieval_policy?: components["schemas"]["PipelinePluginRetrievalPolicyContractSummary"];
         };
         /** PipelinePluginGoldenContractSummary */
         PipelinePluginGoldenContractSummary: {
@@ -19707,6 +19806,24 @@ export interface components {
             chunk?: string | null;
             /** Kg */
             kg?: string | null;
+        };
+        /** PipelinePluginRetrievalPolicyContractSummary */
+        PipelinePluginRetrievalPolicyContractSummary: {
+            /** Schema */
+            schema?: string | null;
+            /** Query Expansion Fields */
+            query_expansion_fields?: string[];
+            /** Filter Fields */
+            filter_fields?: string[];
+            /** Boost Fields */
+            boost_fields?: string[];
+            /** Rerank Features */
+            rerank_features?: string[];
+            /**
+             * Fallback Enabled
+             * @default false
+             */
+            fallback_enabled: boolean;
         };
         /** PipelinePluginRetrievalTextContractSummary */
         PipelinePluginRetrievalTextContractSummary: {
@@ -22367,6 +22484,11 @@ export interface components {
             history?: components["schemas"]["HistoryMessage"][];
             /** Dataset Id */
             dataset_id?: string | null;
+            /**
+             * Dataset Ids
+             * @description Optional multi-dataset retrieval scope for Dify-style knowledge retrieval nodes.
+             */
+            dataset_ids?: string[];
             /** Document Ids */
             document_ids?: string[];
             /** Rag Config Template Id */
@@ -44177,6 +44299,78 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    build_pipeline_plugin_chunk_report_endpoint_api_v1_pipeline_plugins_chunk_report_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+                "x-tenant-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PipelinePluginChunkReportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PipelinePluginChunkReportResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };
