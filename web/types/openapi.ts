@@ -31093,9 +31093,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    [key: string]: unknown;
-                };
+                "application/json": components["schemas"]["DatasetRetrievalAuditOut"];
             };
         };
         responses: {
