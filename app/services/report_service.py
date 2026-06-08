@@ -114,11 +114,27 @@ _RETRIEVAL_AUDIT_SAFE_METRIC_KEYS = (
     "kg_noise_rate",
     "answer_grounding_rate",
     "answer_key_point_recall",
+    "candidate_gate_passed",
+    "cases",
+    "compared_metrics",
+    "dify_hit_nonempty",
     "generated_answer_grounding_rate",
     "generated_answer_key_point_recall",
     "generated_answer_context_supported_rate",
     "generated_answer_policy_clean_rate",
     "generated_answer_fallback_rate",
+    "mimirq_direct_nonempty",
+    "mimirq_direct_schema_valid",
+    "probe_errors",
+    "route_count",
+)
+_RETRIEVAL_AUDIT_FAILURE_CATEGORY_ORDER = (
+    "scope",
+    "chunking",
+    "ranking",
+    "absence",
+    "kg_noise",
+    "adapter",
 )
 
 
@@ -339,6 +355,13 @@ def _safe_report_list(raw: Any, *, max_items: int = 20, max_len: int = 160) -> l
     return out
 
 
+def _safe_report_text(raw: Any, *, max_len: int = 160) -> str | None:
+    text = str(raw or "").strip()
+    if not text or len(text) > max_len:
+        return None
+    return text
+
+
 def _retrieval_audit_safe_metrics(summary: dict[str, Any]) -> dict[str, Any]:
     metrics: dict[str, Any] = {}
     for key in _RETRIEVAL_AUDIT_SAFE_METRIC_KEYS:
@@ -392,8 +415,11 @@ def _retrieval_audit_next_action(categories: dict[str, int]) -> str:
         "ranking": "ranking",
         "absence": "content absence",
         "kg_noise": "KG noise",
+        "adapter": "adapter binding",
     }
-    ordered = [labels[key] for key in labels if key in categories]
+    ordered = [labels[key] for key in _RETRIEVAL_AUDIT_FAILURE_CATEGORY_ORDER if key in categories and key in labels]
+    if not ordered:
+        return "Inspect failed retrieval gates before enabling production retrieval."
     if len(ordered) == 1:
         joined = ordered[0]
     elif len(ordered) == 2:
@@ -403,7 +429,93 @@ def _retrieval_audit_next_action(categories: dict[str, int]) -> str:
     return f"Fix {joined} before enabling production retrieval."
 
 
-def _build_retrieval_audit_summary(
+def _retrieval_audit_safe_categories(raw: Any) -> dict[str, int]:
+    if not isinstance(raw, dict):
+        return {}
+    categories: dict[str, int] = {}
+    for key in _RETRIEVAL_AUDIT_FAILURE_CATEGORY_ORDER:
+        value = _safe_int(raw.get(key))
+        if value > 0:
+            categories[key] = value
+    return categories
+
+
+def _merge_failure_categories(*items: dict[str, int]) -> dict[str, int]:
+    merged: dict[str, int] = {}
+    for key in _RETRIEVAL_AUDIT_FAILURE_CATEGORY_ORDER:
+        total = sum(max(0, _safe_int(item.get(key))) for item in items if isinstance(item, dict))
+        if total > 0:
+            merged[key] = total
+    return merged
+
+
+def _retrieval_audit_gate_from_metadata(raw: Any) -> DatasetRetrievalAuditGateOut | None:
+    if not isinstance(raw, dict):
+        return None
+
+    name = _safe_report_text(raw.get("name"), max_len=80)
+    if not name:
+        return None
+
+    status = (_safe_report_text(raw.get("status"), max_len=40) or "unavailable").lower()
+    source = _safe_report_text(raw.get("source"), max_len=160)
+    generated_at = raw.get("generated_at")
+    if isinstance(generated_at, str) and len(generated_at) > 80:
+        generated_at = None
+
+    payload = {
+        "name": name,
+        "status": status,
+        "metrics": _retrieval_audit_safe_metrics(raw.get("metrics") if isinstance(raw.get("metrics"), dict) else {}),
+        "failed_conditions": _safe_report_list(raw.get("failed_conditions"), max_items=20, max_len=160),
+        "generated_at": generated_at,
+        "source": source,
+    }
+    try:
+        return DatasetRetrievalAuditGateOut(**payload)
+    except Exception:
+        payload["generated_at"] = None
+        return DatasetRetrievalAuditGateOut(**payload)
+
+
+def _retrieval_audit_from_dataset_metadata(dataset_metadata: dict[str, Any] | None) -> DatasetRetrievalAuditOut | None:
+    raw = dataset_metadata.get("retrieval_audit") if isinstance(dataset_metadata, dict) else None
+    if not isinstance(raw, dict):
+        return None
+
+    gates: list[DatasetRetrievalAuditGateOut] = []
+    raw_gates = raw.get("gates") if isinstance(raw.get("gates"), list) else []
+    for raw_gate in raw_gates:
+        gate = _retrieval_audit_gate_from_metadata(raw_gate)
+        if gate is not None:
+            gates.append(gate)
+        if len(gates) >= 20:
+            break
+
+    failure_categories = _retrieval_audit_safe_categories(raw.get("failure_categories"))
+    if not failure_categories:
+        derived_categories: list[dict[str, int]] = []
+        for gate in gates:
+            derived_categories.append(_retrieval_audit_failure_categories(dict(gate.metrics or {})))
+        failure_categories = _merge_failure_categories(*derived_categories)
+
+    status = (_safe_report_text(raw.get("status"), max_len=40) or "").lower()
+    if failure_categories or status in {"failed", "error"}:
+        status = "failed"
+    elif not status:
+        status = "passed" if gates else "unavailable"
+
+    return DatasetRetrievalAuditOut(
+        status=status,
+        plugin_refs=_safe_report_list(raw.get("plugin_refs"), max_items=20, max_len=160),
+        plugin_package_hashes=_safe_report_list(raw.get("plugin_package_hashes"), max_items=20, max_len=160),
+        gates=gates,
+        failure_categories=failure_categories,
+        recommended_next_action=_retrieval_audit_next_action(failure_categories),
+    )
+
+
+def _retrieval_audit_from_regression_run(
     *,
     latest_regression_run: DatasetRegressionRunSummaryOut | None,
 ) -> DatasetRetrievalAuditOut | None:
@@ -441,6 +553,65 @@ def _build_retrieval_audit_summary(
         failure_categories=failure_categories,
         recommended_next_action=_retrieval_audit_next_action(failure_categories),
     )
+
+
+def _merge_retrieval_audits(*audits: DatasetRetrievalAuditOut | None) -> DatasetRetrievalAuditOut | None:
+    valid = [audit for audit in audits if audit is not None]
+    if not valid:
+        return None
+
+    failure_categories = _merge_failure_categories(*(dict(audit.failure_categories or {}) for audit in valid))
+    statuses = [str(audit.status or "").strip().lower() for audit in valid]
+    status = "failed" if failure_categories or any(item in {"failed", "error"} for item in statuses) else "passed"
+    if status == "passed" and not any(item in {"passed", "completed", "success"} for item in statuses):
+        status = next((item for item in statuses if item), "unavailable")
+
+    gates: list[DatasetRetrievalAuditGateOut] = []
+    for audit in valid:
+        for gate in audit.gates:
+            gates.append(gate)
+            if len(gates) >= 20:
+                break
+        if len(gates) >= 20:
+            break
+
+    return DatasetRetrievalAuditOut(
+        status=status,
+        plugin_refs=_safe_report_list([ref for audit in valid for ref in audit.plugin_refs], max_items=20, max_len=160),
+        plugin_package_hashes=_safe_report_list(
+            [package_hash for audit in valid for package_hash in audit.plugin_package_hashes],
+            max_items=20,
+            max_len=160,
+        ),
+        gates=gates,
+        failure_categories=failure_categories,
+        recommended_next_action=_retrieval_audit_next_action(failure_categories),
+    )
+
+
+def _build_retrieval_audit_summary(
+    *,
+    latest_regression_run: DatasetRegressionRunSummaryOut | None,
+    dataset_metadata: dict[str, Any] | None = None,
+) -> DatasetRetrievalAuditOut | None:
+    return _merge_retrieval_audits(
+        _retrieval_audit_from_dataset_metadata(dataset_metadata),
+        _retrieval_audit_from_regression_run(latest_regression_run=latest_regression_run),
+    )
+
+
+def _safe_dataset_report_metadata(
+    dataset_metadata: dict[str, Any],
+    *,
+    retrieval_audit: DatasetRetrievalAuditOut | None,
+) -> dict[str, Any]:
+    safe_metadata = dict(dataset_metadata or {})
+    if retrieval_audit is not None and isinstance(safe_metadata.get("retrieval_audit"), dict):
+        if hasattr(retrieval_audit, "model_dump"):
+            safe_metadata["retrieval_audit"] = retrieval_audit.model_dump(mode="json", exclude_none=True)
+        else:
+            safe_metadata["retrieval_audit"] = retrieval_audit.dict(exclude_none=True)
+    return safe_metadata
 
 
 def _normalize_must_recall_counts(
@@ -1269,6 +1440,11 @@ class ReportService:
             pipeline_hash_norm=pipeline_hash_norm,
             total_documents=total_documents,
         )
+        dataset_metadata = dict(getattr(dataset, "dataset_metadata", None) or {})
+        retrieval_audit = _build_retrieval_audit_summary(
+            latest_regression_run=latest_regression_run,
+            dataset_metadata=dataset_metadata,
+        )
 
         return DatasetReportOut(
             dataset_id=request.dataset_id,
@@ -1286,7 +1462,7 @@ class ReportService:
                 pipeline_versions=pipeline_versions,
             ),
             connectors=_load_connector_runs(db, request),
-            dataset_metadata=dict(getattr(dataset, "dataset_metadata", None) or {}),
+            dataset_metadata=_safe_dataset_report_metadata(dataset_metadata, retrieval_audit=retrieval_audit),
             folder_tree=_load_folder_tree(
                 db,
                 request,
@@ -1299,7 +1475,7 @@ class ReportService:
             parse_risk_summary=parse_risk_summary,
             kg_stats=_load_kg_stats(db, request, pipeline_hash_norm),
             latest_regression_run=latest_regression_run,
-            retrieval_audit=_build_retrieval_audit_summary(latest_regression_run=latest_regression_run),
+            retrieval_audit=retrieval_audit,
             must_recall_summary=must_recall_summary,
             hierarchy_recall_summary=hierarchy_recall_summary,
             precheck_summary=_load_precheck_summary(db, request),
