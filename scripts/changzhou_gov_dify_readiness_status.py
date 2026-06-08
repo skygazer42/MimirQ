@@ -235,6 +235,9 @@ def _retrieval_audit_summary_text(report: dict[str, Any]) -> str:
     failures = [_text(key) for key in categories if _text(key)]
     if failures:
         parts.append(f"failures={','.join(failures)}")
+    kg_recommendation = _text(audit.get("kg_recommendation"))
+    if kg_recommendation:
+        parts.append(f"kg={kg_recommendation}")
     return "; ".join(parts)
 
 
