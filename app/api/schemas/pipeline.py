@@ -644,6 +644,22 @@ class PipelinePluginChunkReportRequest(BaseModel):
         return text
 
 
+class PipelinePluginChunkReportReadinessCheck(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    passed: bool
+    value: int = 0
+    required: bool = True
+
+
+class PipelinePluginChunkReportReadiness(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["passed", "failed"] = "failed"
+    checks: list[PipelinePluginChunkReportReadinessCheck] = Field(default_factory=list)
+
+
 class PipelinePluginChunkReportResponse(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -652,6 +668,7 @@ class PipelinePluginChunkReportResponse(BaseModel):
     passed: bool
     plugin: dict[str, Any] = Field(default_factory=dict)
     summary: dict[str, Any] = Field(default_factory=dict)
+    readiness: PipelinePluginChunkReportReadiness = Field(default_factory=PipelinePluginChunkReportReadiness)
     sections: list[dict[str, Any]] = Field(default_factory=list)
 
 
