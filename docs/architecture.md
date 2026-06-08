@@ -216,6 +216,7 @@ ALLOWED_EXTENSIONS=.pdf,.txt,.md,.rst,.adoc,.asciidoc,.tex,.yaml,.yml,.toml,.sql
 
 - [快速入门](./quickstart.md)
 - [Docker Compose 部署](./deployment/docker_compose.md)
+- [RAG 平台设计准则](./guides/rag_platform_design_principles.md)
 - [Milvus 向量数据库指南](./guides/milvus_guide.md)
 - [RAG 优化指南](./guides/rag_optimization.md)
 - [LangChain RAG 架构](./guides/langchain_agent_migration.md)
