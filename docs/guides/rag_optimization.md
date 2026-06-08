@@ -17,6 +17,7 @@ When optimizing quality, follow this order to avoid “tuning noise”:
 7) **Explainability**: trace replay + metrics + export artifacts.
 
 Key companion guides:
+- Platform design principles: `docs/guides/rag_platform_design_principles.md`
 - Chunking: `docs/guides/chunk_preview.md`, `docs/guides/chunk_strategies.md`
 - Hybrid fusion: `docs/guides/retrieval_fusion.md`
 - Reranking: `docs/guides/reranking_colbert.md`, `docs/guides/reranking_ltr.md`
