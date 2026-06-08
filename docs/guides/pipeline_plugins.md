@@ -714,6 +714,21 @@ plugin:domain-knowledge-demo@1.0.0:governance
 plugin:domain-knowledge-demo@1.0.0:chunk
 ```
 
+Before handing a plugin to another environment, run the generic release gate:
+
+```bash
+PLUGIN_RELEASE_GATE_PLUGIN_DIR=plugins/pipelines/domain-knowledge-demo \
+PLUGIN_RELEASE_GATE_SAMPLE=samples/domain-knowledge-demo.json \
+make plugin-release-gate
+```
+
+The gate combines the local stage test, current package-hash verification,
+generic chunk readiness, and declared Golden draft availability into
+`mimirq.plugin_release_gate.v1`. It intentionally keeps only aggregate evidence
+such as counts, refs, readiness checks, and package hash. It does not include
+chunk examples or content previews; generate a chunk report separately when you
+need local debugging context.
+
 To review or import the exact generated Golden cases before touching a dataset,
 export a local regression bundle from the same sample:
 

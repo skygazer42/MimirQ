@@ -228,6 +228,28 @@ class DatasetRegressionRunSummaryOut(BaseModel):
     finished_at: datetime | None = None
 
 
+class DatasetRetrievalAuditGateOut(BaseModel):
+    """One retrieval-readiness evidence source summarized without raw content."""
+
+    name: str
+    status: str = "unavailable"
+    metrics: dict[str, Any] = Field(default_factory=dict)
+    failed_conditions: list[str] = Field(default_factory=list)
+    generated_at: datetime | None = None
+    source: str | None = None
+
+
+class DatasetRetrievalAuditOut(BaseModel):
+    """Generic retrieval-readiness snapshot assembled from platform evidence."""
+
+    status: str = "unavailable"
+    plugin_refs: list[str] = Field(default_factory=list)
+    plugin_package_hashes: list[str] = Field(default_factory=list)
+    gates: list[DatasetRetrievalAuditGateOut] = Field(default_factory=list)
+    failure_categories: dict[str, int] = Field(default_factory=dict)
+    recommended_next_action: str | None = None
+
+
 class DatasetReportDataProvenanceOut(BaseModel):
     """Machine-readable proof that report sections come from persisted backend data."""
 
@@ -245,6 +267,7 @@ class DatasetReportDataProvenanceOut(BaseModel):
             "pipeline_versions": "documents.metadata.pipeline_hash",
             "kg": "kg_tables",
             "regression": "regression_runs",
+            "retrieval_audit": "regression_runs.summary",
             "precheck": "dataset_precheck_scan_runs",
         }
     )
@@ -288,6 +311,8 @@ class DatasetReportOut(BaseModel):
 
     # Optional: latest regression run summary for the dataset (best-effort).
     latest_regression_run: DatasetRegressionRunSummaryOut | None = None
+    # Optional: retrieval-readiness summary derived from platform evidence.
+    retrieval_audit: DatasetRetrievalAuditOut | None = None
     # Optional: must-recall counters summarized from latest regression run (best-effort).
     must_recall_summary: DatasetMustRecallSummaryOut | None = None
     # Optional: hierarchy recall counters summarized from latest regression run (best-effort).

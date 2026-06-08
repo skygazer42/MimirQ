@@ -1596,18 +1596,40 @@ def test_dify_matched_replace_route_uses_route_dataset_as_primary_scope(
     assert res.json()["records"][0]["metadata"]["knowledge_section"] == "03城市常见问题"
 
 
-def test_dify_compact_prefers_records_aligned_to_query_intent() -> None:
+def test_dify_compact_prefers_records_aligned_to_plugin_retrieval_policy_intent(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.api.v1.integrations_dify as dify_api
 
+    plugin_ref = "plugin:demo-service@1.0.0:chunk"
+    policy = {
+        "schema": "mimirq.retrieval_policy.v1",
+        "query_expansion_values": [
+            {"metadata": "section_type", "value": "materials", "terms": ["需要什么材料", "需要哪些材料"]},
+            {"metadata": "section_type", "value": "channels", "terms": ["办理入口", "办理渠道"]},
+        ],
+        "response_compaction": {
+            "enabled": True,
+            "min_top_score": 0.7,
+            "relative_score_floor": 0.65,
+            "min_records": 1,
+        },
+    }
+    monkeypatch.setattr(
+        dify_api,
+        "_retrieval_policy_for_plugin_ref",
+        lambda ref: policy if ref == plugin_ref else {},
+        raising=True,
+    )
     broad_record = {
         "content": "问题：核发居民身份证（补领）\n答案：办理入口和基础说明。",
-        "score": 0.92,
+        "score": 0.9,
         "title": "03城市常见问题/身份证QA.txt",
         "metadata": {
             "question": "核发居民身份证（补领）",
             "knowledge_section": "03城市常见问题",
             "gov_knowledge_type": "qa",
             "chunk_kind": "qa_pair",
+            "section_type": "channels",
+            "plugin_ref": plugin_ref,
         },
     }
     material_record = {
@@ -1619,15 +1641,18 @@ def test_dify_compact_prefers_records_aligned_to_query_intent() -> None:
             "knowledge_section": "03城市常见问题",
             "gov_knowledge_type": "qa",
             "chunk_kind": "qa_pair",
+            "section_type": "materials",
+            "plugin_ref": plugin_ref,
         },
     }
     records = [broad_record, material_record]
-    dify_api._sort_records_for_query(records, query="居民身份证补领需要什么材料")
+    dify_api._sort_records_for_query(records, query="居民身份证补领需要什么材料", policy_plugin_refs=(plugin_ref,))
 
     compacted = dify_api._compact_records_for_response(
         records,
         query="居民身份证补领需要什么材料",
         top_k=5,
+        policy_plugin_refs=(plugin_ref,),
     )
 
     assert compacted == [material_record]

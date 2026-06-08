@@ -203,11 +203,43 @@ def records_retrieval_policy_diagnostics(
     }
 
 
+def filter_records_by_retrieval_policy_alignment(
+    records: list[dict[str, Any]] | tuple[dict[str, Any], ...],
+    *,
+    query: str,
+    plugin_ref_for_record: PluginRefForRecord,
+    metadata_layers_for_record: MetadataLayersForRecord,
+    policy_resolver: PolicyResolver,
+) -> list[dict[str, Any]]:
+    aligned: list[dict[str, Any]] = []
+    evaluated = False
+    for record in records or ():
+        plugin_ref = str(plugin_ref_for_record(record) or "").strip()
+        if not plugin_ref:
+            continue
+        policy = policy_resolver(plugin_ref)
+        if not policy:
+            continue
+        scores = retrieval_policy_signal_scores(
+            policy,
+            metadata_layers=metadata_layers_for_record(record),
+            query=query,
+        )
+        if scores.query_expansion > 0 or scores.value_intent_mismatch > 0:
+            evaluated = True
+        if scores.query_expansion > 0 and scores.value_intent_mismatch <= 0:
+            aligned.append(record)
+    if evaluated and aligned:
+        return aligned
+    return list(records or ())
+
+
 __all__ = [
     "MetadataLayersForRecord",
     "PluginRefForRecord",
     "PolicyResolver",
     "RetrievalPolicySignalScores",
+    "filter_records_by_retrieval_policy_alignment",
     "record_retrieval_policy_bonus",
     "records_retrieval_policy_diagnostics",
     "retrieval_policy_query_expansion_bonus",

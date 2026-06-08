@@ -18,6 +18,31 @@ TABLE_TBODY_CLOSE = '</tbody></table>'
 REDACTED_TEXT = '[REDACTED]'
 BARS_METRIC_TABLE_HEADER = "<table class=\"bars\"><thead><tr><th>Metric</th><th>Value</th><th></th></tr></thead><tbody>"
 EMPTY_BRIEF_DIV = "<div class=\"empty\">暂无</div>"
+_RETRIEVAL_AUDIT_HTML_METRIC_KEYS = (
+    "hit_at_1",
+    "hit_at_3",
+    "hit_at_5",
+    "retrieval_hit_at_1",
+    "retrieval_hit_at_3",
+    "retrieval_hit_at_5",
+    "retrieval_recall",
+    "retrieval_mrr",
+    "retrieval_ndcg",
+    "retrieval_ndcg_at_20",
+    "retrieval_effective_context_rate",
+    "retrieval_noise_rate",
+    "expected_metadata_hit_rate",
+    "expected_metadata_recall",
+    "expected_metadata_cases_total",
+    "expected_metadata_fields_total",
+    "expected_metadata_fields_matched",
+    "top_1_expected_metadata_match_rate",
+    "top_3_expected_metadata_match_rate",
+    "top_5_expected_metadata_match_rate",
+    "kg_noise_rate",
+    "answer_grounding_rate",
+    "answer_key_point_recall",
+)
 
 
 def _fmt_int(n: Any) -> str:
@@ -106,6 +131,141 @@ def _render_histogram(bins: Any) -> str:
     return _render_bar_table(rows, total=total)
 
 
+def _fmt_scalar(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    if isinstance(value, int) and not isinstance(value, bool):
+        return _fmt_int(value)
+    if isinstance(value, float):
+        return f"{value:.4f}"
+    return str(value)
+
+
+def _safe_text_list(raw: Any, *, max_items: int = 20, max_len: int = 160) -> list[str]:
+    values = raw if isinstance(raw, list | tuple | set) else [raw]
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in values:
+        text = str(item or "").strip()
+        if not text or len(text) > max_len or text in seen:
+            continue
+        seen.add(text)
+        out.append(text)
+        if len(out) >= max_items:
+            break
+    return out
+
+
+def _safe_retrieval_audit_payload(raw: Any) -> dict[str, Any] | None:
+    if not isinstance(raw, dict):
+        return None
+    gates: list[dict[str, Any]] = []
+    for gate in raw.get("gates") if isinstance(raw.get("gates"), list) else []:
+        if not isinstance(gate, dict):
+            continue
+        metrics = gate.get("metrics") if isinstance(gate.get("metrics"), dict) else {}
+        safe_metrics = {
+            key: metrics[key]
+            for key in _RETRIEVAL_AUDIT_HTML_METRIC_KEYS
+            if isinstance(metrics.get(key), bool) or (isinstance(metrics.get(key), (int, float)) and not isinstance(metrics.get(key), bool))
+        }
+        gates.append(
+            {
+                "name": str(gate.get("name") or "").strip(),
+                "status": str(gate.get("status") or "").strip(),
+                "metrics": safe_metrics,
+                "failed_conditions": _safe_text_list(gate.get("failed_conditions")),
+                "generated_at": str(gate.get("generated_at") or "").strip(),
+                "source": str(gate.get("source") or "").strip(),
+            }
+        )
+    failure_categories = raw.get("failure_categories") if isinstance(raw.get("failure_categories"), dict) else {}
+    return {
+        "status": str(raw.get("status") or "").strip(),
+        "plugin_refs": _safe_text_list(raw.get("plugin_refs")),
+        "plugin_package_hashes": _safe_text_list(raw.get("plugin_package_hashes")),
+        "failure_categories": {str(key): int(value or 0) for key, value in failure_categories.items() if str(key or "").strip()},
+        "recommended_next_action": str(raw.get("recommended_next_action") or "").strip(),
+        "gates": gates,
+    }
+
+
+def _report_with_safe_retrieval_audit(report: Any) -> Any:
+    if not isinstance(report, dict):
+        return report
+    out = dict(report)
+    safe = _safe_retrieval_audit_payload(report.get("retrieval_audit"))
+    if safe is not None:
+        out["retrieval_audit"] = safe
+    return out
+
+
+def _render_retrieval_audit_section(report: Any) -> str:
+    audit = _safe_retrieval_audit_payload(report.get("retrieval_audit")) if isinstance(report, dict) else None
+    if not audit:
+        return ""
+
+    status = str(audit.get("status") or "").strip() or "unavailable"
+    plugin_refs = _safe_text_list(audit.get("plugin_refs"), max_items=5)
+    hashes = [value[:8] for value in _safe_text_list(audit.get("plugin_package_hashes"), max_items=5) if value]
+    failure_categories = audit.get("failure_categories") if isinstance(audit.get("failure_categories"), dict) else {}
+    next_action = str(audit.get("recommended_next_action") or "").strip()
+
+    meta_rows = [
+        ("status", status),
+        ("plugin_refs", ", ".join(plugin_refs)),
+        ("plugin_package_hashes", ", ".join(hashes)),
+        ("failure_categories", ", ".join(f"{key}:{value}" for key, value in sorted(failure_categories.items()))),
+        ("next_action", next_action),
+    ]
+    meta_table = (
+        BARS_METRIC_TABLE_HEADER
+        + "".join(
+            f"<tr><td class=\"k\">{escape(key)}</td><td class=\"v\">{escape(value)}</td><td></td></tr>"
+            for key, value in meta_rows
+            if value
+        )
+        + TABLE_TBODY_CLOSE
+    )
+
+    metric_rows: list[str] = []
+    for gate in audit.get("gates") if isinstance(audit.get("gates"), list) else []:
+        if not isinstance(gate, dict):
+            continue
+        gate_name = str(gate.get("name") or "gate").strip()
+        metrics = gate.get("metrics") if isinstance(gate.get("metrics"), dict) else {}
+        for key in _RETRIEVAL_AUDIT_HTML_METRIC_KEYS:
+            if key not in metrics:
+                continue
+            metric_rows.append(
+                "<tr>"
+                f"<td class=\"k\">{escape(f'{gate_name}.{key}')}</td>"
+                f"<td class=\"v\">{escape(_fmt_scalar(metrics.get(key)))}</td>"
+                "<td></td>"
+                "</tr>"
+            )
+    metric_table = (
+        BARS_METRIC_TABLE_HEADER
+        + "".join(metric_rows[:40])
+        + TABLE_TBODY_CLOSE
+        if metric_rows
+        else EMPTY_DATA_DIV
+    )
+
+    return (
+        "<div class=\"section two\">"
+        "<div><h2>Retrieval Audit</h2>"
+        f"{meta_table}"
+        "</div>"
+        "<div><h2>Retrieval Audit Metrics</h2>"
+        f"{metric_table}"
+        "</div>"
+        "</div>"
+    )
+
+
 def _scrub_report_for_redaction(report: Any) -> dict:
     """
     Best-effort scrubber for `redact=True` HTML exports.
@@ -146,6 +306,10 @@ def _scrub_report_for_redaction(report: Any) -> dict:
                 summ_safe["retrieval_slices"] = rs_safe
             rr_safe["summary"] = summ_safe
         safe["latest_regression_run"] = rr_safe
+
+    retrieval_audit = _safe_retrieval_audit_payload(report.get("retrieval_audit"))
+    if retrieval_audit is not None:
+        safe["retrieval_audit"] = retrieval_audit
 
     # Precheck: keep distributions but remove IDs + directory structure.
     pre = report.get("precheck_summary")
@@ -747,7 +911,9 @@ def render_dataset_report_html(
             "</div>"
         )
 
-    raw_payload = _scrub_report_for_redaction(report) if redact else report
+    retrieval_audit_section = _render_retrieval_audit_section(report)
+    raw_report = _report_with_safe_retrieval_audit(report)
+    raw_payload = _scrub_report_for_redaction(raw_report) if redact else raw_report
     raw_json = json.dumps(raw_payload, ensure_ascii=False, indent=2)
 
     html = f"""<!doctype html>
@@ -894,6 +1060,8 @@ def render_dataset_report_html(
         {rr_summary_table}
       </div>
     </div>
+
+    {retrieval_audit_section}
 
     {rr_slices_section}
 
@@ -1307,7 +1475,9 @@ def render_rag_audit_html(
             "</div>"
         )
 
-    raw_payload = _scrub_report_for_redaction(report) if redact else report
+    retrieval_audit_section = _render_retrieval_audit_section(report)
+    raw_report = _report_with_safe_retrieval_audit(report)
+    raw_payload = _scrub_report_for_redaction(raw_report) if redact else raw_report
     raw_json = json.dumps(raw_payload, ensure_ascii=False, indent=2)
 
     html = f"""<!doctype html>
@@ -1480,6 +1650,8 @@ def render_rag_audit_html(
         {rr_summary_table}
       </div>
     </div>
+
+    {retrieval_audit_section}
 
     {rr_slices_section}
 

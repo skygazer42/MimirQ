@@ -156,6 +156,14 @@ def test_pipeline_plugin_chunk_report_endpoint_returns_review_report(monkeypatch
     assert body["plugin"]["input"].endswith("sample.json")
     assert body["summary"]["input_documents"] == 1
     assert body["summary"]["chunks"] == 1
+    assert body["readiness"]["status"] == "passed"
+    assert {check["name"]: check["passed"] for check in body["readiness"]["checks"]} == {
+        "input_documents_present": True,
+        "governed_records_present": True,
+        "chunks_present": True,
+        "metadata_fields_present": True,
+        "kg_events_present": True,
+    }
     assert body["sections"][0]["knowledge_section"] == "alpha"
     assert body["sections"][0]["examples"][0]["title"] == "Alpha record"
     assert body["sections"][0]["examples"][0]["metadata_focus"]["answer_kind"] == "full_record"

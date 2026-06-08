@@ -1,4 +1,4 @@
-.PHONY: help init up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload web test test-web test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check api-docs-build diagnostics db-upgrade db-revision verify enterprise-checks parser-status dify-console-login dify-console-check dify-console-ensure changzhou-gov-plugin-chunk-report changzhou-gov-plugin-chunk-evidence changzhou-gov-plugin-test-report changzhou-gov-plugin-test-evidence changzhou-gov-plugin-corpus-closed-loop-smoke changzhou-gov-plugin-corpus-closed-loop-evidence changzhou-gov-delivery-pack changzhou-gov-delivery-pack-refresh changzhou-dify-knowledge-map-check changzhou-dify-mimirq-direct-gate changzhou-dify-mimirq-direct-kg-off-gate changzhou-dify-mimirq-direct-kg-on-gate changzhou-dify-kg-compare-gate changzhou-dify-kg-on-off-gate changzhou-dify-external-probe changzhou-dify-workflow-lint changzhou-dify-workflow-sync-dry-run changzhou-dify-workflow-sync-apply changzhou-dify-full-gate changzhou-dify-readiness-summary changzhou-dify-readiness-status changzhou-dify-readiness-evidence changzhou-dify-readiness-gate changzhou-dify-readiness-gate-quiet check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
+.PHONY: help init up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload web test test-web test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check api-docs-build diagnostics db-upgrade db-revision verify enterprise-checks parser-status dify-console-login dify-console-check dify-console-ensure plugin-release-gate changzhou-gov-plugin-chunk-report changzhou-gov-plugin-chunk-evidence changzhou-gov-plugin-test-report changzhou-gov-plugin-test-evidence changzhou-gov-plugin-corpus-closed-loop-smoke changzhou-gov-plugin-corpus-closed-loop-evidence changzhou-gov-delivery-pack changzhou-gov-delivery-pack-refresh changzhou-dify-knowledge-map-check changzhou-dify-mimirq-direct-gate changzhou-dify-mimirq-direct-kg-off-gate changzhou-dify-mimirq-direct-kg-on-gate changzhou-dify-kg-compare-gate changzhou-dify-kg-on-off-gate changzhou-dify-external-probe changzhou-dify-workflow-lint changzhou-dify-workflow-sync-dry-run changzhou-dify-workflow-sync-apply changzhou-dify-full-gate changzhou-dify-readiness-summary changzhou-dify-readiness-status changzhou-dify-readiness-evidence changzhou-dify-readiness-gate changzhou-dify-readiness-gate-quiet check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
 
 # Prefer project venv when available so local dev doesn't depend on global tooling.
 PY := python3
@@ -41,6 +41,10 @@ DIFY_CONSOLE_EMAIL ?=
 DIFY_CONSOLE_PASSWORD_FILE ?=
 DIFY_CONSOLE_MIN_TTL_SECONDS ?= 900
 DIFY_CONSOLE_CHECK_OUT ?= /tmp/dify_console_check.json
+PLUGIN_RELEASE_GATE_PLUGIN_DIR ?=
+PLUGIN_RELEASE_GATE_SAMPLE ?=
+PLUGIN_RELEASE_GATE_OUT ?= /tmp/mimirq_plugin_release_gate.json
+PLUGIN_RELEASE_GATE_EXTRA_ARGS ?=
 CHANGZHOU_DIFY_APP_ID ?= 3c1c8b66-94c1-44fb-a09c-b1856d970eb7
 CHANGZHOU_DIFY_BASE_URL ?= https://ai.kingdonsoft.com:5001/v1
 CHANGZHOU_DIFY_API_KEY_FILE ?= /tmp/dify_remote_app_api_key.json
@@ -182,6 +186,7 @@ help:
 	@echo "  make parser-status - print parser backend availability"
 	@echo "  make dify-console-login - refresh Dify console storage state for trace gates"
 	@echo "  make dify-console-ensure - check Dify console storage state, refreshing it when credentials are provided"
+	@echo "  make plugin-release-gate - run generic local pipeline-plugin release gate"
 	@echo "  make changzhou-gov-plugin-chunk-report - write Changzhou plugin governance/chunk/KG review report"
 	@echo "  make changzhou-gov-plugin-chunk-evidence - write shareable sanitized plugin chunk evidence"
 	@echo "  make changzhou-gov-plugin-test-report - write Changzhou plugin local test + Golden draft report"
@@ -387,6 +392,15 @@ changzhou-dify-external-probe:
 		--timeout $(CHANGZHOU_DIFY_PROBE_TIMEOUT) \
 		--top-k $(CHANGZHOU_DIFY_PROBE_TOP_K) \
 		--out "$(CHANGZHOU_DIFY_PROBE_OUT)"
+
+plugin-release-gate:
+	@test -n "$(PLUGIN_RELEASE_GATE_PLUGIN_DIR)" || (echo "Set PLUGIN_RELEASE_GATE_PLUGIN_DIR=/path/to/plugin" >&2; exit 2)
+	@test -n "$(PLUGIN_RELEASE_GATE_SAMPLE)" || (echo "Set PLUGIN_RELEASE_GATE_SAMPLE=/path/to/sample.json" >&2; exit 2)
+	$(PY) scripts/plugin_release_gate.py \
+		--plugin-dir "$(PLUGIN_RELEASE_GATE_PLUGIN_DIR)" \
+		--sample "$(PLUGIN_RELEASE_GATE_SAMPLE)" \
+		--out "$(PLUGIN_RELEASE_GATE_OUT)" \
+		$(PLUGIN_RELEASE_GATE_EXTRA_ARGS)
 
 changzhou-gov-plugin-chunk-report:
 	$(PY) scripts/changzhou_gov_plugin_chunk_report.py \

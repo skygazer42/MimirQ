@@ -202,3 +202,28 @@ def test_records_retrieval_policy_diagnostics_summarize_shared_policy_signals() 
         "retrieval_policy_anchor_mismatch_record_count": 0,
         "retrieval_policy_plugin_refs": ["plugin:demo-service@1.0.0:chunk"],
     }
+
+
+def test_filter_records_by_retrieval_policy_alignment_keeps_plugin_declared_intent_matches() -> None:
+    from app.rag.retrieval.plugin_policy import filter_records_by_retrieval_policy_alignment
+
+    plugin_ref = "plugin:demo-service@1.0.0:chunk"
+    policy = {
+        "schema": "mimirq.retrieval_policy.v1",
+        "query_expansion_values": [
+            {"metadata": "section_type", "value": "materials", "terms": ["needed documents", "required materials"]},
+            {"metadata": "section_type", "value": "channels", "terms": ["where to apply", "application channel"]},
+        ],
+    }
+    records = [
+        {"plugin_ref": plugin_ref, "metadata": {"section_type": "channels"}, "id": "channels"},
+        {"plugin_ref": plugin_ref, "metadata": {"section_type": "materials"}, "id": "materials"},
+    ]
+
+    assert filter_records_by_retrieval_policy_alignment(
+        records,
+        query="Which required materials are needed?",
+        plugin_ref_for_record=_record_plugin_ref,
+        metadata_layers_for_record=_record_metadata_layers,
+        policy_resolver=lambda ref: policy if ref == plugin_ref else {},
+    ) == [records[1]]
