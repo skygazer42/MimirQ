@@ -1275,7 +1275,7 @@ def import_dataset_config(
 )
 def put_dataset_retrieval_audit(
     dataset_id: UUID,
-    payload: dict[str, Any],
+    payload: DatasetRetrievalAuditOut,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -1286,7 +1286,7 @@ def put_dataset_retrieval_audit(
     DatasetService.assert_dataset_writable(db, dataset, account_id)
 
     try:
-        audit = sanitize_retrieval_audit_snapshot(payload)
+        audit = sanitize_retrieval_audit_snapshot(payload.model_dump(mode="json"))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
