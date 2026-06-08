@@ -270,6 +270,28 @@ def test_chat_rag_config_accepts_request_level_kg_boost_controls() -> None:
     assert state["enable_kg_query_expansion"] is True
 
 
+def test_rag_state_preserves_multi_dataset_scope_for_kg() -> None:
+    from uuid import uuid4
+
+    from app.rag.pipelines.langgraph import build_rag_state
+
+    dataset_a = uuid4()
+    dataset_b = uuid4()
+
+    state = build_rag_state(
+        question="q",
+        dataset_ids=[dataset_a, dataset_b],
+        top_k=5,
+        score_threshold=0.0,
+        retrieval_mode="hybrid",
+        enable_kg_chunk_injection=True,
+        enable_kg_query_expansion=True,
+    )
+
+    assert state["dataset_id"] is None
+    assert state["dataset_ids"] == [dataset_a, dataset_b]
+
+
 def test_hierarchy_hybrid_ce_profile_keeps_hierarchy_overlay_without_reranker() -> None:
     from app.rag.core.retrieval_profiles import apply_retrieval_profile_overrides
 

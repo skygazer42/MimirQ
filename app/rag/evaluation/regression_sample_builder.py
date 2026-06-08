@@ -9,6 +9,12 @@ from app.rag.core.logging import get_logger
 from app.rag.core.text import is_claim_supported, split_into_claims
 from app.rag.evaluation.chunk_diagnostics import compute_chunk_diagnostics
 from app.rag.evaluation.multihop import score_multihop_citation_chain
+from app.rag.pipeline_plugins.contracts import (
+    DISPLAY_METADATA_KEY,
+    EVALUABLE_METADATA_KEY,
+    INDEXED_METADATA_KEY,
+    RECORD_IDENTITY_METADATA_KEY,
+)
 
 logger = get_logger(__name__)
 
@@ -182,6 +188,50 @@ def _expected_metadata_from_case_extra(extra: Any) -> dict[str, Any]:
     return out
 
 
+def _answer_key_points_from_case_extra(extra: Any) -> list[str]:
+    extra_d = extra if isinstance(extra, dict) else {}
+    raw = extra_d.get("answer_key_points") or extra_d.get("expected_answer_key_points")
+    if not isinstance(raw, list):
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        text = _collapse_ws(item)
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        out.append(text)
+        if len(out) >= 80:
+            break
+    return out
+
+
+def _answer_key_point_aliases_from_case_extra(extra: Any) -> dict[str, list[str]]:
+    extra_d = extra if isinstance(extra, dict) else {}
+    raw = extra_d.get("answer_key_point_aliases")
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, list[str]] = {}
+    for key, values in raw.items():
+        point = _collapse_ws(key)
+        if not point:
+            continue
+        raw_values = values if isinstance(values, list) else [values]
+        aliases: list[str] = []
+        seen: set[str] = set()
+        for value in raw_values:
+            alias = _collapse_ws(value)
+            if not alias or alias in seen:
+                continue
+            seen.add(alias)
+            aliases.append(alias)
+            if len(aliases) >= 20:
+                break
+        if aliases:
+            out[point] = aliases
+    return out
+
+
 def _citation_metadata_bases(citation: Any) -> list[dict[str, Any]]:
     root = _coerce_dict(citation)
     bases: list[dict[str, Any]] = []
@@ -200,12 +250,12 @@ def _citation_metadata_containers(citation: Any) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     seen: set[int] = set()
     for base in _citation_metadata_bases(citation):
-        for view_key in ("_evaluable_metadata", "_indexed_metadata", "_display_metadata"):
+        for view_key in (EVALUABLE_METADATA_KEY, INDEXED_METADATA_KEY, DISPLAY_METADATA_KEY):
             view = base.get(view_key)
             if isinstance(view, dict) and id(view) not in seen:
                 seen.add(id(view))
                 out.append(view)
-        record_identity = base.get("_record_identity") or base.get("record_identity")
+        record_identity = base.get(RECORD_IDENTITY_METADATA_KEY) or base.get("record_identity")
         if isinstance(record_identity, dict):
             fields = record_identity.get("fields")
             if isinstance(fields, dict) and id(fields) not in seen:
@@ -345,6 +395,18 @@ def _citation_text_for_quote_match(cit: Any) -> str:
     return _collapse_ws(d.get("chunk_content") or d.get("quote") or "").casefold()
 
 
+def _answer_key_point_in_text(point: str, text: str, aliases: dict[str, list[str]]) -> bool:
+    haystack = _collapse_ws(text).casefold()
+    if not haystack:
+        return False
+    candidates = [point, *(aliases.get(point) or [])]
+    for candidate in candidates:
+        needle = _collapse_ws(candidate).casefold()
+        if needle and needle in haystack:
+            return True
+    return False
+
+
 def _deterministic_faithfulness(answer: str, contexts: list[Any], *, max_evidence_chars: int = 24_000) -> float | None:
     """
     Deterministic, bounded faithfulness proxy for offline regression gates.
@@ -423,12 +485,23 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
             reference_contexts.append(quote)
 
     citations = item.get("citations") or []
-    retrieved_context_ids = _dedup_ids(citations, key="chunk_id")
     extra = _get(case, "extra", None)
     extra_d = extra if isinstance(extra, dict) else {}
     expected_metadata = _expected_metadata_from_case_extra(extra_d)
+    answer_key_points = _answer_key_points_from_case_extra(extra_d)
+    answer_key_point_aliases = _answer_key_point_aliases_from_case_extra(extra_d)
 
-    citations_ranked: list[Any] = []
+    citation_eval_limit: int | None = None
+    raw_citation_eval_limit = item.get("citation_eval_limit")
+    if raw_citation_eval_limit is not None:
+        try:
+            parsed_limit = int(raw_citation_eval_limit)
+        except (TypeError, ValueError):
+            parsed_limit = 0
+        if parsed_limit > 0:
+            citation_eval_limit = parsed_limit
+
+    citations_ranked_all: list[Any] = []
     seen_cids: set[str] = set()
     for c in citations or []:
         d = _coerce_dict(c)
@@ -438,7 +511,13 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
         if cid in seen_cids:
             continue
         seen_cids.add(cid)
-        citations_ranked.append(c)
+        citations_ranked_all.append(c)
+    citations_ranked = (
+        citations_ranked_all[:citation_eval_limit]
+        if citation_eval_limit is not None
+        else citations_ranked_all
+    )
+    retrieved_context_ids = _dedup_ids(citations_ranked, key="chunk_id")
 
     # Retrieval quality signals (non-LLM):
     # - recall: fraction of human-verified evidence sources that were matched by retrieval
@@ -568,7 +647,8 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
                     dcg += 1.0 / math.log2(idx + 1)
 
             idcg = 0.0
-            for idx in range(1, min(kk, ref_total) + 1):
+            ideal_relevant = max(int(ref_total or 0), sum(1 for rel in relevance_flags[:kk] if rel))
+            for idx in range(1, min(kk, ideal_relevant) + 1):
                 idcg += 1.0 / math.log2(idx + 1)
             return round(dcg / idcg, 4) if idcg > 0.0 else 0.0
 
@@ -623,6 +703,31 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
     if reference_sources and citations_ranked:
         citation_accuracy = round(float(sum(1 for rel in relevance_flags if rel)) / float(len(citations_ranked)), 4)
     citation_coverage = retrieval_recall
+
+    retrieval_effective_context_rate: float | None = None
+    retrieval_noise_rate: float | None = None
+    retrieval_effective_records: int | None = None
+    retrieval_evaluated_records: int | None = None
+    if answer_key_points and citations_ranked:
+        effective_flags: list[bool] = []
+        for index, citation in enumerate(citations_ranked):
+            text_parts = [_citation_text_for_quote_match(citation)]
+            if index < len(retrieved_contexts):
+                text_parts.append(_collapse_ws(retrieved_contexts[index]).casefold())
+            text = "\n".join(part for part in text_parts if part)
+            effective_flags.append(
+                any(
+                    _answer_key_point_in_text(point, text, answer_key_point_aliases)
+                    for point in answer_key_points
+                )
+            )
+        retrieval_evaluated_records = int(len(effective_flags))
+        retrieval_effective_records = int(sum(1 for flag in effective_flags if flag))
+        retrieval_effective_context_rate = round(
+            float(retrieval_effective_records) / max(1, retrieval_evaluated_records),
+            4,
+        )
+        retrieval_noise_rate = round(1.0 - retrieval_effective_context_rate, 4)
 
     top_rel = item.get("top_relevance_score")
     try:
@@ -682,7 +787,7 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
 
     multihop = score_multihop_citation_chain(
         evidence_chain=evidence_chain,
-        citations=[_coerce_dict(c) for c in (citations or [])],
+        citations=[_coerce_dict(c) for c in citations_ranked],
         reasoning_hops=reasoning_hops,
         top_k=20,
     )
@@ -707,6 +812,10 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
         "retrieval_family_hit": retrieval_family_hit,
         "citation_accuracy": citation_accuracy,
         "citation_coverage": citation_coverage,
+        "retrieval_effective_context_rate": retrieval_effective_context_rate,
+        "retrieval_noise_rate": retrieval_noise_rate,
+        "retrieval_effective_records": retrieval_effective_records,
+        "retrieval_evaluated_records": retrieval_evaluated_records,
         "quote_verifiability": quote_verifiability,
         "atomic_faithfulness": atomic_faithfulness,
         "hallucination_rate": hallucination_rate,
@@ -724,6 +833,22 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
         "multihop_order_consistency": multihop.get("order_consistency"),
         "multihop_chain_hit": multihop.get("chain_hit"),
     }
+    if retrieval_effective_context_rate is None:
+        for key in (
+            "retrieval_effective_context_rate",
+            "retrieval_noise_rate",
+            "retrieval_effective_records",
+            "retrieval_evaluated_records",
+        ):
+            meta.pop(key, None)
+    if citation_eval_limit is not None:
+        meta.update(
+            {
+                "citation_eval_limit": int(citation_eval_limit),
+                "citation_total_count": int(len(citations_ranked_all)),
+                "citation_evaluated_count": int(len(citations_ranked)),
+            }
+        )
     if expected_metadata:
         meta.update(_expected_metadata_metrics(expected_metadata=expected_metadata, citations=citations_ranked))
 
@@ -750,7 +875,12 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
         if meta.get("faithfulness_det") is not None and ct > 0:
             explanations["faithfulness_det"] = f"claims_supported={cs}/{ct} (deterministic)"
         if meta.get("citation_accuracy") is not None and citations_ranked:
-            explanations["citation_accuracy"] = f"relevant_citations={sum(1 for rel in relevance_flags if rel)}/{len(citations_ranked)}"
+            citation_msg = f"relevant_citations={sum(1 for rel in relevance_flags if rel)}/{len(citations_ranked)}"
+            if citation_eval_limit is not None:
+                citation_msg = (
+                    f"{citation_msg}, evaluated_top={int(citation_eval_limit)}, total={len(citations_ranked_all)}"
+                )
+            explanations["citation_accuracy"] = citation_msg
         if meta.get("quote_verifiability") is not None:
             explanations["quote_verifiability"] = "quoted_spans_checked_against_retrieved_contexts"
         if retrieval_recall is not None and ref_total is not None and matched_refs is not None:
@@ -760,6 +890,10 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
             if missed_ref_ids:
                 msg = msg + f", missed_ids={missed_ref_ids[:3]}"
             explanations["retrieval_recall"] = msg[:220]
+        if retrieval_effective_context_rate is not None and retrieval_evaluated_records is not None:
+            explanations["retrieval_effective_context_rate"] = (
+                f"effective_records={int(retrieval_effective_records or 0)}/{int(retrieval_evaluated_records)}"
+            )
         if expected_metadata and meta.get("expected_metadata_recall") is not None:
             explanations["expected_metadata"] = (
                 f"fields_matched={int(meta.get('expected_metadata_fields_matched') or 0)}/"
@@ -831,6 +965,9 @@ def build_regression_item_meta(*, sample_kwargs: dict[str, Any] | None, item_met
         "retrieval_hit_at_20": meta.get("retrieval_hit_at_20"),
         "citation_accuracy": meta.get("citation_accuracy"),
         "citation_coverage": meta.get("citation_coverage"),
+        "citation_eval_limit": meta.get("citation_eval_limit"),
+        "citation_total_count": meta.get("citation_total_count"),
+        "citation_evaluated_count": meta.get("citation_evaluated_count"),
         "quote_verifiability": meta.get("quote_verifiability"),
         # Answer-level deterministic gate signals (best-effort; may be null in retrieval-only mode).
         "atomic_faithfulness": meta.get("atomic_faithfulness"),
@@ -847,6 +984,14 @@ def build_regression_item_meta(*, sample_kwargs: dict[str, Any] | None, item_met
         # LLM-as-judge (optional; enabled per regression run).
         "llm_judge": meta.get("llm_judge"),
     }
+    for key in (
+        "retrieval_effective_context_rate",
+        "retrieval_noise_rate",
+        "retrieval_effective_records",
+        "retrieval_evaluated_records",
+    ):
+        if key in meta:
+            out[key] = meta.get(key)
     for key in (
         "expected_metadata_hit",
         "expected_metadata_recall",

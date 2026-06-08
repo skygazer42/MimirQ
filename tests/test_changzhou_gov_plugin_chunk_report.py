@@ -21,6 +21,19 @@ def _load_module():
     return module
 
 
+def test_chunk_report_reuses_pipeline_contract_reserved_metadata_keys() -> None:
+    script_text = SCRIPT_PATH.read_text(encoding="utf-8")
+    report_module_text = (REPO_ROOT / "app" / "rag" / "pipeline_plugins" / "reports.py").read_text(encoding="utf-8")
+
+    assert "from app.rag.pipeline_plugins.reports import build_pipeline_plugin_chunk_report" in script_text
+    assert "from app.rag.pipeline_plugins.contracts import" in report_module_text
+    assert "RESERVED_PLATFORM_METADATA_VIEW_KEYS" in report_module_text
+    assert '"_indexed_metadata",' not in script_text
+    assert '"_display_metadata",' not in script_text
+    assert '"_evaluable_metadata",' not in script_text
+    assert '"_record_identity",' not in script_text
+
+
 def test_build_chunk_report_covers_all_changzhou_sections() -> None:
     mod = _load_module()
 

@@ -31,11 +31,25 @@ SUMMARY_METRIC_KEYS = (
     "expected_metadata_recall",
     "expected_metadata_fields_total",
     "expected_metadata_fields_matched",
+    "citation_accuracy",
+    "citation_coverage",
+    "retrieval_effective_context_rate",
+    "retrieval_noise_rate",
+    "citation_eval_limit_avg",
+    "citation_evaluated_count_avg",
+    "citation_total_count_avg",
+)
+CITATION_EVAL_WINDOW_KEYS = (
+    "citation_eval_limit_avg",
+    "citation_evaluated_count_avg",
+    "citation_total_count_avg",
 )
 
 
 def _text(value: Any) -> str:
-    return str(value or "").strip()
+    if value is None:
+        return ""
+    return str(value).strip()
 
 
 def _load_json(path: str | Path) -> dict[str, Any]:
@@ -138,6 +152,8 @@ def _failed_checks(
     min_expected_metadata_recall: float,
     min_retrieval_recall: float,
     min_retrieval_hit_at_3: float,
+    min_citation_accuracy: float,
+    min_citation_coverage: float,
 ) -> list[str]:
     failed: list[str] = []
     if summary["uploaded_count"] <= 0:
@@ -168,6 +184,13 @@ def _failed_checks(
         failed.append("expected_metadata_hit_rate")
     if _float_value(metrics.get("expected_metadata_recall")) < float(min_expected_metadata_recall):
         failed.append("expected_metadata_recall")
+    citation_gate_enabled = float(min_citation_accuracy) > 0.0 or float(min_citation_coverage) > 0.0
+    if citation_gate_enabled and any(_float_value(metrics.get(key)) <= 0.0 for key in CITATION_EVAL_WINDOW_KEYS):
+        failed.append("citation_eval_window")
+    if _float_value(metrics.get("citation_accuracy")) < float(min_citation_accuracy):
+        failed.append("citation_accuracy")
+    if _float_value(metrics.get("citation_coverage")) < float(min_citation_coverage):
+        failed.append("citation_coverage")
     return failed
 
 
@@ -178,6 +201,8 @@ def build_evidence(
     min_expected_metadata_recall: float = 1.0,
     min_retrieval_recall: float = 1.0,
     min_retrieval_hit_at_3: float = 0.8,
+    min_citation_accuracy: float = 0.0,
+    min_citation_coverage: float = 0.0,
 ) -> dict[str, Any]:
     report = _load_json(raw_report_path)
     documents = _list_value(report.get("documents"))
@@ -191,6 +216,8 @@ def build_evidence(
         min_expected_metadata_recall=float(min_expected_metadata_recall),
         min_retrieval_recall=float(min_retrieval_recall),
         min_retrieval_hit_at_3=float(min_retrieval_hit_at_3),
+        min_citation_accuracy=float(min_citation_accuracy),
+        min_citation_coverage=float(min_citation_coverage),
     )
     return {
         "schema": SCHEMA,
@@ -279,6 +306,13 @@ def format_markdown(evidence: dict[str, Any]) -> str:
                 "recall",
                 "metadata_hit_rate",
                 "metadata_recall",
+                "citation_accuracy",
+                "citation_coverage",
+                "effective_context_rate",
+                "noise_rate",
+                "citation_eval_limit_avg",
+                "citation_evaluated_count_avg",
+                "citation_total_count_avg",
             ],
             [
                 [
@@ -294,6 +328,13 @@ def format_markdown(evidence: dict[str, Any]) -> str:
                     _text(golden_summary.get("retrieval_recall")),
                     _text(golden_summary.get("expected_metadata_hit_rate")),
                     _text(golden_summary.get("expected_metadata_recall")),
+                    _text(golden_summary.get("citation_accuracy")),
+                    _text(golden_summary.get("citation_coverage")),
+                    _text(golden_summary.get("retrieval_effective_context_rate")),
+                    _text(golden_summary.get("retrieval_noise_rate")),
+                    _text(golden_summary.get("citation_eval_limit_avg")),
+                    _text(golden_summary.get("citation_evaluated_count_avg")),
+                    _text(golden_summary.get("citation_total_count_avg")),
                 ]
             ],
         ),
@@ -323,6 +364,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--min-expected-metadata-recall", type=float, default=1.0)
     parser.add_argument("--min-retrieval-recall", type=float, default=1.0)
     parser.add_argument("--min-retrieval-hit-at-3", type=float, default=0.8)
+    parser.add_argument("--min-citation-accuracy", type=float, default=0.0)
+    parser.add_argument("--min-citation-coverage", type=float, default=0.0)
     return parser
 
 
@@ -335,6 +378,8 @@ def main(argv: list[str] | None = None) -> int:
             min_expected_metadata_recall=float(args.min_expected_metadata_recall),
             min_retrieval_recall=float(args.min_retrieval_recall),
             min_retrieval_hit_at_3=float(args.min_retrieval_hit_at_3),
+            min_citation_accuracy=float(args.min_citation_accuracy),
+            min_citation_coverage=float(args.min_citation_coverage),
         )
     except Exception as exc:  # noqa: BLE001
         print(f"[plugin-corpus-closed-loop-evidence] ERROR: {exc}", file=sys.stderr)

@@ -134,6 +134,7 @@ async def kg_search(  # noqa: ANN201
     tenant_id: UUID | None = None,
     document_ids: list[UUID] | None = None,
     dataset_id: UUID | None = None,
+    dataset_ids: list[UUID] | None = None,
     account_id: str | None = None,
 ) -> dict[str, Any]:
     """
@@ -147,9 +148,43 @@ async def kg_search(  # noqa: ANN201
         tenant_id=tenant_id,
         document_ids=document_ids,
         dataset_id=dataset_id,
+        dataset_ids=dataset_ids,
         account_id=account_id,
     )
     return result if isinstance(result, dict) else {}
+
+
+def _coerce_uuid_list(values: Any) -> list[UUID]:
+    out: list[UUID] = []
+    seen: set[UUID] = set()
+    for value in values or []:
+        try:
+            item = value if isinstance(value, UUID) else UUID(str(value))
+        except Exception:
+            continue
+        if item in seen:
+            continue
+        seen.add(item)
+        out.append(item)
+    return out
+
+
+def _resolve_kg_scope(state: dict[str, Any]) -> tuple[list[UUID], UUID | None, list[UUID]]:
+    document_ids = _coerce_uuid_list(state.get("document_ids") or [])
+    if document_ids:
+        return document_ids, None, []
+
+    dataset_id_raw = state.get("dataset_id")
+    dataset_id: UUID | None = None
+    if dataset_id_raw is not None:
+        try:
+            dataset_id = dataset_id_raw if isinstance(dataset_id_raw, UUID) else UUID(str(dataset_id_raw))
+        except Exception:
+            dataset_id = None
+    if dataset_id is not None:
+        return [], dataset_id, []
+
+    return [], None, _coerce_uuid_list(state.get("dataset_ids") or [])
 
 
 def _build_history_text(history: list[dict[str, str]] | None) -> str:
@@ -1294,6 +1329,90 @@ def _doc_key(doc: Document) -> str:
     return f"content:{stable_hash(content)}"
 
 
+def _kg_signal_score(meta: dict[str, Any]) -> float:
+    for key in ("kg_pagerank", "score", "retrieval_score"):
+        try:
+            value = meta.get(key)
+            if value is None:
+                continue
+            return max(0.0, float(value or 0.0))
+        except (TypeError, ValueError, AttributeError):
+            continue
+    return 0.0
+
+
+def _merge_kg_metadata_into_main(main_doc: Document, kg_doc: Document) -> Document:
+    main_meta = dict(main_doc.metadata or {})
+    kg_meta = dict(kg_doc.metadata or {})
+
+    main_kg_score = _kg_signal_score({"kg_pagerank": main_meta.get("kg_pagerank")})
+    kg_score = _kg_signal_score(kg_meta)
+    if kg_score > 0.0 or main_kg_score > 0.0:
+        main_meta["kg_pagerank"] = max(main_kg_score, kg_score)
+
+    for key in ("kg_path", "kg_path_provenance"):
+        if kg_meta.get(key) and not main_meta.get(key):
+            main_meta[key] = kg_meta[key]
+
+    try:
+        kg_path_length = int(kg_meta.get("kg_path_length")) if kg_meta.get("kg_path_length") is not None else None
+    except (TypeError, ValueError, AttributeError):
+        kg_path_length = None
+    if kg_path_length is not None:
+        try:
+            current = int(main_meta.get("kg_path_length")) if main_meta.get("kg_path_length") is not None else None
+        except (TypeError, ValueError, AttributeError):
+            current = None
+        main_meta["kg_path_length"] = min(current, kg_path_length) if current is not None else kg_path_length
+
+    try:
+        kg_shared_events = int(kg_meta.get("kg_shared_events")) if kg_meta.get("kg_shared_events") is not None else None
+    except (TypeError, ValueError, AttributeError):
+        kg_shared_events = None
+    if kg_shared_events is not None:
+        try:
+            current = int(main_meta.get("kg_shared_events")) if main_meta.get("kg_shared_events") is not None else None
+        except (TypeError, ValueError, AttributeError):
+            current = None
+        main_meta["kg_shared_events"] = max(current, kg_shared_events) if current is not None else kg_shared_events
+
+    if "kg_evidence_anchored" in kg_meta:
+        main_meta["kg_evidence_anchored"] = bool(main_meta.get("kg_evidence_anchored") or kg_meta.get("kg_evidence_anchored"))
+
+    main_meta["kg_duplicate_candidate"] = True
+    return Document(
+        page_content=main_doc.page_content,
+        metadata=main_meta,
+        id=getattr(main_doc, "id", None) or main_meta.get("chunk_id"),
+    )
+
+
+def _merge_kg_docs_preserving_main(docs: list[Document] | None, kg_docs: list[Document] | None) -> list[Document]:
+    merged = [d for d in (docs or []) if d is not None]
+    index_by_key: dict[str, int] = {}
+    for i, doc in enumerate(merged):
+        try:
+            index_by_key[_doc_key(doc)] = i
+        except Exception as exc:
+            _log_orchestrator_fallback("_merge_kg_docs_preserving_main", exc)
+
+    for kg_doc in kg_docs or []:
+        if kg_doc is None:
+            continue
+        try:
+            key = _doc_key(kg_doc)
+        except Exception as exc:
+            _log_orchestrator_fallback("_merge_kg_docs_preserving_main", exc)
+            continue
+        if key in index_by_key:
+            existing_index = index_by_key[key]
+            merged[existing_index] = _merge_kg_metadata_into_main(merged[existing_index], kg_doc)
+            continue
+        index_by_key[key] = len(merged)
+        merged.append(kg_doc)
+    return merged
+
+
 def _safe_post_rerank_pipeline_summary(raw: Any) -> list[dict[str, Any]]:
     """
     Parse/normalize the Evidence post-rerank pipeline config into a low-cardinality summary.
@@ -1491,6 +1610,7 @@ def _fetch_document_chunks_for_kg_injection(
     tenant_id: Any,
     account_id: Any,
     dataset_id: Any,
+    dataset_ids: list[Any] | None = None,
     document_ids: list[Any],
     chunk_ids: list[UUID],
 ) -> list[Any]:
@@ -1520,28 +1640,38 @@ def _fetch_document_chunks_for_kg_injection(
         )
 
     # Dataset-scoped retrieval: enforce dataset permission + doc-level ACL via shared helper.
-    if dataset_id is None or not str(account_id or "").strip():
+    scoped_dataset_ids = _coerce_uuid_list(dataset_ids or [])
+    if dataset_id is not None:
+        scoped_dataset_ids = _coerce_uuid_list([dataset_id])
+
+    if not scoped_dataset_ids or not str(account_id or "").strip():
         return []
 
     try:
-        from sqlalchemy import select  # noqa: WPS433
+        from sqlalchemy import or_, select  # noqa: WPS433
 
         from app.models.document import Document as DBDocument  # noqa: WPS433
         from app.services.dataset_profile_service import build_dataset_documents_query  # noqa: WPS433
 
-        _ds, q = build_dataset_documents_query(
-            db,
-            tenant_id=tenant_id,
-            account_id=str(account_id),
-            dataset_id=dataset_id,
-        )
-        doc_ids_subq = q.with_entities(DBDocument.id).subquery()
+        allowed_doc_filters = []
+        for scoped_dataset_id in scoped_dataset_ids:
+            _ds, q = build_dataset_documents_query(
+                db,
+                tenant_id=tenant_id,
+                account_id=str(account_id),
+                dataset_id=scoped_dataset_id,
+            )
+            doc_ids_subq = q.with_entities(DBDocument.id).subquery()
+            allowed_doc_filters.append(DBDocumentChunk.document_id.in_(select(doc_ids_subq.c.id)))
+
+        if not allowed_doc_filters:
+            return []
 
         return (
             db.query(DBDocumentChunk)
             .filter(
                 DBDocumentChunk.tenant_id == tenant_id,
-                DBDocumentChunk.document_id.in_(select(doc_ids_subq.c.id)),
+                or_(*allowed_doc_filters),
                 DBDocumentChunk.id.in_(list(chunk_ids)),
             )
             .all()
@@ -2623,24 +2753,26 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     try:
         tenant_id = state.get("tenant_id")
         account_id = state.get("account_id")
-        document_ids = state.get("document_ids") or []
-        dataset_id = state.get("dataset_id")
+        kg_document_ids, kg_dataset_id, kg_dataset_ids = _resolve_kg_scope(state)
 
         if (
             kg_query_expansion_enabled
             and bool(getattr(settings, "KG_ENABLED", False))
             and bool(getattr(settings, "KG_CHAT_ENABLED", False))
             and tenant_id is not None
-            and (document_ids or dataset_id is not None)
-            and (account_id is not None or dataset_id is None)
+            and (kg_document_ids or kg_dataset_id is not None or kg_dataset_ids)
+            and (account_id is not None or (kg_dataset_id is None and not kg_dataset_ids))
         ):
-            coro = kg_search(
-                query=query_for_retrieval,
-                tenant_id=tenant_id,
-                document_ids=(list(document_ids) or None),
-                dataset_id=(dataset_id if not document_ids else None),
-                account_id=account_id,
-            )
+            kg_kwargs = {
+                "query": query_for_retrieval,
+                "tenant_id": tenant_id,
+                "document_ids": kg_document_ids or None,
+                "dataset_id": kg_dataset_id,
+                "account_id": account_id,
+            }
+            if kg_dataset_ids:
+                kg_kwargs["dataset_ids"] = kg_dataset_ids
+            coro = kg_search(**kg_kwargs)
 
             t0 = time.time()
             try:
@@ -3240,22 +3372,24 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             and bool(getattr(settings, "KG_ENABLED", False))
             and bool(getattr(settings, "KG_CHAT_ENABLED", False))
             and state.get("tenant_id") is not None
-            and ((state.get("document_ids") or []) or state.get("dataset_id") is not None)
+            and any(_resolve_kg_scope(state))
         ):
             tenant_id = state.get("tenant_id")
             account_id = state.get("account_id")
-            dataset_id = state.get("dataset_id")
-            document_ids = list(state.get("document_ids") or [])
+            document_ids, dataset_id, dataset_ids = _resolve_kg_scope(state)
 
             kg_result = kg_result_cached
             if kg_result is None:
-                coro = kg_search(
-                    query=query_for_retrieval,
-                    tenant_id=tenant_id,
-                    document_ids=(document_ids or None),
-                    dataset_id=(dataset_id if not document_ids else None),
-                    account_id=(account_id if (not document_ids) else None),
-                )
+                kg_kwargs = {
+                    "query": query_for_retrieval,
+                    "tenant_id": tenant_id,
+                    "document_ids": document_ids or None,
+                    "dataset_id": dataset_id,
+                    "account_id": account_id if not document_ids else None,
+                }
+                if dataset_ids:
+                    kg_kwargs["dataset_ids"] = dataset_ids
+                coro = kg_search(**kg_kwargs)
 
                 try:
                     loop = asyncio.get_event_loop()
@@ -3425,14 +3559,17 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                         owns_db = False
 
                 try:
-                    rows = _fetch_document_chunks_for_kg_injection(
-                        db=db,
-                        tenant_id=tenant_id,
-                        account_id=account_id,
-                        dataset_id=dataset_id,
-                        document_ids=document_ids,
-                        chunk_ids=chunk_ids,
-                    )
+                    fetch_kwargs = {
+                        "db": db,
+                        "tenant_id": tenant_id,
+                        "account_id": account_id,
+                        "dataset_id": dataset_id,
+                        "document_ids": document_ids,
+                        "chunk_ids": chunk_ids,
+                    }
+                    if dataset_ids:
+                        fetch_kwargs["dataset_ids"] = dataset_ids
+                    rows = _fetch_document_chunks_for_kg_injection(**fetch_kwargs)
                 finally:
                     if owns_db and db is not None:
                         try:
@@ -3490,33 +3627,8 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                     )
 
                 if kg_docs:
-                    # Merge KG docs into existing candidates without using merge order as an implicit
-                    # ranking signal:
-                    # - Preserve existing ordering for the base retriever results.
-                    # - If a KG chunk duplicates an existing chunk, replace it in-place (KG version wins),
-                    #   so provenance/score stays consistent.
-                    merged = [d for d in (docs or []) if d is not None]
-                    index_by_key: dict[str, int] = {}
-                    for i, d in enumerate(merged):
-                        try:
-                            index_by_key[_doc_key(d)] = i
-                        except Exception as exc:
-                            _log_orchestrator_fallback('run_retrieval', exc)
-                            continue
-
-                    for d in kg_docs:
-                        try:
-                            key = _doc_key(d)
-                        except Exception as exc:
-                            _log_orchestrator_fallback('run_retrieval', exc)
-                            continue
-                        if key in index_by_key:
-                            merged[index_by_key[key]] = d
-                            continue
-                        index_by_key[key] = len(merged)
-                        merged.append(d)
-
-                    docs = merged
+                    # KG should enrich duplicate main hits, not replace their score or provenance.
+                    docs = _merge_kg_docs_preserving_main(docs, kg_docs)
                     kg_chunks_injected = len(kg_docs)
     except Exception as exc:  # noqa: BLE001
         _log_orchestrator_fallback('run_retrieval', exc)
@@ -3556,12 +3668,16 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
                 continue
             meta = doc.metadata or {}
             role = str(meta.get("retrieval_role") or "main").strip().lower() or "main"
-            if role != "kg":
+            try:
+                has_kg_signal = float(meta.get("kg_pagerank") or 0.0) > 0.0
+            except (TypeError, ValueError, AttributeError):
+                has_kg_signal = False
+            if role != "kg" and not has_kg_signal:
                 continue
 
             # For injected KG chunks, meta.score is the KG recall score (best-effort).
             try:
-                kg_score = float(meta.get("score") or 0.0)
+                kg_score = float(meta.get("kg_pagerank") if meta.get("kg_pagerank") is not None else meta.get("score") or 0.0)
             except (TypeError, ValueError, AttributeError):
                 kg_score = 0.0
 

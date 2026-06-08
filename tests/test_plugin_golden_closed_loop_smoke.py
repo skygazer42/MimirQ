@@ -26,10 +26,11 @@ def _load_module():
 
 
 class _FakeClient:
-    def __init__(self, *, missing_metadata_summary: bool = False) -> None:
+    def __init__(self, *, missing_metadata_summary: bool = False, expected_top_k: int = 20) -> None:
         self.calls: list[tuple[str, str, dict | None, dict | None]] = []
         self._detail_polls = 0
         self._missing_metadata_summary = missing_metadata_summary
+        self._expected_top_k = int(expected_top_k)
 
     def json(
         self,
@@ -117,6 +118,7 @@ class _FakeClient:
                 "use_llm_judge": False,
                 "skip_empty_contexts": True,
                 "max_cases": 2,
+                "top_k": self._expected_top_k,
                 "enable_hierarchy_recall": True,
                 "hierarchy_sibling_window": 2,
                 "hierarchy_overfetch_factor": 4,
@@ -124,9 +126,9 @@ class _FakeClient:
             return {"id": "33333333-3333-3333-3333-333333333333", "status": "queued"}
 
         if method == "GET" and path == "/api/v1/evaluations/ragas/regression/runs/33333333-3333-3333-3333-333333333333":
-            assert query == {"include_items": "true", "include_contexts": "false"}
             self._detail_polls += 1
             if self._detail_polls == 1:
+                assert query == {"include_items": "false", "include_contexts": "false"}
                 return {"run": {"id": "33333333-3333-3333-3333-333333333333", "status": "running"}}
             summary = {"items": 2, "retrieval_recall": 1.0}
             if not self._missing_metadata_summary:
@@ -139,6 +141,16 @@ class _FakeClient:
                         "expected_metadata_fields_matched": 2,
                     }
                 )
+            if self._detail_polls == 2:
+                assert query == {"include_items": "false", "include_contexts": "false"}
+                return {
+                    "run": {
+                        "id": "33333333-3333-3333-3333-333333333333",
+                        "status": "completed",
+                        "summary": summary,
+                    },
+                }
+            assert query == {"include_items": "true", "include_contexts": "false"}
             return {
                 "run": {
                     "id": "33333333-3333-3333-3333-333333333333",
@@ -153,7 +165,7 @@ class _FakeClient:
 
 def test_closed_loop_imports_plugin_goldens_and_runs_retrieval_regression() -> None:
     mod = _load_module()
-    client = _FakeClient()
+    client = _FakeClient(expected_top_k=5)
 
     result = mod.run_closed_loop_smoke(  # type: ignore[attr-defined]
         client=client,
@@ -165,6 +177,7 @@ def test_closed_loop_imports_plugin_goldens_and_runs_retrieval_regression() -> N
         overwrite=False,
         poll_timeout_sec=1,
         poll_interval_sec=0,
+        regression_top_k=5,
     )
 
     assert result.plugin_ref == "plugin:demo-service@1.0.0:chunk"
@@ -185,6 +198,7 @@ def test_closed_loop_imports_plugin_goldens_and_runs_retrieval_regression() -> N
         "/api/v1/pipeline/plugins",
         "/api/v1/pipeline/plugins/golden-draft/import",
         "/api/v1/evaluations/ragas/regression/runs",
+        "/api/v1/evaluations/ragas/regression/runs/33333333-3333-3333-3333-333333333333",
         "/api/v1/evaluations/ragas/regression/runs/33333333-3333-3333-3333-333333333333",
         "/api/v1/evaluations/ragas/regression/runs/33333333-3333-3333-3333-333333333333",
     ]

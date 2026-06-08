@@ -34,6 +34,16 @@ class _FakeRetriever:
         return []
 
 
+def test_rag_engine_query_variant_role_overrides_retriever_default() -> None:
+    from app.rag.engine import RAGEngine
+
+    doc = Document(page_content="hit", metadata={"retrieval_role": "main", "chunk_id": str(uuid.uuid4())})
+
+    out = RAGEngine._annotate_docs_with_role([doc], "kgq")
+
+    assert out[0].metadata["retrieval_role"] == "kgq"
+
+
 @pytest.mark.asyncio
 async def test_rag_engine_uses_kg_entity_query_expansion(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.rag.engine as engine_mod

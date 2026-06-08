@@ -488,6 +488,20 @@ class PipelinePluginGoldenContractSummary(BaseModel):
     enabled: bool = False
 
 
+class PipelinePluginRetrievalPolicyContractSummary(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    schema_name: str | None = Field(default=None, alias="schema")
+    query_expansion_fields: list[str] = Field(default_factory=list)
+    query_expansion_value_fields: list[str] = Field(default_factory=list)
+    filter_fields: list[str] = Field(default_factory=list)
+    boost_fields: list[str] = Field(default_factory=list)
+    anchor_fields: list[str] = Field(default_factory=list)
+    rerank_features: list[str] = Field(default_factory=list)
+    fallback_enabled: bool = False
+    response_compaction_enabled: bool = False
+
+
 class PipelinePluginContractSummary(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -496,6 +510,9 @@ class PipelinePluginContractSummary(BaseModel):
         default_factory=PipelinePluginRetrievalTextContractSummary
     )
     golden: PipelinePluginGoldenContractSummary = Field(default_factory=PipelinePluginGoldenContractSummary)
+    retrieval_policy: PipelinePluginRetrievalPolicyContractSummary = Field(
+        default_factory=PipelinePluginRetrievalPolicyContractSummary
+    )
 
 
 class PipelinePluginProcessingTemplate(BaseModel):
@@ -584,6 +601,58 @@ class PipelinePluginListResponse(BaseModel):
 
     items: list[PipelinePluginItem] = Field(default_factory=list)
     errors: list[PipelinePluginListError] = Field(default_factory=list)
+
+
+class PipelinePluginChunkReportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    plugin_ref: str = Field(
+        ...,
+        min_length=1,
+        max_length=240,
+        description="Registered chunk plugin ref, e.g. plugin:<id>@<version>:chunk.",
+    )
+    input_path: str = Field(
+        default="sample.json",
+        min_length=1,
+        max_length=512,
+        description="Sample JSON path relative to the plugin directory.",
+    )
+    max_examples_per_section: int = Field(default=2, ge=0, le=20)
+    preview_chars: int = Field(default=180, ge=40, le=4000)
+    governance_params: dict[str, PipelinePluginParamValue] = Field(default_factory=dict)
+    chunk_params: dict[str, PipelinePluginParamValue] = Field(default_factory=dict)
+    kg_params: dict[str, PipelinePluginParamValue] = Field(default_factory=dict)
+    section_metadata_keys: list[str] = Field(default_factory=list, max_length=32)
+    title_metadata_keys: list[str] = Field(default_factory=list, max_length=32)
+    metadata_highlight_keys: list[str] = Field(default_factory=list, max_length=64)
+
+    @field_validator("plugin_ref")
+    @classmethod
+    def _validate_chunk_report_plugin_ref(cls, value: str) -> str:
+        ref = str(value or "").strip()
+        if not _REGISTERED_CHUNK_PLUGIN_REF_RE.fullmatch(ref):
+            raise ValueError("plugin_ref must be a registered chunk plugin ref")
+        return ref
+
+    @field_validator("input_path")
+    @classmethod
+    def _validate_input_path_text(cls, value: str) -> str:
+        text = str(value or "").strip()
+        if not text:
+            raise ValueError("input_path is required")
+        return text
+
+
+class PipelinePluginChunkReportResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    schema_name: str = Field(alias="schema")
+    generated_at: str
+    passed: bool
+    plugin: dict[str, Any] = Field(default_factory=dict)
+    summary: dict[str, Any] = Field(default_factory=dict)
+    sections: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class PipelinePluginGoldenDraftRequest(BaseModel):

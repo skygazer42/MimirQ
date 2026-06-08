@@ -53,6 +53,7 @@ def test_build_golden_draft_bundle_from_plugin_rules_generates_reference_sources
                 "knowledge_type": "demo_case",
                 "source_record_id": "record-1",
                 "chunk_kind": "demo_materials",
+                "answer_points": ["identity proof", "signed form"],
                 "pipeline_hash": "ph_123",
                 "doc_pipeline_key": f"{document_id}:ph_123",
             },
@@ -63,6 +64,7 @@ def test_build_golden_draft_bundle_from_plugin_rules_generates_reference_sources
     golden_rules = {
         "schema": "mimirq.golden_rules.v1",
         "expected_metadata": ["source_record_id", "chunk_kind"],
+        "answer_key_point_fields": ["answer_points"],
         "template_selector_fields": ["knowledge_type"],
         "tag_fields": ["knowledge_type", "chunk_kind"],
         "query_templates": {
@@ -90,6 +92,7 @@ def test_build_golden_draft_bundle_from_plugin_rules_generates_reference_sources
     assert item["reference_sources"][0]["pipeline_hash"] == "ph_123"
     assert item["reference_sources"][0]["quote"] == "Answer: identity proof and a signed form."
     assert item["extra"]["expected_metadata"] == {"source_record_id": "record-1", "chunk_kind": "demo_materials"}
+    assert item["extra"]["answer_key_points"] == ["identity proof", "signed form"]
 
 
 def test_build_golden_draft_bundle_does_not_score_raw_business_metadata_without_evaluable_view():
@@ -241,6 +244,7 @@ def test_build_golden_draft_bundle_does_not_infer_plugin_fields_without_declarat
     assert [item["question"] for item in bundle["items"]] == ["Default question for Demo record?"]
     assert bundle["items"][0]["tags"] == ["plugin:demo-plugin", "golden_draft"]
     assert bundle["items"][0]["extra"]["expected_metadata"] == {"source_record_id": "record-1"}
+    assert "answer_key_points" not in bundle["items"][0]["extra"]
 
 
 def test_build_golden_draft_bundle_carries_plugin_record_identity_reference():

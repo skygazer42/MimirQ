@@ -155,7 +155,11 @@ def test_plugin_guide_documents_manifest_top_level_field_boundary() -> None:
     assert "Contract file fields must be non-empty relative paths" in text
     assert "Contract file fields must be strings" in text
     assert "Contract JSON top-level fields are closed platform contracts" in text
-    assert "Do not add business-specific top-level fields to `metadata_schema.json`, `retrieval_text_schema.json`, `golden_rules.json`, or `processing_templates.json`" in text
+    assert (
+        "Do not add business-specific top-level fields to `metadata_schema.json`, "
+        "`retrieval_text_schema.json`, `retrieval_policy.json`, `golden_rules.json`, "
+        "or `processing_templates.json`"
+    ) in text
     assert "`processing_templates.json` is a plugin-owned template provenance contract" in text
     assert "`processing_templates.templates[].key` is plugin-local" in text
     assert "must not collide with platform built-in processing script keys" in text

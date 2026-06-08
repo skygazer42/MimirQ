@@ -29,6 +29,7 @@ _RAG_STATE_BUILD_KEYS = {
     "question",
     "history",
     "document_ids",
+    "dataset_ids",
     "tenant_id",
     "account_id",
     "dataset_id",
@@ -189,6 +190,7 @@ class MultiAgentRAGRunner:
         tenant_id = stream_request.tenant_id
         account_id = stream_request.account_id
         dataset_id = stream_request.dataset_id
+        dataset_ids = stream_request.dataset_ids
         top_k = stream_request.top_k
         score_threshold = stream_request.score_threshold
         retrieval_mode = stream_request.retrieval_mode
@@ -216,6 +218,7 @@ class MultiAgentRAGRunner:
                 "question": question,
                 "history": history,
                 "document_ids": document_ids,
+                "dataset_ids": dataset_ids,
                 "tenant_id": tenant_id,
                 "account_id": account_id,
                 "dataset_id": dataset_id,

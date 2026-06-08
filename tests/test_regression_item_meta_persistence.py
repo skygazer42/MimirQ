@@ -61,6 +61,9 @@ def test_build_regression_item_meta_includes_ids_and_abstain_fields():
         "faithfulness_det": None,
         "citation_accuracy": None,
         "citation_coverage": None,
+        "citation_eval_limit": None,
+        "citation_total_count": None,
+        "citation_evaluated_count": None,
         "hallucination_rate": None,
         "quote_verifiability": None,
         "atomic_faithfulness": None,
@@ -74,3 +77,22 @@ def test_build_regression_item_meta_includes_ids_and_abstain_fields():
         "refusal_correct": None,
         "llm_judge": None,
     }
+
+
+def test_build_regression_item_meta_preserves_effective_context_metrics():
+    from app.rag.evaluation.regression_sample_builder import build_regression_item_meta
+
+    meta = build_regression_item_meta(
+        sample_kwargs={},
+        item_meta={
+            "retrieval_effective_context_rate": 0.75,
+            "retrieval_noise_rate": 0.25,
+            "retrieval_effective_records": 3,
+            "retrieval_evaluated_records": 4,
+        },
+    )
+
+    assert meta["retrieval_effective_context_rate"] == 0.75
+    assert meta["retrieval_noise_rate"] == 0.25
+    assert meta["retrieval_effective_records"] == 3
+    assert meta["retrieval_evaluated_records"] == 4

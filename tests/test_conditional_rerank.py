@@ -161,6 +161,130 @@ def test_retriever_keeps_reranker_when_confidence_gate_is_not_met(monkeypatch: p
     assert rerank.get("skip_reason") is None
 
 
+def test_retriever_compacts_high_confidence_contexts_after_rerank(monkeypatch: pytest.MonkeyPatch) -> None:
+    retriever = _build_vector_retriever()
+    ds_id = str(retriever.dataset_id)
+
+    monkeypatch.setattr(settings, "RETRIEVAL_OVERFETCH_MULTIPLIER", 1, raising=False)
+    monkeypatch.setattr(settings, "RETRIEVAL_OVERFETCH_MAX_K", 0, raising=False)
+    monkeypatch.setattr(settings, "LEXICAL_DB_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "BM25_INDEX_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "RERANK_CONDITIONAL_ENABLED", False, raising=False)
+    monkeypatch.setitem(settings.__dict__, "RETRIEVAL_COMPACT_HIGH_CONFIDENCE_ENABLED", True)
+    monkeypatch.setitem(settings.__dict__, "RETRIEVAL_COMPACT_MIN_TOP_SCORE", 0.8)
+    monkeypatch.setitem(settings.__dict__, "RETRIEVAL_COMPACT_RELATIVE_SCORE_FLOOR", 0.65)
+    monkeypatch.setitem(settings.__dict__, "RETRIEVAL_COMPACT_MIN_RECORDS", 1)
+
+    exact = _mk_candidate(dataset_id=ds_id, score=0.90, index=0)
+    exact["content"] = "Alpha Desk password reset canonical answer."
+    exact["metadata"]["service_name"] = "alpha-answer"
+
+    weak = _mk_candidate(dataset_id=ds_id, score=0.88, index=1)
+    weak["content"] = "Alpha Desk nearby but not the requested operation."
+    weak["metadata"]["service_name"] = "alpha-nearby"
+
+    noise = _mk_candidate(dataset_id=ds_id, score=0.87, index=2)
+    noise["content"] = "Generic office hours."
+    noise["metadata"]["service_name"] = "alpha-noise"
+
+    stub_store = _StubVectorStore(results=[weak, noise, exact])
+    monkeypatch.setattr("app.storage.vector.factory.get_vector_store", lambda: stub_store, raising=True)
+    monkeypatch.setattr("app.rag.retriever.get_vector_store", lambda: stub_store, raising=False)
+    monkeypatch.setattr(HybridRetriever, "_enrich_results_with_db_metadata", lambda _self, r, **_k: r, raising=True)
+    monkeypatch.setattr(HybridRetriever, "_expand_results_with_neighbors", lambda _self, r: r, raising=True)
+    monkeypatch.setattr(HybridRetriever, "_auto_merge_parent_child", lambda _self, r: r, raising=True)
+
+    monkeypatch.setattr(
+        "app.rag.retriever.get_reranker",
+        lambda _provider: _FixedScoreReranker(
+            scores_by_service_name={
+                "alpha-answer": 0.95,
+                "alpha-nearby": 0.30,
+                "alpha-noise": 0.25,
+            }
+        ),
+        raising=True,
+    )
+
+    docs = retriever._get_relevant_documents(
+        "Alpha Desk password reset",
+        run_manager=CallbackManagerForRetrieverRun.get_noop_manager(),
+    )
+
+    assert [doc.metadata["service_name"] for doc in docs] == ["alpha-answer"]
+    compact = (retriever._last_debug_metrics or {}).get("context_compaction") or {}
+    assert compact["enabled"] is True
+    assert compact["before"] == 3
+    assert compact["after"] == 1
+    assert compact["dropped"] == 2
+
+
+def test_retriever_uses_plugin_response_compaction_policy(monkeypatch: pytest.MonkeyPatch) -> None:
+    retriever = _build_vector_retriever()
+    ds_id = str(retriever.dataset_id)
+    plugin_ref = "plugin:demo-service@1.0.0:chunk"
+
+    monkeypatch.setattr(settings, "RETRIEVAL_OVERFETCH_MULTIPLIER", 1, raising=False)
+    monkeypatch.setattr(settings, "RETRIEVAL_OVERFETCH_MAX_K", 0, raising=False)
+    monkeypatch.setattr(settings, "LEXICAL_DB_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "BM25_INDEX_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "RERANK_CONDITIONAL_ENABLED", False, raising=False)
+    monkeypatch.setattr(settings, "RETRIEVAL_COMPACT_HIGH_CONFIDENCE_ENABLED", False, raising=True)
+
+    exact = _mk_candidate(dataset_id=ds_id, score=0.90, index=0)
+    exact["metadata"]["service_name"] = "alpha-answer"
+    exact["metadata"]["chunk_python_plugin"] = plugin_ref
+
+    noise = _mk_candidate(dataset_id=ds_id, score=0.87, index=1)
+    noise["metadata"]["service_name"] = "alpha-noise"
+    noise["metadata"]["chunk_python_plugin"] = plugin_ref
+
+    stub_store = _StubVectorStore(results=[noise, exact])
+    monkeypatch.setattr("app.storage.vector.factory.get_vector_store", lambda: stub_store, raising=True)
+    monkeypatch.setattr("app.rag.retriever.get_vector_store", lambda: stub_store, raising=False)
+    monkeypatch.setattr(HybridRetriever, "_enrich_results_with_db_metadata", lambda _self, r, **_k: r, raising=True)
+    monkeypatch.setattr(HybridRetriever, "_expand_results_with_neighbors", lambda _self, r: r, raising=True)
+    monkeypatch.setattr(HybridRetriever, "_auto_merge_parent_child", lambda _self, r: r, raising=True)
+    monkeypatch.setattr(
+        HybridRetriever,
+        "_retrieval_policy_for_plugin_ref",
+        staticmethod(
+            lambda ref: {
+                "schema": "mimirq.retrieval_policy.v1",
+                "response_compaction": {
+                    "enabled": True,
+                    "min_top_score": 0.8,
+                    "relative_score_floor": 0.65,
+                    "min_records": 1,
+                },
+            }
+            if ref == plugin_ref
+            else {}
+        ),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        "app.rag.retriever.get_reranker",
+        lambda _provider: _FixedScoreReranker(
+            scores_by_service_name={
+                "alpha-answer": 0.95,
+                "alpha-noise": 0.25,
+            }
+        ),
+        raising=True,
+    )
+
+    docs = retriever._get_relevant_documents(
+        "Alpha Desk password reset",
+        run_manager=CallbackManagerForRetrieverRun.get_noop_manager(),
+    )
+
+    assert [doc.metadata["service_name"] for doc in docs] == ["alpha-answer"]
+    compact = (retriever._last_debug_metrics or {}).get("context_compaction") or {}
+    assert compact["source"] == "policy"
+    assert compact["plugin_ref"] == plugin_ref
+
+
 def test_retriever_promotes_exact_metadata_anchor_after_api_rerank(monkeypatch: pytest.MonkeyPatch) -> None:
     retriever = _build_vector_retriever()
     ds_id = str(retriever.dataset_id)

@@ -45,6 +45,12 @@ from app.rag.evaluation.regression_sample_builder import (
     build_regression_item_meta,
     build_regression_sample,
 )
+from app.rag.pipeline_plugins.contracts import (
+    DISPLAY_METADATA_KEY,
+    EVALUABLE_METADATA_KEY,
+    INDEXED_METADATA_KEY,
+    RECORD_IDENTITY_METADATA_KEY,
+)
 from app.services.dataset_service import DatasetService
 from app.services.document_access import filter_allowed_document_ids, get_allowed_document_id_sets
 from app.services.prompt_resolver import resolve_prompt_template
@@ -72,6 +78,8 @@ DETERMINISTIC_REGRESSION_METRICS = frozenset(
         "hallucination_rate",
         "citation_accuracy",
         "citation_coverage",
+        "retrieval_effective_context_rate",
+        "retrieval_noise_rate",
         "quote_verifiability",
         "chunk_attribution",
         "chunk_utilization",
@@ -101,6 +109,8 @@ _DETERMINISTIC_SCORE_META_KEYS = {
     "hallucination_rate": "hallucination_rate",
     "citation_accuracy": "citation_accuracy",
     "citation_coverage": "citation_coverage",
+    "retrieval_effective_context_rate": "retrieval_effective_context_rate",
+    "retrieval_noise_rate": "retrieval_noise_rate",
     "quote_verifiability": "quote_verifiability",
     "chunk_attribution": "chunk_attribution",
     "chunk_utilization": "chunk_utilization",
@@ -186,6 +196,54 @@ def build_selected_deterministic_scores(metric_names: list[str] | None, meta: di
         if value is not None:
             scores[key] = value
     return scores
+
+
+def _build_regression_progress_summary(
+    *,
+    mode: str,
+    processed_cases: int,
+    total_cases: int,
+    evaluable_items: int,
+) -> dict[str, Any]:
+    total = max(0, int(total_cases or 0))
+    processed = max(0, min(int(processed_cases or 0), total)) if total else max(0, int(processed_cases or 0))
+    percent = 1.0 if total <= 0 else round(float(processed) / float(total), 4)
+    return {
+        "mode": str(mode or "unknown"),
+        "processed_cases": processed,
+        "total_cases": total,
+        "evaluable_items": max(0, int(evaluable_items or 0)),
+        "percent": percent,
+    }
+
+
+def _commit_regression_progress(
+    db: Any,
+    run: RagasRegressionRun,
+    *,
+    mode: str,
+    processed_cases: int,
+    total_cases: int,
+    evaluable_items: int,
+) -> None:
+    try:
+        summary = dict(getattr(run, "summary", None) or {})
+        summary["progress"] = _build_regression_progress_summary(
+            mode=mode,
+            processed_cases=processed_cases,
+            total_cases=total_cases,
+            evaluable_items=evaluable_items,
+        )
+        run.summary = summary
+        db.commit()
+    except Exception as exc:  # noqa: BLE001
+        rollback = getattr(db, "rollback", None)
+        if callable(rollback):
+            try:
+                rollback()
+            except Exception:
+                logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+        logger.debug("Failed to persist regression progress: %s", exc)
 
 
 def _build_http_clients() -> tuple[httpx.Client, httpx.AsyncClient]:
@@ -349,10 +407,10 @@ def _extract_contexts(
 
 
 _REGRESSION_CITATION_METADATA_VIEW_KEYS = (
-    "_evaluable_metadata",
-    "_indexed_metadata",
-    "_display_metadata",
-    "_record_identity",
+    EVALUABLE_METADATA_KEY,
+    INDEXED_METADATA_KEY,
+    DISPLAY_METADATA_KEY,
+    RECORD_IDENTITY_METADATA_KEY,
 )
 
 _REGRESSION_CITATION_METADATA_SCALAR_KEYS = (
@@ -588,6 +646,11 @@ def _build_answer_quality_metrics_summary(metas: list[dict[str, Any]]) -> dict[s
         if v is not None:
             out[key] = v
 
+    for key in ("citation_eval_limit", "citation_evaluated_count", "citation_total_count"):
+        v = _mean_float(key)
+        if v is not None:
+            out[f"{key}_avg"] = v
+
     labeled = 0
     correct = 0
     false_pos = 0
@@ -645,6 +708,8 @@ def _build_retrieval_metrics_summary(metas: list[dict[str, Any]]) -> dict[str, A
         "retrieval_hit_at_5": _mean_bool("retrieval_hit_at_5"),
         "retrieval_hit_at_10": _mean_bool("retrieval_hit_at_10"),
         "retrieval_hit_at_20": _mean_bool("retrieval_hit_at_20"),
+        "retrieval_effective_context_rate": _mean(m.get("retrieval_effective_context_rate") for m in metas),
+        "retrieval_noise_rate": _mean(m.get("retrieval_noise_rate") for m in metas),
         "multihop_path_completeness": _mean(m.get("multihop_path_completeness") for m in metas),
         "multihop_order_consistency": _mean(m.get("multihop_order_consistency") for m in metas),
         "multihop_chain_hit_rate": _mean_bool("multihop_chain_hit"),
@@ -1640,7 +1705,9 @@ def run_regression_ragas_evaluation(
         # - still runs the RAG graph to produce an answer/citations
         # - computes offline metrics (faithfulness_det/refusal_correctness) via item_meta aggregation
         deterministic_only = (not retrieval_only) and bool(metric_split.deterministic) and not metric_split.ragas
-        for case in cases:
+        progress_mode = "retrieval_only" if retrieval_only else ("deterministic_gate" if deterministic_only else "ragas")
+        total_cases = len(cases)
+        for case_index, case in enumerate(cases, start=1):
             scope_doc_ids, scope_dataset_id = _resolve_case_scope(
                 db=db, tenant_id=tenant_id, account_id=account_id, case=case
             )
@@ -1852,14 +1919,27 @@ def run_regression_ragas_evaluation(
                 citations=citations,
             )
             if skip_empty_contexts and not contexts:
+                _commit_regression_progress(
+                    db,
+                    run,
+                    mode=progress_mode,
+                    processed_cases=case_index,
+                    total_cases=total_cases,
+                    evaluable_items=len(eval_items),
+                )
                 continue
             meta = (graph_result or {}).get("metrics") or {}
+            try:
+                citation_eval_limit = max(1, int(rag_params.get("top_k") or 5))
+            except (TypeError, ValueError):
+                citation_eval_limit = 5
             eval_item: dict[str, Any] = {
                 "case_id": case.id,
                 "question": case.question,
                 "response": response,
                 "retrieved_contexts": contexts,
                 "citations": citations,
+                "citation_eval_limit": citation_eval_limit,
                 "abstain_triggered": bool((graph_result or {}).get("abstain_triggered")),
                 "abstain_reason": (graph_result or {}).get("abstain_reason"),
                 "top_relevance_score": meta.get("top_relevance_score") if isinstance(meta, dict) else None,
@@ -1888,6 +1968,14 @@ def run_regression_ragas_evaluation(
             merged_meta.setdefault("slice_hit_type", hit_type)
             eval_item["item_meta"] = merged_meta
             eval_items.append(eval_item)
+            _commit_regression_progress(
+                db,
+                run,
+                mode=progress_mode,
+                processed_cases=case_index,
+                total_cases=total_cases,
+                evaluable_items=len(eval_items),
+            )
 
         if not eval_items:
             run.status = "failed"
@@ -1945,6 +2033,12 @@ def run_regression_ragas_evaluation(
                 )
 
             summary: dict[str, Any] = {"items": len(eval_items)}
+            summary["progress"] = _build_regression_progress_summary(
+                mode="retrieval_only",
+                processed_cases=total_cases,
+                total_cases=total_cases,
+                evaluable_items=len(eval_items),
+            )
             summary = _merge_summary_with_regression_gate(summary, eval_items=eval_items)
             summary["multimodal_slices"] = summarize_multimodal_regression_slices(eval_items)
             if llm_judge_summary:
@@ -1998,6 +2092,12 @@ def run_regression_ragas_evaluation(
                 )
 
             summary = {"items": len(eval_items)}
+            summary["progress"] = _build_regression_progress_summary(
+                mode="deterministic_gate",
+                processed_cases=total_cases,
+                total_cases=total_cases,
+                evaluable_items=len(eval_items),
+            )
             summary = _merge_summary_with_regression_gate(summary, eval_items=eval_items)
             summary["multimodal_slices"] = summarize_multimodal_regression_slices(eval_items)
             if llm_judge_summary:
@@ -2128,6 +2228,12 @@ def run_regression_ragas_evaluation(
             )
 
         summary: dict[str, Any] = {"items": len(eval_items)}
+        summary["progress"] = _build_regression_progress_summary(
+            mode="ragas",
+            processed_cases=total_cases,
+            total_cases=total_cases,
+            evaluable_items=len(eval_items),
+        )
         for key in metric_keys:
             summary[key] = _mean(row.get(key) for row in result.scores)
         summary["total_tokens"] = getattr(result, "total_tokens", None)

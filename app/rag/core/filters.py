@@ -6,9 +6,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.rag.pipeline_plugins.contracts import INDEXED_METADATA_KEY
+
 _MAX_FILTER_DEPTH = 8
 _MAX_FILTER_NODES = 200
-_INDEXED_METADATA_KEY = "_indexed_metadata"
+_INDEXED_METADATA_KEY = INDEXED_METADATA_KEY
 _MISSING = object()
 
 

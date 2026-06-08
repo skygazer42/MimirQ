@@ -21,6 +21,7 @@ def _write_demo_plugin(
     include_contracts: bool = False,
     include_kg: bool = False,
     include_processing_templates: bool = False,
+    include_retrieval_policy: bool = False,
     omit_required_metadata: bool = False,
     suggested_pipeline_patch: dict | None = None,
 ) -> None:
@@ -48,6 +49,8 @@ def _write_demo_plugin(
         )
     if include_processing_templates:
         manifest["processing_templates"] = "processing_templates.json"
+    if include_retrieval_policy:
+        manifest["retrieval_policy"] = "retrieval_policy.json"
     if suggested_pipeline_patch is not None:
         manifest["suggested_pipeline_patch"] = suggested_pipeline_patch
     (plugin_dir / "mimirq-plugin.json").write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
@@ -110,6 +113,36 @@ def _write_demo_plugin(
                     "template_selector_fields": ["business_type"],
                     "tag_fields": ["business_type", "chunk_kind"],
                     "query_templates": {"demo": ["{business_type}业务怎么处理？"]},
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+    if include_retrieval_policy:
+        (plugin_dir / "retrieval_policy.json").write_text(
+            json.dumps(
+                {
+                    "schema": "mimirq.retrieval_policy.v1",
+                    "query_expansion_fields": ["business_type"],
+                    "query_expansion_values": [
+                        {"metadata": "chunk_kind", "value": "demo", "terms": ["demo steps"]},
+                    ],
+                    "filter_fields": ["business_type"],
+                    "boost_fields": [
+                        {"metadata": "chunk_kind", "weight": 1.4, "match": "exact"},
+                    ],
+                    "anchor_fields": [
+                        {
+                            "metadata": "business_type",
+                            "weight": 2.0,
+                            "aliases": {"demo": ["demo", "demo business"]},
+                        }
+                    ],
+                    "rerank_features": ["business_type", "chunk_kind"],
+                    "fallback": {
+                        "enabled": True,
+                        "expand_top_k_multiplier": 2,
+                    },
                 },
                 ensure_ascii=False,
             ),
@@ -844,6 +877,181 @@ def test_pipeline_plugin_processing_templates_are_manifest_declared_and_exposed(
     item = res.json()["items"][0]
     assert item["processing_templates"]["plugin_id"] == "demo-service"
     assert item["processing_templates"]["templates"][0]["implemented_by"] == "plugin.py:govern_documents"
+
+
+def test_pipeline_plugin_retrieval_policy_is_manifest_declared_and_summarized(tmp_path: Path):
+    from app.rag.pipeline_plugins.registry import describe_plugin_dir
+
+    plugin_dir = tmp_path / "plugins" / "demo"
+    _write_demo_plugin(plugin_dir, include_contracts=True, include_retrieval_policy=True)
+
+    descriptor = describe_plugin_dir(plugin_dir, require_test_report=False)
+
+    assert descriptor.retrieval_policy["schema"] == "mimirq.retrieval_policy.v1"
+    assert descriptor.retrieval_policy["query_expansion_fields"] == ["business_type"]
+    assert descriptor.retrieval_policy["filter_fields"] == ["business_type"]
+    assert descriptor.contract_summary["retrieval_policy"] == {
+        "schema": "mimirq.retrieval_policy.v1",
+        "query_expansion_fields": ["business_type"],
+        "query_expansion_value_fields": ["chunk_kind"],
+        "filter_fields": ["business_type"],
+        "boost_fields": ["chunk_kind"],
+        "anchor_fields": ["business_type"],
+        "rerank_features": ["business_type", "chunk_kind"],
+        "fallback_enabled": True,
+        "response_compaction_enabled": False,
+    }
+
+
+def test_pipeline_plugin_list_schema_accepts_retrieval_policy_anchor_fields(tmp_path: Path):
+    from app.api.schemas.pipeline import PipelinePluginListResponse
+    from app.rag.pipeline_plugins.registry import describe_plugin_dir
+
+    plugin_dir = tmp_path / "plugins" / "demo"
+    _write_demo_plugin(plugin_dir, include_contracts=True, include_retrieval_policy=True)
+
+    descriptor = describe_plugin_dir(plugin_dir, require_test_report=False)
+
+    response = PipelinePluginListResponse.model_validate(
+        {
+            "items": [
+                {
+                    "id": descriptor.id,
+                    "version": descriptor.version,
+                    "name": descriptor.name,
+                    "description": descriptor.description,
+                    "published": descriptor.published,
+                    "executable": descriptor.executable,
+                    "test_status": descriptor.test_status,
+                    "package_hash": descriptor.package_hash,
+                    "stages": list(descriptor.entries),
+                    "refs": descriptor.refs,
+                    "contract": descriptor.contract_summary,
+                }
+            ],
+            "errors": [],
+        }
+    )
+
+    assert response.items[0].contract.retrieval_policy.anchor_fields == ["business_type"]
+
+
+def test_pipeline_plugin_retrieval_policy_rejects_undeclared_metadata_fields(tmp_path: Path):
+    from app.rag.pipeline_plugins.registry import PipelinePluginRegistryError, describe_plugin_dir
+
+    plugin_dir = tmp_path / "plugins" / "demo"
+    _write_demo_plugin(plugin_dir, include_contracts=True, include_retrieval_policy=True)
+    policy_path = plugin_dir / "retrieval_policy.json"
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    policy["query_expansion_fields"] = ["missing_business_alias"]
+    policy_path.write_text(json.dumps(policy, ensure_ascii=False), encoding="utf-8")
+
+    with pytest.raises(
+        PipelinePluginRegistryError,
+        match="retrieval_policy.query_expansion_fields references undeclared metadata fields: missing_business_alias",
+    ):
+        describe_plugin_dir(plugin_dir, require_test_report=False)
+
+
+def test_pipeline_plugin_retrieval_policy_rejects_undeclared_query_expansion_value_fields(tmp_path: Path):
+    from app.rag.pipeline_plugins.registry import PipelinePluginRegistryError, describe_plugin_dir
+
+    plugin_dir = tmp_path / "plugins" / "demo"
+    _write_demo_plugin(plugin_dir, include_contracts=True, include_retrieval_policy=True)
+    policy_path = plugin_dir / "retrieval_policy.json"
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    policy["query_expansion_values"] = [{"metadata": "missing_segment", "value": "demo", "terms": ["demo"]}]
+    policy_path.write_text(json.dumps(policy, ensure_ascii=False), encoding="utf-8")
+
+    with pytest.raises(
+        PipelinePluginRegistryError,
+        match="retrieval_policy.query_expansion_values references undeclared metadata fields: missing_segment",
+    ):
+        describe_plugin_dir(plugin_dir, require_test_report=False)
+
+
+def test_pipeline_plugin_retrieval_policy_rejects_undeclared_anchor_fields(tmp_path: Path):
+    from app.rag.pipeline_plugins.registry import PipelinePluginRegistryError, describe_plugin_dir
+
+    plugin_dir = tmp_path / "plugins" / "demo"
+    _write_demo_plugin(plugin_dir, include_contracts=True, include_retrieval_policy=True)
+    policy_path = plugin_dir / "retrieval_policy.json"
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    policy["anchor_fields"] = [{"metadata": "missing_region", "aliases": {"north": ["north"]}}]
+    policy_path.write_text(json.dumps(policy, ensure_ascii=False), encoding="utf-8")
+
+    with pytest.raises(
+        PipelinePluginRegistryError,
+        match="retrieval_policy.anchor_fields references undeclared metadata fields: missing_region",
+    ):
+        describe_plugin_dir(plugin_dir, require_test_report=False)
+
+
+def test_pipeline_plugin_retrieval_policy_rejects_non_chunk_stage_fields(tmp_path: Path):
+    from app.rag.pipeline_plugins.registry import PipelinePluginRegistryError, describe_plugin_dir
+
+    plugin_dir = tmp_path / "plugins" / "demo"
+    _write_demo_plugin(plugin_dir, include_contracts=True, include_retrieval_policy=True)
+    schema_path = plugin_dir / "metadata_schema.json"
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    schema["fields"].append(
+        {
+            "name": "governance_note",
+            "type": "string",
+            "required": False,
+            "stages": ["governance"],
+            "filterable": True,
+            "display": True,
+            "evaluable": True,
+        }
+    )
+    schema_path.write_text(json.dumps(schema, ensure_ascii=False), encoding="utf-8")
+
+    policy_path = plugin_dir / "retrieval_policy.json"
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    policy["boost_fields"] = [{"metadata": "governance_note", "weight": 1.0, "match": "contains"}]
+    policy_path.write_text(json.dumps(policy, ensure_ascii=False), encoding="utf-8")
+
+    with pytest.raises(
+        PipelinePluginRegistryError,
+        match="retrieval_policy.boost_fields references metadata fields not available at chunk stage: governance_note",
+    ):
+        describe_plugin_dir(plugin_dir, require_test_report=False)
+
+
+def test_pipeline_plugin_retrieval_policy_rejects_non_chunk_query_expansion_value_fields(tmp_path: Path):
+    from app.rag.pipeline_plugins.registry import PipelinePluginRegistryError, describe_plugin_dir
+
+    plugin_dir = tmp_path / "plugins" / "demo"
+    _write_demo_plugin(plugin_dir, include_contracts=True, include_retrieval_policy=True)
+    schema_path = plugin_dir / "metadata_schema.json"
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    schema["fields"].append(
+        {
+            "name": "governance_note",
+            "type": "string",
+            "required": False,
+            "stages": ["governance"],
+            "filterable": True,
+            "display": True,
+            "evaluable": True,
+        }
+    )
+    schema_path.write_text(json.dumps(schema, ensure_ascii=False), encoding="utf-8")
+
+    policy_path = plugin_dir / "retrieval_policy.json"
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    policy["query_expansion_values"] = [{"metadata": "governance_note", "value": "demo", "terms": ["demo"]}]
+    policy_path.write_text(json.dumps(policy, ensure_ascii=False), encoding="utf-8")
+
+    with pytest.raises(
+        PipelinePluginRegistryError,
+        match=(
+            "retrieval_policy.query_expansion_values references metadata fields "
+            "not available at chunk stage: governance_note"
+        ),
+    ):
+        describe_plugin_dir(plugin_dir, require_test_report=False)
 
 
 def test_pipeline_plugin_processing_templates_reject_builtin_template_key_collision(tmp_path: Path):
@@ -3264,6 +3472,44 @@ def test_metadata_schema_views_are_generic_and_schema_driven():
     assert meta[RECORD_IDENTITY_METADATA_KEY]["key"] == "business_type=contract|region=east"
     assert "internal_note" not in meta[INDEXED_METADATA_KEY]
     assert match_metadata_filter(meta, {"_indexed_metadata.business_type": "contract"}) is True
+
+
+def test_reserved_platform_metadata_view_keys_are_exported_as_contract():
+    from app.rag.pipeline_plugins.contracts import (
+        DISPLAY_METADATA_KEY,
+        EVALUABLE_METADATA_KEY,
+        INDEXED_METADATA_KEY,
+        RECORD_IDENTITY_METADATA_KEY,
+        RESERVED_PLATFORM_METADATA_VIEW_KEYS,
+        RETRIEVAL_DISPLAY_CONTENT_METADATA_KEY,
+        RETRIEVAL_TEXT_METADATA_KEY,
+    )
+
+    assert RESERVED_PLATFORM_METADATA_VIEW_KEYS == (
+        INDEXED_METADATA_KEY,
+        DISPLAY_METADATA_KEY,
+        EVALUABLE_METADATA_KEY,
+        RECORD_IDENTITY_METADATA_KEY,
+        RETRIEVAL_TEXT_METADATA_KEY,
+        RETRIEVAL_DISPLAY_CONTENT_METADATA_KEY,
+    )
+
+
+def test_metadata_schema_view_keys_are_exported_as_contract():
+    from app.rag.pipeline_plugins.contracts import (
+        DISPLAY_METADATA_KEY,
+        EVALUABLE_METADATA_KEY,
+        INDEXED_METADATA_KEY,
+        METADATA_SCHEMA_VIEW_KEYS,
+        RECORD_IDENTITY_METADATA_KEY,
+    )
+
+    assert METADATA_SCHEMA_VIEW_KEYS == (
+        INDEXED_METADATA_KEY,
+        DISPLAY_METADATA_KEY,
+        EVALUABLE_METADATA_KEY,
+        RECORD_IDENTITY_METADATA_KEY,
+    )
 
 
 def test_registered_plugin_runtime_validates_required_metadata_and_builds_retrieval_text(tmp_path: Path):

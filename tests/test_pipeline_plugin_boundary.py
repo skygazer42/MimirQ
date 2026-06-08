@@ -31,7 +31,9 @@ def test_platform_surfaces_do_not_embed_changzhou_plugin_defaults() -> None:
         Path("tests/test_pipeline_plugin_boundary.py"),
         Path("tests/test_pipeline_plugin_closed_loop_docs.py"),
         Path("tests/test_plugin_corpus_closed_loop_smoke.py"),
+        Path("tests/test_plugin_corpus_closed_loop_evidence.py"),
         Path("web/components/chunk-preview/components/workbench/sidebar-client.messages.source.test.ts"),
+        Path("docs/plans/2026-06-08-rag-retrieval-quality-closed-loop.md"),
     }
     ignored_parts = {
         "__pycache__",
@@ -70,6 +72,12 @@ def test_platform_surfaces_do_not_embed_changzhou_plugin_defaults() -> None:
             rel_text = rel.as_posix()
             if rel in allowed_files:
                 continue
+            if (
+                rel_text.startswith("scripts/changzhou_gov_")
+                or rel_text.startswith("tests/test_changzhou_gov_")
+                or rel_text.startswith("docs/deployment/changzhou_")
+            ):
+                continue
             if any(part in rel_text for part in ignored_parts):
                 continue
             try:
@@ -81,6 +89,56 @@ def test_platform_surfaces_do_not_embed_changzhou_plugin_defaults() -> None:
                     leaks.append(f"{rel_text}: {term}")
 
     assert leaks == []
+
+
+def test_dify_adapter_reuses_pipeline_contract_metadata_view_keys() -> None:
+    text = Path("app/api/v1/integrations_dify.py").read_text(encoding="utf-8")
+
+    assert "from app.rag.pipeline_plugins.contracts import" in text
+    assert "INDEXED_METADATA_KEY" in text
+    assert "DISPLAY_METADATA_KEY" in text
+    assert "EVALUABLE_METADATA_KEY" in text
+    assert '_PUBLIC_METADATA_VIEW_KEYS = ("_evaluable_metadata", "_display_metadata")' not in text
+    assert '_RETRIEVAL_METADATA_VIEW_KEYS = ("_indexed_metadata", *_PUBLIC_METADATA_VIEW_KEYS)' not in text
+
+
+def test_core_retrieval_modules_reuse_pipeline_contract_metadata_view_keys() -> None:
+    files = [
+        Path("app/rag/retriever.py"),
+        Path("app/rag/core/filters.py"),
+    ]
+
+    for path in files:
+        text = path.read_text(encoding="utf-8")
+        assert "from app.rag.pipeline_plugins.contracts import" in text
+        if path.name == "retriever.py":
+            assert "METADATA_SCHEMA_VIEW_KEYS" in text
+            assert "_PLATFORM_METADATA_VIEW_KEYS = (" not in text
+        assert '_INDEXED_METADATA_KEY = "_indexed_metadata"' not in text
+        assert '_DISPLAY_METADATA_KEY = "_display_metadata"' not in text
+        assert '_EVALUABLE_METADATA_KEY = "_evaluable_metadata"' not in text
+
+
+def test_vector_storage_reuses_pipeline_contract_indexed_metadata_key() -> None:
+    text = Path("app/storage/vector/milvus.py").read_text(encoding="utf-8")
+
+    assert "from app.rag.pipeline_plugins.contracts import INDEXED_METADATA_KEY" in text
+    assert '_INDEXED_METADATA_VIEW_KEY = "_indexed_metadata"' not in text
+
+
+def test_evaluation_modules_reuse_pipeline_contract_metadata_view_keys() -> None:
+    files = [
+        Path("app/rag/evaluation/regression_sample_builder.py"),
+        Path("app/rag/evaluation/ragas.py"),
+    ]
+
+    for path in files:
+        text = path.read_text(encoding="utf-8")
+        assert "from app.rag.pipeline_plugins.contracts import" in text
+        assert '"_evaluable_metadata",' not in text
+        assert '"_indexed_metadata",' not in text
+        assert '"_display_metadata",' not in text
+        assert '"_record_identity",' not in text
 
 
 def test_golden_draft_builder_uses_declared_plugin_fields_not_business_defaults() -> None:
@@ -113,6 +171,25 @@ def test_platform_filter_helper_uses_schema_declared_metadata_language() -> None
 
     assert "schema-declared metadata field" in text
     assert "business-field" not in text
+
+
+def test_dify_adapter_delegates_retrieval_policy_scoring_to_platform_module() -> None:
+    text = Path("app/api/v1/integrations_dify.py").read_text(encoding="utf-8")
+
+    assert "from app.rag.retrieval.plugin_policy import" in text
+    assert "class _RetrievalPolicySignalScores" not in text
+    assert "def _retrieval_policy_signal_scores" not in text
+    assert "def _retrieval_policy_query_expansion_bonus" not in text
+
+
+def test_business_chunk_report_reuses_generic_plugin_report_builder() -> None:
+    text = Path("scripts/changzhou_gov_plugin_chunk_report.py").read_text(encoding="utf-8")
+
+    assert "from app.rag.pipeline_plugins.reports import" in text
+    assert "build_pipeline_plugin_chunk_report" in text
+    assert "apply_governance_python_plugin" not in text
+    assert "apply_chunk_python_plugin" not in text
+    assert "apply_kg_python_plugin" not in text
 
 
 def test_platform_kg_paths_do_not_fallback_kg_plugin_params_to_chunk_plugin_params() -> None:

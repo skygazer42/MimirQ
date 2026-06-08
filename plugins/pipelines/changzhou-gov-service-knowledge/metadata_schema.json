@@ -209,6 +209,15 @@
       "max_length": 1000
     },
     {
+      "name": "answer",
+      "type": "string",
+      "required": false,
+      "stages": ["governance", "chunk"],
+      "display": true,
+      "evaluable": true,
+      "max_length": 5000
+    },
+    {
       "name": "aliases",
       "type": "array",
       "required": false,
