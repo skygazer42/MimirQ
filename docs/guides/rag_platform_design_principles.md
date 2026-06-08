@@ -2,6 +2,9 @@
 
 本文定义 MimirQ 的长期设计边界：平台是通用 RAG 内核与质量闭环，业务差异通过插件包进入系统。目标不是让某个业务“跑通一次”，而是让每个业务都能用同一套平台合约完成治理、切块、索引、检索、评测和发布。
 
+执行层面的优化顺序、边界决策矩阵和 rollout 计划见
+[`RAG Platform Design Optimization Implementation Plan`](../plans/2026-06-09-rag-platform-design-optimization-plan.md)。
+
 ## 1. 平台边界
 
 平台只消费标准合约，不理解业务字段含义。`app/` 内的 API、检索、索引、报告、评测和 Dify adapter 必须保持业务中立。
