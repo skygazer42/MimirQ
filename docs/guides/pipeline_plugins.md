@@ -728,6 +728,8 @@ generic chunk readiness, and declared Golden draft availability into
 such as counts, refs, readiness checks, and package hash. It does not include
 chunk examples or content previews; generate a chunk report separately when you
 need local debugging context.
+CI and delivery scripts can read `summary.failed_required_checks` and
+`summary.failed_optional_checks` directly instead of parsing every check entry.
 
 To review or import the exact generated Golden cases before touching a dataset,
 export a local regression bundle from the same sample:

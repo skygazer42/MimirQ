@@ -224,6 +224,8 @@ def test_plugin_release_gate_runs_generic_checks_and_hides_raw_chunk_examples(tm
 
     assert report["schema"] == "mimirq.plugin_release_gate.v1"
     assert report["passed"] is True
+    assert report["summary"]["failed_required_checks"] == []
+    assert report["summary"]["failed_optional_checks"] == []
     assert report["plugin"]["id"] == "demo-release-plugin"
     assert report["plugin"]["version"] == "1.0.0"
     assert report["plugin"]["package_hash"]
@@ -258,6 +260,13 @@ def test_plugin_release_gate_fails_when_required_chunk_stage_emits_no_chunks(tmp
     report = build_plugin_release_gate_report(plugin_dir, sample_path=sample_path)
 
     assert report["passed"] is False
+    assert report["summary"]["failed_required_checks"] == [
+        "local_stage_test_passed",
+        "local_test_report_current",
+        "chunk_report_ready",
+        "golden_draft_available",
+    ]
+    assert report["summary"]["failed_optional_checks"] == []
     checks = {check["name"]: check for check in report["checks"]}
     assert checks["chunk_report_ready"]["passed"] is False
     assert checks["chunk_report_ready"]["details"] == {
