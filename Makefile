@@ -645,6 +645,7 @@ changzhou-dify-readiness-persist-audit:
 		--user-id "$(MIMIRQ_USER_ID)" \
 		$(if $(strip $(MIMIRQ_API_TOKEN)),--bearer "$(MIMIRQ_API_TOKEN)") \
 		--timeout $(MIMIRQ_API_TIMEOUT) \
+		--verify-report \
 		--out "$(CHANGZHOU_DIFY_READINESS_AUDIT_OUT)"
 
 changzhou-dify-full-gate:

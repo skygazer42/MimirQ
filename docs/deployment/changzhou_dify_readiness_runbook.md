@@ -219,10 +219,12 @@ make changzhou-dify-readiness-persist-audit \
 
 该 target 读取 `CHANGZHOU_DIFY_READINESS_OUT`（默认
 `/tmp/changzhou_gov_dify_readiness_summary.json`），本地先按平台合约裁剪一次，再调用
-`PUT /api/v1/datasets/$DATASET_ID/retrieval-audit`。响应默认写到
-`/tmp/changzhou_gov_dify_readiness_persist_audit.json`。写入后，
-`/api/v1/reports/datasets/$DATASET_ID` 会把该持久化证据和最新 regression run 证据合并展示；
-平台仍只理解通用 retrieval audit 合约，不依赖常州或 Dify 的业务结构。
+`PUT /api/v1/datasets/$DATASET_ID/retrieval-audit`。随后会读取
+`/api/v1/reports/datasets/$DATASET_ID`，确认报告里的 `retrieval_audit` 已包含刚写入的
+plugin refs、package hashes、gate 和 failure categories；验证失败时 target 返回非 0。
+响应默认写到 `/tmp/changzhou_gov_dify_readiness_persist_audit.json`。写入后，数据集报告
+会把该持久化证据和最新 regression run 证据合并展示；平台仍只理解通用 retrieval audit
+合约，不依赖常州或 Dify 的业务结构。
 
 ---
 
