@@ -600,6 +600,13 @@ def _build_retrieval_audit_summary(
     )
 
 
+def sanitize_retrieval_audit_snapshot(raw: dict[str, Any]) -> DatasetRetrievalAuditOut:
+    audit = _retrieval_audit_from_dataset_metadata({"retrieval_audit": raw})
+    if audit is None:
+        raise ValueError("retrieval_audit must be an object")
+    return audit
+
+
 def _safe_dataset_report_metadata(
     dataset_metadata: dict[str, Any],
     *,

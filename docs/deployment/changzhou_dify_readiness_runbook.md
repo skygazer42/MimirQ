@@ -205,6 +205,21 @@ readiness summary 还会额外输出通用 `retrieval_audit` 片段，字段对�
 插件 provenance，不包含 raw query、生成答案、chunk 正文或凭据；平台后续可以直接消费该
 片段，而不需要理解常州 workflow 的业务结构。
 
+如需把该证据固化到某个数据集报告中，可把 summary 里的 `retrieval_audit` 写回数据集
+metadata。后端会再次按平台白名单裁剪，只保存聚合 gate、metric、插件 provenance 和失败
+分类，不保存 raw query、chunk 正文或凭据：
+
+```bash
+jq '.retrieval_audit' /tmp/changzhou_gov_dify_readiness_summary.json \
+  | curl -sS -X PUT "$MIMIRQ_BASE_URL/api/v1/datasets/$DATASET_ID/retrieval-audit" \
+      -H "Authorization: Bearer $MIMIRQ_API_TOKEN" \
+      -H "Content-Type: application/json" \
+      --data-binary @-
+```
+
+写入后，`/api/v1/reports/datasets/$DATASET_ID` 会把该持久化证据和最新 regression run
+证据合并展示；平台仍只理解通用 retrieval audit 合约，不依赖常州或 Dify 的业务结构。
+
 ---
 
 ## 4. 关键 artifacts
