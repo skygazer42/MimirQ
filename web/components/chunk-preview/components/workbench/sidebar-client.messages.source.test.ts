@@ -404,4 +404,28 @@ describe('sidebar client messages source', () => {
     expect(src).not.toContain('selectedGoldenPlugin?.refs.governance')
     expect(src).not.toContain('selectedGoldenPlugin?.refs.kg')
   })
+
+  it('can build registered plugin chunk reports before ingestion', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'sidebar-client.tsx'), 'utf8')
+    const apiSrc = fs.readFileSync(path.resolve(__dirname, '../../../../lib/api/pipeline.ts'), 'utf8')
+    const messagesSrc = fs.readFileSync(
+      path.resolve(__dirname, '../../../../i18n/messages/zh-CN/chunk-preview.ts'),
+      'utf8'
+    )
+
+    expect(apiSrc).toContain('buildPluginChunkReport')
+    expect(apiSrc).toContain('/pipeline/plugins/chunk-report')
+    expect(src).toContain('data-python-pipeline-plugin-chunk-report')
+    expect(src).toContain('handleBuildPluginChunkReport')
+    expect(src).toContain('pipelineApi.buildPluginChunkReport')
+    expect(src).toContain('pluginChunkReportLoading')
+    expect(src).toContain('pluginChunkReport')
+    expect(src).toContain('selectedChunkPluginRef')
+    expect(src).toContain("t('sidebar.pythonPlugins.chunkReportBuild')")
+    expect(src).toContain("t('sidebar.pythonPlugins.chunkReportSummary'")
+    expect(src).toContain("t('sidebar.pythonPlugins.chunkReportError')")
+    expect(messagesSrc).toContain('chunkReportTitle')
+    expect(messagesSrc).toContain('生成预检报告')
+    expect(messagesSrc).toContain('报告摘要：{records} 条治理记录 · {chunks} 个切块 · {kgEvents} 个 KG 事件')
+  })
 })
