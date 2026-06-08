@@ -34,6 +34,7 @@ def test_platform_surfaces_do_not_embed_changzhou_plugin_defaults() -> None:
         Path("tests/test_plugin_corpus_closed_loop_evidence.py"),
         Path("web/components/chunk-preview/components/workbench/sidebar-client.messages.source.test.ts"),
         Path("docs/plans/2026-06-08-rag-retrieval-quality-closed-loop.md"),
+        Path("docs/plans/2026-06-09-rag-platform-design-optimization-plan.md"),
     }
     ignored_parts = {
         "__pycache__",
@@ -180,6 +181,21 @@ def test_dify_adapter_delegates_retrieval_policy_scoring_to_platform_module() ->
     assert "class _RetrievalPolicySignalScores" not in text
     assert "def _retrieval_policy_signal_scores" not in text
     assert "def _retrieval_policy_query_expansion_bonus" not in text
+
+
+def test_dify_adapter_does_not_embed_business_intent_alignment_groups() -> None:
+    text = Path("app/api/v1/integrations_dify.py").read_text(encoding="utf-8")
+
+    assert "_QUERY_INTENT_ALIGNMENT_GROUPS" not in text
+    assert "_filter_records_by_query_intent_alignment" not in text
+    for forbidden in (
+        "需要哪些材料",
+        "办理材料",
+        "操作步骤",
+        "网上办理怎么操作",
+        "operation_steps",
+    ):
+        assert forbidden not in text
 
 
 def test_business_chunk_report_reuses_generic_plugin_report_builder() -> None:

@@ -196,6 +196,24 @@ export interface DatasetGovernanceAudit {
   code_lines_stripped_total: number
 }
 
+export interface DatasetRetrievalAuditGate {
+  name: string
+  status: string
+  metrics: Record<string, unknown>
+  failed_conditions: string[]
+  generated_at?: string | null
+  source?: string | null
+}
+
+export interface DatasetRetrievalAudit {
+  status: string
+  plugin_refs: string[]
+  plugin_package_hashes: string[]
+  gates: DatasetRetrievalAuditGate[]
+  failure_categories: Record<string, number>
+  recommended_next_action?: string | null
+}
+
 export interface DatasetReport {
   dataset_id: string
   dataset_name?: string | null
@@ -210,6 +228,7 @@ export interface DatasetReport {
   folder_tree?: DocumentFolderTreeResponse | null
   governance_metrics?: DatasetGovernanceMetrics | null
   governance_audit?: DatasetGovernanceAudit | null
+  retrieval_audit?: DatasetRetrievalAudit | null
 }
 
 export interface DatasetConfigBundle {

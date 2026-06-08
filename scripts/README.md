@@ -48,6 +48,10 @@ The Makefile is the source of truth for common workflows; these scripts are the 
 - `pipeline_plugin_runner.py`: local plugin contract test and Golden draft generator
   - Example: `make changzhou-gov-plugin-test-report`
   - Outputs local raw `/tmp/changzhou_gov_plugin_test_report.json`, which may include Golden draft sample questions for debugging.
+- `plugin_release_gate.py`: generic local pipeline-plugin release gate
+  - Example: `PLUGIN_RELEASE_GATE_PLUGIN_DIR=/path/to/plugin PLUGIN_RELEASE_GATE_SAMPLE=/path/to/sample.json make plugin-release-gate`
+  - Runs the local stage test, verifies the written `.mimirq-plugin-test.json` still matches the current plugin package hash, builds the generic chunk readiness report, and checks declared Golden rules produce a draft.
+  - Outputs aggregate release evidence only: stage counts, readiness checks, plugin refs, and package hash. It does not include chunk examples or content previews; use the chunk report scripts when debugging raw chunk text locally.
 - `changzhou_gov_plugin_test_evidence.py`: sanitized Changzhou plugin test evidence for delivery handoff
   - Example: `make changzhou-gov-plugin-test-evidence`
   - Outputs `/tmp/changzhou_gov_plugin_test_evidence.json` and `/tmp/changzhou_gov_plugin_test_evidence.md` with stage pass states and Golden draft counts only.

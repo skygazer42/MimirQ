@@ -39,8 +39,10 @@ from app.rag.retrieval.planner import (
     resolve_internal_candidate_top_k,
     retrieval_policy_fallback_multiplier,
     retrieval_policy_query_terms,
+    retrieval_policy_response_compaction,
 )
 from app.rag.retrieval.plugin_policy import (
+    filter_records_by_retrieval_policy_alignment,
     record_retrieval_policy_bonus,
     records_retrieval_policy_diagnostics,
 )
@@ -106,43 +108,6 @@ _MIN_SPECIFIC_INTENT_CHARS = 7
 _INTENT_MATCH_BONUS = 0.06
 _INTENT_MATCH_BONUS_MAX = 0.18
 _ANSWER_HIGHLIGHT_KEYS = ("answer_highlights", "answer_key_points", "summary_points")
-_QUERY_INTENT_ALIGNMENT_GROUPS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
-    (
-        ("材料", "申请材料", "办理材料", "需要什么材料", "需要哪些材料", "材料清单"),
-        ("材料", "申请材料", "办理材料", "材料清单", "所需材料", "materials"),
-    ),
-    (
-        ("申请", "申报", "怎么申请", "如何申请", "办理申请"),
-        ("申请", "申报", "办理申请", "补贴申请", "application", "apply"),
-    ),
-    (
-        ("入口", "渠道", "哪里办理", "在哪里办理", "办理地点", "地址", "窗口"),
-        ("入口", "渠道", "办理地点", "地址", "窗口", "channels", "operation_entry", "operation_url"),
-    ),
-    (
-        ("进度", "查询", "怎么查", "如何查询"),
-        ("进度", "查询", "结果查询", "operation_query"),
-    ),
-    (
-        ("步骤", "流程", "怎么操作", "如何操作", "操作步骤"),
-        ("步骤", "流程", "操作", "operation_steps", "process"),
-    ),
-)
-_QUERY_INTENT_ALIGNMENT_METADATA_KEYS = (
-    "question",
-    "section_type",
-    "retrieval_intents",
-    "query_intents",
-    "intent_terms",
-    "category_leaf",
-    "category_path",
-    "aliases",
-    "primary_alias",
-    "keywords",
-    "case_title",
-    "source_topic",
-    "title",
-)
 _STRUCTURED_ANSWER_LABELS = (
     "答案",
     "事项名称",
@@ -812,48 +777,6 @@ def _normalize_match_term(value: Any) -> str:
     return "".join(out)
 
 
-def _matched_query_intent_alignment_terms(query: str) -> tuple[tuple[str, ...], ...]:
-    query_text = _normalize_match_term(query)
-    if not query_text:
-        return ()
-    matched: list[tuple[str, ...]] = []
-    for query_terms, record_terms in _QUERY_INTENT_ALIGNMENT_GROUPS:
-        if any((term_norm := _normalize_match_term(term)) and term_norm in query_text for term in query_terms):
-            matched.append(record_terms)
-    return tuple(matched)
-
-
-def _record_intent_alignment_text(record: dict[str, Any]) -> str:
-    parts: list[str] = []
-    for metadata in _iter_record_metadata_layers(record):
-        for key in _QUERY_INTENT_ALIGNMENT_METADATA_KEYS:
-            for term in _metadata_terms(metadata.get(key)):
-                if term:
-                    parts.append(term)
-    return _normalize_match_term(" ".join(parts))
-
-
-def _record_query_intent_alignment_score(record: dict[str, Any], *, query: str) -> float:
-    matched_groups = _matched_query_intent_alignment_terms(query)
-    if not matched_groups:
-        return 0.0
-    record_text = _record_intent_alignment_text(record)
-    if not record_text:
-        return 0.0
-    matches = 0
-    for record_terms in matched_groups:
-        if any((term_norm := _normalize_match_term(term)) and term_norm in record_text for term in record_terms):
-            matches += 1
-    return min(0.12 * matches, 0.24)
-
-
-def _filter_records_by_query_intent_alignment(records: list[dict[str, Any]], *, query: str) -> list[dict[str, Any]]:
-    if not records or not _matched_query_intent_alignment_terms(query):
-        return records
-    aligned = [record for record in records if _record_query_intent_alignment_score(record, query=query) > 0.0]
-    return aligned or records
-
-
 def _longest_common_substring_length(left: str, right: str) -> int:
     if not left or not right:
         return 0
@@ -1147,6 +1070,30 @@ def _records_retrieval_policy_diagnostics(
     )
 
 
+def _response_compaction_for_records(
+    records: list[dict[str, Any]],
+    *,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> dict[str, Any]:
+    refs: list[str] = []
+    seen: set[str] = set()
+    for ref in policy_plugin_refs:
+        text = str(ref or "").strip()
+        if text and text not in seen:
+            seen.add(text)
+            refs.append(text)
+    for record in records or ():
+        text = _record_plugin_ref(record, fallback_plugin_refs=policy_plugin_refs)
+        if text and text not in seen:
+            seen.add(text)
+            refs.append(text)
+    for ref in refs:
+        compaction = retrieval_policy_response_compaction(_retrieval_policy_for_plugin_ref(ref))
+        if bool(compaction.get("enabled")):
+            return compaction
+    return {"enabled": False}
+
+
 def _sort_records_for_query(
     records: list[dict[str, Any]],
     *,
@@ -1166,7 +1113,6 @@ def _record_rank_score(
         float(record.get("score") or 0.0)
         + _record_metadata_anchor_bonus(record, query=query)
         + _record_intent_bonus(record, query=query, policy_plugin_refs=policy_plugin_refs)
-        + _record_query_intent_alignment_score(record, query=query)
         + record_retrieval_policy_bonus(
             record,
             query=query,
@@ -1188,8 +1134,15 @@ def _compact_records_for_response(
     if not limited:
         return []
     compaction_enabled = bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_HIGH_CONFIDENCE_ENABLED", True))
-    if compaction_enabled:
-        limited = _filter_records_by_query_intent_alignment(limited, query=query)
+    policy_compaction = _response_compaction_for_records(limited, policy_plugin_refs=policy_plugin_refs)
+    if compaction_enabled and bool(policy_compaction.get("enabled")):
+        limited = filter_records_by_retrieval_policy_alignment(
+            limited,
+            query=query,
+            plugin_ref_for_record=lambda item: _record_plugin_ref(item, fallback_plugin_refs=policy_plugin_refs),
+            metadata_layers_for_record=_iter_record_metadata_layers,
+            policy_resolver=_retrieval_policy_for_plugin_ref,
+        )
     if not limited:
         return []
     compacted = compact_high_confidence_items(
@@ -1197,11 +1150,24 @@ def _compact_records_for_response(
         scores=[_record_rank_score(record, query=query, policy_plugin_refs=policy_plugin_refs) for record in limited],
         top_k=top_k,
         enabled=compaction_enabled,
-        min_top_score=float(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_TOP_SCORE", 0.7) or 0.7),
-        relative_score_floor=float(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_RELATIVE_SCORE_FLOOR", 0.65) or 0.65
+        min_top_score=float(
+            policy_compaction.get("min_top_score")
+            if bool(policy_compaction.get("enabled"))
+            else getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_TOP_SCORE", 0.7)
+            or 0.7
         ),
-        min_items=int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_RECORDS", 1) or 1),
+        relative_score_floor=float(
+            policy_compaction.get("relative_score_floor")
+            if bool(policy_compaction.get("enabled"))
+            else getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_RELATIVE_SCORE_FLOOR", 0.65)
+            or 0.65
+        ),
+        min_items=int(
+            policy_compaction.get("min_records")
+            if bool(policy_compaction.get("enabled"))
+            else getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_RECORDS", 1)
+            or 1
+        ),
     )
     return list(compacted)
 

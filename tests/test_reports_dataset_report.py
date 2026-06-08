@@ -34,7 +34,7 @@ def test_dataset_report_endpoint_exists(monkeypatch):  # noqa: ANN001
     import app.api.v1.reports as reports_module
     from app.api.schemas.dataset_profile import DatasetProfileSummary
     from app.api.schemas.document_folders import DocumentFolderNode, DocumentFolderTreeResponse
-    from app.api.schemas.report import ComplianceSummary, DatasetReportOut
+    from app.api.schemas.report import ComplianceSummary, DatasetReportOut, DatasetRetrievalAuditOut
 
     dummy_profile = DatasetProfileSummary(
         dataset_id=dataset_id,
@@ -59,6 +59,13 @@ def test_dataset_report_endpoint_exists(monkeypatch):  # noqa: ANN001
         connectors=[],
         dataset_metadata={},
         folder_tree=dummy_folders,
+        retrieval_audit=DatasetRetrievalAuditOut(
+            status="failed",
+            plugin_refs=["plugin:demo@1.0.0:chunk"],
+            plugin_package_hashes=["abc123"],
+            failure_categories={"scope": 1},
+            recommended_next_action="Fix expected metadata scope.",
+        ),
     )
     monkeypatch.setattr(
         reports_module.ReportService,
@@ -89,7 +96,53 @@ def test_dataset_report_endpoint_exists(monkeypatch):  # noqa: ANN001
     assert "kg_stats" in body
     assert "latest_regression_run" in body
     assert "must_recall_summary" in body
+    assert "retrieval_audit" in body
+    assert body["retrieval_audit"]["status"] == "failed"
+    assert body["retrieval_audit"]["plugin_refs"] == ["plugin:demo@1.0.0:chunk"]
+    assert body["retrieval_audit"]["plugin_package_hashes"] == ["abc123"]
+    assert body["retrieval_audit"]["failure_categories"] == {"scope": 1}
     assert body["folder_tree"]["total_documents"] == 3
+
+
+def test_dataset_retrieval_audit_summary_categorizes_regression_failures() -> None:
+    from app.api.schemas.report import DatasetRegressionRunSummaryOut
+    from app.services.report_service import _build_retrieval_audit_summary
+
+    latest = DatasetRegressionRunSummaryOut(
+        run_id=uuid.UUID("00000000-0000-0000-0000-000000000111"),
+        status="completed",
+        metrics=["retrieval_hit_at_1"],
+        params={"plugin_refs": ["plugin:demo@1.0.0:chunk"]},
+        summary={
+            "hit_at_1": 0.5,
+            "hit_at_3": 1.0,
+            "retrieval_recall": 1.0,
+            "retrieval_effective_context_rate": 0.7,
+            "retrieval_noise_rate": 0.25,
+            "expected_metadata_hit_rate": 0.8,
+            "expected_metadata_recall": 0.9,
+            "kg_noise_rate": 0.2,
+            "plugin_package_hash": "hash-secret-free",
+            "raw_context": "SHOULD_NOT_LEAK_RAW_CHUNK_TEXT",
+        },
+    )
+
+    audit = _build_retrieval_audit_summary(latest_regression_run=latest)
+
+    assert audit is not None
+    assert audit.status == "failed"
+    assert audit.plugin_refs == ["plugin:demo@1.0.0:chunk"]
+    assert audit.plugin_package_hashes == ["hash-secret-free"]
+    assert audit.failure_categories == {
+        "chunking": 1,
+        "kg_noise": 1,
+        "ranking": 1,
+        "scope": 1,
+    }
+    assert audit.gates
+    assert audit.gates[0].name == "latest_regression_run"
+    assert "raw_context" not in audit.gates[0].metrics
+    assert audit.recommended_next_action == "Fix metadata scope, chunking, ranking, and KG noise before enabling production retrieval."
 
 
 def test_dataset_report_export_html(monkeypatch):  # noqa: ANN001

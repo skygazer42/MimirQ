@@ -108,6 +108,12 @@ type DatasetOption = Awaited<ReturnType<typeof datasetApi.list>>['items'][number
 type PipelineVersionOption = { pipeline_hash: string; documents: number }
 type ReportFinding = DatasetReport['profile']['findings'][number]
 type ReportConnectorRun = DatasetReport['connectors'][number]
+type RetrievalAudit = NonNullable<DatasetReport['retrieval_audit']>
+type RetrievalAuditMetricRow = {
+  key: string
+  label: string
+  value: string
+}
 type IssueRow = {
   id: string
   time: string
@@ -517,6 +523,77 @@ function governanceAuditStatValue(
   return String(value || 0)
 }
 
+function retrievalAuditStatusLabel(status: string | undefined): string {
+  const value = String(status || '').trim().toLowerCase()
+  if (value === 'passed' || value === 'completed' || value === 'success') {
+    return '通过'
+  }
+  if (value === 'failed' || value === 'error') return '失败'
+  if (value === 'running' || value === 'pending') return '生成中'
+  return '未评估'
+}
+
+function retrievalAuditTone(
+  status: string | undefined
+): 'green' | 'amber' | 'rose' | 'slate' {
+  const value = String(status || '').trim().toLowerCase()
+  if (value === 'passed' || value === 'completed' || value === 'success') {
+    return 'green'
+  }
+  if (value === 'failed' || value === 'error') return 'rose'
+  if (value === 'running' || value === 'pending') return 'amber'
+  return 'slate'
+}
+
+function formatRetrievalAuditMetric(value: unknown): string {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    if (Math.abs(value) <= 1) return `${(value * 100).toFixed(1)}%`
+    return value.toFixed(3).replace(/\.?0+$/, '')
+  }
+  if (typeof value === 'boolean') return value ? 'true' : 'false'
+  if (typeof value === 'string' && value.trim()) return value
+  return '-'
+}
+
+function retrievalAuditMetricRows(
+  retrievalAudit: RetrievalAudit | null | undefined
+): RetrievalAuditMetricRow[] {
+  const metrics = retrievalAudit?.gates?.[0]?.metrics || {}
+  const fields = [
+    ['hit_at_1', 'hit@1'],
+    ['hit_at_3', 'hit@3'],
+    ['expected_metadata_hit_rate', 'metadata hit'],
+    ['expected_metadata_recall', 'metadata recall'],
+    ['retrieval_effective_context_rate', 'effective context'],
+    ['retrieval_noise_rate', 'noise'],
+    ['kg_noise_rate', 'KG noise'],
+  ]
+  return fields
+    .filter(([key]) => Object.prototype.hasOwnProperty.call(metrics, key))
+    .map(([key, label]) => ({
+      key,
+      label,
+      value: formatRetrievalAuditMetric(metrics[key]),
+    }))
+}
+
+function retrievalAuditFailureText(
+  retrievalAudit: RetrievalAudit | null | undefined
+): string {
+  const categories = retrievalAudit?.failure_categories || {}
+  const entries = Object.entries(categories).filter(([, value]) => Number(value) > 0)
+  if (!entries.length) return '无失败分类'
+  return entries.map(([key, value]) => `${key}:${value}`).join(' / ')
+}
+
+function retrievalAuditHashText(
+  retrievalAudit: RetrievalAudit | null | undefined
+): string {
+  const hashes = retrievalAudit?.plugin_package_hashes || []
+  if (!hashes.length) return '未绑定'
+  return hashes.map((hash) => shortPipelineHash(hash)).slice(0, 2).join(' / ')
+}
+
 function DataPill({
   icon: Icon,
   label,
@@ -875,6 +952,105 @@ function RiskMetricPanel({
   )
 }
 
+function RetrievalAuditPanel({
+  retrievalAudit,
+}: Readonly<{ retrievalAudit: RetrievalAudit | null | undefined }>) {
+  const status = retrievalAuditStatusLabel(retrievalAudit?.status)
+  const tone = retrievalAuditTone(retrievalAudit?.status)
+  const metricRows = retrievalAuditMetricRows(retrievalAudit)
+  const pluginRefs = retrievalAudit?.plugin_refs || []
+  const nextAction = retrievalAudit?.recommended_next_action || '等待下一次 Golden / regression 评估'
+
+  return (
+    <div className="rounded-2xl border border-slate-200/80 bg-card p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <FileSearch className="size-4 text-blue-600" />
+            <div className={REPORT_PANEL_TITLE_CLASS}>Retrieval Audit / 召回审计</div>
+          </div>
+          <div className={cn('mt-1', REPORT_SUBTEXT_CLASS)}>
+            从 report.retrieval_audit 聚合 Golden、metadata、KG 和 compaction 证据。
+          </div>
+        </div>
+        <Badge
+          variant="outline"
+          className={cn(
+            'rounded-full text-[11px]',
+            tone === 'green' && 'border-emerald-200 bg-emerald-50 text-emerald-700',
+            tone === 'amber' && 'border-amber-200 bg-amber-50 text-amber-700',
+            tone === 'rose' && 'border-rose-200 bg-rose-50 text-rose-700',
+            tone === 'slate' && 'border-slate-200 bg-slate-50 text-slate-600'
+          )}
+        >
+          {status}
+        </Badge>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-4">
+        <MiniRiskCard
+          label="审计状态"
+          value={status}
+          sub={nextAction}
+          tone={tone}
+        />
+        <MiniRiskCard
+          label="失败分类"
+          value={retrievalAuditFailureText(retrievalAudit)}
+          sub="scope / chunking / ranking / kg_noise"
+          tone={retrievalAudit?.status === 'failed' ? 'rose' : 'slate'}
+        />
+        <MiniRiskCard
+          label="插件包"
+          value={retrievalAuditHashText(retrievalAudit)}
+          sub={`${pluginRefs.length} plugin refs`}
+          tone={pluginRefs.length ? 'blue' : 'slate'}
+        />
+        <MiniRiskCard
+          label="门禁证据"
+          value={String(retrievalAudit?.gates?.length || 0)}
+          sub="latest regression gate"
+          tone={retrievalAudit?.gates?.length ? 'violet' : 'slate'}
+        />
+      </div>
+
+      <div className="mt-4 overflow-hidden rounded-xl border border-slate-100">
+        <div
+          className={cn(
+            'grid grid-cols-[1fr_120px] bg-slate-50 px-3 py-2',
+            REPORT_TABLE_HEADER_CLASS
+          )}
+        >
+          <span>Metric</span>
+          <span className="text-right">Value</span>
+        </div>
+        {metricRows.length === 0 ? (
+          <div className={cn('px-3 py-3', REPORT_TABLE_ROW_CLASS)}>
+            当前报告没有 retrieval_audit 指标，请先运行 Golden / regression gate。
+          </div>
+        ) : (
+          metricRows.map((row) => (
+            <div
+              key={row.key}
+              className={cn(
+                'grid grid-cols-[1fr_120px] border-t border-slate-100 px-3 py-2',
+                REPORT_TABLE_ROW_CLASS
+              )}
+            >
+              <span className="truncate" title={row.key}>
+                {row.label}
+              </span>
+              <span className="text-right font-medium tabular-nums text-slate-800">
+                {row.value}
+              </span>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  )
+}
+
 function FieldCoveragePanel({
   fieldCoverageRows,
   fieldCoverageBadge,
@@ -1187,6 +1363,7 @@ function ReportsDashboard({
   pipelineVersionsWithFill,
   pipelineFilterLabel,
   latestAuditTime,
+  retrievalAudit,
   missingFindingCount,
   duplicateFindingCount,
   lowQualityFindingCount,
@@ -1217,6 +1394,7 @@ function ReportsDashboard({
   pipelineVersionsWithFill: PipelineVersionDatum[]
   pipelineFilterLabel: string
   latestAuditTime: string
+  retrievalAudit: RetrievalAudit | null
   missingFindingCount: number
   duplicateFindingCount: number
   lowQualityFindingCount: number
@@ -1250,6 +1428,8 @@ function ReportsDashboard({
         pipelineFilterLabel={pipelineFilterLabel}
         latestAuditTime={latestAuditTime}
       />
+
+      <RetrievalAuditPanel retrievalAudit={retrievalAudit} />
 
       <div className="grid gap-4 xl:grid-cols-[1.05fr_1.2fr_1.05fr_0.95fr]">
         <RiskMetricPanel
@@ -1630,6 +1810,7 @@ function ReportsResultSection({
   pipelineVersionsWithFill,
   pipelineFilterLabel,
   latestAuditTime,
+  retrievalAudit,
   missingFindingCount,
   duplicateFindingCount,
   lowQualityFindingCount,
@@ -1663,6 +1844,7 @@ function ReportsResultSection({
   pipelineVersionsWithFill: PipelineVersionDatum[]
   pipelineFilterLabel: string
   latestAuditTime: string
+  retrievalAudit: RetrievalAudit | null
   missingFindingCount: number
   duplicateFindingCount: number
   lowQualityFindingCount: number
@@ -1704,6 +1886,7 @@ function ReportsResultSection({
       pipelineVersionsWithFill={pipelineVersionsWithFill}
       pipelineFilterLabel={pipelineFilterLabel}
       latestAuditTime={latestAuditTime}
+      retrievalAudit={retrievalAudit}
       missingFindingCount={missingFindingCount}
       duplicateFindingCount={duplicateFindingCount}
       lowQualityFindingCount={lowQualityFindingCount}
@@ -1916,6 +2099,7 @@ export default function ReportsCenterPage() {
   const flatFolders = useFlatReportFolders(folderTree)
   const governance = report?.governance_metrics || null
   const governanceAudit = report?.governance_audit || null
+  const retrievalAudit = report?.retrieval_audit || null
   const pipelineVersionOptions = useMemo(() => {
     const seen = new Set<string>()
     return pipelineVersions
@@ -2389,6 +2573,7 @@ export default function ReportsCenterPage() {
               pipelineVersionsWithFill={pipelineVersionsWithFill}
               pipelineFilterLabel={pipelineFilterLabel}
               latestAuditTime={latestAuditTime}
+              retrievalAudit={retrievalAudit}
               missingFindingCount={missingFindingCount}
               duplicateFindingCount={duplicateFindingCount}
               lowQualityFindingCount={lowQualityFindingCount}

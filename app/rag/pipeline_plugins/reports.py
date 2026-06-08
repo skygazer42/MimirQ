@@ -180,6 +180,43 @@ def _as_count_dict(counter: Counter[str]) -> dict[str, int]:
     return {key: counter[key] for key in sorted(counter)}
 
 
+def _readiness_check(name: str, *, value: int, required: bool = True, passed: bool | None = None) -> dict[str, Any]:
+    return {
+        "name": name,
+        "passed": bool(value > 0 if passed is None else passed),
+        "value": int(value),
+        "required": bool(required),
+    }
+
+
+def _build_readiness(
+    *,
+    input_documents: Sequence[Document],
+    governed: Sequence[Document],
+    chunks: Sequence[Document],
+    events: Sequence[Any],
+    kg_required: bool,
+) -> dict[str, Any]:
+    metadata_field_count = len(_metadata_fields([*governed, *chunks]))
+    checks = [
+        _readiness_check("input_documents_present", value=len(input_documents)),
+        _readiness_check("governed_records_present", value=len(governed)),
+        _readiness_check("chunks_present", value=len(chunks)),
+        _readiness_check("metadata_fields_present", value=metadata_field_count),
+        _readiness_check(
+            "kg_events_present",
+            value=len(events),
+            required=kg_required,
+            passed=(len(events) > 0 if kg_required else True),
+        ),
+    ]
+    required_checks = [check for check in checks if bool(check.get("required"))]
+    return {
+        "status": "passed" if all(bool(check.get("passed")) for check in required_checks) else "failed",
+        "checks": checks,
+    }
+
+
 def build_pipeline_plugin_chunk_report(
     plugin_dir: str | Path,
     *,
@@ -295,6 +332,13 @@ def build_pipeline_plugin_chunk_report(
             "kg_events": len(events),
             "sections": len(sections),
         },
+        "readiness": _build_readiness(
+            input_documents=input_documents,
+            governed=governed,
+            chunks=chunks,
+            events=events,
+            kg_required="kg" in descriptor.refs,
+        ),
         "sections": sections,
     }
 

@@ -31,6 +31,8 @@ from app.api.schemas.report import (
     DatasetRegressionRunSummaryOut,
     DatasetReportDataProvenanceOut,
     DatasetReportOut,
+    DatasetRetrievalAuditGateOut,
+    DatasetRetrievalAuditOut,
     PipelineVersionSummary,
 )
 from app.core.config import settings
@@ -85,6 +87,38 @@ _HEADING_RATIO_BINS = (
     HistogramBinSpec("75-85%", 75, 85),
     HistogramBinSpec("85-95%", 85, 95),
     HistogramBinSpec("95%+", 95, None),
+)
+_RETRIEVAL_AUDIT_SAFE_METRIC_KEYS = (
+    "hit_at_1",
+    "hit_at_3",
+    "hit_at_5",
+    "hit_at_20",
+    "retrieval_hit_at_1",
+    "retrieval_hit_at_3",
+    "retrieval_hit_at_5",
+    "retrieval_hit_at_20",
+    "retrieval_recall",
+    "retrieval_mrr",
+    "retrieval_ndcg",
+    "retrieval_ndcg_at_20",
+    "retrieval_effective_context_rate",
+    "retrieval_noise_rate",
+    "expected_metadata_hit_rate",
+    "expected_metadata_recall",
+    "expected_metadata_cases_total",
+    "expected_metadata_fields_total",
+    "expected_metadata_fields_matched",
+    "top_1_expected_metadata_match_rate",
+    "top_3_expected_metadata_match_rate",
+    "top_5_expected_metadata_match_rate",
+    "kg_noise_rate",
+    "answer_grounding_rate",
+    "answer_key_point_recall",
+    "generated_answer_grounding_rate",
+    "generated_answer_key_point_recall",
+    "generated_answer_context_supported_rate",
+    "generated_answer_policy_clean_rate",
+    "generated_answer_fallback_rate",
 )
 
 
@@ -281,6 +315,132 @@ def _summary_ratio(summary: dict[str, Any], key: str) -> float | None:
     except (TypeError, ValueError, OverflowError) as exc:
         logger.debug(_SERVICE_FALLBACK_LOG_MESSAGE, exc)
         return None
+
+
+def _summary_ratio_any(summary: dict[str, Any], *keys: str) -> float | None:
+    for key in keys:
+        if key in summary:
+            return _summary_ratio(summary, key)
+    return None
+
+
+def _safe_report_list(raw: Any, *, max_items: int = 20, max_len: int = 160) -> list[str]:
+    values = raw if isinstance(raw, list | tuple | set) else [raw]
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in values:
+        text = str(item or "").strip()
+        if not text or len(text) > max_len or text in seen:
+            continue
+        seen.add(text)
+        out.append(text)
+        if len(out) >= max_items:
+            break
+    return out
+
+
+def _retrieval_audit_safe_metrics(summary: dict[str, Any]) -> dict[str, Any]:
+    metrics: dict[str, Any] = {}
+    for key in _RETRIEVAL_AUDIT_SAFE_METRIC_KEYS:
+        value = summary.get(key)
+        if isinstance(value, bool):
+            metrics[key] = bool(value)
+        elif isinstance(value, int) and not isinstance(value, bool):
+            metrics[key] = int(value)
+        elif isinstance(value, float):
+            metrics[key] = round(float(value), 6)
+    return metrics
+
+
+def _increment_failure(categories: dict[str, int], key: str) -> None:
+    categories[key] = int(categories.get(key, 0) or 0) + 1
+
+
+def _retrieval_audit_failure_categories(summary: dict[str, Any]) -> dict[str, int]:
+    categories: dict[str, int] = {}
+    metadata_hit = _summary_ratio_any(summary, "expected_metadata_hit_rate", "top_1_expected_metadata_match_rate")
+    metadata_recall = _summary_ratio(summary, "expected_metadata_recall")
+    if (metadata_hit is not None and metadata_hit < 1.0) or (metadata_recall is not None and metadata_recall < 1.0):
+        _increment_failure(categories, "scope")
+
+    effective_context = _summary_ratio(summary, "retrieval_effective_context_rate")
+    retrieval_noise = _summary_ratio(summary, "retrieval_noise_rate")
+    if (effective_context is not None and effective_context < 0.9) or (retrieval_noise is not None and retrieval_noise > 0.1):
+        _increment_failure(categories, "chunking")
+
+    hit_1 = _summary_ratio_any(summary, "hit_at_1", "retrieval_hit_at_1")
+    hit_3 = _summary_ratio_any(summary, "hit_at_3", "retrieval_hit_at_3")
+    if hit_1 is not None and hit_3 is not None and hit_3 > hit_1:
+        _increment_failure(categories, "ranking")
+
+    recall = _summary_ratio(summary, "retrieval_recall")
+    if recall is not None and recall < 1.0:
+        _increment_failure(categories, "absence")
+
+    kg_noise = _summary_ratio(summary, "kg_noise_rate")
+    if kg_noise is not None and kg_noise > 0.1:
+        _increment_failure(categories, "kg_noise")
+    return categories
+
+
+def _retrieval_audit_next_action(categories: dict[str, int]) -> str:
+    if not categories:
+        return "Retrieval audit passed; keep golden gates fresh before production changes."
+    labels = {
+        "scope": "metadata scope",
+        "chunking": "chunking",
+        "ranking": "ranking",
+        "absence": "content absence",
+        "kg_noise": "KG noise",
+    }
+    ordered = [labels[key] for key in labels if key in categories]
+    if len(ordered) == 1:
+        joined = ordered[0]
+    elif len(ordered) == 2:
+        joined = " and ".join(ordered)
+    else:
+        joined = ", ".join(ordered[:-1]) + f", and {ordered[-1]}"
+    return f"Fix {joined} before enabling production retrieval."
+
+
+def _build_retrieval_audit_summary(
+    *,
+    latest_regression_run: DatasetRegressionRunSummaryOut | None,
+) -> DatasetRetrievalAuditOut | None:
+    if latest_regression_run is None:
+        return None
+
+    summary = dict(latest_regression_run.summary or {})
+    params = dict(latest_regression_run.params or {})
+    failure_categories = _retrieval_audit_failure_categories(summary)
+    run_status = str(latest_regression_run.status or "").strip().lower()
+    status = "failed" if failure_categories or run_status in {"failed", "error"} else "passed"
+    if run_status not in {"completed", "passed", "success"} and status == "passed":
+        status = run_status or "unavailable"
+
+    plugin_refs = _safe_report_list(params.get("plugin_refs") or summary.get("plugin_refs"))
+    plugin_hashes = _safe_report_list(
+        summary.get("plugin_package_hashes")
+        or summary.get("plugin_package_hash")
+        or params.get("plugin_package_hashes")
+        or params.get("plugin_package_hash")
+    )
+    gate = DatasetRetrievalAuditGateOut(
+        name="latest_regression_run",
+        status=status,
+        metrics=_retrieval_audit_safe_metrics(summary),
+        failed_conditions=list(failure_categories),
+        generated_at=latest_regression_run.finished_at or latest_regression_run.created_at,
+        source="regression_runs.summary",
+    )
+    return DatasetRetrievalAuditOut(
+        status=status,
+        plugin_refs=plugin_refs,
+        plugin_package_hashes=plugin_hashes,
+        gates=[gate],
+        failure_categories=failure_categories,
+        recommended_next_action=_retrieval_audit_next_action(failure_categories),
+    )
 
 
 def _normalize_must_recall_counts(
@@ -1139,6 +1299,7 @@ class ReportService:
             parse_risk_summary=parse_risk_summary,
             kg_stats=_load_kg_stats(db, request, pipeline_hash_norm),
             latest_regression_run=latest_regression_run,
+            retrieval_audit=_build_retrieval_audit_summary(latest_regression_run=latest_regression_run),
             must_recall_summary=must_recall_summary,
             hierarchy_recall_summary=hierarchy_recall_summary,
             precheck_summary=_load_precheck_summary(db, request),

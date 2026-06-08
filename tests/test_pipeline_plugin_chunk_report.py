@@ -155,6 +155,19 @@ def test_generic_plugin_chunk_report_runs_stages_and_hides_platform_metadata_vie
         "kg_events": 2,
         "sections": 2,
     }
+    assert report["readiness"]["status"] == "passed"
+    readiness_checks = {check["name"]: check for check in report["readiness"]["checks"]}
+    assert readiness_checks["input_documents_present"] == {
+        "name": "input_documents_present",
+        "passed": True,
+        "value": 1,
+        "required": True,
+    }
+    assert readiness_checks["governed_records_present"]["value"] == 2
+    assert readiness_checks["chunks_present"]["value"] == 2
+    assert readiness_checks["metadata_fields_present"]["passed"] is True
+    assert readiness_checks["metadata_fields_present"]["value"] > 0
+    assert readiness_checks["kg_events_present"]["value"] == 2
 
     sections = {section["knowledge_section"]: section for section in report["sections"]}
     assert sorted(sections) == ["alpha", "beta"]
