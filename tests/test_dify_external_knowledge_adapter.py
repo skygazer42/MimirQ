@@ -1267,7 +1267,7 @@ def test_dify_retrieval_expands_dataset_mapping_by_query_terms(monkeypatch: pyte
 
     token = "dify-test-token"
     city_dataset = uuid.uuid4()
-    xinbei_dataset = uuid.uuid4()
+    region_dataset = uuid.uuid4()
     calls: list[list[uuid.UUID]] = []
 
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
@@ -1279,8 +1279,8 @@ def test_dify_retrieval_expands_dataset_mapping_by_query_terms(monkeypatch: pyte
             '{"city": {'
             f'"dataset_ids": ["{city_dataset}"],'
             '"query_routes": ['
-            '{"terms": ["区域甲", "新北"], '
-            f'"dataset_ids": ["{xinbei_dataset}"], '
+            '{"terms": ["区域甲", "辖区甲"], '
+            f'"dataset_ids": ["{region_dataset}"], '
             '"mode": "prepend"}'
             "]"
             "}}"
@@ -1297,7 +1297,7 @@ def test_dify_retrieval_expands_dataset_mapping_by_query_terms(monkeypatch: pyte
                 "relevance_score": 0.91,
                 "document_name": "区域甲事项列表.txt",
                 "chunk_id": str(uuid.uuid4()),
-                "dataset_id": str(xinbei_dataset),
+                "dataset_id": str(region_dataset),
             }
         ]
 
@@ -1320,7 +1320,7 @@ def test_dify_retrieval_expands_dataset_mapping_by_query_terms(monkeypatch: pyte
     )
 
     assert res.status_code == 200, res.text
-    assert calls == [[xinbei_dataset, city_dataset]]
+    assert calls == [[region_dataset, city_dataset]]
     assert res.json()["records"][0]["content"] == "区域甲服务卡补卡办理地点"
 
 
@@ -1329,7 +1329,7 @@ def test_dify_retrieval_expands_scope_when_primary_has_no_evidence(monkeypatch: 
 
     token = "dify-test-token"
     city_dataset = uuid.uuid4()
-    xinbei_dataset = uuid.uuid4()
+    region_dataset = uuid.uuid4()
     calls: list[list[uuid.UUID]] = []
 
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
@@ -1341,8 +1341,8 @@ def test_dify_retrieval_expands_scope_when_primary_has_no_evidence(monkeypatch: 
             '{"city": {'
             f'"dataset_ids": ["{city_dataset}"],'
             '"query_routes": ['
-            '{"terms": ["区域甲", "新北"], '
-            f'"dataset_ids": ["{xinbei_dataset}"], '
+            '{"terms": ["区域甲", "辖区甲"], '
+            f'"dataset_ids": ["{region_dataset}"], '
             '"mode": "prepend"}'
             "]"
             "}}"
@@ -1355,9 +1355,9 @@ def test_dify_retrieval_expands_scope_when_primary_has_no_evidence(monkeypatch: 
     async def _fake_retrieve_dataset_citations(**kwargs):  # noqa: ANN003, ANN202
         dataset_ids = kwargs["dataset_ids"]
         calls.append(dataset_ids)
-        if dataset_ids == [xinbei_dataset]:
+        if dataset_ids == [region_dataset]:
             return []
-        if dataset_ids == [xinbei_dataset, city_dataset]:
+        if dataset_ids == [region_dataset, city_dataset]:
             return [
                 {
                     "chunk_content": "城市本级服务卡补卡兜底说明",
@@ -1396,7 +1396,7 @@ def test_dify_retrieval_expands_scope_when_primary_has_no_evidence(monkeypatch: 
     )
 
     assert res.status_code == 200, res.text
-    assert calls == [[xinbei_dataset, city_dataset]]
+    assert calls == [[region_dataset, city_dataset]]
     assert res.json()["records"][0]["content"] == "城市本级服务卡补卡兜底说明"
 
 
@@ -1487,12 +1487,12 @@ def test_dify_unmatched_route_hints_are_primary_candidates_for_aggregate_knowled
             ]
         return [
             {
-                "chunk_content": "事项名称：资金监管备案\n办理地点：城市政务服务中心",
+                "chunk_content": "记录名称：资金监管备案\n办理地点：城市服务中心",
                 "relevance_score": 0.96,
-                "document_name": "01政务服务事项知识/城市事项列表.txt",
+                "document_name": "01业务记录知识/城市业务记录列表.txt",
                 "chunk_id": str(uuid.uuid4()),
                 "dataset_id": str(base_dataset),
-                "metadata": {"knowledge_section": "01政务服务事项知识"},
+                "metadata": {"knowledge_section": "01业务记录知识"},
             }
         ]
 
@@ -1707,7 +1707,7 @@ def test_dify_retrieval_prefers_full_chunk_content_over_short_citation_snippet(
     monkeypatch.setattr(
         dify_api.settings,
         "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
-        f'{{"xinbei": "{dataset_id}"}}',
+        f'{{"region-alpha": "{dataset_id}"}}',
         raising=False,
     )
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
@@ -1739,7 +1739,7 @@ def test_dify_retrieval_prefers_full_chunk_content_over_short_citation_snippet(
         "/api/v1/integrations/dify/retrieval",
         headers=_auth(token),
         json={
-            "knowledge_id": "xinbei",
+            "knowledge_id": "region-alpha",
             "query": "区域甲服务卡补卡在哪里办理",
             "retrieval_setting": {"top_k": 1, "score_threshold": 0.0},
         },
@@ -1774,7 +1774,7 @@ def test_dify_retrieval_prepends_structured_answer_hints_for_fee_fields(
     monkeypatch.setattr(
         dify_api.settings,
         "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
-        f'{{"jingkai": "{dataset_id}"}}',
+        f'{{"region-beta": "{dataset_id}"}}',
         raising=False,
     )
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
@@ -1802,7 +1802,7 @@ def test_dify_retrieval_prepends_structured_answer_hints_for_fee_fields(
         "/api/v1/integrations/dify/retrieval",
         headers=_auth(token),
         json={
-            "knowledge_id": "jingkai",
+            "knowledge_id": "region-beta",
             "query": "区域乙服务卡补卡在哪里办理",
             "retrieval_setting": {"top_k": 1, "score_threshold": 0.0},
         },
@@ -2321,7 +2321,7 @@ def test_dify_retrieval_prefers_metadata_question_anchor_for_tie_breaking(
             {
                 "chunk_content": "一件事：教育入学。章节：申请材料。户口簿、合法固定住所证件。",
                 "relevance_score": 0.73,
-                "document_name": "02高效办成一件事/一件事指南.txt",
+                "document_name": "02联办流程指南/联办流程指南.txt",
                 "chunk_id": str(uuid.uuid4()),
                 "metadata": {
                     "chunk_kind": "one_thing_materials",
@@ -2382,7 +2382,7 @@ def test_dify_retrieval_prefers_regional_qa_question_anchor_over_service_item_ti
     monkeypatch.setattr(
         dify_api.settings,
         "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
-        f'{{"jingkai": "{dataset_id}"}}',
+        f'{{"region-beta": "{dataset_id}"}}',
         raising=False,
     )
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
@@ -2390,15 +2390,15 @@ def test_dify_retrieval_prefers_regional_qa_question_anchor_over_service_item_ti
     async def _fake_retrieve_dataset_citations(**_kwargs):  # noqa: ANN003, ANN202
         return [
             {
-                "chunk_content": "事项名称：企业社会保险登记\n办理地点：城市政务服务中心窗口",
+                "chunk_content": "记录名称：企业社会保险登记\n办理地点：城市服务中心窗口",
                 "relevance_score": 0.73,
-                "document_name": "01政务服务事项知识/区域乙事项列表.txt",
+                "document_name": "01业务记录知识/区域乙业务记录列表.txt",
                 "chunk_id": str(uuid.uuid4()),
                 "metadata": {
                     "district": "区域乙",
                     "service_name": "企业社会保险登记",
                     "chunk_kind": "service_item",
-                    "knowledge_section": "01政务服务事项知识",
+                    "knowledge_section": "01业务记录知识",
                 },
             },
             {
@@ -2429,7 +2429,7 @@ def test_dify_retrieval_prefers_regional_qa_question_anchor_over_service_item_ti
         "/api/v1/integrations/dify/retrieval",
         headers=_auth(token),
         json={
-            "knowledge_id": "jingkai",
+            "knowledge_id": "region-beta",
             "query": "区域乙在哪里办理企业社会保险登记",
             "retrieval_setting": {"top_k": 2, "score_threshold": 0.0},
         },
