@@ -379,7 +379,36 @@ def _increment_failure(categories: dict[str, int], key: str) -> None:
     categories[key] = int(categories.get(key, 0) or 0) + 1
 
 
-def _retrieval_audit_failure_categories(summary: dict[str, Any]) -> dict[str, int]:
+def _retrieval_audit_adapter_binding_failed(
+    summary: dict[str, Any],
+    *,
+    failed_conditions: list[str] | tuple[str, ...] = (),
+) -> bool:
+    direct_nonempty = _summary_int(summary, "mimirq_direct_nonempty")
+    hit_1 = _summary_ratio_any(summary, "hit_at_1", "retrieval_hit_at_1")
+    direct_has_evidence = bool(direct_nonempty is not None and direct_nonempty > 0) or bool(
+        hit_1 is not None and hit_1 >= 1.0
+    )
+
+    external_nonempty = _summary_int(summary, "dify_hit_nonempty")
+    if direct_has_evidence and external_nonempty is not None and external_nonempty <= 0:
+        return True
+
+    schema_valid = _summary_int(summary, "mimirq_direct_schema_valid")
+    if direct_has_evidence and schema_valid is not None and schema_valid <= 0:
+        return True
+
+    if not direct_has_evidence:
+        return False
+    adapter_markers = ("adapter", "boundary", "endpoint", "external_probe", "dify_external")
+    return any(any(marker in str(condition).lower() for marker in adapter_markers) for condition in failed_conditions)
+
+
+def _retrieval_audit_failure_categories(
+    summary: dict[str, Any],
+    *,
+    failed_conditions: list[str] | tuple[str, ...] = (),
+) -> dict[str, int]:
     categories: dict[str, int] = {}
     metadata_hit = _summary_ratio_any(summary, "expected_metadata_hit_rate", "top_1_expected_metadata_match_rate")
     metadata_recall = _summary_ratio(summary, "expected_metadata_recall")
@@ -403,6 +432,8 @@ def _retrieval_audit_failure_categories(summary: dict[str, Any]) -> dict[str, in
     kg_noise = _summary_ratio(summary, "kg_noise_rate")
     if kg_noise is not None and kg_noise > 0.1:
         _increment_failure(categories, "kg_noise")
+    if _retrieval_audit_adapter_binding_failed(summary, failed_conditions=failed_conditions):
+        _increment_failure(categories, "adapter")
     return categories
 
 
@@ -447,6 +478,32 @@ def _merge_failure_categories(*items: dict[str, int]) -> dict[str, int]:
         if total > 0:
             merged[key] = total
     return merged
+
+
+def _retrieval_audit_failure_categories_from_gates(gates: list[DatasetRetrievalAuditGateOut]) -> dict[str, int]:
+    categories: dict[str, int] = {}
+    combined_metrics: dict[str, Any] = {}
+    combined_failed_conditions: list[str] = []
+
+    for gate in gates:
+        metrics = dict(gate.metrics or {})
+        gate_categories = _retrieval_audit_failure_categories(
+            metrics,
+            failed_conditions=tuple(gate.failed_conditions or ()),
+        )
+        for key, value in gate_categories.items():
+            categories[key] = categories.get(key, 0) + value
+        for key, value in metrics.items():
+            combined_metrics.setdefault(key, value)
+        combined_failed_conditions.extend(gate.failed_conditions or ())
+
+    combined_categories = _retrieval_audit_failure_categories(
+        combined_metrics,
+        failed_conditions=tuple(combined_failed_conditions),
+    )
+    for key, value in combined_categories.items():
+        categories.setdefault(key, value)
+    return _retrieval_audit_safe_categories(categories)
 
 
 def _retrieval_audit_gate_from_metadata(raw: Any) -> DatasetRetrievalAuditGateOut | None:
@@ -494,10 +551,7 @@ def _retrieval_audit_from_dataset_metadata(dataset_metadata: dict[str, Any] | No
 
     failure_categories = _retrieval_audit_safe_categories(raw.get("failure_categories"))
     if not failure_categories:
-        derived_categories: list[dict[str, int]] = []
-        for gate in gates:
-            derived_categories.append(_retrieval_audit_failure_categories(dict(gate.metrics or {})))
-        failure_categories = _merge_failure_categories(*derived_categories)
+        failure_categories = _retrieval_audit_failure_categories_from_gates(gates)
 
     status = (_safe_report_text(raw.get("status"), max_len=40) or "").lower()
     if failure_categories or status in {"failed", "error"}:

@@ -401,6 +401,30 @@ def _audit_failure_categories(gates: list[dict[str, Any]]) -> dict[str, int]:
     if _metric_failed(gates, "kg_noise_rate") or (isinstance(kg_noise, int | float) and float(kg_noise) > 0.1):
         categories["kg_noise"] = 1
 
+    direct_nonempty = _first_metric(gates, "mimirq_direct_nonempty")
+    external_nonempty = _first_metric(gates, "dify_hit_nonempty")
+    schema_valid = _first_metric(gates, "mimirq_direct_schema_valid")
+    direct_hit_at_1 = _first_metric(gates, "hit_at_1", "retrieval_hit_at_1")
+    direct_has_evidence = (
+        isinstance(direct_nonempty, int | float)
+        and float(direct_nonempty) > 0
+        or isinstance(direct_hit_at_1, int | float)
+        and float(direct_hit_at_1) >= 1.0
+    )
+    if direct_has_evidence:
+        if isinstance(external_nonempty, int | float) and float(external_nonempty) <= 0:
+            categories["adapter"] = 1
+        if isinstance(schema_valid, int | float) and float(schema_valid) <= 0:
+            categories["adapter"] = 1
+        adapter_markers = ("adapter", "boundary", "endpoint", "external_probe", "dify_external")
+        for gate in gates:
+            failed_conditions = gate.get("failed_conditions") if isinstance(gate.get("failed_conditions"), list) else []
+            if any(
+                any(marker in _text(condition).lower() for marker in adapter_markers)
+                for condition in failed_conditions
+            ):
+                categories["adapter"] = 1
+
     return categories
 
 
