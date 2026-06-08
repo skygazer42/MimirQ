@@ -282,6 +282,7 @@ def test_format_status_prints_generic_retrieval_audit_summary() -> None:
                     {"name": "kg_compare", "status": "failed"},
                 ],
                 "failure_categories": {"scope": 1, "ranking": 1, "kg_noise": 1},
+                "kg_recommendation": "full_kg_assist",
                 "recommended_next_action": "Fix metadata scope, ranking, and KG noise before enabling production retrieval.",
             },
         },
@@ -290,7 +291,7 @@ def test_format_status_prints_generic_retrieval_audit_summary() -> None:
 
     assert (
         "Retrieval audit: status=failed; plugin_refs=1; package_hashes=1; gates=2; "
-        "failures=scope,ranking,kg_noise"
+        "failures=scope,ranking,kg_noise; kg=full_kg_assist"
     ) in text
 
 

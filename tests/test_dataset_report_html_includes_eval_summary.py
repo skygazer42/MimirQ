@@ -59,6 +59,7 @@ def test_dataset_report_html_includes_safe_retrieval_audit_section() -> None:
                 "plugin_refs": ["plugin:demo@1.0.0:chunk"],
                 "plugin_package_hashes": ["abcdef1234567890"],
                 "failure_categories": {"scope": 1, "ranking": 1},
+                "kg_recommendation": "full_kg_assist",
                 "recommended_next_action": "Fix metadata scope and ranking before enabling production retrieval.",
                 "gates": [
                     {
@@ -85,6 +86,8 @@ def test_dataset_report_html_includes_safe_retrieval_audit_section() -> None:
     assert "failed" in html
     assert "plugin:demo@1.0.0:chunk" in html
     assert "abcdef12" in html
+    assert "kg_recommendation" in html
+    assert "full_kg_assist" in html
     assert "expected_metadata_hit_rate" in html
     assert "retrieval_effective_context_rate" in html
     assert "SHOULD_NOT_RENDER_RAW_CHUNK" not in html

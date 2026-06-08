@@ -187,6 +187,7 @@ def _safe_retrieval_audit_payload(raw: Any) -> dict[str, Any] | None:
         "plugin_refs": _safe_text_list(raw.get("plugin_refs")),
         "plugin_package_hashes": _safe_text_list(raw.get("plugin_package_hashes")),
         "failure_categories": {str(key): int(value or 0) for key, value in failure_categories.items() if str(key or "").strip()},
+        "kg_recommendation": str(raw.get("kg_recommendation") or "").strip(),
         "recommended_next_action": str(raw.get("recommended_next_action") or "").strip(),
         "gates": gates,
     }
@@ -211,6 +212,7 @@ def _render_retrieval_audit_section(report: Any) -> str:
     plugin_refs = _safe_text_list(audit.get("plugin_refs"), max_items=5)
     hashes = [value[:8] for value in _safe_text_list(audit.get("plugin_package_hashes"), max_items=5) if value]
     failure_categories = audit.get("failure_categories") if isinstance(audit.get("failure_categories"), dict) else {}
+    kg_recommendation = str(audit.get("kg_recommendation") or "").strip()
     next_action = str(audit.get("recommended_next_action") or "").strip()
 
     meta_rows = [
@@ -218,6 +220,7 @@ def _render_retrieval_audit_section(report: Any) -> str:
         ("plugin_refs", ", ".join(plugin_refs)),
         ("plugin_package_hashes", ", ".join(hashes)),
         ("failure_categories", ", ".join(f"{key}:{value}" for key, value in sorted(failure_categories.items()))),
+        ("kg_recommendation", kg_recommendation),
         ("next_action", next_action),
     ]
     meta_table = (
