@@ -651,6 +651,7 @@ class PipelinePluginChunkReportReadinessCheck(BaseModel):
     passed: bool
     value: int = 0
     required: bool = True
+    errors: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class PipelinePluginChunkReportReadiness(BaseModel):

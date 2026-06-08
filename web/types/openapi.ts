@@ -19548,6 +19548,10 @@ export interface components {
              * @default true
              */
             required: boolean;
+            /** Errors */
+            errors?: {
+                [key: string]: unknown;
+            }[];
         };
         /** PipelinePluginChunkReportRequest */
         PipelinePluginChunkReportRequest: {

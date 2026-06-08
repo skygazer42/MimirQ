@@ -12,6 +12,7 @@ describe('pipeline plugin chunk report API client source', () => {
     expect(src).toContain('async buildPluginChunkReport(')
     expect(src).toContain("apiClient.post('/pipeline/plugins/chunk-report', payload)")
     expect(src).toContain('normalizePipelinePluginChunkReport')
+    expect(src).toContain('readiness: isRecord(raw.readiness) ? raw.readiness')
     expect(src).toContain('sections: Array.isArray')
   })
 })

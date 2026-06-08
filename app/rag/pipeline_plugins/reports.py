@@ -8,7 +8,11 @@ from typing import Any
 
 from langchain_core.documents import Document
 
-from app.rag.pipeline_plugins.contracts import RESERVED_PLATFORM_METADATA_VIEW_KEYS
+from app.rag.pipeline_plugins.contracts import (
+    RESERVED_PLATFORM_METADATA_VIEW_KEYS,
+    validate_documents_metadata,
+    validate_kg_events_metadata,
+)
 from app.rag.pipeline_plugins.local_runner import load_plugin_test_input
 from app.rag.pipeline_plugins.registry import describe_plugin_dir
 from app.rag.pipeline_plugins.runtime import (
@@ -189,6 +193,36 @@ def _readiness_check(name: str, *, value: int, required: bool = True, passed: bo
     }
 
 
+def _validation_error(reason: Any, *, checked: int) -> dict[str, Any]:
+    return {
+        "ok": False,
+        "checked": int(checked),
+        "errors": [{"reason": _clean_one_line(reason, limit=300) or "plugin stage failed"}],
+    }
+
+
+def _validation_ok(*, checked: int) -> dict[str, Any]:
+    return {"ok": True, "checked": int(checked), "errors": []}
+
+
+def _contract_readiness_check(
+    name: str,
+    validation: Mapping[str, Any],
+    *,
+    required: bool = True,
+) -> dict[str, Any]:
+    check = _readiness_check(
+        name,
+        value=int(validation.get("checked") or 0),
+        required=required,
+        passed=validation.get("ok") is True,
+    )
+    errors = validation.get("errors")
+    if isinstance(errors, list) and errors:
+        check["errors"] = errors[:20]
+    return check
+
+
 def _build_readiness(
     *,
     input_documents: Sequence[Document],
@@ -196,6 +230,9 @@ def _build_readiness(
     chunks: Sequence[Document],
     events: Sequence[Any],
     kg_required: bool,
+    governance_metadata_validation: Mapping[str, Any],
+    chunk_metadata_validation: Mapping[str, Any],
+    kg_metadata_validation: Mapping[str, Any],
 ) -> dict[str, Any]:
     metadata_field_count = len(_metadata_fields([*governed, *chunks]))
     checks = [
@@ -209,6 +246,9 @@ def _build_readiness(
             required=kg_required,
             passed=(len(events) > 0 if kg_required else True),
         ),
+        _contract_readiness_check("governance_metadata_contract_valid", governance_metadata_validation),
+        _contract_readiness_check("chunk_metadata_contract_valid", chunk_metadata_validation),
+        _contract_readiness_check("kg_metadata_contract_valid", kg_metadata_validation, required=kg_required),
     ]
     required_checks = [check for check in checks if bool(check.get("required"))]
     return {
@@ -241,26 +281,67 @@ def build_pipeline_plugin_chunk_report(
     descriptor = describe_plugin_dir(plugin_path, require_test_report=False)
     input_documents = load_plugin_test_input(sample_path)
     context = {"plugin_directories": [plugin_path], "require_test_report": False}
-    governed = apply_governance_python_plugin(
-        input_documents,
-        plugin_ref=descriptor.refs["governance"],
-        params=dict(governance_params or {}),
-        context=context,
-    )
-    chunks = apply_chunk_python_plugin(
-        governed,
-        plugin_ref=descriptor.refs["chunk"],
-        params=dict(chunk_params or {}),
-        context=context,
-    )
-    events = []
-    if "kg" in descriptor.refs:
-        events = apply_kg_python_plugin(
-            chunks,
-            plugin_ref=descriptor.refs["kg"],
-            params=dict(kg_params or {}),
+
+    governed: list[Document] = []
+    chunks: list[Document] = []
+    events: list[Any] = []
+    governance_metadata_validation: dict[str, Any]
+    chunk_metadata_validation: dict[str, Any]
+    kg_metadata_validation: dict[str, Any]
+
+    try:
+        governed = apply_governance_python_plugin(
+            input_documents,
+            plugin_ref=descriptor.refs["governance"],
+            params=dict(governance_params or {}),
             context=context,
         )
+        governance_metadata_validation = validate_documents_metadata(
+            governed,
+            metadata_schema=descriptor.metadata_schema,
+            stage="governance",
+        )
+    except Exception as exc:  # noqa: BLE001
+        governed = []
+        governance_metadata_validation = _validation_error(exc, checked=len(input_documents))
+
+    if governance_metadata_validation.get("ok") is True:
+        try:
+            chunks = apply_chunk_python_plugin(
+                governed,
+                plugin_ref=descriptor.refs["chunk"],
+                params=dict(chunk_params or {}),
+                context=context,
+            )
+            chunk_metadata_validation = validate_documents_metadata(
+                chunks,
+                metadata_schema=descriptor.metadata_schema,
+                stage="chunk",
+            )
+        except Exception as exc:  # noqa: BLE001
+            chunks = []
+            chunk_metadata_validation = _validation_error(exc, checked=len(governed))
+    else:
+        chunk_metadata_validation = _validation_error("chunk stage skipped because governance failed", checked=0)
+
+    events = []
+    if "kg" in descriptor.refs:
+        if chunk_metadata_validation.get("ok") is True:
+            try:
+                events = apply_kg_python_plugin(
+                    chunks,
+                    plugin_ref=descriptor.refs["kg"],
+                    params=dict(kg_params or {}),
+                    context=context,
+                )
+                kg_metadata_validation = validate_kg_events_metadata(events, metadata_schema=descriptor.metadata_schema)
+            except Exception as exc:  # noqa: BLE001
+                events = []
+                kg_metadata_validation = _validation_error(exc, checked=len(chunks))
+        else:
+            kg_metadata_validation = _validation_error("kg stage skipped because chunk failed", checked=0)
+    else:
+        kg_metadata_validation = _validation_ok(checked=0)
 
     section_keys = tuple(section_metadata_keys or _DEFAULT_SECTION_METADATA_KEYS)
     resolve_section = section_resolver or (lambda doc: _default_document_section(doc, metadata_keys=section_keys))
@@ -314,10 +395,21 @@ def build_pipeline_plugin_chunk_report(
             section_report["record_type_counts"] = _as_count_dict(record_types)
         sections.append(section_report)
 
+    readiness = _build_readiness(
+        input_documents=input_documents,
+        governed=governed,
+        chunks=chunks,
+        events=events,
+        kg_required="kg" in descriptor.refs,
+        governance_metadata_validation=governance_metadata_validation,
+        chunk_metadata_validation=chunk_metadata_validation,
+        kg_metadata_validation=kg_metadata_validation,
+    )
+
     return {
         "schema": schema,
         "generated_at": datetime.now(UTC).isoformat(),
-        "passed": True,
+        "passed": readiness["status"] == "passed",
         "plugin": {
             "id": descriptor.id,
             "version": descriptor.version,
@@ -332,13 +424,7 @@ def build_pipeline_plugin_chunk_report(
             "kg_events": len(events),
             "sections": len(sections),
         },
-        "readiness": _build_readiness(
-            input_documents=input_documents,
-            governed=governed,
-            chunks=chunks,
-            events=events,
-            kg_required="kg" in descriptor.refs,
-        ),
+        "readiness": readiness,
         "sections": sections,
     }
 

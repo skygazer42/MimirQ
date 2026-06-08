@@ -264,6 +264,7 @@ function normalizePipelinePluginChunkReport(value: unknown): PipelinePluginChunk
     passed: raw.passed === true,
     plugin: isRecord(raw.plugin) ? raw.plugin : {},
     summary: isRecord(raw.summary) ? raw.summary : {},
+    readiness: isRecord(raw.readiness) ? raw.readiness : { status: 'failed', checks: [] },
     sections: Array.isArray(raw.sections) ? raw.sections.map(normalizePipelinePluginChunkReportSection) : [],
   }
 }
