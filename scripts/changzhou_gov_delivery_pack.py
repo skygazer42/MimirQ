@@ -16,6 +16,7 @@ DEFAULT_PLUGIN_TEST_REPORT = "/tmp/changzhou_gov_plugin_test_report.json"
 DEFAULT_PLUGIN_TEST_EVIDENCE = "/tmp/changzhou_gov_plugin_test_evidence.json"
 DEFAULT_READINESS_SUMMARY = "/tmp/changzhou_gov_dify_readiness_summary.json"
 DEFAULT_READINESS_EVIDENCE = "/tmp/changzhou_gov_dify_readiness_evidence.md"
+DEFAULT_READINESS_AUDIT = "/tmp/changzhou_gov_dify_readiness_persist_audit.json"
 DEFAULT_JSON_OUT = "/tmp/changzhou_gov_delivery_pack.json"
 DEFAULT_MARKDOWN_OUT = "/tmp/changzhou_gov_delivery_pack.md"
 REQUIRED_PLUGIN_TEST_STAGES = ("governance", "chunk", "kg")
@@ -99,6 +100,13 @@ def _artifact(path: str | Path, *, label: str) -> dict[str, Any]:
     }
 
 
+def _load_optional_json(path: str | Path) -> dict[str, Any]:
+    target = Path(path)
+    if not target.exists():
+        return {}
+    return _load_json(target)
+
+
 def _count_line(values: dict[str, Any]) -> str:
     parts = []
     for key in sorted(values):
@@ -178,6 +186,32 @@ def _plugin_test_summary(plugin_test_report: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _readiness_audit_summary(readiness_audit: dict[str, Any], *, artifact_exists: bool, required: bool) -> dict[str, Any]:
+    report_audit = (
+        readiness_audit.get("report_retrieval_audit")
+        if isinstance(readiness_audit.get("report_retrieval_audit"), dict)
+        else readiness_audit
+    )
+    gates = report_audit.get("gates") if isinstance(report_audit.get("gates"), list) else []
+    failure_categories = (
+        report_audit.get("failure_categories") if isinstance(report_audit.get("failure_categories"), dict) else {}
+    )
+    return {
+        "required": bool(required),
+        "artifact_exists": bool(artifact_exists),
+        "report_verified": readiness_audit.get("report_verified") is True,
+        "status": _text(report_audit.get("status")),
+        "plugin_refs": [str(item) for item in report_audit.get("plugin_refs", []) if _text(item)]
+        if isinstance(report_audit.get("plugin_refs"), list)
+        else [],
+        "plugin_package_hashes": [str(item) for item in report_audit.get("plugin_package_hashes", []) if _text(item)]
+        if isinstance(report_audit.get("plugin_package_hashes"), list)
+        else [],
+        "gate_names": [_text(gate.get("name")) for gate in gates if isinstance(gate, dict) and _text(gate.get("name"))],
+        "failure_categories": {str(key): int(value or 0) for key, value in failure_categories.items()},
+    }
+
+
 def build_delivery_pack(
     *,
     plugin_report_path: str | Path = DEFAULT_PLUGIN_REPORT,
@@ -187,6 +221,8 @@ def build_delivery_pack(
     plugin_test_evidence_path: str | Path = DEFAULT_PLUGIN_TEST_EVIDENCE,
     readiness_summary_path: str | Path = DEFAULT_READINESS_SUMMARY,
     readiness_evidence_path: str | Path = DEFAULT_READINESS_EVIDENCE,
+    readiness_audit_path: str | Path = DEFAULT_READINESS_AUDIT,
+    require_readiness_audit_persisted: bool = False,
     max_readiness_age_minutes: int = 30,
     now: datetime | None = None,
 ) -> dict[str, Any]:
@@ -195,6 +231,8 @@ def build_delivery_pack(
     plugin_test_report = _load_json(plugin_test_report_path)
     plugin_test_evidence = _load_json(plugin_test_evidence_path)
     readiness = _load_json(readiness_summary_path)
+    readiness_audit_artifact_exists = Path(readiness_audit_path).exists()
+    readiness_audit_raw = _load_optional_json(readiness_audit_path)
     plugin_summary = _nested_dict(plugin_report, "summary")
     plugin_test = _plugin_test_summary(plugin_test_report)
     plugin_golden = _nested_dict(plugin_test, "golden_draft")
@@ -207,6 +245,14 @@ def build_delivery_pack(
     plugin_test_evidence_passed = plugin_test_evidence.get("passed") is True
     plugin_golden_passed = plugin_golden.get("passed") is True
     readiness_passed = readiness_summary.get("passed") is True
+    readiness_audit = _readiness_audit_summary(
+        readiness_audit_raw,
+        artifact_exists=readiness_audit_artifact_exists,
+        required=bool(require_readiness_audit_persisted),
+    )
+    readiness_audit_ok = (
+        readiness_audit.get("report_verified") is True if bool(require_readiness_audit_persisted) else True
+    )
     freshness = _freshness(
         _text(readiness.get("generated_at")),
         now=now,
@@ -223,6 +269,7 @@ def build_delivery_pack(
             and plugin_golden_passed
             and readiness_passed
             and freshness.get("fresh") is True
+            and readiness_audit_ok
         ),
         "summary": {
             "plugin_passed": plugin_passed,
@@ -241,6 +288,7 @@ def build_delivery_pack(
             "readiness_stage_count": int(readiness_summary.get("stage_count") or 0),
             "readiness_failed_stages": list(readiness_summary.get("failed_stages") or []),
             "readiness_boundary": readiness_metrics["boundary"],
+            "readiness_audit_report_verified": readiness_audit.get("report_verified") is True,
         },
         "artifacts": {
             "plugin_chunk_evidence_json": _artifact(plugin_chunk_evidence_path, label="plugin chunk evidence JSON"),
@@ -253,6 +301,10 @@ def build_delivery_pack(
             "dify_readiness_evidence_markdown": _artifact(
                 readiness_evidence_path,
                 label="Dify readiness evidence Markdown",
+            ),
+            "dify_readiness_audit_json": _artifact(
+                readiness_audit_path,
+                label="Dify readiness retrieval audit persistence JSON",
             ),
         },
         "plugin": {
@@ -272,6 +324,7 @@ def build_delivery_pack(
             "next_action": _text(readiness_summary.get("next_action")),
             "metrics": readiness_metrics,
             "freshness": freshness,
+            "audit": readiness_audit,
         },
     }
 
@@ -298,6 +351,7 @@ def format_markdown_pack(pack: dict[str, Any]) -> str:
     readiness = pack.get("readiness") if isinstance(pack.get("readiness"), dict) else {}
     metrics = readiness.get("metrics") if isinstance(readiness.get("metrics"), dict) else {}
     freshness = readiness.get("freshness") if isinstance(readiness.get("freshness"), dict) else {}
+    readiness_audit = readiness.get("audit") if isinstance(readiness.get("audit"), dict) else {}
     lines = [
         "# Changzhou Gov Delivery Pack",
         "",
@@ -316,6 +370,7 @@ def format_markdown_pack(pack: dict[str, Any]) -> str:
                 "golden_items",
                 "readiness_passed",
                 "readiness_fresh",
+                "audit_report_verified",
                 "sections",
                 "records",
                 "chunks",
@@ -331,6 +386,7 @@ def format_markdown_pack(pack: dict[str, Any]) -> str:
                     _text(summary.get("plugin_golden_draft_items")),
                     _text(summary.get("readiness_passed")),
                     _text(summary.get("readiness_fresh")),
+                    _text(summary.get("readiness_audit_report_verified")),
                     _text(summary.get("plugin_sections")),
                     _text(summary.get("plugin_governed_records")),
                     _text(summary.get("plugin_chunks")),
@@ -376,6 +432,29 @@ def format_markdown_pack(pack: dict[str, Any]) -> str:
         "## Dify/MimirQ Readiness Metrics",
         "",
         *_markdown_table(["Metric", "Value"], [[key, _text(value)] for key, value in metrics.items()]),
+        "",
+        "## Retrieval Audit Persistence",
+        "",
+        *_markdown_table(
+            ["Metric", "Value"],
+            [
+                ["required", _text(readiness_audit.get("required"))],
+                ["artifact_exists", _text(readiness_audit.get("artifact_exists"))],
+                ["audit_report_verified", _text(readiness_audit.get("report_verified"))],
+                ["status", _text(readiness_audit.get("status"))],
+                ["plugin_refs", ", ".join(readiness_audit.get("plugin_refs") or [])],
+                ["plugin_package_hashes", ", ".join(readiness_audit.get("plugin_package_hashes") or [])],
+                ["gates", ", ".join(readiness_audit.get("gate_names") or [])],
+                [
+                    "failure_categories",
+                    _count_line(
+                        readiness_audit.get("failure_categories")
+                        if isinstance(readiness_audit.get("failure_categories"), dict)
+                        else {}
+                    ),
+                ],
+            ],
+        ),
         "",
         "## Readiness Freshness",
         "",
@@ -440,6 +519,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--plugin-test-evidence", default=DEFAULT_PLUGIN_TEST_EVIDENCE)
     parser.add_argument("--readiness-summary", default=DEFAULT_READINESS_SUMMARY)
     parser.add_argument("--readiness-evidence", default=DEFAULT_READINESS_EVIDENCE)
+    parser.add_argument("--readiness-audit", default=DEFAULT_READINESS_AUDIT)
+    parser.add_argument("--require-readiness-audit-persisted", action="store_true")
     parser.add_argument("--max-readiness-age-minutes", type=int, default=30)
     parser.add_argument("--json-out", default=DEFAULT_JSON_OUT, help="Write JSON pack to this path, or '-' for stdout.")
     parser.add_argument("--markdown-out", default=DEFAULT_MARKDOWN_OUT, help="Write Markdown pack to this path. Empty disables it.")
@@ -457,6 +538,8 @@ def main(argv: list[str] | None = None) -> int:
             plugin_test_evidence_path=args.plugin_test_evidence,
             readiness_summary_path=args.readiness_summary,
             readiness_evidence_path=args.readiness_evidence,
+            readiness_audit_path=args.readiness_audit,
+            require_readiness_audit_persisted=bool(args.require_readiness_audit_persisted),
             max_readiness_age_minutes=int(args.max_readiness_age_minutes),
         )
     except Exception as exc:  # noqa: BLE001

@@ -226,9 +226,11 @@ def test_changzhou_gov_delivery_pack_target_is_overridable() -> None:
             "CHANGZHOU_GOV_PLUGIN_TEST_EVIDENCE_OUT=/tmp/plugin-test-evidence.json",
             "CHANGZHOU_DIFY_READINESS_OUT=/tmp/readiness.json",
             "CHANGZHOU_DIFY_READINESS_EVIDENCE_OUT=/tmp/readiness.md",
+            "CHANGZHOU_DIFY_READINESS_AUDIT_OUT=/tmp/readiness-audit.json",
             "CHANGZHOU_GOV_DELIVERY_PACK_OUT=/tmp/pack.json",
             "CHANGZHOU_GOV_DELIVERY_PACK_MD=/tmp/pack.md",
             "CHANGZHOU_GOV_DELIVERY_PACK_MAX_READINESS_AGE_MINUTES=45",
+            "CHANGZHOU_GOV_DELIVERY_PACK_REQUIRE_READINESS_AUDIT=1",
         ],
         cwd=REPO_ROOT,
         check=False,
@@ -247,6 +249,8 @@ def test_changzhou_gov_delivery_pack_target_is_overridable() -> None:
     assert "--plugin-markdown" not in command
     assert '--readiness-summary "/tmp/readiness.json"' in command
     assert '--readiness-evidence "/tmp/readiness.md"' in command
+    assert '--readiness-audit "/tmp/readiness-audit.json"' in command
+    assert "--require-readiness-audit-persisted" in command
     assert "--max-readiness-age-minutes 45" in command
     assert '--json-out "/tmp/pack.json"' in command
     assert '--markdown-out "/tmp/pack.md"' in command

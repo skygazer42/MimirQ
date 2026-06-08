@@ -42,6 +42,7 @@ def test_build_delivery_pack_combines_plugin_and_readiness_without_raw_answers(t
     plugin_test_evidence = tmp_path / "plugin_test_evidence.json"
     readiness_summary = tmp_path / "readiness_summary.json"
     readiness_md = tmp_path / "readiness_evidence.md"
+    readiness_audit = tmp_path / "readiness_audit.json"
     plugin_chunk_evidence_md.write_text("# Plugin chunk evidence\n", encoding="utf-8")
     readiness_md.write_text("# Readiness evidence\n", encoding="utf-8")
     _write_json(
@@ -134,6 +135,23 @@ def test_build_delivery_pack_combines_plugin_and_readiness_without_raw_answers(t
             "answers": [{"query": "真实用户问题不能进入交付包", "answer": "真实生成答案不能进入交付包"}],
         },
     )
+    _write_json(
+        readiness_audit,
+        {
+            "report_verified": True,
+            "persisted": {
+                "status": "passed",
+                "plugin_refs": ["plugin:changzhou-gov-service-knowledge@1.0.0:chunk"],
+            },
+            "report_retrieval_audit": {
+                "status": "passed",
+                "plugin_refs": ["plugin:changzhou-gov-service-knowledge@1.0.0:chunk"],
+                "plugin_package_hashes": ["abc"],
+                "failure_categories": {},
+                "gates": [{"name": "mimirq_direct", "status": "passed", "metrics": {"hit_at_1": 1.0}}],
+            },
+        },
+    )
 
     pack = mod.build_delivery_pack(
         plugin_report_path=plugin_report,
@@ -143,6 +161,7 @@ def test_build_delivery_pack_combines_plugin_and_readiness_without_raw_answers(t
         plugin_test_evidence_path=plugin_test_evidence,
         readiness_summary_path=readiness_summary,
         readiness_evidence_path=readiness_md,
+        readiness_audit_path=readiness_audit,
         max_readiness_age_minutes=0,
     )
     text = mod.format_markdown_pack(pack)
@@ -161,10 +180,14 @@ def test_build_delivery_pack_combines_plugin_and_readiness_without_raw_answers(t
     assert "plugin_test_report_json" not in pack["artifacts"]
     assert pack["summary"]["plugin_chunks"] == 11
     assert pack["summary"]["readiness_boundary"] == "dify_external_boundary_ok"
+    assert pack["summary"]["readiness_audit_report_verified"] is True
+    assert pack["readiness"]["audit"]["report_verified"] is True
+    assert pack["readiness"]["audit"]["plugin_refs"] == ["plugin:changzhou-gov-service-knowledge@1.0.0:chunk"]
     assert "01政务服务事项知识" in text
     assert "service_item_full" in text
     assert "one_thing_operation_steps" in text
     assert "dify_external_boundary_ok" in text
+    assert "| audit_report_verified | True |" in text
     assert "| route_mismatch_cases | 0 |" in text
     assert "| empty_retrieval_cases | 0 |" in text
     assert "make changzhou-gov-plugin-test-report" in text
@@ -175,6 +198,49 @@ def test_build_delivery_pack_combines_plugin_and_readiness_without_raw_answers(t
     assert "raw sample preview should not be copied" not in text
 
 
+def test_delivery_pack_can_require_persisted_retrieval_audit(tmp_path: Path) -> None:
+    mod = _load_module()
+    plugin_report = tmp_path / "plugin_report.json"
+    plugin_chunk_evidence = tmp_path / "plugin_chunk_evidence.json"
+    plugin_test_report = tmp_path / "plugin_test_report.json"
+    plugin_test_evidence = tmp_path / "plugin_test_evidence.json"
+    readiness_summary = tmp_path / "readiness_summary.json"
+    _write_json(
+        plugin_report,
+        {
+            "passed": True,
+            "summary": {"input_documents": 1, "governed_records": 1, "chunks": 1, "kg_events": 1, "sections": 1},
+            "sections": [],
+        },
+    )
+    _write_json(plugin_chunk_evidence, {"passed": True})
+    _write_json(plugin_test_report, _plugin_test_payload())
+    _write_json(plugin_test_evidence, {"passed": True})
+    _write_json(
+        readiness_summary,
+        {
+            "generated_at": datetime.now(UTC).isoformat(),
+            "summary": {"passed": True},
+            "external_probe": {"boundary": {"verdict": "ok"}},
+        },
+    )
+
+    pack = mod.build_delivery_pack(
+        plugin_report_path=plugin_report,
+        plugin_chunk_evidence_path=plugin_chunk_evidence,
+        plugin_test_report_path=plugin_test_report,
+        plugin_test_evidence_path=plugin_test_evidence,
+        readiness_summary_path=readiness_summary,
+        readiness_audit_path=tmp_path / "missing_audit.json",
+        require_readiness_audit_persisted=True,
+    )
+
+    assert pack["passed"] is False
+    assert pack["summary"]["readiness_audit_report_verified"] is False
+    assert pack["readiness"]["audit"]["required"] is True
+    assert pack["readiness"]["audit"]["artifact_exists"] is False
+
+
 def test_main_writes_delivery_pack_json_and_markdown(tmp_path: Path) -> None:
     mod = _load_module()
     plugin_report = tmp_path / "plugin_report.json"
@@ -182,6 +248,7 @@ def test_main_writes_delivery_pack_json_and_markdown(tmp_path: Path) -> None:
     plugin_test_report = tmp_path / "plugin_test_report.json"
     plugin_test_evidence = tmp_path / "plugin_test_evidence.json"
     readiness_summary = tmp_path / "readiness_summary.json"
+    readiness_audit = tmp_path / "readiness_audit.json"
     json_out = tmp_path / "delivery_pack.json"
     markdown_out = tmp_path / "delivery_pack.md"
     _write_json(
@@ -204,6 +271,19 @@ def test_main_writes_delivery_pack_json_and_markdown(tmp_path: Path) -> None:
             "external_probe": {"boundary": {"verdict": "ok"}},
         },
     )
+    _write_json(
+        readiness_audit,
+        {
+            "report_verified": True,
+            "persisted": {"status": "passed", "plugin_refs": ["plugin:demo@1.0.0:chunk"]},
+            "report_retrieval_audit": {
+                "status": "passed",
+                "plugin_refs": ["plugin:demo@1.0.0:chunk"],
+                "gates": [{"name": "mimirq_direct", "status": "passed", "metrics": {}}],
+                "failure_categories": {},
+            },
+        },
+    )
 
     rc = mod.main(
         [
@@ -217,6 +297,9 @@ def test_main_writes_delivery_pack_json_and_markdown(tmp_path: Path) -> None:
             str(plugin_test_evidence),
             "--readiness-summary",
             str(readiness_summary),
+            "--readiness-audit",
+            str(readiness_audit),
+            "--require-readiness-audit-persisted",
             "--json-out",
             str(json_out),
             "--markdown-out",
