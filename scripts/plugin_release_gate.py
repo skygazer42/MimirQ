@@ -52,6 +52,25 @@ def _check(
     return out
 
 
+def _gate_summary(checks: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    failed_required = [
+        str(check.get("name"))
+        for check in checks
+        if check.get("required") is not False and check.get("passed") is not True and check.get("name")
+    ]
+    failed_optional = [
+        str(check.get("name"))
+        for check in checks
+        if check.get("required") is False and check.get("passed") is not True and check.get("name")
+    ]
+    return {
+        "checks_total": len(checks),
+        "required_checks": sum(1 for check in checks if check.get("required") is not False),
+        "failed_required_checks": failed_required,
+        "failed_optional_checks": failed_optional,
+    }
+
+
 def _descriptor_payload(descriptor: PipelinePluginDescriptor) -> dict[str, Any]:
     return {
         "id": descriptor.id,
@@ -149,6 +168,7 @@ def build_plugin_release_gate_report(
             "schema": PLUGIN_RELEASE_GATE_SCHEMA,
             "generated_at": generated_at,
             "passed": False,
+            "summary": _gate_summary(checks),
             "plugin": {"dir": str(plugin_path)},
             "checks": checks,
         }
@@ -239,6 +259,7 @@ def build_plugin_release_gate_report(
         "schema": PLUGIN_RELEASE_GATE_SCHEMA,
         "generated_at": generated_at,
         "passed": all(bool(check.get("passed")) for check in required_checks),
+        "summary": _gate_summary(checks),
         "plugin": _descriptor_payload(descriptor_after),
         "checks": checks,
         "local_test": _summarize_local_test(local_report),
