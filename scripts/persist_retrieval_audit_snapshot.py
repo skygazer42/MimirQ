@@ -91,10 +91,10 @@ def _request_json(
     method: str,
     url: str,
     headers: dict[str, str],
-    payload: dict[str, Any],
+    payload: dict[str, Any] | None = None,
     timeout: float,
 ) -> dict[str, Any]:
-    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8") if payload is not None else None
     request = Request(url, data=data, headers=headers, method=method.upper())
     try:
         with urlopen(request, timeout=timeout) as response:
@@ -118,6 +118,78 @@ def load_retrieval_audit_payload(summary_path: str | os.PathLike[str]) -> dict[s
     return audit.model_dump(mode="json")
 
 
+def _safe_list(raw: Any) -> list[str]:
+    if not isinstance(raw, list):
+        return []
+    return [str(item or "").strip() for item in raw if str(item or "").strip()]
+
+
+def _gate_names(raw: Any) -> set[str]:
+    if not isinstance(raw, list):
+        return set()
+    names: set[str] = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        name = _text(item.get("name"))
+        if name:
+            names.add(name)
+    return names
+
+
+def _require_subset(*, field: str, expected: set[str], actual: set[str]) -> None:
+    missing = sorted(expected - actual)
+    if missing:
+        raise RuntimeError(f"report retrieval_audit missing {field}: {', '.join(missing)}")
+
+
+def _verify_failure_categories(expected: dict[str, Any], actual: dict[str, Any]) -> None:
+    missing: list[str] = []
+    for key, raw_value in expected.items():
+        try:
+            expected_count = int(raw_value or 0)
+            actual_count = int(actual.get(key) or 0)
+        except (TypeError, ValueError):
+            continue
+        if expected_count > 0 and actual_count < expected_count:
+            missing.append(str(key))
+    if missing:
+        raise RuntimeError(f"report retrieval_audit missing failure_categories: {', '.join(sorted(missing))}")
+
+
+def verify_report_consumed_retrieval_audit(
+    *,
+    expected: dict[str, Any],
+    report: dict[str, Any],
+) -> dict[str, Any]:
+    audit = report.get("retrieval_audit")
+    if not isinstance(audit, dict):
+        raise RuntimeError("report retrieval_audit is missing")
+
+    if _text(expected.get("status")).lower() == "failed" and _text(audit.get("status")).lower() != "failed":
+        raise RuntimeError("report retrieval_audit status did not preserve failed state")
+
+    _require_subset(
+        field="plugin_refs",
+        expected=set(_safe_list(expected.get("plugin_refs"))),
+        actual=set(_safe_list(audit.get("plugin_refs"))),
+    )
+    _require_subset(
+        field="plugin_package_hashes",
+        expected=set(_safe_list(expected.get("plugin_package_hashes"))),
+        actual=set(_safe_list(audit.get("plugin_package_hashes"))),
+    )
+    _require_subset(
+        field="gates",
+        expected=_gate_names(expected.get("gates")),
+        actual=_gate_names(audit.get("gates")),
+    )
+    expected_categories = expected.get("failure_categories") if isinstance(expected.get("failure_categories"), dict) else {}
+    actual_categories = audit.get("failure_categories") if isinstance(audit.get("failure_categories"), dict) else {}
+    _verify_failure_categories(expected_categories, actual_categories)
+    return audit
+
+
 def persist_retrieval_audit_snapshot(
     *,
     summary_path: str | os.PathLike[str],
@@ -128,6 +200,7 @@ def persist_retrieval_audit_snapshot(
     user_id: str,
     bearer: str,
     timeout: float,
+    verify_report: bool = False,
     request_json: RequestJsonFn = _request_json,
 ) -> dict[str, Any]:
     dataset_id = _text(dataset_id)
@@ -135,13 +208,30 @@ def persist_retrieval_audit_snapshot(
         raise ValueError("dataset_id is required")
     payload = load_retrieval_audit_payload(summary_path)
     url = _api_url(base_url, f"datasets/{dataset_id}/retrieval-audit")
-    return request_json(
+    headers = _headers(tenant_id=tenant_id, account_id=account_id, user_id=user_id, bearer=bearer)
+    persisted = request_json(
         method="PUT",
         url=url,
-        headers=_headers(tenant_id=tenant_id, account_id=account_id, user_id=user_id, bearer=bearer),
+        headers=headers,
         payload=payload,
         timeout=float(timeout),
     )
+    if not verify_report:
+        return persisted
+
+    report = request_json(
+        method="GET",
+        url=_api_url(base_url, f"reports/datasets/{dataset_id}"),
+        headers=headers,
+        payload=None,
+        timeout=float(timeout),
+    )
+    report_audit = verify_report_consumed_retrieval_audit(expected=payload, report=report)
+    return {
+        "persisted": persisted,
+        "report_verified": True,
+        "report_retrieval_audit": report_audit,
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -164,6 +254,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--user-id", default=os.getenv("MIMIRQ_USER_ID") or "demo")
     parser.add_argument("--bearer", default=os.getenv("MIMIRQ_API_TOKEN") or os.getenv("AUTH_TOKEN") or "")
     parser.add_argument("--timeout", type=float, default=float(os.getenv("MIMIRQ_API_TIMEOUT") or "60"))
+    parser.add_argument("--verify-report", action="store_true", help="GET the dataset report after writeback and verify it consumed the audit.")
     parser.add_argument("--out", default="", help="Optional path to write the sanitized API response JSON.")
     args = parser.parse_args(argv)
 
@@ -176,6 +267,7 @@ def main(argv: list[str] | None = None) -> int:
         user_id=args.user_id,
         bearer=args.bearer,
         timeout=float(args.timeout),
+        verify_report=bool(args.verify_report),
     )
     if args.out:
         _write_json(args.out, response)

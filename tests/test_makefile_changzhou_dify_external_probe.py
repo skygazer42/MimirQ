@@ -663,6 +663,7 @@ def test_changzhou_dify_readiness_persist_audit_target_is_overridable() -> None:
     assert '--user-id "user-1"' in command
     assert '--bearer "token-1"' in command
     assert "--timeout 13" in command
+    assert "--verify-report" in command
     assert '--out "/tmp/persisted-audit.json"' in command
 
 
