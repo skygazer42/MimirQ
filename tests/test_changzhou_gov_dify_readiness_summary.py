@@ -74,11 +74,36 @@ def test_build_readiness_summary_combines_probe_and_full_gate() -> None:
     }
 
     summary = mod.build_readiness_summary(
-        knowledge_map={"summary": {"passed": True, "failed_conditions": [], "route_count": 7}},
+        knowledge_map={
+            "summary": {"passed": True, "failed_conditions": [], "route_count": 7},
+            "plugin_refs": {
+                "checked": [
+                    {
+                        "knowledge_id": "demo_knowledge",
+                        "plugin_ref": "plugin:demo-release-plugin@1.0.0:chunk",
+                    }
+                ]
+            },
+        },
         mimirq_direct={
             "gate": {"passed": True, "failed": 0, "checks": []},
-            "summary": {"cases": 12, "hit_at_1": 1.0, "answer_grounding_rate": 1.0},
+            "summary": {
+                "cases": 12,
+                "hit_at_1": 1.0,
+                "hit_at_3": 1.0,
+                "answer_grounding_rate": 1.0,
+                "expected_metadata_hit_rate": 1.0,
+                "retrieval_effective_context_rate": 0.94,
+                "retrieval_noise_rate": 0.06,
+            },
             "source": {"base_url": "http://192.168.3.6:8000", "base_host": "192.168.3.6"},
+        },
+        kg_compare={
+            "summary": {"passed": True, "failed": 0, "candidate_gate_passed": True, "compared_metrics": 14},
+            "candidate_gate": {
+                "passed": True,
+                "checks": [{"metric": "kg_noise_rate", "actual": 0.05, "maximum": 0.1, "passed": True}],
+            },
         },
         console_auth={"valid": True, "reason": "ok", "ttl_seconds": 1800, "min_ttl_seconds": 900},
         external_probe=external_probe,
@@ -99,7 +124,7 @@ def test_build_readiness_summary_combines_probe_and_full_gate() -> None:
             "passed": True,
             "failed_stages": [],
             "skipped_stages": [],
-            "stage_count": 5,
+            "stage_count": 6,
             "root_cause_stage": "",
             "root_cause_reason": "",
             "next_action": "",
@@ -110,13 +135,115 @@ def test_build_readiness_summary_combines_probe_and_full_gate() -> None:
             "external_probe": "/tmp/probe.json",
             "full_gate": "/tmp/full_summary.json",
         },
-        "knowledge_map": {"passed": True, "status": "passed", "failed_conditions": [], "summary": {"passed": True, "failed_conditions": [], "route_count": 7}},
+        "retrieval_audit": {
+            "status": "passed",
+            "plugin_refs": ["plugin:demo-release-plugin@1.0.0:chunk"],
+            "plugin_package_hashes": [],
+            "gates": [
+                {
+                    "name": "knowledge_map",
+                    "status": "passed",
+                    "metrics": {"route_count": 7},
+                    "failed_conditions": [],
+                    "generated_at": None,
+                    "source": "changzhou_dify_readiness:knowledge_map",
+                },
+                {
+                    "name": "mimirq_direct",
+                    "status": "passed",
+                    "metrics": {
+                        "answer_grounding_rate": 1.0,
+                        "cases": 12,
+                        "expected_metadata_hit_rate": 1.0,
+                        "hit_at_1": 1.0,
+                        "hit_at_3": 1.0,
+                        "retrieval_effective_context_rate": 0.94,
+                        "retrieval_noise_rate": 0.06,
+                    },
+                    "failed_conditions": [],
+                    "generated_at": None,
+                    "source": "changzhou_dify_readiness:mimirq_direct",
+                },
+                {
+                    "name": "kg_compare",
+                    "status": "passed",
+                    "metrics": {
+                        "candidate_gate_passed": True,
+                        "compared_metrics": 14,
+                        "kg_noise_rate": 0.05,
+                    },
+                    "failed_conditions": [],
+                    "generated_at": None,
+                    "source": "changzhou_dify_readiness:kg_compare",
+                },
+                {
+                    "name": "external_probe",
+                    "status": "passed",
+                    "metrics": {
+                        "cases": 12,
+                        "dify_hit_nonempty": 12,
+                        "mimirq_direct_nonempty": 12,
+                        "mimirq_direct_schema_valid": 12,
+                        "probe_errors": 0,
+                    },
+                    "failed_conditions": [],
+                    "generated_at": None,
+                    "source": "changzhou_dify_readiness:external_probe",
+                },
+                {
+                    "name": "full_gate",
+                    "status": "passed",
+                    "metrics": {},
+                    "failed_conditions": [],
+                    "generated_at": None,
+                    "source": "changzhou_dify_readiness:full_gate",
+                },
+                {
+                    "name": "full_gate.eval",
+                    "status": "passed",
+                    "metrics": {
+                        "generated_answer_fallback_rate": 0.0,
+                        "generated_answer_key_point_recall": 0.97,
+                        "hit_at_3": 1.0,
+                    },
+                    "failed_conditions": [],
+                    "generated_at": None,
+                    "source": "changzhou_dify_readiness:full_gate.eval",
+                },
+            ],
+            "failure_categories": {},
+            "recommended_next_action": None,
+        },
+        "knowledge_map": {
+            "passed": True,
+            "status": "passed",
+            "failed_conditions": [],
+            "summary": {"passed": True, "failed_conditions": [], "route_count": 7},
+        },
         "mimirq_direct": {
             "passed": True,
             "status": "passed",
             "failed_conditions": [],
-            "summary": {"cases": 12, "hit_at_1": 1.0, "answer_grounding_rate": 1.0},
+            "summary": {
+                "cases": 12,
+                "hit_at_1": 1.0,
+                "hit_at_3": 1.0,
+                "answer_grounding_rate": 1.0,
+                "expected_metadata_hit_rate": 1.0,
+                "retrieval_effective_context_rate": 0.94,
+                "retrieval_noise_rate": 0.06,
+            },
             "source": {"base_url": "http://192.168.3.6:8000", "base_host": "192.168.3.6"},
+        },
+        "kg_compare": {
+            "passed": True,
+            "status": "passed",
+            "failed_conditions": [],
+            "summary": {"passed": True, "failed": 0, "candidate_gate_passed": True, "compared_metrics": 14},
+            "candidate_gate": {
+                "passed": True,
+                "checks": [{"metric": "kg_noise_rate", "actual": 0.05, "maximum": 0.1, "passed": True}],
+            },
         },
         "console_auth": {"passed": True, "status": "passed", "reason": "ok", "ttl_seconds": 1800, "min_ttl_seconds": 900},
         "external_probe": {
@@ -160,6 +287,92 @@ def test_build_readiness_summary_combines_probe_and_full_gate() -> None:
             },
         },
     }
+
+
+def test_readiness_summary_exports_generic_retrieval_audit_failure_categories() -> None:
+    mod = _load_module()
+
+    summary = mod.build_readiness_summary(
+        knowledge_map={
+            "summary": {
+                "passed": True,
+                "failed_conditions": [],
+                "route_count": 2,
+                "plugin_refs_checked": 1,
+            },
+            "plugin_refs": {
+                "checked": [
+                    {
+                        "knowledge_id": "demo_knowledge",
+                        "plugin_ref": "plugin:demo-release-plugin@1.0.0:chunk",
+                    }
+                ]
+            },
+        },
+        mimirq_direct={
+            "gate": {
+                "passed": False,
+                "checks": [
+                    {"metric": "expected_metadata_hit_rate", "actual": 0.75, "minimum": 1.0, "passed": False},
+                    {"metric": "hit_at_1", "actual": 0.8, "minimum": 1.0, "passed": False},
+                    {"metric": "retrieval_effective_context_rate", "actual": 0.4, "minimum": 0.9, "passed": False},
+                ],
+            },
+            "summary": {
+                "cases": 10,
+                "hit_at_1": 0.8,
+                "hit_at_3": 1.0,
+                "expected_metadata_hit_rate": 0.75,
+                "retrieval_effective_context_rate": 0.4,
+                "retrieval_noise_rate": 0.2,
+            },
+            "source": {
+                "plugin_ref": "plugin:demo-release-plugin@1.0.0:chunk",
+                "plugin_package_hash": "pkg_hash_abc",
+            },
+        },
+        kg_compare={
+            "summary": {"passed": False, "candidate_gate_passed": False, "compared_metrics": 14},
+            "candidate_gate": {
+                "passed": False,
+                "checks": [{"metric": "kg_noise_rate", "actual": 0.2, "maximum": 0.1, "passed": False}],
+            },
+        },
+        console_auth={"valid": True, "reason": "ok", "ttl_seconds": 1800, "min_ttl_seconds": 900},
+        external_probe={"gate": {"passed": True, "failed_conditions": []}, "summary": {"probe_errors": 0}},
+        full_gate_summary={"summary": {"passed": True, "failed_stages": []}},
+        artifacts={},
+        generated_at="2026-06-07T01:02:03Z",
+    )
+
+    audit = summary["retrieval_audit"]
+    assert audit["status"] == "failed"
+    assert audit["plugin_refs"] == ["plugin:demo-release-plugin@1.0.0:chunk"]
+    assert audit["plugin_package_hashes"] == ["pkg_hash_abc"]
+    assert audit["failure_categories"] == {
+        "scope": 1,
+        "chunking": 1,
+        "ranking": 1,
+        "kg_noise": 1,
+    }
+    assert audit["recommended_next_action"] == (
+        "Fix metadata scope, chunking, ranking, and KG noise before enabling production retrieval."
+    )
+    direct_gate = next(gate for gate in audit["gates"] if gate["name"] == "mimirq_direct")
+    assert direct_gate["metrics"] == {
+        "cases": 10,
+        "expected_metadata_hit_rate": 0.75,
+        "hit_at_1": 0.8,
+        "hit_at_3": 1.0,
+        "retrieval_effective_context_rate": 0.4,
+        "retrieval_noise_rate": 0.2,
+    }
+    assert direct_gate["failed_conditions"] == [
+        "quality_gate_failed:expected_metadata_hit_rate",
+        "quality_gate_failed:hit_at_1",
+        "quality_gate_failed:retrieval_effective_context_rate",
+    ]
+    assert "plugin_package_hash" not in json.dumps(direct_gate["metrics"], ensure_ascii=False)
 
 
 def test_build_readiness_summary_marks_failed_source() -> None:

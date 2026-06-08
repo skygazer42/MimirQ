@@ -267,6 +267,33 @@ def test_format_status_prints_retrieval_quality_summary() -> None:
     ) in text
 
 
+def test_format_status_prints_generic_retrieval_audit_summary() -> None:
+    mod = _load_module()
+
+    text = mod.format_status(
+        {
+            "summary": {"passed": False},
+            "retrieval_audit": {
+                "status": "failed",
+                "plugin_refs": ["plugin:demo-release-plugin@1.0.0:chunk"],
+                "plugin_package_hashes": ["pkg_hash_abc"],
+                "gates": [
+                    {"name": "mimirq_direct", "status": "failed"},
+                    {"name": "kg_compare", "status": "failed"},
+                ],
+                "failure_categories": {"scope": 1, "ranking": 1, "kg_noise": 1},
+                "recommended_next_action": "Fix metadata scope, ranking, and KG noise before enabling production retrieval.",
+            },
+        },
+        max_age_minutes=0,
+    )
+
+    assert (
+        "Retrieval audit: status=failed; plugin_refs=1; package_hashes=1; gates=2; "
+        "failures=scope,ranking,kg_noise"
+    ) in text
+
+
 def test_format_status_prints_kg_compare_summary() -> None:
     mod = _load_module()
 

@@ -10,6 +10,40 @@ from pathlib import Path
 from typing import Any
 
 SCHEMA = "mimirq.changzhou_gov_service_knowledge.dify_readiness_summary.v1"
+_RETRIEVAL_AUDIT_SAFE_METRIC_KEYS = {
+    "answer_grounding_rate",
+    "answer_key_point_recall",
+    "candidate_gate_passed",
+    "cases",
+    "compared_metrics",
+    "dify_hit_nonempty",
+    "expected_metadata_cases_total",
+    "expected_metadata_fields_matched",
+    "expected_metadata_fields_total",
+    "expected_metadata_hit_rate",
+    "expected_metadata_recall",
+    "generated_answer_context_supported_rate",
+    "generated_answer_fallback_rate",
+    "generated_answer_grounding_rate",
+    "generated_answer_key_point_recall",
+    "generated_answer_policy_clean_rate",
+    "hit_at_1",
+    "hit_at_3",
+    "hit_at_5",
+    "hit_at_20",
+    "kg_noise_rate",
+    "mimirq_direct_nonempty",
+    "mimirq_direct_schema_valid",
+    "probe_errors",
+    "retrieval_effective_context_rate",
+    "retrieval_hit_at_1",
+    "retrieval_hit_at_3",
+    "retrieval_mrr",
+    "retrieval_ndcg",
+    "retrieval_noise_rate",
+    "retrieval_recall",
+    "route_count",
+}
 
 
 def _text(value: Any) -> str:
@@ -229,6 +263,222 @@ def _append_unique(out: list[str], value: str) -> None:
     clean = _text(value)
     if clean and clean not in out:
         out.append(clean)
+
+
+def _safe_audit_metrics(raw: dict[str, Any]) -> dict[str, Any]:
+    metrics: dict[str, Any] = {}
+    for key in sorted(_RETRIEVAL_AUDIT_SAFE_METRIC_KEYS):
+        value = raw.get(key)
+        if isinstance(value, bool | int | float):
+            metrics[key] = value
+    return metrics
+
+
+def _kg_noise_rate_from_candidate_gate(candidate_gate: dict[str, Any]) -> float | None:
+    checks = candidate_gate.get("checks") if isinstance(candidate_gate.get("checks"), list) else []
+    for check in checks:
+        if not isinstance(check, dict) or _text(check.get("metric")) != "kg_noise_rate":
+            continue
+        actual = check.get("actual")
+        if isinstance(actual, int | float):
+            return float(actual)
+    return None
+
+
+def _audit_status(section: dict[str, Any]) -> str:
+    status = _text(section.get("status"))
+    if status:
+        return status
+    return "passed" if section.get("passed") is True else "failed"
+
+
+def _audit_gate(
+    *,
+    name: str,
+    section: dict[str, Any],
+    metrics: dict[str, Any] | None = None,
+    source: str,
+) -> dict[str, Any]:
+    failed_conditions = section.get("failed_conditions")
+    summary = section.get("summary") if isinstance(section.get("summary"), dict) else {}
+    if not isinstance(failed_conditions, list):
+        failed_conditions = summary.get("failed_conditions") if isinstance(summary.get("failed_conditions"), list) else []
+    return {
+        "name": name,
+        "status": _audit_status(section),
+        "metrics": _safe_audit_metrics(metrics or summary),
+        "failed_conditions": [_text(item) for item in failed_conditions if _text(item)],
+        "generated_at": None,
+        "source": source,
+    }
+
+
+def _audit_plugin_refs(*sections: dict[str, Any]) -> list[str]:
+    refs: list[str] = []
+    for section in sections:
+        plugin_refs = section.get("plugin_refs") if isinstance(section.get("plugin_refs"), dict) else {}
+        checked = plugin_refs.get("checked") if isinstance(plugin_refs.get("checked"), list) else []
+        for item in checked:
+            if isinstance(item, dict):
+                _append_unique(refs, _text(item.get("plugin_ref")))
+            else:
+                _append_unique(refs, _text(item))
+        source = section.get("source") if isinstance(section.get("source"), dict) else {}
+        _append_unique(refs, _text(source.get("plugin_ref")))
+        summary = section.get("summary") if isinstance(section.get("summary"), dict) else {}
+        for key in ("plugin_ref", "plugin_refs"):
+            value = summary.get(key)
+            if isinstance(value, list):
+                for item in value:
+                    _append_unique(refs, _text(item))
+            else:
+                _append_unique(refs, _text(value))
+    return refs
+
+
+def _audit_plugin_package_hashes(*sections: dict[str, Any]) -> list[str]:
+    hashes: list[str] = []
+    for section in sections:
+        source = section.get("source") if isinstance(section.get("source"), dict) else {}
+        _append_unique(hashes, _text(source.get("plugin_package_hash")))
+        summary = section.get("summary") if isinstance(section.get("summary"), dict) else {}
+        for key in ("plugin_package_hash", "plugin_package_hashes"):
+            value = summary.get(key)
+            if isinstance(value, list):
+                for item in value:
+                    _append_unique(hashes, _text(item))
+            else:
+                _append_unique(hashes, _text(value))
+    return hashes
+
+
+def _metric_failed(gates: list[dict[str, Any]], metric: str) -> bool:
+    needle = f"quality_gate_failed:{metric}"
+    return any(needle in (gate.get("failed_conditions") or []) for gate in gates)
+
+
+def _first_metric(gates: list[dict[str, Any]], *keys: str) -> Any:
+    for gate in gates:
+        metrics = gate.get("metrics") if isinstance(gate.get("metrics"), dict) else {}
+        for key in keys:
+            if key in metrics:
+                return metrics.get(key)
+    return None
+
+
+def _audit_failure_categories(gates: list[dict[str, Any]]) -> dict[str, int]:
+    categories: dict[str, int] = {}
+
+    expected_hit = _first_metric(gates, "expected_metadata_hit_rate", "expected_metadata_recall")
+    if (
+        _metric_failed(gates, "expected_metadata_hit_rate")
+        or _metric_failed(gates, "expected_metadata_recall")
+        or (isinstance(expected_hit, int | float) and float(expected_hit) < 1.0)
+    ):
+        categories["scope"] = 1
+
+    effective = _first_metric(gates, "retrieval_effective_context_rate")
+    if _metric_failed(gates, "retrieval_effective_context_rate") or (
+        isinstance(effective, int | float) and float(effective) < 0.8
+    ):
+        categories["chunking"] = 1
+
+    hit_at_1 = _first_metric(gates, "hit_at_1", "retrieval_hit_at_1")
+    hit_at_3 = _first_metric(gates, "hit_at_3", "retrieval_hit_at_3")
+    if _metric_failed(gates, "hit_at_1") or (
+        isinstance(hit_at_1, int | float)
+        and float(hit_at_1) < 1.0
+        and isinstance(hit_at_3, int | float)
+        and float(hit_at_3) >= 1.0
+    ):
+        categories["ranking"] = 1
+
+    recall = _first_metric(gates, "retrieval_recall")
+    if _metric_failed(gates, "retrieval_recall") or (isinstance(recall, int | float) and float(recall) < 1.0):
+        categories["absence"] = 1
+
+    kg_noise = _first_metric(gates, "kg_noise_rate")
+    if _metric_failed(gates, "kg_noise_rate") or (isinstance(kg_noise, int | float) and float(kg_noise) > 0.1):
+        categories["kg_noise"] = 1
+
+    return categories
+
+
+def _audit_next_action(categories: dict[str, int]) -> str | None:
+    if not categories:
+        return None
+    labels = {
+        "scope": "metadata scope",
+        "chunking": "chunking",
+        "ranking": "ranking",
+        "absence": "missing evidence",
+        "kg_noise": "KG noise",
+        "adapter": "Dify binding",
+    }
+    ordered = [labels[key] for key in ("scope", "chunking", "ranking", "absence", "kg_noise", "adapter") if key in categories]
+    if not ordered:
+        return "Inspect failed retrieval gates before enabling production retrieval."
+    if len(ordered) == 1:
+        joined = ordered[0]
+    else:
+        joined = ", ".join(ordered[:-1]) + f", and {ordered[-1]}"
+    return f"Fix {joined} before enabling production retrieval."
+
+
+def _build_retrieval_audit(
+    *,
+    summary: dict[str, Any],
+    knowledge_map_raw: dict[str, Any] | None,
+    mimirq_direct_raw: dict[str, Any] | None,
+    kg_compare_raw: dict[str, Any] | None,
+    sections_by_stage: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    gates: list[dict[str, Any]] = []
+    for stage in ("knowledge_map", "mimirq_direct", "external_probe", "full_gate"):
+        section = sections_by_stage.get(stage)
+        if not isinstance(section, dict):
+            continue
+        gates.append(_audit_gate(name=stage, section=section, source=f"changzhou_dify_readiness:{stage}"))
+
+    kg_section = _kg_compare_section(kg_compare_raw) if kg_compare_raw is not None else sections_by_stage.get("kg_compare")
+    if isinstance(kg_section, dict):
+        metrics = dict(kg_section.get("summary") or {})
+        candidate_gate = kg_section.get("candidate_gate") if isinstance(kg_section.get("candidate_gate"), dict) else {}
+        kg_noise_rate = _kg_noise_rate_from_candidate_gate(candidate_gate)
+        if kg_noise_rate is not None:
+            metrics["kg_noise_rate"] = kg_noise_rate
+        gates.insert(
+            2,
+            _audit_gate(
+                name="kg_compare",
+                section=kg_section,
+                metrics=metrics,
+                source="changzhou_dify_readiness:kg_compare",
+            ),
+        )
+
+    full_gate = sections_by_stage.get("full_gate") if isinstance(sections_by_stage.get("full_gate"), dict) else {}
+    stages = full_gate.get("stages") if isinstance(full_gate.get("stages"), dict) else {}
+    eval_stage = stages.get("eval") if isinstance(stages.get("eval"), dict) else {}
+    if eval_stage:
+        gates.append(
+            _audit_gate(
+                name="full_gate.eval",
+                section=eval_stage,
+                source="changzhou_dify_readiness:full_gate.eval",
+            )
+        )
+
+    categories = _audit_failure_categories(gates)
+    raw_sections = [section for section in (knowledge_map_raw or {}, mimirq_direct_raw or {}) if isinstance(section, dict)]
+    return {
+        "status": "failed" if summary.get("passed") is not True or categories else "passed",
+        "plugin_refs": _audit_plugin_refs(*raw_sections),
+        "plugin_package_hashes": _audit_plugin_package_hashes(*raw_sections),
+        "gates": gates,
+        "failure_categories": categories,
+        "recommended_next_action": _audit_next_action(categories),
+    }
 
 
 def _empty_marker(value: Any) -> str:
@@ -511,6 +761,13 @@ def build_readiness_summary(
         },
         "artifacts": _clean_artifacts(artifacts),
     }
+    report["retrieval_audit"] = _build_retrieval_audit(
+        summary=report["summary"],
+        knowledge_map_raw=knowledge_map,
+        mimirq_direct_raw=mimirq_direct,
+        kg_compare_raw=kg_compare,
+        sections_by_stage=sections_by_stage,
+    )
     if knowledge_section is not None:
         report["knowledge_map"] = sections_by_stage["knowledge_map"]
     if mimirq_section is not None:
