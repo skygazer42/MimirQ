@@ -3,6 +3,23 @@ import { defineConfig, devices } from '@playwright/test'
 const PORT = Number(process.env.PLAYWRIGHT_PORT || 3100)
 const baseURL = `http://127.0.0.1:${PORT}`
 const useProdServer = Boolean(process.env.CI) || process.env.PLAYWRIGHT_USE_PROD_SERVER === '1'
+const LOCAL_NO_PROXY_HOSTS = ['127.0.0.1', 'localhost']
+
+function ensureLocalNoProxy(envName: 'NO_PROXY' | 'no_proxy') {
+  const current = process.env[envName] || ''
+  const entries = new Set(
+    current
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+  )
+  for (const host of LOCAL_NO_PROXY_HOSTS) entries.add(host)
+  process.env[envName] = Array.from(entries).join(',')
+}
+
+// The local webServer readiness probe must never be routed through a global proxy.
+ensureLocalNoProxy('NO_PROXY')
+ensureLocalNoProxy('no_proxy')
 
 export default defineConfig({
   testDir: './e2e',
