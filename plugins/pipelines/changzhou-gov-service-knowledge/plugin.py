@@ -40,6 +40,7 @@ _SECTION_HEADING_RE = re.compile(r"^(第[一二三四五六七八九十百0-9]+[
 _SOFT_BREAK_RE = re.compile(r"(?<=[。！？；;])")
 _COLLAPSED_CHINESE_ALIAS_SEPARATOR_RE = re.compile(r"(?<=[\u4e00-\u9fff？?。！!，,])\s+(?=[\u4e00-\u9fff])")
 _URL_RE = re.compile(r"https?://[^\s>*）)】]+", re.IGNORECASE)
+_PAREN_TERM_RE = re.compile(r"[（(](?P<value>[^）)]{1,80})[）)]")
 _BULLET_RE = re.compile(r"^(?:\d{1,3}[.．、]\s*|[①②③④⑤⑥⑦⑧⑨⑩]\s*|（\d{1,3}）\s*|\(\d{1,3}\)\s*)")
 _GUIDE_SECTION_LABELS = {
     "涉及事项": "related_services",
@@ -512,6 +513,43 @@ def _source_record_id(source: str, kind: str, index: int, title: str, text: str)
     return _doc_id(source, kind, index, title, text)
 
 
+def _semantic_terms(*values: str) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = _clean_question(str(value or "")).strip()
+        candidates = [text, *[match.group("value").strip() for match in _PAREN_TERM_RE.finditer(text)]]
+        for candidate in candidates:
+            term = str(candidate or "").strip().strip("？?。；;，,")
+            if not term or term in seen:
+                continue
+            seen.add(term)
+            out.append(term)
+    return out
+
+
+def _semantic_keys_for_record(*, kind: str, title: str, aliases: list[str] | None = None, keywords: list[str] | None = None) -> list[str]:
+    keys: list[str] = []
+    seen: set[str] = set()
+
+    def add(key: str) -> None:
+        value = str(key or "").strip()
+        if not value or value in seen:
+            return
+        seen.add(value)
+        keys.append(value)
+
+    title = str(title or "").strip()
+    kind = str(kind or "").strip() or "gov_text"
+    if title:
+        add(f"{kind}:{title}")
+    for term in _semantic_terms(title, *(aliases or []), *(keywords or [])):
+        add(f"intent:{term}")
+    for term in _semantic_terms(*(aliases or []), *[match.group("value") for match in _PAREN_TERM_RE.finditer(title)]):
+        add(f"alias:{term}")
+    return keys
+
+
 def _common_meta(source_doc: Document, *, kind: str, title: str, index: int, text: str) -> dict[str, Any]:
     meta = dict(source_doc.metadata or {})
     source = _source(meta)
@@ -525,6 +563,7 @@ def _common_meta(source_doc: Document, *, kind: str, title: str, index: int, tex
             "source_file": source,
             "source_record_index": index,
             "source_record_id": _source_record_id(source, kind, index, title, text),
+            "semantic_keys": _semantic_keys_for_record(kind=kind, title=title),
         }
     )
     district = _district_from_source(source, section)
@@ -705,6 +744,12 @@ def _build_qa_document(
         meta["valid_from"] = valid_from
     if valid_to:
         meta["valid_to"] = valid_to
+    meta["semantic_keys"] = _semantic_keys_for_record(
+        kind="qa",
+        title=question,
+        aliases=aliases,
+        keywords=keywords,
+    )
     return Document(page_content=text, metadata=meta)
 
 
@@ -737,6 +782,16 @@ def _with_qa_aliases(doc: Document, aliases: list[str]) -> Document:
             if line.startswith(("业务分类：", "关键字：")):
                 insert_at = index + 1
         lines.insert(insert_at, f"相似问法：{'、'.join(clean_aliases)}")
+    meta["semantic_keys"] = _semantic_keys_for_record(
+        kind="qa",
+        title=str(meta.get("question") or ""),
+        aliases=clean_aliases,
+        keywords=[
+            str(item).strip()
+            for item in (meta.get("keywords") if isinstance(meta.get("keywords"), list) else [])
+            if str(item).strip()
+        ],
+    )
     return Document(page_content="\n".join(lines).strip(), metadata=meta)
 
 

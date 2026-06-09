@@ -188,6 +188,104 @@ def test_build_regression_sample_scores_effective_contexts_from_answer_key_point
     assert meta["explanations"]["retrieval_effective_context_rate"] == "effective_records=1/2"
 
 
+def test_build_regression_sample_counts_semantic_key_overlap_as_retrieval_hit():
+    from app.rag.evaluation.regression_sample_builder import build_regression_sample  # noqa: WPS433
+
+    doc_id = uuid4()
+    case = SimpleNamespace(
+        expected_answer="Broad FAQ answer.",
+        reference_sources=[
+            {
+                "document_id": str(doc_id),
+                "chunk_id": "reference-chunk",
+                "quote": "Broad FAQ answer.",
+                "semantic_keys": ["faq:birth-registration", "alias:birth-permit"],
+            }
+        ],
+        extra={
+            "expected_metadata": {
+                "semantic_keys": ["faq:birth-registration", "alias:birth-permit"],
+                "gov_knowledge_type": "qa",
+            },
+        },
+    )
+    item = {
+        "question": "birth permit",
+        "response": "",
+        "retrieved_contexts": ["District FAQ answer."],
+        "citation_eval_limit": 1,
+        "citations": [
+            {
+                "chunk_id": "semantic-equivalent-chunk",
+                "document_id": str(uuid4()),
+                "chunk_content": "District FAQ answer.",
+                "metadata": {
+                    "semantic_keys": ["alias:birth-permit", "faq:district-birth-permit"],
+                    "_evaluable_metadata": {
+                        "gov_knowledge_type": "qa",
+                    }
+                },
+            }
+        ],
+    }
+
+    _sample_kwargs, meta = build_regression_sample(case, item)
+
+    assert meta["retrieval_recall"] == 1.0
+    assert meta["retrieval_hit_at_1"] is True
+    assert meta["citation_accuracy"] == 1.0
+    assert meta["expected_metadata_hit"] is True
+    assert meta["expected_metadata_recall"] == 1.0
+
+
+def test_build_regression_sample_uses_expected_semantic_keys_when_reference_lacks_them():
+    from app.rag.evaluation.regression_sample_builder import build_regression_sample  # noqa: WPS433
+
+    doc_id = uuid4()
+    case = SimpleNamespace(
+        expected_answer="Birth permit FAQ answer.",
+        reference_sources=[
+            {
+                "document_id": str(doc_id),
+                "chunk_id": "stale-reference-chunk",
+                "quote": "Birth permit FAQ answer.",
+            }
+        ],
+        extra={
+            "expected_metadata": {
+                "semantic_keys": ["intent:准生证", "alias:准生证"],
+                "gov_knowledge_type": "qa",
+            },
+        },
+    )
+    item = {
+        "question": "准生证",
+        "response": "",
+        "retrieved_contexts": ["Birth permit FAQ answer from an equivalent district chunk."],
+        "citation_eval_limit": 1,
+        "citations": [
+            {
+                "chunk_id": "semantic-equivalent-chunk",
+                "document_id": str(uuid4()),
+                "chunk_content": "Birth permit FAQ answer from an equivalent district chunk.",
+                "metadata": {
+                    "_evaluable_metadata": {
+                        "semantic_keys": ["intent:准生证", "alias:准生证"],
+                        "gov_knowledge_type": "qa",
+                    }
+                },
+            }
+        ],
+    }
+
+    _sample_kwargs, meta = build_regression_sample(case, item)
+
+    assert meta["retrieval_recall"] == 1.0
+    assert meta["retrieval_hit_at_1"] is True
+    assert meta["citation_accuracy"] == 1.0
+    assert meta["expected_metadata_hit"] is True
+
+
 def test_build_regression_sample_ndcg_is_capped_for_duplicate_record_identity_hits():
     from app.rag.evaluation.regression_sample_builder import build_regression_sample  # noqa: WPS433
 

@@ -59,6 +59,23 @@ def test_regression_bundle_item_keeps_plugin_extra_metadata() -> None:
     assert item.extra["expected_metadata"]["source_record_id"] == "record-1"
 
 
+def test_regression_bundle_item_keeps_reference_semantic_keys() -> None:
+    item = RagasRegressionCaseBundleItem(
+        question="q",
+        reference_sources=[
+            {
+                "document_id": str(uuid4()),
+                "chunk_id": str(uuid4()),
+                "semantic_keys": ["alias:准生证", "alias:准生证", "intent:准生证"],
+            }
+        ],
+    )
+
+    dumped = item.model_dump(mode="json")
+
+    assert dumped["reference_sources"][0]["semantic_keys"] == ["alias:准生证", "intent:准生证"]
+
+
 def test_regression_case_import_response_exposes_runnable_case_ids() -> None:
     created_id = uuid4()
     updated_id = uuid4()

@@ -658,6 +658,38 @@ def test_changzhou_plugin_governs_qa_records():
     assert chunks[0].metadata["chunk_kind"] == "qa_pair"
 
 
+def test_changzhou_plugin_adds_semantic_keys_for_equivalent_qa_and_service_records():
+    common_source = "/data/temp50/20260522政务服务智能客服知识/03常州市常见问题/常见问题优化补充.txt"
+    common_text = """问题：[办理生育登记]
+==##相似问法：准生证、生育联系单##==
+答案：可通过苏服办办理生育登记。
+"""
+    district_source = "/data/temp50/20260522政务服务智能客服知识/06各区常见问题/天宁区12345QA.txt"
+    district_text = """问题：[已经怀孕，生育服务联系单（准生证）要如何办理？]
+答案：可通过我的常州 APP 或街道窗口办理。
+来源部门：常州市天宁区卫生健康局
+"""
+    service_source = "/data/temp50/20260522政务服务智能客服知识/01政务服务事项知识/武进区事项清单.txt"
+    service_text = """[事项名称：身份证办理进度查询]
+办理形式：网上办理
+办理地点：移动端查询身份证办理进度。
+"""
+
+    common_record = _run_governance(Document(page_content=common_text, metadata={"source": common_source}))[0]
+    district_record = _run_governance(Document(page_content=district_text, metadata={"source": district_source}))[0]
+    service_record = _run_governance(Document(page_content=service_text, metadata={"source": service_source}))[0]
+    chunks = _run_chunk([common_record, district_record, service_record])
+    common_chunk = next(chunk for chunk in chunks if chunk.metadata.get("question") == "办理生育登记")
+    district_chunk = next(chunk for chunk in chunks if chunk.metadata.get("question") == "已经怀孕，生育服务联系单（准生证）要如何办理？")
+    service_chunk = next(chunk for chunk in chunks if chunk.metadata.get("service_name") == "身份证办理进度查询")
+
+    assert "alias:准生证" in common_chunk.metadata["semantic_keys"]
+    assert "alias:准生证" in district_chunk.metadata["semantic_keys"]
+    assert "qa:办理生育登记" in common_chunk.metadata["semantic_keys"]
+    assert "service:武进区:身份证办理进度查询" in service_chunk.metadata["semantic_keys"]
+    assert "service:身份证办理进度查询" in service_chunk.metadata["semantic_keys"]
+
+
 def test_changzhou_plugin_infers_district_qa_section_from_bare_filename():
     source = "天宁区12345QA.txt"
     text = """问题：[请问《独生子女父母光荣证》补办是否收费]
@@ -1080,13 +1112,12 @@ def test_changzhou_plugin_governs_loose_answer_marker_docx_faq():
     assert all(chunk.metadata["chunk_kind"] == "qa_pair" for chunk in chunks)
 
 
-def test_changzhou_golden_rules_use_record_level_expected_metadata():
+def test_changzhou_golden_rules_use_semantic_expected_metadata():
     golden_rules = json.loads((PLUGIN_DIR / "golden_rules.json").read_text(encoding="utf-8"))
 
     assert golden_rules["expected_metadata"] == [
-        "source_record_id",
+        "semantic_keys",
         "gov_knowledge_type",
-        "knowledge_section",
     ]
 
 

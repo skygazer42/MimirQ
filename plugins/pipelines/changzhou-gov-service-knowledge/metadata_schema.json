@@ -162,6 +162,14 @@
       "evaluable": true
     },
     {
+      "name": "semantic_keys",
+      "type": "array",
+      "required": true,
+      "stages": ["governance", "chunk"],
+      "display": true,
+      "evaluable": true
+    },
+    {
       "name": "related_services",
       "type": "array",
       "required": false,

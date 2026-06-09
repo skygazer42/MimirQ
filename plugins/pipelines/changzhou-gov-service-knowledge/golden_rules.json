@@ -1,9 +1,8 @@
 {
   "schema": "mimirq.golden_rules.v1",
   "expected_metadata": [
-    "source_record_id",
-    "gov_knowledge_type",
-    "knowledge_section"
+    "semantic_keys",
+    "gov_knowledge_type"
   ],
   "answer_key_point_fields": [
     "answer",
