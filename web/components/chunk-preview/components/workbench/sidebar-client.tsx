@@ -87,6 +87,9 @@ type PreviewActionLabels = {
   ignoreCache: string
   forceRefresh: string
 }
+type PluginReadinessCheck = NonNullable<
+  NonNullable<PipelinePluginChunkReportResponse['readiness']>['checks']
+>[number]
 
 const SIDEBAR_BASE_TONE: SidebarToneStyle = {
   chip: 'border-border/60 bg-background/80 text-muted-foreground antialiased shadow-[0_1px_0_rgba(255,255,255,0.6)_inset]',
@@ -173,6 +176,22 @@ function getPluginParams(value: unknown): Record<string, unknown> {
 function getReportNumber(value: Record<string, unknown> | undefined, key: string): number {
   const n = Number(value?.[key] ?? 0)
   return Number.isFinite(n) ? n : 0
+}
+
+function getFailedReadinessChecks(report: PipelinePluginChunkReportResponse | null): PluginReadinessCheck[] {
+  const checks = report?.readiness?.checks
+  if (!Array.isArray(checks)) return []
+  return checks.filter((check) => check.required !== false && check.passed === false)
+}
+
+function getReadinessErrorReason(check: PluginReadinessCheck): string {
+  const errors = Array.isArray(check.errors) ? check.errors : []
+  for (const error of errors) {
+    if (!error || typeof error !== 'object' || Array.isArray(error)) continue
+    const reason = (error as Record<string, unknown>).reason
+    if (typeof reason === 'string' && reason.trim()) return reason.trim()
+  }
+  return '-'
 }
 
 function getPrimitivePluginParams(value: unknown): Record<string, string | number | boolean | null> | undefined {
@@ -651,6 +670,9 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
       : ''
   const selectedAuditTestedAt = String(selectedAuditPlugin?.test_report?.tested_at || '').trim()
   const selectedAuditGoldenTotal = selectedAuditPlugin?.test_report?.golden_draft?.items_total
+  const failedReadinessChecks = useMemo(() => getFailedReadinessChecks(pluginChunkReport), [pluginChunkReport])
+  const pluginChunkReportReadinessPassed =
+    Boolean(pluginChunkReport?.passed) && pluginChunkReport?.readiness?.status === 'passed'
   const canImportGoldenDraft = Boolean(
     datasetId &&
     selectedGoldenPluginRef &&
@@ -2267,6 +2289,34 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                     </div>
                     {pluginChunkReport ? (
                       <div className="grid gap-1 rounded-md border border-border/35 bg-muted/18 px-1.5 py-1 text-muted-foreground/76">
+                        <div className="flex items-center justify-between gap-2">
+                          <span
+                            className={cn(
+                              'rounded-full border px-1.5 py-0.5 text-[8px] font-bold',
+                              pluginChunkReportReadinessPassed
+                                ? 'border-success/20 bg-success/8 text-success'
+                                : 'border-destructive/20 bg-destructive/8 text-destructive'
+                            )}
+                          >
+                            {pluginChunkReportReadinessPassed
+                              ? t('sidebar.pythonPlugins.chunkReportReadinessPassed')
+                              : t('sidebar.pythonPlugins.chunkReportReadinessFailed', {
+                                  count: failedReadinessChecks.length,
+                                })}
+                          </span>
+                        </div>
+                        {failedReadinessChecks.length > 0 ? (
+                          <div className="grid gap-0.5 rounded border border-destructive/15 bg-destructive/5 px-1.5 py-1 text-[8.5px] leading-3 text-destructive/85">
+                            {failedReadinessChecks.slice(0, 3).map((check) => (
+                              <div key={check.name} className="truncate">
+                                {t('sidebar.pythonPlugins.chunkReportErrorSummary', {
+                                  name: check.name,
+                                  reason: getReadinessErrorReason(check),
+                                })}
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
                         <div className="font-semibold text-foreground/72">
                           {t('sidebar.pythonPlugins.chunkReportSummary', {
                             records: getReportNumber(pluginChunkReport.summary, 'governed_records'),
