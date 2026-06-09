@@ -171,8 +171,16 @@ def _render_record_text(*, district: str, title: str, fields: dict[str, str], al
     return "\n".join(lines).strip()
 
 
-def _record_id(*, source: str, index: int, title: str, text: str) -> str:
-    seed = f"{source}\n{index}\n{title}\n{text}".encode("utf-8", "ignore")
+def _identity_text(value: str) -> str:
+    text = str(value or "").strip().translate(str.maketrans({"（": "(", "）": ")"}))
+    return re.sub(r"\s+", "", text)
+
+
+def _record_id(*, source: str, district: str, title: str) -> str:
+    # Service-item retrieval is question-oriented: duplicate raw rows for the same
+    # district/title should evaluate as one logical service, while source_record_index
+    # still preserves row-level provenance.
+    seed = f"{source}\n{district}\n{_identity_text(title)}".encode("utf-8", "ignore")
     return hashlib.sha256(seed).hexdigest()[:24]
 
 
@@ -220,7 +228,7 @@ def govern_documents(
             if online_url_normalized:
                 fields["在线办理地址"] = online_url_normalized
             record_text = _render_record_text(district=district, title=title, fields=fields, aliases=aliases)
-            record_id = _record_id(source=source, index=idx, title=title, text=record_text)
+            record_id = _record_id(source=source, district=district, title=title)
             meta = {
                 **source_meta,
                 "dataset_type": default_dataset_type,
@@ -282,7 +290,10 @@ def _service_retrieval_intents(doc: Document) -> list[str]:
     title = str(meta.get("service_name") or "").strip()
     if not title:
         return list(_SERVICE_RETRIEVAL_INTENTS)
-    return [f"{title}{intent}" for intent in _SERVICE_RETRIEVAL_INTENTS]
+    district = str(meta.get("district") or "").strip()
+    scoped = [f"{district}{title}{intent}" for intent in _SERVICE_RETRIEVAL_INTENTS] if district else []
+    generic = [f"{title}{intent}" for intent in _SERVICE_RETRIEVAL_INTENTS]
+    return list(dict.fromkeys([*scoped, *generic]))
 
 
 def _with_service_retrieval_meta(doc: Document, meta: dict[str, Any]) -> dict[str, Any]:

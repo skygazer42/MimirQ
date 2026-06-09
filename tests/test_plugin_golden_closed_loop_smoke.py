@@ -31,12 +31,16 @@ class _FakeClient:
         *,
         missing_metadata_summary: bool = False,
         expected_top_k: int = 20,
+        expected_reranker_top_n: int | None = None,
         expected_score_threshold: float = 0.0,
     ) -> None:
         self.calls: list[tuple[str, str, dict | None, dict | None]] = []
         self._detail_polls = 0
         self._missing_metadata_summary = missing_metadata_summary
         self._expected_top_k = int(expected_top_k)
+        self._expected_reranker_top_n = (
+            int(expected_reranker_top_n) if expected_reranker_top_n is not None else None
+        )
         self._expected_score_threshold = float(expected_score_threshold)
 
     def json(
@@ -115,7 +119,7 @@ class _FakeClient:
             }
 
         if method == "POST" and path == "/api/v1/evaluations/ragas/regression/runs":
-            assert payload == {
+            expected_payload = {
                 "dataset_id": "00000000-0000-0000-0000-000000000001",
                 "case_ids": [
                     "11111111-1111-1111-1111-111111111111",
@@ -131,6 +135,9 @@ class _FakeClient:
                 "hierarchy_sibling_window": 2,
                 "hierarchy_overfetch_factor": 4,
             }
+            if self._expected_reranker_top_n is not None:
+                expected_payload["reranker_top_n"] = self._expected_reranker_top_n
+            assert payload == expected_payload
             return {"id": "33333333-3333-3333-3333-333333333333", "status": "queued"}
 
         if method == "GET" and path == "/api/v1/evaluations/ragas/regression/runs/33333333-3333-3333-3333-333333333333":
@@ -173,7 +180,7 @@ class _FakeClient:
 
 def test_closed_loop_imports_plugin_goldens_and_runs_retrieval_regression() -> None:
     mod = _load_module()
-    client = _FakeClient(expected_top_k=5, expected_score_threshold=0.25)
+    client = _FakeClient(expected_top_k=5, expected_reranker_top_n=5, expected_score_threshold=0.25)
 
     result = mod.run_closed_loop_smoke(  # type: ignore[attr-defined]
         client=client,
@@ -186,6 +193,7 @@ def test_closed_loop_imports_plugin_goldens_and_runs_retrieval_regression() -> N
         poll_timeout_sec=1,
         poll_interval_sec=0,
         regression_top_k=5,
+        regression_reranker_top_n=5,
         regression_score_threshold=0.25,
     )
 

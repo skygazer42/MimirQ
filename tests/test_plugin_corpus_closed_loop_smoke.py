@@ -437,6 +437,7 @@ def test_corpus_smoke_uploads_and_waits_in_batches(
 
     def fake_closed_loop(**kwargs):  # noqa: ANN003
         assert kwargs["regression_top_k"] == 5
+        assert kwargs["regression_reranker_top_n"] == 5
         assert kwargs["regression_score_threshold"] == 0.25
         return mod.ClosedLoopResult(
             dataset_id="dataset-1",
@@ -474,6 +475,7 @@ def test_corpus_smoke_uploads_and_waits_in_batches(
         golden_max_items=1,
         golden_max_chunks=10,
         regression_top_k=5,
+        regression_reranker_top_n=5,
         overwrite_goldens=False,
         regression_score_threshold=0.25,
     )

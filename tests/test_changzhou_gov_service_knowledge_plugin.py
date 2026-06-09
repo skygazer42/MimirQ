@@ -163,6 +163,33 @@ def test_changzhou_plugin_governs_service_item_records():
     assert chunks[0].metadata["chunk_kind"] == "service_item_full"
 
 
+def test_changzhou_service_item_duplicate_titles_share_logical_record_identity():
+    source = "/path/to/gov-service-knowledge/01政务服务事项知识/常州市事项清单.txt"
+    text = """[事项名称：企业投资项目核准（变更）]
+行使层级：市级
+办理形式：窗口办理,网上办理
+办理地点：常州市政务服务中心C9窗口（仅网办）
+办理材料：1、项目变更申报文件（必要）
+咨询方式：电话：0519-86900517
+==##########==
+[事项名称：企业投资项目核准（变更）]
+行使层级：市级
+办理形式：窗口办理,网上办理,快递申请
+办理地点：常州市政务服务中心C9窗口
+办理材料：1、项目变更申报文件（必要）    2、项目立项文件（必要）
+咨询方式：电话：0519-86900517
+"""
+
+    records = _run_governance(Document(page_content=text, metadata={"source": source}))
+    chunks = _run_chunk(records)
+
+    assert len(records) == 2
+    assert records[0].metadata["source_record_index"] == 1
+    assert records[1].metadata["source_record_index"] == 2
+    assert records[0].metadata["source_record_id"] == records[1].metadata["source_record_id"]
+    assert {chunk.metadata["source_record_id"] for chunk in chunks} == {records[0].metadata["source_record_id"]}
+
+
 def test_changzhou_service_item_chunks_include_retrieval_anchor_text():
     source = "/path/to/gov-service-knowledge/01政务服务事项知识/经开区事项清单.txt"
     text = """[事项名称：社会保障卡补卡]
@@ -189,11 +216,18 @@ def test_changzhou_service_item_chunks_include_retrieval_anchor_text():
     assert "事项名称：社会保障卡补卡" in retrieval_text
     assert "区县：经开区" in retrieval_text
     assert "补办社保卡" in retrieval_text
+    assert "经开区社会保障卡补卡需要什么材料" in retrieval_text
+    assert "经开区社会保障卡补卡在哪里办理" in retrieval_text
     assert "社会保障卡补卡需要什么材料" in retrieval_text
     assert "社会保障卡补卡在哪里办理" in retrieval_text
     assert "社会保障卡补卡咨询电话是多少" in retrieval_text
     assert "社会保障卡补卡能不能网上办" in retrieval_text
     assert chunk.metadata["retrieval_intents"] == [
+        "经开区社会保障卡补卡需要什么材料",
+        "经开区社会保障卡补卡在哪里办理",
+        "经开区社会保障卡补卡咨询电话是多少",
+        "经开区社会保障卡补卡能不能网上办",
+        "经开区社会保障卡补卡怎么办理",
         "社会保障卡补卡需要什么材料",
         "社会保障卡补卡在哪里办理",
         "社会保障卡补卡咨询电话是多少",
@@ -693,6 +727,38 @@ def test_changzhou_plugin_governs_qa_keywords_alias_variants_urls_and_topic():
     assert ("GovKnowledgeTopic", "2026年常州市义务教育学校招生入学常见问题", "source_topic") in entity_pairs
 
 
+def test_changzhou_plugin_dedupes_ambiguous_qa_aliases_within_source():
+    source = "苏超购票常见问题.txt"
+    text = """问题：[江苏省城市足球联赛预约购票]
+==##相似问法：苏超购票渠道、苏超怎么买票、苏超在哪预约、苏超购票入口##==
+答案：江苏省城市足球联赛预约购票平台已上线。
+==##########==
+
+问题：[苏超预约摇号流程]
+==##相似问法：苏超预约、苏超怎么买票、查看抽签结果、中签结果、苏超付款##==
+答案：先添加观赛人，再提交预约并等待摇号结果。
+==##########==
+
+问题：[苏超退票/退款规则]
+==##相似问法：苏超怎么买票、苏超在哪预约、苏超购票入口、查看抽签结果、中签结果、苏超付款、苏超退票、退款##==
+答案：购票后至比赛开赛前24小时可申请退票/退款。
+"""
+
+    records = _run_governance(Document(page_content=text, metadata={"source": source}))
+
+    assert [record.metadata["question"] for record in records] == [
+        "江苏省城市足球联赛预约购票",
+        "苏超预约摇号流程",
+        "苏超退票/退款规则",
+    ]
+    assert "苏超怎么买票" in records[0].metadata["aliases"]
+    assert "苏超怎么买票" not in records[1].metadata["aliases"]
+    assert "苏超怎么买票" not in records[2].metadata["aliases"]
+    assert records[2].metadata["aliases"] == ["苏超退票", "退款"]
+    assert "苏超怎么买票" not in records[2].page_content
+    assert records[2].metadata["primary_alias"] == "苏超退票"
+
+
 def test_changzhou_plugin_infers_topic_qa_section_from_bare_uploaded_filenames():
     source = "苏超购票常见问题.txt"
     text = """问题：[2026年苏超常规赛赛程安排]
@@ -1028,6 +1094,12 @@ def test_changzhou_golden_rules_cover_one_thing_section_chunks():
     golden_rules = json.loads((PLUGIN_DIR / "golden_rules.json").read_text(encoding="utf-8"))
     templates = golden_rules["query_templates"]
 
+    assert templates["service_item_full"] == [
+        "{district}{service_name}需要什么材料？",
+        "{district}{service_name}在哪里办理？",
+        "{district}{service_name}咨询电话是多少？",
+        "{district}{service_name}能不能网上办？",
+    ]
     assert {
         "one_thing_related_services",
         "one_thing_process",
@@ -1077,6 +1149,28 @@ def test_changzhou_plugin_marks_long_regulation_text_as_section_chunks():
     assert records[0].metadata["knowledge_section"] == "05业务部门常见问题"
     assert records[0].metadata["department_domain"] == "不动产知识库"
     assert chunks[0].metadata["chunk_kind"] == "regulation_section"
+
+
+def test_changzhou_plugin_uses_title_level_record_identity_for_regulation_sections():
+    source = "/path/to/gov-service-knowledge/05业务部门常见问题/不动产知识库/不动产法规汇编/法规汇编/一、法律/一、法律.txt"
+    text = """中华人民共和国民法典
+
+第一章 总则
+第一条 为了保护民事主体的合法权益，制定本法。
+==##########==
+中华人民共和国民法典
+
+第二章 自然人
+第十三条 自然人从出生时起到死亡时止，具有民事权利能力。
+"""
+
+    records = _run_governance(Document(page_content=text, metadata={"source": source}))
+
+    assert len(records) == 2
+    assert records[0].metadata["gov_knowledge_type"] == "regulation_text"
+    assert records[0].metadata["title"] == "中华人民共和国民法典"
+    assert records[1].metadata["title"] == "中华人民共和国民法典"
+    assert records[0].metadata["source_record_id"] == records[1].metadata["source_record_id"]
 
 
 def test_changzhou_plugin_preserves_multiline_regulation_titles():
