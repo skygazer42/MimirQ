@@ -313,6 +313,7 @@ ChunkPreview: {
         chunkReportErrorSummary: '{name}: {reason}',
         chunkReportNoPlugin: '请先选择可执行的切块插件',
         chunkReportSuccess: '插件预检报告已生成',
+        chunkReportFailed: '插件预检报告未通过，请查看契约检查',
         chunkReportError: '生成插件预检报告失败',
         goldenTitle: 'Golden 回归集',
         importGolden: '生成并导入 Golden',
