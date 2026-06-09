@@ -26,11 +26,18 @@ def _load_module():
 
 
 class _FakeClient:
-    def __init__(self, *, missing_metadata_summary: bool = False, expected_top_k: int = 20) -> None:
+    def __init__(
+        self,
+        *,
+        missing_metadata_summary: bool = False,
+        expected_top_k: int = 20,
+        expected_score_threshold: float = 0.0,
+    ) -> None:
         self.calls: list[tuple[str, str, dict | None, dict | None]] = []
         self._detail_polls = 0
         self._missing_metadata_summary = missing_metadata_summary
         self._expected_top_k = int(expected_top_k)
+        self._expected_score_threshold = float(expected_score_threshold)
 
     def json(
         self,
@@ -119,6 +126,7 @@ class _FakeClient:
                 "skip_empty_contexts": True,
                 "max_cases": 2,
                 "top_k": self._expected_top_k,
+                "score_threshold": self._expected_score_threshold,
                 "enable_hierarchy_recall": True,
                 "hierarchy_sibling_window": 2,
                 "hierarchy_overfetch_factor": 4,
@@ -165,7 +173,7 @@ class _FakeClient:
 
 def test_closed_loop_imports_plugin_goldens_and_runs_retrieval_regression() -> None:
     mod = _load_module()
-    client = _FakeClient(expected_top_k=5)
+    client = _FakeClient(expected_top_k=5, expected_score_threshold=0.25)
 
     result = mod.run_closed_loop_smoke(  # type: ignore[attr-defined]
         client=client,
@@ -178,6 +186,7 @@ def test_closed_loop_imports_plugin_goldens_and_runs_retrieval_regression() -> N
         poll_timeout_sec=1,
         poll_interval_sec=0,
         regression_top_k=5,
+        regression_score_threshold=0.25,
     )
 
     assert result.plugin_ref == "plugin:demo-service@1.0.0:chunk"

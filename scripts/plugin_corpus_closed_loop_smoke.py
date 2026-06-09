@@ -430,6 +430,7 @@ def run_corpus_closed_loop_smoke(
     golden_max_chunks: int,
     regression_top_k: int,
     overwrite_goldens: bool,
+    regression_score_threshold: float = 0.0,
 ) -> CorpusClosedLoopResult:
     files, skipped = discover_corpus_files(
         source_dir,
@@ -518,6 +519,7 @@ def run_corpus_closed_loop_smoke(
         poll_timeout_sec=processing_timeout_sec,
         poll_interval_sec=poll_interval_sec,
         regression_top_k=regression_top_k,
+        regression_score_threshold=regression_score_threshold,
     )
     _progress(f"golden regression completed run={golden.run_id} cases={len(golden.case_ids)}")
     return CorpusClosedLoopResult(
@@ -703,6 +705,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=20,
         help="Retrieval-only Golden regression top_k/citation evaluation window.",
     )
+    parser.add_argument(
+        "--regression-score-threshold",
+        type=float,
+        default=0.0,
+        help="Retrieval-only Golden regression score_threshold.",
+    )
     parser.add_argument("--overwrite-goldens", action="store_true")
     return parser
 
@@ -745,6 +753,7 @@ def main(argv: list[str] | None = None) -> int:
             golden_max_items=int(args.golden_max_items),
             golden_max_chunks=int(args.golden_max_chunks),
             regression_top_k=int(args.regression_top_k),
+            regression_score_threshold=float(args.regression_score_threshold),
             overwrite_goldens=bool(args.overwrite_goldens),
         )
     except Exception as exc:  # noqa: BLE001
