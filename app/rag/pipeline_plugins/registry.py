@@ -80,8 +80,11 @@ _SUPPORTED_CONTRACT_FIELDS = {
         "boost_fields",
         "anchor_fields",
         "rerank_features",
+        "question_intent_terms",
+        "question_anchor_bonus",
         "fallback",
         "response_compaction",
+        "response_hints",
     },
     "processing_templates": {"schema", "plugin_id", "version", "description", "templates"},
 }

@@ -112,8 +112,22 @@ def test_changzhou_retrieval_policy_declares_platform_consumable_fields():
     assert "question" in summary["boost_fields"]
     assert "district" in summary["anchor_fields"]
     assert "chunk_kind" in summary["rerank_features"]
+    assert "材料" in summary["question_intent_terms"]
     assert summary["fallback_enabled"] is True
     assert summary["response_compaction_enabled"] is True
+    assert summary["response_hints_enabled"] is True
+    assert descriptor.retrieval_policy["response_hints"]["structured_labels"] == [
+        "答案",
+        "事项名称",
+        "问题",
+        "相似问法",
+        "办理地点",
+        "收费情况",
+        "咨询方式",
+        "办理时间",
+        "受理条件",
+        "在线办理地址",
+    ]
     boost_matches = {
         str(item.get("metadata")): str(item.get("match") or "")
         for item in descriptor.retrieval_policy.get("boost_fields", [])

@@ -49,6 +49,43 @@ _SUPPORTED_RETRIEVAL_POLICY_RESPONSE_COMPACTION_KEYS = {
     "relative_score_floor",
     "min_records",
 }
+_SUPPORTED_RETRIEVAL_POLICY_RESPONSE_HINT_KEYS = {
+    "answer_prefix",
+    "source_prefix",
+    "structured_labels",
+    "answer_labels",
+    "answer_keywords",
+    "answer_highlight_metadata",
+    "existing_hint_prefixes",
+    "anchor_only_chunk_kinds",
+    "anchor_only_markers",
+    "groups",
+    "enumeration",
+}
+_SUPPORTED_RETRIEVAL_POLICY_RESPONSE_HINT_GROUP_KEYS = {
+    "name",
+    "required_any_labels",
+    "hint_labels",
+    "question_from_query_label",
+    "answer_label",
+    "query_gate",
+}
+_SUPPORTED_RETRIEVAL_POLICY_RESPONSE_HINT_QUERY_GATE_KEYS = {
+    "content_labels",
+    "metadata",
+    "min_chars",
+    "min_common_chars",
+}
+_SUPPORTED_RETRIEVAL_POLICY_RESPONSE_HINT_ENUMERATION_KEYS = {
+    "enabled",
+    "intro_terms",
+    "query_terms",
+    "max_terms",
+    "named_markers",
+    "prefix",
+    "message_template",
+    "term_separator",
+}
 _SUPPORTED_RETRIEVAL_POLICY_MATCHES = {"exact", "contains", "overlap", "fuzzy_overlap"}
 _RESERVED_METADATA_PREFIX = "_"
 _PLATFORM_OWNED_METADATA_FIELD_ROOTS = {
@@ -448,6 +485,7 @@ def _summarize_retrieval_policy(retrieval_policy: dict[str, Any] | None) -> dict
         "schema": retrieval_policy.get("schema"),
         "query_expansion_fields": list(_as_string_list(retrieval_policy.get("query_expansion_fields"))),
         "query_expansion_value_fields": value_fields,
+        "question_intent_terms": list(_as_string_list(retrieval_policy.get("question_intent_terms"))),
         "filter_fields": list(_as_string_list(retrieval_policy.get("filter_fields"))),
         "boost_fields": boost_fields,
         "anchor_fields": anchor_fields,
@@ -456,6 +494,7 @@ def _summarize_retrieval_policy(retrieval_policy: dict[str, Any] | None) -> dict
         "response_compaction_enabled": (
             isinstance(response_compaction, dict) and response_compaction.get("enabled") is True
         ),
+        "response_hints_enabled": isinstance(retrieval_policy.get("response_hints"), dict),
     }
 
 
@@ -679,6 +718,160 @@ def _validate_retrieval_policy_query_expansion_values(
     )
 
 
+def _validate_optional_string(value: Any, *, key: str) -> None:
+    if value is not None and not isinstance(value, str):
+        raise PipelinePluginContractError(f"retrieval_policy.{key} must be a string")
+
+
+def _validate_optional_string_list(value: Any, *, key: str) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise PipelinePluginContractError(f"retrieval_policy.{key} must be a list")
+    return _as_string_list(value, field_label=f"retrieval_policy.{key}")
+
+
+def _validate_retrieval_policy_response_hints(
+    raw_hints: Any,
+    *,
+    declared_fields: dict[str, MetadataField],
+) -> None:
+    if raw_hints is None:
+        return
+    if not isinstance(raw_hints, dict):
+        raise PipelinePluginContractError("retrieval_policy.response_hints must be an object")
+    unknown = _unknown_keys(raw_hints, _SUPPORTED_RETRIEVAL_POLICY_RESPONSE_HINT_KEYS)
+    if unknown:
+        raise PipelinePluginContractError(
+            f"retrieval_policy.response_hints contains unknown fields: {', '.join(unknown[:20])}"
+        )
+
+    for key in ("answer_prefix", "source_prefix"):
+        _validate_optional_string(raw_hints.get(key), key=f"response_hints.{key}")
+    for key in (
+        "structured_labels",
+        "answer_labels",
+        "answer_keywords",
+        "answer_highlight_metadata",
+        "existing_hint_prefixes",
+        "anchor_only_chunk_kinds",
+        "anchor_only_markers",
+    ):
+        _validate_optional_string_list(raw_hints.get(key), key=f"response_hints.{key}")
+
+    raw_groups = raw_hints.get("groups")
+    if raw_groups is not None and not isinstance(raw_groups, list):
+        raise PipelinePluginContractError("retrieval_policy.response_hints.groups must be a list")
+    for index, raw_group in enumerate(raw_groups or []):
+        if not isinstance(raw_group, dict):
+            raise PipelinePluginContractError(f"retrieval_policy.response_hints.groups[{index}] must be an object")
+        unknown_group = _unknown_keys(raw_group, _SUPPORTED_RETRIEVAL_POLICY_RESPONSE_HINT_GROUP_KEYS)
+        if unknown_group:
+            raise PipelinePluginContractError(
+                "retrieval_policy.response_hints.groups"
+                f"[{index}] contains unknown fields: {', '.join(unknown_group[:20])}"
+            )
+        _validate_optional_string(raw_group.get("name"), key=f"response_hints.groups[{index}].name")
+        required = _validate_optional_string_list(
+            raw_group.get("required_any_labels"),
+            key=f"response_hints.groups[{index}].required_any_labels",
+        )
+        if not required:
+            raise PipelinePluginContractError(
+                f"retrieval_policy.response_hints.groups[{index}].required_any_labels must declare at least one label"
+            )
+        hints = _validate_optional_string_list(
+            raw_group.get("hint_labels"),
+            key=f"response_hints.groups[{index}].hint_labels",
+        )
+        if not hints:
+            raise PipelinePluginContractError(
+                f"retrieval_policy.response_hints.groups[{index}].hint_labels must declare at least one label"
+            )
+        _validate_optional_string(
+            raw_group.get("question_from_query_label"),
+            key=f"response_hints.groups[{index}].question_from_query_label",
+        )
+        _validate_optional_string(raw_group.get("answer_label"), key=f"response_hints.groups[{index}].answer_label")
+        query_gate = raw_group.get("query_gate")
+        if query_gate is None:
+            continue
+        if not isinstance(query_gate, dict):
+            raise PipelinePluginContractError(
+                f"retrieval_policy.response_hints.groups[{index}].query_gate must be an object"
+            )
+        unknown_gate = _unknown_keys(query_gate, _SUPPORTED_RETRIEVAL_POLICY_RESPONSE_HINT_QUERY_GATE_KEYS)
+        if unknown_gate:
+            raise PipelinePluginContractError(
+                "retrieval_policy.response_hints.groups"
+                f"[{index}].query_gate contains unknown fields: {', '.join(unknown_gate[:20])}"
+            )
+        _validate_optional_string_list(
+            query_gate.get("content_labels"),
+            key=f"response_hints.groups[{index}].query_gate.content_labels",
+        )
+        metadata_fields = _validate_optional_string_list(
+            query_gate.get("metadata"),
+            key=f"response_hints.groups[{index}].query_gate.metadata",
+        )
+        _validate_declared_policy_fields(metadata_fields, declared_fields=declared_fields, key="response_hints.query_gate")
+        _validate_policy_chunk_stage_fields(metadata_fields, declared_fields=declared_fields, key="response_hints.query_gate")
+        min_chars = query_gate.get("min_chars")
+        if min_chars is not None and (
+            not isinstance(min_chars, int) or isinstance(min_chars, bool) or min_chars < 1 or min_chars > 64
+        ):
+            raise PipelinePluginContractError(
+                f"retrieval_policy.response_hints.groups[{index}].query_gate.min_chars is out of range"
+            )
+        min_common_chars = query_gate.get("min_common_chars")
+        if min_common_chars is not None and (
+            not isinstance(min_common_chars, int)
+            or isinstance(min_common_chars, bool)
+            or min_common_chars < 1
+            or min_common_chars > 64
+        ):
+            raise PipelinePluginContractError(
+                f"retrieval_policy.response_hints.groups[{index}].query_gate.min_common_chars is out of range"
+            )
+
+    enumeration = raw_hints.get("enumeration")
+    if enumeration is None:
+        return
+    if not isinstance(enumeration, dict):
+        raise PipelinePluginContractError("retrieval_policy.response_hints.enumeration must be an object")
+    unknown_enum = _unknown_keys(enumeration, _SUPPORTED_RETRIEVAL_POLICY_RESPONSE_HINT_ENUMERATION_KEYS)
+    if unknown_enum:
+        raise PipelinePluginContractError(
+            f"retrieval_policy.response_hints.enumeration contains unknown fields: {', '.join(unknown_enum[:20])}"
+        )
+    enabled = enumeration.get("enabled")
+    if enabled is not None and not isinstance(enabled, bool):
+        raise PipelinePluginContractError("retrieval_policy.response_hints.enumeration.enabled must be a boolean")
+    for key in ("intro_terms", "query_terms"):
+        _validate_optional_string_list(enumeration.get(key), key=f"response_hints.enumeration.{key}")
+    for key in ("prefix", "message_template", "term_separator"):
+        _validate_optional_string(enumeration.get(key), key=f"response_hints.enumeration.{key}")
+    named_markers = enumeration.get("named_markers")
+    if named_markers is not None:
+        if not isinstance(named_markers, dict):
+            raise PipelinePluginContractError("retrieval_policy.response_hints.enumeration.named_markers must be an object")
+        for raw_key, raw_value in named_markers.items():
+            key = str(raw_key or "").strip()
+            if not key:
+                raise PipelinePluginContractError(
+                    "retrieval_policy.response_hints.enumeration.named_markers contains an empty key"
+                )
+            if not isinstance(raw_value, str):
+                raise PipelinePluginContractError(
+                    f"retrieval_policy.response_hints.enumeration.named_markers.{key} must be a string"
+                )
+    max_terms = enumeration.get("max_terms")
+    if max_terms is not None and (
+        not isinstance(max_terms, int) or isinstance(max_terms, bool) or max_terms < 1 or max_terms > 20
+    ):
+        raise PipelinePluginContractError("retrieval_policy.response_hints.enumeration.max_terms is out of range")
+
+
 def validate_retrieval_policy_metadata_fields(
     *,
     retrieval_policy: dict[str, Any] | None,
@@ -701,6 +894,19 @@ def validate_retrieval_policy_metadata_fields(
                 )
     _validate_retrieval_policy_query_expansion_values(
         retrieval_policy.get("query_expansion_values"),
+        declared_fields=declared_fields,
+    )
+    _validate_optional_string_list(retrieval_policy.get("question_intent_terms"), key="question_intent_terms")
+    question_anchor_bonus = retrieval_policy.get("question_anchor_bonus")
+    if question_anchor_bonus is not None and (
+        not isinstance(question_anchor_bonus, int | float)
+        or isinstance(question_anchor_bonus, bool)
+        or question_anchor_bonus < 0
+        or question_anchor_bonus > 2
+    ):
+        raise PipelinePluginContractError("retrieval_policy.question_anchor_bonus is out of range")
+    _validate_retrieval_policy_response_hints(
+        retrieval_policy.get("response_hints"),
         declared_fields=declared_fields,
     )
 

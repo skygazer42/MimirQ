@@ -898,9 +898,50 @@ def test_pipeline_plugin_retrieval_policy_is_manifest_declared_and_summarized(tm
         "boost_fields": ["chunk_kind"],
         "anchor_fields": ["business_type"],
         "rerank_features": ["business_type", "chunk_kind"],
+        "question_intent_terms": [],
         "fallback_enabled": True,
         "response_compaction_enabled": False,
+        "response_hints_enabled": False,
     }
+
+
+def test_pipeline_plugin_retrieval_policy_allows_response_hint_overlap_gate(tmp_path: Path):
+    from app.rag.pipeline_plugins.registry import describe_plugin_dir
+
+    plugin_dir = tmp_path / "plugins" / "demo"
+    _write_demo_plugin(plugin_dir, include_contracts=True, include_retrieval_policy=True)
+    (plugin_dir / "retrieval_policy.json").write_text(
+        json.dumps(
+            {
+                "schema": "mimirq.retrieval_policy.v1",
+                "question_anchor_bonus": 0.9,
+                "response_hints": {
+                    "structured_labels": ["业务类型", "别名"],
+                    "groups": [
+                        {
+                            "name": "service_item",
+                            "required_any_labels": ["业务类型"],
+                            "hint_labels": ["业务类型"],
+                            "query_gate": {
+                                "content_labels": ["业务类型", "别名"],
+                                "metadata": ["business_type"],
+                                "min_chars": 4,
+                                "min_common_chars": 3,
+                            },
+                        }
+                    ],
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    descriptor = describe_plugin_dir(plugin_dir, require_test_report=False)
+
+    assert descriptor.retrieval_policy["question_anchor_bonus"] == 0.9
+    gate = descriptor.retrieval_policy["response_hints"]["groups"][0]["query_gate"]
+    assert gate["min_common_chars"] == 3
 
 
 def test_pipeline_plugin_list_schema_accepts_retrieval_policy_anchor_fields(tmp_path: Path):
