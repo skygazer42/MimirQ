@@ -406,7 +406,11 @@ def test_explicit_pipeline_patch_json_rejects_activation_refs() -> None:
         )
 
 
-def test_corpus_smoke_uploads_and_waits_in_batches(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_corpus_smoke_uploads_and_waits_in_batches(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     mod = _load_module()
     for name in ("a.txt", "b.txt", "c.txt"):
         (tmp_path / name).write_text(name, encoding="utf-8")
@@ -480,6 +484,12 @@ def test_corpus_smoke_uploads_and_waits_in_batches(tmp_path: Path, monkeypatch: 
     ]
     assert result.uploaded_count == 3
     assert [item["source_rel_path"] for item in result.documents] == ["a.txt", "b.txt", "c.txt"]
+    stderr = capsys.readouterr().err
+    assert "discovered files=3 skipped=0" in stderr
+    assert "created dataset=dataset-1" in stderr
+    assert "uploading batch 1 files=2/3" in stderr
+    assert "waiting batch 1 uploaded=2" in stderr
+    assert "golden regression starting dataset=dataset-1 uploaded=3" in stderr
 
 
 def test_corpus_api_client_retries_rate_limited_json(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -121,6 +121,10 @@ class CorpusApiClient(LiveApiClient):
         return payload
 
 
+def _progress(message: str) -> None:
+    print(f"[plugin-corpus-smoke] {message}", file=sys.stderr, flush=True)
+
+
 def _is_rate_limit_error(exc: BaseException) -> bool:
     text = str(exc)
     return "HTTP 429" in text or "RATE_LIMIT_EXCEEDED" in text
@@ -439,9 +443,11 @@ def run_corpus_closed_loop_smoke(
     )
     if not files:
         raise RuntimeError(f"no supported corpus files found under {source_dir}")
+    _progress(f"discovered files={len(files)} skipped={len(skipped)} source_dir={source_dir}")
 
     resolved_dataset_id = str(dataset_id or "").strip()
     if not resolved_dataset_id:
+        _progress(f"creating dataset name={dataset_name}")
         resolved_dataset_id = create_dataset(
             client,
             name=dataset_name,
@@ -450,11 +456,15 @@ def run_corpus_closed_loop_smoke(
             governance_plugin_ref=governance_plugin_ref,
             kg_plugin_ref=kg_plugin_ref,
         )
+        _progress(f"created dataset={resolved_dataset_id}")
+    else:
+        _progress(f"using dataset={resolved_dataset_id}")
 
     uploaded: list[UploadedDocument] = []
     documents: list[dict[str, Any]] = []
     batch_size = max(0, int(upload_batch_size or 0))
     if batch_size <= 0:
+        _progress(f"uploading files={len(files)} batch=all")
         uploaded = upload_corpus_files(
             client,
             files,
@@ -464,6 +474,7 @@ def run_corpus_closed_loop_smoke(
             governance_plugin_ref=governance_plugin_ref,
             kg_plugin_ref=kg_plugin_ref,
         )
+        _progress(f"waiting uploaded={len(uploaded)} batch=all")
         documents = wait_for_uploaded_documents(
             client,
             uploaded,
@@ -473,6 +484,8 @@ def run_corpus_closed_loop_smoke(
     else:
         for start in range(0, len(files), batch_size):
             batch = files[start : start + batch_size]
+            batch_no = start // batch_size + 1
+            _progress(f"uploading batch {batch_no} files={len(batch)}/{len(files)}")
             batch_uploaded = upload_corpus_files(
                 client,
                 batch,
@@ -483,6 +496,7 @@ def run_corpus_closed_loop_smoke(
                 kg_plugin_ref=kg_plugin_ref,
             )
             uploaded.extend(batch_uploaded)
+            _progress(f"waiting batch {batch_no} uploaded={len(batch_uploaded)}")
             documents.extend(
                 wait_for_uploaded_documents(
                     client,
@@ -491,6 +505,8 @@ def run_corpus_closed_loop_smoke(
                     poll_interval_sec=poll_interval_sec,
                 )
             )
+            _progress(f"completed batch {batch_no} documents={len(documents)}/{len(files)}")
+    _progress(f"golden regression starting dataset={resolved_dataset_id} uploaded={len(uploaded)}")
     golden: ClosedLoopResult = run_closed_loop_smoke(
         client=client,
         dataset_id=resolved_dataset_id,
@@ -503,6 +519,7 @@ def run_corpus_closed_loop_smoke(
         poll_interval_sec=poll_interval_sec,
         regression_top_k=regression_top_k,
     )
+    _progress(f"golden regression completed run={golden.run_id} cases={len(golden.case_ids)}")
     return CorpusClosedLoopResult(
         dataset_id=resolved_dataset_id,
         source_dir=str(source_dir),
