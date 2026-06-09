@@ -339,6 +339,7 @@ def run_closed_loop_smoke(
     hierarchy_sibling_window: int = 2,
     hierarchy_overfetch_factor: int = 4,
     regression_top_k: int = 20,
+    regression_reranker_top_n: int | None = None,
     regression_score_threshold: float = 0.0,
 ) -> ClosedLoopResult:
     selected_ref = str(plugin_ref or "").strip()
@@ -375,6 +376,8 @@ def run_closed_loop_smoke(
         "top_k": max(1, min(50, int(regression_top_k or 20))),
         "score_threshold": max(0.0, float(regression_score_threshold or 0.0)),
     }
+    if regression_reranker_top_n is not None:
+        run_payload["reranker_top_n"] = max(1, min(200, int(regression_reranker_top_n or 1)))
     if enable_hierarchy_recall:
         run_payload.update(
             {
@@ -457,6 +460,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Retrieval-only regression top_k/citation evaluation window. Default keeps recall-friendly backend behavior.",
     )
     parser.add_argument(
+        "--regression-reranker-top-n",
+        type=int,
+        default=0,
+        help=(
+            "Optional reranker candidate cap for retrieval-only regression. "
+            "Default 0 leaves the backend runtime default unchanged."
+        ),
+    )
+    parser.add_argument(
         "--regression-score-threshold",
         type=float,
         default=0.0,
@@ -492,6 +504,9 @@ def main(argv: list[str] | None = None) -> int:
             hierarchy_sibling_window=int(args.hierarchy_sibling_window),
             hierarchy_overfetch_factor=int(args.hierarchy_overfetch_factor),
             regression_top_k=int(args.regression_top_k),
+            regression_reranker_top_n=(
+                int(args.regression_reranker_top_n) if int(args.regression_reranker_top_n or 0) > 0 else None
+            ),
             regression_score_threshold=float(args.regression_score_threshold),
         )
     except Exception as exc:  # noqa: BLE001

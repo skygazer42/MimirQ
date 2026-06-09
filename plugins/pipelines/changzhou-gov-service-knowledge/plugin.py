@@ -503,6 +503,15 @@ def _doc_id(source: str, kind: str, index: int, title: str, text: str) -> str:
     return hashlib.sha256(seed).hexdigest()[:24]
 
 
+def _source_record_id(source: str, kind: str, index: int, title: str, text: str) -> str:
+    if kind == "regulation_text":
+        # Regulation golden queries are title-level. Keep the record identity aligned
+        # with that granularity instead of binding broad law-title questions to a
+        # single arbitrary paragraph.
+        return _doc_id(source, kind, 0, title, "")
+    return _doc_id(source, kind, index, title, text)
+
+
 def _common_meta(source_doc: Document, *, kind: str, title: str, index: int, text: str) -> dict[str, Any]:
     meta = dict(source_doc.metadata or {})
     source = _source(meta)
@@ -515,7 +524,7 @@ def _common_meta(source_doc: Document, *, kind: str, title: str, index: int, tex
             "knowledge_section": section,
             "source_file": source,
             "source_record_index": index,
-            "source_record_id": _doc_id(source, kind, index, title, text),
+            "source_record_id": _source_record_id(source, kind, index, title, text),
         }
     )
     district = _district_from_source(source, section)
@@ -697,6 +706,58 @@ def _build_qa_document(
     if valid_to:
         meta["valid_to"] = valid_to
     return Document(page_content=text, metadata=meta)
+
+
+def _alias_key(value: str) -> str:
+    return re.sub(r"[\s\[\]（）()【】「」『』:：,，;；、。.!！?？]+", "", str(value or "").strip()).lower()
+
+
+def _with_qa_aliases(doc: Document, aliases: list[str]) -> Document:
+    meta = dict(doc.metadata or {})
+    clean_aliases = [str(item).strip() for item in aliases if str(item).strip()]
+    meta["aliases"] = clean_aliases
+    if clean_aliases:
+        meta["primary_alias"] = clean_aliases[0]
+    else:
+        meta.pop("primary_alias", None)
+
+    lines: list[str] = []
+    replaced = False
+    for raw in str(doc.page_content or "").splitlines():
+        line = str(raw)
+        if line.startswith("相似问法："):
+            replaced = True
+            if clean_aliases:
+                lines.append(f"相似问法：{'、'.join(clean_aliases)}")
+            continue
+        lines.append(line)
+    if clean_aliases and not replaced:
+        insert_at = 1
+        for index, line in enumerate(lines):
+            if line.startswith(("业务分类：", "关键字：")):
+                insert_at = index + 1
+        lines.insert(insert_at, f"相似问法：{'、'.join(clean_aliases)}")
+    return Document(page_content="\n".join(lines).strip(), metadata=meta)
+
+
+def _dedupe_ambiguous_qa_aliases(records: list[Document]) -> list[Document]:
+    seen: set[str] = set()
+    out: list[Document] = []
+    for doc in records:
+        meta = dict(doc.metadata or {})
+        aliases = [str(item).strip() for item in (meta.get("aliases") or []) if str(item).strip()]
+        if not aliases:
+            out.append(doc)
+            continue
+        kept: list[str] = []
+        for alias in aliases:
+            key = _alias_key(alias)
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            kept.append(alias)
+        out.append(_with_qa_aliases(doc, kept) if kept != aliases else doc)
+    return out
 
 
 def _govern_qa(source_doc: Document) -> list[Document]:
@@ -967,7 +1028,7 @@ def govern_documents(
                 qa_records = _govern_markdown_table_qa(doc)
             if not qa_records:
                 qa_records = _govern_loose_answer_marker_qa(doc)
-            out.extend(qa_records or _govern_long_text(doc))
+            out.extend(_dedupe_ambiguous_qa_aliases(qa_records) if qa_records else _govern_long_text(doc))
     return out
 
 

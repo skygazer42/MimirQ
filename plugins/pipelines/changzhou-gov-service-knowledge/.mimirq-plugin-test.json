@@ -1,8 +1,8 @@
 {
   "plugin_id": "changzhou-gov-service-knowledge",
   "version": "1.0.0",
-  "package_hash": "e835a21f6ccdae01f43a2d941bffe36d32988d77c49d719d52aa4a3f91d4e22c",
-  "tested_at": "2026-06-08T19:20:08.764328+00:00",
+  "package_hash": "72fb878df6c2d75893ce857b276f16aa7f3f1448a968e7b8b41f236c9d5d3ac8",
+  "tested_at": "2026-06-09T08:05:33.533179+00:00",
   "passed": true,
   "stages": {
     "governance": {
@@ -43,10 +43,10 @@
     "passed": true,
     "items_total": 20,
     "sample_questions": [
-      "社会保障卡补卡需要什么材料？",
-      "社会保障卡补卡在哪里办理？",
-      "社会保障卡补卡咨询电话是多少？",
-      "社会保障卡补卡能不能网上办？",
+      "经开区社会保障卡补卡需要什么材料？",
+      "经开区社会保障卡补卡在哪里办理？",
+      "经开区社会保障卡补卡咨询电话是多少？",
+      "经开区社会保障卡补卡能不能网上办？",
       "住宅专项维修资金的交存标准是多少？"
     ]
   }
