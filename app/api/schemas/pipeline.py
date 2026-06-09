@@ -498,8 +498,10 @@ class PipelinePluginRetrievalPolicyContractSummary(BaseModel):
     boost_fields: list[str] = Field(default_factory=list)
     anchor_fields: list[str] = Field(default_factory=list)
     rerank_features: list[str] = Field(default_factory=list)
+    question_intent_terms: list[str] = Field(default_factory=list)
     fallback_enabled: bool = False
     response_compaction_enabled: bool = False
+    response_hints_enabled: bool = False
 
 
 class PipelinePluginContractSummary(BaseModel):

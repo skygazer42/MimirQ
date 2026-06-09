@@ -31,6 +31,81 @@
     {"metadata": "section_type", "value": "operation_url", "terms": ["在线入口", "网上办理地址", "操作手册入口"]},
     {"metadata": "section_type", "value": "operation_notes", "terms": ["备注", "注意事项", "办理注意事项"]}
   ],
+  "question_intent_terms": [
+    "材料",
+    "证件",
+    "地点",
+    "在哪里",
+    "哪里办理",
+    "办理地点",
+    "渠道",
+    "入口",
+    "方式",
+    "流程",
+    "步骤",
+    "操作",
+    "进度",
+    "查询",
+    "费用",
+    "收费",
+    "电话",
+    "咨询",
+    "条件",
+    "时限",
+    "标准"
+  ],
+  "response_hints": {
+    "answer_prefix": "答案要点",
+    "source_prefix": "原始证据",
+    "structured_labels": [
+      "答案",
+      "事项名称",
+      "问题",
+      "相似问法",
+      "办理地点",
+      "收费情况",
+      "咨询方式",
+      "办理时间",
+      "受理条件",
+      "在线办理地址"
+    ],
+    "answer_labels": ["答案"],
+    "answer_keywords": ["答案"],
+    "answer_highlight_metadata": ["answer_highlights", "answer_key_points", "summary_points"],
+    "existing_hint_prefixes": ["答案要点"],
+    "anchor_only_chunk_kinds": ["qa_pair", "qa"],
+    "anchor_only_markers": ["问题", "检索锚点", "相似问"],
+    "groups": [
+      {
+        "name": "qa",
+        "required_any_labels": ["答案"],
+        "hint_labels": ["问题", "答案"]
+      },
+      {
+        "name": "service_item",
+        "required_any_labels": ["事项名称", "办理地点"],
+        "hint_labels": ["事项名称", "办理地点", "收费情况", "咨询方式", "办理时间", "受理条件"],
+        "question_from_query_label": "问题",
+        "answer_label": "答案",
+        "query_gate": {
+          "content_labels": ["事项名称", "相似问法"],
+          "metadata": ["service_name", "service_aliases", "aliases", "primary_alias"],
+          "min_chars": 4,
+          "min_common_chars": 3
+        }
+      }
+    ],
+    "enumeration": {
+      "enabled": true,
+      "intro_terms": ["类型", "类别", "方式", "入口"],
+      "query_terms": ["申请", "入口", "类型", "类别", "哪些", "什么", "如何"],
+      "max_terms": 4,
+      "named_markers": {"1": "方式一", "2": "方式二", "3": "方式三", "4": "方式四"},
+      "prefix": "必答要点",
+      "message_template": "回答申请/入口/类型类问题时必须保留这些选项名称：{terms}",
+      "term_separator": "、"
+    }
+  },
   "filter_fields": [
     "gov_knowledge_plugin",
     "gov_knowledge_type",

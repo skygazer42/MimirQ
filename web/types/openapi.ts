@@ -19937,6 +19937,8 @@ export interface components {
             anchor_fields?: string[];
             /** Rerank Features */
             rerank_features?: string[];
+            /** Question Intent Terms */
+            question_intent_terms?: string[];
             /**
              * Fallback Enabled
              * @default false
@@ -19947,6 +19949,11 @@ export interface components {
              * @default false
              */
             response_compaction_enabled: boolean;
+            /**
+             * Response Hints Enabled
+             * @default false
+             */
+            response_hints_enabled: boolean;
         };
         /** PipelinePluginRetrievalTextContractSummary */
         PipelinePluginRetrievalTextContractSummary: {
@@ -22322,6 +22329,11 @@ export interface components {
             record_identity?: {
                 [key: string]: unknown;
             } | null;
+            /**
+             * Semantic Keys
+             * @description Plugin-defined semantic equivalence keys for retrieval evaluation across equivalent chunks
+             */
+            semantic_keys?: string[];
             /**
              * Quote
              * @description Evidence excerpt (optional; used as fallback when chunk_id becomes stale)

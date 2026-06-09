@@ -105,27 +105,19 @@ _METADATA_ANCHOR_KEYS = (
 _REGION_ANCHOR_KEYS = ("district", "applicable_area")
 _MIN_REGIONAL_QUESTION_OVERLAP_CHARS = 8
 _MIN_SPECIFIC_INTENT_CHARS = 7
+_MIN_QUERY_INTENT_SUBJECT_OVERLAP_CHARS = 3
 _INTENT_MATCH_BONUS = 0.06
 _INTENT_MATCH_BONUS_MAX = 0.18
-_ANSWER_HIGHLIGHT_KEYS = ("answer_highlights", "answer_key_points", "summary_points")
-_STRUCTURED_ANSWER_LABELS = (
-    "答案",
-    "事项名称",
-    "问题",
-    "办理地点",
-    "收费情况",
-    "咨询方式",
-    "办理时间",
-    "受理条件",
-    "在线办理地址",
-)
-_SERVICE_HINT_LABELS = ("事项名称", "办理地点", "收费情况", "咨询方式", "办理时间", "受理条件")
-_QA_HINT_LABELS = ("问题", "答案")
+_QUESTION_INTENT_MATCH_BONUS = 0.2
+_SOURCE_RECORD_ID_KEYS = ("source_record_id", "record_id")
+_SOURCE_RECORD_SCOPE_KEYS = ("knowledge_section", "source_file", "source_topic", "document_id")
+_DEFAULT_RESPONSE_HINT_ANSWER_PREFIX = "Answer highlights"
+_DEFAULT_RESPONSE_HINT_SOURCE_PREFIX = "Source evidence"
 _MAX_HINT_VALUE_CHARS = 700
 _MAX_QA_HINT_VALUE_CHARS = 420
-_ENUMERATION_INTRO_TERMS = ("类型", "类别", "方式", "入口")
-_ENUMERATION_QUERY_TERMS = ("申请", "入口", "类型", "类别", "哪些", "什么", "如何")
-_NAMED_WAY_MARKERS = {1: "方式一", 2: "方式二", 3: "方式三", 4: "方式四"}
+_ANSWERFUL_RECORD_BONUS = 0.08
+_ANCHOR_ONLY_QA_RECORD_PENALTY = 0.28
+_QUESTION_ANCHOR_COMPACTION_MIN_STRENGTH = 0.8
 _DIAGNOSTIC_QUERY_PREVIEW_CHARS = 120
 
 
@@ -735,27 +727,90 @@ def _field_line_parts(line: str) -> tuple[str, str] | None:
     return label, value
 
 
-def _structured_fields_from_content(content: str) -> dict[str, str]:
+def _response_hint_string_list(response_hints: dict[str, Any], key: str, *, default: tuple[str, ...] = ()) -> tuple[str, ...]:
+    raw = response_hints.get(key) if isinstance(response_hints, dict) else None
+    if raw is None:
+        return default
+    if not isinstance(raw, list | tuple | set):
+        return ()
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        text = str(item or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        out.append(text)
+    return tuple(out)
+
+
+def _response_hint_text(response_hints: dict[str, Any], key: str, *, default: str) -> str:
+    value = response_hints.get(key) if isinstance(response_hints, dict) else None
+    text = str(value or "").strip()
+    return text or default
+
+
+def _response_hint_dict(response_hints: dict[str, Any], key: str) -> dict[str, Any]:
+    raw = response_hints.get(key) if isinstance(response_hints, dict) else None
+    return dict(raw) if isinstance(raw, dict) else {}
+
+
+def _response_hint_groups(response_hints: dict[str, Any]) -> tuple[dict[str, Any], ...]:
+    raw_groups = response_hints.get("groups") if isinstance(response_hints, dict) else None
+    if not isinstance(raw_groups, list):
+        return ()
+    return tuple(dict(group) for group in raw_groups if isinstance(group, dict))
+
+
+def _response_hints_for_record(
+    record: dict[str, Any],
+    *,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> dict[str, Any]:
+    plugin_ref = _record_plugin_ref(record, fallback_plugin_refs=policy_plugin_refs)
+    if not plugin_ref:
+        return {}
+    policy = _retrieval_policy_for_plugin_ref(plugin_ref)
+    raw = policy.get("response_hints") if isinstance(policy, dict) else None
+    return dict(raw) if isinstance(raw, dict) else {}
+
+
+def _response_hints_for_metadata(
+    metadata: dict[str, Any],
+    *,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> dict[str, Any]:
+    return _response_hints_for_record({"metadata": metadata}, policy_plugin_refs=policy_plugin_refs)
+
+
+def _structured_fields_from_content(content: str, *, response_hints: dict[str, Any]) -> dict[str, str]:
+    labels = set(_response_hint_string_list(response_hints, "structured_labels"))
+    if not labels:
+        return {}
     fields: dict[str, str] = {}
     for line in str(content or "").splitlines():
         parts = _field_line_parts(line)
         if parts is None:
             continue
         label, value = parts
-        if label not in _STRUCTURED_ANSWER_LABELS or label in fields:
+        if label not in labels or label in fields:
             continue
-        limit = _MAX_QA_HINT_VALUE_CHARS if label == "答案" else _MAX_HINT_VALUE_CHARS
+        answer_labels = set(_response_hint_string_list(response_hints, "answer_labels"))
+        limit = _MAX_QA_HINT_VALUE_CHARS if label in answer_labels else _MAX_HINT_VALUE_CHARS
         fields[label] = _clamp_hint_value(value, limit=limit)
     return fields
 
 
-def _metadata_answer_highlights(metadata: dict[str, Any]) -> list[str]:
+def _metadata_answer_highlights(metadata: dict[str, Any], *, response_hints: dict[str, Any]) -> list[str]:
     highlights: list[str] = []
     seen: set[str] = set()
+    highlight_keys = _response_hint_string_list(response_hints, "answer_highlight_metadata")
+    if not highlight_keys:
+        return []
     for layer in [metadata, *[metadata.get(key) for key in _PUBLIC_METADATA_VIEW_KEYS]]:
         if not isinstance(layer, dict):
             continue
-        for key in _ANSWER_HIGHLIGHT_KEYS:
+        for key in highlight_keys:
             for value in _metadata_terms(layer.get(key)):
                 text = _clamp_hint_value(value)
                 if not text or text in seen:
@@ -813,18 +868,25 @@ def _record_has_query_region_anchor(record: dict[str, Any], *, query_term: str) 
     return any(region in query_term for region in _record_region_terms(record))
 
 
-def _service_candidate_terms(fields: dict[str, str], metadata: dict[str, Any]) -> list[str]:
+def _response_hint_candidate_terms(
+    fields: dict[str, str],
+    metadata: dict[str, Any],
+    *,
+    group: dict[str, Any],
+) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
-    for value in (fields.get("事项名称"),):
-        text = str(value or "").strip()
-        if text and text not in seen:
-            seen.add(text)
-            out.append(text)
+    gate = _response_hint_dict(group, "query_gate")
+    for label in _response_hint_string_list(gate, "content_labels"):
+        for value in _metadata_terms(fields.get(label)):
+            if value in seen:
+                continue
+            seen.add(value)
+            out.append(value)
     for layer in [metadata, *[metadata.get(key) for key in _PUBLIC_METADATA_VIEW_KEYS]]:
         if not isinstance(layer, dict):
             continue
-        for key in ("service_name", "service_aliases", "aliases", "primary_alias"):
+        for key in _response_hint_string_list(gate, "metadata"):
             for value in _metadata_terms(layer.get(key)):
                 if value in seen:
                     continue
@@ -833,30 +895,81 @@ def _service_candidate_terms(fields: dict[str, str], metadata: dict[str, Any]) -
     return out
 
 
-def _service_hint_matches_query(fields: dict[str, str], metadata: dict[str, Any], *, query: str) -> bool:
+def _response_hint_group_matches_query(
+    fields: dict[str, str],
+    metadata: dict[str, Any],
+    *,
+    group: dict[str, Any],
+    query: str,
+) -> bool:
+    gate = _response_hint_dict(group, "query_gate")
+    if not gate:
+        return True
     query_term = _normalize_match_term(query)
     if not query_term:
         return True
-    for candidate in _service_candidate_terms(fields, metadata):
+    min_chars = max(1, int(gate.get("min_chars") or 4))
+    min_common_chars = max(0, int(gate.get("min_common_chars") or 0))
+    for candidate in _response_hint_candidate_terms(fields, metadata, group=group):
         term = _normalize_match_term(candidate)
-        if len(term) >= 4 and (term in query_term or query_term in term):
+        if len(term) >= min_chars and (term in query_term or query_term in term):
             return True
+        if min_common_chars and min(len(term), len(query_term)) >= min_common_chars:
+            if _longest_common_substring_length(query_term, term) >= min_common_chars:
+                return True
     return False
 
 
-def _answer_hints_from_fields(fields: dict[str, str], *, query: str = "") -> list[str]:
-    if "答案" in fields:
-        return [f"{label}：{fields[label]}" for label in _QA_HINT_LABELS if fields.get(label)]
-    if "事项名称" in fields or "办理地点" in fields:
-        service_bits = [f"{label}：{fields[label]}" for label in _SERVICE_HINT_LABELS if fields.get(label)]
+def _response_hint_group_has_required_fields(fields: dict[str, str], *, group: dict[str, Any]) -> bool:
+    required = _response_hint_string_list(group, "required_any_labels")
+    if not required:
+        return False
+    return any(label in fields for label in required)
+
+
+def _matching_response_hint_group(
+    fields: dict[str, str],
+    metadata: dict[str, Any],
+    *,
+    response_hints: dict[str, Any],
+    query: str = "",
+) -> dict[str, Any] | None:
+    for group in _response_hint_groups(response_hints):
+        if not _response_hint_group_has_required_fields(fields, group=group):
+            continue
+        if not _response_hint_group_matches_query(fields, metadata, group=group, query=query):
+            continue
+        return group
+    return None
+
+
+def _answer_hints_from_fields(
+    fields: dict[str, str],
+    metadata: dict[str, Any],
+    *,
+    response_hints: dict[str, Any],
+    query: str = "",
+) -> list[str]:
+    group = _matching_response_hint_group(fields, metadata, response_hints=response_hints, query=query)
+    if group is not None:
+        labels = _response_hint_string_list(group, "hint_labels")
+        bits = [f"{label}：{fields[label]}" for label in labels if fields.get(label)]
         question = str(query or "").strip()
-        if question:
-            return [f"问题：{question}", f"答案：{'；'.join(service_bits)}"]
-        return service_bits
+        question_label = str(group.get("question_from_query_label") or "").strip()
+        answer_label = str(group.get("answer_label") or "").strip()
+        if question and question_label and answer_label and bits:
+            return [f"{question_label}：{question}", f"{answer_label}：{'；'.join(bits)}"]
+        return bits
     return [f"{label}：{value}" for label, value in fields.items()]
 
 
-def _find_numbered_marker(text: str, number: int, *, start: int) -> tuple[int, str]:
+def _find_numbered_marker(
+    text: str,
+    number: int,
+    *,
+    start: int,
+    named_markers: dict[str, Any] | None = None,
+) -> tuple[int, str]:
     markers = [
         f"{number}.",
         f"{number}、",
@@ -866,7 +979,7 @@ def _find_numbered_marker(text: str, number: int, *, start: int) -> tuple[int, s
         f"({number})",
         f"（{number}）",
     ]
-    named_marker = _NAMED_WAY_MARKERS.get(number)
+    named_marker = str((named_markers or {}).get(str(number)) or "").strip()
     if named_marker:
         markers.append(named_marker)
     best_index = -1
@@ -881,12 +994,18 @@ def _find_numbered_marker(text: str, number: int, *, start: int) -> tuple[int, s
     return best_index, best_marker
 
 
-def _extract_numbered_option_terms(text: str, *, max_terms: int = 4) -> list[str]:
+def _extract_numbered_option_terms(
+    text: str,
+    *,
+    max_terms: int = 4,
+    named_markers: dict[str, Any] | None = None,
+) -> list[str]:
     normalized = " ".join(str(text or "").split())
+    named_marker_values = {str(value or "").strip() for value in (named_markers or {}).values() if str(value or "").strip()}
     terms: list[str] = []
     cursor = 0
     for number in range(1, max_terms + 1):
-        marker_index, marker = _find_numbered_marker(normalized, number, start=cursor)
+        marker_index, marker = _find_numbered_marker(normalized, number, start=cursor, named_markers=named_markers)
         if marker_index < 0:
             break
         start = marker_index + len(marker)
@@ -894,7 +1013,7 @@ def _extract_numbered_option_terms(text: str, *, max_terms: int = 4) -> list[str
             start += 1
         end = start
         stop_chars = "（(：:；;。"
-        if marker.startswith("方式"):
+        if marker in named_marker_values:
             stop_chars += "，,"
         while end < len(normalized) and normalized[end] not in stop_chars:
             end += 1
@@ -905,52 +1024,95 @@ def _extract_numbered_option_terms(text: str, *, max_terms: int = 4) -> list[str
     return terms
 
 
-def _enumerated_answer_hints(content: str, *, query: str = "") -> list[str]:
+def _enumerated_answer_hints(content: str, *, query: str = "", response_hints: dict[str, Any]) -> list[str]:
+    enumeration = _response_hint_dict(response_hints, "enumeration")
+    if enumeration.get("enabled") is not True:
+        return []
     text = str(content or "").strip()
     if not text:
         return []
-    first_marker_index, marker = _find_numbered_marker(" ".join(text.split()), 1, start=0)
+    named_markers = _response_hint_dict(enumeration, "named_markers")
+    first_marker_index, marker = _find_numbered_marker(" ".join(text.split()), 1, start=0, named_markers=named_markers)
     if first_marker_index < 0:
         return []
     prefix = " ".join(text.split())[:first_marker_index][-90:]
     query_text = str(query or "").strip()
-    if not any(term in prefix for term in _ENUMERATION_INTRO_TERMS) and not any(
-        marker.startswith(term) for term in _ENUMERATION_INTRO_TERMS
-    ):
+    intro_terms = _response_hint_string_list(enumeration, "intro_terms")
+    query_terms = _response_hint_string_list(enumeration, "query_terms")
+    if not intro_terms:
         return []
-    if query_text and not any(term in query_text for term in _ENUMERATION_QUERY_TERMS):
+    if not any(term in prefix for term in intro_terms) and not any(marker.startswith(term) for term in intro_terms):
         return []
-    terms = _extract_numbered_option_terms(text)
+    if query_text and query_terms and not any(term in query_text for term in query_terms):
+        return []
+    max_terms = max(1, int(enumeration.get("max_terms") or 4))
+    terms = _extract_numbered_option_terms(text, max_terms=max_terms, named_markers=named_markers)
     if len(terms) < 2:
         return []
-    return [f"必答要点：回答申请/入口/类型类问题时必须保留这些选项名称：{'、'.join(terms)}"]
+    separator = str(enumeration.get("term_separator") or ", ")
+    terms_text = separator.join(terms)
+    template = str(enumeration.get("message_template") or "Preserve these option names: {terms}")
+    message = template.format(terms=terms_text)
+    message_prefix = str(enumeration.get("prefix") or "").strip()
+    return [f"{message_prefix}：{message}" if message_prefix else message]
 
 
-def _content_with_answer_hints(content: str, metadata: dict[str, Any], *, query: str = "") -> str:
+def _content_starts_with_response_hint(content: str, *, response_hints: dict[str, Any]) -> bool:
+    prefixes = list(_response_hint_string_list(response_hints, "existing_hint_prefixes"))
+    answer_prefix = _response_hint_text(
+        response_hints,
+        "answer_prefix",
+        default=_DEFAULT_RESPONSE_HINT_ANSWER_PREFIX,
+    )
+    if answer_prefix:
+        prefixes.append(answer_prefix)
+    normalized = str(content or "").lstrip()
+    return any(normalized.startswith(prefix) for prefix in prefixes if prefix)
+
+
+def _content_with_answer_hints(
+    content: str,
+    metadata: dict[str, Any],
+    *,
+    query: str = "",
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> str:
     body = str(content or "").strip()
     if not body:
         return body
-    enumerated_hints = _enumerated_answer_hints(body, query=query)
+    response_hints = _response_hints_for_metadata(metadata, policy_plugin_refs=policy_plugin_refs)
+    enumerated_hints = _enumerated_answer_hints(body, query=query, response_hints=response_hints)
     enumerated_prefix = "；".join(enumerated_hints)
-    if body.startswith("答案要点："):
+    if _content_starts_with_response_hint(body, response_hints=response_hints):
         if enumerated_prefix and not body.startswith(enumerated_prefix):
             return f"{enumerated_prefix}\n\n{body}"
         return body
-    fields = _structured_fields_from_content(body)
-    if ("事项名称" in fields or "办理地点" in fields) and not _service_hint_matches_query(
+    fields = _structured_fields_from_content(body, response_hints=response_hints)
+    if fields and not _matching_response_hint_group(fields, metadata, response_hints=response_hints, query=query):
+        return body
+    hints = _metadata_answer_highlights(metadata, response_hints=response_hints) or _answer_hints_from_fields(
         fields,
         metadata,
+        response_hints=response_hints,
         query=query,
-    ):
-        return body
-    hints = _metadata_answer_highlights(metadata) or _answer_hints_from_fields(fields, query=query)
+    )
     if not hints and not enumerated_prefix:
         return body
+    answer_prefix = _response_hint_text(
+        response_hints,
+        "answer_prefix",
+        default=_DEFAULT_RESPONSE_HINT_ANSWER_PREFIX,
+    )
+    source_prefix = _response_hint_text(
+        response_hints,
+        "source_prefix",
+        default=_DEFAULT_RESPONSE_HINT_SOURCE_PREFIX,
+    )
     if enumerated_prefix and not hints:
-        return f"{enumerated_prefix}\n\n原始证据：\n{body}"
+        return f"{enumerated_prefix}\n\n{source_prefix}：\n{body}"
     if enumerated_prefix:
-        return f"{enumerated_prefix}\n\n答案要点：{'；'.join(hints)}\n\n原始证据：\n{body}"
-    return f"答案要点：{'；'.join(hints)}\n\n原始证据：\n{body}"
+        return f"{enumerated_prefix}\n\n{answer_prefix}：{'；'.join(hints)}\n\n{source_prefix}：\n{body}"
+    return f"{answer_prefix}：{'；'.join(hints)}\n\n{source_prefix}：\n{body}"
 
 
 def _record_retrieval_intents(
@@ -1113,6 +1275,8 @@ def _record_rank_score(
         float(record.get("score") or 0.0)
         + _record_metadata_anchor_bonus(record, query=query)
         + _record_intent_bonus(record, query=query, policy_plugin_refs=policy_plugin_refs)
+        + _record_question_intent_bonus(record, query=query, policy_plugin_refs=policy_plugin_refs)
+        + _record_answerfulness_score(record, policy_plugin_refs=policy_plugin_refs)
         + record_retrieval_policy_bonus(
             record,
             query=query,
@@ -1136,18 +1300,30 @@ def _compact_records_for_response(
     compaction_enabled = bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_HIGH_CONFIDENCE_ENABLED", True))
     policy_compaction = _response_compaction_for_records(limited, policy_plugin_refs=policy_plugin_refs)
     if compaction_enabled and bool(policy_compaction.get("enabled")):
-        limited = filter_records_by_retrieval_policy_alignment(
-            limited,
-            query=query,
-            plugin_ref_for_record=lambda item: _record_plugin_ref(item, fallback_plugin_refs=policy_plugin_refs),
-            metadata_layers_for_record=_iter_record_metadata_layers,
-            policy_resolver=_retrieval_policy_for_plugin_ref,
-        )
+        if (
+            _record_question_anchor_strength(limited[0], query=query, policy_plugin_refs=policy_plugin_refs)
+            >= _QUESTION_ANCHOR_COMPACTION_MIN_STRENGTH
+        ):
+            limited = _compact_by_strong_question_anchor(limited, query=query, policy_plugin_refs=policy_plugin_refs)
+        else:
+            limited = filter_records_by_retrieval_policy_alignment(
+                limited,
+                query=query,
+                plugin_ref_for_record=lambda item: _record_plugin_ref(item, fallback_plugin_refs=policy_plugin_refs),
+                metadata_layers_for_record=_iter_record_metadata_layers,
+                policy_resolver=_retrieval_policy_for_plugin_ref,
+            )
+            limited = _compact_by_strong_question_anchor(limited, query=query, policy_plugin_refs=policy_plugin_refs)
     if not limited:
         return []
+    compaction_scores = (
+        [_record_rank_score(record, query=query, policy_plugin_refs=policy_plugin_refs) for record in limited]
+        if bool(policy_compaction.get("enabled"))
+        else [float(record.get("score") or 0.0) for record in limited]
+    )
     compacted = compact_high_confidence_items(
         limited,
-        scores=[_record_rank_score(record, query=query, policy_plugin_refs=policy_plugin_refs) for record in limited],
+        scores=compaction_scores,
         top_k=top_k,
         enabled=compaction_enabled,
         min_top_score=float(
@@ -1172,6 +1348,169 @@ def _compact_records_for_response(
     return list(compacted)
 
 
+def _record_answerfulness_score(record: dict[str, Any], *, policy_plugin_refs: tuple[str, ...] = ()) -> float:
+    content = str(record.get("content") or "").strip()
+    if not content:
+        return 0.0
+    if _record_has_answer_evidence(record, content=content, policy_plugin_refs=policy_plugin_refs):
+        return _ANSWERFUL_RECORD_BONUS
+    if _record_is_anchor_only_qa(record, content=content, policy_plugin_refs=policy_plugin_refs):
+        return -_ANCHOR_ONLY_QA_RECORD_PENALTY
+    return 0.0
+
+
+def _record_has_answer_evidence(
+    record: dict[str, Any],
+    *,
+    content: str,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> bool:
+    response_hints = _response_hints_for_record(record, policy_plugin_refs=policy_plugin_refs)
+    fields = _structured_fields_from_content(content, response_hints=response_hints)
+    answer_labels = _response_hint_string_list(response_hints, "answer_labels")
+    if answer_labels and any(fields.get(label) for label in answer_labels):
+        return True
+    metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
+    if _matching_response_hint_group(fields, metadata, response_hints=response_hints) is not None:
+        return True
+    answer_keywords = _response_hint_string_list(response_hints, "answer_keywords")
+    if _content_starts_with_response_hint(content, response_hints=response_hints) and (
+        not answer_keywords or any(keyword in content[:_MAX_QA_HINT_VALUE_CHARS] for keyword in answer_keywords)
+    ):
+        return True
+
+    raw_metadata = record.get("metadata")
+    metadata = raw_metadata if isinstance(raw_metadata, dict) else {}
+    if _metadata_answer_highlights(metadata, response_hints=response_hints):
+        return True
+    return False
+
+
+def _record_is_anchor_only_qa(
+    record: dict[str, Any],
+    *,
+    content: str,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> bool:
+    response_hints = _response_hints_for_record(record, policy_plugin_refs=policy_plugin_refs)
+    normalized = str(content or "").strip()
+    answer_labels = _response_hint_string_list(response_hints, "answer_labels")
+    answer_keywords = _response_hint_string_list(response_hints, "answer_keywords")
+    if any(label and label in normalized for label in (*answer_labels, *answer_keywords)):
+        return False
+    chunk_kinds = set(_response_hint_string_list(response_hints, "anchor_only_chunk_kinds"))
+    if not chunk_kinds:
+        return False
+    is_qa_record = any(
+        str(metadata.get("chunk_kind") or "").strip() in chunk_kinds for metadata in _iter_record_metadata_layers(record)
+    )
+    if not is_qa_record:
+        return False
+    markers = _response_hint_string_list(response_hints, "anchor_only_markers")
+    return any(marker and marker in normalized for marker in markers)
+
+
+def _query_intent_terms(query: str, *, intent_terms: tuple[str, ...]) -> tuple[str, ...]:
+    query_term = _normalize_match_term(query)
+    if not query_term:
+        return ()
+    out: list[str] = []
+    seen: set[str] = set()
+    for term in intent_terms:
+        normalized = _normalize_match_term(term)
+        if normalized and normalized in query_term and normalized not in seen:
+            seen.add(normalized)
+            out.append(normalized)
+    return tuple(out)
+
+
+def _record_question_intent_terms(record: dict[str, Any], *, policy_plugin_refs: tuple[str, ...] = ()) -> tuple[str, ...]:
+    plugin_ref = _record_plugin_ref(record, fallback_plugin_refs=policy_plugin_refs)
+    if not plugin_ref:
+        return ()
+    policy = _retrieval_policy_for_plugin_ref(plugin_ref)
+    return _response_hint_string_list(policy, "question_intent_terms")
+
+
+def _record_question_anchor_bonus_value(
+    record: dict[str, Any],
+    *,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> float:
+    plugin_ref = _record_plugin_ref(record, fallback_plugin_refs=policy_plugin_refs)
+    if not plugin_ref:
+        return _QUESTION_INTENT_MATCH_BONUS
+    policy = _retrieval_policy_for_plugin_ref(plugin_ref)
+    try:
+        value = float(policy.get("question_anchor_bonus"))
+    except (TypeError, ValueError):
+        return _QUESTION_INTENT_MATCH_BONUS
+    return max(0.0, min(2.0, value))
+
+
+def _record_question_intent_bonus(
+    record: dict[str, Any],
+    *,
+    query: str,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> float:
+    if (
+        _record_question_anchor_strength(record, query=query, policy_plugin_refs=policy_plugin_refs)
+        >= _QUESTION_ANCHOR_COMPACTION_MIN_STRENGTH
+    ):
+        return _record_question_anchor_bonus_value(record, policy_plugin_refs=policy_plugin_refs)
+    return 0.0
+
+
+def _record_question_anchor_strength(
+    record: dict[str, Any],
+    *,
+    query: str,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> float:
+    query_term = _normalize_match_term(query)
+    if len(query_term) < 4:
+        return 0.0
+    intent_terms = _query_intent_terms(
+        query,
+        intent_terms=_record_question_intent_terms(record, policy_plugin_refs=policy_plugin_refs),
+    )
+    best = 0.0
+    for metadata in _iter_record_metadata_layers(record):
+        for question in _metadata_terms(metadata.get("question")):
+            candidate = _normalize_match_term(question)
+            if len(candidate) < 3:
+                continue
+            if candidate == query_term or candidate in query_term or query_term in candidate:
+                best = max(best, 1.0)
+                continue
+            if intent_terms and any(term in candidate for term in intent_terms):
+                overlap = _longest_common_substring_length(query_term, candidate)
+                if overlap >= _MIN_QUERY_INTENT_SUBJECT_OVERLAP_CHARS:
+                    best = max(best, 0.8)
+    return best
+
+
+def _compact_by_strong_question_anchor(
+    records: list[dict[str, Any]],
+    *,
+    query: str,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> list[dict[str, Any]]:
+    if not records:
+        return []
+    top_strength = _record_question_anchor_strength(records[0], query=query, policy_plugin_refs=policy_plugin_refs)
+    if top_strength < _QUESTION_ANCHOR_COMPACTION_MIN_STRENGTH:
+        return records
+    anchored = [
+        record
+        for record in records
+        if _record_question_anchor_strength(record, query=query, policy_plugin_refs=policy_plugin_refs)
+        >= _QUESTION_ANCHOR_COMPACTION_MIN_STRENGTH
+    ]
+    return anchored or records
+
+
 def _dify_kg_bool(name: str, default: bool) -> bool:
     return bool(getattr(settings, name, default))
 
@@ -1193,6 +1532,10 @@ def _dify_kg_float(name: str, default: float, *, minimum: float = 0.0, maximum: 
 
 
 def _record_dedupe_key(record: dict[str, Any]) -> tuple[str, str, str]:
+    source_identity = _record_source_identity_key(record)
+    if source_identity:
+        return ("source_record", source_identity, "")
+
     metadata = record.get("metadata")
     metadata = metadata if isinstance(metadata, dict) else {}
     chunk_id = str(metadata.get("chunk_id") or "").strip()
@@ -1200,6 +1543,32 @@ def _record_dedupe_key(record: dict[str, Any]) -> tuple[str, str, str]:
     content = str(record.get("content") or "").strip()
     title = str(record.get("title") or "").strip()
     return (chunk_id, document_id, content or title)
+
+
+def _record_source_identity_key(record: dict[str, Any]) -> str:
+    for metadata in _iter_record_metadata_layers(record):
+        identity = metadata.get("_record_identity")
+        if isinstance(identity, dict):
+            key = str(identity.get("key") or "").strip()
+            if key:
+                return key
+
+    for metadata in _iter_record_metadata_layers(record):
+        source_record_id = ""
+        for key in _SOURCE_RECORD_ID_KEYS:
+            source_record_id = str(metadata.get(key) or "").strip()
+            if source_record_id:
+                break
+        if not source_record_id:
+            continue
+        scope_parts: list[str] = []
+        for key in _SOURCE_RECORD_SCOPE_KEYS:
+            value = str(metadata.get(key) or "").strip()
+            if value:
+                scope_parts.append(f"{key}={value}")
+        scope = "|".join(scope_parts)
+        return f"{scope}|source_record_id={source_record_id}" if scope else f"source_record_id={source_record_id}"
+    return ""
 
 
 def _dedupe_records(
@@ -1247,6 +1616,7 @@ def _records_from_citations(
     citations: list[dict[str, Any]],
     fallback_dataset_id: UUID | None,
     query: str,
+    policy_plugin_refs: tuple[str, ...] = (),
 ) -> list[dict[str, Any]]:
     chunk_content_map = _load_chunk_content_map(db=db, tenant_id=tenant_id, citations=citations)
     records: list[dict[str, Any]] = []
@@ -1254,13 +1624,24 @@ def _records_from_citations(
         chunk_id = _citation_chunk_id(citation)
         if chunk_id and chunk_content_map.get(chunk_id):
             citation = {**citation, "content": chunk_content_map[chunk_id]}
-        record = _citation_to_dify_record(citation, dataset_id=fallback_dataset_id, query=query)
+        record = _citation_to_dify_record(
+            citation,
+            dataset_id=fallback_dataset_id,
+            query=query,
+            policy_plugin_refs=policy_plugin_refs,
+        )
         if str(record.get("content") or "").strip():
             records.append(record)
     return records
 
 
-def _citation_to_dify_record(citation: dict[str, Any], *, dataset_id: UUID | None, query: str = "") -> dict[str, Any]:
+def _citation_to_dify_record(
+    citation: dict[str, Any],
+    *,
+    dataset_id: UUID | None,
+    query: str = "",
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> dict[str, Any]:
     content = _first_non_empty(citation, _CONTENT_KEYS)
     title = _first_non_empty(citation, _TITLE_KEYS) or "Untitled"
 
@@ -1273,7 +1654,7 @@ def _citation_to_dify_record(citation: dict[str, Any], *, dataset_id: UUID | Non
         value = citation.get(key)
         if value is not None and value != "":
             metadata[key] = value
-    content = _content_with_answer_hints(content, metadata, query=query)
+    content = _content_with_answer_hints(content, metadata, query=query, policy_plugin_refs=policy_plugin_refs)
 
     return {
         "content": content,
@@ -1445,6 +1826,7 @@ async def retrieve_external_knowledge(
                 citations=primary_citations,
                 fallback_dataset_id=primary_dataset_ids[0] if primary_dataset_ids else None,
                 query=body.query,
+                policy_plugin_refs=policy_plugin_refs,
             )
         )
 
@@ -1479,6 +1861,7 @@ async def retrieve_external_knowledge(
                     citations=expansion_citations,
                     fallback_dataset_id=expansion_dataset_ids[0] if expansion_dataset_ids else None,
                     query=body.query,
+                    policy_plugin_refs=policy_plugin_refs,
                 )
             )
 

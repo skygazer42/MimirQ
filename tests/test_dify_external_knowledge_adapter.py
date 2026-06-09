@@ -22,6 +22,75 @@ def _auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+_DEMO_PLUGIN_REF = "plugin:demo-service@1.0.0:chunk"
+
+
+def _demo_response_hints() -> dict[str, object]:
+    return {
+        "answer_prefix": "答案要点",
+        "source_prefix": "原始证据",
+        "structured_labels": ["答案", "事项名称", "问题", "办理地点", "收费情况", "咨询方式", "办理时间", "受理条件"],
+        "answer_labels": ["答案"],
+        "answer_keywords": ["答案"],
+        "answer_highlight_metadata": ["answer_highlights", "answer_key_points", "summary_points"],
+        "existing_hint_prefixes": ["答案要点"],
+        "anchor_only_chunk_kinds": ["qa_pair", "qa"],
+        "anchor_only_markers": ["问题", "检索锚点", "相似问"],
+        "groups": [
+            {"name": "qa", "required_any_labels": ["答案"], "hint_labels": ["问题", "答案"]},
+            {
+                "name": "service_item",
+                "required_any_labels": ["事项名称", "办理地点"],
+                "hint_labels": ["事项名称", "办理地点", "收费情况", "咨询方式", "办理时间", "受理条件"],
+                "question_from_query_label": "问题",
+                "answer_label": "答案",
+                "query_gate": {
+                    "content_labels": ["事项名称"],
+                    "metadata": ["service_name", "service_aliases", "aliases", "primary_alias"],
+                    "min_chars": 4,
+                },
+            },
+        ],
+        "enumeration": {
+            "enabled": True,
+            "intro_terms": ["类型", "类别", "方式", "入口"],
+            "query_terms": ["申请", "入口", "类型", "类别", "哪些", "什么", "如何"],
+            "max_terms": 4,
+            "named_markers": {"1": "方式一", "2": "方式二", "3": "方式三", "4": "方式四"},
+            "prefix": "必答要点",
+            "message_template": "回答申请/入口/类型类问题时必须保留这些选项名称：{terms}",
+            "term_separator": "、",
+        },
+    }
+
+
+def _demo_policy(**overrides: object) -> dict[str, object]:
+    policy: dict[str, object] = {
+        "schema": "mimirq.retrieval_policy.v1",
+        "question_intent_terms": ["材料", "证件", "地点", "在哪里", "哪里办理", "办理地点", "渠道", "入口", "方式", "流程", "步骤", "操作", "进度", "查询", "费用", "收费", "电话", "咨询", "条件", "时限"],
+        "response_hints": _demo_response_hints(),
+    }
+    policy.update(overrides)
+    return policy
+
+
+def _patch_demo_policy(
+    monkeypatch: pytest.MonkeyPatch,
+    dify_api,  # noqa: ANN001
+    *,
+    plugin_ref: str = _DEMO_PLUGIN_REF,
+    **overrides: object,
+) -> dict[str, object]:
+    policy = _demo_policy(**overrides)
+    monkeypatch.setattr(
+        dify_api,
+        "_retrieval_policy_for_plugin_ref",
+        lambda ref: policy if ref == plugin_ref else {},
+        raising=True,
+    )
+    return policy
+
+
 def test_dify_retrieval_logs_request_diagnostics(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
@@ -1658,6 +1727,198 @@ def test_dify_compact_prefers_records_aligned_to_plugin_retrieval_policy_intent(
     assert compacted == [material_record]
 
 
+def test_dify_dedupe_collapses_chunks_from_same_source_record(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    records = [
+        {
+            "content": "问题：汽车置换更新\n相似问法：以旧换新、购车补贴",
+            "score": 0.75,
+            "title": "03城市常见问题/高频应用.xlsx",
+            "metadata": {
+                "knowledge_section": "03城市常见问题",
+                "source_record_id": "record-car-subsidy",
+                "_evaluable_metadata": {
+                    "question": "汽车置换更新",
+                    "source_record_id": "record-car-subsidy",
+                    "knowledge_section": "03城市常见问题",
+                    "chunk_kind": "qa_pair",
+                },
+            },
+        },
+        {
+            "content": "问题：汽车置换更新\n答案：在苏服办APP申请卖旧置换更新补贴或报废置换更新补贴。",
+            "score": 0.76,
+            "title": "03城市常见问题/高频应用.xlsx",
+            "metadata": {
+                "knowledge_section": "03城市常见问题",
+                "source_record_id": "record-car-subsidy",
+                "_evaluable_metadata": {
+                    "question": "汽车置换更新",
+                    "source_record_id": "record-car-subsidy",
+                    "knowledge_section": "03城市常见问题",
+                    "chunk_kind": "qa_pair",
+                },
+            },
+        },
+    ]
+
+    deduped = dify_api._dedupe_records(records, query="汽车置换补贴怎么申请")
+
+    assert len(deduped) == 1
+    assert "苏服办APP" in deduped[0]["content"]
+
+
+def test_dify_answer_bearing_qa_beats_anchor_only_metadata_match(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    plugin_ref = _DEMO_PLUGIN_REF
+    policy = _demo_policy(
+        boost_fields=[
+            {"metadata": "question", "weight": 2.0, "match": "fuzzy_overlap"},
+            {"metadata": "aliases", "weight": 2.0, "match": "fuzzy_overlap"},
+        ],
+        rerank_features=["question", "aliases"],
+    )
+    monkeypatch.setattr(
+        dify_api,
+        "_retrieval_policy_for_plugin_ref",
+        lambda ref: policy if ref == plugin_ref else {},
+        raising=True,
+    )
+    anchor_only_record = {
+        "content": "检索锚点：核发居民身份证（补领）\n问题：核发居民身份证（补领）\n相似问法：居民身份证补领需要什么材料",
+        "score": 0.78,
+        "title": "03城市常见问题/身份证QA.txt",
+        "metadata": {
+            "question": "核发居民身份证（补领）",
+            "aliases": ["居民身份证补领需要什么材料"],
+            "chunk_kind": "qa_pair",
+        },
+    }
+    answer_record = {
+        "content": "答案要点：问题：补办身份证的办理材料是什么？；答案：居民户口簿、有效身份证件之一。",
+        "score": 0.75,
+        "title": "03城市常见问题/身份证QA.txt",
+        "metadata": {
+            "question": "省外和省内人员补办身份证的办理材料和办理时限分别是什么？",
+            "aliases": ["身份证补办"],
+            "chunk_kind": "qa_pair",
+        },
+    }
+    records = [anchor_only_record, answer_record]
+
+    dify_api._sort_records_for_query(
+        records,
+        query="居民身份证补领需要什么材料",
+        policy_plugin_refs=(plugin_ref,),
+    )
+
+    assert records[0] is answer_record
+
+
+def test_dify_question_intent_anchor_beats_broad_alias_answer(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    plugin_ref = _DEMO_PLUGIN_REF
+    policy = _demo_policy(
+        boost_fields=[
+            {"metadata": "question", "weight": 2.0, "match": "fuzzy_overlap"},
+            {"metadata": "aliases", "weight": 2.0, "match": "fuzzy_overlap"},
+        ],
+        rerank_features=["question", "aliases"],
+    )
+    monkeypatch.setattr(
+        dify_api,
+        "_retrieval_policy_for_plugin_ref",
+        lambda ref: policy if ref == plugin_ref else {},
+        raising=True,
+    )
+    broad_answer = {
+        "content": "问题：核发居民身份证（补领）\n答案：本省户籍人员凭户口簿、驾驶证、居住证、护照其中之一办理。",
+        "score": 0.64,
+        "title": "03城市常见问题/身份证QA.txt",
+        "metadata": {
+            "question": "核发居民身份证（补领）",
+            "aliases": ["居民身份证补领需要什么材料"],
+            "source_topic": "核发居民身份证知识",
+            "chunk_kind": "qa_pair",
+        },
+    }
+    material_answer = {
+        "content": "问题：省外和省内人员补办身份证的办理材料和办理时限分别是什么？\n答案：居民户口簿、有效身份证件之一。",
+        "score": 0.75,
+        "title": "03城市常见问题/身份证QA.txt",
+        "metadata": {
+            "question": "省外和省内人员补办身份证的办理材料和办理时限分别是什么？",
+            "aliases": ["身份证补办"],
+            "source_topic": "核发居民身份证知识",
+            "chunk_kind": "qa_pair",
+        },
+    }
+    records = [broad_answer, material_answer]
+
+    dify_api._sort_records_for_query(
+        records,
+        query="居民身份证补领需要什么材料",
+        policy_plugin_refs=(plugin_ref,),
+    )
+
+    assert records[0] is material_answer
+
+
+def test_dify_compaction_keeps_strong_question_anchor_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    plugin_ref = "plugin:demo-service@1.0.0:chunk"
+    policy = {
+        "schema": "mimirq.retrieval_policy.v1",
+        "response_compaction": {
+            "enabled": True,
+            "min_top_score": 0.7,
+            "relative_score_floor": 0.65,
+            "min_records": 1,
+        },
+    }
+    monkeypatch.setattr(
+        dify_api,
+        "_retrieval_policy_for_plugin_ref",
+        lambda ref: policy if ref == plugin_ref else {},
+        raising=True,
+    )
+    channel_answer = {
+        "content": "问题：线上业务渠道\n答案：“常州住房公积金”微信公众号、我的常州APP、江苏政务服务网。",
+        "score": 0.72,
+        "title": "05部门常见问题/线上业务.xlsx",
+        "metadata": {"question": "线上业务渠道", "chunk_kind": "qa_pair"},
+    }
+    related_answers = [
+        {
+            "content": "问题：线上业务签约\n答案：可通过微信平台办理签约。",
+            "score": 0.68,
+            "title": "05部门常见问题/线上业务.xlsx",
+            "metadata": {"question": "线上业务签约", "chunk_kind": "qa_pair"},
+        },
+        {
+            "content": "问题：线上业务解约\n答案：可通过微信平台办理解约。",
+            "score": 0.6,
+            "title": "05部门常见问题/线上业务.xlsx",
+            "metadata": {"question": "线上业务解约", "chunk_kind": "qa_pair"},
+        },
+    ]
+    records = [channel_answer, *related_answers]
+
+    dify_api._sort_records_for_query(records, query="公积金线上业务渠道有哪些", policy_plugin_refs=(plugin_ref,))
+    compacted = dify_api._compact_records_for_response(
+        records,
+        query="公积金线上业务渠道有哪些",
+        top_k=5,
+        policy_plugin_refs=(plugin_ref,),
+    )
+
+    assert compacted == [channel_answer]
+
+
 def test_dify_query_routes_can_be_strict_scope_filters(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.api.v1.integrations_dify as dify_api
 
@@ -1690,6 +1951,7 @@ def test_dify_retrieval_prefers_full_chunk_content_over_short_citation_snippet(
 ) -> None:
     import app.api.v1.integrations_dify as dify_api
 
+    _patch_demo_policy(monkeypatch, dify_api)
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
     document_id = uuid.uuid4()
@@ -1721,6 +1983,7 @@ def test_dify_retrieval_prefers_full_chunk_content_over_short_citation_snippet(
                 "document_id": str(document_id),
                 "chunk_id": str(chunk_id),
                 "dataset_id": str(dataset_id),
+                "metadata": {"chunk_python_plugin": _DEMO_PLUGIN_REF},
             }
         ]
 
@@ -1754,11 +2017,249 @@ def test_dify_retrieval_prefers_full_chunk_content_over_short_citation_snippet(
     assert content.endswith(full_content)
 
 
+def test_dify_response_hints_allow_plugin_configured_query_overlap_gate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    response_hints = _demo_response_hints()
+    response_hints["structured_labels"] = [
+        *response_hints["structured_labels"],  # type: ignore[index]
+        "相似问法",
+    ]
+    response_hints["groups"][1]["query_gate"] = {  # type: ignore[index]
+        "content_labels": ["事项名称", "相似问法"],
+        "metadata": ["service_name", "service_aliases"],
+        "min_chars": 4,
+        "min_common_chars": 3,
+    }
+    _patch_demo_policy(monkeypatch, dify_api, response_hints=response_hints)
+
+    content = (
+        "区县：区域甲\n"
+        "事项名称：社会保障卡补卡\n"
+        "相似问法：补办社保卡、社保卡丢失、医保卡挂失补办\n"
+        "办理地点：区域甲政务服务中心\n"
+        "收费情况：不收费"
+    )
+
+    hinted = dify_api._content_with_answer_hints(
+        content,
+        {"service_name": "社会保障卡补卡"},
+        query="区域甲社保卡补卡在哪里办理",
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    )
+
+    assert hinted.startswith("答案要点：")
+    assert "事项名称：社会保障卡补卡" in hinted
+    assert "办理地点：区域甲政务服务中心" in hinted
+    assert "收费情况：不收费" in hinted
+
+
+def test_dify_sort_uses_plugin_configured_question_anchor_bonus(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    _patch_demo_policy(
+        monkeypatch,
+        dify_api,
+        question_intent_terms=["在哪里", "办理"],
+        question_anchor_bonus=0.9,
+    )
+    records = [
+        {
+            "content": "事项名称：服务卡补卡\n办理地点：区域甲政务服务中心\n收费情况：不收费",
+            "score": 1.0,
+            "title": "服务事项.txt",
+            "metadata": {"service_name": "服务卡补卡"},
+        },
+        {
+            "content": "问题：请问我可以在哪里补办服务卡？\n答案：请拨打0519-12333咨询区域甲为民服务中心",
+            "score": 0.74,
+            "title": "区域甲12345QA.txt",
+            "metadata": {"question": "请问我可以在哪里补办服务卡？", "chunk_kind": "qa_pair"},
+        },
+    ]
+
+    dify_api._sort_records_for_query(
+        records,
+        query="补办服务卡在哪里办理",
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    )
+
+    assert records[0]["title"] == "区域甲12345QA.txt"
+
+
+def test_dify_compaction_preserves_top_question_anchor_before_policy_alignment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    _patch_demo_policy(
+        monkeypatch,
+        dify_api,
+        query_expansion_fields=["service_name"],
+        question_intent_terms=["在哪里", "办理"],
+        question_anchor_bonus=0.9,
+        response_compaction={
+            "enabled": True,
+            "min_top_score": 0.8,
+            "relative_score_floor": 0.65,
+            "min_records": 1,
+        },
+    )
+    records = [
+        {
+            "content": "问题：请问我可以在哪里补办服务卡？\n答案：请拨打0519-12333咨询区域甲为民服务中心",
+            "score": 0.74,
+            "title": "区域甲12345QA.txt",
+            "metadata": {"question": "请问我可以在哪里补办服务卡？", "chunk_kind": "qa_pair"},
+        },
+        {
+            "content": "事项名称：服务卡补卡\n办理地点：区域甲政务服务中心\n收费情况：不收费",
+            "score": 1.0,
+            "title": "服务事项.txt",
+            "metadata": {"service_name": "服务卡补卡"},
+        },
+    ]
+
+    compacted = dify_api._compact_records_for_response(
+        records,
+        query="区域甲服务卡补卡在哪里办理",
+        top_k=5,
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    )
+
+    assert [record["title"] for record in compacted] == ["区域甲12345QA.txt"]
+
+
+def test_dify_retrieval_uses_map_plugin_refs_for_content_hints_when_citation_lacks_plugin_ref(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    _patch_demo_policy(monkeypatch, dify_api)
+    token = "dify-test-token"
+    dataset_id = uuid.uuid4()
+    chunk_id = uuid.uuid4()
+    full_content = (
+        "区县：区域甲\n"
+        "事项名称：服务卡补卡\n"
+        "办理地点：区域甲政务服务中心\n"
+        "收费情况：不收费\n"
+        "咨询方式：0519-12333"
+    )
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        (
+            '{"region-alpha": {'
+            f'"dataset_ids": ["{dataset_id}"], '
+            f'"plugin_refs": ["{_DEMO_PLUGIN_REF}"]'
+            "}}"
+        ),
+        raising=False,
+    )
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+
+    async def _fake_retrieve_dataset_citations(**_kwargs):  # noqa: ANN003, ANN202
+        return [
+            {
+                "chunk_content": "区县：区域甲...",
+                "relevance_score": 0.73,
+                "document_name": "区域甲事项列表.txt",
+                "chunk_id": str(chunk_id),
+                "dataset_id": str(dataset_id),
+                "metadata": {"service_name": "服务卡补卡"},
+            }
+        ]
+
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {str(chunk_id): full_content}, raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/integrations/dify/retrieval",
+        headers=_auth(token),
+        json={
+            "knowledge_id": "region-alpha",
+            "query": "区域甲服务卡补卡在哪里办理",
+            "retrieval_setting": {"top_k": 1, "score_threshold": 0.0},
+        },
+    )
+
+    assert res.status_code == 200, res.text
+    content = res.json()["records"][0]["content"]
+    assert content.startswith("答案要点：")
+    assert "收费情况：不收费" in content
+    assert "原始证据：" in content
+
+
+def test_dify_structured_service_hints_are_plugin_declared(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    plugin_ref = "plugin:demo-service@1.0.0:chunk"
+    policy = {
+        "schema": "mimirq.retrieval_policy.v1",
+        "response_hints": {
+            "answer_prefix": "答案要点",
+            "source_prefix": "原始证据",
+            "structured_labels": ["事项名称", "办理地点", "收费情况"],
+            "groups": [
+                {
+                    "required_any_labels": ["事项名称", "办理地点"],
+                    "hint_labels": ["事项名称", "办理地点", "收费情况"],
+                    "question_from_query_label": "问题",
+                    "answer_label": "答案",
+                    "query_gate": {
+                        "content_labels": ["事项名称"],
+                        "metadata": ["service_name", "service_aliases"],
+                        "min_chars": 4,
+                    },
+                }
+            ],
+        },
+    }
+    content = "事项名称：服务卡补卡\n办理地点：区域甲政务服务中心\n收费情况：不收费"
+
+    monkeypatch.setattr(
+        dify_api,
+        "_retrieval_policy_for_plugin_ref",
+        lambda ref: policy if ref == plugin_ref else {},
+        raising=True,
+    )
+
+    without_plugin = dify_api._content_with_answer_hints(
+        content,
+        {"service_name": "服务卡补卡"},
+        query="服务卡补卡在哪里办理",
+    )
+    with_plugin = dify_api._content_with_answer_hints(
+        content,
+        {"service_name": "服务卡补卡", "chunk_python_plugin": plugin_ref},
+        query="服务卡补卡在哪里办理",
+    )
+
+    assert without_plugin == content
+    assert with_plugin.startswith("答案要点：")
+    assert "办理地点：区域甲政务服务中心" in with_plugin
+    assert with_plugin.endswith(content)
+
+
 def test_dify_retrieval_prepends_structured_answer_hints_for_fee_fields(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import app.api.v1.integrations_dify as dify_api
 
+    _patch_demo_policy(monkeypatch, dify_api)
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
     full_content = (
@@ -1787,6 +2288,7 @@ def test_dify_retrieval_prepends_structured_answer_hints_for_fee_fields(
                 "document_name": "区域乙事项列表.txt",
                 "chunk_id": str(uuid.uuid4()),
                 "dataset_id": str(dataset_id),
+                "metadata": {"chunk_python_plugin": _DEMO_PLUGIN_REF},
             }
         ]
 
@@ -1822,6 +2324,7 @@ def test_dify_retrieval_prepends_qa_answer_hints_for_long_answers(
 ) -> None:
     import app.api.v1.integrations_dify as dify_api
 
+    _patch_demo_policy(monkeypatch, dify_api)
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
     full_content = (
@@ -1849,6 +2352,7 @@ def test_dify_retrieval_prepends_qa_answer_hints_for_long_answers(
                 "document_name": "城市高频应用知识.xlsx",
                 "chunk_id": str(uuid.uuid4()),
                 "dataset_id": str(dataset_id),
+                "metadata": {"chunk_python_plugin": _DEMO_PLUGIN_REF},
             }
         ]
 
@@ -1887,6 +2391,7 @@ def test_dify_retrieval_frontloads_enumerated_options_from_existing_answer_hints
 ) -> None:
     import app.api.v1.integrations_dify as dify_api
 
+    _patch_demo_policy(monkeypatch, dify_api)
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
     full_content = (
@@ -1914,6 +2419,7 @@ def test_dify_retrieval_frontloads_enumerated_options_from_existing_answer_hints
                 "document_name": "城市高频应用知识.xlsx",
                 "chunk_id": str(uuid.uuid4()),
                 "dataset_id": str(dataset_id),
+                "metadata": {"chunk_python_plugin": _DEMO_PLUGIN_REF},
             }
         ]
 
@@ -1947,6 +2453,7 @@ def test_dify_retrieval_frontloads_options_with_closing_parenthesis_markers(
 ) -> None:
     import app.api.v1.integrations_dify as dify_api
 
+    _patch_demo_policy(monkeypatch, dify_api)
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
     full_content = "答案：服务支持两种入口：1）网页端入口；2）移动端入口。"
@@ -1969,6 +2476,7 @@ def test_dify_retrieval_frontloads_options_with_closing_parenthesis_markers(
                 "document_name": "入口说明.txt",
                 "chunk_id": str(uuid.uuid4()),
                 "dataset_id": str(dataset_id),
+                "metadata": {"chunk_python_plugin": _DEMO_PLUGIN_REF},
             }
         ]
 
@@ -2002,6 +2510,7 @@ def test_dify_retrieval_frontloads_named_way_markers_from_real_qa_shape(
 ) -> None:
     import app.api.v1.integrations_dify as dify_api
 
+    _patch_demo_policy(monkeypatch, dify_api)
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
     full_content = (
@@ -2027,6 +2536,7 @@ def test_dify_retrieval_frontloads_named_way_markers_from_real_qa_shape(
                 "document_name": "城市本级12345QA.txt",
                 "chunk_id": str(uuid.uuid4()),
                 "dataset_id": str(dataset_id),
+                "metadata": {"chunk_python_plugin": _DEMO_PLUGIN_REF},
             }
         ]
 
@@ -2060,6 +2570,7 @@ def test_dify_retrieval_does_not_treat_numbered_process_steps_as_answer_options(
 ) -> None:
     import app.api.v1.integrations_dify as dify_api
 
+    _patch_demo_policy(monkeypatch, dify_api)
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
     full_content = (
@@ -2085,6 +2596,7 @@ def test_dify_retrieval_does_not_treat_numbered_process_steps_as_answer_options(
                 "document_name": "一件事操作指引.txt",
                 "chunk_id": str(uuid.uuid4()),
                 "dataset_id": str(dataset_id),
+                "metadata": {"chunk_python_plugin": _DEMO_PLUGIN_REF},
             }
         ]
 
@@ -2118,6 +2630,7 @@ def test_dify_retrieval_does_not_frontload_enumerated_options_for_non_option_que
 ) -> None:
     import app.api.v1.integrations_dify as dify_api
 
+    _patch_demo_policy(monkeypatch, dify_api)
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
     full_content = (
@@ -2143,6 +2656,7 @@ def test_dify_retrieval_does_not_frontload_enumerated_options_for_non_option_que
                 "document_name": "城市高频应用知识.xlsx",
                 "chunk_id": str(uuid.uuid4()),
                 "dataset_id": str(dataset_id),
+                "metadata": {"chunk_python_plugin": _DEMO_PLUGIN_REF},
             }
         ]
 
@@ -2176,6 +2690,7 @@ def test_dify_retrieval_does_not_prepend_service_hints_for_weak_service_match(
 ) -> None:
     import app.api.v1.integrations_dify as dify_api
 
+    _patch_demo_policy(monkeypatch, dify_api)
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
     full_content = (
@@ -2203,7 +2718,7 @@ def test_dify_retrieval_does_not_prepend_service_hints_for_weak_service_match(
                 "document_name": "城市事项列表.txt",
                 "chunk_id": str(uuid.uuid4()),
                 "dataset_id": str(dataset_id),
-                "metadata": {"service_name": "服务卡密码修改与重置"},
+                "metadata": {"service_name": "服务卡密码修改与重置", "chunk_python_plugin": _DEMO_PLUGIN_REF},
             }
         ]
 
