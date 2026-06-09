@@ -339,6 +339,7 @@ def run_closed_loop_smoke(
     hierarchy_sibling_window: int = 2,
     hierarchy_overfetch_factor: int = 4,
     regression_top_k: int = 20,
+    regression_score_threshold: float = 0.0,
 ) -> ClosedLoopResult:
     selected_ref = str(plugin_ref or "").strip()
     if not selected_ref:
@@ -372,6 +373,7 @@ def run_closed_loop_smoke(
         "skip_empty_contexts": True,
         "max_cases": max(1, min(500, len(case_ids), int(max_items))),
         "top_k": max(1, min(50, int(regression_top_k or 20))),
+        "score_threshold": max(0.0, float(regression_score_threshold or 0.0)),
     }
     if enable_hierarchy_recall:
         run_payload.update(
@@ -454,6 +456,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=20,
         help="Retrieval-only regression top_k/citation evaluation window. Default keeps recall-friendly backend behavior.",
     )
+    parser.add_argument(
+        "--regression-score-threshold",
+        type=float,
+        default=0.0,
+        help="Retrieval-only regression score_threshold. Default keeps recall-friendly backend behavior.",
+    )
     return parser
 
 
@@ -484,6 +492,7 @@ def main(argv: list[str] | None = None) -> int:
             hierarchy_sibling_window=int(args.hierarchy_sibling_window),
             hierarchy_overfetch_factor=int(args.hierarchy_overfetch_factor),
             regression_top_k=int(args.regression_top_k),
+            regression_score_threshold=float(args.regression_score_threshold),
         )
     except Exception as exc:  # noqa: BLE001
         print(f"[plugin-golden-smoke] ERR: {exc}", file=sys.stderr)
