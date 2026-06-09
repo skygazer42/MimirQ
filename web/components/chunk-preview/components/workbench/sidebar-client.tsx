@@ -802,7 +802,11 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
         preview_chars: 180,
       })
       setPluginChunkReport(report)
-      toast.success(t('sidebar.pythonPlugins.chunkReportSuccess'))
+      if (report.passed) {
+        toast.success(t('sidebar.pythonPlugins.chunkReportSuccess'))
+      } else {
+        toast.error(t('sidebar.pythonPlugins.chunkReportFailed'))
+      }
     } catch (error: unknown) {
       toast.error(getErrorMessage(error, t('sidebar.pythonPlugins.chunkReportError')))
     } finally {
