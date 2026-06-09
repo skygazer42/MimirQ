@@ -106,15 +106,19 @@ export type PipelinePluginChunkReportSection = {
   examples: PipelinePluginChunkReportExample[]
 } & Record<string, unknown>
 
+export type PipelinePluginChunkReportReadinessCheck = OpenApiSchema<'PipelinePluginChunkReportReadinessCheck'>
+export type PipelinePluginChunkReportReadiness = OpenApiSchema<'PipelinePluginChunkReportReadiness'>
+
 export type PipelinePluginChunkReportRequest = Pick<PipelinePluginChunkReportRequestSchema, 'plugin_ref'> &
   Partial<Omit<PipelinePluginChunkReportRequestSchema, 'plugin_ref'>>
 
 export type PipelinePluginChunkReportResponse = Omit<
   PipelinePluginChunkReportResponseSchema,
-  'plugin' | 'summary' | 'sections'
+  'plugin' | 'summary' | 'readiness' | 'sections'
 > & {
   plugin: Record<string, unknown>
   summary: Record<string, unknown>
+  readiness: PipelinePluginChunkReportReadiness
   sections: PipelinePluginChunkReportSection[]
 }
 
@@ -256,6 +260,25 @@ function normalizePipelinePluginChunkReportSection(value: unknown): PipelinePlug
   }
 }
 
+function normalizePipelinePluginChunkReportReadinessCheck(value: unknown): PipelinePluginChunkReportReadinessCheck {
+  const raw = isRecord(value) ? value : {}
+  return {
+    name: typeof raw.name === 'string' ? raw.name : '',
+    passed: raw.passed === true,
+    value: Number(raw.value ?? 0),
+    required: raw.required !== false,
+    errors: Array.isArray(raw.errors) ? raw.errors.filter(isRecord) : [],
+  }
+}
+
+function normalizePipelinePluginChunkReportReadiness(value: unknown): PipelinePluginChunkReportReadiness {
+  const raw = isRecord(value) ? value : {}
+  return {
+    status: raw.status === 'passed' ? 'passed' : 'failed',
+    checks: Array.isArray(raw.checks) ? raw.checks.map(normalizePipelinePluginChunkReportReadinessCheck) : [],
+  }
+}
+
 function normalizePipelinePluginChunkReport(value: unknown): PipelinePluginChunkReportResponse {
   const raw = isRecord(value) ? value : {}
   return {
@@ -264,7 +287,7 @@ function normalizePipelinePluginChunkReport(value: unknown): PipelinePluginChunk
     passed: raw.passed === true,
     plugin: isRecord(raw.plugin) ? raw.plugin : {},
     summary: isRecord(raw.summary) ? raw.summary : {},
-    readiness: isRecord(raw.readiness) ? raw.readiness : { status: 'failed', checks: [] },
+    readiness: normalizePipelinePluginChunkReportReadiness(raw.readiness),
     sections: Array.isArray(raw.sections) ? raw.sections.map(normalizePipelinePluginChunkReportSection) : [],
   }
 }
