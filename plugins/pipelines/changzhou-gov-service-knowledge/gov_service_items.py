@@ -15,6 +15,7 @@ _FIELD_RE = re.compile(r"^(?P<name>[\u4e00-\u9fffA-Za-z0-9（）()·、/\-]{2,32
 _ALIAS_RE = re.compile(r"==##相似问法：(?P<aliases>.+?)##==")
 _URL_RE = re.compile(r"https?://[^\s>*）)】]+", re.IGNORECASE)
 _NUMBERED_ITEM_BOUNDARY_RE = re.compile(r"\s+(?=\d{1,3}[、.．])")
+_PAREN_TERM_RE = re.compile(r"[（(](?P<value>[^）)]{1,80})[）)]")
 _TRACKING_QUERY_KEYS = {
     "utm_source",
     "utm_medium",
@@ -113,6 +114,45 @@ def _split_aliases(text: str) -> list[str]:
         seen.add(alias)
         aliases.append(alias)
     return aliases
+
+
+def _semantic_terms(*values: str) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = str(value or "").strip().strip("[]").strip()
+        candidates = [text, *[match.group("value").strip() for match in _PAREN_TERM_RE.finditer(text)]]
+        for candidate in candidates:
+            term = str(candidate or "").strip().strip("？?。；;，,")
+            if not term or term in seen:
+                continue
+            seen.add(term)
+            out.append(term)
+    return out
+
+
+def _service_semantic_keys(*, district: str, title: str, aliases: list[str]) -> list[str]:
+    keys: list[str] = []
+    seen: set[str] = set()
+
+    def add(key: str) -> None:
+        value = str(key or "").strip()
+        if not value or value in seen:
+            return
+        seen.add(value)
+        keys.append(value)
+
+    title = str(title or "").strip()
+    district = str(district or "").strip()
+    if title:
+        if district:
+            add(f"service:{district}:{title}")
+        add(f"service:{title}")
+    for term in _semantic_terms(title, *aliases):
+        add(f"intent:{term}")
+    for term in _semantic_terms(*aliases):
+        add(f"alias:{term}")
+    return keys
 
 
 def _clean_block_text(block: str) -> str:
@@ -244,6 +284,7 @@ def govern_documents(
                 "online_url_raw": online_url_raw,
                 "online_url_normalized": online_url_normalized,
                 "service_fields": fields,
+                "semantic_keys": _service_semantic_keys(district=district, title=title, aliases=aliases),
                 "governance_python_plugin_kind": "gov_service_items_v1",
             }
             out.append(Document(page_content=record_text, metadata=meta))

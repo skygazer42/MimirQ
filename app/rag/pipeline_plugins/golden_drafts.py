@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from app.rag.pipeline_plugins.contracts import EVALUABLE_METADATA_KEY
+from app.rag.pipeline_plugins.contracts import DISPLAY_METADATA_KEY, EVALUABLE_METADATA_KEY, INDEXED_METADATA_KEY
 from app.services.regression_case_bundle import REGRESSION_CASE_BUNDLE_SCHEMA_V1
 
 
@@ -126,6 +126,31 @@ def _answer_key_points(meta: dict[str, Any], golden_rules: dict[str, Any]) -> li
     return out
 
 
+def _semantic_keys(meta: dict[str, Any]) -> list[str]:
+    values: list[Any] = []
+    for container in (
+        meta,
+        meta.get(EVALUABLE_METADATA_KEY),
+        meta.get(INDEXED_METADATA_KEY),
+        meta.get(DISPLAY_METADATA_KEY),
+    ):
+        if not isinstance(container, dict):
+            continue
+        raw = container.get("semantic_keys")
+        values.extend(raw if isinstance(raw, list | tuple | set) else [raw])
+    out: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = _text(value)
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        out.append(text)
+        if len(out) >= 200:
+            break
+    return out
+
+
 def _reference_source(chunk: Any, meta: dict[str, Any]) -> dict[str, Any]:
     document_id = getattr(chunk, "document_id", None) or meta.get("document_id")
     chunk_id = getattr(chunk, "id", None) or meta.get("chunk_id")
@@ -156,6 +181,9 @@ def _reference_source(chunk: Any, meta: dict[str, Any]) -> dict[str, Any]:
             "key": _text(record_identity.get("key")),
             "fields": record_identity.get("fields") if isinstance(record_identity.get("fields"), dict) else {},
         }
+    semantic_keys = _semantic_keys(meta)
+    if semantic_keys:
+        payload["semantic_keys"] = semantic_keys
     content = _text(getattr(chunk, "content", None))
     if content:
         payload["quote"] = content[:2000]

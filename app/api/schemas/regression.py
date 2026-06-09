@@ -74,12 +74,33 @@ class ReferenceSource(BaseModel):
         default=None,
         description="Plugin-defined stable record identity for record-level recall across re-chunking",
     )
+    semantic_keys: list[str] = Field(
+        default_factory=list,
+        max_length=200,
+        description="Plugin-defined semantic equivalence keys for retrieval evaluation across equivalent chunks",
+    )
     quote: str | None = Field(
         default=None,
         max_length=2000,
         description="Evidence excerpt (optional; used as fallback when chunk_id becomes stale)",
     )
     label: str | None = Field(default=None, max_length=100, description="Human label (optional)")
+
+    @field_validator("semantic_keys", mode="before")
+    @classmethod
+    def _normalize_semantic_keys(cls, raw: Any) -> list[str]:
+        values = raw if isinstance(raw, list | tuple | set) else [raw]
+        out: list[str] = []
+        seen: set[str] = set()
+        for value in values:
+            text = str(value or "").strip()
+            if not text or text in seen:
+                continue
+            seen.add(text)
+            out.append(text[:200])
+            if len(out) >= 200:
+                break
+        return out
 
 
 class RagasRegressionCaseCreateRequest(BaseModel):

@@ -26,6 +26,8 @@ _EXPECTED_METADATA_PLATFORM_SCALAR_KEYS = {
     "chunk_python_plugin",
     "governance_python_plugin",
 }
+_SEMANTIC_KEYS_METADATA_KEY = "semantic_keys"
+_SEMANTIC_OVERLAP_METADATA_KEYS = {_SEMANTIC_KEYS_METADATA_KEY}
 
 
 def _get(obj: Any, key: str, default: Any = None) -> Any:
@@ -172,6 +174,38 @@ def _value_present(value: Any) -> bool:
     return value is not None and value != "" and value != []
 
 
+def _string_set(value: Any) -> set[str]:
+    values = value if isinstance(value, (list, tuple, set)) else [value]
+    out: set[str] = set()
+    for item in values:
+        if not _value_present(item):
+            continue
+        text = str(item).strip()
+        if text:
+            out.add(text)
+    return out
+
+
+def _semantic_key_set_from_mapping(value: Any) -> set[str]:
+    d = _coerce_dict(value)
+    return _string_set(d.get(_SEMANTIC_KEYS_METADATA_KEY))
+
+
+def _semantic_key_set(obj: Any) -> set[str]:
+    out = set(_semantic_key_set_from_mapping(obj))
+    for base in _citation_metadata_bases(obj):
+        out.update(_semantic_key_set_from_mapping(base))
+    for meta in _citation_metadata_containers(obj):
+        out.update(_semantic_key_set_from_mapping(meta))
+    return out
+
+
+def _semantic_values_match(expected: Any, actual: Any) -> bool:
+    expected_values = _string_set(expected)
+    actual_values = _string_set(actual)
+    return bool(expected_values and actual_values and expected_values & actual_values)
+
+
 def _expected_metadata_from_case_extra(extra: Any) -> dict[str, Any]:
     extra_d = extra if isinstance(extra, dict) else {}
     raw = extra_d.get("expected_metadata")
@@ -293,16 +327,26 @@ def _values_match(expected: Any, actual: Any) -> bool:
     return actual == expected or str(actual).strip() == str(expected).strip()
 
 
+def _metadata_field_matches(key: str, expected: Any, actual: Any) -> bool:
+    if key in _SEMANTIC_OVERLAP_METADATA_KEYS:
+        return _semantic_values_match(expected, actual)
+    return _values_match(expected, actual)
+
+
+def _citation_metadata_field_matches(citation: Any, key: str, expected: Any) -> bool:
+    if key in _SEMANTIC_OVERLAP_METADATA_KEYS:
+        return _semantic_values_match(expected, _semantic_key_set(citation))
+    return any(
+        _metadata_field_matches(key, expected, _metadata_value(meta, key))
+        for meta in _citation_metadata_containers(citation)
+    )
+
+
 def _citation_matches_expected_metadata(citation: Any, expected_metadata: dict[str, Any]) -> bool:
     if not expected_metadata:
         return False
     for key, expected_value in expected_metadata.items():
-        matched = False
-        for meta in _citation_metadata_containers(citation):
-            if _values_match(expected_value, _metadata_value(meta, key)):
-                matched = True
-                break
-        if not matched:
+        if not _citation_metadata_field_matches(citation, key, expected_value):
             return False
     return True
 
@@ -314,10 +358,7 @@ def _expected_metadata_metrics(*, expected_metadata: dict[str, Any], citations: 
     matched_keys: set[str] = set()
     for key, expected_value in expected_metadata.items():
         for citation in citations or []:
-            if any(
-                _values_match(expected_value, _metadata_value(meta, key))
-                for meta in _citation_metadata_containers(citation)
-            ):
+            if _citation_metadata_field_matches(citation, key, expected_value):
                 matched_keys.add(key)
                 break
 
@@ -488,6 +529,7 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
     extra = _get(case, "extra", None)
     extra_d = extra if isinstance(extra, dict) else {}
     expected_metadata = _expected_metadata_from_case_extra(extra_d)
+    expected_semantic_keys = _string_set(expected_metadata.get(_SEMANTIC_KEYS_METADATA_KEY))
     answer_key_points = _answer_key_points_from_case_extra(extra_d)
     answer_key_point_aliases = _answer_key_point_aliases_from_case_extra(extra_d)
 
@@ -532,6 +574,7 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
 
     ref_keys: list[str] = []
     ref_record_keys: list[str] = []
+    ref_semantic_key_sets: list[set[str]] = []
     ref_quotes: list[str] = []
     for src in reference_sources or []:
         k = _stable_ref_key(src)
@@ -540,14 +583,21 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
         rk = _record_identity_key(src)
         if rk:
             ref_record_keys.append(rk)
+        semantic_keys = _semantic_key_set(src)
+        if semantic_keys:
+            ref_semantic_key_sets.append(semantic_keys)
         qsig = _quote_signature(_coerce_dict(src).get("quote"))
         if qsig:
             ref_quotes.append(qsig)
+    fallback_semantic_key_set = expected_semantic_keys if expected_semantic_keys and not ref_semantic_key_sets else set()
+    if fallback_semantic_key_set:
+        ref_semantic_key_sets.append(fallback_semantic_key_set)
     ref_key_set = set(ref_keys)
     ref_record_key_set = set(ref_record_keys)
 
     cit_keys: list[str] = []
     cit_record_keys: list[str] = []
+    cit_semantic_key_sets: list[set[str]] = []
     cit_texts: list[str] = []
     for c in citations_ranked:
         ck = _stable_citation_key(c)
@@ -556,9 +606,11 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
         crk = _record_identity_key(c)
         if crk:
             cit_record_keys.append(crk)
+        cit_semantic_key_sets.append(_semantic_key_set(c))
         cit_texts.append(_citation_text_for_quote_match(c))
     cit_key_set = set(cit_keys)
     cit_record_key_set = set(cit_record_keys)
+    cit_semantic_key_union = {key for keys in cit_semantic_key_sets for key in keys}
     cit_text_joined = "\n".join([t for t in cit_texts if t]) if cit_texts else ""
 
     def _citation_matches_any_ref(i: int) -> bool:
@@ -576,6 +628,11 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
         crk = _record_identity_key(d)
         if crk and crk in ref_record_key_set:
             return True
+
+        if ref_semantic_key_sets:
+            cit_semantic_keys = cit_semantic_key_sets[i] if i < len(cit_semantic_key_sets) else _semantic_key_set(d)
+            if cit_semantic_keys and any(cit_semantic_keys & ref_keys for ref_keys in ref_semantic_key_sets):
+                return True
 
         if ref_quotes:
             text_i = _citation_text_for_quote_match(d)
@@ -595,6 +652,11 @@ def build_regression_sample(case: Any, item: dict[str, Any]) -> tuple[dict[str, 
             return True
         rk = _record_identity_key(src)
         if rk and rk in cit_record_key_set:
+            return True
+        src_semantic_keys = _semantic_key_set(src)
+        if not src_semantic_keys and fallback_semantic_key_set:
+            src_semantic_keys = fallback_semantic_key_set
+        if src_semantic_keys and cit_semantic_key_union and src_semantic_keys & cit_semantic_key_union:
             return True
         qsig = _quote_signature(d.get("quote"))
         if qsig and cit_text_joined and qsig in cit_text_joined:

@@ -298,6 +298,84 @@ def test_build_golden_draft_bundle_carries_plugin_record_identity_reference():
     }
 
 
+def test_build_golden_draft_bundle_carries_plugin_semantic_keys_reference():
+    from app.rag.pipeline_plugins.golden_drafts import build_golden_draft_bundle_from_chunks
+
+    dataset_id = uuid4()
+    document_id = uuid4()
+    chunk = _Chunk(
+        document_id=document_id,
+        content="Answer: semantic-equivalent references are acceptable.",
+        metadata=_metadata_with_evaluable(
+            {
+                "question": "Demo question?",
+                "knowledge_type": "faq",
+                "source_record_id": "record-1",
+                "semantic_keys": ["faq:demo-question", "alias:shared-intent"],
+            },
+            "source_record_id",
+            "semantic_keys",
+            "knowledge_type",
+        ),
+    )
+    golden_rules = {
+        "schema": "mimirq.golden_rules.v1",
+        "expected_metadata": ["semantic_keys", "knowledge_type"],
+        "template_selector_fields": ["knowledge_type"],
+        "query_templates": {"faq": ["{question}"]},
+    }
+
+    bundle = build_golden_draft_bundle_from_chunks(
+        dataset_id=dataset_id,
+        chunks=[chunk],
+        golden_rules=golden_rules,
+        plugin_id="demo-plugin",
+        max_items=10,
+    )
+
+    item = bundle["items"][0]
+    assert item["reference_sources"][0]["semantic_keys"] == ["faq:demo-question", "alias:shared-intent"]
+    assert item["extra"]["expected_metadata"] == {
+        "semantic_keys": ["faq:demo-question", "alias:shared-intent"],
+        "knowledge_type": "faq",
+    }
+
+
+def test_build_golden_draft_bundle_reads_semantic_keys_from_evaluable_view():
+    from app.rag.pipeline_plugins.golden_drafts import build_golden_draft_bundle_from_chunks
+
+    dataset_id = uuid4()
+    document_id = uuid4()
+    chunk = _Chunk(
+        document_id=document_id,
+        content="Answer: semantic keys may live only in platform metadata views.",
+        metadata={
+            "question": "Demo question?",
+            "knowledge_type": "faq",
+            "_evaluable_metadata": {
+                "semantic_keys": ["faq:view-only", "alias:shared-intent"],
+                "knowledge_type": "faq",
+            },
+        },
+    )
+    golden_rules = {
+        "schema": "mimirq.golden_rules.v1",
+        "expected_metadata": ["semantic_keys", "knowledge_type"],
+        "template_selector_fields": ["knowledge_type"],
+        "query_templates": {"faq": ["{question}"]},
+    }
+
+    bundle = build_golden_draft_bundle_from_chunks(
+        dataset_id=dataset_id,
+        chunks=[chunk],
+        golden_rules=golden_rules,
+        plugin_id="demo-plugin",
+        max_items=10,
+    )
+
+    assert bundle["items"][0]["reference_sources"][0]["semantic_keys"] == ["faq:view-only", "alias:shared-intent"]
+
+
 def test_build_golden_draft_bundle_dedupes_questions_and_skips_missing_expected_metadata():
     from app.rag.pipeline_plugins.golden_drafts import build_golden_draft_bundle_from_chunks
 
