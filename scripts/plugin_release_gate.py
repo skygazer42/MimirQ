@@ -131,10 +131,24 @@ def _chunk_readiness_details(chunk_summary: dict[str, Any]) -> dict[str, Any]:
         for check in checks
         if isinstance(check, dict) and check.get("required") is not False and check.get("passed") is not True and check.get("name")
     ]
-    return {
+    errors: list[dict[str, str]] = []
+    for check in checks:
+        if not isinstance(check, dict) or check.get("passed") is True:
+            continue
+        name = str(check.get("name") or "").strip()
+        for item in check.get("errors") or []:
+            if not isinstance(item, dict):
+                continue
+            reason = str(item.get("reason") or "").strip()
+            if name and reason:
+                errors.append({"check": name, "reason": reason[:300]})
+    details = {
         "readiness_status": str(readiness.get("status") or "unavailable"),
         "failed_readiness_checks": failed,
     }
+    if errors:
+        details["failed_readiness_errors"] = errors[:5]
+    return details
 
 
 def _safe_failure_reason(prefix: str, exc: BaseException) -> str:

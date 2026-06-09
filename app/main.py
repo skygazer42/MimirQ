@@ -10,6 +10,10 @@ from ipaddress import IPv4Address
 from pathlib import Path
 from urllib.parse import urlparse
 
+from app.core.local_proxy import ensure_local_no_proxy
+
+ensure_local_no_proxy()
+
 # Quiet noisy third-party deprecation warnings during local development.
 warnings.filterwarnings(
     "ignore",

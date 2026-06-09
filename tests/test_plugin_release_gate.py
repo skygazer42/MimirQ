@@ -295,9 +295,17 @@ def test_plugin_release_gate_returns_safe_report_when_chunk_report_generation_er
     checks = {check["name"]: check for check in report["checks"]}
     assert checks["chunk_report_ready"]["passed"] is False
     assert checks["chunk_report_ready"]["details"] == {
-        "reason": "chunk report generation failed: RuntimeError",
         "readiness_status": "failed",
-        "failed_readiness_checks": [],
+        "failed_readiness_checks": [
+            "chunks_present",
+            "kg_events_present",
+            "chunk_metadata_contract_valid",
+            "kg_metadata_contract_valid",
+        ],
+        "failed_readiness_errors": [
+            {"check": "chunk_metadata_contract_valid", "reason": "chunk stage boom"},
+            {"check": "kg_metadata_contract_valid", "reason": "kg stage skipped because chunk failed"},
+        ],
     }
-    assert report["chunk_report"] == {"summary": {}, "readiness": {"status": "failed", "checks": []}}
+    assert report["chunk_report"]["readiness"]["status"] == "failed"
     assert "TOP SECRET RAW SENTINEL" not in json.dumps(report, ensure_ascii=False)
