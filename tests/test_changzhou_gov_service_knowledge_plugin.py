@@ -5,7 +5,11 @@ from pathlib import Path
 
 from langchain_core.documents import Document
 
-from app.rag.pipeline_plugins.contracts import apply_retrieval_text_schema, validate_documents_metadata
+from app.rag.pipeline_plugins.contracts import (
+    apply_metadata_schema_views,
+    apply_retrieval_text_schema,
+    validate_documents_metadata,
+)
 from app.rag.pipeline_plugins.registry import describe_plugin_dir, load_descriptor_stage_callable
 
 PLUGIN_DIR = Path("plugins/pipelines/changzhou-gov-service-knowledge")
@@ -115,6 +119,7 @@ def test_changzhou_retrieval_policy_declares_platform_consumable_fields():
     assert "材料" in summary["question_intent_terms"]
     assert summary["fallback_enabled"] is True
     assert summary["response_compaction_enabled"] is True
+    assert descriptor.retrieval_policy["response_compaction"]["min_records"] >= 2
     assert summary["response_hints_enabled"] is True
     assert descriptor.retrieval_policy["response_hints"]["structured_labels"] == [
         "答案",
@@ -128,6 +133,19 @@ def test_changzhou_retrieval_policy_declares_platform_consumable_fields():
         "受理条件",
         "在线办理地址",
     ]
+
+
+def test_changzhou_retrieval_policy_routes_one_thing_related_service_questions():
+    descriptor = describe_plugin_dir(PLUGIN_DIR, require_test_report=False)
+    values = descriptor.retrieval_policy["query_expansion_values"]
+    related = [
+        item for item in values
+        if item.get("metadata") == "section_type" and item.get("value") == "related_services"
+    ]
+
+    assert related
+    terms = set(related[0]["terms"])
+    assert {"涉及哪些事项", "相关服务", "联办服务"}.issubset(terms)
     boost_matches = {
         str(item.get("metadata")): str(item.get("match") or "")
         for item in descriptor.retrieval_policy.get("boost_fields", [])
@@ -177,7 +195,7 @@ def test_changzhou_plugin_governs_service_item_records():
     assert chunks[0].metadata["chunk_kind"] == "service_item_full"
 
 
-def test_changzhou_service_item_duplicate_titles_share_logical_record_identity():
+def test_changzhou_service_item_duplicate_titles_with_different_facts_have_distinct_record_identity():
     source = "/data/temp50/20260522政务服务智能客服知识/01政务服务事项知识/常州市事项清单.txt"
     text = """[事项名称：企业投资项目核准（变更）]
 行使层级：市级
@@ -196,12 +214,26 @@ def test_changzhou_service_item_duplicate_titles_share_logical_record_identity()
 
     records = _run_governance(Document(page_content=text, metadata={"source": source}))
     chunks = _run_chunk(records)
+    indexed_chunks = apply_metadata_schema_views(
+        chunks,
+        metadata_schema=describe_plugin_dir(PLUGIN_DIR, require_test_report=False).metadata_schema,
+        stage="chunk",
+    )
 
     assert len(records) == 2
     assert records[0].metadata["source_record_index"] == 1
     assert records[1].metadata["source_record_index"] == 2
-    assert records[0].metadata["source_record_id"] == records[1].metadata["source_record_id"]
-    assert {chunk.metadata["source_record_id"] for chunk in chunks} == {records[0].metadata["source_record_id"]}
+    assert records[0].metadata["source_record_id"] != records[1].metadata["source_record_id"]
+    record_id_0 = records[0].metadata["source_record_id"]
+    record_id_1 = records[1].metadata["source_record_id"]
+    assert record_id_0.split("-", 1)[0] == record_id_1.split("-", 1)[0]
+    assert "-" in record_id_0
+    assert "-" in record_id_1
+    assert {chunk.metadata["source_record_id"] for chunk in chunks} == {
+        records[0].metadata["source_record_id"],
+        records[1].metadata["source_record_id"],
+    }
+    assert len({chunk.metadata["_record_identity"]["key"] for chunk in indexed_chunks}) == 2
 
 
 def test_changzhou_service_item_chunks_include_retrieval_anchor_text():
@@ -553,6 +585,31 @@ def test_changzhou_plugin_chunks_one_thing_guides_by_business_sections():
     assert "网上办理地址" in sections["channels"].page_content
     assert all(chunk.metadata.get("case_key") == "残疾人服务一件事" for chunk in chunks)
     assert all(chunk.metadata.get("chunk_kind") == f"one_thing_{chunk.metadata.get('section_type')}" for chunk in chunks)
+
+
+def test_changzhou_one_thing_sections_have_section_level_record_identity():
+    source = "/data/temp50/20260522政务服务智能客服知识/02高效办成一件事/一件事指南.txt"
+    text = """[教育入学“一件事”]
+涉及事项
+新生入学信息采集、户籍类证明、居住证、不动产权证书、社会保险参保缴费记录查询
+办理须知
+本地户籍适龄儿童小学入学需要户口簿、合法固定住所证件。
+申请材料
+户口簿、合法固定住所证件、居住证、社保缴费记录。
+"""
+    descriptor = describe_plugin_dir(PLUGIN_DIR, require_test_report=False)
+    records = _run_governance(Document(page_content=text, metadata={"source": source}))
+    chunks = _run_chunk(records)
+    indexed_chunks = apply_metadata_schema_views(chunks, metadata_schema=descriptor.metadata_schema, stage="chunk")
+
+    identities = {
+        chunk.metadata.get("section_type"): chunk.metadata["_record_identity"]["key"]
+        for chunk in indexed_chunks
+    }
+
+    assert identities["related_services"] != identities["process"]
+    assert "section_type=related_services" in identities["related_services"]
+    assert "section_type=process" in identities["process"]
 
 
 def test_changzhou_plugin_chunks_one_thing_operations_by_entry_steps_and_urls():

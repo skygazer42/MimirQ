@@ -30,6 +30,13 @@ REQUIRED_DISTRICT_TERMS: dict[str, tuple[str, ...]] = {
     "金坛区": ("金坛区", "金坛"),
     "钟楼区": ("钟楼区", "钟楼"),
 }
+ROUTE_PRECEDENCE_PROBES: tuple[dict[str, Any], ...] = (
+    {
+        "name": "one_thing:education_admission",
+        "query": "教育入学一件事涉及哪些事项",
+        "expected_route_term": "一件事",
+    },
+)
 
 
 def _text(value: Any) -> str:
@@ -124,6 +131,73 @@ def _route_for_terms(routes: list[Any], required_terms: tuple[str, ...]) -> dict
     return None
 
 
+def _route_matches_query(route: Any, query: str) -> bool:
+    if not isinstance(route, dict):
+        return False
+    query_text = _text(query).casefold()
+    if not query_text:
+        return False
+    return any(term.casefold() in query_text for term in _text_list(route.get("terms")))
+
+
+def _route_terms_contain(route: Any, needle: str) -> bool:
+    text = _text(needle)
+    if not text or not isinstance(route, dict):
+        return False
+    return any(text in term for term in _text_list(route.get("terms")))
+
+
+def _dataset_ids_for_routes_with_term(routes: list[Any], term: str) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for route in routes:
+        if not _route_terms_contain(route, term):
+            continue
+        for dataset_id in _mapping_dataset_ids(route):
+            if dataset_id in seen:
+                continue
+            seen.add(dataset_id)
+            out.append(dataset_id)
+    return out
+
+
+def _latest_matching_route(routes: list[Any], query: str) -> dict[str, Any] | None:
+    latest: dict[str, Any] | None = None
+    for route in routes:
+        if isinstance(route, dict) and _route_matches_query(route, query):
+            latest = route
+    return latest
+
+
+def check_route_precedence(city_mapping: dict[str, Any], routes: list[Any]) -> list[dict[str, Any]]:
+    if not bool(city_mapping.get("strict_query_routes") or city_mapping.get("query_routes_strict")):
+        return []
+
+    issues: list[dict[str, Any]] = []
+    for probe in ROUTE_PRECEDENCE_PROBES:
+        expected_term = _text(probe.get("expected_route_term"))
+        expected_dataset_ids = _dataset_ids_for_routes_with_term(routes, expected_term)
+        if not expected_dataset_ids:
+            continue
+
+        query = _text(probe.get("query"))
+        actual_route = _latest_matching_route(routes, query)
+        actual_dataset_ids = _mapping_dataset_ids(actual_route)
+        if set(expected_dataset_ids).intersection(actual_dataset_ids):
+            continue
+
+        issues.append(
+            {
+                "name": _text(probe.get("name")),
+                "query": query,
+                "expected_dataset_ids": expected_dataset_ids,
+                "actual_dataset_ids": actual_dataset_ids,
+                "actual_terms": _text_list(actual_route.get("terms")) if isinstance(actual_route, dict) else [],
+            }
+        )
+    return issues
+
+
 def _district_knowledge_id(district: str) -> str:
     return f"changzhou_{district}_service"
 
@@ -159,6 +233,10 @@ def check_knowledge_map(payload: dict[str, Any], *, generated_at: str = "") -> d
             failed_conditions.append("city_dataset_ids_missing")
         if not routes:
             failed_conditions.append("query_routes_missing")
+
+    route_precedence_issues = check_route_precedence(city_mapping, routes) if isinstance(city_mapping, dict) else []
+    for issue in route_precedence_issues:
+        failed_conditions.append(f"route_precedence_conflict:{issue['name']}")
 
     missing_routes: list[str] = []
     incomplete_routes: list[dict[str, Any]] = []
@@ -225,6 +303,7 @@ def check_knowledge_map(payload: dict[str, Any], *, generated_at: str = "") -> d
             "plugin_refs_checked": len(checked_plugin_refs),
             "plugin_refs_invalid": len(invalid_plugin_refs),
             "plugin_refs_missing_retrieval_policy": len(missing_policy_plugin_refs),
+            "route_precedence_issues": len(route_precedence_issues),
         },
         "city": {
             "knowledge_id": CITY_KNOWLEDGE_ID,
@@ -246,6 +325,9 @@ def check_knowledge_map(payload: dict[str, Any], *, generated_at: str = "") -> d
             "checked": checked_plugin_refs,
             "invalid": invalid_plugin_refs,
             "missing_retrieval_policy": missing_policy_plugin_refs,
+        },
+        "route_precedence": {
+            "issues": route_precedence_issues,
         },
     }
 
@@ -277,6 +359,7 @@ def main(argv: list[str] | None = None) -> int:
                 "plugin_refs_checked": 0,
                 "plugin_refs_invalid": 0,
                 "plugin_refs_missing_retrieval_policy": 0,
+                "route_precedence_issues": 0,
             },
             "error": _text(exc),
         }

@@ -20,7 +20,7 @@
     "applicable_area"
   ],
   "query_expansion_values": [
-    {"metadata": "section_type", "value": "related_services", "terms": ["涉及事项", "包含哪些事项", "联办事项"]},
+    {"metadata": "section_type", "value": "related_services", "terms": ["涉及事项", "涉及哪些事项", "包含哪些事项", "联办事项", "相关服务", "联办服务"]},
     {"metadata": "section_type", "value": "process", "terms": ["办理须知", "办理流程", "怎么办理"]},
     {"metadata": "section_type", "value": "materials", "terms": ["申请材料", "办理材料", "需要哪些材料", "材料清单"]},
     {"metadata": "section_type", "value": "channels", "terms": ["办理渠道", "在哪里办理", "线上办理入口"]},
@@ -176,6 +176,6 @@
     "enabled": true,
     "min_top_score": 0.8,
     "relative_score_floor": 0.65,
-    "min_records": 1
+    "min_records": 2
   }
 }

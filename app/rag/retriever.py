@@ -646,6 +646,7 @@ class HybridRetriever(BaseRetriever):
                 DocumentChunk.document_id,
                 DocumentChunk.chunk_index,
                 DocumentChunk.page_number,
+                DBDocument.dataset_id,
             )
             .join(DBDocument)
             .filter(DBDocument.status == "completed")
@@ -3755,16 +3756,31 @@ class HybridRetriever(BaseRetriever):
         metadata_filter: dict[str, Any] | None,
     ) -> tuple[str, dict[str, Any]] | None:
         try:
-            (
-                chunk_id,
-                content,
-                doc_metadata,
-                tenant_uuid_row,
-                document_uuid_row,
-                chunk_index,
-                page_number,
-                score_raw,
-            ) = row
+            values = tuple(row)
+            if len(values) == 9:
+                (
+                    chunk_id,
+                    content,
+                    doc_metadata,
+                    tenant_uuid_row,
+                    document_uuid_row,
+                    chunk_index,
+                    page_number,
+                    dataset_uuid_row,
+                    score_raw,
+                ) = values
+            else:
+                (
+                    chunk_id,
+                    content,
+                    doc_metadata,
+                    tenant_uuid_row,
+                    document_uuid_row,
+                    chunk_index,
+                    page_number,
+                    score_raw,
+                ) = values
+                dataset_uuid_row = None
         except (TypeError, ValueError, AttributeError):
             return None
 
@@ -3776,8 +3792,9 @@ class HybridRetriever(BaseRetriever):
         meta.setdefault("chunk_index", int(chunk_index) if chunk_index is not None else None)
         meta.setdefault("chunk_id", cid)
         meta.setdefault("source", meta.get("source", "unknown"))
-        if dataset_str:
-            meta.setdefault("dataset_id", dataset_str)
+        effective_dataset_str = str(dataset_uuid_row) if dataset_uuid_row is not None else dataset_str
+        if effective_dataset_str:
+            meta.setdefault("dataset_id", effective_dataset_str)
         if page_number is not None and not meta.get("page"):
             meta["page"] = page_number
         meta.setdefault("lexical_method", method)
@@ -4029,6 +4046,31 @@ class HybridRetriever(BaseRetriever):
     def _escape_sql_like_term(value: str) -> str:
         return str(value or "").replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
+    @staticmethod
+    def _metadata_exact_db_like_terms(value: str) -> list[str]:
+        raw = str(value or "").strip()
+        if not raw:
+            return []
+        variants: list[str] = []
+        seen: set[str] = set()
+
+        def add(text: str) -> None:
+            item = str(text or "").strip()
+            if not item or item in seen:
+                return
+            seen.add(item)
+            variants.append(item)
+
+        add(raw)
+        try:
+            add(unicodedata.normalize("NFKC", raw))
+        except Exception as exc:
+            logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
+        for item in list(variants):
+            add(item.translate(str.maketrans({"(": "（", ")": "）"})))
+            add(item.translate(str.maketrans({"（": "(", "）": ")"})))
+        return variants
+
     def _metadata_exact_result_from_row(
         self,
         row: Any,
@@ -4038,15 +4080,29 @@ class HybridRetriever(BaseRetriever):
         metadata_filter: dict[str, Any] | None,
     ) -> tuple[str, dict[str, Any]] | None:
         try:
-            (
-                chunk_id,
-                content,
-                doc_metadata,
-                tenant_uuid_row,
-                document_uuid_row,
-                chunk_index,
-                page_number,
-            ) = row
+            values = tuple(row)
+            if len(values) == 8:
+                (
+                    chunk_id,
+                    content,
+                    doc_metadata,
+                    tenant_uuid_row,
+                    document_uuid_row,
+                    chunk_index,
+                    page_number,
+                    dataset_uuid_row,
+                ) = values
+            else:
+                (
+                    chunk_id,
+                    content,
+                    doc_metadata,
+                    tenant_uuid_row,
+                    document_uuid_row,
+                    chunk_index,
+                    page_number,
+                ) = values
+                dataset_uuid_row = None
         except (TypeError, ValueError, AttributeError):
             return None
 
@@ -4062,8 +4118,9 @@ class HybridRetriever(BaseRetriever):
         meta.setdefault("chunk_index", int(chunk_index) if chunk_index is not None else None)
         meta.setdefault("chunk_id", cid)
         meta.setdefault("source", meta.get("source", "unknown"))
-        if dataset_str:
-            meta.setdefault("dataset_id", dataset_str)
+        effective_dataset_str = str(dataset_uuid_row) if dataset_uuid_row is not None else dataset_str
+        if effective_dataset_str:
+            meta.setdefault("dataset_id", effective_dataset_str)
         if page_number is not None and not meta.get("page"):
             meta["page"] = page_number
         meta.setdefault("lexical_method", "metadata_exact")
@@ -4098,7 +4155,15 @@ class HybridRetriever(BaseRetriever):
         limit = max(1, int(top_k or 1))
         cap = max(1, int(getattr(settings, "RETRIEVAL_METADATA_EXACT_DB_MAX_CANDIDATES", 80) or 80))
         fetch_k = min(cap, max(limit, limit * 4))
-        pattern = f"%{self._escape_sql_like_term(raw_query)}%"
+        patterns = [f"%{self._escape_sql_like_term(term)}%" for term in self._metadata_exact_db_like_terms(raw_query)]
+        if not patterns:
+            return []
+        metadata_text = sql_cast(DocumentChunk.doc_metadata, SQLText)
+        metadata_predicate = (
+            metadata_text.ilike(patterns[0], escape="\\")
+            if len(patterns) == 1
+            else or_(*(metadata_text.ilike(pattern, escape="\\") for pattern in patterns))
+        )
 
         rows = (
             self._lexical_base_query(
@@ -4107,7 +4172,7 @@ class HybridRetriever(BaseRetriever):
                 dataset_uuid=dataset_uuid,
                 document_ids=document_ids,
             )
-            .filter(sql_cast(DocumentChunk.doc_metadata, SQLText).ilike(pattern, escape="\\"))
+            .filter(metadata_predicate)
             .limit(fetch_k)
             .all()
         )
@@ -4233,6 +4298,7 @@ class HybridRetriever(BaseRetriever):
         lexical_elapsed_ms = 0.0
         colbert_used = False
         colbert_candidates = 0
+        metadata_exact_protected_results: list[dict[str, Any]] = []
         colpali_results: list[dict[str, Any]] = []
         want_colpali = False
         colpali_reason = "disabled"
@@ -4706,25 +4772,26 @@ class HybridRetriever(BaseRetriever):
                     lexical_results,
                     limit=max(1, int(top_k or 0)),
                 )
-                if lexical_has_metadata_exact_anchor:
-                    metadata_exact_db_reason = "lexical_has_exact_anchor"
-                else:
-                    t0 = time.perf_counter()
-                    try:
-                        metadata_exact_db_results = self._search_metadata_exact_anchor_db(
-                            query=query,
-                            top_k=fetch_k,
-                            document_ids=document_ids,
-                            tenant_id=tenant_id,
-                            metadata_filter=bm25_filter,
-                        )
-                        metadata_exact_db_reason = "hybrid_metadata_exact_fallback"
-                    except Exception as exc:
-                        logger.debug("Metadata exact DB fallback failed: %s", exc)
-                        metadata_exact_db_results = []
-                        metadata_exact_db_reason = "error"
-                    finally:
-                        lexical_elapsed_ms += (time.perf_counter() - t0) * 1000
+                t0 = time.perf_counter()
+                try:
+                    metadata_exact_db_results = self._search_metadata_exact_anchor_db(
+                        query=query,
+                        top_k=fetch_k,
+                        document_ids=document_ids,
+                        tenant_id=tenant_id,
+                        metadata_filter=bm25_filter,
+                    )
+                    metadata_exact_db_reason = (
+                        "hybrid_metadata_exact_fallback_enrich"
+                        if lexical_has_metadata_exact_anchor
+                        else "hybrid_metadata_exact_fallback"
+                    )
+                except Exception as exc:
+                    logger.debug("Metadata exact DB fallback failed: %s", exc)
+                    metadata_exact_db_results = []
+                    metadata_exact_db_reason = "error"
+                finally:
+                    lexical_elapsed_ms += (time.perf_counter() - t0) * 1000
 
                 if metadata_exact_db_results:
                     seen_chunk_ids = {
@@ -4739,6 +4806,7 @@ class HybridRetriever(BaseRetriever):
                         if cid:
                             seen_chunk_ids.add(cid)
                         lexical_results.append(item)
+                        metadata_exact_protected_results.append(item)
             elif not metadata_exact_db_enabled:
                 metadata_exact_db_reason = "disabled"
 
@@ -5117,6 +5185,23 @@ class HybridRetriever(BaseRetriever):
             top_k=top_k,
         )
 
+        if metadata_exact_protected_results:
+            merged_keys = {self._result_key(item) for item in merged_results if isinstance(item, dict)}
+            protected_added = 0
+            for item in metadata_exact_protected_results:
+                if not isinstance(item, dict):
+                    continue
+                key = self._result_key(item)
+                if key in merged_keys:
+                    continue
+                merged_keys.add(key)
+                merged_results.append(dict(item))
+                protected_added += 1
+            if protected_added and isinstance(self._last_channel_metrics, dict):
+                metadata_exact_meta = self._last_channel_metrics.setdefault("metadata_exact_db", {})
+                if isinstance(metadata_exact_meta, dict):
+                    metadata_exact_meta["protected_added"] = int(protected_added)
+
         try:
             if isinstance(self._last_channel_metrics, dict):
                 self._last_channel_metrics["merged_pre_dedup"] = len(merged_results or [])
@@ -5340,6 +5425,22 @@ class HybridRetriever(BaseRetriever):
         div_caps: dict[str, Any] = {}
         merged_results = self._apply_document_diversity(merged_results, top_k=top_k, stats=div_caps)
         self._last_diversity_caps = div_caps
+        if metadata_exact_protected_results:
+            merged_keys = {self._result_key(item) for item in merged_results if isinstance(item, dict)}
+            protected_added = 0
+            for item in metadata_exact_protected_results:
+                if not isinstance(item, dict):
+                    continue
+                key = self._result_key(item)
+                if key in merged_keys:
+                    continue
+                merged_keys.add(key)
+                merged_results.append(dict(item))
+                protected_added += 1
+            if protected_added and isinstance(self._last_channel_metrics, dict):
+                metadata_exact_meta = self._last_channel_metrics.setdefault("metadata_exact_db", {})
+                if isinstance(metadata_exact_meta, dict):
+                    metadata_exact_meta["protected_after_diversity_added"] = int(protected_added)
         after_diversity = len(merged_results or [])
         try:
             if isinstance(self._last_channel_metrics, dict):

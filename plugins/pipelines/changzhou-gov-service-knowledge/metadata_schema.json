@@ -1,6 +1,6 @@
 {
   "schema": "mimirq.metadata_schema.v1",
-  "record_identity": ["knowledge_section", "source_record_id"],
+  "record_identity": ["knowledge_section", "source_record_id", "section_type"],
   "fields": [
     {
       "name": "gov_knowledge_plugin",

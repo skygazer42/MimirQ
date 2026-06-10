@@ -65,9 +65,41 @@ def test_complete_changzhou_knowledge_map_passes() -> None:
         "plugin_refs_checked": 0,
         "plugin_refs_invalid": 0,
         "plugin_refs_missing_retrieval_policy": 0,
+        "route_precedence_issues": 0,
     }
     assert report["district_routes"]["missing"] == []
     assert report["district_knowledge_ids"]["missing"] == []
+
+
+def test_city_strict_route_precedence_flags_one_thing_queries_stolen_by_topic_routes() -> None:
+    mod = _load_module()
+    payload = _complete_map()
+    payload["changzhou_city_service"].update(
+        {
+            "strict_query_routes": True,
+            "dataset_ids": ["city-items", "one-thing", "topic-faq"],
+            "query_routes": [
+                *payload["changzhou_city_service"]["query_routes"],
+                {"terms": ["一件事"], "dataset_ids": ["one-thing"], "mode": "replace"},
+                {"terms": ["小学", "入学", "义务教育", "招生"], "dataset_ids": ["topic-faq"], "mode": "replace"},
+            ],
+        }
+    )
+
+    report = mod.check_knowledge_map(payload, generated_at="2026-06-06T00:00:00Z")
+
+    assert report["summary"]["passed"] is False
+    assert report["summary"]["route_precedence_issues"] == 1
+    assert "route_precedence_conflict:one_thing:education_admission" in report["summary"]["failed_conditions"]
+    assert report["route_precedence"]["issues"] == [
+        {
+            "name": "one_thing:education_admission",
+            "query": "教育入学一件事涉及哪些事项",
+            "expected_dataset_ids": ["one-thing"],
+            "actual_dataset_ids": ["topic-faq"],
+            "actual_terms": ["小学", "入学", "义务教育", "招生"],
+        }
+    ]
 
 
 def test_missing_alias_and_district_mapping_fail_with_actionable_conditions() -> None:

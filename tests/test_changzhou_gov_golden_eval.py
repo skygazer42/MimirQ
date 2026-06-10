@@ -104,6 +104,76 @@ def test_evaluate_case_matches_expected_metadata_from_evaluable_view() -> None:
     assert result["metadata_quality"]["top_1_match"] is True
 
 
+def test_evaluate_case_accepts_derived_source_record_id_variants() -> None:
+    mod = _load_module()
+    case = {
+        "id": "duplicate-service-item",
+        "query": "经开区分公司注销登记在哪里办理",
+        "expected": {
+            "metadata": {
+                "knowledge_section": "01政务服务事项知识",
+                "source_record_id": "14786d21876b77f20264dc4a",
+                "gov_knowledge_type": "service_item",
+                "district": "经开区",
+                "service_name": "分公司注销登记（设区的市级权限）",
+            },
+        },
+    }
+    records = [
+        {
+            "title": "01政务服务事项知识/经开区事项清单.txt",
+            "content": "事项名称：分公司注销登记（设区的市级权限）\n办理地点：A8",
+            "metadata": {
+                "knowledge_section": "01政务服务事项知识",
+                "source_record_id": "14786d21876b77f20264dc4a-2981db422ab4",
+                "gov_knowledge_type": "service_item",
+                "district": "经开区",
+                "service_name": "分公司注销登记（设区的市级权限）",
+            },
+        },
+    ]
+
+    result = mod.evaluate_case(case, records)
+
+    assert result["hit_rank"] == 1
+    assert result["metadata_quality"]["first_match_rank"] == 1
+
+
+def test_evaluate_case_rejects_derived_source_record_id_when_other_metadata_differs() -> None:
+    mod = _load_module()
+    case = {
+        "id": "duplicate-service-item-wrong-service",
+        "query": "经开区分公司注销登记在哪里办理",
+        "expected": {
+            "metadata": {
+                "knowledge_section": "01政务服务事项知识",
+                "source_record_id": "14786d21876b77f20264dc4a",
+                "gov_knowledge_type": "service_item",
+                "district": "经开区",
+                "service_name": "分公司注销登记（设区的市级权限）",
+            },
+        },
+    }
+    records = [
+        {
+            "title": "01政务服务事项知识/经开区事项清单.txt",
+            "content": "事项名称：分公司设立登记（设区的市级权限）\n办理地点：A8",
+            "metadata": {
+                "knowledge_section": "01政务服务事项知识",
+                "source_record_id": "14786d21876b77f20264dc4a-2981db422ab4",
+                "gov_knowledge_type": "service_item",
+                "district": "经开区",
+                "service_name": "分公司设立登记（设区的市级权限）",
+            },
+        },
+    ]
+
+    result = mod.evaluate_case(case, records)
+
+    assert result["hit_rank"] is None
+    assert result["metadata_quality"]["first_match_rank"] is None
+
+
 def test_evaluate_case_reports_kg_hint_diagnostics() -> None:
     mod = _load_module()
     case = {

@@ -216,12 +216,22 @@ def _identity_text(value: str) -> str:
     return re.sub(r"\s+", "", text)
 
 
-def _record_id(*, source: str, district: str, title: str) -> str:
-    # Service-item retrieval is question-oriented: duplicate raw rows for the same
-    # district/title should evaluate as one logical service, while source_record_index
-    # still preserves row-level provenance.
+def _record_id(
+    *,
+    source: str,
+    district: str,
+    title: str,
+    content_fingerprint: str = "",
+    duplicate_variant_count: int = 1,
+) -> str:
+    # Service-item retrieval is question-oriented for normal rows, but same-title
+    # rows with different facts must not collapse during evidence de-duplication.
     seed = f"{source}\n{district}\n{_identity_text(title)}".encode("utf-8", "ignore")
-    return hashlib.sha256(seed).hexdigest()[:24]
+    base = hashlib.sha256(seed).hexdigest()[:24]
+    if duplicate_variant_count <= 1:
+        return base
+    suffix = str(content_fingerprint or "").strip()[:12]
+    return f"{base}-{suffix}" if suffix else base
 
 
 def _block_positions(text: str) -> list[tuple[int, int, str]]:
@@ -254,6 +264,7 @@ def govern_documents(
         source = _source_name(source_meta)
         district = str(params.get("district") or source_meta.get("district") or _district_from_source(source)).strip()
         text = source_doc.page_content or ""
+        candidates: list[dict[str, Any]] = []
 
         for idx, (start, end, block) in enumerate(_block_positions(text), 1):
             title_match = _TITLE_RE.search(block)
@@ -268,7 +279,43 @@ def govern_documents(
             if online_url_normalized:
                 fields["在线办理地址"] = online_url_normalized
             record_text = _render_record_text(district=district, title=title, fields=fields, aliases=aliases)
-            record_id = _record_id(source=source, district=district, title=title)
+            content_fingerprint = hashlib.sha256(record_text.encode("utf-8", "ignore")).hexdigest()[:12]
+            identity_key = f"{source}\n{district}\n{_identity_text(title)}"
+            candidates.append(
+                {
+                    "idx": idx,
+                    "start": start,
+                    "end": end,
+                    "title": title,
+                    "aliases": aliases,
+                    "fields": fields,
+                    "record_text": record_text,
+                    "content_fingerprint": content_fingerprint,
+                    "identity_key": identity_key,
+                    "online_url_raw": online_url_raw,
+                    "online_url_normalized": online_url_normalized,
+                }
+            )
+
+        variants_by_key: dict[str, set[str]] = {}
+        for item in candidates:
+            variants_by_key.setdefault(str(item["identity_key"]), set()).add(str(item["content_fingerprint"]))
+        variant_counts = {key: len(values) for key, values in variants_by_key.items()}
+
+        for item in candidates:
+            title = str(item["title"])
+            aliases = list(item["aliases"])
+            fields = dict(item["fields"])
+            record_text = str(item["record_text"])
+            online_url_raw = str(item["online_url_raw"])
+            online_url_normalized = str(item["online_url_normalized"])
+            record_id = _record_id(
+                source=source,
+                district=district,
+                title=title,
+                content_fingerprint=str(item["content_fingerprint"]),
+                duplicate_variant_count=variant_counts.get(str(item["identity_key"]), 1),
+            )
             meta = {
                 **source_meta,
                 "dataset_type": default_dataset_type,
@@ -277,9 +324,9 @@ def govern_documents(
                 "service_aliases": aliases,
                 "source_file": source,
                 "source_record_id": record_id,
-                "source_record_index": idx,
-                "source_start_char": start,
-                "source_end_char": end,
+                "source_record_index": int(item["idx"]),
+                "source_start_char": int(item["start"]),
+                "source_end_char": int(item["end"]),
                 "online_url": online_url_normalized or online_url_raw,
                 "online_url_raw": online_url_raw,
                 "online_url_normalized": online_url_normalized,
