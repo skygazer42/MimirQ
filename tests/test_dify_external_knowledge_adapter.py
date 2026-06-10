@@ -223,7 +223,7 @@ async def test_dify_direct_retrieval_uses_reranker_free_overfetch_config(
     assert rag_config.reranker_provider == "none"
     assert rag_config.reranker_top_n == 20
     assert rag_config.lexical_db_hybrid_metadata_exact_fallback_enabled is True
-    assert rag_config.metadata_exact_db_fallback_enabled is False
+    assert rag_config.metadata_exact_db_fallback_enabled is True
     assert rag_config.enable_kg_query_expansion is True
     assert rag_config.enable_kg_chunk_injection is True
     assert rag_config.kg_chunk_injection_max_chunks == 3

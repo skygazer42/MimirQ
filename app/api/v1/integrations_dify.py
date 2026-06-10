@@ -1714,7 +1714,7 @@ async def _retrieve_dataset_citations(
         reranker_provider="none",
         reranker_top_n=max(1, int(evidence_top_k or 1)),
         lexical_db_hybrid_metadata_exact_fallback_enabled=True,
-        metadata_exact_db_fallback_enabled=False,
+        metadata_exact_db_fallback_enabled=True,
         enable_kg_query_expansion=kg_query_expansion_enabled,
         enable_kg_chunk_injection=kg_chunk_injection_enabled,
         kg_chunk_injection_max_chunks=(

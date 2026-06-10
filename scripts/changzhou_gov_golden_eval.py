@@ -235,13 +235,28 @@ def _contains_all(value: Any, expected: list[Any]) -> bool:
     return all(_text(item) in text for item in expected if _text(item))
 
 
+def _source_record_id_matches(actual: Any, expected: Any) -> bool:
+    actual_text = _text(actual)
+    expected_text = _text(expected)
+    if not actual_text or not expected_text:
+        return actual_text == expected_text
+    # Duplicate service titles may be split into content-specific records while
+    # golden cases keep the title-level base id.
+    return actual_text == expected_text or actual_text.startswith(f"{expected_text}-")
+
+
+def _metadata_value_matches(key: str, actual: Any, expected: Any) -> bool:
+    if isinstance(expected, list | tuple | set):
+        return any(_metadata_value_matches(key, actual, item) for item in expected)
+    if key == "source_record_id":
+        return _source_record_id_matches(actual, expected)
+    return actual == expected
+
+
 def _metadata_matches(record_meta: dict[str, Any], expected_meta: dict[str, Any]) -> bool:
     for key, expected in expected_meta.items():
         actual = record_meta.get(key)
-        if isinstance(expected, list):
-            if actual not in expected:
-                return False
-        elif actual != expected:
+        if not _metadata_value_matches(key, actual, expected):
             return False
     return True
 
