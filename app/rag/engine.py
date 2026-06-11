@@ -864,6 +864,11 @@ Requirements:
             "lexical_db_hybrid_metadata_exact_fallback_enabled",
             None,
         )
+        lexical_db_hybrid_fallback_only = getattr(
+            rag_config,
+            "lexical_db_hybrid_fallback_only",
+            None,
+        )
         metadata_exact_db_fallback_enabled = getattr(rag_config, "metadata_exact_db_fallback_enabled", None)
         enable_hierarchy_recall = rag_config.enable_hierarchy_recall
         hierarchy_family_collapse = rag_config.hierarchy_family_collapse
@@ -877,6 +882,8 @@ Requirements:
         fusion_budgets = rag_config.fusion_budgets
         fusion_min_scores = rag_config.fusion_min_scores
         fusion_weights = rag_config.fusion_weights
+        retrieval_overfetch_multiplier = getattr(rag_config, "retrieval_overfetch_multiplier", None)
+        retrieval_overfetch_max_k = getattr(rag_config, "retrieval_overfetch_max_k", None)
         enable_weight_rerank = rag_config.enable_weight_rerank
         vector_weight = rag_config.vector_weight
         keyword_weight = rag_config.keyword_weight
@@ -984,6 +991,8 @@ Requirements:
                     fusion_budgets=fusion_budgets,
                     fusion_min_scores=fusion_min_scores,
                     fusion_weights=fusion_weights,
+                    retrieval_overfetch_multiplier=retrieval_overfetch_multiplier,
+                    retrieval_overfetch_max_k=retrieval_overfetch_max_k,
                     enable_weight_rerank=enable_weight_rerank,
                     vector_weight=vector_weight,
                     keyword_weight=keyword_weight,
@@ -1792,11 +1801,14 @@ Requirements:
                 "fusion_budgets": fusion_budgets,
                 "fusion_min_scores": fusion_min_scores,
                 "fusion_weights": fusion_weights,
+                "retrieval_overfetch_multiplier": retrieval_overfetch_multiplier,
+                "retrieval_overfetch_max_k": retrieval_overfetch_max_k,
                 "tenant_id": tenant_id,
                 "account_id": account_id,
                 "dataset_id": dataset_id,
                 "document_ids": document_ids,
                 "metadata_filter": metadata_filter,
+                "lexical_db_hybrid_fallback_only": lexical_db_hybrid_fallback_only,
                 "lexical_db_hybrid_metadata_exact_fallback_enabled": (
                     lexical_db_hybrid_metadata_exact_fallback_enabled
                 ),

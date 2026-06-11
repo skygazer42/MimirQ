@@ -351,6 +351,9 @@ class ChatRAGConfig(BaseModel):
     # Per-channel weights over normalized scores.
     # Allowed keys: vector, bm25, lexical, sparse.
     fusion_weights: dict[str, float] | None = None
+    # Optional per-request cap for candidate overfetch. None keeps global retrieval defaults.
+    retrieval_overfetch_multiplier: int | None = Field(default=None, ge=1, le=20)
+    retrieval_overfetch_max_k: int | None = Field(default=None, ge=1, le=500)
 
     enable_weight_rerank: bool = True
     vector_weight: float = Field(default=0.6, ge=0.0, le=1.0)
@@ -377,6 +380,7 @@ class ChatRAGConfig(BaseModel):
     metadata_filter: dict[str, Any] | None = None
     # Request-level budget controls for expensive hybrid fallback channels.
     # None keeps server defaults; False is used by low-latency external retrieval integrations.
+    lexical_db_hybrid_fallback_only: bool | None = None
     lexical_db_hybrid_metadata_exact_fallback_enabled: bool | None = None
     metadata_exact_db_fallback_enabled: bool | None = None
 

@@ -56,11 +56,23 @@ _SUPPORTED_RETRIEVAL_POLICY_RESPONSE_HINT_KEYS = {
     "answer_labels",
     "answer_keywords",
     "answer_highlight_metadata",
+    "answer_highlight_metadata_fields",
     "existing_hint_prefixes",
     "anchor_only_chunk_kinds",
     "anchor_only_markers",
     "groups",
     "enumeration",
+}
+_SUPPORTED_RETRIEVAL_POLICY_RESPONSE_HINT_METADATA_FIELD_KEYS = {
+    "metadata",
+    "key",
+    "field",
+    "fields",
+    "label",
+    "labels",
+    "max_chars",
+    "when_metadata",
+    "metadata_when",
 }
 _SUPPORTED_RETRIEVAL_POLICY_RESPONSE_HINT_GROUP_KEYS = {
     "name",
@@ -486,6 +498,8 @@ def _summarize_retrieval_policy(retrieval_policy: dict[str, Any] | None) -> dict
         "query_expansion_fields": list(_as_string_list(retrieval_policy.get("query_expansion_fields"))),
         "query_expansion_value_fields": value_fields,
         "question_intent_terms": list(_as_string_list(retrieval_policy.get("question_intent_terms"))),
+        "service_anchor_noise_terms": list(_as_string_list(retrieval_policy.get("service_anchor_noise_terms"))),
+        "service_anchor_priority_terms": list(_as_string_list(retrieval_policy.get("service_anchor_priority_terms"))),
         "filter_fields": list(_as_string_list(retrieval_policy.get("filter_fields"))),
         "boost_fields": boost_fields,
         "anchor_fields": anchor_fields,
@@ -759,6 +773,86 @@ def _validate_retrieval_policy_response_hints(
     ):
         _validate_optional_string_list(raw_hints.get(key), key=f"response_hints.{key}")
 
+    raw_highlight_fields = raw_hints.get("answer_highlight_metadata_fields")
+    if raw_highlight_fields is not None and not isinstance(raw_highlight_fields, list):
+        raise PipelinePluginContractError("retrieval_policy.response_hints.answer_highlight_metadata_fields must be a list")
+    for index, raw_field in enumerate(raw_highlight_fields or []):
+        if not isinstance(raw_field, dict):
+            raise PipelinePluginContractError(
+                f"retrieval_policy.response_hints.answer_highlight_metadata_fields[{index}] must be an object"
+            )
+        unknown_field = _unknown_keys(raw_field, _SUPPORTED_RETRIEVAL_POLICY_RESPONSE_HINT_METADATA_FIELD_KEYS)
+        if unknown_field:
+            raise PipelinePluginContractError(
+                "retrieval_policy.response_hints.answer_highlight_metadata_fields"
+                f"[{index}] contains unknown fields: {', '.join(unknown_field[:20])}"
+            )
+        metadata_field = str(raw_field.get("metadata") or raw_field.get("key") or "").strip()
+        if not metadata_field:
+            raise PipelinePluginContractError(
+                f"retrieval_policy.response_hints.answer_highlight_metadata_fields[{index}].metadata must be non-empty"
+            )
+        _validate_declared_policy_fields(
+            (metadata_field,),
+            declared_fields=declared_fields,
+            key="response_hints.answer_highlight_metadata_fields",
+        )
+        _validate_policy_chunk_stage_fields(
+            (metadata_field,),
+            declared_fields=declared_fields,
+            key="response_hints.answer_highlight_metadata_fields",
+        )
+        _validate_optional_string(raw_field.get("field"), key=f"response_hints.answer_highlight_metadata_fields[{index}].field")
+        _validate_optional_string(raw_field.get("label"), key=f"response_hints.answer_highlight_metadata_fields[{index}].label")
+        _validate_optional_string_list(
+            raw_field.get("fields"),
+            key=f"response_hints.answer_highlight_metadata_fields[{index}].fields",
+        )
+        labels = raw_field.get("labels")
+        if labels is not None:
+            if not isinstance(labels, dict):
+                raise PipelinePluginContractError(
+                    f"retrieval_policy.response_hints.answer_highlight_metadata_fields[{index}].labels must be an object"
+                )
+            for label_key, label_value in labels.items():
+                if not str(label_key or "").strip() or not isinstance(label_value, str) or not label_value.strip():
+                    raise PipelinePluginContractError(
+                        "retrieval_policy.response_hints.answer_highlight_metadata_fields"
+                        f"[{index}].labels must map non-empty field names to non-empty strings"
+                    )
+        max_chars = raw_field.get("max_chars")
+        if max_chars is not None and (
+            not isinstance(max_chars, int) or isinstance(max_chars, bool) or max_chars < 1 or max_chars > 3000
+        ):
+            raise PipelinePluginContractError(
+                f"retrieval_policy.response_hints.answer_highlight_metadata_fields[{index}].max_chars is out of range"
+            )
+        for condition_key in ("when_metadata", "metadata_when"):
+            raw_conditions = raw_field.get(condition_key)
+            if raw_conditions is None:
+                continue
+            if not isinstance(raw_conditions, dict):
+                raise PipelinePluginContractError(
+                    "retrieval_policy.response_hints.answer_highlight_metadata_fields"
+                    f"[{index}].{condition_key} must be an object"
+                )
+            condition_fields = tuple(str(field_name or "").strip() for field_name in raw_conditions)
+            if not all(condition_fields):
+                raise PipelinePluginContractError(
+                    "retrieval_policy.response_hints.answer_highlight_metadata_fields"
+                    f"[{index}].{condition_key} contains an empty metadata field"
+                )
+            _validate_declared_policy_fields(
+                condition_fields,
+                declared_fields=declared_fields,
+                key=f"response_hints.answer_highlight_metadata_fields.{condition_key}",
+            )
+            _validate_policy_chunk_stage_fields(
+                condition_fields,
+                declared_fields=declared_fields,
+                key=f"response_hints.answer_highlight_metadata_fields.{condition_key}",
+            )
+
     raw_groups = raw_hints.get("groups")
     if raw_groups is not None and not isinstance(raw_groups, list):
         raise PipelinePluginContractError("retrieval_policy.response_hints.groups must be a list")
@@ -897,6 +991,14 @@ def validate_retrieval_policy_metadata_fields(
         declared_fields=declared_fields,
     )
     _validate_optional_string_list(retrieval_policy.get("question_intent_terms"), key="question_intent_terms")
+    _validate_optional_string_list(
+        retrieval_policy.get("service_anchor_noise_terms"),
+        key="service_anchor_noise_terms",
+    )
+    _validate_optional_string_list(
+        retrieval_policy.get("service_anchor_priority_terms"),
+        key="service_anchor_priority_terms",
+    )
     question_anchor_bonus = retrieval_policy.get("question_anchor_bonus")
     if question_anchor_bonus is not None and (
         not isinstance(question_anchor_bonus, int | float)

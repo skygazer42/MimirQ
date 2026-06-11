@@ -6,8 +6,7 @@
   ],
   "answer_key_point_fields": [
     "answer",
-    "materials",
-    "operation_steps"
+    "answer_key_points"
   ],
   "template_selector_fields": [
     "chunk_kind",

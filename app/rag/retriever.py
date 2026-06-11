@@ -23,8 +23,8 @@ from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
 from pydantic import ConfigDict, Field, PrivateAttr
 from sqlalchemy import Text as SQLText
+from sqlalchemy import case, func, or_, text, tuple_
 from sqlalchemy import cast as sql_cast
-from sqlalchemy import func, or_, text, tuple_
 from sqlalchemy.orm import Session
 
 from app.config.rerank_profile import resolve_rerank_search_k
@@ -453,6 +453,8 @@ class HybridRetriever(BaseRetriever):
     fusion_min_scores: dict[str, float] | None = None
     # Only used when fusion_strategy="weighted".
     fusion_weights: dict[str, float] | None = None
+    retrieval_overfetch_multiplier: int | None = None
+    retrieval_overfetch_max_k: int | None = None
     # Optional: when None, follow settings.SPARSE_RETRIEVAL_ENABLED dynamically (useful for tests / hot reload).
     # When set, acts as an explicit per-retriever override.
     sparse_enabled: bool | None = None
@@ -488,6 +490,7 @@ class HybridRetriever(BaseRetriever):
     enable_hierarchy_recall: bool = False
     hierarchy_family_collapse: bool = False
     hierarchy_overfetch_factor: int = max(1, int(getattr(settings, "HIERARCHY_RECALL_OVERFETCH_FACTOR", 4) or 4))
+    lexical_db_hybrid_fallback_only: bool | None = None
     lexical_db_hybrid_metadata_exact_fallback_enabled: bool | None = None
     metadata_exact_db_fallback_enabled: bool | None = None
 
@@ -3711,6 +3714,42 @@ class HybridRetriever(BaseRetriever):
         return fts_config, fetch_k, want_trgm, trgm_min_chars
 
     @staticmethod
+    def _lexical_cjk_token_terms(raw_query: str) -> list[str]:
+        text = str(raw_query or "").strip()
+        if not text or not re.search(r"[\u3400-\u4dbf\u4e00-\u9fff]", text):
+            return []
+        try:
+            max_terms = max(1, min(16, int(getattr(settings, "LEXICAL_DB_CJK_TOKEN_MAX_TERMS", 6) or 6)))
+        except (TypeError, ValueError):
+            max_terms = 6
+
+        candidates: list[str] = []
+        seen: set[str] = set()
+        for token in tokenize_for_bm25(text):
+            term = str(token or "").strip()
+            if len(term) < 2:
+                continue
+            # This channel is for CJK queries, but ASCII/numeric tokens inside
+            # the same query (codes, years, IDs) are useful exact constraints.
+            if not re.search(r"[\u3400-\u4dbf\u4e00-\u9fff0-9A-Za-z]", term):
+                continue
+            key = term.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            candidates.append(term)
+
+        selected: list[str] = []
+        for term in sorted(candidates, key=lambda item: (-len(item), candidates.index(item))):
+            folded = term.casefold()
+            if any(folded in existing.casefold() for existing in selected):
+                continue
+            selected.append(term)
+            if len(selected) >= max_terms:
+                break
+        return selected
+
+    @staticmethod
     def _lexical_base_query(
         db: Session,
         *,
@@ -3924,6 +3963,73 @@ class HybridRetriever(BaseRetriever):
         except Exception as exc:
             logger.debug("Lexical trigram query failed: %s", exc)
 
+    def _collect_lexical_cjk_token_results(
+        self,
+        *,
+        db: Session,
+        tenant_uuid: UUID,
+        dataset_uuid: UUID | list[UUID] | None,
+        document_ids: list[UUID] | None,
+        raw_query: str,
+        fetch_k: int,
+        dataset_str: str | None,
+        metadata_filter: dict[str, Any] | None,
+        results_by_id: dict[str, dict[str, Any]],
+    ) -> None:
+        if not bool(getattr(settings, "LEXICAL_DB_CJK_TOKEN_CONTAINMENT_ENABLED", True)):
+            return
+        terms = self._lexical_cjk_token_terms(raw_query)
+        if not terms:
+            return
+
+        conditions = []
+        score_expr = None
+        hit_expr = None
+        for term in terms:
+            pattern = f"%{self._escape_sql_like_term(term)}%"
+            condition = DocumentChunk.content.ilike(pattern, escape="\\")
+            conditions.append(condition)
+            score_piece = case((condition, float(len(term))), else_=0.0)
+            hit_piece = case((condition, 1), else_=0)
+            score_expr = score_piece if score_expr is None else score_expr + score_piece
+            hit_expr = hit_piece if hit_expr is None else hit_expr + hit_piece
+        if not conditions or score_expr is None or hit_expr is None:
+            return
+
+        try:
+            configured_min_hits = int(getattr(settings, "LEXICAL_DB_CJK_TOKEN_MIN_HITS", 0) or 0)
+        except (TypeError, ValueError):
+            configured_min_hits = 0
+        min_hits = configured_min_hits
+        if min_hits <= 0:
+            min_hits = min(3, max(1, len(terms) // 2))
+
+        try:
+            rows = (
+                self._lexical_base_query(
+                    db,
+                    tenant_uuid=tenant_uuid,
+                    dataset_uuid=dataset_uuid,
+                    document_ids=document_ids,
+                )
+                .add_columns(score_expr.label("cjk_token_score"))
+                .filter(or_(*conditions))
+                .filter(hit_expr >= min_hits)
+                .order_by(score_expr.desc(), DocumentChunk.chunk_index.asc())
+                .limit(fetch_k)
+                .all()
+            )
+            self._add_lexical_rows(
+                rows=rows,
+                results_by_id=results_by_id,
+                method="cjk_token",
+                dataset_str=dataset_str,
+                metadata_filter=metadata_filter,
+                replace_if_higher=True,
+            )
+        except Exception as exc:
+            logger.debug("Lexical CJK token query failed: %s", exc)
+
     def _search_lexical_db_with_session(
         self,
         *,
@@ -3988,6 +4094,18 @@ class HybridRetriever(BaseRetriever):
                 metadata_filter=metadata_filter,
                 results_by_id=results_by_id,
             )
+
+        self._collect_lexical_cjk_token_results(
+            db=db,
+            tenant_uuid=tenant_uuid,
+            dataset_uuid=dataset_uuid,
+            document_ids=document_ids,
+            raw_query=raw_query,
+            fetch_k=fetch_k,
+            dataset_str=dataset_str,
+            metadata_filter=metadata_filter,
+            results_by_id=results_by_id,
+        )
 
         if not results_by_id:
             return []
@@ -4659,7 +4777,11 @@ class HybridRetriever(BaseRetriever):
         bm25_results: list[dict[str, Any]] = []
         lexical_results: list[dict[str, Any]] = []
         lexical_run_reason = "not_run"
-        lexical_hybrid_fallback_only = bool(getattr(settings, "LEXICAL_DB_HYBRID_FALLBACK_ONLY", True))
+        lexical_hybrid_fallback_only = (
+            bool(self.lexical_db_hybrid_fallback_only)
+            if self.lexical_db_hybrid_fallback_only is not None
+            else bool(getattr(settings, "LEXICAL_DB_HYBRID_FALLBACK_ONLY", True))
+        )
         if retrieval_mode == "keyword":
             if want_lexical:
                 t0 = time.perf_counter()
@@ -6525,6 +6647,10 @@ class HybridRetriever(BaseRetriever):
         annotated: list[tuple[dict[str, Any], int]] = []
         annotated_count = 0
         promoted_count = 0
+        has_budgeted_prefix = any(
+            isinstance(result, dict) and result.get("fusion_budgeted_prefix_rank") is not None
+            for result in results
+        )
         for pos, result in enumerate(results):
             item = dict(result)
             changed = _apply_metadata_exact_anchor_to_result(
@@ -6554,6 +6680,16 @@ class HybridRetriever(BaseRetriever):
 
         def sort_key(pair: tuple[dict[str, Any], int]) -> tuple[float, float, int]:
             item, pos = pair
+            if has_budgeted_prefix:
+                try:
+                    prefix_rank = int(item.get("fusion_budgeted_prefix_rank"))
+                except (TypeError, ValueError):
+                    prefix_rank = len(results) + int(pos) + 1
+                return (
+                    float(prefix_rank),
+                    -_float_or_default(item.get("metadata_exact_match_score"), 0.0),
+                    int(pos),
+                )
             if best_anchor_score >= 0.65:
                 return (
                     -_float_or_default(item.get("metadata_exact_match_score"), 0.0),
@@ -6634,12 +6770,22 @@ class HybridRetriever(BaseRetriever):
                 overfetch_reasons.append("metadata_filter")
 
         if overfetch_enabled:
-            mult = max(1, int(getattr(settings, "RETRIEVAL_OVERFETCH_MULTIPLIER", 1) or 1))
+            mult_source = (
+                self.retrieval_overfetch_multiplier
+                if self.retrieval_overfetch_multiplier is not None
+                else getattr(settings, "RETRIEVAL_OVERFETCH_MULTIPLIER", 1)
+            )
+            mult = max(1, int(mult_source or 1))
             if mult > 1:
                 search_k = max(search_k, requested_k * mult)
-                cap = int(getattr(settings, "RETRIEVAL_OVERFETCH_MAX_K", 0) or 0)
-                if cap > 0:
-                    search_k = min(search_k, cap)
+            cap_source = (
+                self.retrieval_overfetch_max_k
+                if self.retrieval_overfetch_max_k is not None
+                else getattr(settings, "RETRIEVAL_OVERFETCH_MAX_K", 0)
+            )
+            cap = int(cap_source or 0)
+            if cap > 0:
+                search_k = min(search_k, cap)
 
         # Unified candidate-fetch budget (used by vector/BM25/lexical/sparse channels).
         # Exposed in retriever_debug for evidence/diagnostics (PII-safe).
@@ -6666,8 +6812,16 @@ class HybridRetriever(BaseRetriever):
             "rerank_profile": str(getattr(settings, "RERANK_PROFILE", "") or "").strip().lower() or None,
             "hierarchy_family_collapse_enabled": bool(hierarchy_family_collapse_enabled),
             "hierarchy_overfetch_factor": int(hierarchy_overfetch_factor),
-            "overfetch_multiplier": int(getattr(settings, "RETRIEVAL_OVERFETCH_MULTIPLIER", 1) or 1),
-            "overfetch_cap_k": int(getattr(settings, "RETRIEVAL_OVERFETCH_MAX_K", 0) or 0),
+            "overfetch_multiplier": int(
+                self.retrieval_overfetch_multiplier
+                if self.retrieval_overfetch_multiplier is not None
+                else getattr(settings, "RETRIEVAL_OVERFETCH_MULTIPLIER", 1) or 1
+            ),
+            "overfetch_cap_k": int(
+                self.retrieval_overfetch_max_k
+                if self.retrieval_overfetch_max_k is not None
+                else getattr(settings, "RETRIEVAL_OVERFETCH_MAX_K", 0) or 0
+            ),
             "query_normalization": {
                 "original": original_query,
                 "normalized": query,
@@ -8018,6 +8172,19 @@ class HybridRetriever(BaseRetriever):
         else:
             rest = [r for r in results if self._result_key(r) not in used_keys]
             out_all = selected + rest
+        if any(isinstance(item, dict) and item.get("fusion_budgeted_prefix_rank") is not None for item in out_all):
+            def _budgeted_prefix_sort_key(item: dict[str, Any]) -> tuple[int, float, str]:
+                try:
+                    prefix_rank = int(item.get("fusion_budgeted_prefix_rank"))
+                except (TypeError, ValueError):
+                    prefix_rank = len(out_all) + 1
+                return (
+                    prefix_rank,
+                    -float(item.get("score", 0.0) or 0.0),
+                    self._result_key(item),
+                )
+
+            out_all = sorted(out_all, key=_budgeted_prefix_sort_key)
 
         self._record_document_diversity_post_stats(stats=stats, out_all=out_all, top_k=top_k, pre_keys=pre_keys)
         return out_all
@@ -8574,6 +8741,8 @@ class HybridRetriever(BaseRetriever):
             selected_set = set(selected_keys)
             prefix = [item for item in all_sorted if self._result_key(item) in selected_set]
             rest = [item for item in all_sorted if self._result_key(item) not in selected_set]
+            for idx, item in enumerate(prefix, 1):
+                item["fusion_budgeted_prefix_rank"] = int(idx)
 
             # Best-effort: surface fusion budget behavior into retriever_debug.channels for diagnostics.
             # PII-safe: only small numeric counters and low-cardinality settings.

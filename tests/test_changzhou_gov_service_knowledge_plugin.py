@@ -117,9 +117,17 @@ def test_changzhou_retrieval_policy_declares_platform_consumable_fields():
     assert "district" in summary["anchor_fields"]
     assert "chunk_kind" in summary["rerank_features"]
     assert "材料" in summary["question_intent_terms"]
+    assert "需要什么材料" in summary["service_anchor_noise_terms"]
+    assert "咨询电话是多少" in summary["service_anchor_noise_terms"]
+    assert "收费吗" in summary["service_anchor_noise_terms"]
+    assert "办理入口在哪里" in summary["service_anchor_noise_terms"]
+    assert "咨询电话是多少" in summary["service_anchor_priority_terms"]
+    assert "办理入口在哪里" in summary["service_anchor_priority_terms"]
+    assert "收费吗" in summary["service_anchor_priority_terms"]
+    assert "需要什么材料" not in summary["service_anchor_priority_terms"]
     assert summary["fallback_enabled"] is True
     assert summary["response_compaction_enabled"] is True
-    assert descriptor.retrieval_policy["response_compaction"]["min_records"] >= 2
+    assert descriptor.retrieval_policy["response_compaction"]["min_records"] == 1
     assert summary["response_hints_enabled"] is True
     assert descriptor.retrieval_policy["response_hints"]["structured_labels"] == [
         "答案",
@@ -132,6 +140,49 @@ def test_changzhou_retrieval_policy_declares_platform_consumable_fields():
         "办理时间",
         "受理条件",
         "在线办理地址",
+    ]
+    response_hint_fields = descriptor.retrieval_policy["response_hints"]["answer_highlight_metadata_fields"]
+    assert response_hint_fields == [
+        {
+            "metadata": "answer",
+            "label": "答案",
+            "max_chars": 1600,
+        },
+        {
+            "metadata": "service_fields",
+            "fields": ["办理地点", "咨询方式", "办理时间", "办理材料", "在线办理地址"],
+            "when_metadata": {"gov_knowledge_type": "service_item"},
+            "max_chars": 1200,
+        },
+        {
+            "metadata": "case_title",
+            "label": "一件事",
+            "max_chars": 200,
+        },
+        {
+            "metadata": "related_services",
+            "label": "涉及事项",
+            "when_metadata": {"section_type": "related_services"},
+            "max_chars": 1200,
+        },
+        {
+            "metadata": "materials",
+            "label": "申请材料",
+            "when_metadata": {"section_type": "materials"},
+            "max_chars": 1200,
+        },
+        {
+            "metadata": "operation_steps",
+            "label": "操作步骤",
+            "when_metadata": {"section_type": ["operation_steps", "operation_material_upload", "operation_query"]},
+            "max_chars": 1200,
+        },
+        {
+            "metadata": "urls",
+            "label": "办理入口",
+            "when_metadata": {"section_type": ["channels", "materials", "operation_entry", "operation_url"]},
+            "max_chars": 1200,
+        },
     ]
 
 
@@ -572,7 +623,17 @@ def test_changzhou_plugin_chunks_one_thing_guides_by_business_sections():
         "困难残疾人生活补贴",
         "重度残疾人护理补贴",
     ]
+    assert sections["related_services"].metadata["answer_key_points"] == [
+        "残疾人证新办",
+        "困难残疾人生活补贴",
+        "重度残疾人护理补贴",
+    ]
     assert sections["materials"].metadata["materials"] == [
+        "通用材料：残疾人服务“一件事”申请表（系统自动生成）",
+        "申请人本人居民身份证（电子证照库共享，免提交）",
+        "申请人本人居民户口簿（电子证照库共享，免提交）",
+    ]
+    assert sections["materials"].metadata["answer_key_points"] == [
         "通用材料：残疾人服务“一件事”申请表（系统自动生成）",
         "申请人本人居民身份证（电子证照库共享，免提交）",
         "申请人本人居民户口簿（电子证照库共享，免提交）",
@@ -582,6 +643,7 @@ def test_changzhou_plugin_chunks_one_thing_guides_by_business_sections():
     assert "需要哪些材料" in sections["materials"].page_content
     assert "办理渠道" not in sections["materials"].page_content
     assert sections["channels"].metadata["urls"] == ["https://cz.jszwfw.gov.cn/"]
+    assert sections["channels"].metadata["answer_key_points"] == ["https://cz.jszwfw.gov.cn/"]
     assert "网上办理地址" in sections["channels"].page_content
     assert all(chunk.metadata.get("case_key") == "残疾人服务一件事" for chunk in chunks)
     assert all(chunk.metadata.get("chunk_kind") == f"one_thing_{chunk.metadata.get('section_type')}" for chunk in chunks)
@@ -631,8 +693,15 @@ def test_changzhou_plugin_chunks_one_thing_operations_by_entry_steps_and_urls():
     sections = {chunk.metadata.get("section_type"): chunk for chunk in chunks}
     assert {"operation_entry", "operation_steps", "operation_url"}.issubset(sections)
     assert sections["operation_entry"].metadata["urls"] == ["https://cz.jszwfw.gov.cn/"]
+    assert sections["operation_entry"].metadata["answer_key_points"] == ["https://cz.jszwfw.gov.cn/"]
     assert sections["operation_url"].metadata["urls"] == ["https://czqjd.jszwfw.gov.cn/course?id=4066"]
+    assert sections["operation_url"].metadata["answer_key_points"] == ["https://czqjd.jszwfw.gov.cn/course?id=4066"]
     assert sections["operation_steps"].metadata["operation_steps"] == [
+        "点击残疾人服务“一件事”模块。",
+        "登录后点击在线办理。",
+        "上传申报材料。",
+    ]
+    assert sections["operation_steps"].metadata["answer_key_points"] == [
         "点击残疾人服务“一件事”模块。",
         "登录后点击在线办理。",
         "上传申报材料。",
@@ -1196,6 +1265,10 @@ def test_changzhou_golden_rules_cover_one_thing_section_chunks():
     golden_rules = json.loads((PLUGIN_DIR / "golden_rules.json").read_text(encoding="utf-8"))
     templates = golden_rules["query_templates"]
 
+    assert golden_rules["answer_key_point_fields"] == [
+        "answer",
+        "answer_key_points",
+    ]
     assert templates["service_item_full"] == [
         "{district}{service_name}需要什么材料？",
         "{district}{service_name}在哪里办理？",

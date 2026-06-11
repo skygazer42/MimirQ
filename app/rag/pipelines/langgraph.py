@@ -1389,6 +1389,7 @@ class RagStateBuildOptions:
     query_rewrite_max_chars: int | None = None
     sparse_retrieval_enabled: bool | None = None
     sparse_retrieval_provider: str | None = None
+    lexical_db_hybrid_fallback_only: bool | None = None
     lexical_db_hybrid_metadata_exact_fallback_enabled: bool | None = None
     metadata_exact_db_fallback_enabled: bool | None = None
     alpha: float = settings.RETRIEVAL_DEFAULT_ALPHA
@@ -1396,6 +1397,8 @@ class RagStateBuildOptions:
     fusion_budgets: dict[str, int] | None = None
     fusion_min_scores: dict[str, float] | None = None
     fusion_weights: dict[str, float] | None = None
+    retrieval_overfetch_multiplier: int | None = None
+    retrieval_overfetch_max_k: int | None = None
     enable_weight_rerank: bool = True
     vector_weight: float = 0.6
     keyword_weight: float = 0.4
@@ -1482,6 +1485,7 @@ def build_rag_state(
     query_rewrite_max_chars = resolved.query_rewrite_max_chars
     sparse_retrieval_enabled = resolved.sparse_retrieval_enabled
     sparse_retrieval_provider = resolved.sparse_retrieval_provider
+    lexical_db_hybrid_fallback_only = resolved.lexical_db_hybrid_fallback_only
     lexical_db_hybrid_metadata_exact_fallback_enabled = (
         resolved.lexical_db_hybrid_metadata_exact_fallback_enabled
     )
@@ -1491,6 +1495,8 @@ def build_rag_state(
     fusion_budgets = resolved.fusion_budgets
     fusion_min_scores = resolved.fusion_min_scores
     fusion_weights = resolved.fusion_weights
+    retrieval_overfetch_multiplier = resolved.retrieval_overfetch_multiplier
+    retrieval_overfetch_max_k = resolved.retrieval_overfetch_max_k
     enable_weight_rerank = resolved.enable_weight_rerank
     vector_weight = resolved.vector_weight
     keyword_weight = resolved.keyword_weight
@@ -1662,6 +1668,8 @@ def build_rag_state(
         "fusion_budgets": fusion_budgets,
         "fusion_min_scores": fusion_min_scores,
         "fusion_weights": fusion_weights,
+        "retrieval_overfetch_multiplier": retrieval_overfetch_multiplier,
+        "retrieval_overfetch_max_k": retrieval_overfetch_max_k,
         "enable_weight_rerank": enable_weight_rerank,
         "vector_weight": vector_weight,
         "keyword_weight": keyword_weight,
@@ -1671,6 +1679,7 @@ def build_rag_state(
         "reranker_top_n": reranker_top_n,
         "sparse_retrieval_enabled": sparse_retrieval_enabled,
         "sparse_retrieval_provider": sparse_retrieval_provider,
+        "lexical_db_hybrid_fallback_only": lexical_db_hybrid_fallback_only,
         "lexical_db_hybrid_metadata_exact_fallback_enabled": (
             lexical_db_hybrid_metadata_exact_fallback_enabled
         ),

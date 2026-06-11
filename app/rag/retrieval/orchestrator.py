@@ -2620,6 +2620,8 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
         "fusion_budgets": state.get("fusion_budgets"),
         "fusion_min_scores": state.get("fusion_min_scores"),
         "fusion_weights": state.get("fusion_weights"),
+        "retrieval_overfetch_multiplier": state.get("retrieval_overfetch_multiplier"),
+        "retrieval_overfetch_max_k": state.get("retrieval_overfetch_max_k"),
         "retrieval_mode": str(profile_applied.get("retrieval_mode") or request_retrieval_mode),
         "enable_weight_rerank": (
             profile_applied.get("enable_weight_rerank")
@@ -2651,6 +2653,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
         "dataset_id": state.get("dataset_id"),
         "document_ids": state.get("document_ids"),
         "metadata_filter": state.get("metadata_filter"),
+        "lexical_db_hybrid_fallback_only": state.get("lexical_db_hybrid_fallback_only"),
         "lexical_db_hybrid_metadata_exact_fallback_enabled": state.get(
             "lexical_db_hybrid_metadata_exact_fallback_enabled"
         ),

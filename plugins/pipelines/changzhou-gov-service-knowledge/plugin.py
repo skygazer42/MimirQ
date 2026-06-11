@@ -1231,6 +1231,44 @@ def _one_thing_chunk_content(*, case_title: str, section_type: str, label: str, 
     return "\n".join(line for line in lines if line).strip()
 
 
+def _compact_answer_lines(text: str, *, limit: int = 12) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in str(text or "").splitlines():
+        line = _BULLET_RE.sub("", raw.strip()).strip()
+        if not line or line in seen:
+            continue
+        seen.add(line)
+        out.append(_clamp_meta_text(line, 260))
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _one_thing_answer_key_points(*, section_type: str, content: str, urls: list[str]) -> list[str]:
+    if section_type == "related_services":
+        points = _split_list_marker(content)
+    elif section_type == "materials":
+        points = _material_items(content)
+    elif section_type in {"operation_steps", "operation_material_upload", "operation_query"}:
+        points = _numbered_steps(content) or _compact_answer_lines(content)
+    elif section_type in {"channels", "operation_entry", "operation_url"}:
+        points = urls or _compact_answer_lines(content, limit=6)
+    else:
+        points = _numbered_steps(content) or _split_list_marker(content) or _compact_answer_lines(content)
+    out: list[str] = []
+    seen: set[str] = set()
+    for point in points:
+        value = _clamp_meta_text(str(point or "").strip(), 260)
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        out.append(value)
+        if len(out) >= 12:
+            break
+    return out
+
+
 def _one_thing_chunk_meta(
     source_meta: dict[str, Any],
     *,
@@ -1269,6 +1307,9 @@ def _one_thing_chunk_meta(
     urls = _extract_urls(content)
     if urls:
         meta["urls"] = urls
+    answer_key_points = _one_thing_answer_key_points(section_type=section_type, content=content, urls=urls)
+    if answer_key_points:
+        meta["answer_key_points"] = answer_key_points
     return meta
 
 

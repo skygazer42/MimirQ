@@ -623,6 +623,7 @@ async def retrieve_preview(
         enable_kg_chunk_boost=effective_rag_config.enable_kg_chunk_boost,
         kg_chunk_boost_weight=effective_rag_config.kg_chunk_boost_weight,
         kg_chunk_boost_max_promoted=effective_rag_config.kg_chunk_boost_max_promoted,
+        lexical_db_hybrid_fallback_only=effective_rag_config.lexical_db_hybrid_fallback_only,
         lexical_db_hybrid_metadata_exact_fallback_enabled=(
             effective_rag_config.lexical_db_hybrid_metadata_exact_fallback_enabled
         ),
@@ -632,6 +633,8 @@ async def retrieve_preview(
         fusion_budgets=effective_rag_config.fusion_budgets,
         fusion_min_scores=effective_rag_config.fusion_min_scores,
         fusion_weights=effective_rag_config.fusion_weights,
+        retrieval_overfetch_multiplier=effective_rag_config.retrieval_overfetch_multiplier,
+        retrieval_overfetch_max_k=effective_rag_config.retrieval_overfetch_max_k,
         enable_weight_rerank=effective_rag_config.enable_weight_rerank,
         vector_weight=effective_rag_config.vector_weight,
         keyword_weight=effective_rag_config.keyword_weight,
@@ -1079,6 +1082,7 @@ async def retrieve_evidence(
         enable_kg_chunk_boost=effective_rag_config.enable_kg_chunk_boost,
         kg_chunk_boost_weight=effective_rag_config.kg_chunk_boost_weight,
         kg_chunk_boost_max_promoted=effective_rag_config.kg_chunk_boost_max_promoted,
+        lexical_db_hybrid_fallback_only=effective_rag_config.lexical_db_hybrid_fallback_only,
         lexical_db_hybrid_metadata_exact_fallback_enabled=(
             effective_rag_config.lexical_db_hybrid_metadata_exact_fallback_enabled
         ),
@@ -1088,6 +1092,8 @@ async def retrieve_evidence(
         fusion_budgets=effective_rag_config.fusion_budgets,
         fusion_min_scores=effective_rag_config.fusion_min_scores,
         fusion_weights=effective_rag_config.fusion_weights,
+        retrieval_overfetch_multiplier=effective_rag_config.retrieval_overfetch_multiplier,
+        retrieval_overfetch_max_k=effective_rag_config.retrieval_overfetch_max_k,
         enable_weight_rerank=effective_rag_config.enable_weight_rerank,
         vector_weight=effective_rag_config.vector_weight,
         keyword_weight=effective_rag_config.keyword_weight,
@@ -1537,6 +1543,8 @@ async def prompt_preview(
         fusion_budgets=effective_rag_config.fusion_budgets,
         fusion_min_scores=effective_rag_config.fusion_min_scores,
         fusion_weights=effective_rag_config.fusion_weights,
+        retrieval_overfetch_multiplier=effective_rag_config.retrieval_overfetch_multiplier,
+        retrieval_overfetch_max_k=effective_rag_config.retrieval_overfetch_max_k,
         enable_weight_rerank=effective_rag_config.enable_weight_rerank,
         vector_weight=effective_rag_config.vector_weight,
         keyword_weight=effective_rag_config.keyword_weight,

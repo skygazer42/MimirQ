@@ -108,6 +108,14 @@
       "evaluable": true
     },
     {
+      "name": "service_fields",
+      "type": "object",
+      "required": false,
+      "stages": ["governance", "chunk"],
+      "display": true,
+      "evaluable": true
+    },
+    {
       "name": "case_title",
       "type": "string",
       "required": false,
@@ -198,7 +206,16 @@
       "type": "array",
       "required": false,
       "stages": ["governance", "chunk"],
-      "display": true
+      "display": true,
+      "evaluable": true
+    },
+    {
+      "name": "answer_key_points",
+      "type": "array",
+      "required": false,
+      "stages": ["chunk"],
+      "display": true,
+      "evaluable": true
     },
     {
       "name": "step_no",
