@@ -176,6 +176,18 @@ def retrieval_policy_query_terms(
     return tuple(out)
 
 
+def retrieval_policy_service_anchor_noise_terms(retrieval_policy: dict[str, Any] | None) -> tuple[str, ...]:
+    if not isinstance(retrieval_policy, dict) or retrieval_policy.get("schema") != "mimirq.retrieval_policy.v1":
+        return ()
+    return _policy_string_list(retrieval_policy.get("service_anchor_noise_terms"))
+
+
+def retrieval_policy_service_anchor_priority_terms(retrieval_policy: dict[str, Any] | None) -> tuple[str, ...]:
+    if not isinstance(retrieval_policy, dict) or retrieval_policy.get("schema") != "mimirq.retrieval_policy.v1":
+        return ()
+    return _policy_string_list(retrieval_policy.get("service_anchor_priority_terms"))
+
+
 def _policy_value_query_term_mappings(raw_mappings: Any) -> tuple[dict[str, Any], ...]:
     if not isinstance(raw_mappings, list):
         return ()
@@ -794,6 +806,8 @@ __all__ = [
     "retrieval_policy_query_terms",
     "retrieval_policy_rerank_feature_score",
     "retrieval_policy_response_compaction",
+    "retrieval_policy_service_anchor_noise_terms",
+    "retrieval_policy_service_anchor_priority_terms",
     "retrieval_policy_value_intent_mismatch_penalty",
     "resolve_internal_candidate_top_k",
     "safe_positive_int",

@@ -899,6 +899,8 @@ def test_pipeline_plugin_retrieval_policy_is_manifest_declared_and_summarized(tm
         "anchor_fields": ["business_type"],
         "rerank_features": ["business_type", "chunk_kind"],
         "question_intent_terms": [],
+        "service_anchor_noise_terms": [],
+        "service_anchor_priority_terms": [],
         "fallback_enabled": True,
         "response_compaction_enabled": False,
         "response_hints_enabled": False,

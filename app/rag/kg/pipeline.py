@@ -3,6 +3,7 @@ Facade to run KG extraction + search inside the existing backend.
 KG module can be toggled via settings.KG_ENABLED (env: KG_ENABLED).
 """
 
+import asyncio
 import logging
 import threading
 from collections.abc import Iterable, Sequence
@@ -11,6 +12,7 @@ from uuid import UUID
 
 from app.core.config import settings
 from app.core.database import SessionLocal
+from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
 from app.rag.core.hashing import stable_hash
@@ -77,6 +79,43 @@ def _resolve_doc_pipeline_fingerprint(*, tenant_id: UUID, document_ids: list[str
         pairs.append(f"{doc_id}:{ph}")
     joined = ",".join(sorted(pairs))
     return stable_hash(joined, length=32)
+
+
+def _resolve_dataset_pipeline_fingerprint(*, tenant_id: UUID, dataset_ids: list[UUID]) -> str | None:
+    """
+    Version KG search cache entries for dataset-scoped retrieval.
+
+    Dify external knowledge calls normally search by dataset scope rather than
+    document scope. Use dataset updated_at as the invalidation token so repeated
+    workflow nodes can reuse KG recall without serving stale results after ingest.
+    """
+    scoped_dataset_ids = []
+    seen: set[UUID] = set()
+    for dataset_id in dataset_ids or []:
+        if dataset_id is None or dataset_id in seen:
+            continue
+        seen.add(dataset_id)
+        scoped_dataset_ids.append(dataset_id)
+    if not scoped_dataset_ids:
+        return None
+
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(Dataset.id, Dataset.updated_at)
+            .filter(Dataset.tenant_id == tenant_id, Dataset.id.in_(scoped_dataset_ids))
+            .all()
+        )
+    except Exception:
+        return None
+    finally:
+        db.close()
+
+    if not rows or len(rows) != len(scoped_dataset_ids):
+        return None
+
+    pairs = [f"{dataset_id}:{updated_at.isoformat() if hasattr(updated_at, 'isoformat') else updated_at}" for dataset_id, updated_at in rows]
+    return stable_hash(",".join(sorted(pairs)), length=32)
 
 
 def reset_kg_engine() -> None:
@@ -299,22 +338,27 @@ async def kg_search(
         dataset_id = scoped_dataset_ids[0]
         scoped_dataset_ids = []
     if scoped_dataset_ids:
-        shards: list[tuple[UUID, dict[str, Any] | None, str | None]] = []
-        for scoped_dataset_id in scoped_dataset_ids:
-            try:
-                result = await kg_search(
-                    query=query,
-                    tenant_id=tenant_id,
-                    document_ids=None,
-                    dataset_id=scoped_dataset_id,
-                    dataset_ids=None,
-                    account_id=account_id,
-                    query_mode=query_mode,
-                )
-                shards.append((scoped_dataset_id, result if isinstance(result, dict) else {}, None))
-            except Exception as exc:  # noqa: BLE001
-                shards.append((scoped_dataset_id, None, str(exc)[:200]))
-        return _merge_kg_dataset_shard_results(shards)
+        max_concurrency = max(1, int(getattr(settings, "KG_SEARCH_MULTI_DATASET_MAX_CONCURRENCY", 4) or 4))
+        semaphore = asyncio.Semaphore(max_concurrency)
+
+        async def _search_shard(scoped_dataset_id: UUID) -> tuple[UUID, dict[str, Any] | None, str | None]:
+            async with semaphore:
+                try:
+                    result = await kg_search(
+                        query=query,
+                        tenant_id=tenant_id,
+                        document_ids=None,
+                        dataset_id=scoped_dataset_id,
+                        dataset_ids=None,
+                        account_id=account_id,
+                        query_mode=query_mode,
+                    )
+                    return scoped_dataset_id, result if isinstance(result, dict) else {}, None
+                except Exception as exc:  # noqa: BLE001
+                    return scoped_dataset_id, None, str(exc)[:200]
+
+        shards = await asyncio.gather(*[_search_shard(scoped_dataset_id) for scoped_dataset_id in scoped_dataset_ids])
+        return _merge_kg_dataset_shard_results(list(shards))
 
     default_mode = str(getattr(settings, "KG_SEARCH_QUERY_MODE_DEFAULT", "auto") or "auto")
     requested_mode = normalize_kg_query_mode(query_mode, default=default_mode)
@@ -344,76 +388,82 @@ async def kg_search(
     if cache_enabled and ttl_sec > 0 and max_entries > 0:
         eff_tenant_id = tenant_id or settings.DEFAULT_TENANT_ID
         eff_doc_ids = [str(d) for d in (document_ids or []) if d is not None]
-        if eff_doc_ids:
-            pipeline_fp: str | None = None
-            try:
+        pipeline_fp: str | None = None
+        scoped_cache_dataset_id = dataset_id if dataset_id is not None else None
+        try:
+            if eff_doc_ids:
                 pipeline_fp = _resolve_doc_pipeline_fingerprint(tenant_id=eff_tenant_id, document_ids=eff_doc_ids)
-            except Exception:
-                pipeline_fp = None
-
-            if pipeline_fp:
-                cache_key = build_kg_search_cache_key(
-                    tenant_id=str(eff_tenant_id),
-                    account_id=str(account_id or ""),
-                    dataset_id=(str(dataset_id) if dataset_id is not None else None),
-                    document_ids=eff_doc_ids,
-                    pipeline_fingerprint=pipeline_fp,
-                    query=str(query or ""),
-                    search_config={
-                        # Include settings that can change KG search behavior so runtime toggles do not
-                        # serve stale cached results.
-                        "KG_SEARCH_RELATION_EXPANSION_ENABLED": bool(
-                            getattr(settings, "KG_SEARCH_RELATION_EXPANSION_ENABLED", False)
-                        ),
-                        "KG_RELATION_ENABLED": bool(getattr(settings, "KG_RELATION_ENABLED", False)),
-                        # GraphRAG-like global search (community summaries) is optional and must be part
-                        # of the cache key to avoid mixing results across feature toggles.
-                        "KG_COMMUNITY_ENABLED": bool(getattr(settings, "KG_COMMUNITY_ENABLED", False)),
-                        "KG_COMMUNITY_REQUIRE_GLOBAL_PATTERN": bool(
-                            getattr(settings, "KG_COMMUNITY_REQUIRE_GLOBAL_PATTERN", True)
-                        ),
-                        "KG_COMMUNITY_MAX_EVENTS": int(getattr(settings, "KG_COMMUNITY_MAX_EVENTS", 0) or 0),
-                        "KG_COMMUNITY_MAX_ENTITIES_PER_EVENT": int(
-                            getattr(settings, "KG_COMMUNITY_MAX_ENTITIES_PER_EVENT", 0) or 0
-                        ),
-                        "KG_COMMUNITY_MIN_EDGE_WEIGHT": float(getattr(settings, "KG_COMMUNITY_MIN_EDGE_WEIGHT", 0.0) or 0.0),
-                        "KG_SEARCH_RELATION_MIN_CONFIDENCE": float(
-                            getattr(settings, "KG_SEARCH_RELATION_MIN_CONFIDENCE", 0.0) or 0.0
-                        ),
-                        "KG_SEARCH_RELATION_MAX_EDGES": int(getattr(settings, "KG_SEARCH_RELATION_MAX_EDGES", 0) or 0),
-                        "KG_SEARCH_RELATION_MAX_NEIGHBORS": int(
-                            getattr(settings, "KG_SEARCH_RELATION_MAX_NEIGHBORS", 0) or 0
-                        ),
-                        "KG_SEARCH_MAX_RERANK_CANDIDATES": int(
-                            getattr(settings, "KG_SEARCH_MAX_RERANK_CANDIDATES", 0) or 0
-                        ),
-                        "KG_SEARCH_EXPAND_BUDGET_SEC": float(
-                            getattr(settings, "KG_SEARCH_EXPAND_BUDGET_SEC", 0.0) or 0.0
-                        ),
-                        "KG_SEARCH_QUERY_MODE": str(resolved_mode),
-                        "KG_SEARCH_QUERY_MODE_LOW_CONFIDENCE_GLOBAL_MAX_EVENTS": int(
-                            getattr(settings, "KG_SEARCH_QUERY_MODE_LOW_CONFIDENCE_GLOBAL_MAX_EVENTS", 0) or 0
-                        ),
-                        "KG_SEARCH_SERVING_LAYER_ENABLED": bool(
-                            getattr(settings, "KG_SEARCH_SERVING_LAYER_ENABLED", True)
-                        ),
-                        "KG_SEARCH_SERVING_MAX_EVENTS_PER_CHUNK": int(
-                            getattr(settings, "KG_SEARCH_SERVING_MAX_EVENTS_PER_CHUNK", 0) or 0
-                        ),
-                        "KG_SEARCH_SERVING_MAX_EVENTS_PER_DOCUMENT": int(
-                            getattr(settings, "KG_SEARCH_SERVING_MAX_EVENTS_PER_DOCUMENT", 0) or 0
-                        ),
-                        "KG_SEARCH_SERVING_MIN_SCORE": float(
-                            getattr(settings, "KG_SEARCH_SERVING_MIN_SCORE", 0.0) or 0.0
-                        ),
-                        "KG_SEARCH_SERVING_CANDIDATE_MULTIPLIER": int(
-                            getattr(settings, "KG_SEARCH_SERVING_CANDIDATE_MULTIPLIER", 0) or 0
-                        ),
-                    },
+            elif scoped_cache_dataset_id is not None:
+                pipeline_fp = _resolve_dataset_pipeline_fingerprint(
+                    tenant_id=eff_tenant_id,
+                    dataset_ids=[scoped_cache_dataset_id],
                 )
-                cached, _age_ms = kg_search_cache.get(cache_key, ttl_sec=ttl_sec)
-                if cached is not None:
-                    return cached
+        except Exception:
+            pipeline_fp = None
+
+        if pipeline_fp:
+            cache_key = build_kg_search_cache_key(
+                tenant_id=str(eff_tenant_id),
+                account_id=str(account_id or ""),
+                dataset_id=(str(scoped_cache_dataset_id) if scoped_cache_dataset_id is not None else None),
+                document_ids=eff_doc_ids,
+                pipeline_fingerprint=pipeline_fp,
+                query=str(query or ""),
+                search_config={
+                    # Include settings that can change KG search behavior so runtime toggles do not
+                    # serve stale cached results.
+                    "KG_SEARCH_RELATION_EXPANSION_ENABLED": bool(
+                        getattr(settings, "KG_SEARCH_RELATION_EXPANSION_ENABLED", False)
+                    ),
+                    "KG_RELATION_ENABLED": bool(getattr(settings, "KG_RELATION_ENABLED", False)),
+                    # GraphRAG-like global search (community summaries) is optional and must be part
+                    # of the cache key to avoid mixing results across feature toggles.
+                    "KG_COMMUNITY_ENABLED": bool(getattr(settings, "KG_COMMUNITY_ENABLED", False)),
+                    "KG_COMMUNITY_REQUIRE_GLOBAL_PATTERN": bool(
+                        getattr(settings, "KG_COMMUNITY_REQUIRE_GLOBAL_PATTERN", True)
+                    ),
+                    "KG_COMMUNITY_MAX_EVENTS": int(getattr(settings, "KG_COMMUNITY_MAX_EVENTS", 0) or 0),
+                    "KG_COMMUNITY_MAX_ENTITIES_PER_EVENT": int(
+                        getattr(settings, "KG_COMMUNITY_MAX_ENTITIES_PER_EVENT", 0) or 0
+                    ),
+                    "KG_COMMUNITY_MIN_EDGE_WEIGHT": float(getattr(settings, "KG_COMMUNITY_MIN_EDGE_WEIGHT", 0.0) or 0.0),
+                    "KG_SEARCH_RELATION_MIN_CONFIDENCE": float(
+                        getattr(settings, "KG_SEARCH_RELATION_MIN_CONFIDENCE", 0.0) or 0.0
+                    ),
+                    "KG_SEARCH_RELATION_MAX_EDGES": int(getattr(settings, "KG_SEARCH_RELATION_MAX_EDGES", 0) or 0),
+                    "KG_SEARCH_RELATION_MAX_NEIGHBORS": int(
+                        getattr(settings, "KG_SEARCH_RELATION_MAX_NEIGHBORS", 0) or 0
+                    ),
+                    "KG_SEARCH_MAX_RERANK_CANDIDATES": int(
+                        getattr(settings, "KG_SEARCH_MAX_RERANK_CANDIDATES", 0) or 0
+                    ),
+                    "KG_SEARCH_EXPAND_BUDGET_SEC": float(
+                        getattr(settings, "KG_SEARCH_EXPAND_BUDGET_SEC", 0.0) or 0.0
+                    ),
+                    "KG_SEARCH_QUERY_MODE": str(resolved_mode),
+                    "KG_SEARCH_QUERY_MODE_LOW_CONFIDENCE_GLOBAL_MAX_EVENTS": int(
+                        getattr(settings, "KG_SEARCH_QUERY_MODE_LOW_CONFIDENCE_GLOBAL_MAX_EVENTS", 0) or 0
+                    ),
+                    "KG_SEARCH_SERVING_LAYER_ENABLED": bool(
+                        getattr(settings, "KG_SEARCH_SERVING_LAYER_ENABLED", True)
+                    ),
+                    "KG_SEARCH_SERVING_MAX_EVENTS_PER_CHUNK": int(
+                        getattr(settings, "KG_SEARCH_SERVING_MAX_EVENTS_PER_CHUNK", 0) or 0
+                    ),
+                    "KG_SEARCH_SERVING_MAX_EVENTS_PER_DOCUMENT": int(
+                        getattr(settings, "KG_SEARCH_SERVING_MAX_EVENTS_PER_DOCUMENT", 0) or 0
+                    ),
+                    "KG_SEARCH_SERVING_MIN_SCORE": float(
+                        getattr(settings, "KG_SEARCH_SERVING_MIN_SCORE", 0.0) or 0.0
+                    ),
+                    "KG_SEARCH_SERVING_CANDIDATE_MULTIPLIER": int(
+                        getattr(settings, "KG_SEARCH_SERVING_CANDIDATE_MULTIPLIER", 0) or 0
+                    ),
+                },
+            )
+            cached, _age_ms = kg_search_cache.get(cache_key, ttl_sec=ttl_sec)
+            if cached is not None:
+                return cached
 
     engine = _load_engine()
     result = await engine.search(

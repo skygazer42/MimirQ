@@ -812,13 +812,38 @@ class Settings(BaseSettings):
     DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MIN: int = 20
     DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MULTIPLIER: int = 4
     DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX: int = 50
+    DIFY_EXTERNAL_KNOWLEDGE_RETRIEVAL_OVERFETCH_MULTIPLIER: int = 1
+    # 0 means cap Dify external retrieval overfetch at the resolved internal candidate top_k.
+    DIFY_EXTERNAL_KNOWLEDGE_RETRIEVAL_OVERFETCH_MAX_K: int = 0
     DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_SCOPE_ENABLED: bool = True
     DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_RECORDS: int = 1
     DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_TOP_SCORE: float = 0.45
+    # Short in-process cache for Dify external retrieval records. This is not an
+    # answer fallback; it removes duplicate retrieval work inside one workflow run.
+    DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_ENABLED: bool = True
+    DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_TTL_SEC: int = 30
+    DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_MAX_ENTRIES: int = 512
     DIFY_EXTERNAL_KNOWLEDGE_COMPACT_HIGH_CONFIDENCE_ENABLED: bool = True
     DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_TOP_SCORE: float = 0.7
     DIFY_EXTERNAL_KNOWLEDGE_COMPACT_RELATIVE_SCORE_FLOOR: float = 0.65
     DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_RECORDS: int = 1
+    # Dify external retrieval is latency-sensitive and query strings are often
+    # short entity/fact questions, so keep lexical DB as a parallel sparse
+    # candidate channel instead of only a late fallback.
+    DIFY_EXTERNAL_KNOWLEDGE_LEXICAL_DB_HYBRID_FALLBACK_ONLY: bool = False
+    DIFY_EXTERNAL_KNOWLEDGE_LEXICAL_METADATA_EXACT_FALLBACK_ENABLED: bool = False
+    DIFY_EXTERNAL_KNOWLEDGE_METADATA_EXACT_DB_FALLBACK_ENABLED: bool = False
+    # Optional exact metadata-anchor DB safety net. Keep it opt-in for Dify's
+    # latency-sensitive path; normal quality should come from RAG/KG plus
+    # plugin-provided metadata and ranking policy.
+    DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED: bool = False
+    DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_MAX_SCAN: int = 80
+    DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_MAX_RECORDS: int = 4
+    DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_STATEMENT_TIMEOUT_MS: int = 2500
+    # When KG is enabled for Dify external retrieval, first run normal RAG and
+    # invoke KG only if the normal result lacks a confident metadata anchor.
+    DIFY_EXTERNAL_KNOWLEDGE_KG_ON_DEMAND_ENABLED: bool = True
+    DIFY_EXTERNAL_KNOWLEDGE_KG_ON_DEMAND_PROBE_ENABLED: bool = True
     DIFY_EXTERNAL_KNOWLEDGE_KG_QUERY_EXPANSION_ENABLED: bool = False
     DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_INJECTION_ENABLED: bool = False
     DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_INJECTION_MAX_CHUNKS: int = 3
@@ -1053,6 +1078,12 @@ class Settings(BaseSettings):
     LEXICAL_DB_FETCH_MULTIPLIER: int = 4
     LEXICAL_DB_MAX_CANDIDATES: int = 200
     LEXICAL_DB_TRGM_MIN_QUERY_CHARS: int = 3
+    # CJK short-entity queries often fail whole-string FTS/trigram because the
+    # relevant phrase is a small substring inside a long chunk. Use tokenizer
+    # terms as an indexed lexical candidate channel.
+    LEXICAL_DB_CJK_TOKEN_CONTAINMENT_ENABLED: bool = True
+    LEXICAL_DB_CJK_TOKEN_MAX_TERMS: int = 6
+    LEXICAL_DB_CJK_TOKEN_MIN_HITS: int = 0
     # Dataset-scoped metadata exact fallback for CJK FAQ/title anchors.
     # This is a candidate safety net for plugin-provided `_evaluable_metadata`
     # fields such as question/aliases/service_name when content lexical search
@@ -1978,11 +2009,12 @@ class Settings(BaseSettings):
     # - Per-query KG latency SLO target for stats/metrics only (milliseconds, 0 disables).
     KG_SEARCH_LATENCY_SLO_MS: int = 0
     KG_SEARCH_METRICS_ENABLED: bool = False
-    # KG search cache (best-effort, per-process).
-    # Disabled by default to preserve backward-compatible behavior.
-    KG_SEARCH_CACHE_ENABLED: bool = False
+    # KG search cache (best-effort, per-process). Safe by default because keys bind
+    # tenant/account/scope/query/config and dataset/document corpus fingerprints.
+    KG_SEARCH_CACHE_ENABLED: bool = True
     KG_SEARCH_CACHE_TTL_SEC: int = 30
     KG_SEARCH_CACHE_MAX_ENTRIES: int = 256
+    KG_SEARCH_MULTI_DATASET_MAX_CONCURRENCY: int = 4
     # KG quality diagnostics (best-effort; aggregate-only).
     KG_QUALITY_LOW_CONFIDENCE_THRESHOLD: float = 0.30
     # Upper bound for relation edges loaded into component analysis (0 disables component analysis).
@@ -2319,6 +2351,16 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX must be >= DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MIN"
                 )
+            dify_overfetch_multiplier = int(
+                getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_RETRIEVAL_OVERFETCH_MULTIPLIER", 1) or 0
+            )
+            if dify_overfetch_multiplier < 1 or dify_overfetch_multiplier > 20:
+                raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_RETRIEVAL_OVERFETCH_MULTIPLIER must be between 1 and 20")
+            dify_overfetch_max_k = int(
+                getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_RETRIEVAL_OVERFETCH_MAX_K", 0) or 0
+            )
+            if dify_overfetch_max_k < 0 or dify_overfetch_max_k > 500:
+                raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_RETRIEVAL_OVERFETCH_MAX_K must be between 0 and 500")
             primary_min_records = int(getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_RECORDS", 1) or 0)
             if primary_min_records < 1 or primary_min_records > top_k_max:
                 raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_RECORDS must be between 1 and TOP_K_MAX")
@@ -2327,6 +2369,16 @@ class Settings(BaseSettings):
             )
             if primary_min_top_score < 0.0 or primary_min_top_score > 2.0:
                 raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_TOP_SCORE must be between 0 and 2")
+            response_cache_ttl_sec = int(
+                getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_TTL_SEC", 30) or 0
+            )
+            if response_cache_ttl_sec < 0:
+                raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_TTL_SEC must be >= 0")
+            response_cache_max_entries = int(
+                getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_MAX_ENTRIES", 512) or 0
+            )
+            if response_cache_max_entries < 0:
+                raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_MAX_ENTRIES must be >= 0")
             compact_min_top_score = float(
                 getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_TOP_SCORE", 0.7) or 0.0
             )

@@ -29,6 +29,17 @@ def _metadata_value(meta: dict[str, Any], key: str) -> Any:
     return cur
 
 
+def _metadata_values_from_public_layers(meta: dict[str, Any], key: str) -> list[Any]:
+    values: list[Any] = []
+    for container in (meta, meta.get(EVALUABLE_METADATA_KEY), meta.get(DISPLAY_METADATA_KEY)):
+        if not isinstance(container, dict):
+            continue
+        value = _metadata_value(container, key)
+        if value is not None and value != "" and value != []:
+            values.append(value)
+    return values
+
+
 def _format_question(template: str, meta: dict[str, Any]) -> str | None:
     values: dict[str, str] = {}
     cursor = 0
@@ -113,8 +124,13 @@ def _answer_key_points(meta: dict[str, Any], golden_rules: dict[str, Any]) -> li
     out: list[str] = []
     seen: set[str] = set()
     for field in _rule_fields(golden_rules, "answer_key_point_fields"):
-        raw = _metadata_value(meta, field)
-        values = raw if isinstance(raw, list | tuple | set) else [raw]
+        raw_values = _metadata_values_from_public_layers(meta, field)
+        values: list[Any] = []
+        for raw in raw_values:
+            if isinstance(raw, list | tuple | set):
+                values.extend(raw)
+            else:
+                values.append(raw)
         for value in values:
             text = _text(value)
             if not text or text in seen:

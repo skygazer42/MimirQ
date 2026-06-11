@@ -56,6 +56,18 @@ def _metadata_service_hit(document_id: str, *, service_name: str, score: float =
     return hit
 
 
+def test_lexical_cjk_token_terms_keep_entity_tokens_and_drop_substrings() -> None:
+    terms = HybridRetriever._lexical_cjk_token_terms("天宁区学区查询咨询电话是多少")
+
+    assert "天宁区" in terms
+    assert "学区" in terms
+    assert "查询" in terms
+    assert "咨询电话" in terms
+    assert "天宁" not in terms
+    assert "咨询" not in terms
+    assert "电话" not in terms
+
+
 def test_keyword_mode_prefers_lexical_db_and_skips_bm25_by_default(monkeypatch) -> None:  # noqa: ANN001
     monkeypatch.setattr(settings, "LEXICAL_DB_ENABLED", True, raising=False)
     monkeypatch.setattr(settings, "BM25_INDEX_ENABLED", True, raising=False)

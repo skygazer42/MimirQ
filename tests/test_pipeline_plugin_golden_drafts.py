@@ -95,6 +95,47 @@ def test_build_golden_draft_bundle_from_plugin_rules_generates_reference_sources
     assert item["extra"]["answer_key_points"] == ["identity proof", "signed form"]
 
 
+def test_build_golden_draft_bundle_reads_answer_points_from_metadata_views():
+    from app.rag.pipeline_plugins.golden_drafts import build_golden_draft_bundle_from_chunks
+
+    chunk = _Chunk(
+        document_id=uuid4(),
+        content="Answer: upload online at https://example.test/app.",
+        metadata={
+            "record_name": "Demo record",
+            "knowledge_type": "demo_case",
+            "_evaluable_metadata": {
+                "source_record_id": "record-1",
+                "related_services": ["service A", "service B"],
+            },
+            "_display_metadata": {
+                "urls": ["https://example.test/app"],
+            },
+        },
+    )
+    golden_rules = {
+        "schema": "mimirq.golden_rules.v1",
+        "expected_metadata": ["source_record_id"],
+        "answer_key_point_fields": ["related_services", "urls"],
+        "template_selector_fields": ["knowledge_type"],
+        "query_templates": {"demo_case": ["What does {record_name} include?"]},
+    }
+
+    bundle = build_golden_draft_bundle_from_chunks(
+        dataset_id=uuid4(),
+        chunks=[chunk],
+        golden_rules=golden_rules,
+        plugin_id="demo-plugin",
+        max_items=10,
+    )
+
+    assert bundle["items"][0]["extra"]["answer_key_points"] == [
+        "service A",
+        "service B",
+        "https://example.test/app",
+    ]
+
+
 def test_build_golden_draft_bundle_does_not_score_raw_business_metadata_without_evaluable_view():
     from app.rag.pipeline_plugins.golden_drafts import build_golden_draft_bundle_from_chunks
 

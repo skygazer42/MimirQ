@@ -81,6 +81,8 @@ _SUPPORTED_CONTRACT_FIELDS = {
         "anchor_fields",
         "rerank_features",
         "question_intent_terms",
+        "service_anchor_noise_terms",
+        "service_anchor_priority_terms",
         "question_anchor_bonus",
         "fallback",
         "response_compaction",

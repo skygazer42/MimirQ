@@ -54,6 +54,75 @@
     "时限",
     "标准"
   ],
+  "service_anchor_noise_terms": [
+    "咨询电话是多少",
+    "联系电话是多少",
+    "咨询电话",
+    "联系电话",
+    "电话号码",
+    "电话是多少",
+    "收费吗",
+    "是否收费",
+    "需要收费吗",
+    "收费标准是什么",
+    "收费标准",
+    "什么时候可以办",
+    "什么时候办理",
+    "什么时候能办",
+    "什么时候办",
+    "办理入口在哪里",
+    "入口在哪里",
+    "在哪里进入办理",
+    "进入办理",
+    "在哪里办理",
+    "在哪办理",
+    "哪里办理",
+    "涉及哪些事项",
+    "包含哪些事项",
+    "有哪些事项",
+    "如何办理",
+    "怎么办理",
+    "怎么申请",
+    "如何申请",
+    "需要什么材料",
+    "需要哪些材料",
+    "需要什么资料",
+    "需要哪些资料",
+    "要什么材料",
+    "要哪些材料",
+    "办理材料",
+    "申请材料",
+    "所需材料",
+    "可以办理吗",
+    "可以办吗",
+    "可以办理",
+    "可以办",
+    "办理",
+    "多少",
+    "是什么"
+  ],
+  "service_anchor_priority_terms": [
+    "咨询电话是多少",
+    "联系电话是多少",
+    "咨询电话",
+    "联系电话",
+    "电话号码",
+    "电话是多少",
+    "收费吗",
+    "是否收费",
+    "需要收费吗",
+    "什么时候可以办",
+    "什么时候办理",
+    "什么时候能办",
+    "什么时候办",
+    "办理入口在哪里",
+    "入口在哪里",
+    "在哪里进入办理",
+    "进入办理",
+    "在哪里办理",
+    "在哪办理",
+    "哪里办理"
+  ],
   "response_hints": {
     "answer_prefix": "答案要点",
     "source_prefix": "原始证据",
@@ -72,6 +141,40 @@
     "answer_labels": ["答案"],
     "answer_keywords": ["答案"],
     "answer_highlight_metadata": ["answer_highlights", "answer_key_points", "summary_points"],
+    "answer_highlight_metadata_fields": [
+      {"metadata": "answer", "label": "答案", "max_chars": 1600},
+      {
+        "metadata": "service_fields",
+        "fields": ["办理地点", "咨询方式", "办理时间", "办理材料", "在线办理地址"],
+        "when_metadata": {"gov_knowledge_type": "service_item"},
+        "max_chars": 1200
+      },
+      {"metadata": "case_title", "label": "一件事", "max_chars": 200},
+      {
+        "metadata": "related_services",
+        "label": "涉及事项",
+        "when_metadata": {"section_type": "related_services"},
+        "max_chars": 1200
+      },
+      {
+        "metadata": "materials",
+        "label": "申请材料",
+        "when_metadata": {"section_type": "materials"},
+        "max_chars": 1200
+      },
+      {
+        "metadata": "operation_steps",
+        "label": "操作步骤",
+        "when_metadata": {"section_type": ["operation_steps", "operation_material_upload", "operation_query"]},
+        "max_chars": 1200
+      },
+      {
+        "metadata": "urls",
+        "label": "办理入口",
+        "when_metadata": {"section_type": ["channels", "materials", "operation_entry", "operation_url"]},
+        "max_chars": 1200
+      }
+    ],
     "existing_hint_prefixes": ["答案要点"],
     "anchor_only_chunk_kinds": ["qa_pair", "qa"],
     "anchor_only_markers": ["问题", "检索锚点", "相似问"],
@@ -170,12 +273,12 @@
   ],
   "fallback": {
     "enabled": true,
-    "expand_top_k_multiplier": 2
+    "expand_top_k_multiplier": 1
   },
   "response_compaction": {
     "enabled": true,
     "min_top_score": 0.8,
     "relative_score_floor": 0.65,
-    "min_records": 2
+    "min_records": 1
   }
 }
