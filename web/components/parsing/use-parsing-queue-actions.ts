@@ -6,7 +6,7 @@ import { useTranslations } from 'next-intl'
 
 import { toast } from 'sonner'
 
-import { parsingApi } from '@/lib/api'
+import { documentApi, parsingApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { ROOT_FOLDER_ID, type ParsedFileData } from '@/store/use-parsed-files-store'
 
@@ -59,12 +59,6 @@ export function useParsingQueueActions({
       }
 
       if (libraryId) {
-        if (libraryEntry?.source === 'knowledge_base') {
-          removeLibraryCaches(libraryId)
-          if (activeLibraryFileId === libraryId) setActiveLibraryFileId(null)
-          return
-        }
-
         queryClient.setQueriesData<ParsedFileData[] | null>({ queryKey: ['parsing', 'library-documents'] }, (current) => {
           if (!Array.isArray(current)) return current
           return current.filter((file) => file.id !== libraryId)
@@ -73,7 +67,8 @@ export function useParsingQueueActions({
 
         void (async () => {
           try {
-            await parsingApi.delete(libraryId)
+            if (libraryEntry?.source === 'knowledge_base') await documentApi.delete(libraryId)
+            else await parsingApi.delete(libraryId)
           } catch (err: unknown) {
             toast.error(formatApiError(err, t('toasts.deleteFailed')))
           }

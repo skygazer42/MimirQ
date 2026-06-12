@@ -294,7 +294,7 @@ export function DataCleaner({
               <div className="min-w-0">
                 <h3 className="text-[13px] font-semibold tracking-[-0.01em] text-foreground/88">{t("header.title")}</h3>
                 <p className="mt-0.5 truncate text-[10.5px] leading-snug text-muted-foreground/72">
-                  预设、管线与索引策略集中配置
+                  预设与治理规则集中配置
                 </p>
               </div>
             </div>
@@ -330,7 +330,7 @@ export function DataCleaner({
             <div className="rounded-lg border border-primary/10 bg-card/80 p-2.5 shadow-[0_8px_20px_rgba(15,23,42,0.02)]">
               <GovernanceProfileSelector compact={true} onApplyPatch={applyPipelinePatch} />
             </div>
-            <PipelineOptionsPanel compact={true} showJsonToolbar={true} />
+            <PipelineOptionsPanel compact={true} showJsonToolbar={true} showIndexingControls={false} />
           </div>
         </div>
       </div>

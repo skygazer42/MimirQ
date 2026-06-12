@@ -155,7 +155,7 @@ async def patch_document_pipeline(
     current_status = str(document.status or "").lower()
     if current_status == "processing" or (
         current_status == "pending"
-        and not documents_module._is_uploaded_only_pending_document(document)
+        and not documents_module._is_reprocessable_pending_document(document)
     ):
         raise HTTPException(status_code=409, detail=f"Cannot edit pipeline for a {current_status} document")
 

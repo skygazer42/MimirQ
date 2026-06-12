@@ -41,7 +41,9 @@ describe('data cleaner source style', () => {
     const pipelineSrc = fs.readFileSync(path.resolve(__dirname, '../pipeline-options-panel.tsx'), 'utf8')
 
     expect(cleanerSrc).toContain('const configShellClass =')
-    expect(cleanerSrc).toContain('PipelineOptionsPanel compact={true}')
+    expect(cleanerSrc).toContain('PipelineOptionsPanel compact={true} showJsonToolbar={true} showIndexingControls={false}')
+    expect(cleanerSrc).toContain('预设与治理规则集中配置')
+    expect(cleanerSrc).not.toContain('预设、管线与索引策略集中配置')
     expect(cleanerSrc).not.toContain('预设 / 管线 / 索引模式')
     expect(cleanerSrc).toContain('const llmPanelClass =')
     expect(cleanerSrc).toContain('const diffPanelClass =')

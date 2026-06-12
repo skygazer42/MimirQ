@@ -9,6 +9,7 @@ describe('parsing and reports shell message wiring', () => {
     const shellSrc = fs.readFileSync(path.resolve(__dirname, 'parsing-workbench-shell.tsx'), 'utf8')
     const sidebarSrc = fs.readFileSync(path.resolve(__dirname, 'parsing-sidebar-pane.tsx'), 'utf8')
     const previewSrc = fs.readFileSync(path.resolve(__dirname, 'parsing-library-preview-pane.tsx'), 'utf8')
+    const parsingMessagesSrc = fs.readFileSync(path.resolve(__dirname, '../../i18n/messages/zh-CN/parsing.ts'), 'utf8')
 
     expect(reportsSrc).toContain("useTranslations('Reports')")
     expect(shellSrc).toContain("useTranslations('ParsingWorkbench')")
@@ -20,5 +21,10 @@ describe('parsing and reports shell message wiring', () => {
     expect(shellSrc).not.toContain('选择文件开始')
     expect(sidebarSrc).not.toContain('默认解析方式')
     expect(previewSrc).not.toContain('暂无可展示的解析内容')
+    expect(sidebarSrc).toContain("t('sidebar.parserApplyHint')")
+    expect(sidebarSrc).toContain('setDraftParserBackend')
+    expect(sidebarSrc).toContain('confirmParserSelection')
+    expect(parsingMessagesSrc).toContain('点击“保存默认”不会启动解析')
+    expect(parsingMessagesSrc).toContain('点击文件上的“解析”')
   })
 })

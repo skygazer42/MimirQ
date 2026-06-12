@@ -4,6 +4,7 @@ Lightweight parsing and hierarchical chunk preview APIs:
 - /pipeline/chunk-preview: hierarchical Markdown chunking (paragraph/sentence) with highlight offsets
 """
 import asyncio
+import importlib.metadata as importlib_metadata
 import json
 import re
 import shutil
@@ -1894,10 +1895,14 @@ def _dependency_backend_availability(
     attr: str | None = None,
     package_name: str,
 ) -> tuple[bool, str | None]:
+    _ = (module, attr)
     if not bool(getattr(settings, enabled_setting, False)):
         return False, enable_note
-    ok, err = check_dependency(module, attr=attr)
-    return ok, None if ok else f"{package_name} not installed: {err}"
+    try:
+        importlib_metadata.version(package_name)
+    except importlib_metadata.PackageNotFoundError as exc:
+        return False, f"{package_name} not installed: {str(exc)[:200] or 'package not found'}"
+    return True, None
 
 
 def _enabled_api_backend_availability(

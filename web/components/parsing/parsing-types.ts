@@ -38,6 +38,8 @@ export interface ParsedFile extends FileQueueItemData {
   markdownContent: string | null
   parserBackend: string
   parserLabel: string
+  datasetId?: string | null
+  datasetName?: string | null
   libraryId?: string
   librarySource?: 'parsing_workspace' | 'knowledge_base'
   governanceStatus?: 'draft' | 'ready' | 'submitted'

@@ -17,7 +17,6 @@ import { extractZipFiles, isZipFile } from '@/lib/zip'
 import { ROOT_FOLDER_ID, type FolderNode, type ParsedFileData } from '@/store/use-parsed-files-store'
 import { ZIP_ALLOWED_EXTENSIONS } from '@/lib/upload-extensions'
 import { type FileStatus } from '@/components/ui/file-queue-item'
-import type { DocumentPipelineOptions } from '@/types'
 
 import type { ParseRun, ParsedFile } from './parsing-types'
 
@@ -32,6 +31,11 @@ type MutableRef<T> = {
 
 const normalizeBackendCandidate = (value: unknown): string =>
   typeof value === 'string' && value.trim() ? value.trim() : ''
+
+function readPersistedElements(value: unknown): NonNullable<ParsedFileData['elements']> {
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is NonNullable<ParsedFileData['elements']>[number] => Boolean(item) && typeof item === 'object')
+}
 
 type UseParsingLibraryActionsOptions = {
   activeFolderId: string | null
@@ -59,11 +63,6 @@ type UseParsingLibraryActionsOptions = {
   updateParsedFile: (id: string, updates: Partial<Omit<ParsedFileData, 'id'>>) => void
   uploadTargetFolderIdRef: MutableRef<string | null>
   upsertParsedFile: (file: ParsedFileData) => void
-}
-
-const DATASET_SCOPED_UPLOAD_PIPELINE: DocumentPipelineOptions = {
-  persist_parsed_content: true,
-  persist_parsed_content_max_chars: 2_000_000,
 }
 
 export function useParsingLibraryActions({
@@ -138,7 +137,7 @@ export function useParsingLibraryActions({
     async (
       libraryId: string,
       sourceFile: File,
-      options: { autoParse?: boolean; select?: boolean } = {}
+      options: { autoParse?: boolean; select?: boolean; forceRefresh?: boolean } = {}
     ) => {
       const id = (libraryId || '').trim()
       if (!id || !sourceFile) return null
@@ -159,6 +158,7 @@ export function useParsingLibraryActions({
       const queueId = generateId()
       const autoParse = libEntry.source === 'knowledge_base' ? false : Boolean(options.autoParse)
       const select = options.select ?? true
+      const forceRefresh = Boolean(options.forceRefresh)
       const restoredDurationSec =
         !autoParse && Number.isFinite(Number(libEntry.durationSec)) ? Number(libEntry.durationSec) : undefined
 
@@ -199,7 +199,7 @@ export function useParsingLibraryActions({
               originalMarkdownContent: raw || cleaned,
             })
 
-          if (needsRemoteContent) {
+          if (forceRefresh || needsRemoteContent) {
             try {
               if (libEntry.source === 'knowledge_base') {
                 const remote = await documentApi.getParsedContent(id, { max_chars: 2_000_000 })
@@ -214,6 +214,7 @@ export function useParsingLibraryActions({
                     normalizeBackendCandidate(persistedMeta.parser_backend) ||
                     normalizeBackendCandidate(persistedMeta.parser_backend_requested) ||
                     backend
+                  restoredElements = readPersistedElements(persistedMeta.elements)
                   updateParsedFile(id, {
                     markdownContent: cleaned || raw,
                     originalMarkdownContent: raw || cleaned,
@@ -222,6 +223,7 @@ export function useParsingLibraryActions({
                     durationSec: Number.isFinite(Number(persistedMeta.parse_duration_sec))
                       ? Number(persistedMeta.parse_duration_sec)
                       : libEntry.durationSec,
+                    elements: restoredElements,
                     status: 'parsed',
                   })
                 }
@@ -313,6 +315,9 @@ export function useParsingLibraryActions({
         error: errorMessage,
         parserBackend: backend,
         parserLabel: label,
+        datasetId: libEntry.datasetId,
+        datasetName: libEntry.datasetName,
+        sourcePath: libEntry.sourcePath || libEntry.datasetName || undefined,
         libraryId: id,
         librarySource: libEntry.source,
         createdAt,
@@ -380,6 +385,15 @@ export function useParsingLibraryActions({
 
       const existing = filesRef.current.find((file) => file.libraryId === id) || null
       if (existing) {
+        if (!autoParse && existing.status === 'parsed') {
+          detachPromise(
+            mountLibraryFileToQueue(id, existing.file, {
+              autoParse: false,
+              forceRefresh: true,
+            })
+          )
+          return
+        }
         setActiveFileId(existing.id)
         setActiveLibraryFileId(null)
         if (autoParse) setAutoParseFileId(existing.id)
@@ -395,7 +409,7 @@ export function useParsingLibraryActions({
             lastModified: cached.lastModified || Date.now(),
           })
           setActiveLibrarySourceStatus('available')
-          detachPromise(mountLibraryFileToQueue(id, file, { autoParse }))
+          detachPromise(mountLibraryFileToQueue(id, file, { autoParse, forceRefresh: !autoParse }))
           return
         }
 
@@ -405,7 +419,7 @@ export function useParsingLibraryActions({
           lastModified: Date.now(),
         })
         setActiveLibrarySourceStatus('available')
-        detachPromise(mountLibraryFileToQueue(id, file, { autoParse }))
+        detachPromise(mountLibraryFileToQueue(id, file, { autoParse, forceRefresh: !autoParse }))
       } catch (err) {
         reportClientWarning('Failed to restore parsing source file', err)
         setActiveLibrarySourceStatus('missing')
@@ -532,6 +546,7 @@ export function useParsingLibraryActions({
                 error: undefined,
                 parserBackend: resolvedParser.backend,
                 parserLabel: getParserLabel(resolvedParser.backend),
+                datasetId: selectedDatasetId,
                 createdAt: now,
               })
               added += 1
@@ -574,6 +589,7 @@ export function useParsingLibraryActions({
           error: undefined,
           parserBackend: resolvedParser.backend,
           parserLabel: getParserLabel(resolvedParser.backend),
+          datasetId: selectedDatasetId,
           createdAt: now,
         })
         added += 1
@@ -584,77 +600,26 @@ export function useParsingLibraryActions({
         return
       }
 
-      if (selectedDatasetId) {
-        let uploadFailed = 0
-        const uploadedLibraryIds: string[] = []
-
-        for (const queuedFile of queued) {
-          try {
-            const doc = await documentApi.upload(queuedFile.file, {
-              parser_backend: queuedFile.parserBackend,
-              dataset_id: selectedDatasetId,
-              pipeline: DATASET_SCOPED_UPLOAD_PIPELINE,
-            })
-            const libId = String(doc.id || '').trim()
-            if (!libId) throw new Error('Missing document id from backend')
-
-            const metadata = doc.metadata
-            const requestedBackend =
-              normalizeBackendCandidate(metadata?.parser_backend_requested) ||
-              queuedFile.parserBackend ||
-              'auto'
-
-            upsertParsedFile({
-              id: libId,
-              filename: doc.filename || queuedFile.name,
-              fileType: doc.file_type || queuedFile.name.split('.').pop()?.toLowerCase() || '',
-              fileSize: Number(doc.file_size || queuedFile.size),
-              markdownContent: '',
-              originalMarkdownContent: '',
-              parsedAt: String(doc.updated_at || doc.created_at || new Date().toISOString()),
-              parser: getParserLabel(requestedBackend),
-              parserBackend: requestedBackend,
-              folderId: queuedFile.folderId,
-              datasetId: doc.dataset_id || selectedDatasetId,
-              datasetName: null,
-              source: 'knowledge_base',
-              sourcePath:
-                (typeof metadata?.source_path === 'string' && metadata.source_path.trim()) ||
-                queuedFile.sourcePath ||
-                null,
-              status: mapBackendStatusToLibraryStatus(doc.status),
-              error: doc.error_message || undefined,
-            })
-            uploadedLibraryIds.push(libId)
-          } catch (err: unknown) {
-            uploadFailed += 1
-            reportClientError('Failed to upload parsing file into dataset scope', err)
-          }
-        }
-
-        if (uploadedLibraryIds.length > 0) {
-          setActiveFileId(null)
-          setActiveLibraryFileId(uploadedLibraryIds[0])
-          setActiveBlockId(null)
-          setHoveredBlockId(null)
-          setRightPanelMode('markdown')
-          toast.success(`已上传到当前数据集：${uploadedLibraryIds.length} 个文件`)
-        }
-        if (uploadFailed > 0) toast.warning(`有 ${uploadFailed} 个文件上传失败（可稍后重试）`)
-        if (skipped > 0) toast.warning(`已跳过 ${skipped} 个不支持的文件`)
-        return
-      }
-
       const queuedWithLibrary: ParsedFile[] = []
       let uploadFailed = 0
 
       for (const queuedFile of queued) {
         try {
-          const doc = await parsingApi.upload(queuedFile.file, { parser_backend: queuedFile.parserBackend })
+          const doc = await parsingApi.upload(queuedFile.file, {
+            parser_backend: queuedFile.parserBackend,
+            dataset_id: selectedDatasetId,
+          })
           const libId = String(doc.id || '').trim()
           if (!libId) throw new Error('Missing document id from backend')
 
           const metadata = doc.metadata
+          const targetDatasetId =
+            normalizeBackendCandidate(metadata?.target_dataset_id) ||
+            selectedDatasetId ||
+            null
+          const targetDatasetName =
+            normalizeBackendCandidate(metadata?.target_dataset_name) ||
+            null
           const requestedBackend =
             normalizeBackendCandidate(metadata?.parser_backend_requested) ||
             queuedFile.parserBackend ||
@@ -671,12 +636,19 @@ export function useParsingLibraryActions({
             parser: getParserLabel(requestedBackend),
             parserBackend: requestedBackend,
             folderId: queuedFile.folderId,
+            datasetId: targetDatasetId,
+            datasetName: targetDatasetName,
             source: 'parsing_workspace',
             status: mapBackendStatusToLibraryStatus(doc.status),
             error: doc.error_message || undefined,
           })
 
-          queuedWithLibrary.push({ ...queuedFile, libraryId: libId })
+          queuedWithLibrary.push({
+            ...queuedFile,
+            libraryId: libId,
+            datasetId: targetDatasetId,
+            datasetName: targetDatasetName,
+          })
         } catch (err: unknown) {
           uploadFailed += 1
           queuedWithLibrary.push({
@@ -690,7 +662,9 @@ export function useParsingLibraryActions({
       setFiles((prev) => [...prev, ...queuedWithLibrary])
       setActiveFileId((prev) => prev ?? queuedWithLibrary[0].id)
 
-      if (added > 0) toast.success(`已加入队列：${added} 个文件`)
+      if (added > 0) {
+        toast.success(selectedDatasetId ? `已添加到当前数据集解析区：${added} 个文件` : `已添加到解析列表：${added} 个文件`)
+      }
       if (uploadFailed > 0) toast.warning(`有 ${uploadFailed} 个文件上传失败（可稍后重试）`)
       if (skipped > 0) toast.warning(`已跳过 ${skipped} 个不支持的文件`)
     },
@@ -703,10 +677,6 @@ export function useParsingLibraryActions({
       parserBackend,
       selectedDatasetId,
       setActiveFileId,
-      setActiveLibraryFileId,
-      setActiveBlockId,
-      setHoveredBlockId,
-      setRightPanelMode,
       setFiles,
       upsertParsedFile,
     ]

@@ -104,7 +104,7 @@ describe('ParsingPage workbench scaffold', () => {
       shellSrc,
       'restoreLibraryFileFromCache(activeLibraryFile.id, false)'
     )
-    expectSourceToContain(shellSrc, "activeLibraryFile.status === 'parsed'")
+    expectSourceToContain(shellSrc, "activeLibraryFile?.status === 'parsed'")
     expectSourceToContain(shellSrc, 'activeLibraryMarkdownAvailable')
     expectSourceToContain(shellSrc, "filename.toLowerCase().endsWith('.pdf')")
     expectSourceToContain(
@@ -169,6 +169,16 @@ describe('ParsingPage workbench scaffold', () => {
     )
     expectSourceToContain(shellSrc, '<span className="group-open:hidden">展开</span>')
     expectSourceToContain(shellSrc, '<span className="hidden group-open:inline">收起</span>')
+  })
+
+  it('keeps the static inspector out of common desktop widths so the parsing preview remains readable', () => {
+    const shellSrc = fs.readFileSync(
+      path.resolve(__dirname, 'parsing-workbench-shell.tsx'),
+      'utf8'
+    )
+
+    expectSourceToContain(shellSrc, 'motion-reduce:transition-none 2xl:flex')
+    expectSourceNotToContain(shellSrc, 'motion-reduce:transition-none xl:flex')
   })
 
   it('keeps the governance submit action visually semantic even when disabled', () => {
@@ -276,7 +286,7 @@ describe('ParsingPage workbench scaffold', () => {
     expectSourceToContain(shellSrc, 'onPointerDown={handleResizePointerDown}')
     expectSourceToContain(shellSrc, 'role="slider"')
     expectSourceToContain(shellSrc, 'cursor-col-resize')
-    expectSourceToContain(shellSrc, '!inspectorCollapsed ? (')
+    expectSourceToContain(shellSrc, 'inspectorCollapsed ? null : (')
     expectSourceToContain(shellSrc, '<ParsingInspectorPanel')
     expectSourceToContain(shellSrc, '<ResizableParsingInspectorRail>')
     expectSourceNotToContain(shellSrc, 'function ParsingInspectorDock')

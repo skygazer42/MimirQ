@@ -28,11 +28,34 @@ describe('restoreParsingRunFromMarkdown', () => {
     expect(restored?.blocks).toHaveLength(1)
   })
 
+  it('hydrates raw layout image placeholders from cleaned markdown image refs', () => {
+    const restored = restoreParsingRunFromMarkdown({
+      rawMarkdown:
+        'Intro@@1\t10\t20\t30\t40##\n\n![Image](layout://image)@@1\t11\t21\t41\t70##',
+      cleanedMarkdown:
+        'Intro\n\n![](/api/v1/documents/image/abc123)\n\n![](/api/v1/documents/image/def456)',
+    })
+
+    expect(restored?.blocks).toHaveLength(2)
+    expect(restored?.blocks[1]?.text).toBe('![Image](/api/v1/documents/image/abc123)')
+    expect(restored?.blocks[1]?.positions[0]?.pages).toEqual([0])
+    expect(restored?.cleanedMarkdown).toContain('/api/v1/documents/image/abc123')
+  })
+
   it('requests remote refresh for parsed pdf content without position tags', () => {
     expect(
       shouldRefreshParsingContentFromRemote({
         fileType: 'pdf',
         originalMarkdownContent: '# clean only',
+      })
+    ).toBe(true)
+  })
+
+  it('requests remote refresh when cached pdf content still has layout image placeholders', () => {
+    expect(
+      shouldRefreshParsingContentFromRemote({
+        fileType: 'pdf',
+        originalMarkdownContent: '![Image](layout://image)@@1\t10\t20\t30\t40##',
       })
     ).toBe(true)
   })

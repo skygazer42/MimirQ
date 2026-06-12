@@ -75,6 +75,50 @@ async def test_documents_parsed_content_returns_available_and_truncates(monkeypa
 
 
 @pytest.mark.asyncio
+async def test_documents_parsed_content_includes_document_parser_metadata(monkeypatch: pytest.MonkeyPatch):
+    from app.api.v1.documents import get_document_parsed_content
+    from app.models.document import Document as DBDocument
+    from app.models.document import DocumentParsedContent
+    from app.services.dataset_service import DatasetService
+
+    tenant_id = UUID(int=1)
+    document_id = UUID(int=2)
+
+    doc = SimpleNamespace(
+        id=document_id,
+        tenant_id=tenant_id,
+        dataset_id=None,
+        doc_metadata={
+            "parser_backend": "mineru",
+            "parser_backend_requested": "mineru",
+            "parse_duration_sec": 12.5,
+            "parsed_content_persisted": {"enabled": True, "max_chars": 200_000},
+        },
+    )
+    row = SimpleNamespace(
+        tenant_id=tenant_id,
+        document_id=document_id,
+        markdown_content="parsed",
+        original_markdown_content="raw",
+    )
+
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda _db, _tenant_id, _account_id: None, raising=True)
+
+    db = _FakeDB({DBDocument: doc, DocumentParsedContent: row})
+    out = await get_document_parsed_content(
+        document_id=document_id,
+        max_chars=200_000,
+        tenant_id=tenant_id,
+        account_id="u",
+        db=db,
+    )
+
+    assert out.persisted_meta["parser_backend"] == "mineru"
+    assert out.persisted_meta["parser_backend_requested"] == "mineru"
+    assert out.persisted_meta["parse_duration_sec"] == 12.5
+
+
+@pytest.mark.asyncio
 async def test_documents_parsed_content_falls_back_to_local_text_source(monkeypatch: pytest.MonkeyPatch, tmp_path):
     from app.api.v1 import document_content as content_module
     from app.models.document import Document as DBDocument

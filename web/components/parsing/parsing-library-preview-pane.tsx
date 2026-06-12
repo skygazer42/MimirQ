@@ -36,6 +36,7 @@ type ParsingLibraryPreviewPaneProps = {
  statusBadge?: StatusBadge | null
  onClose: () => void
  onUpdateParser: (backend: string) => void
+ onReprocessKnowledgeFile: (backend: string) => void
  onRestoreSource: (autoParse: boolean) => void
  onRequestRebind: (autoParse: boolean) => void
 }
@@ -50,6 +51,7 @@ export function ParsingLibraryPreviewPane({
  statusBadge,
  onClose,
  onUpdateParser,
+ onReprocessKnowledgeFile,
  onRestoreSource,
  onRequestRebind,
 }: Readonly<ParsingLibraryPreviewPaneProps>) {
@@ -60,9 +62,16 @@ export function ParsingLibraryPreviewPane({
  file.parserBackend || defaultParserBackend
  ).backend
  const isKnowledgeBaseFile = file.source === 'knowledge_base'
+ const canRunLibraryParse = Boolean(file.status && file.status !== 'parsed' && file.status !== 'parsing')
  const pendingParseAction = (() => {
- if (isKnowledgeBaseFile) return null
- if (!file.status || file.status === 'parsed') return null
+ if (!canRunLibraryParse) return null
+ if (isKnowledgeBaseFile) {
+ return {
+ label: t('libraryPreview.startParsing'),
+ title: t('libraryPreview.startParsingTitle'),
+ onClick: () => onReprocessKnowledgeFile(parserValue),
+ }
+ }
  if (sourceStatus === 'available') {
  return {
  label: t('libraryPreview.continueParsing'),
@@ -117,7 +126,7 @@ export function ParsingLibraryPreviewPane({
  </div>
 
  <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
- {file.status && file.status !== 'parsed' && !isKnowledgeBaseFile ? (
+ {canRunLibraryParse ? (
  <ParserDropdown
  value={parserValue}
  filename={file.filename}

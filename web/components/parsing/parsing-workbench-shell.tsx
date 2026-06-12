@@ -28,6 +28,7 @@ import {
   UploadCloud,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
+import { toast } from 'sonner'
 
 import { AppFrame } from '@/components/app-frame'
 import type { DocumentTreeFileItem } from '@/components/document-library/folder-tree'
@@ -44,6 +45,8 @@ import {
   WorkbenchPanelDialog,
   WorkbenchScaffold,
 } from '@/components/workbench'
+import { documentApi } from '@/lib/api'
+import { formatApiError } from '@/lib/api-errors'
 import type { ParsingElement } from '@/lib/api/parsing'
 import { readClientStorage, writeClientStorage } from '@/lib/client-storage'
 import { getParserLabel } from '@/lib/parser-options'
@@ -716,9 +719,9 @@ function ParsingInspectorPanel({
           <ParsingInspectorDisclosure title="解析详情" icon={Info}>
             <div className="space-y-3 text-[12px]">
               <div className="flex items-center justify-between gap-3">
-                <span className="text-muted-foreground">解析模式</span>
+                <span className="text-muted-foreground">解析器</span>
                 <span className="rounded-xl border border-border/60 bg-background px-2.5 py-1 font-semibold text-foreground">
-                  自动解析
+                  {selectedParser}
                 </span>
               </div>
               <p className="leading-5 text-muted-foreground">
@@ -749,9 +752,9 @@ function ParsingInspectorPanel({
           <ParsingInspectorCard title="解析信息" icon={Info}>
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-3">
-                <div className="text-[12px] font-medium text-muted-foreground">解析模式</div>
+                <div className="text-[12px] font-medium text-muted-foreground">解析器</div>
                 <div className="rounded-xl border border-border/60 bg-background px-2.5 py-1 text-[12px] font-semibold text-foreground">
-                  自动解析
+                  {selectedParser}
                 </div>
               </div>
               <p className="text-[12px] leading-5 text-muted-foreground">
@@ -917,7 +920,7 @@ function ResizableParsingInspectorRail({
   return (
     <aside
       data-testid="parsing-static-inspector"
-      className="group/inspector relative hidden min-h-0 shrink-0 overflow-visible transition-[width] duration-200 ease-out motion-reduce:transition-none xl:flex"
+      className="group/inspector relative hidden min-h-0 shrink-0 overflow-visible transition-[width] duration-200 ease-out motion-reduce:transition-none 2xl:flex"
       style={{ width: inspectorCollapsed ? COLLAPSED_PARSING_INSPECTOR_HOTZONE_WIDTH : inspectorWidth }}
     >
       <Button
@@ -1117,6 +1120,47 @@ export function ParsingWorkbenchShell({
     activeLibraryMarkdownAvailable &&
     filename.toLowerCase().endsWith('.pdf')
 
+  const handleReprocessKnowledgeFile = useCallback(
+    async (backend: string) => {
+      if (!activeLibraryFile || activeLibraryFile.source !== 'knowledge_base') return
+
+      const resolved = resolveParserBackendForFilename(activeLibraryFile.filename, backend)
+      const parserLabel = getParserLabel(resolved.backend)
+
+      updateParsedFile(activeLibraryFile.id, {
+        error: undefined,
+        markdownContent: '',
+        originalMarkdownContent: '',
+        parser: parserLabel,
+        parserBackend: resolved.backend,
+        status: 'parsing',
+      })
+
+      try {
+        await documentApi.patchPipeline(activeLibraryFile.id, {
+          patch: {
+            persist_parsed_content: true,
+            persist_parsed_content_max_chars: 2_000_000,
+          },
+          replace: false,
+        })
+        await documentApi.retry(activeLibraryFile.id, {
+          force: true,
+          parser_backend: resolved.backend,
+        })
+        toast.success('已开始解析')
+      } catch (err: unknown) {
+        const message = formatApiError(err, '开始解析失败')
+        updateParsedFile(activeLibraryFile.id, {
+          error: message,
+          status: 'error',
+        })
+        toast.error(message)
+      }
+    },
+    [activeLibraryFile, updateParsedFile]
+  )
+
   useEffect(() => {
     if (activeFile || !activeLibraryFile) return
     if (!shouldAutoRestoreLibraryPdf) return
@@ -1131,7 +1175,12 @@ export function ParsingWorkbenchShell({
   const datasetDocumentCounts = useMemo(() => {
     const counts = new Map<string, number>()
     for (const file of libraryFiles) {
-      if (file.source !== 'knowledge_base' || !file.datasetId) continue
+      if (
+        (file.source !== 'knowledge_base' && file.source !== 'parsing_workspace') ||
+        !file.datasetId
+      ) {
+        continue
+      }
       counts.set(file.datasetId, (counts.get(file.datasetId) || 0) + 1)
     }
     return counts
@@ -1145,11 +1194,13 @@ export function ParsingWorkbenchShell({
     [availableDatasets, datasetDocumentCounts]
   )
   const sidebarFileItems = useMemo<DocumentTreeFileItem[]>(() => {
-    const queueFiles = selectedDatasetId ? [] : files
+    const queueFiles = selectedDatasetId
+      ? files.filter((file) => file.datasetId === selectedDatasetId)
+      : files
     const libraryFilesForScope = selectedDatasetId
       ? libraryFiles.filter(
           (file) =>
-            file.source === 'knowledge_base' &&
+            (file.source === 'knowledge_base' || file.source === 'parsing_workspace') &&
             file.datasetId === selectedDatasetId
         )
       : libraryFiles
@@ -1327,6 +1378,10 @@ export function ParsingWorkbenchShell({
                 )
                 if (queueMatch) {
                   bumpPdfPreviewResetToken()
+                  if (queueMatch.status === 'parsed') {
+                    detachPromise(restoreLibraryFileFromCache(fileId, false))
+                    return
+                  }
                   setActiveLibraryFileId(null)
                   setActiveFileId(queueMatch.id)
                   return
@@ -1377,6 +1432,9 @@ export function ParsingWorkbenchShell({
                             parser: getParserLabel(resolved.backend),
                           })
                         }}
+                        onReprocessKnowledgeFile={(backend) =>
+                          detachPromise(handleReprocessKnowledgeFile(backend))
+                        }
                         onRestoreSource={(autoParse) => {
                           detachPromise(
                             restoreLibraryFileFromCache(

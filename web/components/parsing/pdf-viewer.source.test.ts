@@ -161,7 +161,8 @@ describe('pdf viewer source', () => {
 
     expect(src).toContain('const [loadingPages, setLoadingPages] = useState<Set<number>>(new Set())')
     expect(src).toContain('const isPageLoading = loadingPages.has(index)')
-    expect(src).toContain("isPageLoading ? '渲染中...' : '滚动后加载...'")
+    expect(src).toContain("isPageLoading ? '正在渲染页面...' : '等待进入预览区域'")
+    expect(src).not.toContain('滚动后加载')
   })
 
   it('uses responsive page placeholders instead of fixed-width intrinsic-size hints that can hide the first visible PDF page', () => {
@@ -239,7 +240,18 @@ describe('pdf viewer source', () => {
     expect(src).toContain('retryPageRender(pageIndex)')
     expect(src).toContain('const isPageFailed = failedPages.has(index)')
     expect(src).toContain("'渲染失败，点击重试'")
-    expect(src).not.toContain("{isPageLoading ? '渲染中...' : '滚动后加载...'}")
+    expect(src).not.toContain("{isPageLoading ? '正在渲染页面...' : '等待进入预览区域'}")
+  })
+
+  it('actively queues the visible viewport window so PDF preview does not depend only on intersection observer callbacks', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'pdf-viewer.tsx'), 'utf8')
+
+    expect(src).toContain('function queueVisiblePdfPageWindow(')
+    expect(src).toContain('queueVisiblePdfPageWindow({')
+    expect(src).toContain('containerScrollTop: container.scrollTop')
+    expect(src).toContain('containerHeight: container.clientHeight')
+    expect(src).toContain('container.addEventListener(')
+    expect(src).toContain("container.removeEventListener('scroll', handleViewportQueue)")
   })
 
   it('publishes a development-only PDF viewer debug snapshot so stuck page state can be inspected from the browser console', () => {

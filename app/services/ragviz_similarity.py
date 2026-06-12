@@ -409,6 +409,23 @@ def get_collection_items(
     raise ValueError("Unsupported collection kind")
 
 
+def _raise_empty_collection_error(
+    *,
+    x_collection: str,
+    y_collection: str,
+    x_items: list[dict[str, Any]],
+    y_items: list[dict[str, Any]],
+) -> None:
+    empty_parts: list[str] = []
+    if not x_items:
+        empty_parts.append(f"X 轴无数据: {x_collection}")
+    if not y_items:
+        empty_parts.append(f"Y 轴无数据: {y_collection}")
+
+    if empty_parts:
+        raise ValueError("所选 Collection 无可计算数据；" + "；".join(empty_parts))
+
+
 def calculate_similarity_matrix(
     db: Session,
     tenant_id: UUID,
@@ -425,7 +442,12 @@ def calculate_similarity_matrix(
     y_items, y_texts = get_collection_items(db, tenant_id, account_id, y_collection, max_items=y_max_items)
 
     if not x_items or not y_items:
-        raise ValueError("No data in selected collections")
+        _raise_empty_collection_error(
+            x_collection=x_collection,
+            y_collection=y_collection,
+            x_items=x_items,
+            y_items=y_items,
+        )
 
     embeddings = _get_embeddings_adapter()
     x_vectors = embeddings.embed_documents(x_texts)

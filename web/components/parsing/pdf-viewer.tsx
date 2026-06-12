@@ -52,6 +52,14 @@ type IdleGlobal = typeof globalThis & {
  cancelIdleCallback?: (id: number) => void
 }
 
+type QueueVisiblePdfPageWindowParams = {
+ containerHeight: number
+ containerScrollTop: number
+ pageCount: number
+ pageElements: Map<number, HTMLDivElement>
+ queuePageRender: (pageIndex: number) => void
+}
+
 const MAX_CONCURRENT_RENDERS = 1
 const RENDER_ROOT_MARGIN = '800px 0px 800px 0px'
 const RETAIN_ROOT_MARGIN = '2400px 0px 2400px 0px'
@@ -74,6 +82,26 @@ const PDFJS_WASM_URL = '/pdfjs/wasm/'
 const PDFJS_ICCS_URL = '/pdfjs/iccs/'
 
 let pdfJsModulePromise: Promise<PdfJsModule> | null = null
+
+function queueVisiblePdfPageWindow({
+ containerHeight,
+ containerScrollTop,
+ pageCount,
+ pageElements,
+ queuePageRender,
+}: QueueVisiblePdfPageWindowParams) {
+ const viewportTop = Math.max(0, Number(containerScrollTop || 0) - 800)
+ const viewportBottom = Number(containerScrollTop || 0) + Math.max(0, Number(containerHeight || 0)) + 800
+
+ for (let pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
+ const pageElement = pageElements.get(pageIndex)
+ if (!pageElement) continue
+ const pageTop = pageElement.offsetTop
+ const pageBottom = pageTop + Math.max(pageElement.offsetHeight, pageElement.clientHeight, 1)
+ if (pageBottom < viewportTop || pageTop > viewportBottom) continue
+ queuePageRender(pageIndex)
+ }
+}
 
 function findNearestScrollableAncestor(container: HTMLElement): HTMLElement | null {
  if (globalThis.window === undefined) return null
@@ -1122,6 +1150,39 @@ export function PdfViewer({
  }, [pageCount, pdfDoc, queuePageRender, scale])
 
  useEffect(() => {
+ const container = containerRef.current
+ const doc = pdfDoc
+ const totalPages = pageCount
+ if (!container || !doc || !totalPages) return
+
+ let raf = 0
+ const handleViewportQueue = () => {
+ if (raf) cancelAnimationFrame(raf)
+ raf = requestAnimationFrame(() => {
+ raf = 0
+ queueVisiblePdfPageWindow({
+ containerScrollTop: container.scrollTop,
+ containerHeight: container.clientHeight,
+ pageCount: totalPages,
+ pageElements: pageRefs.current,
+ queuePageRender,
+ })
+ detachPromise(flushQueuedPageRendersRef.current())
+ })
+ }
+
+ handleViewportQueue()
+ container.addEventListener('scroll', handleViewportQueue, { passive: true })
+ globalThis.window?.addEventListener('resize', handleViewportQueue)
+
+ return () => {
+ if (raf) cancelAnimationFrame(raf)
+ container.removeEventListener('scroll', handleViewportQueue)
+ globalThis.window?.removeEventListener('resize', handleViewportQueue)
+ }
+ }, [pageCount, pdfDoc, queuePageRender, scale])
+
+ useEffect(() => {
  const doc = pdfDoc
  const totalPages = pageCount
  if (!doc || !totalPages) return
@@ -1397,7 +1458,7 @@ export function PdfViewer({
  const isPageLoading = loadingPages.has(index)
  const isPageFailed = failedPages.has(index)
  const failedPlaceholderLabel = '渲染失败，点击重试'
- const pagePlaceholderLabel = isPageLoading ? '渲染中...' : '滚动后加载...'
+ const pagePlaceholderLabel = isPageLoading ? '正在渲染页面...' : '等待进入预览区域'
  const pageAspectRatio = pageAspectRatios.get(index) ?? defaultPageAspectRatio
  const pageStyle = pageAspectRatio
  ? { aspectRatio: String(pageAspectRatio) }
@@ -1438,11 +1499,15 @@ export function PdfViewer({
  {failedPlaceholderLabel}
  </button>
  ) : (
- <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-card text-xs text-muted-foreground">
+ <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-card text-xs text-muted-foreground" aria-label={pagePlaceholderLabel}>
  {isPageLoading ? (
+ <>
  <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
- ) : null}
  {pagePlaceholderLabel}
+ </>
+ ) : (
+ <span className="sr-only">{pagePlaceholderLabel}</span>
+ )}
  </div>
  )}
  <BboxOverlay

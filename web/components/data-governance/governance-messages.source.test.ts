@@ -58,6 +58,8 @@ describe('data governance message sources', () => {
     expectSourceToContain(annotatorSrc, "mode: 'document_focus'")
     expectSourceToContain(annotatorSrc, 'autoTagProvider')
     expectSourceToContain(annotatorSrc, 'AUTO_TAG_PROVIDER_OPTIONS')
+    expectSourceToContain(annotatorSrc, "const DEFAULT_AUTO_TAG_PROVIDER: AutoTagProviderId = 'hybrid'")
+    expectSourceToContain(annotatorSrc, 'useState<AutoTagProviderId>(DEFAULT_AUTO_TAG_PROVIDER)')
     expectSourceToContain(
       annotatorSrc,
       'providers: selectedProviderConfig.providers'

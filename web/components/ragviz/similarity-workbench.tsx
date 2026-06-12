@@ -50,13 +50,14 @@ type SelectedHeatmapCell = { rowIndex: number; colIndex: number }
 type SimilarityTopKAxis = 'x' | 'y' | 'none'
 type DisplayLabels = { xLabels: string[]; yLabels: string[] }
 type SimilarityDisplayMatrix = Array<Array<number | null>>
+type PlotlyColorScale = string | Array<[number, string]>
 
 type PlotlyTrace = {
   type: 'heatmap'
   z: Array<Array<number | null>>
   x: string[]
   y: string[]
-  colorscale: string
+  colorscale: PlotlyColorScale
   zmin: number
   zmax: number
   text?: string[][]
@@ -236,6 +237,35 @@ function uniqueLabelRaw(item: Record<string, unknown>, field: string) {
   return similarityDisplayString(item[field])
 }
 
+function compactAxisLabel(value: string, maxLength = 42) {
+  const text = value.trim()
+  if (text.length <= maxLength) return text
+  return `${text.slice(0, Math.max(1, maxLength - 3))}...`
+}
+
+function oneBasedItemNumber(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.max(1, Math.trunc(value) + 1)
+    : null
+}
+
+function axisLabelForItem(item: Record<string, unknown>, field: string) {
+  const fieldText = uniqueLabelRaw(item, field)
+  const documentText = firstSimilarityDisplayString(item.document, item.name)
+  const chunkNumber = oneBasedItemNumber(item.chunk_index)
+  if (chunkNumber !== null) {
+    const base = documentText || fieldText || `chunk ${chunkNumber}`
+    return `${compactAxisLabel(base, 34)} · chunk ${chunkNumber}`
+  }
+
+  const questionNumber = oneBasedItemNumber(item.order_id)
+  if (questionNumber !== null && fieldText) {
+    return `Q${questionNumber} · ${compactAxisLabel(fieldText, 44)}`
+  }
+
+  return compactAxisLabel(fieldText)
+}
+
 function heatmapPointPair(point: PlotlyClickPoint): number[] | null {
   if (Array.isArray(point.pointNumber)) return point.pointNumber
   if (Array.isArray(point.pointIndex)) return point.pointIndex
@@ -387,7 +417,10 @@ function SimilarityHeatmapPanel({
           />
         </div>
 
-        <HeatmapScaleLegend isDifference={isDifferenceMode} />
+        <HeatmapScaleLegend
+          colorScheme={colorScheme}
+          isDifference={isDifferenceMode}
+        />
       </section>
     </div>
   )
@@ -469,6 +502,9 @@ export function RagvizSimilarityWorkbench() {
       count: c.count,
     }))
   }, [collections])
+  const collectionOptionById = useMemo(() => {
+    return new Map(availableCollectionOptions.map((option) => [option.value, option]))
+  }, [availableCollectionOptions])
 
   const resolveCollectionLabel = (id: string) => {
     const found = collections.find((c) => c.id === id)
@@ -485,6 +521,22 @@ export function RagvizSimilarityWorkbench() {
     }
     if (ys.length === 0) {
       toast.error('请至少选择一个纵坐标 Collection')
+      return
+    }
+    const emptySelections: SelectOption[] = []
+    for (const id of [...xs, ...ys]) {
+      const option = collectionOptionById.get(id)
+      if (option && isEmptyCollectionOption(option)) {
+        emptySelections.push(option)
+      }
+    }
+
+    if (emptySelections.length > 0) {
+      toast.error(
+        `所选 Collection 没有数据：${emptySelections
+          .map((option) => option.label)
+          .join('、')}`
+      )
       return
     }
 
@@ -2775,8 +2827,9 @@ function LegendPill({
 }
 
 function HeatmapScaleLegend({
+  colorScheme,
   isDifference,
-}: Readonly<{ isDifference: boolean }>) {
+}: Readonly<{ colorScheme: ColorSchemeKey; isDifference: boolean }>) {
   return (
     <div className="border-t border-sidebar-border/70 px-4 py-3">
       <div className="flex max-w-md items-center gap-3 text-xs font-medium text-foreground">
@@ -2785,12 +2838,8 @@ function HeatmapScaleLegend({
           {isDifference ? '-1' : '0'}
         </span>
         <div
-          className={cn(
-            'h-3 flex-1 rounded-full border border-border/50',
-            isDifference
-              ? 'bg-[linear-gradient(90deg,#2563eb,#f8fafc,#dc2626)]'
-              : 'bg-[linear-gradient(90deg,#3b82f6,#5eead4,#facc15,#fb923c,#dc2626)]'
-          )}
+          className="h-3 flex-1 rounded-full border border-border/50"
+          style={{ backgroundImage: heatmapLegendBackground(colorScheme, isDifference) }}
         />
         <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
           1
@@ -2895,6 +2944,16 @@ type SelectOption = {
   count?: number
 }
 
+function isEmptyCollectionOption(option: SelectOption) {
+  return typeof option.count === 'number' && option.count <= 0
+}
+
+function collectionOptionLabel(option: SelectOption) {
+  if (typeof option.count !== 'number') return option.label
+  if (option.count <= 0) return `${option.label}（0 项，暂无数据）`
+  return `${option.label}（${option.count} 项）`
+}
+
 function AxisConfigCard({
   eyebrow,
   title,
@@ -2978,8 +3037,12 @@ function CollectionSelectorBlock({
               >
                 <option value="">请选择...</option>
                 {options.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
+                  <option
+                    key={opt.value}
+                    value={opt.value}
+                    disabled={isEmptyCollectionOption(opt)}
+                  >
+                    {collectionOptionLabel(opt)}
                   </option>
                 ))}
               </select>
@@ -3111,47 +3174,83 @@ type MatrixButtonState = {
 
 type ColorSchemeKey = 'viridis' | 'plasma' | 'cividis' | 'YlGnBu' | 'hot'
 
+const DIFFERENCE_COLORSCALE: Array<[number, string]> = [
+  [0, '#2563eb'],
+  [0.5, '#f8fafc'],
+  [1, '#dc2626'],
+]
+
+const DIFFERENCE_COLOR_PREVIEW =
+  'linear-gradient(90deg,#2563eb,#f8fafc,#dc2626)'
+
 const COLOR_SCHEMES: Array<{
   key: ColorSchemeKey
   label: string
   preview: string
+  colorscale: Array<[number, string]>
 }> = [
   {
     key: 'viridis',
     label: 'Viridis',
     preview: 'linear-gradient(90deg,#440154,#21908d,#fde725)',
+    colorscale: [
+      [0, '#440154'],
+      [0.5, '#21908d'],
+      [1, '#fde725'],
+    ],
   },
   {
     key: 'plasma',
     label: 'Plasma',
     preview: 'linear-gradient(90deg,#0d0887,#cc4678,#f0f921)',
+    colorscale: [
+      [0, '#0d0887'],
+      [0.5, '#cc4678'],
+      [1, '#f0f921'],
+    ],
   },
   {
     key: 'cividis',
     label: 'Cividis',
     preview: 'linear-gradient(90deg,#00204c,#5f7d7f,#fee838)',
+    colorscale: [
+      [0, '#00204c'],
+      [0.5, '#5f7d7f'],
+      [1, '#fee838'],
+    ],
   },
   {
     key: 'YlGnBu',
     label: 'YlGnBu',
     preview: 'linear-gradient(90deg,#ffffcc,#1d91c0,#081d58)',
+    colorscale: [
+      [0, '#ffffcc'],
+      [0.5, '#1d91c0'],
+      [1, '#081d58'],
+    ],
   },
   {
     key: 'hot',
     label: 'Hot',
     preview: 'linear-gradient(90deg,#000000,#ff0000,#ffff00)',
+    colorscale: [
+      [0, '#000000'],
+      [0.5, '#ff0000'],
+      [1, '#ffff00'],
+    ],
   },
 ]
 
 function toPlotlyColorScale(key: ColorSchemeKey) {
-  const mapping: Record<ColorSchemeKey, string> = {
-    viridis: 'Viridis',
-    plasma: 'Plasma',
-    cividis: 'Cividis',
-    YlGnBu: 'YlGnBu',
-    hot: 'Hot',
-  }
-  return mapping[key]
+  return COLOR_SCHEMES.find((scheme) => scheme.key === key)?.colorscale ?? COLOR_SCHEMES[0].colorscale
+}
+
+function heatmapLegendBackground(
+  key: ColorSchemeKey,
+  isDifference: boolean
+) {
+  if (isDifference) return DIFFERENCE_COLOR_PREVIEW
+  return COLOR_SCHEMES.find((scheme) => scheme.key === key)?.preview ?? COLOR_SCHEMES[0].preview
 }
 
 function generateUniqueLabels(
@@ -3160,7 +3259,7 @@ function generateUniqueLabels(
 ) {
   const counts = new Map<string, number>()
   return items.map((item) => {
-    const raw = uniqueLabelRaw(item, field)
+    const raw = axisLabelForItem(item, field)
     const key = raw || '(empty)'
     const next = (counts.get(key) || 0) + 1
     counts.set(key, next)
@@ -3216,7 +3315,9 @@ function PlotlyHeatmap({
 
     const zmin = isDifference ? -1 : 0
     const zmax = 1
-    const colorscale = isDifference ? 'RdBu' : toPlotlyColorScale(colorScheme)
+    const colorscale = isDifference
+      ? DIFFERENCE_COLORSCALE
+      : toPlotlyColorScale(colorScheme)
 
     const trace: PlotlyTrace = {
       type: 'heatmap',

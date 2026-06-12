@@ -158,9 +158,21 @@ export function useParsingRunActions({
 
       try {
         if (!libraryId) {
-          const created = await parsingApi.upload(file.file, { parser_backend: requestedBackend })
+          const created = await parsingApi.upload(file.file, {
+            parser_backend: requestedBackend,
+            dataset_id: file.datasetId,
+          })
           libraryId = String(created.id || '').trim()
           if (!libraryId) throw new Error('Missing document id from backend')
+          const createdMetadata = created.metadata
+          const targetDatasetId =
+            (typeof createdMetadata?.target_dataset_id === 'string' && createdMetadata.target_dataset_id.trim()) ||
+            file.datasetId ||
+            null
+          const targetDatasetName =
+            (typeof createdMetadata?.target_dataset_name === 'string' && createdMetadata.target_dataset_name.trim()) ||
+            file.datasetName ||
+            null
 
           upsertParsedFile({
             id: libraryId,
@@ -173,12 +185,20 @@ export function useParsingRunActions({
             parser: requestedLabel,
             parserBackend: requestedBackend,
             folderId: file.folderId,
+            datasetId: targetDatasetId,
+            datasetName: targetDatasetName,
             source: 'parsing_workspace',
             status: mapBackendStatusToLibraryStatus(created.status),
             error: created.error_message || undefined,
           })
 
-          setFiles((prev) => prev.map((item) => (item.id === fileId ? { ...item, libraryId } : item)))
+          setFiles((prev) =>
+            prev.map((item) =>
+              item.id === fileId
+                ? { ...item, libraryId, datasetId: targetDatasetId, datasetName: targetDatasetName }
+                : item
+            )
+          )
         }
 
         if (controller.signal.aborted) return

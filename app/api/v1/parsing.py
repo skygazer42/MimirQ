@@ -671,6 +671,7 @@ async def list_parsing_documents(
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=200)] = 200,
     status: str | None = None,
+    dataset_id: Annotated[UUID | None, Query()] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -682,13 +683,19 @@ async def list_parsing_documents(
     dataset = _get_or_create_workspace_dataset(db, tenant_id, account_id)
     DatasetService.assert_dataset_readable(db, dataset, account_id)
 
-    query = (
-        db.query(DBDocument)
-        .filter(
-            DBDocument.tenant_id == tenant_id,
-            DBDocument.dataset_id == dataset.id,
+    if dataset_id is not None:
+        target_dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
+        DatasetService.assert_dataset_readable(db, target_dataset, account_id)
+        query = db.query(DBDocument).filter(DBDocument.tenant_id == tenant_id)
+        query = query.filter(DBDocument.doc_metadata["target_dataset_id"].astext == str(dataset_id))  # type: ignore[attr-defined]
+    else:
+        query = (
+            db.query(DBDocument)
+            .filter(
+                DBDocument.tenant_id == tenant_id,
+                DBDocument.dataset_id == dataset.id,
+            )
         )
-    )
     query = _filter_parsing_workspace_documents(query)
 
     if status and status != "all":
@@ -703,6 +710,7 @@ async def list_parsing_documents(
 async def upload_parsing_document(
     file: Annotated[UploadFile, File(...)],
     parser_backend: Annotated[str, Form()] = "auto",
+    dataset_id: Annotated[UUID | None, Form()] = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -720,6 +728,10 @@ async def upload_parsing_document(
 
     dataset = _get_or_create_workspace_dataset(db, tenant_id, account_id)
     DatasetService.assert_dataset_writable(db, dataset, account_id)
+    target_dataset: Dataset | None = None
+    if dataset_id is not None:
+        target_dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
+        DatasetService.assert_dataset_writable(db, target_dataset, account_id)
 
     document_id = uuid.uuid4()
 
@@ -743,6 +755,9 @@ async def upload_parsing_document(
         "workspace": "parsing",
         "parser_backend_requested": (parser_backend or "").strip().lower() or "auto",
     }
+    if target_dataset is not None:
+        meta["target_dataset_id"] = str(target_dataset.id)
+        meta["target_dataset_name"] = str(target_dataset.name or target_dataset.id)
 
     stored_path = str(source_path)
     if use_object_storage:
@@ -973,6 +988,7 @@ async def parse_workspace_document(
             stats = compute_parsing_artifact_stats(
                 documents=artifact_docs,
                 original_markdown=original_markdown,
+                markdown=markdown,
                 pdf_quality=(pdf_quality if isinstance(pdf_quality, dict) else None),
             )
             ro = score_reading_order(original_markdown) if file_ext == ".pdf" else None
@@ -1292,6 +1308,7 @@ async def parse_workspace_document(
         artifact_stats = compute_parsing_artifact_stats(
             documents=artifact_docs,
             original_markdown=original_markdown,
+            markdown=markdown,
             pdf_quality=(pdf_quality if isinstance(pdf_quality, dict) else None),
         )
 

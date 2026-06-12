@@ -16,6 +16,10 @@ describe('parsing-layout', () => {
     expect(classifyParsingBlock({ text: 'This is a normal paragraph.' })).toBe(
       'paragraph'
     )
+    expect(classifyParsingBlock({ text: '三种使用场景' })).toBe('heading')
+    expect(classifyParsingBlock({ text: '过去两年做企业大模型应用，知识库类型的项目咨询占比算是最高的，有公众号、知乎这些' })).toBe(
+      'paragraph'
+    )
   })
 
   it('returns quiet review labels and overlay tokens for each layout kind', () => {

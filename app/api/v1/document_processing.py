@@ -17,7 +17,7 @@ from app.api.schemas.document import DocumentStatus
 from app.core.database import get_db
 from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
-from app.models.document import DocumentChunk
+from app.models.document import DocumentChunk, DocumentParsedContent
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -175,6 +175,7 @@ async def retry_document_processing(
     background_tasks: BackgroundTasks,
     force: bool = False,
     skip_if_unchanged: bool = False,
+    parser_backend: str | None = None,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
@@ -205,7 +206,7 @@ async def retry_document_processing(
     current_status = str(document.status or "").lower()
     if current_status == "processing" or (
         current_status == "pending"
-        and not documents_module._is_uploaded_only_pending_document(document)
+        and not documents_module._is_reprocessable_pending_document(document)
     ):
         raise HTTPException(status_code=409, detail=f"Cannot retry a {current_status} document")
     if current_status == "completed" and not force:
@@ -214,6 +215,26 @@ async def retry_document_processing(
     raw_path = str(document.file_path or "").strip()
     if not raw_path or raw_path.startswith(documents_module.MANUAL_FILE_PATH_PREFIX):
         raise HTTPException(status_code=409, detail="Document file is not reprocessable")
+
+    requested_parser_backend = str(parser_backend or "").strip().lower()
+    if requested_parser_backend:
+        filename = str(getattr(document, "filename", "") or raw_path)
+        file_ext = Path(filename).suffix.lower()
+        if not file_ext:
+            file_type = str(getattr(document, "file_type", "") or "").strip().lower().lstrip(".")
+            file_ext = f".{file_type}" if file_type else ""
+        try:
+            resolved_parser_backend = documents_module.parser_factory.resolve_backend(
+                file_ext,
+                requested_parser_backend,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        meta = dict(document.doc_metadata or {})
+        meta["parser_backend_requested"] = requested_parser_backend
+        meta["parser_backend"] = resolved_parser_backend
+        document.doc_metadata = meta
 
     if skip_if_unchanged and current_status == "completed" and force:
         meta0 = dict(document.doc_metadata or {})
@@ -307,6 +328,14 @@ async def retry_document_processing(
     meta.pop("cancel_requested", None)
     meta.pop("task_id", None)
     meta.pop("kg_task_id", None)
+    if force:
+        meta.pop("ingest_checkpoint", None)
+        meta.pop("parsed_content_persisted", None)
+        with contextlib.suppress(Exception):
+            db.query(DocumentParsedContent).filter(
+                DocumentParsedContent.document_id == document_id,
+                DocumentParsedContent.tenant_id == tenant_id,
+            ).delete(synchronize_session=False)
 
     active_pipeline_hash = str(meta.get("active_pipeline_hash") or meta.get("pipeline_hash") or "").strip()
     if "active_pipeline_ready" not in meta:

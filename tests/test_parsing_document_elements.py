@@ -251,3 +251,35 @@ def test_normalize_document_elements_prefers_image_code_text_for_qr_and_barcode_
 
     assert out[0]["text"] == "HELLO-QR"
     assert out[1]["text"] == "5901234123457"
+
+
+def test_normalize_document_elements_derives_images_from_markdown_refs_with_position_tags() -> None:
+    from app.parsing.utils.document_elements import normalize_document_elements  # noqa: WPS433
+
+    docs = [
+        Document(
+            page_content=(
+                "Intro\n\n"
+                "![](/api/v1/documents/image/first)\n\n"
+                "![](/api/v1/documents/image/second)"
+            ),
+            metadata={
+                "page": 5,
+                "position_tagged_markdown": (
+                    "Intro@@5\t10\t20\t30\t40##\n\n"
+                    "![Image](layout://image)@@5\t80\t188\t30\t263##"
+                ),
+            },
+        )
+    ]
+
+    out = normalize_document_elements(docs)
+    images = [item for item in out if item["kind"] == "image"]
+
+    assert len(images) == 2
+    assert images[0]["page"] == 5
+    assert images[0]["bbox"] == {"x0": 80, "y0": 30, "x1": 188, "y1": 263}
+    assert images[0]["attributes"]["src"] == "/api/v1/documents/image/first"
+    assert images[1]["page"] == 5
+    assert images[1]["bbox"] is None
+    assert images[1]["attributes"]["src"] == "/api/v1/documents/image/second"

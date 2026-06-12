@@ -115,6 +115,7 @@ function looksLikeHeading(text: string): boolean {
   const candidate = lines[0]
   if (!candidate || candidate.length > 72) return false
   if ('。！？.!?;；:：'.includes(candidate.at(-1) || '')) return false
+  if (/[，,、。！？!?；;]/.test(candidate)) return false
   if (candidate.includes('|')) return false
 
   return candidate.split(/\s+/).length <= 12

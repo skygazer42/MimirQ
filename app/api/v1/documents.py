@@ -1032,6 +1032,40 @@ def _is_uploaded_only_pending_document(document: Any) -> bool:
     return not bool(meta.get("active_pipeline_ready"))
 
 
+def _is_idle_pending_document(document: Any) -> bool:
+    """
+    True for pending documents that are persisted but not attached to a live job.
+
+    Legacy imports and upload-only flows can leave a document as `status=pending`
+    without `ingest_stage=uploaded_only`. They are safe to reconfigure only when
+    no queue/task marker, active stage, or progress indicates work is running.
+    """
+    if str(getattr(document, "status", "") or "").strip().lower() != "pending":
+        return False
+
+    meta = getattr(document, "doc_metadata", None)
+    meta = meta if isinstance(meta, dict) else {}
+    if str(meta.get("task_id") or "").strip() or str(meta.get("kg_task_id") or "").strip():
+        return False
+
+    current_stage = str(getattr(document, "current_stage", "") or "").strip().lower()
+    if current_stage and current_stage not in {"uploaded_only", "registered"}:
+        return False
+
+    try:
+        progress = int(getattr(document, "processing_progress", 0) or 0)
+    except (TypeError, ValueError):
+        return False
+    if progress > 0:
+        return False
+
+    return not bool(meta.get("active_pipeline_ready"))
+
+
+def _is_reprocessable_pending_document(document: Any) -> bool:
+    return _is_uploaded_only_pending_document(document) or _is_idle_pending_document(document)
+
+
 @dataclass(frozen=True)
 class PipelineOptionOverrides:
     governance_enabled: bool | None = None

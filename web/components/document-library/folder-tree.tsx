@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { ArrowRightLeft, ChevronDown, ChevronRight, FileText, Folder, FolderOpen, MoreHorizontal, Pencil, Plus, Trash2, FileImage, FileCode, FileSpreadsheet, FileArchive, AlertCircle, Paperclip, FolderUp, FileJson, AlignLeft, FileSignature, RotateCcw, Loader2, Clock3 } from 'lucide-react'
+import { ArrowRightLeft, ChevronDown, ChevronRight, FileText, Folder, FolderOpen, MoreHorizontal, Pencil, Plus, Trash2, FileImage, FileCode, FileSpreadsheet, FileArchive, AlertCircle, Paperclip, FolderUp, FileJson, AlignLeft, FileSignature, RotateCcw, Loader2, Clock3, Play } from 'lucide-react'
 import { toast } from 'sonner'
 import { collectFolderDescendantIds } from '@/lib/folder-tree-index'
 import { cn } from '@/lib/utils'
@@ -636,7 +636,9 @@ export function DocumentFolderTree({
         file.progress == null || !Number.isFinite(Number(file.progress))
           ? null
           : Math.max(0, Math.min(100, Number(file.progress)))
-      const hasInlineActions = !file.readOnly && Boolean(onRetryFile || onRemoveFile)
+      const canRunFile = !file.readOnly && Boolean(onRetryFile) && (isPending || isError)
+      const canRemoveFile = Boolean(onRemoveFile)
+      const hasInlineActions = canRunFile || canRemoveFile
       const progressTitle = getParsingProgressTitle(progress)
       let selectableControl: React.ReactNode = null
       if (file.isSelectable) {
@@ -660,45 +662,55 @@ export function DocumentFolderTree({
 
       let inlineActions: React.ReactNode = null
       if (hasInlineActions) {
-        let retryAction: React.ReactNode = null
-        if (isError && onRetryFile) {
-          retryAction = (
+        let runAction: React.ReactNode = null
+        if (canRunFile && onRetryFile) {
+          const actionLabel = isPending ? '解析' : '重试'
+          const ActionIcon = isPending ? Play : RotateCcw
+          runAction = (
             <button
               type="button"
               className="flex h-5 w-5 items-center justify-center rounded-md text-muted-foreground/80 hover:bg-muted/40 hover:text-foreground focus-ring"
-              title="重试"
-              aria-label="重试"
+              title={actionLabel}
+              aria-label={actionLabel}
               onClick={(event) => {
                 event.stopPropagation()
                 onRetryFile(file.id)
               }}
             >
-              <RotateCcw className="h-3 w-3" />
+              <ActionIcon className="h-3 w-3" />
             </button>
           )
         }
 
         let removeAction: React.ReactNode = null
-        if (onRemoveFile) {
+        if (canRemoveFile && onRemoveFile) {
           removeAction = (
-            <button
-              type="button"
-              className="flex h-5 w-5 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive focus-ring"
-              title="删除"
-              aria-label="删除"
-              onClick={(event) => {
-                event.stopPropagation()
-                onRemoveFile(file.id)
-              }}
+            <ConfirmDialog
+              title="删除该文件？"
+              description={`将永久删除“${file.name}”。此操作不可恢复。`}
+              confirmLabel="删除"
+              cancelLabel="返回"
+              confirmVariant="destructive"
+              onConfirm={() => onRemoveFile(file.id)}
             >
-              <Trash2 className="h-3 w-3" />
-            </button>
+              <button
+                type="button"
+                className="flex h-5 w-5 items-center justify-center rounded-md text-muted-foreground/65 hover:bg-destructive/10 hover:text-destructive focus-ring"
+                title="删除"
+                aria-label="删除"
+                onClick={(event) => {
+                  event.stopPropagation()
+                }}
+              >
+                <Trash2 className="h-3 w-3" />
+              </button>
+            </ConfirmDialog>
           )
         }
 
         inlineActions = (
-          <div className="pointer-events-none absolute right-1 top-1 flex items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover/file:pointer-events-auto group-hover/file:opacity-100">
-            {retryAction}
+          <div className="pointer-events-none absolute right-1 top-1 flex items-center gap-0.5 rounded-lg bg-card/70 p-0.5 opacity-0 shadow-sm ring-1 ring-border/40 backdrop-blur transition-opacity duration-150 group-hover/file:pointer-events-auto group-hover/file:opacity-100 group-focus-within/file:pointer-events-auto group-focus-within/file:opacity-100">
+            {runAction}
             {removeAction}
           </div>
         )
@@ -716,6 +728,18 @@ export function DocumentFolderTree({
         )
       }
 
+      const selectFile = () => {
+        setActiveFolderId(parentFolderId || ROOT_FOLDER_ID)
+        onSelectFile?.(file.id)
+      }
+
+      const handleFileKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+        if (event.target !== event.currentTarget) return
+        if (event.key !== 'Enter' && event.key !== ' ') return
+        event.preventDefault()
+        selectFile()
+      }
+
       return (
         <div
           key={file.id}
@@ -726,25 +750,27 @@ export function DocumentFolderTree({
         >
           {renderIndentGuides(level)}
           <div
+            role="treeitem"
+            tabIndex={0}
+            aria-selected={Boolean(file.isActive)}
+            data-document-tree-file-id={file.id}
             className={cn(
-              'flex h-9 w-full items-center gap-2 pr-2 text-left',
+              'focus-ring flex h-9 w-full cursor-pointer items-center gap-2 pr-2 text-left',
               hasInlineActions && 'pr-10',
               file.isSelectable && 'pl-1'
             )}
             style={{ paddingLeft: `${TREE_ROW_BASE_PADDING + level * TREE_INDENT_STEP}px` }}
             title={getDocumentTreeFileTitle(file)}
             draggable={Boolean(onFileDragStart) && !file.readOnly}
+            onClick={(event) => {
+              event.stopPropagation()
+              selectFile()
+            }}
+            onKeyDown={handleFileKeyDown}
             onDragStart={!file.readOnly && onFileDragStart ? (event) => onFileDragStart(event, file.id) : undefined}
           >
             {selectableControl}
-            <button
-              type="button"
-              className="flex min-w-0 flex-1 items-center gap-1.5 text-left focus-ring"
-              onClick={() => {
-                setActiveFolderId(parentFolderId || ROOT_FOLDER_ID)
-                onSelectFile?.(file.id)
-              }}
-            >
+            <div className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
               {getFileIcon(file.name, 'h-6 w-6 rounded-lg')}
               <span className="flex min-w-0 flex-1 items-center gap-1.5">
                 <span className="min-w-0 flex-1 truncate text-[12px] font-medium leading-4">{file.name}</span>
@@ -770,7 +796,7 @@ export function DocumentFolderTree({
                 ) : null}
                 {isError ? <AlertCircle className="h-3.5 w-3.5 shrink-0 text-destructive" /> : null}
               </span>
-            </button>
+            </div>
           </div>
 
           {inlineActions}

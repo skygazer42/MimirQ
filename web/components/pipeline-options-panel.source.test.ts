@@ -25,4 +25,15 @@ describe('pipeline options panel typography', () => {
     expect(highQualityBlock).toContain('event_vector_enabled: true,')
     expect(highQualityBlock).toContain('entity_vector_enabled: true,')
   })
+
+  it('lets governance-only surfaces hide indexing controls without removing the full panel', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'pipeline-options-panel.tsx'), 'utf8')
+
+    expect(src).toContain('showIndexingControls?: boolean')
+    expect(src).toContain('const showIndexingControls = props.showIndexingControls ?? true')
+    expect(src).toContain('if (showIndexingControls) {')
+    expect(src).toContain('{showIndexingControls && (')
+    expect(src).toContain("title: '索引策略'")
+    expect(src).toContain("title: '知识图谱'")
+  })
 })

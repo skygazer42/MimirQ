@@ -25,6 +25,7 @@ type PipelineOptionsPanelProps = {
   onOptionChange?: <K extends keyof DocumentPipelineOptions>(key: K, value: DocumentPipelineOptions[K]) => void
   hideEnabledToggle?: boolean
   showJsonToolbar?: boolean
+  showIndexingControls?: boolean
 }
 
 type PipelineIndexPreset = 'custom' | 'economical' | 'high_quality'
@@ -177,6 +178,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
   const governanceDisabled = !enabled || !governanceEnabled
   const pipelineDisabled = !enabled
   const showJsonToolbar = props.showJsonToolbar ?? !compact
+  const showIndexingControls = props.showIndexingControls ?? true
 
   const [chunkStrategyParamsText, setChunkStrategyParamsText] = useState('')
   const [chunkStrategyParamsError, setChunkStrategyParamsError] = useState<string | null>(null)
@@ -223,78 +225,87 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
   }, [options, pendingIndexPreset])
   const presetSelectValue = indexPresetDraft ?? activeIndexPreset
 
-  const optionGroups = useMemo<OptionGroup[]>(() => ([
-    {
-      title: '数据治理',
-      icon: ShieldCheck,
-      color: 'text-primary',
-      bgColor: 'bg-primary/10',
-      items: [
+  const optionGroups = useMemo<OptionGroup[]>(() => {
+    const groups: OptionGroup[] = [
+      {
+        title: '数据治理',
+        icon: ShieldCheck,
+        color: 'text-primary',
+        bgColor: 'bg-primary/10',
+        items: [
+          {
+            key: 'governance_enabled',
+            label: '启用治理清洗',
+            hint: '标准化 Markdown，清洗噪声',
+          },
+        ],
+      },
+    ]
+
+    if (showIndexingControls) {
+      groups.push(
         {
-          key: 'governance_enabled',
-          label: '启用治理清洗',
-          hint: '标准化 Markdown，清洗噪声',
-        },
-      ],
-    },
-    {
-      title: '索引策略',
-      icon: Layers,
-      color: 'text-primary',
-      bgColor: 'bg-primary/10',
-      items: [
-        {
-          key: 'chunk_vector_enabled',
-          label: '向量索引 (Vector)',
-          hint: '语义检索核心能力',
-        },
-        {
-          key: 'bm25_index_enabled',
-          label: '全文索引 (BM25)',
-          hint: '关键词精准匹配',
-        },
-      ],
-    },
-    {
-      title: 'Embedding',
-      icon: Sparkles,
-      color: 'text-success',
-      bgColor: 'bg-success/10',
-      items: [
-        {
-          key: 'embedding_context_prefix_enabled',
-          label: '结构化上下文前缀',
-          hint: '在向量 embedding 前追加 header_path/outline 等轻量上下文（不改变正文与定位）',
-          dependsOn: 'chunk_vector_enabled',
-        },
-      ],
-    },
-    {
-      title: '知识图谱',
-      icon: Network,
-      color: 'text-accent',
-      bgColor: 'bg-accent/10',
-      items: [
-        {
-          key: 'kg_enabled',
-          label: 'KG 抽取',
-          hint: '提取实体与关系',
+          title: '索引策略',
+          icon: Layers,
+          color: 'text-primary',
+          bgColor: 'bg-primary/10',
+          items: [
+            {
+              key: 'chunk_vector_enabled',
+              label: '向量索引 (Vector)',
+              hint: '语义检索核心能力',
+            },
+            {
+              key: 'bm25_index_enabled',
+              label: '全文索引 (BM25)',
+              hint: '关键词精准匹配',
+            },
+          ],
         },
         {
-          key: 'event_vector_enabled',
-          label: '事件索引',
-          hint: '事件向量化',
-          dependsOn: 'kg_enabled',
+          title: 'Embedding',
+          icon: Sparkles,
+          color: 'text-success',
+          bgColor: 'bg-success/10',
+          items: [
+            {
+              key: 'embedding_context_prefix_enabled',
+              label: '结构化上下文前缀',
+              hint: '在向量 embedding 前追加 header_path/outline 等轻量上下文（不改变正文与定位）',
+              dependsOn: 'chunk_vector_enabled',
+            },
+          ],
         },
         {
-          key: 'entity_vector_enabled',
-          label: '实体索引',
-          hint: '实体向量化',
-          dependsOn: 'kg_enabled',
-        },
-      ],
-    },
-  ]), [])
+          title: '知识图谱',
+          icon: Network,
+          color: 'text-accent',
+          bgColor: 'bg-accent/10',
+          items: [
+            {
+              key: 'kg_enabled',
+              label: 'KG 抽取',
+              hint: '提取实体与关系',
+            },
+            {
+              key: 'event_vector_enabled',
+              label: '事件索引',
+              hint: '事件向量化',
+              dependsOn: 'kg_enabled',
+            },
+            {
+              key: 'entity_vector_enabled',
+              label: '实体索引',
+              hint: '实体向量化',
+              dependsOn: 'kg_enabled',
+            },
+          ],
+        }
+      )
+    }
+
+    return groups
+  }, [showIndexingControls])
 
   const governanceToggles: ToggleOptionItem[] = [
     {
@@ -682,100 +693,102 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
         </div>
       )}
 
-      <div className={indexPresetCardClass}>
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <div className={cn("font-semibold tracking-[-0.01em] text-foreground/85", titleClasses)}>索引模式（成本/质量）</div>
-            <p className={cn("mt-0.5 text-muted-foreground/80", descClasses)}>
-              {compact ? 'Economical / High-quality presets' : '先预览改动再应用；你仍可继续逐项微调'}
-            </p>
-          </div>
-          <Select
-            value={presetSelectValue}
-            onValueChange={(value) => {
-              const next = coerceOneOf(PIPELINE_INDEX_PRESET_VALUES, value, activeIndexPreset)
-              if (next === 'custom') {
-                setIndexPresetDraft(null)
-                return
-              }
-              if (next === activeIndexPreset) {
-                setIndexPresetDraft(null)
-                return
-              }
-              setIndexPresetDraft(next)
-            }}
-          >
-            <SelectTrigger className={cn("h-8 rounded-lg border-border/50 bg-background/70 text-[11px] text-foreground/80 shadow-none", compact ? "w-44" : "w-52")}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="custom">自定义</SelectItem>
-              <SelectItem value="economical">Economical (省成本)</SelectItem>
-              <SelectItem value="high_quality">High-quality (高质量)</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {pendingIndexPreset ? (
-          <div className={cn("mt-2.5 rounded-lg border border-border/50 bg-background/55", compact ? "p-2.5" : "p-3")}>
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className={cn("font-medium text-foreground/80", compact ? "text-xs" : "text-sm")}>
-                  将应用：{PIPELINE_INDEX_PRESETS[pendingIndexPreset].label}
-                </div>
-                <div className={cn("text-muted-foreground/80", compact ? "text-[11px]" : "text-xs")}>
-                  {PIPELINE_INDEX_PRESETS[pendingIndexPreset].description} · 预计修改 {pendingPresetDiff.length} 项
-                </div>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="h-8 rounded-lg"
-                  onClick={() => setIndexPresetDraft(null)}
-                >
-                  取消
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  className="h-8 rounded-lg shadow-none"
-                  onClick={() => {
-                    applyIndexPreset(pendingIndexPreset)
-                    setIndexPresetDraft(null)
-                  }}
-                >
-                  应用
-                </Button>
-              </div>
+      {showIndexingControls && (
+        <div className={indexPresetCardClass}>
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className={cn("font-semibold tracking-[-0.01em] text-foreground/85", titleClasses)}>索引模式（成本/质量）</div>
+              <p className={cn("mt-0.5 text-muted-foreground/80", descClasses)}>
+                {compact ? 'Economical / High-quality presets' : '先预览改动再应用；你仍可继续逐项微调'}
+              </p>
             </div>
-
-            <details className="mt-2 group/details">
-              <summary className={cn(
-                "cursor-pointer select-none flex items-center justify-between gap-2 rounded-md px-2 py-1 hover:bg-muted/60 transition-colors",
-                compact ? "text-[11px]" : "text-xs"
-              )}>
-                <span className="text-muted-foreground">查看变更</span>
-                <ChevronDown className="size-3 text-muted-foreground transition-transform group-open/details:rotate-180" />
-              </summary>
-              <div className="mt-2 grid gap-1.5 px-2">
-                {pendingPresetDiff.map((d) => {
-                  const label = PIPELINE_OPTION_LABELS[d.key] || String(d.key)
-                  return (
-                    <div key={String(d.key)} className="flex items-center justify-between gap-3 text-[11px]">
-                      <span className="text-muted-foreground truncate">{label}</span>
-                      <span className="font-mono text-foreground/80 shrink-0">
-                        {formatPipelineOptionValue(d.from)} → {formatPipelineOptionValue(d.to)}
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
-            </details>
+            <Select
+              value={presetSelectValue}
+              onValueChange={(value) => {
+                const next = coerceOneOf(PIPELINE_INDEX_PRESET_VALUES, value, activeIndexPreset)
+                if (next === 'custom') {
+                  setIndexPresetDraft(null)
+                  return
+                }
+                if (next === activeIndexPreset) {
+                  setIndexPresetDraft(null)
+                  return
+                }
+                setIndexPresetDraft(next)
+              }}
+            >
+              <SelectTrigger className={cn("h-8 rounded-lg border-border/50 bg-background/70 text-[11px] text-foreground/80 shadow-none", compact ? "w-44" : "w-52")}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="custom">自定义</SelectItem>
+                <SelectItem value="economical">Economical (省成本)</SelectItem>
+                <SelectItem value="high_quality">High-quality (高质量)</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-        ) : null}
-      </div>
+
+          {pendingIndexPreset ? (
+            <div className={cn("mt-2.5 rounded-lg border border-border/50 bg-background/55", compact ? "p-2.5" : "p-3")}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className={cn("font-medium text-foreground/80", compact ? "text-xs" : "text-sm")}>
+                    将应用：{PIPELINE_INDEX_PRESETS[pendingIndexPreset].label}
+                  </div>
+                  <div className={cn("text-muted-foreground/80", compact ? "text-[11px]" : "text-xs")}>
+                    {PIPELINE_INDEX_PRESETS[pendingIndexPreset].description} · 预计修改 {pendingPresetDiff.length} 项
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 rounded-lg"
+                    onClick={() => setIndexPresetDraft(null)}
+                  >
+                    取消
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-8 rounded-lg shadow-none"
+                    onClick={() => {
+                      applyIndexPreset(pendingIndexPreset)
+                      setIndexPresetDraft(null)
+                    }}
+                  >
+                    应用
+                  </Button>
+                </div>
+              </div>
+
+              <details className="mt-2 group/details">
+                <summary className={cn(
+                  "cursor-pointer select-none flex items-center justify-between gap-2 rounded-md px-2 py-1 hover:bg-muted/60 transition-colors",
+                  compact ? "text-[11px]" : "text-xs"
+                )}>
+                  <span className="text-muted-foreground">查看变更</span>
+                  <ChevronDown className="size-3 text-muted-foreground transition-transform group-open/details:rotate-180" />
+                </summary>
+                <div className="mt-2 grid gap-1.5 px-2">
+                  {pendingPresetDiff.map((d) => {
+                    const label = PIPELINE_OPTION_LABELS[d.key] || String(d.key)
+                    return (
+                      <div key={String(d.key)} className="flex items-center justify-between gap-3 text-[11px]">
+                        <span className="text-muted-foreground truncate">{label}</span>
+                        <span className="font-mono text-foreground/80 shrink-0">
+                          {formatPipelineOptionValue(d.from)} → {formatPipelineOptionValue(d.to)}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </details>
+            </div>
+          ) : null}
+        </div>
+      )}
 
       {showJsonToolbar && (
         <div className={jsonToolbarClass}>

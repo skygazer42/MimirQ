@@ -449,7 +449,10 @@ export const documentApi = {
     })
   },
 
-  async retry(documentId: string, params?: { force?: boolean; skip_if_unchanged?: boolean }): Promise<DocumentStatus> {
+  async retry(
+    documentId: string,
+    params?: { force?: boolean; skip_if_unchanged?: boolean; parser_backend?: string }
+  ): Promise<DocumentStatus> {
     return openapiRequest({
       path: '/api/v1/documents/{document_id}/retry',
       method: 'post',

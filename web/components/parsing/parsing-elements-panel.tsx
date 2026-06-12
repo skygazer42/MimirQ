@@ -1,7 +1,8 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
+import { AuthImage } from '@/components/auth-image'
 import type { ParsingElement } from '@/lib/api/parsing'
 import { cn } from '@/lib/utils'
 
@@ -74,6 +75,13 @@ function formatPageSpan(element: ParsingElement): string {
  return formatCrossPageMergePages(element.attributes)
 }
 
+function getElementImageSrc(element: ParsingElement): string {
+ if (element.kind !== 'image') return ''
+ const attributes = element.attributes as Record<string, unknown> | null
+ const raw = attributes?.src || attributes?.image_src || attributes?.url
+ return typeof raw === 'string' ? raw.trim() : ''
+}
+
 export function ParsingElementsPanel({
  elements,
  onSelectElement,
@@ -82,6 +90,12 @@ export function ParsingElementsPanel({
  const [isCollapsed, setIsCollapsed] = useState(true)
  const [filterKind, setFilterKind] = useState<string>('all')
  const [filterVisualKind, setFilterVisualKind] = useState<string>('all')
+ const hasImageElements = useMemo(() => (elements || []).some((element) => element.kind === 'image'), [elements])
+ useEffect(() => {
+ if (!hasImageElements) return
+ setIsCollapsed(false)
+ setFilterKind((current) => (current === 'all' ? 'image' : current))
+ }, [hasImageElements])
  const filterKinds = useMemo(() => {
  const kinds = new Set<string>(['all'])
  for (const element of elements || []) {
@@ -189,6 +203,7 @@ export function ParsingElementsPanel({
  : typeof attributes?.visual_kind === 'string'
  ? attributes.visual_kind
  : ''
+ const imageSrc = getElementImageSrc(element)
 
  return (
  <button
@@ -197,6 +212,18 @@ export function ParsingElementsPanel({
  onClick={() => onSelectElement?.(element)}
  className="rounded-xl border border-border/60 bg-card px-3 py-2 text-left transition-colors hover:border-primary/35 hover:bg-primary/5"
  >
+ {imageSrc ? (
+ <div className="mb-2 overflow-hidden rounded-lg border border-border/60 bg-muted/35">
+ <AuthImage
+ src={imageSrc}
+ alt={String(element.text || element.id || 'image')}
+ width={360}
+ height={240}
+ unoptimized
+ className="h-28 w-full object-contain p-1.5"
+ />
+ </div>
+ ) : null}
  <div className="flex flex-wrap items-center gap-2">
  <span className="text-[11px] font-medium text-foreground">{kindLabel(String(element.kind || 'paragraph'))}</span>
  {pageLabel ? <span className="font-mono text-[11px] text-muted-foreground">{pageLabel}</span> : null}

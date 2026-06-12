@@ -6,6 +6,11 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 POSITION_TAG_RE = re.compile(r"@@([0-9-]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)##")
+MARKDOWN_IMAGE_RE = re.compile(
+    r"!\[[^\]]*\]\(\s*(?:<)?[^)\s>]+(?:>)?(?:\s+['\"][^'\"]*['\"])?\s*\)",
+    re.IGNORECASE,
+)
+HTML_IMAGE_RE = re.compile(r"<img\b[^>]*\bsrc\s*=\s*['\"][^'\"]+['\"][^>]*>", re.IGNORECASE)
 
 
 def _coerce_int(value: Any) -> int:
@@ -59,6 +64,12 @@ def count_position_tag_blocks(markdown: str) -> int:
     return int(block_count)
 
 
+def count_markdown_images(markdown: str | None) -> int:
+    if not markdown:
+        return 0
+    return len(MARKDOWN_IMAGE_RE.findall(markdown)) + len(HTML_IMAGE_RE.findall(markdown))
+
+
 def _iter_metadata(documents: Iterable[Any] | None) -> Iterable[Mapping[str, Any]]:
     for item in documents or []:
         meta: Any = None
@@ -76,6 +87,7 @@ def compute_parsing_artifact_stats(
     *,
     documents: Iterable[Any] | None,
     original_markdown: str,
+    markdown: str | None = None,
     pdf_quality: Mapping[str, Any] | None,
 ) -> dict[str, int]:
     table_count = 0
@@ -93,6 +105,11 @@ def compute_parsing_artifact_stats(
     if isinstance(pdf_quality, Mapping):
         page_count = max(0, _coerce_int(pdf_quality.get("page_count")))
 
+    markdown_image_count = max(
+        count_markdown_images(original_markdown),
+        count_markdown_images(markdown),
+    )
+    image_count = max(image_count, markdown_image_count)
     block_count = count_position_tag_blocks(original_markdown or "")
 
     return {
