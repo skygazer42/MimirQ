@@ -28,6 +28,7 @@ import {
 
 import { MarkdownRenderer } from '@/components/markdown/markdown-renderer'
 import { MarkdownToc } from '@/components/markdown/markdown-toc'
+import { AuthImage } from '@/components/auth-image'
 import { ParserDropdown } from '@/components/business/parser-dropdown'
 import { ParsingElementsPanel } from '@/components/parsing/parsing-elements-panel'
 import { ParsingExtractPanel } from '@/components/parsing/parsing-extract-panel'
@@ -59,6 +60,26 @@ const PdfViewer = dynamic(() => import('@/components/parsing/pdf-viewer').then((
  ssr: false,
  loading: () => <Skeleton className="h-[400px] w-full" />,
 })
+
+type LayoutReviewEntry = {
+ type: 'layout'
+ entry: ReturnType<typeof buildParsingLayoutEntries>[number]
+ layoutIndex: number
+ sortPage: number
+ sortTop: number
+}
+
+type ImageReviewEntry = {
+ type: 'image'
+ element: ParsingElement
+ imageIndex: number
+ pageIndex: number | null
+ src: string
+ sortPage: number
+ sortTop: number
+}
+
+type ReviewEntry = LayoutReviewEntry | ImageReviewEntry
 
 function isRecord(value: unknown): value is Record<string, unknown> {
  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
@@ -157,6 +178,13 @@ function formatElementPages(element: ParsingElement | null | undefined): string 
  return `页 ${element.page}`
  }
  return ''
+}
+
+function getElementImageSrc(element: ParsingElement | null | undefined): string {
+ if (!element || element.kind !== 'image') return ''
+ const attributes = element.attributes as Record<string, unknown> | null
+ const raw = attributes?.src || attributes?.image_src || attributes?.url
+ return typeof raw === 'string' ? raw.trim() : ''
 }
 
 function readEvidenceRawPages(
@@ -582,6 +610,50 @@ export function ParsingActiveFilePane({
  }, [activeBlockId, layoutEntries, rightPanelMode])
 
  const parsedStatItems = buildParsedStatItems(activeFile)
+ const activeImageElements = useMemo(
+ () => (activeElements || []).filter((element) => element.kind === 'image'),
+ [activeElements]
+ )
+ const positionedImageElementCount = useMemo(
+ () => activeImageElements.filter((element) => element.bbox).length,
+ [activeImageElements]
+ )
+ const imageReviewEntries = useMemo<ImageReviewEntry[]>(
+ () =>
+ activeImageElements.map((element, index) => {
+ const pageIndexes = buildElementPageIndexes(element)
+ const pageIndex = pageIndexes[0] ?? null
+ const src = getElementImageSrc(element)
+ return {
+ type: 'image',
+ element,
+ imageIndex: index,
+ pageIndex,
+ src,
+ sortPage: pageIndex ?? Number.MAX_SAFE_INTEGER,
+ sortTop: element.bbox?.y0 ?? Number.MAX_SAFE_INTEGER,
+ }
+ }),
+ [activeImageElements]
+ )
+ const reviewEntries = useMemo<ReviewEntry[]>(() => {
+ const layoutReviewEntries: LayoutReviewEntry[] = layoutEntries.map((entry, index) => ({
+ type: 'layout',
+ entry,
+ layoutIndex: index,
+ sortPage: entry.pageIndex ?? Number.MAX_SAFE_INTEGER,
+ sortTop: entry.position.top,
+ }))
+
+ return [...layoutReviewEntries, ...imageReviewEntries].sort((left, right) => {
+ if (left.sortPage !== right.sortPage) return left.sortPage - right.sortPage
+ if (left.sortTop !== right.sortTop) return left.sortTop - right.sortTop
+ if (left.type !== right.type) return left.type === 'layout' ? -1 : 1
+ const leftIndex = left.type === 'layout' ? left.layoutIndex : left.imageIndex
+ const rightIndex = right.type === 'layout' ? right.layoutIndex : right.imageIndex
+ return leftIndex - rightIndex
+ })
+ }, [imageReviewEntries, layoutEntries])
  const activeElementSummaryItems = useMemo(() => {
  const counts = new Map<string, number>()
  for (const element of activeElements || []) {
@@ -799,19 +871,28 @@ export function ParsingActiveFilePane({
  </div>
  ) : null}
 
- <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border/60 bg-card/96 px-5 py-3 shadow-soft dark:bg-background/75">
- <div className="flex min-w-0 flex-wrap items-center gap-2.5">
- <span className="max-w-[260px] truncate text-[13px] font-semibold text-foreground dark:text-foreground">
+ <div className="border-b border-border/60 bg-card/96 px-4 py-2.5 shadow-soft dark:bg-background/75">
+        <div className="flex min-w-0 flex-col gap-2 md:flex-row md:items-center md:justify-between">
+ <div className="flex min-w-0 flex-1 items-center gap-2">
+ <span className="min-w-0 truncate text-[13px] font-semibold text-foreground">
  {activeFile.file.name}
  </span>
- <span className="rounded-md bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground dark:bg-muted dark:text-muted-foreground">
+ <span className="shrink-0 rounded-md border border-border/60 bg-muted/45 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
  {activeFile.parserLabel}
  </span>
+ <span className="shrink-0 rounded-md bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+ {activeFile.status === 'parsed' ? '已生成' : activeFile.status === 'pending' ? '待解析' : activeFile.status === 'error' ? '失败' : '解析中'}
+ </span>
+ {isEditing ? (
+ <span className="shrink-0 rounded-md bg-info/10 px-2 py-0.5 text-[11px] font-medium text-info">
+ 编辑中
+ </span>
+ ) : null}
  {activeFile.runs && activeFile.runs.length > 1 ? (
  <select
  value={activeRun?.id || ''}
  onChange={(event) => onSelectRun(event.target.value)}
- className="h-7 rounded-md border border-border/60 bg-background px-2 py-1 text-[11px] text-foreground/80 dark:border-border dark:bg-muted dark:text-muted-foreground"
+ className="h-7 max-w-[12rem] shrink-0 rounded-md border border-border/60 bg-background px-2 text-[11px] text-foreground/80 outline-none focus:border-info/50 dark:border-border dark:bg-muted dark:text-muted-foreground"
  >
  {activeFile.runs.map((run) => (
  <option key={run.id} value={run.id}>
@@ -820,24 +901,17 @@ export function ParsingActiveFilePane({
  ))}
  </select>
  ) : null}
- {isEditing ? (
- <span className="flex items-center gap-1 rounded-md bg-sky-100 px-2 py-0.5 text-[11px] font-medium text-info dark:bg-info/30 dark:text-info">
- <Edit3 className="h-3 w-3" />
- 编辑中
- </span>
- ) : null}
  </div>
 
- <div className="flex flex-wrap items-center justify-end gap-1.5">
  {activeFile.status === 'parsed' ? (
- <>
+ <div className="-mx-1 flex max-w-full shrink-0 items-center gap-1 overflow-x-auto px-1 no-scrollbar">
  {activeFile.runs && activeFile.runs.length > 1 ? (
  <Button
  variant="outline"
  size="sm"
  onClick={() => setCompareOpen(true)}
  disabled={isEditing}
- className="h-8 gap-1.5 rounded-lg px-2.5 text-xs"
+ className="h-8 shrink-0 gap-1.5 rounded-md px-2.5 text-xs"
  >
  <FileStack className="h-4 w-4" />
  对比
@@ -847,10 +921,10 @@ export function ParsingActiveFilePane({
  {isEditing ? (
  <>
  <Button
- variant="ghost"
+ variant="outline"
  size="sm"
  onClick={onCancelEdit}
- className="h-8 gap-1.5 rounded-lg px-2.5 text-xs text-muted-foreground"
+ className="h-8 shrink-0 gap-1.5 rounded-md px-2.5 text-xs text-muted-foreground"
  >
  <X className="h-4 w-4" />
  取消
@@ -858,7 +932,7 @@ export function ParsingActiveFilePane({
  <Button
  onClick={onSaveEdit}
  size="sm"
- className="h-8 gap-1.5 rounded-lg px-2.5 text-xs bg-info hover:bg-info"
+ className="h-8 shrink-0 gap-1.5 rounded-md bg-info px-2.5 text-xs hover:bg-info"
  >
  <Save className="h-4 w-4" />
  保存修改
@@ -867,11 +941,11 @@ export function ParsingActiveFilePane({
  ) : (
  <>
  {rightPanelMode === 'markdown' ? (
- <div className="flex items-center rounded-lg bg-muted/80 p-0.5 dark:bg-muted">
+ <>
  <button
  onClick={() => onPreviewModeChange('rendered')}
  className={cn(
- 'focus-ring flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] transition-colors duration-200 motion-reduce:transition-none',
+ 'focus-ring flex h-8 shrink-0 items-center gap-1 rounded-md px-2.5 text-xs transition-colors duration-200 motion-reduce:transition-none',
  getToggleButtonClass(previewMode === 'rendered')
  )}
  >
@@ -881,95 +955,63 @@ export function ParsingActiveFilePane({
  <button
  onClick={() => onPreviewModeChange('raw')}
  className={cn(
- 'focus-ring flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] transition-colors duration-200 motion-reduce:transition-none',
+ 'focus-ring flex h-8 shrink-0 items-center gap-1 rounded-md px-2.5 text-xs transition-colors duration-200 motion-reduce:transition-none',
  getToggleButtonClass(previewMode === 'raw')
  )}
  >
  <Code className="h-3.5 w-3.5" />
  源码
  </button>
- </div>
+ </>
  ) : null}
 
  {activeBlocksWithPositions.length > 0 ? (
- <div className="flex items-center rounded-lg bg-muted/80 p-0.5 dark:bg-muted">
+ <>
  <button
  onClick={() => onRightPanelModeChange('blocks')}
  className={cn(
- 'focus-ring flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] transition-colors duration-200 motion-reduce:transition-none',
+ 'focus-ring flex h-8 shrink-0 items-center gap-1 rounded-md px-2.5 text-xs transition-colors duration-200 motion-reduce:transition-none',
  getToggleButtonClass(rightPanelMode === 'blocks')
  )}
  >
  <FileStack className="h-3.5 w-3.5" />
- 版面
+ 定位块
+ <span className="font-mono text-[11px] tabular-nums opacity-75">
+ {layoutEntries.length}
+ </span>
  </button>
  <button
  onClick={() => onRightPanelModeChange('markdown')}
  className={cn(
- 'focus-ring flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] transition-colors duration-200 motion-reduce:transition-none',
+ 'focus-ring flex h-8 shrink-0 items-center gap-1 rounded-md px-2.5 text-xs transition-colors duration-200 motion-reduce:transition-none',
  getToggleButtonClass(rightPanelMode === 'markdown')
  )}
  >
  <FileText className="h-3.5 w-3.5" />
  Markdown
  </button>
- </div>
+ </>
  ) : null}
 
- <Button variant="outline" size="sm" onClick={onStartEdit} className="h-8 gap-1.5 rounded-lg px-2.5 text-xs">
+ <Button variant="outline" size="sm" onClick={onStartEdit} className="h-8 shrink-0 gap-1.5 rounded-md px-2.5 text-xs">
  <Edit3 className="h-4 w-4" />
  编辑
  </Button>
-
- <Button variant="outline" size="sm" onClick={onSaveEdit} className="h-8 gap-1.5 rounded-lg px-2.5 text-xs">
+ <Button variant="outline" size="sm" onClick={onSaveEdit} className="h-8 shrink-0 gap-1.5 rounded-md px-2.5 text-xs">
  <Save className="h-4 w-4" />
  保存
  </Button>
-
- <Button variant="outline" size="sm" onClick={onCopyMarkdown} className="h-8 gap-1.5 rounded-lg px-2.5 text-xs">
+ <Button variant="outline" size="sm" onClick={onCopyMarkdown} className="h-8 shrink-0 gap-1.5 rounded-md px-2.5 text-xs">
  {copied ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
  {copied ? '已复制' : '复制'}
  </Button>
-
- <Button size="sm" onClick={onDownloadMarkdown} className="h-8 gap-1.5 rounded-lg bg-primary px-2.5 text-xs text-primary-foreground hover:bg-primary/90">
+ <Button size="sm" onClick={onDownloadMarkdown} className="h-8 shrink-0 gap-1.5 rounded-md bg-primary px-2.5 text-xs text-primary-foreground hover:bg-primary/90">
  <Download className="h-4 w-4" />
  下载
  </Button>
  </>
  )}
- </>
- ) : null}
-
- {activeFile.status === 'pending' || activeFile.status === 'error' ? (
- <div className="mr-2 flex items-center gap-2">
- <span className="text-xs font-medium text-muted-foreground">解析方式</span>
- <ParserDropdown
- value={activeFile.parserBackend}
- filename={activeFile.file.name}
- onChange={(backend) =>
- onSetQueueFileParserBackend({
- fileId: activeFile.id,
- filename: activeFile.file.name,
- backend,
- })
- }
- className="w-56"
- />
  </div>
- ) : null}
-
- {activeFile.status === 'pending' ? (
- <Button onClick={() => onParseFile(activeFile.id)} className="gap-2 bg-info hover:bg-info">
- <Sparkles className="h-4 w-4 text-sky-200" />
- 开始解析
- </Button>
- ) : null}
-
- {activeFile.status === 'error' ? (
- <Button onClick={() => onParseFile(activeFile.id)} variant="outline" className="gap-2">
- <RotateCcw className="h-4 w-4" />
- 重试
- </Button>
  ) : null}
  </div>
  </div>
@@ -983,8 +1025,30 @@ export function ParsingActiveFilePane({
  </div>
  <p className="mb-2 text-foreground/80 dark:text-muted-foreground">准备就绪</p>
  <p className="text-sm text-muted-foreground dark:text-muted-foreground">
- 先在上方选择解析方式（当前：{activeFile.parserLabel}），再点击开始解析
+ 上传只登记到解析工作区；点击下方“用当前解析器开始解析”才会运行（当前：{activeFile.parserLabel}）
  </p>
+ <div className="mt-5 flex flex-col items-stretch justify-center gap-3 rounded-2xl border border-border/60 bg-card/86 p-3 shadow-soft sm:flex-row sm:items-center">
+ <div className="min-w-0 sm:w-72">
+ <ParserDropdown
+ value={activeFile.parserBackend}
+ filename={activeFile.file.name}
+ onChange={(backend) =>
+ onSetQueueFileParserBackend({
+ fileId: activeFile.id,
+ filename: activeFile.file.name,
+ backend,
+ })
+ }
+ />
+ </div>
+ <Button
+ onClick={() => onParseFile(activeFile.id, activeFile.parserBackend)}
+ className="gap-2 bg-info hover:bg-info"
+ >
+ <Sparkles className="h-4 w-4 text-sky-200" />
+ 用当前解析器开始解析
+ </Button>
+ </div>
  </div>
  </div>
  ) : null}
@@ -1088,9 +1152,9 @@ export function ParsingActiveFilePane({
  />
  </div>
  ) : (
- <div className="flex h-full min-h-[560px] flex-col bg-[radial-gradient(circle_at_30%_0%,hsl(var(--primary)/0.04),transparent_34%),linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.22))] lg:flex-row">
+ <div className="flex h-full min-h-[560px] min-w-0 flex-col bg-[radial-gradient(circle_at_30%_0%,hsl(var(--primary)/0.04),transparent_34%),linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.22))] xl:flex-row">
  {isPdf ? (
- <div className="relative flex h-full min-h-0 w-full flex-col border-b border-border/60 bg-muted/60 dark:border-border/60 dark:bg-background/40 lg:flex-[1.42] lg:border-b-0 lg:border-r">
+ <div className="relative flex h-full min-h-0 min-w-0 w-full flex-col border-b border-border/60 bg-muted/60 dark:border-border/60 dark:bg-background/40 xl:flex-[1.42] xl:border-b-0 xl:border-r">
  <div className="min-h-0 flex-1">
  <PdfViewer
  key={pdfViewerKey}
@@ -1106,7 +1170,7 @@ export function ParsingActiveFilePane({
  </div>
  </div>
  ) : null}
- <div className={isPdf ? 'w-full lg:flex-[0.92]' : 'w-full'}>
+ <div className={isPdf ? 'w-full min-w-0 xl:flex-[0.92]' : 'w-full min-w-0'}>
  {rightPanelMode === 'blocks' && layoutEntries.length > 0 ? (
  <ParsingRightPanel className="h-full no-scrollbar p-4 lg:p-4">
  <div className="overflow-hidden rounded-2xl border border-border/60 bg-card/95 shadow-soft">
@@ -1114,19 +1178,87 @@ export function ParsingActiveFilePane({
  <div className="flex flex-wrap items-center justify-between gap-2">
  <div className="min-w-0">
  <div className="text-[11px] font-medium tracking-[0.06em] text-foreground/78">
- 版面定位流
+ 解析定位块
  </div>
  <div className="mt-0.5 text-[11px] leading-5 text-muted-foreground/78">
- 左侧显示原页框选，右侧按定位片段连续审阅
+ 点击左侧 PDF 框选可跳到这里，点击定位块也会高亮原页
  </div>
  </div>
  <div className="rounded-full border border-border/60 bg-card px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
- {layoutEntries.length} segments
+ {reviewEntries.length} segments
  </div>
  </div>
  </div>
  <div className="space-y-2.5 bg-muted/20 p-3">
- {layoutEntries.map((entry, index) => {
+ {reviewEntries.map((reviewEntry, index) => {
+ if (reviewEntry.type === 'image') {
+ const element = reviewEntry.element
+ const isActive = String(selectedExtractElement?.id || '') === String(element.id || '')
+ const pageLabel = formatElementPages(element)
+ return (
+ <button
+ key={`image:${String(element.id || reviewEntry.imageIndex)}`}
+ ref={(node) => {
+ const id = String(element.id || '').trim()
+ if (!id) return
+ if (node) {
+ layoutReviewCardRefs.current.set(id, node)
+ } else {
+ layoutReviewCardRefs.current.delete(id)
+ }
+ }}
+ data-layout-entry-id={String(element.id || '')}
+ type="button"
+ onClick={() => handleSelectElement(element)}
+ onMouseEnter={() => onHoveredBlockIdChange(String(element.id || '').trim() || null)}
+ onMouseLeave={() => onHoveredBlockIdChange(null)}
+ className={cn(
+ 'group w-full overflow-hidden rounded-xl border text-left transition',
+ isActive
+ ? 'border-amber-400/70 bg-amber-50/80 shadow-soft ring-1 ring-amber-300/45 dark:bg-amber-950/24'
+ : 'border-amber-200/70 bg-card/90 hover:border-amber-400/70 hover:bg-amber-50/55 dark:border-amber-900/50 dark:bg-background/35 dark:hover:bg-amber-950/18'
+ )}
+ title={String(element.text || element.id || '')}
+ >
+ <div className="flex gap-3 p-3">
+ <div className="relative h-24 w-28 shrink-0 overflow-hidden rounded-lg border border-amber-200/70 bg-[linear-gradient(135deg,hsl(var(--muted)),hsl(var(--background)))] dark:border-amber-900/50">
+ {reviewEntry.src ? (
+ <AuthImage
+ src={reviewEntry.src}
+ alt={String(element.text || `image-${reviewEntry.imageIndex + 1}`)}
+ width={280}
+ height={200}
+ unoptimized
+ className="h-full w-full object-contain p-1.5"
+ />
+ ) : (
+ <div className="flex h-full items-center justify-center text-[11px] text-muted-foreground">无预览</div>
+ )}
+ </div>
+ <div className="min-w-0 flex-1">
+ <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+ <span className="inline-flex items-center rounded-full border border-amber-200/80 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/35 dark:text-amber-200">
+ 图片
+ </span>
+ <span className="font-mono text-[11px] text-muted-foreground">片段 {index + 1}</span>
+ {pageLabel ? <span className="font-mono text-[11px] text-muted-foreground">{pageLabel}</span> : null}
+ <span className="font-mono text-[11px] text-muted-foreground">
+ {element.bbox ? '可定位' : '无坐标'}
+ </span>
+ </div>
+ <div className="truncate text-sm font-medium text-foreground/82">
+ {String(element.text || element.id || `图片 ${reviewEntry.imageIndex + 1}`)}
+ </div>
+ <div className="mt-1 text-[11px] leading-5 text-muted-foreground">
+ 共 {activeImageElements.length} 张图片，{positionedImageElementCount} 张可定位到 PDF 框选
+ </div>
+ </div>
+ </div>
+ </button>
+ )
+ }
+
+ const { entry } = reviewEntry
  const layoutMeta = getParsingLayoutMeta(entry.kind)
  const isActive = entry.id === activeBlockId
  return (

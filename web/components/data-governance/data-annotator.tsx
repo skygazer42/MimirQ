@@ -75,6 +75,7 @@ const AUTO_TAG_PROVIDER_OPTIONS: Array<{
   { id: 'compliance', providers: ['pii', 'secret', 'regex'], enableLlm: false, enableSensitive: true },
   { id: 'hybrid', providers: ['cpu', 'llm', 'gliner', 'pii', 'secret'], enableLlm: true, enableSensitive: true },
 ]
+const DEFAULT_AUTO_TAG_PROVIDER: AutoTagProviderId = 'hybrid'
 
 const TONE_STYLES: Record<
   AnnotationTone,
@@ -177,7 +178,7 @@ export function DataAnnotator({ content, annotations = [], onAnnotate, onDocumen
   const [customLabel, setCustomLabel] = useState('')
   const [isSelecting, setIsSelecting] = useState(false)
   const [isAutoTagging, setIsAutoTagging] = useState(false)
-  const [autoTagProvider, setAutoTagProvider] = useState<AutoTagProviderId>('cpu')
+  const [autoTagProvider, setAutoTagProvider] = useState<AutoTagProviderId>(DEFAULT_AUTO_TAG_PROVIDER)
   const [selection, setSelection] = useState<{ start: number; end: number; text: string } | null>(null)
   const [localAnnotations, setLocalAnnotations] = useState<Annotation[]>(annotations)
   const [semanticSummary, setSemanticSummary] = useState<string | null>(null)

@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import type { RefObject } from 'react'
 import {
   Database,
@@ -160,6 +161,16 @@ export function ParsingSidebarPane({
   onRebindFileSelect,
 }: Readonly<ParsingSidebarPaneProps>) {
   const t = useTranslations('ParsingWorkbench')
+  const [parserSettingsOpen, setParserSettingsOpen] = useState(false)
+  const [draftParserBackend, setDraftParserBackend] = useState(parserBackend)
+  const hasParserDraftChange = draftParserBackend !== parserBackend
+
+  useEffect(() => {
+    if (parserSettingsOpen) {
+      setDraftParserBackend(parserBackend)
+    }
+  }, [parserBackend, parserSettingsOpen])
+
   const fileTypeCounts = sidebarFileItems.reduce(
     (acc, file) => {
       const extension = getSidebarFileExtension(file.name)
@@ -235,7 +246,7 @@ export function ParsingSidebarPane({
             </Button>
           ) : null}
 
-          <Popover>
+          <Popover open={parserSettingsOpen} onOpenChange={setParserSettingsOpen}>
             <PopoverTrigger asChild>
               <Button
                 variant="ghost"
@@ -259,12 +270,42 @@ export function ParsingSidebarPane({
                     </div>
                   </div>
                   <ParserDropdown
-                    value={parserBackend}
-                    onChange={onParserBackendChange}
+                    value={draftParserBackend}
+                    onChange={setDraftParserBackend}
                   />
+                  <div className="rounded-xl border border-info/20 bg-info/[0.07] px-3 py-2 text-xs leading-snug text-info">
+                    {t('sidebar.parserApplyHint')}
+                  </div>
                   <p className="text-xs leading-snug text-muted-foreground">
                     {t('sidebar.defaultParserDescription')}
                   </p>
+                  <div className="flex items-center justify-end gap-2 pt-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 rounded-lg px-3 text-xs"
+                      onClick={() => {
+                        setDraftParserBackend(parserBackend)
+                        setParserSettingsOpen(false)
+                      }}
+                    >
+                      {t('sidebar.cancelParserSelection')}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="h-8 rounded-lg px-3 text-xs"
+                      disabled={!hasParserDraftChange}
+                      onClick={() => {
+                        if (!hasParserDraftChange) return
+                        onParserBackendChange(draftParserBackend)
+                        setParserSettingsOpen(false)
+                      }}
+                    >
+                      {t('sidebar.confirmParserSelection')}
+                    </Button>
+                  </div>
                 </div>
 
                 <div className="h-px bg-border/60" />

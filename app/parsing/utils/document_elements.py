@@ -2,12 +2,20 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable, Mapping
+from pathlib import Path
 from typing import Any
 
 from langchain_core.documents import Document
 
 _KNOWN_KINDS = {"heading", "paragraph", "list", "table", "image", "equation", "seal"}
 _POSITION_TAG_RE = re.compile(r"@@[0-9-]+\t[0-9.]+\t[0-9.]+\t[0-9.]+\t[0-9.]+##")
+_POSITION_TAG_DETAIL_RE = re.compile(r"@@([0-9-]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)##")
+_MD_IMAGE_RE = re.compile(
+    r"!\[([^\]]*)\]\(\s*(?:<)?([^)\s>]+)(?:>)?(?:\s+['\"][^'\"]*['\"])?\s*\)",
+    re.IGNORECASE,
+)
+_HTML_IMAGE_RE = re.compile(r"<img\b[^>]*\bsrc\s*=\s*['\"]([^'\"]+)['\"][^>]*>", re.IGNORECASE)
+_HTML_ALT_RE = re.compile(r"\balt\s*=\s*['\"]([^'\"]*)['\"]", re.IGNORECASE)
 _DISPLAY_MATH_RE = re.compile(r"^\s*(\$\$.*\$\$|\\\[.*\\\])\s*$", re.DOTALL)
 _SKIP_ATTRIBUTE_KEYS = {
     "image",
@@ -92,6 +100,18 @@ def _coerce_bbox(value: Any) -> dict[str, int] | None:
         if None not in {x0, y0, x1, y1}:
             return {"x0": int(x0), "y0": int(y0), "x1": int(x1), "y1": int(y1)}
     return None
+
+
+def _coerce_position_bbox(parts: tuple[str, str, str, str]) -> dict[str, int] | None:
+    left, right, top, bottom = (_coerce_float(part) for part in parts)
+    if None in {left, right, top, bottom}:
+        return None
+    return {
+        "x0": int(round(float(left))),
+        "y0": int(round(float(top))),
+        "x1": int(round(float(right))),
+        "y1": int(round(float(bottom))),
+    }
 
 
 def _extract_bbox(meta: Mapping[str, Any]) -> dict[str, int] | None:
@@ -260,6 +280,88 @@ def _prefer_image_code_text(*, kind: str, visual_kind: str | None, text: str, at
     return code_text or text
 
 
+def _extract_markdown_image_refs(markdown: str) -> list[dict[str, str]]:
+    refs: list[dict[str, str]] = []
+    for match in _MD_IMAGE_RE.finditer(markdown or ""):
+        refs.append({"alt": str(match.group(1) or "").strip(), "src": str(match.group(2) or "").strip()})
+    for match in _HTML_IMAGE_RE.finditer(markdown or ""):
+        token = match.group(0)
+        alt_match = _HTML_ALT_RE.search(token)
+        refs.append(
+            {
+                "alt": str(alt_match.group(1) if alt_match else "").strip(),
+                "src": str(match.group(1) or "").strip(),
+            }
+        )
+    return [ref for ref in refs if ref.get("src")]
+
+
+def _extract_positioned_image_blocks(markdown: str) -> list[dict[str, Any]]:
+    positioned: list[dict[str, Any]] = []
+    last_index = 0
+    for match in _POSITION_TAG_DETAIL_RE.finditer(markdown or ""):
+        text = markdown[last_index : match.start()].strip()
+        last_index = match.end()
+        if not text:
+            continue
+        if not (_MD_IMAGE_RE.search(text) or _HTML_IMAGE_RE.search(text)):
+            continue
+        page = _coerce_int(match.group(1))
+        bbox = _coerce_position_bbox((match.group(2), match.group(3), match.group(4), match.group(5)))
+        positioned.append({"page": page, "bbox": bbox, "text": _clean_element_text(text)})
+    return positioned
+
+
+def _normalize_markdown_image_elements(
+    *,
+    text: str,
+    tagged_markdown: str,
+    parent_id: str,
+    parent_page: int | None,
+) -> list[dict[str, Any]]:
+    image_refs = _extract_markdown_image_refs(text)
+    positioned = _extract_positioned_image_blocks(tagged_markdown or text)
+    if not image_refs and positioned:
+        image_refs = [
+            {
+                "alt": _clean_element_text(item.get("text")) or "Image",
+                "src": "layout://image",
+            }
+            for item in positioned
+        ]
+    if not image_refs:
+        return []
+
+    out: list[dict[str, Any]] = []
+    for index, ref in enumerate(image_refs):
+        position = positioned[index] if index < len(positioned) else {}
+        attrs = {
+            "src": ref.get("src"),
+            "alt": ref.get("alt") or None,
+            "source_content_type": "markdown_image",
+        }
+        text_value = ref.get("alt") or Path(str(ref.get("src") or "")).name or "Image"
+        visual_kind = _infer_visual_kind(kind="image", text=text_value, attributes=attrs)
+        if visual_kind:
+            attrs["visual_kind"] = visual_kind
+        out.append(
+            {
+                "id": f"{parent_id}:image:{index}",
+                "kind": "image",
+                "page": position.get("page") or parent_page,
+                "pages": None,
+                "visual_kind": visual_kind or None,
+                "text": text_value,
+                "bbox": position.get("bbox"),
+                "confidence": None,
+                "source_backend": None,
+                "source_element_id": None,
+                "attributes": attrs,
+            }
+        )
+    return out
+
+
 def _extract_derived_attributes(meta: Mapping[str, Any]) -> dict[str, Any] | None:
     attrs: dict[str, Any] = {}
     preferred_attrs = meta.get("attributes")
@@ -410,6 +512,17 @@ def normalize_document_elements(items: Iterable[Document | Mapping[str, Any]] | 
                 "attributes": attributes,
             }
         )
+        tagged_markdown = str(meta.get("position_tagged_markdown") or "")
+        has_derived_elements = isinstance(meta.get("derived_elements"), list) and bool(meta.get("derived_elements"))
+        if kind != "image" and not has_derived_elements:
+            out.extend(
+                _normalize_markdown_image_elements(
+                    text=text,
+                    tagged_markdown=tagged_markdown,
+                    parent_id=item_id,
+                    parent_page=page,
+                )
+            )
         out.extend(_normalize_derived_elements(meta, parent_id=item_id, parent_page=page))
     return out
 

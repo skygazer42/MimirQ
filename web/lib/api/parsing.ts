@@ -225,15 +225,16 @@ const parsingContentResponseTypedSchema = parsingContentResponseSchema as unknow
 const parsingExtractResponseTypedSchema = parsingExtractResponseSchema as unknown as z.ZodType<ParsingExtractResponse>
 
 export const parsingApi = {
-  async listDocuments(params?: { skip?: number; limit?: number; status?: string }): Promise<{ total: number; items: Document[] }> {
+  async listDocuments(params?: { skip?: number; limit?: number; status?: string; dataset_id?: string }): Promise<{ total: number; items: Document[] }> {
     const { data } = await apiClient.get('/parsing/documents', { params })
     return data
   },
 
-  async upload(file: File, options?: { parser_backend?: string }): Promise<Document> {
+  async upload(file: File, options?: { parser_backend?: string; dataset_id?: string | null }): Promise<Document> {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('parser_backend', (options?.parser_backend || 'auto').toString())
+    if (options?.dataset_id) formData.append('dataset_id', options.dataset_id)
     const { data } = await apiClient.post('/parsing/documents', formData)
     return data
   },

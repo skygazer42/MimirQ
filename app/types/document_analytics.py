@@ -64,6 +64,7 @@ def compute_document_analytics(
     artifact = compute_parsing_artifact_stats(
         documents=documents,
         original_markdown=raw,
+        markdown=raw,
         pdf_quality=pdf_quality,
     )
 

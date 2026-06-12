@@ -101,8 +101,8 @@ vi.mock('@/components/business/parser-dropdown', async () => {
   const React = await import('react')
 
   return {
-    ParserDropdown() {
-      return React.createElement('div', { 'data-testid': 'parser-dropdown' }, 'parser-dropdown')
+    ParserDropdown({ value }: Readonly<{ value?: string }>) {
+      return React.createElement('div', { 'data-testid': 'parser-dropdown', 'data-value': value || '' }, 'parser-dropdown')
     },
   }
 })
@@ -307,6 +307,74 @@ describe('ParsingActiveFilePane lazy compare interactions', () => {
   afterEach(() => {
     vi.clearAllMocks()
     document.body.innerHTML = ''
+  })
+
+  it('starts a pending file with the explicitly selected parser backend', () => {
+    const onParseFile = vi.fn()
+    const activeFile = {
+      ...makeParsedFile([makeRun()]),
+      file: new File(['%PDF-1.7'], 'sample.pdf', { type: 'application/pdf' }),
+      libraryId: null,
+      markdownContent: '',
+      parserBackend: 'mineru',
+      parserLabel: 'MinerU 高级解析',
+      status: 'pending' as const,
+    }
+
+    const view = renderComponent(
+      React.createElement(
+        ParsingActiveFilePane,
+        makePaneProps({
+          activeFile,
+          activeMarkdown: '',
+          activeRun: null,
+          onParseFile,
+        })
+      )
+    )
+
+    expect(view.container.textContent).toContain('用当前解析器开始解析')
+    expect(view.container.querySelector('[data-testid="parser-dropdown"]')?.getAttribute('data-value')).toBe('mineru')
+
+    const parseButton = findButtonByText(view.container, '用当前解析器开始解析')
+    expect(parseButton).not.toBeNull()
+
+    act(() => {
+      parseButton?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+
+    expect(onParseFile).toHaveBeenCalledWith('file-1', 'mineru')
+
+    view.unmount()
+  })
+
+  it('does not expose parser controls for parsed workspace files', () => {
+    const onParseFile = vi.fn()
+    const activeFile = {
+      ...makeParsedFile([makeRun({ parserBackend: 'mineru', parserLabel: 'MinerU 高级解析' })]),
+      file: new File(['%PDF-1.7'], 'sample.pdf', { type: 'application/pdf' }),
+      parserBackend: 'mineru',
+      parserLabel: 'MinerU 高级解析',
+      status: 'parsed' as const,
+    }
+
+    const view = renderComponent(
+      React.createElement(
+        ParsingActiveFilePane,
+        makePaneProps({
+          activeFile,
+          onParseFile,
+        })
+      )
+    )
+
+    const reparseButton = findButtonByText(view.container, '用当前解析器重新解析')
+    expect(view.container.textContent).not.toContain('当前文件解析器')
+    expect(view.container.querySelector('[data-testid="parser-dropdown"]')).toBeNull()
+    expect(reparseButton).toBeNull()
+    expect(onParseFile).not.toHaveBeenCalled()
+
+    view.unmount()
   })
 
   it('shows a save action alongside edit, copy, and download for parsed markdown', () => {

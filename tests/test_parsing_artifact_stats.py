@@ -124,3 +124,16 @@ def test_parsing_workspace_persists_and_returns_artifact_stats(monkeypatch, tmp_
     assert int(dummy_doc.doc_metadata.get("image_count") or 0) == 1
     assert int(dummy_doc.doc_metadata.get("block_count") or 0) == 2
 
+
+def test_compute_parsing_artifact_stats_counts_markdown_images_without_parser_metadata() -> None:
+    from app.parsing.artifact_stats import compute_parsing_artifact_stats  # noqa: WPS433
+
+    stats = compute_parsing_artifact_stats(
+        documents=[],
+        original_markdown="![Image](layout://image)@@5\t80\t188\t30\t263##",
+        markdown="![](/api/v1/documents/image/first)\n\n![](/api/v1/documents/image/second)",
+        pdf_quality={"page_count": 5},
+    )
+
+    assert stats["image_count"] == 2
+    assert stats["block_count"] == 1

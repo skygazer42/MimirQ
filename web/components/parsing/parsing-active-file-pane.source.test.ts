@@ -34,6 +34,33 @@ describe('parsing active file pane source', () => {
     expect(src).not.toContain('self-start xl:sticky xl:top-0 xl:block')
   })
 
+  it('keeps the PDF source preview from collapsing into a narrow sliver beside markdown preview', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'parsing-active-file-pane.tsx'), 'utf8')
+
+    expect(src).toContain('xl:flex-row')
+    expect(src).toContain('xl:flex-[1.42]')
+    expect(src).toContain("isPdf ? 'w-full min-w-0 xl:flex-[0.92]' : 'w-full min-w-0'")
+    expect(src).not.toContain('lg:flex-row')
+    expect(src).not.toContain('lg:flex-[1.42]')
+    expect(src).not.toContain('lg:flex-[0.92]')
+  })
+
+  it('labels the parsed PDF navigation as positioning blocks rather than an abstract layout mode', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'parsing-active-file-pane.tsx'), 'utf8')
+
+    expect(src).toContain('定位块')
+    expect(src).toContain('解析定位块')
+    expect(src).toContain('点击左侧 PDF 框选可跳到这里')
+    expect(src).toContain('const activeImageElements = useMemo(')
+    expect(src).toContain('const reviewEntries = useMemo<ReviewEntry[]>')
+    expect(src).toContain('function getElementImageSrc(')
+    expect(src).toContain("{reviewEntries.map((reviewEntry, index) => {")
+    expect(src).toContain("if (reviewEntry.type === 'image')")
+    expect(src).toContain('<AuthImage')
+    expect(src).toContain('共 {activeImageElements.length} 张图片')
+    expect(src).not.toContain('仅预览前 12 张')
+  })
+
   it('treats the governance action footer like a floating control dock instead of a flat strip', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'parsing-active-file-pane.tsx'), 'utf8')
 

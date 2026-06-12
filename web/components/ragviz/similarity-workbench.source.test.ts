@@ -157,4 +157,44 @@ describe('similarity workbench source', () => {
     expectSourceNotToContain(src, '等待相似度矩阵')
     expectSourceNotToContain(src, '请先在左侧选择横/纵坐标 Collection')
   })
+
+  it('prevents empty collections from being selected for matrix calculation', () => {
+    const src = fs.readFileSync(
+      path.resolve(__dirname, 'similarity-workbench.tsx'),
+      'utf8'
+    )
+
+    expectSourceToContain(src, 'function isEmptyCollectionOption')
+    expectSourceToContain(src, 'disabled={isEmptyCollectionOption(opt)}')
+    expectSourceToContain(src, '所选 Collection 没有数据')
+    expectSourceToContain(src, '（0 项，暂无数据）')
+  })
+
+  it('keeps the heatmap scale legend synchronized with the active color scheme', () => {
+    const src = fs.readFileSync(
+      path.resolve(__dirname, 'similarity-workbench.tsx'),
+      'utf8'
+    )
+
+    expectSourceToContain(src, 'colorscale: Array<[number, string]>')
+    expectSourceToContain(src, 'heatmapLegendBackground(colorScheme, isDifference)')
+    expectSourceToContain(src, 'toPlotlyColorScale(colorScheme)')
+    expectSourceToContain(src, 'DIFFERENCE_COLORSCALE')
+    expectSourceNotToContain(
+      src,
+      'bg-[linear-gradient(90deg,#3b82f6,#5eead4,#facc15,#fb923c,#dc2626)]'
+    )
+  })
+
+  it('labels chunk-axis items with explicit chunk numbers', () => {
+    const src = fs.readFileSync(
+      path.resolve(__dirname, 'similarity-workbench.tsx'),
+      'utf8'
+    )
+
+    expectSourceToContain(src, 'function axisLabelForItem')
+    expectSourceToContain(src, 'item.chunk_index')
+    expectSourceToContain(src, '· chunk ${chunkNumber}')
+    expectSourceToContain(src, 'Q${questionNumber}')
+  })
 })

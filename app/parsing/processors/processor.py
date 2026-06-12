@@ -26,7 +26,7 @@ from app.core.database import SessionLocal
 from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk, DocumentParsedContent
-from app.parsing.artifact_stats import compute_parsing_artifact_stats
+from app.parsing.artifact_stats import POSITION_TAG_RE, compute_parsing_artifact_stats
 from app.parsing.enrich.chart_to_data import add_chart_data_blocks
 from app.parsing.enrich.formula_ocr import add_formula_latex_blocks
 from app.parsing.enrich.image_caption import add_image_captions
@@ -171,6 +171,26 @@ def _attach_logical_source_metadata(
             meta.setdefault("file_name", filename)
         out.append(Document(page_content=doc.page_content or "", metadata=meta, id=getattr(doc, "id", None)))
     return out
+
+
+def _get_position_tagged_markdown(doc: Document) -> str:
+    metadata = getattr(doc, "metadata", None)
+    if not isinstance(metadata, dict):
+        return ""
+    tagged = metadata.get("position_tagged_markdown")
+    return str(tagged or "").replace("\x00", "").strip() if isinstance(tagged, str) else ""
+
+
+def _join_document_page_content(documents: list[Document] | None) -> str:
+    parts = [POSITION_TAG_RE.sub("", str(d.page_content or "").replace("\x00", "")).strip() for d in (documents or [])]
+    return "\n\n".join(parts).strip()
+
+
+def _join_original_markdown_for_persistence(documents: list[Document] | None) -> str:
+    parts: list[str] = []
+    for doc in documents or []:
+        parts.append(_get_position_tagged_markdown(doc) or str(doc.page_content or "").replace("\x00", ""))
+    return "\n\n".join(parts).strip()
 
 
 @dataclass(frozen=True)
@@ -1536,7 +1556,7 @@ class ParsingStage:
 
         # Attach lightweight parsed-text quality metrics for observability/tuning.
         try:
-            joined = "\n\n".join([(d.page_content or "") for d in documents])
+            joined = _join_document_page_content(documents)
             quality = score_parsed_text_quality(joined).to_dict()
             seal_summary = _build_seal_summary(documents)
             specialty_signals = _seal_summary_to_specialty_signals(seal_summary)
@@ -1559,7 +1579,8 @@ class ParsingStage:
                 meta["ocr"] = ocr_summary
             artifact_stats = compute_parsing_artifact_stats(
                 documents=documents,
-                original_markdown=joined,
+                original_markdown=_join_original_markdown_for_persistence(documents),
+                markdown=joined,
                 pdf_quality=(pdf_quality if isinstance(pdf_quality, dict) else None),
             )
             meta.update(artifact_stats)
@@ -3064,11 +3085,14 @@ class DocumentProcessorService:
                                 or "auto"
                             )
                             resolved_chunk_strategy0 = chunker_factory.resolve_strategy(chunk_strategy)
-                            resume_md = (original_md or cleaned_md).strip()
+                            resume_md = cleaned_md.strip()
+                            resume_meta: dict[str, Any] = {"page": 1}
+                            if original_md and original_md != resume_md:
+                                resume_meta["position_tagged_markdown"] = original_md
                             parsed = ParseResult(
                                 resolved_backend=resolved_backend0,
                                 resolved_chunk_strategy=resolved_chunk_strategy0,
-                                documents=[Document(page_content=resume_md, metadata={"page": 1})],
+                                documents=[Document(page_content=resume_md, metadata=resume_meta)],
                             )
                             resumed_from_checkpoint = True
             except Exception as exc:
@@ -3757,8 +3781,8 @@ class DocumentProcessorService:
                 # Optional: persist parsed markdown (raw+clean) for audit/debug.
                 if bool(getattr(pipeline_effective, "persist_parsed_content", False)):
                     try:
-                        original_md = "\n\n".join([(d.page_content or "") for d in (parsed_documents_before_governance or [])]).strip()
-                        cleaned_md = "\n\n".join([(d.page_content or "") for d in (parsed_documents or [])]).strip()
+                        original_md = _join_original_markdown_for_persistence(parsed_documents_before_governance)
+                        cleaned_md = _join_document_page_content(parsed_documents)
                         persist_meta = self._persist_parsed_content(
                             db,
                             tenant_id=tenant_id,

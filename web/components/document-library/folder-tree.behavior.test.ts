@@ -83,6 +83,44 @@ describe('DocumentFolderTree behavior', () => {
     })
   })
 
+  it('selects a file from the full row, not only the filename text', async () => {
+    const onSelectFile = vi.fn()
+    const view = renderComponent(
+      React.createElement(DocumentFolderTree, {
+        showFiles: 'expanded',
+        fileItems: [
+          {
+            id: 'pdf-doc-1',
+            name: '1512.03385v1.pdf',
+            folderId: ROOT_FOLDER_ID,
+            status: 'parsed',
+          },
+        ],
+        onSelectFile,
+      })
+    )
+
+    await waitForAssertion(() => {
+      expect(view.container.textContent).toContain('1512.03385v1.pdf')
+    })
+
+    const row = view.container.querySelector<HTMLElement>('[data-document-tree-file-id="pdf-doc-1"]')
+    expect(row).not.toBeNull()
+
+    act(() => {
+      dispatchPrimaryPress(row)
+    })
+    expect(onSelectFile).toHaveBeenCalledWith('pdf-doc-1')
+
+    onSelectFile.mockClear()
+    act(() => {
+      row?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    })
+    expect(onSelectFile).toHaveBeenCalledWith('pdf-doc-1')
+
+    view.unmount()
+  })
+
   it('deletes an empty folder from the tree through the folder actions menu', async () => {
     const view = renderComponent(React.createElement(DocumentFolderTree, { showFiles: 'expanded' }))
 
@@ -125,6 +163,84 @@ describe('DocumentFolderTree behavior', () => {
       expect(view.container.textContent).not.toContain('空文件夹')
     })
 
+    view.unmount()
+  })
+
+  it('confirms before deleting read-only root files', async () => {
+    const onRemoveFile = vi.fn()
+    const view = renderComponent(
+      React.createElement(DocumentFolderTree, {
+        showFiles: 'expanded',
+        fileItems: [
+          {
+            id: 'kb-doc-1',
+            name: '根目录知识库文件.txt',
+            folderId: ROOT_FOLDER_ID,
+            status: 'parsed',
+            readOnly: true,
+          },
+        ],
+        onRemoveFile,
+      })
+    )
+
+    await waitForAssertion(() => {
+      expect(view.container.textContent).toContain('根目录知识库文件.txt')
+    })
+
+    const deleteButton = view.container.querySelector<HTMLButtonElement>('button[aria-label="删除"]')
+    expect(deleteButton).not.toBeNull()
+
+    act(() => {
+      dispatchPrimaryPress(deleteButton)
+    })
+
+    expect(onRemoveFile).not.toHaveBeenCalled()
+    await waitForAssertion(() => {
+      expect(document.body.textContent).toContain('删除该文件？')
+    })
+
+    const confirmButton =
+      Array.from(document.body.querySelectorAll<HTMLButtonElement>('button')).find((button) => button.textContent?.trim() === '删除') ?? null
+    expect(confirmButton).not.toBeNull()
+
+    act(() => {
+      dispatchPrimaryPress(confirmButton)
+    })
+
+    expect(onRemoveFile).toHaveBeenCalledWith('kb-doc-1')
+    view.unmount()
+  })
+
+  it('starts parsing pending files from the row hover action', async () => {
+    const onRetryFile = vi.fn()
+    const view = renderComponent(
+      React.createElement(DocumentFolderTree, {
+        showFiles: 'expanded',
+        fileItems: [
+          {
+            id: 'pending-file-1',
+            name: '待解析文件.pdf',
+            folderId: ROOT_FOLDER_ID,
+            status: 'pending',
+          },
+        ],
+        onRetryFile,
+      })
+    )
+
+    await waitForAssertion(() => {
+      expect(view.container.textContent).toContain('待解析文件.pdf')
+    })
+
+    const parseButton = view.container.querySelector<HTMLButtonElement>('button[aria-label="解析"]')
+    expect(parseButton).not.toBeNull()
+
+    act(() => {
+      dispatchPrimaryPress(parseButton)
+    })
+
+    expect(onRetryFile).toHaveBeenCalledWith('pending-file-1')
     view.unmount()
   })
 })

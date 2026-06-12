@@ -140,6 +140,12 @@ async def get_document_parsed_content(
     persisted_meta = doc_meta.get("parsed_content_persisted") if isinstance(doc_meta, dict) else None
     if not isinstance(persisted_meta, dict):
         persisted_meta = {}
+    else:
+        persisted_meta = dict(persisted_meta)
+    if isinstance(doc_meta, dict):
+        for key in ("parser_backend", "parser_backend_requested", "parse_duration_sec", "elements"):
+            if key in doc_meta and key not in persisted_meta:
+                persisted_meta[key] = doc_meta[key]
 
     markdown = (getattr(row, "markdown_content", "") or "") if row is not None else ""
     original = (getattr(row, "original_markdown_content", "") or "") if row is not None else ""
