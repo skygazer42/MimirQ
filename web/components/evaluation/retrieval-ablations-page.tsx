@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react'
 import {
+  AlertTriangle,
   BarChart3,
   Bell,
   ChevronLeft,
@@ -1073,6 +1074,7 @@ function AblationConfigTab({
 
 function AblationDeepDiveTab({
   datasetId,
+  runDisabledReason,
   runGridBatch,
   refetchPanels,
   diff,
@@ -1083,6 +1085,7 @@ function AblationDeepDiveTab({
   deepDiveMetricKeys,
 }: Readonly<{
   datasetId: string
+  runDisabledReason: string
   runGridBatch: (
     grid: Record<string, RegressionAblationGridValue[]>,
     maxCombinations: number
@@ -1098,7 +1101,8 @@ function AblationDeepDiveTab({
   return (
     <div className="space-y-4 px-5 py-4">
       <AblationGridPanel
-        disabled={!datasetId.trim()}
+        disabled={!datasetId.trim() || Boolean(runDisabledReason)}
+        disabledReason={runDisabledReason}
         onRunGrid={runGridBatch}
         onBatchComplete={refetchPanels}
       />
@@ -1169,6 +1173,7 @@ function AblationComparisonWorkspace({
   metricDiffRows,
   paramDiffRows,
   datasetId,
+  runDisabledReason,
   runGridBatch,
   refetchPanels,
   leaderboardMetricKey,
@@ -1200,6 +1205,7 @@ function AblationComparisonWorkspace({
   metricDiffRows: RegressionRunMetricDiff[]
   paramDiffRows: AblationParamDiffRow[]
   datasetId: string
+  runDisabledReason: string
   runGridBatch: (
     grid: Record<string, RegressionAblationGridValue[]>,
     maxCombinations: number
@@ -1433,6 +1439,7 @@ function AblationComparisonWorkspace({
           >
             <AblationDeepDiveTab
               datasetId={datasetId}
+              runDisabledReason={runDisabledReason}
               runGridBatch={runGridBatch}
               refetchPanels={refetchPanels}
               diff={diff}
@@ -1492,6 +1499,7 @@ export function RetrievalAblationsPage() {
   const [rerankerProvider, setRerankerProvider] = useState('llm')
   const [rerankerTopN, setRerankerTopN] = useState(20)
   const [settingsDefaultsApplied, setSettingsDefaultsApplied] = useState(false)
+  const [defaultDatasetApplied, setDefaultDatasetApplied] = useState(false)
 
   const datasetsQuery = useQuery({
     queryKey: queryKeys.datasets.list(RETRIEVAL_ABLATION_DATASET_PARAMS),
@@ -1507,6 +1515,18 @@ export function RetrievalAblationsPage() {
       evaluationApi.listRegressionRuns({
         limit: 80,
         dataset_id: datasetId.trim() || undefined,
+      }),
+  })
+  const selectedDatasetCasesQuery = useQuery({
+    queryKey: queryKeys.evaluations.regressionCases({
+      dataset_id: datasetId.trim() || undefined,
+      limit: 1,
+    }),
+    enabled: Boolean(datasetId.trim()),
+    queryFn: () =>
+      evaluationApi.listRegressionCases({
+        dataset_id: datasetId.trim(),
+        limit: 1,
       }),
   })
   const leaderboardQuery = useQuery({
@@ -1584,9 +1604,37 @@ export function RetrievalAblationsPage() {
   )
   const datasetsLoading = datasetsQuery.isLoading || datasetsQuery.isFetching
   const runsLoading = runsQuery.isLoading || runsQuery.isFetching
+  const selectedDatasetCasesLoading =
+    selectedDatasetCasesQuery.isLoading || selectedDatasetCasesQuery.isFetching
   const leaderboardLoading =
     leaderboardQuery.isLoading || leaderboardQuery.isFetching
   const diffLoading = diffQuery.isLoading || diffQuery.isFetching
+  const selectedDatasetCaseCount = Number(selectedDatasetCasesQuery.data?.total ?? 0)
+  const selectedDatasetHasNoCases =
+    Boolean(datasetId.trim()) &&
+    !selectedDatasetCasesLoading &&
+    !selectedDatasetCasesQuery.error &&
+    selectedDatasetCaseCount <= 0
+  const selectedDatasetCasesUnavailable =
+    !datasetId.trim() || selectedDatasetHasNoCases || Boolean(selectedDatasetCasesQuery.error)
+  const runDisabledReason = !datasetId.trim()
+    ? '请选择数据集'
+    : selectedDatasetCasesLoading
+      ? '正在确认 Golden/Regression 样本数'
+      : selectedDatasetCasesQuery.error
+        ? '无法确认 Golden/Regression 样本数，请刷新后重试'
+        : selectedDatasetHasNoCases
+          ? '当前数据集没有 Golden/Regression 样本，请先在评测页导入或生成样本'
+          : ''
+  const selectedDatasetCasesStatusText = !datasetId.trim()
+    ? '请先选择数据集，再运行检索消融。'
+    : selectedDatasetCasesLoading
+      ? '正在确认当前数据集的 Golden/Regression 样本数...'
+      : selectedDatasetCasesQuery.error
+        ? '无法读取当前数据集的 Golden/Regression 样本数，请刷新后重试。'
+        : selectedDatasetHasNoCases
+          ? '当前数据集没有 Golden/Regression 样本，运行消融会直接失败；请先在评测页导入或生成样本。'
+          : `Golden/Regression 样本 ${selectedDatasetCaseCount} 条，可运行检索消融。`
 
   const runsByDataset = useMemo(() => {
     const ds = datasetId.trim()
@@ -1627,8 +1675,18 @@ export function RetrievalAblationsPage() {
   }, [diffQuery.error])
 
   useEffect(() => {
-    setDatasetId((prev) => prev || datasets?.[0]?.id || '')
-  }, [datasets])
+    if (defaultDatasetApplied || datasets.length === 0 || runsLoading) return
+    const datasetIds = new Set(datasets.map((dataset) => String(dataset.id)))
+    const completedRunDatasetId = _stableId(
+      runs.find(
+        (run) =>
+          String(run.status || '') === 'completed' &&
+          datasetIds.has(String(run.dataset_id || ''))
+      )?.dataset_id
+    )
+    setDatasetId((prev) => prev || completedRunDatasetId || datasets[0]?.id || '')
+    setDefaultDatasetApplied(true)
+  }, [datasets, defaultDatasetApplied, runs, runsLoading])
 
   const runPayloadConfig: AblationRunPayloadConfig = {
     datasetId,
@@ -1656,6 +1714,10 @@ export function RetrievalAblationsPage() {
   }
 
   async function runAblation(): Promise<void> {
+    if (runDisabledReason) {
+      toast.error(runDisabledReason)
+      return
+    }
     await submitAblationRun(
       buildCurrentRegressionRunPayload(),
       () => runsQuery.refetch(),
@@ -1667,6 +1729,10 @@ export function RetrievalAblationsPage() {
     grid: Record<string, RegressionAblationGridValue[]>,
     maxCombinations: number
   ): Promise<void> {
+    if (runDisabledReason) {
+      toast.error(runDisabledReason)
+      return
+    }
     await submitAblationBatch(
       buildCurrentRegressionRunPayload(),
       grid,
@@ -1864,6 +1930,21 @@ export function RetrievalAblationsPage() {
                         dataset={selectedDataset}
                         metricKey={leaderboardMetricKey}
                       />
+                      <div
+                        className={cn(
+                          'flex items-start gap-2 rounded-xl border px-3 py-2 text-[12px] leading-5',
+                          selectedDatasetCasesUnavailable
+                            ? 'border-amber-200 bg-amber-50 text-amber-800'
+                            : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                        )}
+                      >
+                        {selectedDatasetCasesUnavailable ? (
+                          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        ) : (
+                          <Trophy className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        )}
+                        <span>{selectedDatasetCasesStatusText}</span>
+                      </div>
                     </div>
                   </AblationSection>
 
@@ -2167,11 +2248,17 @@ export function RetrievalAblationsPage() {
                   </div>
                   <Button
                     className="mt-2 h-10 w-full gap-2 rounded-lg border border-sky-200 bg-sky-50 text-sky-700 shadow-[0_8px_18px_rgba(14,116,144,0.10)] transition-colors hover:border-sky-300 hover:bg-sky-100 hover:text-sky-800"
+                    disabled={Boolean(runDisabledReason)}
                     onClick={() => detachPromise(runAblation())}
                   >
                     <PlayCircle className="h-4 w-4" />
                     运行消融实验
                   </Button>
+                  {runDisabledReason ? (
+                    <div className="mt-2 text-[11px] leading-5 text-amber-700">
+                      {runDisabledReason}
+                    </div>
+                  ) : null}
                 </div>
               </aside>
             ) : null}
@@ -2377,6 +2464,7 @@ export function RetrievalAblationsPage() {
                 metricDiffRows={metricDiffRows}
                 paramDiffRows={paramDiffRows}
                 datasetId={datasetId}
+                runDisabledReason={runDisabledReason}
                 runGridBatch={runGridBatch}
                 refetchPanels={refetchAblationPanels}
                 leaderboardMetricKey={leaderboardMetricKey}

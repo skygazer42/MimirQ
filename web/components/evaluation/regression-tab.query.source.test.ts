@@ -17,9 +17,16 @@ describe('regression tab query convergence', () => {
     expect(src).toContain(
       'queryKey: queryKeys.evaluations.regressionRunDetail(selectedRunId, {'
     )
+    expect(src).toContain(
+      'queryKey: queryKeys.evaluations.regressionCases({ limit: 1 })'
+    )
+    expect(src).toContain('latestRegressionCaseDatasetId')
+    expect(src).toContain('isLoadingLatestRegressionCase')
     expect(src).toContain("const deepLinkDatasetId = searchParams.get('dataset_id') || ''")
     expect(src).toContain("const deepLinkRunId = searchParams.get('run_id') || ''")
     expect(src).toContain('setSelectedDatasetId(deepLinkDatasetId)')
+    expect(src).toContain('if (!deepLinkDatasetId && isLoadingLatestRegressionCase) return')
+    expect(src).toContain('knownDatasetIds.has(latestRegressionCaseDatasetId)')
     expect(src).toContain('setSelectedRunId(deepLinkRunId)')
     expect(src).toContain('selectedRunId === deepLinkRunId')
     expect(src).toContain('refetchInterval: (query) => {')

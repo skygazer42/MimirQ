@@ -43,3 +43,5 @@ def test_ablation_batch_schema_and_endpoint_are_exposed() -> None:
     text = Path("app/api/v1/evaluations.py").read_text(encoding="utf-8")
     assert '"/ragas/regression/ablation/batch"' in text
     assert "RagasRegressionAblationBatchResponse" in text
+    assert "_assert_regression_cases_available" in text
+    assert "No regression cases found for selected dataset" in text

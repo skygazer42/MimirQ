@@ -443,8 +443,13 @@ def _retrieval_audit_failure_categories(
     return categories
 
 
-def _retrieval_audit_next_action(categories: dict[str, int]) -> str:
+def _retrieval_audit_next_action(categories: dict[str, int], *, status: str | None = None) -> str:
     if not categories:
+        normalized_status = str(status or "").strip().lower()
+        if normalized_status in {"failed", "error"}:
+            return "Inspect failed retrieval gates before enabling production retrieval."
+        if normalized_status and normalized_status not in {"passed", "completed", "success"}:
+            return "Run a Golden / regression gate before enabling production retrieval."
         return "Retrieval audit passed; keep golden gates fresh before production changes."
     labels = {
         "scope": "metadata scope",
@@ -612,7 +617,7 @@ def _retrieval_audit_from_dataset_metadata(dataset_metadata: dict[str, Any] | No
         failure_categories=failure_categories,
         kg_recommendation=_retrieval_audit_safe_kg_recommendation(raw.get("kg_recommendation"))
         or _retrieval_audit_kg_recommendation_from_gates(gates),
-        recommended_next_action=_retrieval_audit_next_action(failure_categories),
+        recommended_next_action=_retrieval_audit_next_action(failure_categories, status=status),
     )
 
 
@@ -653,7 +658,7 @@ def _retrieval_audit_from_regression_run(
         gates=[gate],
         failure_categories=failure_categories,
         kg_recommendation=_retrieval_audit_kg_recommendation_from_gates([gate]),
-        recommended_next_action=_retrieval_audit_next_action(failure_categories),
+        recommended_next_action=_retrieval_audit_next_action(failure_categories, status=status),
     )
 
 
@@ -697,7 +702,7 @@ def _merge_retrieval_audits(*audits: DatasetRetrievalAuditOut | None) -> Dataset
             None,
         )
         or _retrieval_audit_kg_recommendation_from_gates(gates),
-        recommended_next_action=_retrieval_audit_next_action(failure_categories),
+        recommended_next_action=_retrieval_audit_next_action(failure_categories, status=status),
     )
 
 

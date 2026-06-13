@@ -3,6 +3,7 @@ Test question generator.
 
 Generates test questions from documents or conversation history for RAGAS regression.
 """
+import asyncio
 import re
 from collections import Counter
 from dataclasses import dataclass
@@ -19,10 +20,10 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.openai_compat import normalize_openai_compatible_base_url
 from app.core.secure_random import secure_random_float01, secure_sample
-from app.core.utils import get_proxy_url
 from app.models.chat import Conversation, Message
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
+from app.rag.core.http import httpx_trust_env
 from app.rag.core.logging import get_logger
 from app.services.document_access import filter_allowed_document_ids
 from app.services.prompt_resolver import resolve_prompt_template
@@ -50,6 +51,32 @@ class TestGeneratorPromptSelection:
     prompt_template_key: str | None
     prompt_ab_experiment_key: str | None
     prompt_ab_variant: str | None
+
+
+def _build_testgen_http_clients() -> tuple[httpx.Client, httpx.AsyncClient]:
+    """
+    Build LangChain HTTP clients with the same proxy safety as RAGAS.
+
+    Some developer shells expose ALL_PROXY=socks://... while httpx socks support
+    is not installed. In that case, disable env proxy trust and pass both clients
+    so LangChain/OpenAI does not re-read the unsupported proxy from env.
+    """
+    trust_env = httpx_trust_env(logger=logger)
+    timeout = float(getattr(settings, "LLM_TIMEOUT", 60) or 60)
+    return httpx.Client(trust_env=trust_env, timeout=timeout), httpx.AsyncClient(
+        trust_env=trust_env,
+        timeout=timeout,
+    )
+
+
+def _close_testgen_http_clients(http_client: httpx.Client, http_async_client: httpx.AsyncClient) -> None:
+    http_client.close()
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        asyncio.run(http_async_client.aclose())
+        return
+    loop.create_task(http_async_client.aclose())
 
 
 # Prompt template for generating questions.
@@ -431,17 +458,16 @@ def generate_questions_from_documents(
     num_chunks_needed = max(3, (num_questions + 2) // 3)
     sampled_chunks = _sample_diverse_chunks(chunks, num_chunks_needed)
 
-    proxy_url = get_proxy_url()
-    timeout = int(getattr(settings, "LLM_TIMEOUT", 60) or 60)
-    http_client = httpx.Client(proxy=proxy_url, timeout=timeout) if proxy_url else None
+    http_client, http_async_client = _build_testgen_http_clients()
     try:
         llm = ChatOpenAI(
             model=settings.LLM_MODEL,
             api_key=settings.LLM_API_KEY,
             base_url=normalize_openai_compatible_base_url(settings.LLM_API_BASE),
             temperature=0.7,
-            timeout=timeout,
+            timeout=settings.LLM_TIMEOUT,
             http_client=http_client,
+            http_async_client=http_async_client,
         )
 
         parser = JsonOutputParser()
@@ -492,8 +518,7 @@ def generate_questions_from_documents(
 
         return all_questions[:num_questions]
     finally:
-        if http_client is not None:
-            http_client.close()
+        _close_testgen_http_clients(http_client, http_async_client)
 
 
 def generate_questions_from_conversations(
@@ -588,17 +613,16 @@ def generate_questions_from_conversations(
     ])
     
     # Prepare LLM.
-    proxy_url = get_proxy_url()
-    timeout = int(getattr(settings, "LLM_TIMEOUT", 60) or 60)
-    http_client = httpx.Client(proxy=proxy_url, timeout=timeout) if proxy_url else None
+    http_client, http_async_client = _build_testgen_http_clients()
     try:
         llm = ChatOpenAI(
             model=settings.LLM_MODEL,
             api_key=settings.LLM_API_KEY,
             base_url=normalize_openai_compatible_base_url(settings.LLM_API_BASE),
             temperature=0.7,
-            timeout=timeout,
+            timeout=settings.LLM_TIMEOUT,
             http_client=http_client,
+            http_async_client=http_async_client,
         )
         
         parser = JsonOutputParser()
@@ -635,5 +659,4 @@ def generate_questions_from_conversations(
             logger.warning("Failed to generate questions from conversation: %s", e)
             return []
     finally:
-        if http_client is not None:
-            http_client.close()
+        _close_testgen_http_clients(http_client, http_async_client)

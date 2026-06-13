@@ -588,8 +588,18 @@ function retrievalAuditFailureText(
 ): string {
   const categories = retrievalAudit?.failure_categories || {}
   const entries = Object.entries(categories).filter(([, value]) => Number(value) > 0)
-  if (!entries.length) return '无失败分类'
-  return entries.map(([key, value]) => `${key}:${value}`).join(' / ')
+  if (!entries.length) {
+    return retrievalAudit?.status === 'failed' || retrievalAudit?.status === 'error' ? '未归因' : '暂无'
+  }
+  const labels: Record<string, string> = {
+    scope: '范围',
+    chunking: '切块',
+    ranking: '排序',
+    absence: '缺内容',
+    kg_noise: 'KG 噪声',
+    adapter: '适配器',
+  }
+  return entries.map(([key, value]) => `${labels[key] || key} ${value}`).join(' / ')
 }
 
 function retrievalAuditHashText(
@@ -729,6 +739,48 @@ function MiniRiskCard({
         {value}
       </div>
       <div className={cn('mt-2', REPORT_SUBTEXT_CLASS)}>{sub}</div>
+    </div>
+  )
+}
+
+function CompactAuditFact({
+  label,
+  value,
+  sub,
+  tone = 'slate',
+}: Readonly<{
+  label: string
+  value: string
+  sub: string
+  tone?: 'blue' | 'green' | 'amber' | 'rose' | 'violet' | 'slate'
+}>) {
+  const toneClass = {
+    blue: 'text-blue-700',
+    green: 'text-emerald-700',
+    amber: 'text-amber-700',
+    rose: 'text-rose-700',
+    violet: 'text-violet-700',
+    slate: 'text-slate-700',
+  }[tone]
+  return (
+    <div className="min-w-0 rounded-lg border border-slate-200/70 bg-white/70 px-3 py-2">
+      <div className="flex items-baseline justify-between gap-2">
+        <div className="truncate text-[0.6875rem] font-medium uppercase tracking-[0.1em] text-slate-500">
+          {label}
+        </div>
+        <div
+          className={cn(
+            'max-w-[58%] truncate text-right text-[0.8125rem] font-semibold tracking-[-0.01em]',
+            toneClass
+          )}
+          title={value}
+        >
+          {value}
+        </div>
+      </div>
+      <div className="mt-1 truncate text-[0.6875rem] leading-4 text-slate-500" title={sub}>
+        {sub}
+      </div>
     </div>
   )
 }
@@ -978,7 +1030,15 @@ function RetrievalAuditPanel({
   const tone = retrievalAuditTone(retrievalAudit?.status)
   const metricRows = retrievalAuditMetricRows(retrievalAudit)
   const pluginRefs = retrievalAudit?.plugin_refs || []
-  const nextAction = retrievalAudit?.recommended_next_action || '等待下一次 Golden / regression 评估'
+  const hasFailureCategories = Object.values(retrievalAudit?.failure_categories || {}).some(
+    (value) => Number(value) > 0
+  )
+  const statusToneClass = {
+    green: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+    amber: 'border-amber-200 bg-amber-50 text-amber-700',
+    rose: 'border-rose-200 bg-rose-50 text-rose-700',
+    slate: 'border-slate-200 bg-slate-50 text-slate-600',
+  }[tone]
 
   return (
     <div className="rounded-2xl border border-slate-200/80 bg-card p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
@@ -986,72 +1046,76 @@ function RetrievalAuditPanel({
         <div>
           <div className="flex items-center gap-2">
             <FileSearch className="size-4 text-blue-600" />
-            <div className={REPORT_PANEL_TITLE_CLASS}>Retrieval Audit / 召回审计</div>
+            <div className={REPORT_PANEL_TITLE_CLASS}>召回审计</div>
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.12em] text-slate-500">
+              Retrieval Audit
+            </span>
           </div>
           <div className={cn('mt-1', REPORT_SUBTEXT_CLASS)}>
-            从 report.retrieval_audit 聚合 Golden、metadata、KG 和 compaction 证据。
+            汇总 Golden / regression、元数据范围、KG 与压缩证据，判断当前知识库能否进入生产召回。
           </div>
         </div>
         <Badge
           variant="outline"
-          className={cn(
-            'rounded-full text-[11px]',
-            tone === 'green' && 'border-emerald-200 bg-emerald-50 text-emerald-700',
-            tone === 'amber' && 'border-amber-200 bg-amber-50 text-amber-700',
-            tone === 'rose' && 'border-rose-200 bg-rose-50 text-rose-700',
-            tone === 'slate' && 'border-slate-200 bg-slate-50 text-slate-600'
-          )}
+          className={cn('rounded-full px-2.5 py-1 text-[11px]', statusToneClass)}
         >
           {status}
         </Badge>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-5">
-        <MiniRiskCard
-          label="审计状态"
-          value={status}
-          sub={nextAction}
-          tone={tone}
-        />
-        <MiniRiskCard
-          label="失败分类"
+      <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        <CompactAuditFact
+          label="失败归因"
           value={retrievalAuditFailureText(retrievalAudit)}
-          sub="scope / chunking / ranking / kg_noise"
-          tone={retrievalAudit?.status === 'failed' ? 'rose' : 'slate'}
+          sub="scope / chunk / rank / KG"
+          tone={hasFailureCategories ? 'rose' : 'slate'}
         />
-        <MiniRiskCard
-          label="插件包"
-          value={retrievalAuditHashText(retrievalAudit)}
-          sub={`${pluginRefs.length} plugin refs`}
-          tone={pluginRefs.length ? 'blue' : 'slate'}
+        <CompactAuditFact
+          label="门禁证据"
+          value={`${retrievalAudit?.gates?.length || 0} 项`}
+          sub="latest regression gate"
+          tone={retrievalAudit?.gates?.length ? 'violet' : 'slate'}
         />
-        <MiniRiskCard
+        <CompactAuditFact
           label="KG 建议"
           value={retrievalAuditKgRecommendationText(retrievalAudit)}
           sub="KG-on/off compare"
           tone={retrievalAudit?.kg_recommendation === 'full_kg_assist' ? 'green' : 'slate'}
         />
-        <MiniRiskCard
-          label="门禁证据"
-          value={String(retrievalAudit?.gates?.length || 0)}
-          sub="latest regression gate"
-          tone={retrievalAudit?.gates?.length ? 'violet' : 'slate'}
+        <CompactAuditFact
+          label="插件包"
+          value={retrievalAuditHashText(retrievalAudit)}
+          sub={`${pluginRefs.length} 个 plugin ref`}
+          tone={pluginRefs.length ? 'blue' : 'slate'}
         />
       </div>
 
-      <div className="mt-4 overflow-hidden rounded-xl border border-slate-100">
+      <div className="mt-3 overflow-hidden rounded-xl border border-slate-100">
+        <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/80 px-3 py-2">
+          <div className="text-[0.75rem] font-semibold tracking-[-0.01em] text-slate-700">
+            门禁指标
+          </div>
+          <div className="text-[0.6875rem] text-slate-500">
+            来自 latest regression gate
+          </div>
+        </div>
         <div
           className={cn(
-            'grid grid-cols-[1fr_120px] bg-slate-50 px-3 py-2',
+            'grid grid-cols-[1fr_120px] bg-white px-3 py-2',
             REPORT_TABLE_HEADER_CLASS
           )}
         >
-          <span>Metric</span>
-          <span className="text-right">Value</span>
+          <span>指标</span>
+          <span className="text-right">数值</span>
         </div>
         {metricRows.length === 0 ? (
-          <div className={cn('px-3 py-3', REPORT_TABLE_ROW_CLASS)}>
-            当前报告没有 retrieval_audit 指标，请先运行 Golden / regression gate。
+          <div className="border-t border-slate-100 px-3 py-5 text-center">
+            <div className="text-[0.8125rem] font-medium text-slate-700">
+              未生成评估指标
+            </div>
+            <div className={cn('mt-1', REPORT_SUBTEXT_CLASS)}>
+              运行 Golden / regression 后，这里会显示 hit@k、metadata hit、有效上下文和噪声率。
+            </div>
           </div>
         ) : (
           metricRows.map((row) => (

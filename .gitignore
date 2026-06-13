@@ -71,6 +71,7 @@ runs/*.pdf
 runs/.deepseek_ocr/
 runs/perf/
 runs/parser_checks/
+runs/queryset_health/
 runs/smoke/
 .playwright-mcp/
 chunk-preview-*.png

@@ -112,10 +112,12 @@ function parseGrid(value: string): { grid: GridSpec; variants: GridVariant[]; er
 
 export function AblationGridPanel({
   disabled,
+  disabledReason,
   onRunGrid,
   onBatchComplete,
 }: Readonly<{
   disabled?: boolean
+  disabledReason?: string
   onRunGrid: (grid: GridSpec, maxCombinations: number) => Promise<void>
   onBatchComplete?: () => Promise<void> | void
 }>) {
@@ -187,6 +189,11 @@ export function AblationGridPanel({
             </span>
           ) : tooMany ? (
             <span className="text-rose-600">组合数超过上限，请收窄参数范围。</span>
+          ) : disabled && disabledReason ? (
+            <span className="inline-flex items-center gap-1 text-amber-600">
+              <AlertTriangle className="size-3.5" />
+              {disabledReason}
+            </span>
           ) : running ? (
             <span>正在提交批量任务 {completed}/{variants.length} runs…</span>
           ) : (

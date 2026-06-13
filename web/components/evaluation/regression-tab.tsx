@@ -552,6 +552,17 @@ export function RegressionTestTab({
     return Array.isArray(items) ? items : []
   }, [datasetsQuery.data])
   const isLoadingDatasets = datasetsQuery.isLoading || datasetsQuery.isFetching
+  const latestRegressionCaseQuery = useQuery({
+    queryKey: queryKeys.evaluations.regressionCases({ limit: 1 }),
+    queryFn: () => evaluationApi.listRegressionCases({ limit: 1 }),
+    staleTime: 30_000,
+  })
+  const latestRegressionCaseDatasetId = useMemo(() => {
+    const first = latestRegressionCaseQuery.data?.items?.[0]
+    return typeof first?.dataset_id === 'string' ? first.dataset_id : ''
+  }, [latestRegressionCaseQuery.data])
+  const isLoadingLatestRegressionCase =
+    latestRegressionCaseQuery.isLoading || latestRegressionCaseQuery.isFetching
 
   // 运行配置
   const [metricKeys, setMetricKeys] = useState<string[]>([
@@ -617,10 +628,28 @@ export function RegressionTestTab({
   }, [deepLinkRunId, selectedDatasetId, selectedRunId, visibleRuns])
 
   useEffect(() => {
-    const firstId = datasets[0]?.id
-    if (!firstId) return
-    setSelectedDatasetId((prev) => prev || firstId)
-  }, [datasets])
+    if (!datasets.length) return
+    if (!deepLinkDatasetId && isLoadingLatestRegressionCase) return
+    const knownDatasetIds = new Set(datasets.map((dataset) => dataset.id))
+    setSelectedDatasetId((prev) => {
+      if (prev && knownDatasetIds.has(prev)) return prev
+      if (deepLinkDatasetId && knownDatasetIds.has(deepLinkDatasetId)) {
+        return deepLinkDatasetId
+      }
+      if (
+        latestRegressionCaseDatasetId &&
+        knownDatasetIds.has(latestRegressionCaseDatasetId)
+      ) {
+        return latestRegressionCaseDatasetId
+      }
+      return datasets[0]?.id || ''
+    })
+  }, [
+    datasets,
+    deepLinkDatasetId,
+    isLoadingLatestRegressionCase,
+    latestRegressionCaseDatasetId,
+  ])
 
   useEffect(() => {
     const firstRunId = runs[0]?.id

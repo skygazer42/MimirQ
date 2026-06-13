@@ -141,6 +141,27 @@ def _regression_run_params_from_request(request: RagasRegressionRunCreateRequest
     }
 
 
+def _assert_regression_cases_available(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    dataset_id: UUID,
+    case_ids: list[UUID] | None,
+) -> None:
+    if case_ids:
+        return
+    exists = (
+        db.query(RagasRegressionCase.id)
+        .filter(
+            RagasRegressionCase.tenant_id == tenant_id,
+            RagasRegressionCase.dataset_id == dataset_id,
+        )
+        .first()
+    )
+    if exists is None:
+        raise HTTPException(status_code=400, detail="No regression cases found for selected dataset")
+
+
 def _create_regression_run_and_enqueue(
     *,
     request: RagasRegressionRunCreateRequest,
@@ -1133,6 +1154,12 @@ async def create_ragas_regression_run(
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except DatasetMismatchError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _assert_regression_cases_available(
+        db=db,
+        tenant_id=tenant_id,
+        dataset_id=request.dataset_id,
+        case_ids=list(request.case_ids or []),
+    )
 
     run = _create_regression_run_and_enqueue(
         request=request,
@@ -1180,6 +1207,12 @@ async def create_ragas_regression_ablation_batch(
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except DatasetMismatchError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _assert_regression_cases_available(
+        db=db,
+        tenant_id=tenant_id,
+        dataset_id=request.dataset_id,
+        case_ids=list(request.case_ids or []),
+    )
 
     allowed_grid_keys = set(RagasRegressionRunCreateRequest.model_fields) - _REGRESSION_RUN_CONTROL_FIELDS
     try:
