@@ -231,6 +231,27 @@ def test_dataset_retrieval_audit_summary_categorizes_adapter_binding_failure() -
     assert audit.recommended_next_action == "Fix adapter binding before enabling production retrieval."
 
 
+def test_dataset_retrieval_audit_summary_failed_run_without_categories_is_not_marked_passed() -> None:
+    from app.api.schemas.report import DatasetRegressionRunSummaryOut
+    from app.services.report_service import _build_retrieval_audit_summary
+
+    latest = DatasetRegressionRunSummaryOut(
+        run_id=uuid.UUID("00000000-0000-0000-0000-000000000333"),
+        status="failed",
+        metrics=[],
+        params={},
+        summary={},
+        error_message="No regression cases found",
+    )
+
+    audit = _build_retrieval_audit_summary(latest_regression_run=latest)
+
+    assert audit is not None
+    assert audit.status == "failed"
+    assert audit.failure_categories == {}
+    assert audit.recommended_next_action == "Inspect failed retrieval gates before enabling production retrieval."
+
+
 def test_dataset_retrieval_audit_summary_merges_regression_and_dataset_metadata_snapshot() -> None:
     from app.api.schemas.report import DatasetRegressionRunSummaryOut
     from app.services.report_service import _build_retrieval_audit_summary

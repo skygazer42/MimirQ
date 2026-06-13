@@ -314,7 +314,7 @@ describe('ParsingActiveFilePane lazy compare interactions', () => {
     const activeFile = {
       ...makeParsedFile([makeRun()]),
       file: new File(['%PDF-1.7'], 'sample.pdf', { type: 'application/pdf' }),
-      libraryId: null,
+      libraryId: undefined,
       markdownContent: '',
       parserBackend: 'mineru',
       parserLabel: 'MinerU 高级解析',

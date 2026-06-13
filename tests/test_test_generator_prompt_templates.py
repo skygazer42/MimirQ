@@ -1,9 +1,21 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable
 from types import SimpleNamespace
 from uuid import uuid4
 
-from app.rag.evaluation.test_generator import _build_testgen_prompt_inputs, _normalize_testgen_result_rows
+from app.rag.evaluation.test_generator import (
+    _build_testgen_http_clients,
+    _build_testgen_prompt_inputs,
+    _normalize_testgen_result_rows,
+)
+
+
+class _ClosedAwaitable(Awaitable[None]):
+    def __await__(self):  # noqa: ANN204
+        if False:
+            yield None
+        return None
 
 
 def test_normalize_question_types_dedupes_and_maps_reasoning() -> None:
@@ -13,6 +25,39 @@ def test_normalize_question_types_dedupes_and_maps_reasoning() -> None:
         "factual",
         "multi_hop",
     ]
+
+
+def test_build_testgen_http_clients_disables_trust_env_for_socks_proxy(monkeypatch) -> None:
+    import app.rag.evaluation.test_generator as mod
+
+    sync_kwargs = {}
+    async_kwargs = {}
+
+    class _FakeSyncClient:
+        def __init__(self, **kwargs):  # noqa: ANN003
+            sync_kwargs.update(kwargs)
+
+        def close(self) -> None:
+            return None
+
+    class _FakeAsyncClient:
+        def __init__(self, **kwargs):  # noqa: ANN003
+            async_kwargs.update(kwargs)
+
+        def aclose(self) -> _ClosedAwaitable:
+            return _ClosedAwaitable()
+
+    monkeypatch.setenv("ALL_PROXY", "socks://127.0.0.1:35983/")
+    monkeypatch.setenv("HTTPS_PROXY", "http://127.0.0.1:35983")
+    monkeypatch.setattr(mod.httpx, "Client", _FakeSyncClient, raising=True)
+    monkeypatch.setattr(mod.httpx, "AsyncClient", _FakeAsyncClient, raising=True)
+
+    _build_testgen_http_clients()
+
+    assert sync_kwargs["trust_env"] is False
+    assert async_kwargs["trust_env"] is False
+    assert "proxy" not in sync_kwargs
+    assert "proxy" not in async_kwargs
 
 
 def test_build_testgen_prompt_inputs_supports_builtin_testset_variables() -> None:
@@ -87,7 +132,6 @@ def test_generate_questions_from_documents_uses_prompt_selection_and_normalized_
 
     monkeypatch.setattr(mod, "filter_allowed_document_ids", lambda *_args, **_kwargs: [doc_id], raising=True)
     monkeypatch.setattr(mod, "_sample_diverse_chunks", lambda chunks, _n: list(chunks), raising=True)
-    monkeypatch.setattr(mod, "get_proxy_url", lambda: None, raising=True)
     monkeypatch.setattr(mod.settings, "LLM_TIMEOUT", 30, raising=False)
     monkeypatch.setattr(mod.settings, "LLM_MODEL", "mock-model", raising=False)
     monkeypatch.setattr(mod.settings, "LLM_API_KEY", "mock-key", raising=False)

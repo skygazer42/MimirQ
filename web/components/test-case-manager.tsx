@@ -89,6 +89,14 @@ type TestCaseRowProps = {
   onDelete: (caseId: string) => Promise<void>
 }
 
+const GOLDEN_TAG = 'golden'
+const GOLDEN_DRAFT_TAG = 'golden_draft'
+
+function isGoldenCase(caseItem: RegressionCase): boolean {
+  const tags = Array.isArray(caseItem.tags) ? caseItem.tags : []
+  return tags.includes(GOLDEN_TAG) || tags.includes(GOLDEN_DRAFT_TAG)
+}
+
 function TestCaseRow({
   caseItem,
   isSelected,
@@ -113,6 +121,14 @@ function TestCaseRow({
     event.stopPropagation()
     detachPromise(onToggleGolden(caseItem))
   }
+
+  const hasManualGolden =
+    Array.isArray(caseItem.tags) && caseItem.tags.includes(GOLDEN_TAG)
+  const goldenActionLabel = hasManualGolden
+    ? '移出人工 Golden 标记'
+    : isGolden
+      ? '已由插件草稿纳入 Golden，点击固定为人工 Golden'
+      : '纳入 Golden 评测集'
 
   const handleDeleteConfirm = () => {
     detachPromise(onDelete(caseItem.id))
@@ -217,8 +233,8 @@ function TestCaseRow({
               'text-muted-foreground hover:text-foreground transition-colors motion-reduce:transition-none',
               isGolden && 'text-amber-600 hover:text-amber-700'
             )}
-            aria-label={isGolden ? '移出 Golden 评测集' : '纳入 Golden 评测集'}
-            title={isGolden ? '移出 Golden 评测集' : '纳入 Golden 评测集'}
+            aria-label={goldenActionLabel}
+            title={goldenActionLabel}
           >
             <Star
               className="w-4 h-4"
@@ -255,7 +271,6 @@ export function TestCaseManager({
   onCaseSelected,
   dense = false,
 }: Readonly<TestCaseManagerProps>) {
-  const GOLDEN_TAG = 'golden'
   const queryClient = useQueryClient()
   const onCaseSelectedRef = useRef(onCaseSelected)
 
@@ -370,9 +385,7 @@ export function TestCaseManager({
   }, [regressionCasesQuery.error])
 
   const goldenCount = useMemo(() => {
-    return (cases || []).filter(
-      (c) => Array.isArray(c.tags) && c.tags.includes(GOLDEN_TAG)
-    ).length
+    return (cases || []).filter(isGoldenCase).length
   }, [cases])
   const standardAnswerCount = useMemo(() => {
     return (cases || []).filter(
@@ -390,9 +403,7 @@ export function TestCaseManager({
     )
   }, [cases])
   const goldenCaseIds = useMemo(() => {
-    return (cases || [])
-      .filter((c) => Array.isArray(c.tags) && c.tags.includes(GOLDEN_TAG))
-      .map((c) => c.id)
+    return (cases || []).filter(isGoldenCase).map((c) => c.id)
   }, [cases])
 
   // 过滤用例
@@ -407,7 +418,7 @@ export function TestCaseManager({
       .toLowerCase()
     if (!searchable.includes(query)) return false
     if (!goldenOnly) return true
-    return Array.isArray(c.tags) && c.tags.includes(GOLDEN_TAG)
+    return isGoldenCase(c)
   })
 
   // 切换选择
@@ -871,8 +882,7 @@ export function TestCaseManager({
 
         <div className="divide-y divide-border">
           {filteredCases.map((caseItem) => {
-            const isGolden =
-              Array.isArray(caseItem.tags) && caseItem.tags.includes(GOLDEN_TAG)
+            const isGolden = isGoldenCase(caseItem)
             return (
               <TestCaseRow
                 key={caseItem.id}
