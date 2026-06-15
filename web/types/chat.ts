@@ -31,6 +31,7 @@ export interface ConversationListResponse {
   total: number
   returned?: number
   has_more?: boolean
+  next_skip?: number | null
   items: Conversation[]
 }
 

@@ -580,6 +580,8 @@ export default function DatasetPrecheckPage() {
 
   const latestRunStatus = selectedRun?.status
   const latestRunProgress = selectedRun?.progress ?? 0
+  const hasPrecheckRuns = runs.length > 0
+  const showPrecheckEmptyState = !loading && !hasPrecheckRuns
 
   return (
     <AppFrame>
@@ -590,11 +592,11 @@ export default function DatasetPrecheckPage() {
         iconColor="text-info"
         description={
           <span className="text-sm text-muted-foreground">
-            数据集：<span className="text-foreground font-medium">{dataset?.name || datasetId}</span> · 扫描本地文件夹，生成结构/质量画像（格式、扫描件、长度、PII/Secrets 等）
+            数据集：<span className="text-foreground font-medium">{dataset?.name || datasetId}</span> · 文件摸底 / 质量画像 / 不入库不切片
           </span>
         }
-        actions={
-          <div className="flex items-center gap-2">
+        toolbar={
+          <div className="flex max-w-full flex-wrap items-center justify-start gap-2 lg:justify-end">
             <Button variant="outline" className="gap-2" onClick={() => router.push('/datasets')}>
               <ArrowLeft className="w-4 h-4" />
               返回
@@ -635,144 +637,194 @@ export default function DatasetPrecheckPage() {
         }
       >
         <div className="space-y-6">
-          <Panel className="p-5">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <div className="font-semibold flex items-center gap-2">
-                  启动预检扫描
-                  {latestRunStatus ? (
-                    <Badge variant="outline" className="font-mono text-xs">
-                      {String(latestRunStatus)}
-                    </Badge>
-                  ) : null}
+          <Panel className="overflow-hidden p-0">
+            <div className="flex flex-col gap-3 border-b border-border/60 bg-muted/10 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-info/20 bg-info/10 text-info">
+                  <Sparkles className="size-4" />
                 </div>
-                <div className="text-sm text-muted-foreground mt-1">
-                  说明：后端需要启用 <span className="font-mono">LOCAL_SCAN_ENABLED</span> 且扫描路径需在允许的根目录内（或 uploads 下）。
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold">扫描配置</span>
+                    {latestRunStatus ? (
+                      <Badge variant="outline" className="font-mono text-xs">
+                        {String(latestRunStatus)}
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="font-mono text-xs">no run</Badge>
+                    )}
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                    <span>LOCAL_SCAN_ENABLED</span>
+                    <span>允许根目录 / uploads</span>
+                    <span>只生成质量画像</span>
+                  </div>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex shrink-0 items-center gap-2">
                 {scanRunning && selectedRun?.id ? (
-                  <Button variant="outline" className="gap-2" onClick={() => detachPromise(cancelScan())}>
+                  <Button variant="outline" className="h-9 gap-2" onClick={() => detachPromise(cancelScan())}>
                     <StopCircle className="w-4 h-4" />
                     取消
                   </Button>
                 ) : null}
-                <Button className="gap-2" onClick={() => detachPromise(startScan())} disabled={scanRunning}>
+                <Button className="h-9 gap-2" onClick={() => detachPromise(startScan())} disabled={scanRunning}>
                   {scanRunning ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Sparkles className="w-4 h-4" />}
                   启动
                 </Button>
               </div>
             </div>
 
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>历史扫描（选择一个 run 查看/对比）</Label>
-                <Select
-                  value={selectedRun?.id || ''}
-                  onValueChange={(v) => {
-                    const next = (runs || []).find((r) => r.id === v) || null
-                    setSelectedRun(next)
-                  }}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="选择 scan run" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(runs || []).map((r) => (
-                      <SelectItem key={r.id} value={r.id}>
-                        {String(r.created_at || '').slice(0, 19) || r.id} · {String(r.status || '')} · {r.progress ?? 0}%
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>增量复用（可选）</Label>
-                <div className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border/60 bg-muted/20">
-                  <div className="text-sm text-muted-foreground">复用未变文件的上次扫描结果（要求 root_path 相同且不脱敏）</div>
-                  <Switch checked={!!scanConfig.reuse_unchanged_files} onCheckedChange={(v) => setScanConfig((p) => ({ ...p, reuse_unchanged_files: !!v }))} />
+            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px]">
+              <div className="space-y-3 p-4">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">历史扫描</Label>
+                    <Select
+                      value={selectedRun?.id || ''}
+                      onValueChange={(v) => {
+                        const next = (runs || []).find((r) => r.id === v) || null
+                        setSelectedRun(next)
+                      }}
+                    >
+                      <SelectTrigger className="h-9 w-full">
+                        <SelectValue placeholder="选择 scan run" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(runs || []).map((r) => (
+                          <SelectItem key={r.id} value={r.id}>
+                            {String(r.created_at || '').slice(0, 19) || r.id} · {String(r.status || '')} · {r.progress ?? 0}%
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5 md:col-span-2">
+                    <Label className="text-xs text-muted-foreground">root_path（文件夹路径）</Label>
+                    <Input
+                      placeholder="例如：/data/docs 或 C:\\\\docs（需容器/进程可访问）"
+                      value={scanConfig.root_path || ''}
+                      onChange={(e) => setScanConfig((prev) => ({ ...prev, root_path: e.target.value }))}
+                      className="h-9 font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">最大文件数</Label>
+                    <Input
+                      placeholder="不限"
+                      value={scanConfig.max_files ?? ''}
+                      onChange={(e) => {
+                        const raw = e.target.value.trim()
+                        if (!raw) {
+                          setScanConfig((prev) => ({ ...prev, max_files: null }))
+                          return
+                        }
+                        const n = Number(raw)
+                        setScanConfig((prev) => ({ ...prev, max_files: Number.isFinite(n) ? Math.max(0, Math.floor(n)) : null }))
+                      }}
+                      className="h-9 font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                  <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/15 px-3 py-2">
+                    <Label className="text-sm">PDF 质量</Label>
+                    <Switch checked={!!scanConfig.enable_pdf_quality} onCheckedChange={(v) => setScanConfig((p) => ({ ...p, enable_pdf_quality: !!v }))} />
+                  </div>
+                  <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/15 px-3 py-2">
+                    <Label className="text-sm">文本抽样</Label>
+                    <Switch checked={!!scanConfig.enable_text_extract} onCheckedChange={(v) => setScanConfig((p) => ({ ...p, enable_text_extract: !!v }))} />
+                  </div>
+                  <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/15 px-3 py-2">
+                    <Label className="text-sm">PII 检测</Label>
+                    <Switch checked={!!scanConfig.enable_pii} onCheckedChange={(v) => setScanConfig((p) => ({ ...p, enable_pii: !!v }))} />
+                  </div>
+                  <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/15 px-3 py-2">
+                    <Label className="text-sm">Secrets 检测</Label>
+                    <Switch checked={!!scanConfig.enable_secrets} onCheckedChange={(v) => setScanConfig((p) => ({ ...p, enable_secrets: !!v }))} />
+                  </div>
+                  <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/15 px-3 py-2">
+                    <Label className="text-sm">file_sha256</Label>
+                    <Switch checked={!!scanConfig.compute_file_hash} onCheckedChange={(v) => setScanConfig((p) => ({ ...p, compute_file_hash: !!v }))} />
+                  </div>
+                  <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/15 px-3 py-2">
+                    <Label className="text-sm">增量复用</Label>
+                    <Switch checked={!!scanConfig.reuse_unchanged_files} onCheckedChange={(v) => setScanConfig((p) => ({ ...p, reuse_unchanged_files: !!v }))} />
+                  </div>
+                  <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/15 px-3 py-2 xl:col-span-3">
+                    <div className="min-w-0">
+                      <Label className="text-sm">脱敏路径</Label>
+                      <div className="truncate text-xs text-muted-foreground">分享报告时隐藏本机路径；开启后上下文样本会减少。</div>
+                    </div>
+                    <Switch checked={!!scanConfig.redact_paths} onCheckedChange={(v) => setScanConfig((p) => ({ ...p, redact_paths: !!v }))} />
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>root_path（文件夹路径）</Label>
-                <Input
-                  placeholder="例如：/data/docs 或 C:\\\\docs（需容器/进程可访问）"
-                  value={scanConfig.root_path || ''}
-                  onChange={(e) => setScanConfig((prev) => ({ ...prev, root_path: e.target.value }))}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>最大文件数（可选）</Label>
-                <Input
-                  placeholder="不限"
-                  value={scanConfig.max_files ?? ''}
-                  onChange={(e) => {
-                    const raw = e.target.value.trim()
-                    if (!raw) {
-                      setScanConfig((prev) => ({ ...prev, max_files: null }))
-                      return
-                    }
-                    const n = Number(raw)
-                    setScanConfig((prev) => ({ ...prev, max_files: Number.isFinite(n) ? Math.max(0, Math.floor(n)) : null }))
-                  }}
-                  className="font-mono"
-                />
-              </div>
-            </div>
-
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border/60 bg-muted/20">
-                <Label className="text-sm">PDF 质量</Label>
-                <Switch checked={!!scanConfig.enable_pdf_quality} onCheckedChange={(v) => setScanConfig((p) => ({ ...p, enable_pdf_quality: !!v }))} />
-              </div>
-              <div className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border/60 bg-muted/20">
-                <Label className="text-sm">文本抽样</Label>
-                <Switch checked={!!scanConfig.enable_text_extract} onCheckedChange={(v) => setScanConfig((p) => ({ ...p, enable_text_extract: !!v }))} />
-              </div>
-              <div className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border/60 bg-muted/20">
-                <Label className="text-sm">PII 检测</Label>
-                <Switch checked={!!scanConfig.enable_pii} onCheckedChange={(v) => setScanConfig((p) => ({ ...p, enable_pii: !!v }))} />
-              </div>
-              <div className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border/60 bg-muted/20">
-                <Label className="text-sm">Secrets 检测</Label>
-                <Switch checked={!!scanConfig.enable_secrets} onCheckedChange={(v) => setScanConfig((p) => ({ ...p, enable_secrets: !!v }))} />
-              </div>
-            </div>
-
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border/60 bg-muted/20">
-                <Label className="text-sm">计算 file_sha256（重复）</Label>
-                <Switch checked={!!scanConfig.compute_file_hash} onCheckedChange={(v) => setScanConfig((p) => ({ ...p, compute_file_hash: !!v }))} />
-              </div>
-              <div className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border/60 bg-muted/20">
-                <Label className="text-sm">脱敏路径（分享用）</Label>
-                <Switch checked={!!scanConfig.redact_paths} onCheckedChange={(v) => setScanConfig((p) => ({ ...p, redact_paths: !!v }))} />
-              </div>
-            </div>
-
-            <div className="mt-4 flex items-center justify-between gap-4">
-              <div className="text-sm text-muted-foreground">
-                进度：{(() => {
-    if (scanRunning) {
-        return `${latestRunProgress || 0}%`;
-    }
-    else if (latestRunProgress) {
-            return `${latestRunProgress}%`;
-        }
-        else {
-            return '-';
-        }
-})()}
-                {selectedRun?.error_message ? <span className="ml-3 text-destructive">错误：{selectedRun.error_message}</span> : null}
+              <div className="border-t border-border/60 bg-muted/10 p-4 lg:border-l lg:border-t-0">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">run state</div>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <div className="rounded-lg border border-border/60 bg-background/60 p-3">
+                    <div className="text-xs text-muted-foreground">进度</div>
+                    <div className="mt-1 font-mono text-lg font-semibold">
+                      {scanRunning || latestRunProgress ? `${latestRunProgress || 0}%` : '-'}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-border/60 bg-background/60 p-3">
+                    <div className="text-xs text-muted-foreground">批次</div>
+                    <div className="mt-1 truncate font-mono text-sm font-semibold">{selectedRun?.id ? selectedRun.id.slice(0, 8) : 'none'}</div>
+                  </div>
+                </div>
+                <div className="mt-3 rounded-lg border border-border/60 bg-background/60 p-3 text-xs leading-5 text-muted-foreground">
+                  <div className="font-medium text-foreground">输出内容</div>
+                  <div className="mt-1">格式分布、长度分布、扫描件占比、PII/Secrets 命中、代表样本、近重复候选。</div>
+                </div>
+                {selectedRun?.error_message ? (
+                  <div className="mt-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+                    {selectedRun.error_message}
+                  </div>
+                ) : null}
               </div>
             </div>
           </Panel>
 
+          {showPrecheckEmptyState ? (
+            <Panel className="overflow-hidden border-dashed border-border/70 bg-muted/10 p-0">
+              <div className="grid grid-cols-1 md:grid-cols-[220px_minmax(0,1fr)]">
+                <div className="border-b border-border/60 bg-background/55 p-4 md:border-b-0 md:border-r">
+                  <div className="flex items-center gap-3">
+                    <div className="flex size-10 items-center justify-center rounded-xl border border-info/20 bg-info/10 text-info">
+                      <FileSearch className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <div className="font-semibold">等待第一次扫描</div>
+                      <div className="mt-1 font-mono text-xs text-muted-foreground">runs: 0</div>
+                    </div>
+                  </div>
+                </div>
+                <div className="grid gap-3 p-4 md:grid-cols-3">
+                  <div className="rounded-lg border border-border/60 bg-background/60 p-3">
+                    <div className="text-xs font-medium text-muted-foreground">下一步</div>
+                    <div className="mt-1 text-sm">填写 root_path 后启动</div>
+                  </div>
+                  <div className="rounded-lg border border-border/60 bg-background/60 p-3">
+                    <div className="text-xs font-medium text-muted-foreground">会生成</div>
+                    <div className="mt-1 text-sm">格式 / PDF / PII / 样本</div>
+                  </div>
+                  <div className="rounded-lg border border-border/60 bg-background/60 p-3">
+                    <div className="text-xs font-medium text-muted-foreground">不会执行</div>
+                    <div className="mt-1 text-sm">文档入库 / 切片 / 索引 / KG</div>
+                  </div>
+                </div>
+              </div>
+            </Panel>
+          ) : null}
+
+          <div hidden={showPrecheckEmptyState} className="space-y-6">
           <Panel className="p-5">
             <div className="flex items-center justify-between gap-4">
               <div className="min-w-0">
@@ -1155,6 +1207,7 @@ export default function DatasetPrecheckPage() {
               ))}
             </div>
           </Panel>
+          </div>
         </div>
 
         <Dialog

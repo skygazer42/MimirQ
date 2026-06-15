@@ -1,6 +1,7 @@
 type BuildCspHeaderValueOptions = {
   isDevelopment: boolean
   nonce: string
+  upgradeInsecureRequests?: boolean
 }
 
 export function createCspNonce(): string {
@@ -10,6 +11,7 @@ export function createCspNonce(): string {
 export function buildCspHeaderValue({
   isDevelopment,
   nonce,
+  upgradeInsecureRequests,
 }: BuildCspHeaderValueOptions): string {
   const directives = [
     "default-src 'self'",
@@ -45,7 +47,9 @@ export function buildCspHeaderValue({
     "manifest-src 'self'",
   ]
 
-  if (!isDevelopment) directives.push('upgrade-insecure-requests')
+  if (upgradeInsecureRequests ?? !isDevelopment) {
+    directives.push('upgrade-insecure-requests')
+  }
 
   return directives.join('; ')
 }

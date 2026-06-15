@@ -100,7 +100,7 @@ export function PageHeader({
           className="pointer-events-none absolute -right-10 -top-12 size-32 rounded-full bg-info/10 blur-2xl"
           aria-hidden="true"
         />
-        <div className={cn("relative flex items-center min-w-0", getPageHeaderGap(compact))}>
+        <div className={cn("relative flex min-w-0 items-center", children && "lg:flex-1", getPageHeaderGap(compact))}>
           {headerIcon ? (
             <div className={cn(
               "shrink-0 flex items-center justify-center border border-info/18 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.10))] shadow-[inset_0_1px_0_hsl(var(--background)),0_14px_30px_-24px_hsl(var(--info)/0.75)]",
@@ -143,7 +143,11 @@ export function PageHeader({
           </div>
         </div>
 
-        {children ? <div className={cn("relative flex items-center gap-2", getPageHeaderActionsClass(compact))}>{children}</div> : null}
+        {children ? (
+          <div className={cn("relative flex min-w-0 flex-wrap items-center justify-start gap-2 lg:justify-end", getPageHeaderActionsClass(compact))}>
+            {children}
+          </div>
+        ) : null}
       </div>
     </header>
   )

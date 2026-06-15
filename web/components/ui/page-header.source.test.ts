@@ -17,4 +17,11 @@ describe('PageHeader source', () => {
     expect(src).toContain('tracking-[-0.03em]')
     expect(src).toContain('leading-[1.75]')
   })
+
+  it('allows dense action groups to wrap instead of crushing the title', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'page-header.tsx'), 'utf8')
+
+    expect(src).toContain('children && "lg:flex-1"')
+    expect(src).toContain('flex-wrap items-center justify-start gap-2 lg:justify-end')
+  })
 })

@@ -251,9 +251,11 @@ def test_dify_retrieval_logs_request_diagnostics(
     ]
     assert finished, "Expected Dify retrieval diagnostic log"
     record = finished[-1]
-    assert record.client_ip == "192.0.2.251"
-    assert record.knowledge_id == "city"
-    assert record.query_preview == "如何查询身份证办理进度？"
+    assert record.client_ip_hash == dify_api._diagnostic_value_hash("192.0.2.251")
+    assert record.knowledge_id_hash == dify_api._diagnostic_value_hash("city")
+    assert not hasattr(record, "client_ip")
+    assert not hasattr(record, "knowledge_id")
+    assert not hasattr(record, "query_preview")
     assert record.query_hash
     assert record.top_k == 5
     assert record.dataset_count == 1
@@ -268,8 +270,11 @@ def test_dify_retrieval_logs_request_diagnostics(
     assert record.retrieval_policy_plugin_refs == []
     assert record.elapsed_ms >= 0
     message = record.getMessage()
-    assert "client_ip=192.0.2.251" in message
-    assert "knowledge_id=city" in message
+    assert "client_ip_hash=" in message
+    assert "knowledge_id_hash=" in message
+    assert "192.0.2.251" not in message
+    assert "knowledge_id=city" not in message
+    assert "如何查询身份证办理进度" not in message
     assert "records=1" in message
 
 
@@ -880,6 +885,12 @@ def test_dify_retrieval_uses_rag_before_question_anchor_fallback(
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
     monkeypatch.setattr(
         dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED",
+        False,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        dify_api.settings,
         "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
         f'{{"city": "{dataset_id}"}}',
         raising=False,
@@ -940,6 +951,184 @@ def test_dify_retrieval_uses_rag_before_question_anchor_fallback(
     assert "不影响" in body["records"][0]["content"]
 
 
+def test_dify_retrieval_uses_question_anchor_preflight_when_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    token = "dify-test-token"
+    dataset_id = uuid.uuid4()
+    calls = {"rag": 0, "metadata_anchor": 0}
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED",
+        True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED",
+        True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        f'{{"city": "{dataset_id}"}}',
+        raising=False,
+    )
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+    _patch_demo_policy(monkeypatch, dify_api, question_anchor_bonus=0.9)
+
+    async def _fake_retrieve_dataset_citations(**_kwargs):  # noqa: ANN003, ANN202
+        calls["rag"] += 1
+        raise AssertionError("strong question metadata preflight should skip RAG")
+
+    def _fake_metadata_anchor_db_fallback_records(**kwargs):  # noqa: ANN003, ANN202
+        calls["metadata_anchor"] += 1
+        assert kwargs["existing_records"] == []
+        return [
+            {
+                "content": "问题：网上申请调解后，是否影响法定诉权？\n答案：不影响。",
+                "score": 0.97,
+                "title": "qa-preflight.txt",
+                "metadata": {
+                    "dataset_id": str(dataset_id),
+                    "question": "网上申请调解后，是否影响法定诉权？",
+                    "chunk_kind": "qa_pair",
+                    "source_record_id": "qa-preflight",
+                    "chunk_python_plugin": _DEMO_PLUGIN_REF,
+                    "dify_metadata_anchor_fallback": True,
+                },
+            }
+        ]
+
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(
+        dify_api,
+        "_metadata_anchor_db_fallback_records",
+        _fake_metadata_anchor_db_fallback_records,
+        raising=True,
+    )
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/integrations/dify/retrieval",
+        headers=_auth(token),
+        json={
+            "knowledge_id": "city",
+            "query": "网上申请调解是否影响法定诉权",
+            "retrieval_setting": {"top_k": 5, "score_threshold": 0.0},
+        },
+    )
+
+    assert res.status_code == 200, res.text
+    assert calls == {"rag": 0, "metadata_anchor": 1}
+    body = res.json()
+    assert body["records"][0]["metadata"]["source_record_id"] == "qa-preflight"
+    assert "不影响" in body["records"][0]["content"]
+
+
+def test_dify_retrieval_supplements_question_anchor_when_rag_only_has_service_anchor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    token = "dify-test-token"
+    dataset_id = uuid.uuid4()
+    calls = {"rag": 0, "metadata_anchor": 0}
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED",
+        False,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        f'{{"city": "{dataset_id}"}}',
+        raising=False,
+    )
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+    _patch_demo_policy(monkeypatch, dify_api, question_anchor_bonus=0.9)
+
+    async def _fake_retrieve_dataset_citations(**_kwargs):  # noqa: ANN003, ANN202
+        calls["rag"] += 1
+        return [
+            {
+                "chunk_content": "事项名称：劳动人事争议调解申请\n办理地点：服务中心窗口。",
+                "relevance_score": 0.91,
+                "document_name": "service-rag.txt",
+                "chunk_id": str(uuid.uuid4()),
+                "dataset_id": str(dataset_id),
+                "metadata": {
+                    "dataset_id": str(dataset_id),
+                    "service_name": "劳动人事争议调解申请",
+                    "chunk_kind": "service_item_full",
+                    "chunk_python_plugin": _DEMO_PLUGIN_REF,
+                },
+            }
+        ]
+
+    def _fake_metadata_anchor_db_fallback_records(**kwargs):  # noqa: ANN003, ANN202
+        calls["metadata_anchor"] += 1
+        return [
+            {
+                "content": "问题：网上申请调解后，是否影响法定诉权？\n答案：不影响。",
+                "score": 0.97,
+                "title": "qa.txt",
+                "metadata": {
+                    "dataset_id": str(dataset_id),
+                    "question": "网上申请调解后，是否影响法定诉权？",
+                    "chunk_kind": "qa_pair",
+                    "source_record_id": "qa-expected",
+                    "chunk_python_plugin": _DEMO_PLUGIN_REF,
+                    "dify_metadata_anchor_fallback": True,
+                },
+            }
+        ]
+
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(
+        dify_api,
+        "_metadata_anchor_db_fallback_records",
+        _fake_metadata_anchor_db_fallback_records,
+        raising=True,
+    )
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/integrations/dify/retrieval",
+        headers=_auth(token),
+        json={
+            "knowledge_id": "city",
+            "query": "网上申请调解是否影响法定诉权",
+            "retrieval_setting": {"top_k": 5, "score_threshold": 0.0},
+        },
+    )
+
+    assert res.status_code == 200, res.text
+    assert calls == {"rag": 1, "metadata_anchor": 1}
+    body = res.json()
+    assert body["records"][0]["metadata"]["source_record_id"] == "qa-expected"
+    assert "不影响" in body["records"][0]["content"]
+
+
 def test_dify_retrieval_skips_service_anchor_fallback_when_rag_has_confident_anchor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -951,6 +1140,18 @@ def test_dify_retrieval_skips_service_anchor_fallback_when_rag_has_confident_anc
 
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED",
+        True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED",
+        True,
+        raising=False,
+    )
     monkeypatch.setattr(
         dify_api.settings,
         "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
@@ -1812,6 +2013,32 @@ def test_dify_metadata_anchor_db_prefers_question_anchor_for_question_query(
     assert fallback_records[0]["metadata"]["source_record_id"] == "qa-expected"
     assert queried_fields[0] == "question"
     assert "service_name" not in queried_fields
+
+    queried_fields.clear()
+    fallback_records = dify_api._metadata_anchor_db_fallback_records(
+        db=_FakeDB(),
+        tenant_id=tenant_id,
+        dataset_ids=[dataset_id],
+        query="网上申请调解是否影响法定诉权",
+        top_k=5,
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+        existing_records=[
+            {
+                "content": "事项名称：劳动人事争议调解申请\n办理地点：服务中心窗口。",
+                "score": 0.91,
+                "title": "service.txt",
+                "metadata": {
+                    "service_name": "劳动人事争议调解申请",
+                    "chunk_kind": "service_item_full",
+                    "source_record_id": "service-wrong",
+                    "chunk_python_plugin": _DEMO_PLUGIN_REF,
+                },
+            }
+        ],
+    )
+
+    assert fallback_records[0]["metadata"]["source_record_id"] == "qa-expected"
+    assert queried_fields[0] == "question"
 
 
 def test_dify_metadata_anchor_db_prefers_service_anchor_for_service_intent_query(

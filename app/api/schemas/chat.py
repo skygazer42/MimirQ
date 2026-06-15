@@ -237,6 +237,7 @@ class ConversationList(BaseModel):
     total: int
     returned: int = 0
     has_more: bool = False
+    next_skip: int | None = None
     items: list[ConversationSchema]
 
 

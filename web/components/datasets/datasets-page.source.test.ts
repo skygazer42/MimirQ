@@ -54,4 +54,13 @@ describe('datasets page source', () => {
     expect(src).toContain('text-primary')
     expect(src).toContain('bg-primary')
   })
+
+  it('routes the dataset detail action to the profile detail page instead of reselecting the active card', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'datasets-page.tsx'), 'utf8')
+
+    expect(src).toContain('aria-label={`查看 ${dataset.name} 详情`}')
+    expect(src).toContain('title="查看数据集详情"')
+    expect(src).toContain('router.push(`/datasets/${dataset.id}/profile`)')
+    expect(src).not.toContain('setSelectedDatasetId(dataset.id)\n                                    }}\n                                    className="rounded-full bg-card px-2.5 py-1 text-[11px] font-medium text-primary')
+  })
 })

@@ -143,17 +143,13 @@ _QUESTION_ANCHOR_NEAR_MATCH_MIN_RATIO = 0.86
 _QUESTION_ANCHOR_BIGRAM_MIN_OVERLAP = 3
 _QUESTION_ANCHOR_BIGRAM_MIN_RATIO = 0.5
 _QUESTION_ANCHOR_QUERY_MARKERS = ("是否", "能否", "可否", "什么是", "为什么", "怎么", "如何", "哪里", "吗", "？", "?")
-_DIAGNOSTIC_QUERY_PREVIEW_CHARS = 120
 _METADATA_ANCHOR_DB_FALLBACK_MIN_SCORE = 0.72
 _METADATA_ANCHOR_DB_FALLBACK_DEFAULT_SCORE = 0.74
 _METADATA_ANCHOR_DB_FALLBACK_MAX_QUERY_TERMS = 12
 _METADATA_ANCHOR_DB_FALLBACK_SERVICE_NAME_MAX_TERMS = 8
-_SERVICE_ANCHOR_ADMIN_PREFIX_RE = re.compile(
-    r"^\s*(?P<prefix>(?:[\u4e00-\u9fff]{2,8}?(?:省|市|区|县|镇|乡|街道))|本级)(?P<rest>.*)$"
-)
-_SERVICE_ANCHOR_TRAILING_ADMIN_RE = re.compile(
-    r"(?:在|到)(?:(?:[\u4e00-\u9fff]{2,8}?(?:省|市|区|县|镇|乡|街道))|本级)$"
-)
+_SERVICE_ANCHOR_ADMIN_SUFFIXES = ("街道", "省", "市", "区", "县", "镇", "乡")
+_SERVICE_ANCHOR_ADMIN_MARKERS = ("在", "到")
+_SERVICE_ANCHOR_QUERY_TRAILING_CHARS = " \t\r\n?？。！!，,、：:；;"
 _METADATA_ANCHOR_DB_FALLBACK_ARRAY_FIELDS = (
     "retrieval_intents",
     "query_intents",
@@ -520,6 +516,9 @@ def _dify_response_cache_settings_signature() -> dict[str, Any]:
         "compact_min_records": int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_RECORDS", 1) or 1),
         "metadata_anchor_enabled": bool(
             getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED", False)
+        ),
+        "metadata_anchor_preflight_enabled": bool(
+            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED", False)
         ),
         "metadata_anchor_max_scan": int(
             getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_MAX_SCAN", 80) or 80
@@ -1090,18 +1089,80 @@ def _request_client_ip(request: Request) -> str:
     return str(getattr(getattr(request, "client", None), "host", "") or "").strip()
 
 
-def _diagnostic_query_hash(query: str) -> str:
-    text = str(query or "").strip()
+def _diagnostic_value_hash(value: object) -> str:
+    text = str(value or "").strip()
     if not text:
         return ""
     return hashlib.sha256(text.encode("utf-8", "ignore")).hexdigest()[:16]
 
 
-def _diagnostic_query_preview(query: str) -> str:
-    text = " ".join(str(query or "").split())
-    if len(text) <= _DIAGNOSTIC_QUERY_PREVIEW_CHARS:
-        return text
-    return f"{text[:_DIAGNOSTIC_QUERY_PREVIEW_CHARS].rstrip()}..."
+def _diagnostic_query_hash(query: str) -> str:
+    return _diagnostic_value_hash(query)
+
+
+def _is_cjk_char(char: str) -> bool:
+    return "\u4e00" <= char <= "\u9fff"
+
+
+def _contains_cjk(value: str) -> bool:
+    return any(_is_cjk_char(char) for char in str(value or ""))
+
+
+def _is_anchor_word_char(char: str) -> bool:
+    return (char.isascii() and char.isalnum()) or _is_cjk_char(char)
+
+
+def _iter_anchor_word_segments(value: str) -> list[str]:
+    segments: list[str] = []
+    current: list[str] = []
+    for char in str(value or ""):
+        if _is_anchor_word_char(char):
+            current.append(char)
+            continue
+        if current:
+            segments.append("".join(current))
+            current = []
+    if current:
+        segments.append("".join(current))
+    return segments
+
+
+def _is_service_anchor_admin_name(value: str) -> bool:
+    text = str(value or "").strip()
+    if text == "本级":
+        return True
+    for suffix in _SERVICE_ANCHOR_ADMIN_SUFFIXES:
+        if not text.endswith(suffix):
+            continue
+        stem = text[: -len(suffix)]
+        return 2 <= len(stem) <= 8 and all(_is_cjk_char(char) for char in stem)
+    return False
+
+
+def _split_service_anchor_admin_prefix(value: str) -> tuple[str, str] | None:
+    text = str(value or "").lstrip()
+    max_prefix_len = min(len(text), 10)
+    for end in range(1, max_prefix_len + 1):
+        prefix = text[:end]
+        if _is_service_anchor_admin_name(prefix):
+            return prefix, text[end:].strip()
+    return None
+
+
+def _strip_trailing_service_anchor_admin(value: str) -> str:
+    text = str(value or "").strip()
+    for marker in _SERVICE_ANCHOR_ADMIN_MARKERS:
+        marker_pos = text.rfind(marker)
+        if marker_pos < 0:
+            continue
+        candidate = text[marker_pos + len(marker) :].strip()
+        if _is_service_anchor_admin_name(candidate):
+            return text[:marker_pos].strip()
+    return text
+
+
+def _rstrip_service_anchor_query_noise(value: str) -> str:
+    return str(value or "").rstrip(_SERVICE_ANCHOR_QUERY_TRAILING_CHARS).strip()
 
 
 def _clamp_hint_value(value: str, *, limit: int = _MAX_HINT_VALUE_CHARS) -> str:
@@ -2426,6 +2487,28 @@ def _records_have_confident_metadata_anchor(
     return False
 
 
+def _records_can_skip_metadata_anchor_fallback(
+    records: list[dict[str, Any]],
+    *,
+    query: str,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> bool:
+    if _query_prefers_question_anchor(query) and not _query_prefers_service_anchor(
+        query,
+        policy_plugin_refs=policy_plugin_refs,
+    ):
+        return _records_have_strong_question_anchor(
+            records,
+            query=query,
+            policy_plugin_refs=policy_plugin_refs,
+        )
+    return _records_have_confident_metadata_anchor(
+        records,
+        query=query,
+        policy_plugin_refs=policy_plugin_refs,
+    )
+
+
 def _metadata_anchor_fallback_query_terms(query: str) -> list[str]:
     text = str(query or "").strip()
     if not text:
@@ -2442,9 +2525,9 @@ def _metadata_anchor_fallback_query_terms(query: str) -> list[str]:
         seen.add(normalized)
         terms.append(term)
 
-    for segment in re.findall(r"[0-9A-Za-z\u4e00-\u9fff]+", text):
+    for segment in _iter_anchor_word_segments(text):
         add(segment)
-        if not _CJK_RE.search(segment):
+        if not _contains_cjk(segment):
             continue
         for start in range(0, len(segment)):
             for size in (6, 4):
@@ -2461,11 +2544,10 @@ def _strip_service_anchor_query_noise(query: str, *, noise_terms: tuple[str, ...
     if not text:
         return ""
     for _ in range(2):
-        match = _SERVICE_ANCHOR_ADMIN_PREFIX_RE.match(text)
-        if not match:
+        prefix_parts = _split_service_anchor_admin_prefix(text)
+        if prefix_parts is None:
             break
-        prefix = str(match.group("prefix") or "")
-        text = str(match.group("rest") or "").strip()
+        prefix, text = prefix_parts
         if text.startswith("本级"):
             text = text[2:].strip()
         if prefix.endswith(("区", "县", "镇", "乡", "街道")):
@@ -2474,12 +2556,12 @@ def _strip_service_anchor_query_noise(query: str, *, noise_terms: tuple[str, ...
         if not phrase:
             continue
         text = text.replace(phrase, "")
-    text = re.sub(r"[\s?？。！!，,、：:；;]+$", "", text).strip()
+    text = _rstrip_service_anchor_query_noise(text)
     previous = None
     while previous != text:
         previous = text
-        text = _SERVICE_ANCHOR_TRAILING_ADMIN_RE.sub("", text).strip()
-        text = re.sub(r"[\s?？。！!，,、：:；;]+$", "", text).strip()
+        text = _strip_trailing_service_anchor_admin(text)
+        text = _rstrip_service_anchor_query_noise(text)
     return text
 
 
@@ -2507,9 +2589,9 @@ def _metadata_anchor_service_name_query_terms(
         terms.append(term)
 
     add(cleaned)
-    for segment in re.findall(r"[0-9A-Za-z\u4e00-\u9fff]+", cleaned):
+    for segment in _iter_anchor_word_segments(cleaned):
         add(segment)
-        if not _CJK_RE.search(segment):
+        if not _contains_cjk(segment):
             continue
         for size in (12, 10, 8, 6, 4):
             if len(segment) < size:
@@ -2539,16 +2621,16 @@ def _metadata_anchor_title_query_terms(
     def add(raw: str) -> None:
         term = str(raw or "").strip()
         normalized = _normalize_match_term(term)
-        min_chars = 3 if _CJK_RE.search(normalized) else 4
+        min_chars = 3 if _contains_cjk(normalized) else 4
         if len(normalized) < min_chars or normalized in seen:
             return
         seen.add(normalized)
         terms.append(term)
 
     add(cleaned)
-    for segment in re.findall(r"[0-9A-Za-z\u4e00-\u9fff]+", cleaned):
+    for segment in _iter_anchor_word_segments(cleaned):
         add(segment)
-        if not _CJK_RE.search(segment):
+        if not _contains_cjk(segment):
             continue
         for size in (8, 6, 4, 3):
             if len(segment) < size:
@@ -2599,7 +2681,7 @@ def _metadata_anchor_fallback_records_from_rows(
     policy_plugin_refs: tuple[str, ...] = (),
     existing_records: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
-    if _records_have_confident_metadata_anchor(
+    if _records_can_skip_metadata_anchor_fallback(
         existing_records or [],
         query=query,
         policy_plugin_refs=policy_plugin_refs,
@@ -2680,7 +2762,7 @@ def _metadata_anchor_db_fallback_records(
         return []
     if metadata_filter:
         return []
-    if _records_have_confident_metadata_anchor(
+    if _records_can_skip_metadata_anchor_fallback(
         existing_records or [],
         query=query,
         policy_plugin_refs=policy_plugin_refs,
@@ -3078,10 +3160,10 @@ async def retrieve_external_knowledge(
     )
     log_extra_base = {
         "event": "dify_external_retrieval",
-        "client_ip": _request_client_ip(request),
-        "knowledge_id": str(body.knowledge_id or "").strip(),
+        "client_ip_hash": _diagnostic_value_hash(_request_client_ip(request)),
+        "knowledge_id_hash": _diagnostic_value_hash(body.knowledge_id),
         "query_hash": _diagnostic_query_hash(body.query),
-        "query_preview": _diagnostic_query_preview(body.query),
+        "knowledge_id_chars": len(str(body.knowledge_id or "")),
         "query_chars": len(str(body.query or "")),
         "top_k": top_k,
         "candidate_top_k": candidate_top_k,
@@ -3137,12 +3219,11 @@ async def retrieve_external_knowledge(
                 elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
                 response_records = [DifyExternalKnowledgeRecord(**record) for record in cached_records]
                 logger.info(
-                    "Dify external retrieval cache hit client_ip=%s knowledge_id=%s query_hash=%s "
-                    "query_preview=%r top_k=%s candidate_top_k=%s dataset_count=%s records=%s elapsed_ms=%s",
-                    log_extra_base["client_ip"],
-                    log_extra_base["knowledge_id"],
+                    "Dify external retrieval cache hit client_ip_hash=%s knowledge_id_hash=%s query_hash=%s "
+                    "top_k=%s candidate_top_k=%s dataset_count=%s records=%s elapsed_ms=%s",
+                    log_extra_base["client_ip_hash"],
+                    log_extra_base["knowledge_id_hash"],
                     log_extra_base["query_hash"],
-                    log_extra_base["query_preview"],
                     top_k,
                     candidate_top_k,
                     len(dataset_ids),
@@ -3167,100 +3248,14 @@ async def retrieve_external_knowledge(
     kg_on_demand_triggered = False
     kg_on_demand_skipped = False
     try:
-        primary_citations = await _retrieve_dataset_citations(
-            db=db,
-            tenant_id=actor.tenant_id,
-            account_id=actor.account_id,
-            dataset_ids=primary_dataset_ids,
-            query=body.query,
-            top_k=candidate_top_k,
-            requested_top_k=top_k,
-            score_threshold=score_threshold,
-            metadata_filter=metadata_filter,
-            enable_kg_query_expansion=primary_kg_flags.enable_query_expansion,
-            enable_kg_chunk_injection=primary_kg_flags.enable_chunk_injection,
-            kg_chunk_injection_max_chunks=primary_kg_flags.chunk_injection_max_chunks,
-            enable_kg_chunk_boost=primary_kg_flags.enable_chunk_boost,
-            kg_chunk_boost_weight=primary_kg_flags.chunk_boost_weight,
-            kg_chunk_boost_max_promoted=primary_kg_flags.chunk_boost_max_promoted,
+        metadata_anchor_preflight_enabled = (
+            bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED", False))
+            and bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED", False))
+            and not metadata_filter
+            and _query_prefers_question_anchor(body.query)
+            and not _query_prefers_service_anchor(body.query, policy_plugin_refs=policy_plugin_refs)
         )
-        primary_citation_count = len(primary_citations)
-        records.extend(
-            _records_from_citations(
-                db=db,
-                tenant_id=actor.tenant_id,
-                citations=primary_citations,
-                fallback_dataset_id=primary_dataset_ids[0] if primary_dataset_ids else None,
-                query=body.query,
-                policy_plugin_refs=policy_plugin_refs,
-            )
-        )
-        if requested_kg_flags.enabled and kg_on_demand_enabled:
-            if _records_can_skip_kg_on_demand(
-                records,
-                query=body.query,
-                policy_plugin_refs=policy_plugin_refs,
-            ):
-                kg_on_demand_skipped = True
-                retrieval_path = f"{retrieval_path}:kg_on_demand_skip"
-            else:
-                kg_records = await _dify_kg_on_demand_records(
-                    db=db,
-                    tenant_id=actor.tenant_id,
-                    account_id=actor.account_id,
-                    dataset_ids=primary_dataset_ids,
-                    query=body.query,
-                    requested_kg_flags=requested_kg_flags,
-                    policy_plugin_refs=policy_plugin_refs,
-                )
-                if kg_records:
-                    kg_on_demand_triggered = True
-                    retrieval_path = f"{retrieval_path}:kg_on_demand"
-                    records.extend(kg_records)
-                else:
-                    kg_on_demand_skipped = True
-                    retrieval_path = f"{retrieval_path}:kg_on_demand_empty"
-
-        if expansion_dataset_ids and not _records_meet_primary_scope(
-            records,
-            query=body.query,
-            policy_plugin_refs=policy_plugin_refs,
-        ):
-            retrieval_path = "rag:primary_scope+expansion_scope"
-            expansion_citations = await _retrieve_dataset_citations(
-                db=db,
-                tenant_id=actor.tenant_id,
-                account_id=actor.account_id,
-                dataset_ids=expansion_dataset_ids,
-                query=body.query,
-                top_k=candidate_top_k,
-                requested_top_k=top_k,
-                score_threshold=score_threshold,
-                metadata_filter=metadata_filter,
-                enable_kg_query_expansion=requested_kg_flags.enable_query_expansion,
-                enable_kg_chunk_injection=requested_kg_flags.enable_chunk_injection,
-                kg_chunk_injection_max_chunks=requested_kg_flags.chunk_injection_max_chunks,
-                enable_kg_chunk_boost=requested_kg_flags.enable_chunk_boost,
-                kg_chunk_boost_weight=requested_kg_flags.chunk_boost_weight,
-                kg_chunk_boost_max_promoted=requested_kg_flags.chunk_boost_max_promoted,
-            )
-            expansion_citation_count = len(expansion_citations)
-            records.extend(
-                _records_from_citations(
-                    db=db,
-                    tenant_id=actor.tenant_id,
-                    citations=expansion_citations,
-                    fallback_dataset_id=expansion_dataset_ids[0] if expansion_dataset_ids else None,
-                    query=body.query,
-                    policy_plugin_refs=policy_plugin_refs,
-                )
-            )
-
-        if not _records_have_confident_metadata_anchor(
-            records,
-            query=body.query,
-            policy_plugin_refs=policy_plugin_refs,
-        ):
+        if metadata_anchor_preflight_enabled:
             metadata_anchor_records = _metadata_anchor_db_fallback_records(
                 db=db,
                 tenant_id=actor.tenant_id,
@@ -3268,13 +3263,127 @@ async def retrieve_external_knowledge(
                 query=body.query,
                 top_k=top_k,
                 policy_plugin_refs=policy_plugin_refs,
-                existing_records=records,
+                existing_records=[],
                 metadata_filter=metadata_filter,
             )
-            if metadata_anchor_records:
+            if _records_have_strong_question_anchor(
+                metadata_anchor_records,
+                query=body.query,
+                policy_plugin_refs=policy_plugin_refs,
+            ):
                 metadata_anchor_fallback_count = len(metadata_anchor_records)
                 records.extend(metadata_anchor_records)
-                retrieval_path = f"{retrieval_path}+metadata_anchor"
+                retrieval_path = "metadata_anchor:preflight"
+
+        if not records:
+            primary_citations = await _retrieve_dataset_citations(
+                db=db,
+                tenant_id=actor.tenant_id,
+                account_id=actor.account_id,
+                dataset_ids=primary_dataset_ids,
+                query=body.query,
+                top_k=candidate_top_k,
+                requested_top_k=top_k,
+                score_threshold=score_threshold,
+                metadata_filter=metadata_filter,
+                enable_kg_query_expansion=primary_kg_flags.enable_query_expansion,
+                enable_kg_chunk_injection=primary_kg_flags.enable_chunk_injection,
+                kg_chunk_injection_max_chunks=primary_kg_flags.chunk_injection_max_chunks,
+                enable_kg_chunk_boost=primary_kg_flags.enable_chunk_boost,
+                kg_chunk_boost_weight=primary_kg_flags.chunk_boost_weight,
+                kg_chunk_boost_max_promoted=primary_kg_flags.chunk_boost_max_promoted,
+            )
+            primary_citation_count = len(primary_citations)
+            records.extend(
+                _records_from_citations(
+                    db=db,
+                    tenant_id=actor.tenant_id,
+                    citations=primary_citations,
+                    fallback_dataset_id=primary_dataset_ids[0] if primary_dataset_ids else None,
+                    query=body.query,
+                    policy_plugin_refs=policy_plugin_refs,
+                )
+            )
+            if requested_kg_flags.enabled and kg_on_demand_enabled:
+                if _records_can_skip_kg_on_demand(
+                    records,
+                    query=body.query,
+                    policy_plugin_refs=policy_plugin_refs,
+                ):
+                    kg_on_demand_skipped = True
+                    retrieval_path = f"{retrieval_path}:kg_on_demand_skip"
+                else:
+                    kg_records = await _dify_kg_on_demand_records(
+                        db=db,
+                        tenant_id=actor.tenant_id,
+                        account_id=actor.account_id,
+                        dataset_ids=primary_dataset_ids,
+                        query=body.query,
+                        requested_kg_flags=requested_kg_flags,
+                        policy_plugin_refs=policy_plugin_refs,
+                    )
+                    if kg_records:
+                        kg_on_demand_triggered = True
+                        retrieval_path = f"{retrieval_path}:kg_on_demand"
+                        records.extend(kg_records)
+                    else:
+                        kg_on_demand_skipped = True
+                        retrieval_path = f"{retrieval_path}:kg_on_demand_empty"
+
+            if expansion_dataset_ids and not _records_meet_primary_scope(
+                records,
+                query=body.query,
+                policy_plugin_refs=policy_plugin_refs,
+            ):
+                retrieval_path = "rag:primary_scope+expansion_scope"
+                expansion_citations = await _retrieve_dataset_citations(
+                    db=db,
+                    tenant_id=actor.tenant_id,
+                    account_id=actor.account_id,
+                    dataset_ids=expansion_dataset_ids,
+                    query=body.query,
+                    top_k=candidate_top_k,
+                    requested_top_k=top_k,
+                    score_threshold=score_threshold,
+                    metadata_filter=metadata_filter,
+                    enable_kg_query_expansion=requested_kg_flags.enable_query_expansion,
+                    enable_kg_chunk_injection=requested_kg_flags.enable_chunk_injection,
+                    kg_chunk_injection_max_chunks=requested_kg_flags.chunk_injection_max_chunks,
+                    enable_kg_chunk_boost=requested_kg_flags.enable_chunk_boost,
+                    kg_chunk_boost_weight=requested_kg_flags.chunk_boost_weight,
+                    kg_chunk_boost_max_promoted=requested_kg_flags.chunk_boost_max_promoted,
+                )
+                expansion_citation_count = len(expansion_citations)
+                records.extend(
+                    _records_from_citations(
+                        db=db,
+                        tenant_id=actor.tenant_id,
+                        citations=expansion_citations,
+                        fallback_dataset_id=expansion_dataset_ids[0] if expansion_dataset_ids else None,
+                        query=body.query,
+                        policy_plugin_refs=policy_plugin_refs,
+                    )
+                )
+
+            if not _records_can_skip_metadata_anchor_fallback(
+                records,
+                query=body.query,
+                policy_plugin_refs=policy_plugin_refs,
+            ):
+                metadata_anchor_records = _metadata_anchor_db_fallback_records(
+                    db=db,
+                    tenant_id=actor.tenant_id,
+                    dataset_ids=primary_dataset_ids,
+                    query=body.query,
+                    top_k=top_k,
+                    policy_plugin_refs=policy_plugin_refs,
+                    existing_records=records,
+                    metadata_filter=metadata_filter,
+                )
+                if metadata_anchor_records:
+                    metadata_anchor_fallback_count = len(metadata_anchor_records)
+                    records.extend(metadata_anchor_records)
+                    retrieval_path = f"{retrieval_path}+metadata_anchor"
 
         citation_count = primary_citation_count + expansion_citation_count
         records = _dedupe_records(records, query=body.query, policy_plugin_refs=policy_plugin_refs)
@@ -3301,18 +3410,17 @@ async def retrieve_external_knowledge(
         elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
         record_count = len(response_records)
         logger.info(
-            "Dify external retrieval completed client_ip=%s knowledge_id=%s query_hash=%s "
-            "query_preview=%r top_k=%s candidate_top_k=%s score_threshold=%s dataset_count=%s "
+            "Dify external retrieval completed client_ip_hash=%s knowledge_id_hash=%s query_hash=%s "
+            "top_k=%s candidate_top_k=%s score_threshold=%s dataset_count=%s "
             "primary_dataset_count=%s expansion_dataset_count=%s citations=%s primary_citations=%s "
             "expansion_citations=%s candidate_records=%s records=%s elapsed_ms=%s metadata_filter=%s "
             "retrieval_path=%s metadata_anchor_fallback_records=%s policy_records=%s "
             "policy_boosted_records=%s policy_boost_field_records=%s "
             "policy_query_expansion_records=%s policy_rerank_feature_records=%s "
             "policy_anchor_mismatch_records=%s",
-            log_extra_base["client_ip"],
-            log_extra_base["knowledge_id"],
+            log_extra_base["client_ip_hash"],
+            log_extra_base["knowledge_id_hash"],
             log_extra_base["query_hash"],
-            log_extra_base["query_preview"],
             top_k,
             candidate_top_k,
             score_threshold,
@@ -3359,17 +3467,16 @@ async def retrieve_external_knowledge(
             policy_plugin_refs=policy_plugin_refs,
         )
         logger.exception(
-            "Dify external retrieval failed client_ip=%s knowledge_id=%s query_hash=%s "
-            "query_preview=%r top_k=%s candidate_top_k=%s score_threshold=%s dataset_count=%s "
+            "Dify external retrieval failed client_ip_hash=%s knowledge_id_hash=%s query_hash=%s "
+            "top_k=%s candidate_top_k=%s score_threshold=%s dataset_count=%s "
             "primary_dataset_count=%s expansion_dataset_count=%s citations=%s records=%s elapsed_ms=%s "
             "metadata_filter=%s retrieval_path=%s metadata_anchor_fallback_records=%s "
             "policy_records=%s policy_boosted_records=%s "
             "policy_boost_field_records=%s policy_query_expansion_records=%s "
             "policy_rerank_feature_records=%s policy_anchor_mismatch_records=%s",
-            log_extra_base["client_ip"],
-            log_extra_base["knowledge_id"],
+            log_extra_base["client_ip_hash"],
+            log_extra_base["knowledge_id_hash"],
             log_extra_base["query_hash"],
-            log_extra_base["query_preview"],
             top_k,
             candidate_top_k,
             score_threshold,

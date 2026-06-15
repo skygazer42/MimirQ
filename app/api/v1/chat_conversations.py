@@ -294,6 +294,7 @@ async def list_conversations(
         "total": total,
         "returned": len(result_items),
         "has_more": raw_offset < total,
+        "next_skip": raw_offset if raw_offset < total else None,
         "items": result_items,
     }
 

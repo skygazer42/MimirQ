@@ -11,31 +11,32 @@ from langchain_core.documents import Document
 
 _BLOCK_SEPARATOR_RE = re.compile(r"(?:==|--)##########(?:==|--)")
 _TITLE_BRACKET_RE = re.compile(r"^\[(?P<title>.+?)\]\s*$")
-_FIELD_BOUNDARY_PATTERN = (
-    r"(?:问题|答案|来源部门|问答提供部门|来源工作表|关键字|关键词|相似问(?:法)?|"
-    r"类目路径（多级类目用/分隔）|类目路径|分类路径|业务分类|适用区域|适用地区|"
-    r"办事链接|办理链接|服务链接|内容生效时间|生效时间|内容失效时间|失效时间)"
+_FIELD_BOUNDARY_LABELS = (
+    "类目路径（多级类目用/分隔）",
+    "问答提供部门",
+    "来源工作表",
+    "内容生效时间",
+    "内容失效时间",
+    "来源部门",
+    "关键字",
+    "关键词",
+    "相似问法",
+    "相似问",
+    "类目路径",
+    "分类路径",
+    "业务分类",
+    "适用区域",
+    "适用地区",
+    "办事链接",
+    "办理链接",
+    "服务链接",
+    "生效时间",
+    "失效时间",
+    "问题",
+    "答案",
 )
-_ALIAS_RE = re.compile(r"==##相似问(?:法)?[：:]\s*(?P<value>.+?)##==", re.S)
-_ALIAS_FIELD_RE = re.compile(
-    rf"(?:^|\n)\s*相似问(?:法)?[：:]\s*(?P<value>.*?)(?=\n\s*{_FIELD_BOUNDARY_PATTERN}[：:]|\Z)",
-    re.S,
-)
-_UNLABELED_ALIAS_RE = re.compile(r"==##(?!(?:关键字|关键词|相似问(?:法)?)[：:])(?P<value>.+?)##==", re.S)
-_KEYWORD_RE = re.compile(r"==##(?:关键字|关键词)[：:]\s*(?P<value>.+?)##==", re.S)
-_KEYWORD_FIELD_RE = re.compile(
-    rf"(?:^|\n)\s*(?:关键字|关键词)[：:]\s*(?P<value>.*?)(?=\n\s*{_FIELD_BOUNDARY_PATTERN}[：:]|\Z)",
-    re.S,
-)
-_QUESTION_RE = re.compile(r"问题[：:]\s*\[?(?P<value>.+?)\]?\s*(?:\n|$)")
-_STRUCTURED_QA_TITLE_RE = re.compile(r"^事项名称[：:]\s*\[?(?P<value>.+?)\]?\s*$", re.MULTILINE)
-_ANSWER_RE = re.compile(
-    r"[\"“”]?\s*答案[\"“”]?\s*[：:](?P<value>.*?)(?=\n\s*(?:来源部门[：:]|来源工作表[：:]|==##)|\Z)",
-    re.S,
-)
-_DEPARTMENT_RE = re.compile(r"来源部门[：:](?P<value>.+)")
-_SOURCE_SHEET_RE = re.compile(r"来源工作表[：:](?P<value>.+)")
-_OPERATION_TITLE_RE = re.compile(r"^(?P<title>.+?一件事)操作指引\s*$")
+_MARKER_START = "==##"
+_MARKER_END = "##=="
 _SECTION_HEADING_RE = re.compile(r"^(第[一二三四五六七八九十百0-9]+[章节条]|[一二三四五六七八九十]+、|\d+[.．、]|0\d)")
 _SOFT_BREAK_RE = re.compile(r"(?<=[。！？；;])")
 _COLLAPSED_CHINESE_ALIAS_SEPARATOR_RE = re.compile(r"(?<=[\u4e00-\u9fff？?。！!，,])\s+(?=[\u4e00-\u9fff])")
@@ -210,10 +211,109 @@ def _source_topic(source: str, section: str) -> str:
     return _clamp_meta_text(Path(source).stem.strip(), 500)
 
 
+def _split_field_line(line: str, labels: tuple[str, ...]) -> tuple[str, str] | None:
+    text = str(line or "").strip().lstrip("\"“”").strip()
+    for label in labels:
+        for separator in ("：", ":"):
+            prefix = f"{label}{separator}"
+            if text.startswith(prefix):
+                return label, text[len(prefix) :].strip()
+    return None
+
+
+def _iter_inline_marker_values(text: str) -> list[str]:
+    values: list[str] = []
+    source = str(text or "")
+    cursor = 0
+    while True:
+        start = source.find(_MARKER_START, cursor)
+        if start < 0:
+            break
+        value_start = start + len(_MARKER_START)
+        end = source.find(_MARKER_END, value_start)
+        if end < 0:
+            break
+        values.append(source[value_start:end].strip())
+        cursor = end + len(_MARKER_END)
+    return values
+
+
+def _extract_labeled_field_values(text: str, labels: tuple[str, ...]) -> list[str]:
+    values: list[str] = []
+    lines = str(text or "").replace("\r\n", "\n").replace("\r", "\n").splitlines()
+    index = 0
+    while index < len(lines):
+        field = _split_field_line(lines[index], labels)
+        if field is None:
+            index += 1
+            continue
+        _, first_value = field
+        parts = [first_value] if first_value else []
+        index += 1
+        while index < len(lines) and _split_field_line(lines[index], _FIELD_BOUNDARY_LABELS) is None:
+            if lines[index].strip().startswith(_MARKER_START):
+                break
+            parts.append(lines[index])
+            index += 1
+        value = "\n".join(parts).strip()
+        if value:
+            values.append(value)
+    return values
+
+
+def _first_labeled_field_value(text: str, labels: tuple[str, ...]) -> str:
+    values = _extract_labeled_field_values(text, labels)
+    return values[0] if values else ""
+
+
+def _is_inline_marker_line(line: str) -> bool:
+    text = str(line or "").strip()
+    return text.startswith(_MARKER_START) and text.endswith(_MARKER_END) and len(text) > len(_MARKER_START) + len(_MARKER_END)
+
+
+def _structured_qa_title_value(text: str) -> str:
+    for line in str(text or "").replace("\r\n", "\n").replace("\r", "\n").splitlines():
+        value = _first_labeled_field_value(line, ("事项名称",))
+        if value:
+            return value.strip().strip("[]").rstrip("]").strip()
+    return ""
+
+
+def _is_structured_qa_title_line(line: str) -> bool:
+    return bool(_structured_qa_title_value(line))
+
+
+def _sheet_heading_value(line: str) -> str:
+    text = str(line or "").strip()
+    hashes = len(text) - len(text.lstrip("#"))
+    if hashes < 1 or hashes > 6:
+        return ""
+    rest = text[hashes:].strip()
+    lowered = rest.lower()
+    if not lowered.startswith("sheet"):
+        return ""
+    value = rest[5:].lstrip()
+    if value.startswith(("：", ":")):
+        return value[1:].strip()
+    return ""
+
+
+def _operation_title_value(line: str) -> str:
+    text = str(line or "").strip()
+    suffix = "操作指引"
+    if not text.endswith(suffix):
+        return ""
+    title = text[: -len(suffix)].strip()
+    return title if title.endswith("一件事") else ""
+
+
 def _clean_marker_value(text: str) -> str:
     value = str(text or "").strip()
-    value = re.sub(r"^==##(?:(?:关键字|关键词)|相似问(?:法)?)[：:]\s*", "", value)
-    value = re.sub(r"##==$", "", value)
+    if value.startswith(_MARKER_START) and value.endswith(_MARKER_END):
+        value = value[len(_MARKER_START) : -len(_MARKER_END)].strip()
+    labeled = _split_field_line(value, ("关键字", "关键词", "相似问法", "相似问"))
+    if labeled is not None:
+        _, value = labeled
     return value.strip().strip("[]")
 
 
@@ -240,26 +340,41 @@ def _split_alias_marker(text: str) -> list[str]:
 def _extract_aliases(text: str) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
-    for regex in (_ALIAS_RE, _ALIAS_FIELD_RE, _UNLABELED_ALIAS_RE):
-        for match in regex.finditer(text or ""):
-            for alias in _split_alias_marker(match.group("value")):
-                if not alias or alias in seen:
-                    continue
-                seen.add(alias)
-                out.append(alias)
+    marker_values: list[str] = []
+    for marker in _iter_inline_marker_values(text):
+        labeled = _split_field_line(marker, ("关键字", "关键词", "相似问法", "相似问"))
+        if labeled is None:
+            marker_values.append(marker)
+            continue
+        label, value = labeled
+        if label in {"相似问", "相似问法"}:
+            marker_values.append(value)
+    field_values = _extract_labeled_field_values(text, ("相似问法", "相似问"))
+    for value in [*marker_values, *field_values]:
+        for alias in _split_alias_marker(value):
+            if not alias or alias in seen:
+                continue
+            seen.add(alias)
+            out.append(alias)
     return out
 
 
 def _extract_keywords_marker(text: str) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
-    for regex in (_KEYWORD_RE, _KEYWORD_FIELD_RE):
-        for match in regex.finditer(text or ""):
-            for keyword in _split_list_marker(match.group("value")):
-                if not keyword or keyword in seen:
-                    continue
-                seen.add(keyword)
-                out.append(keyword)
+    marker_values: list[str] = []
+    for marker in _iter_inline_marker_values(text):
+        labeled = _split_field_line(marker, ("关键字", "关键词"))
+        if labeled is not None:
+            _, value = labeled
+            marker_values.append(value)
+    field_values = _extract_labeled_field_values(text, ("关键字", "关键词"))
+    for value in [*marker_values, *field_values]:
+        for keyword in _split_list_marker(value):
+            if not keyword or keyword in seen:
+                continue
+            seen.add(keyword)
+            out.append(keyword)
     return out
 
 
@@ -284,7 +399,7 @@ def _case_key(title: str) -> str:
 def _canonical_one_thing_title(title: str) -> tuple[str, str]:
     raw = str(title or "").strip()
     cleaned = _strip_bracket_title(raw)
-    cleaned = re.sub(r"\s*操作指引\s*", "", cleaned).strip()
+    cleaned = cleaned.replace("操作指引", "").strip()
     key = _case_key(cleaned)
     canonical = _ONE_THING_CASE_TITLE_ALIASES.get(key)
     if canonical:
@@ -398,7 +513,7 @@ def _clean_text(text: str) -> str:
         line = raw.strip()
         if not line:
             continue
-        if re.fullmatch(r"==##.+?##==", line):
+        if _is_inline_marker_line(line):
             continue
         lines.append(line)
     return "\n".join(lines).strip()
@@ -598,8 +713,7 @@ def _govern_one_thing_guide(source_doc: Document) -> list[Document]:
     out: list[Document] = []
     for index, block in enumerate(_split_blocks(source_doc.page_content or ""), 1):
         title, raw_title = _canonical_one_thing_title(_first_line(block))
-        keywords_match = _KEYWORD_RE.search(block)
-        keywords = _split_list_marker(keywords_match.group("value")) if keywords_match else []
+        keywords = _extract_keywords_marker(block)
         text = _clean_text(block)
         meta = _common_meta(source_doc, kind="one_thing_guide", title=title, index=index, text=text)
         meta["case_title"] = title
@@ -624,7 +738,7 @@ def _split_operation_blocks(text: str) -> list[str]:
     normalized = str(text or "").replace("\r\n", "\n").replace("\r", "\n")
     cursor = 0
     for line in normalized.splitlines(keepends=True):
-        if _OPERATION_TITLE_RE.match(line.strip()):
+        if _operation_title_value(line):
             indices.append(cursor)
         cursor += len(line)
     if len(indices) <= 1:
@@ -637,8 +751,7 @@ def _govern_one_thing_operation(source_doc: Document) -> list[Document]:
     out: list[Document] = []
     for index, block in enumerate(_split_operation_blocks(source_doc.page_content or ""), 1):
         first = _first_line(block)
-        match = _OPERATION_TITLE_RE.match(first)
-        title, raw_title = _canonical_one_thing_title(match.group("title") if match else first)
+        title, raw_title = _canonical_one_thing_title(_operation_title_value(first) or first)
         text = _clean_text(block)
         meta = _common_meta(source_doc, kind="one_thing_operation", title=title, index=index, text=text)
         meta["case_title"] = title
@@ -819,21 +932,19 @@ def _govern_qa(source_doc: Document) -> list[Document]:
     out: list[Document] = []
     text = _normalize_excel_parser_rows(source_doc.page_content or "")
     for index, block in enumerate(_split_blocks(text), 1):
-        question_match = _QUESTION_RE.search(block)
-        answer_match = _ANSWER_RE.search(block)
-        if not question_match or not answer_match:
+        question = _first_labeled_field_value(block, ("问题",))
+        answer = _first_labeled_field_value(block, ("答案",))
+        if not question or not answer:
             continue
-        dept_match = _DEPARTMENT_RE.search(block)
-        sheet_match = _SOURCE_SHEET_RE.search(block)
         doc = _build_qa_document(
             source_doc,
             index=index,
-            question=question_match.group("value"),
-            answer=answer_match.group("value"),
+            question=question,
+            answer=answer,
             aliases=_extract_aliases(block),
             keywords=_extract_keywords_marker(block),
-            source_department=dept_match.group("value") if dept_match else "",
-            source_sheet=sheet_match.group("value") if sheet_match else "",
+            source_department=_first_labeled_field_value(block, ("来源部门",)),
+            source_sheet=_first_labeled_field_value(block, ("来源工作表",)),
         )
         if doc is not None:
             out.append(doc)
@@ -846,7 +957,7 @@ def _structured_qa_answer(block: str) -> str:
         line = raw.strip()
         if not line:
             continue
-        if _STRUCTURED_QA_TITLE_RE.match(line) or re.fullmatch(r"==##.+?##==", line):
+        if _is_structured_qa_title_line(line) or _is_inline_marker_line(line):
             continue
         lines.append(line)
     return "\n".join(lines).strip()
@@ -855,14 +966,14 @@ def _structured_qa_answer(block: str) -> str:
 def _govern_structured_item_qa(source_doc: Document) -> list[Document]:
     out: list[Document] = []
     for index, block in enumerate(_split_blocks(source_doc.page_content or ""), 1):
-        title_match = _STRUCTURED_QA_TITLE_RE.search(block)
-        if not title_match:
+        title = _structured_qa_title_value(block)
+        if not title:
             continue
         answer = _structured_qa_answer(block)
         doc = _build_qa_document(
             source_doc,
             index=index,
-            question=title_match.group("value"),
+            question=title,
             answer=answer,
             aliases=_extract_aliases(block),
             keywords=_extract_keywords_marker(block),
@@ -968,10 +1079,10 @@ def _govern_markdown_table_qa(source_doc: Document) -> list[Document]:
 
     for raw in str(source_doc.page_content or "").replace("\r\n", "\n").replace("\r", "\n").splitlines():
         line = raw.strip()
-        sheet_match = re.match(r"^#{1,6}\s*Sheet[：:]\s*(?P<sheet>.+?)\s*$", line, re.I)
-        if sheet_match:
+        sheet = _sheet_heading_value(line)
+        if sheet:
             flush()
-            current_sheet = _clamp_meta_text(sheet_match.group("sheet"), 200)
+            current_sheet = _clamp_meta_text(sheet, 200)
             continue
         if line.startswith("|"):
             table_lines.append(line)
@@ -982,11 +1093,18 @@ def _govern_markdown_table_qa(source_doc: Document) -> list[Document]:
 
 
 def _is_answer_marker(line: str) -> bool:
-    return bool(re.match(r"^答\s*[：:]", str(line or "").strip()))
+    text = str(line or "").strip()
+    rest = text[1:].lstrip() if text.startswith("答") else ""
+    return rest.startswith(("：", ":"))
 
 
 def _strip_answer_marker(line: str) -> str:
-    return re.sub(r"^答\s*[：:]\s*", "", str(line or "").strip()).strip()
+    text = str(line or "").strip()
+    if text.startswith("答"):
+        rest = text[1:].lstrip()
+        if rest.startswith(("：", ":")):
+            return rest[1:].strip()
+    return text
 
 
 def _is_loose_qa_heading(line: str) -> bool:

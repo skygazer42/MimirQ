@@ -1,5 +1,6 @@
 {
   "schema": "mimirq.retrieval_policy.v1",
+  "question_anchor_bonus": 0.9,
   "query_expansion_fields": [
     "service_name",
     "service_aliases",
