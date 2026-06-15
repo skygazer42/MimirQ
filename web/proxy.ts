@@ -4,11 +4,21 @@ import { buildCspHeaderValue, createCspNonce } from './lib/security/csp'
 
 const isDevelopment = process.env.NODE_ENV !== 'production'
 
+function shouldUpgradeInsecureRequests(request: NextRequest): boolean {
+  if (isDevelopment) return false
+
+  const forwardedProto = request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim().toLowerCase()
+  const protocol = forwardedProto || request.nextUrl.protocol.replace(/:$/, '').toLowerCase()
+
+  return protocol === 'https'
+}
+
 export function proxy(request: NextRequest) {
   const nonce = createCspNonce()
   const cspHeader = buildCspHeaderValue({
     isDevelopment,
     nonce,
+    upgradeInsecureRequests: shouldUpgradeInsecureRequests(request),
   })
 
   const requestHeaders = new Headers(request.headers)

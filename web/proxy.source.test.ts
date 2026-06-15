@@ -9,6 +9,9 @@ describe('proxy source', () => {
 
     expect(src).toContain("import { NextRequest, NextResponse } from 'next/server'")
     expect(src).toContain('export function proxy(')
+    expect(src).toContain('function shouldUpgradeInsecureRequests')
+    expect(src).toContain("request.headers.get('x-forwarded-proto')")
+    expect(src).toContain('upgradeInsecureRequests: shouldUpgradeInsecureRequests(request)')
     expect(src).toContain("requestHeaders.set('x-nonce', nonce)")
     expect(src).toContain("requestHeaders.set('Content-Security-Policy', cspHeader)")
     expect(src).toContain('const response = NextResponse.next({')

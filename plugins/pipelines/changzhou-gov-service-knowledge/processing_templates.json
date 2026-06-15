@@ -38,8 +38,8 @@
       "key": "changzhou_gov_keyword_extract",
       "name": "政务关键字/相似问法抽取",
       "stage": "governance",
-      "implemented_by": "plugin.py:_KEYWORD_RE",
-      "related_implementations": ["plugin.py:_ALIAS_RE"]
+      "implemented_by": "plugin.py:_extract_keywords_marker",
+      "related_implementations": ["plugin.py:_extract_aliases"]
     },
     {
       "key": "changzhou_gov_qa_xlsx_header_align",

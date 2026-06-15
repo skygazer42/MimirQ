@@ -125,6 +125,7 @@ def test_changzhou_retrieval_policy_declares_platform_consumable_fields():
     assert "办理入口在哪里" in summary["service_anchor_priority_terms"]
     assert "收费吗" in summary["service_anchor_priority_terms"]
     assert "需要什么材料" not in summary["service_anchor_priority_terms"]
+    assert descriptor.retrieval_policy["question_anchor_bonus"] >= 0.9
     assert summary["fallback_enabled"] is True
     assert summary["response_compaction_enabled"] is True
     assert descriptor.retrieval_policy["response_compaction"]["min_records"] == 1

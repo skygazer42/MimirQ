@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ast
+import json
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
@@ -53,8 +55,8 @@ def _resolve_document_scope(
     account_id: str,
     request: ExternalConversationIngestRequest,
 ) -> tuple[UUID | None, list[UUID]]:
-    if request.document_ids:
-        requested_doc_ids = _dedupe_uuid_list(list(request.document_ids or []))
+    requested_doc_ids = _dedupe_uuid_list(list(request.document_ids))
+    if len(requested_doc_ids) > 0:
         allowed_doc_ids = filter_allowed_document_ids(db, tenant_id, account_id, requested_doc_ids)
         if len(allowed_doc_ids) != len(requested_doc_ids):
             raise HTTPException(status_code=403, detail="Some external conversation documents are not accessible")
@@ -207,21 +209,196 @@ def _external_message_metadata(
 
 
 def _is_mimirq_citation(value: Any) -> bool:
-    if not isinstance(value, dict):
-        return False
-    required = ("document_id", "chunk_id", "chunk_content")
-    if not all(value.get(key) is not None for key in required):
-        return False
+    return _normalize_mimirq_citation(value) is not None
+
+
+_CITATION_CONTENT_KEYS = ("chunk_content", "content", "text", "quote", "snippet", "page_content")
+_CITATION_TITLE_KEYS = ("document_name", "title", "filename", "source", "source_path", "document_id")
+_CITATION_SCORE_KEYS = (
+    "relevance_score",
+    "score",
+    "mimirq_score",
+    "retrieval_score",
+    "rerank_score",
+    "vector_score",
+    "bm25_score",
+    "keyword_score",
+)
+_CITATION_OPTIONAL_KEYS = (
+    "chunk_index",
+    "page_number",
+    "bbox",
+    "bbox_page_number",
+    "start_char",
+    "end_char",
+    "evidence_start_char",
+    "evidence_end_char",
+    "header_path",
+    "chunk_strategy",
+    "chunk_role",
+    "retrieval_role",
+    "neighbor_of",
+    "doc_pipeline_key",
+    "pipeline_hash",
+    "vector_score",
+    "bm25_score",
+    "keyword_score",
+    "rerank_score",
+    "retrieval_score",
+    "reranker_provider",
+    "rerank_elapsed_sec",
+    "rerank_model_used",
+    "retrieval_mode",
+    "vector_backend",
+    "retrieval_elapsed_sec",
+    "hit_type",
+    "has_image",
+    "img_id",
+    "img_url",
+    "kg_path",
+    "kg_path_provenance",
+)
+_CITATION_SERIALIZED_LIST_MAX_CHARS = 1_000_000
+_EXTERNAL_CITATION_LIST_KEYS = (
+    "citations",
+    "retrieval_citations",
+    "retrieval_records",
+    "records",
+    "sources",
+    "source_documents",
+    "documents",
+)
+_EXTERNAL_CITATION_WRAPPER_KEYS = (
+    "retrieval",
+    "mimirq",
+    "mimirq_retrieval",
+    "external_knowledge",
+)
+
+
+def _first_non_empty(mapping: dict[str, Any], keys: tuple[str, ...]) -> Any:
+    for key in keys:
+        value = mapping.get(key)
+        if value is not None and str(value).strip():
+            return value
+    return None
+
+
+def _normalize_uuid_text(value: Any) -> str:
     try:
-        UUID(str(value.get("document_id")))
-        UUID(str(value.get("chunk_id")))
+        return str(UUID(str(value)))
     except Exception:
-        return False
-    return True
+        return ""
+
+
+def _normalize_mimirq_citation(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+
+    raw_metadata = value.get("metadata")
+    metadata = raw_metadata if isinstance(raw_metadata, dict) else {}
+    document_id = _normalize_uuid_text(value.get("document_id") or metadata.get("document_id"))
+    chunk_id = _normalize_uuid_text(value.get("chunk_id") or metadata.get("chunk_id"))
+    chunk_content = str(
+        _first_non_empty(value, _CITATION_CONTENT_KEYS)
+        or _first_non_empty(metadata, _CITATION_CONTENT_KEYS)
+        or ""
+    ).strip()
+
+    if not document_id or not chunk_id or not chunk_content:
+        return None
+
+    document_name = str(
+        _first_non_empty(value, _CITATION_TITLE_KEYS)
+        or _first_non_empty(metadata, _CITATION_TITLE_KEYS)
+        or "Document"
+    ).strip()
+
+    out: dict[str, Any] = {
+        "document_id": document_id,
+        "chunk_id": chunk_id,
+        "chunk_content": chunk_content,
+        "document_name": document_name or "Document",
+    }
+
+    for key in _CITATION_OPTIONAL_KEYS:
+        candidate = value.get(key, metadata.get(key))
+        if candidate is not None and candidate != "":
+            out[key] = candidate
+
+    score = _first_non_empty(value, _CITATION_SCORE_KEYS)
+    if score is None:
+        score = _first_non_empty(metadata, _CITATION_SCORE_KEYS)
+    if score is not None:
+        try:
+            out["relevance_score"] = float(score)
+        except Exception:
+            pass
+
+    return out
+
+
+def _citation_items_from_value(value: Any) -> list[dict[str, Any]]:
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, dict)]
+    if not isinstance(value, str):
+        return []
+
+    text = value.strip()
+    if not text or len(text) > _CITATION_SERIALIZED_LIST_MAX_CHARS:
+        return []
+
+    parsed: Any
+    try:
+        parsed = json.loads(text)
+    except Exception:
+        try:
+            parsed = ast.literal_eval(text)
+        except Exception:
+            return []
+    if not isinstance(parsed, list):
+        return []
+    return [item for item in parsed if isinstance(item, dict)]
+
+
+def _citation_candidates_from_metadata(metadata: dict[str, Any]) -> list[dict[str, Any]]:
+    candidates: list[dict[str, Any]] = []
+    for key in _EXTERNAL_CITATION_LIST_KEYS:
+        candidates.extend(_citation_items_from_value(metadata.get(key)))
+
+    for wrapper_key in _EXTERNAL_CITATION_WRAPPER_KEYS:
+        wrapper = metadata.get(wrapper_key)
+        if not isinstance(wrapper, dict):
+            continue
+        for key in _EXTERNAL_CITATION_LIST_KEYS:
+            candidates.extend(_citation_items_from_value(wrapper.get(key)))
+
+    return candidates
+
+
+def _external_message_citation_candidates(
+    citations: list[dict[str, Any]],
+    metadata: dict[str, Any],
+) -> list[dict[str, Any]]:
+    candidates = [item for item in citations if isinstance(item, dict)]
+    if isinstance(metadata, dict):
+        candidates.extend(_citation_candidates_from_metadata(metadata))
+    return candidates
 
 
 def _mimirq_citations_for_storage(citations: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return [dict(item) for item in citations if _is_mimirq_citation(item)]
+    out: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for item in citations:
+        normalized = _normalize_mimirq_citation(item)
+        if normalized is None:
+            continue
+        key = (str(normalized.get("document_id") or ""), str(normalized.get("chunk_id") or ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(normalized)
+    return out
 
 
 def _next_message_created_at(
@@ -293,13 +470,15 @@ def ingest_external_conversation(
             skipped_source_ids.append(source_message_id)
             continue
 
+        citation_candidates = _external_message_citation_candidates(incoming.citations, incoming.metadata)
+        stored_citations = _mimirq_citations_for_storage(citation_candidates)
         metadata = _external_message_metadata(
             request=request,
             message_metadata={
                 "source_message_id": source_message_id or None,
                 "source_run_id": incoming.source_run_id,
                 "metadata": incoming.metadata,
-                "citations": incoming.citations,
+                "citations": citation_candidates,
             },
             account_id=account_id,
             imported_at=imported_at,
@@ -317,9 +496,7 @@ def ingest_external_conversation(
             "conversation_id": conversation.id,
             "role": incoming.role,
             "content": incoming.content,
-            "citations": _mimirq_citations_for_storage(incoming.citations)
-            if incoming.role == "assistant"
-            else [],
+            "citations": stored_citations if incoming.role == "assistant" else [],
             "token_count": incoming.token_count
             if incoming.token_count is not None
             else num_tokens_from_string(incoming.content or ""),

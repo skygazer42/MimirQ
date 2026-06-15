@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
@@ -8,7 +9,11 @@ from fastapi.testclient import TestClient
 
 import app.api.v1.integrations_conversations as conversations_integration
 from app.api.schemas.external_conversation import ExternalConversationIngestResponse
-from app.services.external_conversation_ingest import _mimirq_citations_for_storage, _next_message_created_at
+from app.services.external_conversation_ingest import (
+    _external_message_citation_candidates,
+    _mimirq_citations_for_storage,
+    _next_message_created_at,
+)
 
 TENANT_ID = UUID("00000000-0000-0000-0000-000000000000")
 
@@ -102,6 +107,61 @@ def test_external_citations_are_stored_only_when_mimirq_schema_compatible():
     external_only = {"document_name": "外部引用", "url": "https://example.invalid"}
 
     assert _mimirq_citations_for_storage([valid, external_only]) == [valid]
+
+
+def test_external_conversation_ingest_normalizes_dify_http_records_from_metadata():
+    record = {
+        "content": "排污许可证办理、环保税税源采集、自动监测设备联网。",
+        "title": "重点排污单位税费缴纳一件事",
+        "score": 0.92,
+        "metadata": {
+            "document_id": "00000000-0000-0000-0000-000000000001",
+            "chunk_id": "00000000-0000-0000-0000-000000000002",
+            "chunk_index": 7,
+            "page_number": 2,
+            "header_path": "02高效办成一件事 / 重点排污单位税费缴纳",
+            "hit_type": "hybrid",
+        },
+    }
+
+    candidates = _external_message_citation_candidates([], {"retrieval_records": [record]})
+    stored = _mimirq_citations_for_storage(candidates)
+
+    assert stored == [
+        {
+            "document_id": "00000000-0000-0000-0000-000000000001",
+            "chunk_id": "00000000-0000-0000-0000-000000000002",
+            "chunk_content": "排污许可证办理、环保税税源采集、自动监测设备联网。",
+            "document_name": "重点排污单位税费缴纳一件事",
+            "chunk_index": 7,
+            "page_number": 2,
+            "header_path": "02高效办成一件事 / 重点排污单位税费缴纳",
+            "hit_type": "hybrid",
+            "relevance_score": 0.92,
+        }
+    ]
+
+
+def test_external_conversation_ingest_accepts_serialized_retrieval_records():
+    record = {
+        "content": "网上申请调解后，不影响当事人依法行使诉权。",
+        "title": "常州市本级12345QA.txt",
+        "metadata": {
+            "document_id": "00000000-0000-0000-0000-000000000011",
+            "chunk_id": "00000000-0000-0000-0000-000000000012",
+            "mimirq_score": 0.84,
+            "source_record_id": "qa-1",
+        },
+    }
+
+    candidates = _external_message_citation_candidates([], {"retrieval_records": json.dumps([record])})
+    stored = _mimirq_citations_for_storage(candidates)
+
+    assert stored[0]["document_id"] == "00000000-0000-0000-0000-000000000011"
+    assert stored[0]["chunk_id"] == "00000000-0000-0000-0000-000000000012"
+    assert stored[0]["chunk_content"] == "网上申请调解后，不影响当事人依法行使诉权。"
+    assert stored[0]["document_name"] == "常州市本级12345QA.txt"
+    assert stored[0]["relevance_score"] == 0.84
 
 
 def test_external_message_created_at_preserves_request_order():

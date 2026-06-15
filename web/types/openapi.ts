@@ -9914,6 +9914,8 @@ export interface components {
              * @default false
              */
             has_more: boolean;
+            /** Next Skip */
+            next_skip?: number | null;
             /** Items */
             items: components["schemas"]["ConversationSchema"][];
         };

@@ -545,10 +545,21 @@ function retrievalAuditTone(
   return 'slate'
 }
 
+function trimFixedNumber(value: string): string {
+  let end = value.length
+  while (end > 0 && value[end - 1] === '0') {
+    end -= 1
+  }
+  if (end > 0 && value[end - 1] === '.') {
+    end -= 1
+  }
+  return value.slice(0, end) || '0'
+}
+
 function formatRetrievalAuditMetric(value: unknown): string {
   if (typeof value === 'number' && Number.isFinite(value)) {
     if (Math.abs(value) <= 1) return `${(value * 100).toFixed(1)}%`
-    return value.toFixed(3).replace(/\.?0+$/, '')
+    return trimFixedNumber(value.toFixed(3))
   }
   if (typeof value === 'boolean') return value ? 'true' : 'false'
   if (typeof value === 'string' && value.trim()) return value

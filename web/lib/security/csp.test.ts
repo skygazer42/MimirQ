@@ -30,4 +30,15 @@ describe('buildCspHeaderValue', () => {
     expect(csp).not.toContain("'nonce-dev-nonce' 'unsafe-inline'")
     expect(csp).not.toContain('upgrade-insecure-requests')
   })
+
+  it('can disable insecure request upgrades for production HTTP previews', () => {
+    const csp = buildCspHeaderValue({
+      isDevelopment: false,
+      nonce: 'lan-nonce',
+      upgradeInsecureRequests: false,
+    })
+
+    expect(csp).toContain("script-src 'self' 'nonce-lan-nonce' 'strict-dynamic' 'wasm-unsafe-eval'")
+    expect(csp).not.toContain('upgrade-insecure-requests')
+  })
 })

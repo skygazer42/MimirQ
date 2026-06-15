@@ -894,9 +894,11 @@ export default function DatasetsPage() {
                                 <div className="inline-flex shrink-0 items-center gap-1 rounded-full border border-primary/20 bg-primary/10 p-0.5">
                                   <button
                                     type="button"
+                                    aria-label={`查看 ${dataset.name} 详情`}
+                                    title="查看数据集详情"
                                     onClick={(e) => {
                                       e.stopPropagation()
-                                      setSelectedDatasetId(dataset.id)
+                                      router.push(`/datasets/${dataset.id}/profile`)
                                     }}
                                     className="rounded-full bg-card px-2.5 py-1 text-[11px] font-medium text-primary shadow-sm transition-all duration-200 hover:bg-primary/10 hover:text-primary active:scale-[0.98]"
                                   >

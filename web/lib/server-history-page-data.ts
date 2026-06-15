@@ -8,6 +8,10 @@ const DEFAULT_VISIBLE_MESSAGES = 80
 
 type ConversationListResponse = {
   items?: Conversation[]
+  total?: number
+  returned?: number
+  has_more?: boolean
+  next_skip?: number | null
 }
 
 type ConversationMessagesResponse = {
@@ -21,6 +25,9 @@ export type HistoryPageInitialData = {
   initialSelectedConversation: Conversation | null
   initialMessages: Message[]
   initialHasMoreMessages: boolean
+  initialHasMoreConversations: boolean
+  initialConversationNextSkip: number | null
+  initialConversationTotal: number
   initialConversationsLoaded: boolean
 }
 
@@ -44,7 +51,7 @@ export async function getServerHistoryPageData(
   try {
     const authHeaders = await getServerAuthHeaders()
     const list = await getJson<ConversationListResponse>(
-      `${API_V1_BASE_URL}/chat/conversations?limit=100`,
+      `${API_V1_BASE_URL}/chat/conversations?skip=0&limit=100`,
       authHeaders
     )
     const initialConversations = list.items || []
@@ -60,6 +67,9 @@ export async function getServerHistoryPageData(
         initialSelectedConversation: null,
         initialMessages: [],
         initialHasMoreMessages: false,
+        initialHasMoreConversations: Boolean(list.has_more),
+        initialConversationNextSkip: typeof list.next_skip === 'number' ? list.next_skip : null,
+        initialConversationTotal: Number(list.total ?? initialConversations.length),
         initialConversationsLoaded: true,
       }
     }
@@ -75,6 +85,9 @@ export async function getServerHistoryPageData(
       initialSelectedConversation,
       initialMessages: detail.messages || [],
       initialHasMoreMessages: Boolean(detail.has_more),
+      initialHasMoreConversations: Boolean(list.has_more),
+      initialConversationNextSkip: typeof list.next_skip === 'number' ? list.next_skip : null,
+      initialConversationTotal: Number(list.total ?? initialConversations.length),
       initialConversationsLoaded: true,
     }
   } catch {
@@ -84,6 +97,9 @@ export async function getServerHistoryPageData(
       initialSelectedConversation: null,
       initialMessages: [],
       initialHasMoreMessages: false,
+      initialHasMoreConversations: false,
+      initialConversationNextSkip: null,
+      initialConversationTotal: 0,
       initialConversationsLoaded: false,
     }
   }

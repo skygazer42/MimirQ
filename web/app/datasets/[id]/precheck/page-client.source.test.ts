@@ -55,4 +55,30 @@ describe('dataset precheck page client source', () => {
     expect(src).not.toContain('const loadMoreFinding = useCallback(async () => {')
     expect(src).not.toContain('setFindingRes({ total: res.total, items: [...findingRes.items, ...(res.items || [])] })')
   })
+
+  it('renders a clear empty state before any precheck scan exists', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'page-client.tsx'), 'utf8')
+
+    expect(src).toContain('const hasPrecheckRuns = runs.length > 0')
+    expect(src).toContain('const showPrecheckEmptyState = !loading && !hasPrecheckRuns')
+    expect(src).toContain('hidden={showPrecheckEmptyState}')
+    expect(src).toContain('等待第一次扫描')
+    expect(src).toContain('文档入库 / 切片 / 索引 / KG')
+  })
+
+  it('keeps dense page actions in the toolbar so they do not crush the title', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'page-client.tsx'), 'utf8')
+
+    expect(src).toContain('toolbar={')
+    expect(src).not.toContain('actions={')
+  })
+
+  it('uses dense workbench copy for the precheck configuration panel', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'page-client.tsx'), 'utf8')
+
+    expect(src).toContain('文件摸底 / 质量画像 / 不入库不切片')
+    expect(src).toContain('扫描配置')
+    expect(src).toContain('grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px]')
+    expect(src).toContain('run state')
+  })
 })
