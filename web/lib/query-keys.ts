@@ -150,6 +150,8 @@ export const queryKeys = {
     all: ['evaluations'] as const,
     list: (params?: QueryParams) => ['evaluations', 'list', params] as const,
     ragasRuns: (params?: QueryParams) => ['evaluations', 'ragas-runs', params] as const,
+    ragasConversationReadiness: (conversationIds: string[]) =>
+      ['evaluations', 'ragas-conversation-readiness', conversationIds] as const,
     ragasRunDetail: (runId: string, params?: QueryParams) =>
       ['evaluations', 'ragas-run-detail', runId, params] as const,
     regressionRuns: (params?: QueryParams) =>

@@ -62,6 +62,9 @@ interface TestCaseManagerProps {
   dense?: boolean
 }
 
+const REGRESSION_CASE_PAGE_LIMIT = 200
+const REGRESSION_CASE_FETCH_MAX = 1000
+
 type EvidencePackDraft = {
   dataset_id?: string
   query?: string
@@ -317,7 +320,8 @@ export function TestCaseManager({
 
   const regressionCaseParams = useMemo(
     () => ({
-      limit: 100,
+      limit: REGRESSION_CASE_PAGE_LIMIT,
+      fetch_max: REGRESSION_CASE_FETCH_MAX,
       dataset_id: datasetId || undefined,
     }),
     [datasetId]
@@ -327,19 +331,47 @@ export function TestCaseManager({
     queryKey: queryKeys.evaluations.regressionCases(regressionCaseParams),
     enabled: Boolean(datasetId),
     queryFn: async () => {
-      if (!datasetId) return []
-      const result = await evaluationApi.listRegressionCases({
-        limit: 100,
+      if (!datasetId) return { total: 0, items: [], fullyLoaded: true }
+      const firstPage = await evaluationApi.listRegressionCases({
+        skip: 0,
+        limit: REGRESSION_CASE_PAGE_LIMIT,
         dataset_id: datasetId,
       })
-      return result.items || []
+      const total = Number(firstPage.total ?? 0)
+      const targetTotal = Math.min(total, REGRESSION_CASE_FETCH_MAX)
+      const items = [...(firstPage.items || [])]
+
+      for (
+        let skip = items.length;
+        skip < targetTotal;
+        skip += REGRESSION_CASE_PAGE_LIMIT
+      ) {
+        const nextPage = await evaluationApi.listRegressionCases({
+          skip,
+          limit: REGRESSION_CASE_PAGE_LIMIT,
+          dataset_id: datasetId,
+        })
+        const nextItems = nextPage.items || []
+        if (!nextItems.length) break
+        items.push(...nextItems)
+      }
+
+      return {
+        total,
+        items,
+        fullyLoaded: items.length >= total,
+      }
     },
   })
 
   const cases = useMemo(
-    () => (datasetId ? (regressionCasesQuery.data ?? []) : []),
+    () => (datasetId ? (regressionCasesQuery.data?.items ?? []) : []),
     [datasetId, regressionCasesQuery.data]
   )
+  const caseTotal = datasetId
+    ? Number(regressionCasesQuery.data?.total ?? cases.length)
+    : 0
+  const casesFullyLoaded = regressionCasesQuery.data?.fullyLoaded ?? true
   const isLoading = Boolean(datasetId) && regressionCasesQuery.isLoading
 
   const invalidateRegressionCases = () =>
@@ -943,7 +975,8 @@ export function TestCaseManager({
                 className="mt-2 flex flex-wrap items-center gap-1.5"
               >
                 <span className="rounded-full border border-slate-200 bg-card px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                  样本 {cases.length}
+                  样本 {caseTotal}
+                  {!casesFullyLoaded ? ` · 已载 ${cases.length}` : ''}
                 </span>
                 <span className="rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700">
                   Golden {goldenCount}
@@ -975,7 +1008,7 @@ export function TestCaseManager({
                   disabled={!datasetId || goldenCaseIds.length === 0}
                 >
                   <Star className="w-3.5 h-3.5" />
-                  运行 Golden
+                  {casesFullyLoaded ? '运行 Golden' : '运行已载 Golden'}
                 </Button>
                 <Button
                   size="sm"
@@ -988,7 +1021,7 @@ export function TestCaseManager({
                   onClick={handleRunAll}
                   disabled={!datasetId || cases.length === 0}
                 >
-                  运行全部
+                  {casesFullyLoaded ? '运行全部' : '运行已载'}
                 </Button>
               </>
             )}

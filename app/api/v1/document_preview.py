@@ -6,7 +6,7 @@ import shutil
 import uuid
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
@@ -20,6 +20,7 @@ from app.api.utils.upload import save_upload_file
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.env import is_production_env
+from app.parsing.factory import parser_factory
 from app.parsing.subprocess_runner import (
     SubprocessCancelled,
     SubprocessWorkerError,
@@ -38,6 +39,72 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 }
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+
+
+def _strip_preview_nul_chars(value: str) -> str:
+    if not value:
+        return ""
+    return value.replace("\x00", "")
+
+
+def _sanitize_preview_value(value: Any) -> Any:
+    if isinstance(value, str):
+        return _strip_preview_nul_chars(value)
+    if isinstance(value, list):
+        return [_sanitize_preview_value(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            _strip_preview_nul_chars(str(key)): _sanitize_preview_value(item)
+            for key, item in value.items()
+        }
+    return value
+
+
+def _should_inline_preview_parse(file_ext: str) -> bool:
+    if not bool(getattr(settings, "PREVIEW_INLINE_TEXT_PARSE_ENABLED", True)):
+        return False
+    ext = str(file_ext or "").strip().lower()
+    return ext == ".md" or ext in parser_factory.PLAIN_TEXT_EXTENSIONS
+
+
+def _serialize_inline_preview_documents(documents: list[Any]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for doc in documents or []:
+        metadata = getattr(doc, "metadata", None) or {}
+        out.append(
+            {
+                "page_content": _strip_preview_nul_chars(str(getattr(doc, "page_content", "") or "")),
+                "metadata": _sanitize_preview_value(metadata if isinstance(metadata, dict) else {}),
+                "id": str(getattr(doc, "id", "") or "") or None,
+            }
+        )
+    return out
+
+
+def _parse_inline_text_preview(
+    *,
+    source_path: Path,
+    resolved_backend: str,
+    tenant_id: UUID,
+    requested_backend: str,
+) -> dict[str, Any]:
+    documents, inline_backend, provenance = parser_factory.parse_with_provenance(
+        source_path,
+        parser_backend=resolved_backend,
+        tenant_id=str(tenant_id),
+        document_id=uuid.uuid4().hex,
+    )
+    if isinstance(provenance, dict):
+        provenance = dict(provenance)
+        provenance.setdefault("payload_requested_backend", str(requested_backend or ""))
+        provenance.setdefault("effective_backend", str(resolved_backend or ""))
+        provenance.setdefault("execution_mode", "inline_document_preview")
+    return {
+        "resolved_backend": inline_backend,
+        "pdf_quality": None,
+        "documents": _serialize_inline_preview_documents(documents),
+        "provenance": _sanitize_preview_value(provenance),
+    }
 
 
 @dataclass
@@ -107,18 +174,27 @@ async def preview_document(
     try:
         file_size = await save_upload_file(file, temp_path, max_bytes=settings.MAX_FILE_SIZE)
 
-        parsed = await documents_module.run_subprocess_worker(
-            tenant_id=tenant_id,
-            payload={
-                "action": "parse_documents",
-                "tenant_id": str(tenant_id),
-                "file_path": str(temp_path),
-                "parser_backend": parser_backend,
-                "mode": "preview",
-            },
-            disconnect_check=request.is_disconnected,
-            timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
-        )
+        if _should_inline_preview_parse(file_ext):
+            resolved_text_backend = parser_factory.resolve_backend(file_ext, parser_backend)
+            parsed = _parse_inline_text_preview(
+                source_path=temp_path,
+                resolved_backend=resolved_text_backend,
+                tenant_id=tenant_id,
+                requested_backend=parser_backend,
+            )
+        else:
+            parsed = await documents_module.run_subprocess_worker(
+                tenant_id=tenant_id,
+                payload={
+                    "action": "parse_documents",
+                    "tenant_id": str(tenant_id),
+                    "file_path": str(temp_path),
+                    "parser_backend": parser_backend,
+                    "mode": "preview",
+                },
+                disconnect_check=request.is_disconnected,
+                timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
+            )
         documents = [
             Document(
                 page_content=str(item.get("page_content") or ""),

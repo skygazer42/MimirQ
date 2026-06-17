@@ -58,6 +58,19 @@ export interface RagasRunDetail {
   items: RagasItem[]
 }
 
+export interface RagasConversationReadinessItem {
+  conversation_id: string
+  assistant_turns: number
+  evaluable_turns: number
+  citations_count: number
+  is_evaluable: boolean
+}
+
+export interface RagasConversationReadinessResponse {
+  total: number
+  items: RagasConversationReadinessItem[]
+}
+
 export type KGHardcaseMode = 'off' | 'deterministic' | 'llm'
 
 export interface KGSearchDiagnosticsRequest {
@@ -103,6 +116,16 @@ export interface KGSearchDiagnosticsRunDetail {
 }
 
 export const evaluationApi = {
+  async getRagasConversationReadiness(params: {
+    conversation_ids: string[]
+  }): Promise<RagasConversationReadinessResponse> {
+    const { data } = await apiClient.post(
+      '/evaluations/ragas/conversation-readiness',
+      params
+    )
+    return data
+  },
+
   async createRagasRun(params: {
     conversation_id: string
     metrics?: string[]

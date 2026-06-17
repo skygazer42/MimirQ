@@ -40,7 +40,7 @@ import {
   type RagasRunDetail,
 } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
-import type { Conversation, JsonObject } from '@/types'
+import type { Conversation, JsonObject, Message } from '@/types'
 import {
   BarChart3,
   ChevronDown,
@@ -74,9 +74,19 @@ import {
 } from '@/components/evaluation/ragas-metric-selector'
 
 type TabType = 'conversation' | 'regression' | 'queryset_health'
+type ConversationEvidenceFilter = 'ready' | 'missing' | 'all'
 
 const EMPTY_CONVERSATIONS: Conversation[] = []
 const EMPTY_RUNS: RagasRun[] = []
+
+const CONVERSATION_EVIDENCE_FILTERS: Array<{
+  id: ConversationEvidenceFilter
+  label: string
+}> = [
+  { id: 'ready', label: '可评测' },
+  { id: 'missing', label: '缺证据' },
+  { id: 'all', label: '全部' },
+]
 
 const TAB_META: Array<{
   id: TabType
@@ -184,6 +194,12 @@ function runStatusLabel(status: string | undefined): string {
   return '运行中'
 }
 
+function isMissingEvidenceError(message: string | null | undefined): boolean {
+  return /missing contexts|missing.*citations|No evaluatable turns/i.test(
+    String(message || '')
+  )
+}
+
 function runStatusTone(
   status: string | undefined
 ): 'completed' | 'failed' | 'processing' {
@@ -257,7 +273,33 @@ function scoreRowsFor(
       p90: percentile(itemValues, 90),
       passRate: itemValues.length ? passCount / itemValues.length : null,
     }
-  })
+  }).filter(
+    (row) =>
+      row.mean !== null ||
+      row.p50 !== null ||
+      row.p90 !== null ||
+      row.passRate !== null
+  )
+}
+
+function summarizeConversationEvidence(messages: Message[]) {
+  const assistantMessages = messages.filter(
+    (message) => message.role === 'assistant'
+  )
+  const citationsCount = assistantMessages.reduce(
+    (sum, message) => sum + (message.citations?.length || 0),
+    0
+  )
+  const evaluableTurns = assistantMessages.filter(
+    (message) => (message.citations?.length || 0) > 0
+  ).length
+
+  return {
+    assistantTurns: assistantMessages.length,
+    citationsCount,
+    evaluableTurns,
+    isEvaluable: evaluableTurns > 0,
+  }
 }
 
 function itemHasLowScore(
@@ -328,6 +370,89 @@ function EvaluationInlineStat({
         {value}
       </span>
     </div>
+  )
+}
+
+function EvidenceReadinessPanel({
+  isChecking,
+  isEvaluable,
+  assistantTurns,
+  citationsCount,
+  evaluableTurns,
+  isMissingEvidenceFailure,
+}: Readonly<{
+  isChecking: boolean
+  isEvaluable: boolean
+  assistantTurns: number
+  citationsCount: number
+  evaluableTurns: number
+  isMissingEvidenceFailure: boolean
+}>) {
+  const tone = isChecking ? 'checking' : isEvaluable ? 'ready' : 'missing'
+  const label =
+    tone === 'checking' ? '检查中' : tone === 'ready' ? '可评测' : '缺证据'
+  const title =
+    tone === 'ready'
+      ? '这条会话可以计算忠实度'
+      : tone === 'checking'
+        ? '正在检查会话证据'
+        : '这条会话不能计算忠实度'
+  const description =
+    tone === 'ready'
+      ? 'assistant 消息已写入 citations，Faithfulness 会基于这些证据判断答案是否忠于上下文。'
+      : tone === 'checking'
+        ? '正在读取会话消息，确认是否有可用于评测的 citations / retrieved contexts。'
+        : '这类历史会话可以阅读答案，但没有写入 citations / retrieved contexts；忠实度评测没有输入，不代表答案一定错。'
+
+  return (
+    <section
+      className={cn(
+        'rounded-xl border px-3 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]',
+        tone === 'ready'
+          ? 'border-emerald-200 bg-emerald-50/55'
+          : tone === 'checking'
+            ? 'border-sky-200 bg-sky-50/55'
+            : 'border-amber-200 bg-amber-50/60'
+      )}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="text-[13px] font-semibold text-slate-950">
+              忠实度可评估性
+            </div>
+            <span
+              className={cn(
+                'rounded-full px-2 py-0.5 text-[11px] font-semibold',
+                tone === 'ready'
+                  ? 'bg-emerald-100 text-emerald-700'
+                  : tone === 'checking'
+                    ? 'bg-sky-100 text-sky-700'
+                    : 'bg-amber-100 text-amber-800'
+              )}
+            >
+              {label}
+            </span>
+          </div>
+          <div className="mt-1 text-[12px] font-medium text-slate-700">
+            {title}
+          </div>
+          <p className="mt-1 max-w-3xl text-[11px] leading-4 text-slate-600">
+            {description}
+          </p>
+          {isMissingEvidenceFailure ? (
+            <p className="mt-1 text-[11px] font-medium text-amber-800">
+              当前 run 的失败原因是缺少证据，不是 RAGAS 算出低分。
+            </p>
+          ) : null}
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-1.5">
+          <EvaluationInlineStat label="助手轮次" value={assistantTurns} />
+          <EvaluationInlineStat label="可评轮次" value={evaluableTurns} />
+          <EvaluationInlineStat label="证据" value={citationsCount} />
+        </div>
+      </div>
+    </section>
   )
 }
 
@@ -479,6 +604,7 @@ function RunRecordCard({
   const metrics = run.metrics?.length || '-'
   const progress =
     run.status === 'running' || run.status === 'pending' ? 60 : null
+  const missingEvidence = isMissingEvidenceError(run.error_message)
 
   return (
     <button
@@ -497,7 +623,7 @@ function RunRecordCard({
         </div>
         <StatusBadge
           status={runStatusTone(run.status)}
-          label={runStatusLabel(run.status)}
+          label={missingEvidence ? '缺证据' : runStatusLabel(run.status)}
           dense
         />
       </div>
@@ -523,7 +649,9 @@ function RunRecordCard({
       )}
       {run.status === 'failed' && run.error_message ? (
         <div className="mt-2 line-clamp-1 text-[11px] font-medium text-rose-600">
-          错误：{run.error_message}
+          {missingEvidence
+            ? '缺少 citations / retrieved contexts，无法计算忠实度。'
+            : `错误：${run.error_message}`}
         </div>
       ) : (
         <div className="mt-2 text-right text-[11px] text-slate-500">
@@ -743,12 +871,14 @@ function EvaluationsLoading() {
 
 function EvaluationsPageContent() {
   const searchParams = useSearchParams()
+  const deepLinkedConversationId =
+    searchParams.get('conversation_id')?.trim() || ''
   const [activeTab, setActiveTab] = useState<TabType>(
     () => parseEvaluationTab(searchParams.get('tab')) || 'conversation'
   )
   const isActiveTab = (tab: TabType) => activeTab === tab
   const [selectedConversationId, setSelectedConversationId] =
-    useState<string>('')
+    useState<string>(() => deepLinkedConversationId)
 
   const [selectedRunId, setSelectedRunId] = useState<string>('')
 
@@ -760,20 +890,51 @@ function EvaluationsPageContent() {
   const [skipEmptyContexts, setSkipEmptyContexts] = useState(true)
   const [onlyFailureItems, setOnlyFailureItems] = useState(false)
   const [isRunRecordsCollapsed, setIsRunRecordsCollapsed] = useState(false)
+  const [conversationEvidenceFilter, setConversationEvidenceFilter] =
+    useState<ConversationEvidenceFilter>('ready')
 
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [isStarting, setIsStarting] = useState(false)
+  const scopedConversationId = selectedConversationId || deepLinkedConversationId
+  const runListParams = useMemo(
+    () => ({
+      limit: 50,
+      ...(scopedConversationId
+        ? { conversation_id: scopedConversationId }
+        : {}),
+    }),
+    [scopedConversationId]
+  )
 
   const conversationsQuery = useQuery({
     queryKey: queryKeys.chat.conversations({ limit: 100 }),
     queryFn: () => chatApi.listConversations({ limit: 100 }),
   })
-  const runsQuery = useQuery({
-    queryKey: queryKeys.evaluations.ragasRuns({ limit: 50 }),
+  const conversations = conversationsQuery.data?.items ?? EMPTY_CONVERSATIONS
+  const messagesQuery = useQuery({
+    queryKey: queryKeys.chat.messages(scopedConversationId),
+    enabled: Boolean(scopedConversationId),
+    queryFn: () => chatApi.getMessages(scopedConversationId, { limit: 200 }),
+  })
+  const readinessConversationIds = useMemo(
+    () => conversations.map((conversation) => conversation.id),
+    [conversations]
+  )
+  const conversationReadinessQuery = useQuery({
+    queryKey: queryKeys.evaluations.ragasConversationReadiness(
+      readinessConversationIds
+    ),
+    enabled:
+      activeTab === 'conversation' && readinessConversationIds.length > 0,
     queryFn: () =>
-      evaluationApi.listRagasRuns({
-        limit: 50,
+      evaluationApi.getRagasConversationReadiness({
+        conversation_ids: readinessConversationIds,
       }),
+    staleTime: 60_000,
+  })
+  const runsQuery = useQuery({
+    queryKey: queryKeys.evaluations.ragasRuns(runListParams),
+    queryFn: () => evaluationApi.listRagasRuns(runListParams),
   })
   const runDetailQuery = useQuery({
     queryKey: queryKeys.evaluations.ragasRunDetail(selectedRunId, {
@@ -792,16 +953,70 @@ function EvaluationsPageContent() {
       return status === 'pending' || status === 'running' ? 2000 : false
     },
   })
-  const conversations = conversationsQuery.data?.items ?? EMPTY_CONVERSATIONS
   const runs = runsQuery.data?.items ?? EMPTY_RUNS
   const runDetail = runDetailQuery.data || null
   const isLoading = conversationsQuery.isLoading || runsQuery.isLoading || isRefreshing
+  const evidenceSummary = useMemo(
+    () => summarizeConversationEvidence(messagesQuery.data?.messages || []),
+    [messagesQuery.data?.messages]
+  )
+  const conversationEvidenceById = useMemo(() => {
+    const items = conversationReadinessQuery.data?.items || []
+    return new Map(
+      items.map((item) => [
+        item.conversation_id,
+        {
+          assistantTurns: item.assistant_turns,
+          evaluableTurns: item.evaluable_turns,
+          citationsCount: item.citations_count,
+          isEvaluable: item.is_evaluable,
+          isChecking: false,
+          isKnown: true,
+        },
+      ])
+    )
+  }, [conversationReadinessQuery.data?.items])
+  const conversationEvidenceCounts = useMemo(() => {
+    let ready = 0
+    let missing = 0
+    let checking = 0
+
+    for (const conversation of conversations) {
+      const evidence = conversationEvidenceById.get(conversation.id)
+      if (!evidence?.isKnown || conversationReadinessQuery.isLoading) {
+        checking += 1
+      } else if (evidence.isEvaluable) {
+        ready += 1
+      } else {
+        missing += 1
+      }
+    }
+
+    return { ready, missing, checking, all: conversations.length }
+  }, [conversationEvidenceById, conversationReadinessQuery.isLoading, conversations])
+  const filteredConversations = useMemo(() => {
+    if (conversationEvidenceFilter === 'all') return conversations
+    return conversations.filter((conversation) => {
+      const evidence = conversationEvidenceById.get(conversation.id)
+      if (!evidence?.isKnown) return false
+      return conversationEvidenceFilter === 'ready'
+        ? evidence.isEvaluable
+        : !evidence.isEvaluable
+    })
+  }, [conversationEvidenceById, conversationEvidenceFilter, conversations])
+  const isEvidenceChecking =
+    Boolean(scopedConversationId) &&
+    (messagesQuery.isLoading || messagesQuery.isFetching)
+  const isMissingEvidence =
+    Boolean(scopedConversationId) &&
+    !isEvidenceChecking &&
+    messagesQuery.isSuccess &&
+    !evidenceSummary.isEvaluable
 
   // Support deep-linking: /evaluations?conversation_id=...
   useEffect(() => {
-    const cid = searchParams.get('conversation_id')
-    if (cid) setSelectedConversationId(cid)
-  }, [searchParams])
+    if (deepLinkedConversationId) setSelectedConversationId(deepLinkedConversationId)
+  }, [deepLinkedConversationId])
 
   // Support deep-linking: /evaluations?tab=regression|conversation
   useEffect(() => {
@@ -810,21 +1025,38 @@ function EvaluationsPageContent() {
   }, [searchParams])
 
   useEffect(() => {
-    setSelectedConversationId((prev) => prev || conversationsQuery.data?.items?.[0]?.id || '')
-  }, [conversationsQuery.data])
+    if (deepLinkedConversationId) return
+    setSelectedConversationId((prev) => {
+      if (
+        prev &&
+        filteredConversations.some((conversation) => conversation.id === prev)
+      )
+        return prev
+      return filteredConversations[0]?.id || ''
+    })
+  }, [deepLinkedConversationId, filteredConversations])
 
-  // When switching conversation, reset the detail area but keep the right rail on real recent runs.
+  // Keep the detail panel scoped to the selected conversation, including deep links from history.
   useEffect(() => {
-    if (!selectedConversationId) return
-    setSelectedRunId('')
-  }, [selectedConversationId])
+    if (!scopedConversationId) return
+
+    if (!runs.length) {
+      setSelectedRunId('')
+      return
+    }
+
+    setSelectedRunId((prev) => {
+      if (prev && runs.some((run) => run.id === prev)) return prev
+      return runs[0]?.id || ''
+    })
+  }, [runs, scopedConversationId])
 
   const handleStart = async () => {
-    if (!selectedConversationId) return
+    if (!scopedConversationId) return
     setIsStarting(true)
     try {
       const run = await evaluationApi.createRagasRun({
-        conversation_id: selectedConversationId,
+        conversation_id: scopedConversationId,
         metrics: metricKeys,
         max_turns: maxTurns,
         skip_empty_contexts: skipEmptyContexts,
@@ -851,9 +1083,38 @@ function EvaluationsPageContent() {
       .map(([k, v]) => ({ key: k, value: Number(v) }))
   }, [summary])
 
-  const runErrorMessage = String(runDetail?.run?.error_message || '').trim()
+  const activeTabMeta =
+    TAB_META.find((item) => item.id === activeTab) || TAB_META[0]
+  const ActiveTabIcon = activeTabMeta.icon
+  const selectedConversation =
+    conversations.find(
+      (conversation) => conversation.id === scopedConversationId
+    ) || null
+  const selectedConversationHiddenByFilter = Boolean(
+    scopedConversationId &&
+      !filteredConversations.some(
+        (conversation) => conversation.id === scopedConversationId
+      )
+  )
+  const runStatusCounts = useMemo(() => {
+    return runs.reduce(
+      (acc, run) => {
+        if (run.status === 'completed') acc.completed += 1
+        else if (run.status === 'failed') acc.failed += 1
+        else acc.running += 1
+        return acc
+      },
+      { completed: 0, failed: 0, running: 0 }
+    )
+  }, [runs])
+  const selectedRun =
+    runDetail?.run || runs.find((run) => run.id === selectedRunId) || null
+  const runErrorMessage = String(
+    runDetail?.run?.error_message || selectedRun?.error_message || ''
+  ).trim()
+  const isMissingEvidenceFailure = isMissingEvidenceError(runErrorMessage)
 
-  const runStatus = runDetail?.run?.status
+  const runStatus = runDetail?.run?.status || selectedRun?.status
   const statusBadge = useMemo(() => {
     if (!runStatus) return null
 
@@ -885,27 +1146,36 @@ function EvaluationsPageContent() {
 
     return badge
   }, [runErrorMessage, runStatus])
-
-  const activeTabMeta =
-    TAB_META.find((item) => item.id === activeTab) || TAB_META[0]
-  const ActiveTabIcon = activeTabMeta.icon
-  const selectedConversation =
-    conversations.find(
-      (conversation) => conversation.id === selectedConversationId
-    ) || null
-  const runStatusCounts = useMemo(() => {
-    return runs.reduce(
-      (acc, run) => {
-        if (run.status === 'completed') acc.completed += 1
-        else if (run.status === 'failed') acc.failed += 1
-        else acc.running += 1
-        return acc
-      },
-      { completed: 0, failed: 0, running: 0 }
-    )
-  }, [runs])
-  const selectedRun =
-    runDetail?.run || runs.find((run) => run.id === selectedRunId) || null
+  const emptyRunState = useMemo(() => {
+    if (!selectedRunId) {
+      return {
+        title: '暂无评测结果',
+        description: '请先在左侧选择对话、指标与参数，然后点击「开始评测」运行。',
+      }
+    }
+    if (runStatus === 'failed') {
+      return {
+        title: isMissingEvidenceFailure
+          ? '缺少证据，无法计算忠实度'
+          : '评测失败，暂无分数',
+        description:
+          (isMissingEvidenceFailure
+            ? '这条会话没有可评估的 citations / retrieved contexts。请用 MimirQ 对话或 Dify HTTP 回写证据链后再评测。'
+            : runErrorMessage) ||
+          '该运行失败，后端未生成 summary 分数；请检查会话是否带有 citations / retrieved contexts。',
+      }
+    }
+    if (runStatus === 'pending' || runStatus === 'running') {
+      return {
+        title: '评测运行中',
+        description: '后端正在计算评分，完成后会自动刷新运行详情。',
+      }
+    }
+    return {
+      title: '暂无评分数据',
+      description: '这条 run 已返回，但后端尚未生成 summary 分数或逐轮 scores。',
+    }
+  }, [isMissingEvidenceFailure, runErrorMessage, runStatus, selectedRunId])
   const scoreRows = useMemo(
     () => scoreRowsFor(runDetail, summary),
     [runDetail, summary]
@@ -928,7 +1198,7 @@ function EvaluationsPageContent() {
     : selectedConversation
   const selectedRunTitle = shortConversationTitle(
     selectedRunConversation,
-    selectedRun?.conversation_id || selectedConversationId
+    selectedRun?.conversation_id || scopedConversationId
   )
 
   const handleConversationChange = (conversationId: string) => {
@@ -1119,32 +1389,122 @@ function EvaluationsPageContent() {
                     description="从已有会话里选一条对话，评测会按用户-助手轮次重建上下文。"
                   >
                     <Select
-                      value={selectedConversationId}
+                      value={scopedConversationId}
                       onValueChange={handleConversationChange}
                     >
                       <SelectTrigger className="h-9 rounded-lg border-slate-200 bg-card text-xs">
                         <SelectValue placeholder="请选择会话或查询" />
                       </SelectTrigger>
                       <SelectContent>
-                        {conversations.map((conversation) => (
+                        {scopedConversationId &&
+                        (!selectedConversation || selectedConversationHiddenByFilter) ? (
+                          <SelectItem value={scopedConversationId}>
+                            {shortConversationTitle(
+                              selectedConversation,
+                              scopedConversationId
+                            )}{' '}
+                            · 当前
+                          </SelectItem>
+                        ) : null}
+                        {!filteredConversations.length ? (
+                          <SelectItem value="__empty_conversation_filter__" disabled>
+                            当前筛选暂无会话
+                          </SelectItem>
+                        ) : null}
+                        {filteredConversations.map((conversation) => {
+                          const evidence = conversationEvidenceById.get(
+                            conversation.id
+                          )
+                          const evidenceLabel = !evidence?.isKnown
+                            ? '检查中'
+                            : evidence.isEvaluable
+                              ? `${evidence.citationsCount} 条证据`
+                              : '缺证据'
+                          return (
                           <SelectItem
                             key={conversation.id}
                             value={conversation.id}
                           >
-                            {conversation.title || conversation.id}
+                            <span className="flex min-w-0 items-center justify-between gap-3">
+                              <span className="truncate">
+                                {conversation.title || conversation.id}
+                              </span>
+                              <span
+                                className={cn(
+                                  'shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium',
+                                  !evidence?.isKnown
+                                    ? 'bg-slate-100 text-slate-500'
+                                    : evidence.isEvaluable
+                                      ? 'bg-emerald-50 text-emerald-700'
+                                      : 'bg-amber-50 text-amber-700'
+                                )}
+                              >
+                                {evidenceLabel}
+                              </span>
+                            </span>
                           </SelectItem>
-                        ))}
+                          )
+                        })}
                       </SelectContent>
                     </Select>
+                    <div className="mt-2 grid grid-cols-3 gap-1 rounded-lg border border-slate-200 bg-slate-50/70 p-1">
+                      {CONVERSATION_EVIDENCE_FILTERS.map((filter) => {
+                        const count =
+                          filter.id === 'ready'
+                            ? conversationEvidenceCounts.ready
+                            : filter.id === 'missing'
+                              ? conversationEvidenceCounts.missing
+                              : conversationEvidenceCounts.all
+                        const active = conversationEvidenceFilter === filter.id
+                        return (
+                          <button
+                            key={filter.id}
+                            type="button"
+                            onClick={() => setConversationEvidenceFilter(filter.id)}
+                            className={cn(
+                              'rounded-md px-1.5 py-1 text-[11px] font-semibold transition-colors',
+                              active
+                                ? 'bg-card text-blue-700 shadow-sm ring-1 ring-blue-100'
+                                : 'text-slate-500 hover:bg-card/70 hover:text-slate-900'
+                            )}
+                          >
+                            {filter.label}
+                            <span className="ml-1 font-mono tabular-nums">
+                              {count}
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
                     <div className="mt-3 flex flex-wrap items-center gap-2">
                       <EvaluationInlineStat
                         label="已选"
-                        value={selectedConversation ? '1' : '0'}
+                        value={scopedConversationId ? '1' : '0'}
                       />
                       <EvaluationInlineStat
                         label="总数"
                         value={conversations.length}
                       />
+                      <EvaluationInlineStat
+                        label="证据"
+                        value={
+                          isEvidenceChecking
+                            ? '检查中'
+                            : evidenceSummary.isEvaluable
+                              ? evidenceSummary.citationsCount
+                              : '缺失'
+                        }
+                      />
+                      <EvaluationInlineStat
+                        label="可评轮次"
+                        value={evidenceSummary.evaluableTurns}
+                      />
+                      {conversationEvidenceCounts.checking ? (
+                        <EvaluationInlineStat
+                          label="检查中"
+                          value={conversationEvidenceCounts.checking}
+                        />
+                      ) : null}
                     </div>
                   </EvaluationConfigSection>
 
@@ -1225,7 +1585,8 @@ function EvaluationsPageContent() {
                     className="h-9 w-full rounded-lg bg-blue-600 text-[13px] font-semibold text-info-foreground hover:bg-blue-700"
                     disabled={
                       isStarting ||
-                      !selectedConversationId ||
+                      !scopedConversationId ||
+                      isMissingEvidence ||
                       !metricKeys.length
                     }
                     onClick={handleStart}
@@ -1235,7 +1596,7 @@ function EvaluationsPageContent() {
                     ) : (
                       <PlayCircle className="mr-2 h-4 w-4" />
                     )}
-                    开始评测
+                    {isMissingEvidence ? '缺证据，不能评测' : '开始评测'}
                   </Button>
                   <Button
                     variant="outline"
@@ -1254,6 +1615,15 @@ function EvaluationsPageContent() {
               </aside>
 
               <main className="min-w-0 space-y-3">
+                <EvidenceReadinessPanel
+                  isChecking={isEvidenceChecking}
+                  isEvaluable={evidenceSummary.isEvaluable}
+                  assistantTurns={evidenceSummary.assistantTurns}
+                  citationsCount={evidenceSummary.citationsCount}
+                  evaluableTurns={evidenceSummary.evaluableTurns}
+                  isMissingEvidenceFailure={isMissingEvidenceFailure}
+                />
+
                 <section className="grid overflow-hidden rounded-xl border border-slate-200 bg-card shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:grid-cols-4">
                   <div className="border-b border-slate-200 px-3 py-2.5 sm:border-b-0 sm:border-r">
                     <div className="inline-flex items-center gap-1.5 text-[12px] font-medium text-blue-700">
@@ -1318,13 +1688,9 @@ function EvaluationsPageContent() {
                     </div>
                   ) : (
                     <div className="mt-3">
-	                      <EvaluationHeroEmptyState
-	                        title={selectedRunId ? '暂无运行记录' : '暂无评测结果'}
-                        description={
-                          selectedRunId
-                            ? '这条 run 可能仍在处理中，或者后端尚未返回 summary 分数。'
-                            : '请先在左侧选择对话、指标与参数，然后点击「开始评测」运行。'
-                        }
+                      <EvaluationHeroEmptyState
+                        title={emptyRunState.title}
+                        description={emptyRunState.description}
                       />
                     </div>
                   )}

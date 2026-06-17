@@ -17,6 +17,7 @@ export { chunkPresetApi } from './governance'
 export { kgApi } from './graph'
 export { healthApi } from './health'
 export { industryRulesApi } from './industry-rules'
+export { integrationApi } from './integrations'
 export { lineageApi } from './lineage'
 export { ltrApi } from './ltr'
 export { metaApi } from './meta'
@@ -48,6 +49,7 @@ export type {
   DatasetAnalysisGlossaryWritebackParams,
   DatasetAnalysisResponse,
   DatasetAnalysisRuleSuggestionParams,
+  DatasetRetrievalAuditPayload,
 } from './datasets'
 export type {
   KGHardcaseMode,
@@ -78,6 +80,11 @@ export type {
   IndustryRulesetListResponse,
   IndustryRulesetSummary,
 } from './industry-rules'
+export type {
+  ExternalConversationIngestRequest,
+  ExternalConversationIngestResponse,
+  ExternalConversationMessageInput,
+} from './integrations'
 export type { LineageResponse } from './lineage'
 export type { RtbfCascadeResponse, RtbfRequest, RtbfStatusResponse } from './rtbf'
 export type {

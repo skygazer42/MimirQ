@@ -222,6 +222,26 @@ def apply_runtime_migrations(engine) -> None:
             "CREATE INDEX IF NOT EXISTS ix_document_chunks_content_trgm_active "
             "ON document_chunks USING GIN (content gin_trgm_ops) "
             "WHERE disabled_at IS NULL;",
+            # Dify external knowledge metadata-anchor fallback.
+            # Mirrors Alembic 0017 for deployments that rely on startup guardrails.
+            "CREATE INDEX IF NOT EXISTS ix_document_chunks_metadata_question_trgm_active "
+            "ON document_chunks USING GIN (((metadata->>'question')) gin_trgm_ops) "
+            "WHERE disabled_at IS NULL;",
+            "CREATE INDEX IF NOT EXISTS ix_document_chunks_metadata_service_name_trgm_active "
+            "ON document_chunks USING GIN (((metadata->>'service_name')) gin_trgm_ops) "
+            "WHERE disabled_at IS NULL;",
+            "CREATE INDEX IF NOT EXISTS ix_document_chunks_metadata_case_title_trgm_active "
+            "ON document_chunks USING GIN (((metadata->>'case_title')) gin_trgm_ops) "
+            "WHERE disabled_at IS NULL;",
+            "CREATE INDEX IF NOT EXISTS ix_document_chunks_metadata_source_topic_trgm_active "
+            "ON document_chunks USING GIN (((metadata->>'source_topic')) gin_trgm_ops) "
+            "WHERE disabled_at IS NULL;",
+            "CREATE INDEX IF NOT EXISTS ix_document_chunks_metadata_title_trgm_active "
+            "ON document_chunks USING GIN (((metadata->>'title')) gin_trgm_ops) "
+            "WHERE disabled_at IS NULL;",
+            "CREATE INDEX IF NOT EXISTS ix_document_chunks_metadata_jsonb_active "
+            "ON document_chunks USING GIN (metadata jsonb_path_ops) "
+            "WHERE disabled_at IS NULL;",
             'ALTER TABLE prompt_templates ADD COLUMN IF NOT EXISTS version INTEGER DEFAULT 1;',
             'ALTER TABLE prompt_templates ADD COLUMN IF NOT EXISTS parent_id UUID;',
             'ALTER TABLE prompt_templates ADD COLUMN IF NOT EXISTS ab_experiment_key VARCHAR(100);',

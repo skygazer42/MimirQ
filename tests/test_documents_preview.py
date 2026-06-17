@@ -83,3 +83,71 @@ def test_documents_preview_includes_analytics_raw_and_cleaned(monkeypatch):  # n
     assert body["analytics"]["raw"]["heading_count"] == 1
     assert body["analytics"]["cleaned"]["char_count"] != body["analytics"]["raw"]["char_count"]
 
+
+def test_documents_preview_text_uses_inline_parser(monkeypatch, tmp_path):  # noqa: ANN001, ARG001
+    import app.api.v1.document_preview as document_preview_module
+    import app.api.v1.documents as documents_module
+    from app.core.config import settings
+    from app.services.dataset_service import DatasetService
+
+    tenant_id = uuid.uuid4()
+
+    class _DummyDB:
+        pass
+
+    def _override_get_db():  # noqa: ANN202
+        yield _DummyDB()
+
+    def _override_get_tenant_id() -> uuid.UUID:
+        return tenant_id
+
+    def _override_get_current_account_id() -> str:
+        return "test-account"
+
+    def _raise_subprocess_called(**_kwargs):  # noqa: ANN202
+        raise AssertionError("TXT preview should not invoke subprocess worker")
+
+    def _fake_parse_with_provenance(source_path, *, parser_backend, tenant_id, document_id):  # noqa: ANN001, ANN202
+        assert source_path.suffix == ".txt"
+        assert parser_backend == "text"
+        assert tenant_id
+        assert document_id
+        return (
+            [
+                Document(
+                    page_content=source_path.read_text(encoding="utf-8"),
+                    metadata={"parser_backend": "text"},
+                )
+            ],
+            "text",
+            {"source": "inline-test"},
+        )
+
+    monkeypatch.setattr(settings, "PREVIEW_INLINE_TEXT_PARSE_ENABLED", True, raising=False)
+    monkeypatch.setattr(DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(documents_module, "run_subprocess_worker", _raise_subprocess_called, raising=True)
+    monkeypatch.setattr(
+        document_preview_module.parser_factory,
+        "parse_with_provenance",
+        _fake_parse_with_provenance,
+        raising=True,
+    )
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_tenant_id] = _override_get_tenant_id
+    app.dependency_overrides[get_current_account_id] = _override_get_current_account_id
+    app.post("/api/v1/documents/preview")(documents_module.preview_document)
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/documents/preview",
+        data={"parser_backend": "auto"},
+        files={"file": ("demo.txt", b"plain preview", "text/plain")},
+    )
+    assert res.status_code == 200, res.text
+    body = res.json()
+
+    assert body["parser_backend"] == "text"
+    assert body["segments"][0]["content"] == "plain preview"
+    assert body["segments"][0]["metadata"]["parser_backend"] == "text"
