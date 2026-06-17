@@ -64,6 +64,8 @@ class EventProcessor:
                         "properties": {
                             "title": {"type": "string"},
                             "summary": {"type": "string"},
+                            "schema_version": {"type": "string"},
+                            "event_schema": {"type": "string"},
                             "entities": {
                                 "type": "array",
                                 "items": {
@@ -72,7 +74,17 @@ class EventProcessor:
                                         "name": {"type": "string"},
                                         "type": {"type": "string"},
                                         "description": {"type": "string"},
+                                        "role": {"type": "string"},
+                                        "weight": {"type": "number", "minimum": 0, "maximum": 1},
                                         "evidence_quote": {"type": "string"},
+                                        "source_span": {
+                                            "type": "object",
+                                            "properties": {
+                                                "source": {"type": "string"},
+                                                "start_char": {"type": "integer"},
+                                                "end_char": {"type": "integer"},
+                                            },
+                                        },
                                     },
                                 },
                             },
@@ -89,6 +101,7 @@ class EventProcessor:
                 "context": context,
                 "schema": schema_hint,
                 "max_events": max_events_i,
+                "max_entities": max_entities_i,
                 "max_entities_per_event": max_entities_i,
             }
             try:
@@ -118,6 +131,8 @@ class EventProcessor:
                 continue
             title = (raw.get("title") or "").strip()
             summary = (raw.get("summary") or "").strip()
+            schema_version = str(raw.get("schema_version") or "").strip() or None
+            event_schema = str(raw.get("event_schema") or "").strip() or None
             if not title:
                 # fallback to first sentence
                 title = summary[:50] or "Event"
@@ -128,12 +143,18 @@ class EventProcessor:
                     name = ent.get("name") or ""
                     etype = ent.get("type") or "unknown"
                     desc = ent.get("description") or ""
+                    role = ent.get("role") or None
+                    weight = ent.get("weight")
                     evidence_quote = ent.get("evidence_quote") or ""
+                    source_span = ent.get("source_span") if isinstance(ent.get("source_span"), dict) else {}
                 else:
                     name = str(ent)
                     etype = "unknown"
                     desc = ""
+                    role = None
+                    weight = None
                     evidence_quote = ""
+                    source_span = {}
                 if not name:
                     continue
                 normalized_name = self.parser.normalize_name(name)
@@ -146,7 +167,16 @@ class EventProcessor:
                         "normalized_name": normalized_name,
                         "type": normalized_type,
                         "description": desc.strip(),
+                        "role": str(role or "").strip() or None,
+                        "weight": weight if isinstance(weight, (int, float)) else None,
                         "evidence_quote": str(evidence_quote or "").strip() or None,
+                        "evidence_source": str(source_span.get("source") or "").strip() or None,
+                        "evidence_start_char": source_span.get("start_char")
+                        if isinstance(source_span.get("start_char"), int)
+                        else None,
+                        "evidence_end_char": source_span.get("end_char")
+                        if isinstance(source_span.get("end_char"), int)
+                        else None,
                     }
                 else:
                     # Best-effort merge: keep longer description.
@@ -157,12 +187,16 @@ class EventProcessor:
                     eq = str(existing.get("evidence_quote") or "").strip()
                     if not eq:
                         existing["evidence_quote"] = str(evidence_quote or "").strip() or None
+                    if not existing.get("role") and role:
+                        existing["role"] = str(role or "").strip() or None
 
             events.append(
                 {
                     "title": title,
                     "summary": summary or title,
                     "content": summary or title,
+                    "schema_version": schema_version,
+                    "event_schema": event_schema,
                     "entities": list(entity_map.values()),
                     "chunk_id": str(sections[0].id),
                 }
