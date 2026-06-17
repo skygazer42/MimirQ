@@ -14,6 +14,7 @@ def test_builtin_prompt_library_exposes_core_operational_templates() -> None:
     assert {
         "rag_answer_claude_xml_zh",
         "kg_extract_graphrag_zh",
+        "kg_extract_event_schema_zh",
         "judge_faithfulness_ragas_zh",
         "testset_generation_ragas_zh",
     }.issubset(keys)
@@ -29,6 +30,17 @@ def test_builtin_prompt_library_exposes_core_operational_templates() -> None:
     assert by_key["kg_extract_graphrag_zh"].category == "kg_extract"
     assert {"context", "max_events", "max_entities"}.issubset(set(by_key["kg_extract_graphrag_zh"].variables))
     assert '"events"' in by_key["kg_extract_graphrag_zh"].content
+
+    event_schema = by_key["kg_extract_event_schema_zh"]
+    assert event_schema.category == "kg_extract"
+    assert {"context", "max_events", "max_entities"}.issubset(set(event_schema.variables))
+    assert "event_schema" in event_schema.content
+    assert '"role"' in event_schema.content
+    assert '"weight"' in event_schema.content
+    assert "source_span" in event_schema.content
+    assert "evidence_quote" in event_schema.content
+    assert "Hyper-Extract" in event_schema.content
+    assert "Apache-2.0" in event_schema.content
 
     assert by_key["judge_faithfulness_ragas_zh"].category == "llm_judge"
     assert {"question", "answer", "contexts"}.issubset(set(by_key["judge_faithfulness_ragas_zh"].variables))
@@ -72,6 +84,14 @@ def test_builtin_prompt_templates_inherit_formal_plan_rules() -> None:
     assert "gleaning" in kg.lower()
     assert "evidence_quote" in kg
     assert '"required"' in kg
+
+    event_schema_kg = by_key["kg_extract_event_schema_zh"].content
+    assert "event-as-container" in event_schema_kg
+    assert "schema_version" in event_schema_kg
+    assert "participants" in event_schema_kg
+    assert "不得把共现实体当作强关系" in event_schema_kg
+    assert "实体先抽取，事件/关系后抽取" in event_schema_kg
+    assert "每个参与者必须来自已抽取实体列表" in event_schema_kg
 
     judge = by_key["judge_faithfulness_ragas_zh"].content
     assert "atomic_facts" in judge
@@ -178,6 +198,85 @@ def test_builtin_prompt_templates_compile_with_langchain_f_string_format() -> No
         existing_questions=placeholders["existing_questions"],
     )
     assert '"qa_pairs": {' in rendered_testset
+
+
+@pytest.mark.asyncio
+async def test_event_processor_template_vars_support_builtin_kg_aliases() -> None:
+    from types import SimpleNamespace
+
+    from app.rag.kg.extraction.processor import EventProcessor
+    from tests.helpers.async_utils import yield_control
+
+    captured: dict[str, str] = {}
+
+    class _FakeLLM:
+        async def chat_with_schema(self, messages, response_schema, temperature=0.2):  # noqa: ANN001
+            await yield_control()
+            captured["prompt"] = messages[0].content
+            return {"events": []}
+
+    processor = EventProcessor(
+        llm_client=_FakeLLM(),
+        prompt_template="Extract {max_events} events and {max_entities} entities from:\n{context}",
+    )
+
+    await processor.extract_from_sections(
+        [SimpleNamespace(id="chunk-1", content="Alpha uses the blue flag.", page_number=None)],
+        1,
+        max_events=3,
+        max_entities_per_event=7,
+    )
+
+    assert "Extract 3 events and 7 entities" in captured["prompt"]
+    assert "{max_entities}" not in captured["prompt"]
+
+
+@pytest.mark.asyncio
+async def test_event_processor_preserves_event_schema_entity_fields() -> None:
+    from types import SimpleNamespace
+
+    from app.rag.kg.extraction.processor import EventProcessor
+    from tests.helpers.async_utils import yield_control
+
+    class _FakeLLM:
+        async def chat_with_schema(self, messages, response_schema, temperature=0.2):  # noqa: ANN001
+            await yield_control()
+            return {
+                "events": [
+                    {
+                        "title": "Project Atlas launch",
+                        "summary": "Project Atlas uses Orion billing.",
+                        "schema_version": "event-as-container.v1",
+                        "event_schema": "event-as-container.v1",
+                        "entities": [
+                            {
+                                "name": "Orion billing",
+                                "type": "Product",
+                                "role": "dependency",
+                                "weight": 0.8,
+                                "description": "Billing dependency",
+                                "evidence_quote": "uses Orion billing",
+                                "source_span": {"source": "target", "start_char": 14, "end_char": 33},
+                            }
+                        ],
+                    }
+                ]
+            }
+
+    processor = EventProcessor(llm_client=_FakeLLM())
+    events = await processor.extract_from_sections(
+        [SimpleNamespace(id="chunk-1", content="Project Atlas uses Orion billing.", page_number=None)],
+        1,
+    )
+
+    assert events[0]["schema_version"] == "event-as-container.v1"
+    assert events[0]["event_schema"] == "event-as-container.v1"
+    entity = events[0]["entities"][0]
+    assert entity["role"] == "dependency"
+    assert entity["weight"] == 0.8
+    assert entity["evidence_source"] == "target"
+    assert entity["evidence_start_char"] == 14
+    assert entity["evidence_end_char"] == 33
 
 
 def test_builtin_prompt_sync_endpoint_creates_and_updates_system_templates(monkeypatch: pytest.MonkeyPatch) -> None:

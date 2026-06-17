@@ -155,6 +155,115 @@ Output:
 )
 
 
+# Adapted from Hyper-Extract AutoHypergraph prompt/schema ideas.
+# Source: https://github.com/yifanfeng97/Hyper-Extract (Apache-2.0)
+_KG_EXTRACT_EVENT_SCHEMA_ZH = render_formal_json_prompt(
+    role="通用 KG 事件结构抽取器",
+    objective=(
+        "把非结构化文档片段抽取为可持久化、可审计的 event-as-container 结构；"
+        "事件只作为事实容器，参与实体必须带角色、权重和逐字证据，供后续 KG/RAG 质量分析使用。"
+    ),
+    task_rules=[
+        "来源说明：本模板复用并适配 Hyper-Extract AutoHypergraph 的通用 prompt/schema 思路（Apache-2.0），仅用于抽取结构，不改变 MimirQ 召回排序。",
+        "实体先抽取，事件/关系后抽取：先识别可独立命名的 entities，再把同一事实单元表示为 event container。",
+        "每个参与者必须来自已抽取实体列表；不要创建未在实体列表中出现的参与者或关系。",
+        "event container 对应 Hyper-Extract 中的多参与者 relation/hyperedge 概念，可表达分组、事件或复杂关系。",
+        "采用 event-as-container 思路：一个 event 表示原文中同一事实单元、流程单元或叙述单元，不表示检索时必须整组召回。",
+        "最多输出 {max_events} 个事件；每个事件最多 {max_entities} 个参与实体(participants)。",
+        "每个实体必须有 name、type、role、weight、description、evidence_quote；role 表示该实体在该事件中的语义角色。",
+        "weight 取 0 到 1：只表示该实体对当前事件的证据强度，不得把共现实体当作强关系。",
+        "source_span 可选；若能定位，填写相对当前输入片段的 start_char/end_char/source。",
+        "只抽取原文明确支持的事实；缺失字段使用空字符串或 null，不得补常识、不得猜测。",
+        "事件 summary 必须可单独作为检索证据片段阅读，但不要把多个无关事实硬合成一个事件。",
+    ],
+    examples="""[Few-shot Example]
+Input:
+Project Atlas uses Orion billing. Mira Chen owns Project Atlas. The migration was approved on 2026-05-22.
+Output:
+{
+  "events": [
+    {
+      "title": "Project Atlas 迁移获批并依赖 Orion billing",
+      "summary": "Project Atlas 使用 Orion billing，负责人是 Mira Chen，迁移在 2026-05-22 获批。",
+      "schema_version": "event-as-container.v1",
+      "event_schema": "event-as-container.v1",
+      "entities": [
+        {
+          "name": "Project Atlas",
+          "type": "Product",
+          "role": "subject",
+          "weight": 1.0,
+          "description": "使用 Orion billing 的项目",
+          "evidence_quote": "Project Atlas uses Orion billing"
+        },
+        {
+          "name": "Orion billing",
+          "type": "Product",
+          "role": "dependency",
+          "weight": 0.8,
+          "description": "Project Atlas 使用的计费系统",
+          "evidence_quote": "uses Orion billing"
+        },
+        {
+          "name": "Mira Chen",
+          "type": "Person",
+          "role": "owner",
+          "weight": 0.7,
+          "description": "Project Atlas 的负责人",
+          "evidence_quote": "Mira Chen owns Project Atlas"
+        }
+      ]
+    }
+  ]
+}
+""",
+    input_sections=[("Real Data", _CONTEXT_PLACEHOLDER)],
+    output_schema="""{
+  "type": "object",
+  "required": ["events"],
+  "properties": {
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["title", "summary", "entities"],
+        "properties": {
+          "title": {"type": "string"},
+          "summary": {"type": "string"},
+          "schema_version": {"type": "string", "enum": ["event-as-container.v1"]},
+          "event_schema": {"type": "string", "enum": ["event-as-container.v1"]},
+          "entities": {
+            "type": "array",
+            "description": "participants of the event container",
+            "items": {
+              "type": "object",
+              "required": ["name", "type", "role", "weight", "description", "evidence_quote"],
+              "properties": {
+                "name": {"type": "string"},
+                "type": {"type": "string"},
+                "role": {"type": "string"},
+                "weight": {"type": "number", "minimum": 0, "maximum": 1},
+                "description": {"type": "string"},
+                "evidence_quote": {"type": "string"},
+                "source_span": {
+                  "type": "object",
+                  "properties": {
+                    "source": {"type": "string"},
+                    "start_char": {"type": "integer"},
+                    "end_char": {"type": "integer"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}""",
+)
+
+
 _JUDGE_FAITHFULNESS_RAGAS_ZH = render_formal_json_prompt(
     role="RAG 事实一致性评测专家",
     objective="评估回答是否被上下文支持，并把引用错误视为事实错误。",
@@ -1366,6 +1475,16 @@ _BUILTIN_PROMPT_TEMPLATES: tuple[BuiltinPromptTemplate, ...] = (
         variables=["context", "max_events", "max_entities"],
         category="kg_extract",
         tags=_tags("kg", "graphrag", "evidence", "zh"),
+        version=_FORMAL_VERSION,
+    ),
+    BuiltinPromptTemplate(
+        template_key="kg_extract_event_schema_zh",
+        name="知识图谱抽取（Event Schema 中文）",
+        description="复用 Hyper-Extract 节点优先 schema 思路的通用 event-as-container 抽取模板。",
+        content=_KG_EXTRACT_EVENT_SCHEMA_ZH,
+        variables=["context", "max_events", "max_entities"],
+        category="kg_extract",
+        tags=_tags("kg", "event-schema", "hyper-extract", "evidence", "structured-output", "zh"),
         version=_FORMAL_VERSION,
     ),
     BuiltinPromptTemplate(
