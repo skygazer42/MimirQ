@@ -808,6 +808,14 @@ class Settings(BaseSettings):
     DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID: str = ""
     DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID: str = "system:dify"
     DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON: str = ""
+    # Background cold-start warmup for Dify external knowledge retrieval. This
+    # keeps the first real Dify request from paying tokenizer/BM25/vector setup.
+    DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED: bool = True
+    DIFY_EXTERNAL_KNOWLEDGE_WARMUP_KNOWLEDGE_IDS: str = ""
+    DIFY_EXTERNAL_KNOWLEDGE_WARMUP_QUERY: str = "warmup probe"
+    DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TOP_K: int = 1
+    DIFY_EXTERNAL_KNOWLEDGE_WARMUP_MAX_KNOWLEDGE_IDS: int = 8
+    DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TIMEOUT_SEC: float = 60.0
     DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX: int = 5
     DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MIN: int = 20
     DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MULTIPLIER: int = 4
@@ -841,6 +849,9 @@ class Settings(BaseSettings):
     DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_MAX_SCAN: int = 80
     DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_MAX_RECORDS: int = 4
     DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_STATEMENT_TIMEOUT_MS: int = 2500
+    # Avoid unindexed JSON text scans on the latency-sensitive Dify path.
+    # Structured metadata fields remain available through the anchor fallback.
+    DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_TEXT_SCAN_ENABLED: bool = False
     # When KG is enabled for Dify external retrieval, first run normal RAG and
     # invoke KG only if the normal result lacks a confident metadata anchor.
     DIFY_EXTERNAL_KNOWLEDGE_KG_ON_DEMAND_ENABLED: bool = True
@@ -1518,6 +1529,14 @@ class Settings(BaseSettings):
     RAG_EVAL_GATE_FAITHFULNESS_MIN: float = 0.80
     RAG_EVAL_GATE_ANSWER_RELEVANCY_MIN: float = 0.75
     RAG_EVAL_GATE_CONTEXT_PRECISION_MIN: float = 0.70
+    # 0 = auto. Some OpenAI-compatible providers (for example DeepSeek) reject
+    # chat completions with n > 1, while RAGAS defaults response relevancy to 3.
+    RAGAS_RESPONSE_RELEVANCY_STRICTNESS: int = 0
+    RAGAS_RUN_TIMEOUT_SEC: int = 60
+    RAGAS_RUN_MAX_RETRIES: int = 1
+    RAGAS_RUN_MAX_WAIT_SEC: int = 2
+    RAGAS_RUN_MAX_WORKERS: int = 4
+    RAGAS_CONVERSATION_DETERMINISTIC_MODE_ENABLED: bool = False
 
     # Observability: simple anomaly detection (rolling baseline; PII-safe).
     # Used by query analytics to flag spikes in zero-hit/error rates.
@@ -2352,6 +2371,15 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX must be >= DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MIN"
                 )
+            warmup_top_k = int(getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TOP_K", 1) or 0)
+            if warmup_top_k < 1 or warmup_top_k > 200:
+                raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TOP_K must be between 1 and 200")
+            warmup_max_ids = int(getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_MAX_KNOWLEDGE_IDS", 8) or 0)
+            if warmup_max_ids < 0 or warmup_max_ids > 500:
+                raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_WARMUP_MAX_KNOWLEDGE_IDS must be between 0 and 500")
+            warmup_timeout_sec = float(getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TIMEOUT_SEC", 60.0) or 0.0)
+            if warmup_timeout_sec < 1.0 or warmup_timeout_sec > 600.0:
+                raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TIMEOUT_SEC must be between 1 and 600")
             dify_overfetch_multiplier = int(
                 getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_RETRIEVAL_OVERFETCH_MULTIPLIER", 1) or 0
             )

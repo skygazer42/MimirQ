@@ -19,6 +19,8 @@ from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.evaluation import (
     GeneratedQuestion,
+    RagasConversationReadinessRequest,
+    RagasConversationReadinessResponse,
     RagasItemSchema,
     RagasRunCreateRequest,
     RagasRunDetail,
@@ -57,7 +59,7 @@ from app.api.utils.response_headers import download_response_headers, set_downlo
 from app.core.config import settings
 from app.core.constants import NON_CRITICAL_EXCEPTION_LOG_MESSAGE
 from app.core.database import get_db
-from app.models.chat import Conversation
+from app.models.chat import Conversation, Message
 from app.models.evaluation import (
     KGSearchDiagnosticsRun,
     RagasEvaluationItem,
@@ -74,6 +76,7 @@ from app.rag.evaluation.test_generator import (
 )
 from app.services.audit_log_service import audit_log_event
 from app.services.dataset_service import DatasetService
+from app.services.ragas_conversation_readiness import conversation_readiness_items
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 from app.services.regression_case_bundle import export_case_bundle, plan_case_import
 from app.services.regression_leaderboard import build_regression_run_leaderboard
@@ -458,6 +461,48 @@ def _attach_reasoning_fields(case_row: Any) -> Any:
     case_row.reasoning_hops = _normalize_reasoning_hops(extra.get("reasoning_hops"))
     case_row.evidence_chain = _normalize_evidence_chain(extra.get("evidence_chain"))
     return case_row
+
+
+@router.post(
+    "/ragas/conversation-readiness",
+    response_model=RagasConversationReadinessResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
+async def get_ragas_conversation_readiness(
+    request: RagasConversationReadinessRequest,
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> RagasConversationReadinessResponse:
+    """Return citation-backed evaluation readiness for a batch of conversations."""
+    DatasetService.ensure_member(db, tenant_id, account_id)
+
+    requested_ids = list(dict.fromkeys(request.conversation_ids))
+    existing_ids = {
+        row[0]
+        for row in db.query(Conversation.id)
+        .filter(
+            Conversation.tenant_id == tenant_id,
+            Conversation.id.in_(requested_ids),
+        )
+        .all()
+    }
+    scoped_ids = [conversation_id for conversation_id in requested_ids if conversation_id in existing_ids]
+    if not scoped_ids:
+        return RagasConversationReadinessResponse(total=0, items=[])
+
+    assistant_rows = (
+        db.query(Message.conversation_id, Message.citations)
+        .filter(
+            Message.tenant_id == tenant_id,
+            Message.conversation_id.in_(scoped_ids),
+            Message.role == "assistant",
+        )
+        .all()
+    )
+    items = conversation_readiness_items(scoped_ids, assistant_rows)
+    return RagasConversationReadinessResponse(total=len(items), items=items)
 
 
 @router.post("/ragas/runs", response_model=RagasRunSchema, status_code=201, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)

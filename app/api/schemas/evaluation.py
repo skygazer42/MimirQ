@@ -67,6 +67,32 @@ class RagasRunList(BaseModel):
     items: list[RagasRunSchema]
 
 
+class RagasConversationReadinessRequest(BaseModel):
+    """Batch request for conversation evaluation readiness."""
+
+    conversation_ids: list[UUID] = Field(
+        ...,
+        min_length=1,
+        max_length=200,
+        description="Conversation IDs to inspect for citation-backed RAGAS evaluation",
+    )
+
+
+class RagasConversationReadinessItem(BaseModel):
+    """Citation-backed evaluation readiness for one conversation."""
+
+    conversation_id: UUID
+    assistant_turns: int = 0
+    evaluable_turns: int = 0
+    citations_count: int = 0
+    is_evaluable: bool = False
+
+
+class RagasConversationReadinessResponse(BaseModel):
+    total: int
+    items: list[RagasConversationReadinessItem]
+
+
 # ==================== Test question generation schemas ====================
 
 

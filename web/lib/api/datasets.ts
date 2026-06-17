@@ -78,6 +78,22 @@ export type DatasetAnalysisGlossaryWritebackParams = DatasetAnalysisFilters & {
 
 export type DatasetAnalysisResponse = Record<string, unknown>
 export type DatasetPurgeResponse = Record<string, unknown>
+export type DatasetRetrievalAuditPayload = {
+  status: string
+  plugin_refs?: string[]
+  plugin_package_hashes?: string[]
+  gates?: Array<{
+    name: string
+    status: string
+    metrics?: Record<string, unknown>
+    failed_conditions?: string[]
+    generated_at?: string | null
+    source?: string | null
+  }>
+  failure_categories?: Record<string, number>
+  kg_recommendation?: string | null
+  recommended_next_action?: string | null
+}
 
 export const datasetApi = {
   async create(params: DatasetCreate): Promise<Dataset> {
@@ -114,6 +130,18 @@ export const datasetApi = {
       path: '/api/v1/datasets/{dataset_id}/health',
       method: 'get',
       pathParams: { dataset_id: datasetId },
+    })
+  },
+
+  async putRetrievalAudit(
+    datasetId: string,
+    payload: DatasetRetrievalAuditPayload
+  ): Promise<DatasetRetrievalAuditPayload> {
+    return openapiRequest({
+      path: '/api/v1/datasets/{dataset_id}/retrieval-audit',
+      method: 'put',
+      pathParams: { dataset_id: datasetId },
+      body: payload,
     })
   },
 

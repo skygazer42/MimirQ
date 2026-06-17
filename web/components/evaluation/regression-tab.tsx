@@ -31,15 +31,12 @@ import {
   Sparkles,
   Loader2,
   BarChart3,
-  CheckCircle2,
-  XCircle,
   Clock3,
   ChevronDown,
   ChevronRight,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
-import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { formatApiError } from '@/lib/api-errors'
 import { reportClientError } from '@/lib/client-logging'
 import {
@@ -108,6 +105,46 @@ function RegressionInlineStat({
         {value}
       </span>
     </div>
+  )
+}
+
+function RegressionMetricCompactGrid({
+  metrics,
+}: Readonly<{
+  metrics: Array<{ key: string; value: number }>
+}>) {
+  return (
+    <section className="rounded-2xl border border-slate-200/80 bg-slate-50/55 p-2">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-[12px] font-semibold text-slate-950">
+            评分指标
+          </div>
+          <div className="mt-0.5 text-[10px] leading-4 text-muted-foreground">
+            Golden 标尺对比后的汇总分；低分项再去看下方样本明细。
+          </div>
+        </div>
+        <span className="shrink-0 rounded-full border border-slate-200 bg-card px-2 py-0.5 text-[10px] font-medium text-slate-600">
+          {metrics.length} 项
+        </span>
+      </div>
+      <div className="grid grid-cols-2 gap-1">
+        {metrics.map((metric) => (
+          <div
+            key={metric.key}
+            className="min-w-0 rounded-lg border border-slate-200/80 bg-card px-2 py-1.5"
+            title={`${ragasMetricLabel(metric.key)}: ${metric.value.toFixed(3)}`}
+          >
+            <div className="truncate text-[10px] font-medium leading-4 text-slate-500">
+              {ragasMetricLabel(metric.key)}
+            </div>
+            <div className="mt-0.5 font-mono text-[13px] font-semibold leading-none tabular-nums text-slate-950">
+              {metric.value.toFixed(3)}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
   )
 }
 
@@ -767,37 +804,29 @@ export function RegressionTestTab({
     .filter(
       (slice) => slice.count > 0 || slice.evaluatable > 0 || slice.coverage > 0
     )
+  const multimodalTextOnlyFullCoverage =
+    multimodalSliceRows.length === 1 &&
+    multimodalSliceRows[0]?.key === 'text' &&
+    multimodalSliceRows[0].count > 0 &&
+    multimodalSliceRows[0].evaluatable === multimodalSliceRows[0].count &&
+    multimodalSliceRows[0].coverage >= 0.999
+  const shouldShowMultimodalSlicePanel =
+    multimodalSliceRows.length > 0 && !multimodalTextOnlyFullCoverage
+  const multimodalSliceMinCoverage = multimodalSliceRows.length
+    ? Math.min(...multimodalSliceRows.map((slice) => slice.coverage))
+    : null
+  const multimodalSliceSummaryText = (() => {
+    if (!multimodalSliceRows.length) return ''
+    if (multimodalSliceRows.length === 1) {
+      const slice = multimodalSliceRows[0]
+      return `${slice.label} ${slice.evaluatable}/${slice.count}`
+    }
+    return `${multimodalSliceRows.length} 类 · 最低 ${Math.round((multimodalSliceMinCoverage || 0) * 100)}%`
+  })()
 
-  const runStatus = runDetail?.run?.status
   const embeddedGridCols = isConfigPanelCollapsed
     ? 'xl:grid-cols-[0px_minmax(0,1fr)_300px] 2xl:grid-cols-[0px_minmax(0,1fr)_310px]'
     : 'xl:grid-cols-[320px_minmax(0,1fr)_300px] 2xl:grid-cols-[330px_minmax(0,1fr)_310px]'
-  const statusBadge = runStatus
-    ? (() => {
-        if (runStatus === 'completed') {
-          return (
-            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-success/10 text-success border border-success/20">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              已完成
-            </span>
-          )
-        } else if (runStatus === 'failed') {
-          return (
-            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-destructive/10 text-destructive border border-destructive/20">
-              <XCircle className="w-3.5 h-3.5" />
-              失败
-            </span>
-          )
-        } else {
-          return (
-            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-info/10 text-info border border-info/20">
-              <Loader2 className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none" />
-              运行中
-            </span>
-          )
-        }
-      })()
-    : null
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -1258,19 +1287,18 @@ export function RegressionTestTab({
                 'min-h-[180px] rounded-[28px] border-slate-200/80 bg-card'
             )}
           >
-            <div className="flex items-center justify-between mb-3">
+            <div className="mb-3">
               <div>
                 <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
                   Golden Run Detail
                 </div>
                 <div className="mt-1 text-sm font-semibold text-foreground">
-                  差距分析
+                  Run 对比结果
                 </div>
                 <div className="mt-0.5 text-[11px] text-muted-foreground">
-                  实际回答、召回上下文与 Golden 标尺的评分结果。
+                  差距分析就是把当前 RAG 的回答、召回证据和插件元数据，与 Golden 标准答案/标准证据逐项比较。
                 </div>
               </div>
-              {statusBadge}
             </div>
 
             {runDetail?.run?.error_message && (
@@ -1284,18 +1312,7 @@ export function RegressionTestTab({
             hasExpectedMetadataSummary ? (
               <div className="mt-4">
                 {displayMetrics.length > 0 ? (
-                  <StatsGrid className="lg:grid-cols-3">
-                    {displayMetrics.map((m) => (
-                      <StatCard
-                        key={m.key}
-                        icon={BarChart3}
-                        label={ragasMetricLabel(m.key)}
-                        value={m.value.toFixed(3)}
-                        color="sky"
-                        className="shadow-sm"
-                      />
-                    ))}
-                  </StatsGrid>
+                  <RegressionMetricCompactGrid metrics={displayMetrics} />
                 ) : null}
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <RegressionInlineStat label="样本" value={summaryItems} />
@@ -1316,6 +1333,13 @@ export function RegressionTestTab({
                   />
                   <RegressionInlineStat label="Token" value={summaryTokens} />
                   <RegressionInlineStat label="费用" value={summaryCost} />
+                  {multimodalSliceRows.length ? (
+                    <RegressionInlineStat
+                      label="切片覆盖"
+                      value={multimodalSliceSummaryText}
+                      tone={multimodalTextOnlyFullCoverage ? 'neutral' : 'warning'}
+                    />
+                  ) : null}
                 </div>
                 {hasExpectedMetadataSummary ? (
                   <div className="mt-3 rounded-2xl border border-emerald-200/80 bg-[linear-gradient(180deg,rgba(236,253,245,0.9)_0%,rgba(255,255,255,0.96)_100%)] p-3">
@@ -1352,16 +1376,15 @@ export function RegressionTestTab({
                     </div>
                   </div>
                 ) : null}
-                {multimodalSliceRows.length ? (
+                {shouldShowMultimodalSlicePanel ? (
                   <div className="mt-3 rounded-2xl border border-slate-200/80 bg-[linear-gradient(180deg,rgba(248,251,255,0.96)_0%,rgba(255,255,255,0.96)_100%)] p-3">
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <div className="text-sm font-semibold text-foreground">
-                          多模态切片
+                          切片覆盖异常
                         </div>
                         <div className="mt-0.5 text-[11px] text-muted-foreground">
-                          按 Golden case 类型统计 chart / formula / table-math
-                          的可评测覆盖。
+                          只有出现图表/公式/table-math/image，或任一类型覆盖不足时才展开；纯文本 100% 会收进上方摘要。
                         </div>
                       </div>
                       <span className="rounded-full border border-slate-200 bg-card px-2 py-1 text-[10px] font-medium text-slate-600">

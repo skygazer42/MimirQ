@@ -22,9 +22,81 @@
 > 在**RAG 核心引擎深度 + 数据治理/评测闭环**这两个维度上，MimirQ 已达到或超过所有主流开源知识库项目；但在**社区生态、品牌心智、可视化应用编排、轻量化开箱即用**这四个维度上，与 Dify/RAGFlow 存在数量级差距。
 
 **最尖锐的客观事实**：
-- ✅ 工程深度：**第一梯队**，解析栈广度（32 parser）、评测治理栈（12 万行级 + 完整治理前端）、KG agentic 深度，**单项能力普遍强于** Dify/FastGPT/MaxKB/AnythingLLM，与 RAGFlow 互有胜负。
+- ✅ 工程深度：**第一梯队**，解析栈广度（32 parser）、内建评测/治理闭环（完整治理前端）、KG agentic 深度，**单项能力普遍强于** Dify/FastGPT/MaxKB/AnythingLLM，与 RAGFlow 互有胜负。
 - 🔴 生态品牌：**接近于零**。Dify 143k★、RAGFlow 82k★ 是社区/插件/集成/心智的护城河；MimirQ 私有项目、0 star、0 第三方插件、0 公开 benchmark 奖牌。这是**最大且最难追**的差距。
 - 🟡 产品形态：**偏研发平台、偏重**。缺面向业务用户的可视化工作流编排画布（Dify/FastGPT/Coze 的核心卖点），学习与部署成本显著高于轻量竞品。
+
+### 1.1 小畅政务 200 题四链路复测（2026-06-15）
+
+本节记录同一批 Golden 问题集对四条链路的完整复测结果，用于判断 MimirQ 作为 Dify 知识库替换/增强层的实际收益。
+
+**测试输入与边界**：
+- Golden 集：`/tmp/dify_compare_200_cases_with_area.json`，200 条，覆盖 `01政务服务事项知识`、`02高效办成一件事`、`03常州市常见问题`、`04专题常见问答`、`05业务部门常见问题`、`06各区常见问题`。
+- 时间：2026-06-15 19:38 起（Asia/Shanghai）。
+- 本地服务：`http://127.0.0.1:8000`，评测期间临时提高本地 API rate limit，评测后已恢复默认启动并通过健康检查。
+- Dify App：
+  - 原生 Dify 知识库：`00000000-0000-0000-0000-000000000001`
+  - Dify HTTP 请求 MimirQ：`00000000-0000-0000-0000-000000000002`
+  - Dify 外部知识库接 MimirQ：`00000000-0000-0000-0000-000000000003`
+
+| 链路 | 接口成功 | grounding | 关键点召回 | 延迟 |
+|---|---:|---:|---:|---:|
+| MimirQ 直连检索 | 200/200 | 检索证据 `0.990` | `0.994` | 不走 Dify 生成 |
+| 原生 Dify `a398` | 191/200 | `0.534` | `0.630` | avg `7.14s`, p95 `15.44s`, max `49.45s` |
+| Dify HTTP -> MimirQ `a3c` | 200/200 | `0.825` | `0.899` | avg `5.71s`, p95 `11.99s`, max `14.63s` |
+| Dify 外部知识库 -> MimirQ `3c1c` | 200/200 | `0.830` | `0.899` | avg `4.84s`, p95 `9.05s`, max `13.67s` |
+
+**直接结论**：
+- MimirQ 两种 Dify 接入链路均达到 `200/200` 成功，且 grounding / 关键点召回显著高于原生 Dify 知识库。
+- `3c1c` 外部知识库链路本轮速度最好：p95 `9.05s`，max `13.67s`。
+- `a3c` HTTP 请求链路在修复 Dify 结果转换节点后不再出现上下文超长问题，本轮 `200/200` 直接通过。
+- 原生 Dify `a398` 剩余 9 条稳定失败，错误均为 `Model bge-reranker-large credentials is not initialized.`，属于 Dify 原生知识库 reranker 模型凭据配置问题，不是 MimirQ 检索问题。
+
+**证据文件**：
+- MimirQ 直连评测：`/tmp/mimirq_direct_200_full_20260615_193802_eval.json`
+- 原生 Dify 合并结果：`/tmp/dify_a398_native_full_merged_20260615_193802_answers.json`
+- 原生 Dify 评测：`/tmp/dify_a398_native_full_merged_20260615_193802_eval.json`
+- Dify HTTP -> MimirQ 结果：`/tmp/dify_a3c86554_full_20260615_193802_answers.json`
+- Dify HTTP -> MimirQ 评测：`/tmp/dify_a3c86554_full_20260615_193802_eval.json`
+- Dify 外部知识库 -> MimirQ 结果：`/tmp/dify_3c1c_full_20260615_193802_answers.json`
+- Dify 外部知识库 -> MimirQ 评测：`/tmp/dify_3c1c_full_20260615_193802_eval.json`
+
+### 1.2 小畅政务额外 300 题压力复测（2026-06-15）
+
+本节是在 200 题之后额外生成并运行的 300 条问题，用于验证长尾问题、Dify 接入稳定性和慢查询修复是否成立。
+
+**测试输入与覆盖**：
+- Golden 集：`/tmp/dify_compare_extra300_cases_20260615_202337.json`，300 条。
+- 覆盖分布：`01政务服务事项知识` 120、`02高效办成一件事` 33、`03常州市常见问题` 52、`04专题常见问答` 15、`05业务部门常见问题` 40、`06各区常见问题` 40。
+- 本轮先跑 MimirQ 直连检索，再跑 Dify HTTP -> MimirQ、Dify 外部知识库 -> MimirQ、原生 Dify 知识库三条 Dify 链路。
+
+| 链路 | 接口成功 | 检索 hit@1 / hit@5 | 生成答案 grounding | 生成答案关键点召回 | 延迟 |
+|---|---:|---:|---:|---:|---:|
+| MimirQ 直连检索 | 300/300 | `0.923` / `0.953` | 不走生成 | 不走生成 | 检索日志 p95 `1.99s`, max `8.88s`, >10s `0` |
+| Dify HTTP -> MimirQ `a3c` | 300/300 | `0.923` / `0.953` | `0.840` | `0.840` | avg `10.74s`, p95 `20.31s`, max `40.26s` |
+| Dify 外部知识库 -> MimirQ `3c1c` | 300/300 | `0.923` / `0.953` | `0.833` | `0.833` | avg `18.14s`, p95 `44.13s`, max `59.08s` |
+| 原生 Dify `a398` | 293/300 | 对照同一 MimirQ 复检集 | `0.519` | `0.519` | avg `15.39s`, p95 `44.55s`, max `59.50s` |
+
+**慢查询根因与修复证据**：
+- 本轮复测前暴露出一个真实长尾：问题 `公积金账户有挂账余额的情况下，怎么退回资金？` 触发 metadata DB fallback 的 JSON 文本扫描，单次检索曾到 `52-66s`。
+- 修复方式不是加 timeout，而是默认禁用未索引的 metadata JSON 文本扫描，并让“问题型 query”在 question 字段无命中时停止宽泛 fallback。
+- 修复后同类 metadata fallback 单测从 `26.2s` 降到约 `0.764s`；完整 Dify/MimirQ 检索日志累计 1863 条，avg `448.54ms`、p95 `1986.23ms`、max `8882.39ms`、`>10s=0`。
+
+**直接结论**：
+- MimirQ 检索层这轮没有 10 秒以上慢查询，说明核心慢点已经从检索层移出。
+- Dify HTTP -> MimirQ 的端到端速度明显好于 Dify 外部知识库接法；外部知识库接法虽然成功率和质量接近，但 Dify 侧链路 p95/max 明显更高。
+- 原生 Dify 仍有 7 条失败，错误为 `Model bge-reranker-large credentials is not initialized.`，属于 Dify 原生知识库链路配置问题。
+- 300 题比 200 题更难，MimirQ 两条 Dify 接入生成答案指标仍显著高于原生 Dify；剩余质量短板主要集中在路由/范围选择和部分问法的期望来源不一致，而不是检索服务不可用。
+
+**证据文件**：
+- 300 题问题集：`/tmp/dify_compare_extra300_cases_20260615_202337.json`
+- MimirQ 直连评测：`/tmp/mimirq_direct_extra300_20260615_2042_after_anchor_fix_eval.json`
+- Dify HTTP -> MimirQ 结果：`/tmp/dify_a3c_http_extra300_20260615_2042_after_anchor_fix_w8_isolated_answers.json`
+- Dify HTTP -> MimirQ 评测：`/tmp/dify_a3c_http_extra300_20260615_2042_after_anchor_fix_eval.json`
+- Dify 外部知识库 -> MimirQ 合并结果：`/tmp/dify_3c1c_external_extra300_20260615_2042_after_anchor_fix_merged_answers.json`
+- Dify 外部知识库 -> MimirQ 评测：`/tmp/dify_3c1c_external_extra300_20260615_2042_after_anchor_fix_eval.json`
+- 原生 Dify 合并结果：`/tmp/dify_a398_native_extra300_20260615_2042_after_anchor_fix_merged_answers.json`
+- 原生 Dify 评测：`/tmp/dify_a398_native_extra300_20260615_2042_after_anchor_fix_eval.json`
 
 ---
 
@@ -105,16 +177,21 @@
 ## 3. 竞品全景（2026，按形态分三类）
 
 ### 3.1 开箱即用平台（与 MimirQ 同赛道）
-| 项目 | Star（2026） | 定位 | 解析 | KG | Agentic | 评测 | 中文 |
-|---|---|---|---|---|---|---|---|
-| **Dify** | **143k** ([src](https://github.com/yuxiaopeng/Github-Ranking-AI/blob/main/Top100/RAG.md)) | LLM 应用/Agent 工作流平台（一站式，可视化编排） | 一般（调三方） | 弱 | ✅可视化编排（核心卖点） | 弱 | 强（中国团队，全球化） |
-| **RAGFlow** | **82k** ([src](https://github.com/infiniflow/ragflow)) | 深度文档理解 RAG 引擎 + Agent | ✅强（自研 DeepDoc） | ✅GraphRAG | ✅ | 一般 | 强 |
-| **FastGPT** | **27k+** ([src](https://dev.to/victorjia/fastgpt-vs-dify-the-chinese-rag-platform-battle-youre-missing-18eo)) | 知识库优先 + 可视化 Flow（"手术刀"） | 一般 | 弱 | ✅可视化 Flow | 弱 | 强 |
-| **MaxKB** | ~18k（2026，估） ([src](https://github.com/1Panel-dev/maxkb)) | 企业 Agent 平台 + RAG（GPL v3） | 一般 | 弱 | ✅+MCP | 弱 | 强 |
-| **AnythingLLM** | **~54k** ([src](https://github.com/Mintplex-Labs/anything-llm)) | 全能本地优先 AI 应用（桌面+服务） | 一般 | 弱 | ✅ | 弱 | 一般 |
-| **QAnything** | ~12k（估） | 有道，"问任何东西"，强调稳健检索 | 一般 | 弱 | 弱 | 强 | 强 |
-| **Kotaemon** | ~22k（估） | 干净可定制 RAG UI | 一般 | 部分 GraphRAG | 一般 | 一般 | 一般 |
-| **Onyx**(原 Danswer) | **30k** ([src](https://github.com/onyx-dot-app/onyx)) | 企业搜索 + 连接器生态（40+ 数据源） | 一般 | 弱 | ✅ | 弱 | 一般 |
+> **全平台总览**（开箱即用知识库/RAG 平台，按 GitHub star 降序；✅强 / 🟡中 / 🔴弱·缺）。MimirQ 行置顶为锚。star 来源见 §9。
+
+| 项目 | Star(2026) | 形态/定位 | 解析 | 知识图谱 | 可视化编排画布 | 内建评测/治理 | 企业合规 | 中文/国产 | 开箱/轻量 |
+|---|---|---|---|---|---|---|---|---|---|
+| **MimirQ**（本项目） | 私有·0★ | 企业 RAG 研发+治理平台（重型） | ✅ 32 parser+自研 | ✅ agentic+网络分析 | 🔴 无 | ✅ 完整内建 | ✅ RBAC/SCIM/RTBF/审计 | ✅ 政务实测 | 🔴 重 |
+| **Dify** | **143k** | LLM 应用/Agent 工作流平台（一站式） | 🟡 调三方 | 🔴 | ✅ 核心卖点 | 🔴 | 🟡 商业版 | ✅ | ✅ |
+| **Open WebUI** | **141k** | 自托管 LLM 前端（带 RAG） | 🟡 | 🔴 | 🟡 pipelines | 🔴 | 🟡 | 🟡 | ✅ |
+| **RAGFlow** | **82k** | 深度文档理解 RAG 引擎+Agent | ✅ 自研 DeepDoc | ✅ GraphRAG | 🟡 Agent 流 | 🟡 | 🟡 | ✅ | 🟡 |
+| **AnythingLLM** | **54k** | 全能本地优先 AI 应用 | 🟡 | 🔴 | 🟡 | 🔴 | 🟡 | 🟡 | ✅ |
+| **Quivr** | **39k** | "第二大脑"可嵌入 RAG | 🟡 | 🔴 | 🔴 | 🔴 | 🟡 | 🟡 | ✅ |
+| **Onyx**(原 Danswer) | **30k** | 企业搜索+40+ 连接器 | 🟡 | 🔴 | 🟡 | 🟡 连接器/权限 | 🟡 | 🟡 | 🟡 |
+| **FastGPT** | **27k** | 知识库优先+可视化 Flow | 🟡 | 🔴 | ✅ 核心卖点 | 🔴 | 🟡 | ✅ | ✅ |
+| **Kotaemon** | **25k** | 干净可定制 RAG UI（含 GraphRAG） | 🟡 | 🟡 部分 GraphRAG | 🔴 | 🔴 | 🔴 | 🟡 | ✅ |
+| **MaxKB** | **20k** | 企业 Agent 平台+RAG（GPL v3） | 🟡 | 🔴 | ✅ 工作流+MCP | 🔴 | 🟡 | ✅ | ✅ |
+| **QAnything** | **14k** | 有道，本地化知识库问答 | 🟡 | 🔴 | 🔴 | 🔴 | 🟡 | ✅ | ✅ |
 
 ### 3.2 开发框架/库（不同形态：给开发者拼装，非开箱平台）
 | 项目 | Star（2026） | 定位 |
@@ -133,7 +210,7 @@
 |---|---|---|
 | **LightRAG** | **36.5k** ([src](https://github.com/hkuds/lightrag)) | HKU，EMNLP 2025，轻量图谱 RAG，可跑 CPU |
 | **微软 GraphRAG** | ~25k（估） | 图谱索引器 + 社区摘要（多跳问答），偏"索引器/研究原型" |
-| **nano-graphrag** | ~
+| **nano-graphrag** | ~3k（估） | 极简 GraphRAG 复现，研究/教学用 |
 
 > **客观判断**：图谱类项目多为**索引器或研究原型**，非完整产品。MimirQ 的 KG 栈（agentic searcher + 网络分析 + 精确快照 + provenance）在工程完整度上**超过**这一类。
 
@@ -141,30 +218,30 @@
 
 ## 4. 多维对标矩阵（客观，✅强 / 🟡中 / 🔴弱·缺）
 
-| 维度 | MimirQ | Dify | RAGFlow | FastGPT | AnythingLLM | LangChain |
-|---|---|---|---|---|---|---|
+| 维度 | MimirQ        | Dify | RAGFlow | FastGPT | AnythingLLM | LangChain |
+|---|---------------|---|---|---|---|---|
 | 文档解析深度 | ✅ 32 parser+自研 | 🟡 | ✅ DeepDoc | 🟡 | 🟡 | 🔴(靠插件) |
-| 切块策略 | ✅ 79 种 | 🟡 | 🟡 | 🟡 | 🔴 | 🟡 |
+| 切块策略 | ✅ 79 种        | 🟡 | 🟡 | 🟡 | 🔴 | 🟡 |
 | 检索/重排深度 | ✅ 13 reranker+全策略 | 🟡 | ✅ | 🟡 | 🟡 | ✅(靠拼装) |
 | 知识图谱 | ✅ agentic+网络分析 | 🔴 | ✅ GraphRAG | 🔴 | 🔴 | 🟡 |
-| Agentic 模式 | ✅ 代码态全覆盖+MCP | ✅ 可视化 | ✅ | ✅ 可视化 | ✅ | ✅ |
-| **可视化工作流编排** | 🔴 **无画布** | ✅ **核心卖点** | 🟡 | ✅ **核心卖点** | 🟡 | 🔴 |
-| 内建评测/治理闭环 | ✅ **12 万行级** | 🔴 | 🟡 | 🔴 | 🔴 | 🔴 |
-| 安全 Guard | 🟡 框架全/PII薄 | 🟡 | 🟡 | 🟡 | 🟡 | 🔴 |
-| 企业合规(RBAC/SCIM/RTBF/审计) | ✅ 齐全 | 🟡 商业版 | 🟡 | 🟡 | 🟡 | 🔴 |
-| 连接器生态 | 🟡 6+种/抽象不统一 | 🟡 | 🟡 | 🟡 | ✅ 标准化 | ✅ LlamaHub |
-| 可观测(OTel) | ✅ 真接入 | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 |
-| 前端/可视化 | ✅ 顶级(29.6万行) | ✅ | 🟡 | ✅ | ✅ | 🔴 |
-| 轻量/开箱即用 | 🔴 **重** | ✅ | 🟡 | ✅ | ✅ | 🟡 |
+| Agentic 模式 | ✅ 代码态全覆盖+MCP  | ✅ 可视化 | ✅ | ✅ 可视化 | ✅ | ✅ |
+| **可视化工作流编排** | 🔴 **无画布**    | ✅ **核心卖点** | 🟡 | ✅ **核心卖点** | 🟡 | 🔴 |
+| 内建评测/治理闭环 | ✅             | 🔴 | 🟡 | 🔴 | 🔴 | 🔴 |
+| 安全 Guard | 🟡 框架全/PII薄   | 🟡 | 🟡 | 🟡 | 🟡 | 🔴 |
+| 企业合规(RBAC/SCIM/RTBF/审计) | ✅ 齐全          | 🟡 商业版 | 🟡 | 🟡 | 🟡 | 🔴 |
+| 连接器生态 | 🟡 6+种/抽象不统一  | 🟡 | 🟡 | 🟡 | ✅ 标准化 | ✅ LlamaHub |
+| 可观测(OTel) | ✅ 真接入         | 🟡 | 🟡 | 🟡 | 🟡 | 🟡 |
+| 前端/可视化 | ✅ 顶级(29.6万行)  | ✅ | 🟡 | ✅ | ✅ | 🔴 |
+| 轻量/开箱即用 | 🔴 **重**      | ✅ | 🟡 | ✅ | ✅ | 🟡 |
 | **社区/生态/品牌** | 🔴 **0 star/私有** | ✅ 143k | ✅ 82k | ✅ 27k | ✅ 54k | ✅ 120k |
-| **公开 benchmark 成绩** | 🔴 **无奖牌** | 🟡 | 🟡 | 🔴 | 🔴 | 🟡 |
-| 中文/政务垂直 | ✅ 实测落地 | ✅ | ✅ | ✅ | 🟡 | 🟡 |
+| **公开 benchmark 成绩** | 🔴 **无奖牌**    | 🟡 | 🟡 | 🔴 | 🔴 | 🟡 |
+| 中文/政务垂直 | ✅ 实测落地        | ✅ | ✅ | ✅ | 🟡 | 🟡 |
 
 ---
 
 ## 5. MimirQ 的真实强项（有据）
 
-1. **数据治理/评测闭环（最独特护城河）**：12 万行评测 + RAGAS + redteam + 多 benchmark runner + 完整治理前端（precheck/feedback/quarantine/ablations/diagnostics）。竞品无一具备可比能力。
+1. **数据治理/评测闭环**：内建评测栈 `evaluation/` 12158 行 + RAGAS（真依赖）+ redteam + 多 benchmark runner + 完整治理前端（precheck/feedback/quarantine/ablations/diagnostics）。在开源知识库竞品中少见同等内建闭环。
 2. **解析栈广度**：32 parser 全 SOTA 同台 + 国产全覆盖 + 可质量对照。
 3. **KG 工程完整度**：indexer + agentic searcher + PPR + 网络分析 + 精确快照 diff + provenance，超过纯图谱类项目。
 4. **企业合规特性**：RBAC/SCIM/RTBF/审计/血缘/usage 计量齐全，强于绝大多数开源竞品。

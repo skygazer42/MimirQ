@@ -8,6 +8,7 @@ dataset IDs, runs the existing retrieval-only pipeline, and returns Dify records
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import json
@@ -16,6 +17,7 @@ import re
 import threading
 import time
 from collections import OrderedDict
+from collections.abc import Callable
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from functools import lru_cache
@@ -34,7 +36,7 @@ from sqlalchemy.orm import Session
 
 from app.api.schemas.chat import ChatRAGConfig
 from app.core.config import settings
-from app.core.database import get_db
+from app.core.database import SessionLocal, get_db
 from app.models.dataset import Dataset
 from app.models.document import Document, DocumentChunk
 from app.rag.pipeline_plugins.contracts import DISPLAY_METADATA_KEY, EVALUABLE_METADATA_KEY, INDEXED_METADATA_KEY
@@ -143,6 +145,8 @@ _QUESTION_ANCHOR_NEAR_MATCH_MIN_RATIO = 0.86
 _QUESTION_ANCHOR_BIGRAM_MIN_OVERLAP = 3
 _QUESTION_ANCHOR_BIGRAM_MIN_RATIO = 0.5
 _QUESTION_ANCHOR_QUERY_MARKERS = ("是否", "能否", "可否", "什么是", "为什么", "怎么", "如何", "哪里", "吗", "？", "?")
+_QUESTION_ANCHOR_SHORT_QUERY_MIN_CHARS = 4
+_QUESTION_ANCHOR_SHORT_QUERY_MAX_CHARS = 24
 _METADATA_ANCHOR_DB_FALLBACK_MIN_SCORE = 0.72
 _METADATA_ANCHOR_DB_FALLBACK_DEFAULT_SCORE = 0.74
 _METADATA_ANCHOR_DB_FALLBACK_MAX_QUERY_TERMS = 12
@@ -169,6 +173,7 @@ _METADATA_ANCHOR_DB_FALLBACK_SCALAR_FIELDS = (
 )
 _METADATA_ANCHOR_DB_FALLBACK_TITLE_FIELDS = ("case_title", "source_topic", "title")
 _CJK_RE = re.compile(r"[\u4e00-\u9fff]")
+_DIFY_WARMUP_DEFAULT_QUERY = "warmup probe"
 
 
 def _resolve_internal_candidate_top_k(requested_top_k: int) -> int:
@@ -523,6 +528,9 @@ def _dify_response_cache_settings_signature() -> dict[str, Any]:
         "metadata_anchor_max_scan": int(
             getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_MAX_SCAN", 80) or 80
         ),
+        "metadata_anchor_text_scan_enabled": bool(
+            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_TEXT_SCAN_ENABLED", False)
+        ),
         "kg_on_demand_enabled": bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_KG_ON_DEMAND_ENABLED", True)),
         "kg_query_expansion_default": bool(
             getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_KG_QUERY_EXPANSION_ENABLED", False)
@@ -783,6 +791,29 @@ def _load_knowledge_map() -> dict[str, Any]:
     if not isinstance(data, dict):
         raise HTTPException(status_code=503, detail="Dify knowledge map JSON must be an object")
     return data
+
+
+def _resolve_dify_warmup_knowledge_ids(knowledge_map: dict[str, Any] | None = None) -> tuple[str, ...]:
+    raw_ids = _split_items(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_KNOWLEDGE_IDS", ""))
+    candidates = raw_ids if raw_ids else [str(key).strip() for key in (knowledge_map or _load_knowledge_map()).keys()]
+    try:
+        max_ids = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_MAX_KNOWLEDGE_IDS", 8) or 0)
+    except (TypeError, ValueError):
+        max_ids = 8
+    if max_ids <= 0:
+        return ()
+
+    seen: set[str] = set()
+    out: list[str] = []
+    for item in candidates:
+        knowledge_id = str(item or "").strip()
+        if not knowledge_id or knowledge_id in seen:
+            continue
+        seen.add(knowledge_id)
+        out.append(knowledge_id)
+        if len(out) >= max_ids:
+            break
+    return tuple(out)
 
 
 def _resolve_knowledge_dataset_ids(knowledge_id: str, *, query: str = "") -> list[UUID]:
@@ -1374,9 +1405,41 @@ def _cjk_bigram_overlap_ratio(left: str, right: str) -> float:
     return len(left_bigrams & right_bigrams) / max(1, min(len(left_bigrams), len(right_bigrams)))
 
 
-def _query_prefers_question_anchor(query: str) -> bool:
+def _question_anchor_intent_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
+    terms: list[str] = []
+    seen: set[str] = set()
+    for plugin_ref in policy_plugin_refs or ():
+        policy = _retrieval_policy_for_plugin_ref(plugin_ref)
+        for raw_term in _response_hint_string_list(policy, "question_intent_terms"):
+            term = str(raw_term or "").strip()
+            normalized = _normalize_match_term(term)
+            if not term or not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            terms.append(term)
+    return tuple(terms)
+
+
+def _query_prefers_question_anchor(query: str, *, policy_plugin_refs: tuple[str, ...] = ()) -> bool:
     text = str(query or "").strip()
-    return bool(text and any(marker in text for marker in _QUESTION_ANCHOR_QUERY_MARKERS))
+    if not text:
+        return False
+    if any(marker in text for marker in _QUESTION_ANCHOR_QUERY_MARKERS):
+        return True
+    return bool(
+        _query_intent_terms(
+            text,
+            intent_terms=_question_anchor_intent_terms_for_policy_refs(policy_plugin_refs),
+        )
+        or _query_is_short_question_anchor_candidate(text, policy_plugin_refs=policy_plugin_refs)
+    )
+
+
+def _query_is_short_question_anchor_candidate(query: str, *, policy_plugin_refs: tuple[str, ...] = ()) -> bool:
+    if not policy_plugin_refs:
+        return False
+    normalized = _normalize_match_term(query)
+    return _QUESTION_ANCHOR_SHORT_QUERY_MIN_CHARS <= len(normalized) <= _QUESTION_ANCHOR_SHORT_QUERY_MAX_CHARS
 
 
 def _query_prefers_service_anchor(query: str, *, policy_plugin_refs: tuple[str, ...] = ()) -> bool:
@@ -2144,7 +2207,7 @@ def _records_can_skip_kg_on_demand(
             query=query,
             policy_plugin_refs=policy_plugin_refs,
         )
-    if _query_prefers_question_anchor(query) and not _query_prefers_service_anchor(
+    if _query_prefers_question_anchor(query, policy_plugin_refs=policy_plugin_refs) and not _query_prefers_service_anchor(
         query,
         policy_plugin_refs=policy_plugin_refs,
     ):
@@ -2493,7 +2556,7 @@ def _records_can_skip_metadata_anchor_fallback(
     query: str,
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> bool:
-    if _query_prefers_question_anchor(query) and not _query_prefers_service_anchor(
+    if _query_prefers_question_anchor(query, policy_plugin_refs=policy_plugin_refs) and not _query_prefers_service_anchor(
         query,
         policy_plugin_refs=policy_plugin_refs,
     ):
@@ -2800,7 +2863,6 @@ def _metadata_anchor_db_fallback_records(
         )
         if statement_timeout_ms:
             db.execute(sql_text(f"SET LOCAL statement_timeout = {statement_timeout_ms}"))
-        metadata_text = sql_cast(DocumentChunk.doc_metadata, SQLText)
         rows: list[Any] = []
         seen_chunk_ids: set[str] = set()
 
@@ -2867,7 +2929,7 @@ def _metadata_anchor_db_fallback_records(
             if term.replace("%", "").replace("_", "").strip()
         ]
         if (
-            _query_prefers_question_anchor(query)
+            _query_prefers_question_anchor(query, policy_plugin_refs=policy_plugin_refs)
             and not service_anchor_preferred
             and question_conditions
         ):
@@ -2875,6 +2937,8 @@ def _metadata_anchor_db_fallback_records(
             current_matches = matched_records()
             if current_matches:
                 return current_matches
+        if _query_prefers_question_anchor(query, policy_plugin_refs=policy_plugin_refs) and not service_anchor_preferred:
+            return []
 
         service_name_terms = _metadata_anchor_service_name_query_terms(
             query,
@@ -2995,14 +3059,16 @@ def _metadata_anchor_db_fallback_records(
                     return current_matches
             if len(rows) >= max_scan:
                 break
-        for term in terms[:3]:
-            cleaned_term = term.replace("%", "").replace("_", "").strip()
-            if not cleaned_term:
-                continue
-            append_unique(query_matching_rows(metadata_text.ilike(f"%{cleaned_term}%"), limit=max_scan))
-            current_matches = matched_records()
-            if current_matches:
-                return current_matches
+        if bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_TEXT_SCAN_ENABLED", False)):
+            metadata_text = sql_cast(DocumentChunk.doc_metadata, SQLText)
+            for term in terms[:3]:
+                cleaned_term = term.replace("%", "").replace("_", "").strip()
+                if not cleaned_term:
+                    continue
+                append_unique(query_matching_rows(metadata_text.ilike(f"%{cleaned_term}%"), limit=max_scan))
+                current_matches = matched_records()
+                if current_matches:
+                    return current_matches
     except Exception:  # noqa: BLE001
         try:
             db.rollback()
@@ -3122,6 +3188,193 @@ async def _retrieve_dataset_citations(
         db=db,
     )
     return list(response.citations or [])
+
+
+def _resolve_dify_warmup_tenant_id() -> UUID | None:
+    raw_tenant = str(
+        getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", "")
+        or getattr(settings, "DEFAULT_TENANT_ID", "")
+    ).strip()
+    if not raw_tenant:
+        return None
+    try:
+        return UUID(raw_tenant)
+    except ValueError:
+        logger.warning("Skipping Dify external warmup: tenant id is invalid")
+        return None
+
+
+def _resolve_dify_warmup_query() -> str:
+    query = str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_QUERY", "") or "").strip()
+    return query or _DIFY_WARMUP_DEFAULT_QUERY
+
+
+def _resolve_dify_warmup_top_k() -> int:
+    try:
+        configured_top_k = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TOP_K", 1) or 1)
+    except (TypeError, ValueError):
+        configured_top_k = 1
+    try:
+        configured_max = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX", 5) or 5)
+    except (TypeError, ValueError):
+        configured_max = 5
+    return max(1, min(configured_top_k, max(1, configured_max)))
+
+
+def _resolve_dify_warmup_timeout_sec() -> float:
+    try:
+        timeout_sec = float(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TIMEOUT_SEC", 60.0) or 60.0)
+    except (TypeError, ValueError):
+        timeout_sec = 60.0
+    return max(1.0, timeout_sec)
+
+
+async def warmup_dify_external_knowledge(
+    *,
+    db_factory: Callable[[], Session] | None = None,
+) -> dict[str, Any]:
+    started = time.perf_counter()
+    if not bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", False)):
+        return {"enabled": False, "reason": "external_knowledge_disabled", "attempted": 0, "completed": 0, "failed": 0}
+    if not bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED", True)):
+        return {"enabled": False, "reason": "warmup_disabled", "attempted": 0, "completed": 0, "failed": 0}
+
+    try:
+        knowledge_map = _load_knowledge_map()
+    except Exception:  # noqa: BLE001
+        logger.warning("Skipping Dify external warmup: knowledge map is invalid", exc_info=True)
+        return {"enabled": True, "reason": "invalid_knowledge_map", "attempted": 0, "completed": 0, "failed": 1}
+
+    knowledge_ids = _resolve_dify_warmup_knowledge_ids(knowledge_map)
+    tenant_id = _resolve_dify_warmup_tenant_id()
+    if tenant_id is None:
+        return {"enabled": True, "reason": "tenant_not_configured", "attempted": 0, "completed": 0, "failed": 0}
+    if not knowledge_ids:
+        return {"enabled": True, "reason": "no_knowledge_ids", "attempted": 0, "completed": 0, "failed": 0}
+
+    factory = db_factory or SessionLocal
+    account_id = str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "") or "system:dify").strip()
+    query = _resolve_dify_warmup_query()
+    top_k = _resolve_dify_warmup_top_k()
+    score_threshold = 0.0
+    timeout_sec = _resolve_dify_warmup_timeout_sec()
+    completed = 0
+    failed = 0
+
+    for knowledge_id in knowledge_ids:
+        item_started = time.perf_counter()
+        db = None
+        try:
+            scope_plan = _resolve_knowledge_dataset_scope(knowledge_id, query=query)
+            primary_scope_enabled = bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_SCOPE_ENABLED", True))
+            dataset_ids = list(scope_plan.primary_dataset_ids if primary_scope_enabled else scope_plan.dataset_ids)
+            if not dataset_ids:
+                dataset_ids = list(scope_plan.dataset_ids)
+            db = factory()
+            await asyncio.wait_for(
+                _retrieve_dataset_citations(
+                    db=db,
+                    tenant_id=tenant_id,
+                    account_id=account_id,
+                    dataset_ids=dataset_ids,
+                    query=query,
+                    top_k=top_k,
+                    requested_top_k=top_k,
+                    score_threshold=score_threshold,
+                ),
+                timeout=timeout_sec,
+            )
+            completed += 1
+            item_elapsed_ms = round((time.perf_counter() - item_started) * 1000, 2)
+            logger.info(
+                "Dify external warmup completed knowledge_id_hash=%s dataset_count=%s elapsed_ms=%s",
+                _diagnostic_value_hash(knowledge_id),
+                len(dataset_ids),
+                item_elapsed_ms,
+                extra={
+                    "event": "dify_external_warmup",
+                    "phase": "knowledge_completed",
+                    "knowledge_id_hash": _diagnostic_value_hash(knowledge_id),
+                    "dataset_count": len(dataset_ids),
+                    "elapsed_ms": item_elapsed_ms,
+                },
+            )
+        except Exception:  # noqa: BLE001
+            failed += 1
+            item_elapsed_ms = round((time.perf_counter() - item_started) * 1000, 2)
+            logger.warning(
+                "Dify external warmup failed knowledge_id_hash=%s elapsed_ms=%s",
+                _diagnostic_value_hash(knowledge_id),
+                item_elapsed_ms,
+                exc_info=True,
+                extra={
+                    "event": "dify_external_warmup",
+                    "phase": "knowledge_failed",
+                    "knowledge_id_hash": _diagnostic_value_hash(knowledge_id),
+                    "elapsed_ms": item_elapsed_ms,
+                },
+            )
+        finally:
+            if db is not None:
+                close = getattr(db, "close", None)
+                if callable(close):
+                    close()
+
+    elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
+    result = {
+        "enabled": True,
+        "reason": "completed",
+        "attempted": len(knowledge_ids),
+        "completed": completed,
+        "failed": failed,
+        "elapsed_ms": elapsed_ms,
+    }
+    logger.info(
+        "Dify external warmup finished attempted=%s completed=%s failed=%s elapsed_ms=%s",
+        result["attempted"],
+        completed,
+        failed,
+        elapsed_ms,
+        extra={"event": "dify_external_warmup", "phase": "finished", **result},
+    )
+    return result
+
+
+def _log_dify_warmup_task_result(task: Any) -> None:
+    try:
+        task.result()
+    except asyncio.CancelledError:
+        logger.info("Dify external warmup task cancelled")
+    except Exception:  # noqa: BLE001
+        logger.warning("Dify external warmup task failed", exc_info=True)
+
+
+def start_dify_external_knowledge_warmup(
+    *,
+    create_task: Callable[[Any], Any] | None = None,
+) -> Any | None:
+    if not bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", False)):
+        return None
+    if not bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED", True)):
+        return None
+
+    coro = warmup_dify_external_knowledge()
+    try:
+        task = create_task(coro) if create_task is not None else asyncio.create_task(coro)
+    except RuntimeError:
+        coro.close()
+        logger.warning("Dify external warmup was not scheduled: no running event loop")
+        return None
+    except Exception:  # noqa: BLE001
+        coro.close()
+        logger.warning("Dify external warmup was not scheduled", exc_info=True)
+        return None
+
+    add_done_callback = getattr(task, "add_done_callback", None)
+    if callable(add_done_callback):
+        add_done_callback(_log_dify_warmup_task_result)
+    logger.info("Dify external warmup scheduled")
+    return task
 
 
 @router.post("/retrieval", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -3248,12 +3501,19 @@ async def retrieve_external_knowledge(
     kg_on_demand_triggered = False
     kg_on_demand_skipped = False
     try:
+        query_prefers_question_anchor = _query_prefers_question_anchor(
+            body.query,
+            policy_plugin_refs=policy_plugin_refs,
+        )
+        query_prefers_service_anchor = _query_prefers_service_anchor(
+            body.query,
+            policy_plugin_refs=policy_plugin_refs,
+        )
         metadata_anchor_preflight_enabled = (
             bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED", False))
             and bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED", False))
             and not metadata_filter
-            and _query_prefers_question_anchor(body.query)
-            and not _query_prefers_service_anchor(body.query, policy_plugin_refs=policy_plugin_refs)
+            and (query_prefers_question_anchor or query_prefers_service_anchor)
         )
         if metadata_anchor_preflight_enabled:
             metadata_anchor_records = _metadata_anchor_db_fallback_records(
@@ -3266,11 +3526,19 @@ async def retrieve_external_knowledge(
                 existing_records=[],
                 metadata_filter=metadata_filter,
             )
-            if _records_have_strong_question_anchor(
-                metadata_anchor_records,
-                query=body.query,
-                policy_plugin_refs=policy_plugin_refs,
-            ):
+            if query_prefers_service_anchor:
+                has_preflight_anchor = _records_have_confident_metadata_anchor(
+                    metadata_anchor_records,
+                    query=body.query,
+                    policy_plugin_refs=policy_plugin_refs,
+                )
+            else:
+                has_preflight_anchor = _records_have_strong_question_anchor(
+                    metadata_anchor_records,
+                    query=body.query,
+                    policy_plugin_refs=policy_plugin_refs,
+                )
+            if has_preflight_anchor:
                 metadata_anchor_fallback_count = len(metadata_anchor_records)
                 records.extend(metadata_anchor_records)
                 retrieval_path = "metadata_anchor:preflight"

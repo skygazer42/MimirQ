@@ -189,6 +189,85 @@ def _patch_demo_policy(
     return policy
 
 
+def test_dify_warmup_knowledge_ids_default_to_map_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_KNOWLEDGE_IDS", "", raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_MAX_KNOWLEDGE_IDS", 2, raising=False)
+
+    ids = dify_api._resolve_dify_warmup_knowledge_ids({"city": "dataset-a", "district": "dataset-b", "faq": "dataset-c"})
+
+    assert ids == ("city", "district")
+
+
+@pytest.mark.asyncio
+async def test_dify_warmup_runs_internal_retrieval_for_configured_knowledge_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    tenant_id = uuid.uuid4()
+    city_dataset_id = uuid.uuid4()
+    faq_dataset_id = uuid.uuid4()
+    retrieval_calls: list[dict[str, object]] = []
+
+    class _Session:
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    session = _Session()
+
+    async def _fake_retrieve_dataset_citations(**kwargs):  # noqa: ANN003, ANN202
+        retrieval_calls.append(dict(kwargs))
+        return []
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", str(tenant_id), raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_KNOWLEDGE_IDS", "city,faq", raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_QUERY", "warmup probe", raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TOP_K", 1, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        f'{{"city": "{city_dataset_id}", "faq": "{faq_dataset_id}"}}',
+        raising=False,
+    )
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+
+    result = await dify_api.warmup_dify_external_knowledge(db_factory=lambda: session)
+
+    assert result["attempted"] == 2
+    assert result["completed"] == 2
+    assert result["failed"] == 0
+    assert session.closed is True
+    assert [call["dataset_ids"] for call in retrieval_calls] == [[city_dataset_id], [faq_dataset_id]]
+    assert {call["query"] for call in retrieval_calls} == {"warmup probe"}
+    assert {call["top_k"] for call in retrieval_calls} == {1}
+
+
+def test_dify_warmup_scheduler_is_fire_and_forget(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    scheduled = []
+
+    def _fake_create_task(coro):  # noqa: ANN001, ANN202
+        scheduled.append(coro)
+        coro.close()
+        return object()
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED", True, raising=False)
+
+    task = dify_api.start_dify_external_knowledge_warmup(create_task=_fake_create_task)
+
+    assert task is not None
+    assert scheduled
+
+
 def test_dify_retrieval_logs_request_diagnostics(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
@@ -1036,6 +1115,176 @@ def test_dify_retrieval_uses_question_anchor_preflight_when_enabled(
     assert "不影响" in body["records"][0]["content"]
 
 
+def test_dify_retrieval_uses_plugin_question_intent_preflight(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    token = "dify-test-token"
+    dataset_id = uuid.uuid4()
+    calls = {"rag": 0, "metadata_anchor": 0}
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED",
+        True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED",
+        True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        f'{{"city": {{"dataset_ids": ["{dataset_id}"], "plugin_refs": ["{_DEMO_PLUGIN_REF}"]}}}}',
+        raising=False,
+    )
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+    _patch_demo_policy(monkeypatch, dify_api, question_anchor_bonus=0.9)
+
+    async def _fake_retrieve_dataset_citations(**_kwargs):  # noqa: ANN003, ANN202
+        calls["rag"] += 1
+        raise AssertionError("plugin question intent metadata preflight should skip RAG")
+
+    def _fake_metadata_anchor_db_fallback_records(**kwargs):  # noqa: ANN003, ANN202
+        calls["metadata_anchor"] += 1
+        assert kwargs["existing_records"] == []
+        assert kwargs["policy_plugin_refs"] == (_DEMO_PLUGIN_REF,)
+        return [
+            {
+                "content": "问题：租房提取条件\n答案：连续足额缴存住房公积金满3个月。",
+                "score": 0.97,
+                "title": "提取类.xlsx",
+                "metadata": {
+                    "dataset_id": str(dataset_id),
+                    "question": "租房提取条件",
+                    "chunk_kind": "qa_pair",
+                    "source_record_id": "rent-withdrawal-condition",
+                    "chunk_python_plugin": _DEMO_PLUGIN_REF,
+                    "dify_metadata_anchor_fallback": True,
+                },
+            }
+        ]
+
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(
+        dify_api,
+        "_metadata_anchor_db_fallback_records",
+        _fake_metadata_anchor_db_fallback_records,
+        raising=True,
+    )
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/integrations/dify/retrieval",
+        headers=_auth(token),
+        json={
+            "knowledge_id": "city",
+            "query": "租房提取条件",
+            "retrieval_setting": {"top_k": 5, "score_threshold": 0.0},
+        },
+    )
+
+    assert res.status_code == 200, res.text
+    assert calls == {"rag": 0, "metadata_anchor": 1}
+    body = res.json()
+    assert body["records"][0]["metadata"]["source_record_id"] == "rent-withdrawal-condition"
+    assert "连续足额缴存住房公积金满3个月" in body["records"][0]["content"]
+
+
+def test_dify_retrieval_uses_short_query_question_anchor_preflight(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    token = "dify-test-token"
+    dataset_id = uuid.uuid4()
+    calls = {"rag": 0, "metadata_anchor": 0}
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED",
+        True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED",
+        True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        f'{{"city": {{"dataset_ids": ["{dataset_id}"], "plugin_refs": ["{_DEMO_PLUGIN_REF}"]}}}}',
+        raising=False,
+    )
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+    _patch_demo_policy(monkeypatch, dify_api, question_anchor_bonus=0.9)
+
+    async def _fake_retrieve_dataset_citations(**_kwargs):  # noqa: ANN003, ANN202
+        calls["rag"] += 1
+        raise AssertionError("short query question metadata preflight should skip RAG")
+
+    def _fake_metadata_anchor_db_fallback_records(**kwargs):  # noqa: ANN003, ANN202
+        calls["metadata_anchor"] += 1
+        assert kwargs["existing_records"] == []
+        return [
+            {
+                "content": "问题：单位降比（缓缴）公积金\n答案：可按政策申请单位降比或缓缴。",
+                "score": 0.97,
+                "title": "缴存类.xlsx",
+                "metadata": {
+                    "dataset_id": str(dataset_id),
+                    "question": "单位降比（缓缴）公积金",
+                    "chunk_kind": "qa_pair",
+                    "source_record_id": "housing-fund-ratio",
+                    "chunk_python_plugin": _DEMO_PLUGIN_REF,
+                    "dify_metadata_anchor_fallback": True,
+                },
+            }
+        ]
+
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(
+        dify_api,
+        "_metadata_anchor_db_fallback_records",
+        _fake_metadata_anchor_db_fallback_records,
+        raising=True,
+    )
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/integrations/dify/retrieval",
+        headers=_auth(token),
+        json={
+            "knowledge_id": "city",
+            "query": "单位降比（缓缴）公积金",
+            "retrieval_setting": {"top_k": 5, "score_threshold": 0.0},
+        },
+    )
+
+    assert res.status_code == 200, res.text
+    assert calls == {"rag": 0, "metadata_anchor": 1}
+    body = res.json()
+    assert body["records"][0]["metadata"]["source_record_id"] == "housing-fund-ratio"
+
+
 def test_dify_retrieval_supplements_question_anchor_when_rag_only_has_service_anchor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1129,7 +1378,7 @@ def test_dify_retrieval_supplements_question_anchor_when_rag_only_has_service_an
     assert "不影响" in body["records"][0]["content"]
 
 
-def test_dify_retrieval_skips_service_anchor_fallback_when_rag_has_confident_anchor(
+def test_dify_retrieval_uses_service_anchor_preflight_when_enabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import app.api.v1.integrations_dify as dify_api
@@ -1155,7 +1404,7 @@ def test_dify_retrieval_skips_service_anchor_fallback_when_rag_has_confident_anc
     monkeypatch.setattr(
         dify_api.settings,
         "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
-        f'{{"city": "{dataset_id}"}}',
+        f'{{"city": {{"dataset_ids": ["{dataset_id}"], "plugin_refs": ["{_DEMO_PLUGIN_REF}"]}}}}',
         raising=False,
     )
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
@@ -1163,21 +1412,7 @@ def test_dify_retrieval_skips_service_anchor_fallback_when_rag_has_confident_anc
 
     async def _fake_retrieve_dataset_citations(**_kwargs):  # noqa: ANN003, ANN202
         calls["rag"] += 1
-        return [
-            {
-                "chunk_content": "事项名称：学区划分查询\n咨询方式：0519-69660631",
-                "relevance_score": 0.91,
-                "document_name": "service-rag.txt",
-                "chunk_id": str(uuid.uuid4()),
-                "dataset_id": str(dataset_id),
-                "metadata": {
-                    "dataset_id": str(dataset_id),
-                    "district": "天宁区",
-                    "service_name": "学区划分查询",
-                    "chunk_python_plugin": _DEMO_PLUGIN_REF,
-                },
-            }
-        ]
+        raise AssertionError("confident service metadata preflight should skip RAG")
 
     def _fake_metadata_anchor_db_fallback_records(**kwargs):  # noqa: ANN003, ANN202
         calls["metadata_anchor"] += 1
@@ -1221,9 +1456,9 @@ def test_dify_retrieval_skips_service_anchor_fallback_when_rag_has_confident_anc
     )
 
     assert res.status_code == 200, res.text
-    assert calls == {"rag": 1, "metadata_anchor": 0}
+    assert calls == {"rag": 0, "metadata_anchor": 1}
     body = res.json()
-    assert body["records"][0]["title"] == "service-rag.txt"
+    assert body["records"][0]["title"] == "service.txt"
     assert "0519-69660631" in body["records"][0]["content"]
 
 
@@ -2041,6 +2276,97 @@ def test_dify_metadata_anchor_db_prefers_question_anchor_for_question_query(
     assert queried_fields[0] == "question"
 
 
+def test_dify_metadata_anchor_db_question_query_stops_after_question_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    queried_fields: list[str] = []
+
+    def _condition_values(condition):  # noqa: ANN001, ANN202
+        values: list[str] = []
+
+        def walk(node):  # noqa: ANN001, ANN202
+            value = getattr(node, "value", None)
+            if isinstance(value, str):
+                values.append(value)
+            elif isinstance(value, dict):
+                for key, raw_items in value.items():
+                    values.append(str(key))
+                    items = raw_items if isinstance(raw_items, list | tuple | set) else [raw_items]
+                    values.extend(str(item) for item in items)
+            for attr in ("left", "right"):
+                child = getattr(node, attr, None)
+                if child is not None:
+                    walk(child)
+            clauses = getattr(node, "clauses", None)
+            if clauses is not None:
+                for child in clauses:
+                    walk(child)
+
+        walk(condition)
+        return values
+
+    class _FakeQuery:
+        def __init__(self) -> None:
+            self._condition = None
+
+        def join(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+            return self
+
+        def filter(self, *_conditions):  # noqa: ANN002, ANN202
+            self._condition = _conditions[-1] if _conditions else None
+            return self
+
+        def order_by(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+            return self
+
+        def limit(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+            return self
+
+        def all(self):  # noqa: ANN202
+            values = _condition_values(self._condition)
+            if "question" in values:
+                queried_fields.append("question")
+            if "service_name" in values:
+                queried_fields.append("service_name")
+            if "case_title" in values or "source_topic" in values or "title" in values:
+                queried_fields.append("title")
+            return []
+
+    class _FakeDB:
+        def execute(self, _statement):  # noqa: ANN001, ANN202
+            return None
+
+        def query(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+            return _FakeQuery()
+
+        def rollback(self) -> None:
+            return None
+
+    _patch_demo_policy(monkeypatch, dify_api)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED",
+        True,
+        raising=False,
+    )
+
+    fallback_records = dify_api._metadata_anchor_db_fallback_records(
+        db=_FakeDB(),
+        tenant_id=uuid.uuid4(),
+        dataset_ids=[uuid.uuid4()],
+        query="公积金账户有挂账余额的情况下，怎么退回资金？",
+        top_k=5,
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+        existing_records=[],
+    )
+
+    assert fallback_records == []
+    assert queried_fields
+    assert set(queried_fields) == {"question"}
+
+
 def test_dify_metadata_anchor_db_prefers_service_anchor_for_service_intent_query(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2158,6 +2484,73 @@ def test_dify_metadata_anchor_db_prefers_service_anchor_for_service_intent_query
 
     assert fallback_records[0]["metadata"]["source_record_id"] == "service-expected"
     assert queried_fields[0] == "service_name"
+
+
+def test_dify_metadata_anchor_db_does_not_text_scan_metadata_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    cast_called = False
+
+    class _FakeQuery:
+        def join(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+            return self
+
+        def filter(self, *_conditions):  # noqa: ANN002, ANN202
+            return self
+
+        def order_by(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+            return self
+
+        def limit(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+            return self
+
+        def all(self):  # noqa: ANN202
+            return []
+
+    class _FakeDB:
+        def execute(self, _statement):  # noqa: ANN001, ANN202
+            return None
+
+        def query(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+            return _FakeQuery()
+
+        def rollback(self) -> None:
+            return None
+
+    def _record_cast(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+        nonlocal cast_called
+        cast_called = True
+        return object()
+
+    _patch_demo_policy(monkeypatch, dify_api)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED",
+        True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_TEXT_SCAN_ENABLED",
+        False,
+        raising=False,
+    )
+    monkeypatch.setattr(dify_api, "sql_cast", _record_cast)
+
+    fallback_records = dify_api._metadata_anchor_db_fallback_records(
+        db=_FakeDB(),
+        tenant_id=uuid.uuid4(),
+        dataset_ids=[uuid.uuid4()],
+        query="公积金账户有挂账余额的情况下，怎么退回资金？",
+        top_k=5,
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+        existing_records=[],
+    )
+
+    assert fallback_records == []
+    assert cast_called is False
 
 
 def test_dify_metadata_anchor_db_skips_when_existing_records_have_confident_metadata_anchor(

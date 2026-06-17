@@ -22,6 +22,7 @@ export { kgApi } from '@/lib/api/graph'
 export { kgApi as kgApiLegacy } from '@/lib/api/graph'
 export { healthApi } from '@/lib/api/health'
 export { industryRulesApi } from '@/lib/api/industry-rules'
+export { integrationApi } from '@/lib/api/integrations'
 export { lineageApi } from '@/lib/api/lineage'
 export { ltrApi } from '@/lib/api/ltr'
 export { metaApi } from '@/lib/api/meta'
@@ -55,6 +56,7 @@ export type {
   DatasetAnalysisGlossaryWritebackParams,
   DatasetAnalysisResponse,
   DatasetAnalysisRuleSuggestionParams,
+  DatasetRetrievalAuditPayload,
 } from '@/lib/api/datasets'
 export type { FrontendTraceReportRequest, FrontendWebVitalReportOptions, FrontendWebVitalReportRequest } from '@/lib/api/observability'
 export type { ParsingContentResponse, ParsingContentUpdateRequest } from '@/lib/api/parsing'
@@ -75,6 +77,11 @@ export type {
   IndustryRulesetListResponse,
   IndustryRulesetSummary,
 } from '@/lib/api/industry-rules'
+export type {
+  ExternalConversationIngestRequest,
+  ExternalConversationIngestResponse,
+  ExternalConversationMessageInput,
+} from '@/lib/api/integrations'
 export type { LineageResponse } from '@/lib/api/lineage'
 export type { RtbfCascadeResponse, RtbfRequest, RtbfStatusResponse } from '@/lib/api/rtbf'
 export type {

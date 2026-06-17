@@ -378,6 +378,16 @@ async def lifespan(app: FastAPI):
         finally:
             db.close()
 
+    # Fire-and-forget Dify external retrieval warmup. This is separate from the
+    # global BM25 startup build: it follows Dify's configured knowledge map and
+    # warms the exact retrieval path used by external knowledge calls.
+    try:
+        from app.api.v1.integrations_dify import start_dify_external_knowledge_warmup
+
+        start_dify_external_knowledge_warmup()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to schedule Dify external knowledge warmup: %s", str(exc)[:200])
+
     yield
 
     # Shutdown cleanup.

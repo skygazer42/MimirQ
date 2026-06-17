@@ -7,6 +7,7 @@ RAGAS evaluation service.
 
 import logging
 import math
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -22,7 +23,6 @@ from app.core.config import settings
 from app.core.constants import NON_CRITICAL_EXCEPTION_LOG_MESSAGE
 from app.core.database import SessionLocal
 from app.core.openai_compat import normalize_openai_compatible_base_url
-from app.core.utils import get_proxy_url
 from app.models.chat import Conversation, Message
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
@@ -33,6 +33,7 @@ from app.models.evaluation import (
     RagasRegressionItem,
     RagasRegressionRun,
 )
+from app.rag.core.http import httpx_trust_env
 from app.rag.core.logging import get_logger
 from app.rag.core.text import parse_json_from_text
 from app.rag.embedding import create_langchain_embeddings_from_config
@@ -41,6 +42,8 @@ from app.rag.evaluation.multimodal_slices import (
     summarize_multimodal_regression_slices,
 )
 from app.rag.evaluation.regression_sample_builder import (
+    _deterministic_faithfulness,
+    _quote_verifiability,
     build_expected_metadata_metrics_summary,
     build_regression_item_meta,
     build_regression_sample,
@@ -56,6 +59,7 @@ from app.services.document_access import filter_allowed_document_ids, get_allowe
 from app.services.prompt_resolver import resolve_prompt_template
 
 logger = get_logger(__name__)
+_TOKEN_RE = re.compile(r"[\u4e00-\u9fff]|[A-Za-z0-9_]{2,}")
 RAGAS_REGRESSION_METRICS = frozenset(
     {
         "faithfulness",
@@ -251,10 +255,7 @@ def _build_http_clients() -> tuple[httpx.Client, httpx.AsyncClient]:
     Reuse the same proxy-handling logic as the RAG engine:
     - If a SOCKS proxy is detected, disable trust_env to avoid httpx issues.
     """
-    proxy_url = get_proxy_url()
-    trust_env = True
-    if proxy_url and proxy_url.lower().startswith("socks"):
-        trust_env = False
+    trust_env = httpx_trust_env(logger=logger)
     timeout = float(getattr(settings, "LLM_TIMEOUT", 60) or 60)
     return httpx.Client(trust_env=trust_env, timeout=timeout), httpx.AsyncClient(trust_env=trust_env, timeout=timeout)
 
@@ -1177,7 +1178,7 @@ def _resolve_metrics(metric_names: list[str]):
             resolved.append(Faithfulness())
             continue
         if key in {"response_relevancy", "answer_relevancy"}:
-            resolved.append(ResponseRelevancy())
+            resolved.append(ResponseRelevancy(strictness=_resolve_response_relevancy_strictness()))
             continue
         if key in {"answer_similarity"}:
             resolved.append(AnswerSimilarity())
@@ -1202,8 +1203,84 @@ def _resolve_metrics(metric_names: list[str]):
             continue
         raise ValueError(f"Unsupported RAGAS metric: {name}")
     if not resolved:
-        resolved = [Faithfulness(), ResponseRelevancy()]
+        resolved = [Faithfulness(), ResponseRelevancy(strictness=_resolve_response_relevancy_strictness())]
     return resolved
+
+
+def _resolve_response_relevancy_strictness() -> int:
+    configured = int(getattr(settings, "RAGAS_RESPONSE_RELEVANCY_STRICTNESS", 0) or 0)
+    if configured > 0:
+        return max(1, min(configured, 10))
+
+    if _eval_llm_uses_deepseek():
+        return 1
+    return 3
+
+
+def _eval_llm_uses_deepseek() -> bool:
+    llm_hint = f"{getattr(settings, 'LLM_API_BASE', '')} {getattr(settings, 'LLM_MODEL', '')}".lower()
+    return "deepseek" in llm_hint
+
+
+def _build_ragas_run_config():
+    from ragas.run_config import RunConfig
+
+    return RunConfig(
+        timeout=max(5, int(getattr(settings, "RAGAS_RUN_TIMEOUT_SEC", 60) or 60)),
+        max_retries=max(0, int(getattr(settings, "RAGAS_RUN_MAX_RETRIES", 1) or 0)),
+        max_wait=max(1, int(getattr(settings, "RAGAS_RUN_MAX_WAIT_SEC", 2) or 2)),
+        max_workers=max(1, int(getattr(settings, "RAGAS_RUN_MAX_WORKERS", 4) or 4)),
+    )
+
+
+def _should_use_conversation_deterministic_eval(metric_names: list[str]) -> bool:
+    requested = _normalized_metric_names(metric_names) or ["faithfulness", "response_relevancy"]
+    normalized = {"response_relevancy" if key == "answer_relevancy" else key for key in requested}
+    supported = {"faithfulness", "response_relevancy"}
+    if not normalized.issubset(supported):
+        return False
+    return bool(getattr(settings, "RAGAS_CONVERSATION_DETERMINISTIC_MODE_ENABLED", False)) or _eval_llm_uses_deepseek()
+
+
+def _token_set(text: str) -> set[str]:
+    return {match.group(0).casefold() for match in _TOKEN_RE.finditer(str(text or ""))}
+
+
+def _deterministic_response_relevancy(user_input: str, response: str) -> float | None:
+    question_tokens = _token_set(user_input)
+    if not question_tokens:
+        return None
+    response_tokens = _token_set(response)
+    if not response_tokens:
+        return 0.0
+    return round(float(len(question_tokens & response_tokens)) / float(len(question_tokens)), 4)
+
+
+def _build_conversation_deterministic_scores(
+    *,
+    user_input: str,
+    response: str,
+    retrieved_contexts: list[Any],
+) -> dict[str, Any]:
+    scores: dict[str, Any] = {}
+
+    faithfulness_det = _deterministic_faithfulness(response, retrieved_contexts)
+    if faithfulness_det is not None:
+        scores["faithfulness_det"] = faithfulness_det
+        scores["faithfulness"] = faithfulness_det
+        scores["atomic_faithfulness"] = faithfulness_det
+        scores["hallucination_rate"] = round(1.0 - float(faithfulness_det), 4)
+
+    response_relevancy_det = _deterministic_response_relevancy(user_input, response)
+    if response_relevancy_det is not None:
+        scores["response_relevancy_det"] = response_relevancy_det
+        scores["response_relevancy"] = response_relevancy_det
+
+    quote_verifiability = _quote_verifiability(response, retrieved_contexts)
+    if quote_verifiability is not None:
+        scores["quote_verifiability"] = quote_verifiability
+
+    return scores
 
 
 def _build_llm_and_embeddings():
@@ -1243,6 +1320,8 @@ def _build_llm_and_embeddings():
             model=settings.EMBEDDING_MODEL,
             api_key=api_key,
             base_url=base_url,
+            http_client=http_client,
+            http_async_client=http_async_client,
         )
 
     return llm, embeddings
@@ -1346,6 +1425,75 @@ def run_conversation_ragas_evaluation(
             db.commit()
             return
 
+        if _should_use_conversation_deterministic_eval(metric_names):
+            score_rows: list[dict[str, Any]] = []
+            db.query(RagasEvaluationItem).filter(
+                RagasEvaluationItem.run_id == run_id,
+                RagasEvaluationItem.tenant_id == tenant_id,
+            ).delete(synchronize_session=False)
+
+            for item in eval_items:
+                scores = _build_conversation_deterministic_scores(
+                    user_input=item["user_input"],
+                    response=item["response"],
+                    retrieved_contexts=item["retrieved_contexts"],
+                )
+                score_rows.append(scores)
+                db.add(
+                    RagasEvaluationItem(
+                        run_id=run_id,
+                        tenant_id=tenant_id,
+                        conversation_id=conversation_id,
+                        turn_index=item["turn_index"],
+                        user_message_id=item["user_message_id"],
+                        assistant_message_id=item["assistant_message_id"],
+                        user_input=item["user_input"],
+                        response=item["response"],
+                        retrieved_contexts=item["retrieved_contexts"],
+                        citations=item["citations"],
+                        scores=scores,
+                    )
+                )
+
+            metric_keys = _normalized_metric_names(metric_names) or ["faithfulness", "response_relevancy"]
+            metric_keys = ["response_relevancy" if key == "answer_relevancy" else key for key in metric_keys]
+            summary: dict[str, Any] = {
+                "items": len(eval_items),
+                "mode": "deterministic_conversation",
+                "ragas_skipped_reason": "eval_llm_provider_compatibility",
+                "eval_llm_tokens_input_ragas": 0,
+                "eval_llm_tokens_output_ragas": 0,
+                "eval_estimated_cost_usd_ragas": 0.0,
+                "eval_llm_tokens_input": 0,
+                "eval_llm_tokens_output": 0,
+                "eval_estimated_cost_usd": 0.0,
+            }
+            for key in (
+                "faithfulness",
+                "response_relevancy",
+                "faithfulness_det",
+                "response_relevancy_det",
+                "atomic_faithfulness",
+                "hallucination_rate",
+                "quote_verifiability",
+            ):
+                value = _mean(row.get(key) for row in score_rows)
+                if value is not None:
+                    summary[key] = value
+
+            run.status = "completed"
+            run.metrics = metric_keys
+            run.params = {
+                "requested_metrics": metric_names,
+                "max_turns": max_turns,
+                "skip_empty_contexts": skip_empty_contexts,
+                "mode": "deterministic_conversation",
+            }
+            run.summary = summary
+            run.finished_at = datetime.now(UTC).replace(tzinfo=None)
+            db.commit()
+            return
+
         # Import ragas lazily
         try:
             from ragas import EvaluationDataset, SingleTurnSample, evaluate
@@ -1380,6 +1528,7 @@ def run_conversation_ragas_evaluation(
             for item in eval_items
         ]
         dataset = EvaluationDataset(samples=samples)
+        run_config = _build_ragas_run_config()
 
         eval_prompt_tokens: int | None = None
         eval_completion_tokens: int | None = None
@@ -1401,6 +1550,7 @@ def run_conversation_ragas_evaluation(
                     metrics=metrics,
                     llm=ragas_llm,
                     embeddings=ragas_embeddings,
+                    run_config=run_config,
                     show_progress=False,
                     raise_exceptions=False,
                     allow_nest_asyncio=False,
@@ -1414,6 +1564,7 @@ def run_conversation_ragas_evaluation(
                 metrics=metrics,
                 llm=ragas_llm,
                 embeddings=ragas_embeddings,
+                run_config=run_config,
                 show_progress=False,
                 raise_exceptions=False,
                 allow_nest_asyncio=False,
@@ -2161,6 +2312,7 @@ def run_regression_ragas_evaluation(
 
         samples = [SingleTurnSample(**(item.get("sample_kwargs") or {})) for item in eval_items]
         dataset = EvaluationDataset(samples=samples)
+        run_config = _build_ragas_run_config()
         eval_prompt_tokens: int | None = None
         eval_completion_tokens: int | None = None
         eval_total_cost: float | None = None
@@ -2181,6 +2333,7 @@ def run_regression_ragas_evaluation(
                     metrics=metrics,
                     llm=ragas_llm,
                     embeddings=ragas_embeddings,
+                    run_config=run_config,
                     show_progress=False,
                     raise_exceptions=False,
                     allow_nest_asyncio=False,
@@ -2194,6 +2347,7 @@ def run_regression_ragas_evaluation(
                 metrics=metrics,
                 llm=ragas_llm,
                 embeddings=ragas_embeddings,
+                run_config=run_config,
                 show_progress=False,
                 raise_exceptions=False,
                 allow_nest_asyncio=False,
