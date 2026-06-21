@@ -13,10 +13,10 @@ describe('KnowledgeScopePanel header refinement', () => {
     expect(src).toMatch(
       /import\s*\{[^}]*ChevronDown[^}]*Filter[^}]*\}\s*from\s*'lucide-react'/
     )
-    expect(src).toContain('text-[10px] font-medium uppercase tracking-[0.16em]')
-    expect(src).toContain('mt-0.5 text-[13px] font-medium')
+    expect(src).toContain('text-[11px] font-medium leading-none text-muted-foreground/72')
+    expect(src).toContain('mt-1 text-[13px] font-semibold leading-none')
     expect(src).toContain('h-px w-full bg-border/70 dark:bg-border/70')
-    expect(src).toContain("t('header.subtitle')")
-    expect(src).toContain("t('header.title')")
+    expect(src).toContain('筛选面板')
+    expect(src).toContain('导航')
   })
 })

@@ -67,21 +67,21 @@ const PAGE_SIZE_OPTIONS = [10, 20, 50] as const
 type PageSizeOption = (typeof PAGE_SIZE_OPTIONS)[number]
 const GROUP_PAGE_LIST_PARAMS = { limit: 500 } as const
 const OUTLINE_BUTTON =
-  'h-9 rounded-xl border-slate-200 bg-card px-3.5 text-[12px] font-semibold text-slate-700 shadow-sm hover:bg-slate-50'
+  'h-9 rounded-full border-border/60 bg-card/88 px-3.5 text-[12px] font-semibold text-foreground shadow-[0_6px_16px_hsl(var(--primary)/0.04)] hover:bg-muted/45'
 const PRIMARY_BUTTON =
-  'h-9 rounded-xl bg-info px-3.5 text-[12px] font-semibold text-primary-foreground shadow-[0_8px_20px_hsl(var(--info)/0.24)] hover:bg-info/90'
+  'h-9 rounded-full bg-info px-3.5 text-[12px] font-semibold text-primary-foreground shadow-[0_8px_20px_hsl(var(--info)/0.24)] hover:bg-info/90'
 const INPUT_CLASS =
-  'h-10 rounded-xl border-slate-200 bg-card text-[13px] shadow-sm placeholder:text-slate-400 focus-visible:ring-blue-500/30'
+  'h-10 rounded-xl border-border/60 bg-background/76 text-[13px] shadow-none placeholder:text-muted-foreground/60 focus-visible:border-primary/35 focus-visible:ring-2 focus-visible:ring-primary/10'
 const CARD_CLASS =
-  'rounded-[20px] border border-slate-200/80 bg-card/92 shadow-[0_18px_44px_rgba(15,23,42,0.06)]'
+  'rounded-[1.35rem] border border-border/60 bg-card/90 shadow-[0_14px_36px_hsl(var(--primary)/0.05)]'
 const ICON_BUTTON =
-  'size-7 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+  'size-8 rounded-xl text-muted-foreground hover:bg-destructive/10 hover:text-destructive'
 
 function isPageSizeOption(value: number): value is PageSizeOption {
   return PAGE_SIZE_OPTIONS.includes(value as PageSizeOption)
 }
 
-type SummaryTone = 'indigo' | 'blue' | 'green' | 'slate'
+type SummaryTone = 'primary' | 'info' | 'success' | 'muted'
 
 type SummaryItem = {
   label: string
@@ -92,10 +92,10 @@ type SummaryItem = {
 }
 
 const SUMMARY_TONE_CLASS: Record<SummaryTone, string> = {
-  indigo: 'bg-indigo-50 text-indigo-600',
-  blue: 'bg-blue-50 text-blue-600',
-  green: 'bg-emerald-50 text-emerald-600',
-  slate: 'bg-slate-100 text-slate-500',
+  primary: 'border-primary/20 bg-primary/10 text-primary',
+  info: 'border-info/20 bg-info/10 text-info',
+  success: 'border-success/20 bg-success/10 text-success',
+  muted: 'border-border/70 bg-muted/45 text-muted-foreground',
 }
 
 function getCreateStatusLabel(creating: boolean, createOpen: boolean): string {
@@ -114,9 +114,9 @@ function getListStatusValueClassName(
   loading: boolean,
   groupCount: number
 ): string {
-  if (loading) return 'text-amber-600'
-  if (groupCount > 0) return 'text-emerald-600'
-  return 'text-slate-950'
+  if (loading) return 'text-warning'
+  if (groupCount > 0) return 'text-success'
+  return 'text-foreground'
 }
 
 export default function SettingsGroupsPage() {
@@ -132,42 +132,63 @@ export default function SettingsGroupsPage() {
 
 function GroupSummaryStrip({ items }: Readonly<{ items: SummaryItem[] }>) {
   return (
-    <div
-      className={cn(
-        CARD_CLASS,
-        'grid min-h-[112px] grid-cols-1 overflow-hidden md:grid-cols-2 xl:grid-cols-4'
-      )}
-    >
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
       {items.map((item, index) => {
         const Icon = item.icon
+        const isTextValue = typeof item.value === 'string'
         return (
           <div
             key={item.label}
             className={cn(
-              'flex items-center justify-between gap-3.5 px-6 py-5',
-              index > 0 && 'border-t border-slate-100 md:border-l md:border-t-0'
+              CARD_CLASS,
+              'group relative min-h-[92px] overflow-hidden px-4 py-3.5',
+              index === 0 && 'ring-1 ring-primary/5'
             )}
           >
-            <div className="min-w-0">
-              <p className="text-[12px] font-semibold text-slate-500">
-                {item.label}
-              </p>
-              <p
+            <div className="pointer-events-none absolute inset-x-4 top-0 h-px bg-gradient-to-r from-primary/25 via-primary/8 to-transparent" />
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  {item.label}
+                </p>
+                <p
+                  className={cn(
+                    'mt-2 leading-none tracking-[-0.035em] text-foreground',
+                    isTextValue
+                      ? 'inline-flex rounded-full border border-border/60 bg-muted/45 px-2.5 py-1 text-[12px] font-semibold tracking-normal'
+                      : 'text-[24px] font-semibold',
+                    item.valueClassName
+                  )}
+                >
+                  {item.value}
+                </p>
+              </div>
+              <div
                 className={cn(
-                  'mt-2.5 text-[23px] font-semibold leading-none tracking-[-0.04em] text-slate-950',
-                  item.valueClassName
+                  'flex size-9 shrink-0 items-center justify-center rounded-2xl border shadow-inner',
+                  SUMMARY_TONE_CLASS[item.tone]
                 )}
               >
-                {item.value}
-              </p>
+                <Icon className="size-4" />
+              </div>
             </div>
-            <div
-              className={cn(
-                'flex size-11 shrink-0 items-center justify-center rounded-2xl',
-                SUMMARY_TONE_CLASS[item.tone]
-              )}
-            >
-              <Icon className="size-5" />
+            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted/50">
+              <div
+                className={cn(
+                  'h-full rounded-full transition-all',
+                  item.tone === 'success'
+                    ? 'bg-success/55'
+                    : item.tone === 'muted'
+                      ? 'bg-muted-foreground/35'
+                      : 'bg-primary/55'
+                )}
+                style={{
+                  width:
+                    typeof item.value === 'number'
+                      ? `${Math.max(10, Math.min(100, item.value || 0))}%`
+                      : '42%',
+                }}
+              />
             </div>
           </div>
         )
@@ -277,21 +298,21 @@ function SettingsGroupsPageContent() {
   const hasVisibleGroups = visibleGroups.length > 0
   const summaryItems = useMemo<SummaryItem[]>(
     () => [
-      { label: '组总数', value: groups.length, icon: Users, tone: 'indigo' },
-      { label: '筛选后', value: filtered.length, icon: Filter, tone: 'blue' },
+      { label: '组总数', value: groups.length, icon: Users, tone: 'primary' },
+      { label: '筛选后', value: filtered.length, icon: Filter, tone: 'info' },
       {
         label: '创建状态',
         value: getCreateStatusLabel(creating, createOpen),
         icon: CheckCircle2,
-        tone: 'green',
+        tone: 'success',
         valueClassName:
-          creating || createOpen ? 'text-amber-600' : 'text-emerald-600',
+          creating || createOpen ? 'text-warning' : 'text-success',
       },
       {
         label: '列表状态',
         value: getListStatusLabel(loading, groups.length),
         icon: Database,
-        tone: 'slate',
+        tone: 'muted',
         valueClassName: getListStatusValueClassName(loading, groups.length),
       },
     ],
@@ -313,7 +334,7 @@ function SettingsGroupsPageContent() {
         description="管理组织目录、成员归属和访问范围"
         iconImage="group-management"
         icon={Users}
-        iconColor="text-indigo-600 dark:text-indigo-400"
+        iconColor="text-primary"
         size="full"
         compact={false}
         headerClassName="[&_h1]:!text-[27px] [&_h1]:md:!text-[29px] [&_h1]:!leading-tight [&_h1]:!tracking-[-0.035em]"
@@ -393,7 +414,7 @@ function SettingsGroupsPageContent() {
                       placeholder="例如：Okta/AzureAD 组 ID"
                       autoComplete="off"
                     />
-                    <div className="text-xs leading-relaxed text-slate-500">
+                    <div className="text-xs leading-relaxed text-muted-foreground">
                       用于企业身份同步；留空不影响组权限
                     </div>
                   </div>
@@ -427,20 +448,20 @@ function SettingsGroupsPageContent() {
         <div
           className={cn(
             CARD_CLASS,
-            'flex min-h-[calc(100dvh-22rem)] flex-1 flex-col p-5'
+            'flex min-h-[calc(100dvh-22rem)] flex-1 flex-col overflow-hidden p-4'
           )}
         >
-          <div className="mb-5 flex flex-col gap-3.5">
+          <div className="mb-4 flex flex-col gap-3.5 rounded-2xl border border-border/55 bg-muted/18 p-3">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-3">
-                <div className="flex size-8 items-center justify-center rounded-xl bg-slate-100 text-slate-700">
+                <div className="flex size-9 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary shadow-inner">
                   <Users className="size-4" />
                 </div>
                 <div>
-                  <h2 className="text-base font-semibold tracking-[-0.02em] text-slate-950">
+                  <h2 className="text-base font-semibold tracking-[-0.025em] text-foreground">
                     组列表
                   </h2>
-                  <p className="mt-1 text-[13px] text-slate-500">
+                  <p className="mt-0.5 text-[12px] leading-5 text-muted-foreground">
                     管理组目录与外部身份映射，支持按名称、外部组 ID 或组 ID
                     过滤
                   </p>
@@ -448,14 +469,14 @@ function SettingsGroupsPageContent() {
               </div>
               <Select
                 value={String(pageSize)}
-	                onValueChange={(value) => {
-	                  const next = Number(value)
-	                  if (isPageSizeOption(next)) {
-	                    setPageSize(next)
-	                  }
-	                }}
+                onValueChange={(value) => {
+                  const next = Number(value)
+                  if (isPageSizeOption(next)) {
+                    setPageSize(next)
+                  }
+                }}
               >
-                <SelectTrigger className="h-9 w-[122px] rounded-xl border-slate-200 bg-card text-[13px] font-medium shadow-sm">
+                <SelectTrigger className="h-9 w-[122px] rounded-xl border-border/60 bg-card/88 text-[12px] font-semibold shadow-none">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent align="end">
@@ -468,62 +489,82 @@ function SettingsGroupsPageContent() {
               </Select>
             </div>
 
-            <div className="relative max-w-[500px]">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-              <Input
-                className={cn(INPUT_CLASS, 'pl-10')}
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="按名称 / 外部组 ID（external_id） / 组 ID 过滤"
-              />
+            <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+              <div className="relative w-full max-w-[560px]">
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/70" />
+                <Input
+                  className={cn(INPUT_CLASS, 'pl-10')}
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="按名称 / 外部组 ID（external_id） / 组 ID 过滤"
+                />
+              </div>
+              <div className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground">
+                <span className="rounded-full border border-border/60 bg-card/70 px-2.5 py-1">
+                  可见 {visibleGroups.length} / {filtered.length}
+                </span>
+                <span className="rounded-full border border-border/60 bg-card/70 px-2.5 py-1">
+                  每页 {pageSize}
+                </span>
+              </div>
             </div>
           </div>
 
-          <div className="flex min-h-[440px] flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200">
-            <div className="grid grid-cols-12 bg-slate-50 px-4 py-2.5 text-[12px] font-semibold text-slate-800">
+          <div className="flex min-h-[440px] flex-1 flex-col overflow-hidden rounded-2xl border border-border/55 bg-background/42">
+            <div className="grid grid-cols-12 bg-muted/38 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
               <div className="col-span-5 flex items-center gap-2">
                 <span>名称</span>
-                <span className="text-slate-400">↕</span>
               </div>
               <div className="col-span-3 flex items-center gap-2">
                 <span>外部组 ID</span>
-                <span className="text-slate-400">↕</span>
               </div>
               <div className="col-span-3">组 ID</div>
               <div className="col-span-1 text-right">操作</div>
             </div>
 
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-	              {hasVisibleGroups ? (
-	                visibleGroups.map((g) => {
+              {hasVisibleGroups ? (
+                visibleGroups.map((g) => {
                   const gid = String(g.id || '').trim()
                   const deleting = Boolean(deletingId && deletingId === gid)
+                  const initial = String(g.name || gid || '?')
+                    .trim()
+                    .slice(0, 1)
+                    .toUpperCase()
                   return (
                     <div
                       key={gid}
-                      className="grid grid-cols-12 items-center gap-3 border-t border-slate-100 px-4 py-2.5 text-[12px] transition-colors hover:bg-blue-50/40"
+                      className="grid grid-cols-12 items-center gap-3 border-t border-border/45 px-4 py-2.5 text-[12px] transition-colors hover:bg-primary/5"
                     >
                       <button
                         type="button"
-                        className="col-span-5 text-left min-w-0"
+                        className="col-span-5 flex min-w-0 items-center gap-2.5 text-left"
                         onClick={() =>
                           router.push(
                             `/settings/groups/${encodeURIComponent(gid)}`
                           )
                         }
                       >
-                        <div className="truncate font-semibold text-slate-900">
-                          {g.name}
+                        <span className="flex size-8 shrink-0 items-center justify-center rounded-xl border border-primary/15 bg-primary/8 text-[12px] font-semibold text-primary">
+                          {initial}
+                        </span>
+                        <div className="min-w-0">
+                          <div className="truncate font-semibold text-foreground">
+                            {g.name}
+                          </div>
+                          <div className="mt-0.5 text-[11px] text-muted-foreground">
+                            点击查看成员与权限映射
+                          </div>
                         </div>
                       </button>
                       <div
-                        className="col-span-3 min-w-0 truncate font-mono text-[11px] text-slate-500"
+                        className="col-span-3 min-w-0 truncate rounded-full border border-border/50 bg-muted/35 px-2 py-1 font-mono text-[11px] text-muted-foreground"
                         title={g.external_id || '-'}
                       >
                         {g.external_id || '-'}
                       </div>
                       <div
-                        className="col-span-3 min-w-0 truncate font-mono text-[11px] text-slate-500"
+                        className="col-span-3 min-w-0 truncate font-mono text-[11px] text-muted-foreground"
                         title={gid}
                       >
                         {gid}
@@ -576,23 +617,23 @@ function SettingsGroupsPageContent() {
                     </div>
                   )
                 })
-	              ) : null}
-	              {!hasVisibleGroups && loading ? (
-	                <div className="flex min-h-[360px] flex-1 items-center justify-center text-[13px] text-slate-500">
-	                  加载中…
-	                </div>
-	              ) : null}
-	              {!hasVisibleGroups && !loading ? (
-	                <div className="flex min-h-[360px] flex-1 flex-col items-center justify-center border-t border-slate-100 px-6 text-center">
-                  <div className="relative mb-4 flex size-[72px] items-center justify-center rounded-[22px] bg-blue-50 text-blue-500 shadow-inner">
+              ) : null}
+              {!hasVisibleGroups && loading ? (
+                <div className="flex min-h-[360px] flex-1 items-center justify-center text-[13px] text-muted-foreground">
+                  加载中…
+                </div>
+              ) : null}
+              {!hasVisibleGroups && !loading ? (
+                <div className="flex min-h-[360px] flex-1 flex-col items-center justify-center border-t border-border/45 px-6 text-center">
+                  <div className="relative mb-4 flex size-[72px] items-center justify-center rounded-[22px] border border-primary/15 bg-primary/10 text-primary shadow-inner">
                     <UsersRound className="size-9" />
-                    <span className="absolute -right-1 top-2 size-2 rounded-full bg-blue-300" />
-                    <span className="absolute -left-2 top-8 size-1.5 rounded-full bg-blue-200" />
+                    <span className="absolute -right-1 top-2 size-2 rounded-full bg-primary/35" />
+                    <span className="absolute -left-2 top-8 size-1.5 rounded-full bg-primary/25" />
                   </div>
-                  <h3 className="text-lg font-semibold tracking-[-0.03em] text-slate-950">
+                  <h3 className="text-lg font-semibold tracking-[-0.03em] text-foreground">
                     暂无组
                   </h3>
-                  <p className="mt-2.5 max-w-md text-[13px] leading-6 text-slate-500">
+                  <p className="mt-2.5 max-w-md text-[13px] leading-6 text-muted-foreground">
                     还没有创建任何组，或您没有查看权限
                   </p>
                   <Button
@@ -602,31 +643,31 @@ function SettingsGroupsPageContent() {
                   >
                     <Plus className="size-4" />
                     新建组
-	                  </Button>
-	                </div>
-	              ) : null}
+                  </Button>
+                </div>
+              ) : null}
             </div>
 
-            <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-[13px] text-slate-500">
+            <div className="flex items-center justify-between border-t border-border/45 bg-muted/18 px-4 py-3 text-[13px] text-muted-foreground">
               <span>共 {filtered.length} 条</span>
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
                   size="icon"
-                  className="size-8 rounded-lg border-slate-200 bg-card"
+                  className="size-8 rounded-xl border-border/60 bg-card/88"
                   disabled={page <= 1}
                   onClick={() => setPage((current) => Math.max(1, current - 1))}
                   aria-label="上一页"
                 >
                   <ChevronLeft className="size-4" />
                 </Button>
-                <span className="flex h-8 min-w-8 items-center justify-center rounded-lg border border-blue-500 bg-card px-3 text-[13px] font-semibold text-blue-600">
+                <span className="flex h-8 min-w-8 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 px-3 text-[13px] font-semibold text-primary">
                   {page}
                 </span>
                 <Button
                   variant="outline"
                   size="icon"
-                  className="size-8 rounded-lg border-slate-200 bg-card"
+                  className="size-8 rounded-xl border-border/60 bg-card/88"
                   disabled={page >= pageCount}
                   onClick={() =>
                     setPage((current) => Math.min(pageCount, current + 1))

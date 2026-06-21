@@ -47,42 +47,50 @@ const ROLE_OPTIONS = [
   {
     key: 'owner',
     label: 'Owner',
-    cn: 'border-blue-100 bg-blue-50 text-blue-700',
+    cn: 'border-primary/20 bg-primary/10 text-primary',
   },
   {
     key: 'admin',
     label: '管理员',
-    cn: 'border-purple-100 bg-purple-50 text-purple-700',
+    cn: 'border-accent/20 bg-accent/10 text-accent',
   },
   {
     key: 'auditor',
     label: '审计员',
-    cn: 'border-amber-100 bg-amber-50 text-amber-700',
+    cn: 'border-warning/20 bg-warning/10 text-warning',
   },
   { key: 'editor', label: '编辑者', cn: 'border-info/25 bg-info/10 text-info' },
   {
     key: 'dataset_operator',
     label: '数据集运维',
-    cn: 'border-emerald-100 bg-emerald-50 text-emerald-700',
+    cn: 'border-success/20 bg-success/10 text-success',
   },
   {
     key: 'viewer',
     label: '查看者',
-    cn: 'border-teal-100 bg-teal-50 text-teal-700',
+    cn: 'border-border/60 bg-muted/45 text-muted-foreground',
   },
 ]
 
 const PAGE_SIZE_OPTIONS = [7, 10, 20, 50]
 const RBAC_MEMBERS_PARAMS = { limit: 500 } as const
 const CARD_CLASS =
-  'rounded-2xl border border-slate-200/80 bg-card shadow-[0_1px_3px_rgba(15,23,42,0.04)]'
+  'rounded-[1.15rem] border border-border/60 bg-card/86 shadow-[0_10px_28px_hsl(var(--primary)/0.045)]'
+const RBAC_FIELD_LABEL_CLASS =
+  'text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground'
+const RBAC_INPUT_CLASS =
+  'h-9 rounded-xl border-border/60 bg-background/72 text-[12px] shadow-none'
+const RBAC_SOFT_BUTTON_CLASS =
+  'h-8 rounded-full border-border/60 bg-card/86 px-3 text-[11px] font-semibold text-foreground shadow-sm hover:bg-primary/10 hover:text-primary'
+const RBAC_MUTED_CHIP_CLASS =
+  'h-9 w-fit rounded-full border border-border/60 bg-muted/45 px-3 text-[11px] font-semibold text-muted-foreground'
 const ROLE_DOT_TONES: Record<string, string> = {
-  owner: 'bg-blue-500',
-  admin: 'bg-purple-500',
-  auditor: 'bg-amber-500',
+  owner: 'bg-primary',
+  admin: 'bg-accent',
+  auditor: 'bg-warning',
   editor: 'bg-info',
-  dataset_operator: 'bg-emerald-500',
-  viewer: 'bg-teal-500',
+  dataset_operator: 'bg-success',
+  viewer: 'bg-muted-foreground/55',
 }
 
 type RbacMembersSnapshot = {
@@ -108,11 +116,11 @@ function initials(userId?: string | null) {
 
 function avatarTone(userId?: string | null) {
   const tones = [
-    'bg-blue-100 text-blue-700',
-    'bg-emerald-100 text-emerald-700',
-    'bg-orange-100 text-orange-700',
-    'bg-purple-100 text-purple-700',
-    'bg-slate-200 text-slate-700',
+    'border-primary/20 bg-primary/10 text-primary',
+    'border-success/20 bg-success/10 text-success',
+    'border-warning/20 bg-warning/10 text-warning',
+    'border-accent/20 bg-accent/10 text-accent',
+    'border-border/60 bg-muted/55 text-muted-foreground',
   ]
   const raw = String(userId || '')
   const sum = raw.split('').reduce((acc, char) => acc + (char.codePointAt(0) ?? 0), 0)
@@ -354,12 +362,12 @@ function SettingsRbacPageContent() {
         description="管理成员角色、访问范围和权限状态"
         iconImage="members-rbac"
         icon={ShieldCheck}
-        iconColor="text-blue-600"
+        iconColor="text-primary"
         size="full"
         compact
         bodyGutter="dense"
-        bodyClassName="bg-slate-50/60 pb-6"
-        headerClassName="[&_.text-muted-foreground]:text-slate-500"
+        bodyClassName="bg-transparent pb-6"
+        headerClassName="[&_.text-muted-foreground]:text-muted-foreground"
         top={
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
             <StatCard
@@ -393,6 +401,7 @@ function SettingsRbacPageContent() {
                   : '成员列表状态'
               }
               tone={loading ? 'orange' : 'purple'}
+              variant="status"
             />
           </div>
         }
@@ -401,7 +410,7 @@ function SettingsRbacPageContent() {
             <Button
               variant="outline"
               size="sm"
-              className="h-9 gap-2 rounded-lg border-slate-200 bg-card px-3 text-[12px] font-semibold text-slate-600 shadow-sm hover:bg-slate-50"
+              className={cn(RBAC_SOFT_BUTTON_CLASS, 'gap-2')}
               disabled={loading}
               onClick={() => {
                 membersQuery.refetch()
@@ -420,16 +429,16 @@ function SettingsRbacPageContent() {
       >
         <div className="grid grid-cols-1 gap-4">
           <section className={cn(CARD_CLASS, 'overflow-hidden')}>
-            <div className="flex flex-col gap-3 border-b border-slate-200/70 px-5 py-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-col gap-3 border-b border-border/50 px-5 py-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex items-center gap-3">
-                <div className="flex size-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                <div className="flex size-9 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
                   <Users className="size-4" />
                 </div>
                 <div>
-                  <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-slate-950">
+                  <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-foreground">
                     成员管理
                   </h2>
-                  <p className="mt-0.5 text-[12px] text-slate-500">
+                  <p className="mt-0.5 text-[12px] text-muted-foreground">
                     调整角色、移除成员，并同步当前访问控制状态
                   </p>
                 </div>
@@ -437,7 +446,7 @@ function SettingsRbacPageContent() {
               <Button
                 variant="outline"
                 size="sm"
-                className="h-8 w-fit gap-2 rounded-lg border-slate-200 bg-card px-3 text-[12px] font-semibold text-slate-600"
+                className={cn(RBAC_SOFT_BUTTON_CLASS, 'w-fit gap-2')}
                 disabled={loading}
                 onClick={() => {
                   membersQuery.refetch()
@@ -456,13 +465,13 @@ function SettingsRbacPageContent() {
             <div className="px-5 py-3">
               <div className="grid gap-3 lg:grid-cols-[minmax(260px,1.1fr)_220px_220px_auto] lg:items-end">
                 <div className="space-y-1.5">
-                  <Label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                  <Label className={RBAC_FIELD_LABEL_CLASS}>
                     搜索成员
                   </Label>
                   <div className="relative">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                    <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
-                      className="h-10 rounded-lg border-slate-200 bg-card pl-9 text-[13px] shadow-none placeholder:text-slate-400"
+                      className={cn(RBAC_INPUT_CLASS, 'pl-9 placeholder:text-muted-foreground')}
                       value={query}
                       onChange={(e) => {
                         setQuery(e.target.value)
@@ -473,7 +482,7 @@ function SettingsRbacPageContent() {
                   </div>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                  <Label className={RBAC_FIELD_LABEL_CLASS}>
                     角色
                   </Label>
                   <Select
@@ -483,7 +492,7 @@ function SettingsRbacPageContent() {
                       setPage(1)
                     }}
                   >
-                    <SelectTrigger className="h-10 rounded-lg border-slate-200 bg-card text-[13px] shadow-none">
+                    <SelectTrigger className={RBAC_INPUT_CLASS}>
                       <SelectValue placeholder="全部角色" />
                     </SelectTrigger>
                     <SelectContent>
@@ -497,7 +506,7 @@ function SettingsRbacPageContent() {
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                  <Label className={RBAC_FIELD_LABEL_CLASS}>
                     状态
                   </Label>
                   <Select
@@ -507,7 +516,7 @@ function SettingsRbacPageContent() {
                       setPage(1)
                     }}
                   >
-                    <SelectTrigger className="h-10 rounded-lg border-slate-200 bg-card text-[13px] shadow-none">
+                    <SelectTrigger className={RBAC_INPUT_CLASS}>
                       <SelectValue placeholder="全部状态" />
                     </SelectTrigger>
                     <SelectContent>
@@ -520,26 +529,26 @@ function SettingsRbacPageContent() {
                 </div>
                 <Badge
                   variant="outline"
-                  className="h-10 w-fit rounded-lg border-slate-200 bg-slate-50 px-3 text-[12px] font-semibold text-slate-500"
+                  className={RBAC_MUTED_CHIP_CLASS}
                 >
                   可见 {filtered.length} / {totalMembers || members.length}
                 </Badge>
               </div>
 
-              <div className="mt-3 overflow-hidden rounded-xl border border-slate-200/80">
+              <div className="mt-3 overflow-hidden rounded-xl border border-border/60">
                 <div className="overflow-x-auto">
-                  <table className="min-w-[980px] w-full border-collapse text-left">
+                  <table className="min-w-[900px] w-full table-fixed border-collapse text-left">
                     <thead>
-                      <tr className="border-b border-slate-200/80 bg-slate-50/80 text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-400">
-                        <th className="px-4 py-2.5">成员</th>
-                        <th className="px-4 py-2.5">邮箱 / ID</th>
-                        <th className="px-4 py-2.5">角色</th>
-                        <th className="px-4 py-2.5">状态</th>
-                        <th className="px-4 py-2.5">最近更新</th>
-                        <th className="px-4 py-2.5 text-right">操作</th>
+                      <tr className="border-b border-border/60 bg-muted/38 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                        <th className="w-[31%] px-3 py-2.5">成员</th>
+                        <th className="w-[28%] px-3 py-2.5">邮箱 / ID</th>
+                        <th className="w-[15%] px-3 py-2.5">角色</th>
+                        <th className="w-[9%] px-3 py-2.5">状态</th>
+                        <th className="w-[10%] px-3 py-2.5">最近更新</th>
+                        <th className="w-[7%] px-3 py-2.5 text-right">操作</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 bg-card">
+                    <tbody className="divide-y divide-border/40 bg-card/72">
                       {pagedMembers.length ? (
                         pagedMembers.map((m) => {
                           const uid = String(m.user_id || '').trim()
@@ -563,37 +572,37 @@ function SettingsRbacPageContent() {
                           return (
                             <tr
                               key={key}
-                              className="text-[13px] text-slate-700 transition-colors hover:bg-slate-50/70"
+                              className="text-[13px] text-foreground transition-colors hover:bg-primary/[0.035]"
                             >
-                              <td className="px-4 py-2">
+                              <td className="px-3 py-2">
                                 <div className="flex items-center gap-3">
                                   <div
                                     className={cn(
-                                      'flex size-8 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold',
+                                      'flex size-8 shrink-0 items-center justify-center rounded-full border text-[12px] font-semibold',
                                       avatarTone(uid)
                                     )}
                                   >
                                     {initials(uid)}
                                   </div>
                                   <div className="min-w-0">
-                                    <div className="truncate font-semibold text-slate-800">
+                                    <div className="truncate font-semibold text-foreground" title={display.primary}>
                                       {display.primary}
                                     </div>
-                                    <div className="truncate text-[12px] text-slate-400">
+                                    <div className="truncate text-[12px] text-muted-foreground">
                                       {display.secondary}
                                     </div>
                                   </div>
                                 </div>
                               </td>
-                              <td className="max-w-[320px] px-4 py-2">
+                              <td className="px-3 py-2">
                                 <div
-                                  className="truncate font-mono text-[12px] text-slate-500"
+                                  className="truncate font-mono text-[12px] text-muted-foreground"
                                   title={uid || '(无用户 ID / user_id)'}
                                 >
                                   {uid || '(无用户 ID / user_id)'}
                                 </div>
                               </td>
-                              <td className="px-4 py-2">
+                              <td className="px-3 py-2">
                                 <Select
                                   value={draft}
                                   onValueChange={(v) => {
@@ -605,7 +614,7 @@ function SettingsRbacPageContent() {
                                   }}
                                   disabled={!uid}
                                 >
-                                  <SelectTrigger className="h-8 min-w-[150px] rounded-lg border-slate-200 bg-card text-[12px] shadow-none">
+                                  <SelectTrigger className="h-8 min-w-0 rounded-full border-border/60 bg-card text-[12px] shadow-none">
                                     <SelectValue placeholder="选择角色" />
                                   </SelectTrigger>
                                   <SelectContent>
@@ -625,28 +634,28 @@ function SettingsRbacPageContent() {
                                   </SelectContent>
                                 </Select>
                               </td>
-                              <td className="px-4 py-2">
+                              <td className="px-3 py-2">
                                 <Badge
                                   className={cn(
                                     'rounded-full border px-2 py-0.5 text-[11px] font-semibold shadow-none',
                                     isSelf
-                                      ? 'border-blue-100 bg-blue-50 text-blue-700'
-                                      : 'border-emerald-100 bg-emerald-50 text-emerald-700'
+                                      ? 'border-primary/20 bg-primary/10 text-primary'
+                                      : 'border-success/20 bg-success/10 text-success'
                                   )}
                                 >
                                   {isSelf ? '当前用户' : '已同步'}
                                 </Badge>
                               </td>
-                              <td className="px-4 py-2 text-[12px] text-slate-500">
+                              <td className="px-3 py-2 text-[12px] text-muted-foreground">
                                 {fmtDateTime(m.updated_at || m.created_at)}
                               </td>
-                              <td className="px-4 py-2">
-                                <div className="flex justify-end gap-2">
+                              <td className="px-3 py-2">
+                                <div className="flex justify-end gap-1.5">
                                   <Button
                                     size="sm"
                                     data-rbac-save-role-action="true"
                                     aria-label={`保存 ${display.primary} 的角色`}
-                                    className="h-8 rounded-lg bg-info px-3 text-[12px] font-semibold text-primary-foreground shadow-sm hover:bg-info/90 disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100"
+                                    className="h-8 rounded-full bg-info px-3 text-[12px] font-semibold text-primary-foreground shadow-sm hover:bg-info/90 disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100"
                                     disabled={!uid || saving || removing}
                                     onClick={() => saveRole(uid)}
                                   >
@@ -662,7 +671,7 @@ function SettingsRbacPageContent() {
                                     <Button
                                       variant="outline"
                                       size="icon"
-                                      className="h-8 w-8 rounded-lg border-rose-100 bg-rose-50 text-rose-600 hover:bg-rose-100 hover:text-rose-700 disabled:opacity-50"
+                                      className="size-8 rounded-full border-destructive/20 bg-destructive/10 text-destructive hover:bg-destructive/15 hover:text-destructive disabled:opacity-50"
                                       disabled={!uid || removing}
                                       title={isSelf ? '查看不能移除当前用户的原因' : '移除成员'}
                                       aria-label={isSelf ? '不能移除当前用户' : `移除成员 ${display.primary}`}
@@ -683,7 +692,7 @@ function SettingsRbacPageContent() {
                         <tr>
                           <td colSpan={6}>
                             {loading ? (
-                              <div className="px-4 py-10 text-sm text-slate-500">
+                              <div className="px-4 py-10 text-sm text-muted-foreground">
                                 加载中...
                               </div>
                             ) : (
@@ -701,8 +710,8 @@ function SettingsRbacPageContent() {
                   </table>
                 </div>
 
-                <div className="flex flex-col gap-3 border-t border-slate-200/80 bg-card px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="text-[12px] font-medium text-slate-500">
+                <div className="flex flex-col gap-3 border-t border-border/60 bg-card/78 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="text-[12px] font-medium text-muted-foreground">
                     共 {filtered.length} 条
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -713,7 +722,7 @@ function SettingsRbacPageContent() {
                         setPage(1)
                       }}
                     >
-                      <SelectTrigger className="h-8 w-[116px] rounded-lg border-slate-200 bg-card text-[12px] shadow-none">
+                      <SelectTrigger className="h-8 w-[116px] rounded-full border-border/60 bg-card text-[12px] shadow-none">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -728,20 +737,20 @@ function SettingsRbacPageContent() {
                       variant="outline"
                       size="icon"
                       aria-label="上一页"
-                      className="h-8 w-8 rounded-lg border-slate-200 bg-card"
+                      className="size-8 rounded-full border-border/60 bg-card hover:bg-primary/10 hover:text-primary"
                       disabled={safePage <= 1}
                       onClick={() => setPage((value) => Math.max(1, value - 1))}
                     >
                       <ChevronLeft className="size-4" />
                     </Button>
-                    <span className="rounded-lg bg-blue-600 px-3 py-1.5 text-[12px] font-semibold text-info-foreground">
+                    <span className="rounded-full bg-primary px-3 py-1.5 text-[12px] font-semibold text-primary-foreground">
                       {safePage}
                     </span>
                     <Button
                       variant="outline"
                       size="icon"
                       aria-label="下一页"
-                      className="h-8 w-8 rounded-lg border-slate-200 bg-card"
+                      className="size-8 rounded-full border-border/60 bg-card hover:bg-primary/10 hover:text-primary"
                       disabled={safePage >= pageCount}
                       onClick={() =>
                         setPage((value) => Math.min(pageCount, value + 1))
@@ -749,7 +758,7 @@ function SettingsRbacPageContent() {
                     >
                       <ChevronRight className="size-4" />
                     </Button>
-                    <span className="text-[12px] text-slate-400">
+                    <span className="text-[12px] text-muted-foreground">
                       / {pageCount} 页
                     </span>
                   </div>
@@ -772,41 +781,63 @@ function StatCard({
   value,
   detail,
   tone,
+  variant = 'metric',
 }: Readonly<{
   icon: LucideIcon
   label: string
   value: string
   detail: string
   tone: 'blue' | 'green' | 'orange' | 'purple'
+  variant?: 'metric' | 'status'
 }>) {
   const toneClass = {
-    blue: 'bg-blue-50 text-blue-600',
-    green: 'bg-emerald-50 text-emerald-600',
-    orange: 'bg-orange-50 text-orange-600',
-    purple: 'bg-purple-50 text-purple-600',
+    blue: 'border-primary/20 bg-primary/10 text-primary',
+    green: 'border-success/20 bg-success/10 text-success',
+    orange: 'border-warning/20 bg-warning/10 text-warning',
+    purple: 'border-accent/20 bg-accent/10 text-accent',
   }[tone]
+  const statusClass =
+    value === '已就绪'
+      ? 'border-success/20 bg-success/10 text-success'
+      : 'border-warning/20 bg-warning/10 text-warning'
 
   return (
     <div
       className={cn(
         CARD_CLASS,
-        'flex min-h-[58px] items-center gap-3 px-4 py-2.5'
+        'flex min-h-[58px] items-center gap-3 px-4 py-3'
       )}
     >
       <div
         className={cn(
-          'flex size-8 shrink-0 items-center justify-center rounded-lg',
+          'flex size-8 shrink-0 items-center justify-center rounded-xl border',
           toneClass
         )}
       >
         <Icon className="size-4" />
       </div>
-      <div className="min-w-0">
-        <p className="text-[11px] font-semibold text-slate-500">{label}</p>
-        <p className="mt-0.5 text-[18px] font-semibold leading-none tracking-[-0.03em] text-slate-950">
-          {value}
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+          {label}
         </p>
-        <p className="mt-1 truncate text-[10px] font-medium text-slate-400">
+        {variant === 'status' ? (
+          <div className="mt-1.5 flex min-w-0 items-center gap-2">
+            <span
+              className={cn(
+                'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[13px] font-semibold leading-none',
+                statusClass
+              )}
+            >
+              <span className="size-1.5 rounded-full bg-current" />
+              {value}
+            </span>
+          </div>
+        ) : (
+          <p className="mt-1 font-mono text-[22px] font-semibold leading-none tracking-[-0.045em] text-foreground tabular-nums">
+            {value}
+          </p>
+        )}
+        <p className="mt-1.5 truncate text-[10px] font-medium text-muted-foreground">
           {detail}
         </p>
       </div>

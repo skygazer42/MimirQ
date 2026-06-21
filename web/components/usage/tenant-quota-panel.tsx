@@ -22,9 +22,9 @@ import { cn, detachPromise } from '@/lib/utils'
 import type { TenantQuotaSummary } from '@/types'
 
 const TENANT_QUOTA_PANEL_CLASS =
-  'overflow-hidden rounded-2xl border border-border/60 bg-card/82 shadow-[0_1px_0_hsl(var(--primary)/0.05)]'
+  'overflow-hidden rounded-[1.15rem] border border-border/60 bg-card/86 shadow-[0_10px_28px_hsl(var(--primary)/0.045)]'
 const QUOTA_CARD_CLASS =
-  'rounded-xl border border-border/60 bg-card/82 px-3 py-2.5 shadow-[0_1px_2px_hsl(var(--primary)/0.04)]'
+  'rounded-[1rem] border border-border/60 bg-background/72 px-3 py-2.5 shadow-[0_1px_0_hsl(var(--primary)/0.04)] transition-colors hover:border-primary/18 hover:bg-card/90'
 const QUOTA_DISABLED_TONE =
   'border-border/60 bg-muted/55 text-muted-foreground'
 const QUOTA_ENABLED_TONE =
@@ -150,7 +150,7 @@ function QuotaCard({
     <div className={QUOTA_CARD_CLASS}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2.5">
-          <div className={cn('flex size-8 items-center justify-center rounded-lg border', tone)}>
+          <div className={cn('flex size-8 shrink-0 items-center justify-center rounded-lg border', tone)}>
             <Icon className="size-3.5" />
           </div>
           <div className="min-w-0">
@@ -173,7 +173,7 @@ function QuotaCard({
       </div>
       <div className="mt-2 flex min-h-5 items-end justify-between gap-3">
         {enabled ? (
-          <p className="text-[17px] font-semibold tabular-nums text-foreground">
+          <p className="text-[15px] font-semibold tabular-nums text-foreground">
             {primary}
           </p>
         ) : (
@@ -252,32 +252,37 @@ export function TenantQuotaPanel() {
       padding="none"
       className={TENANT_QUOTA_PANEL_CLASS}
     >
-      <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h2 className="text-[17px] font-semibold tracking-[-0.01em] text-foreground">
-            租户级配额状态
-          </h2>
-          <p className="mt-1 text-[13px] leading-5 text-muted-foreground">
+      <div className="flex flex-col gap-3 px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <h2 className="text-[14px] font-semibold tracking-[-0.01em] text-foreground">
+              租户级配额状态
+            </h2>
+            <span className="rounded-full border border-border/60 bg-muted/45 px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+              quota
+            </span>
+          </div>
+          <p className="mt-1 max-w-3xl text-[11px] leading-4 text-muted-foreground">
             由后端配额配置控制，当前按租户生效，不按数据集或用户拆分。
           </p>
         </div>
         <Button
           size="sm"
           variant="outline"
-          className="h-10 gap-2 rounded-xl border-border/60 bg-card px-4 text-[13px] font-medium text-foreground shadow-sm hover:bg-muted/45"
+          className="h-8 gap-2 rounded-full border-border/60 bg-background/72 px-3 text-[11px] font-semibold text-foreground shadow-sm hover:bg-primary/10 hover:text-primary"
           disabled={quotaQuery.isFetching}
           onClick={() => detachPromise(refreshQuota())}
         >
           {quotaQuery.isFetching ? (
             <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
           ) : (
-            <RefreshCw className="size-4" />
+            <RefreshCw className="size-3.5" />
           )}
-          刷新
+          同步
         </Button>
       </div>
 
-      <div className="border-t border-border/50 px-5 pb-5 pt-4">
+      <div className="border-t border-border/50 px-5 pb-4 pt-3.5">
         {payload ? (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <QuotaCard
@@ -331,15 +336,15 @@ export function TenantQuotaPanel() {
             />
           </div>
         ) : (
-          <div className="rounded-xl border border-dashed border-border/60 bg-muted/35 px-4 py-6 text-center text-[13px] text-muted-foreground">
+          <div className="rounded-xl border border-dashed border-border/60 bg-muted/35 px-4 py-5 text-center text-[12px] text-muted-foreground">
             {quotaQuery.isFetching
               ? '正在读取租户配额...'
               : '暂无配额数据，点击刷新重新读取。'}
           </div>
         )}
 
-        <details className="mt-4 overflow-hidden rounded-xl border border-border/60 bg-muted/35">
-          <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-[12px] font-semibold text-muted-foreground hover:bg-muted/55 [&::-webkit-details-marker]:hidden">
+        <details className="mt-3 overflow-hidden rounded-xl border border-border/60 bg-muted/30">
+          <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-2.5 text-[11px] font-semibold text-muted-foreground hover:bg-muted/55 [&::-webkit-details-marker]:hidden">
             <span>查看原始响应</span>
             <span className="text-[10px] font-medium text-muted-foreground">
               JSON
@@ -355,7 +360,7 @@ export function TenantQuotaPanel() {
           >
             <Copy className="size-4" />
           </Button>
-          <pre className="max-h-[220px] overflow-auto py-3 pr-12 text-[13px] leading-7">
+          <pre className="max-h-[200px] overflow-auto py-3 pr-12 text-[12px] leading-6">
             {lines.map((line, index) => (
               <div
                 key={`${index}-${line}`}

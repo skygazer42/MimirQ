@@ -53,14 +53,16 @@ import { useTenantAccess } from '@/hooks/use-tenant-access'
 // --- Constants ---
 
 const FIELD_LABEL =
-  'text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground mb-1.5 block'
+  'mb-1.5 block text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground'
 const AUDIT_SURFACE_CLASS =
-  'border-border/60 bg-background/70 text-foreground'
-const AUDIT_PANEL_CLASS = `rounded-2xl ${AUDIT_SURFACE_CLASS} bg-card/82 shadow-[0_12px_30px_hsl(var(--primary)/0.05)]`
+  'border-border/60 bg-background/74 text-foreground'
+const AUDIT_PANEL_CLASS = `rounded-[1.15rem] ${AUDIT_SURFACE_CLASS} bg-card/86 shadow-[0_10px_28px_hsl(var(--primary)/0.045)]`
 const AUDIT_TABLE_HEAD_CLASS =
   'border-b border-border/50 bg-muted/38 text-left backdrop-blur'
 const AUDIT_TABLE_HEADER_CLASS =
-  'px-6 py-3.5 text-[11px] font-semibold tracking-[0.08em] text-muted-foreground'
+  'px-5 py-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground'
+const AUDIT_MUTED_CHIP_CLASS =
+  'inline-flex items-center rounded-full border border-border/60 bg-muted/45 px-2.5 py-1 text-[11px] font-medium text-muted-foreground'
 const FILTER_ALL_VALUE = '__all__'
 const FILTER_EMPTY_VALUE_PREFIX = '__empty__'
 const AUDIT_FILTER_OPTION_PAGE_SIZE = 200
@@ -242,20 +244,20 @@ function HUDTile({
   const toneClasses = HUD_TONE_CLASSES[tone] || HUD_TONE_CLASSES.slate
 
   return (
-    <div className="bg-card rounded-2xl border border-border/60 p-5 flex items-center gap-4 shadow-[0_1px_2px_rgba(0,0,0,0.01)]">
+    <div className="flex items-center gap-3 rounded-[1rem] border border-border/60 bg-card/88 px-4 py-3 shadow-[0_1px_0_hsl(var(--primary)/0.04)] transition-colors hover:border-primary/18 hover:bg-card">
       <div
         className={cn(
-          'size-10 rounded-xl flex items-center justify-center border',
+          'flex size-8 shrink-0 items-center justify-center rounded-xl border',
           toneClasses
         )}
       >
-        <Icon className="size-5" />
+        <Icon className="size-4" />
       </div>
       <div className="min-w-0">
-        <p className="text-[11px] font-medium text-muted-foreground leading-none mb-1.5 uppercase">
+        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
           {label}
         </p>
-        <h4 className="text-[18px] font-black text-foreground leading-none">
+        <h4 className="font-mono text-[18px] font-semibold leading-none tracking-[-0.04em] text-foreground">
           {value}
         </h4>
       </div>
@@ -277,7 +279,7 @@ function PresetButton({
       variant="outline"
       size="sm"
       className={cn(
-        'h-7 rounded-full px-3 text-[11px] font-bold shadow-none transition-all',
+        'h-7 rounded-full px-3 text-[11px] font-semibold shadow-none transition-all',
         active
           ? 'border-primary bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground'
           : 'border-primary/20 bg-primary/[0.06] text-muted-foreground hover:border-primary/30 hover:bg-primary/10 hover:text-primary'
@@ -328,7 +330,7 @@ function BoundFilterSelect({
         <SelectTrigger
           id={id}
           aria-label={label}
-          className="h-9 rounded-lg border-border/60 bg-background/70 text-left text-xs font-medium text-foreground shadow-none hover:border-primary/30 hover:bg-card focus-visible:ring-primary/20"
+          className="h-9 rounded-xl border-border/60 bg-background/72 text-left text-xs font-medium text-foreground shadow-none hover:border-primary/30 hover:bg-card focus-visible:ring-primary/20"
         >
           <span className="truncate">{currentLabel}</span>
         </SelectTrigger>
@@ -639,11 +641,11 @@ function AuditLogsPageContent() {
         size="full"
         bodyClassName="bg-transparent"
         actions={
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <Button
               variant="outline"
               size="sm"
-              className="h-8 gap-2 rounded-lg text-[12px] font-bold border-border/60 bg-card/80"
+              className="h-8 gap-2 rounded-full border-border/60 bg-card/86 px-3 text-[11px] font-semibold shadow-sm hover:bg-primary/10 hover:text-primary"
               onClick={() => {
                 logsQuery.refetch()
                 filterOptionsQuery.refetch()
@@ -657,7 +659,7 @@ function AuditLogsPageContent() {
             <Button
               variant="outline"
               size="icon"
-              className="h-8 w-8 rounded-lg border-border/60 bg-card/80"
+              className="size-8 rounded-full border-border/60 bg-card/86 shadow-sm hover:bg-primary/10 hover:text-primary"
               aria-label="清空审计筛选"
               onClick={() => {
                 setFilters({ ...EMPTY_AUDIT_FILTERS })
@@ -669,9 +671,9 @@ function AuditLogsPageContent() {
           </div>
         }
       >
-        <div className="flex flex-col gap-6 pb-20">
+        <div className="flex flex-col gap-4 pb-12">
           {/* Top HUD Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
             <HUDTile
               icon={FileJson}
               label={t('strip.total')}
@@ -705,10 +707,10 @@ function AuditLogsPageContent() {
           </div>
 
           {/* Filter Console */}
-          <div className={cn(AUDIT_PANEL_CLASS, 'p-6')}>
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-4">
-                <span className="text-[11px] font-black uppercase text-muted-foreground">
+          <div className={cn(AUDIT_PANEL_CLASS, 'p-4')}>
+            <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex min-w-0 flex-col gap-2 lg:flex-row lg:items-center lg:gap-3">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                   {t('presets.quick')}
                 </span>
                 <div className="flex flex-wrap gap-2">
@@ -725,7 +727,7 @@ function AuditLogsPageContent() {
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 gap-1.5 text-[11px] font-bold text-muted-foreground hover:text-primary"
+                className="h-7 gap-1.5 self-start rounded-full px-2.5 text-[11px] font-semibold text-muted-foreground hover:bg-primary/10 hover:text-primary lg:self-auto"
                 onClick={() => setShowAdvanced(!showAdvanced)}
               >
                 {showAdvanced ? t('filters.more') : '更多筛选'}
@@ -738,7 +740,7 @@ function AuditLogsPageContent() {
             </div>
 
             {showAdvanced && (
-              <div className="grid gap-6 md:grid-cols-3">
+              <div className="grid gap-3 md:grid-cols-3">
                 <BoundFilterSelect
                   id="audit-action-filter"
                   label={t('filters.action')}
@@ -793,7 +795,7 @@ function AuditLogsPageContent() {
                       type="datetime-local"
                       value={filters.since}
                       onChange={(e) => setFilterValue('since', e.target.value)}
-                      className="h-9 rounded-lg bg-background/70 border-border/60 text-[10px]"
+                      className="h-9 rounded-xl border-border/60 bg-background/72 text-[10px]"
                     />
                   </div>
                   <div className="space-y-1">
@@ -802,7 +804,7 @@ function AuditLogsPageContent() {
                       type="datetime-local"
                       value={filters.until}
                       onChange={(e) => setFilterValue('until', e.target.value)}
-                      className="h-9 rounded-lg bg-background/70 border-border/60 text-[10px]"
+                      className="h-9 rounded-xl border-border/60 bg-background/72 text-[10px]"
                     />
                   </div>
                 </div>
@@ -822,12 +824,12 @@ function AuditLogsPageContent() {
 
           {/* Table Canvas */}
           <div className={cn(AUDIT_PANEL_CLASS, 'overflow-hidden')}>
-            <div className="flex items-center justify-between border-b border-border/50 bg-card/80 px-6 py-4">
+            <div className="flex flex-col gap-3 border-b border-border/50 bg-card/82 px-5 py-3.5 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                <h2 className="text-[15px] font-semibold text-foreground">
+                <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-foreground">
                   审计事件
                 </h2>
-                <p className="mt-1 text-[12px] text-muted-foreground">
+                <p className="mt-1 text-[11px] text-muted-foreground">
                   按后端审计日志展示时间、操作者、事件名称、资源/租户与操作明细。
                 </p>
               </div>
@@ -845,14 +847,14 @@ function AuditLogsPageContent() {
                       variant="outline"
                       size="sm"
                       disabled={!canManageAudit || Boolean(deletingScope)}
-                      className="h-8 gap-1.5 rounded-lg border-destructive/20 bg-destructive/10 px-3 text-[11px] font-bold text-destructive shadow-none hover:bg-destructive/15 hover:text-destructive"
+                      className="h-8 gap-1.5 rounded-full border-destructive/20 bg-destructive/10 px-3 text-[11px] font-semibold text-destructive shadow-none hover:bg-destructive/15 hover:text-destructive"
                     >
                       <Trash2 className="size-3.5" />
                       删除已选 {selectedIds.length}
                     </Button>
                   </ConfirmDialog>
                 )}
-                <div className="rounded-full border border-border/60 bg-muted/40 px-3 py-1 text-[11px] font-semibold text-muted-foreground">
+                <div className={AUDIT_MUTED_CHIP_CLASS}>
                   共 {total} 条
                 </div>
               </div>
@@ -948,7 +950,7 @@ function AuditLogsPageContent() {
                   value={String(limit)}
                   onValueChange={handlePageSizeChange}
                 >
-                  <SelectTrigger className="h-8 w-[88px] rounded-lg border-border/60 bg-card text-[12px] font-semibold text-foreground shadow-none">
+                  <SelectTrigger className="h-8 w-[88px] rounded-full border-border/60 bg-card text-[12px] font-semibold text-foreground shadow-none">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="rounded-xl border-border/60 bg-card">
@@ -968,19 +970,19 @@ function AuditLogsPageContent() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-8 gap-1 rounded-lg border-border/60 bg-card px-3 text-[11px] font-semibold shadow-none"
+                  className="h-8 gap-1 rounded-full border-border/60 bg-card px-3 text-[11px] font-semibold shadow-none hover:bg-primary/10 hover:text-primary"
                   onClick={() => setSkip(Math.max(0, skip - limit))}
                   disabled={skip <= 0}
                 >
                   <ChevronLeft className="size-3.5" /> 上一页
                 </Button>
-                <span className="min-w-[88px] rounded-lg border border-border/60 bg-card px-3 py-1.5 text-center text-[12px] font-semibold text-foreground">
+                <span className="min-w-[88px] rounded-full border border-border/60 bg-card px-3 py-1.5 text-center text-[12px] font-semibold text-foreground">
                   第 {displayPage} / {totalPages} 页
                 </span>
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-8 gap-1 rounded-lg border-border/60 bg-card px-3 text-[11px] font-semibold shadow-none"
+                  className="h-8 gap-1 rounded-full border-border/60 bg-card px-3 text-[11px] font-semibold shadow-none hover:bg-primary/10 hover:text-primary"
                   onClick={() =>
                     setSkip(
                       Math.min(
@@ -998,18 +1000,18 @@ function AuditLogsPageContent() {
           </div>
 
           {/* Detailed Response Collapsible */}
-          <details className="group border-t border-border/50 pt-6">
-            <summary className="flex cursor-pointer list-none items-center justify-between text-muted-foreground hover:text-foreground transition-colors">
+          <details className="group rounded-[1.15rem] border border-border/60 bg-card/74 px-4 py-3 shadow-[0_1px_0_hsl(var(--primary)/0.04)]">
+            <summary className="flex cursor-pointer list-none items-center justify-between text-muted-foreground transition-colors hover:text-foreground">
               <div className="flex items-center gap-3">
                 <FileJson className="size-4" />
-                <span className="text-[11px] font-black uppercase tracking-[0.2em]">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.16em]">
                   排障材料 (原始响应)
                 </span>
               </div>
               <ChevronDown className="size-4 transition-transform group-open:rotate-180" />
             </summary>
-            <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <pre className="p-5 rounded-2xl bg-foreground font-mono text-[11px] text-background/85 max-h-[300px] overflow-auto custom-scrollbar shadow-strong border border-border/60">
+            <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2">
+              <pre className="max-h-[300px] overflow-auto rounded-2xl border border-border/60 bg-foreground p-4 font-mono text-[11px] text-background/85 shadow-strong custom-scrollbar">
                 {JSON.stringify(resp, null, 2)}
               </pre>
             </div>
@@ -1052,12 +1054,12 @@ function AuditRow({
     <>
       <tr
         className={cn(
-          'hover:bg-primary/[0.035] transition-colors group cursor-pointer',
+          'group cursor-pointer transition-colors hover:bg-primary/[0.035]',
           expanded && 'bg-primary/[0.045]',
           selected && 'bg-primary/[0.065]'
         )}
       >
-        <td className="px-6 py-4 align-top">
+        <td className="px-5 py-3.5 align-top">
           <input
             type="checkbox"
             aria-label={`选择审计日志 ${log.id}`}
@@ -1067,19 +1069,19 @@ function AuditRow({
             className="mt-1 size-3.5 rounded border-border text-primary accent-[hsl(var(--primary))]"
           />
         </td>
-        <td className="px-6 py-4" onClick={onToggle}>
+        <td className="px-5 py-3.5" onClick={onToggle}>
           <div className="flex flex-col">
-            <span className="text-[12px] font-semibold text-foreground leading-none mb-1">
+            <span className="mb-1 text-[12px] font-semibold leading-none text-foreground">
               {timestamp.date}
             </span>
-            <span className="text-[10px] font-mono text-muted-foreground font-medium">
+            <span className="font-mono text-[10px] font-medium text-muted-foreground">
               {timestamp.time}
             </span>
           </div>
         </td>
-        <td className="px-6 py-4" onClick={onToggle}>
+        <td className="px-5 py-3.5" onClick={onToggle}>
           <div className="flex items-center gap-2">
-            <div className="size-6 rounded-full bg-muted flex items-center justify-center text-[10px] font-black text-muted-foreground uppercase">
+            <div className="flex size-6 shrink-0 items-center justify-center rounded-full border border-border/60 bg-muted/55 text-[10px] font-semibold uppercase text-muted-foreground">
               {log.actor_id?.slice(0, 2) || '??'}
             </div>
             <div className="min-w-0">
@@ -1094,7 +1096,7 @@ function AuditRow({
             </div>
           </div>
         </td>
-        <td className="px-6 py-4" onClick={onToggle}>
+        <td className="px-5 py-3.5" onClick={onToggle}>
           <div className="max-w-[320px]">
             <div className="truncate text-[13px] font-semibold text-foreground">
               {actionLabel}
@@ -1109,7 +1111,7 @@ function AuditRow({
             )}
           </div>
         </td>
-        <td className="px-6 py-4" onClick={onToggle}>
+        <td className="px-5 py-3.5" onClick={onToggle}>
           <div className="max-w-[320px]">
             <div className="truncate text-[12px] font-semibold text-foreground">
               {log.resource_type ? resourceTypeLabel : '未绑定资源'}
@@ -1124,12 +1126,12 @@ function AuditRow({
             </div>
           </div>
         </td>
-        <td className="px-6 py-4 text-right">
+        <td className="px-5 py-3.5 text-right">
           <div className="flex items-center justify-end gap-2">
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 rounded-lg px-2.5 text-[10px] font-semibold text-muted-foreground hover:bg-primary/10 hover:text-primary"
+              className="h-7 rounded-full px-2.5 text-[10px] font-semibold text-muted-foreground hover:bg-primary/10 hover:text-primary"
               onClick={onToggle}
             >
               {expanded ? '收起' : '详情'}
@@ -1137,7 +1139,7 @@ function AuditRow({
             <Button
               variant="outline"
               size="sm"
-              className="h-7 gap-1.5 rounded-lg border-border/60 bg-card px-2.5 text-[10px] font-black shadow-none transition-all hover:border-primary/30 hover:text-primary"
+              className="h-7 gap-1.5 rounded-full border-border/60 bg-card px-2.5 text-[10px] font-semibold shadow-none transition-all hover:border-primary/30 hover:bg-primary/10 hover:text-primary"
               onClick={() => onCopy(JSON.stringify(log.details, null, 2))}
             >
               <FileJson className="size-3" /> JSON
@@ -1154,7 +1156,7 @@ function AuditRow({
                 variant="outline"
                 size="sm"
                 disabled={!canDelete || deleting}
-                className="h-7 gap-1.5 rounded-lg border-destructive/20 bg-destructive/10 px-2.5 text-[10px] font-black text-destructive shadow-none transition-all hover:bg-destructive/15 hover:text-destructive"
+                className="h-7 gap-1.5 rounded-full border-destructive/20 bg-destructive/10 px-2.5 text-[10px] font-semibold text-destructive shadow-none transition-all hover:bg-destructive/15 hover:text-destructive"
               >
                 {deleting ? (
                   <RefreshCw className="size-3 animate-spin" />
@@ -1169,8 +1171,8 @@ function AuditRow({
       </tr>
       {expanded && (
         <tr className="bg-primary/[0.025]">
-          <td colSpan={6} className="px-6 pb-6">
-            <div className="rounded-xl border border-primary/15 bg-card p-4 shadow-inner relative group">
+          <td colSpan={6} className="px-5 pb-5">
+            <div className="group relative rounded-xl border border-primary/15 bg-card p-4 shadow-inner">
               <Button
                 variant="ghost"
                 size="icon"
@@ -1180,7 +1182,7 @@ function AuditRow({
               >
                 <Copy className="size-3" />
               </Button>
-              <pre className="font-mono text-[11px] leading-relaxed text-foreground overflow-auto max-h-[300px] custom-scrollbar">
+              <pre className="max-h-[300px] overflow-auto font-mono text-[11px] leading-relaxed text-foreground custom-scrollbar">
                 {JSON.stringify(log.details, null, 2)}
               </pre>
             </div>

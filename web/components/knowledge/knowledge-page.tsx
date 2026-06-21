@@ -281,18 +281,20 @@ export default function KnowledgePage() {
 
   const { sentinelRef: mainPaneSentinelRef, scrollEl: mainPaneScrollEl } =
     useKnowledgeScrollContainer()
+  const [documentsScrollEl, setDocumentsScrollEl] =
+    useState<HTMLDivElement | null>(null)
 
   const docGridColumns = 3
   const docGridRowCount = Math.ceil(paginatedDocuments.length / docGridColumns)
   const docsGridVirtualizer = useVirtualizer({
     count: docGridRowCount,
-    getScrollElement: () => mainPaneScrollEl,
+    getScrollElement: () => documentsScrollEl ?? mainPaneScrollEl,
     estimateSize: () => 280,
     overscan: 5,
   })
   const docsTableVirtualizer = useVirtualizer({
     count: paginatedDocuments.length,
-    getScrollElement: () => mainPaneScrollEl,
+    getScrollElement: () => documentsScrollEl ?? mainPaneScrollEl,
     estimateSize: () => 108,
     overscan: 10,
   })
@@ -314,11 +316,15 @@ export default function KnowledgePage() {
   }, [documentsPageCount])
 
   useEffect(() => {
-    mainPaneScrollEl?.scrollTo({
+    const scrollTarget =
+      activeTab === 'documents'
+        ? documentsScrollEl ?? mainPaneScrollEl
+        : mainPaneScrollEl
+    scrollTarget?.scrollTo({
       top: 0,
       behavior: reduceMotion ? 'auto' : 'smooth',
     })
-  }, [activeTab, mainPaneScrollEl, reduceMotion])
+  }, [activeTab, documentsScrollEl, mainPaneScrollEl, reduceMotion])
 
   const [selectedDocIds, setSelectedDocIds] = useState<string[]>([])
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false)
@@ -418,27 +424,27 @@ export default function KnowledgePage() {
 
   const documentScopeSummary = useMemo(
     () => (
-      <div className="inline-flex max-w-full flex-wrap items-center gap-2 rounded-[12px] border border-border/55 bg-card/42 px-2.5 py-1.5 text-[11px] shadow-[0_10px_24px_-28px_hsl(var(--primary)/0.32)] backdrop-blur-xl dark:border-border/55 dark:bg-background/30">
+      <div className="inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-[14px] border border-border/50 bg-white/58 px-2.5 py-1.5 text-[11px] shadow-[0_10px_24px_-28px_hsl(var(--primary)/0.32)] backdrop-blur-xl dark:border-border/55 dark:bg-background/30">
         <span className="inline-flex items-center font-medium text-foreground/82">
           <Database className="mr-1.5 size-3 text-info" />
-          Dataset Scope
-          <span className="ml-2 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground/70">
+          数据范围
+          <span className="ml-1.5 max-w-[14rem] truncate text-[11px] text-muted-foreground/80">
             {selectedDatasetLabel || scopeT('dataset.all')}
           </span>
         </span>
         <span className="h-3.5 w-px bg-border/80 dark:bg-border/70" />
         <span className="inline-flex items-center font-medium text-foreground/82">
           <Eye className="mr-1.5 size-3 text-info" />
-          Visible
-          <span className="ml-2 font-mono tabular-nums text-[11px] text-foreground">
+          可见
+          <span className="ml-1.5 font-mono tabular-nums text-[11px] text-foreground">
             {filteredDocuments.length}
           </span>
         </span>
         <span className="h-3.5 w-px bg-border/80 dark:bg-border/70" />
         <span className="inline-flex items-center font-medium text-foreground/82">
           <Activity className="mr-1.5 size-3 text-success" />
-          Lifecycle
-          <span className="ml-2 text-[10px] uppercase tracking-[0.18em] text-muted-foreground/70">
+          生命周期
+          <span className="ml-1.5 text-[11px] text-muted-foreground/80">
             {lifecycleFilter}
           </span>
         </span>
@@ -735,9 +741,9 @@ export default function KnowledgePage() {
                 <div
                   key={card.label}
                   className={cn(
-                    'group relative overflow-hidden rounded-2xl border transition-colors duration-150 hover:border-info/20',
+                    'group relative overflow-hidden rounded-[18px] border transition-colors duration-150 hover:border-info/20',
                     KNOWLEDGE_GLASS_CARD_CLASS,
-                    'min-h-[58px] px-3 py-2'
+                    'min-h-[56px] px-3 py-2'
                   )}
                 >
                   <div className="flex h-full items-center gap-2.5">
@@ -750,14 +756,14 @@ export default function KnowledgePage() {
                       <card.icon className="size-3.5" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground/82">
+                      <div className="truncate text-[11px] font-medium leading-none text-muted-foreground/82">
                         {card.label}
                       </div>
-                      <div className="mt-0.5 flex min-w-0 items-baseline gap-2">
+                      <div className="mt-1 flex min-w-0 items-baseline gap-2">
                         <span className="truncate text-[15px] font-semibold leading-none tabular-nums text-foreground">
                           {card.value}
                         </span>
-                        <span className="min-w-0 truncate text-[10px] text-muted-foreground/72">
+                        <span className="min-w-0 truncate text-[11px] text-muted-foreground/72">
                           {card.caption}
                         </span>
                       </div>
@@ -1291,6 +1297,7 @@ export default function KnowledgePage() {
               deleteDocument={deleteDocument}
               handleFileUpload={handleFileUpload}
               onPeek={openChunkManager}
+              onScrollContainerChange={setDocumentsScrollEl}
             />
 
             <div className="xl:hidden">

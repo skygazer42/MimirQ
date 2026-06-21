@@ -14,7 +14,7 @@ describe('reports field coverage panel', () => {
     expect(src).toContain('目录字段覆盖')
     expect(src).toContain('解析来源覆盖')
     expect(src).toContain('分块统计覆盖')
-    expect(src).toContain("hasGovernanceCoverage ? '后端治理审计' : '后端基础画像'")
+    expect(src).toContain("hasGovernanceCoverage ? '治理审计' : '基础画像'")
     expect(src).not.toContain('后端治理审计</Badge>')
   })
 })

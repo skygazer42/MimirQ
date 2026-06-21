@@ -55,9 +55,9 @@ const FILTER_LABELS: Record<string, string> = {
   until: '结束时间',
 }
 const AUDIT_RETENTION_PANEL_CLASS =
-  'mt-4 overflow-hidden rounded-2xl border border-border/60 bg-card/82 shadow-[0_14px_34px_hsl(var(--primary)/0.05)]'
+  'mt-3 overflow-hidden rounded-[1.1rem] border border-border/60 bg-card/84 shadow-[0_10px_28px_hsl(var(--primary)/0.045)]'
 const AUDIT_RETENTION_HEADER_CLASS =
-  'flex flex-col gap-3 border-b border-border/50 bg-[linear-gradient(90deg,hsl(var(--card)/0.88),hsl(var(--primary)/0.05),hsl(var(--card)/0.88))] px-4 py-3 lg:flex-row lg:items-center lg:justify-between'
+  'flex flex-col gap-3 border-b border-border/50 bg-[linear-gradient(90deg,hsl(var(--card)/0.9),hsl(var(--primary)/0.04),hsl(var(--card)/0.9))] px-4 py-3 lg:flex-row lg:items-center lg:justify-between'
 const AUDIT_RETENTION_PILL_CLASS =
   'rounded-full border border-border/60 bg-background/72 px-2.5 py-1 text-[11px] font-semibold text-muted-foreground'
 
@@ -195,14 +195,14 @@ export function AuditRetentionPanel({
     <div className={AUDIT_RETENTION_PANEL_CLASS}>
       <div className={AUDIT_RETENTION_HEADER_CLASS}>
         <div className="flex min-w-0 items-center gap-3">
-          <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
-            <Settings2 className="size-5" />
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
+            <Settings2 className="size-4" />
           </div>
           <div className="min-w-0">
-            <div className="text-[13px] font-black text-foreground">
+            <div className="text-[13px] font-semibold tracking-[-0.01em] text-foreground">
               {t('title')}
             </div>
-            <p className="mt-1 max-w-[720px] text-[11px] font-medium leading-relaxed text-muted-foreground">
+            <p className="mt-1 max-w-[720px] text-[11px] font-medium leading-4 text-muted-foreground">
               保留策略清旧日志；当前筛选只清上方筛选命中的日志。默认预演，不会直接删除。
             </p>
           </div>
@@ -217,7 +217,7 @@ export function AuditRetentionPanel({
         </div>
       </div>
 
-      <div className="grid gap-3 px-4 py-3 lg:grid-cols-[1.15fr_1fr_1.2fr]">
+      <div className="grid gap-3 px-4 py-3 lg:grid-cols-[1.05fr_0.9fr_1.2fr]">
         <ControlBlock label="清理范围">
           <div className="grid grid-cols-2 gap-1 rounded-xl border border-border/60 bg-muted/35 p-1">
             <SegmentButton
@@ -261,17 +261,17 @@ export function AuditRetentionPanel({
         </ControlBlock>
       </div>
 
-      <div className="grid gap-3 border-t border-border/50 px-4 py-3 lg:grid-cols-[minmax(0,1fr)_160px_160px_auto] lg:items-end">
-        <div className="rounded-xl border border-border/60 bg-muted/32 px-3 py-2 text-[11px] font-medium leading-relaxed text-muted-foreground">
+      <div className="grid gap-3 border-t border-border/50 px-4 py-3 lg:grid-cols-[minmax(0,1fr)_150px_150px_auto] lg:items-end">
+        <div className="rounded-xl border border-border/60 bg-muted/32 px-3 py-2 text-[11px] font-medium leading-5 text-muted-foreground">
           {purgeScope === 'retention' ? (
             <>
-              <span className="font-black text-foreground">保留策略：</span>
+              <span className="font-semibold text-foreground">保留策略：</span>
               只清理早于 {retentionDays} 天的旧审计日志。若预演为 0，
               说明当前结果仍在保留期内。
             </>
           ) : hasFilterScope ? (
             <>
-              <span className="font-black text-foreground">当前筛选：</span>
+              <span className="font-semibold text-foreground">当前筛选：</span>
               将范围限制在上方 {filterEntries.length} 个筛选条件内，
               适合清理测试/回放产生的噪声日志。
             </>
@@ -299,7 +299,7 @@ export function AuditRetentionPanel({
           <Button
             size="sm"
             variant="outline"
-            className="h-9 gap-2 rounded-xl border-primary/20 bg-primary/10 text-[11px] font-bold text-primary hover:bg-primary/15 hover:text-primary"
+            className="h-9 gap-2 rounded-full border-primary/20 bg-primary/10 px-3 text-[11px] font-semibold text-primary hover:bg-primary/15 hover:text-primary"
             disabled={Boolean(busy)}
             onClick={() => detachPromise(exportLogs())}
           >
@@ -350,7 +350,7 @@ export function AuditRetentionPanel({
       )}
 
       {!canManageAudit && (
-        <div className="mx-4 mb-3 rounded-xl border border-warning/20 bg-warning/10 px-3 py-2 text-[11px] font-semibold text-warning">
+        <div className="mx-4 mb-3 rounded-xl border border-warning/20 bg-warning/10 px-3 py-2 text-[11px] font-medium text-warning">
           清理需要 audit.manage 权限；当前权限可查看和导出审计日志。
         </div>
       )}
@@ -366,7 +366,7 @@ function ControlBlock({
 }: Readonly<{ label: string; children: React.ReactNode }>) {
   return (
     <div className="space-y-1.5">
-      <div className="text-[10px] font-black uppercase tracking-[0.16em] text-muted-foreground">
+      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
         {label}
       </div>
       {children}
@@ -390,7 +390,7 @@ function SegmentButton({
       type="button"
       aria-pressed={active}
       className={cn(
-        'h-8 rounded-lg px-3 text-[11px] font-black transition-colors',
+        'h-8 rounded-lg px-3 text-[11px] font-semibold transition-colors',
         active &&
           tone === 'primary' &&
           'bg-primary text-primary-foreground shadow-sm shadow-[0_10px_22px_hsl(var(--primary)/0.16)]',
@@ -420,7 +420,7 @@ function NumberField({
 }>) {
   return (
     <div className="space-y-1.5">
-      <Label className="text-[10px] font-black uppercase tracking-[0.12em] text-muted-foreground">
+      <Label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
         {label}
       </Label>
       <Input
@@ -429,7 +429,7 @@ function NumberField({
         onChange={(event) =>
           onChange(Number.parseInt(event.target.value || '0', 10) || value)
         }
-        className="h-9 rounded-xl border-border/60 bg-background/72 text-xs font-bold disabled:bg-muted disabled:text-muted-foreground"
+        className="h-9 rounded-xl border-border/60 bg-background/72 text-xs font-semibold disabled:bg-muted disabled:text-muted-foreground"
         inputMode="numeric"
       />
     </div>
@@ -451,7 +451,7 @@ function PurgeButton({
     <Button
       size="sm"
       variant="outline"
-      className="h-9 gap-2 rounded-xl border-destructive/20 bg-destructive/10 text-[11px] font-bold text-destructive hover:bg-destructive/15 hover:text-destructive disabled:bg-muted disabled:text-muted-foreground"
+      className="h-9 gap-2 rounded-full border-destructive/20 bg-destructive/10 px-3 text-[11px] font-semibold text-destructive hover:bg-destructive/15 hover:text-destructive disabled:bg-muted disabled:text-muted-foreground"
       disabled={disabled}
       onClick={onClick}
     >
@@ -481,7 +481,7 @@ function Toggle({
         onCheckedChange={onCheckedChange}
         className={checked ? 'bg-primary' : 'bg-muted'}
       />
-      <span className="text-[11px] font-bold text-muted-foreground">{label}</span>
+      <span className="text-[11px] font-semibold text-muted-foreground">{label}</span>
     </label>
   )
 }
@@ -526,14 +526,14 @@ function ResultShell({
   return (
     <div className="mx-4 mb-4 rounded-xl border border-success/20 bg-success/10 px-3 py-2 text-[11px] text-success">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2 font-black">
+        <div className="flex items-center gap-2 font-semibold">
           <ShieldCheck className="size-3.5" />
           {result.title}
         </div>
         <div className="font-semibold">{children}</div>
       </div>
       <details className="mt-2">
-        <summary className="cursor-pointer text-[10px] font-bold uppercase tracking-[0.12em] text-success/70 hover:text-success">
+        <summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-[0.12em] text-success/70 hover:text-success">
           原始 JSON
         </summary>
         <pre className="mt-2 max-h-44 overflow-auto rounded-lg bg-background/70 p-2 text-[10px] leading-relaxed text-foreground">

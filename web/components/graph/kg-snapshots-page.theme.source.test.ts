@@ -16,6 +16,8 @@ describe('KG snapshots page theme source', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'kg-snapshots-page.tsx'), 'utf8')
 
     expect(src).toContain('bg-info text-primary-foreground shadow-sm')
+    expect(src).toContain('rounded-full border-info/22 bg-info/[0.09]')
     expect(src).not.toContain('bg-foreground text-background shadow-sm')
+    expect(src).not.toContain('bg-slate-900')
   })
 })

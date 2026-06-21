@@ -34,7 +34,6 @@ import {
 
 import { AppFrame } from '@/components/app-frame'
 import { AnalysisPageShell } from '@/components/ui/analysis-page-shell'
-import { PageHeader } from '@/components/ui/page-header'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -87,19 +86,29 @@ const CHART_TOOLTIP_LABEL_STYLE = { color: '#334155', fontWeight: 600 }
 const CHART_TOOLTIP_CURSOR = { fill: 'rgba(148,163,184,0.08)' }
 const DEFAULT_PIPELINE_VERSION_VALUE = '__mimirq_default_pipeline_version__'
 const REPORT_LABEL_CLASS =
-  'text-[0.6875rem] font-medium uppercase tracking-[0.11em] text-slate-500/90'
+  'text-[0.6875rem] font-medium tracking-[0.02em] text-slate-500/90'
 const REPORT_VALUE_CLASS =
   'truncate text-[0.875rem] font-semibold leading-5 tracking-[-0.01em] text-slate-900'
-const REPORT_SUBTEXT_CLASS = 'text-[0.75rem] leading-5 text-slate-500'
+const REPORT_SUBTEXT_CLASS = 'text-[0.71875rem] leading-4 text-slate-500'
 const REPORT_METRIC_VALUE_CLASS =
-  'text-[1.375rem] font-semibold leading-none tracking-[-0.035em] tabular-nums text-slate-950'
-const REPORT_RISK_VALUE_CLASS =
-  'text-[1.25rem] font-semibold leading-none tracking-[-0.03em] tabular-nums'
+  'text-[1.125rem] font-semibold leading-none tracking-[-0.035em] tabular-nums text-slate-950'
 const REPORT_PANEL_TITLE_CLASS =
-  'text-[0.9375rem] font-semibold leading-6 tracking-[-0.015em] text-slate-950'
+  'text-[0.875rem] font-semibold leading-5 tracking-[-0.015em] text-slate-950'
 const REPORT_TABLE_HEADER_CLASS =
   'text-[0.6875rem] font-medium uppercase tracking-[0.1em] text-slate-500'
-const REPORT_TABLE_ROW_CLASS = 'text-[0.8125rem] leading-5 text-slate-700'
+const REPORT_TABLE_ROW_CLASS = 'text-[0.75rem] leading-4 text-slate-700'
+const REPORT_PANEL_CLASS =
+  'rounded-[0.9rem] border border-slate-200/80 bg-card p-2 shadow-[0_6px_18px_rgba(15,23,42,0.03)]'
+const REPORT_SECONDARY_ACTION_CLASS =
+  'h-7 gap-1.5 rounded-full border-slate-200/80 bg-white/85 px-2.5 text-[0.71875rem] font-medium text-slate-600 shadow-none hover:bg-slate-50 hover:text-slate-800'
+const REPORT_PRIMARY_ACTION_CLASS =
+  'h-8 gap-1.5 rounded-full bg-blue-600 px-3 text-[0.75rem] font-semibold text-info-foreground shadow-[0_10px_22px_rgba(37,99,235,0.18)] hover:bg-blue-700'
+const REPORT_FILTER_LABEL_CLASS =
+  'text-[0.6875rem] font-medium tracking-[0.02em] text-slate-500'
+const REPORT_SELECT_TRIGGER_CLASS =
+  'h-7 w-full border-slate-200/80 bg-white/90 text-[0.75rem] font-medium text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)]'
+const REPORT_SELECT_ITEM_CLASS =
+  'py-1.5 text-[0.75rem] font-medium text-slate-700'
 type DataPillTone = 'blue' | 'green' | 'amber' | 'rose' | 'violet' | 'slate'
 type ReportMetricDatum = { name: string; value: number }
 type CategoryMetricDatum = ReportMetricDatum & { depth: number }
@@ -122,7 +131,10 @@ type IssueRow = {
   description: string
   target: string
 }
-type PipelineVersionDatum = DatasetReportPipelineVersion & { fill: string }
+type PipelineVersionDatum = DatasetReportPipelineVersion & {
+  display_label: string
+  fill: string
+}
 type ReportExportParams = {
   pipeline_hash?: string
   connector_runs_limit: number
@@ -388,26 +400,41 @@ function capCoverageValue(value: unknown, max: number) {
 
 function reportStatusLabel(isLoadingReport: boolean, report: DatasetReport | null | undefined): string {
   if (isLoadingReport) return '生成中'
-  if (report) return '已生成'
+  if (report) return '已就绪'
   return '待生成'
+}
+
+function reportStatusTone(
+  isLoadingReport: boolean,
+  report: DatasetReport | null | undefined
+): DataPillTone {
+  if (isLoadingReport) return 'amber'
+  if (report) return 'green'
+  return 'slate'
 }
 
 function reportDataSourceLabel(dataProvenance: DatasetReportDataProvenance | null | undefined): string {
   if (dataProvenance?.mocked === false && dataProvenance.source === 'database') {
-    return '真实后端数据'
+    return '真实数据'
   }
   if (dataProvenance?.source) return String(dataProvenance.source)
-  return '等待后端数据'
+  return '等待数据源'
 }
 
 function reportDataSourceSub(dataProvenance: DatasetReportDataProvenance | null | undefined): string {
-  if (dataProvenance?.mocked === false) return '后端数据库 / API 实时聚合'
+  if (dataProvenance?.mocked === false) return '数据库 / API 实时聚合'
   return '未返回来源证明'
 }
 
 function reportPipelineFilterLabel(pipelineHash: string): string {
   if (pipelineHash) return shortPipelineHash(pipelineHash)
-  return '当前活动版本'
+  return '当前版本'
+}
+
+function pipelineVersionLabel(pipelineHash: string | null | undefined): string {
+  const value = String(pipelineHash || '').trim()
+  if (!value || value === 'unknown') return '当前版本'
+  return shortPipelineHash(value)
 }
 
 function findingSeverityLabel(severity: string | null | undefined): string {
@@ -430,8 +457,8 @@ function reportPreviewEmptyTitle(datasetId: string, isLoadingReport: boolean): s
 
 function reportPreviewEmptyDescription(datasetId: string, isLoadingReport: boolean): string {
   if (!datasetId) return '选择一个数据集后即可生成报告预览并导出。'
-  if (isLoadingReport) return '正在拉取后端报告数据...'
-  return '点击“重新生成报告”拉取最新后端报告。'
+  if (isLoadingReport) return '正在加载报告数据...'
+  return '点击“重新生成报告”拉取最新报告。'
 }
 
 function filterReportFindings(
@@ -519,7 +546,7 @@ function governanceAuditStatValue(
   hasSamples: boolean,
   value: number | undefined
 ): string {
-  if (!hasSamples) return '未统计'
+  if (!hasSamples) return '待评估'
   return String(value || 0)
 }
 
@@ -530,7 +557,7 @@ function retrievalAuditStatusLabel(status: string | undefined): string {
   }
   if (value === 'failed' || value === 'error') return '失败'
   if (value === 'running' || value === 'pending') return '生成中'
-  return '未评估'
+  return '待评估'
 }
 
 function retrievalAuditTone(
@@ -600,7 +627,9 @@ function retrievalAuditFailureText(
   const categories = retrievalAudit?.failure_categories || {}
   const entries = Object.entries(categories).filter(([, value]) => Number(value) > 0)
   if (!entries.length) {
-    return retrievalAudit?.status === 'failed' || retrievalAudit?.status === 'error' ? '未归因' : '暂无'
+    return retrievalAudit?.status === 'failed' || retrievalAudit?.status === 'error'
+      ? '待归因'
+      : '无异常'
   }
   const labels: Record<string, string> = {
     scope: '范围',
@@ -631,7 +660,7 @@ function retrievalAuditKgRecommendationText(
     boost_only: '仅启用 KG boost',
     none: '保持关闭',
   }
-  return labels[recommendation] || '未评估'
+  return labels[recommendation] || '待评估'
 }
 
 function DataPill({
@@ -655,20 +684,28 @@ function DataPill({
     violet: 'bg-violet-50 text-violet-600 ring-violet-100',
     slate: 'bg-slate-50 text-slate-600 ring-slate-100',
   }[tone]
+  const valueToneClass = {
+    blue: 'text-slate-900',
+    green: 'text-emerald-700',
+    amber: 'text-amber-700',
+    rose: 'text-rose-700',
+    violet: 'text-violet-700',
+    slate: 'text-slate-800',
+  }[tone]
 
   return (
-    <div className="flex min-w-[170px] items-center gap-3 border-l border-slate-200/80 px-4 py-2 first:border-l-0">
+    <div className="flex min-w-0 items-center gap-2 rounded-xl border border-slate-200/70 bg-white/80 px-2.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
       <div
         className={cn(
-          'flex size-8 items-center justify-center rounded-xl ring-1',
+          'flex size-7 shrink-0 items-center justify-center rounded-lg ring-1',
           toneClass
         )}
       >
-        <Icon className="size-4" />
+        <Icon className="size-3.5" />
       </div>
       <div className="min-w-0">
         <div className={REPORT_LABEL_CLASS}>{label}</div>
-        <div className={REPORT_VALUE_CLASS}>{value}</div>
+        <div className={cn(REPORT_VALUE_CLASS, valueToneClass)}>{value}</div>
         {sub ? (
           <div className={cn('mt-0.5 truncate', REPORT_SUBTEXT_CLASS)}>
             {sub}
@@ -702,27 +739,31 @@ function AuditMetricCard({
   }[tone]
 
   return (
-    <div className="rounded-2xl border border-slate-200/80 bg-card p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
-      <div className="flex items-start justify-between gap-3">
+    <div className={REPORT_PANEL_CLASS}>
+      <div className="flex items-center gap-2.5">
         <div
           className={cn(
-            'flex size-10 items-center justify-center rounded-2xl ring-1',
+            'flex size-8 shrink-0 items-center justify-center rounded-xl ring-1',
             toneClass
           )}
         >
-          <Icon className="size-5" />
+          <Icon className="size-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className={REPORT_LABEL_CLASS}>{label}</div>
+          <div className={cn('mt-0.5', REPORT_METRIC_VALUE_CLASS)}>
+            {value}
+          </div>
+          <div className={cn('mt-1 truncate', REPORT_SUBTEXT_CLASS)} title={sub}>
+            {sub}
+          </div>
         </div>
       </div>
-      <div className={cn('mt-3', REPORT_LABEL_CLASS)}>{label}</div>
-      <div className={cn('mt-1', REPORT_METRIC_VALUE_CLASS)}>
-        {value}
-      </div>
-      <div className={cn('mt-3', REPORT_SUBTEXT_CLASS)}>{sub}</div>
     </div>
   )
 }
 
-function MiniRiskCard({
+function ReportSignalRow({
   label,
   value,
   sub,
@@ -741,56 +782,175 @@ function MiniRiskCard({
     violet: 'text-violet-600',
     slate: 'text-slate-600',
   }[tone]
+  const dotClass = {
+    blue: 'bg-blue-500',
+    green: 'bg-emerald-500',
+    amber: 'bg-amber-500',
+    rose: 'bg-rose-500',
+    violet: 'bg-violet-500',
+    slate: 'bg-slate-400',
+  }[tone]
+
   return (
-    <div className="rounded-xl border border-slate-200/80 bg-card/80 p-3">
-      <div className={REPORT_LABEL_CLASS}>{label}</div>
-      <div
-        className={cn('mt-2', REPORT_RISK_VALUE_CLASS, toneClass)}
-      >
-        {value}
+    <div className="flex items-center gap-2 rounded-lg border border-slate-200/70 bg-white/70 px-2.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)]">
+      <span className={cn('size-2 shrink-0 rounded-full', dotClass)} />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline justify-between gap-2">
+          <div
+            className="truncate text-[0.75rem] font-medium text-slate-700"
+            title={label}
+          >
+            {label}
+          </div>
+          <div
+            className={cn(
+              'shrink-0 text-[0.875rem] font-semibold tabular-nums',
+              toneClass
+            )}
+          >
+            {value}
+          </div>
+        </div>
+        <div className={cn('mt-0.5 truncate', REPORT_SUBTEXT_CLASS)} title={sub}>
+          {sub}
+        </div>
       </div>
-      <div className={cn('mt-2', REPORT_SUBTEXT_CLASS)}>{sub}</div>
+    </div>
+  )
+}
+
+function ReportInlineEmpty({
+  title,
+  description,
+}: Readonly<{ title: string; description: string }>) {
+  return (
+    <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/55 px-3 py-3">
+      <div className="text-[0.8125rem] font-semibold tracking-[-0.01em] text-slate-700">
+        {title}
+      </div>
+      <div className={cn('mt-1 max-w-[32rem]', REPORT_SUBTEXT_CLASS)}>
+        {description}
+      </div>
     </div>
   )
 }
 
 function CompactAuditFact({
+  icon: Icon,
   label,
   value,
   sub,
   tone = 'slate',
 }: Readonly<{
+  icon: LucideIcon
   label: string
   value: string
   sub: string
   tone?: 'blue' | 'green' | 'amber' | 'rose' | 'violet' | 'slate'
 }>) {
   const toneClass = {
-    blue: 'text-blue-700',
-    green: 'text-emerald-700',
-    amber: 'text-amber-700',
-    rose: 'text-rose-700',
-    violet: 'text-violet-700',
-    slate: 'text-slate-700',
+    blue: {
+      shell: 'border-blue-100 bg-blue-50/45',
+      icon: 'bg-blue-100 text-blue-700 ring-blue-200',
+      rail: 'bg-blue-500',
+      value:
+        'border-blue-100 bg-white/80 text-blue-700 shadow-[0_1px_2px_rgba(37,99,235,0.08)]',
+    },
+    green: {
+      shell: 'border-emerald-100 bg-emerald-50/45',
+      icon: 'bg-emerald-100 text-emerald-700 ring-emerald-200',
+      rail: 'bg-emerald-500',
+      value:
+        'border-emerald-100 bg-white/80 text-emerald-700 shadow-[0_1px_2px_rgba(5,150,105,0.08)]',
+    },
+    amber: {
+      shell: 'border-amber-100 bg-amber-50/50',
+      icon: 'bg-amber-100 text-amber-700 ring-amber-200',
+      rail: 'bg-amber-500',
+      value:
+        'border-amber-100 bg-white/85 text-amber-700 shadow-[0_1px_2px_rgba(217,119,6,0.08)]',
+    },
+    rose: {
+      shell: 'border-rose-100 bg-rose-50/45',
+      icon: 'bg-rose-100 text-rose-700 ring-rose-200',
+      rail: 'bg-rose-500',
+      value:
+        'border-rose-100 bg-white/85 text-rose-700 shadow-[0_1px_2px_rgba(225,29,72,0.08)]',
+    },
+    violet: {
+      shell: 'border-violet-100 bg-violet-50/45',
+      icon: 'bg-violet-100 text-violet-700 ring-violet-200',
+      rail: 'bg-violet-500',
+      value:
+        'border-violet-100 bg-white/80 text-violet-700 shadow-[0_1px_2px_rgba(124,58,237,0.08)]',
+    },
+    slate: {
+      shell: 'border-slate-200/70 bg-slate-50/55',
+      icon: 'bg-slate-100 text-slate-600 ring-slate-200',
+      rail: 'bg-slate-300',
+      value:
+        'border-slate-200 bg-white/80 text-slate-600 shadow-[0_1px_2px_rgba(15,23,42,0.04)]',
+    },
   }[tone]
+
   return (
-    <div className="min-w-0 rounded-lg border border-slate-200/70 bg-white/70 px-3 py-2">
-      <div className="flex items-baseline justify-between gap-2">
-        <div className="truncate text-[0.6875rem] font-medium uppercase tracking-[0.1em] text-slate-500">
-          {label}
+    <div
+      className={cn(
+        'relative min-w-0 overflow-hidden rounded-xl border px-2.5 py-2',
+        toneClass.shell
+      )}
+    >
+      <span
+        className={cn('absolute inset-y-2 left-0 w-1 rounded-r-full', toneClass.rail)}
+        aria-hidden="true"
+      />
+      <div className="flex min-w-0 items-center gap-2 pl-1">
+        <div
+          className={cn(
+            'flex size-7 shrink-0 items-center justify-center rounded-lg ring-1',
+            toneClass.icon
+          )}
+        >
+          <Icon className="size-3.5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[0.75rem] font-semibold tracking-[-0.01em] text-slate-800">
+            {label}
+          </div>
+          <div className="mt-0.5 truncate text-[0.6875rem] leading-4 text-slate-500" title={sub}>
+            {sub}
+          </div>
         </div>
         <div
           className={cn(
-            'max-w-[58%] truncate text-right text-[0.8125rem] font-semibold tracking-[-0.01em]',
-            toneClass
+            'inline-flex h-6 max-w-[46%] shrink-0 items-center justify-center truncate rounded-full border px-2 text-center text-[0.75rem] font-semibold tracking-[-0.01em] tabular-nums',
+            toneClass.value
           )}
           title={value}
         >
           {value}
         </div>
       </div>
-      <div className="mt-1 truncate text-[0.6875rem] leading-4 text-slate-500" title={sub}>
-        {sub}
+    </div>
+  )
+}
+
+function AuditMetricPlaceholder({
+  label,
+  hint,
+}: Readonly<{ label: string; hint: string }>) {
+  return (
+    <div className="rounded-lg border border-dashed border-slate-200 bg-white/65 px-2.5 py-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="truncate text-[0.75rem] font-semibold tracking-[-0.01em] text-slate-700">
+          {label}
+        </span>
+        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[0.6875rem] font-medium text-slate-500">
+          待运行
+        </span>
+      </div>
+      <div className={cn('mt-1 truncate', REPORT_SUBTEXT_CLASS)} title={hint}>
+        {hint}
       </div>
     </div>
   )
@@ -805,14 +965,14 @@ function ProgressRow({
   return (
     <div
       className={cn(
-        'grid grid-cols-[120px_1fr_48px] items-center gap-3',
+        'grid grid-cols-[104px_1fr_42px] items-center gap-2',
         REPORT_TABLE_ROW_CLASS
       )}
     >
       <div className="truncate text-slate-600" title={label}>
         {label}
       </div>
-      <div className="h-2 rounded-full bg-slate-100">
+      <div className="h-1.5 rounded-full bg-slate-100">
         <div
           className="h-full rounded-full bg-blue-500"
           style={{ width: `${pct}%` }}
@@ -937,31 +1097,31 @@ function ReportMetricGrid({
   latestAuditTime: string
 }>) {
   return (
-    <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+    <div className="grid gap-1.5 md:grid-cols-3 xl:grid-cols-6">
       <AuditMetricCard
         icon={FileText}
         label="文档总数"
         value={String(totalDocs)}
-        sub="来自后端报告 profile.total_documents"
+        sub="数据集画像统计"
         tone="blue"
       />
       <AuditMetricCard
         icon={BarChart3}
         label="总大小"
         value={formatFileSize(Number(totalBytes || 0))}
-        sub="来自后端报告 profile.total_size_bytes"
+        sub="累计文件体积"
         tone="violet"
       />
       <AuditMetricCard
         icon={CheckCircle2}
-        label="成功文档数"
+        label="成功"
         value={String(successDocs)}
         sub={`成功率 ${successRate}`}
         tone="green"
       />
       <AuditMetricCard
         icon={AlertTriangle}
-        label="失败文档数"
+        label="失败"
         value={String(failed)}
         sub={`失败率 ${failedRate}`}
         tone="amber"
@@ -975,9 +1135,9 @@ function ReportMetricGrid({
       />
       <AuditMetricCard
         icon={Clock3}
-        label="报告生成"
+        label="生成时间"
         value={latestAuditTime}
-        sub="本次报告生成时间"
+        sub="当前报告快照"
         tone="slate"
       />
     </div>
@@ -1000,31 +1160,31 @@ function RiskMetricPanel({
   failedRate: string
 }>) {
   return (
-    <div className="rounded-2xl border border-slate-200/80 bg-card p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
-      <div className={cn('mb-4', REPORT_PANEL_TITLE_CLASS)}>
-        边缘指标 / 风险指标
+    <div className={REPORT_PANEL_CLASS}>
+      <div className={cn('mb-2', REPORT_PANEL_TITLE_CLASS)}>
+        风险概览
       </div>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-        <MiniRiskCard
-          label="缺失字段率"
+      <div className="space-y-1">
+        <ReportSignalRow
+          label="缺失字段"
           value={formatPct(missingFindingCount, totalDocs)}
-          sub={`${missingFindingCount} 条后端 finding`}
+          sub={`${missingFindingCount} 条规则命中`}
           tone={missingFindingCount ? 'amber' : 'blue'}
         />
-        <MiniRiskCard
-          label="重复文档率"
+        <ReportSignalRow
+          label="重复文档"
           value={formatPct(duplicateFindingCount, totalDocs)}
-          sub={`${duplicateFindingCount} 条后端 finding`}
+          sub={`${duplicateFindingCount} 条规则命中`}
           tone={duplicateFindingCount ? 'violet' : 'blue'}
         />
-        <MiniRiskCard
-          label="低置信度率"
+        <ReportSignalRow
+          label="低置信度"
           value={formatPct(lowQualityFindingCount, totalDocs)}
-          sub={`${lowQualityFindingCount} 条质量 finding`}
+          sub={`${lowQualityFindingCount} 条质量规则命中`}
           tone={lowQualityFindingCount ? 'amber' : 'green'}
         />
-        <MiniRiskCard
-          label="解析失败率"
+        <ReportSignalRow
+          label="解析失败"
           value={failedRate}
           sub={`${failed} 个失败文档`}
           tone={failed ? 'rose' : 'green'}
@@ -1041,6 +1201,7 @@ function RetrievalAuditPanel({
   const tone = retrievalAuditTone(retrievalAudit?.status)
   const metricRows = retrievalAuditMetricRows(retrievalAudit)
   const pluginRefs = retrievalAudit?.plugin_refs || []
+  const gateCount = retrievalAudit?.gates?.length || 0
   const hasFailureCategories = Object.values(retrievalAudit?.failure_categories || {}).some(
     (value) => Number(value) > 0
   )
@@ -1050,69 +1211,97 @@ function RetrievalAuditPanel({
     rose: 'border-rose-200 bg-rose-50 text-rose-700',
     slate: 'border-slate-200 bg-slate-50 text-slate-600',
   }[tone]
+  const statusIconClass = {
+    green: 'bg-emerald-100 text-emerald-700',
+    amber: 'bg-amber-100 text-amber-700',
+    rose: 'bg-rose-100 text-rose-700',
+    slate: 'bg-slate-100 text-slate-600',
+  }[tone]
+  const StatusIcon = {
+    green: CheckCircle2,
+    amber: Clock3,
+    rose: AlertTriangle,
+    slate: FileSearch,
+  }[tone]
 
   return (
-    <div className="rounded-2xl border border-slate-200/80 bg-card p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <FileSearch className="size-4 text-blue-600" />
-            <div className={REPORT_PANEL_TITLE_CLASS}>召回审计</div>
-            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.12em] text-slate-500">
-              Retrieval Audit
+    <div className={REPORT_PANEL_CLASS}>
+      <div className="mb-2 overflow-hidden rounded-xl border border-slate-200/70 bg-[linear-gradient(120deg,#f8fbff_0%,#ffffff_54%,#f2fbff_100%)] px-2.5 py-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700 ring-1 ring-blue-100">
+              <FileSearch className="size-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <div className={REPORT_PANEL_TITLE_CLASS}>召回审计</div>
+                <span className="rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-[10px] font-medium tracking-[0.08em] text-blue-700">
+                  生产准入
+                </span>
+              </div>
+              <div className={cn('mt-0.5 truncate', REPORT_SUBTEXT_CLASS)}>
+                评测、元数据、KG 与压缩证据集中校验。
+              </div>
+            </div>
+          </div>
+          <Badge
+            variant="outline"
+            className={cn(
+              'gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold',
+              statusToneClass
+            )}
+          >
+            <span className={cn('rounded-full p-0.5', statusIconClass)}>
+              <StatusIcon className="size-3" />
             </span>
-          </div>
-          <div className={cn('mt-1', REPORT_SUBTEXT_CLASS)}>
-            汇总 Golden / regression、元数据范围、KG 与压缩证据，判断当前知识库能否进入生产召回。
-          </div>
+            {status}
+          </Badge>
         </div>
-        <Badge
-          variant="outline"
-          className={cn('rounded-full px-2.5 py-1 text-[11px]', statusToneClass)}
-        >
-          {status}
-        </Badge>
       </div>
 
-      <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-2 grid gap-1.5 sm:grid-cols-2 xl:grid-cols-4">
         <CompactAuditFact
+          icon={AlertTriangle}
           label="失败归因"
           value={retrievalAuditFailureText(retrievalAudit)}
-          sub="scope / chunk / rank / KG"
+          sub="范围 / 切块 / 排序 / KG"
           tone={hasFailureCategories ? 'rose' : 'slate'}
         />
         <CompactAuditFact
+          icon={ShieldCheck}
           label="门禁证据"
-          value={`${retrievalAudit?.gates?.length || 0} 项`}
-          sub="latest regression gate"
-          tone={retrievalAudit?.gates?.length ? 'violet' : 'slate'}
+          value={gateCount ? `${gateCount} 项` : '未配置'}
+          sub="最新回归门禁"
+          tone={gateCount ? 'violet' : 'slate'}
         />
         <CompactAuditFact
+          icon={Layers}
           label="KG 建议"
           value={retrievalAuditKgRecommendationText(retrievalAudit)}
-          sub="KG-on/off compare"
+          sub="KG 开关对比"
           tone={retrievalAudit?.kg_recommendation === 'full_kg_assist' ? 'green' : 'slate'}
         />
         <CompactAuditFact
+          icon={Archive}
           label="插件包"
           value={retrievalAuditHashText(retrievalAudit)}
-          sub={`${pluginRefs.length} 个 plugin ref`}
+          sub={pluginRefs.length ? `${pluginRefs.length} 个插件引用` : '未接入插件'}
           tone={pluginRefs.length ? 'blue' : 'slate'}
         />
       </div>
 
-      <div className="mt-3 overflow-hidden rounded-xl border border-slate-100">
-        <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/80 px-3 py-2">
+      <div className="mt-2 overflow-hidden rounded-lg border border-slate-100">
+        <div className="flex items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/80 px-2.5 py-1.5">
           <div className="text-[0.75rem] font-semibold tracking-[-0.01em] text-slate-700">
             门禁指标
           </div>
           <div className="text-[0.6875rem] text-slate-500">
-            来自 latest regression gate
+            最新回归门禁
           </div>
         </div>
         <div
           className={cn(
-            'grid grid-cols-[1fr_120px] bg-white px-3 py-2',
+            'grid grid-cols-[1fr_104px] bg-white px-2.5 py-1.5',
             REPORT_TABLE_HEADER_CLASS
           )}
         >
@@ -1120,12 +1309,27 @@ function RetrievalAuditPanel({
           <span className="text-right">数值</span>
         </div>
         {metricRows.length === 0 ? (
-          <div className="border-t border-slate-100 px-3 py-5 text-center">
-            <div className="text-[0.8125rem] font-medium text-slate-700">
-              未生成评估指标
+          <div className="border-t border-slate-100 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] px-2.5 py-2">
+            <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-4">
+              <AuditMetricPlaceholder
+                label="Hit@K"
+                hint="召回命中门槛"
+              />
+              <AuditMetricPlaceholder
+                label="Metadata"
+                hint="元数据命中/召回"
+              />
+              <AuditMetricPlaceholder
+                label="Context"
+                hint="有效上下文占比"
+              />
+              <AuditMetricPlaceholder
+                label="Noise"
+                hint="噪声与 KG 噪声"
+              />
             </div>
-            <div className={cn('mt-1', REPORT_SUBTEXT_CLASS)}>
-              运行 Golden / regression 后，这里会显示 hit@k、metadata hit、有效上下文和噪声率。
+            <div className={cn('mt-2 text-center', REPORT_SUBTEXT_CLASS)}>
+              运行 Golden / regression 后填充真实门禁数据。
             </div>
           </div>
         ) : (
@@ -1133,7 +1337,7 @@ function RetrievalAuditPanel({
             <div
               key={row.key}
               className={cn(
-                'grid grid-cols-[1fr_120px] border-t border-slate-100 px-3 py-2',
+                'grid grid-cols-[1fr_104px] border-t border-slate-100 px-2.5 py-1.5',
                 REPORT_TABLE_ROW_CLASS
               )}
             >
@@ -1159,14 +1363,14 @@ function FieldCoveragePanel({
   fieldCoverageBadge: string
 }>) {
   return (
-    <div className="rounded-2xl border border-slate-200/80 bg-card p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
-      <div className="mb-4 flex items-center justify-between gap-3">
+    <div className={REPORT_PANEL_CLASS}>
+      <div className="mb-2.5 flex items-center justify-between gap-2">
         <div className={REPORT_PANEL_TITLE_CLASS}>字段覆盖分布</div>
         <Badge variant="outline" className="rounded-full text-[11px]">
           {fieldCoverageBadge}
         </Badge>
       </div>
-      <div className="space-y-3">
+      <div className="space-y-2">
         {fieldCoverageRows.map((row) => (
           <ProgressRow
             key={row.label}
@@ -1190,12 +1394,12 @@ function TopDocumentPanel({
   onClearFolderQuery: () => void
 }>) {
   return (
-    <div className="rounded-2xl border border-slate-200/80 bg-card p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
-      <div className="mb-4 flex items-center justify-between gap-3">
+    <div className={REPORT_PANEL_CLASS}>
+      <div className="mb-2.5 flex items-center justify-between gap-2">
         <div className={REPORT_PANEL_TITLE_CLASS}>文档分布 Top</div>
         <Button
           variant="link"
-          className="h-auto p-0 text-xs"
+          className="h-auto p-0 text-[0.71875rem]"
           onClick={onClearFolderQuery}
         >
           查看全部
@@ -1204,15 +1408,15 @@ function TopDocumentPanel({
       {topDocumentRows.length === 0 ? (
         <EmptyState
           title="暂无分布数据"
-          description="后端报告未返回目录或文件类型分布。"
+          description="当前报告没有目录或文件类型分布。"
         />
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-2">
           {topDocumentRows.map((row) => (
             <div
               key={row.name}
               className={cn(
-                'grid grid-cols-[1fr_52px_100px] items-center gap-3',
+                'grid grid-cols-[1fr_44px_84px] items-center gap-2',
                 REPORT_TABLE_ROW_CLASS
               )}
             >
@@ -1220,7 +1424,7 @@ function TopDocumentPanel({
                 {row.name}
               </div>
               <div className="tabular-nums text-slate-700">{row.value}</div>
-              <div className="h-2 rounded-full bg-slate-100">
+              <div className="h-1.5 rounded-full bg-slate-100">
                 <div
                   className="h-full rounded-full bg-blue-500"
                   style={{
@@ -1258,33 +1462,33 @@ function ContentHealthPanel({
   lowQualityFindingCount: number
 }>) {
   return (
-    <div className="rounded-2xl border border-slate-200/80 bg-card p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
-      <div className={cn('mb-4', REPORT_PANEL_TITLE_CLASS)}>
-        污染观察 / 内容健康
+    <div className={REPORT_PANEL_CLASS}>
+      <div className={cn('mb-2', REPORT_PANEL_TITLE_CLASS)}>
+        内容健康
       </div>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-        <MiniRiskCard
-          label="可疑链接数"
+      <div className="space-y-1">
+        <ReportSignalRow
+          label="可疑链接"
           value={governanceAuditUrlValue}
           sub={governanceAuditUrlSub}
           tone={governanceAuditHasSamples ? 'blue' : 'slate'}
         />
-        <MiniRiskCard
-          label="外部附件数"
+        <ReportSignalRow
+          label="外部附件"
           value={governanceAuditImageValue}
           sub={governanceAuditImageSub}
           tone={governanceAuditHasSamples ? 'green' : 'slate'}
         />
-        <MiniRiskCard
-          label="敏感词命中"
+        <ReportSignalRow
+          label="敏感信息"
           value={String(sensitiveHits)}
-          sub={`PII ${piiHits} / Secret ${secretHits}`}
+          sub={`隐私 ${piiHits} / 密钥 ${secretHits}`}
           tone={sensitiveHits ? 'amber' : 'green'}
         />
-        <MiniRiskCard
-          label="低质量片段数"
+        <ReportSignalRow
+          label="低质量片段"
           value={String(lowQualityFindingCount)}
-          sub="后端质量 finding"
+          sub="质量规则命中"
           tone={lowQualityFindingCount ? 'rose' : 'violet'}
         />
       </div>
@@ -1296,18 +1500,18 @@ function CategoryChartPanel({
   categoryBarData,
 }: Readonly<{ categoryBarData: CategoryMetricDatum[] }>) {
   return (
-    <div className="rounded-2xl border border-slate-200/80 bg-card p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
-      <div className={cn('mb-4', REPORT_PANEL_TITLE_CLASS)}>知识分类统计</div>
+    <div className={REPORT_PANEL_CLASS}>
+      <div className={cn('mb-2.5', REPORT_PANEL_TITLE_CLASS)}>知识分类</div>
       {categoryBarData.length === 0 ? (
-        <EmptyState
-          title="暂无分类数据"
-          description="后端分类树没有可展示的计数。"
+        <ReportInlineEmpty
+          title="分类尚未建立"
+          description="当前数据集还没有分类计数；绑定分类或同步分类树后，这里会展示分布。"
         />
       ) : (
-        <SafeResponsiveChart className="h-[260px]" minHeight={260}>
+        <SafeResponsiveChart className="h-[220px]" minHeight={220}>
           <BarChart
             data={categoryBarData.slice(0, 8)}
-            margin={{ left: 8, right: 12, top: 8, bottom: 8 }}
+            margin={{ left: 0, right: 8, top: 4, bottom: 4 }}
           >
             <CartesianGrid
               strokeDasharray="3 3"
@@ -1339,25 +1543,25 @@ function PipelineVersionsPanel({
   versionTotal: number
 }>) {
   return (
-    <div className="rounded-2xl border border-slate-200/80 bg-card p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
-      <div className={cn('mb-4', REPORT_PANEL_TITLE_CLASS)}>
-        源状态版本分布 Top
+    <div className={REPORT_PANEL_CLASS}>
+      <div className={cn('mb-2.5', REPORT_PANEL_TITLE_CLASS)}>
+        处理版本分布
       </div>
       {pipelineVersions.length === 0 ? (
-        <EmptyState
-          title="暂无版本数据"
-          description="后端报告未返回 pipeline_versions。"
+        <ReportInlineEmpty
+          title="暂无版本快照"
+          description="完成一次解析或治理后，这里会展示不同处理版本的文档分布。"
         />
       ) : (
-        <div className="grid gap-3 lg:grid-cols-[1fr_1fr] xl:grid-cols-1 2xl:grid-cols-[1fr_1fr]">
-          <SafeResponsiveChart className="h-[210px]" minHeight={210}>
+        <div className="grid gap-2.5 lg:grid-cols-[1fr_1fr] xl:grid-cols-1 2xl:grid-cols-[1fr_1fr]">
+          <SafeResponsiveChart className="h-[180px]" minHeight={180}>
             <PieChart>
               <Pie
                 data={pipelineVersionsWithFill}
                 dataKey="documents"
-                nameKey="pipeline_hash"
-                innerRadius={54}
-                outerRadius={84}
+                nameKey="display_label"
+                innerRadius={44}
+                outerRadius={72}
               />
               <Tooltip
                 cursor={CHART_TOOLTIP_CURSOR}
@@ -1366,7 +1570,7 @@ function PipelineVersionsPanel({
               />
             </PieChart>
           </SafeResponsiveChart>
-          <div className="space-y-2 self-center">
+          <div className="space-y-1.5 self-center">
             {pipelineVersions.slice(0, 5).map((version, idx) => (
               <div
                 key={version.pipeline_hash}
@@ -1384,7 +1588,7 @@ function PipelineVersionsPanel({
                     className="truncate font-mono"
                     title={version.pipeline_hash}
                   >
-                    {shortPipelineHash(version.pipeline_hash)}
+                    {pipelineVersionLabel(version.pipeline_hash)}
                   </span>
                 </span>
                 <span className="tabular-nums text-slate-500">
@@ -1401,23 +1605,23 @@ function PipelineVersionsPanel({
 
 function IssueRowsPanel({ issueRows }: Readonly<{ issueRows: IssueRow[] }>) {
   return (
-    <div className="rounded-2xl border border-slate-200/80 bg-card p-4 shadow-[0_10px_28px_rgba(15,23,42,0.04)]">
-      <div className="mb-4 flex items-center justify-between gap-3">
+    <div className={REPORT_PANEL_CLASS}>
+      <div className="mb-2.5 flex items-center justify-between gap-2">
         <div className={REPORT_PANEL_TITLE_CLASS}>风险命中记录</div>
-        <Badge variant="outline" className="rounded-full text-[11px]">
-          仅显示命中项
+        <Badge variant="outline" className="rounded-full px-2 text-[11px]">
+          命中项
         </Badge>
       </div>
       {issueRows.length === 0 ? (
-        <EmptyState
-          title="暂无异常记录"
-          description="当前后端报告没有命中的失败连接器或风险 finding。"
+        <ReportInlineEmpty
+          title="暂无风险命中"
+          description="当前报告没有失败任务或质量规则命中；后续出现异常会在这里列出。"
         />
       ) : (
         <div className="overflow-hidden rounded-xl border border-slate-100">
           <div
             className={cn(
-              'grid grid-cols-[120px_72px_120px_1fr_64px] bg-slate-50 px-3 py-2',
+            'grid grid-cols-[104px_64px_104px_1fr_56px] bg-slate-50 px-2.5 py-1.5',
               REPORT_TABLE_HEADER_CLASS
             )}
           >
@@ -1431,7 +1635,7 @@ function IssueRowsPanel({ issueRows }: Readonly<{ issueRows: IssueRow[] }>) {
             <div
               key={row.id}
               className={cn(
-                'grid grid-cols-[120px_72px_120px_1fr_64px] items-center border-t border-slate-100 px-3 py-3',
+                'grid grid-cols-[104px_64px_104px_1fr_56px] items-center border-t border-slate-100 px-2.5 py-2',
                 REPORT_TABLE_ROW_CLASS
               )}
             >
@@ -1516,7 +1720,7 @@ function ReportsDashboard({
   issueRows: IssueRow[]
 }>) {
   return (
-    <section className="space-y-4">
+    <section className="space-y-2">
       <ReportMetricGrid
         totalDocs={totalDocs}
         totalBytes={totalBytes}
@@ -1531,7 +1735,7 @@ function ReportsDashboard({
 
       <RetrievalAuditPanel retrievalAudit={retrievalAudit} />
 
-      <div className="grid gap-4 xl:grid-cols-[1.05fr_1.2fr_1.05fr_0.95fr]">
+      <div className="grid gap-2 xl:grid-cols-[1.05fr_1.2fr_1.05fr_0.95fr]">
         <RiskMetricPanel
           missingFindingCount={missingFindingCount}
           duplicateFindingCount={duplicateFindingCount}
@@ -1562,7 +1766,7 @@ function ReportsDashboard({
         />
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[1.2fr_0.9fr_1.4fr]">
+      <div className="grid gap-2 xl:grid-cols-[1.2fr_0.9fr_1.4fr]">
         <CategoryChartPanel categoryBarData={categoryBarData} />
         <PipelineVersionsPanel
           pipelineVersions={pipelineVersions}
@@ -1580,9 +1784,9 @@ function LoadingButtonIcon({
   icon: Icon,
 }: Readonly<{ loading: boolean; icon: LucideIcon }>) {
   if (loading) {
-    return <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
+    return <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" />
   }
-  return <Icon className="size-4" />
+  return <Icon className="size-3.5" />
 }
 
 function ReportsHeaderPills({
@@ -1607,42 +1811,105 @@ function ReportsHeaderPills({
   dataProvenance: DatasetReportDataProvenance | null
 }>) {
   return (
-    <div className="flex flex-wrap overflow-hidden rounded-2xl border border-slate-200/80 bg-card/90 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
+    <div className="grid min-w-0 gap-1.5 sm:grid-cols-2 xl:grid-cols-[1.35fr_0.86fr_0.9fr_0.88fr_1.15fr]">
       <DataPill
         icon={Database}
         label="数据集"
         value={selectedDatasetName}
-        sub={datasetId ? shortPipelineHash(datasetId) : '未选择'}
+        sub={datasetId ? `ID ${shortPipelineHash(datasetId)}` : '未选择'}
         tone="blue"
       />
       <DataPill
         icon={FileSearch}
-        label="文档总数"
+        label="文档"
         value={`${totalDocs} 篇文档`}
-        sub="后端 profile"
+        sub="报告画像"
         tone="blue"
       />
       <DataPill
         icon={ShieldCheck}
-        label="报告状态"
+        label="状态"
         value={reportStatusLabel(isLoadingReport, report)}
-        sub={report ? '后端报告已返回' : '等待生成报告'}
-        tone={report ? 'green' : 'slate'}
+        sub={report ? '可导出 / 可审计' : '等待生成报告'}
+        tone={reportStatusTone(isLoadingReport, report)}
       />
       <DataPill
         icon={Clock3}
-        label="报告生成"
+        label="生成"
         value={latestAuditTime}
-        sub={report ? '后端生成时间' : '暂无'}
+        sub={report ? '报告快照时间' : '暂无'}
         tone="slate"
       />
       <DataPill
         icon={ShieldCheck}
-        label="数据来源"
+        label="来源"
         value={dataSourceLabel}
         sub={dataSourceSub}
         tone={dataProvenance?.mocked === false ? 'green' : 'amber'}
       />
+    </div>
+  )
+}
+
+function ReportsPageHero({
+  selectedDatasetName,
+  datasetId,
+  totalDocs,
+  isLoadingReport,
+  report,
+  latestAuditTime,
+  dataSourceLabel,
+  dataSourceSub,
+  dataProvenance,
+}: Readonly<{
+  selectedDatasetName: string
+  datasetId: string
+  totalDocs: number
+  isLoadingReport: boolean
+  report: DatasetReport | null
+  latestAuditTime: string
+  dataSourceLabel: string
+  dataSourceSub: string
+  dataProvenance: DatasetReportDataProvenance | null
+}>) {
+  return (
+    <div className="relative overflow-hidden rounded-[1.1rem] border border-slate-200/80 bg-[linear-gradient(120deg,#f8fbff_0%,#ffffff_58%,#eaf7ff_100%)] px-3 py-2 shadow-[0_10px_28px_rgba(15,23,42,0.045)]">
+      <div
+        className="pointer-events-none absolute inset-y-3 left-0 w-1 rounded-r-full bg-[linear-gradient(180deg,#0ea5e9,#2563eb)]"
+        aria-hidden="true"
+      />
+      <div className="grid min-w-0 gap-2 xl:grid-cols-[minmax(230px,0.38fr)_minmax(0,1fr)] xl:items-center">
+        <div className="flex min-w-0 items-center gap-2.5 pl-2">
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-sky-100 bg-sky-50 text-sky-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.95)]">
+            <FileText className="size-4" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="truncate text-[1.05rem] font-semibold leading-6 tracking-[-0.018em] text-slate-950 md:text-[1.12rem]">
+                数据报告与审计概览
+              </h1>
+              <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-medium tracking-[0.08em] text-sky-700">
+                报告
+              </span>
+            </div>
+            <p className="mt-0.5 truncate text-[0.75rem] leading-4 text-slate-500">
+              数据集画像、召回审计与导出证据集中在这里。
+            </p>
+          </div>
+        </div>
+
+        <ReportsHeaderPills
+          selectedDatasetName={selectedDatasetName}
+          datasetId={datasetId}
+          totalDocs={totalDocs}
+          isLoadingReport={isLoadingReport}
+          report={report}
+          latestAuditTime={latestAuditTime}
+          dataSourceLabel={dataSourceLabel}
+          dataSourceSub={dataSourceSub}
+          dataProvenance={dataProvenance}
+        />
+      </div>
     </div>
   )
 }
@@ -1705,14 +1972,19 @@ function ReportsControlPanel({
   onRefresh: () => void
 }>) {
   return (
-    <section className="space-y-4 rounded-2xl border border-slate-200/80 bg-card p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.95)]">
-      <div className="grid gap-3 xl:grid-cols-[1.25fr_1.1fr_0.9fr_auto] xl:items-end">
-        <div className="space-y-2">
-          <Label htmlFor="dataset-select">数据集</Label>
+    <section className="space-y-2 rounded-[0.9rem] border border-slate-200/80 bg-card p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.95)]">
+      <div className="grid gap-2 xl:grid-cols-[1.25fr_1.1fr_0.85fr_auto] xl:items-end">
+        <div className="space-y-1.5">
+          <Label
+            htmlFor="dataset-select"
+            className={REPORT_FILTER_LABEL_CLASS}
+          >
+            数据集
+          </Label>
           <Select value={datasetId} onValueChange={onDatasetChange}>
             <SelectTrigger
               id="dataset-select"
-              className="h-8 w-full border-slate-200/80 bg-card text-[12px]"
+              className={REPORT_SELECT_TRIGGER_CLASS}
             >
               <SelectValue
                 placeholder={isLoadingDatasets ? '加载中...' : '请选择数据集'}
@@ -1720,7 +1992,11 @@ function ReportsControlPanel({
             </SelectTrigger>
             <SelectContent>
               {datasets.map((ds) => (
-                <SelectItem key={ds.id} value={ds.id}>
+                <SelectItem
+                  key={ds.id}
+                  value={ds.id}
+                  className={REPORT_SELECT_ITEM_CLASS}
+                >
                   {ds.name}
                 </SelectItem>
               ))}
@@ -1728,29 +2004,45 @@ function ReportsControlPanel({
           </Select>
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="pipeline-hash">处理版本</Label>
+        <div className="space-y-1.5">
+          <Label
+            htmlFor="pipeline-hash"
+            className={REPORT_FILTER_LABEL_CLASS}
+          >
+            处理版本
+          </Label>
           <Select
             value={pipelineVersionSelectValue}
             onValueChange={onPipelineHashChange}
           >
             <SelectTrigger
               id="pipeline-hash"
-              className="h-8 w-full border-slate-200/80 bg-card text-[12px]"
+              className={REPORT_SELECT_TRIGGER_CLASS}
             >
-              <SelectValue placeholder="选择或使用当前活动版本" />
+              <SelectValue placeholder="选择处理版本" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={DEFAULT_PIPELINE_VERSION_VALUE}>
-                当前活动版本（默认）
+              <SelectItem
+                value={DEFAULT_PIPELINE_VERSION_VALUE}
+                className={REPORT_SELECT_ITEM_CLASS}
+              >
+                当前版本（默认）
               </SelectItem>
               {pipelineVersionOptions.map((v) => (
-                <SelectItem key={v.pipeline_hash} value={v.pipeline_hash}>
+                <SelectItem
+                  key={v.pipeline_hash}
+                  value={v.pipeline_hash}
+                  className={REPORT_SELECT_ITEM_CLASS}
+                >
                   {shortPipelineHash(v.pipeline_hash)} · {v.documents} 个文档
                 </SelectItem>
               ))}
               {pipelineVersionOptions.length === 0 ? (
-                <SelectItem value="__mimirq_no_pipeline_versions__" disabled>
+                <SelectItem
+                  value="__mimirq_no_pipeline_versions__"
+                  disabled
+                  className={REPORT_SELECT_ITEM_CLASS}
+                >
                   暂无可选历史版本
                 </SelectItem>
               ) : null}
@@ -1758,29 +2050,44 @@ function ReportsControlPanel({
           </Select>
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="connector-limit">返回记录数量限制</Label>
+        <div className="space-y-1.5">
+          <Label
+            htmlFor="connector-limit"
+            className={REPORT_FILTER_LABEL_CLASS}
+          >
+            运行记录
+          </Label>
           <Select
             value={String(connectorRunsLimit)}
             onValueChange={(value) => onConnectorRunsLimitChange(Number(value || 20))}
           >
             <SelectTrigger
               id="connector-limit"
-              className="h-8 w-full border-slate-200/80 bg-card text-[12px]"
+              className={REPORT_SELECT_TRIGGER_CLASS}
             >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="0">不包含</SelectItem>
-              <SelectItem value="10">限制 10 条</SelectItem>
-              <SelectItem value="20">限制 20 条（默认）</SelectItem>
-              <SelectItem value="50">限制 50 条</SelectItem>
-              <SelectItem value="100">限制 100 条</SelectItem>
+              <SelectItem value="0" className={REPORT_SELECT_ITEM_CLASS}>
+                不附带记录
+              </SelectItem>
+              <SelectItem value="10" className={REPORT_SELECT_ITEM_CLASS}>
+                10 条记录
+              </SelectItem>
+              <SelectItem value="20" className={REPORT_SELECT_ITEM_CLASS}>
+                20 条记录（默认）
+              </SelectItem>
+              <SelectItem value="50" className={REPORT_SELECT_ITEM_CLASS}>
+                50 条记录
+              </SelectItem>
+              <SelectItem value="100" className={REPORT_SELECT_ITEM_CLASS}>
+                100 条记录
+              </SelectItem>
             </SelectContent>
           </Select>
         </div>
 
-        <div className="flex items-center gap-2 pb-1">
+        <div className="flex items-center gap-2 pb-0.5">
           <Switch
             id="only-issues-switch"
             checked={showOnlyIssues}
@@ -1788,59 +2095,62 @@ function ReportsControlPanel({
           />
           <Label
             htmlFor="only-issues-switch"
-            className="whitespace-nowrap text-[12px]"
+            className="whitespace-nowrap text-[0.75rem] font-medium text-slate-600"
           >
-            仅显示异常/失败
+            只看异常
           </Label>
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200/80 pt-3">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200/80 pt-2">
+        <div className="flex items-center gap-2 rounded-full bg-slate-50/80 px-2.5 py-1">
           <Switch
             id="redact-switch"
             checked={redact}
             onCheckedChange={onRedactChange}
           />
-          <Label htmlFor="redact-switch" className="text-[12px]">
-            分享导出时隐藏敏感字段
+          <Label
+            htmlFor="redact-switch"
+            className="text-[0.75rem] font-medium text-slate-600"
+          >
+            导出脱敏
           </Label>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5 rounded-full border border-slate-200/70 bg-slate-50/70 p-1">
           <Button
             variant="outline"
-            className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50 hover:text-slate-700"
+            className={REPORT_SECONDARY_ACTION_CLASS}
             onClick={onExportJson}
             disabled={!datasetId || isExportingJson}
             aria-label="导出 JSON"
           >
             <LoadingButtonIcon loading={isExportingJson} icon={Download} />
-            <span className="ml-2">导出 JSON</span>
+            <span>JSON</span>
           </Button>
           <Button
             variant="outline"
-            className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50 hover:text-slate-700"
+            className={REPORT_SECONDARY_ACTION_CLASS}
             onClick={onExportCompleteJson}
             disabled={!datasetId || !report}
             aria-label="导出完整 JSON"
           >
-            <Archive className="size-4" />
-            <span className="ml-2">导出完整 JSON</span>
+            <Archive className="size-3.5" />
+            <span>完整 JSON</span>
           </Button>
           <Button
             variant="outline"
-            className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50 hover:text-slate-700"
+            className={REPORT_SECONDARY_ACTION_CLASS}
             onClick={onExportChartsJson}
             disabled={!datasetId || !report}
             aria-label="导出 RAG 统计"
           >
-            <BarChart3 className="size-4" />
-            <span className="ml-2">导出 RAG 统计</span>
+            <BarChart3 className="size-3.5" />
+            <span>RAG 统计</span>
           </Button>
           <Button
             variant="outline"
-            className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50 hover:text-slate-700"
+            className={REPORT_SECONDARY_ACTION_CLASS}
             onClick={onExportRagAuditHtml}
             disabled={!datasetId || isExportingRagAuditHtml}
             aria-label="导出 RAG 审计报告"
@@ -1849,46 +2159,46 @@ function ReportsControlPanel({
               loading={isExportingRagAuditHtml}
               icon={Download}
             />
-            <span className="ml-2">导出 RAG 审计</span>
+            <span>RAG 审计</span>
           </Button>
           <Button
             variant="outline"
-            className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50 hover:text-slate-700"
+            className={REPORT_SECONDARY_ACTION_CLASS}
             onClick={onExportBundleZip}
             disabled={!datasetId || isExportingBundle}
             aria-label="导出数据包 ZIP"
           >
             <LoadingButtonIcon loading={isExportingBundle} icon={Download} />
-            <span className="ml-2">导出数据包 ZIP</span>
+            <span>Bundle ZIP</span>
           </Button>
           <Button
             variant="outline"
-            className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50 hover:text-slate-700"
+            className={REPORT_SECONDARY_ACTION_CLASS}
             onClick={onExportHtml}
             disabled={!datasetId || isExportingHtml}
             aria-label="导出 HTML"
           >
             <LoadingButtonIcon loading={isExportingHtml} icon={Download} />
-            <span className="ml-2">导出 HTML</span>
+            <span>HTML</span>
           </Button>
           <Button
-            className="h-8 rounded-lg bg-blue-600 text-info-foreground shadow-[0_8px_20px_rgba(37,99,235,0.22)] hover:bg-blue-700"
+            className={REPORT_PRIMARY_ACTION_CLASS}
             onClick={onRegenerateReport}
             disabled={!datasetId || isLoadingReport}
             aria-label="重新生成报告"
           >
             <LoadingButtonIcon loading={isLoadingReport} icon={PlayCircle} />
-            <span className="ml-2">重新生成报告</span>
+            <span>重新生成</span>
           </Button>
           <Button
             variant="outline"
-            className="h-8 rounded-lg border-slate-200/80 bg-card text-slate-700 hover:bg-slate-50 hover:text-slate-700"
+            className={REPORT_SECONDARY_ACTION_CLASS}
             onClick={onRefresh}
             disabled={isLoadingDatasets}
             aria-label="刷新"
           >
             <LoadingButtonIcon loading={isLoadingDatasets} icon={RefreshCw} />
-            <span className="ml-2">刷新</span>
+            <span>刷新</span>
           </Button>
         </div>
       </div>
@@ -2190,6 +2500,7 @@ export default function ReportsCenterPage() {
     () =>
       pipelineVersions.map((version, idx) => ({
         ...version,
+        display_label: pipelineVersionLabel(version.pipeline_hash),
         fill: PIE_COLORS[idx % PIE_COLORS.length],
       })),
     [pipelineVersions]
@@ -2426,7 +2737,7 @@ export default function ReportsCenterPage() {
     safeNumber(governance?.used_documents)
   const governanceAuditHasSamples =
     safeNumber(governanceAudit?.used_documents) > 0
-  const governanceAuditUnavailableSub = '当前报告无治理审计样本'
+  const governanceAuditUnavailableSub = '运行治理审计后展示'
   const governanceAuditUrlValue = governanceAuditHasSamples
     ? String(governanceAudit?.urls_changed_total || 0)
     : governanceAuditStatValue(governanceAuditHasSamples, governanceAudit?.urls_changed_total)
@@ -2434,10 +2745,10 @@ export default function ReportsCenterPage() {
     ? String(governanceAudit?.images_removed_total || 0)
     : governanceAuditStatValue(governanceAuditHasSamples, governanceAudit?.images_removed_total)
   const governanceAuditUrlSub = governanceAuditHasSamples
-    ? 'URL 规范化变更'
+    ? 'URL 变更记录'
     : governanceAuditUnavailableSub
   const governanceAuditImageSub = governanceAuditHasSamples
-    ? '治理审计图片移除'
+    ? '图片处理记录'
     : governanceAuditUnavailableSub
   const hasGovernanceCoverage = governanceCoverageMax > 0
   const chunkStatsCovered = chunkStatsCoverage(report, totalDocs)
@@ -2519,7 +2830,7 @@ export default function ReportsCenterPage() {
   const fieldCoverageRows = hasGovernanceCoverage
     ? governanceCoverageRows
     : baseCoverageRows
-  const fieldCoverageBadge = hasGovernanceCoverage ? '后端治理审计' : '后端基础画像'
+  const fieldCoverageBadge = hasGovernanceCoverage ? '治理审计' : '基础画像'
 
   const handleExportChartsJson = useCallback(() => {
     exportChartsJsonPayload({
@@ -2604,31 +2915,20 @@ export default function ReportsCenterPage() {
         bodyContainerClassName="max-w-none"
       >
         <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_22%)] shadow-[0_1px_0_rgba(15,23,42,0.04)]">
-          <div className="border-b border-slate-200/80 bg-[linear-gradient(180deg,#f8fbff_0%,#ffffff_100%)] px-5 py-4">
-            <PageHeader
-              title="数据报告与审计概览"
-              description="一键导出数据报告与审计结果，所有指标均来自后端报告接口与数据集接口。"
-              iconImage="report-export"
-              icon={FileText}
-              iconColor="text-info"
-              badge="报告"
-              compact
-              className="p-0"
-            >
-              <ReportsHeaderPills
-                selectedDatasetName={selectedDatasetName}
-                datasetId={datasetId}
-                totalDocs={totalDocs}
-                isLoadingReport={isLoadingReport}
-                report={report}
-                latestAuditTime={latestAuditTime}
-                dataSourceLabel={dataSourceLabel}
-                dataSourceSub={dataSourceSub}
-                dataProvenance={dataProvenance}
-              />
-            </PageHeader>
+          <div className="border-b border-slate-200/80 bg-[linear-gradient(180deg,#f8fbff_0%,#ffffff_100%)] p-2.5">
+            <ReportsPageHero
+              selectedDatasetName={selectedDatasetName}
+              datasetId={datasetId}
+              totalDocs={totalDocs}
+              isLoadingReport={isLoadingReport}
+              report={report}
+              latestAuditTime={latestAuditTime}
+              dataSourceLabel={dataSourceLabel}
+              dataSourceSub={dataSourceSub}
+              dataProvenance={dataProvenance}
+            />
           </div>
-          <div className="space-y-3 p-3">
+          <div className="space-y-2.5 p-2.5">
             <ReportsControlPanel
               datasetId={datasetId}
               datasets={datasets}

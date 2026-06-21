@@ -61,7 +61,7 @@ export function DatasetOpsPanel({ datasetId, datasetName }: Readonly<{ datasetId
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <div className="text-sm font-semibold text-foreground">数据集运维与导出</div>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          <p className="mt-1 text-[11px] leading-4 text-muted-foreground/65">
             围绕当前数据集完成克隆、脱敏导出和高级维护；需要排查历史批次或分类结构时再打开高级参数。
           </p>
         </div>
@@ -96,7 +96,7 @@ export function DatasetOpsPanel({ datasetId, datasetName }: Readonly<{ datasetId
 
       <details className="rounded-lg border border-border/60 bg-background/70 p-3">
         <summary className="cursor-pointer text-xs font-semibold text-foreground">高级参数（可选）</summary>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">仅在需要按历史预检批次取文件、预览结构化表或维护分类树时填写。</p>
+        <p className="mt-1 text-[11px] leading-4 text-muted-foreground/65">仅在需要按历史预检批次取文件、预览结构化表或维护分类树时填写。</p>
         <div className="mt-3 grid gap-2 md:grid-cols-3">
           <Field label="预检批次">
             <Input value={scanRunId} onChange={(event) => setScanRunId(event.target.value)} className="h-8 font-mono text-xs" />

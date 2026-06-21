@@ -4,7 +4,7 @@ import { useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useParams } from 'next/navigation'
 import { toast } from 'sonner'
-import { Activity, ArrowLeft, BarChart3, Download, FileSearch, RefreshCw, Settings2, ShieldAlert } from 'lucide-react'
+import { Activity, ArrowLeft, BarChart3, Cloud, Database, Download, FileSearch, RefreshCw, Settings2, ShieldAlert, Sparkles, Table2 } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, Pie, PieChart, Tooltip, XAxis, YAxis } from 'recharts'
 
 import { AppFrame } from '@/components/app-frame'
@@ -28,6 +28,12 @@ import { useRouter } from '@/i18n/navigation'
 import type { Dataset, DatasetHealthResponse, DatasetProfileFindingSummary } from '@/types'
 
 const PIE_COLORS = ['#38bdf8', '#22c55e', '#f59e0b', '#fb7185', '#a78bfa', '#14b8a6', '#94a3b8']
+const healthHeroCard = 'relative overflow-hidden rounded-2xl border border-white/70 bg-[radial-gradient(circle_at_0%_0%,rgba(14,165,233,0.18),transparent_34%),linear-gradient(135deg,rgba(255,255,255,0.96),rgba(236,253,245,0.9))] p-4 shadow-[0_18px_55px_rgba(15,23,42,0.08)] ring-1 ring-slate-100/70 dark:border-border/60 dark:bg-card dark:ring-white/5'
+const healthPanelClass = 'overflow-hidden border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.92))] p-4 shadow-[0_16px_45px_rgba(15,23,42,0.07)] ring-1 ring-slate-100/70 dark:border-border/60 dark:bg-card/95 dark:ring-white/5'
+const healthToolbarGroupClass = 'inline-flex flex-wrap items-center gap-1 rounded-2xl border border-white/70 bg-white/70 p-1 shadow-[0_10px_30px_rgba(15,23,42,0.055)] ring-1 ring-slate-100/70 backdrop-blur dark:border-border/60 dark:bg-card/70 dark:ring-white/5'
+const healthToolbarButtonClass = 'h-8 gap-1.5 rounded-xl px-2.5 text-[12px] font-medium text-slate-600 shadow-none hover:bg-white/95 hover:text-slate-900 hover:shadow-sm dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
+const healthToolbarExportButtonClass = 'h-8 gap-1.5 rounded-xl border-white/70 bg-white/75 px-2.5 text-[12px] font-medium text-slate-700 shadow-[0_8px_20px_rgba(15,23,42,0.045)] hover:bg-white hover:text-slate-950 dark:border-border/60 dark:bg-card/70 dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
+const healthToolbarPrimaryButtonClass = 'h-8 gap-1.5 rounded-xl bg-gradient-to-r from-sky-500 to-cyan-500 px-3 text-[12px] font-semibold text-white shadow-[0_10px_24px_rgba(14,165,233,0.24)] hover:from-sky-600 hover:to-cyan-600 [&_svg]:size-3.5'
 
 function asDatasetId(raw: unknown): string {
   if (typeof raw === 'string' && raw.trim()) return raw
@@ -196,153 +202,261 @@ export default function DatasetHealthPage() {
       .sort((a, b) => Number(b.count || 0) - Number(a.count || 0))
       .slice(0, 8)
   }, [profile?.findings])
+  const totalSizeLabel = profile ? formatFileSize(profile.total_size_bytes || 0) : (isLoading ? '…' : '-')
+  const documentCountLabel = profile?.total_documents ?? (isLoading ? '…' : 0)
+  const scannedPdfLabel = profile ? `${profile.pdf_scan?.scanned ?? 0}/${pdfScanTotal || 0}` : (isLoading ? '…' : '-')
+  const piiLabel = profile ? piiTotal : (isLoading ? '…' : 0)
+  const secretsLabel = profile ? secretsTotal : (isLoading ? '…' : 0)
+  const failedCount = Number(ingestion?.failed || 0)
+  const quarantinedCount = Number(ingestion?.quarantined || 0)
+  const riskCount = suggestions.filter((s) => s.severity !== 'info').length
+  const generatedAtLabel = health?.generated_at ? formatDate(health.generated_at) : '--'
+  const healthStatusLabel = loadError
+    ? '加载失败'
+    : riskCount > 0
+      ? `需处理 ${riskCount} 项`
+      : health
+        ? '健康良好'
+        : '待加载'
 
   return (
     <AppFrame>
       <PageScaffold
-        title={`健康概览${dataset?.name ? ' · ' + dataset.name : ''}`}
-        badge="Dataset Health"
-        icon={Activity}
-        iconColor="text-rose"
-        description={<span className="text-sm text-muted-foreground">汇总数据画像 + 入库状态，并给出下一步建议。</span>}
-        actions={
-          <div className="flex items-center gap-2">
-            <Button variant="outline" className="gap-2" onClick={() => router.push('/datasets')}>
-              <ArrowLeft className="w-4 h-4" />
-              返回
-            </Button>
-            {datasetId ? (
-              <Button variant="outline" className="gap-2" onClick={() => router.push(`/datasets/${datasetId}/profile`)}>
-                <BarChart3 className="w-4 h-4" />
-                画像
+        title="健康概览"
+        showHeader={false}
+        size="full"
+        density="system-dense"
+        bodyGutter="dense"
+        bodyClassName="bg-[radial-gradient(circle_at_12%_0%,rgba(14,165,233,0.10),transparent_28%),linear-gradient(180deg,#f8fcff_0%,#f4f8fb_44%,#f8fafc_100%)] dark:bg-background"
+        bodyContainerClassName="h-full min-h-full"
+        top={
+          <div className={healthHeroCard}>
+            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(14,165,233,0.045)_1px,transparent_1px),linear-gradient(90deg,rgba(14,165,233,0.045)_1px,transparent_1px)] bg-[size:28px_28px]" />
+            <div className="relative flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex min-w-0 items-start gap-3.5">
+                <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-sky-100 bg-sky-50/90 text-sky-600 shadow-inner">
+                  <Activity className="size-5" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h1 className="truncate text-[20px] font-medium leading-none tracking-[-0.01em] text-slate-800 dark:text-foreground">
+                      健康概览
+                    </h1>
+                    <Badge variant="soft" className="h-5 border-sky-200 bg-sky-50 px-2 text-[10px] font-medium leading-none text-sky-700">
+                      HEALTH
+                    </Badge>
+                  </div>
+                  <p className="mt-1.5 max-w-4xl text-[13px] leading-tight text-muted-foreground">
+                    数据集：<span className="font-semibold text-slate-800 dark:text-foreground">{dataset?.name || datasetId || '未选择'}</span>
+                    <span className="mx-2 text-slate-300">·</span>
+                    汇总数据画像、入库状态和下一步处理建议
+                  </p>
+                  <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11px] leading-none text-muted-foreground">
+                    <span className="inline-flex items-center gap-1.5">
+                      <Database className="size-3.5 text-sky-500" />
+                      文档 <strong className="font-mono text-slate-900 dark:text-foreground">{documentCountLabel}</strong>
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <Cloud className="size-3.5 text-cyan-500" />
+                      总大小 <strong className="font-mono text-slate-900 dark:text-foreground">{totalSizeLabel}</strong>
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <ShieldAlert className="size-3.5 text-rose-500" />
+                      失败 <strong className="font-mono text-slate-900 dark:text-foreground">{ingestion ? failedCount : (isLoading ? '…' : 0)}</strong>
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <FileSearch className="size-3.5 text-amber-500" />
+                      隔离 <strong className="font-mono text-slate-900 dark:text-foreground">{ingestion ? quarantinedCount : (isLoading ? '…' : 0)}</strong>
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <Sparkles className="size-3.5 text-emerald-500" />
+                      更新时间 <strong className="font-mono text-slate-900 dark:text-foreground">{generatedAtLabel}</strong>
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div
+                className={cn(
+                  'inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border px-3 text-[13px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]',
+                  loadError
+                    ? 'border-rose-200 bg-rose-50/80 text-rose-700'
+                    : riskCount > 0
+                      ? 'border-amber-200 bg-amber-50/80 text-amber-700'
+                      : 'border-emerald-200 bg-emerald-50/80 text-emerald-700',
+                )}
+              >
+                <span
+                  className={cn(
+                    'size-2 rounded-full',
+                    loadError ? 'bg-rose-500' : riskCount > 0 ? 'bg-amber-500' : 'bg-emerald-500',
+                  )}
+                />
+                {healthStatusLabel}
+              </div>
+            </div>
+          </div>
+        }
+        toolbar={
+          <div className="flex w-full flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+            <div className={healthToolbarGroupClass}>
+              <Button size="sm" variant="ghost" className={healthToolbarButtonClass} onClick={() => router.push('/datasets')}>
+                <ArrowLeft className="w-4 h-4" />
+                返回
               </Button>
-            ) : null}
-            {datasetId ? (
-              <Button variant="outline" className="gap-2" onClick={() => router.push(`/datasets/${datasetId}/precheck`)}>
-                <ShieldAlert className="w-4 h-4" />
-                预检
+              {datasetId ? (
+                <Button size="sm" variant="ghost" className={healthToolbarButtonClass} onClick={() => router.push(`/datasets/${datasetId}/profile`)}>
+                  <BarChart3 className="w-4 h-4" />
+                  数据画像
+                </Button>
+              ) : null}
+              {datasetId ? (
+                <Button size="sm" variant="ghost" className={healthToolbarButtonClass} onClick={() => router.push(`/datasets/${datasetId}/precheck`)}>
+                  <ShieldAlert className="w-4 h-4" />
+                  预检
+                </Button>
+              ) : null}
+              {datasetId ? (
+                <Button size="sm" variant="ghost" className={healthToolbarButtonClass} onClick={() => router.push(`/datasets/${datasetId}/ingestion`)}>
+                  <Settings2 className="w-4 h-4" />
+                  入库策略
+                </Button>
+              ) : null}
+              {datasetId ? (
+                <Button size="sm" variant="ghost" className={healthToolbarButtonClass} onClick={() => router.push(`/datasets/${datasetId}/tables`)}>
+                  <Table2 className="w-4 h-4" />
+                  表格 / TAG
+                </Button>
+              ) : null}
+              <Button
+                size="sm"
+                variant="ghost"
+                className={healthToolbarButtonClass}
+                onClick={() =>
+                  detachPromise(
+                    Promise.all([datasetQuery.refetch(), healthQuery.refetch()]).then(() => undefined)
+                  )
+                }
+                disabled={isLoading || !datasetId}
+              >
+                <RefreshCw className={cn('w-4 h-4', isLoading && 'animate-spin motion-reduce:animate-none')} />
+                刷新
               </Button>
-            ) : null}
-            {datasetId ? (
-              <Button variant="outline" className="gap-2" onClick={() => router.push(`/datasets/${datasetId}/ingestion`)}>
-                <Settings2 className="w-4 h-4" />
-                入库策略
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Button
+                size="sm"
+                variant="outline"
+                className={healthToolbarExportButtonClass}
+                disabled={!exportPayload}
+                onClick={() => {
+                  if (!exportPayload) return
+                  const filenameBase = sanitizeFilename(dataset?.name || datasetId || 'dataset')
+                  downloadTextFile(`${filenameBase}.health.json`, JSON.stringify(exportPayload, null, 2), 'application/json;charset=utf-8')
+                  toast.success('已导出 health.json')
+                }}
+              >
+                <Download className="w-4 h-4" />
+                导出 JSON
               </Button>
-            ) : null}
-            <Button
-              variant="outline"
-              className="gap-2"
-              onClick={() =>
-                detachPromise(
-                  Promise.all([datasetQuery.refetch(), healthQuery.refetch()]).then(() => undefined)
-                )
-              }
-              disabled={isLoading || !datasetId}
-            >
-              <RefreshCw className={cn('w-4 h-4', isLoading && 'animate-spin motion-reduce:animate-none')} />
-              刷新
-            </Button>
-            <Button
-              variant="outline"
-              className="gap-2"
-              disabled={!exportPayload}
-              onClick={() => {
-                if (!exportPayload) return
-                const filenameBase = sanitizeFilename(dataset?.name || datasetId || 'dataset')
-                downloadTextFile(`${filenameBase}.health.json`, JSON.stringify(exportPayload, null, 2), 'application/json;charset=utf-8')
-                toast.success('已导出 health.json')
-              }}
-            >
-              <Download className="w-4 h-4" />
-              导出 JSON
-            </Button>
-            <Button
-              variant="outline"
-              className="gap-2"
-              disabled={!exportPayload}
-	              onClick={() => {
-	                if (!exportPayload) return
-	                const exportedHealth = exportPayload.health
-	                const filenameBase = sanitizeFilename(dataset?.name || datasetId || 'dataset')
-	                const md = datasetHealthToMarkdown({
-	                  datasetId: datasetId || '',
-	                  datasetName: dataset?.name || null,
-	                  exportedAt: exportPayload.exported_at,
-	                  generatedAt: exportedHealth.generated_at ?? null,
-	                  profile: exportedHealth.profile ?? null,
-	                  ingestion: exportedHealth.ingestion ?? null,
-	                  suggestions,
-	                })
-                downloadTextFile(`${filenameBase}.health.md`, md, 'text/markdown;charset=utf-8')
-                toast.success('已导出 health.md')
-              }}
-            >
-              <Download className="w-4 h-4" />
-              导出 MD
-            </Button>
+              <Button
+                size="sm"
+                className={healthToolbarPrimaryButtonClass}
+                disabled={!exportPayload}
+                onClick={() => {
+                  if (!exportPayload) return
+                  const exportedHealth = exportPayload.health
+                  const filenameBase = sanitizeFilename(dataset?.name || datasetId || 'dataset')
+                  const md = datasetHealthToMarkdown({
+                    datasetId: datasetId || '',
+                    datasetName: dataset?.name || null,
+                    exportedAt: exportPayload.exported_at,
+                    generatedAt: exportedHealth.generated_at ?? null,
+                    profile: exportedHealth.profile ?? null,
+                    ingestion: exportedHealth.ingestion ?? null,
+                    suggestions,
+                  })
+                  downloadTextFile(`${filenameBase}.health.md`, md, 'text/markdown;charset=utf-8')
+                  toast.success('已导出 health.md')
+                }}
+              >
+                <Download className="w-4 h-4" />
+                导出 MD
+              </Button>
+            </div>
           </div>
         }
       >
-        <div className="space-y-6">
-          <Panel className="p-5">
-            <StatsGrid>
-              <StatCard icon={FileSearch} label="文档总数" value={profile?.total_documents ?? (isLoading ? '…' : 0)} color="cyan" />
-              <StatCard icon={BarChart3} label="总大小" value={(() => {
-    if (profile) {
-        return formatFileSize(profile.total_size_bytes || 0);
-    }
-    else if (isLoading) {
-            return '…';
-        }
-        else {
-            return '-';
-        }
-})()} color="teal" />
-              <StatCard icon={ShieldAlert} label="失败" value={ingestion?.failed ?? (isLoading ? '…' : 0)} color="rose" />
-              <StatCard icon={ShieldAlert} label="隔离" value={ingestion?.quarantined ?? (isLoading ? '…' : 0)} color="amber" />
+        <div className="space-y-3">
+          <Panel className={cn(healthPanelClass, 'p-2.5')}>
+            <StatsGrid dense className="grid-cols-2 gap-1.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 xl:grid-cols-7">
               <StatCard
+                dense
+                variant="minimal"
+                className="w-full justify-start"
+                icon={FileSearch}
+                label="文档总数"
+                value={profile?.total_documents ?? (isLoading ? '…' : 0)}
+                color="cyan"
+              />
+              <StatCard
+                dense
+                variant="minimal"
+                className="w-full justify-start"
+                icon={BarChart3}
+                label="总大小"
+                value={totalSizeLabel}
+                color="teal"
+              />
+              <StatCard
+                dense
+                variant="minimal"
+                className="w-full justify-start"
+                icon={ShieldAlert}
+                label="失败"
+                value={ingestion?.failed ?? (isLoading ? '…' : 0)}
+                color="rose"
+              />
+              <StatCard
+                dense
+                variant="minimal"
+                className="w-full justify-start"
+                icon={ShieldAlert}
+                label="隔离"
+                value={ingestion?.quarantined ?? (isLoading ? '…' : 0)}
+                color="amber"
+              />
+              <StatCard
+                dense
+                variant="minimal"
+                className="w-full justify-start"
                 icon={Activity}
                 label="扫描 PDF"
-                value={(() => {
-    if (profile) {
-        return `${profile.pdf_scan?.scanned ?? 0}/${pdfScanTotal || 0}`;
-    }
-    else if (isLoading) {
-            return '…';
-        }
-        else {
-            return '-';
-        }
-})()}
+                value={scannedPdfLabel}
                 color="orange"
               />
-              <StatCard icon={ShieldAlert} label="PII" value={(() => {
-    if (profile) {
-        return piiTotal;
-    }
-    else if (isLoading) {
-            return '…';
-        }
-        else {
-            return 0;
-        }
-})()} color="sky" />
-              <StatCard icon={ShieldAlert} label="Secrets" value={(() => {
-    if (profile) {
-        return secretsTotal;
-    }
-    else if (isLoading) {
-            return '…';
-        }
-        else {
-            return 0;
-        }
-})()} color="sky" />
+              <StatCard
+                dense
+                variant="minimal"
+                className="w-full justify-start"
+                icon={ShieldAlert}
+                label="PII"
+                value={piiLabel}
+                color="sky"
+              />
+              <StatCard
+                dense
+                variant="minimal"
+                className="w-full justify-start"
+                icon={ShieldAlert}
+                label="Secrets"
+                value={secretsLabel}
+                color="sky"
+              />
             </StatsGrid>
           </Panel>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <Panel className="p-5">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <Panel className={healthPanelClass}>
               <div className="flex items-center justify-between mb-4">
                 <div className="font-semibold">入库状态分布</div>
                 <div className="text-xs text-muted-foreground font-mono">
@@ -350,21 +464,32 @@ export default function DatasetHealthPage() {
                 </div>
               </div>
               {statusChartData.length ? (
-                <SafeResponsiveChart>
+                <>
+                  <SafeResponsiveChart className="h-[160px]" minHeight={160}>
                     <BarChart data={statusChartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                       <XAxis dataKey="name" tick={{ fontSize: 12 }} />
                       <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
                       <Tooltip />
-                      <Bar dataKey="value" radius={[8, 8, 0, 0]} />
+                      <Bar dataKey="value" fill="hsl(var(--chart-1))" radius={[8, 8, 0, 0]} />
                     </BarChart>
                   </SafeResponsiveChart>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {statusChartData.map((item) => (
+                      <span key={item.name} className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-white/60 px-3 py-1 text-xs shadow-sm dark:bg-muted/20">
+                        <span className="size-2 rounded-full bg-sky-400" />
+                        <span className="font-medium">{item.name}</span>
+                        <span className="font-mono text-muted-foreground">{item.value}</span>
+                      </span>
+                    ))}
+                  </div>
+                </>
               ) : (
-                <EmptyState icon={Activity} title="暂无状态数据" description="后端未返回可用的状态分布。" className="min-h-[280px]" />
+                <EmptyState icon={Activity} title="暂无状态数据" description="后端未返回可用的状态分布。" className="min-h-[160px]" />
               )}
             </Panel>
 
-            <Panel className="p-5">
+            <Panel className={healthPanelClass}>
               <div className="flex items-center justify-between mb-4">
                 <div className="font-semibold">格式分布</div>
                 <div className="text-xs text-muted-foreground font-mono">
@@ -372,64 +497,136 @@ export default function DatasetHealthPage() {
                 </div>
               </div>
               {fileTypeChartData.length ? (
-                <SafeResponsiveChart>
+                <>
+                  <SafeResponsiveChart className="h-[160px]" minHeight={160}>
                     <PieChart>
-                      <Pie data={fileTypeChartData} dataKey="value" nameKey="name" outerRadius={110} label />
+                      <Pie data={fileTypeChartData} dataKey="value" nameKey="name" outerRadius={70} label />
                       <Tooltip />
                     </PieChart>
                   </SafeResponsiveChart>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {fileTypeChartData.map((item) => (
+                      <span key={item.name} className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-white/60 px-3 py-1 text-xs shadow-sm dark:bg-muted/20">
+                        <span className="size-2 rounded-full bg-cyan-400" />
+                        <span className="font-medium">{item.name}</span>
+                        <span className="font-mono text-muted-foreground">{item.value}</span>
+                      </span>
+                    ))}
+                  </div>
+                </>
               ) : (
-                <EmptyState icon={BarChart3} title="暂无格式数据" description="后端未返回可用的格式统计。" className="min-h-[280px]" />
+                <EmptyState icon={BarChart3} title="暂无格式数据" description="后端未返回可用的格式统计。" className="min-h-[160px]" />
               )}
             </Panel>
           </div>
 
-          <Panel className="p-5">
-            <div className="flex items-center justify-between mb-4">
-              <div className="font-semibold">建议（rule-based）</div>
-              <div className="text-xs text-muted-foreground">v1</div>
-            </div>
-            <div className="space-y-2">
-              {suggestions.map((s) => (
-                <div key={`${s.severity}-${s.title}-${s.detail}`} className="flex items-start gap-3 rounded-xl border border-border/60 bg-muted/20 p-3">
-                  <Badge variant={suggestionBadgeVariant(s.severity)} className="shrink-0">
-                    {s.severity.toUpperCase()}
-                  </Badge>
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium">{s.title}</div>
-                    <div className="mt-1 text-xs text-muted-foreground">{s.detail}</div>
-                  </div>
+          <Panel className={cn(healthPanelClass, 'p-3')}>
+            <div className="mb-3 flex items-start justify-between gap-4">
+              <div>
+                <div className="text-sm font-semibold">质量洞察</div>
+                <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground/60">
+                  汇总规则建议和画像发现，用于快速判断是否需要补扫或人工复核。
                 </div>
-              ))}
-            </div>
-          </Panel>
-
-          <Panel className="p-5">
-            <div className="flex items-center justify-between mb-4">
-              <div className="font-semibold">Top Findings</div>
-              <div className="text-xs text-muted-foreground">from profile summary</div>
-            </div>
-            {topFindings.length ? (
-              <div className="flex flex-wrap gap-2">
-                {topFindings.map((f) => (
-                  <span
-                    key={f.key}
-                    className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-muted/40 px-3 py-1 text-xs"
-                    title={f.description || ''}
-                  >
-                    <span className="font-medium">{f.label}</span>
-                    <span className="text-muted-foreground">× {Number(f.count || 0)}</span>
-                    <Badge variant={suggestionBadgeVariant(f.severity)}>{String(f.severity || '').toUpperCase()}</Badge>
-                  </span>
-                ))}
               </div>
-            ) : (
-              <EmptyState icon={FileSearch} title="暂无 Findings" description="当前数据集中未统计到可行动的风险桶。" className="min-h-[180px]" />
-            )}
+              <Badge variant="outline" className="h-5 px-1.5 text-[10px] font-mono text-muted-foreground">
+                rules v1
+              </Badge>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_360px]">
+              <div className="rounded-xl border border-border/50 bg-white/45 p-3 dark:bg-card/40">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="text-[13px] font-semibold text-foreground/85">建议</div>
+                  <Badge variant={suggestions.length ? 'soft' : 'outline'} className="h-5 px-1.5 text-[10px] font-mono">
+                    {suggestions.length}
+                  </Badge>
+                </div>
+                {suggestions.length ? (
+                  <div className="divide-y divide-border/45 overflow-hidden rounded-lg border border-border/45">
+                    {suggestions.map((s) => (
+                      <div key={`${s.severity}-${s.title}-${s.detail}`} className="grid gap-2 px-2.5 py-2 md:grid-cols-[auto_minmax(0,1fr)]">
+                        <Badge variant={suggestionBadgeVariant(s.severity)} className="h-5 px-1.5 text-[10px] font-mono uppercase">
+                          {s.severity}
+                        </Badge>
+                        <div className="min-w-0">
+                          <div className="truncate text-[12px] font-semibold text-foreground/85">{s.title}</div>
+                          <div className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-muted-foreground/65">{s.detail}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-emerald-100 bg-emerald-50/45 px-2.5 py-2 text-[11px] leading-4 text-emerald-700">
+                    当前没有 rule-based 建议。若仍不放心，可查看画像与预检详情确认是否需要补扫。
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-border/50 bg-white/45 p-3 dark:bg-card/40">
+                <div className="mb-2.5 flex items-center justify-between gap-2">
+                  <div>
+                    <div className="text-[13px] font-semibold text-foreground/85">画像发现</div>
+                    <div className="mt-0.5 text-[10px] leading-none text-muted-foreground/55">按影响度排序的可处理问题</div>
+                  </div>
+                  <Badge variant={topFindings.length ? 'soft' : 'outline'} className="h-5 px-1.5 text-[10px] font-mono">
+                    {topFindings.length}
+                  </Badge>
+                </div>
+                {topFindings.length ? (
+                  <div className="space-y-1.5">
+                    {topFindings.map((f) => (
+                      <div
+                        key={f.key}
+                        className={cn(
+                          'group relative overflow-hidden rounded-xl border bg-white/70 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] transition-colors hover:bg-white/90 dark:bg-muted/20',
+                          f.severity === 'error'
+                            ? 'border-rose-200/80'
+                            : f.severity === 'warning'
+                              ? 'border-amber-200/80'
+                              : 'border-slate-200/75 dark:border-border/60',
+                        )}
+                        title={f.description || ''}
+                      >
+                        <div
+                          className={cn(
+                            'absolute inset-y-2 left-0 w-1 rounded-r-full',
+                            f.severity === 'error'
+                              ? 'bg-rose-400'
+                              : f.severity === 'warning'
+                                ? 'bg-amber-400'
+                                : 'bg-sky-300',
+                          )}
+                        />
+                        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 pl-2">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <div className="truncate text-[12px] font-semibold text-foreground/85">{f.label}</div>
+                              <span className="shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] leading-none text-slate-500 dark:bg-muted/50">
+                                ×{Number(f.count || 0)}
+                              </span>
+                            </div>
+                            {f.description ? (
+                              <div className="mt-1 line-clamp-2 text-[11px] leading-4 text-muted-foreground/62">{f.description}</div>
+                            ) : null}
+                          </div>
+                          <Badge variant={suggestionBadgeVariant(f.severity)} className="h-5 shrink-0 px-1.5 text-[10px] font-mono uppercase">
+                            {String(f.severity || '')}
+                          </Badge>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-dashed border-border/55 bg-slate-50/55 px-2.5 py-2 text-[11px] leading-4 text-muted-foreground/65 dark:bg-muted/20">
+                    当前没有 profile findings。
+                  </div>
+                )}
+              </div>
+            </div>
           </Panel>
 
           {datasetId ? null : (
-            <Panel className="p-5">
+            <Panel className={healthPanelClass}>
               <EmptyState icon={Activity} title="缺少 datasetId" description="无法识别当前路由参数 id。" />
             </Panel>
           )}

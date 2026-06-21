@@ -1,10 +1,10 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { ArrowLeft, BarChart3, Download, FileUp, History, Loader2, Plus, RefreshCw, Save, Scissors, Settings2, Sparkles, Table2, Trash2 } from 'lucide-react'
+import { ArrowLeft, BarChart3, Cloud, Database, FileSearch, FileUp, Heart, Loader2, Plus, RefreshCw, Save, Scissors, Settings2, ShieldCheck, Sparkles, Table2, Trash2 } from 'lucide-react'
 
 import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
@@ -500,17 +500,6 @@ const INGESTION_POLICY_TEMPLATES: IngestionPolicyTemplate[] = [
   },
 ]
 
-function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  URL.revokeObjectURL(url)
-}
-
 function safeIdFromNow() {
   return `rule-${Date.now().toString(36)}`
 }
@@ -610,8 +599,6 @@ export default function DatasetIngestionPolicyPage() {
 
   const [editorOpen, setEditorOpen] = useState(false)
   const [templatesOpen, setTemplatesOpen] = useState(false)
-  const [versionsOpen, setVersionsOpen] = useState(false)
-  const [rollbackingVersionId, setRollbackingVersionId] = useState<string | null>(null)
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
   const [draft, setDraft] = useState<RuleDraft>({
     id: safeIdFromNow(),
@@ -630,8 +617,6 @@ export default function DatasetIngestionPolicyPage() {
   const [previewFile, setPreviewFile] = useState<File | null>(null)
   const [previewing, setPreviewing] = useState(false)
   const [preview, setPreview] = useState<IngestionPreviewResponse | null>(null)
-
-  const importInputRef = useRef<HTMLInputElement | null>(null)
 
   const chunkStrategyOptions = useMemo(() => {
     const items = (capabilities?.chunk_strategies || []).map((s) => String(s.name || '').trim()).filter(Boolean)
@@ -673,24 +658,8 @@ export default function DatasetIngestionPolicyPage() {
     enabled: Boolean(datasetId),
   })
 
-  const versionsQuery = useQuery({
-    queryKey: queryKeys.datasets.ingestionPolicyVersions(datasetId),
-    queryFn: () => {
-      if (!datasetId) throw new Error('缺少数据集 ID')
-      return datasetApi.listIngestionPolicyVersions(datasetId)
-    },
-    enabled: false,
-  })
-
   const dataset = datasetQuery.data ?? null
   const ingestionStats = ingestionStatsQuery.data ?? null
-  const versions = versionsQuery.data ?? null
-  const versionsLoading = versionsQuery.isFetching
-  const refreshing = Boolean(datasetId) && (
-    datasetQuery.isFetching ||
-    policyQuery.isFetching ||
-    ingestionStatsQuery.isFetching
-  )
 
   useEffect(() => {
     if (profilesQuery.error) {
@@ -712,7 +681,6 @@ export default function DatasetIngestionPolicyPage() {
   const { refetch: refetchDataset } = datasetQuery
   const { refetch: refetchPolicy } = policyQuery
   const { refetch: refetchIngestionStats } = ingestionStatsQuery
-  const { refetch: refetchVersions } = versionsQuery
 
   const refreshIngestionPolicy = useCallback(async () => {
     await Promise.all([
@@ -721,40 +689,6 @@ export default function DatasetIngestionPolicyPage() {
       refetchIngestionStats(),
     ])
   }, [refetchDataset, refetchIngestionStats, refetchPolicy])
-
-  const refreshVersions = useCallback(async () => {
-    if (!datasetId) return
-    const result = await refetchVersions()
-    if (result.error) {
-      reportClientError('Failed to load ingestion policy versions', result.error)
-      toast.error(formatApiError(result.error, '加载版本历史失败'))
-    }
-  }, [datasetId, refetchVersions])
-
-  const openVersions = useCallback(async () => {
-    setVersionsOpen(true)
-    await refreshVersions()
-  }, [refreshVersions])
-
-  const rollbackPolicy = useCallback(
-    async (versionId: string) => {
-      if (!datasetId) return
-      const id = String(versionId || '').trim()
-      if (!id) return
-      setRollbackingVersionId(id)
-      try {
-        await datasetApi.rollbackIngestionPolicy(datasetId, { version_id: id })
-        toast.success('已回滚入库策略')
-        await Promise.all([refreshIngestionPolicy(), refreshVersions()])
-      } catch (e: unknown) {
-        reportClientError('Failed to rollback ingestion policy', e)
-        toast.error(formatApiError(e, '回滚失败'))
-      } finally {
-        setRollbackingVersionId(null)
-      }
-    },
-    [datasetId, refreshIngestionPolicy, refreshVersions]
-  )
 
   const rules = useMemo(() => policy?.rules || [], [policy])
 
@@ -861,32 +795,6 @@ export default function DatasetIngestionPolicyPage() {
     }
   }, [datasetId, policy, refreshIngestionPolicy])
 
-  const handleExport = useCallback(async () => {
-    if (!datasetId) return
-    try {
-      const blob = await datasetApi.exportIngestionPolicy(datasetId)
-      const safe = (dataset?.name || datasetId).replaceAll(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)
-      downloadBlob(blob, `${safe}.ingestion-policy.json`)
-    } catch (e: unknown) {
-      reportClientError('Failed to export ingestion policy', e)
-      toast.error(formatApiError(e, '导出失败'))
-    }
-  }, [datasetId, dataset])
-
-  const handleImportFile = useCallback(async (file: File | null) => {
-    if (!file || !datasetId) return
-    try {
-      const res = await datasetApi.importIngestionPolicy(datasetId, file, true)
-      toast.success(`导入成功：规则 ${res.rule_count}`)
-      await refreshIngestionPolicy()
-    } catch (e: unknown) {
-      reportClientError('Failed to import ingestion policy', e)
-      toast.error(formatApiError(e, '导入失败（请检查脚本格式/正则是否安全）'))
-    } finally {
-      if (importInputRef.current) importInputRef.current.value = ''
-    }
-  }, [datasetId, refreshIngestionPolicy])
-
   const runPreview = useCallback(async () => {
     if (!previewFile || !datasetId) return
     setPreviewing(true)
@@ -903,69 +811,145 @@ export default function DatasetIngestionPolicyPage() {
     }
   }, [previewFile, datasetId])
 
+  const ingestionHeroCard = 'relative overflow-hidden rounded-2xl border border-white/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(240,249,255,0.88)_58%,rgba(236,253,245,0.62))] shadow-[0_18px_50px_rgba(15,23,42,0.08)] ring-1 ring-sky-100/70 before:pointer-events-none before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_18%_12%,rgba(14,165,233,0.14),transparent_28%),linear-gradient(90deg,rgba(14,165,233,0.035)_1px,transparent_1px),linear-gradient(0deg,rgba(14,165,233,0.035)_1px,transparent_1px)] before:bg-[length:auto,28px_28px,28px_28px] dark:border-border/60 dark:bg-card/95 dark:ring-sky-500/15'
+  const ingestionToolbarGroupClass = 'inline-flex flex-wrap items-center gap-1 rounded-2xl border border-white/70 bg-white/70 p-1 shadow-[0_10px_30px_rgba(15,23,42,0.055)] ring-1 ring-slate-100/70 backdrop-blur dark:border-border/60 dark:bg-card/70 dark:ring-white/5'
+  const ingestionToolbarButtonClass = 'h-8 gap-1.5 rounded-xl px-2.5 text-[12px] font-medium text-slate-600 shadow-none hover:bg-white/95 hover:text-slate-900 hover:shadow-sm dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
+  const ingestionToolbarPrimaryButtonClass = 'h-8 min-w-[96px] gap-1.5 rounded-xl bg-gradient-to-r from-sky-500 to-cyan-500 px-3 text-[12px] font-semibold text-white shadow-[0_10px_24px_rgba(14,165,233,0.24)] hover:from-sky-600 hover:to-cyan-600 [&_svg]:size-3.5'
+  const activeRuleCount = rules.filter((rule) => rule.enabled !== false).length
+  const parserBackendCount = new Set(rules.map((rule) => rule.parser_backend).filter(Boolean)).size
+
   return (
     <AppFrame>
       <PageScaffold
-        title="入库策略（解析前预处理）"
-        description={
-          <span className="text-muted-foreground">
-            数据集：<span className="text-foreground font-medium">{dataset?.name || datasetId}</span> · 按文件类型配置“预处理→解析→治理”
-          </span>
+        title="入库策略"
+        showHeader={false}
+        size="full"
+        density="system-dense"
+        bodyGutter="dense"
+        bodyClassName="h-full overflow-hidden bg-[radial-gradient(circle_at_18%_0%,rgba(14,165,233,0.10),transparent_28%),linear-gradient(180deg,rgba(248,250,252,0.96),rgba(241,245,249,0.68))] pb-3 dark:bg-[radial-gradient(circle_at_18%_0%,rgba(14,165,233,0.14),transparent_28%),linear-gradient(180deg,rgba(15,23,42,0.96),rgba(15,23,42,0.86))]"
+        bodyContainerClassName="h-full min-h-0 overflow-hidden"
+        top={
+          <div className={ingestionHeroCard}>
+            <div className="absolute inset-y-4 left-3 w-1 rounded-full bg-gradient-to-b from-primary via-sky-400 to-cyan-300" />
+            <div className="relative flex flex-col gap-3 px-5 py-3.5 pl-8 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex min-w-0 items-start gap-3.5">
+                <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-sky-200/80 bg-white/82 text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_26px_rgba(14,165,233,0.14)] dark:border-sky-500/25 dark:bg-sky-500/10">
+                  <Settings2 className="size-5" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h1 className="truncate text-[20px] font-medium leading-none tracking-[-0.01em] text-slate-800 dark:text-foreground">入库策略</h1>
+                    <span className="inline-flex h-5 items-center rounded-full border border-slate-200/80 bg-white/70 px-2 text-[10px] font-medium leading-none text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-border/60 dark:bg-muted/30 dark:text-muted-foreground">
+                      解析前预处理
+                    </span>
+                    <Badge variant="soft" className="h-5 border-primary/20 bg-primary/10 px-2 font-mono text-[10px] leading-none text-primary">
+                      POLICY
+                    </Badge>
+                  </div>
+                  <div className="mt-1.5 text-[13px] leading-tight text-muted-foreground">
+                    <span className="font-semibold text-foreground">数据集：</span>
+                    <span className="font-medium text-foreground">{dataset?.name || datasetId}</span>
+                    <span> · 按文件类型配置预处理、解析、治理与切块入口</span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11px] leading-none text-muted-foreground">
+                    <span className="inline-flex items-center gap-1.5">
+                      <Database className="size-3.5 text-muted-foreground/80" />
+                      <span>规则</span>
+                      <span className="font-mono font-semibold text-foreground">{rules.length}</span>
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <ShieldCheck className="size-3.5 text-muted-foreground/80" />
+                      <span>启用</span>
+                      <span className="font-mono font-semibold text-foreground">{activeRuleCount}</span>
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <Cloud className="size-3.5 text-muted-foreground/80" />
+                      <span>解析后端</span>
+                      <span className="font-mono font-semibold text-foreground">{parserBackendCount || '--'}</span>
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <FileSearch className="size-3.5 text-muted-foreground/80" />
+                      <span>预览</span>
+                      <span className="font-semibold text-foreground">样例文件链路验证</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-2 lg:self-end">
+                <div className="inline-flex h-9 items-center gap-2 rounded-lg border border-emerald-200/80 bg-emerald-50/90 px-3 text-[13px] font-medium text-emerald-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
+                  <span className="size-2 rounded-full bg-emerald-500" />
+                  策略可编辑
+                </div>
+              </div>
+            </div>
+          </div>
         }
-        icon={Settings2}
-        actions={
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => router.push('/datasets')} className="gap-2">
-              <ArrowLeft className="w-4 h-4" />
-              返回
+        toolbar={
+          <div className="flex w-full flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+            <div className={ingestionToolbarGroupClass}>
+              <Button size="sm" variant="ghost" onClick={() => router.push('/datasets')} className={ingestionToolbarButtonClass}>
+                <ArrowLeft className="size-3.5" />
+                返回
+              </Button>
+              {datasetId ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => router.push(`/datasets/${datasetId}/health`)}
+                  className={ingestionToolbarButtonClass}
+                >
+                  <Heart className="size-3.5" />
+                  健康
+                </Button>
+              ) : null}
+              {datasetId ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => router.push(`/datasets/${datasetId}/precheck`)}
+                  className={ingestionToolbarButtonClass}
+                >
+                  <ShieldCheck className="size-3.5" />
+                  预检
+                </Button>
+              ) : null}
+              {datasetId ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => router.push(`/datasets/${datasetId}/profile`)}
+                  className={ingestionToolbarButtonClass}
+                >
+                  <BarChart3 className="size-3.5" />
+                  数据画像
+                </Button>
+              ) : null}
+              {datasetId ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => router.push(`/datasets/${datasetId}/tables`)}
+                  className={ingestionToolbarButtonClass}
+                >
+                  <Table2 className="size-3.5" />
+                  表格 / TAG
+                </Button>
+              ) : null}
+            </div>
+            <Button size="sm" onClick={savePolicy} disabled={saving || !policy} className={ingestionToolbarPrimaryButtonClass}>
+              {saving ? <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" /> : <Save className="size-3.5" />}
+              保存
             </Button>
-            <Button variant="outline" onClick={() => detachPromise(refreshIngestionPolicy())} disabled={refreshing} className="gap-2">
-              <RefreshCw className={cn('w-4 h-4', refreshing && 'animate-spin motion-reduce:animate-none')} />
-              刷新
-            </Button>
-            {datasetId ? (
-              <Button
-                variant="outline"
-                onClick={() => router.push(`/datasets/${datasetId}/profile`)}
-                className="gap-2"
-              >
-                <BarChart3 className="w-4 h-4" />
-                数据画像
-              </Button>
-            ) : null}
-            {datasetId ? (
-              <Button
-                variant="outline"
-                onClick={() => router.push(`/datasets/${datasetId}/tables`)}
-                className="gap-2"
-              >
-                <Table2 className="w-4 h-4" />
-                表格 / TAG
-              </Button>
-            ) : null}
-	            <Button variant="outline" onClick={handleExport} className="gap-2">
-	              <Download className="w-4 h-4" />
-	              导出脚本
-	            </Button>
-	            <Button variant="outline" onClick={() => importInputRef.current?.click()} className="gap-2">
-	              <FileUp className="w-4 h-4" />
-	              导入脚本
-	            </Button>
-              <Button variant="outline" onClick={() => detachPromise(openVersions())} className="gap-2">
-                <History className="w-4 h-4" />
-                版本
-              </Button>
-	            <Button onClick={savePolicy} disabled={saving || !policy} className="gap-2">
-	              {saving ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Save className="w-4 h-4" />}
-	              保存
-	            </Button>
-	          </div>
-	        }
+          </div>
+        }
       >
-        <div className="space-y-6">
+        <div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden">
           {ingestionStats ? (
-            <StatsGrid className="mt-2">
+            <StatsGrid dense className="shrink-0 grid-cols-2 md:grid-cols-4 xl:grid-cols-4">
               <StatCard
+                dense
+                variant="minimal"
+                className="w-full justify-start"
                 icon={FileUp}
                 label="文档数"
                 value={ingestionStats.total_documents}
@@ -973,6 +957,9 @@ export default function DatasetIngestionPolicyPage() {
                 color="sky"
               />
               <StatCard
+                dense
+                variant="minimal"
+                className="w-full justify-start"
                 icon={Scissors}
                 label="切片数"
                 value={ingestionStats.total_chunks}
@@ -980,6 +967,9 @@ export default function DatasetIngestionPolicyPage() {
                 color="teal"
               />
               <StatCard
+                dense
+                variant="minimal"
+                className="w-full justify-start"
                 icon={BarChart3}
                 label="总字符数"
                 value={ingestionStats.total_characters}
@@ -987,6 +977,9 @@ export default function DatasetIngestionPolicyPage() {
                 color="amber"
               />
               <StatCard
+                dense
+                variant="minimal"
+                className="w-full justify-start"
                 icon={RefreshCw}
                 label="最近入库"
                 value={ingestionStats.last_processed_at ? new Date(ingestionStats.last_processed_at).toLocaleString() : '—'}
@@ -996,11 +989,12 @@ export default function DatasetIngestionPolicyPage() {
             </StatsGrid>
           ) : null}
 
-          <Panel variant="glass" className="overflow-hidden">
-            <div className="px-5 py-4 border-b border-border/60 flex items-center justify-between">
+          <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_420px]">
+          <Panel variant="glass" className="flex min-h-0 flex-col overflow-hidden">
+            <div className="flex shrink-0 items-center justify-between border-b border-border/60 px-4 py-3">
               <div className="min-w-0">
                 <div className="text-sm font-semibold">规则列表</div>
-                <div className="text-xs text-muted-foreground mt-1">
+                <div className="mt-1 max-w-3xl text-[11px] leading-4 text-muted-foreground/65">
                   从上到下匹配，命中后应用：预处理步骤 / 解析后端 / chunk 策略 / 治理预设 / pipeline_patch
                 </div>
               </div>
@@ -1016,10 +1010,10 @@ export default function DatasetIngestionPolicyPage() {
               </div>
             </div>
 
-            <div className="divide-y divide-border/60">
+            <div className="min-h-0 flex-1 divide-y divide-border/60 overflow-y-auto no-scrollbar">
               {(rules || []).length === 0 ? (
-                <div className="p-6 text-sm text-muted-foreground">
-                  暂无规则。建议先添加：PDF / HTML / 纯文本 三条规则，分别选择治理预设并开启“文本编码修复”。
+                <div className="px-5 py-3 text-[11px] leading-5 text-muted-foreground/65">
+                  暂无规则。可先用模板生成 PDF / HTML / 纯文本规则，再按数据集调整治理预设。
                 </div>
               ) : (
                 (rules || []).map((r, idx) => (
@@ -1074,24 +1068,24 @@ export default function DatasetIngestionPolicyPage() {
             </div>
           </Panel>
 
-          <Panel variant="glass" className="overflow-hidden">
-            <div className="px-5 py-4 border-b border-border/60 flex items-center justify-between">
+          <Panel variant="glass" className="flex min-h-0 flex-col overflow-hidden">
+            <div className="flex shrink-0 items-center justify-between border-b border-border/60 px-4 py-3">
               <div className="min-w-0">
                 <div className="text-sm font-semibold flex items-center gap-2">
                   <Sparkles className="w-4 h-4 text-primary" />
                   入库预览（样例文件）
                 </div>
-                <div className="text-xs text-muted-foreground mt-1">
+                <div className="mt-1 max-w-3xl text-[11px] leading-4 text-muted-foreground/65">
                   上传一个样例文件，后端会按当前数据集策略执行：匹配规则 → 预处理 → 解析 → 治理 diff/问题。
                 </div>
               </div>
               <div className="flex items-center gap-2">
                 <Input
                   type="file"
-                  className="max-w-[260px]"
+                  className="h-9 max-w-[150px] text-[11px]"
                   onChange={(e) => setPreviewFile(e.target.files?.[0] || null)}
                 />
-                <Button onClick={runPreview} disabled={!previewFile || previewing} className="gap-2">
+                <Button onClick={runPreview} disabled={!previewFile || previewing} className="h-9 gap-2 text-xs">
                   {previewing ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Sparkles className="w-4 h-4" />}
                   生成预览
                 </Button>
@@ -1099,7 +1093,7 @@ export default function DatasetIngestionPolicyPage() {
             </div>
 
             {preview ? (
-              <div className="p-5 space-y-4">
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3 no-scrollbar">
                 <div className="flex flex-wrap items-center gap-2 text-xs">
                   <Badge variant={preview.rule?.matched ? 'soft' : 'outline'} className="font-mono">
                     matched: {preview.rule?.matched ? 'true' : 'false'}
@@ -1154,11 +1148,12 @@ export default function DatasetIngestionPolicyPage() {
                 ) : null}
               </div>
             ) : (
-              <div className="p-6 text-sm text-muted-foreground">
-                选择一个样例文件后点击“生成预览”。建议：网页 HTML、PDF、以及带表格的 DOCX/CSV 各试一次。
+              <div className="px-5 py-3 text-[11px] leading-5 text-muted-foreground/65">
+                可选：选择 HTML / PDF / DOCX / CSV 样例后生成预览，用于检查策略命中和治理 diff。
               </div>
             )}
           </Panel>
+          </div>
         </div>
 
         <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
@@ -1372,105 +1367,6 @@ export default function DatasetIngestionPolicyPage() {
           </DialogContent>
         </Dialog>
 
-        <Dialog open={versionsOpen} onOpenChange={setVersionsOpen}>
-          <DialogContent className="max-w-3xl border-border bg-background/95 shadow-strong sm:rounded-2xl">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <History className="w-4 h-4 text-primary" />
-                入库策略版本历史
-              </DialogTitle>
-              <DialogDescription>
-                每次“保存/导入/回滚”都会生成一个版本（保留最近 {50} 条）。可用来快速回退错误配置。
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-[11px] text-muted-foreground">
-                  current_version_id:{' '}
-                  <span className="font-mono">{versions?.current_version_id ? String(versions.current_version_id) : '—'}</span>
-                </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="h-8 px-3 text-[11px] gap-2"
-                  onClick={() => detachPromise(refreshVersions())}
-                  disabled={versionsLoading}
-                >
-                  <RefreshCw className={cn('w-4 h-4', versionsLoading && 'animate-spin motion-reduce:animate-none')} />
-                  刷新
-                </Button>
-              </div>
-
-              <div className="max-h-[520px] overflow-auto pr-2 space-y-2">
-                {(() => {
-    if (versionsLoading) {
-        return (<div className="text-sm text-muted-foreground">加载中…</div>);
-    }
-    else if ((versions?.items || []).length) {
-            return ((versions?.items || []).map((v, idx) => {
-                const id = String(v?.id || '').trim();
-                const isCurrent = Boolean(id && versions?.current_version_id && id === versions.current_version_id);
-                const createdAt = String(v?.created_at || '').trim();
-                const source = String(v?.source || '').trim() || 'put';
-                const createdBy = String(v?.created_by || '').trim();
-                const policyJson = v?.policy;
-                return (<div key={id || String(idx)} className="rounded-xl border border-border/60 bg-card p-3">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono text-[12px]">{id || '—'}</span>
-                              {isCurrent ? <Badge variant="soft">current</Badge> : null}
-                              <Badge variant="outline" className="font-mono">
-                                {source}
-                              </Badge>
-                            </div>
-                            <div className="mt-1 text-[11px] text-muted-foreground">
-                              {createdAt ? new Date(createdAt).toLocaleString() : '—'}
-                              {createdBy ? <span className="ml-2 font-mono">by {createdBy}</span> : null}
-                            </div>
-                          </div>
-
-                          <Button type="button" size="sm" variant={isCurrent ? 'secondary' : 'destructive'} className="h-8 px-3 text-[11px]" onClick={() => detachPromise(rollbackPolicy(id))} disabled={!id || isCurrent || Boolean(rollbackingVersionId)}>
-                            {rollbackingVersionId === id ? (<Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none"/>) : null}
-                            回滚
-                          </Button>
-                        </div>
-
-                        <details className="mt-2">
-                          <summary className="cursor-pointer select-none text-[11px] text-muted-foreground hover:text-foreground">
-                            查看 policy
-                          </summary>
-                          <pre className="mt-2 max-h-[220px] overflow-auto rounded-lg border border-border/60 bg-muted/30 p-2 text-[11px] text-muted-foreground">
-                            {JSON.stringify(policyJson ?? null, null, 2)}
-                          </pre>
-                        </details>
-                      </div>);
-            }));
-        }
-        else {
-            return (<div className="text-sm text-muted-foreground">暂无版本（保存/导入后会自动生成）</div>);
-        }
-})()}
-              </div>
-            </div>
-
-            <DialogFooter className="mt-2">
-              <Button variant="ghost" onClick={() => setVersionsOpen(false)}>
-                关闭
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        <input
-          ref={importInputRef}
-          type="file"
-          accept="application/json,.json"
-          className="hidden"
-          onChange={(e) => handleImportFile(e.target.files?.[0] || null)}
-        />
       </PageScaffold>
     </AppFrame>
   )

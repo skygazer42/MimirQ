@@ -23,8 +23,10 @@ describe('KnowledgeDocumentsPanel inspector drawer', () => {
     expectSourceToContain(src, 'onOpenChange={handleDrawerOpenChange}')
     expectSourceToContain(
       src,
-      'left-auto right-0 top-0 h-dvh w-[min(480px,100vw)] max-w-[480px] translate-x-0 translate-y-0 rounded-none p-0 overflow-hidden'
+      'left-auto right-0 top-0 flex h-dvh w-[min(540px,100vw)] max-w-[540px] translate-x-0 translate-y-0 flex-col gap-0'
     )
+    expectSourceToContain(src, '文档审查视图')
+    expectSourceToContain(src, 'border-l border-border/55')
     expectSourceToContain(
       src,
       '<KnowledgeInspector embedded selectedDocs={activeDrawerDoc ? [activeDrawerDoc] : []} />'

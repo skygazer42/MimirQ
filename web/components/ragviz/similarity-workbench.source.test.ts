@@ -112,24 +112,28 @@ describe('similarity workbench source', () => {
 
     expectSourceToContain(
       src,
-      'flex w-12 flex-col items-center border-r border-sidebar-border/70 bg-background/82 py-2'
+      'flex w-12 flex-col items-center border-r border-border/34 bg-card/46 py-2'
     )
     expectSourceToContain(
       src,
-      'relative flex h-full flex-col overflow-hidden border-r border-sidebar-border/70 bg-background/78'
+      'relative flex h-full flex-col overflow-hidden border-r border-border/34 bg-card/42'
     )
     expectSourceToContain(
       src,
-      'rounded-[28px] border border-sidebar-border/70 bg-card shadow-soft'
+      'rounded-[1.75rem] border border-border/38 bg-card/76'
     )
     expectSourceToContain(
       src,
-      'rounded-2xl border border-sidebar-border/70 bg-card p-3 shadow-soft'
+      'rounded-[1.1rem] border border-border/34 bg-card/58 p-3'
     )
     expectSourceToContain(
       src,
-      "rounded-xl border border-sidebar-border/70 bg-muted/40', compact ? 'p-3' : 'p-4'"
+      "rounded-[1rem] border border-border/34 bg-card/52', compact ? 'p-3' : 'p-4'"
     )
+    expectSourceToContain(src, 'const similaritySelectClass =')
+    expectSourceToContain(src, 'const similarityNativeSelectClass =')
+    expectSourceNotToContain(src, 'border-slate-200/80')
+    expectSourceNotToContain(src, '#3f6df6')
   })
 
   it('loads similarity collections through TanStack Query', () => {
