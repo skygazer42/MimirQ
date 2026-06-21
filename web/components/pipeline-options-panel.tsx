@@ -656,18 +656,18 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
     className
   )
   const toggleCardClass = cn(
-    'flex items-center justify-between rounded-xl border border-primary/15 bg-primary/5',
-    compact ? 'px-2.5 py-2' : 'px-3 py-2.5'
+    'flex items-center justify-between rounded-[0.95rem] border border-primary/12 bg-primary/[0.035] shadow-[inset_0_1px_0_hsl(var(--card)/0.42)]',
+    compact ? 'px-2.5 py-1.5' : 'px-3 py-2'
   )
   const indexPresetCardClass = cn(
-    'rounded-xl border border-info/15 bg-info/5',
-    compact ? 'px-2.5 py-2' : 'px-3 py-2.5'
+    'rounded-[0.95rem] border border-info/12 bg-info/[0.035] shadow-[inset_0_1px_0_hsl(var(--card)/0.42)]',
+    compact ? 'px-2.5 py-1.5' : 'px-3 py-2'
   )
   const jsonToolbarClass = cn(
-    compact ? "flex items-center justify-between gap-1.5 rounded-xl border border-border/35 bg-card/70 px-2 py-1" : "flex items-center justify-end gap-1.5 rounded-xl border border-border/35 bg-card/70 px-2 py-1.5"
+    compact ? "flex min-h-9 items-center justify-between gap-2 rounded-[0.9rem] border border-border/24 bg-muted/[0.11] px-2 py-1.5" : "flex min-h-8 items-center justify-end gap-1.5 rounded-[0.9rem] border border-border/28 bg-card/50 px-2 py-1"
   )
   const jsonButtonClass =
-    'h-7 rounded-lg border-border/50 bg-background/60 px-2 text-[10.5px] text-foreground/70 shadow-none hover:bg-muted/45 hover:text-foreground'
+    'h-6 rounded-full border-border/34 bg-background/32 px-2 text-[10.5px] font-medium text-muted-foreground/76 shadow-none hover:border-border/48 hover:bg-background/58 hover:text-foreground'
   const numberFieldLabelClass =
     'flex items-center justify-between gap-2 text-[11px] font-medium leading-4 text-muted-foreground'
   const numberFieldLabelTextClass =
@@ -717,7 +717,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                 setIndexPresetDraft(next)
               }}
             >
-              <SelectTrigger className={cn("h-8 rounded-lg border-border/50 bg-background/70 text-[11px] text-foreground/80 shadow-none", compact ? "w-44" : "w-52")}>
+              <SelectTrigger className={cn("h-7 rounded-full border-border/40 bg-background/44 px-3 text-[11px] text-foreground/80 shadow-none", compact ? "w-44" : "w-52")}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -793,65 +793,68 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
       {showJsonToolbar && (
         <div className={jsonToolbarClass}>
           {compact ? (
-            <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground/62">
-              JSON
-            </span>
+            <div className="min-w-0 leading-none">
+              <span className="block text-[10.5px] font-medium text-muted-foreground/72">高级配置</span>
+              <span className="mt-0.5 block text-[9.5px] text-muted-foreground/48">JSON 导入导出</span>
+            </div>
           ) : null}
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className={cn(
-              'rounded-lg text-muted-foreground hover:bg-muted/45 hover:text-foreground',
-              compact ? 'h-7 px-2 text-[10.5px]' : 'h-8'
-            )}
-            onClick={() => {
-              ctx.reset()
-              toast.message('已重置为默认管线')
-            }}
-          >
-            重置
-          </Button>
-          <Dialog
-            open={importDialogOpen}
-            onOpenChange={(next) => {
-              setImportDialogOpen(next)
-              if (next) setImportText('')
-            }}
-          >
-            <DialogTrigger asChild>
-              <Button type="button" variant="outline" size="sm" className={jsonButtonClass}>
-                导入 JSON
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>导入管线 JSON</DialogTitle>
-                <DialogDescription>
-                  粘贴管线 JSON（支持 <span className="font-mono">{'{enabled, options}'}</span> 或仅 <span className="font-mono">options</span>）
-                </DialogDescription>
-              </DialogHeader>
-
-              <Textarea
-                value={importText}
-                onChange={(e) => setImportText(e.target.value)}
-                placeholder='例如：{"enabled": true, "options": {"chunk_size": 900}}'
-                className="min-h-[220px] font-mono text-xs"
-              />
-
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setImportDialogOpen(false)}>
-                  取消
-                </Button>
-                <Button type="button" onClick={importPipelineJson} disabled={!importText.trim()}>
+          <div className="flex shrink-0 items-center gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className={cn(
+                'rounded-full text-muted-foreground hover:bg-background/58 hover:text-foreground',
+                compact ? 'h-6 px-2 text-[10.5px]' : 'h-7 px-2.5 text-[11px]'
+              )}
+              onClick={() => {
+                ctx.reset()
+                toast.message('已重置为默认管线')
+              }}
+            >
+              重置
+            </Button>
+            <Dialog
+              open={importDialogOpen}
+              onOpenChange={(next) => {
+                setImportDialogOpen(next)
+                if (next) setImportText('')
+              }}
+            >
+              <DialogTrigger asChild>
+                <Button type="button" variant="outline" size="sm" className={jsonButtonClass}>
                   导入
                 </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-          <Button type="button" variant="outline" size="sm" className={jsonButtonClass} onClick={exportPipelineJson}>
-            导出 JSON
-          </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>导入管线 JSON</DialogTitle>
+                  <DialogDescription>
+                    粘贴管线 JSON（支持 <span className="font-mono">{'{enabled, options}'}</span> 或仅 <span className="font-mono">options</span>）
+                  </DialogDescription>
+                </DialogHeader>
+
+                <Textarea
+                  value={importText}
+                  onChange={(e) => setImportText(e.target.value)}
+                  placeholder='例如：{"enabled": true, "options": {"chunk_size": 900}}'
+                  className="min-h-[220px] font-mono text-xs"
+                />
+
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={() => setImportDialogOpen(false)}>
+                    取消
+                  </Button>
+                  <Button type="button" onClick={importPipelineJson} disabled={!importText.trim()}>
+                    导入
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+            <Button type="button" variant="outline" size="sm" className={jsonButtonClass} onClick={exportPipelineJson}>
+              导出
+            </Button>
+          </div>
         </div>
       )}
 

@@ -407,7 +407,7 @@ function EvidenceReadinessPanel({
   return (
     <section
       className={cn(
-        'rounded-xl border px-3 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]',
+        'rounded-xl border px-3 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)]',
         tone === 'ready'
           ? 'border-emerald-200 bg-emerald-50/55'
           : tone === 'checking'
@@ -418,12 +418,12 @@ function EvidenceReadinessPanel({
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="text-[13px] font-semibold text-slate-950">
+            <div className="text-[12.5px] font-semibold text-slate-950">
               忠实度可评估性
             </div>
             <span
               className={cn(
-                'rounded-full px-2 py-0.5 text-[11px] font-semibold',
+              'rounded-full px-2 py-0.5 text-[10.5px] font-semibold',
                 tone === 'ready'
                   ? 'bg-emerald-100 text-emerald-700'
                   : tone === 'checking'
@@ -434,10 +434,10 @@ function EvidenceReadinessPanel({
               {label}
             </span>
           </div>
-          <div className="mt-1 text-[12px] font-medium text-slate-700">
+          <div className="mt-0.5 text-[11.5px] font-medium text-slate-700">
             {title}
           </div>
-          <p className="mt-1 max-w-3xl text-[11px] leading-4 text-slate-600">
+          <p className="mt-0.5 max-w-3xl text-[10.5px] leading-4 text-slate-600">
             {description}
           </p>
           {isMissingEvidenceFailure ? (
@@ -536,19 +536,19 @@ function DashboardStatCard({
   }[tone]
 
   return (
-    <div className="relative min-h-[76px] rounded-xl border border-slate-200 bg-card p-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <div className="relative min-h-[62px] rounded-xl border border-slate-200 bg-card p-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="flex items-start gap-1.5">
         <span
           className={cn(
-            'inline-flex h-6 w-6 items-center justify-center rounded-full ring-1',
+            'inline-flex h-5 w-5 items-center justify-center rounded-full ring-1',
             toneClass
           )}
         >
-          <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+          <Icon className="h-3 w-3" aria-hidden="true" />
         </span>
         {sparkline ? (
           <svg
-            className="absolute right-2.5 top-8 h-6 w-14 text-blue-300"
+            className="absolute right-2 top-7 h-5 w-12 text-blue-300"
             viewBox="0 0 64 28"
             aria-hidden="true"
           >
@@ -567,17 +567,17 @@ function DashboardStatCard({
           </svg>
         ) : null}
         <div className="min-w-0">
-          <div className="text-[12px] font-medium text-slate-600">{label}</div>
+          <div className="text-[11px] font-medium text-slate-600">{label}</div>
           <div
             className={cn(
-              'mt-0.5 whitespace-nowrap text-[16px] font-semibold leading-tight text-slate-950',
+              'mt-0.5 whitespace-nowrap text-[14px] font-semibold leading-tight text-slate-950',
               valueClassName
             )}
           >
             {value}
           </div>
           {helper ? (
-            <div className="mt-1 text-[11px] text-slate-500">{helper}</div>
+            <div className="mt-0.5 text-[10.5px] text-slate-500">{helper}</div>
           ) : null}
         </div>
       </div>
@@ -611,7 +611,7 @@ function RunRecordCard({
       type="button"
       onClick={onClick}
       className={cn(
-        'w-full rounded-xl border bg-card p-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all hover:border-blue-200 hover:bg-blue-50/25 focus-ring',
+        'w-full rounded-xl border bg-card p-2.5 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all hover:border-blue-200 hover:bg-blue-50/25 focus-ring',
         active ? 'border-blue-300 ring-1 ring-blue-100' : 'border-slate-200'
       )}
     >
@@ -621,21 +621,23 @@ function RunRecordCard({
             {shortConversationTitle(conversation, run.conversation_id)}
           </div>
         </div>
-        <StatusBadge
-          status={runStatusTone(run.status)}
-          label={missingEvidence ? '缺证据' : runStatusLabel(run.status)}
-          dense
-        />
+        <span className="shrink-0 whitespace-nowrap">
+          <StatusBadge
+            status={runStatusTone(run.status)}
+            label={missingEvidence ? '缺证据' : runStatusLabel(run.status)}
+            dense
+          />
+        </span>
       </div>
-      <div className="mt-2 space-y-1 text-[11px] leading-4 text-slate-500">
+      <div className="mt-1.5 space-y-0.5 text-[10.5px] leading-4 text-slate-500">
         <div>运行时间：{formatDateTime(run.created_at)}</div>
-        <div className="flex items-center gap-5">
+        <div className="flex items-center gap-4">
           <span>轮次：{samples}</span>
           <span>指标：{metrics}</span>
         </div>
       </div>
       {progress === null ? null : (
-        <div className="mt-3 flex items-center gap-2">
+        <div className="mt-2 flex items-center gap-2">
           <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
             <div
               className="h-full rounded-full bg-blue-600"
@@ -648,13 +650,13 @@ function RunRecordCard({
         </div>
       )}
       {run.status === 'failed' && run.error_message ? (
-        <div className="mt-2 line-clamp-1 text-[11px] font-medium text-rose-600">
+        <div className="mt-1.5 line-clamp-1 text-[10.5px] font-medium text-rose-600">
           {missingEvidence
             ? '缺少 citations / retrieved contexts，无法计算忠实度。'
             : `错误：${run.error_message}`}
         </div>
       ) : (
-        <div className="mt-2 text-right text-[11px] text-slate-500">
+        <div className="mt-1.5 text-right text-[10.5px] text-slate-500">
           耗时：{formatRunDuration(run)}
         </div>
       )}
@@ -1241,9 +1243,9 @@ function EvaluationsPageContent() {
         bodyClassName="!pb-0"
         bodyContainerClassName="max-w-none"
       >
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto px-5 py-2">
+        <div className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-auto px-4 py-2">
           <PageHeader
-            title={<span className="text-[22px] font-semibold leading-snug tracking-[-0.01em] text-slate-950">{activeTabMeta.title}</span>}
+            title={<span className="text-[20px] font-semibold leading-snug tracking-[-0.01em] text-slate-950">{activeTabMeta.title}</span>}
             description="选择评测指标及参数，在同一工作区完成参数配置、运行快捷与结果评估。"
             iconImage="ragas-evaluation"
             icon={ActiveTabIcon}
@@ -1253,7 +1255,7 @@ function EvaluationsPageContent() {
             className="p-0"
           >
             <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex h-8 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-[12px] font-semibold text-blue-700">
+              <span className="inline-flex h-7 items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-2.5 text-[11.5px] font-semibold text-blue-700">
                 <ActiveTabIcon className="h-3.5 w-3.5" aria-hidden="true" />
                 {activeTabMeta.label}
               </span>
@@ -1273,14 +1275,14 @@ function EvaluationsPageContent() {
             </div>
           </PageHeader>
 
-          <nav className="flex items-center gap-6 border-b border-slate-200">
+          <nav className="flex items-center gap-5 border-b border-slate-200">
             {TAB_META.map((tab) => (
               <button
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
                 className={cn(
-                  'relative inline-flex h-10 items-center gap-2 text-[13px] font-medium transition-colors',
+                  'relative inline-flex h-8 items-center gap-1.5 text-[12.5px] font-medium transition-colors',
                   isActiveTab(tab.id)
                     ? 'text-blue-700'
                     : 'text-slate-500 hover:text-slate-900'
@@ -1295,7 +1297,7 @@ function EvaluationsPageContent() {
             ))}
           </nav>
 
-          <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-8">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-8">
             <DashboardStatCard
               icon={MessageSquare}
               label="模式"
@@ -1303,7 +1305,7 @@ function EvaluationsPageContent() {
                 activeTab === 'conversation' ? '实时会话' : activeTabMeta.label
               }
               helper="当前模式"
-              valueClassName="text-[15px] font-medium"
+              valueClassName="text-[13.5px] font-medium"
             />
             <DashboardStatCard
               icon={Database}
@@ -1356,10 +1358,10 @@ function EvaluationsPageContent() {
           </div>
 
           {activeTab === 'conversation' ? (
-            <div className="grid min-h-[650px] gap-3 xl:grid-cols-[270px_minmax(0,1fr)_280px]">
-              <aside className="flex min-h-0 max-h-[calc(100vh-282px)] flex-col rounded-xl border border-slate-200 bg-card shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-                <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2.5">
-                  <div className="inline-flex items-center gap-2 text-[14px] font-semibold text-slate-950">
+            <div className="grid min-h-[610px] gap-2.5 xl:grid-cols-[260px_minmax(0,1fr)_270px]">
+              <aside className="flex min-h-0 max-h-[calc(100vh-246px)] flex-col rounded-xl border border-slate-200 bg-card shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+                <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
+                  <div className="inline-flex items-center gap-2 text-[13px] font-semibold text-slate-950">
                     <SlidersHorizontal
                       className="h-4 w-4 text-slate-500"
                       aria-hidden="true"
@@ -1569,8 +1571,8 @@ function EvaluationsPageContent() {
                   </EvaluationConfigSection>
                 </div>
 
-                <div className="shrink-0 border-t border-slate-200 p-3">
-                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                <div className="shrink-0 border-t border-slate-200 p-2.5">
+                  <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
                     <EvaluationInlineStat
                       label="指标数"
                       value={metricKeys.length}
@@ -1582,7 +1584,7 @@ function EvaluationsPageContent() {
                     />
                   </div>
                   <Button
-                    className="h-9 w-full rounded-lg bg-blue-600 text-[13px] font-semibold text-info-foreground hover:bg-blue-700"
+                    className="h-8 w-full rounded-full bg-blue-600 text-[12.5px] font-semibold text-info-foreground hover:bg-blue-700"
                     disabled={
                       isStarting ||
                       !scopedConversationId ||
@@ -1600,7 +1602,7 @@ function EvaluationsPageContent() {
                   </Button>
                   <Button
                     variant="outline"
-                    className="mt-2 h-8 w-full rounded-lg border-slate-200 bg-card text-[12px]"
+                    className="mt-1.5 h-7 w-full rounded-full border-slate-200 bg-card text-[11.5px]"
                     onClick={() => refreshEvaluationWorkspace()}
                   >
                     <RefreshCw
@@ -1614,7 +1616,7 @@ function EvaluationsPageContent() {
                 </div>
               </aside>
 
-              <main className="min-w-0 space-y-3">
+              <main className="min-w-0 space-y-2.5">
                 <EvidenceReadinessPanel
                   isChecking={isEvidenceChecking}
                   isEvaluable={evidenceSummary.isEvaluable}
@@ -1663,24 +1665,24 @@ function EvaluationsPageContent() {
                   </div>
                 </section>
 
-                <section className="rounded-xl border border-slate-200 bg-card p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+                <section className="rounded-xl border border-slate-200 bg-card p-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
                   <div className="flex items-center justify-between gap-3">
-                    <div className="text-[14px] font-semibold text-slate-950">
+                    <div className="text-[13px] font-semibold text-slate-950">
                       运行详情
                     </div>
                     {statusBadge}
                   </div>
                   {displayMetrics.length ? (
-                    <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                    <div className="mt-2.5 grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
                       {displayMetrics.map((metric) => (
                         <div
                           key={metric.key}
-                          className="rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2"
+                          className="rounded-lg border border-slate-200 bg-slate-50/70 px-2.5 py-1.5"
                         >
-                          <div className="text-[12px] text-slate-500">
+                          <div className="text-[11.5px] text-slate-500">
                             {metricLabel(metric.key)}
                           </div>
-                          <div className="mt-1 text-[18px] font-semibold tabular-nums text-slate-950">
+                          <div className="mt-0.5 text-[16px] font-semibold tabular-nums text-slate-950">
                             {metric.value.toFixed(3)}
                           </div>
                         </div>
@@ -1694,26 +1696,28 @@ function EvaluationsPageContent() {
                       />
                     </div>
                   )}
-                  <div className="mx-auto mt-3 grid max-w-xl grid-cols-3 overflow-hidden rounded-lg border border-slate-200 bg-card text-center text-[12px] text-slate-500">
-                    <div className="px-3 py-2">
-                      <div className="font-semibold text-blue-700">
-                        1 选择会话来源
+                  {displayMetrics.length ? null : (
+                    <div className="mx-auto mt-2.5 grid max-w-xl grid-cols-3 overflow-hidden rounded-lg border border-slate-200 bg-card text-center text-[11px] text-slate-500">
+                      <div className="px-2.5 py-1.5">
+                        <div className="font-semibold text-blue-700">
+                          1 选择会话来源
+                        </div>
+                        <div className="mt-0.5">从已有会话或查询中选择</div>
                       </div>
-                      <div className="mt-1">从已有会话或查询中选择</div>
-                    </div>
-                    <div className="border-l border-slate-200 px-3 py-2">
-                      <div className="font-semibold text-blue-700">
-                        2 配置评测参数
+                      <div className="border-l border-slate-200 px-2.5 py-1.5">
+                        <div className="font-semibold text-blue-700">
+                          2 配置评测参数
+                        </div>
+                        <div className="mt-0.5">选择指标与过滤规则</div>
                       </div>
-                      <div className="mt-1">选择指标与过滤规则</div>
-                    </div>
-                    <div className="border-l border-slate-200 px-3 py-2">
-                      <div className="font-semibold text-blue-700">
-                        3 开始评测
+                      <div className="border-l border-slate-200 px-2.5 py-1.5">
+                        <div className="font-semibold text-blue-700">
+                          3 开始评测
+                        </div>
+                        <div className="mt-0.5">流程完成后查看结果</div>
                       </div>
-                      <div className="mt-1">流程完成后查看结果</div>
                     </div>
-                  </div>
+                  )}
                 </section>
 
                 <div className="grid gap-3 xl:grid-cols-[0.85fr_1.25fr]">
@@ -1728,11 +1732,11 @@ function EvaluationsPageContent() {
                 </div>
               </main>
 
-              <aside className="flex max-h-[calc(100vh-282px)] min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-card p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-                <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
+              <aside className="flex max-h-[calc(100vh-246px)] min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-card p-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+                <div className="mb-2 flex shrink-0 items-center justify-between gap-3">
                   <button
                     type="button"
-                    className="inline-flex min-w-0 items-center gap-2 text-left text-[14px] font-semibold text-slate-950 focus-ring"
+                    className="inline-flex min-w-0 items-center gap-2 text-left text-[13px] font-semibold text-slate-950 focus-ring"
                     onClick={() => setIsRunRecordsCollapsed((value) => !value)}
                     aria-expanded={!isRunRecordsCollapsed}
                     aria-controls="ragas-run-records-list"
@@ -1773,7 +1777,7 @@ function EvaluationsPageContent() {
                 >
                   <div className="min-h-0 overflow-hidden">
                     {visibleRuns.length ? (
-                      <div className="max-h-[520px] min-h-0 space-y-2 overflow-y-auto overscroll-contain pr-1 no-scrollbar">
+                      <div className="max-h-[560px] min-h-0 space-y-1.5 overflow-y-auto overscroll-contain pr-1 no-scrollbar">
                         {visibleRuns.map((run) => (
                           <RunRecordCard
                             key={run.id}
@@ -1801,7 +1805,7 @@ function EvaluationsPageContent() {
                 </div>
 
                 {isRunRecordsCollapsed ? (
-                  <div className="rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2 text-[11px] text-slate-500">
+                  <div className="rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2 text-[10.5px] text-slate-500">
                     已收起 {runs.length}{' '}
                     条运行记录，点击标题展开后在列表内上滑查看。
                   </div>
@@ -1809,7 +1813,7 @@ function EvaluationsPageContent() {
               </aside>
             </div>
           ) : activeTab === 'regression' ? (
-            <div className="flex h-[calc(100vh-285px)] min-h-[650px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-card p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+            <div className="flex h-[calc(100vh-255px)] min-h-[610px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-card p-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
               <RegressionTestTab embedded />
             </div>
           ) : (

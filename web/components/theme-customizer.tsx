@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Moon, Sun, Settings2, RefreshCw } from "lucide-react"
+import { Check, Moon, Sun, Settings2, RefreshCw } from "lucide-react"
 import { useTranslations } from 'next-intl'
 import { useTheme } from "next-themes"
 
@@ -156,20 +156,25 @@ export function ThemeCustomizer({ trigger }: Readonly<ThemeCustomizerProps> = {}
               {PRESET_COLORS.map((preset) => (
                 <button
                   key={preset.name}
+                  type="button"
                   onClick={() => setColor(preset.value)}
+                  aria-pressed={color === preset.value}
                   aria-label={t('themeCustomizer.presetLabel', { name: preset.name })}
                   title={preset.name}
                   className={cn(
-                    "flex h-8 w-full items-center justify-center rounded-md border border-muted bg-popover hover:bg-accent hover:text-accent-foreground transition-colors duration-200 motion-reduce:transition-none",
-                    color === preset.value && "border-primary ring-2 ring-primary/20"
+                    "relative flex h-9 w-full items-center justify-center rounded-lg border border-border bg-card shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/45 hover:bg-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 motion-reduce:transition-none motion-reduce:hover:translate-y-0",
+                    color === preset.value && "border-primary bg-primary/5 ring-2 ring-primary/25"
                   )}
                 >
                   <span 
-                    className="h-4 w-4 rounded-full" 
+                    className="size-4 rounded-full border border-black/10 shadow-inner"
                     style={{ backgroundColor: preset.value }}
                   />
                   {color === preset.value && (
+                    <span className="absolute right-1 top-1 inline-flex size-3.5 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm">
+                      <Check className="size-2.5" aria-hidden="true" />
                       <span className="sr-only">{t('themeCustomizer.selected')}</span>
+                    </span>
                   )}
                 </button>
               ))}
@@ -180,6 +185,7 @@ export function ThemeCustomizer({ trigger }: Readonly<ThemeCustomizerProps> = {}
             <Label className="text-xs">{t('themeCustomizer.modeLabel')}</Label>
             <div className="flex p-1 bg-muted rounded-lg">
                 <button 
+                    type="button"
                     onClick={() => setTheme('light')}
                     className={cn(
                         "flex-1 flex items-center justify-center gap-2 rounded-md py-1.5 text-xs font-medium transition-colors duration-200 motion-reduce:transition-none",
@@ -189,6 +195,7 @@ export function ThemeCustomizer({ trigger }: Readonly<ThemeCustomizerProps> = {}
                     <Sun className="h-3.5 w-3.5" /> {t('modeToggle.light')}
                 </button>
                 <button 
+                    type="button"
                     onClick={() => setTheme('dark')}
                     className={cn(
                         "flex-1 flex items-center justify-center gap-2 rounded-md py-1.5 text-xs font-medium transition-colors duration-200 motion-reduce:transition-none",

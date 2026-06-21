@@ -73,12 +73,26 @@ describe('dataset precheck page client source', () => {
     expect(src).not.toContain('actions={')
   })
 
+  it('matches the precheck control-room layout from the design mock', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'page-client.tsx'), 'utf8')
+
+    expect(src).toContain('precheckHeroCard')
+    expect(src).toContain('数据源')
+    expect(src).toContain('查看数据集')
+    expect(src).toContain('查看历史记录')
+    expect(src).toContain('扫描配置')
+    expect(src).toContain('RUN STATE')
+    expect(src).toContain('尚未运行扫描，以上信息将在执行后更新。')
+    expect(src).toContain('预估样本量')
+    expect(src).toContain('输出类型')
+  })
+
   it('uses dense workbench copy for the precheck configuration panel', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'page-client.tsx'), 'utf8')
 
     expect(src).toContain('文件摸底 / 质量画像 / 不入库不切片')
     expect(src).toContain('扫描配置')
-    expect(src).toContain('grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px]')
-    expect(src).toContain('run state')
+    expect(src).toContain('grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_420px]')
+    expect(src).toContain('RUN STATE')
   })
 })

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { ArrowLeft, Database, Play, RefreshCw, Settings2 } from 'lucide-react'
+import { ArrowLeft, BarChart3, Database, Play, Search, Settings2, Table2 } from 'lucide-react'
 
 import { AppFrame } from '@/components/app-frame'
 import { Badge } from '@/components/ui/badge'
@@ -36,6 +36,9 @@ import type {
 
 const ENGINE_OPTIONS: ReadonlyArray<'all' | 'mysql' | 'sqlserver'> = ['all', 'mysql', 'sqlserver']
 const DB_CATALOG_LIST_LIMIT = 200
+const dbCatalogHeroCard = 'relative overflow-hidden rounded-2xl border border-white/70 bg-[radial-gradient(circle_at_0%_0%,rgba(14,165,233,0.16),transparent_34%),linear-gradient(135deg,rgba(255,255,255,0.97),rgba(239,246,255,0.9))] shadow-[0_18px_55px_rgba(15,23,42,0.08)] ring-1 ring-slate-100/70 dark:border-border/60 dark:bg-card dark:ring-white/5'
+const dbCatalogPanelClass = 'overflow-hidden border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.92))] shadow-[0_16px_45px_rgba(15,23,42,0.07)] ring-1 ring-slate-100/70 dark:border-border/60 dark:bg-card/95 dark:ring-white/5'
+const dbCatalogActionButtonClass = 'h-9 gap-1.5 rounded-xl bg-card/70 px-3 text-[13px] shadow-[inset_0_1px_0_rgba(255,255,255,0.65)]'
 
 type DbCatalogSyncConfig = {
   host: string
@@ -381,375 +384,404 @@ export default function DatasetDbCatalogPage() {
       </div>
     )
   }, [latestProfile, selected])
+  const datasetName = dataset?.name || datasetId || '未选择数据集'
+  const catalogTotal = catalogTablesQuery.data?.total ?? items.length
+  const engineSummary = engine === 'all' ? '全部引擎' : engine
+  const latestRunSummary = useMemo(() => {
+    if (!latestRun) {
+      return {
+        status: '暂无同步',
+        connector: '—',
+        runId: '—',
+        tables: 0,
+        columns: 0,
+        profiles: 0,
+        freshness: null as string | null,
+        diffTotal: 0,
+        ta: 0,
+        tr: 0,
+        ca: 0,
+        cr: 0,
+        cc: 0,
+        taItems: [] as string[],
+        trItems: [] as string[],
+        caItems: [] as string[],
+        crItems: [] as string[],
+        ccItems: [] as SchemaColumnChange[],
+      }
+    }
+
+    const stats = isRecord(latestRun.stats) ? latestRun.stats : {}
+    const result = isRecord(stats.result) ? stats.result : {}
+    const schemaDoc = isRecord(stats.schema_doc) ? stats.schema_doc : {}
+    const diff = isRecord(schemaDoc.schema_diff) ? schemaDoc.schema_diff : {}
+    const ageSecRaw = schemaDoc.catalog_age_sec
+    const ageSec = typeof ageSecRaw === 'number' && Number.isFinite(ageSecRaw) ? ageSecRaw : null
+    const freshness =
+      (() => {
+        if (ageSec === null) return null
+        if (ageSec < 90) return `${Math.round(ageSec)}s`
+        if (ageSec < 3600) return `${Math.round(ageSec / 60)}m`
+        return `${Math.round(ageSec / 3600)}h`
+      })()
+    const tables = Number(result.tables ?? schemaDoc.tables ?? 0)
+    const columns = Number(result.columns_upserted ?? schemaDoc.columns ?? 0)
+    const profiles = Number(result.profiles_written ?? schemaDoc.tables_with_profiles ?? 0)
+    const tablesAdded = isRecord(diff.tables_added) ? diff.tables_added : {}
+    const tablesRemoved = isRecord(diff.tables_removed) ? diff.tables_removed : {}
+    const columnsAdded = isRecord(diff.columns_added) ? diff.columns_added : {}
+    const columnsRemoved = isRecord(diff.columns_removed) ? diff.columns_removed : {}
+    const columnsChanged = isRecord(diff.columns_changed) ? diff.columns_changed : {}
+    const ta = Number(tablesAdded.count ?? 0)
+    const tr = Number(tablesRemoved.count ?? 0)
+    const ca = Number(columnsAdded.count ?? 0)
+    const cr = Number(columnsRemoved.count ?? 0)
+    const cc = Number(columnsChanged.count ?? 0)
+
+    return {
+      status: String(latestRun.status || 'unknown'),
+      connector: String(latestRun.connector_id || 'connector'),
+      runId: latestRun.id.slice(0, 8),
+      tables: Number.isFinite(tables) ? tables : 0,
+      columns: Number.isFinite(columns) ? columns : 0,
+      profiles: Number.isFinite(profiles) ? profiles : 0,
+      freshness,
+      diffTotal: ta + tr + ca + cr + cc,
+      ta,
+      tr,
+      ca,
+      cr,
+      cc,
+      taItems: stringItems(tablesAdded.items),
+      trItems: stringItems(tablesRemoved.items),
+      caItems: stringItems(columnsAdded.items),
+      crItems: stringItems(columnsRemoved.items),
+      ccItems: columnChangeItems(columnsChanged.items),
+    }
+  }, [latestRun])
 
   return (
     <AppFrame>
       <PageScaffold
-        title="数据库目录 / Catalog"
-        badge="DB Catalog"
-        icon={Database}
-        iconColor="text-teal"
-        description={
-          dataset ? (
-            <span className="font-mono text-xs">
-              Dataset: <span className="text-foreground font-semibold">{dataset.name}</span>
-            </span>
-          ) : (
-            <span className="font-mono text-xs">DB Catalog</span>
-          )
+        title="数据库目录"
+        showHeader={false}
+        size="full"
+        density="system-dense"
+        bodyGutter="dense"
+        bodyClassName="h-full overflow-hidden bg-[radial-gradient(circle_at_18%_0%,rgba(14,165,233,0.10),transparent_28%),linear-gradient(180deg,rgba(248,250,252,0.96),rgba(241,245,249,0.68))] pb-3 dark:bg-[radial-gradient(circle_at_18%_0%,rgba(14,165,233,0.14),transparent_28%),linear-gradient(180deg,rgba(15,23,42,0.96),rgba(15,23,42,0.86))]"
+        bodyContainerClassName="h-full min-h-0 overflow-hidden"
+        top={
+          <div className={dbCatalogHeroCard}>
+            <div className="absolute inset-y-4 left-3 w-1 rounded-full bg-gradient-to-b from-sky-500 via-cyan-400 to-teal-300" />
+            <div className="relative flex flex-col gap-3 px-5 py-3.5 pl-8 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex min-w-0 items-start gap-3.5">
+                <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-sky-200/80 bg-white/82 text-sky-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_26px_rgba(14,165,233,0.14)] dark:border-sky-500/25 dark:bg-sky-500/10 dark:text-sky-300">
+                  <Database className="size-5" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h1 className="truncate text-[20px] font-medium leading-none tracking-[-0.01em] text-slate-800 dark:text-foreground">数据库目录</h1>
+                    <span className="inline-flex h-5 items-center rounded-full border border-slate-200/80 bg-white/70 px-2 text-[10px] font-medium leading-none text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-border/60 dark:bg-muted/30 dark:text-muted-foreground">
+                      结构同步 / 安全画像
+                    </span>
+                    <Badge variant="soft" className="h-5 border-sky-200 bg-sky-50 px-2 text-[10px] font-medium leading-none text-sky-700">
+                      DB CATALOG
+                    </Badge>
+                  </div>
+                  <div className="mt-1.5 text-[13px] leading-tight text-muted-foreground">
+                    <span className="font-semibold text-foreground">数据集：</span>
+                    <span className="font-medium text-foreground">{datasetName}</span>
+                    <span> · 同步表结构、列类型、schema diff 与 profile 聚合统计，不读取原始行</span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11px] leading-none text-muted-foreground">
+                    <span className="inline-flex items-center gap-1.5">
+                      <Table2 className="size-3.5 text-sky-500" />
+                      <span>表</span>
+                      <span className="font-mono font-semibold text-foreground">{catalogTotal}</span>
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <Database className="size-3.5 text-cyan-500" />
+                      <span>当前过滤</span>
+                      <span className="font-mono font-semibold text-foreground">{engineSummary}</span>
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <BarChart3 className="size-3.5 text-emerald-500" />
+                      <span>最近列数</span>
+                      <span className="font-mono font-semibold text-foreground">{latestRunSummary.columns}</span>
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <Settings2 className="size-3.5 text-amber-500" />
+                      <span>profile</span>
+                      <span className="font-mono font-semibold text-foreground">{latestRunSummary.profiles}</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-2 lg:self-end">
+                <div className="inline-flex h-9 items-center gap-2 rounded-lg border border-sky-200/80 bg-sky-50/90 px-3 text-[13px] font-medium text-sky-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300">
+                  <span className={cn('size-2 rounded-full', latestRunLoading ? 'animate-pulse bg-sky-500' : latestRun ? 'bg-emerald-500' : 'bg-slate-400')} />
+                  {latestRunSummary.status}
+                </div>
+              </div>
+            </div>
+          </div>
         }
-        actions={
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" className="gap-2" onClick={() => router.push('/datasets')}>
-              <ArrowLeft className="h-4 w-4" />
-              返回
-            </Button>
-            {datasetId ? (
-              <>
-                <Button
-                  variant="outline"
-                  className="gap-2"
-                  onClick={() => router.push(`/knowledge?tab=settings&dataset=${encodeURIComponent(datasetId)}`)}
-                >
-                  <Settings2 className="h-4 w-4" />
+        toolbar={
+          <div className="flex w-full flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+              <Button variant="outline" onClick={() => router.push('/datasets')} className={dbCatalogActionButtonClass}>
+                <ArrowLeft className="size-3.5" />
+                返回
+              </Button>
+              {datasetId ? (
+                <Button variant="outline" onClick={() => router.push(`/datasets/${datasetId}/ingestion`)} className={dbCatalogActionButtonClass}>
+                  <Settings2 className="size-3.5" />
+                  入库策略
+                </Button>
+              ) : null}
+              {datasetId ? (
+                <Button variant="outline" onClick={() => router.push(`/datasets/${datasetId}/profile`)} className={dbCatalogActionButtonClass}>
+                  <BarChart3 className="size-3.5" />
+                  数据画像
+                </Button>
+              ) : null}
+              {datasetId ? (
+                <Button variant="outline" onClick={() => router.push(`/datasets/${datasetId}/tables`)} className={dbCatalogActionButtonClass}>
+                  <Table2 className="size-3.5" />
+                  表格 / TAG
+                </Button>
+              ) : null}
+              {datasetId ? (
+                <Button variant="outline" onClick={() => router.push(`/knowledge?tab=settings&dataset=${encodeURIComponent(datasetId)}`)} className={dbCatalogActionButtonClass}>
+                  <Settings2 className="size-3.5" />
                   导入任务
                 </Button>
-                <Button
-                  className="gap-2"
-                  onClick={() => {
-                    setSyncError(null)
-                    setSyncOpen(true)
-                  }}
-                >
-                  <Play className="h-4 w-4" />
-                  新建同步
-                </Button>
-              </>
+              ) : null}
+            </div>
+            {datasetId ? (
+              <Button
+                className="h-10 min-w-[118px] gap-2 rounded-xl bg-gradient-to-r from-sky-500 to-cyan-500 text-[13px] text-white shadow-[0_14px_30px_rgba(14,165,233,0.24)] hover:from-sky-600 hover:to-cyan-600"
+                onClick={() => {
+                  setSyncError(null)
+                  setSyncOpen(true)
+                }}
+              >
+                <Play className="size-3.5" />
+                新建同步
+              </Button>
             ) : null}
-            <Button variant="outline" className="gap-2" onClick={refreshCatalogList} disabled={isLoading}>
-              <RefreshCw className="h-4 w-4" />
-              刷新
-            </Button>
           </div>
         }
       >
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-          <Panel className="lg:col-span-4" padding="lg">
-            <div className="space-y-4">
-              <div className="rounded-xl border border-border/60 bg-background/60 p-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-semibold text-foreground">最近同步</div>
-                    <div className="mt-1 text-xs text-muted-foreground">
-                      需要数据集写权限才可查看运行记录与 diff。
-                    </div>
+        <div className="grid h-full min-h-0 grid-cols-1 gap-3 xl:grid-cols-[410px_minmax(0,1fr)]">
+          <Panel className={cn(dbCatalogPanelClass, 'flex min-h-0 flex-col p-0')}>
+            <div className="shrink-0 border-b border-slate-200/70 bg-white/65 p-3.5 dark:border-border/60 dark:bg-muted/20">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-slate-900 dark:text-foreground">表资产</div>
+                  <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
+                    当前最多展示 {DB_CATALOG_LIST_LIMIT} 张表；按名称、schema 或引擎快速过滤。
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-2"
-                    onClick={() => refetchLatestRun()}
-                    disabled={latestRunLoading}
-                  >
-                    <RefreshCw className={cn('h-3.5 w-3.5', latestRunLoading && 'animate-spin motion-reduce:animate-none')} />
-                    刷新
-                  </Button>
                 </div>
-
-                {latestRun ? (
-                  <div className="mt-3 space-y-2 text-xs">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="outline" className="font-mono">
-                        {latestRun.status}
-                      </Badge>
-                      <Badge variant="soft" className="font-mono">
-                        {latestRun.connector_id}
-                      </Badge>
-                      <Badge variant="soft" className="font-mono">
-                        run {latestRun.id.slice(0, 8)}
-                      </Badge>
-                    </div>
-
-                    {(() => {
-                      const stats = isRecord(latestRun.stats) ? latestRun.stats : {}
-                      const result = isRecord(stats.result) ? stats.result : {}
-                      const schemaDoc = isRecord(stats.schema_doc) ? stats.schema_doc : {}
-                      const diff = isRecord(schemaDoc.schema_diff) ? schemaDoc.schema_diff : {}
-
-                      const ageSecRaw = schemaDoc.catalog_age_sec
-                      const ageSec = typeof ageSecRaw === 'number' && Number.isFinite(ageSecRaw) ? ageSecRaw : null
-                      const ageText =
-                        (() => {
-    if (ageSec === null) {
-        return null;
-    }
-    else if (ageSec < 90) {
-            return `${Math.round(ageSec)}s`;
-        }
-        else if (ageSec < 3600) {
-                return `${Math.round(ageSec / 60)}m`;
-            }
-            else {
-                return `${Math.round(ageSec / 3600)}h`;
-            }
-})()
-
-                      const tables = Number(result.tables ?? schemaDoc.tables ?? 0)
-                      const cols = Number(result.columns_upserted ?? schemaDoc.columns ?? 0)
-                      const profiles = Number(result.profiles_written ?? schemaDoc.tables_with_profiles ?? 0)
-
-                      const tablesAdded = isRecord(diff.tables_added) ? diff.tables_added : {}
-                      const tablesRemoved = isRecord(diff.tables_removed) ? diff.tables_removed : {}
-                      const columnsAdded = isRecord(diff.columns_added) ? diff.columns_added : {}
-                      const columnsRemoved = isRecord(diff.columns_removed) ? diff.columns_removed : {}
-                      const columnsChanged = isRecord(diff.columns_changed) ? diff.columns_changed : {}
-                      const ta = Number(tablesAdded.count ?? 0)
-                      const tr = Number(tablesRemoved.count ?? 0)
-                      const ca = Number(columnsAdded.count ?? 0)
-                      const cr = Number(columnsRemoved.count ?? 0)
-                      const cc = Number(columnsChanged.count ?? 0)
-                      const taItems = stringItems(tablesAdded.items)
-                      const trItems = stringItems(tablesRemoved.items)
-                      const caItems = stringItems(columnsAdded.items)
-                      const crItems = stringItems(columnsRemoved.items)
-                      const ccItems = columnChangeItems(columnsChanged.items)
-
-                      return (
-                        <>
-                          <div className="flex flex-wrap gap-2">
-                            <Badge variant="soft" className="font-mono tabular-nums">
-                              tables: {Number.isFinite(tables) ? tables : 0}
-                            </Badge>
-                            <Badge variant="soft" className="font-mono tabular-nums">
-                              cols: {Number.isFinite(cols) ? cols : 0}
-                            </Badge>
-                            <Badge variant="soft" className="font-mono tabular-nums">
-                              profiles: {Number.isFinite(profiles) ? profiles : 0}
-                            </Badge>
-                            {ageText ? (
-                              <Badge variant="soft" className="font-mono tabular-nums">
-                                freshness: {ageText}
-                              </Badge>
-                            ) : null}
-                          </div>
-
-                          {ta + tr + ca + cr + cc > 0 ? (
-                            <>
-                              <div className="flex flex-wrap gap-2">
-                                <Badge variant={ta > 0 ? 'default' : 'soft'} className="font-mono tabular-nums">
-                                  +tables {ta}
-                                </Badge>
-                                <Badge variant={tr > 0 ? 'destructive' : 'soft'} className="font-mono tabular-nums">
-                                  -tables {tr}
-                                </Badge>
-                                <Badge variant={ca > 0 ? 'default' : 'soft'} className="font-mono tabular-nums">
-                                  +cols {ca}
-                                </Badge>
-                                <Badge variant={cr > 0 ? 'destructive' : 'soft'} className="font-mono tabular-nums">
-                                  -cols {cr}
-                                </Badge>
-                                <Badge variant={cc > 0 ? 'secondary' : 'soft'} className="font-mono tabular-nums">
-                                  ~cols {cc}
-                                </Badge>
-                              </div>
-
-                              {taItems.length || trItems.length || caItems.length || crItems.length || ccItems.length ? (
-                                <details className="rounded-lg border border-border/60 bg-background/40 px-3 py-2">
-                                  <summary className="cursor-pointer select-none text-xs text-muted-foreground">
-                                    查看 diff 详情（最多展示部分）
-                                  </summary>
-                                  <div className="mt-2 space-y-2 text-[12px]">
-                                    {taItems.length ? (
-                                      <div>
-                                        <div className="font-semibold text-foreground">新增表</div>
-                                        <div className="mt-1 font-mono text-muted-foreground break-words">
-                                          {taItems.join(', ')}
-                                        </div>
-                                      </div>
-                                    ) : null}
-                                    {trItems.length ? (
-                                      <div>
-                                        <div className="font-semibold text-foreground">删除表</div>
-                                        <div className="mt-1 font-mono text-muted-foreground break-words">
-                                          {trItems.join(', ')}
-                                        </div>
-                                      </div>
-                                    ) : null}
-                                    {caItems.length ? (
-                                      <div>
-                                        <div className="font-semibold text-foreground">新增列</div>
-                                        <div className="mt-1 font-mono text-muted-foreground break-words">
-                                          {caItems.join(', ')}
-                                        </div>
-                                      </div>
-                                    ) : null}
-                                    {crItems.length ? (
-                                      <div>
-                                        <div className="font-semibold text-foreground">删除列</div>
-                                        <div className="mt-1 font-mono text-muted-foreground break-words">
-                                          {crItems.join(', ')}
-                                        </div>
-                                      </div>
-                                    ) : null}
-                                    {ccItems.length ? (
-                                      <div>
-                                        <div className="font-semibold text-foreground">变更列</div>
-                                        <div className="mt-1 space-y-1 font-mono text-muted-foreground">
-                                          {ccItems.slice(0, 20).map((it) => {
-                                            const key = `${toTrimmedPrimitiveString(it?.table)}.${toTrimmedPrimitiveString(it?.column)}`
-                                            return (
-                                              <div key={key} className="break-words">
-                                                {key} ({toTrimmedPrimitiveString(it?.old?.data_type)} → {toTrimmedPrimitiveString(it?.new?.data_type)})
-                                              </div>
-                                            )
-                                          })}
-                                        </div>
-                                      </div>
-                                    ) : null}
-                                  </div>
-                                </details>
-                              ) : null}
-                            </>
-                          ) : null}
-                        </>
-                      )
-                    })()}
-                  </div>
-                ) : (
-                  <div className="mt-3 text-xs text-muted-foreground">暂无同步记录（或无权限）。</div>
-                )}
+                <Badge variant="outline" className="shrink-0 rounded-lg font-mono text-[11px]">
+                  {items.length}/{catalogTotal}
+                </Badge>
               </div>
-
-              <div className="space-y-2">
-                <Label className="text-sm">搜索</Label>
+              <div className="mt-3 flex items-center gap-2 rounded-xl border border-slate-200/80 bg-white/75 px-3 py-2 shadow-inner dark:border-border/60 dark:bg-muted/20">
+                <Search className="size-3.5 shrink-0 text-muted-foreground" />
                 <Input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="db/schema/table"
+                  placeholder="db / schema / table"
+                  className="h-7 border-0 bg-transparent px-0 text-[13px] shadow-none focus-visible:ring-0"
                 />
               </div>
-
-              <div className="flex flex-wrap gap-2">
+              <div className="mt-2 flex flex-wrap gap-1.5">
                 {ENGINE_OPTIONS.map((k) => (
                   <Button
                     key={k}
                     type="button"
                     variant={engine === k ? 'secondary' : 'outline'}
                     size="sm"
-                    className={cn('font-mono', engine === k ? 'border-border' : undefined)}
+                    className={cn('h-7 rounded-lg px-2.5 font-mono text-[11px]', engine === k ? 'border-border bg-sky-50 text-sky-700' : 'bg-white/70')}
                     onClick={() => setEngine(k)}
                   >
                     {k}
                   </Button>
                 ))}
               </div>
+            </div>
 
-              <div className="border-t border-border pt-3">
-                {(() => {
-    if (isLoading) {
-        return (<div className="space-y-2">
-                    <Skeleton className="h-9 w-full"/>
-                    <Skeleton className="h-9 w-full"/>
-                    <Skeleton className="h-9 w-full"/>
-                    <Skeleton className="h-9 w-full"/>
-                  </div>);
-    }
-    else if (items.length) {
-            return (<div className="space-y-1">
-                    {items.map((t) => {
-                    const active = t.id === selectedId;
-                    return (<button key={t.id} type="button" className={cn('w-full text-left rounded-lg px-3 py-2 border transition duration-200', active ? 'border-primary/50 bg-primary/5' : 'border-border hover:bg-muted/40')} onClick={() => setSelectedId(t.id)}>
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="font-mono text-xs truncate tabular-nums">{formatQualifiedName(t)}</div>
-                              <div className="text-xs text-muted-foreground truncate text-pretty">
-                                {t.comment || '—'}
-                              </div>
-                            </div>
-                            <Badge variant="outline" className="font-mono text-[11px]">
-                              {t.engine}
-                            </Badge>
-                          </div>
-                        </button>);
-                })}
-                  </div>);
-        }
-        else {
-            return (<div className="rounded-xl border border-dashed border-border p-4 bg-muted/30">
-                    <div className="text-sm font-medium">暂无数据库目录</div>
-                    <div className="text-xs text-muted-foreground mt-1 text-pretty">
-                      先运行 SQLServer/MySQL 目录同步（只同步结构与安全统计，不读取原始行）。
+            <div className="min-h-0 flex-1 overflow-y-auto p-3 no-scrollbar">
+              {(() => {
+                if (isLoading) {
+                  return (
+                    <div className="space-y-2">
+                      <Skeleton className="h-12 w-full rounded-xl" />
+                      <Skeleton className="h-12 w-full rounded-xl" />
+                      <Skeleton className="h-12 w-full rounded-xl" />
+                      <Skeleton className="h-12 w-full rounded-xl" />
                     </div>
-                    {datasetId ? (<div className="mt-3">
-                        <Button variant="outline" className="gap-2" onClick={() => {
-                        setSyncError(null);
-                        setSyncOpen(true);
-                    }}>
-                          <Play className="h-4 w-4"/>
-                          新建同步
-                        </Button>
-                      </div>) : null}
-                  </div>);
-        }
-})()}
+                  )
+                }
+                if (items.length) {
+                  return (
+                    <div className="space-y-1.5">
+                      {items.map((t) => {
+                        const active = t.id === selectedId
+                        return (
+                          <button
+                            key={t.id}
+                            type="button"
+                            className={cn(
+                              'w-full rounded-xl border px-3 py-2.5 text-left transition duration-150',
+                              active
+                                ? 'border-sky-300 bg-sky-50/80 shadow-[inset_3px_0_0_rgba(14,165,233,0.72)]'
+                                : 'border-slate-200/70 bg-white/55 hover:border-sky-200 hover:bg-sky-50/45 dark:border-border/60 dark:bg-muted/20'
+                            )}
+                            onClick={() => setSelectedId(t.id)}
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="truncate font-mono text-xs tabular-nums text-slate-900 dark:text-foreground">{formatQualifiedName(t)}</div>
+                                <div className="mt-1 truncate text-[11px] text-muted-foreground">{t.comment || '暂无备注'}</div>
+                              </div>
+                              <Badge variant="outline" className="shrink-0 rounded-lg font-mono text-[10px]">
+                                {t.engine}
+                              </Badge>
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )
+                }
+                return (
+                  <div className="rounded-2xl border border-dashed border-slate-200/80 bg-slate-50/70 p-4 dark:border-border/60 dark:bg-muted/20">
+                    <div className="text-sm font-semibold text-foreground">暂无数据库目录</div>
+                    <div className="mt-1 text-xs leading-5 text-muted-foreground">
+                      先运行 SQLServer/MySQL 目录同步。该流程只同步结构与安全统计，不读取原始行。
+                    </div>
+                  </div>
+                )
+              })()}
+            </div>
+
+            <div className="shrink-0 border-t border-slate-200/70 bg-white/65 p-3 dark:border-border/60 dark:bg-muted/20">
+              <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                <Badge variant="outline" className="rounded-lg font-mono text-[10px]">{latestRunSummary.connector}</Badge>
+                <Badge variant="soft" className="rounded-lg font-mono text-[10px]">run {latestRunSummary.runId}</Badge>
+                <Badge variant="soft" className="rounded-lg font-mono text-[10px]">tables {latestRunSummary.tables}</Badge>
+                {latestRunSummary.freshness ? (
+                  <Badge variant="soft" className="rounded-lg font-mono text-[10px]">fresh {latestRunSummary.freshness}</Badge>
+                ) : null}
               </div>
+              {latestRunSummary.diffTotal > 0 ? (
+                <details className="mt-2 rounded-xl border border-slate-200/70 bg-white/55 px-3 py-2 dark:border-border/60 dark:bg-muted/20">
+                  <summary className="cursor-pointer select-none text-[11px] font-medium text-muted-foreground">
+                    schema diff：+表 {latestRunSummary.ta} / -表 {latestRunSummary.tr} / +列 {latestRunSummary.ca} / -列 {latestRunSummary.cr} / 变更 {latestRunSummary.cc}
+                  </summary>
+                  <div className="mt-2 max-h-40 space-y-2 overflow-y-auto text-[11px] no-scrollbar">
+                    {latestRunSummary.taItems.length ? (
+                      <div>
+                        <div className="font-semibold text-foreground">新增表</div>
+                        <div className="mt-1 break-words font-mono text-muted-foreground">{latestRunSummary.taItems.join(', ')}</div>
+                      </div>
+                    ) : null}
+                    {latestRunSummary.trItems.length ? (
+                      <div>
+                        <div className="font-semibold text-foreground">删除表</div>
+                        <div className="mt-1 break-words font-mono text-muted-foreground">{latestRunSummary.trItems.join(', ')}</div>
+                      </div>
+                    ) : null}
+                    {latestRunSummary.caItems.length ? (
+                      <div>
+                        <div className="font-semibold text-foreground">新增列</div>
+                        <div className="mt-1 break-words font-mono text-muted-foreground">{latestRunSummary.caItems.join(', ')}</div>
+                      </div>
+                    ) : null}
+                    {latestRunSummary.crItems.length ? (
+                      <div>
+                        <div className="font-semibold text-foreground">删除列</div>
+                        <div className="mt-1 break-words font-mono text-muted-foreground">{latestRunSummary.crItems.join(', ')}</div>
+                      </div>
+                    ) : null}
+                    {latestRunSummary.ccItems.length ? (
+                      <div>
+                        <div className="font-semibold text-foreground">变更列</div>
+                        <div className="mt-1 space-y-1 font-mono text-muted-foreground">
+                          {latestRunSummary.ccItems.slice(0, 20).map((it) => {
+                            const key = `${toTrimmedPrimitiveString(it?.table)}.${toTrimmedPrimitiveString(it?.column)}`
+                            return (
+                              <div key={key} className="break-words">
+                                {key} ({toTrimmedPrimitiveString(it?.old?.data_type)} → {toTrimmedPrimitiveString(it?.new?.data_type)})
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                </details>
+              ) : null}
             </div>
           </Panel>
 
-          <Panel className="lg:col-span-8" padding="lg">
-            <div className="space-y-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="space-y-2">
-                  <div className="text-sm font-medium">表结构</div>
-                  {selectedSummary}
-                </div>
+          <Panel className={cn(dbCatalogPanelClass, 'flex min-h-0 min-w-0 flex-col p-0')}>
+            <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200/70 bg-white/65 px-3.5 py-3 dark:border-border/60 dark:bg-muted/20">
+              <div className="min-w-0 space-y-1.5">
+                <div className="text-sm font-semibold text-slate-900 dark:text-foreground">表结构</div>
+                {selectedSummary || <div className="text-xs text-muted-foreground">请选择一张表查看结构。</div>}
               </div>
+            </div>
 
+            <div className="min-h-0 flex-1 overflow-y-auto p-3 no-scrollbar">
               {(() => {
-    if (detailLoading) {
-        return (<div className="space-y-2">
-                  <Skeleton className="h-7 w-40"/>
-                  <Skeleton className="h-10 w-full"/>
-                  <Skeleton className="h-10 w-full"/>
-                  <Skeleton className="h-10 w-full"/>
-                </div>);
-    }
-    else if (selected) {
-            return (<div className="rounded-xl border border-border overflow-hidden">
-                  <div className="grid grid-cols-12 gap-0 bg-muted/40 text-xs font-medium">
-                    <div className="col-span-5 px-3 py-2">Column</div>
-                    <div className="col-span-4 px-3 py-2">Type</div>
-                    <div className="col-span-3 px-3 py-2">Nullable</div>
+                if (detailLoading) {
+                  return (
+                    <div className="space-y-2">
+                      <Skeleton className="h-8 w-44 rounded-xl" />
+                      <Skeleton className="h-11 w-full rounded-xl" />
+                      <Skeleton className="h-11 w-full rounded-xl" />
+                      <Skeleton className="h-11 w-full rounded-xl" />
+                    </div>
+                  )
+                }
+                if (selected) {
+                  return (
+                    <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white/70 dark:border-border/60 dark:bg-muted/20">
+                      <div className="grid grid-cols-12 gap-0 bg-slate-50/90 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground dark:bg-muted/30">
+                        <div className="col-span-5 px-3 py-2">Column</div>
+                        <div className="col-span-4 px-3 py-2">Type</div>
+                        <div className="col-span-3 px-3 py-2">Nullable</div>
+                      </div>
+                      {selected.columns?.length ? (
+                        <div className="divide-y divide-slate-200/70 dark:divide-border/60">
+                          {selected.columns.map((c) => (
+                            <div key={c.id} className="grid grid-cols-12 gap-0 text-xs hover:bg-sky-50/35">
+                              <div className="col-span-5 truncate px-3 py-2.5 font-mono text-slate-900 dark:text-foreground">{c.name}</div>
+                              <div className="col-span-4 truncate px-3 py-2.5 font-mono text-muted-foreground">{c.data_type || '—'}</div>
+                              <div className="col-span-3 px-3 py-2.5 font-mono text-muted-foreground">
+                                {(() => {
+                                  if (c.nullable === null || c.nullable === undefined) return '—'
+                                  return c.nullable ? 'true' : 'false'
+                                })()}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="p-5 text-sm text-muted-foreground">暂无列信息，可能尚未完成同步。</div>
+                      )}
+                    </div>
+                  )
+                }
+                return (
+                  <div className="flex h-full min-h-[260px] items-center justify-center rounded-2xl border border-dashed border-slate-200/80 bg-slate-50/70 p-6 text-sm text-muted-foreground dark:border-border/60 dark:bg-muted/20">
+                    请选择一张表查看结构。
                   </div>
-                  {selected.columns?.length ? (<div className="divide-y divide-border">
-                      {selected.columns.map((c) => (<div key={c.id} className="grid grid-cols-12 gap-0 text-xs">
-                          <div className="col-span-5 px-3 py-2 font-mono truncate">{c.name}</div>
-                          <div className="col-span-4 px-3 py-2 font-mono text-muted-foreground truncate">
-                            {c.data_type || '—'}
-                          </div>
-                          <div className="col-span-3 px-3 py-2 font-mono text-muted-foreground">
-                            {(() => {
-                        if (c.nullable === null || c.nullable === undefined) {
-                            return '—';
-                        }
-                        else if (c.nullable) {
-                                return 'true';
-                            }
-                            else {
-                                return 'false';
-                            }
-                    })()}
-                          </div>
-                        </div>))}
-                    </div>) : (<div className="p-4 text-sm text-muted-foreground text-pretty">暂无列信息（可能尚未完成同步）。</div>)}
-                </div>);
-        }
-        else {
-            return (<div className="rounded-xl border border-dashed border-border p-6 bg-muted/30 text-sm text-muted-foreground text-pretty">
-                  请选择一张表查看结构。
-                </div>);
-        }
-})()}
+                )
+              })()}
             </div>
           </Panel>
         </div>

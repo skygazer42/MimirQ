@@ -142,4 +142,13 @@ describe('common UI copy source', () => {
     expect(src).toContain("t('modeToggle.light')")
     expect(src).toContain("t('modeToggle.dark')")
   })
+
+  it('keeps theme color presets visibly actionable', () => {
+    const src = read('../components/theme-customizer.tsx')
+
+    expect(src).toContain('aria-pressed={color === preset.value}')
+    expect(src).toContain('type="button"')
+    expect(src).toContain('<Check className=')
+    expect(src).toContain('absolute right-1 top-1 inline-flex')
+  })
 })

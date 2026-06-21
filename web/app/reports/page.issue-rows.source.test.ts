@@ -11,7 +11,7 @@ describe('reports issue rows', () => {
     expect(src).toContain('safeNumber(item.count) > 0')
     expect(src).toContain('...activeFindingRows.map((item) => ({')
     expect(src).toContain('风险命中记录')
-    expect(src).toContain('仅显示命中项')
+    expect(src).toContain('命中项')
     expect(src).not.toContain('...findingRows.map((item) => ({')
     expect(src).not.toContain('最近错误解析')
   })

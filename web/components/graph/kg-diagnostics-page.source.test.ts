@@ -157,8 +157,14 @@ describe('KG diagnostics quality report wiring', () => {
       pageSrc,
       'rounded-[18px] border border-border/70 bg-background/95'
     )
+    expectSourceToContain(pageSrc, 'DIAGNOSTICS_HEADER_ACTION_DOCK_CLASS')
+    expectSourceToContain(pageSrc, 'DIAGNOSTICS_PRIMARY_ACTION_BUTTON_CLASS')
+    expectSourceToContain(pageSrc, 'DIAGNOSTICS_SECONDARY_ACTION_BUTTON_CLASS')
+    expectSourceToContain(pageSrc, '运行操作')
+    expectSourceToContain(pageSrc, 'KG Eval')
     expectSourceToContain(pageSrc, 'xl:grid-cols-[356px_minmax(0,1fr)]')
     expectSourceToContain(pageSrc, 'xl:grid-cols-6')
+    expectSourceNotToContain(pageSrc, 'mt-2 grid grid-cols-2 gap-2')
   })
 
   it('keeps the diagnostics run view sized to the supplied 2048px dashboard reference', () => {
@@ -167,12 +173,12 @@ describe('KG diagnostics quality report wiring', () => {
       'utf8'
     )
 
-    expectSourceToContain(pageSrc, 'min-h-[160px]')
-    expectSourceToContain(pageSrc, 'min-h-[220px]')
-    expectSourceToContain(pageSrc, 'px-6 py-5')
+    expectSourceToContain(pageSrc, 'min-h-[118px]')
+    expectSourceToContain(pageSrc, 'min-h-[152px]')
+    expectSourceToContain(pageSrc, 'px-4 py-3.5')
     expectSourceToContain(
       pageSrc,
-      'gap-4 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]'
+      'gap-3 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]'
     )
   })
 
@@ -182,7 +188,8 @@ describe('KG diagnostics quality report wiring', () => {
       'utf8'
     )
 
-    expectSourceToContain(pageSrc, 'grid min-h-[220px] gap-5')
+    expectSourceToContain(pageSrc, 'grid min-h-[152px] gap-3')
+    expectSourceToContain(pageSrc, 'md:grid-cols-3')
     expectSourceToContain(pageSrc, '运行后会自动填充')
     expectSourceToContain(pageSrc, '核心指标')
     expectSourceToContain(pageSrc, '失败样本')
@@ -201,12 +208,12 @@ describe('KG diagnostics quality report wiring', () => {
 
     expectSourceToContain(
       pageSrc,
-      'min-h-[112px] flex-col items-center justify-center'
+      'min-h-[86px] flex-col items-center justify-center'
     )
-    expectSourceToContain(pageSrc, 'px-3.5 py-3 text-center')
+    expectSourceToContain(pageSrc, 'px-3 py-2.5 text-center')
     expectSourceToContain(pageSrc, 'items-center justify-center gap-1.5')
-    expectSourceToContain(pageSrc, 'mt-3 text-[17px]')
-    expectSourceToContain(pageSrc, 'mt-2 text-[11px] leading-5')
+    expectSourceToContain(pageSrc, 'mt-2 text-[15px]')
+    expectSourceToContain(pageSrc, 'mt-1 text-[10.5px] leading-4')
     expectSourceNotToContain(pageSrc, 'mt-auto pt-3 text-[11px] leading-5')
   })
 

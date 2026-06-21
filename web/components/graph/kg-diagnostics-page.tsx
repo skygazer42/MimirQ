@@ -68,6 +68,16 @@ const DIAGNOSTICS_FIELD_LABEL_CLASS =
   'text-[12px] font-normal leading-5 text-muted-foreground'
 const DIAGNOSTICS_FIELD_VALUE_CLASS =
   'text-[14px] font-normal text-foreground/90'
+const DIAGNOSTICS_HEADER_ACTION_DOCK_CLASS =
+  'flex min-w-0 flex-wrap items-center justify-end gap-1.5 rounded-full border border-border/44 bg-card/54 p-1 shadow-[inset_0_1px_0_hsl(var(--card)/0.72)]'
+const DIAGNOSTICS_HEADER_ACTION_BUTTON_CLASS =
+  'h-8 gap-1.5 rounded-full border-border/36 bg-background/58 px-3 text-[11.5px] font-medium text-foreground/82 shadow-none hover:border-primary/28 hover:bg-background/76 hover:text-foreground'
+const DIAGNOSTICS_ACTION_CARD_CLASS =
+  'rounded-[1.15rem] border border-border/36 bg-card/62 p-2.5 shadow-[0_16px_38px_-34px_hsl(var(--foreground)/0.35),inset_0_1px_0_hsl(var(--card)/0.7)]'
+const DIAGNOSTICS_PRIMARY_ACTION_BUTTON_CLASS =
+  'h-10 w-full gap-2 rounded-full bg-primary text-sm font-semibold text-primary-foreground shadow-[0_16px_32px_-22px_hsl(var(--primary)/0.72)] transition-shadow hover:bg-primary/92 hover:shadow-[0_18px_38px_-24px_hsl(var(--primary)/0.72)]'
+const DIAGNOSTICS_SECONDARY_ACTION_BUTTON_CLASS =
+  'h-8 gap-1.5 rounded-full border-border/38 bg-background/50 px-2.5 text-[11.5px] font-medium text-muted-foreground shadow-none hover:border-primary/28 hover:bg-background/72 hover:text-foreground'
 const DIAGNOSTICS_METRIC_LABELS: Record<string, string> = {
   baseline_hit_rate: '基线命中率',
   baseline_mrr: 'Baseline MRR',
@@ -301,8 +311,8 @@ function diagnosticsMetricValueClass(
 
 function diagnosticsTabClass(isActive: boolean): string {
   return isActive
-    ? 'border-primary text-primary'
-    : 'border-transparent text-muted-foreground'
+    ? 'bg-info text-primary-foreground shadow-sm'
+    : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
 }
 
 function diagnosticsDeltaClass(delta: number): string {
@@ -564,7 +574,7 @@ function DiagnosticsHeaderPill({
   return (
     <div
       className={cn(
-        'inline-flex h-9 items-center gap-2.5 rounded-lg border border-border/70 bg-card/95 px-3 shadow-sm',
+        'inline-flex h-8 items-center gap-2.5 rounded-full border border-border/40 bg-background/58 px-3 shadow-none',
         className
       )}
     >
@@ -678,18 +688,18 @@ function DiagnosticsMetricTile({
   return (
     <div
       className={cn(
-        'flex min-h-[112px] flex-col items-center justify-center rounded-xl border px-3.5 py-3 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]',
+        'flex min-h-[86px] flex-col items-center justify-center rounded-xl border px-3 py-2.5 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]',
         accentClasses.surface
       )}
     >
       <div
         className={cn(
-          'flex items-center justify-center gap-1.5 text-[12px] font-semibold ',
+          'flex items-center justify-center gap-1.5 text-[11.5px] font-semibold ',
           accentClasses.label
         )}
       >
         {icon ? (
-          <span className="flex h-4 w-4 items-center justify-center">
+          <span className="flex h-3.5 w-3.5 items-center justify-center">
             {icon}
           </span>
         ) : (
@@ -702,12 +712,12 @@ function DiagnosticsMetricTile({
       </div>
       <div
         className={cn(
-          'mt-3 text-[17px] font-semibold tabular-nums',
+          'mt-2 text-[15px] font-semibold tabular-nums',
           valueClass
         )}
       >
         {isPending ? (
-          <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-600">
+          <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10.5px] font-medium text-slate-600">
             待评测
           </span>
         ) : (
@@ -716,7 +726,7 @@ function DiagnosticsMetricTile({
       </div>
       {caption ? (
         <div
-          className={cn('mt-2 text-[11px] leading-5', accentClasses.caption)}
+          className={cn('mt-1 text-[10.5px] leading-4', accentClasses.caption)}
         >
           {isPending ? '运行后显示' : caption}
         </div>
@@ -813,14 +823,14 @@ function DiagnosticsEmptyState({
   return (
     <div
       className={cn(
-        'rounded-lg border border-dashed border-border/70 bg-background px-5 py-6 text-center',
+        'rounded-lg border border-dashed border-border/70 bg-background px-4 py-4 text-center',
         className
       )}
     >
       {icon ? (
-        <div className="mb-3 flex justify-center text-sky-300">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-sky-100 bg-sky-50/80 shadow-sm">
-            <div className="scale-90">{icon}</div>
+        <div className="mb-2 flex justify-center text-sky-300">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-sky-100 bg-sky-50/80 shadow-sm">
+            <div className="scale-75">{icon}</div>
           </div>
         </div>
       ) : null}
@@ -843,13 +853,13 @@ function DiagnosticsRunHeroPanel({
 }>) {
   if (summary) {
     return (
-      <div className="min-h-[160px] rounded-xl border border-border/70 bg-background px-6 py-5 shadow-sm">
+      <div className="min-h-[118px] rounded-xl border border-border/70 bg-background px-4 py-3.5 shadow-sm">
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="text-[11px] font-medium tracking-[0.12em] text-sky-600">
               最新结果
             </div>
-            <h3 className="mt-1 text-[22px] font-semibold tracking-[-0.03em] text-foreground">
+            <h3 className="mt-1 text-[18px] font-semibold tracking-[-0.03em] text-foreground">
               本轮评测已完成
             </h3>
             <p className="mt-1.5 text-[12px] leading-5 text-muted-foreground">
@@ -883,37 +893,34 @@ function DiagnosticsRunHeroPanel({
   ]
 
   return (
-    <div className="grid min-h-[220px] gap-5 rounded-xl border border-border/70 bg-[radial-gradient(circle_at_16%_0%,hsl(var(--info)/0.10),transparent_34%),linear-gradient(180deg,hsl(var(--background)),hsl(var(--card)/0.92))] px-6 py-5 shadow-sm md:grid-cols-[minmax(0,0.95fr)_minmax(320px,1.05fr)]">
-      <div className="flex items-center gap-5">
-        <div className="relative flex h-[112px] w-[132px] shrink-0 items-center justify-center text-sky-300">
-          <div
-            className="absolute inset-5 rounded-[30px] bg-sky-100/70 blur-2xl"
-            aria-hidden="true"
-          />
-          <div className="relative flex h-[84px] w-[84px] items-center justify-center rounded-[24px] border border-sky-100 bg-sky-50/90 shadow-sm">
-            <ClipboardList className="h-10 w-10" aria-hidden="true" />
+    <div className="grid min-h-[152px] gap-3 rounded-xl border border-border/70 bg-[radial-gradient(circle_at_16%_0%,hsl(var(--info)/0.10),transparent_34%),linear-gradient(180deg,hsl(var(--background)),hsl(var(--card)/0.92))] px-4 py-3.5 shadow-sm lg:grid-cols-[minmax(280px,0.72fr)_minmax(0,1.28fr)]">
+      <div className="flex items-center gap-3">
+        <div className="relative flex h-[72px] w-[80px] shrink-0 items-center justify-center text-sky-300">
+          <div className="absolute inset-4 rounded-[24px] bg-sky-100/70 blur-xl" aria-hidden="true" />
+          <div className="relative flex h-14 w-14 items-center justify-center rounded-[18px] border border-sky-100 bg-sky-50/90 shadow-sm">
+            <ClipboardList className="h-7 w-7" aria-hidden="true" />
           </div>
         </div>
         <div className="min-w-0">
-          <div className="inline-flex rounded-full border border-sky-100 bg-sky-50 px-2.5 py-1 text-[11px] font-medium text-sky-700">
+          <div className="inline-flex rounded-full border border-sky-100 bg-sky-50 px-2 py-0.5 text-[10.5px] font-medium text-sky-700">
             运行后会自动填充
           </div>
-          <h3 className="mt-3 text-[22px] font-semibold tracking-[-0.03em] text-foreground">
+          <h3 className="mt-2 text-[18px] font-semibold tracking-[-0.03em] text-foreground">
             {emptyTitle}
           </h3>
-          <p className="mt-2 max-w-[520px] text-[12px] leading-5 text-muted-foreground">
+          <p className="mt-1 max-w-[420px] text-[11.5px] leading-5 text-muted-foreground">
             {emptyDescription}
           </p>
         </div>
       </div>
 
-      <div className="rounded-[18px] border border-border/70 bg-card/86 p-3 shadow-[inset_0_1px_0_hsl(var(--background)/0.86)]">
+      <div className="rounded-[18px] border border-border/70 bg-card/86 p-2.5 shadow-[inset_0_1px_0_hsl(var(--background)/0.86)]">
         <div className="flex items-center justify-between gap-3 px-1 pb-2">
           <div>
-            <div className="text-[12px] font-semibold text-foreground">
+            <div className="text-[11.5px] font-semibold text-foreground">
               结果工作台
             </div>
-            <p className="mt-0.5 text-[11px] text-muted-foreground">
+            <p className="mt-0.5 text-[10.5px] text-muted-foreground">
               一次评测完成后，关键证据会按下面三个区域落位。
             </p>
           </div>
@@ -922,20 +929,20 @@ function DiagnosticsRunHeroPanel({
           </div>
         </div>
 
-        <div className="grid gap-2.5">
+        <div className="grid gap-2 md:grid-cols-3">
           {resultPreviewItems.map((item) => (
             <div
               key={item.title}
-              className="flex items-start gap-3 rounded-[14px] border border-border/60 bg-background/82 px-3.5 py-3"
+              className="flex items-start gap-2.5 rounded-[14px] border border-border/60 bg-background/82 px-3 py-2.5"
             >
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px] border border-sky-100 bg-sky-50 text-sky-600">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[10px] border border-sky-100 bg-sky-50 text-sky-600">
                 {item.icon}
               </div>
               <div className="min-w-0">
-                <div className="text-[12px] font-semibold text-foreground">
+                <div className="text-[11.5px] font-semibold text-foreground">
                   {item.title}
                 </div>
-                <p className="mt-0.5 text-[11px] leading-5 text-muted-foreground">
+                <p className="mt-0.5 line-clamp-2 text-[10.5px] leading-4 text-muted-foreground">
                   {item.description}
                 </p>
               </div>
@@ -958,18 +965,18 @@ function DiagnosticsFailuresPanel({
 }>) {
   return (
     <div className="rounded-xl border border-border/70 bg-background shadow-sm">
-      <div className="border-b border-border/70 px-5 py-3">
-        <div className="flex items-center gap-2 text-[13px] font-semibold text-foreground">
+      <div className="flex items-center justify-between gap-3 border-b border-border/70 px-4 py-2.5">
+        <div className="flex items-center gap-2 text-[12.5px] font-semibold text-foreground">
           <span>失败样本 / 错误分析</span>
           <DiagnosticsInfoTooltip label="查看失败样本与错误分析说明">
             展示本轮未命中的评测样本，以及后续错误分布汇总；优先排查这些样本通常最有效。
           </DiagnosticsInfoTooltip>
         </div>
-        <div className="mt-2.5 flex items-center gap-5">
+        <div className="inline-flex h-7 shrink-0 items-center gap-1 rounded-full border border-border/40 bg-card/58 p-1 shadow-[inset_0_1px_0_hsl(var(--card)/0.62)]">
           <button
             type="button"
             className={cn(
-              'border-b-2 pb-2 text-[13px] font-medium transition-colors',
+              'inline-flex h-5 items-center rounded-full px-2.5 text-[11px] font-medium transition-colors',
               diagnosticsTabClass(activeTab === 'failures')
             )}
             onClick={() => onTabChange('failures')}
@@ -979,7 +986,7 @@ function DiagnosticsFailuresPanel({
           <button
             type="button"
             className={cn(
-              'border-b-2 pb-2 text-[13px] font-medium transition-colors',
+              'inline-flex h-5 items-center rounded-full px-2.5 text-[11px] font-medium transition-colors',
               diagnosticsTabClass(activeTab === 'distribution')
             )}
             onClick={() => onTabChange('distribution')}
@@ -989,7 +996,7 @@ function DiagnosticsFailuresPanel({
         </div>
       </div>
 
-      <div className="px-5 py-3.5">
+      <div className="px-4 py-3">
         <DiagnosticsFailuresPanelBody
           activeTab={activeTab}
           failedCases={failedCases}
@@ -1009,15 +1016,15 @@ function DiagnosticsFailureCaseList({
       {failedCases.map((item) => (
         <div
           key={`${item.case_id}:${item.question}`}
-          className="rounded-xl border border-border/70 bg-card/90 px-3.5 py-3"
+          className="rounded-xl border border-border/70 bg-card/90 px-3 py-2.5"
         >
           <div className="text-[11px] font-mono text-muted-foreground">
             {item.case_id || '--------'}
           </div>
-          <div className="mt-1.5 text-[13px] leading-6 text-foreground">
+          <div className="mt-1 text-[12.5px] leading-5 text-foreground">
             {item.question || '（无问题文本）'}
           </div>
-          <div className="mt-2 text-[11px] tabular-nums text-muted-foreground">
+          <div className="mt-1.5 text-[10.5px] tabular-nums text-muted-foreground">
             Recall {String(item.recall)} · MRR {String(item.mrr)}
           </div>
         </div>
@@ -1065,8 +1072,8 @@ function DiagnosticsRunRecordsPanel({
 }>) {
   return (
     <div className="rounded-xl border border-border/70 bg-background shadow-sm">
-      <div className="border-b border-border/70 px-5 py-3">
-        <div className="flex items-center gap-2 text-[13px] font-semibold text-foreground">
+      <div className="border-b border-border/70 px-4 py-2.5">
+        <div className="flex items-center gap-2 text-[12.5px] font-semibold text-foreground">
           <span>原始结果 / 运行记录</span>
           <DiagnosticsInfoTooltip label="查看原始结果与运行记录说明">
             显示最近保存的评测运行记录，并可展开查看本次评测接口返回的原始数据。
@@ -1074,21 +1081,21 @@ function DiagnosticsRunRecordsPanel({
         </div>
       </div>
 
-      <div className="px-5 py-3">
+      <div className="px-4 py-3">
         <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-[12px]">
+          <table className="min-w-full text-left text-[11.5px]">
             <thead className="text-muted-foreground">
               <tr className="border-b border-border/70">
-                <th className="px-2 py-2 font-medium">运行 ID</th>
-                <th className="px-2 py-2 font-medium">开始时间</th>
-                <th className="px-2 py-2 font-medium">数据集</th>
-                <th className="px-2 py-2 font-medium">样本数</th>
-                <th className="px-2 py-2 font-medium">TOP-K</th>
-                <th className="px-2 py-2 font-medium">
+                <th className="px-2 py-1.5 font-medium">运行 ID</th>
+                <th className="px-2 py-1.5 font-medium">开始时间</th>
+                <th className="px-2 py-1.5 font-medium">数据集</th>
+                <th className="px-2 py-1.5 font-medium">样本数</th>
+                <th className="px-2 py-1.5 font-medium">TOP-K</th>
+                <th className="px-2 py-1.5 font-medium">
                   主要指标（MRR / Recall）
                 </th>
-                <th className="px-2 py-2 font-medium">状态</th>
-                <th className="px-2 py-2 font-medium">操作</th>
+                <th className="px-2 py-1.5 font-medium">状态</th>
+                <th className="px-2 py-1.5 font-medium">操作</th>
               </tr>
             </thead>
             <tbody>
@@ -1112,35 +1119,35 @@ function DiagnosticsRunRecordsPanel({
                       key={String(run.id)}
                       className="border-b border-border/60"
                     >
-                      <td className="px-2 py-3 font-mono text-foreground">
+                      <td className="px-2 py-2 font-mono text-foreground">
                         {String(run.id || '').slice(0, 8)}
                       </td>
-                      <td className="px-2 py-3 text-muted-foreground">
+                      <td className="px-2 py-2 text-muted-foreground">
                         {String(run.created_at || '').slice(0, 16) || '-'}
                       </td>
-                      <td className="px-2 py-3 text-muted-foreground">
+                      <td className="px-2 py-2 text-muted-foreground">
                         {String(run.dataset_id || '').slice(0, 8) || '-'}
                       </td>
-                      <td className="px-2 py-3 text-muted-foreground">
+                      <td className="px-2 py-2 text-muted-foreground">
                         {toTrimmedPrimitiveString(maxCases)}
                       </td>
-                      <td className="px-2 py-3 text-muted-foreground">
+                      <td className="px-2 py-2 text-muted-foreground">
                         {toTrimmedPrimitiveString(k)}
                       </td>
-                      <td className="px-2 py-3 text-muted-foreground">
+                      <td className="px-2 py-2 text-muted-foreground">
                         {toTrimmedPrimitiveString(summary?.baseline_mrr, '-')} /{' '}
                         {toTrimmedPrimitiveString(summary?.baseline_recall, '-')}
                       </td>
-                      <td className="px-2 py-3 text-muted-foreground">
+                      <td className="px-2 py-2 text-muted-foreground">
                         {persisted ? '已保存' : '临时'}
                       </td>
-                      <td className="px-2 py-3 text-muted-foreground">-</td>
+                      <td className="px-2 py-2 text-muted-foreground">-</td>
                     </tr>
                   )
                 })
               ) : (
                 <tr>
-                  <td colSpan={8} className="py-10">
+                  <td colSpan={8} className="py-6">
                     <DiagnosticsEmptyState
                       title="暂无运行记录"
                       description="保存评测结果后，这里会列出历史运行记录，便于对比效果变化。"
@@ -1155,8 +1162,8 @@ function DiagnosticsRunRecordsPanel({
           </table>
         </div>
 
-        <details className="mt-3 rounded-xl border border-border/70 bg-card/90 px-4 py-3">
-          <summary className="cursor-pointer select-none text-[12px] font-medium text-muted-foreground transition-colors hover:text-foreground">
+        <details className="mt-2.5 rounded-xl border border-border/70 bg-card/90 px-3 py-2.5">
+          <summary className="cursor-pointer select-none text-[11.5px] font-medium text-muted-foreground transition-colors hover:text-foreground">
             查看原始数据
           </summary>
           <Textarea
@@ -1462,10 +1469,10 @@ export function KGDiagnosticsPage() {
               compact
               className="p-0"
             >
-              <div className="flex flex-wrap items-center gap-2.5">
+              <div className={DIAGNOSTICS_HEADER_ACTION_DOCK_CLASS}>
                 <DiagnosticsHeaderPill
                   label={t('runConfig.datasetId')}
-                  className="min-w-[220px]"
+                  className="min-w-[208px] max-w-[300px]"
                 >
                   <Select
                     value={datasetId}
@@ -1474,7 +1481,7 @@ export function KGDiagnosticsPage() {
                   >
                     <SelectTrigger
                       aria-label={t('runConfig.datasetId')}
-                      className="h-auto min-h-0 border-0 bg-transparent px-0 py-0 text-right text-[13px] font-medium shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 [&>svg]:ml-2 [&>svg]:h-3.5 [&>svg]:w-3.5"
+                      className="h-auto min-h-0 border-0 bg-transparent px-0 py-0 text-right text-[12px] font-medium shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 [&>svg]:ml-2 [&>svg]:h-3.5 [&>svg]:w-3.5"
                     >
                       <SelectValue
                         placeholder={diagnosticsDatasetPlaceholder(
@@ -1498,7 +1505,7 @@ export function KGDiagnosticsPage() {
                 </DiagnosticsHeaderPill>
                 <DiagnosticsHeaderPill
                   label={t('runConfig.k')}
-                  className="min-w-[112px]"
+                  className="min-w-[104px]"
                 >
                   <Input
                     type="number"
@@ -1506,18 +1513,18 @@ export function KGDiagnosticsPage() {
                     onChange={(e) => setK(Number(e.target.value || 0))}
                     min={1}
                     max={50}
-                    className="h-auto border-0 bg-transparent px-0 py-0 text-right text-[13px] font-medium shadow-none focus-visible:ring-2 focus-visible:ring-ring/30"
+                    className="h-auto border-0 bg-transparent px-0 py-0 text-right text-[12px] font-medium shadow-none focus-visible:ring-2 focus-visible:ring-ring/30"
                   />
                 </DiagnosticsHeaderPill>
                 <Button
                   variant="outline"
-                  className="h-9 rounded-lg border-border/70 bg-card/95 px-3.5 text-[13px] shadow-sm"
+                  className={DIAGNOSTICS_HEADER_ACTION_BUTTON_CLASS}
                   onClick={() => {
                     setActiveView('compare')
                     if (datasetId.trim()) void refreshRuns()
                   }}
                 >
-                  <History className="mr-2 h-4 w-4" aria-hidden="true" />
+                  <History className="h-4 w-4" aria-hidden="true" />
                   {t('runs.title')}
                 </Button>
               </div>
@@ -1789,62 +1796,67 @@ export function KGDiagnosticsPage() {
                     </div>
                   </div>
 
-                  <div className="shrink-0 border-t border-border/70 px-4 py-3.5">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <DiagnosticsInlineStat label="样本" value={maxCases} />
-                      <DiagnosticsInlineStat label="TOP-K" value={k} />
-                      <DiagnosticsInlineStat
-                        label="保存"
-                        value={persistRun ? "开启" : "关闭"}
-                        tone={diagnosticsPersistTone(persistRun)}
-                      />
-                    </div>
+                  <div className="shrink-0 border-t border-border/44 bg-background/92 px-3 py-3 backdrop-blur">
+                    <div className={DIAGNOSTICS_ACTION_CARD_CLASS}>
+                      <div className="mb-2 flex items-center justify-between gap-2 px-1">
+                        <div className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/62">
+                          运行操作
+                        </div>
+                        <span className="rounded-full border border-border/32 bg-background/44 px-2 py-0.5 text-[10px] font-medium text-muted-foreground/64">
+                          KG Eval
+                        </span>
+                      </div>
 
-                    <Button
-                      className="mt-2 h-9 w-full rounded-lg text-[13px] font-medium shadow-none"
-                      onClick={runDiagnostics}
-                      disabled={running}
-                    >
-                      <PlayCircle className="mr-2 h-4 w-4" aria-hidden="true" />
-                      {diagnosticsRunButtonLabel(running, t)}
-                    </Button>
-
-                    <div className="mt-2 grid grid-cols-2 gap-2">
-                      <Button
-                        variant="outline"
-                        className="h-8 rounded-lg border-border/70 bg-card/95 text-[11.5px]"
-                        onClick={refreshRuns}
-                        disabled={runsLoading}
-                      >
-                        <RefreshCcw
-                          className="mr-1.5 h-4 w-4"
-                          aria-hidden="true"
+                      <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                        <DiagnosticsInlineStat label="样本" value={maxCases} />
+                        <DiagnosticsInlineStat label="TOP-K" value={k} />
+                        <DiagnosticsInlineStat
+                          label="保存"
+                          value={persistRun ? '开启' : '关闭'}
+                          tone={diagnosticsPersistTone(persistRun)}
                         />
-                        {t('page.actions.refreshRuns')}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        className="h-8 rounded-lg border-border/70 bg-card/95 text-[11.5px]"
-                        onClick={() => {
-                          const base = sanitizeFilename(
-                            `kg_diagnostics_${datasetId.trim() || 'dataset'}`
-                          )
-                          downloadJson(runResp ?? {}, `${base}.json`)
-                          toast.success(t('toasts.runExported'))
-                        }}
-                        disabled={!runResp}
-                      >
-                        <Download
-                          className="mr-1.5 h-4 w-4"
-                          aria-hidden="true"
-                        />
-                        {t('page.actions.exportRun')}
-                      </Button>
-                    </div>
+                      </div>
 
-                    <p className="mt-2 text-[10.5px] leading-5 text-muted-foreground">
-                      {t('summary.runHint')}
-                    </p>
+                      <Button
+                        className={DIAGNOSTICS_PRIMARY_ACTION_BUTTON_CLASS}
+                        onClick={runDiagnostics}
+                        disabled={running}
+                      >
+                        <PlayCircle className="h-4 w-4" aria-hidden="true" />
+                        {diagnosticsRunButtonLabel(running, t)}
+                      </Button>
+
+                      <div className="mt-2 grid grid-cols-2 gap-1.5">
+                        <Button
+                          variant="outline"
+                          className={DIAGNOSTICS_SECONDARY_ACTION_BUTTON_CLASS}
+                          onClick={refreshRuns}
+                          disabled={runsLoading}
+                        >
+                          <RefreshCcw className="h-4 w-4" aria-hidden="true" />
+                          {t('page.actions.refreshRuns')}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className={DIAGNOSTICS_SECONDARY_ACTION_BUTTON_CLASS}
+                          onClick={() => {
+                            const base = sanitizeFilename(
+                              `kg_diagnostics_${datasetId.trim() || 'dataset'}`
+                            )
+                            downloadJson(runResp ?? {}, `${base}.json`)
+                            toast.success(t('toasts.runExported'))
+                          }}
+                          disabled={!runResp}
+                        >
+                          <Download className="h-4 w-4" aria-hidden="true" />
+                          {t('page.actions.exportRun')}
+                        </Button>
+                      </div>
+
+                      <p className="mt-2 px-1 text-[10.5px] leading-5 text-muted-foreground">
+                        {t('summary.runHint')}
+                      </p>
+                    </div>
                   </div>
                 </div>
               </aside>
@@ -1857,30 +1869,30 @@ export function KGDiagnosticsPage() {
                   }
                   className="flex h-full min-h-0 flex-col"
                 >
-                  <div className="shrink-0 border-b border-border/70 px-5 pt-4">
-                    <TabsList className="h-auto justify-start gap-7 rounded-none border-none bg-transparent p-0">
+                  <div className="shrink-0 border-b border-border/70 px-4 pt-3">
+                    <TabsList className="h-auto justify-start gap-5 rounded-none border-none bg-transparent p-0">
                       <TabsTrigger
                         value="run"
-                        className="rounded-none border-b-2 border-transparent px-0 pb-3 pt-0 text-[13px] font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-none"
+                        className="rounded-none border-b-2 border-transparent px-0 pb-2.5 pt-0 text-[12.5px] font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-none"
                       >
                         {t('summary.title')}
                       </TabsTrigger>
                       <TabsTrigger
                         value="quality"
                         title={t('qualityReport.title')}
-                        className="rounded-none border-b-2 border-transparent px-0 pb-3 pt-0 text-[13px] font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-none"
+                        className="rounded-none border-b-2 border-transparent px-0 pb-2.5 pt-0 text-[12.5px] font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-none"
                       >
                         抽取数据
                       </TabsTrigger>
                       <TabsTrigger
                         value="compare"
-                        className="rounded-none border-b-2 border-transparent px-0 pb-3 pt-0 text-[13px] font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-none"
+                        className="rounded-none border-b-2 border-transparent px-0 pb-2.5 pt-0 text-[12.5px] font-medium text-muted-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-none"
                       >
                         {t('compare.title')}
                       </TabsTrigger>
                     </TabsList>
 
-                    <div className="flex flex-wrap items-center gap-3 py-4">
+                    <div className="flex flex-wrap items-center gap-2 py-2.5">
                       <DiagnosticsHeaderPill
                         label={t('runConfig.datasetId')}
                         value={datasetLabel}
@@ -1901,10 +1913,10 @@ export function KGDiagnosticsPage() {
 
                   <TabsContent
                     value="run"
-                    className="mt-0 min-h-0 flex-1 overflow-auto px-5 py-3.5"
+                    className="mt-0 min-h-0 flex-1 overflow-auto px-4 py-3"
                   >
-                    <div className="space-y-3.5">
-                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+                    <div className="space-y-3">
+                      <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-6">
                         <DiagnosticsMetricTile
                           label={t('summary.baselineHitRate')}
                           value={formatMetricValue(summary?.baseline_hit_rate)}
@@ -1975,7 +1987,7 @@ export function KGDiagnosticsPage() {
                         emptyDescription={t('summary.runHint')}
                       />
 
-                      <div className="grid gap-4 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
+                      <div className="grid gap-3 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
                         <DiagnosticsFailuresPanel
                           failedCases={failedCases}
                           activeTab={runAnalysisTab}
@@ -2026,12 +2038,15 @@ export function KGDiagnosticsPage() {
                           <div className="flex items-end">
                             <Button
                               variant="outline"
-                              className="h-10 rounded-lg border-border/70 bg-card text-xs"
+                              className={cn(
+                                DIAGNOSTICS_SECONDARY_ACTION_BUTTON_CLASS,
+                                'h-10 px-3'
+                              )}
                               onClick={loadQualityReport}
                               disabled={qualityLoading}
                             >
                               <RefreshCcw
-                                className="mr-1.5 h-4 w-4"
+                                className="h-4 w-4"
                                 aria-hidden="true"
                               />
                               {t('qualityReport.pull')}
@@ -2124,7 +2139,10 @@ export function KGDiagnosticsPage() {
                               </Select>
                               <Button
                                 variant="outline"
-                                className="h-10 rounded-lg border-border/70 bg-card text-xs"
+                                className={cn(
+                                  DIAGNOSTICS_SECONDARY_ACTION_BUTTON_CLASS,
+                                  'h-10 px-3'
+                                )}
                                 onClick={() => loadRun('a', selectedRunA)}
                                 disabled={!selectedRunA}
                               >
@@ -2158,7 +2176,10 @@ export function KGDiagnosticsPage() {
                               </Select>
                               <Button
                                 variant="outline"
-                                className="h-10 rounded-lg border-border/70 bg-card text-xs"
+                                className={cn(
+                                  DIAGNOSTICS_SECONDARY_ACTION_BUTTON_CLASS,
+                                  'h-10 px-3'
+                                )}
                                 onClick={() => loadRun('b', selectedRunB)}
                                 disabled={!selectedRunB}
                               >
@@ -2170,12 +2191,15 @@ export function KGDiagnosticsPage() {
                           <div className="flex items-end">
                             <Button
                               variant="outline"
-                              className="h-10 rounded-lg border-border/70 bg-card text-xs"
+                              className={cn(
+                                DIAGNOSTICS_SECONDARY_ACTION_BUTTON_CLASS,
+                                'h-10 px-3'
+                              )}
                               onClick={refreshRuns}
                               disabled={runsLoading}
                             >
                               <RefreshCcw
-                                className="mr-1.5 h-4 w-4"
+                                className="h-4 w-4"
                                 aria-hidden="true"
                               />
                               {t('runs.refresh')}
@@ -2185,7 +2209,10 @@ export function KGDiagnosticsPage() {
                           <div className="flex items-end">
                             <Button
                               variant="outline"
-                              className="h-10 rounded-lg border-border/70 bg-card text-xs"
+                              className={cn(
+                                DIAGNOSTICS_SECONDARY_ACTION_BUTTON_CLASS,
+                                'h-10 px-3'
+                              )}
                               onClick={() => {
                                 const a =
                                   String(detailA?.run?.id || '').slice(0, 8) ||
@@ -2203,7 +2230,7 @@ export function KGDiagnosticsPage() {
                               disabled={!diff}
                             >
                               <Download
-                                className="mr-1.5 h-4 w-4"
+                                className="h-4 w-4"
                                 aria-hidden="true"
                               />
                               {t('compare.export')}

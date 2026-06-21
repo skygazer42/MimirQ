@@ -1,13 +1,15 @@
 'use client'
 
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useParams } from 'next/navigation'
 import { toast } from 'sonner'
 import {
   Activity,
   ArrowLeft,
   BarChart3,
+  Cloud,
+  Database,
   Download,
   FileSearch,
   Loader2,
@@ -29,8 +31,6 @@ import {
 } from 'recharts'
 
 import { AppFrame } from '@/components/app-frame'
-import { DatasetAnalysisPanel } from '@/components/datasets/dataset-analysis-panel'
-import { DatasetOpsPanel } from '@/components/datasets/dataset-ops-panel'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import { Panel } from '@/components/ui/panel'
 import { Button } from '@/components/ui/button'
@@ -50,7 +50,6 @@ import { reportClientError } from '@/lib/client-logging'
 import { queryKeys } from '@/lib/query-keys'
 import { cn, formatFileSize, formatDate, detachPromise } from '@/lib/utils'
 import { useRouter } from '@/i18n/navigation'
-import { Breadcrumb, usePathBreadcrumbs } from '@/components/ui/breadcrumb'
 
 import type {
   Document,
@@ -72,6 +71,42 @@ const PIE_COLORS = [
 const EMPTY_SCAN_RUNS: DatasetProfileScanRunOut[] = []
 const PROFILE_DOCUMENT_PAGE_SIZE = 50
 const PROFILE_BUCKET_PREVIEW_MAX_CHARS = 360
+const profileHeroCard = 'relative overflow-hidden rounded-2xl border border-white/70 bg-[radial-gradient(circle_at_0%_0%,rgba(14,165,233,0.18),transparent_34%),linear-gradient(135deg,rgba(255,255,255,0.96),rgba(236,253,245,0.9))] p-4 shadow-[0_18px_55px_rgba(15,23,42,0.08)] ring-1 ring-slate-100/70 dark:border-border/60 dark:bg-card dark:ring-white/5'
+const profilePanelClass = 'overflow-hidden border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.92))] p-3 shadow-[0_16px_45px_rgba(15,23,42,0.07)] ring-1 ring-slate-100/70 dark:border-border/60 dark:bg-card/95 dark:ring-white/5'
+const profileChartProps = { className: 'h-[176px]', minHeight: 176 } as const
+const profileEmptyChartClass = 'h-[176px] flex items-center justify-center text-[11px] text-muted-foreground/60'
+const profileSectionTitleClass = 'text-[13px] font-semibold leading-none text-foreground/85'
+const profileSectionCaptionClass = 'mt-1 text-[11px] leading-4 text-muted-foreground/62'
+const profileToolbarGroupClass = 'inline-flex flex-wrap items-center gap-1 rounded-2xl border border-white/70 bg-white/70 p-1 shadow-[0_10px_30px_rgba(15,23,42,0.055)] ring-1 ring-slate-100/70 backdrop-blur dark:border-border/60 dark:bg-card/70 dark:ring-white/5'
+const profileToolbarButtonClass = 'h-8 gap-1.5 rounded-xl px-2.5 text-[12px] font-medium text-slate-600 shadow-none hover:bg-white/95 hover:text-slate-900 hover:shadow-sm dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
+const profileToolbarExportButtonClass = 'h-8 gap-1.5 rounded-xl border-white/70 bg-white/75 px-2.5 text-[12px] font-medium text-slate-700 shadow-[0_8px_20px_rgba(15,23,42,0.045)] hover:bg-white hover:text-slate-950 dark:border-border/60 dark:bg-card/70 dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
+const profileToolbarPrimaryButtonClass = 'h-8 gap-1.5 rounded-xl bg-gradient-to-r from-sky-500 to-cyan-500 px-3 text-[12px] font-semibold text-white shadow-[0_10px_24px_rgba(14,165,233,0.24)] hover:from-sky-600 hover:to-cyan-600 [&_svg]:size-3.5'
+
+function ProfileCardHeader({
+  title,
+  caption,
+  meta,
+  action,
+}: Readonly<{
+  title: string
+  caption?: string
+  meta?: ReactNode
+  action?: ReactNode
+}>) {
+  return (
+    <div className="mb-2.5 flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <div className={profileSectionTitleClass}>{title}</div>
+        {caption ? <div className={profileSectionCaptionClass}>{caption}</div> : null}
+      </div>
+      {action || meta ? (
+        <div className="shrink-0">
+          {action || <div className="font-mono text-[10px] leading-none text-muted-foreground/55">{meta}</div>}
+        </div>
+      ) : null}
+    </div>
+  )
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
@@ -100,8 +135,6 @@ function downloadBlob(blob: Blob, filename: string) {
 
 const PROFILE_SECTIONS = [
   { id: 'prof-overview', label: '概览' },
-  { id: 'prof-analysis', label: '分析闭环' },
-  { id: 'prof-operations', label: '运维导出' },
   { id: 'prof-distribution', label: '分布图表' },
   { id: 'prof-findings', label: '问题清单' },
   { id: 'prof-scan', label: '深度扫描' },
@@ -130,7 +163,7 @@ function ProfileAnchorNav() {
         if (bestRatio > 0) setActiveId(best)
       },
       {
-        root: document.querySelector('[data-page-scroll-container]'),
+        root: document.querySelector('[data-profile-scroll-container="true"]') ?? document.querySelector('[data-page-scroll-container]'),
         threshold: [0, 0.1, 0.25, 0.5],
       },
     )
@@ -144,17 +177,17 @@ function ProfileAnchorNav() {
   }, [])
 
   return (
-    <div className="flex items-center gap-1 mb-5 overflow-x-auto no-scrollbar">
+    <div className="mb-3 flex items-center gap-1 overflow-x-auto rounded-2xl border border-white/70 bg-white/70 p-1.5 shadow-[0_12px_35px_rgba(15,23,42,0.06)] ring-1 ring-slate-100/70 no-scrollbar backdrop-blur dark:border-border/60 dark:bg-card/70 dark:ring-white/5">
       {PROFILE_SECTIONS.map((sec) => (
         <button
           key={sec.id}
           type="button"
           onClick={() => document.getElementById(sec.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
           className={cn(
-            'shrink-0 text-xs px-3 py-1.5 rounded-full transition-colors whitespace-nowrap',
+            'shrink-0 rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap',
             activeId === sec.id
-              ? 'bg-primary/10 text-primary font-semibold'
-              : 'text-muted-foreground hover:text-foreground hover:bg-muted/50',
+              ? 'bg-sky-100 text-sky-700 shadow-sm'
+              : 'text-slate-500 hover:bg-slate-100/80 hover:text-slate-800 dark:text-muted-foreground dark:hover:bg-muted/50 dark:hover:text-foreground',
           )}
         >
           {sec.label}
@@ -179,6 +212,13 @@ function targetBadgeVariant(status: string): 'secondary' | 'outline' | 'soft' | 
   return 'secondary'
 }
 
+function formatChunkTargetLabel(value: unknown): string {
+  return String(value || '')
+    .replace('Chunk tokens', '切片 token')
+    .replace('Coverage', '正文覆盖')
+    .replace('Overlap waste', '重叠成本')
+}
+
 function asDocumentStatus(status: string | null | undefined): Document['status'] {
   switch (status) {
     case 'pending':
@@ -193,11 +233,20 @@ function asDocumentStatus(status: string | null | undefined): Document['status']
   }
 }
 
+function formatProfileRunStatus(status: string | null | undefined): string {
+  const normalized = String(status || '').toLowerCase()
+  if (normalized === 'pending') return '排队中'
+  if (normalized === 'running') return '扫描中'
+  if (normalized === 'completed') return '已完成'
+  if (normalized === 'failed') return '失败'
+  if (normalized === 'cancelled' || normalized === 'canceled') return '已取消'
+  return '未扫描'
+}
+
 export default function DatasetProfilePage() {
   const router = useRouter()
   const params = useParams()
   const datasetId = asDatasetId(params?.id)
-  const breadcrumbs = usePathBreadcrumbs()
 
   const [isExportingJson, setIsExportingJson] = useState(false)
   const [isExportingHtml, setIsExportingHtml] = useState(false)
@@ -700,6 +749,21 @@ export default function DatasetProfilePage() {
 
   const latestRunStatus = effectiveScanRun.status
   const latestRunProgress = effectiveScanRun.progress
+  const totalSizeLabel = summary ? formatFileSize(summary.total_size_bytes || 0) : (isLoading ? '…' : '-')
+  const scannedPdfCount = summary
+    ? `${summary.pdf_scan.scanned}/${summary.pdf_scan.scanned + summary.pdf_scan.not_scanned + summary.pdf_scan.unknown}`
+    : (isLoading ? '…' : '-')
+  const totalFindingCount = (summary?.findings || []).reduce((acc, finding) => acc + Number(finding.count || 0), 0)
+  const generatedAtLabel = summary?.generated_at ? formatDate(summary.generated_at) : '--'
+  const latestRunLabel = formatProfileRunStatus(latestRunStatus)
+  const activeFindings = useMemo(
+    () => (summary?.findings || []).filter((finding) => Number(finding.count || 0) > 0),
+    [summary?.findings]
+  )
+  const clearFindings = useMemo(
+    () => (summary?.findings || []).filter((finding) => Number(finding.count || 0) <= 0),
+    [summary?.findings]
+  )
 
   const completedRuns = useMemo(
     () => (scanRuns || []).filter((r) => String(r.status || '').toLowerCase() === 'completed'),
@@ -739,76 +803,123 @@ export default function DatasetProfilePage() {
   return (
     <AppFrame>
       <PageScaffold
-        title={`数据画像${dataset?.name ? ' · ' + dataset.name : ''}`}
-        badge="Dataset Profile"
-        icon={BarChart3}
-        iconColor="text-info"
-        top={<Breadcrumb items={breadcrumbs} />}
-        description={
-          <span className="text-sm text-muted-foreground">
-            基于文档库元数据的入库前/入库中质量画像（格式、长度、扫描件、PII、重复等）
-          </span>
+        title="数据画像"
+        showHeader={false}
+        size="full"
+        density="system-dense"
+        bodyGutter="dense"
+        bodyClassName="h-full overflow-hidden bg-[radial-gradient(circle_at_12%_0%,rgba(14,165,233,0.10),transparent_28%),linear-gradient(180deg,#f8fcff_0%,#f4f8fb_44%,#f8fafc_100%)] pb-3 dark:bg-background"
+        bodyContainerClassName="h-full min-h-0 overflow-hidden"
+        top={
+          <div className={profileHeroCard}>
+            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(14,165,233,0.045)_1px,transparent_1px),linear-gradient(90deg,rgba(14,165,233,0.045)_1px,transparent_1px)] bg-[size:28px_28px]" />
+            <div className="relative flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex min-w-0 items-start gap-3.5">
+                <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-sky-100 bg-sky-50/90 text-sky-600 shadow-inner">
+                  <BarChart3 className="size-5" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h1 className="truncate text-[20px] font-medium leading-none tracking-[-0.01em] text-slate-800 dark:text-foreground">
+                      数据画像
+                    </h1>
+                    <Badge variant="soft" className="h-5 border-sky-200 bg-sky-50 px-2 text-[10px] font-medium leading-none text-sky-700">
+                      PROFILE
+                    </Badge>
+                  </div>
+                  <p className="mt-1.5 max-w-4xl text-[13px] leading-tight text-muted-foreground">
+                    数据集：<span className="font-semibold text-slate-800 dark:text-foreground">{dataset?.name || datasetId || '未选择'}</span>
+                    <span className="mx-2 text-slate-300">·</span>
+                    格式、长度、扫描件、PII、重复与切片指标的质量画像
+                  </p>
+                  <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11px] leading-none text-muted-foreground">
+                    <span className="inline-flex items-center gap-1.5">
+                      <Database className="size-3.5 text-sky-500" />
+                      文档 <strong className="font-mono text-slate-900 dark:text-foreground">{summary?.total_documents ?? (isLoading ? '…' : 0)}</strong>
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <Cloud className="size-3.5 text-cyan-500" />
+                      总大小 <strong className="font-mono text-slate-900 dark:text-foreground">{totalSizeLabel}</strong>
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <FileSearch className="size-3.5 text-amber-500" />
+                      扫描 PDF <strong className="font-mono text-slate-900 dark:text-foreground">{scannedPdfCount}</strong>
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <BarChart3 className="size-3.5 text-rose-500" />
+                      问题 <strong className="font-mono text-slate-900 dark:text-foreground">{summary ? totalFindingCount : (isLoading ? '…' : 0)}</strong>
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <Sparkles className="size-3.5 text-emerald-500" />
+                      更新时间 <strong className="font-mono text-slate-900 dark:text-foreground">{generatedAtLabel}</strong>
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div className="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50/80 px-3 text-[13px] font-medium text-emerald-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
+                <span className={cn('size-2 rounded-full', scanRunning ? 'animate-pulse bg-sky-500' : 'bg-emerald-500')} />
+                {latestRunLabel}
+              </div>
+            </div>
+          </div>
         }
-        actions={
-          <div className="flex items-center gap-2">
-            <Button variant="outline" className="gap-2" onClick={() => router.push('/datasets')}>
-              <ArrowLeft className="w-4 h-4" />
-              返回
-            </Button>
-            {datasetId ? (
-              <Button variant="outline" className="gap-2" onClick={() => router.push(`/datasets/${datasetId}/health`)}>
-                <Activity className="w-4 h-4" />
-                健康
+        toolbar={
+          <div className="flex w-full flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+            <div className={profileToolbarGroupClass}>
+              <Button size="sm" variant="ghost" className={profileToolbarButtonClass} onClick={() => router.push('/datasets')}>
+                <ArrowLeft className="w-4 h-4" />
+                返回
               </Button>
-            ) : null}
-            {datasetId ? (
-              <Button variant="outline" className="gap-2" onClick={() => router.push(`/datasets/${datasetId}/ingestion`)}>
-                <Settings2 className="w-4 h-4" />
-                入库策略
+              {datasetId ? (
+                <Button size="sm" variant="ghost" className={profileToolbarButtonClass} onClick={() => router.push(`/datasets/${datasetId}/health`)}>
+                  <Activity className="w-4 h-4" />
+                  健康
+                </Button>
+              ) : null}
+              {datasetId ? (
+                <Button size="sm" variant="ghost" className={profileToolbarButtonClass} onClick={() => router.push(`/datasets/${datasetId}/ingestion`)}>
+                  <Settings2 className="w-4 h-4" />
+                  入库策略
+                </Button>
+              ) : null}
+              {datasetId ? (
+                <Button size="sm" variant="ghost" className={profileToolbarButtonClass} onClick={() => router.push(`/datasets/${datasetId}/tables`)}>
+                  <Table2 className="w-4 h-4" />
+                  表格 / TAG
+                </Button>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Button
+                size="sm"
+                variant="outline"
+                className={profileToolbarExportButtonClass}
+                onClick={() => detachPromise(exportJson())}
+                disabled={isExportingJson || !summary}
+              >
+                {isExportingJson ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Download className="w-4 h-4" />}
+                导出 JSON
               </Button>
-            ) : null}
-            {datasetId ? (
-              <Button variant="outline" className="gap-2" onClick={() => router.push(`/datasets/${datasetId}/tables`)}>
-                <Table2 className="w-4 h-4" />
-                表格 / TAG
+              <Button
+                size="sm"
+                className={profileToolbarPrimaryButtonClass}
+                onClick={() => detachPromise(exportHtml())}
+                disabled={isExportingHtml || !summary}
+              >
+                {isExportingHtml ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Download className="w-4 h-4" />}
+                导出 HTML
               </Button>
-            ) : null}
-            <Button
-              variant="outline"
-              className="gap-2"
-              onClick={() => detachPromise(refreshProfileOverview())}
-              disabled={isLoading}
-            >
-              <RefreshCw className={cn('w-4 h-4', isLoading && 'animate-spin motion-reduce:animate-none')} />
-              刷新
-            </Button>
-            <Button
-              variant="outline"
-              className="gap-2"
-              onClick={() => detachPromise(exportJson())}
-              disabled={isExportingJson || !summary}
-            >
-              {isExportingJson ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Download className="w-4 h-4" />}
-              导出 JSON
-            </Button>
-            <Button
-              variant="outline"
-              className="gap-2"
-              onClick={() => detachPromise(exportHtml())}
-              disabled={isExportingHtml || !summary}
-            >
-              {isExportingHtml ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Download className="w-4 h-4" />}
-              导出 HTML
-            </Button>
+            </div>
           </div>
         }
       >
+        <div data-profile-scroll-container="true" className="h-full min-h-0 overflow-y-auto pr-1 no-scrollbar">
         <ProfileAnchorNav />
-        <div className="space-y-6">
+        <div className="space-y-3 pb-3">
           <div id="prof-overview">
-          <Panel className="p-5">
-            <StatsGrid>
-              <StatCard icon={FileSearch} label="文档总数" value={summary?.total_documents ?? (isLoading ? '…' : 0)} color="cyan" />
+          <Panel className={profilePanelClass}>
+            <StatsGrid dense className="xl:grid-cols-5">
+              <StatCard dense icon={FileSearch} label="文档总数" value={summary?.total_documents ?? (isLoading ? '…' : 0)} color="cyan" />
               <StatCard icon={BarChart3} label="总大小" value={(() => {
     if (summary) {
         return formatFileSize(summary.total_size_bytes || 0);
@@ -819,9 +930,9 @@ export default function DatasetProfilePage() {
         else {
             return '-';
         }
-})()} color="teal" />
-              <StatCard icon={Sparkles} label="P50 长度" value={summary?.length_percentiles?.p50 ?? (isLoading ? '…' : 0)} subValue="chars" color="blue" />
-              <StatCard icon={Sparkles} label="P90 长度" value={summary?.length_percentiles?.p90 ?? (isLoading ? '…' : 0)} subValue="chars" color="blue" />
+})()} color="teal" dense />
+              <StatCard dense icon={Sparkles} label="P50 长度" value={summary?.length_percentiles?.p50 ?? (isLoading ? '…' : 0)} subValue="chars" color="blue" />
+              <StatCard dense icon={Sparkles} label="P90 长度" value={summary?.length_percentiles?.p90 ?? (isLoading ? '…' : 0)} subValue="chars" color="blue" />
               <StatCard icon={Sparkles} label="扫描 PDF" value={(() => {
     if (summary) {
         return `${summary.pdf_scan.scanned}/${summary.pdf_scan.scanned + summary.pdf_scan.not_scanned + summary.pdf_scan.unknown}`;
@@ -832,47 +943,36 @@ export default function DatasetProfilePage() {
         else {
             return '-';
         }
-})()} color="orange" />
+})()} color="orange" dense />
             </StatsGrid>
           </Panel>
           </div>
 
-          <div id="prof-analysis">
-            <DatasetAnalysisPanel datasetId={datasetId} datasetName={dataset?.name} />
-          </div>
-
-          <div id="prof-operations">
-            <DatasetOpsPanel datasetId={datasetId} datasetName={dataset?.name} />
-          </div>
-
-          <div id="prof-distribution" className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <Panel className="p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div className="font-semibold">格式分布</div>
-                <div className="text-xs text-muted-foreground font-mono">
-                  {summary?.generated_at ? `updated ${formatDate(summary.generated_at)}` : ''}
-                </div>
-              </div>
-              <SafeResponsiveChart>
+          <div id="prof-distribution" className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <Panel className={profilePanelClass}>
+              <ProfileCardHeader
+                title="格式分布"
+                caption="文件类型占比"
+                meta={summary?.generated_at ? formatDate(summary.generated_at) : ''}
+              />
+              <SafeResponsiveChart {...profileChartProps}>
                   <PieChart>
                     <Tooltip />
                     <Pie
                       data={fileTypeChartData}
                       dataKey="value"
                       nameKey="name"
-                      innerRadius={55}
-                      outerRadius={95}
+                      innerRadius={42}
+                      outerRadius={72}
                       paddingAngle={2}
                     />
                   </PieChart>
                 </SafeResponsiveChart>
             </Panel>
 
-            <Panel className="p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div className="font-semibold">状态分布</div>
-              </div>
-              <SafeResponsiveChart>
+            <Panel className={profilePanelClass}>
+              <ProfileCardHeader title="状态分布" caption="按文档处理状态聚合" />
+              <SafeResponsiveChart {...profileChartProps}>
                   <BarChart data={statusChartData}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="name" fontSize={12} />
@@ -883,11 +983,9 @@ export default function DatasetProfilePage() {
                 </SafeResponsiveChart>
             </Panel>
 
-            <Panel className="p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div className="font-semibold">长度分布（chars）</div>
-              </div>
-              <SafeResponsiveChart>
+            <Panel className={profilePanelClass}>
+              <ProfileCardHeader title="长度分布" caption="按字符长度区间统计" />
+              <SafeResponsiveChart {...profileChartProps}>
                   <BarChart data={lengthHistogramData}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="name" fontSize={12} />
@@ -898,23 +996,19 @@ export default function DatasetProfilePage() {
                 </SafeResponsiveChart>
             </Panel>
 
-            <Panel className="p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div className="font-semibold">PDF 扫描占比</div>
-              </div>
-              <SafeResponsiveChart>
+            <Panel className={profilePanelClass}>
+              <ProfileCardHeader title="PDF 扫描占比" caption="扫描件、文本型与未知类型" />
+              <SafeResponsiveChart {...profileChartProps}>
                   <PieChart>
                     <Tooltip />
-                    <Pie data={pdfScanData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={95} paddingAngle={2} />
+                    <Pie data={pdfScanData} dataKey="value" nameKey="name" innerRadius={42} outerRadius={72} paddingAngle={2} />
                   </PieChart>
                 </SafeResponsiveChart>
             </Panel>
 
-            <Panel className="p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div className="font-semibold">文件大小分布</div>
-              </div>
-              <SafeResponsiveChart>
+            <Panel className={profilePanelClass}>
+              <ProfileCardHeader title="文件大小分布" caption="用于发现异常大文件或碎片文件" />
+              <SafeResponsiveChart {...profileChartProps}>
                   <BarChart data={fileSizeHistogramData}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="name" fontSize={12} />
@@ -925,12 +1019,10 @@ export default function DatasetProfilePage() {
                 </SafeResponsiveChart>
             </Panel>
 
-            <Panel className="p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div className="font-semibold">页数分布</div>
-              </div>
+            <Panel className={profilePanelClass}>
+              <ProfileCardHeader title="页数分布" caption="PDF / Office 页数画像" />
               {pageCountHistogramData.length ? (
-                <SafeResponsiveChart>
+                <SafeResponsiveChart {...profileChartProps}>
                     <BarChart data={pageCountHistogramData}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" fontSize={12} />
@@ -940,16 +1032,14 @@ export default function DatasetProfilePage() {
                     </BarChart>
                   </SafeResponsiveChart>
               ) : (
-                <div className="h-[280px] flex items-center justify-center text-muted-foreground">暂无数据</div>
+                <div className={profileEmptyChartClass}>暂无数据</div>
               )}
             </Panel>
 
-            <Panel className="p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div className="font-semibold">Chunk 数分布（每文档）</div>
-              </div>
+            <Panel className={profilePanelClass}>
+              <ProfileCardHeader title="切片数量分布" caption="每个文档生成的切片数量" />
               {chunkCountHistogramData.length ? (
-                <SafeResponsiveChart>
+                <SafeResponsiveChart {...profileChartProps}>
                     <BarChart data={chunkCountHistogramData}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" fontSize={12} />
@@ -959,16 +1049,14 @@ export default function DatasetProfilePage() {
                     </BarChart>
                   </SafeResponsiveChart>
               ) : (
-                <div className="h-[280px] flex items-center justify-center text-muted-foreground">暂无数据</div>
+                <div className={profileEmptyChartClass}>暂无数据</div>
               )}
             </Panel>
 
-            <Panel className="p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div className="font-semibold">平均 Chunk 长度（chars/chunk）</div>
-              </div>
+            <Panel className={profilePanelClass}>
+              <ProfileCardHeader title="平均切片长度" caption="按文档聚合的平均切片长度" />
               {avgChunkCharsHistogramData.length ? (
-                <SafeResponsiveChart>
+                <SafeResponsiveChart {...profileChartProps}>
                     <BarChart data={avgChunkCharsHistogramData}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" fontSize={12} />
@@ -978,16 +1066,14 @@ export default function DatasetProfilePage() {
                     </BarChart>
                   </SafeResponsiveChart>
               ) : (
-                <div className="h-[280px] flex items-center justify-center text-muted-foreground">暂无数据</div>
+                <div className={profileEmptyChartClass}>暂无数据</div>
               )}
             </Panel>
 
-            <Panel className="p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div className="font-semibold">Chunk 长度分布（chunk-level）</div>
-              </div>
+            <Panel className={profilePanelClass}>
+              <ProfileCardHeader title="切片长度分布" caption="按切片粒度统计字符长度" />
               {chunkLengthHistogramData.length ? (
-                <SafeResponsiveChart>
+                <SafeResponsiveChart {...profileChartProps}>
                     <BarChart data={chunkLengthHistogramData}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" fontSize={12} />
@@ -997,62 +1083,84 @@ export default function DatasetProfilePage() {
                     </BarChart>
                   </SafeResponsiveChart>
               ) : (
-                <div className="h-[280px] flex items-center justify-center text-muted-foreground">暂无数据</div>
+                <div className={profileEmptyChartClass}>暂无数据</div>
               )}
             </Panel>
 
-            <Panel className="p-5 lg:col-span-2">
-              <div className="flex items-center justify-between gap-4 mb-4">
-                <div className="font-semibold">Chunk Targets（分布目标检查）</div>
-                <div className="text-xs text-muted-foreground">
-                  objective checks · suggestions
+            <Panel className={cn(profilePanelClass, 'lg:col-span-2 p-3')}>
+              <div className="mb-3 flex items-start justify-between gap-4">
+                <div>
+                  <div className={profileSectionTitleClass}>切块目标检查</div>
+                  <div className={profileSectionCaptionClass}>
+                    检查 token 分布、正文覆盖和重叠成本；缺统计只提示补采集，不代表入库失败。
+                  </div>
                 </div>
+                <Badge variant="outline" className="shrink-0 border-slate-200 bg-white/70 px-2 py-0.5 text-[10px] font-mono text-slate-500">
+                  可选门禁
+                </Badge>
               </div>
 
               {chunkTargets.length ? (
-                <div className="space-y-3">
+                <div className="grid gap-2 md:grid-cols-3">
                   {chunkTargets.map((t, idx) => (
                     <div
                       key={String(t.key || t.label || idx)}
-                      className="rounded-xl border border-border/60 bg-card/40 p-4"
+                      className={cn(
+                        'relative overflow-hidden rounded-xl border bg-white/60 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] dark:bg-muted/20',
+                        String(t.status || '').toLowerCase() === 'fail'
+                          ? 'border-rose-200/80'
+                          : String(t.status || '').toLowerCase() === 'warn'
+                            ? 'border-amber-200/80'
+                            : 'border-slate-200/75 dark:border-border/60',
+                      )}
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="font-medium truncate">{String(t.label || t.key || '')}</div>
-                          {t.message ? (
-                            <div className="mt-1 text-sm text-muted-foreground text-pretty">
-                              {String(t.message)}
-                            </div>
-                          ) : null}
+                      <div
+                        className={cn(
+                          'absolute inset-y-2 left-0 w-1 rounded-r-full',
+                          String(t.status || '').toLowerCase() === 'fail'
+                            ? 'bg-rose-400'
+                            : String(t.status || '').toLowerCase() === 'warn'
+                              ? 'bg-amber-400'
+                              : 'bg-sky-300',
+                        )}
+                      />
+                      <div className="min-w-0">
+                        <div className="flex min-w-0 items-center gap-1.5 pl-2">
+                          <div className="truncate text-[12px] font-semibold text-foreground/85">{formatChunkTargetLabel(t.label || t.key)}</div>
+                          <Badge variant={targetBadgeVariant(String(t.status || ''))} className="h-5 shrink-0 px-1.5 text-[10px] font-mono uppercase">
+                            {String(t.status || '')}
+                          </Badge>
                         </div>
-                        <Badge variant={targetBadgeVariant(String(t.status || ''))} className="font-mono text-xs">
-                          {String(t.status || '')}
-                        </Badge>
+                        {t.message ? (
+                          <div className="mt-1 line-clamp-2 pl-2 text-[11px] leading-4 text-muted-foreground/65 text-pretty">
+                            {String(t.message)}
+                          </div>
+                        ) : null}
                       </div>
 
                       {t.suggestions.length ? (
-                        <ul className="mt-2 pl-5 list-disc text-sm text-muted-foreground">
-                          {t.suggestions.slice(0, 6).map((s) => (
-                            <li key={String(s)} className="text-pretty">
-                              {String(s)}
-                            </li>
-                          ))}
-                        </ul>
+                        <div className="mt-2 rounded-lg bg-slate-50/80 px-2.5 py-1.5 text-[11px] leading-4 text-muted-foreground/70 dark:bg-muted/30">
+                          {String(t.suggestions[0])}
+                          {t.suggestions.length > 1 ? (
+                            <span className="ml-1 text-muted-foreground/45">+{t.suggestions.length - 1}</span>
+                          ) : null}
+                        </div>
                       ) : null}
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="py-10 text-center text-muted-foreground">
+                <div className="py-8 text-center text-[11px] text-muted-foreground/60">
                   暂无数据（可运行深度扫描补齐 chunk token/coverage 等指标）
                 </div>
               )}
             </Panel>
 
-            <Panel className="p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div className="font-semibold">解析质量分布</div>
-                {parseLowQualityFinding ? (
+            <Panel className={profilePanelClass}>
+              <ProfileCardHeader
+                title="解析质量分布"
+                caption="解析文本质量评分区间"
+                action={parseLowQualityFinding ? (
                   <Button
                     variant="outline"
                     className="h-8 px-2 gap-1 text-xs"
@@ -1062,9 +1170,9 @@ export default function DatasetProfilePage() {
                     低质量
                   </Button>
                 ) : null}
-              </div>
+              />
               {parseQualityHistogramData.length ? (
-                <SafeResponsiveChart>
+                <SafeResponsiveChart {...profileChartProps}>
                     <BarChart data={parseQualityHistogramData}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" fontSize={12} />
@@ -1074,17 +1182,15 @@ export default function DatasetProfilePage() {
                     </BarChart>
                   </SafeResponsiveChart>
               ) : (
-                <div className="h-[280px] flex items-center justify-center text-muted-foreground">暂无数据</div>
+                <div className={profileEmptyChartClass}>暂无数据</div>
               )}
             </Panel>
 
-            <Panel className="p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div className="font-semibold">Parsing provenance / 路由</div>
-              </div>
+            <Panel className={profilePanelClass}>
+              <ProfileCardHeader title="解析路由" caption="解析后端、耗时和后备路径概览" />
 
               {parsingBackendChartData.length ? (
-                <SafeResponsiveChart className="h-[220px]" minHeight={220}>
+                <SafeResponsiveChart {...profileChartProps}>
                     <BarChart data={parsingBackendChartData}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" fontSize={12} />
@@ -1094,79 +1200,74 @@ export default function DatasetProfilePage() {
                     </BarChart>
                   </SafeResponsiveChart>
               ) : (
-                <div className="h-[220px] flex items-center justify-center text-muted-foreground">暂无数据</div>
+                <div className={profileEmptyChartClass}>暂无数据</div>
               )}
 
-              <div className="mt-4 grid grid-cols-2 gap-3">
-                <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
-                  <div className="text-xs text-muted-foreground">docs_with_provenance</div>
-                  <div className="mt-1 font-mono font-semibold tabular-nums">
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <div className="rounded-lg border border-border/50 bg-muted/20 p-2">
+                  <div className="text-[10px] text-muted-foreground">覆盖文档</div>
+                  <div className="mt-0.5 font-mono text-xs font-semibold tabular-nums">
                     {Number(summary?.parsing_provenance?.docs_with_provenance || 0)}
                   </div>
                 </div>
-                <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
-                  <div className="text-xs text-muted-foreground">fallback_docs</div>
-                  <div className="mt-1 font-mono font-semibold tabular-nums">
+                <div className="rounded-lg border border-border/50 bg-muted/20 p-2">
+                  <div className="text-[10px] text-muted-foreground">后备解析</div>
+                  <div className="mt-0.5 font-mono text-xs font-semibold tabular-nums">
                     {Number(summary?.parsing_provenance?.fallback_docs || 0)}
                   </div>
                 </div>
-                <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
-                  <div className="text-xs text-muted-foreground">p50_elapsed_ms</div>
-                  <div className="mt-1 font-mono font-semibold tabular-nums">
+                <div className="rounded-lg border border-border/50 bg-muted/20 p-2">
+                  <div className="text-[10px] text-muted-foreground">P50 耗时 ms</div>
+                  <div className="mt-0.5 font-mono text-xs font-semibold tabular-nums">
                     {Number(summary?.parsing_provenance?.elapsed_ms_percentiles?.p50 || 0)}
                   </div>
                 </div>
-                <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
-                  <div className="text-xs text-muted-foreground">p90_elapsed_ms</div>
-                  <div className="mt-1 font-mono font-semibold tabular-nums">
+                <div className="rounded-lg border border-border/50 bg-muted/20 p-2">
+                  <div className="text-[10px] text-muted-foreground">P90 耗时 ms</div>
+                  <div className="mt-0.5 font-mono text-xs font-semibold tabular-nums">
                     {Number(summary?.parsing_provenance?.elapsed_ms_percentiles?.p90 || 0)}
                   </div>
                 </div>
-                <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
-                  <div className="text-xs text-muted-foreground">平均解析分</div>
-                  <div className="mt-1 font-mono font-semibold tabular-nums">
+                <div className="rounded-lg border border-border/50 bg-muted/20 p-2">
+                  <div className="text-[10px] text-muted-foreground">平均解析分</div>
+                  <div className="mt-0.5 font-mono text-xs font-semibold tabular-nums">
                     {averageParseQuality == null ? '-' : averageParseQuality.toFixed(3)}
                   </div>
                 </div>
-                <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
-                  <div className="text-xs text-muted-foreground">fallback_rate</div>
-                  <div className="mt-1 font-mono font-semibold tabular-nums">
+                <div className="rounded-lg border border-border/50 bg-muted/20 p-2">
+                  <div className="text-[10px] text-muted-foreground">后备率</div>
+                  <div className="mt-0.5 font-mono text-xs font-semibold tabular-nums">
                     {fallbackRate == null ? '-' : `${(fallbackRate * 100).toFixed(1)}%`}
                   </div>
                 </div>
               </div>
             </Panel>
 
-            <Panel className="p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div className="font-semibold">语言分布</div>
-              </div>
+            <Panel className={profilePanelClass}>
+              <ProfileCardHeader title="语言分布" caption="中文、英文、混合和未知语言占比" />
               {languageMixChartData.length ? (
-                <SafeResponsiveChart>
+                <SafeResponsiveChart {...profileChartProps}>
                     <PieChart>
                       <Tooltip />
                       <Pie
                         data={languageMixChartData}
                         dataKey="value"
                         nameKey="name"
-                        innerRadius={55}
-                        outerRadius={95}
+                        innerRadius={42}
+                        outerRadius={72}
                         paddingAngle={2}
                       />
                     </PieChart>
                   </SafeResponsiveChart>
               ) : (
-                <div className="h-[280px] flex items-center justify-center text-muted-foreground">暂无数据</div>
+                <div className={profileEmptyChartClass}>暂无数据</div>
               )}
             </Panel>
 
-            <Panel className="p-5">
-              <div className="flex items-center justify-between gap-3 mb-4">
-                <div className="font-semibold">目录分布（Top-level）</div>
-                <div className="text-xs text-muted-foreground">click bar → drilldown</div>
-              </div>
+            <Panel className={profilePanelClass}>
+              <ProfileCardHeader title="目录分布" caption="点击柱子查看对应文件" />
               {directoryChartData.length ? (
-                <SafeResponsiveChart>
+                <SafeResponsiveChart {...profileChartProps}>
                     <BarChart data={directoryChartData}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" fontSize={12} interval={0} />
@@ -1185,17 +1286,14 @@ export default function DatasetProfilePage() {
                     </BarChart>
                   </SafeResponsiveChart>
               ) : (
-                <div className="h-[280px] flex items-center justify-center text-muted-foreground">暂无数据</div>
+                <div className={profileEmptyChartClass}>暂无数据</div>
               )}
             </Panel>
 
-            <Panel className="p-5">
-              <div className="flex items-center justify-between gap-3 mb-4">
-                <div className="font-semibold">质量桶分布</div>
-                <div className="text-xs text-muted-foreground">click bar → drilldown</div>
-              </div>
+            <Panel className={profilePanelClass}>
+              <ProfileCardHeader title="质量桶分布" caption="点击柱子查看对应文件" />
               {qualityBucketChartData.length ? (
-                <SafeResponsiveChart>
+                <SafeResponsiveChart {...profileChartProps}>
                     <BarChart data={qualityBucketChartData}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" fontSize={12} interval={0} />
@@ -1211,16 +1309,14 @@ export default function DatasetProfilePage() {
                     </BarChart>
                   </SafeResponsiveChart>
               ) : (
-                <div className="h-[280px] flex items-center justify-center text-muted-foreground">暂无数据</div>
+                <div className={profileEmptyChartClass}>暂无数据</div>
               )}
             </Panel>
 
-            <Panel className="p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div className="font-semibold">PII 命中（次数）</div>
-              </div>
+            <Panel className={profilePanelClass}>
+              <ProfileCardHeader title="PII 命中" caption="手机号、邮箱、身份证等敏感信息次数" />
               {piiChartData.length ? (
-                <SafeResponsiveChart>
+                <SafeResponsiveChart {...profileChartProps}>
                     <BarChart data={piiChartData}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" fontSize={12} />
@@ -1230,16 +1326,14 @@ export default function DatasetProfilePage() {
                     </BarChart>
                   </SafeResponsiveChart>
               ) : (
-                <div className="h-[280px] flex items-center justify-center text-muted-foreground">暂无数据</div>
+                <div className={profileEmptyChartClass}>暂无数据</div>
               )}
             </Panel>
 
-            <Panel className="p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div className="font-semibold">Secrets/Token 命中（次数）</div>
-              </div>
+            <Panel className={profilePanelClass}>
+              <ProfileCardHeader title="密钥 / Token 命中" caption="疑似密钥、Token 和凭证命中次数" />
               {secretsChartData.length ? (
-                <SafeResponsiveChart>
+                <SafeResponsiveChart {...profileChartProps}>
                     <BarChart data={secretsChartData}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" fontSize={12} />
@@ -1249,100 +1343,157 @@ export default function DatasetProfilePage() {
                     </BarChart>
                   </SafeResponsiveChart>
               ) : (
-                <div className="h-[280px] flex items-center justify-center text-muted-foreground">暂无数据</div>
+                <div className={profileEmptyChartClass}>暂无数据</div>
               )}
             </Panel>
           </div>
 
           <div id="prof-findings">
-          <Panel className="p-5">
-            <div className="flex items-center justify-between gap-4 mb-4">
-              <div className="font-semibold">问题清单（可操作）</div>
-              <div className="text-xs text-muted-foreground">
-                点击卡片查看文件列表（分页）
+          <Panel className={cn(profilePanelClass, 'p-3')}>
+            <div className="mb-3 flex items-start justify-between gap-4">
+              <div>
+                <div className={profileSectionTitleClass}>问题清单</div>
+                <div className={profileSectionCaptionClass}>
+                  只突出有命中的可操作项；点击问题行查看文件列表。
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge variant={totalFindingCount > 0 ? 'soft' : 'outline'} className="h-5 px-1.5 text-[10px] font-mono">
+                  命中 {totalFindingCount}
+                </Badge>
+                <Badge variant="outline" className="h-5 px-1.5 text-[10px] font-mono text-muted-foreground">
+                  已检查 {clearFindings.length}
+                </Badge>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {(summary?.findings || []).map((f) => (
-                <button
-                  key={f.key}
-                  type="button"
-                  className={cn(
-                    'text-left px-4 py-3 rounded-xl border border-border/60 bg-card/40 hover:bg-card/70 transition-colors',
-                    'focus:outline-none focus:ring-2 focus:ring-primary/30'
-                  )}
-                  onClick={() => detachPromise(openFinding(f))}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="font-medium truncate">{f.label}</div>
-                    <Badge variant={findingBadgeVariant(f.severity)} className="font-mono text-xs">
-                      {f.count}
-                    </Badge>
-                  </div>
-                  {f.description ? (
-                    <div className="mt-1 text-xs text-muted-foreground line-clamp-2">{f.description}</div>
+            {activeFindings.length ? (
+              <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                {activeFindings.map((f) => (
+                  <button
+                    key={f.key}
+                    type="button"
+                    className={cn(
+                      'relative overflow-hidden rounded-xl border bg-white/60 px-2.5 py-2 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] transition-colors hover:bg-white/90 dark:bg-muted/20 md:grid-cols-[minmax(0,1fr)_auto]',
+                      String(f.severity || '').toLowerCase() === 'error'
+                        ? 'border-rose-200/80'
+                        : String(f.severity || '').toLowerCase() === 'warning'
+                          ? 'border-amber-200/80'
+                          : 'border-slate-200/75 dark:border-border/60',
+                      'focus:outline-none focus:ring-2 focus:ring-primary/30'
+                    )}
+                    onClick={() => detachPromise(openFinding(f))}
+                  >
+                    <div
+                      className={cn(
+                        'absolute inset-y-2 left-0 w-1 rounded-r-full',
+                        String(f.severity || '').toLowerCase() === 'error'
+                          ? 'bg-rose-400'
+                          : String(f.severity || '').toLowerCase() === 'warning'
+                            ? 'bg-amber-400'
+                            : 'bg-sky-300',
+                      )}
+                    />
+                    <div className="min-w-0">
+                      <div className="flex min-w-0 items-center gap-1.5 pl-2">
+                        <div className="truncate text-[12px] font-semibold text-foreground/85">{f.label}</div>
+                        <Badge variant={findingBadgeVariant(f.severity)} className="h-5 shrink-0 px-1.5 text-[10px] font-mono">
+                          ×{f.count}
+                        </Badge>
+                      </div>
+                      {f.description ? (
+                        <div className="mt-1 line-clamp-2 pl-2 text-[11px] leading-4 text-muted-foreground/65">{f.description}</div>
+                      ) : null}
+                    </div>
+                    <div className="mt-2 pl-2 text-[11px] font-medium text-sky-600">查看文件</div>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-emerald-100 bg-emerald-50/45 px-2 py-1.5 text-[11px] leading-4 text-emerald-700">
+                当前没有命中的可操作问题，下面仅保留已检查项摘要。
+              </div>
+            )}
+
+            {clearFindings.length ? (
+              <div className="mt-3 rounded-xl border border-border/40 bg-slate-50/60 px-2 py-1.5 dark:bg-muted/20">
+                <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/55">
+                  已检查未命中
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {clearFindings.slice(0, 10).map((f) => (
+                    <span
+                      key={f.key}
+                      className="rounded-full border border-border/45 bg-white/60 px-2 py-0.5 text-[10px] leading-4 text-muted-foreground/65 dark:bg-card/50"
+                    >
+                      {f.label}
+                    </span>
+                  ))}
+                  {clearFindings.length > 10 ? (
+                    <span className="rounded-full px-2 py-0.5 text-[10px] leading-4 text-muted-foreground/45">
+                      +{clearFindings.length - 10}
+                    </span>
                   ) : null}
-                </button>
-              ))}
-            </div>
+                  </div>
+              </div>
+            ) : null}
           </Panel>
           </div>
 
           <div id="prof-scan">
-          <Panel className="p-5">
+          <Panel className={cn(profilePanelClass, 'p-3')}>
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div className="font-semibold flex items-center gap-2">
-                  深度扫描（补齐指标）
+                <div className="flex items-center gap-2 text-[13px] font-semibold text-foreground/85">
+                  深度扫描
                   {latestRunStatus ? (
-                    <Badge variant="outline" className="font-mono text-xs">
+                    <Badge variant="outline" className="h-5 px-1.5 text-[10px] font-mono">
                       {String(latestRunStatus)}
                     </Badge>
                   ) : null}
                 </div>
-                <div className="text-sm text-muted-foreground mt-1">
-                  用于补齐缺失的 pdf_quality / parsed_text_quality / chunking_stats；可选计算 file_sha256（用于完全重复）。
+                <div className={profileSectionCaptionClass}>
+                  补齐 PDF、文本、切片和哈希指标，供画像、问题清单和对比使用。
                 </div>
               </div>
 
-              <Button className="gap-2" onClick={() => detachPromise(startDeepScan())} disabled={scanRunning}>
+              <Button size="sm" className="gap-2" onClick={() => detachPromise(startDeepScan())} disabled={scanRunning}>
                 {scanRunning ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Sparkles className="w-4 h-4" />}
                 启动
               </Button>
             </div>
 
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border/60 bg-muted/20">
-                <Label className="text-sm">补齐 PDF 指标</Label>
+            <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-5">
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-white/55 px-2.5 py-2 dark:bg-card/40">
+                <Label className="text-xs text-foreground/80">PDF 指标</Label>
                 <Switch
                   checked={!!scanConfig.backfill_pdf_quality}
                   onCheckedChange={(v) => setScanConfig((prev) => ({ ...prev, backfill_pdf_quality: !!v }))}
                 />
               </div>
-              <div className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border/60 bg-muted/20">
-                <Label className="text-sm">补齐文本质量</Label>
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-white/55 px-2.5 py-2 dark:bg-card/40">
+                <Label className="text-xs text-foreground/80">文本质量</Label>
                 <Switch
                   checked={!!scanConfig.backfill_text_quality}
                   onCheckedChange={(v) => setScanConfig((prev) => ({ ...prev, backfill_text_quality: !!v }))}
                 />
               </div>
-              <div className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border/60 bg-muted/20">
-                <Label className="text-sm">补齐 Chunk 分布</Label>
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-white/55 px-2.5 py-2 dark:bg-card/40">
+                <Label className="text-xs text-foreground/80">切片分布</Label>
                 <Switch
                   checked={!!scanConfig.backfill_chunk_stats}
                   onCheckedChange={(v) => setScanConfig((prev) => ({ ...prev, backfill_chunk_stats: !!v }))}
                 />
               </div>
-              <div className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border/60 bg-muted/20">
-                <Label className="text-sm">计算 file_sha256</Label>
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-white/55 px-2.5 py-2 dark:bg-card/40">
+                <Label className="text-xs text-foreground/80">文件哈希</Label>
                 <Switch
                   checked={!!scanConfig.compute_file_hash}
                   onCheckedChange={(v) => setScanConfig((prev) => ({ ...prev, compute_file_hash: !!v }))}
                 />
               </div>
-              <div className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border/60 bg-muted/20">
-                <Label className="text-sm">最大文档数</Label>
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-white/55 px-2.5 py-2 dark:bg-card/40">
+                <Label className="text-xs text-foreground/80">最大文档数</Label>
                 <Input
                   value={scanConfig.max_documents ?? ''}
                   placeholder="不限"
@@ -1355,13 +1506,13 @@ export default function DatasetProfilePage() {
                     const n = Number(raw)
                     setScanConfig((prev) => ({ ...prev, max_documents: Number.isFinite(n) ? Math.max(0, Math.floor(n)) : null }))
                   }}
-                  className="w-28 font-mono text-sm"
+                  className="h-7 w-20 font-mono text-xs"
                 />
               </div>
             </div>
 
-            <div className="mt-4 flex items-center justify-between gap-4">
-              <div className="text-sm text-muted-foreground">
+            <div className="mt-2 flex items-center justify-between gap-4 rounded-lg bg-slate-50/70 px-2.5 py-1.5 dark:bg-muted/20">
+              <div className="text-[11px] text-muted-foreground/65">
                 进度：{(() => {
     if (scanRunning) {
         return `${latestRunProgress || 0}%`;
@@ -1380,134 +1531,152 @@ export default function DatasetProfilePage() {
           </div>
 
           <div id="prof-history">
-          <Panel className="p-5">
-            <div className="flex items-start justify-between gap-4 mb-4">
+          <Panel className={cn(profilePanelClass, 'p-3')}>
+            <div className="mb-3">
               <div>
-                <div className="font-semibold">扫描历史 / 对比</div>
-                <div className="text-sm text-muted-foreground mt-1">
-                  深度扫描会把“缺失指标”补齐，并保存一次 summary 快照；可用于回溯与对比。
+                <div className={profileSectionTitleClass}>扫描历史 / 对比</div>
+                <div className={profileSectionCaptionClass}>
+                  保存深度扫描 summary 快照，用于回溯指标变化。
                 </div>
               </div>
-              <Button variant="outline" className="gap-2" onClick={() => detachPromise(refreshProfileOverview())} disabled={isLoading}>
-                <RefreshCw className={cn('w-4 h-4', isLoading && 'animate-spin motion-reduce:animate-none')} />
-                刷新
-              </Button>
             </div>
 
             {scanRuns.length ? (
               <div className="rounded-xl border border-border/60 overflow-hidden">
-                <table aria-label="数据集画像扫描运行记录" className="w-full text-sm text-left">
+                <table aria-label="数据集画像扫描运行记录" className="w-full text-left text-xs">
                   <thead className="bg-muted/40 text-muted-foreground">
                     <tr>
-                      <th className="px-3 py-2 font-medium">时间</th>
-                      <th className="px-3 py-2 font-medium">状态</th>
-                      <th className="px-3 py-2 font-medium">进度</th>
-                      <th className="px-3 py-2 font-medium">配置</th>
-                      <th className="px-3 py-2 font-medium">错误</th>
+                      <th className="px-2 py-1.5 font-medium">时间</th>
+                      <th className="px-2 py-1.5 font-medium">状态</th>
+                      <th className="px-2 py-1.5 font-medium">进度</th>
+                      <th className="px-2 py-1.5 font-medium">配置</th>
+                      <th className="px-2 py-1.5 font-medium">错误</th>
                     </tr>
                   </thead>
                   <tbody>
                     {scanRuns.map((r) => (
                       <tr key={r.id} className="border-t border-border/60">
-                        <td className="px-3 py-2 font-mono text-xs">{r.created_at ? formatDate(r.created_at) : '-'}</td>
-                        <td className="px-3 py-2">
+                        <td className="px-2 py-1.5 font-mono text-xs">{r.created_at ? formatDate(r.created_at) : '-'}</td>
+                        <td className="px-2 py-1.5">
                           <Badge variant="outline" className="font-mono text-xs">
                             {String(r.status || '')}
                           </Badge>
                         </td>
-                        <td className="px-3 py-2 font-mono text-xs">{typeof r.progress === 'number' ? `${r.progress}%` : '-'}</td>
-                        <td className="px-3 py-2 font-mono text-xs text-muted-foreground">
-                          pdf:{r.config?.backfill_pdf_quality === false ? '0' : '1'} · text:{r.config?.backfill_text_quality === false ? '0' : '1'} · chunk:{r.config?.backfill_chunk_stats === false ? '0' : '1'} · sha:{r.config?.compute_file_hash ? '1' : '0'}
+                        <td className="px-2 py-1.5 font-mono text-xs">{typeof r.progress === 'number' ? `${r.progress}%` : '-'}</td>
+                        <td className="px-2 py-1.5 font-mono text-xs text-muted-foreground">
+                          PDF:{r.config?.backfill_pdf_quality === false ? '0' : '1'} · 文本:{r.config?.backfill_text_quality === false ? '0' : '1'} · 切片:{r.config?.backfill_chunk_stats === false ? '0' : '1'} · 哈希:{r.config?.compute_file_hash ? '1' : '0'}
                         </td>
-                        <td className="px-3 py-2 text-xs text-destructive">{r.error_message || ''}</td>
+                        <td className="px-2 py-1.5 text-xs text-destructive">{r.error_message || ''}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             ) : (
-              <div className="py-8 text-center text-muted-foreground">暂无扫描记录</div>
+              <div className="rounded-xl border border-border/45 bg-slate-50/60 px-2 py-1.5 text-[11px] text-muted-foreground/60 dark:bg-muted/20">
+                暂无扫描记录。启动一次深度扫描后，这里会显示快照和可对比版本。
+              </div>
             )}
 
-            <div className="mt-5 grid grid-cols-1 lg:grid-cols-3 gap-4">
-              <div className="lg:col-span-2 rounded-xl border border-border/60 bg-card/40 p-4">
-                <div className="font-medium mb-3">对比两次 completed 扫描快照</div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label className="text-sm">Run A</Label>
-                    <Select value={compareA} onValueChange={setCompareA}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="选择 run" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {completedRuns.map((r) => (
-                          <SelectItem key={r.id} value={r.id}>
-                            {r.created_at ? formatDate(r.created_at) : r.id.slice(0, 8)} · {r.id.slice(0, 8)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-sm">Run B</Label>
-                    <Select value={compareB} onValueChange={setCompareB}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="选择 run" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {completedRuns.map((r) => (
-                          <SelectItem key={r.id} value={r.id}>
-                            {r.created_at ? formatDate(r.created_at) : r.id.slice(0, 8)} · {r.id.slice(0, 8)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+            <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
+              <div className="rounded-xl border border-border/50 bg-white/45 p-3 dark:bg-card/40">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="text-[13px] font-semibold text-foreground/85">快照对比</div>
+                  <Badge variant="outline" className="h-5 px-1.5 text-[10px] font-mono text-muted-foreground">
+                    已完成 {completedRuns.length}
+                  </Badge>
                 </div>
 
-                {compareDelta ? (
-                  <div className="mt-4 grid grid-cols-2 lg:grid-cols-3 gap-3">
-                    <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
-                      <div className="text-xs text-muted-foreground">文档数 Δ（B-A）</div>
-                      <div className="font-mono font-semibold text-sm mt-1">{compareDelta.docs >= 0 ? `+${compareDelta.docs}` : String(compareDelta.docs)}</div>
-                    </div>
-                    <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
-                      <div className="text-xs text-muted-foreground">总大小 Δ（B-A）</div>
-                      <div className="font-mono font-semibold text-sm mt-1">
-                        {compareDelta.bytes >= 0 ? '+' : '-'}
-                        {formatFileSize(Math.abs(compareDelta.bytes))}
+                {completedRuns.length >= 2 ? (
+                  <>
+                    <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <Label className="text-[11px] text-muted-foreground">基准快照</Label>
+                        <Select value={compareA} onValueChange={setCompareA}>
+                          <SelectTrigger className="h-8 bg-white/70 text-xs dark:bg-card/60">
+                            <SelectValue placeholder="选择 run" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {completedRuns.map((r) => (
+                              <SelectItem key={r.id} value={r.id} className="text-xs">
+                                {r.created_at ? formatDate(r.created_at) : r.id.slice(0, 8)} · {r.id.slice(0, 8)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-[11px] text-muted-foreground">对比快照</Label>
+                        <Select value={compareB} onValueChange={setCompareB}>
+                          <SelectTrigger className="h-8 bg-white/70 text-xs dark:bg-card/60">
+                            <SelectValue placeholder="选择 run" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {completedRuns.map((r) => (
+                              <SelectItem key={r.id} value={r.id} className="text-xs">
+                                {r.created_at ? formatDate(r.created_at) : r.id.slice(0, 8)} · {r.id.slice(0, 8)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
-                    <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
-                      <div className="text-xs text-muted-foreground">P90 长度 Δ（B-A）</div>
-                      <div className="font-mono font-semibold text-sm mt-1">{compareDelta.p90 >= 0 ? `+${compareDelta.p90}` : String(compareDelta.p90)}</div>
-                    </div>
-                    <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
-                      <div className="text-xs text-muted-foreground">扫描 PDF Δ（B-A）</div>
-                      <div className="font-mono font-semibold text-sm mt-1">{compareDelta.scanned >= 0 ? `+${compareDelta.scanned}` : String(compareDelta.scanned)}</div>
-                    </div>
-                    <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
-                      <div className="text-xs text-muted-foreground">PII 命中 Δ（B-A）</div>
-                      <div className="font-mono font-semibold text-sm mt-1">{compareDelta.pii >= 0 ? `+${compareDelta.pii}` : String(compareDelta.pii)}</div>
-                    </div>
-                    <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
-                      <div className="text-xs text-muted-foreground">Secrets 命中 Δ（B-A）</div>
-                      <div className="font-mono font-semibold text-sm mt-1">{compareDelta.secrets >= 0 ? `+${compareDelta.secrets}` : String(compareDelta.secrets)}</div>
+
+                    {compareDelta ? (
+                      <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-3">
+                        <div className="rounded-lg border border-border/45 bg-slate-50/70 p-2 dark:bg-muted/20">
+                          <div className="text-[10px] text-muted-foreground">文档数 Δ</div>
+                          <div className="mt-0.5 font-mono text-xs font-semibold">{compareDelta.docs >= 0 ? `+${compareDelta.docs}` : String(compareDelta.docs)}</div>
+                        </div>
+                        <div className="rounded-lg border border-border/45 bg-slate-50/70 p-2 dark:bg-muted/20">
+                          <div className="text-[10px] text-muted-foreground">总大小 Δ</div>
+                          <div className="mt-0.5 font-mono text-xs font-semibold">
+                            {compareDelta.bytes >= 0 ? '+' : '-'}
+                            {formatFileSize(Math.abs(compareDelta.bytes))}
+                          </div>
+                        </div>
+                        <div className="rounded-lg border border-border/45 bg-slate-50/70 p-2 dark:bg-muted/20">
+                          <div className="text-[10px] text-muted-foreground">P90 长度 Δ</div>
+                          <div className="mt-0.5 font-mono text-xs font-semibold">{compareDelta.p90 >= 0 ? `+${compareDelta.p90}` : String(compareDelta.p90)}</div>
+                        </div>
+                        <div className="rounded-lg border border-border/45 bg-slate-50/70 p-2 dark:bg-muted/20">
+                          <div className="text-[10px] text-muted-foreground">扫描 PDF Δ</div>
+                          <div className="mt-0.5 font-mono text-xs font-semibold">{compareDelta.scanned >= 0 ? `+${compareDelta.scanned}` : String(compareDelta.scanned)}</div>
+                        </div>
+                        <div className="rounded-lg border border-border/45 bg-slate-50/70 p-2 dark:bg-muted/20">
+                          <div className="text-[10px] text-muted-foreground">PII 命中 Δ</div>
+                          <div className="mt-0.5 font-mono text-xs font-semibold">{compareDelta.pii >= 0 ? `+${compareDelta.pii}` : String(compareDelta.pii)}</div>
+                        </div>
+                        <div className="rounded-lg border border-border/45 bg-slate-50/70 p-2 dark:bg-muted/20">
+                          <div className="text-[10px] text-muted-foreground">Secrets 命中 Δ</div>
+                          <div className="mt-0.5 font-mono text-xs font-semibold">{compareDelta.secrets >= 0 ? `+${compareDelta.secrets}` : String(compareDelta.secrets)}</div>
+                        </div>
+                      </div>
+                    ) : (
+                    <div className="mt-3 rounded-lg bg-slate-50/70 px-2.5 py-1.5 text-[11px] text-muted-foreground/60 dark:bg-muted/20">
+                        请选择两个已完成扫描记录。
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="rounded-lg border border-dashed border-border/55 bg-slate-50/55 px-3 py-2 text-[11px] leading-4 text-muted-foreground/65 dark:bg-muted/20">
+                    <div className="font-medium text-foreground/75">暂无可对比快照</div>
+                    <div className="mt-0.5">
+                      至少需要 2 次已完成深度扫描；当前 {completedRuns.length} 次。完成后这里会出现基准/对比快照下拉。
                     </div>
                   </div>
-                ) : (
-                  <div className="mt-4 text-sm text-muted-foreground">请选择两个 completed 的扫描记录</div>
                 )}
               </div>
 
-              <div className="rounded-xl border border-border/60 bg-card/40 p-4">
-                <div className="font-medium mb-2">导出离线报告</div>
-                <div className="text-sm text-muted-foreground">
-                  用于售前/分享：单文件 HTML（默认脱敏）。
+              <div className="rounded-xl border border-border/50 bg-white/45 p-3 dark:bg-card/40">
+                <div className="text-[13px] font-semibold text-foreground/85">离线报告</div>
+                <div className="text-[11px] leading-4 text-muted-foreground/65">
+                  导出单文件 HTML，默认脱敏，适合离线分享。
                 </div>
-                <div className="mt-4 flex items-center gap-2">
+                <div className="mt-3 flex items-center gap-2">
                   <Button
                     variant="outline"
+                    size="sm"
                     className="gap-2"
                     onClick={() => detachPromise(exportHtml())}
                     disabled={!summary || isExportingHtml}
@@ -1524,6 +1693,7 @@ export default function DatasetProfilePage() {
             </div>
           </Panel>
           </div>
+        </div>
         </div>
 
         <Dialog open={findingOpen} onOpenChange={(open) => {
@@ -1577,22 +1747,22 @@ export default function DatasetProfilePage() {
                     showing {findingRes.items.length}/{findingRes.total}
                   </div>
                   <div className="rounded-xl border border-border/60 overflow-hidden">
-                    <table aria-label="数据集画像 PII 命中明细" className="w-full text-sm text-left">
+                    <table aria-label="数据集画像 PII 命中明细" className="w-full text-left text-xs">
                       <thead className="bg-muted/40 text-muted-foreground">
                         <tr>
-                          <th className="px-3 py-2 font-medium">文件名</th>
-                          <th className="px-3 py-2 font-medium">类型</th>
-                          <th className="px-3 py-2 font-medium">大小</th>
-                          <th className="px-3 py-2 font-medium">状态</th>
-                          <th className="px-3 py-2 font-medium">长度</th>
+                          <th className="px-2 py-1.5 font-medium">文件名</th>
+                          <th className="px-2 py-1.5 font-medium">类型</th>
+                          <th className="px-2 py-1.5 font-medium">大小</th>
+                          <th className="px-2 py-1.5 font-medium">状态</th>
+                          <th className="px-2 py-1.5 font-medium">长度</th>
                           {selectedFinding?.key === 'parse_low_quality' ? (
-                            <th className="px-3 py-2 font-medium text-right">操作</th>
+                            <th className="px-2 py-1.5 font-medium text-right">操作</th>
                           ) : null}
                         </tr>
                       </thead>
                       <tbody>
                         {findingRes.items.map((d) => (<tr key={d.id} className="border-t border-border/60 hover:bg-muted/20 transition-colors">
-                            <td className="px-3 py-2">
+                            <td className="px-2 py-1.5">
                               <DocumentDetailDialog document={{
                         id: d.id,
                         filename: d.filename,
@@ -1611,16 +1781,16 @@ export default function DatasetProfilePage() {
                                     {d.filename}
                                   </button>}/>
                             </td>
-                            <td className="px-3 py-2 font-mono text-xs">{d.file_type}</td>
-                            <td className="px-3 py-2 font-mono text-xs">{formatFileSize(d.file_size || 0)}</td>
-                            <td className="px-3 py-2">
+                            <td className="px-2 py-1.5 font-mono text-xs">{d.file_type}</td>
+                            <td className="px-2 py-1.5 font-mono text-xs">{formatFileSize(d.file_size || 0)}</td>
+                            <td className="px-2 py-1.5">
                               <Badge variant="outline" className="font-mono text-xs">
                                 {d.status}
                               </Badge>
                             </td>
-                            <td className="px-3 py-2 font-mono text-xs">{d.total_characters}</td>
+                            <td className="px-2 py-1.5 font-mono text-xs">{d.total_characters}</td>
                             {selectedFinding?.key === 'parse_low_quality' ? (
-                              <td className="px-3 py-2 text-right">
+                              <td className="px-2 py-1.5 text-right">
                                 <Button
                                   variant="outline"
                                   size="sm"
@@ -1654,7 +1824,7 @@ export default function DatasetProfilePage() {
                 </div>);
         }
         else {
-            return (<div className="py-10 text-center text-muted-foreground">
+            return (<div className="py-10 text-center text-[11px] text-muted-foreground/60">
                   暂无数据
                 </div>);
         }
@@ -1719,20 +1889,20 @@ export default function DatasetProfilePage() {
                     showing {bucketRes.items.length}/{bucketRes.total}
                   </div>
                   <div className="rounded-xl border border-border/60 overflow-hidden">
-                    <table aria-label="数据集画像 Secrets 命中明细" className="w-full text-sm text-left">
+                    <table aria-label="数据集画像 Secrets 命中明细" className="w-full text-left text-xs">
                       <thead className="bg-muted/40 text-muted-foreground">
                         <tr>
-                          <th className="px-3 py-2 font-medium">文件名</th>
-                          <th className="px-3 py-2 font-medium">类型</th>
-                          <th className="px-3 py-2 font-medium">大小</th>
-                          <th className="px-3 py-2 font-medium">状态</th>
-                          <th className="px-3 py-2 font-medium">长度</th>
-                          <th className="px-3 py-2 font-medium">样例（脱敏）</th>
+                          <th className="px-2 py-1.5 font-medium">文件名</th>
+                          <th className="px-2 py-1.5 font-medium">类型</th>
+                          <th className="px-2 py-1.5 font-medium">大小</th>
+                          <th className="px-2 py-1.5 font-medium">状态</th>
+                          <th className="px-2 py-1.5 font-medium">长度</th>
+                          <th className="px-2 py-1.5 font-medium">样例（脱敏）</th>
                         </tr>
                       </thead>
                       <tbody>
                         {bucketRes.items.map((d) => (<tr key={d.id} className="border-t border-border/60 hover:bg-muted/20 transition-colors">
-                            <td className="px-3 py-2">
+                            <td className="px-2 py-1.5">
                               <DocumentDetailDialog document={{
                         id: d.id,
                         filename: d.filename,
@@ -1751,15 +1921,15 @@ export default function DatasetProfilePage() {
                                     {d.filename}
                                   </button>}/>
                             </td>
-                            <td className="px-3 py-2 font-mono text-xs">{d.file_type}</td>
-                            <td className="px-3 py-2 font-mono text-xs">{formatFileSize(d.file_size || 0)}</td>
-                            <td className="px-3 py-2">
+                            <td className="px-2 py-1.5 font-mono text-xs">{d.file_type}</td>
+                            <td className="px-2 py-1.5 font-mono text-xs">{formatFileSize(d.file_size || 0)}</td>
+                            <td className="px-2 py-1.5">
                               <Badge variant="outline" className="font-mono text-xs">
                                 {d.status}
                               </Badge>
                             </td>
-                            <td className="px-3 py-2 font-mono text-xs">{d.total_characters}</td>
-                            <td className="px-3 py-2 max-w-[520px]">
+                            <td className="px-2 py-1.5 font-mono text-xs">{d.total_characters}</td>
+                            <td className="px-2 py-1.5 max-w-[520px]">
                               {d.preview ? (<div className="text-xs text-muted-foreground line-clamp-2" title={String(d.preview || '')}>
                                   {String(d.preview)}
                                   {d.preview_truncated ? '…' : ''}
@@ -1782,7 +1952,7 @@ export default function DatasetProfilePage() {
                 </div>);
         }
         else {
-            return (<div className="py-10 text-center text-muted-foreground">
+            return (<div className="py-10 text-center text-[11px] text-muted-foreground/60">
                   暂无数据
                 </div>);
         }

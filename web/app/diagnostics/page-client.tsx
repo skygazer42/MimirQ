@@ -533,7 +533,19 @@ function resourceStatusClass(status: string) {
   if (['checking', 'pending'].includes(normalized)) {
     return 'border-blue-100/70 bg-blue-50 text-blue-600'
   }
+  if (['disabled', 'off'].includes(normalized)) {
+    return 'border-slate-100 bg-slate-50 text-slate-500'
+  }
   return 'border-red-100/70 bg-red-50 text-red-500'
+}
+
+function resourceStatusLabel(status: string) {
+  const normalized = String(status || 'unknown').toLowerCase()
+  if (['connected', 'ok', 'ready'].includes(normalized)) return '已连接'
+  if (['checking', 'pending'].includes(normalized)) return '检查中'
+  if (['disabled', 'off'].includes(normalized)) return '已停用'
+  if (['disconnected', 'error', 'failed'].includes(normalized)) return '异常'
+  return '未知'
 }
 
 async function copyToClipboard(text = ''): Promise<void> {
@@ -559,6 +571,63 @@ const TOP_HUD_TONE_CLASSES = {
   purple: 'bg-purple-50 text-purple-500 border-purple-100',
 } as const
 
+const STATUS_PILL_TONE_CLASSES = {
+  slate:
+    'border-slate-200 bg-white/80 text-slate-600 shadow-[0_1px_2px_rgba(15,23,42,0.04)]',
+  green:
+    'border-emerald-100 bg-white/85 text-emerald-700 shadow-[0_1px_2px_rgba(5,150,105,0.08)]',
+  amber:
+    'border-amber-100 bg-white/85 text-amber-700 shadow-[0_1px_2px_rgba(217,119,6,0.08)]',
+  red:
+    'border-red-100 bg-white/85 text-red-600 shadow-[0_1px_2px_rgba(220,38,38,0.08)]',
+  blue:
+    'border-blue-100 bg-white/85 text-blue-700 shadow-[0_1px_2px_rgba(37,99,235,0.08)]',
+  purple:
+    'border-purple-100 bg-white/85 text-purple-700 shadow-[0_1px_2px_rgba(126,34,206,0.08)]',
+} as const
+
+function statusPillTone(value: string, fallback: MetricTone = 'slate'): MetricTone {
+  const normalized = String(value || '').toLowerCase()
+  if (/正常|就绪|已启用|已生成|已运行|通过|connected|ready|ok|success/.test(normalized)) {
+    return 'green'
+  }
+  if (/执行中|检查中|加载|running|checking|pending/.test(normalized)) {
+    return 'blue'
+  }
+  if (/异常|失败|断开|需排查|error|failed|disconnected/.test(normalized)) {
+    return 'red'
+  }
+  if (/未启用|禁用|disabled|待执行|未返回|not_run/.test(normalized)) {
+    return 'slate'
+  }
+  return fallback
+}
+
+function DiagnosticStatusPill({
+  value,
+  tone,
+  className,
+}: Readonly<{
+  value: string
+  tone?: MetricTone
+  className?: string
+}>) {
+  const resolvedTone = tone ?? statusPillTone(value)
+
+  return (
+    <span
+      className={cn(
+        'inline-flex h-6 max-w-full items-center justify-center truncate rounded-full border px-2 text-center text-[11px] font-semibold tracking-[-0.01em] tabular-nums',
+        STATUS_PILL_TONE_CLASSES[resolvedTone],
+        className
+      )}
+      title={value}
+    >
+      {value}
+    </span>
+  )
+}
+
 function TopHUDTile({
   icon: Icon,
   label,
@@ -573,12 +642,13 @@ function TopHUDTile({
   tone?: keyof typeof TOP_HUD_TONE_CLASSES
 }>) {
   const toneClasses = TOP_HUD_TONE_CLASSES[tone] || TOP_HUD_TONE_CLASSES.slate
+  const valueTone = statusPillTone(value, tone)
 
   return (
-    <div className="min-h-[84px] rounded-xl border border-slate-200/70 bg-card px-4 py-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.02)] flex items-center gap-3.5">
+    <div className="flex min-h-[78px] items-center gap-3 rounded-xl border border-slate-200/70 bg-card px-3 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.02)]">
       <div
         className={cn(
-          'size-11 shrink-0 rounded-full flex items-center justify-center border shadow-inner',
+          'flex size-10 shrink-0 items-center justify-center rounded-full border shadow-inner',
           toneClasses
         )}
       >
@@ -588,15 +658,12 @@ function TopHUDTile({
         <span className="block truncate text-[11px] font-medium text-slate-500">
           {label}
         </span>
-        <h4
-          className={cn(
-            'mt-1 whitespace-nowrap font-semibold leading-none tracking-[-0.02em] text-slate-950',
-            value.length > 14 ? 'text-[13px]' : 'text-[15px]'
-          )}
-        >
-          {value}
-        </h4>
-        <p className="mt-1.5 truncate text-[9px] font-bold uppercase tracking-[0.16em] text-slate-300">
+        <DiagnosticStatusPill
+          value={value}
+          tone={valueTone}
+          className="mt-1 h-6 max-w-[132px]"
+        />
+        <p className="mt-1 truncate text-[10px] font-medium text-slate-400">
           {detail}
         </p>
       </div>
@@ -675,15 +742,12 @@ function DimensionMatrixItem({
           </span>
         </div>
         <div className="mt-1.5 flex items-center justify-between gap-2">
-          <span
-            className={cn(
-              'truncate text-[11px] font-semibold',
-              isPendingMetricLabel(value) ? 'text-slate-400' : 'text-slate-700'
-            )}
-          >
-            {value}
-          </span>
-          <span className="truncate text-[9px] font-medium uppercase tracking-[0.12em] text-slate-300">
+          <DiagnosticStatusPill
+            value={value}
+            tone={isPendingMetricLabel(value) ? 'slate' : tone}
+            className="h-5 max-w-[96px] px-1.5 text-[10px]"
+          />
+          <span className="truncate rounded-full bg-white/70 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.12em] text-slate-300">
             {source}
           </span>
         </div>
@@ -717,36 +781,35 @@ function MainMetricCard({
     }[tone] || 'bg-slate-50 text-slate-400 border-slate-100'
 
   return (
-    <div className="group flex min-h-[86px] items-center gap-4 rounded-2xl border border-slate-200/70 bg-card p-4 shadow-[0_1px_2px_rgba(15,23,42,0.02)] transition-all hover:shadow-md">
+    <div className="group flex min-h-[48px] items-center gap-2 rounded-xl border border-slate-200/70 bg-card px-2 py-1.5 shadow-[0_1px_2px_rgba(15,23,42,0.02)] transition-all hover:border-slate-300 hover:bg-slate-50/60">
       <div
         className={cn(
-          'size-10 rounded-full border flex items-center justify-center transition-colors',
+          'flex size-7 shrink-0 items-center justify-center rounded-lg border transition-colors',
           toneClass
         )}
       >
-        <Icon className="size-5" />
+        <Icon className="size-3.5" />
       </div>
-      <div className="min-w-0 flex-1">
-        <div className="mb-2 flex items-center gap-1.5">
-          <p className="text-[11px] font-medium leading-none text-slate-500">
+      <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <p className="truncate text-[10.5px] font-medium leading-none text-slate-500">
             {label}
           </p>
           {help ? (
             <MetricInfoTooltip label={`${label}说明`}>{help}</MetricInfoTooltip>
           ) : null}
         </div>
-        {loading ? (
-          <div className="h-5 w-20 bg-slate-50 animate-pulse rounded" />
-        ) : (
-          <p
-            className={cn(
-              'text-[15px] font-semibold',
-              isWait ? 'text-slate-300' : 'text-slate-800'
-            )}
-          >
-            {value}
-          </p>
-        )}
+        <div className="shrink-0">
+          {loading ? (
+            <div className="h-5 w-16 animate-pulse rounded-full bg-slate-100" />
+          ) : (
+            <DiagnosticStatusPill
+              value={value}
+              tone={isWait ? 'slate' : (tone as MetricTone)}
+              className="h-5 max-w-[76px] px-1.5 text-[10px]"
+            />
+          )}
+        </div>
       </div>
     </div>
   )
@@ -1320,7 +1383,7 @@ export default function DiagnosticsPage() {
               icon={ShieldCheck}
               label="系统健康"
               value={healthStatusLabel(health.isPending, healthOk)}
-              detail="STATUS_OK"
+              detail="健康探针"
               tone={okTone(healthOk)}
             />
             <TopHUDTile
@@ -1340,7 +1403,7 @@ export default function DiagnosticsPage() {
                 '全部就绪',
                 '异常'
               )}
-              detail="READY"
+              detail="就绪检查"
               tone={okTone(readyOk, 'blue')}
             />
             <TopHUDTile
@@ -1350,21 +1413,21 @@ export default function DiagnosticsPage() {
                 onlineQualityLoading,
                 onlineQuality?.enabled
               )}
-              detail="ONLINE_METRICS"
+              detail="在线指标"
               tone="purple"
             />
             <TopHUDTile
               icon={Gauge}
               label="性能门禁"
               value={perfGateStatus}
-              detail="PERF_GATE"
+              detail="门禁探针"
               tone={perfGateTone}
             />
             <TopHUDTile
               icon={Timer}
               label="向量后端"
               value={currentVectorBackend}
-              detail="VECTOR_PROVIDER"
+              detail="向量服务"
               tone="green"
             />
             </div>
@@ -1636,7 +1699,7 @@ export default function DiagnosticsPage() {
 
           {/* 4. 核心指标横条 */}
           <div>
-            <div className="mb-3 flex items-center justify-between gap-3 px-2">
+            <div className="mb-2 flex items-center justify-between gap-3 px-2">
               <h3 className="m-0 flex items-center gap-2 text-[14px] font-semibold text-slate-950">
                 <BarChart3 className="size-4 text-blue-500" /> 核心指标
                 <MetricInfoTooltip label="核心指标说明" side="right">
@@ -1648,7 +1711,7 @@ export default function DiagnosticsPage() {
                 先跑左侧按钮，再看对应指标
               </p>
             </div>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-[repeat(5,minmax(190px,1fr))]">
               <MainMetricCard
                 icon={Search}
                 label="检索相关性"
@@ -1810,10 +1873,12 @@ export default function DiagnosticsPage() {
                   <div className="mb-4 flex size-14 items-center justify-center rounded-full border border-dashed border-slate-200 bg-slate-50">
                     <Activity className="size-6 text-slate-200" />
                   </div>
-                  <p className="text-[13px] font-semibold text-slate-400">
-                    暂无后端建议
-                  </p>
-                  <p className="mt-1 text-[11px] text-slate-300">
+                  <DiagnosticStatusPill
+                    value="待生成建议"
+                    tone="slate"
+                    className="h-6 px-2.5"
+                  />
+                  <p className="mt-2 text-[11px] text-slate-400">
                     运行 RAG 预览、漂移检查或性能门禁后生成建议
                   </p>
                 </div>
@@ -1836,15 +1901,18 @@ function ConclusionItem({ label, status }: Readonly<{ label: string; status: str
         </div>
         <span className="text-[12px] font-medium text-slate-600">{label}</span>
       </div>
-      <span className="truncate text-right text-[11px] font-semibold text-slate-400">
-        {status}
-      </span>
+      <DiagnosticStatusPill
+        value={status}
+        tone={statusPillTone(status)}
+        className="h-5 max-w-[108px] px-1.5 text-[10px]"
+      />
     </div>
   )
 }
 
 function ResourceItem({ label, status }: Readonly<{ label: string; status: string }>) {
   const normalized = String(status || 'unknown').toLowerCase()
+  const displayLabel = resourceStatusLabel(normalized)
 
   return (
     <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 bg-card px-2.5 py-2">
@@ -1855,7 +1923,7 @@ function ResourceItem({ label, status }: Readonly<{ label: string; status: strin
           resourceStatusClass(normalized)
         )}
       >
-        {status}
+        {displayLabel}
       </span>
     </div>
   )

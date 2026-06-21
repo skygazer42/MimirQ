@@ -45,19 +45,21 @@ import type {
 // --- Advanced Style Tokens ---
 
 const USAGE_PANEL_CLASS =
-  'overflow-hidden rounded-3xl border border-border/60 bg-card/82 shadow-[0_14px_40px_hsl(var(--primary)/0.06)] backdrop-blur-xl'
+  'overflow-hidden rounded-[1.35rem] border border-border/60 bg-card/88 shadow-[0_12px_34px_hsl(var(--primary)/0.055)] backdrop-blur-xl'
 const USAGE_SURFACE_CLASS =
-  'rounded-2xl border border-border/60 bg-background/70 shadow-[0_12px_30px_hsl(var(--primary)/0.05)]'
+  'rounded-[1.15rem] border border-border/60 bg-background/76 shadow-[0_10px_28px_hsl(var(--primary)/0.045)]'
 const GLASS_CARD = `${USAGE_SURFACE_CLASS} backdrop-blur-md overflow-hidden transition-all duration-300`
 const GLOW_CARD =
-  'group relative rounded-2xl border border-border/60 bg-card/82 p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_20px_40px_hsl(var(--primary)/0.08)]'
+  'group relative overflow-hidden rounded-[1.1rem] border border-border/60 bg-card/86 p-4 shadow-[0_1px_0_hsl(var(--primary)/0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/20 hover:shadow-[0_16px_32px_hsl(var(--primary)/0.075)]'
 const NUMBER_ACCENT =
-  'text-2xl font-black text-foreground font-mono bg-clip-text'
+  'font-mono text-[22px] font-semibold leading-none tracking-[-0.04em] text-foreground bg-clip-text'
 const USAGE_TABLE_HEAD_CLASS = 'bg-muted/38 border-b border-border/50'
 const USAGE_TABLE_HEADER_CLASS =
-  'px-8 py-4 text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]'
+  'px-5 py-3 text-[10px] font-bold text-muted-foreground uppercase tracking-[0.18em]'
 const USAGE_LINK_CLASS =
-  'inline-flex items-center gap-1.5 rounded-lg border border-primary/20 bg-primary/10 px-2.5 py-1.5 text-[11px] font-semibold text-primary transition-colors hover:border-primary/30 hover:bg-primary/15'
+  'inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary transition-colors hover:border-primary/35 hover:bg-primary/15'
+const USAGE_MUTED_CHIP_CLASS =
+  'inline-flex items-center rounded-full border border-border/60 bg-muted/45 px-2.5 py-1 text-[11px] font-medium text-muted-foreground'
 const WINDOW_PRESETS = [
   { value: 7, label: '7天' },
   { value: 14, label: '14天' },
@@ -132,33 +134,32 @@ function StylizedMetricCard({
   }
   return (
     <div className={GLOW_CARD}>
-      {/* Accent Strip */}
       <div
         className={cn(
-          'absolute left-0 top-6 bottom-6 w-1 rounded-r-full transition-all group-hover:w-1.5',
+          'absolute left-0 top-4 bottom-4 w-1 rounded-r-full transition-all group-hover:w-1.5',
           accentMap[tone as keyof typeof accentMap]
         )}
       />
 
-      <div className="flex items-start justify-between mb-5">
-        <div className="flex items-center gap-3">
-          <div className="size-10 rounded-xl bg-background/70 border border-border/60 flex items-center justify-center text-muted-foreground group-hover:bg-primary group-hover:text-primary-foreground group-hover:rotate-6 transition-all duration-300 shadow-sm">
-            <Icon className="size-5" />
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-background/70 text-muted-foreground shadow-sm transition-all duration-200 group-hover:bg-primary group-hover:text-primary-foreground">
+            <Icon className="size-4" />
           </div>
-          <span className="text-[12px] font-black text-muted-foreground uppercase">
+          <span className="truncate text-[11px] font-bold text-muted-foreground">
             {label}
           </span>
         </div>
-        <div className="size-6 rounded-full bg-muted/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted/50 opacity-0 transition-opacity group-hover:opacity-100">
           <ArrowUpRight className="size-3 text-primary" />
         </div>
       </div>
 
-      <div className="flex flex-col pl-2">
+      <div className="flex flex-col pl-1.5">
         <span className={NUMBER_ACCENT}>{value}</span>
         {detail && (
-          <div className="mt-3 flex items-center gap-1.5">
-            <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-muted text-muted-foreground uppercase">
+          <div className="mt-2 flex items-center gap-1.5">
+            <span className="rounded-md bg-muted px-1.5 py-0.5 text-[9px] font-bold uppercase text-muted-foreground">
               {detail}
             </span>
             <TrendingUp className="size-3 text-success opacity-50" />
@@ -187,14 +188,14 @@ function OverviewStat({
   return (
     <div
       className={cn(
-        'min-w-[104px] rounded-2xl border px-3 py-2 shadow-[0_1px_0_rgba(15,23,42,0.03)]',
+        'min-w-[98px] rounded-2xl border px-3 py-2 shadow-[0_1px_0_rgba(15,23,42,0.03)]',
         toneClass
       )}
     >
-      <span className="block text-[10px] font-bold tracking-[0.12em] text-muted-foreground">
+      <span className="block text-[10px] font-semibold tracking-[0.1em] text-muted-foreground">
         {label}
       </span>
-      <span className="mt-0.5 block truncate text-[14px] font-black leading-tight">
+      <span className="mt-0.5 block truncate text-[14px] font-semibold leading-tight">
         {value}
       </span>
     </div>
@@ -210,12 +211,52 @@ function OverviewMeta({
 }>) {
   return (
     <div className="flex min-w-0 items-center gap-2">
-      <span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
+      <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
         {label}
       </span>
-      <span className="truncate text-[12px] font-semibold text-foreground">
+      <span className="truncate text-[12px] font-medium text-foreground">
         {value}
       </span>
+    </div>
+  )
+}
+
+function UsageDatasetCell({
+  datasetId,
+  datasetName,
+}: Readonly<{
+  datasetId: string
+  datasetName: string
+}>) {
+  const displayName = datasetName || (datasetId ? '已删除或无权限数据集' : '未绑定数据集')
+  const status = datasetName ? 'active' : datasetId ? 'orphaned' : 'unbound'
+  const statusLabel = {
+    active: '可追溯',
+    orphaned: '不可见',
+    unbound: '未绑定',
+  }[status]
+  return (
+    <div className="min-w-0">
+      <div className="flex min-w-0 items-center gap-2">
+        <p className="min-w-0 max-w-[260px] truncate text-[13px] font-semibold text-foreground transition-colors group-hover:text-primary">
+          {displayName}
+        </p>
+        <span
+          className={cn(
+            'shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold',
+            status === 'active'
+              ? 'border-success/20 bg-success/10 text-success'
+              : status === 'orphaned'
+                ? 'border-warning/20 bg-warning/10 text-warning'
+                : 'border-border/60 bg-muted/45 text-muted-foreground'
+          )}
+        >
+          {statusLabel}
+        </span>
+      </div>
+      <p className="mt-1 font-mono text-[10px] uppercase text-muted-foreground/60">
+        {datasetId ? shortId(datasetId) : 'NO DATASET ID'}
+      </p>
     </div>
   )
 }
@@ -331,7 +372,7 @@ function UsagePageContent() {
           <div className="absolute -right-[5%] top-[20%] size-[30%] rounded-full bg-accent/5 blur-[100px]" />
         </div>
 
-        <div className="relative z-10 flex flex-col gap-6 pb-24">
+        <div className="relative z-10 flex flex-col gap-4 pb-12">
           <section
             data-usage-overview="compact"
             className={USAGE_PANEL_CLASS}
@@ -341,16 +382,16 @@ function UsagePageContent() {
                 {loadErrorMessage}
               </output>
             )}
-            <div className="flex flex-col gap-4 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex min-w-[220px] items-center gap-3">
                 <div className="flex size-9 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary shadow-inner">
                   <Coins className="size-4" />
                 </div>
                 <div className="min-w-0">
-                  <h2 className="text-[15px] font-black leading-tight text-foreground">
+                  <h2 className="text-[15px] font-semibold leading-tight tracking-[-0.01em] text-foreground">
                     租户用量与配额
                   </h2>
-                  <p className="mt-1 text-[11px] font-semibold text-muted-foreground">
+                  <p className="mt-1 text-[11px] font-medium text-muted-foreground">
                     当前租户 · 数据集归因 · 租户级配额
                   </p>
                 </div>
@@ -390,7 +431,7 @@ function UsagePageContent() {
                   value={String(windowDays)}
                   onValueChange={(v) => setWindowDays(Number(v))}
                 >
-                  <SelectTrigger className="h-9 w-[96px] rounded-2xl border-border/60 bg-background/70 text-[12px] font-bold shadow-sm transition-all hover:bg-primary/10">
+                  <SelectTrigger className="h-9 w-[92px] rounded-2xl border-border/60 bg-background/70 text-[12px] font-semibold shadow-sm transition-all hover:bg-primary/10">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -423,7 +464,7 @@ function UsagePageContent() {
               </div>
             </div>
 
-            <div className="border-t border-border/50 bg-muted/28 px-4 py-2.5">
+            <div className="border-t border-border/50 bg-muted/24 px-4 py-2">
               <div className="grid gap-2 md:grid-cols-3">
                 <OverviewMeta label="统计范围" value="当前租户总量" />
                 <OverviewMeta
@@ -439,74 +480,74 @@ function UsagePageContent() {
           </section>
 
           {/* Main Visual KPIs */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             <StylizedMetricCard
               icon={UserRound}
-              label="聊天输出令牌"
+              label="输出令牌"
               value={formatNumber(summary?.total_assistant_tokens)}
               detail="ASSISTANT"
               tone="blue"
             />
             <StylizedMetricCard
               icon={Coins}
-              label="LLM 总令牌"
+              label="LLM 令牌"
               value={formatNumber(cost?.total_llm_total_tokens)}
               detail="LLM_EST"
               tone="indigo"
             />
             <StylizedMetricCard
               icon={Database}
-              label="检索向量令牌"
+              label="检索令牌"
               value={formatNumber(cost?.total_embedding_query_tokens)}
               detail="EMBEDDING"
               tone="blue"
             />
             <StylizedMetricCard
               icon={Timer}
-              label="平均检索耗时"
+              label="平均耗时"
               value={formatSec(avgRetrieve)}
               detail="LATENCY"
               tone="indigo"
             />
             <StylizedMetricCard
               icon={Clock3}
-              label="聊天配额剩余"
+              label="配额剩余"
               value={quota?.enabled ? formatNumber(quota.remaining) : '0'}
               detail="REMAINING"
               tone="green"
             />
             <StylizedMetricCard
               icon={MessageSquareText}
-              label="助手消息数"
+              label="助手消息"
               value={formatNumber(summary?.total_assistant_messages)}
               detail="TOTAL_MSG"
               tone="slate"
             />
           </div>
 
-          <div className="grid grid-cols-1 xl:grid-cols-12 gap-10">
+          <div className="grid grid-cols-1 gap-4 2xl:grid-cols-12">
             {/* Usage Table Section */}
             <div
               className={cn(
                 GLASS_CARD,
-                'xl:col-span-5 flex flex-col border-primary/10'
+                'flex flex-col border-primary/10 2xl:col-span-5'
               )}
             >
-              <div className="px-8 py-6 border-b border-border/50 flex items-center justify-between bg-primary/[0.025]">
+              <div className="flex items-center justify-between border-b border-border/50 bg-primary/[0.025] px-5 py-4">
                 <div>
-                  <h3 className="text-[14px] font-black text-foreground uppercase flex items-center gap-2">
+                  <h3 className="flex items-center gap-2 text-[14px] font-semibold text-foreground">
                     <TrendingUp className="size-4 text-primary" />
                     数据集用量排行
                   </h3>
-                  <p className="text-[10px] text-muted-foreground font-bold uppercase mt-1">
+                  <p className="mt-1 text-[10px] font-semibold uppercase text-muted-foreground">
                     按 dataset_id 归因 · {formatWindow(summary?.window_start, summary?.window_end)}
                   </p>
                 </div>
-                <div className="size-8 rounded-lg bg-background/70 border border-border/60 flex items-center justify-center text-muted-foreground/55">
+                <div className="flex size-8 items-center justify-center rounded-lg border border-border/60 bg-background/70 text-muted-foreground/55">
                   <LayoutGrid className="size-4" />
                 </div>
               </div>
-              <div className="overflow-auto max-h-[520px]">
+              <div className="max-h-[430px] overflow-auto">
                 <table className="w-full text-left">
                   <thead>
                     <tr className={USAGE_TABLE_HEAD_CLASS}>
@@ -534,34 +575,32 @@ function UsagePageContent() {
 	                          key={datasetId || 'unbound'}
 	                          className="hover:bg-primary/[0.04] transition-all duration-200 group"
 	                        >
-	                          <td className="px-8 py-5">
-	                            <p className="text-[13px] font-bold text-foreground truncate max-w-[200px] group-hover:text-primary transition-colors">
-	                              {datasetName || (datasetId ? '已删除或无权限数据集' : '未绑定数据集')}
-	                            </p>
-	                            <p className="text-[9px] font-mono text-muted-foreground/55 group-hover:text-muted-foreground uppercase">
-	                              {datasetId ? shortId(datasetId) : 'NO DATASET ID'}
-	                            </p>
-	                          </td>
-	                          <td className="px-8 py-5 text-[12px] font-mono text-muted-foreground text-right">
-	                            {formatNumber(r.assistant_messages)}
-	                          </td>
-	                          <td className="px-8 py-5 text-[12px] font-mono font-black text-foreground text-right">
-	                            {formatNumber(r.assistant_tokens)}
-	                          </td>
-	                          <td className="px-8 py-5 text-right">
-	                            {canOpenDataset ? (
-	                              <Link
-	                                href={buildDatasetKnowledgeHref(datasetId)}
+                          <td className="px-5 py-3.5">
+                            <UsageDatasetCell
+                              datasetId={datasetId}
+                              datasetName={datasetName}
+                            />
+                          </td>
+                          <td className="px-5 py-3.5 text-right font-mono text-[12px] text-muted-foreground">
+                            {formatNumber(r.assistant_messages)}
+                          </td>
+                          <td className="px-5 py-3.5 text-right font-mono text-[12px] font-semibold text-foreground">
+                            {formatNumber(r.assistant_tokens)}
+                          </td>
+                          <td className="px-5 py-3.5 text-right">
+                            {canOpenDataset ? (
+                              <Link
+                                href={buildDatasetKnowledgeHref(datasetId)}
 	                                className={USAGE_LINK_CLASS}
 	                              >
 	                                查看
-	                                <ArrowUpRight className="size-3" />
-	                              </Link>
-	                            ) : (
-	                              <span className="text-[11px] font-medium text-muted-foreground/55">
-	                                不可跳转
-	                              </span>
-	                            )}
+                                <ArrowUpRight className="size-3" />
+                              </Link>
+                            ) : (
+                              <span className={USAGE_MUTED_CHIP_CLASS}>
+                                不可跳转
+                              </span>
+                            )}
 	                          </td>
 	                        </tr>
 	                      )
@@ -575,24 +614,24 @@ function UsagePageContent() {
             <div
               className={cn(
                 GLASS_CARD,
-                'xl:col-span-7 flex flex-col border-accent/10'
+                'flex flex-col border-accent/10 2xl:col-span-7'
               )}
             >
-              <div className="px-8 py-6 border-b border-border/50 flex items-center justify-between bg-accent/[0.025]">
+              <div className="flex items-center justify-between border-b border-border/50 bg-accent/[0.025] px-5 py-4">
                 <div>
-                  <h3 className="text-[14px] font-black text-foreground uppercase flex items-center gap-2">
+                  <h3 className="flex items-center gap-2 text-[14px] font-semibold text-foreground">
                     <Zap className="size-4 text-accent fill-current" />
                     数据集成本归因（估算）
                   </h3>
-                  <p className="text-[10px] text-muted-foreground font-bold uppercase mt-1">
+                  <p className="mt-1 text-[10px] font-semibold uppercase text-muted-foreground">
                     聊天与检索链路聚合 · {formatWindow(cost?.window_start, cost?.window_end)}
                   </p>
                 </div>
-                <div className="size-8 rounded-lg bg-background/70 border border-border/60 flex items-center justify-center text-muted-foreground/55">
+                <div className="flex size-8 items-center justify-center rounded-lg border border-border/60 bg-background/70 text-muted-foreground/55">
                   <BarChart3 className="size-4" />
                 </div>
               </div>
-              <div className="overflow-auto max-h-[520px]">
+              <div className="max-h-[430px] overflow-auto">
                 <table className="w-full text-left">
                   <thead>
                     <tr className={USAGE_TABLE_HEAD_CLASS}>
@@ -623,40 +662,38 @@ function UsagePageContent() {
 	                          key={datasetId || 'unbound-cost'}
 	                          className="hover:bg-accent/[0.04] transition-all duration-200 group"
 	                        >
-	                          <td className="px-8 py-5">
-	                            <p className="text-[13px] font-bold text-foreground truncate max-w-[240px] group-hover:text-accent transition-colors">
-	                              {datasetName || (datasetId ? '已删除或无权限数据集' : '未绑定数据集')}
-	                            </p>
-	                            <p className="text-[9px] font-mono text-muted-foreground/55 group-hover:text-muted-foreground uppercase">
-	                              {datasetId ? shortId(datasetId) : 'NO DATASET ID'}
-	                            </p>
-	                          </td>
-	                          <td className="px-8 py-5 text-[12px] font-mono font-black text-foreground text-right">
-	                            {formatNumber(r.llm_total_tokens)}
-	                          </td>
-	                          <td className="px-8 py-5 text-[12px] font-mono text-muted-foreground text-right">
-	                            {formatNumber(r.embedding_query_tokens)}
-	                          </td>
-	                          <td className="px-8 py-5 text-[12px] font-mono text-muted-foreground text-right">
-	                            {formatSec(
-	                              r.retrieval_elapsed_sec_sum /
-	                                Math.max(1, r.assistant_messages || 0)
-	                            )}
-	                          </td>
-	                          <td className="px-8 py-5 text-right">
-	                            {canOpenDataset ? (
-	                              <Link
-	                                href={buildDatasetKnowledgeHref(datasetId)}
+                          <td className="px-5 py-3.5">
+                            <UsageDatasetCell
+                              datasetId={datasetId}
+                              datasetName={datasetName}
+                            />
+                          </td>
+                          <td className="px-5 py-3.5 text-right font-mono text-[12px] font-semibold text-foreground">
+                            {formatNumber(r.llm_total_tokens)}
+                          </td>
+                          <td className="px-5 py-3.5 text-right font-mono text-[12px] text-muted-foreground">
+                            {formatNumber(r.embedding_query_tokens)}
+                          </td>
+                          <td className="px-5 py-3.5 text-right font-mono text-[12px] text-muted-foreground">
+                            {formatSec(
+                              r.retrieval_elapsed_sec_sum /
+                                Math.max(1, r.assistant_messages || 0)
+                            )}
+                          </td>
+                          <td className="px-5 py-3.5 text-right">
+                            {canOpenDataset ? (
+                              <Link
+                                href={buildDatasetKnowledgeHref(datasetId)}
 	                                className={USAGE_LINK_CLASS}
 	                              >
 	                                查看
-	                                <ArrowUpRight className="size-3" />
-	                              </Link>
-	                            ) : (
-	                              <span className="text-[11px] font-medium text-muted-foreground/55">
-	                                不可跳转
-	                              </span>
-	                            )}
+                                <ArrowUpRight className="size-3" />
+                              </Link>
+                            ) : (
+                              <span className={USAGE_MUTED_CHIP_CLASS}>
+                                不可跳转
+                              </span>
+                            )}
 	                          </td>
 	                        </tr>
 	                      )

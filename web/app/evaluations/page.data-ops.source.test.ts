@@ -19,11 +19,11 @@ describe('evaluations page data operations', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'page.tsx'), 'utf8')
 
     expect(src).toContain('DashboardStatCard')
-    expect(src).toContain('text-[22px] font-semibold')
+    expect(src).toContain('text-[20px] font-semibold')
     expect(src).not.toContain('text-[24px] font-semibold ')
-    expect(src).toContain('min-h-[76px] rounded-xl')
-    expect(src).toContain('text-[16px] font-semibold')
-    expect(src).toContain('valueClassName="text-[15px] font-medium"')
+    expect(src).toContain('min-h-[62px] rounded-xl')
+    expect(src).toContain('text-[14px] font-semibold')
+    expect(src).toContain('valueClassName="text-[13.5px] font-medium"')
     expect(src).toContain('实时会话')
     expect(src).toContain('平均开销')
     expect(src).toContain('运行详情')
@@ -35,11 +35,13 @@ describe('evaluations page data operations', () => {
     expect(src).toContain('RunRecordCard')
     expect(src).toContain('isRunRecordsCollapsed')
     expect(src).toContain('id="ragas-run-records-list"')
-    expect(src).toContain('max-h-[520px] min-h-0 space-y-2 overflow-y-auto')
-    expect(src).toContain('xl:grid-cols-[270px_minmax(0,1fr)_280px]')
+    expect(src).toContain('max-h-[560px] min-h-0 space-y-1.5 overflow-y-auto')
+    expect(src).toContain('xl:grid-cols-[260px_minmax(0,1fr)_270px]')
+    expect(src).toContain('shrink-0 whitespace-nowrap')
     expect(src).toContain(
-      'flex h-[calc(100vh-285px)] min-h-[650px] flex-col overflow-hidden'
+      'flex h-[calc(100vh-255px)] min-h-[610px] flex-col overflow-hidden'
     )
+    expect(src).toContain('displayMetrics.length ? null')
     expect(src).not.toContain('conversationLayoutColumns')
     expect(src).not.toContain('isSetupPanelCollapsed')
     expect(src).not.toContain('visibleRunLimit')

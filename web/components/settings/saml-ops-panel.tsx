@@ -11,7 +11,18 @@ import { Label } from '@/components/ui/label'
 import { Panel } from '@/components/ui/panel'
 import { authApi } from '@/lib/api'
 import { formatApiError, toApiErrorInfo } from '@/lib/api-errors'
-import { detachPromise } from '@/lib/utils'
+import { cn, detachPromise } from '@/lib/utils'
+
+const SETTINGS_IDENTITY_PANEL_CLASS =
+  'overflow-hidden rounded-[1.25rem] border border-border/60 bg-card/88 shadow-[0_12px_30px_hsl(var(--primary)/0.05)]'
+const SETTINGS_IDENTITY_LABEL_CLASS =
+  'text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground'
+const SETTINGS_IDENTITY_INPUT_CLASS =
+  'h-9 rounded-xl border-border/60 bg-background/76 text-[12px] shadow-none transition-colors focus-visible:border-primary/35 focus-visible:ring-2 focus-visible:ring-primary/10'
+const SETTINGS_IDENTITY_ICON_CLASS =
+  'relative flex size-9 shrink-0 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary shadow-inner'
+const SETTINGS_IDENTITY_META_CLASS =
+  'rounded-full border border-border/60 bg-muted/42 px-2 py-0.5 text-[10px] font-medium text-muted-foreground'
 
 function downloadText(content: string, filename: string) {
   const blob = new Blob([content], { type: 'application/xml;charset=utf-8' })
@@ -62,61 +73,79 @@ export function SamlOpsPanel() {
   return (
     <Panel
       padding="sm"
-      className="rounded-2xl border-slate-200/80 bg-card shadow-[0_1px_3px_rgba(15,23,42,0.04)]"
+      className={SETTINGS_IDENTITY_PANEL_CLASS}
     >
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex items-start gap-3">
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+          <div className={SETTINGS_IDENTITY_ICON_CLASS}>
+            <span className="absolute inset-1 rounded-xl bg-primary/5" />
             <ShieldCheck className="size-4" />
           </div>
           <div>
-            <div className="flex items-center gap-2 text-[14px] font-semibold text-slate-950">
+            <div className="flex flex-wrap items-center gap-2 text-[14px] font-semibold text-foreground">
               <span>SAML 单点登录</span>
-              <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+              <span className="rounded-full border border-border/60 bg-muted/45 px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
                 按需配置
               </span>
             </div>
-            <p className="mt-0.5 text-[12px] leading-5 text-slate-500">
+            <p className="mt-0.5 text-[12px] leading-5 text-muted-foreground">
               对接企业身份源，完成单点登录和访问控制
             </p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <span className={SETTINGS_IDENTITY_META_CLASS}>SSO</span>
+              <span className={SETTINGS_IDENTITY_META_CLASS}>Metadata</span>
+              <span className={SETTINGS_IDENTITY_META_CLASS}>Access control</span>
+            </div>
           </div>
         </div>
-        {busy ? (
-          <Loader2 className="h-4 w-4 animate-spin text-slate-400 motion-reduce:animate-none" />
-        ) : null}
+        <div className="flex min-h-7 items-center gap-2 rounded-full border border-border/60 bg-muted/35 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+          {busy ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+          ) : (
+            <span className="size-1.5 rounded-full bg-muted-foreground/45" />
+          )}
+          <span>{busy ? 'Metadata 生成中' : '等待身份源'}</span>
+        </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-2">
-        <Field label="身份源 ID">
-          <Input
-            value={providerId}
-            onChange={(event) => setProviderId(event.target.value)}
-            className="h-9 min-w-[220px] rounded-lg border-slate-200 bg-slate-50/50 text-[12px] shadow-none"
-            placeholder="默认身份源"
-          />
-        </Field>
-        <ActionButton
-          icon={Download}
-          busy={busy === 'metadata'}
-          disabled={Boolean(busy)}
-          label="下载 Metadata"
-          onClick={() =>
-            runAction('metadata', '获取 SAML Metadata', async () => {
-              const xml = await authApi.samlMetadata({
-                provider_id: provider || null,
-              })
-              downloadText(xml, `saml-metadata.${provider || 'default'}.xml`)
-              return {
-                provider_id: provider || null,
-                chars: xml.length,
-                preview: xml.slice(0, 2000),
+      <div className="mt-3 rounded-2xl border border-border/55 bg-muted/22 p-3">
+        <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_auto] lg:items-end">
+          <Field
+            label="身份源 ID"
+            helper="为空时使用默认身份源；多 IdP 场景可输入指定 provider。"
+          >
+            <Input
+              value={providerId}
+              onChange={(event) => setProviderId(event.target.value)}
+              className={cn(SETTINGS_IDENTITY_INPUT_CLASS, 'min-w-[220px]')}
+              placeholder="默认身份源"
+            />
+          </Field>
+          <div className="flex flex-wrap gap-2 lg:justify-end">
+            <ActionButton
+              icon={Download}
+              busy={busy === 'metadata'}
+              disabled={Boolean(busy)}
+              label="下载 Metadata"
+              onClick={() =>
+                runAction('metadata', '获取 SAML Metadata', async () => {
+                  const xml = await authApi.samlMetadata({
+                    provider_id: provider || null,
+                  })
+                  downloadText(xml, `saml-metadata.${provider || 'default'}.xml`)
+                  return {
+                    provider_id: provider || null,
+                    chars: xml.length,
+                    preview: xml.slice(0, 2000),
+                  }
+                })
               }
-            })
-          }
-        />
+            />
+          </div>
+        </div>
       </div>
       {notice ? (
-        <div className="mt-3 rounded-xl border border-amber-200/80 bg-amber-50/80 px-3 py-2 text-[12px] font-medium leading-5 text-amber-800">
+        <div className="mt-3 rounded-xl border border-warning/20 bg-warning/10 px-3 py-2 text-[12px] font-medium leading-5 text-warning">
           {notice}
         </div>
       ) : null}
@@ -126,14 +155,20 @@ export function SamlOpsPanel() {
 
 function Field({
   label,
+  helper,
   children,
-}: Readonly<{ label: string; children: ReactNode }>) {
+}: Readonly<{ label: string; helper?: string; children: ReactNode }>) {
   return (
-    <div className="space-y-1">
-      <Label className="text-[11px] font-semibold text-slate-500">
+    <div className="space-y-1.5">
+      <Label className={SETTINGS_IDENTITY_LABEL_CLASS}>
         {label}
       </Label>
       {children}
+      {helper ? (
+        <p className="text-[11px] leading-4 text-muted-foreground/86">
+          {helper}
+        </p>
+      ) : null}
     </div>
   )
 }
@@ -154,7 +189,7 @@ function ActionButton({
   return (
     <Button
       variant="outline"
-      className="h-9 gap-1.5 rounded-lg border-slate-200 bg-card px-3 text-[12px] font-semibold text-slate-600 shadow-none"
+      className="h-9 gap-1.5 rounded-full border-primary/20 bg-primary/10 px-3 text-[12px] font-semibold text-primary shadow-none transition-colors hover:border-primary/35 hover:bg-primary/15 disabled:border-border/60 disabled:bg-muted/50 disabled:text-muted-foreground"
       disabled={disabled}
       onClick={() => detachPromise(onClick())}
     >

@@ -8,7 +8,7 @@ describe('reports real metric guards', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'page-client.tsx'), 'utf8')
 
     expect(src).toContain('const governanceAuditHasSamples =')
-    expect(src).toContain("const governanceAuditUnavailableSub = '当前报告无治理审计样本'")
+    expect(src).toContain("const governanceAuditUnavailableSub = '运行治理审计后展示'")
     expect(src).toContain('const governanceAuditUrlValue = governanceAuditHasSamples')
     expect(src).toContain('String(governanceAudit?.urls_changed_total || 0)')
     expect(src).toContain('const governanceAuditImageValue = governanceAuditHasSamples')

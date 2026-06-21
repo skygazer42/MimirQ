@@ -218,6 +218,15 @@ const DELTA_BADGE_VARIANTS: Record<DeltaDirection, 'soft' | 'outline' | 'destruc
   positive: 'soft',
 }
 
+const SNAPSHOT_HEADER_ACTION_CLASS =
+  'h-8 rounded-full border-border/40 bg-card/58 px-3 text-[11px] font-medium text-muted-foreground shadow-none hover:border-primary/28 hover:bg-background/72 hover:text-foreground'
+const SNAPSHOT_ICON_ACTION_CLASS =
+  'h-8 w-8 rounded-full border-border/36 bg-card/54 text-muted-foreground shadow-none hover:border-primary/28 hover:bg-background/72 hover:text-foreground'
+const SNAPSHOT_PRIMARY_COMPARE_CLASS =
+  'h-10 w-full gap-2 rounded-full bg-primary text-sm font-semibold text-primary-foreground shadow-[0_16px_32px_-22px_hsl(var(--primary)/0.72)] transition-shadow hover:bg-primary/92 hover:shadow-[0_18px_38px_-24px_hsl(var(--primary)/0.72)]'
+const SNAPSHOT_SECONDARY_ACTION_CLASS =
+  'h-8 gap-1.5 rounded-full border-border/38 bg-background/48 px-2 text-[11px] font-medium text-muted-foreground shadow-none hover:border-primary/28 hover:bg-background/72 hover:text-foreground'
+
 const DELTA_LABELS: Record<DeltaDirection, string> = {
   flat: 'flat',
   negative: 'decrease',
@@ -1024,13 +1033,13 @@ function SnapshotStudioToolbar({
   isRunning: boolean
 }>) {
   const selectClassName =
-    'h-8 rounded-xl border border-border/70 bg-card px-2 text-[11.5px] font-medium text-foreground shadow-sm outline-none transition-colors hover:bg-muted/30 focus:ring-2 focus:ring-primary/20'
+    'h-8 rounded-full border border-border/40 bg-background/58 px-2.5 text-[11.5px] font-medium text-foreground/82 shadow-none outline-none transition-colors hover:border-primary/24 hover:bg-background/76 focus:ring-2 focus:ring-primary/12'
 
   return (
-    <div className="shrink-0 border-b border-border/70 bg-background/92 px-4 py-2.5 backdrop-blur">
+    <div className="shrink-0 border-b border-border/44 bg-background/82 px-4 py-2.5 backdrop-blur">
       <div className="flex min-w-0 items-center justify-between gap-3">
-        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto no-scrollbar">
-          <div className="relative w-[220px] shrink-0">
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto no-scrollbar">
+          <div className="relative w-[156px] shrink-0 xl:w-[176px] 2xl:w-[196px]">
             <Search
               className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/70"
               aria-hidden="true"
@@ -1039,16 +1048,16 @@ function SnapshotStudioToolbar({
               value={searchValue}
               onChange={(event) => onSearchChange(event.target.value)}
               placeholder="搜索节点 / 关系"
-              className="h-8 rounded-xl border-border/70 bg-card pl-9 text-[11.5px] shadow-sm"
+              className="h-8 rounded-full border-border/40 bg-background/58 pl-9 pr-2 text-[11.5px] shadow-none"
             />
           </div>
 
-          <div className="inline-flex shrink-0 items-center gap-2">
+          <div className="inline-flex shrink-0 items-center gap-1.5">
             <select
               aria-label="节点类型"
               value={nodeType}
               onChange={(event) => onNodeTypeChange(event.target.value)}
-              className={cn(selectClassName, 'w-[92px] shrink-0')}
+              className={cn(selectClassName, 'w-[86px] shrink-0')}
             >
               <option value="all">节点类型</option>
               {nodeTypes.map((type) => (
@@ -1062,7 +1071,7 @@ function SnapshotStudioToolbar({
               aria-label="关系类型"
               value={relationType}
               onChange={(event) => onRelationTypeChange(event.target.value)}
-              className={cn(selectClassName, 'w-[92px] shrink-0')}
+              className={cn(selectClassName, 'w-[86px] shrink-0')}
             >
               <option value="all">关系类型</option>
               {relationTypes.map((type) => (
@@ -1077,7 +1086,7 @@ function SnapshotStudioToolbar({
             aria-label="布局"
             value={layout}
             onChange={(event) => onLayoutChange(event.target.value)}
-            className={cn(selectClassName, 'w-[76px] shrink-0')}
+            className={cn(selectClassName, 'w-[68px] shrink-0')}
           >
             <option value="force">布局</option>
             <option value="radial">径向</option>
@@ -1085,22 +1094,25 @@ function SnapshotStudioToolbar({
           </select>
         </div>
 
-        <div className="flex shrink-0 items-center gap-2">
-          <div className="grid h-8 shrink-0 grid-cols-3 gap-1 rounded-xl border border-border/70 bg-card p-1 shadow-sm">
+        <div className="flex shrink-0 items-center gap-1.5">
+          <div className="grid h-8 shrink-0 grid-cols-3 gap-1 rounded-full border border-border/38 bg-card/58 p-1 shadow-[inset_0_1px_0_hsl(var(--card)/0.62)]">
             {[
               {
                 value: 'graph',
                 label: '图谱视图',
+                compactLabel: '图谱',
                 icon: <Network className="h-3.5 w-3.5" aria-hidden="true" />,
               },
               {
                 value: 'table',
                 label: '表格视图',
+                compactLabel: '表格',
                 icon: <Table2 className="h-3.5 w-3.5" aria-hidden="true" />,
               },
               {
                 value: 'stats',
                 label: '统计视图',
+                compactLabel: '统计',
                 icon: <BarChart3 className="h-3.5 w-3.5" aria-hidden="true" />,
               },
             ].map((item) => (
@@ -1108,7 +1120,7 @@ function SnapshotStudioToolbar({
                 key={item.value}
                 type="button"
                 className={cn(
-                  'inline-flex items-center justify-center gap-1 rounded-lg px-2 text-[11.5px] font-semibold transition-colors',
+                  'inline-flex items-center justify-center gap-1 rounded-full px-2 text-[11.5px] font-semibold transition-colors',
                   studioView === item.value
                     ? 'bg-info text-primary-foreground shadow-sm'
                     : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
@@ -1118,13 +1130,15 @@ function SnapshotStudioToolbar({
                 }
               >
                 <span className="hidden 2xl:inline-flex">{item.icon}</span>
-                {item.label}
+                <span className="hidden 2xl:inline">{item.label}</span>
+                <span className="2xl:hidden">{item.compactLabel}</span>
               </button>
             ))}
           </div>
 
           <Button
-            className="h-8 shrink-0 gap-1.5 rounded-xl bg-slate-900 px-3 text-[11.5px] font-semibold text-primary-foreground shadow-sm hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-card"
+            variant="outline"
+            className="h-8 shrink-0 gap-1.5 rounded-full border-info/22 bg-info/[0.09] px-2.5 text-[11.5px] font-semibold text-info shadow-none hover:border-info/34 hover:bg-info/[0.15] hover:text-info 2xl:px-3"
             onClick={onDiffClick}
             disabled={isRunning}
           >
@@ -1132,14 +1146,15 @@ function SnapshotStudioToolbar({
               className={cn('h-3.5 w-3.5', isRunning && 'animate-spin')}
               aria-hidden="true"
             />
-            Diff 对比
+            <span className="hidden 2xl:inline">Diff 对比</span>
+            <span className="2xl:hidden">Diff</span>
           </Button>
 
-          <div className="grid h-8 shrink-0 grid-cols-2 gap-1 rounded-xl border border-border/70 bg-card p-1 shadow-sm">
+          <div className="grid h-8 shrink-0 grid-cols-2 gap-1 rounded-full border border-border/38 bg-card/58 p-1 shadow-[inset_0_1px_0_hsl(var(--card)/0.62)]">
             <button
               type="button"
               className={cn(
-                'inline-flex items-center justify-center gap-1 rounded-lg px-2 text-[11.5px] font-medium transition-colors',
+                'inline-flex items-center justify-center gap-1 rounded-full px-2 text-[11.5px] font-medium transition-colors',
                 activeSnapshotView === 'a'
                   ? 'bg-emerald-50 text-emerald-700'
                   : 'text-muted-foreground hover:bg-muted/50'
@@ -1149,12 +1164,12 @@ function SnapshotStudioToolbar({
               <span className="inline-flex h-[18px] w-[18px] items-center justify-center rounded-full bg-emerald-100 text-[10px] font-bold text-emerald-700">
                 A
               </span>
-              <span>视图 A</span>
+              <span className="hidden 2xl:inline">视图 A</span>
             </button>
             <button
               type="button"
               className={cn(
-                'inline-flex items-center justify-center gap-1 rounded-lg px-2 text-[11.5px] font-medium transition-colors',
+                'inline-flex items-center justify-center gap-1 rounded-full px-2 text-[11.5px] font-medium transition-colors',
                 activeSnapshotView === 'b'
                   ? 'bg-sky-50 text-sky-700'
                   : 'text-muted-foreground hover:bg-muted/50'
@@ -1164,7 +1179,7 @@ function SnapshotStudioToolbar({
               <span className="inline-flex h-[18px] w-[18px] items-center justify-center rounded-full bg-sky-100 text-[10px] font-bold text-sky-700">
                 B
               </span>
-              <span>视图 B</span>
+              <span className="hidden 2xl:inline">视图 B</span>
             </button>
           </div>
         </div>
@@ -2990,11 +3005,11 @@ export function KGSnapshotsPage() {
               compact
               className="p-0"
             >
-              <div className="flex shrink-0 items-center gap-2">
+              <div className="flex shrink-0 items-center gap-1 rounded-full border border-border/36 bg-card/46 p-1 shadow-[inset_0_1px_0_hsl(var(--card)/0.62)]">
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-9 gap-2 rounded-lg border-border/70 bg-card text-xs font-medium"
+                  className={cn(SNAPSHOT_HEADER_ACTION_CLASS, 'gap-1.5')}
                   title={
                     hashAValue && hashBValue
                       ? '重新导出并刷新 A/B 对比结果'
@@ -3013,7 +3028,7 @@ export function KGSnapshotsPage() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-9 w-9 rounded-lg text-muted-foreground hover:text-foreground"
+                  className={SNAPSHOT_ICON_ACTION_CLASS}
                   title="清空"
                   onClick={() => {
                     setSnapA(null)
@@ -3031,12 +3046,10 @@ export function KGSnapshotsPage() {
                   <Trash2 className="h-4 w-4" aria-hidden="true" />
                 </Button>
 
-                <div className="mx-1 h-5 w-px bg-border/70" aria-hidden />
-
                 <Button
                   variant="outline"
                   size="icon"
-                  className="h-9 w-9 rounded-lg border-border/70 bg-card"
+                  className={SNAPSHOT_ICON_ACTION_CLASS}
                   onClick={() => setLeftSidebarCollapsed((prev) => !prev)}
                   aria-label={
                     leftSidebarCollapsed ? '展开参数栏' : '折叠参数栏'
@@ -3324,57 +3337,66 @@ export function KGSnapshotsPage() {
                 </div>
               </div>
 
-              <div className="shrink-0 border-t border-border/70 bg-background/95 px-4 py-4 backdrop-blur">
-                <div className="grid grid-cols-2 gap-2">
+              <div className="shrink-0 border-t border-border/44 bg-background/92 px-3 py-3 backdrop-blur">
+                <div className="rounded-[1.15rem] border border-border/36 bg-card/62 p-2.5 shadow-[0_16px_38px_-34px_hsl(var(--foreground)/0.35),inset_0_1px_0_hsl(var(--card)/0.7)]">
+                  <div className="mb-2 flex items-center justify-between gap-2 px-1">
+                    <div className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/62">
+                      快照操作
+                    </div>
+                    <span className="rounded-full border border-border/32 bg-background/44 px-2 py-0.5 text-[10px] font-medium text-muted-foreground/64">
+                      bounded diff
+                    </span>
+                  </div>
+
                   <Button
-                    variant="outline"
-                    className="h-10 gap-1.5 rounded-lg border-border/70 bg-card text-xs font-medium"
-                    onClick={() => detachPromise(runExport('a'))}
+                    className={SNAPSHOT_PRIMARY_COMPARE_CLASS}
+                    onClick={() => detachPromise(runCompare())}
                     disabled={isRunning}
                   >
-                    <Download className="h-3.5 w-3.5" aria-hidden="true" />
-                    导出 A
+                    {isRunning ? (
+                      <RefreshCcw
+                        className="h-4 w-4 animate-spin"
+                        aria-hidden="true"
+                      />
+                    ) : (
+                      <GitCompare className="h-4 w-4" aria-hidden="true" />
+                    )}
+                    {isRunning ? '对比中…' : '开始对比'}
                   </Button>
-                  <Button
-                    variant="outline"
-                    className="h-10 gap-1.5 rounded-lg border-border/70 bg-card text-xs font-medium"
-                    onClick={() => detachPromise(runExport('b'))}
-                    disabled={isRunning}
-                  >
-                    <Download className="h-3.5 w-3.5" aria-hidden="true" />
-                    导出 B
-                  </Button>
+
+                  <div className="mt-2 grid grid-cols-3 gap-1.5">
+                    <Button
+                      variant="outline"
+                      className={SNAPSHOT_SECONDARY_ACTION_CLASS}
+                      onClick={() => detachPromise(runExport('a'))}
+                      disabled={isRunning}
+                    >
+                      <Download className="h-3.5 w-3.5" aria-hidden="true" />
+                      导出 A
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className={SNAPSHOT_SECONDARY_ACTION_CLASS}
+                      onClick={() => detachPromise(runExport('b'))}
+                      disabled={isRunning}
+                    >
+                      <Download className="h-3.5 w-3.5" aria-hidden="true" />
+                      导出 B
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className={SNAPSHOT_SECONDARY_ACTION_CLASS}
+                      onClick={() => detachPromise(runBackendCompare())}
+                      disabled={isRunning}
+                    >
+                      <ArrowRightLeft className="h-3.5 w-3.5" aria-hidden="true" />
+                      后端
+                    </Button>
+                  </div>
                 </div>
 
-                <Button
-                  className="mt-2.5 h-11 w-full gap-2 rounded-xl bg-[linear-gradient(90deg,hsl(var(--primary)),hsl(var(--info)))] text-sm font-semibold text-primary-foreground shadow-md transition-shadow hover:shadow-lg"
-                  onClick={() => detachPromise(runCompare())}
-                  disabled={isRunning}
-                >
-                  {isRunning ? (
-                    <RefreshCcw
-                      className="h-4 w-4 animate-spin"
-                      aria-hidden="true"
-                    />
-                  ) : (
-                    <GitCompare className="h-4 w-4" aria-hidden="true" />
-                  )}
-                  {isRunning ? '对比中…' : '开始对比'}
-                </Button>
-
-                <Button
-                  variant="outline"
-                  className="mt-2 h-10 w-full gap-1.5 rounded-xl border-border/70 bg-card text-xs font-medium"
-                  onClick={() => detachPromise(runBackendCompare())}
-                  disabled={isRunning}
-                >
-                  <ArrowRightLeft className="h-3.5 w-3.5" aria-hidden="true" />
-                  后端对比
-                </Button>
-
-                <p className="mt-3 text-[11px] leading-5 text-muted-foreground/85">
-                  默认请求 bounded 明细：节点、边、属性 hash 都会参与
-                  diff；完整溯源仍可结合 KG diagnostics 或 traces 排查。
+                <p className="mt-2.5 px-1 text-[10.5px] leading-4 text-muted-foreground/72">
+                  节点、边、属性 hash 参与 diff；完整溯源可结合 KG diagnostics 或 traces 排查。
                 </p>
               </div>
             </div>

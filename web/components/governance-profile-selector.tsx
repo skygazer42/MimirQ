@@ -139,12 +139,14 @@ export function GovernanceProfileSelector({ className, compact, onApplyPatch }: 
   }, [selectedRef, selectedSummary])
 
   const triggerCls = compact
-    ? 'h-8 rounded-lg border-border/50 bg-card/85 text-[11px] font-medium text-foreground/80 shadow-none'
-    : 'h-9 rounded-lg border-border/50 bg-card/85 text-sm font-medium text-foreground/80 shadow-none'
+    ? 'h-8 rounded-[0.9rem] border-border/45 bg-card/74 text-[11px] font-medium text-foreground/80 shadow-none'
+    : 'h-9 rounded-[0.95rem] border-border/45 bg-card/78 text-sm font-medium text-foreground/80 shadow-none'
   const primaryActionClass =
-    'h-8 gap-2 rounded-lg border-primary/25 bg-primary/10 text-primary shadow-none hover:border-primary/35 hover:bg-primary/20 hover:text-primary'
+    'h-7 gap-1.5 rounded-full border-primary/24 bg-primary/[0.09] px-2.5 text-[11px] font-semibold text-primary shadow-none hover:border-primary/34 hover:bg-primary/[0.16] hover:text-primary'
   const secondaryActionClass =
-    'h-8 gap-2 rounded-lg border-border/50 bg-background/60 text-foreground/70 shadow-none hover:bg-muted/45 hover:text-foreground'
+    'h-7 gap-1.5 rounded-full border-border/38 bg-background/36 px-2.5 text-[11px] font-medium text-muted-foreground/78 shadow-none hover:border-border/50 hover:bg-background/58 hover:text-foreground'
+  const actionRailClass =
+    'flex flex-wrap items-center justify-end gap-1 rounded-[0.95rem] border border-border/28 bg-muted/[0.10] px-1.5 py-1'
 
   const inheritanceText = useMemo(() => {
     const chain = selectedResolved?.chain || []
@@ -154,8 +156,8 @@ export function GovernanceProfileSelector({ className, compact, onApplyPatch }: 
 
   return (
     <div className={cn('space-y-1.5', className)}>
-      <div className="flex items-center gap-2">
-        <div className="flex-1 min-w-0">
+      <div className="flex items-center gap-1.5">
+        <div className="min-w-0 flex-1">
           <Select value={selectedRef} onValueChange={setSelectedRef} disabled={loading}>
             <SelectTrigger className={cn('w-full', triggerCls)}>
               <SelectValue placeholder={loading ? '加载治理预设…' : '选择治理预设（Profiles/脚本）'} />
@@ -177,7 +179,7 @@ export function GovernanceProfileSelector({ className, compact, onApplyPatch }: 
           disabled={loading}
           aria-label="刷新治理预设"
           title="刷新治理预设"
-          className="h-8 rounded-lg border-border/50 bg-background/70 px-2.5 text-muted-foreground shadow-none hover:text-foreground"
+          className="h-8 rounded-[0.9rem] border-border/42 bg-background/46 px-2.5 text-muted-foreground shadow-none hover:bg-background/68 hover:text-foreground"
         >
           <RefreshCw className="w-4 h-4" />
         </Button>
@@ -195,7 +197,7 @@ export function GovernanceProfileSelector({ className, compact, onApplyPatch }: 
         </div>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-border/35 bg-background/45 p-1.5">
+      <div className={actionRailClass}>
         <Button
           onClick={handleApply}
           size={compact ? 'sm' : 'default'}

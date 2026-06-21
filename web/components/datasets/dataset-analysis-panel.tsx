@@ -103,7 +103,7 @@ export function DatasetAnalysisPanel({ datasetId, datasetName }: DatasetAnalysis
               OpenAPI
             </Badge>
           </div>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <p className="mt-1 text-[11px] leading-4 text-muted-foreground/65">
             直接接后端 dataset analysis 接口：摘要、样例、规则建议、术语写回和离线报告导出，不再只放在诊断工作台。
           </p>
         </div>

@@ -25,6 +25,13 @@ import { IconButton } from '@/components/ui/icon-button'
 import { SearchInput } from '@/components/ui/search-input'
 import { Panel } from '@/components/ui/panel'
 import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
+import {
   StatusBadge,
   type StatusBadgeStatus,
 } from '@/components/ui/status-badge'
@@ -148,6 +155,7 @@ type KnowledgeDocumentsPanelProps = {
   deleteDocument: (id: string) => void | Promise<void>
   handleFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void
   onPeek?: (docId: string) => void
+  onScrollContainerChange?: (node: HTMLDivElement | null) => void
 }
 
 function getDocsGridColsClassName(docGridColumns: number): string {
@@ -288,6 +296,7 @@ export function KnowledgeDocumentsPanel({
   anySelectedNotArchived,
   deleteDocument,
   onPeek,
+  onScrollContainerChange,
 }: Readonly<KnowledgeDocumentsPanelProps>) {
   const t = useTranslations('KnowledgeDocumentsPanel')
   // t("empty.filtered.title")
@@ -412,9 +421,9 @@ export function KnowledgeDocumentsPanel({
   const iconShellClassName =
     'relative overflow-hidden shadow-[inset_0_1px_0_hsl(var(--card)/0.72),0_10px_20px_-18px_hsl(var(--foreground)/0.18)] backdrop-blur-[6px]'
   const inventoryStatCardClassName =
-    'group relative overflow-hidden rounded-[16px] border border-border/60 bg-[linear-gradient(180deg,hsl(var(--card)/0.94),hsl(var(--surface-2)/0.64))] px-3 py-2 shadow-[0_12px_24px_-24px_hsl(var(--primary)/0.34)] transition-[border-color,box-shadow,transform] hover:border-primary/25 hover:shadow-[0_16px_28px_-24px_hsl(var(--primary)/0.32)] dark:border-border/70 dark:bg-background/60'
+    'group relative overflow-hidden rounded-[14px] border border-border/50 bg-[linear-gradient(180deg,hsl(var(--card)/0.90),hsl(var(--surface-2)/0.52))] px-2.5 py-2 shadow-[0_10px_22px_-24px_hsl(var(--primary)/0.30)] transition-[border-color,box-shadow,transform] hover:border-primary/20 hover:shadow-[0_14px_26px_-24px_hsl(var(--primary)/0.30)] dark:border-border/65 dark:bg-background/56'
   const checkboxCellClassName =
-    'flex size-7 items-center justify-center rounded-[10px] border border-border/60 bg-card/76 shadow-[inset_0_1px_0_hsl(var(--card)/0.86),0_8px_16px_-14px_hsl(var(--primary)/0.35)] dark:border-border/70 dark:bg-background/70'
+    'flex size-7 items-center justify-center rounded-[10px] border border-border/55 bg-card/72 shadow-[inset_0_1px_0_hsl(var(--card)/0.82),0_8px_16px_-14px_hsl(var(--primary)/0.28)] dark:border-border/65 dark:bg-background/66'
   const checkboxInputClassName =
     'size-4 cursor-pointer rounded-[5px] border-border/70 bg-background text-primary shadow-sm focus-ring dark:border-border/70 dark:bg-background'
   const inventoryToolbar = (
@@ -423,7 +432,7 @@ export function KnowledgeDocumentsPanel({
         value={docFilter}
         onValueChange={setDocFilter}
         containerClassName="min-w-0 w-full xl:max-w-[480px]"
-        inputClassName="h-9 rounded-[12px] border-border/60 bg-background/86 pr-4 text-[12px] shadow-[inset_0_1px_0_hsl(var(--card)/0.86)] dark:border-border/70 dark:bg-background/72"
+        inputClassName="h-8 rounded-xl border-border/55 bg-background/82 pr-4 text-[12px] shadow-none dark:border-border/65 dark:bg-background/68"
         placeholder={
           showDatasetColumn
             ? '搜索文件名 / 文档 ID / 数据集'
@@ -436,7 +445,7 @@ export function KnowledgeDocumentsPanel({
           value={sortKey}
           onValueChange={(value) => setSortKey(value as DocSortKey)}
         >
-          <SelectTrigger className="h-9 min-w-[144px] rounded-[12px] border-border/60 bg-background/86 text-[11px] font-medium shadow-[inset_0_1px_0_hsl(var(--card)/0.86)] dark:border-border/70 dark:bg-background/72">
+          <SelectTrigger className="h-8 min-w-[138px] rounded-xl border-border/55 bg-background/82 text-[11px] font-medium shadow-none dark:border-border/65 dark:bg-background/68">
             <SelectValue placeholder={t('table.columns.name')} />
           </SelectTrigger>
           <SelectContent>
@@ -450,7 +459,7 @@ export function KnowledgeDocumentsPanel({
           type="button"
           variant="outline"
           size="sm"
-          className="h-9 min-w-[80px] justify-center rounded-[12px] border-border/60 bg-background/86 px-3 text-[11px] font-medium shadow-[inset_0_1px_0_hsl(var(--card)/0.86)] hover:border-primary/25 dark:border-border/70 dark:bg-background/72"
+          className="h-8 min-w-[72px] justify-center rounded-xl border-border/55 bg-background/82 px-3 text-[11px] font-medium shadow-none hover:border-primary/25 dark:border-border/65 dark:bg-background/68"
           onClick={() => setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}
         >
           {sortDir === 'asc' ? '升序' : '降序'}
@@ -461,7 +470,7 @@ export function KnowledgeDocumentsPanel({
             type="button"
             variant="ghost"
             size="sm"
-            className="h-9 min-w-[96px] justify-center rounded-[12px] border border-border/60 bg-background/78 px-3 text-[11px] font-medium hover:bg-card/90 dark:border-border/70 dark:bg-background/62"
+            className="h-8 min-w-[88px] justify-center rounded-xl border border-border/55 bg-background/72 px-3 text-[11px] font-medium hover:bg-card/90 dark:border-border/65 dark:bg-background/58"
             onClick={onClearFilters}
           >
             <RotateCcw className="mr-2 size-3.5" />
@@ -473,7 +482,7 @@ export function KnowledgeDocumentsPanel({
           type="button"
           variant={opsOpen ? 'default' : 'outline'}
           size="sm"
-          className="h-9 min-w-[96px] justify-center rounded-[12px] px-3 text-[11px] font-medium"
+          className="h-8 min-w-[90px] justify-center rounded-xl px-3 text-[11px] font-medium"
           aria-expanded={opsOpen}
           onClick={() => setOpsOpen((open) => !open)}
         >
@@ -729,12 +738,12 @@ export function KnowledgeDocumentsPanel({
         open={Boolean(activeDrawerDoc)}
         onOpenChange={handleDrawerOpenChange}
       >
-        <DialogContent className="left-auto right-0 top-0 h-dvh w-[min(480px,100vw)] max-w-[480px] translate-x-0 translate-y-0 rounded-none p-0 overflow-hidden">
-          <DialogHeader className="border-b border-border/70 px-5 py-4 text-left">
-            <DialogTitle className="text-[15px] font-semibold text-foreground">
+        <DialogContent className="left-auto right-0 top-0 flex h-dvh w-[min(540px,100vw)] max-w-[540px] translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-l border-border/55 bg-[linear-gradient(180deg,hsl(var(--background)/0.98),hsl(var(--surface-2)/0.92))] p-0 shadow-[0_24px_70px_rgba(15,23,42,0.16)]">
+          <DialogHeader className="border-b border-border/50 px-4 py-3 text-left">
+            <DialogTitle className="text-[14px] font-semibold leading-none tracking-[-0.01em] text-foreground">
               文档审查视图
             </DialogTitle>
-            <DialogDescription className="text-[12px] text-muted-foreground/76">
+            <DialogDescription className="mt-1 text-[11px] leading-5 text-muted-foreground/76">
               管理切片、检索与健康细节，不挤占主表格宽度。
             </DialogDescription>
           </DialogHeader>
@@ -747,34 +756,58 @@ export function KnowledgeDocumentsPanel({
         </DialogContent>
       </Dialog>
 
+      <Sheet open={opsOpen} onOpenChange={setOpsOpen}>
+        <SheetContent
+          side="right"
+          className="flex h-dvh w-[min(640px,calc(100vw-16px))] flex-col overflow-hidden border-l border-border/55 bg-[linear-gradient(180deg,hsl(var(--background)/0.98),hsl(var(--surface-2)/0.92))] p-0 shadow-[0_24px_70px_rgba(15,23,42,0.16)] sm:max-w-[640px]"
+          overlayClassName="bg-black/10 backdrop-blur-[1px] dark:bg-black/25"
+        >
+          <SheetHeader className="shrink-0 border-b border-border/50 px-4 py-3 text-left">
+            <SheetTitle className="text-[14px] font-semibold leading-none tracking-[-0.01em] text-foreground">
+              运维工具
+            </SheetTitle>
+            <SheetDescription className="mt-1 text-[11px] leading-5 text-muted-foreground/76">
+              当前知识库和勾选文档的统计、解析内容、重复文件、生命周期和批量移动操作。
+            </SheetDescription>
+          </SheetHeader>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-2.5 [scrollbar-gutter:stable]">
+            <DocumentOperationsPanel
+              selectedDocumentIds={selectedDocIds}
+              datasetId={selectedDatasetId}
+              datasets={datasets}
+            />
+          </div>
+        </SheetContent>
+      </Sheet>
+
       <div
         className={cn(
-          'flex min-h-0 flex-col overflow-hidden rounded-[22px] border border-border/60 bg-card/56 shadow-[0_16px_36px_-32px_hsl(var(--primary)/0.26),0_0_0_1px_hsl(var(--card)/0.72)] dark:border-border/50 dark:bg-card/35',
+          'flex min-h-0 flex-col overflow-hidden rounded-[20px] border border-border/50 bg-card/50 shadow-[0_14px_32px_-32px_hsl(var(--primary)/0.24),0_0_0_1px_hsl(var(--card)/0.68)] dark:border-border/50 dark:bg-card/34',
           embedded && 'h-full flex-1',
           embedded ? 'h-full' : 'min-h-[560px]'
         )}
       >
-        <div className="relative overflow-hidden border-b border-border/60 bg-[radial-gradient(circle_at_14%_0%,hsl(var(--primary)/0.045),transparent_34%),linear-gradient(180deg,hsl(var(--card)/0.88),hsl(var(--surface-2)/0.52))] px-4 pb-2 pt-3.5 dark:border-border/60 dark:bg-background/45">
+        <div className="relative overflow-hidden border-b border-border/50 bg-[radial-gradient(circle_at_14%_0%,hsl(var(--primary)/0.04),transparent_34%),linear-gradient(180deg,hsl(var(--card)/0.82),hsl(var(--surface-2)/0.44))] px-4 pb-2.5 pt-3.5 dark:border-border/60 dark:bg-background/45">
           <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,hsl(var(--primary)/0.42),transparent)]" />
           <div className="pointer-events-none absolute right-8 top-4 h-20 w-40 rounded-full bg-info/10 blur-3xl" />
           <div className="relative z-10 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div className="min-w-0 space-y-1.5">
-              <div className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground/72">
+              <div className="inline-flex items-center gap-2 text-[11px] font-semibold text-muted-foreground/76">
                 <div
                   className={cn(
-                    'flex size-6 items-center justify-center rounded-lg border border-border/60 bg-card/72 text-primary/80 dark:border-border/70 dark:bg-muted/35',
+                    'flex size-6 items-center justify-center rounded-lg border border-border/50 bg-card/64 text-primary/80 dark:border-border/65 dark:bg-muted/30',
                     iconShellClassName
                   )}
                 >
                   <span className="pointer-events-none absolute inset-0 rounded-[inherit] bg-[linear-gradient(135deg,rgba(255,255,255,0.3),transparent_52%)] opacity-80" />
                   <Database className="size-3.5" />
                 </div>
-                Document Inventory
+                文档资产
               </div>
-              <div className="text-[19px] font-semibold text-foreground">
+              <div className="text-[20px] font-semibold leading-tight tracking-[-0.015em] text-foreground">
                 {selectedDatasetLabel || '全部知识库文档总览'}
               </div>
-              <div className="max-w-3xl text-[12px] leading-5 text-muted-foreground/76">
+              <div className="max-w-3xl text-[12px] leading-5 text-muted-foreground/74">
                 集中查看文档资产、状态分布、分块体量与健康卡入口，支持直接在当前面板完成搜索和排序。
               </div>
             </div>
@@ -787,13 +820,13 @@ export function KnowledgeDocumentsPanel({
                 className={inventoryStatCardClassName}
               >
                 <span className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-[linear-gradient(90deg,hsl(var(--primary)/0.16),hsl(var(--info)/0.46),hsl(var(--primary)/0.10))]" />
-                <div className="text-[8px] font-medium uppercase tracking-[0.12em] text-muted-foreground/68">
+                <div className="text-[10px] font-medium leading-none text-muted-foreground/68">
                   当前可见
                 </div>
-                <div className="mt-0.5 font-mono text-[14px] tabular-nums text-foreground transition-transform duration-200 group-hover:scale-[1.02]">
+                <div className="mt-1 font-mono text-[14px] tabular-nums text-foreground transition-transform duration-200 group-hover:scale-[1.02]">
                   {visibleDocumentsCount}
                 </div>
-                <div className="mt-0.5 text-[9px] text-muted-foreground/72">
+                <div className="mt-0.5 text-[10px] text-muted-foreground/72">
                   当前列表结果
                 </div>
               </motion.div>
@@ -804,13 +837,13 @@ export function KnowledgeDocumentsPanel({
                 className={inventoryStatCardClassName}
               >
                 <span className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-[linear-gradient(90deg,hsl(var(--primary)/0.10),hsl(var(--info)/0.42),hsl(var(--primary)/0.12))]" />
-                <div className="text-[8px] font-medium uppercase tracking-[0.12em] text-muted-foreground/68">
+                <div className="text-[10px] font-medium leading-none text-muted-foreground/68">
                   已选择
                 </div>
-                <div className="mt-0.5 font-mono text-[14px] tabular-nums text-foreground transition-transform duration-200 group-hover:scale-[1.02]">
+                <div className="mt-1 font-mono text-[14px] tabular-nums text-foreground transition-transform duration-200 group-hover:scale-[1.02]">
                   {selectedDocIds.length}
                 </div>
-                <div className="mt-0.5 text-[9px] text-muted-foreground/72">
+                <div className="mt-0.5 text-[10px] text-muted-foreground/72">
                   批量操作范围
                 </div>
               </motion.div>
@@ -821,13 +854,13 @@ export function KnowledgeDocumentsPanel({
                 className={inventoryStatCardClassName}
               >
                 <span className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-[linear-gradient(90deg,hsl(var(--primary)/0.10),hsl(var(--success)/0.34),hsl(var(--info)/0.18))]" />
-                <div className="text-[8px] font-medium uppercase tracking-[0.12em] text-muted-foreground/68">
+                <div className="text-[10px] font-medium leading-none text-muted-foreground/68">
                   展示模式
                 </div>
-                <div className="mt-0.5 text-[11px] font-normal text-foreground/88">
+                <div className="mt-1 text-[11px] font-medium text-foreground/88">
                   {viewMode === 'list' ? '列表模式' : '网格模式'}
                 </div>
-                <div className="mt-0.5 text-[9px] text-muted-foreground/72">
+                <div className="mt-0.5 text-[10px] text-muted-foreground/72">
                   {showDatasetColumn ? '跨数据集视图' : '单数据集视图'}
                 </div>
               </motion.div>
@@ -850,19 +883,14 @@ export function KnowledgeDocumentsPanel({
               compactEmptyInventory && 'overflow-visible'
             )}
           >
-            <div className="border-b border-border/60 bg-[linear-gradient(180deg,hsl(var(--card)/0.78),hsl(var(--surface-2)/0.42))] px-3 py-2.5 dark:border-border/60 dark:bg-muted/[0.12]">
+            <div className="border-b border-border/50 bg-[linear-gradient(180deg,hsl(var(--card)/0.70),hsl(var(--surface-2)/0.34))] px-3 py-2.5 dark:border-border/60 dark:bg-muted/[0.12]">
               {inventoryToolbar}
-              {opsOpen ? (
-                <div className="mt-2.5 rounded-[16px] border border-border/60 bg-card/82 p-2 shadow-[0_14px_34px_-30px_hsl(var(--primary)/0.28)] dark:border-border/70 dark:bg-background/70">
-                  <DocumentOperationsPanel
-                    selectedDocumentIds={selectedDocIds}
-                    datasetId={selectedDatasetId}
-                    datasets={datasets}
-                  />
-                </div>
-              ) : null}
             </div>
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div
+              ref={onScrollContainerChange}
+              data-knowledge-documents-scroll-container="true"
+              className="min-h-0 flex-1 overflow-y-auto overscroll-contain custom-scrollbar [scrollbar-gutter:stable]"
+            >
               {(() => {
             if (isLoading && isDatasetEmpty) {
               return (
@@ -968,8 +996,8 @@ export function KnowledgeDocumentsPanel({
                         <span className="absolute right-3 top-7 size-1.5 rounded-full bg-info/50" />
                       </div>
 
-                      <div className="inline-flex items-center rounded-full border border-info/15 bg-background/78 px-3 py-1 text-[10px] font-medium uppercase tracking-[0.22em] text-info/70 dark:text-info/78">
-                        Asset Shelf
+                      <div className="inline-flex items-center rounded-full border border-info/15 bg-background/78 px-3 py-1 text-[10px] font-medium text-info/72 dark:text-info/78">
+                        文档货架
                       </div>
                       <h3 className="mt-2.5 text-[21px] font-semibold text-foreground">
                         {emptyTitle}
@@ -1075,10 +1103,10 @@ export function KnowledgeDocumentsPanel({
             return (
               <>
                 {/* className="group hover:bg-muted/20 transition-colors" */}
-                <div className="min-h-0 flex-1 overflow-auto">
+                <div className="min-w-full">
                     <table
                       aria-label={t('table.ariaLabel')}
-                      className="w-full table-fixed text-sm text-left"
+                      className="w-full table-fixed text-left text-sm"
                     >
                       <colgroup>
                         <col className="w-9" />
@@ -1093,11 +1121,11 @@ export function KnowledgeDocumentsPanel({
                         <col className="w-[6.5rem]" />
                         <col className="w-[8.5rem]" />
                       </colgroup>
-                      <thead className="border-b border-border/60 bg-muted/30 text-[11px] uppercase text-muted-foreground/78 dark:border-border/60 dark:bg-muted/[0.16]">
+                      <thead className="border-b border-border/50 bg-muted/22 text-[11px] text-muted-foreground/74 dark:border-border/60 dark:bg-muted/[0.14]">
                         <tr>
                           <th
                             colSpan={tableColumnCount}
-                            className="sticky top-0 z-10 bg-card/95 px-3 py-2 font-medium dark:bg-background/90"
+                            className="sticky top-0 z-10 bg-card/92 px-3 py-2 font-medium dark:bg-background/90"
                           >
                             <div
                               className="grid items-center gap-3"
@@ -1134,7 +1162,7 @@ export function KnowledgeDocumentsPanel({
                           </th>
                         </tr>
                       </thead>
-                      <tbody className="bg-card/95">
+                      <tbody className="bg-card/92">
                         {docsTablePaddingTop > 0 ? (
                           <tr>
                             <td
@@ -1185,11 +1213,11 @@ export function KnowledgeDocumentsPanel({
                             >
                               <td
                                 colSpan={tableColumnCount}
-                                className="px-3 py-1.5"
+                                className="px-3 py-[5px]"
                               >
-                                <div className="rounded-[18px] border border-border/60 bg-card/88 shadow-[0_14px_30px_-28px_hsl(var(--primary)/0.24)] transition-[border-color,box-shadow,transform] duration-150 group-hover/row:-translate-y-px group-hover/row:border-primary/20 group-hover/row:shadow-[0_20px_34px_-28px_hsl(var(--primary)/0.32)] dark:border-border/70 dark:bg-background/78">
+                                <div className="rounded-[16px] border border-border/48 bg-card/82 shadow-[0_10px_24px_-28px_hsl(var(--primary)/0.22)] transition-[border-color,box-shadow,transform] duration-150 group-hover/row:-translate-y-px group-hover/row:border-primary/18 group-hover/row:shadow-[0_16px_30px_-28px_hsl(var(--primary)/0.30)] dark:border-border/65 dark:bg-background/74">
                                   <div
-                                    className="grid min-h-[64px] items-center gap-3 px-3 py-3"
+                                    className="grid min-h-[58px] items-center gap-3 px-3 py-2.5"
                                     style={{
                                       gridTemplateColumns:
                                         documentListGridTemplate,
@@ -1225,12 +1253,12 @@ export function KnowledgeDocumentsPanel({
                                         </div>
                                         <div className="min-w-0 flex-1">
                                           <div
-                                            className="mb-1 max-w-[360px] truncate text-[13px] font-medium leading-none text-foreground/90 xl:max-w-[440px]"
+                                            className="mb-1 max-w-[360px] truncate text-[13px] font-semibold leading-none text-foreground/92 xl:max-w-[440px]"
                                             title={doc.filename}
                                           >
                                             {doc.filename}
                                           </div>
-                                          <div className="max-w-[360px] truncate font-mono text-[10px] uppercase tracking-[0.04em] text-muted-foreground/48 xl:max-w-[440px]">
+                                          <div className="max-w-[360px] truncate font-mono text-[10px] text-muted-foreground/48 xl:max-w-[440px]">
                                             {doc.id}
                                           </div>
                                         </div>
@@ -1238,7 +1266,7 @@ export function KnowledgeDocumentsPanel({
                                     </div>
 
                                     {showDatasetColumn ? (
-                                      <div className="min-w-0 text-[12px] leading-5 text-muted-foreground/82">
+                                      <div className="min-w-0 text-[12px] leading-5 text-muted-foreground/78">
                                         <span className="line-clamp-2">
                                           {datasetLabel}
                                         </span>
@@ -1369,14 +1397,14 @@ export function KnowledgeDocumentsPanel({
                                     </div>
                                   </div>
 
-                                  <div className="mx-3 mb-3 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 rounded-[12px] border border-border/60 bg-muted/[0.18] px-3 py-2 text-[11px] text-muted-foreground/76">
+                                  <div className="mx-3 mb-2.5 flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1 rounded-[11px] border border-border/45 bg-muted/[0.13] px-3 py-1.5 text-[10px] text-muted-foreground/72">
                                     {metadataItems.map((item, index) => (
                                       <div
                                         key={item.label}
                                         className={cn(
-                                          'flex min-w-0 items-center gap-2',
+                                          'flex min-w-0 items-center gap-1.5',
                                           index > 0 &&
-                                            'border-l border-border/60 pl-3'
+                                            'border-l border-border/45 pl-2.5'
                                         )}
                                       >
                                         <span className="shrink-0 text-muted-foreground/56">
@@ -1406,32 +1434,32 @@ export function KnowledgeDocumentsPanel({
                       </tbody>
                     </table>
                   </div>
-                  <div className="mt-auto flex items-center justify-end gap-3 border-t border-border/60 px-4 py-3">
-                    <span className="text-[12px] text-muted-foreground/78">
+                  <div className="mt-auto flex items-center justify-end gap-2.5 border-t border-border/50 bg-card/45 px-4 py-2.5">
+                    <span className="text-[11px] text-muted-foreground/74">
                       显示 {pageStart}-{pageEnd} / 共 {visibleDocumentsCount} 条
                     </span>
                     <button
                       type="button"
-                      className="inline-flex h-9 items-center rounded-[12px] border border-border/70 bg-background px-3 text-[12px] text-muted-foreground"
+                      className="inline-flex h-8 items-center rounded-xl border border-border/55 bg-background/78 px-2.5 text-[11px] text-muted-foreground shadow-none"
                     >
                       {pageSize} 条/页
                     </button>
-                    <div className="inline-flex items-center gap-2">
+                    <div className="inline-flex items-center gap-1.5">
                       <button
                         type="button"
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-[12px] border border-border/70 bg-background text-muted-foreground transition-colors hover:border-primary/20 hover:bg-primary/5 disabled:cursor-not-allowed disabled:text-muted-foreground/35"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-border/55 bg-background/78 text-muted-foreground transition-colors hover:border-primary/20 hover:bg-primary/5 disabled:cursor-not-allowed disabled:text-muted-foreground/35"
                         disabled={!canGoPrevious}
                         aria-label="上一页"
                         onClick={() => onPageChange(page - 1)}
                       >
                         ‹
                       </button>
-                      <span className="inline-flex h-9 min-w-[5.5rem] items-center justify-center rounded-[12px] bg-primary px-3 text-[12px] font-medium text-primary-foreground">
+                      <span className="inline-flex h-8 min-w-[5.25rem] items-center justify-center rounded-xl border border-primary/18 bg-primary/[0.09] px-3 text-[11px] font-semibold text-primary">
                         第 {page} / {pageCount} 页
                       </span>
                       <button
                         type="button"
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-[12px] border border-border/70 bg-background text-muted-foreground transition-colors hover:border-primary/20 hover:bg-primary/5 disabled:cursor-not-allowed disabled:text-muted-foreground/35"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-border/55 bg-background/78 text-muted-foreground transition-colors hover:border-primary/20 hover:bg-primary/5 disabled:cursor-not-allowed disabled:text-muted-foreground/35"
                         disabled={!canGoNext}
                         aria-label="下一页"
                         onClick={() => onPageChange(page + 1)}

@@ -8,7 +8,6 @@ import {
   applyNodeChanges,
   Background,
   Controls,
-  MiniMap,
   type Connection,
   type Edge,
   type EdgeChange,
@@ -281,12 +280,6 @@ export function WorkflowEditor({
         proOptions={{ hideAttribution: true }}
       >
         <Background gap={24} size={1} color="rgba(100, 116, 139, 0.25)" />
-        <MiniMap
-          pannable
-          zoomable
-          className="!bg-card/95 !border !border-border/70 !rounded-xl overflow-hidden shadow-sm"
-          nodeColor={(node) => String((node.data as WorkflowEditorNodeData | undefined)?.color || FALLBACK_NODE_COLOR)}
-        />
         <Controls className="!bg-card/95 !border !border-border/70 !rounded-xl overflow-hidden shadow-sm" showInteractive={false} />
       </ReactFlow>
     </div>
