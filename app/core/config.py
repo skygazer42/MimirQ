@@ -1206,6 +1206,12 @@ class Settings(BaseSettings):
     # Deterministic fallback always remains active; learned hints are confidence-gated.
     RAG_INTENT_ROUTER_MODEL_PATH: str = ""
     RAG_INTENT_ROUTER_MODEL_CONFIDENCE_MIN: float = 0.7
+    # Optional industry-specific glossary expansion. The platform only wires rulesets;
+    # business terms remain in ruleset data, not in retrieval code.
+    RAG_INDUSTRY_RULES_ENABLED: bool = False
+    RAG_INDUSTRY_RULES_RULESETS: str = ""
+    RAG_INDUSTRY_RULES_MAX_ALIASES: int = 16
+    RAG_INDUSTRY_RULES_MAX_QUERY_CHARS: int = 2000
     # Optional: apply adaptive routing overrides from a versioned policy artifact.
     RAG_ADAPTIVE_ROUTER_ENABLED: bool = False
     RAG_ADAPTIVE_ROUTER_POLICY_PATH: str = "ci/adaptive_router_policy.v1.json"
@@ -1684,6 +1690,14 @@ class Settings(BaseSettings):
     GOVERNANCE_PII_MASK: str = "[REDACTED]"
     # Compliance gate: if >=0, quarantine/drop a document when total PII hits exceed this threshold (sum across kinds).
     GOVERNANCE_PII_MAX_HITS: int = -1
+    GOVERNANCE_LLM_AUTO_TAGGING_ENABLED: bool = False
+    GOVERNANCE_LLM_AUTO_TAGGING_MAX_CHARS: int = 3000
+    GOVERNANCE_LLM_AUTO_TAGGING_MAX_ITEMS: int = 16
+    INGEST_PRE_POC_SCANNER_ENABLED: bool = False
+    INGEST_PRE_POC_QUALITY_GATE_MODE: str = "warn"  # off | warn | strict
+    INGEST_PRE_POC_TEXT_SAMPLE_BYTES: int = 200_000
+    INGEST_PRE_POC_PII_MAX_HITS: int = -1
+    INGEST_PRE_POC_SECRETS_MAX_HITS: int = 0
     GOVERNANCE_SECRETS_REDACT: bool = False
     GOVERNANCE_SECRETS_MODE: str = "mask"  # mask | token
     GOVERNANCE_SECRETS_MASK: str = "[SECRET]"

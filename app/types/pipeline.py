@@ -46,6 +46,11 @@ class PipelineOptions:
     governance_pii_mode: str | None = None
     governance_pii_mask: str | None = None
     governance_pii_max_hits: int | None = None
+    governance_llm_auto_tagging_enabled: bool | None = None
+    governance_llm_auto_tagging_max_chars: int | None = None
+    governance_llm_auto_tagging_max_items: int | None = None
+    ingest_pre_poc_scanner_enabled: bool | None = None
+    ingest_pre_poc_quality_gate_mode: str | None = None
     governance_secrets_redact: bool | None = None
     governance_secrets_mode: str | None = None
     governance_secrets_mask: str | None = None
@@ -158,6 +163,11 @@ class PipelineEffective:
     governance_pii_mode: str
     governance_pii_mask: str
     governance_pii_max_hits: int
+    governance_llm_auto_tagging_enabled: bool
+    governance_llm_auto_tagging_max_chars: int
+    governance_llm_auto_tagging_max_items: int
+    ingest_pre_poc_scanner_enabled: bool
+    ingest_pre_poc_quality_gate_mode: str
     governance_secrets_redact: bool
     governance_secrets_mode: str
     governance_secrets_mask: str

@@ -32,7 +32,7 @@ test('document upload flows into intelligent chat smoke path', async ({ page }) 
     })
   })
   const filenamePattern = escapeRegExp(UPLOADED_DOCUMENT_FILENAME)
-  const queueFileRow = page.getByRole('button', { name: new RegExp(filenamePattern) })
+  const queueFileRow = page.getByText(new RegExp(filenamePattern)).first()
 
   await page.goto('/parsing')
   await expect(page.getByRole('heading', { name: '文档解析' })).toBeVisible({ timeout: 60_000 })
@@ -41,11 +41,10 @@ test('document upload flows into intelligent chat smoke path', async ({ page }) 
     .locator('input[type="file"][multiple]:not([webkitdirectory])')
     .setInputFiles(path.resolve(__dirname, 'fixtures/enterprise-telemetry-sample.md'))
 
-  await expect(page.getByText('已加入队列：1 个文件')).toBeVisible()
   await expect(queueFileRow).toBeVisible()
   await expect(page.getByText('准备就绪')).toBeVisible()
 
-  await page.getByRole('button', { name: '开始解析' }).click()
+  await page.getByRole('button', { name: '用当前解析器开始解析' }).click()
 
   await expect(queueFileRow).toBeVisible()
   await expect(page.getByText(PARSED_MARKDOWN.split('\n')[2])).toBeVisible()

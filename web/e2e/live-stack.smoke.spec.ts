@@ -271,10 +271,12 @@ test.describe('live stack smoke', () => {
       await page.getByRole('heading', { name: '文档解析' }).waitFor({ timeout: 120_000 })
 
       const fileInput = page.locator('input[type="file"][multiple]:not([webkitdirectory])')
+      const queueFileRow = page.getByText(FIXTURE_NAME).first()
       await fileInput.setInputFiles(filePath)
 
-      await page.getByText('已加入队列：1 个文件').waitFor({ timeout: 30_000 })
-      await page.getByRole('button', { name: '开始解析' }).click()
+      await queueFileRow.waitFor({ timeout: 30_000 })
+      await page.getByText('准备就绪').waitFor({ timeout: 30_000 })
+      await page.getByRole('button', { name: '用当前解析器开始解析' }).click()
       const uploaded = await waitForNewDocument(request, {
         apiBase,
         tenantId,
@@ -292,7 +294,7 @@ test.describe('live stack smoke', () => {
         documentId,
       })
 
-      const uploadedDocument = page.getByRole('button', { name: new RegExp(FIXTURE_NAME) }).first()
+      const uploadedDocument = page.getByText(FIXTURE_NAME).first()
       await uploadedDocument.waitFor({ timeout: 120_000 })
       await uploadedDocument.click()
       await page.getByRole('heading', { name: 'Enterprise Telemetry Sample' }).waitFor({ timeout: 120_000 })

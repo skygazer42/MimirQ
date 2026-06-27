@@ -2681,6 +2681,51 @@ class DocumentProcessorService:
             table_sidecar_tables_imported = 0
             table_sidecar_routing_audit: dict[str, Any] | None = None
 
+            if bool(getattr(pipeline_effective, "ingest_pre_poc_scanner_enabled", False)):
+                try:
+                    from app.services.ingest_pre_poc_quality_gate import evaluate_ingest_pre_poc_quality_gate
+
+                    t0 = time.perf_counter()
+                    with metrics_span("ingest.pre_poc_quality_gate", file_ext=file_path.suffix.lower()):
+                        pre_poc_gate = evaluate_ingest_pre_poc_quality_gate(
+                            file_path,
+                            enabled=True,
+                            mode=str(getattr(pipeline_effective, "ingest_pre_poc_quality_gate_mode", "warn") or "warn"),
+                        )
+                    _add_stage_duration("pre_poc_quality_gate", (time.perf_counter() - t0) * 1000)
+                    next_meta = dict(db_document.doc_metadata or {})
+                    next_meta["pre_poc_quality_gate"] = pre_poc_gate
+                    next_meta = apply_parse_quality_gate_metadata(next_meta)
+                    db_document.doc_metadata = next_meta
+                    db.commit()
+                    db.refresh(db_document)
+                    if bool(pre_poc_gate.get("blocked")):
+                        msg = "Document blocked by Pre-POC quality gate"
+                        await self._update_status(
+                            db,
+                            tenant_id,
+                            document_id,
+                            "failed",
+                            0,
+                            "failed",
+                            chunk_count=0,
+                            total_characters=0,
+                            error_message=msg,
+                            doc_metadata=_with_stage_durations(next_meta),
+                        )
+                        return {
+                            "status": "failed",
+                            "reason": "pre_poc_quality_gate_blocked",
+                            "chunk_count": 0,
+                            "total_characters": 0,
+                            "parser_backend": parser_backend or "auto",
+                            "chunk_strategy": chunk_strategy or "auto",
+                        }
+                except Exception as exc:  # noqa: BLE001
+                    _log_processor_fallback('process_document', exc)
+                    if str(getattr(pipeline_effective, "ingest_pre_poc_quality_gate_mode", "warn") or "warn").lower() == "strict":
+                        raise RuntimeError(f"pre_poc_quality_gate_failed: {str(exc)[:200]}") from exc
+
             # Optional: file-level preprocessing before parsing (configured via ingestion policy).
             try:
                 meta = db_document.doc_metadata or {}
@@ -3643,6 +3688,16 @@ class DocumentProcessorService:
                         logger.warning("Failed to record governance audit metadata: %s", str(exc)[:200])
                         governance_audit_patch = None
 
+                if chunks:
+                    llm_tagging_meta = await self._apply_llm_auto_tagging(
+                        chunks,
+                        pipeline_effective=pipeline_effective,
+                    )
+                    if llm_tagging_meta:
+                        audit_patch = dict(governance_audit_patch or {})
+                        audit_patch["governance_llm_auto_tagging"] = llm_tagging_meta
+                        governance_audit_patch = audit_patch
+
                 if (
                     bool(pipeline_effective.governance_enabled)
                     and governance_stats is not None
@@ -3721,7 +3776,11 @@ class DocumentProcessorService:
                         "chunk_strategy": resolved_chunk_strategy,
                     }
 
-                if (bool(pipeline_effective.governance_enabled) or governance_plugin_ref) and chunks:
+                if (
+                    bool(pipeline_effective.governance_enabled)
+                    or governance_plugin_ref
+                    or bool(getattr(pipeline_effective, "governance_llm_auto_tagging_enabled", False))
+                ) and chunks:
                     try:
                         self._record_governance_enrichment_metadata(
                             db,
@@ -3774,6 +3833,16 @@ class DocumentProcessorService:
                     except Exception as exc:  # noqa: BLE001
                         logger.warning("Failed to record governance audit metadata: %s", str(exc)[:200])
                         governance_audit_patch = None
+
+                if parsed_documents:
+                    llm_tagging_meta = await self._apply_llm_auto_tagging(
+                        parsed_documents,
+                        pipeline_effective=pipeline_effective,
+                    )
+                    if llm_tagging_meta:
+                        audit_patch = dict(governance_audit_patch or {})
+                        audit_patch["governance_llm_auto_tagging"] = llm_tagging_meta
+                        governance_audit_patch = audit_patch
 
                 # Ensure stable per-doc indices so we can rebase chunk offsets into joined-text coordinates.
                 _ensure_ingest_page_indices(parsed_documents)
@@ -3885,7 +3954,11 @@ class DocumentProcessorService:
                         "chunk_strategy": resolved_chunk_strategy,
                     }
 
-                if (bool(pipeline_effective.governance_enabled) or governance_plugin_ref) and parsed_documents:
+                if (
+                    bool(pipeline_effective.governance_enabled)
+                    or governance_plugin_ref
+                    or bool(getattr(pipeline_effective, "governance_llm_auto_tagging_enabled", False))
+                ) and parsed_documents:
                     try:
                         self._record_governance_enrichment_metadata(
                             db,
@@ -5280,6 +5353,19 @@ class DocumentProcessorService:
             "governance_common_lines_min_ratio": float(effective.governance_common_lines_min_ratio),
             "governance_python_plugin": str(getattr(effective, "governance_python_plugin", "") or ""),
             "governance_python_params": dict(getattr(effective, "governance_python_params", {}) or {}),
+            "governance_llm_auto_tagging_enabled": bool(
+                getattr(effective, "governance_llm_auto_tagging_enabled", False)
+            ),
+            "governance_llm_auto_tagging_max_chars": int(
+                getattr(effective, "governance_llm_auto_tagging_max_chars", 3000) or 3000
+            ),
+            "governance_llm_auto_tagging_max_items": int(
+                getattr(effective, "governance_llm_auto_tagging_max_items", 16) or 16
+            ),
+            "ingest_pre_poc_scanner_enabled": bool(getattr(effective, "ingest_pre_poc_scanner_enabled", False)),
+            "ingest_pre_poc_quality_gate_mode": str(
+                getattr(effective, "ingest_pre_poc_quality_gate_mode", "warn") or "warn"
+            ),
             "chunk_size": int(effective.chunk_size),
             "chunk_overlap": int(effective.chunk_overlap),
             "chunk_merge_small_min_chars": int(getattr(effective, "chunk_merge_small_min_chars", 0) or 0),
@@ -5542,6 +5628,79 @@ class DocumentProcessorService:
             DocumentProcessorService._update_governance_enrichment_state(state, doc.metadata or {})
         return DocumentProcessorService._build_governance_enrichment_payload(state)
 
+    async def _apply_llm_auto_tagging(
+        self,
+        items: list[Document] | None,
+        *,
+        pipeline_effective: PipelineEffective,
+    ) -> dict[str, Any] | None:
+        if not items or not bool(getattr(pipeline_effective, "governance_llm_auto_tagging_enabled", False)):
+            return None
+        max_chars = max(200, int(getattr(pipeline_effective, "governance_llm_auto_tagging_max_chars", 3000) or 3000))
+        max_items = max(1, int(getattr(pipeline_effective, "governance_llm_auto_tagging_max_items", 16) or 16))
+        text_parts: list[str] = []
+        remaining = max_chars
+        for item in items:
+            content = str(getattr(item, "page_content", "") or "").strip()
+            if not content:
+                continue
+            text_parts.append(content[:remaining])
+            remaining -= min(len(content), remaining)
+            if remaining <= 0:
+                break
+        source_text = "\n\n".join(text_parts).strip()
+        if not source_text:
+            return {"enabled": True, "used": False, "reason": "empty_text"}
+
+        try:
+            from app.rag.preprocessing.llm_tagger import extract_llm_tags
+
+            result = await extract_llm_tags(text=source_text, max_chars=max_chars, max_items=max_items)
+        except Exception as exc:  # noqa: BLE001
+            _log_processor_fallback('_apply_llm_auto_tagging', exc)
+            return {"enabled": True, "used": False, "error": str(exc)[:160]}
+
+        tag_values: list[str] = []
+        keyword_values: list[str] = []
+        structured_tags: list[dict[str, Any]] = []
+        for tag in list(getattr(result, "document_tags", []) or [])[:max_items]:
+            value = str(getattr(tag, "value", "") or "").strip()
+            if not value:
+                continue
+            tag_type = str(getattr(tag, "type", "") or "").strip()
+            if tag_type == "keyword":
+                keyword_values.append(value)
+            else:
+                tag_values.append(value)
+            structured_tags.append(tag.model_dump() if hasattr(tag, "model_dump") else dict(tag))
+        if not tag_values and not keyword_values and not structured_tags:
+            return {"enabled": True, "used": False, "provider": getattr(result, "provider", "llm")}
+
+        first = items[0]
+        meta = dict(first.metadata or {})
+        existing_tags = [str(x).strip() for x in (meta.get("document_tags") or []) if isinstance(x, str) and str(x).strip()]
+        existing_keywords = [
+            str(x).strip() for x in (meta.get("document_keywords") or []) if isinstance(x, str) and str(x).strip()
+        ]
+        meta["document_tags"] = list(dict.fromkeys([*existing_tags, *tag_values]))[:max_items]
+        if keyword_values:
+            meta["document_keywords"] = list(dict.fromkeys([*existing_keywords, *keyword_values]))[:max_items]
+            meta["document_keywords_provider"] = "llm"
+        if structured_tags:
+            meta["document_llm_auto_tags"] = structured_tags[:max_items]
+        summary = str(getattr(result, "summary", "") or "").strip()
+        if summary:
+            meta["document_llm_auto_summary"] = summary[:1000]
+        meta["document_llm_auto_tagging"] = {
+            "enabled": True,
+            "used": True,
+            "provider": str(getattr(result, "provider", "llm") or "llm"),
+            "tag_count": len(meta.get("document_tags") or []),
+            "keyword_count": len(meta.get("document_keywords") or []),
+        }
+        first.metadata = meta
+        return dict(meta["document_llm_auto_tagging"])
+
     def _record_governance_enrichment_metadata(
         self,
         db: Session,
@@ -5583,6 +5742,9 @@ class DocumentProcessorService:
             "document_tags",
             "document_keywords",
             "document_keywords_provider",
+            "document_llm_auto_summary",
+            "document_llm_auto_tags",
+            "document_llm_auto_tagging",
             # Stored at document-level; avoid duplicating into every chunk metadata.
             "governance_quality",
         }

@@ -185,6 +185,20 @@ class DocumentPipelineOptions(BaseModel):
         le=1_000_000,
         description="Max allowed PII matches per document before drop/quarantine (sum across kinds). None disables gate.",
     )
+    governance_llm_auto_tagging_enabled: bool | None = Field(
+        default=None,
+        description="Enable best-effort LLM document tagging during processor governance enrichment.",
+    )
+    governance_llm_auto_tagging_max_chars: int | None = Field(default=None, ge=200, le=50_000)
+    governance_llm_auto_tagging_max_items: int | None = Field(default=None, ge=1, le=64)
+    ingest_pre_poc_scanner_enabled: bool | None = Field(
+        default=None,
+        description="Enable lightweight Pre-POC quality gate before parser/chunk/index stages.",
+    )
+    ingest_pre_poc_quality_gate_mode: Literal["off", "warn", "strict"] | None = Field(
+        default=None,
+        description="Pre-POC quality gate mode: off | warn | strict",
+    )
     governance_secrets_redact: bool | None = Field(default=None, description="Redact common secrets/tokens (API keys, private keys, bearer tokens)")
     governance_secrets_mode: str | None = Field(default=None, description="Secrets redaction mode: mask | token")
     governance_secrets_mask: str | None = Field(default=None, description="Secrets replacement string (mask mode)")

@@ -6,6 +6,7 @@ PRODUCTION_RETRIEVAL_PROFILE = "hybrid_ce"
 STRICT_GROUNDED_RETRIEVAL_PROFILE = "grounded_strict"
 LONG_CONTEXT_RETRIEVAL_PROFILE = "long_context"
 EXPANDED_RETRIEVAL_PROFILE = "expanded"
+SPARSE_SPLADE_RETRIEVAL_PROFILE = "sparse_splade"
 HIERARCHY_PRODUCTION_RETRIEVAL_PROFILE = "hierarchy_hybrid_ce"
 HIERARCHY_STRICT_GROUNDED_RETRIEVAL_PROFILE = "hierarchy_grounded_strict"
 HIERARCHY_EXPANDED_RECALL_RETRIEVAL_PROFILE = "hierarchy_recall20_expand"
@@ -21,6 +22,7 @@ SUPPORTED_RETRIEVAL_PROFILES = set(RECALL_FIRST_RETRIEVAL_PROFILES) | {
     PRODUCTION_RETRIEVAL_PROFILE,
     STRICT_GROUNDED_RETRIEVAL_PROFILE,
     LONG_CONTEXT_RETRIEVAL_PROFILE,
+    SPARSE_SPLADE_RETRIEVAL_PROFILE,
     HIERARCHY_PRODUCTION_RETRIEVAL_PROFILE,
     HIERARCHY_STRICT_GROUNDED_RETRIEVAL_PROFILE,
 }
@@ -123,6 +125,14 @@ def apply_retrieval_profile_overrides(
     if normalized == EXPANDED_RETRIEVAL_PROFILE:
         return _apply_default_expansion_defaults(out)
 
+    if normalized == SPARSE_SPLADE_RETRIEVAL_PROFILE:
+        out["retrieval_mode"] = "hybrid"
+        out["top_k"] = max(int(out["top_k"] or 0), 20)
+        out["score_threshold"] = 0.0
+        out["sparse_retrieval_enabled"] = True
+        out["sparse_retrieval_provider"] = "splade"
+        return out
+
     if normalized == PRODUCTION_RETRIEVAL_PROFILE:
         out["retrieval_mode"] = "hybrid"
         out["top_k"] = max(int(out["top_k"] or 0), 20)
@@ -185,7 +195,7 @@ def apply_retrieval_profile_overrides(
 
     raise ValueError(
         "retrieval_profile must be one of: "
-        "recall20, recall50, coverage80, expanded, hybrid_ce, grounded_strict, long_context, "
+        "recall20, recall50, coverage80, expanded, sparse_splade, hybrid_ce, grounded_strict, long_context, "
         "hierarchy_recall20, hierarchy_recall20_expand, hierarchy_hybrid_ce, hierarchy_grounded_strict"
     )
 
@@ -195,6 +205,7 @@ __all__ = [
     "STRICT_GROUNDED_RETRIEVAL_PROFILE",
     "LONG_CONTEXT_RETRIEVAL_PROFILE",
     "EXPANDED_RETRIEVAL_PROFILE",
+    "SPARSE_SPLADE_RETRIEVAL_PROFILE",
     "HIERARCHY_PRODUCTION_RETRIEVAL_PROFILE",
     "HIERARCHY_STRICT_GROUNDED_RETRIEVAL_PROFILE",
     "HIERARCHY_EXPANDED_RECALL_RETRIEVAL_PROFILE",

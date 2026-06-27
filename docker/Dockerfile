@@ -28,14 +28,14 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     # Avoid fetching "build dependencies" in isolated envs when network is flaky.
     # Most of our sdists are pure-Python and build fine with setuptools already present.
     && mkdir -p /tmp/torch-wheels \
-    && TORCH_WHL="torch-2.11.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
-    && TORCHVISION_WHL="torchvision-0.26.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
+    && TORCH_WHL="torch-2.10.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
+    && TORCHVISION_WHL="torchvision-0.25.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
     && curl --fail --location --continue-at - --retry 10 --retry-all-errors --retry-delay 5 \
         -o "/tmp/torch-wheels/${TORCH_WHL}" \
-        "https://download-r2.pytorch.org/whl/cpu/torch-2.11.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
+        "https://download-r2.pytorch.org/whl/cpu/torch-2.10.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
     && curl --fail --location --continue-at - --retry 10 --retry-all-errors --retry-delay 5 \
         -o "/tmp/torch-wheels/${TORCHVISION_WHL}" \
-        "https://download-r2.pytorch.org/whl/cpu/torchvision-0.26.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
+        "https://download-r2.pytorch.org/whl/cpu/torchvision-0.25.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
     && /opt/venv/bin/pip install --retries 5 --timeout 120 \
         "/tmp/torch-wheels/${TORCH_WHL}" \
         "/tmp/torch-wheels/${TORCHVISION_WHL}" \

@@ -30,6 +30,7 @@ out/
 dist/
 .npm
 package-lock.json
+!docs-site/package-lock.json
 *.log
 
 # Environment
@@ -88,6 +89,7 @@ web/openapi.json
 web/types/openapi.ts
 # Generated copy for static API docs site (source: make api-docs-build)
 docs/api/site/openapi.json
+docs/api/site/handbook/
 *.sqlite
 *.db
 *.tsbuildinfo

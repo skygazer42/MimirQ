@@ -44,6 +44,8 @@ def _runtime_baseline() -> dict[str, Any]:
         "reranker_provider": str(getattr(settings, "RERANKER_PROVIDER", "llm") or "llm"),
         "reranker_top_n": int(getattr(settings, "RERANKER_TOP_N", 20) or 20),
         "enable_weight_rerank": True,
+        "sparse_retrieval_enabled": bool(getattr(settings, "SPARSE_RETRIEVAL_ENABLED", False)),
+        "sparse_retrieval_provider": str(getattr(settings, "SPARSE_RETRIEVAL_PROVIDER", "") or "").strip() or None,
         "retrieval_contract_mode": None,
         "visible_evidence_only": False,
     }
@@ -82,6 +84,11 @@ def _public_profile_definition(name: str, *, baseline: dict[str, Any]) -> dict[s
             else 0
         ),
         "enable_weight_rerank": bool(applied.get("enable_weight_rerank", True)),
+        "sparse_retrieval_enabled": bool(applied.get("sparse_retrieval_enabled", baseline.get("sparse_retrieval_enabled", False))),
+        "sparse_retrieval_provider": (
+            str(applied.get("sparse_retrieval_provider") or baseline.get("sparse_retrieval_provider") or "").strip()
+            or None
+        ),
         "retrieval_contract_mode": (
             str(applied.get("retrieval_contract_mode") or "").strip().lower() or None
         ),

@@ -102,7 +102,7 @@ See [Observability Configuration](./observability) for details.
 | --- | --- |
 | `docker-compose.yml` | Docker Compose orchestration |
 | `helm/` | Helm Chart templates |
-| `app/core/config.py` | Application config (800+ entries) |
+| `app/core/config.py` | Application config (1200+ entries) |
 | `alembic.ini` | Database migration config |
 | `.env` / `.env.production` | Environment variables |
 

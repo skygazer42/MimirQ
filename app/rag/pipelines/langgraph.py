@@ -1361,6 +1361,8 @@ class RagStateBuildOptions:
     must_recall_required_anchor_fields: list[str] | None = None
     intent_router: bool | None = None
     intent_router_policy: dict[str, Any] | None = None
+    industry_rules_enabled: bool | None = None
+    industry_rules_rulesets: list[str] | str | None = None
     enable_query_alias_expansion: bool | None = None
     query_aliases: dict[str, list[str]] | None = None
     query_alias_max_queries: int | None = None
@@ -1457,6 +1459,8 @@ def build_rag_state(
     must_recall_required_anchor_fields = resolved.must_recall_required_anchor_fields
     intent_router = resolved.intent_router
     intent_router_policy = resolved.intent_router_policy
+    industry_rules_enabled = resolved.industry_rules_enabled
+    industry_rules_rulesets = resolved.industry_rules_rulesets
     enable_query_alias_expansion = resolved.enable_query_alias_expansion
     query_aliases = resolved.query_aliases
     query_alias_max_queries = resolved.query_alias_max_queries
@@ -1603,6 +1607,10 @@ def build_rag_state(
         reranker_top_n = int(profile_applied.get("reranker_top_n") or reranker_top_n or 0)
     if profile_applied.get("enable_weight_rerank") is not None:
         enable_weight_rerank = bool(profile_applied.get("enable_weight_rerank"))
+    if profile_applied.get("sparse_retrieval_enabled") is not None:
+        sparse_retrieval_enabled = bool(profile_applied.get("sparse_retrieval_enabled"))
+    if profile_applied.get("sparse_retrieval_provider"):
+        sparse_retrieval_provider = str(profile_applied.get("sparse_retrieval_provider") or sparse_retrieval_provider)
     if profile_applied.get("enable_hierarchy_recall") is not None:
         enable_hierarchy_recall = bool(profile_applied.get("enable_hierarchy_recall"))
     if profile_applied.get("hierarchy_family_collapse") is not None:
@@ -1637,6 +1645,8 @@ def build_rag_state(
         "must_recall_required_anchor_fields": must_recall_required_anchor_fields,
         "intent_router": intent_router,
         "intent_router_policy": intent_router_policy,
+        "industry_rules_enabled": industry_rules_enabled,
+        "industry_rules_rulesets": industry_rules_rulesets,
         "enable_query_alias_expansion": enable_query_alias_expansion,
         "query_aliases": query_aliases,
         "query_alias_max_queries": query_alias_max_queries,
