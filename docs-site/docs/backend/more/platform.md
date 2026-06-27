@@ -85,7 +85,7 @@ SCIM 端点使用独立的 Bearer Token 认证，务必通过环境变量配置�
 
 ## 系统设置
 
-平台级配置通过 `app/core/config.py` 集中管理（800+ 配置项），关键分类：
+平台级配置通过 `app/core/config.py` 集中管理（1200+ 配置项），关键分类：
 
 | 分类 | 示例参数 |
 |------|----------|
@@ -113,7 +113,7 @@ SCIM 端点使用独立的 Bearer Token 认证，务必通过环境变量配置�
 | `app/api/schemas/rbac.py` | RBAC Schema |
 | `app/api/v1/rbac.py` | RBAC API 路由 |
 | `app/api/v1/scim.py` | SCIM 端点 |
-| `app/core/config.py` | 集中配置（800+ 项） |
+| `app/core/config.py` | 集中配置（1200+ 项） |
 
 ---
 

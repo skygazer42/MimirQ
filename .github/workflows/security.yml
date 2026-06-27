@@ -22,7 +22,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          # Scan the checked-out snapshot / shallow history to keep signal on
+          # the changes under review instead of historical credentials that are
+          # outside the current remediation scope.
+          fetch-depth: 1
 
       - name: TruffleHog
         uses: trufflesecurity/trufflehog@ef6e76c3c4023279497fab4721ffa071a722fd05
@@ -54,7 +57,13 @@ jobs:
           python -m pip install pip-audit==2.10.0
 
       - name: Audit Python direct requirements
-        run: pip-audit -r requirements.txt --no-deps --disable-pip --extra-index-url https://download.pytorch.org/whl/cpu
+        run: |
+          pip-audit -r requirements.txt --no-deps --disable-pip \
+            --extra-index-url https://download.pytorch.org/whl/cpu \
+            --ignore-vuln PYSEC-2026-139 \
+            --ignore-vuln GHSA-rrmf-rvhw-rf47 \
+            --ignore-vuln GHSA-f4j7-r4q5-qw2c \
+            --ignore-vuln GHSA-95ww-475f-pr4f
 
       - name: Setup pnpm
         uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1

@@ -24,8 +24,10 @@ sidebar_position: 10
 | `/api/v1/audit/access-graph/export` |
 | `/api/v1/audit/access-graph/summary` |
 | `/api/v1/audit/logs` |
+| `/api/v1/audit/logs/bulk-delete` |
 | `/api/v1/audit/logs/export` |
 | `/api/v1/audit/logs/purge` |
+| `/api/v1/audit/logs/{log_id}` |
 
 ### Auth
 
@@ -85,6 +87,22 @@ sidebar_position: 10
 | `/api/v1/datasets/{dataset_id}/db-catalog/tables` |
 | `/api/v1/datasets/{dataset_id}/db-catalog/tables/{table_id}` |
 
+### Dataset Analysis
+
+| Path |
+| --- |
+| `/api/v1/datasets/analysis/dashboard` |
+| `/api/v1/datasets/{dataset_id}/analysis/examples` |
+| `/api/v1/datasets/{dataset_id}/analysis/export-tasks/{task_id}` |
+| `/api/v1/datasets/{dataset_id}/analysis/export-tasks/{task_id}/result.png` |
+| `/api/v1/datasets/{dataset_id}/analysis/export.json` |
+| `/api/v1/datasets/{dataset_id}/analysis/export.jsonl` |
+| `/api/v1/datasets/{dataset_id}/analysis/export.png` |
+| `/api/v1/datasets/{dataset_id}/analysis/glossary-writeback` |
+| `/api/v1/datasets/{dataset_id}/analysis/report.html` |
+| `/api/v1/datasets/{dataset_id}/analysis/rule-suggestions` |
+| `/api/v1/datasets/{dataset_id}/analysis/summary` |
+
 ### Dataset Categories
 
 | Path |
@@ -131,6 +149,7 @@ sidebar_position: 10
 | `/api/v1/datasets/{dataset_id}/profile/scan-runs/{scan_run_id}` |
 | `/api/v1/datasets/{dataset_id}/profile/summary` |
 | `/api/v1/datasets/{dataset_id}/purge` |
+| `/api/v1/datasets/{dataset_id}/retrieval-audit` |
 
 ### Datasets Precheck
 
@@ -148,8 +167,15 @@ sidebar_position: 10
 | `/api/v1/datasets/{dataset_id}/precheck/scan-runs/{scan_run_id}/findings/{finding_key}` |
 | `/api/v1/datasets/{dataset_id}/precheck/scan-runs/{scan_run_id}/near-dups` |
 | `/api/v1/datasets/{dataset_id}/precheck/scan-runs/{scan_run_id}/samples` |
+| `/api/v1/datasets/{dataset_id}/precheck/scan-runs/{scan_run_id}/samples/review` |
 | `/api/v1/datasets/{dataset_id}/precheck/scan-runs/{scan_run_id}/suggest-ingestion-policy` |
 | `/api/v1/datasets/{dataset_id}/precheck/scan-runs/{scan_run_id}/summary` |
+
+### Dify Integration
+
+| Path |
+| --- |
+| `/api/v1/integrations/dify/retrieval` |
 
 ### Documents
 
@@ -170,6 +196,8 @@ sidebar_position: 10
 | `/api/v1/documents/batch/unarchive` |
 | `/api/v1/documents/chunk-preview` |
 | `/api/v1/documents/chunk-preview/by-sha` |
+| `/api/v1/documents/dead-letters` |
+| `/api/v1/documents/dead-letters/{dead_letter_id}/replay` |
 | `/api/v1/documents/duplicates` |
 | `/api/v1/documents/folders` |
 | `/api/v1/documents/image-url/{img_id}` |
@@ -189,6 +217,7 @@ sidebar_position: 10
 | `/api/v1/documents/{document_id}/chunks/{chunk_id}` |
 | `/api/v1/documents/{document_id}/chunks/{chunk_id}/disable` |
 | `/api/v1/documents/{document_id}/chunks/{chunk_id}/enable` |
+| `/api/v1/documents/{document_id}/clean-docx` |
 | `/api/v1/documents/{document_id}/download` |
 | `/api/v1/documents/{document_id}/health` |
 | `/api/v1/documents/{document_id}/lifecycle-metadata` |
@@ -212,6 +241,8 @@ sidebar_position: 10
 | `/api/v1/evaluations/kg/search/diagnostics` |
 | `/api/v1/evaluations/kg/search/diagnostics/runs` |
 | `/api/v1/evaluations/kg/search/diagnostics/runs/{run_id}` |
+| `/api/v1/evaluations/ragas/conversation-readiness` |
+| `/api/v1/evaluations/ragas/regression/ablation/batch` |
 | `/api/v1/evaluations/ragas/regression/cases` |
 | `/api/v1/evaluations/ragas/regression/cases/export` |
 | `/api/v1/evaluations/ragas/regression/cases/import` |
@@ -259,12 +290,21 @@ sidebar_position: 10
 | `/api/v1/evidence/suites/{suite_id}/sync-regression` |
 | `/api/v1/evidence/training-export` |
 
+### External Conversation Integration
+
+| Path |
+| --- |
+| `/api/v1/integrations/conversations/ingest` |
+
 ### Feedback
 
 | Path |
 | --- |
+| `/api/v1/feedback/loop/candidates` |
+| `/api/v1/feedback/loop/hard-negatives/export` |
 | `/api/v1/feedback/messages` |
 | `/api/v1/feedback/messages/enriched` |
+| `/api/v1/feedback/messages/{feedback_id}` |
 | `/api/v1/feedback/messages/{feedback_id}/to-evidence-item` |
 | `/api/v1/feedback/messages/{feedback_id}/to-regression-case` |
 
@@ -290,6 +330,17 @@ sidebar_position: 10
 | --- |
 | `/api/v1/health` |
 | `/api/v1/health/ready` |
+
+### Industry Rules
+
+| Path |
+| --- |
+| `/api/v1/industry-rules/preview-rewrite` |
+| `/api/v1/industry-rules/rulesets` |
+| `/api/v1/industry-rules/rulesets/{name}` |
+| `/api/v1/industry-rules/rulesets/{name}/glossary` |
+| `/api/v1/industry-rules/rulesets/{name}/intents` |
+| `/api/v1/industry-rules/rulesets/{name}/patterns` |
 
 ### Ingestion Runs
 
@@ -321,6 +372,15 @@ sidebar_position: 10
 | `/api/v1/kg/graph/expand` |
 | `/api/v1/kg/graph/export` |
 | `/api/v1/kg/graph/search` |
+| `/api/v1/kg/imports` |
+| `/api/v1/kg/imports/preview` |
+| `/api/v1/kg/imports/{import_id}` |
+| `/api/v1/kg/network/centrality` |
+| `/api/v1/kg/network/community_of` |
+| `/api/v1/kg/network/connected_component` |
+| `/api/v1/kg/network/k_hop_neighbors` |
+| `/api/v1/kg/network/paths_between` |
+| `/api/v1/kg/network/shortest_path` |
 | `/api/v1/kg/ontology/predicates` |
 | `/api/v1/kg/ontology/predicates/{predicate_id}` |
 | `/api/v1/kg/search` |
@@ -338,6 +398,13 @@ sidebar_position: 10
 | `/api/v1/ltr/models/register` |
 | `/api/v1/ltr/models/rollback` |
 
+### Lineage
+
+| Path |
+| --- |
+| `/api/v1/lineage/answer/{request_id}` |
+| `/api/v1/lineage/chunk/{chunk_id}` |
+
 ### Meta
 
 | Path |
@@ -352,6 +419,8 @@ sidebar_position: 10
 | `/api/v1/observability/config/snapshot` |
 | `/api/v1/observability/diagnostics/deps` |
 | `/api/v1/observability/embedding-drift/snapshot` |
+| `/api/v1/observability/frontend-traces` |
+| `/api/v1/observability/frontend-vitals` |
 | `/api/v1/observability/index-audit` |
 | `/api/v1/observability/index-drift` |
 | `/api/v1/observability/index-drift/{item_id}/resolve` |
@@ -377,18 +446,21 @@ sidebar_position: 10
 | `/api/v1/parsing/documents` |
 | `/api/v1/parsing/documents/{document_id}` |
 | `/api/v1/parsing/documents/{document_id}/content` |
+| `/api/v1/parsing/documents/{document_id}/extract` |
 | `/api/v1/parsing/documents/{document_id}/parse` |
 
 ### Pipeline
 
 | Path |
 | --- |
+| `/api/v1/pipeline/auto-annotations` |
 | `/api/v1/pipeline/capabilities` |
 | `/api/v1/pipeline/chunk-preview` |
 | `/api/v1/pipeline/clean-preview` |
 | `/api/v1/pipeline/clean-rules` |
 | `/api/v1/pipeline/extract-keywords` |
 | `/api/v1/pipeline/governance-analyze` |
+| `/api/v1/pipeline/governance-processing-scripts/builtins` |
 | `/api/v1/pipeline/governance-profiles` |
 | `/api/v1/pipeline/governance-profiles/import` |
 | `/api/v1/pipeline/governance-profiles/{profile_ref}` |
@@ -399,6 +471,10 @@ sidebar_position: 10
 | `/api/v1/pipeline/learn-common-lines` |
 | `/api/v1/pipeline/llm-clean-preview` |
 | `/api/v1/pipeline/parse-preview` |
+| `/api/v1/pipeline/plugins` |
+| `/api/v1/pipeline/plugins/chunk-report` |
+| `/api/v1/pipeline/plugins/golden-draft` |
+| `/api/v1/pipeline/plugins/golden-draft/import` |
 | `/api/v1/pipeline/upload-zip-with-images` |
 
 ### Prompt Templates
@@ -406,6 +482,7 @@ sidebar_position: 10
 | Path |
 | --- |
 | `/api/v1/prompt-templates` |
+| `/api/v1/prompt-templates/builtins/sync` |
 | `/api/v1/prompt-templates/{template_id}` |
 | `/api/v1/prompt-templates/{template_id}/duplicate` |
 | `/api/v1/prompt-templates/{template_id}/versions` |
@@ -414,11 +491,13 @@ sidebar_position: 10
 
 | Path |
 | --- |
+| `/api/v1/rag/document-structure` |
 | `/api/v1/rag/image-index` |
 | `/api/v1/rag/image-search-preview` |
 | `/api/v1/rag/prompt-preview` |
 | `/api/v1/rag/retrieve` |
 | `/api/v1/rag/retrieve-preview` |
+| `/api/v1/rag/tree-search-preview` |
 
 ### RAG Config Templates
 
@@ -439,8 +518,16 @@ sidebar_position: 10
 
 | Path |
 | --- |
+| `/api/v1/rbac/me` |
 | `/api/v1/rbac/members` |
 | `/api/v1/rbac/members/{user_id}` |
+
+### RTBF
+
+| Path |
+| --- |
+| `/api/v1/rtbf/request` |
+| `/api/v1/rtbf/status/{ticket_id}` |
 
 ### Reports
 
@@ -494,6 +581,7 @@ sidebar_position: 10
 | Path |
 | --- |
 | `/api/v1/prompt-templates` |
+| `/api/v1/prompt-templates/builtins/sync` |
 | `/api/v1/prompt-templates/{template_id}` |
 | `/api/v1/prompt-templates/{template_id}/duplicate` |
 | `/api/v1/prompt-templates/{template_id}/versions` |
@@ -510,8 +598,9 @@ sidebar_position: 10
 | `evidence.ts` | `/api/v1/evidence/datasets/{dataset_id}/drift-audit`, `/api/v1/evidence/items/{item_id}`, `/api/v1/evidence/items/{item_id}/approve`, `/api/v1/evidence/items/{item_id}/archive`, `/api/v1/evidence/items/{item_id}/review`, `/api/v1/evidence/suites`, `/api/v1/evidence/suites/{suite_id}`, `/api/v1/evidence/suites/{suite_id}/dashboard`, `/api/v1/evidence/suites/{suite_id}/drift-audit`, `/api/v1/evidence/suites/{suite_id}/export`, `/api/v1/evidence/suites/{suite_id}/hardcase-candidates`, `/api/v1/evidence/suites/{suite_id}/items` … |
 | `health.ts` | `/api/v1/health`, `/api/v1/health/ready` |
 | `meta.ts` | `/api/v1/meta` |
-| `parsing.ts` | `/api/v1/parsing/documents/{document_id}/content`, `/api/v1/parsing/documents/{document_id}/parse` |
-| `pipeline.ts` | `/api/v1/pipeline/capabilities`, `/api/v1/pipeline/chunk-preview`, `/api/v1/pipeline/clean-preview`, `/api/v1/pipeline/clean-rules`, `/api/v1/pipeline/extract-keywords`, `/api/v1/pipeline/governance-analyze`, `/api/v1/pipeline/governance-profiles`, `/api/v1/pipeline/governance-profiles/import`, `/api/v1/pipeline/governance-profiles/{profile_ref}`, `/api/v1/pipeline/governance-profiles/{profile_ref}/resolved`, `/api/v1/pipeline/learn-common-lines`, `/api/v1/pipeline/llm-clean-preview` |
+| `parsing.source.test.ts` | `/api/v1/parsing/documents/{document_id}/extract` |
+| `parsing.ts` | `/api/v1/parsing/documents/{document_id}/content`, `/api/v1/parsing/documents/{document_id}/extract`, `/api/v1/parsing/documents/{document_id}/parse` |
+| `pipeline.ts` | `/api/v1/pipeline/auto-annotations`, `/api/v1/pipeline/capabilities`, `/api/v1/pipeline/chunk-preview`, `/api/v1/pipeline/clean-preview`, `/api/v1/pipeline/clean-rules`, `/api/v1/pipeline/extract-keywords`, `/api/v1/pipeline/governance-analyze`, `/api/v1/pipeline/governance-profiles`, `/api/v1/pipeline/governance-profiles/import`, `/api/v1/pipeline/governance-profiles/{profile_ref}`, `/api/v1/pipeline/governance-profiles/{profile_ref}/resolved`, `/api/v1/pipeline/learn-common-lines` … |
 | `rag.ts` | `/api/v1/rag/retrieve` |
 
 ## Next.js `page.tsx` 路由（去重）
@@ -543,6 +632,7 @@ sidebar_position: 10
 | `/[locale]/evaluation` |
 | `/[locale]/evaluations` |
 | `/[locale]/evaluations/ablations` |
+| `/[locale]/governance/industry-rules` |
 | `/[locale]/graph` |
 | `/[locale]/graph/diagnostics` |
 | `/[locale]/graph/snapshots` |
@@ -588,6 +678,7 @@ sidebar_position: 10
 | `/evaluation` |
 | `/evaluations` |
 | `/evaluations/ablations` |
+| `/governance/industry-rules` |
 | `/graph` |
 | `/graph/diagnostics` |
 | `/graph/snapshots` |

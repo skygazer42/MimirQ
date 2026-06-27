@@ -22,14 +22,18 @@ flowchart LR
     RK --> TOP[Top-K 结果]
 ```
 
+:::note
+默认混合检索为 **Vector + BM25 + RRF 融合**。SPLADE 稀疏检索默认关闭（`SPARSE_RETRIEVAL_ENABLED=false`），ColBERT 为可选精排后端，二者均需显式启用。
+:::
+
 ## 检索方式对比
 
 | 检索方式 | 召回率 | 精度 | 延迟 | 适用场景 |
 |----------|--------|------|------|----------|
 | Vector（Dense） | 高 | 中 | 低 | 语义相似度匹配 |
 | BM25（Lexical） | 中 | 高 | 极低 | 精确关键词/术语匹配 |
-| SPLADE（Sparse） | 高 | 高 | 中 | 稀疏语义+词汇混合 |
-| ColBERT ANN | — | 极高 | 中 | 精排阶段 |
+| SPLADE（Sparse，**默认关闭**） | 高 | 高 | 中 | 稀疏语义+词汇混合；需设 `SPARSE_RETRIEVAL_ENABLED=true` 启用 |
+| ColBERT ANN（可选） | — | 极高 | 中 | 精排阶段；deterministic 实现，HF provider 可选 |
 
 :::tip 检索模式自动选择
 `guess_retrieval_mode()` 根据 query 特征自动选择最优检索模式；`retrieval_profiles` 提供预设配置（如 `recall_first` 偏召回率优先）。

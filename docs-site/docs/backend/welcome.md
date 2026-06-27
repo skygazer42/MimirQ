@@ -75,13 +75,13 @@ graph LR
 
 ## Embedding 与模型支持
 
-后端内置 15 种 Embedding 模型、7 个 Provider，默认使用 `BAAI/bge-m3`。RAG Engine 支持 Vector、BM25、SPLADE、ColBERT ANN 四种检索模式混合编排，可通过配置灵活切换。
+后端内置多种 Embedding 模型，Provider 适配层覆盖 **OpenAI / Ollama / DashScope / Local** 等真实实现（Voyage / Cohere / Jina / Bedrock 目前为占位适配，复用 OpenAI 兼容协议，无原厂特性）。默认模型为 `text-embedding-3-small`，可通过 `EMBEDDING_MODEL` 切换（含 BGE-M3 等中文友好模型）。RAG Engine 默认 **Vector + BM25 + RRF** 混合检索，SPLADE / ColBERT ANN 为可选后端（需显式启用）。
 
 ## 关键配置与文件路径
 
 | 文件 | 用途 |
 | --- | --- |
-| `app/core/config.py` | 800+ 配置项，pydantic-settings 驱动 |
+| `app/core/config.py` | 1200+ 配置项，pydantic-settings 驱动 |
 | `alembic.ini` / `alembic/` | 数据库迁移 |
 | `docker-compose.yml` | 本地开发环境编排 |
 | `app/rag/engine.py` | RAGEngine 主流程（streaming） |

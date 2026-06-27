@@ -54,6 +54,7 @@ from app.rag.core.text import (
     parse_json_from_text,
     should_rewrite_query,
 )
+from app.rag.industry_rules.runtime import apply_industry_rules_query_expansion
 from app.rag.policy.intent_router import route_adaptive_retrieval_overrides, route_intent, route_retrieval_preset
 from app.rag.policy.must_recall import (
     MUST_RECALL_FAIL_REASON_TAXONOMY_V1,
@@ -2109,6 +2110,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     # KG search output can be reused by multiple retrieval steps (query expansion / chunk injection).
     kg_result_cached: dict[str, Any] | None = None
     intent_router_meta: dict[str, Any] = {"enabled": False, "used": False}
+    industry_rules_meta: dict[str, Any] = {"enabled": False, "used": False}
     adaptive_router_meta: dict[str, Any] = {"enabled": False, "used": False}
     channel_budget_policy_meta: dict[str, Any] = {"enabled": False, "used": False}
     temporal_intent_enabled = bool(getattr(settings, "RAG_TEMPORAL_INTENT_ENABLED", False))
@@ -2163,6 +2165,32 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             rewrite_elapsed = 0.0
 
         rewrite_used = query_for_retrieval != question
+
+    industry_rules_enabled_req = state.get("industry_rules_enabled")
+    industry_rules_enabled = (
+        bool(industry_rules_enabled_req)
+        if industry_rules_enabled_req is not None
+        else bool(getattr(settings, "RAG_INDUSTRY_RULES_ENABLED", False))
+    )
+    try:
+        query_for_retrieval, industry_rules_meta = apply_industry_rules_query_expansion(
+            query_for_retrieval,
+            enabled=industry_rules_enabled,
+            ruleset_names=(
+                state.get("industry_rules_rulesets")
+                if state.get("industry_rules_rulesets") is not None
+                else getattr(settings, "RAG_INDUSTRY_RULES_RULESETS", "")
+            ),
+            max_aliases=int(getattr(settings, "RAG_INDUSTRY_RULES_MAX_ALIASES", 16) or 16),
+            max_query_chars=int(getattr(settings, "RAG_INDUSTRY_RULES_MAX_QUERY_CHARS", 2000) or 2000),
+        )
+    except Exception as exc:  # noqa: BLE001
+        _log_orchestrator_fallback('run_retrieval', exc)
+        industry_rules_meta = {
+            "enabled": bool(industry_rules_enabled),
+            "used": False,
+            "error": f"industry_rules_exception:{str(exc)[:160]}",
+        }
 
     if temporal_intent_enabled:
         try:
@@ -2567,6 +2595,10 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
         hierarchy_sibling_window = max(0, int(profile_applied.get("hierarchy_sibling_window") or 0))
     if profile_applied.get("hierarchy_overfetch_factor") is not None:
         hierarchy_overfetch_factor = max(1, int(profile_applied.get("hierarchy_overfetch_factor") or 1))
+    if profile_applied.get("sparse_retrieval_enabled") is not None:
+        sparse_enabled = bool(profile_applied.get("sparse_retrieval_enabled"))
+    if profile_applied.get("sparse_retrieval_provider"):
+        sparse_provider = normalize_sparse_provider_name(str(profile_applied.get("sparse_retrieval_provider") or ""))
 
     explicit_fusion_budgets = state.get("fusion_budgets") if isinstance(state.get("fusion_budgets"), dict) else None
     explicit_fusion_weights = state.get("fusion_weights") if isinstance(state.get("fusion_weights"), dict) else None
@@ -5032,6 +5064,9 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     )
     metrics["intent_router_learned_rule_id"] = (intent_router_learned_meta or {}).get("rule_id")
     metrics["intent_router"] = intent_router_meta
+    metrics["industry_rules_enabled"] = bool(industry_rules_meta.get("enabled"))
+    metrics["industry_rules_used"] = bool(industry_rules_meta.get("used"))
+    metrics["industry_rules"] = industry_rules_meta
     metrics["adaptive_router_enabled"] = bool(adaptive_router_meta.get("enabled"))
     metrics["adaptive_router_used"] = bool(adaptive_router_meta.get("used"))
     metrics["adaptive_router"] = adaptive_router_meta
@@ -5441,6 +5476,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     )
     query_debug["router_layers"] = router_layers
     query_debug["intent_router"] = intent_router_meta
+    query_debug["industry_rules"] = industry_rules_meta
     query_debug["adaptive_router"] = adaptive_router_meta
     query_debug["channel_budget_policy"] = channel_budget_policy_meta
     query_debug["temporal_intent"] = {
@@ -5658,6 +5694,7 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             },
         },
         "intent_router": intent_router_meta,
+        "industry_rules": industry_rules_meta,
         "adaptive_router": adaptive_router_meta,
         "channel_budget_policy": channel_budget_policy_meta,
         "router_layers": router_layers,

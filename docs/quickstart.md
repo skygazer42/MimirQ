@@ -364,19 +364,20 @@ LLM_MODEL: str = "gpt-4o-mini"
 LLM_MODEL: str = "gpt-4o"
 ```
 
-### 使用 Claude 替代 OpenAI
+### 使用 Claude / 其他模型替代 OpenAI
 
-编辑 `app/rag/engine.py`:
+MimirQ 通过 **OpenAI 兼容接口** 统一接入所有 LLM，**无需改代码**。将 `LLM_API_BASE` 指向目标模型的 OpenAI 兼容端点（自建网关或第三方兼容服务），并设置 `LLM_MODEL` / `LLM_API_KEY` 即可：
 
-```python
-from langchain_anthropic import ChatAnthropic
-
-self.llm = ChatAnthropic(
-    model="claude-3-sonnet-20240229",
-    api_key=settings.ANTHROPIC_API_KEY,
-    streaming=True
-)
+```bash
+# .env / 环境变量
+LLM_API_BASE=https://your-openai-compatible-gateway/v1
+LLM_MODEL=claude-sonnet-4-6
+LLM_API_KEY=sk-...
 ```
+
+:::note
+MimirQ 不内置 native Anthropic / Gemini SDK，所有模型经 OpenAI 兼容协议接入。若目标服务无兼容端点，需在前置网关（如 LiteLLM、One-API）做协议转换。
+:::
 
 ---
 

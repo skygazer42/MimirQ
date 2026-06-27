@@ -601,6 +601,12 @@ def execute_extractive_fallback_once(
         ),
         intent_router=(getattr(effective_rag_config, "intent_router", None) if explicit_mode else None),
         intent_router_policy=(getattr(effective_rag_config, "intent_router_policy", None) if explicit_mode else None),
+        industry_rules_enabled=(
+            getattr(effective_rag_config, "industry_rules_enabled", None) if explicit_mode else None
+        ),
+        industry_rules_rulesets=(
+            getattr(effective_rag_config, "industry_rules_rulesets", None) if explicit_mode else None
+        ),
         enable_query_alias_expansion=(
             getattr(effective_rag_config, "enable_query_alias_expansion", None) if explicit_mode else None
         ),
@@ -666,6 +672,8 @@ def execute_extractive_fallback_once(
         enable_reranker=(getattr(effective_rag_config, "enable_reranker", None) if explicit_mode else False),
         reranker_provider=(getattr(effective_rag_config, "reranker_provider", None) if explicit_mode else None),
         reranker_top_n=(getattr(effective_rag_config, "reranker_top_n", None) if explicit_mode else None),
+        sparse_retrieval_enabled=getattr(effective_rag_config, "sparse_retrieval_enabled", None),
+        sparse_retrieval_provider=getattr(effective_rag_config, "sparse_retrieval_provider", None),
         visible_evidence_only=getattr(effective_rag_config, "visible_evidence_only", None),
         metadata_filter=getattr(effective_rag_config, "metadata_filter", None),
         db=db,
@@ -753,6 +761,8 @@ def execute_graph_chat_once(
         must_recall_required_anchor_fields=effective_rag_config.must_recall_required_anchor_fields,
         intent_router=effective_rag_config.intent_router,
         intent_router_policy=effective_rag_config.intent_router_policy,
+        industry_rules_enabled=effective_rag_config.industry_rules_enabled,
+        industry_rules_rulesets=effective_rag_config.industry_rules_rulesets,
         enable_query_alias_expansion=effective_rag_config.enable_query_alias_expansion,
         query_aliases=effective_rag_config.query_aliases,
         query_alias_max_queries=effective_rag_config.query_alias_max_queries,
@@ -787,6 +797,8 @@ def execute_graph_chat_once(
         enable_reranker=effective_rag_config.enable_reranker,
         reranker_provider=effective_rag_config.reranker_provider,
         reranker_top_n=effective_rag_config.reranker_top_n,
+        sparse_retrieval_enabled=effective_rag_config.sparse_retrieval_enabled,
+        sparse_retrieval_provider=effective_rag_config.sparse_retrieval_provider,
         metadata_filter=effective_rag_config.metadata_filter,
         max_tokens=effective_rag_config.max_tokens,
         structured_output=request.structured_output,
@@ -952,6 +964,8 @@ async def execute_langchain_chat_once(
         must_recall_required_anchor_fields=effective_rag_config.must_recall_required_anchor_fields,
         intent_router=effective_rag_config.intent_router,
         intent_router_policy=effective_rag_config.intent_router_policy,
+        industry_rules_enabled=effective_rag_config.industry_rules_enabled,
+        industry_rules_rulesets=effective_rag_config.industry_rules_rulesets,
         enable_query_alias_expansion=effective_rag_config.enable_query_alias_expansion,
         query_aliases=effective_rag_config.query_aliases,
         query_alias_max_queries=effective_rag_config.query_alias_max_queries,
@@ -980,6 +994,8 @@ async def execute_langchain_chat_once(
         enable_reranker=effective_rag_config.enable_reranker,
         reranker_provider=effective_rag_config.reranker_provider,
         reranker_top_n=effective_rag_config.reranker_top_n,
+        sparse_retrieval_enabled=effective_rag_config.sparse_retrieval_enabled,
+        sparse_retrieval_provider=effective_rag_config.sparse_retrieval_provider,
         max_tokens=effective_rag_config.max_tokens,
         structured_preset=request.structured_preset,
         visible_evidence_only=effective_rag_config.visible_evidence_only,

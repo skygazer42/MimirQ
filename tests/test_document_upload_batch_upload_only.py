@@ -28,8 +28,8 @@ class _DummyDB:
 
 
 def test_upload_batch_upload_only_stores_document_without_enqueueing_processing(monkeypatch, tmp_path: Path):  # noqa: ANN001
-    import app.api.v1.documents as documents_module
     import app.api.v1.document_upload as document_upload
+    import app.api.v1.documents as documents_module
     import app.services.tenant_quota_service as tenant_quota_service
     from app.core.config import settings
 
@@ -92,7 +92,7 @@ def test_upload_batch_upload_only_stores_document_without_enqueueing_processing(
     assert body["successful"][0]["status"] == "pending"
 
     document = dummy_db.added[0]
-    assert getattr(document, "dataset_id") == dataset_id
-    assert getattr(document, "status") == "pending"
-    assert getattr(document, "doc_metadata")["ingest_stage"] == "uploaded_only"
-    assert Path(str(getattr(document, "file_path"))).exists()
+    assert document.dataset_id == dataset_id
+    assert document.status == "pending"
+    assert document.doc_metadata["ingest_stage"] == "uploaded_only"
+    assert Path(str(document.file_path)).exists()

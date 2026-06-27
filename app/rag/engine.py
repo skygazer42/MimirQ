@@ -844,6 +844,8 @@ Requirements:
         must_recall_required_anchor_fields = rag_config.must_recall_required_anchor_fields
         intent_router = rag_config.intent_router
         intent_router_policy = rag_config.intent_router_policy
+        industry_rules_enabled = getattr(rag_config, "industry_rules_enabled", None)
+        industry_rules_rulesets = getattr(rag_config, "industry_rules_rulesets", None)
         enable_query_alias_expansion = rag_config.enable_query_alias_expansion
         query_aliases = rag_config.query_aliases
         query_alias_max_queries = rag_config.query_alias_max_queries
@@ -884,6 +886,8 @@ Requirements:
         fusion_weights = rag_config.fusion_weights
         retrieval_overfetch_multiplier = getattr(rag_config, "retrieval_overfetch_multiplier", None)
         retrieval_overfetch_max_k = getattr(rag_config, "retrieval_overfetch_max_k", None)
+        sparse_retrieval_enabled = getattr(rag_config, "sparse_retrieval_enabled", None)
+        sparse_retrieval_provider = getattr(rag_config, "sparse_retrieval_provider", None)
         enable_weight_rerank = rag_config.enable_weight_rerank
         vector_weight = rag_config.vector_weight
         keyword_weight = rag_config.keyword_weight
@@ -972,6 +976,8 @@ Requirements:
                     must_recall_required_anchor_fields=must_recall_required_anchor_fields,
                     intent_router=intent_router,
                     intent_router_policy=intent_router_policy,
+                    industry_rules_enabled=industry_rules_enabled,
+                    industry_rules_rulesets=industry_rules_rulesets,
                     enable_query_alias_expansion=enable_query_alias_expansion,
                     query_aliases=query_aliases,
                     query_alias_max_queries=query_alias_max_queries,
@@ -993,6 +999,8 @@ Requirements:
                     fusion_weights=fusion_weights,
                     retrieval_overfetch_multiplier=retrieval_overfetch_multiplier,
                     retrieval_overfetch_max_k=retrieval_overfetch_max_k,
+                    sparse_retrieval_enabled=sparse_retrieval_enabled,
+                    sparse_retrieval_provider=sparse_retrieval_provider,
                     enable_weight_rerank=enable_weight_rerank,
                     vector_weight=vector_weight,
                     keyword_weight=keyword_weight,
@@ -1181,6 +1189,33 @@ Requirements:
                         "strategy_id": rewrite_strategy_id,
                         "strategy_hash": rewrite_strategy_hash,
                     },
+                }
+
+            industry_rules_enabled_effective = (
+                bool(industry_rules_enabled)
+                if industry_rules_enabled is not None
+                else bool(getattr(settings, "RAG_INDUSTRY_RULES_ENABLED", False))
+            )
+            industry_rules_meta: dict[str, Any] = {"enabled": bool(industry_rules_enabled_effective), "used": False}
+            try:
+                from app.rag.industry_rules.runtime import apply_industry_rules_query_expansion
+
+                query_for_retrieval, industry_rules_meta = apply_industry_rules_query_expansion(
+                    query_for_retrieval,
+                    enabled=industry_rules_enabled_effective,
+                    ruleset_names=(
+                        industry_rules_rulesets
+                        if industry_rules_rulesets is not None
+                        else getattr(settings, "RAG_INDUSTRY_RULES_RULESETS", "")
+                    ),
+                    max_aliases=int(getattr(settings, "RAG_INDUSTRY_RULES_MAX_ALIASES", 16) or 16),
+                    max_query_chars=int(getattr(settings, "RAG_INDUSTRY_RULES_MAX_QUERY_CHARS", 2000) or 2000),
+                )
+            except Exception as exc:  # noqa: BLE001
+                industry_rules_meta = {
+                    "enabled": bool(industry_rules_enabled_effective),
+                    "used": False,
+                    "error": f"industry_rules_exception:{str(exc)[:160]}",
                 }
 
             # Step 0.2: Multi-modal query router (deterministic, no LLM).
@@ -2918,6 +2953,9 @@ Requirements:
                             "intent_router_enabled": bool(intent_router_meta.get("enabled")),
                             "intent_router_used": bool(intent_router_meta.get("used")),
                             "intent_router": intent_router_meta,
+                            "industry_rules_enabled": bool(industry_rules_meta.get("enabled")),
+                            "industry_rules_used": bool(industry_rules_meta.get("used")),
+                            "industry_rules": dict(industry_rules_meta),
                             "complexity_score": round(float(complexity_score), 3),
                             "adaptive_retrieval_used": bool(adaptive_retrieval_used),
                             "adaptive_retrieval_overrides": dict(adaptive_retrieval_overrides),
@@ -3411,6 +3449,7 @@ Requirements:
                     "contract_mode": retrieval_contract_mode_effective or None,
                     "contract_policy": dict(retrieval_contract_policy or {}),
                     "intent_router": intent_router_meta,
+                    "industry_rules": dict(industry_rules_meta),
                     "retrieval_config_hash": retrieval_config_hash,
                     "recall_bucket": recall_bucket,
                     "top_k": int(top_k) if top_k is not None else None,
@@ -4297,6 +4336,9 @@ Requirements:
                         "rewrite_used": bool(rewrite_used),
                         "rewrite_elapsed_sec": round(rewrite_elapsed, 3),
                         "rewrite_model_used": rewrite_model_used,
+                        "industry_rules_enabled": bool(industry_rules_meta.get("enabled")),
+                        "industry_rules_used": bool(industry_rules_meta.get("used")),
+                        "industry_rules": dict(industry_rules_meta),
                         "alias_enabled": bool(alias_enabled),
                         "alias_used": bool(alias_used),
                         "alias_count": len(alias_queries),

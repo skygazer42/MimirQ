@@ -102,7 +102,7 @@ MimirQ 暴露 Prometheus 兼容的 metrics 端点：
 | --- | --- |
 | `docker-compose.yml` | Docker Compose 编排 |
 | `helm/` | Helm Chart 模板 |
-| `app/core/config.py` | 应用配置（800+ 项） |
+| `app/core/config.py` | 应用配置（1200+ 项） |
 | `alembic.ini` | 数据库迁移配置 |
 | `.env` / `.env.production` | 环境变量 |
 

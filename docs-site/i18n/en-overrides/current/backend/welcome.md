@@ -81,7 +81,7 @@ The backend ships with 15 embedding models across 7 providers, defaulting to `BA
 
 | File | Purpose |
 | --- | --- |
-| `app/core/config.py` | 800+ config entries, driven by pydantic-settings |
+| `app/core/config.py` | 1200+ config entries, driven by pydantic-settings |
 | `alembic.ini` / `alembic/` | Database migrations |
 | `docker-compose.yml` | Local dev environment orchestration |
 | `app/rag/engine.py` | RAGEngine main flow (streaming) |

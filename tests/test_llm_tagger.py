@@ -59,3 +59,48 @@ def test_llm_tagger_context_uses_head_and_tail_for_long_documents():  # noqa: AN
     assert "[... omitted middle content ...]" in context
     assert context.endswith("Z" * 40)
     assert "MIDDLE" not in context
+
+
+def test_processor_llm_auto_tagging_writes_document_level_metadata(monkeypatch):  # noqa: ANN001
+    from langchain_core.documents import Document
+
+    from app.parsing.processors.processor import DocumentProcessorService
+    from app.rag.preprocessing.llm_tagger import LLMDocumentTag, LLMTaggingResult
+    from app.services.pipeline_config import resolve_pipeline_options
+    from app.types.pipeline import PipelineOptions
+
+    async def _fake_extract_llm_tags(**_kwargs):  # noqa: ANN202
+        return LLMTaggingResult(
+            summary="自动识别出的入库主题。",
+            document_tags=[
+                LLMDocumentTag(type="topic", value="入库质量"),
+                LLMDocumentTag(type="keyword", value="PII"),
+            ],
+            provider="fake",
+        )
+
+    import app.rag.preprocessing.llm_tagger as tagger_mod
+
+    monkeypatch.setattr(tagger_mod, "extract_llm_tags", _fake_extract_llm_tags, raising=True)
+    items = [Document(page_content="入库前需要检查 PII 和质量画像。", metadata={})]
+    effective = resolve_pipeline_options(
+        PipelineOptions(
+            governance_llm_auto_tagging_enabled=True,
+            governance_llm_auto_tagging_max_chars=500,
+            governance_llm_auto_tagging_max_items=8,
+        )
+    )
+
+    meta = asyncio.run(DocumentProcessorService()._apply_llm_auto_tagging(items, pipeline_effective=effective))
+
+    assert meta == {"enabled": True, "used": True, "provider": "fake", "tag_count": 1, "keyword_count": 1}
+    assert items[0].metadata["document_tags"] == ["入库质量"]
+    assert items[0].metadata["document_keywords"] == ["PII"]
+    assert items[0].metadata["document_llm_auto_summary"] == "自动识别出的入库主题。"
+
+    DocumentProcessorService._strip_doc_enrichment_fields(items)
+
+    assert "document_tags" not in items[0].metadata
+    assert "document_keywords" not in items[0].metadata
+    assert "document_llm_auto_tags" not in items[0].metadata
+    assert "document_llm_auto_summary" not in items[0].metadata

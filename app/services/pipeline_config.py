@@ -17,6 +17,7 @@ from app.types.pipeline import PipelineEffective, PipelineOptions
 
 DEFAULT_GOVERNANCE_PII_MASK = "[REDACTED]"
 DEFAULT_GOVERNANCE_SECRETS_MASK = "[SECRET]"
+_PRE_POC_QUALITY_GATE_MODES = {"off", "warn", "strict"}
 
 
 def _coerce_bool(value: Any) -> bool | None:
@@ -59,6 +60,11 @@ def _coerce_str(value: Any) -> str | None:
     if isinstance(value, str):
         return value
     return None
+
+
+def _normalize_pre_poc_quality_gate_mode(value: Any) -> str:
+    mode = str(value or "warn").strip().lower()
+    return mode if mode in _PRE_POC_QUALITY_GATE_MODES else "warn"
 
 
 _ALLOWED_RE_FLAG_BITS = int(re.IGNORECASE | re.MULTILINE | re.DOTALL)
@@ -237,6 +243,9 @@ def parse_pipeline_from_metadata(metadata: dict[str, Any]) -> PipelineOptions:
     governance = pipeline.get("governance")
     if not isinstance(governance, dict):
         governance = {}
+    pre_poc = pipeline.get("pre_poc")
+    if not isinstance(pre_poc, dict):
+        pre_poc = {}
     dedup = pipeline.get("dedup")
     if not isinstance(dedup, dict):
         dedup = {}
@@ -273,6 +282,11 @@ def parse_pipeline_from_metadata(metadata: dict[str, Any]) -> PipelineOptions:
         governance_pii_mode=_coerce_str(governance.get("pii_mode")),
         governance_pii_mask=_coerce_str(governance.get("pii_mask")),
         governance_pii_max_hits=_coerce_int(governance.get("pii_max_hits")),
+        governance_llm_auto_tagging_enabled=_coerce_bool(governance.get("llm_auto_tagging_enabled")),
+        governance_llm_auto_tagging_max_chars=_coerce_int(governance.get("llm_auto_tagging_max_chars")),
+        governance_llm_auto_tagging_max_items=_coerce_int(governance.get("llm_auto_tagging_max_items")),
+        ingest_pre_poc_scanner_enabled=_coerce_bool(pre_poc.get("scanner_enabled")),
+        ingest_pre_poc_quality_gate_mode=_coerce_str(pre_poc.get("quality_gate_mode")),
         governance_secrets_redact=_coerce_bool(governance.get("secrets_redact")),
         governance_secrets_mode=_coerce_str(governance.get("secrets_mode")),
         governance_secrets_mask=_coerce_str(governance.get("secrets_mask")),
@@ -505,6 +519,19 @@ def build_pipeline_metadata(options: PipelineOptions) -> dict[str, Any] | None:
         governance["pii_mask"] = str(options.governance_pii_mask)
     if options.governance_pii_max_hits is not None:
         governance["pii_max_hits"] = int(options.governance_pii_max_hits)
+    if options.governance_llm_auto_tagging_enabled is not None:
+        governance["llm_auto_tagging_enabled"] = bool(options.governance_llm_auto_tagging_enabled)
+    if options.governance_llm_auto_tagging_max_chars is not None:
+        governance["llm_auto_tagging_max_chars"] = int(options.governance_llm_auto_tagging_max_chars)
+    if options.governance_llm_auto_tagging_max_items is not None:
+        governance["llm_auto_tagging_max_items"] = int(options.governance_llm_auto_tagging_max_items)
+    pre_poc: dict[str, Any] = {}
+    if options.ingest_pre_poc_scanner_enabled is not None:
+        pre_poc["scanner_enabled"] = bool(options.ingest_pre_poc_scanner_enabled)
+    if options.ingest_pre_poc_quality_gate_mode is not None:
+        pre_poc["quality_gate_mode"] = str(options.ingest_pre_poc_quality_gate_mode)
+    if pre_poc:
+        pipeline["pre_poc"] = pre_poc
     if options.governance_secrets_redact is not None:
         governance["secrets_redact"] = bool(options.governance_secrets_redact)
     if options.governance_secrets_mode is not None:
@@ -767,6 +794,31 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         options.governance_pii_max_hits
         if options.governance_pii_max_hits is not None
         else int(getattr(settings, "GOVERNANCE_PII_MAX_HITS", -1) or -1)
+    )
+    governance_llm_auto_tagging_enabled = (
+        getattr(settings, "GOVERNANCE_LLM_AUTO_TAGGING_ENABLED", False)
+        if options.governance_llm_auto_tagging_enabled is None
+        else bool(options.governance_llm_auto_tagging_enabled)
+    )
+    governance_llm_auto_tagging_max_chars = (
+        options.governance_llm_auto_tagging_max_chars
+        if options.governance_llm_auto_tagging_max_chars is not None
+        else int(getattr(settings, "GOVERNANCE_LLM_AUTO_TAGGING_MAX_CHARS", 3000) or 3000)
+    )
+    governance_llm_auto_tagging_max_items = (
+        options.governance_llm_auto_tagging_max_items
+        if options.governance_llm_auto_tagging_max_items is not None
+        else int(getattr(settings, "GOVERNANCE_LLM_AUTO_TAGGING_MAX_ITEMS", 16) or 16)
+    )
+    ingest_pre_poc_scanner_enabled = (
+        getattr(settings, "INGEST_PRE_POC_SCANNER_ENABLED", False)
+        if options.ingest_pre_poc_scanner_enabled is None
+        else bool(options.ingest_pre_poc_scanner_enabled)
+    )
+    ingest_pre_poc_quality_gate_mode = (
+        getattr(settings, "INGEST_PRE_POC_QUALITY_GATE_MODE", "warn")
+        if options.ingest_pre_poc_quality_gate_mode is None
+        else str(options.ingest_pre_poc_quality_gate_mode or "warn")
     )
     governance_secrets_redact = (
         getattr(settings, "GOVERNANCE_SECRETS_REDACT", False)
@@ -1075,6 +1127,11 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         governance_pii_mode=str(governance_pii_mode or "mask"),
         governance_pii_mask=str(governance_pii_mask or DEFAULT_GOVERNANCE_PII_MASK),
         governance_pii_max_hits=int(governance_pii_max_hits),
+        governance_llm_auto_tagging_enabled=bool(governance_llm_auto_tagging_enabled),
+        governance_llm_auto_tagging_max_chars=max(200, int(governance_llm_auto_tagging_max_chars or 3000)),
+        governance_llm_auto_tagging_max_items=max(1, int(governance_llm_auto_tagging_max_items or 16)),
+        ingest_pre_poc_scanner_enabled=bool(ingest_pre_poc_scanner_enabled),
+        ingest_pre_poc_quality_gate_mode=_normalize_pre_poc_quality_gate_mode(ingest_pre_poc_quality_gate_mode),
         governance_secrets_redact=bool(governance_secrets_redact),
         governance_secrets_mode=str(governance_secrets_mode or "mask"),
         governance_secrets_mask=str(governance_secrets_mask or DEFAULT_GOVERNANCE_SECRETS_MASK),

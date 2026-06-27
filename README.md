@@ -66,7 +66,7 @@
 
 与传统 RAG 方案不同，MimirQ 在以下方面做了深度优化：
 
-- **检索质量**：三路混合检索（Vector + BM25 + SPLADE），RRF 融合排序 + ColBERT/LTR 重排，确保语义理解与精确匹配兼顾
+- **检索质量**：混合检索（Vector + BM25，可选 SPLADE 稀疏），RRF 融合排序 + 可选 ColBERT/LTR 重排，确保语义理解与精确匹配兼顾
 - **可观测性**：可视化切片预览、RAG 检索 Trace、评测 Leaderboard，全链路透明可调
 - **安全合规**：文档级 ACL 权限裁剪、RBAC、SCIM/SSO 集成，满足企业级数据隔离需求
 - **可扩展性**：Milvus 十亿级向量、Helm/K8s 生产部署、Prometheus/Grafana 可观测

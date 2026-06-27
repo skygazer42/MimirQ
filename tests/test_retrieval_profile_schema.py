@@ -28,6 +28,40 @@ def test_chat_rag_config_coverage80_overrides_top_k_and_threshold() -> None:
     assert cfg.score_threshold == pytest.approx(0.0)
 
 
+def test_chat_rag_config_sparse_splade_profile_enables_sparse_channel() -> None:
+    from app.api.schemas.chat import ChatRAGConfig
+
+    cfg = ChatRAGConfig(retrieval_profile="sparse_splade", top_k=5, score_threshold=0.7)
+
+    assert cfg.retrieval_profile == "sparse_splade"
+    assert cfg.retrieval_mode == "hybrid"
+    assert cfg.top_k >= 20
+    assert cfg.score_threshold == pytest.approx(0.0)
+    assert cfg.sparse_retrieval_enabled is True
+    assert cfg.sparse_retrieval_provider == "splade"
+
+
+def test_rag_state_carries_industry_rules_and_sparse_controls() -> None:
+    from app.rag.pipelines.langgraph import build_rag_state
+
+    state = build_rag_state(
+        question="485 通讯失败",
+        document_ids=[],
+        top_k=5,
+        score_threshold=0.0,
+        retrieval_mode="hybrid",
+        industry_rules_enabled=True,
+        industry_rules_rulesets=["industrial_control"],
+        sparse_retrieval_enabled=True,
+        sparse_retrieval_provider="splade",
+    )
+
+    assert state["industry_rules_enabled"] is True
+    assert state["industry_rules_rulesets"] == ["industrial_control"]
+    assert state["sparse_retrieval_enabled"] is True
+    assert state["sparse_retrieval_provider"] == "splade"
+
+
 def test_chat_rag_config_basic_mode_maps_to_production_profile() -> None:
     from app.api.schemas.chat import ChatRAGConfig
 

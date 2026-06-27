@@ -14,7 +14,15 @@ def test_retrieval_profiles_endpoint_exposes_supported_profiles_and_version_hash
     assert isinstance(profiles, list) and profiles
 
     names = {str((row or {}).get("name") or "") for row in profiles if isinstance(row, dict)}
-    assert {"recall20", "recall50", "coverage80", "hybrid_ce", "grounded_strict", "long_context"}.issubset(names)
+    assert {
+        "recall20",
+        "recall50",
+        "coverage80",
+        "hybrid_ce",
+        "grounded_strict",
+        "long_context",
+        "sparse_splade",
+    }.issubset(names)
 
     effective = payload.get("effective_defaults")
     assert isinstance(effective, dict)
@@ -75,3 +83,7 @@ def test_retrieval_profiles_endpoint_exposes_profile_contract_metadata() -> None
     hybrid = by_name.get("hybrid_ce") or {}
     assert hybrid.get("retrieval_contract_mode") is None
     assert hybrid.get("visible_evidence_only") is False
+
+    sparse = by_name.get("sparse_splade") or {}
+    assert sparse.get("sparse_retrieval_enabled") is True
+    assert sparse.get("sparse_retrieval_provider") == "splade"

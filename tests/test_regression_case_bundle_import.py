@@ -161,8 +161,6 @@ def test_import_regression_cases_returns_created_updated_and_all_case_ids(monkey
     tenant_id = uuid4()
     dataset_id = uuid4()
     existing_id = uuid4()
-    document_id = uuid4()
-    chunk_id = uuid4()
     created_doc_id = uuid4()
     created_chunk_id = uuid4()
     updated_doc_id = uuid4()

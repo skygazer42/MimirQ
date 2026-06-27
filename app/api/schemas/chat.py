@@ -114,7 +114,7 @@ def _apply_profile_value_overrides(config: Any, applied: dict[str, Any]) -> None
     config.retrieval_profile = applied["retrieval_profile"]
     config.top_k = int(applied["top_k"])
     config.score_threshold = float(applied["score_threshold"])
-    for key in ("retrieval_mode", "reranker_provider", "hierarchy_family_aggregation"):
+    for key in ("retrieval_mode", "reranker_provider", "hierarchy_family_aggregation", "sparse_retrieval_provider"):
         if applied.get(key):
             setattr(config, key, str(applied[key]))
     for key in ("reranker_top_n", "hierarchy_parent_depth", "hierarchy_sibling_window", "hierarchy_overfetch_factor"):
@@ -127,6 +127,7 @@ def _apply_profile_value_overrides(config: Any, applied: dict[str, Any]) -> None
         "enable_hierarchy_recall",
         "hierarchy_family_collapse",
         "hierarchy_tree_dedup",
+        "sparse_retrieval_enabled",
     ):
         if applied.get(key) is not None:
             setattr(config, key, bool(applied[key]))
@@ -285,6 +286,8 @@ class ChatRAGConfig(BaseModel):
     # Optional tenant/dataset policy overlay for the deterministic intent router.
     # This is transport-only here; runtime validation stays inside app.rag.policy.intent_router.
     intent_router_policy: dict[str, Any] | None = None
+    industry_rules_enabled: bool | None = None
+    industry_rules_rulesets: list[str] | None = Field(default=None, max_length=8)
 
     # Controlled query expansion for recall (optional).
     # - query_aliases: dataset-scoped alias/synonym dictionary.
@@ -355,6 +358,8 @@ class ChatRAGConfig(BaseModel):
     # Optional per-request cap for candidate overfetch. None keeps global retrieval defaults.
     retrieval_overfetch_multiplier: int | None = Field(default=None, ge=1, le=20)
     retrieval_overfetch_max_k: int | None = Field(default=None, ge=1, le=500)
+    sparse_retrieval_enabled: bool | None = None
+    sparse_retrieval_provider: Literal["deterministic", "splade"] | None = None
 
     enable_weight_rerank: bool = True
     vector_weight: float = Field(default=0.6, ge=0.0, le=1.0)
@@ -405,7 +410,12 @@ class ChatRAGConfig(BaseModel):
             )
         return mode
 
-    @field_validator("must_recall_expected_source_keys", "must_recall_required_anchor_fields", mode="before")
+    @field_validator(
+        "must_recall_expected_source_keys",
+        "must_recall_required_anchor_fields",
+        "industry_rules_rulesets",
+        mode="before",
+    )
     @classmethod
     def _normalize_optional_string_list(cls, v: Any) -> list[str] | None:
         if v is None:
