@@ -4,7 +4,7 @@
 # tests, lint and audit jobs should install this layered file.
 -r requirements.txt
 
-pytest==9.0.3
-pytest-asyncio==1.3.0
-pip-audit==2.10.0
-ruff==0.15.9
+pytest==9.1.1
+pytest-asyncio==1.4.0
+pip-audit==2.10.1
+ruff==0.15.20
