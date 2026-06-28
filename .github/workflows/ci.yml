@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   test-and-verify:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, mimirq]
     timeout-minutes: 45
     steps:
       - name: Checkout
@@ -104,7 +104,7 @@ jobs:
           if-no-files-found: ignore
 
   docker-build:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, mimirq]
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -117,7 +117,7 @@ jobs:
         run: docker build -t mimirq-web -f web/Dockerfile.prod web
 
   retrieval-only-bounded-gate:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, mimirq]
     timeout-minutes: 10
     if: github.event_name == 'pull_request'
     steps:
@@ -861,7 +861,7 @@ jobs:
             ci/retrieval_thresholds.v2.json
 
   retrieval-regression-gate:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, mimirq]
     timeout-minutes: 30
     if: github.event_name == 'pull_request'
     needs:
@@ -1062,7 +1062,7 @@ jobs:
           fi
 
   kg-search-regression-gate:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, mimirq]
     timeout-minutes: 30
     if: github.event_name == 'pull_request'
     services:

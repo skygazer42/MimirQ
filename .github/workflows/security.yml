@@ -16,7 +16,7 @@ concurrency:
 jobs:
   secret-scan:
     name: Secret Scan (TruffleHog)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, mimirq]
     timeout-minutes: 20
     steps:
       - name: Checkout
@@ -36,7 +36,7 @@ jobs:
 
   dependency-audit:
     name: Dependency Audit (pip-audit, pnpm audit)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, mimirq]
     timeout-minutes: 30
     steps:
       - name: Checkout
