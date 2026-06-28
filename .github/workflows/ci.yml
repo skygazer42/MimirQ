@@ -14,10 +14,6 @@ concurrency:
 env:
   SELF_HOSTED_PYTHON_BIN: /home/user/.local/share/uv/python/cpython-3.11.13-linux-x86_64-gnu/bin
   PIP_INDEX_URL: https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
-  SELF_HOSTED_HTTP_PROXY: http://127.0.0.1:35983
-  SELF_HOSTED_HTTPS_PROXY: http://127.0.0.1:35983
-  SELF_HOSTED_ALL_PROXY: socks://127.0.0.1:35983/
-  SELF_HOSTED_NO_PROXY: 127.0.0.1,localhost,ci-service.example
 
 jobs:
   test-and-verify:
@@ -27,14 +23,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         env:
-          HTTP_PROXY: ${{ env.SELF_HOSTED_HTTP_PROXY }}
-          HTTPS_PROXY: ${{ env.SELF_HOSTED_HTTPS_PROXY }}
-          ALL_PROXY: ${{ env.SELF_HOSTED_ALL_PROXY }}
-          http_proxy: ${{ env.SELF_HOSTED_HTTP_PROXY }}
-          https_proxy: ${{ env.SELF_HOSTED_HTTPS_PROXY }}
-          all_proxy: ${{ env.SELF_HOSTED_ALL_PROXY }}
-          NO_PROXY: ${{ env.SELF_HOSTED_NO_PROXY }}
-          no_proxy: ${{ env.SELF_HOSTED_NO_PROXY }}
+          HTTP_PROXY: http://127.0.0.1:35983
+          HTTPS_PROXY: http://127.0.0.1:35983
+          ALL_PROXY: socks://127.0.0.1:35983/
+          http_proxy: http://127.0.0.1:35983
+          https_proxy: http://127.0.0.1:35983
+          all_proxy: socks://127.0.0.1:35983/
+          NO_PROXY: 127.0.0.1,localhost,ci-service.example
+          no_proxy: 127.0.0.1,localhost,ci-service.example
 
       - name: Ensure self-hosted toolchain
         if: ${{ runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01' }}
@@ -155,14 +151,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         env:
-          HTTP_PROXY: ${{ env.SELF_HOSTED_HTTP_PROXY }}
-          HTTPS_PROXY: ${{ env.SELF_HOSTED_HTTPS_PROXY }}
-          ALL_PROXY: ${{ env.SELF_HOSTED_ALL_PROXY }}
-          http_proxy: ${{ env.SELF_HOSTED_HTTP_PROXY }}
-          https_proxy: ${{ env.SELF_HOSTED_HTTPS_PROXY }}
-          all_proxy: ${{ env.SELF_HOSTED_ALL_PROXY }}
-          NO_PROXY: ${{ env.SELF_HOSTED_NO_PROXY }}
-          no_proxy: ${{ env.SELF_HOSTED_NO_PROXY }}
+          HTTP_PROXY: http://127.0.0.1:35983
+          HTTPS_PROXY: http://127.0.0.1:35983
+          ALL_PROXY: socks://127.0.0.1:35983/
+          http_proxy: http://127.0.0.1:35983
+          https_proxy: http://127.0.0.1:35983
+          all_proxy: socks://127.0.0.1:35983/
+          NO_PROXY: 127.0.0.1,localhost,ci-service.example
+          no_proxy: 127.0.0.1,localhost,ci-service.example
 
       - name: Build backend image
         run: docker build -t mimirq-backend -f docker/Dockerfile .
@@ -178,14 +174,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         env:
-          HTTP_PROXY: ${{ env.SELF_HOSTED_HTTP_PROXY }}
-          HTTPS_PROXY: ${{ env.SELF_HOSTED_HTTPS_PROXY }}
-          ALL_PROXY: ${{ env.SELF_HOSTED_ALL_PROXY }}
-          http_proxy: ${{ env.SELF_HOSTED_HTTP_PROXY }}
-          https_proxy: ${{ env.SELF_HOSTED_HTTPS_PROXY }}
-          all_proxy: ${{ env.SELF_HOSTED_ALL_PROXY }}
-          NO_PROXY: ${{ env.SELF_HOSTED_NO_PROXY }}
-          no_proxy: ${{ env.SELF_HOSTED_NO_PROXY }}
+          HTTP_PROXY: http://127.0.0.1:35983
+          HTTPS_PROXY: http://127.0.0.1:35983
+          ALL_PROXY: socks://127.0.0.1:35983/
+          http_proxy: http://127.0.0.1:35983
+          https_proxy: http://127.0.0.1:35983
+          all_proxy: socks://127.0.0.1:35983/
+          NO_PROXY: 127.0.0.1,localhost,ci-service.example
+          no_proxy: 127.0.0.1,localhost,ci-service.example
 
       - name: Prepare self-hosted Python
         if: ${{ runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01' }}
@@ -957,14 +953,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         env:
-          HTTP_PROXY: ${{ env.SELF_HOSTED_HTTP_PROXY }}
-          HTTPS_PROXY: ${{ env.SELF_HOSTED_HTTPS_PROXY }}
-          ALL_PROXY: ${{ env.SELF_HOSTED_ALL_PROXY }}
-          http_proxy: ${{ env.SELF_HOSTED_HTTP_PROXY }}
-          https_proxy: ${{ env.SELF_HOSTED_HTTPS_PROXY }}
-          all_proxy: ${{ env.SELF_HOSTED_ALL_PROXY }}
-          NO_PROXY: ${{ env.SELF_HOSTED_NO_PROXY }}
-          no_proxy: ${{ env.SELF_HOSTED_NO_PROXY }}
+          HTTP_PROXY: http://127.0.0.1:35983
+          HTTPS_PROXY: http://127.0.0.1:35983
+          ALL_PROXY: socks://127.0.0.1:35983/
+          http_proxy: http://127.0.0.1:35983
+          https_proxy: http://127.0.0.1:35983
+          all_proxy: socks://127.0.0.1:35983/
+          NO_PROXY: 127.0.0.1,localhost,ci-service.example
+          no_proxy: 127.0.0.1,localhost,ci-service.example
 
       - name: Prepare self-hosted Python
         if: ${{ runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01' }}
@@ -1175,14 +1171,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         env:
-          HTTP_PROXY: ${{ env.SELF_HOSTED_HTTP_PROXY }}
-          HTTPS_PROXY: ${{ env.SELF_HOSTED_HTTPS_PROXY }}
-          ALL_PROXY: ${{ env.SELF_HOSTED_ALL_PROXY }}
-          http_proxy: ${{ env.SELF_HOSTED_HTTP_PROXY }}
-          https_proxy: ${{ env.SELF_HOSTED_HTTPS_PROXY }}
-          all_proxy: ${{ env.SELF_HOSTED_ALL_PROXY }}
-          NO_PROXY: ${{ env.SELF_HOSTED_NO_PROXY }}
-          no_proxy: ${{ env.SELF_HOSTED_NO_PROXY }}
+          HTTP_PROXY: http://127.0.0.1:35983
+          HTTPS_PROXY: http://127.0.0.1:35983
+          ALL_PROXY: socks://127.0.0.1:35983/
+          http_proxy: http://127.0.0.1:35983
+          https_proxy: http://127.0.0.1:35983
+          all_proxy: socks://127.0.0.1:35983/
+          NO_PROXY: 127.0.0.1,localhost,ci-service.example
+          no_proxy: 127.0.0.1,localhost,ci-service.example
 
       - name: Prepare self-hosted Python
         if: ${{ runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01' }}
