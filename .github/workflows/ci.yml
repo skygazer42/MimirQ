@@ -13,6 +13,7 @@ concurrency:
 
 env:
   SELF_HOSTED_PYTHON_BIN: /home/user/.local/share/uv/python/cpython-3.11.13-linux-x86_64-gnu/bin
+  PIP_INDEX_URL: https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
 
 jobs:
   test-and-verify:
