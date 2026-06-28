@@ -37,11 +37,12 @@ jobs:
           NO_PROXY: 127.0.0.1,localhost,ci-service.example
 
       - name: TruffleHog
-        uses: trufflesecurity/trufflehog@ef6e76c3c4023279497fab4721ffa071a722fd05
-        with:
-          # Keep signal high: fail only on verified credentials.
-          extra_args: --results=verified
-          version: "3.92.4"
+        run: |
+          docker run --rm \
+            -v "$PWD:/repo" \
+            -w /repo \
+            trufflesecurity/trufflehog:3.92.4 \
+            git file://. --branch HEAD --results=verified --fail --no-update
 
   dependency-audit:
     name: Dependency Audit (pip-audit, pnpm audit)
