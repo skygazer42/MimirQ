@@ -17,6 +17,8 @@ module.exports = [
       'out/**',
       'dist/**',
       'coverage/**',
+      'playwright-report/**',
+      'test-results/**',
       'node_modules/**',
       // Static/bundled assets (not source code).
       'public/**',
