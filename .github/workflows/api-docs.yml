@@ -46,14 +46,6 @@ jobs:
           "$VENV_DIR/bin/python" --version
           "$VENV_DIR/bin/pip" --version
 
-      - name: Setup Python
-        if: ${{ !(runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01') }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-          cache: pip
-          cache-dependency-path: requirements.txt
-
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
@@ -67,14 +59,6 @@ jobs:
         run: |
           node -v
           npm -v
-
-      - name: Setup Node.js (handbook build)
-        if: ${{ !(runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01') }}
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: docs-site/package-lock.json
 
       - name: Build static API site (OpenAPI + Redoc + Docusaurus handbook)
         run: make api-docs-build

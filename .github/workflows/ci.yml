@@ -40,43 +40,12 @@ jobs:
           command -v rg
           rg --version | head -n 1
 
-      - name: Install system test tools
-        if: ${{ !(runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01') }}
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ripgrep
-
-      - name: Setup Python
-        if: ${{ !(runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01') }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-          cache: pip
-          cache-dependency-path: |
-            requirements.txt
-            requirements-dev.txt
-
-      - name: Setup pnpm
-        if: ${{ !(runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01') }}
-        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
-        with:
-          version: "10.26.0"
-          run_install: false
-
       - name: Prepare self-hosted Node
         if: ${{ runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01' }}
         run: |
           node -v
           npm -v
           pnpm -v
-
-      - name: Setup Node
-        if: ${{ !(runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01') }}
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: pnpm
-          cache-dependency-path: web/pnpm-lock.yaml
 
       - name: Install Python deps
         run: |
@@ -110,11 +79,6 @@ jobs:
         if: ${{ runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01' }}
         working-directory: web
         run: pnpm exec playwright install chromium
-
-      - name: Install Playwright browsers (GitHub-hosted)
-        if: ${{ !(runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01') }}
-        working-directory: web
-        run: pnpm exec playwright install --with-deps chromium
 
       - name: Management surface smoke
         run: make test-management-smoke
@@ -182,15 +146,6 @@ jobs:
           echo "$VENV_DIR/bin" >> "$GITHUB_PATH"
           "$VENV_DIR/bin/python" --version
           "$VENV_DIR/bin/pip" --version
-
-      - name: Setup Python
-        if: ${{ !(runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01') }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-          cache: pip
-          cache-dependency-path: |
-            requirements.txt
 
       - name: Install Python deps
         run: |
@@ -959,15 +914,6 @@ jobs:
           "$VENV_DIR/bin/python" --version
           "$VENV_DIR/bin/pip" --version
 
-      - name: Setup Python
-        if: ${{ !(runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01') }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-          cache: pip
-          cache-dependency-path: |
-            requirements.txt
-
       - name: Install Python deps
         run: |
           python -m pip install --upgrade pip
@@ -1173,15 +1119,6 @@ jobs:
           echo "$VENV_DIR/bin" >> "$GITHUB_PATH"
           "$VENV_DIR/bin/python" --version
           "$VENV_DIR/bin/pip" --version
-
-      - name: Setup Python
-        if: ${{ !(runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01') }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-          cache: pip
-          cache-dependency-path: |
-            requirements.txt
 
       - name: Install Python deps
         run: |
