@@ -92,13 +92,8 @@ jobs:
               ;;
           esac
 
-      - name: Upload Pages artifact
-        if: github.event_name != 'pull_request' && steps.pages.outputs.enabled == 'true'
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: docs/api/site
-
-      - name: Deploy to GitHub Pages
-        if: github.event_name != 'pull_request' && steps.pages.outputs.enabled == 'true'
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Summarize built API docs output
+        if: always()
+        run: |
+          echo "Built docs/api/site contents:"
+          ls -la docs/api/site 2>/dev/null || true

@@ -86,24 +86,13 @@ jobs:
       - name: Repo verify
         run: make verify
 
-      - name: Upload test coverage matrix artifact
+      - name: Summarize generated CI artifacts
         if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-coverage-matrix
-          path: |
-            artifacts/test-coverage-matrix.json
-            artifacts/test-coverage-matrix.md
-
-      - name: Upload Playwright report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-management-smoke-report
-          path: |
-            web/playwright-report
-            web/test-results/playwright
-          if-no-files-found: ignore
+        run: |
+          echo "Generated test coverage matrix artifacts:"
+          ls -la artifacts/test-coverage-matrix.json artifacts/test-coverage-matrix.md 2>/dev/null || true
+          echo "Generated Playwright report artifacts:"
+          ls -la web/playwright-report web/test-results/playwright 2>/dev/null || true
 
   docker-build:
     runs-on: [self-hosted, Linux, X64, mimirq]
