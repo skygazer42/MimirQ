@@ -29,6 +29,7 @@ jobs:
           # Scan the checked-out snapshot / shallow history to keep signal on
           # the changes under review instead of historical credentials that are
           # outside the current remediation scope.
+          clean: false
           fetch-depth: 1
         env:
           HTTP_PROXY: http://127.0.0.1:35983
@@ -49,6 +50,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          clean: false
         env:
           HTTP_PROXY: http://127.0.0.1:35983
           HTTPS_PROXY: http://127.0.0.1:35983
