@@ -11,6 +11,9 @@ concurrency:
   group: lint-fast-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  SELF_HOSTED_PYTHON_BIN: /home/user/.local/share/uv/python/cpython-3.11.13-linux-x86_64-gnu/bin
+
 jobs:
   lint-fast:
     runs-on: [self-hosted, Linux, X64, mimirq]
@@ -19,7 +22,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Prepare self-hosted Python
+        if: ${{ contains(runner.labels, 'self-hosted') }}
+        run: |
+          echo "$SELF_HOSTED_PYTHON_BIN" >> "$GITHUB_PATH"
+          "$SELF_HOSTED_PYTHON_BIN/python3.11" --version
+          "$SELF_HOSTED_PYTHON_BIN/python3.11" -m pip --version
+
       - name: Setup Python
+        if: ${{ !contains(runner.labels, 'self-hosted') }}
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"

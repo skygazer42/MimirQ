@@ -11,6 +11,9 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  SELF_HOSTED_PYTHON_BIN: /home/user/.local/share/uv/python/cpython-3.11.13-linux-x86_64-gnu/bin
+
 jobs:
   test-and-verify:
     runs-on: [self-hosted, Linux, X64, mimirq]
@@ -19,12 +22,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Ensure self-hosted toolchain
+        if: ${{ contains(runner.labels, 'self-hosted') }}
+        run: |
+          echo "$SELF_HOSTED_PYTHON_BIN" >> "$GITHUB_PATH"
+          "$SELF_HOSTED_PYTHON_BIN/python3.11" --version
+          "$SELF_HOSTED_PYTHON_BIN/python3.11" -m pip --version
+          command -v rg
+          rg --version | head -n 1
+
       - name: Install system test tools
+        if: ${{ !contains(runner.labels, 'self-hosted') }}
         run: |
           sudo apt-get update
           sudo apt-get install -y ripgrep
 
       - name: Setup Python
+        if: ${{ !contains(runner.labels, 'self-hosted') }}
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -75,6 +89,12 @@ jobs:
         run: make test-matrix
 
       - name: Install Playwright browsers
+        if: ${{ contains(runner.labels, 'self-hosted') }}
+        working-directory: web
+        run: pnpm exec playwright install chromium
+
+      - name: Install Playwright browsers (GitHub-hosted)
+        if: ${{ !contains(runner.labels, 'self-hosted') }}
         working-directory: web
         run: pnpm exec playwright install --with-deps chromium
 
@@ -124,7 +144,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Prepare self-hosted Python
+        if: ${{ contains(runner.labels, 'self-hosted') }}
+        run: |
+          echo "$SELF_HOSTED_PYTHON_BIN" >> "$GITHUB_PATH"
+          "$SELF_HOSTED_PYTHON_BIN/python3.11" --version
+          "$SELF_HOSTED_PYTHON_BIN/python3.11" -m pip --version
+
       - name: Setup Python
+        if: ${{ !contains(runner.labels, 'self-hosted') }}
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -884,7 +912,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Prepare self-hosted Python
+        if: ${{ contains(runner.labels, 'self-hosted') }}
+        run: |
+          echo "$SELF_HOSTED_PYTHON_BIN" >> "$GITHUB_PATH"
+          "$SELF_HOSTED_PYTHON_BIN/python3.11" --version
+          "$SELF_HOSTED_PYTHON_BIN/python3.11" -m pip --version
+
       - name: Setup Python
+        if: ${{ !contains(runner.labels, 'self-hosted') }}
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -1083,7 +1119,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Prepare self-hosted Python
+        if: ${{ contains(runner.labels, 'self-hosted') }}
+        run: |
+          echo "$SELF_HOSTED_PYTHON_BIN" >> "$GITHUB_PATH"
+          "$SELF_HOSTED_PYTHON_BIN/python3.11" --version
+          "$SELF_HOSTED_PYTHON_BIN/python3.11" -m pip --version
+
       - name: Setup Python
+        if: ${{ !contains(runner.labels, 'self-hosted') }}
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
