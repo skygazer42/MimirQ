@@ -33,12 +33,7 @@ jobs:
         env:
           HTTP_PROXY: http://127.0.0.1:35983
           HTTPS_PROXY: http://127.0.0.1:35983
-          ALL_PROXY: socks://127.0.0.1:35983/
-          http_proxy: http://127.0.0.1:35983
-          https_proxy: http://127.0.0.1:35983
-          all_proxy: socks://127.0.0.1:35983/
           NO_PROXY: 127.0.0.1,localhost,muyuan.do
-          no_proxy: 127.0.0.1,localhost,muyuan.do
 
       - name: TruffleHog
         uses: trufflesecurity/trufflehog@ef6e76c3c4023279497fab4721ffa071a722fd05
@@ -57,12 +52,7 @@ jobs:
         env:
           HTTP_PROXY: http://127.0.0.1:35983
           HTTPS_PROXY: http://127.0.0.1:35983
-          ALL_PROXY: socks://127.0.0.1:35983/
-          http_proxy: http://127.0.0.1:35983
-          https_proxy: http://127.0.0.1:35983
-          all_proxy: socks://127.0.0.1:35983/
           NO_PROXY: 127.0.0.1,localhost,muyuan.do
-          no_proxy: 127.0.0.1,localhost,muyuan.do
 
       - name: Prepare self-hosted Python
         if: ${{ runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01' }}
