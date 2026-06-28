@@ -949,7 +949,7 @@ export default function KnowledgeIngestionOperationPage() {
         return
       }
       if (mode === 'upload_only' && (source === 'url' || source === 'object')) {
-        toast.error('URL/对象存储暂不支持仅登记，请先下载为本地文件或选择解析入库')
+        toast.error('URL/对象存储不能使用仅登记模式，请先下载为本地文件或选择解析入库')
         return
       }
       if (mode === 'upload_only' && source === 'api') {

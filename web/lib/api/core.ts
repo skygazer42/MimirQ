@@ -70,11 +70,15 @@ type HtmlResponseError = Error & {
 }
 
 function asApiClientError(error: unknown): ApiClientError {
-  return error instanceof Error
-    ? error
-    : Object.assign(new Error(toTrimmedPrimitiveString(error, 'API request failed')), {
-        cause: error,
-      }) as ApiClientError
+  if (error instanceof Error) return error
+  const apiError = new Error(
+    toTrimmedPrimitiveString(error, 'API request failed')
+  ) as ApiClientError
+  if (error && typeof error === 'object') {
+    Object.assign(apiError, error)
+  }
+  apiError.cause = error
+  return apiError
 }
 
 export const apiClient = axios.create({

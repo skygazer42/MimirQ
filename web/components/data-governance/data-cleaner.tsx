@@ -323,7 +323,7 @@ export function DataCleaner({
                 value={inputFormat}
                 onValueChange={(value) => setInputFormat(coerceOneOf(DATA_CLEANER_INPUT_FORMAT_VALUES, value, 'markdown'))}
               >
-                <SelectTrigger className="h-6 w-[92px] rounded-full border-0 bg-transparent px-1 text-[11px] font-semibold text-foreground/82 shadow-none focus:ring-0 focus:ring-offset-0">
+                <SelectTrigger className="focus-ring h-6 w-[92px] rounded-full border-0 bg-transparent px-1 text-[11px] font-semibold text-foreground/82 shadow-none">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

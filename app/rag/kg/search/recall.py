@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.core.config import settings
+from app.rag.core.logging import get_logger
 from app.rag.kg.loading.processor import DocumentProcessor
 from app.rag.kg.repository import AliasRepository, EntityRepository, EventRepository, RelationRepository, get_session
 from app.rag.kg.search import graph_embeddings as graph_embeddings_mod
@@ -13,7 +14,6 @@ from app.rag.kg.search.query_mode import build_mode_aware_recall_overrides, norm
 from app.rag.kg.search.relation_scoring import relation_multiplier
 from app.rag.kg.search.tracker import Tracker
 from app.rag.kg.search.utils import confidence_bucket, cosine_similarity
-from app.rag.core.logging import get_logger
 
 logger = get_logger(__name__)
 

@@ -23,10 +23,10 @@ from app.models.dataset import Dataset, DatasetPermission, DatasetPermissionEnum
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
 from app.models.evaluation import RagasRegressionCase
+from app.rag.core.logging import get_logger
 from app.rag.embedding import create_langchain_embeddings_from_config
 from app.services.dataset_service import DatasetService
 from app.services.document_access import filter_allowed_document_ids
-from app.rag.core.logging import get_logger
 
 
 @dataclass(frozen=True)

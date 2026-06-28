@@ -9,7 +9,7 @@ describe('graph data loading source', () => {
 
     expect(src).toContain("const [autoLoadedGraphKey, setAutoLoadedGraphKey] = useState<string | null>(null)")
     expect(src).toContain("'default-live'")
-    expect(src).toContain("void loadInitialData('live')")
+    expect(src).toContain("detachPromise(loadInitialData('live'))")
     expect(src).not.toContain("scope.hasScope ? 'live' : 'mock'")
     expect(src).not.toContain("'default-mock-3d'")
     expect(src).not.toContain("source === 'mock'")

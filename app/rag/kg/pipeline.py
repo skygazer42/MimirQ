@@ -15,11 +15,11 @@ from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
 from app.rag.core.hashing import stable_hash
+from app.rag.core.logging import get_logger
 from app.rag.kg.engine import KGEngine
 from app.rag.kg.search.cache import build_kg_search_cache_key, kg_search_cache
 from app.rag.kg.search.query_mode import classify_kg_query_mode, normalize_kg_query_mode
 from app.types.indexing import IndexingOptions
-from app.rag.core.logging import get_logger
 
 _engine: KGEngine | None = None
 _engine_lock = threading.Lock()

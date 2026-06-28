@@ -34,7 +34,6 @@ from app.api.schemas.kg_diagnostics import (
     KGSearchRunMetrics,
     KGSearchRunResult,
 )
-from app.rag.core.logging import get_logger
 from app.core.config import settings
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
@@ -66,7 +65,7 @@ def _coerce_uuid_list(values: Iterable[Any]) -> list[UUID]:
         try:
             u = UUID(str(v))
         except Exception:
-            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            logger.debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if u in seen:
             continue

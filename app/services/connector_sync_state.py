@@ -6,8 +6,8 @@ from datetime import UTC, datetime
 from typing import Any, TypeVar
 from uuid import UUID
 
-from app.services.connector_registry import CONNECTOR_REGISTRY, ConnectorDefinition
 from app.rag.core.logging import get_logger
+from app.services.connector_registry import CONNECTOR_REGISTRY, ConnectorDefinition
 
 T = TypeVar("T")
 _STATE_SCHEMA_VERSION = 2

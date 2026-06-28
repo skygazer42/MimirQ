@@ -30,7 +30,7 @@ describe('api client cancellation handling', () => {
 
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
 
-    await expect(rejected?.(error)).rejects.toBe(error)
+    await expect(rejected?.(error)).rejects.toMatchObject(error)
     expect(consoleError).not.toHaveBeenCalled()
   })
 
@@ -51,7 +51,12 @@ describe('api client cancellation handling', () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-    await expect(rejected?.(error)).rejects.toBe(error)
+    const rejectedError = (await rejected?.(error).catch((err) => err)) as Error & {
+      cause?: unknown
+    }
+    expect(rejectedError).toBeInstanceOf(Error)
+    expect(rejectedError.message).toBe('Network Error')
+    expect(rejectedError.cause).toMatchObject(error)
     expect(consoleError).not.toHaveBeenCalled()
     expect(consoleWarn).toHaveBeenCalledWith(
       '[API] 网络连接中断或后端不可达，请检查后端服务 / API 地址',

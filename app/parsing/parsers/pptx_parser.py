@@ -12,6 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from langchain_core.documents import Document
+
 from app.rag.core.logging import get_logger
 
 logger = get_logger(__name__)

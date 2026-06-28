@@ -3,8 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from app.rag.evaluation.poc_runner.telemetry import feedback_polarity_from_score
 from app.rag.core.logging import get_logger
+from app.rag.evaluation.poc_runner.telemetry import feedback_polarity_from_score
 
 
 def _coerce_mapping(value: Any) -> dict[str, Any]:

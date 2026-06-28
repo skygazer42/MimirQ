@@ -12,8 +12,8 @@ from app.core.config import settings
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
 from app.models.index_drift_item import IndexDriftItem
-from app.services.dataset_service import DatasetService
 from app.rag.core.logging import get_logger
+from app.services.dataset_service import DatasetService
 
 
 def _now_utc_iso() -> str:

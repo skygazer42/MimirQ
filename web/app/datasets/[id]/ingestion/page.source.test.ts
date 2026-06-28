@@ -46,10 +46,9 @@ describe('dataset ingestion page source', () => {
     expect(src).not.toContain('await load()')
   })
 
-  it('uses on-demand TanStack Query for ingestion policy version history', () => {
+  it('does not keep dead local ingestion policy version-history loaders around', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'page.tsx'), 'utf8')
 
-    expect(src).toContain('queryKey: queryKeys.datasets.ingestionPolicyVersions')
     expect(src).not.toContain('const loadVersions = useCallback(async () => {')
     expect(src).not.toContain('await loadVersions()')
     expect(src).not.toContain('detachPromise(loadVersions())')

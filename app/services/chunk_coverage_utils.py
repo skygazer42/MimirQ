@@ -10,6 +10,7 @@ Used by:
 from __future__ import annotations
 
 from collections.abc import Iterable
+
 from app.rag.core.logging import get_logger
 
 

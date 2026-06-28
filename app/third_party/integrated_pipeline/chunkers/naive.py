@@ -38,7 +38,6 @@ from app.deepdoc.parser import (
     PdfParser,
     TxtParser,
 )
-from app.rag.core.logging import get_logger
 from app.deepdoc.parser.figure_parser import (
     VisionFigureParser,
     vision_figure_parser_docx_wrapper,
@@ -46,6 +45,7 @@ from app.deepdoc.parser.figure_parser import (
 )
 from app.deepdoc.parser.mineru_parser import MinerUParser
 from app.deepdoc.parser.pdf_parser import PlainParser, VisionParser
+from app.rag.core.logging import get_logger
 from app.third_party.integrated_pipeline.common.constants import LLMType
 from app.third_party.integrated_pipeline.common.token_utils import num_tokens_from_string
 from app.third_party.integrated_pipeline.nlp import (

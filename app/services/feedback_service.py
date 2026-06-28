@@ -9,10 +9,10 @@ from sqlalchemy.orm import Session
 
 from app.models.chat import Conversation, Message
 from app.models.feedback import MessageFeedback
+from app.rag.core.logging import get_logger
 from app.rag.feedback_loop.candidates import build_feedback_loop_candidates as build_feedback_loop_candidate_payload
 from app.rag.industry_rules.schema import IndustryRuleset
 from app.services.rag_trace_service import list_rag_traces
-from app.rag.core.logging import get_logger
 
 
 def _coerce_mapping(value: Any) -> dict[str, Any]:

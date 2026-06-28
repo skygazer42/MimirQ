@@ -10,10 +10,10 @@ from typing import Any
 
 from app.core.config import settings
 from app.core.regex_safety import looks_like_nested_quantifier
+from app.rag.core.logging import get_logger
 from app.rag.pipeline_plugins.refs import sanitize_python_plugin_ref
 from app.types.indexing import IndexingOptions
 from app.types.pipeline import PipelineEffective, PipelineOptions
-from app.rag.core.logging import get_logger
 
 DEFAULT_GOVERNANCE_PII_MASK = "[REDACTED]"
 DEFAULT_GOVERNANCE_SECRETS_MASK = "[SECRET]"

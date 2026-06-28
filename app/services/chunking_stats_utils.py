@@ -14,8 +14,8 @@ from collections.abc import Iterable
 from typing import Any
 
 from app.core.token_utils import estimate_tokens
-from app.services.dataset_profile_utils import CHUNK_LENGTH_BINS, CHUNK_TOKEN_BINS, HistogramBinSpec, histogram
 from app.rag.core.logging import get_logger
+from app.services.dataset_profile_utils import CHUNK_LENGTH_BINS, CHUNK_TOKEN_BINS, HistogramBinSpec, histogram
 
 
 def _percentile_from_sorted(sorted_values: list[int], p: int) -> int:

@@ -16,12 +16,12 @@ from app.core.database import get_db
 from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
+from app.rag.core.logging import get_logger
 from app.services.audit_log_service import audit_log_event
 from app.services.dataset_service import DatasetService
 from app.services.document_access_service import (
     assert_document_acl_readable,
 )
-from app.rag.core.logging import get_logger
 from app.services.indexer import Indexer
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
