@@ -25,9 +25,9 @@ jobs:
         with:
           clean: false
         env:
-          HTTP_PROXY: http://127.0.0.1:35983
-          HTTPS_PROXY: http://127.0.0.1:35983
-          NO_PROXY: 127.0.0.1,localhost,muyuan.do
+          http_proxy: http://127.0.0.1:35983
+          https_proxy: http://127.0.0.1:35983
+          no_proxy: 127.0.0.1,localhost,muyuan.do
 
       - name: Ensure self-hosted toolchain
         if: ${{ runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01' }}
@@ -150,9 +150,9 @@ jobs:
         with:
           clean: false
         env:
-          HTTP_PROXY: http://127.0.0.1:35983
-          HTTPS_PROXY: http://127.0.0.1:35983
-          NO_PROXY: 127.0.0.1,localhost,muyuan.do
+          http_proxy: http://127.0.0.1:35983
+          https_proxy: http://127.0.0.1:35983
+          no_proxy: 127.0.0.1,localhost,muyuan.do
 
       - name: Build backend image
         run: docker build -t mimirq-backend -f docker/Dockerfile .
@@ -170,9 +170,9 @@ jobs:
         with:
           clean: false
         env:
-          HTTP_PROXY: http://127.0.0.1:35983
-          HTTPS_PROXY: http://127.0.0.1:35983
-          NO_PROXY: 127.0.0.1,localhost,muyuan.do
+          http_proxy: http://127.0.0.1:35983
+          https_proxy: http://127.0.0.1:35983
+          no_proxy: 127.0.0.1,localhost,muyuan.do
 
       - name: Prepare self-hosted Python
         if: ${{ runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01' }}
@@ -946,9 +946,9 @@ jobs:
         with:
           clean: false
         env:
-          HTTP_PROXY: http://127.0.0.1:35983
-          HTTPS_PROXY: http://127.0.0.1:35983
-          NO_PROXY: 127.0.0.1,localhost,muyuan.do
+          http_proxy: http://127.0.0.1:35983
+          https_proxy: http://127.0.0.1:35983
+          no_proxy: 127.0.0.1,localhost,muyuan.do
 
       - name: Prepare self-hosted Python
         if: ${{ runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01' }}
@@ -1161,9 +1161,9 @@ jobs:
         with:
           clean: false
         env:
-          HTTP_PROXY: http://127.0.0.1:35983
-          HTTPS_PROXY: http://127.0.0.1:35983
-          NO_PROXY: 127.0.0.1,localhost,muyuan.do
+          http_proxy: http://127.0.0.1:35983
+          https_proxy: http://127.0.0.1:35983
+          no_proxy: 127.0.0.1,localhost,muyuan.do
 
       - name: Prepare self-hosted Python
         if: ${{ runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01' }}
