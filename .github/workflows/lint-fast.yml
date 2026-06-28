@@ -23,14 +23,14 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Prepare self-hosted Python
-        if: ${{ contains(runner.labels, 'self-hosted') }}
+        if: ${{ runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01' }}
         run: |
           echo "$SELF_HOSTED_PYTHON_BIN" >> "$GITHUB_PATH"
           "$SELF_HOSTED_PYTHON_BIN/python3.11" --version
           "$SELF_HOSTED_PYTHON_BIN/python3.11" -m pip --version
 
       - name: Setup Python
-        if: ${{ !contains(runner.labels, 'self-hosted') }}
+        if: ${{ !(runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01') }}
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
