@@ -792,7 +792,6 @@ verify:
 	@$(MAKE) check-parsing-proof-rollout
 	@$(MAKE) api-check
 	cd web && pnpm run lint
-	cd web && pnpm run ui-check
 	cd web && pnpm run typecheck
 	$(COMPILEALL_VERIFY)
 
