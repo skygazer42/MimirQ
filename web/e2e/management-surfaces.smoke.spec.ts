@@ -124,6 +124,20 @@ async function installManagementSurfaceMocks(page: Page) {
     })
   })
 
+  await page.route('**/api/v1/evaluations/ragas/conversation-readiness', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback()
+    return fulfillJson(route, {
+      items: [
+        {
+          conversation_id: 'conv-smoke',
+          is_known: true,
+          is_evaluable: true,
+          citations_count: 2,
+        },
+      ],
+    })
+  })
+
   await page.route('**/api/v1/evaluations/ragas/runs/run-smoke**', async (route) => {
     if (route.request().method() !== 'GET') return route.fallback()
     return fulfillJson(route, {
