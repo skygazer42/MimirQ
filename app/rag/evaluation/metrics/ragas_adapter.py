@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import logging
 from typing import Any
+from app.rag.core.logging import get_logger
 
 
 def adapt_ragas_scores(scores: dict[str, Any]) -> dict[str, Any]:
@@ -10,6 +10,6 @@ def adapt_ragas_scores(scores: dict[str, Any]) -> dict[str, Any]:
         try:
             payload[str(key)] = float(value)
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
     return {"provider": "ragas", "scores": payload}

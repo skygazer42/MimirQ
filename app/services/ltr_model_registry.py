@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import logging
 import os
 import threading
 from dataclasses import dataclass
@@ -23,6 +22,7 @@ from typing import Any
 from app.core.config import settings
 from app.rag.core.retrieval_config_fingerprint import build_retrieval_config_fingerprint
 from app.rag.reranker.ltr import LTRFeatureSpec, build_ltr_feature_spec_fingerprint
+from app.rag.core.logging import get_logger
 
 _ACTIVE_SCHEMA_V1 = "mimirq.ltr_model_registry_active.v1"
 _MODEL_META_SCHEMA_V1 = "mimirq.ltr_model_registry_meta.v1"
@@ -418,7 +418,7 @@ def list_models() -> list[LTRRegisteredModel]:
                 )
             )
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
     out.sort(key=lambda m: (m.created_at or "", m.model_id))
     return out

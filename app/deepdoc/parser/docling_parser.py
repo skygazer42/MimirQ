@@ -256,7 +256,7 @@ class DoclingParser(IntegratedPipelinePdfParser):
                     pix = page.get_pixmap(matrix=mat, alpha=False)
                     rendered.append(Image.frombytes("RGB", (pix.width, pix.height), pix.samples))
                 except Exception:
-                    logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                    get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                     continue
 
             self.page_images = rendered

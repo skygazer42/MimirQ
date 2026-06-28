@@ -8,7 +8,6 @@ Sources (priority order):
 
 from __future__ import annotations
 
-import logging
 import math
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -18,6 +17,7 @@ import httpx
 
 from app.core.config import settings
 from app.services.rag_metrics_dashboard import summarize_rag_query_analytics
+from app.rag.core.logging import get_logger
 
 SLO_SNAPSHOT_SCHEMA_V1 = "mimirq.slo_snapshot.v1"
 
@@ -145,7 +145,7 @@ def _build_window_from_metrics_jsonl(*, tenant_id: str | None, window_minutes: i
             try:
                 error_count += int(v or 0)
             except Exception:
-                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                 continue
 
     error_rate = (float(error_count) / float(summary.rag_trace_count)) if summary.rag_trace_count else None

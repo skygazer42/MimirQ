@@ -10,7 +10,6 @@ Provides:
 from __future__ import annotations
 
 import json
-import logging
 from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -174,7 +173,7 @@ def _iter_jsonl(path: Path) -> Iterable[dict]:
             try:
                 obj = json.loads(s)
             except Exception:
-                logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+                get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
                 continue
             if isinstance(obj, dict):
                 yield obj
@@ -231,7 +230,7 @@ def _list_finding_from_jsonl(
             items.append(DatasetPrecheckFileOut(**obj))
         except Exception:
             # Best-effort: ignore invalid lines.
-            logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+            get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
             continue
 
     return DatasetPrecheckFindingListResponse(total=int(total), items=items)
@@ -274,7 +273,7 @@ def _list_files_from_jsonl(
         try:
             items.append(DatasetPrecheckFileOut(**obj))
         except Exception:
-            logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+            get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
             continue
 
     return DatasetPrecheckFindingListResponse(total=int(total), items=items)
@@ -484,7 +483,7 @@ def list_near_dup_files_from_row(
         try:
             items.append(DatasetPrecheckFileOut(**obj))
         except Exception:
-            logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+            get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
             continue
 
     return DatasetPrecheckFindingListResponse(total=int(total), items=items)

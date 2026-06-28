@@ -14,7 +14,6 @@ Optional persistence (compact run snapshots) is handled at the API layer.
 from __future__ import annotations
 
 import asyncio
-import logging
 import time
 from collections.abc import Iterable, Sequence
 from typing import Any
@@ -35,6 +34,7 @@ from app.api.schemas.kg_diagnostics import (
     KGSearchRunMetrics,
     KGSearchRunResult,
 )
+from app.rag.core.logging import get_logger
 from app.core.config import settings
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
@@ -66,7 +66,7 @@ def _coerce_uuid_list(values: Iterable[Any]) -> list[UUID]:
         try:
             u = UUID(str(v))
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if u in seen:
             continue

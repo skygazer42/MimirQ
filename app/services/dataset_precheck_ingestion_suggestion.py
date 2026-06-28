@@ -13,7 +13,6 @@ Design principles:
 from __future__ import annotations
 
 import json
-import logging
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -29,6 +28,7 @@ from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDataset
 from app.services.dataset_precheck_service import _assert_artifact_path_under_tenant, _list_finding_from_jsonl
 from app.services.ingestion_policy import validate_and_normalize_ingestion_policy
 from app.services.ingestion_policy_diff import diff_ingestion_policies
+from app.rag.core.logging import get_logger
 
 STRUCTURED_DATA_PROFILE_REF = "builtin:structured_data"
 STEP_NORMALIZE_NEWLINES = "text.normalize_newlines"
@@ -69,7 +69,7 @@ def _iter_jsonl(path: Path):  # noqa: ANN202
             try:
                 obj = json.loads(s)
             except Exception:
-                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                 continue
             if isinstance(obj, dict):
                 yield obj

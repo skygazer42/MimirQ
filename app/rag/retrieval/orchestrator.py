@@ -161,7 +161,8 @@ def _coerce_uuid_list(values: Any) -> list[UUID]:
     for value in values or []:
         try:
             item = value if isinstance(value, UUID) else UUID(str(value))
-        except Exception:
+        except Exception as exc:
+            _log_orchestrator_fallback("_coerce_uuid_list", exc)
             continue
         if item in seen:
             continue
@@ -180,7 +181,8 @@ def _resolve_kg_scope(state: dict[str, Any]) -> tuple[list[UUID], UUID | None, l
     if dataset_id_raw is not None:
         try:
             dataset_id = dataset_id_raw if isinstance(dataset_id_raw, UUID) else UUID(str(dataset_id_raw))
-        except Exception:
+        except Exception as exc:
+            _log_orchestrator_fallback("_resolve_kg_scope.dataset_id", exc)
             dataset_id = None
     if dataset_id is not None:
         return [], dataset_id, []

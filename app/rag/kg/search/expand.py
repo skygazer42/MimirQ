@@ -2,7 +2,6 @@
 Expand stage: multi-hop entity -> event expansion.
 """
 import asyncio
-import logging
 from dataclasses import dataclass
 from typing import Any
 
@@ -13,8 +12,9 @@ from app.rag.kg.search.recall import RecallResult
 from app.rag.kg.search.relation_scoring import relation_multiplier
 from app.rag.kg.search.tracker import Tracker
 from app.rag.kg.search.utils import confidence_bucket
+from app.rag.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass

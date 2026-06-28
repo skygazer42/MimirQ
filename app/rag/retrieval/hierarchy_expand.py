@@ -13,11 +13,11 @@ Use-cases:
 from __future__ import annotations
 
 import hashlib
-import logging
 from collections.abc import Callable, Iterable
 from typing import Any
 
 from langchain_core.documents import Document
+from app.rag.core.logging import get_logger
 
 FetchByHierarchyKey = Callable[[set[tuple[str, str]]], dict[tuple[str, str], Document]]
 
@@ -74,7 +74,7 @@ def _score(meta: dict[str, Any]) -> float:
         try:
             return float(v or 0.0)
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
     return 0.0
 

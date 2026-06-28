@@ -4,15 +4,15 @@ LangChain TokenTextSplitter wrapper.
 Splits text by token count using tiktoken encoding.
 """
 
-import logging
 
 from langchain_core.documents import Document
 from langchain_text_splitters import TokenTextSplitter
 
 from app.core.token_utils import estimate_tokens
 from app.rag.chunking.base import BaseChunker
+from app.rag.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class LangChainTokenChunker(BaseChunker):

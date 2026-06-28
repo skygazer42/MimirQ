@@ -11,7 +11,6 @@ PII safety:
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
@@ -222,7 +221,7 @@ def repair_evidence_suite_reference_sources_with_dataset(
                 doc_ids.add(UUID(str(ref.get("document_id"))))
                 chunk_ids.add(UUID(str(ref.get("chunk_id"))))
             except Exception:
-                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                 continue
 
         doc_rows = (

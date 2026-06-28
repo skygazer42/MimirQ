@@ -9,7 +9,6 @@ Provides:
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Iterable
 from typing import Any
 from uuid import UUID
@@ -21,6 +20,7 @@ from app.api.schemas.dataset_category import DatasetCategoryNode
 from app.core.constants import UserRoles
 from app.models.dataset_category import DatasetCategory, DatasetCategoryMembership
 from app.services.dataset_service import DatasetService
+from app.rag.core.logging import get_logger
 
 _EDIT_ROLES = UserRoles.EDIT_ROLES
 
@@ -303,7 +303,7 @@ class DatasetCategoryService:
             try:
                 cid2 = UUID(str(cid))
             except Exception:
-                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                 continue
             if cid2 in seen:
                 continue

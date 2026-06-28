@@ -12,13 +12,13 @@ Security posture:
 
 from __future__ import annotations
 
-import logging
 from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
 from app.rag.core.hashing import stable_hash
+from app.rag.core.logging import get_logger
 
 ACCESS_GRAPH_DIFF_SCHEMA_V1 = "mimirq.access_graph_diff.v1"
 
@@ -155,7 +155,7 @@ def _changed_fields(kind: str, fp_a: tuple[str | None, ...], fp_b: tuple[str | N
             if fp_a[idx] != fp_b[idx]:
                 out.append(str(name))
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
     return out
 

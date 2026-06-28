@@ -1,7 +1,6 @@
 import asyncio
 import contextlib
 import json
-import logging
 import uuid
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
@@ -18,6 +17,7 @@ from app.api.schemas.document import DocumentBatchUploadResponse, DocumentDetail
 from app.api.v1.documents import UrlUploadRequest
 from app.core.config import settings
 from app.core.database import get_db
+from app.rag.core.logging import get_logger
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -805,7 +805,7 @@ async def upload_documents_batch(
                             documents_module.shutil.copy2(src, dst)
                             linked_any = True
                         except Exception:
-                            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                             continue
 
                 if linked_any:

@@ -21,7 +21,6 @@ Notes:
 
 from __future__ import annotations
 
-import logging
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
@@ -73,7 +72,7 @@ def _parse_pages(value: str) -> tuple[int, ...]:
         try:
             n = int(part)
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if n <= 0:
             continue

@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import contextlib
 import json
-import logging
 import re
 from typing import Annotated
 from uuid import UUID
@@ -23,6 +22,7 @@ from app.api.schemas.ingestion_run import (
     IngestionRunListResponse,
     IngestionRunOut,
 )
+from app.rag.core.logging import get_logger
 from app.api.utils.response_headers import download_response_headers
 from app.core.database import get_db
 from app.models.ingestion_run import IngestionRun as DBIngestionRun
@@ -428,7 +428,7 @@ async def replay_ingestion_run(
                 doc_meta=None,
             )
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
 
     background_tasks.add_task(_run_all, doc_ids)

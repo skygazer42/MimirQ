@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import logging
 from typing import Any, Callable, Mapping, Sequence
+from app.rag.core.logging import get_logger
 
 
 def _safe_str(value: Any, *, max_len: int = 2_000) -> str | None:
@@ -19,7 +19,7 @@ def _best_score(rows: Sequence[dict[str, Any]] | None) -> float | None:
         try:
             score = float(item.get("score"))
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if best is None or score > best:
             best = score

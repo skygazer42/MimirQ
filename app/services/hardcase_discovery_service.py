@@ -13,7 +13,6 @@ scripts, and unit tests without pulling in heavy service graphs.
 from __future__ import annotations
 
 import json
-import logging
 from collections import defaultdict
 from collections.abc import Mapping, MutableMapping, Sequence
 from pathlib import Path
@@ -138,7 +137,7 @@ def read_jsonl_tail(path: str | Path, *, max_bytes: int) -> tuple[list[dict[str,
         try:
             obj = json.loads(line)
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if isinstance(obj, dict):
             records.append(obj)
@@ -234,7 +233,7 @@ def _merge_counts(dst: MutableMapping[str, int], src: Any) -> None:
         try:
             iv = int(v) if v is not None else 0
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if iv <= 0:
             continue

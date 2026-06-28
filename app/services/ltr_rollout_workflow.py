@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -13,6 +12,7 @@ from uuid import UUID
 from app.models.chat import Conversation, Message
 from app.models.evidence import EvidenceItem, EvidenceSuite
 from app.models.feedback import MessageFeedback
+from app.rag.core.logging import get_logger
 
 
 def _now_utc_iso() -> str:
@@ -292,7 +292,7 @@ def _metric_map(raw: Any) -> dict[str, float]:
         try:
             out[str(key)] = round(float(value), 4)
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
     return out
 

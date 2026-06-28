@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import contextlib
-import logging
 import shutil
 import uuid
 from dataclasses import asdict, dataclass
@@ -25,6 +24,7 @@ from app.parsing.subprocess_runner import (
     SubprocessCancelled,
     SubprocessWorkerError,
 )
+from app.rag.core.logging import get_logger
 from app.rag.preprocessing.rules import build_governance_rules
 from app.services.dataset_service import DatasetService
 from app.services.pipeline_config import resolve_pipeline_effective
@@ -371,7 +371,7 @@ async def preview_document(
                         continue
                     path.relative_to(tenant_root)
                 except Exception:
-                    logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                    get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                     continue
                 with contextlib.suppress(Exception):
                     shutil.rmtree(path, ignore_errors=True)

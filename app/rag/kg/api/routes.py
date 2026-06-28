@@ -2,7 +2,6 @@ import asyncio
 import contextlib
 import gzip
 import hashlib
-import logging
 import time
 import uuid
 import zlib
@@ -3936,7 +3935,7 @@ def delete_kg_for_document(
                 try:
                     details[str(k)[:64]] = int(v)  # type: ignore[arg-type]
                 except Exception:
-                    logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                    get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                     continue
 
         db.add(

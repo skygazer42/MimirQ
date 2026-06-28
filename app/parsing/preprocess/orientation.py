@@ -11,7 +11,6 @@ This implementation is best-effort and lightweight:
 
 from __future__ import annotations
 
-import logging
 import time
 from pathlib import Path
 from typing import Any
@@ -95,7 +94,7 @@ def normalize_pdf_rotation(
             try:
                 page.set_rotation(0)
             except Exception:
-                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                 continue
 
         output_path.parent.mkdir(parents=True, exist_ok=True)

@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import logging
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
 from app.parsing.artifact_stats import POSITION_TAG_RE
+from app.rag.core.logging import get_logger
 
 _READING_ORDER_SCHEMA = "mimirq.reading_order_score.v1"
 
@@ -215,7 +215,7 @@ def _parse_pages(raw: str) -> tuple[int, ...]:
         try:
             n = int(part)
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if n <= 0:
             continue

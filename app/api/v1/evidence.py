@@ -13,7 +13,6 @@ import csv
 import hashlib
 import io
 import json
-import logging
 import re
 import zipfile
 from datetime import UTC, datetime, timedelta
@@ -631,7 +630,7 @@ async def get_evidence_suite_dashboard(
             try:
                 doc_ids.add(UUID(str(ref.get("document_id"))))
             except Exception:
-                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                 continue
 
     doc_map: dict[UUID, dict[str, Any]] = {}

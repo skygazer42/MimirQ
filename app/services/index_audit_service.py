@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import contextlib
-import logging
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -14,6 +13,7 @@ from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
 from app.models.index_drift_item import IndexDriftItem
 from app.services.dataset_service import DatasetService
+from app.rag.core.logging import get_logger
 
 
 def _now_utc_iso() -> str:
@@ -701,7 +701,7 @@ def _run_dataset_index_audit_core(
             try:
                 want.append(UUID(str(raw)))
             except Exception:
-                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                 continue
 
         if want:

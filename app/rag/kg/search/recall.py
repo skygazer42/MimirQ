@@ -1,7 +1,6 @@
 """
 Recall stage: 8-step pipeline (query -> keys -> events -> weights).
 """
-import logging
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -14,8 +13,9 @@ from app.rag.kg.search.query_mode import build_mode_aware_recall_overrides, norm
 from app.rag.kg.search.relation_scoring import relation_multiplier
 from app.rag.kg.search.tracker import Tracker
 from app.rag.kg.search.utils import confidence_bucket, cosine_similarity
+from app.rag.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -557,7 +557,7 @@ class RecallSearcher:
                         try:
                             ent_uuid = UUID(str(ent_id))
                         except Exception:
-                            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                             continue
                         if ent_uuid in allowed_entity_ids:
                             filtered_entities.append(ent)

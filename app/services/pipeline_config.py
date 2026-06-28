@@ -4,7 +4,6 @@ Pipeline configuration service.
 Provides parsing, building, and resolution for pipeline configuration.
 """
 
-import logging
 import re
 from dataclasses import asdict
 from typing import Any
@@ -14,6 +13,7 @@ from app.core.regex_safety import looks_like_nested_quantifier
 from app.rag.pipeline_plugins.refs import sanitize_python_plugin_ref
 from app.types.indexing import IndexingOptions
 from app.types.pipeline import PipelineEffective, PipelineOptions
+from app.rag.core.logging import get_logger
 
 DEFAULT_GOVERNANCE_PII_MASK = "[REDACTED]"
 DEFAULT_GOVERNANCE_SECRETS_MASK = "[SECRET]"
@@ -152,7 +152,7 @@ def _sanitize_regex_rules(value: Any) -> list[dict] | None:
         try:
             flags_int = int(flags)
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if flags_int < 0 or (flags_int & ~_ALLOWED_RE_FLAG_BITS):
             continue

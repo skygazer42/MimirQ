@@ -10,7 +10,6 @@ This provides three best-effort paths:
 from __future__ import annotations
 
 import asyncio
-import logging
 import math
 import tempfile
 import time
@@ -68,7 +67,7 @@ def _ocr_points(points: Any) -> list[tuple[float, float]]:
         try:
             out_points.append((float(item[0]), float(item[1])))
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
     return out_points
 
@@ -397,7 +396,7 @@ def _remove_watermark_annots_from_page(page: Any) -> int:
                 page.delete_annot(annot)
                 removed += 1
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
     return removed
 

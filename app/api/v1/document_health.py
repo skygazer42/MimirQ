@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Annotated, Any
@@ -19,6 +18,7 @@ from app.api.schemas.document_health import (
     DocumentHealthRetrievalHits,
     DocumentHealthSemanticQualitySummary,
 )
+from app.rag.core.logging import get_logger
 from app.core.database import get_db
 from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
@@ -128,7 +128,7 @@ async def get_document_health_card(
         try:
             ranges.append((int(start), int(end)))
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
 
     coverage = compute_chunk_coverage_metrics_from_ranges(

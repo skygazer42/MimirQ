@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import logging
 import re
 import time
 from io import BytesIO
@@ -154,7 +153,7 @@ class Etl4LlmParser:
                 bbox_int = [int(x) for x in bbox]
                 items.append((page_idx, element_id, bbox_int))
             except Exception:
-                logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+                get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
                 continue
 
         if not items:
@@ -186,7 +185,7 @@ class Etl4LlmParser:
                     cropped.save(out_path, format="PNG", optimize=True)
                     cropped.close()
                 except Exception:
-                    logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+                    get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
                     continue
 
                 mapping[element_id] = f"images/{out_path.name}"
@@ -369,7 +368,7 @@ class Etl4LlmParser:
                             try:
                                 out_path.write_bytes(jpg_bytes)
                             except Exception:
-                                logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+                                get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
                                 continue
                         page_refs.append(f"![page {page_idx}](images/{out_path.name})")
                 finally:

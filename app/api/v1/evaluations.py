@@ -5,7 +5,6 @@ Provides evaluation endpoints for the RAG system, including task creation,
 querying, and results.
 """
 
-import logging
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 from uuid import UUID, uuid4
@@ -319,12 +318,12 @@ def _finalize_reference_sources(
         try:
             doc_ids.append(UUID(str(src.get("document_id"))))
         except Exception:
-            logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+            get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
             continue
         try:
             chunk_ids.append(UUID(str(src.get("chunk_id"))))
         except Exception:
-            logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+            get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
             continue
 
     # ACL: all evidence documents must be readable.
@@ -1719,7 +1718,7 @@ async def generate_test_cases_from_documents(
                 try:
                     doc_ids.append(UUID(raw_doc))
                 except Exception:
-                    logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+                    get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
                     continue
 
             doc_to_dataset: dict[str, UUID | None] = {}

@@ -12,19 +12,19 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
-import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Protocol
 from uuid import UUID
+from app.rag.core.logging import get_logger
 
 
 def _now() -> datetime:
     return datetime.now(UTC)
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _fingerprint(*, engine: str, db_name: str, schema_name: str | None, table_name: str) -> str:
@@ -558,7 +558,7 @@ def extract_row_snapshots(
                 try:
                     rows_raw = conn.execute(text(sql)).mappings().all()
                 except Exception:  # noqa: BLE001
-                    logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                    get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                     continue
                 rows: list[dict[str, Any]] = []
                 cols: list[str] = []
@@ -623,7 +623,7 @@ def extract_row_snapshots(
                 try:
                     rows_raw = conn.execute(text(sql)).mappings().all()
                 except Exception:  # noqa: BLE001
-                    logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                    get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                     continue
                 rows: list[dict[str, Any]] = []
                 cols: list[str] = []

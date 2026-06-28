@@ -10,9 +10,9 @@ Wave7(A) goals:
 from __future__ import annotations
 
 import json
-import logging
 from pathlib import Path
 from typing import Any
+from app.rag.core.logging import get_logger
 
 HARD_NEGATIVES_SCHEMA_V1 = "mimirq.hard_negatives.v1"
 
@@ -315,7 +315,7 @@ def load_hard_negatives_jsonl(path: str | Path) -> dict[str, list[str]]:
             try:
                 obj = json.loads(line)
             except Exception:
-                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                 continue
             if not isinstance(obj, dict):
                 continue

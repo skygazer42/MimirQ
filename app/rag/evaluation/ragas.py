@@ -5,7 +5,6 @@ RAGAS evaluation service.
 - Runs in FastAPI BackgroundTasks (sync function).
 """
 
-import logging
 import math
 import re
 from collections.abc import Iterable
@@ -246,7 +245,7 @@ def _commit_regression_progress(
             try:
                 rollback()
             except Exception:
-                logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+                get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
         logger.debug("Failed to persist regression progress: %s", exc)
 
 
@@ -308,7 +307,7 @@ def _extract_contexts(
             try:
                 item = item.model_dump(mode="json")
             except Exception:
-                logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+                get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
                 continue
         if not isinstance(item, dict):
             continue
@@ -478,7 +477,7 @@ def _enrich_citations_with_chunk_metadata(
             try:
                 item = item.model_dump(mode="json")
             except Exception:
-                logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+                get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
         normalized_items.append(item)
         if not isinstance(item, dict):
             continue
@@ -567,7 +566,7 @@ def _mean(values: Iterable[float]) -> float | None:
         try:
             fv = float(v)
         except Exception:
-            logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+            get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
             continue
         if math.isnan(fv):
             continue
@@ -617,7 +616,7 @@ def _build_answer_quality_metrics_summary(metas: list[dict[str, Any]]) -> dict[s
             try:
                 fv = float(v)
             except Exception:
-                logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+                get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
                 continue
             if math.isnan(fv):
                 continue
@@ -799,7 +798,7 @@ def _parse_uuid_list(raw_list: Any) -> list[UUID]:
         try:
             out.append(UUID(str(item)))
         except Exception:
-            logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+            get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
             continue
     return out
 
@@ -1755,7 +1754,7 @@ def run_regression_ragas_evaluation(
                 try:
                     did = UUID(str(raw))
                 except Exception:
-                    logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+                    get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
                     continue
                 if did in seen:
                     continue

@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from langchain_core.documents import Document
+from app.rag.core.logging import get_logger
 
 _POSITION_TAG_RE = re.compile(r"@@([0-9-]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)##")
 _SECTION_KINDS = {"text", "equation", "table", "image"}
@@ -174,7 +175,7 @@ class BaseAdvancedParser(ABC):
                 try:
                     out.append((max(0, int(token) - 1), left, right, top, bottom))
                 except Exception:
-                    logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                    get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                     continue
             return out
 

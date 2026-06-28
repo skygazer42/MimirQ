@@ -8,13 +8,13 @@ available or fails.
 
 
 import json
-import logging
 from pathlib import Path
 from typing import Any
 
 from langchain_core.documents import Document
 
 from app.parsing.utils.text import read_text_file
+from app.rag.core.logging import get_logger
 
 
 def _try_parse_jsonl(raw: str) -> list[Any] | None:
@@ -31,7 +31,7 @@ def _try_parse_jsonl(raw: str) -> list[Any] | None:
             parsed += 1
         except Exception:
             # Keep scanning; we decide based on ratio.
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
     if total >= 2 and parsed >= max(2, int(total * 0.7)):
         return items

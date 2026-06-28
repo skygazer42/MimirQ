@@ -16,7 +16,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
-import logging
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -26,8 +25,9 @@ from prometheus_client import Gauge
 
 from app.core.config import settings
 from app.core.optional_deps import optional_import
+from app.rag.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 TASK_QUEUE_OBSERVABILITY_SCHEMA_V1 = "mimirq.task_queue_observability.v1"
 
@@ -273,7 +273,7 @@ async def _refresh_from_redis(*, redis: Any, queue_name: str) -> tuple[bool, int
             try:
                 item = json.loads(text)
             except Exception:
-                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                 continue
             if isinstance(item, dict):
                 recent_job_outcomes.append(item)
