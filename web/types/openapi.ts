@@ -4023,6 +4023,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/evaluations/ragas/conversation-readiness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Get Ragas Conversation Readiness
+         * @description Return citation-backed evaluation readiness for a batch of conversations.
+         */
+        post: operations["get_ragas_conversation_readiness_api_v1_evaluations_ragas_conversation_readiness_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/evaluations/ragas/runs": {
         parameters: {
             query?: never;
@@ -5950,6 +5970,26 @@ export interface paths {
          *     - Does not re-download connector sources; it reprocesses existing stored files.
          */
         post: operations["replay_ingestion_run_api_v1_ingestion_runs__run_id__replay_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/conversations/ingest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ingest Conversation History
+         * @description Import externally generated chat turns into the standard MimirQ history.
+         */
+        post: operations["ingest_conversation_history_api_v1_integrations_conversations_ingest_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -8017,6 +8057,8 @@ export interface components {
              * @default auto
              */
             parser_backend: string;
+            /** Dataset Id */
+            dataset_id?: string | null;
         };
         /** Body_upload_zip_with_images_api_v1_pipeline_upload_zip_with_images_post */
         Body_upload_zip_with_images_api_v1_pipeline_upload_zip_with_images_post: {
@@ -8214,6 +8256,10 @@ export interface components {
             intent_router_policy?: {
                 [key: string]: unknown;
             } | null;
+            /** Industry Rules Enabled */
+            industry_rules_enabled?: boolean | null;
+            /** Industry Rules Rulesets */
+            industry_rules_rulesets?: string[] | null;
             /** Enable Query Alias Expansion */
             enable_query_alias_expansion?: boolean | null;
             /** Query Aliases */
@@ -8297,6 +8343,14 @@ export interface components {
             fusion_weights?: {
                 [key: string]: number;
             } | null;
+            /** Retrieval Overfetch Multiplier */
+            retrieval_overfetch_multiplier?: number | null;
+            /** Retrieval Overfetch Max K */
+            retrieval_overfetch_max_k?: number | null;
+            /** Sparse Retrieval Enabled */
+            sparse_retrieval_enabled?: boolean | null;
+            /** Sparse Retrieval Provider */
+            sparse_retrieval_provider?: ("deterministic" | "splade") | null;
             /**
              * Enable Weight Rerank
              * @default true
@@ -8334,6 +8388,8 @@ export interface components {
             metadata_filter?: {
                 [key: string]: unknown;
             } | null;
+            /** Lexical Db Hybrid Fallback Only */
+            lexical_db_hybrid_fallback_only?: boolean | null;
             /** Lexical Db Hybrid Metadata Exact Fallback Enabled */
             lexical_db_hybrid_metadata_exact_fallback_enabled?: boolean | null;
             /** Metadata Exact Db Fallback Enabled */
@@ -13847,6 +13903,25 @@ export interface components {
              */
             governance_pii_max_hits?: number | null;
             /**
+             * Governance Llm Auto Tagging Enabled
+             * @description Enable best-effort LLM document tagging during processor governance enrichment.
+             */
+            governance_llm_auto_tagging_enabled?: boolean | null;
+            /** Governance Llm Auto Tagging Max Chars */
+            governance_llm_auto_tagging_max_chars?: number | null;
+            /** Governance Llm Auto Tagging Max Items */
+            governance_llm_auto_tagging_max_items?: number | null;
+            /**
+             * Ingest Pre Poc Scanner Enabled
+             * @description Enable lightweight Pre-POC quality gate before parser/chunk/index stages.
+             */
+            ingest_pre_poc_scanner_enabled?: boolean | null;
+            /**
+             * Ingest Pre Poc Quality Gate Mode
+             * @description Pre-POC quality gate mode: off | warn | strict
+             */
+            ingest_pre_poc_quality_gate_mode?: ("off" | "warn" | "strict") | null;
+            /**
              * Governance Secrets Redact
              * @description Redact common secrets/tokens (API keys, private keys, bearer tokens)
              */
@@ -15488,6 +15563,101 @@ export interface components {
              * @default 0
              */
             approved: number;
+        };
+        /**
+         * ExternalConversationIngestRequest
+         * @description Import conversation turns from any external chat system into MimirQ history.
+         */
+        ExternalConversationIngestRequest: {
+            /**
+             * Source
+             * @description External system key, e.g. dify, coze, wxwork
+             */
+            source: string;
+            /** Source Conversation Id */
+            source_conversation_id: string;
+            /**
+             * Conversation Id
+             * @description Append to an existing MimirQ conversation
+             */
+            conversation_id?: string | null;
+            /** Title */
+            title?: string | null;
+            /**
+             * Update Title
+             * @default false
+             */
+            update_title: boolean;
+            /** Dataset Id */
+            dataset_id?: string | null;
+            /** Document Ids */
+            document_ids?: string[];
+            /** Source User Id */
+            source_user_id?: string | null;
+            /** Source Run Id */
+            source_run_id?: string | null;
+            /** Messages */
+            messages: components["schemas"]["ExternalConversationMessageIn"][];
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+        };
+        /** ExternalConversationIngestResponse */
+        ExternalConversationIngestResponse: {
+            /**
+             * Success
+             * @default true
+             */
+            success: boolean;
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /** Created Conversation */
+            created_conversation: boolean;
+            /** Source */
+            source: string;
+            /** Source Conversation Id */
+            source_conversation_id: string;
+            /** Inserted Messages */
+            inserted_messages: number;
+            /** Skipped Messages */
+            skipped_messages: number;
+            /** Message Ids */
+            message_ids?: string[];
+            /** Skipped Source Message Ids */
+            skipped_source_message_ids?: string[];
+        };
+        /**
+         * ExternalConversationMessageIn
+         * @description A message produced by an external conversation system.
+         */
+        ExternalConversationMessageIn: {
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "user" | "assistant";
+            /** Content */
+            content: string;
+            /** Source Message Id */
+            source_message_id?: string | null;
+            /** Source Run Id */
+            source_run_id?: string | null;
+            /** Citations */
+            citations?: {
+                [key: string]: unknown;
+            }[];
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Created At */
+            created_at?: string | null;
+            /** Token Count */
+            token_count?: number | null;
         };
         /**
          * FeatureFlags
@@ -19941,6 +20111,10 @@ export interface components {
             rerank_features?: string[];
             /** Question Intent Terms */
             question_intent_terms?: string[];
+            /** Service Anchor Noise Terms */
+            service_anchor_noise_terms?: string[];
+            /** Service Anchor Priority Terms */
+            service_anchor_priority_terms?: string[];
             /**
              * Fallback Enabled
              * @default false
@@ -21289,6 +21463,55 @@ export interface components {
             meta?: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * RagasConversationReadinessItem
+         * @description Citation-backed evaluation readiness for one conversation.
+         */
+        RagasConversationReadinessItem: {
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /**
+             * Assistant Turns
+             * @default 0
+             */
+            assistant_turns: number;
+            /**
+             * Evaluable Turns
+             * @default 0
+             */
+            evaluable_turns: number;
+            /**
+             * Citations Count
+             * @default 0
+             */
+            citations_count: number;
+            /**
+             * Is Evaluable
+             * @default false
+             */
+            is_evaluable: boolean;
+        };
+        /**
+         * RagasConversationReadinessRequest
+         * @description Batch request for conversation evaluation readiness.
+         */
+        RagasConversationReadinessRequest: {
+            /**
+             * Conversation Ids
+             * @description Conversation IDs to inspect for citation-backed RAGAS evaluation
+             */
+            conversation_ids: string[];
+        };
+        /** RagasConversationReadinessResponse */
+        RagasConversationReadinessResponse: {
+            /** Total */
+            total: number;
+            /** Items */
+            items: components["schemas"]["RagasConversationReadinessItem"][];
         };
         /**
          * RagasItemSchema
@@ -27494,6 +27717,7 @@ export interface operations {
             query?: {
                 force?: boolean;
                 skip_if_unchanged?: boolean;
+                parser_backend?: string | null;
             };
             header?: {
                 "x-tenant-id"?: string | null;
@@ -28595,6 +28819,7 @@ export interface operations {
                 skip?: number;
                 limit?: number;
                 status?: string | null;
+                dataset_id?: string | null;
             };
             header?: {
                 "x-tenant-id"?: string | null;
@@ -40557,6 +40782,78 @@ export interface operations {
             };
         };
     };
+    get_ragas_conversation_readiness_api_v1_evaluations_ragas_conversation_readiness_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RagasConversationReadinessRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RagasConversationReadinessResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_ragas_runs_api_v1_evaluations_ragas_runs_get: {
         parameters: {
             query?: {
@@ -47684,6 +47981,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IngestionRunOut"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ingest_conversation_history_api_v1_integrations_conversations_ingest_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-tenant-id"?: string | null;
+                authorization?: string | null;
+                "x-user-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExternalConversationIngestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExternalConversationIngestResponse"];
                 };
             };
             /** @description Bad Request */
