@@ -51,12 +51,21 @@ jobs:
             requirements-dev.txt
 
       - name: Setup pnpm
+        if: ${{ !(runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01') }}
         uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
         with:
           version: "10.26.0"
           run_install: false
 
+      - name: Prepare self-hosted Node
+        if: ${{ runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01' }}
+        run: |
+          node -v
+          npm -v
+          pnpm -v
+
       - name: Setup Node
+        if: ${{ !(runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01') }}
         uses: actions/setup-node@v4
         with:
           node-version: "20"

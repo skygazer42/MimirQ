@@ -56,7 +56,14 @@ jobs:
             "torchvision @ https://download-r2.pytorch.org/whl/cpu/torchvision-0.25.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl"
           python -m pip install --no-cache-dir --retries 10 --timeout 120 -r requirements.txt
 
+      - name: Prepare self-hosted Node
+        if: ${{ runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01' }}
+        run: |
+          node -v
+          npm -v
+
       - name: Setup Node.js (handbook build)
+        if: ${{ !(runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01') }}
         uses: actions/setup-node@v4
         with:
           node-version: "20"
