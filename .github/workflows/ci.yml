@@ -22,6 +22,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          clean: false
         env:
           HTTP_PROXY: http://127.0.0.1:35983
           HTTPS_PROXY: http://127.0.0.1:35983
@@ -145,6 +147,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          clean: false
         env:
           HTTP_PROXY: http://127.0.0.1:35983
           HTTPS_PROXY: http://127.0.0.1:35983
@@ -163,6 +167,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          clean: false
         env:
           HTTP_PROXY: http://127.0.0.1:35983
           HTTPS_PROXY: http://127.0.0.1:35983
@@ -937,6 +943,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          clean: false
         env:
           HTTP_PROXY: http://127.0.0.1:35983
           HTTPS_PROXY: http://127.0.0.1:35983
@@ -1150,6 +1158,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          clean: false
         env:
           HTTP_PROXY: http://127.0.0.1:35983
           HTTPS_PROXY: http://127.0.0.1:35983
