@@ -74,6 +74,10 @@ jobs:
           python -m pip install pip-audit==2.10.0
 
       - name: Audit Python direct requirements
+        env:
+          http_proxy: http://127.0.0.1:35983
+          https_proxy: http://127.0.0.1:35983
+          no_proxy: 127.0.0.1,localhost,ci-service.example
         run: |
           pip-audit -r requirements.txt --no-deps --disable-pip \
             --extra-index-url https://download.pytorch.org/whl/cpu \
