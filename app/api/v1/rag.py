@@ -20,6 +20,7 @@ from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.chat import ChatRAGConfig, HistoryMessage
 from app.core.config import settings
 from app.core.database import get_db
+from app.rag.core.logging import get_logger
 from app.services.dataset_defaults import load_dataset_metadata, resolve_single_dataset_id_for_documents
 from app.services.dataset_service import DatasetService
 from app.services.document_access import filter_allowed_document_ids, list_accessible_document_ids
@@ -28,7 +29,6 @@ from app.services.rag_config_template_defaults import merge_rag_config_template_
 from app.services.rag_config_template_resolver import build_rag_config_patch_hash, resolve_rag_config_template
 from app.services.rag_defaults import merge_rag_config_with_dataset_defaults
 from app.services.rag_runtime_limiter import run_blocking_retrieval_call
-from app.rag.core.logging import get_logger
 
 logger = get_logger(__name__)
 

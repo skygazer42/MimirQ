@@ -1,6 +1,5 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { execSync } from 'node:child_process'
 
 import ts from 'typescript'
 import { describe, expect, it } from 'vitest'
@@ -9,16 +8,25 @@ function getJsxAttributeName(attribute: ts.JsxAttribute, sourceFile: ts.SourceFi
   return ts.isIdentifier(attribute.name) ? attribute.name.text : attribute.name.getText(sourceFile)
 }
 
+function collectTsxFiles(dir: string, out: string[] = []): string[] {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const fullPath = path.join(dir, entry.name)
+    if (entry.isDirectory()) {
+      collectTsxFiles(fullPath, out)
+      continue
+    }
+    if (entry.isFile() && fullPath.endsWith('.tsx')) out.push(fullPath)
+  }
+  return out
+}
+
 describe('icon button accessibility audit', () => {
   it('ensures icon-sized Button usages expose an accessible name source', () => {
     const repoRoot = path.resolve(__dirname, '..', '..')
-    const files = execSync("rg --files web/app web/components -g '*.tsx'", {
-      cwd: repoRoot,
-      encoding: 'utf8',
-    })
-      .trim()
-      .split('\n')
-      .filter(Boolean)
+    const files = [
+      ...collectTsxFiles(path.join(repoRoot, 'web', 'app')),
+      ...collectTsxFiles(path.join(repoRoot, 'web', 'components')),
+    ].map((fullPath) => path.relative(repoRoot, fullPath))
 
     const offenders: string[] = []
 

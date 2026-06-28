@@ -18,8 +18,8 @@ describe('history page real-data contract', () => {
   it('loads the conversation list through TanStack Query instead of a local loadConversations helper', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'page-client.tsx'), 'utf8')
 
-    expect(src).toContain("import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'")
-    expect(src).toContain('queryKey: queryKeys.chat.conversations({ limit: 100 })')
+    expect(src).toContain("import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'")
+    expect(src).toContain('queryKey: queryKeys.chat.conversations({ limit: CONVERSATION_PAGE_SIZE })')
     expect(src).not.toContain('const loadConversations = useCallback(async () => {')
     expect(src).not.toContain('setConversations(result.items || [])')
     expect(src).toContain('queryClient.setQueryData(')

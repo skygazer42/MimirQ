@@ -17,6 +17,7 @@ from collections.abc import Callable, Iterable
 from typing import Any
 
 from langchain_core.documents import Document
+
 from app.rag.core.logging import get_logger
 
 FetchByHierarchyKey = Callable[[set[tuple[str, str]]], dict[tuple[str, str], Document]]

@@ -14,7 +14,6 @@ describe('navigation page title coverage', () => {
     ['app/diagnostics/page-client.tsx'],
     ['app/evaluations/page.tsx'],
     ['app/prompts/page.tsx'],
-    ['app/reports/page-client.tsx'],
     ['components/chunk-preview/components/workbench/index.tsx'],
     ['components/evaluation/retrieval-ablations-page.tsx'],
     ['components/graph/kg-diagnostics-page.tsx'],
@@ -25,6 +24,13 @@ describe('navigation page title coverage', () => {
 
     expect(src).toContain('PageHeader')
     expect(src).toContain('<PageHeader')
+  })
+
+  it('app/reports/page-client.tsx renders the shared analysis page shell', () => {
+    const src = read('app/reports/page-client.tsx')
+
+    expect(src).toContain('AnalysisPageShell')
+    expect(src).toContain('<AnalysisPageShell')
   })
 
   it('keeps graph canvas title visually aligned without using the full page header layout', () => {
@@ -43,6 +49,6 @@ describe('navigation page title coverage', () => {
     expect(ingestionSrc).toContain('入库中心')
     expect(ingestionSrc).toContain('<PageHeader')
     expect(ingestionSrc).toContain('iconImage="ingestion-operation"')
-    expect(ingestionSrc).toContain('开始入库')
+    expect(ingestionSrc).toContain('选择数据集与来源，先登记原始文件；解析、切块、建索引在后续流程手动控制。')
   })
 })

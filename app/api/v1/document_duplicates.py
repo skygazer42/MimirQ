@@ -13,8 +13,8 @@ from app.api.schemas.document import DocumentDuplicateList
 from app.core.database import get_db
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentPermission
-from app.services.dataset_service import DatasetService
 from app.rag.core.logging import get_logger
+from app.services.dataset_service import DatasetService
 
 logger = get_logger(__name__)
 

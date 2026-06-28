@@ -26,6 +26,6 @@ describe('quarantine queue page source', () => {
     expect(src).toContain("toast.error(info.message)")
     expect(src).toContain("tags: { page: 'knowledge-quarantine', action: 'manual-sync' }")
     expect(src).toContain("同步完成：当前没有隔离或失败记录")
-    expect(src).toContain("void refreshQueue({ notify: true })")
+    expect(src).toContain("detachPromise(refreshQueue({ notify: true }))")
   })
 })

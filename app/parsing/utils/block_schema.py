@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from typing import Any
+
 from app.rag.core.logging import get_logger
 
 POSITION_TAG_RE = re.compile(r"@@([0-9-]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)##")

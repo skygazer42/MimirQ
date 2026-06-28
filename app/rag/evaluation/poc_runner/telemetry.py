@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import Any
+
 from app.rag.core.logging import get_logger
 
 POC_TELEMETRY_SCHEMA_V1 = "mimirq.poc.telemetry.v1"

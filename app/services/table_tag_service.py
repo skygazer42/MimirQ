@@ -18,11 +18,11 @@ from langchain_openai import ChatOpenAI
 from app.core.config import settings
 from app.core.openai_compat import normalize_openai_compatible_base_url
 from app.rag.core.code_fence import extract_first_code_fence
+from app.rag.core.logging import get_logger
 from app.services.table_join_stats import build_join_statistics_snapshot
 from app.services.table_schema_graph import (
     infer_schema_relationships_for_tables as infer_schema_relationships_from_graph,
 )
-from app.rag.core.logging import get_logger
 from app.services.table_schema_graph import (
     score_join_plan_candidates,
     score_multi_join_plan_candidates,

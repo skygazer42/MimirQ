@@ -25,10 +25,10 @@ from app.api.schemas.ingestion_policy import IngestionPolicy, IngestionRule
 from app.core.config import settings
 from app.models.dataset import Dataset
 from app.models.dataset_precheck_scan import DatasetPrecheckScanRun as DBDatasetPrecheckScanRun
+from app.rag.core.logging import get_logger
 from app.services.dataset_precheck_service import _assert_artifact_path_under_tenant, _list_finding_from_jsonl
 from app.services.ingestion_policy import validate_and_normalize_ingestion_policy
 from app.services.ingestion_policy_diff import diff_ingestion_policies
-from app.rag.core.logging import get_logger
 
 STRUCTURED_DATA_PROFILE_REF = "builtin:structured_data"
 STEP_NORMALIZE_NEWLINES = "text.normalize_newlines"

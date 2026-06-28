@@ -19,8 +19,8 @@ from sqlalchemy.orm import Session
 from app.api.schemas.dataset_category import DatasetCategoryNode
 from app.core.constants import UserRoles
 from app.models.dataset_category import DatasetCategory, DatasetCategoryMembership
-from app.services.dataset_service import DatasetService
 from app.rag.core.logging import get_logger
+from app.services.dataset_service import DatasetService
 
 _EDIT_ROLES = UserRoles.EDIT_ROLES
 

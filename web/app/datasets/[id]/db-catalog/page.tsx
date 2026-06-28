@@ -593,7 +593,7 @@ export default function DatasetDbCatalogPage() {
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="db / schema / table"
-                  className="h-7 border-0 bg-transparent px-0 text-[13px] shadow-none focus-visible:ring-0"
+                  className="focus-ring h-7 border-0 bg-transparent px-0 text-[13px] shadow-none"
                 />
               </div>
               <div className="mt-2 flex flex-wrap gap-1.5">

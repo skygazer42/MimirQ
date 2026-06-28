@@ -10,11 +10,11 @@ describe('KnowledgeDocumentsPanel inventory toolbar composition', () => {
       'utf8'
     )
 
-    expect(src).toContain('text-[19px] font-semibold text-foreground')
+    expect(src).toContain('text-[20px] font-semibold leading-tight tracking-[-0.015em] text-foreground')
     expect(src).toContain('const inventoryToolbar = (')
     expect(src).toContain('checkboxCellClassName')
     expect(src).toContain('checkboxInputClassName')
-    expect(src).toContain('border-b border-border/60 bg-[linear-gradient(180deg,hsl(var(--card)/0.78),hsl(var(--surface-2)/0.42))]')
+    expect(src).toContain('border-b border-border/50 bg-[linear-gradient(180deg,hsl(var(--card)/0.70),hsl(var(--surface-2)/0.34))]')
     expect(src).toContain('grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center')
   })
 })

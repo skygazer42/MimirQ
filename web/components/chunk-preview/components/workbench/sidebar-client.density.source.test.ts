@@ -30,7 +30,7 @@ describe('chunk preview sidebar density source', () => {
     expect(src).toContain('data-chunk-file-queue')
     expect(src).toContain("t('sidebar.fileList.batchIngestIdle')")
     expect(src).toContain("t('sidebar.fileList.batchIngestSelected'")
-    expect(src).toContain('grid-cols-[auto_minmax(0,1fr)]')
+    expect(src).toContain('mt-2 flex items-center justify-between gap-2 rounded-xl border border-border/35 bg-muted/10 px-2 py-1.5 shadow-none')
     expect(src).not.toContain("t('sidebar.fileList.batchIngestHint')")
     expect(src).not.toContain('flex items-center justify-between gap-2 rounded-xl border border-border/45 bg-background/70 px-2.5 py-2')
   })

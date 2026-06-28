@@ -158,7 +158,7 @@ describe('KnowledgeSettingsPanel module', () => {
     expectSourceToContain(src, 'settingsSidebarCollapsed ?')
     expectSourceToContain(src, "'xl:grid-cols-1'")
     expectSourceToContain(src, "'xl:grid-cols-[206px_minmax(0,1fr)]'")
-    expectSourceToContain(src, '{!settingsSidebarCollapsed ? (')
+    expectSourceToContain(src, '{settingsSidebarCollapsed ? null : (')
   })
 
   it('keeps the settings content scrollable after expanding the guide panel', () => {

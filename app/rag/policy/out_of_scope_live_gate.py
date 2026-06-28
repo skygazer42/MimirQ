@@ -3,10 +3,10 @@ from __future__ import annotations
 from typing import Any, Callable, Mapping, Sequence
 from uuid import UUID
 
+from app.rag.core.logging import get_logger
 from app.rag.evaluation.poc_runner.out_of_scope_verifier import verify_out_of_scope_query
 from app.rag.industry_rules.loaders import load_ruleset
 from app.rag.retriever import get_vector_store, hybrid_retriever
-from app.rag.core.logging import get_logger
 
 _SCHEMA = "mimirq.out_of_scope_live_guard.v1"
 

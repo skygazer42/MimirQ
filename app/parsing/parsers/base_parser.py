@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from langchain_core.documents import Document
+
 from app.rag.core.logging import get_logger
 
 _POSITION_TAG_RE = re.compile(r"@@([0-9-]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)##")

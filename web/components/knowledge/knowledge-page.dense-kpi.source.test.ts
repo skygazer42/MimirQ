@@ -16,7 +16,7 @@ describe('KnowledgePage dense KPI summary', () => {
     expect(src).toMatch(
       /top=\{\s*activeTab === 'documents'\s*\|\|\s*activeTab === 'settings'\s*\|\|\s*activeTab === 'retrieval'\s*\?/
     )
-    expect(src).toContain("'min-h-[58px] px-3 py-2'")
+    expect(src).toContain("'min-h-[56px] px-3 py-2'")
     expect(src).toContain('text-[15px]')
     expect(src).not.toContain("caption: '文档总数'")
     expect(src).not.toContain("caption: '知识分类'")

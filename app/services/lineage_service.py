@@ -13,8 +13,8 @@ from app.core.config import settings
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk, DocumentPermission
 from app.rag.core.hashing import stable_hash
-from app.services.connector_reconcile_service import extract_connector_source_identity
 from app.rag.core.logging import get_logger
+from app.services.connector_reconcile_service import extract_connector_source_identity
 
 CHUNK_RETRIEVAL_LINEAGE_SCHEMA = "mimirq.chunk_retrieval_lineage.v1"
 CHUNK_LINEAGE_SCHEMA = "mimirq.lineage.chunk.v1"

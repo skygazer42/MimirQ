@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from uuid import UUID
+
 from app.rag.core.logging import get_logger
 
 

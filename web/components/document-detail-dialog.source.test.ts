@@ -25,19 +25,24 @@ describe('document detail dialog source', () => {
     expect(mainSrc).toContain('useActionState')
     expect(mainSrc).toContain('useOptimistic')
     expect(mainSrc).toContain('useFormStatus')
-    expect(mainSrc).toContain('function DocumentTagsSaveButton')
+    expect(mainSrc).toContain('function DocumentSaveButton')
     expect(mainSrc).toContain('const { pending } = useFormStatus()')
     expect(mainSrc).toContain('const [optimisticTags, applyOptimisticTags] = useOptimistic(')
     expect(mainSrc).toContain('const [, saveTagsAction, isSavingTags] = useActionState(')
     expect(mainSrc).toContain('startTransition(() => {')
     expect(mainSrc).toContain('applyOptimisticTags(nextTags)')
     expect(tagsPanelSrc).toContain('<form action={saveAction}')
+    expect(tagsPanelSrc).toContain('{saveButton}')
     expect(mainSrc).not.toContain('setIsSavingTags(true)')
     expect(mainSrc).not.toContain('setIsSavingTags(false)')
   })
 
   it('uses React actions for access-control and lifecycle form submissions', () => {
     const mainSrc = fs.readFileSync(path.resolve(__dirname, 'document-detail-dialog.tsx'), 'utf8')
+    const accessDialogSrc = fs.readFileSync(
+      path.resolve(__dirname, 'document-detail-dialog/document-access-dialog.tsx'),
+      'utf8'
+    )
     const lifecyclePanelSrc = fs.readFileSync(
       path.resolve(__dirname, 'document-detail-dialog/document-detail-lifecycle-panel.tsx'),
       'utf8'
@@ -47,7 +52,9 @@ describe('document detail dialog source', () => {
     expect(mainSrc).toContain('const [, saveLifecycleAction, isSavingLifecycle] = useActionState(')
     expect(mainSrc).toContain('action={saveAccessAction}')
     expect(lifecyclePanelSrc).toContain('<form action={saveAction}')
-    expect(mainSrc).toContain('function DocumentLifecycleSaveButton')
+    expect(lifecyclePanelSrc).toContain('{saveButton}')
+    expect(accessDialogSrc).toContain('function DocumentAccessSaveButton()')
+    expect(accessDialogSrc).toContain('<form action={action}>')
     expect(mainSrc).not.toContain('setIsSavingAccess(true)')
     expect(mainSrc).not.toContain('setIsSavingAccess(false)')
     expect(mainSrc).not.toContain('setIsSavingLifecycle(true)')

@@ -38,6 +38,7 @@ from app.core.config import settings
 from app.core.database import SessionLocal, get_db
 from app.models.dataset import Dataset
 from app.models.document import Document, DocumentChunk
+from app.rag.core.logging import get_logger
 from app.rag.pipeline_plugins.contracts import DISPLAY_METADATA_KEY, EVALUABLE_METADATA_KEY, INDEXED_METADATA_KEY
 from app.rag.retrieval.planner import (
     DatasetRouteHint,
@@ -52,7 +53,6 @@ from app.rag.retrieval.planner import (
     retrieval_policy_service_anchor_noise_terms,
     retrieval_policy_service_anchor_priority_terms,
 )
-from app.rag.core.logging import get_logger
 from app.rag.retrieval.plugin_policy import (
     filter_records_by_retrieval_policy_alignment,
     record_retrieval_policy_bonus,

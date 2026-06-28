@@ -20,9 +20,9 @@ from pathlib import Path
 from typing import Any
 
 from app.core.config import settings
+from app.rag.core.logging import get_logger
 from app.rag.core.retrieval_config_fingerprint import build_retrieval_config_fingerprint
 from app.rag.reranker.ltr import LTRFeatureSpec, build_ltr_feature_spec_fingerprint
-from app.rag.core.logging import get_logger
 
 _ACTIVE_SCHEMA_V1 = "mimirq.ltr_model_registry_active.v1"
 _MODEL_META_SCHEMA_V1 = "mimirq.ltr_model_registry_meta.v1"

@@ -21,7 +21,6 @@ from app.rag.kg.extraction.alias import (
     is_abbrev_token,
     split_trailing_parenthetical_alias,
 )
-from app.rag.core.logging import get_logger
 from app.rag.kg.extraction.backend_router import resolve_extraction_backend
 from app.rag.kg.extraction.config import ExtractConfig
 from app.rag.kg.extraction.entity_verifier import EntityCandidate, EntityVerifier
@@ -2867,7 +2866,7 @@ class EventExtractor:
                     try:
                         meta[str(key)] = int(val or 0)
                     except Exception:
-                        get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                        logger.debug("Skipping item after non-critical exception", exc_info=True)
                         continue
                 doc.doc_metadata = meta
             session.commit()

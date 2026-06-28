@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any
+
 from app.rag.core.logging import get_logger
 
 HARD_NEGATIVES_SCHEMA_V1 = "mimirq.hard_negatives.v1"

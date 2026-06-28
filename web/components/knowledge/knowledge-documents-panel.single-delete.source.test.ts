@@ -19,6 +19,6 @@ describe('KnowledgeDocumentsPanel single delete confirmation', () => {
     expectSourceToContain(src, 'formatApiError')
     expectSourceToContain(src, 'setSingleDeleteError')
     expectSourceToContain(src, 'toast.success(t("toasts.deleteSuccess"))')
-    expectSourceToContain(src, 'Delete document failed:')
+    expectSourceToContain(src, 't(\'singleDelete.errorFallback\')')
   })
 })

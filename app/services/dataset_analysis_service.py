@@ -11,6 +11,7 @@ from app.core.database import SessionLocal
 from app.models.chat import Conversation, Message
 from app.models.dataset import Dataset
 from app.models.feedback import MessageFeedback
+from app.rag.core.logging import get_logger
 from app.rag.evaluation.poc_runner.attribution_classifier import classify_feedback_records
 from app.rag.evaluation.poc_runner.coverage_heatmap import build_document_heatmap
 from app.rag.evaluation.poc_runner.latency_decomposer import decompose_latency_rows
@@ -22,7 +23,6 @@ from app.rag.evaluation.poc_runner.png_tasks import (
     get_png_export_task,
     get_png_export_task_result,
 )
-from app.rag.core.logging import get_logger
 from app.rag.evaluation.poc_runner.query_pattern_miner import mine_query_patterns
 from app.rag.evaluation.poc_runner.reports.attribution_report import (
     DatasetAnalysisReportPayload,

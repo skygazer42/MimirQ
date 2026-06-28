@@ -13,6 +13,7 @@ from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
+from app.rag.core.logging import get_logger
 from app.rag.kg.models import (
     KgEntity,
     KgEntityAlias,
@@ -21,7 +22,6 @@ from app.rag.kg.models import (
     KgRelation,
     KgSourceEvent,
 )
-from app.rag.core.logging import get_logger
 from app.rag.retrieval.query_phrase_match import extract_informative_query_phrases
 from app.storage.vector.milvus import get_milvus_adapter, resolve_collection_name
 

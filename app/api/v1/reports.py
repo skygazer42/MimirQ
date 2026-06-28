@@ -21,9 +21,9 @@ from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.report import DatasetReportOut
 from app.api.utils.response_headers import download_response_headers
 from app.core.database import get_db
+from app.rag.core.logging import get_logger
 from app.services.report_html import _scrub_report_for_redaction, render_dataset_report_html, render_rag_audit_html
 from app.services.report_service import DatasetReportRequest, ReportService
-from app.rag.core.logging import get_logger
 
 logger = get_logger(__name__)
 

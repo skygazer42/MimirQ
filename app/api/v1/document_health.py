@@ -18,11 +18,11 @@ from app.api.schemas.document_health import (
     DocumentHealthRetrievalHits,
     DocumentHealthSemanticQualitySummary,
 )
-from app.rag.core.logging import get_logger
 from app.core.database import get_db
 from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
+from app.rag.core.logging import get_logger
 from app.services.chunk_coverage_utils import compute_chunk_coverage_metrics_from_ranges
 from app.services.dataset_service import DatasetService
 from app.services.document_access_service import assert_document_acl_readable
