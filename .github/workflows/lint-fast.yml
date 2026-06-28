@@ -25,9 +25,11 @@ jobs:
       - name: Prepare self-hosted Python
         if: ${{ runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01' }}
         run: |
-          echo "$SELF_HOSTED_PYTHON_BIN" >> "$GITHUB_PATH"
-          "$SELF_HOSTED_PYTHON_BIN/python3.11" --version
-          "$SELF_HOSTED_PYTHON_BIN/python3.11" -m pip --version
+          VENV_DIR="$RUNNER_TEMP/mimirq-py311"
+          "$SELF_HOSTED_PYTHON_BIN/python3.11" -m venv "$VENV_DIR"
+          echo "$VENV_DIR/bin" >> "$GITHUB_PATH"
+          "$VENV_DIR/bin/python" --version
+          "$VENV_DIR/bin/pip" --version
 
       - name: Setup Python
         if: ${{ !(runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01') }}
