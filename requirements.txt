@@ -2,43 +2,43 @@
 # On Linux, installing `torch` from PyPI pulls in CUDA runtime libraries (`nvidia-*`) which are huge and can
 # exhaust CI runner / docker builder disk. Use the official CPU wheels for Linux from download.pytorch.org.
 # NOTE: Linux installs must pass `--extra-index-url https://download.pytorch.org/whl/cpu` to pip.
-torch==2.10.0; platform_system == "Linux"
+torch==2.12.1; platform_system == "Linux"
 torch==2.10.0; platform_system != "Linux"
-torchvision==0.25.0; platform_system == "Linux"
+torchvision==0.27.1; platform_system == "Linux"
 torchvision==0.25.0; platform_system != "Linux"
-sentence-transformers==5.3.0
+sentence-transformers==5.6.0
 
-fastapi==0.135.3
-uvicorn[standard]==0.44.0
-python-multipart==0.0.31
+fastapi==0.138.1
+uvicorn[standard]==0.49.0
+python-multipart==0.0.32
 
 # gRPC (pre-built wheels for Windows)
-grpcio==1.80.0
-grpcio-tools==1.80.0
+grpcio==1.81.1
+grpcio-tools==1.81.1
 
 # Database
-sqlalchemy==2.0.49
+sqlalchemy==2.0.51
 asyncpg==0.31.0
-alembic==1.18.4
-psycopg2-binary==2.9.11
-pymysql==1.1.2
+alembic==1.18.5
+psycopg2-binary==2.9.12
+pymysql==1.2.0
 pyodbc==5.3.0
 
 # LangChain Ecosystem (latest major versions)
-langchain==1.3.9
+langchain==1.3.11
 langchain-core==1.4.8
-langchain-community==0.4.1
+langchain-community==0.4.2
 langchain-chroma==1.1.0
-langchain-openai==1.1.14
-langchain-anthropic==1.4.0
+langchain-openai==1.3.3
+langchain-anthropic==1.4.8
 langchain-text-splitters==1.1.2
 # NOTE: USTC mirror / PyPI currently provides up to 1.0.5 (1.0.15 not published).
-langgraph==1.2.4
+langgraph==1.2.6
 # FAISS has no official Windows wheels; it's only used when VECTOR_BACKEND=faiss.
-faiss-cpu==1.13.2; platform_system != "Windows"
-chromadb==1.5.7
+faiss-cpu==1.14.3; platform_system != "Windows"
+chromadb==1.5.9
 # Vector Database
-pymilvus==2.6.11
+pymilvus==3.0.0
 
 # Object Storage
 minio==7.2.20
@@ -48,42 +48,42 @@ minio==7.2.20
 # MagicPDF (magic-pdf) is an optional, heavy local parser (torch/transformers).
 # Install it separately only when enabling MAGIC_PDF_ENABLED=true.
 # See: docs/guides/magicpdf_guide.md
-PyMuPDF==1.27.2.2
+PyMuPDF==1.27.2.3
 unstructured==0.18.32
 python-magic==0.4.27
 markdown==3.10.2
-markitdown==0.1.5
+markitdown==0.1.6
 # NOTE: Keep numpy on the tested 2.4.x line used by the current parsing/ML stack.
-numpy==2.4.4
-pdfplumber==0.11.9
-pypdf==6.13.3
+numpy==2.5.0
+pdfplumber==0.11.10
+pypdf==6.14.2
 # NOTE: docling 2.80.0 resolves with pandas 3.0.x; keep on this tested line.
-pandas==3.0.2
+pandas==3.0.3
 openpyxl==3.1.5
 python-docx==1.2.0
 python-pptx==1.0.2
-chardet==7.4.1
-tiktoken==0.12.0
+chardet==7.4.3
+tiktoken==0.13.0
 trio==0.33.0
-xgboost==3.2.0
+xgboost==3.3.0
 # NOTE: docling 2.81.0 still requires huggingface-hub<1.
-huggingface-hub==1.9.2
+huggingface-hub==1.21.0
 # NOTE: docling currently requires pillow<12. Keep this pin compatible.
 Pillow==12.2.0
 # NOTE: opencv-python 4.13.x is compatible with the current numpy 2.4.x pin.
 opencv-python==4.13.0.92
-onnxruntime==1.24.4
+onnxruntime==1.27.0
 rapidocr-onnxruntime==1.4.4
 pyclipper==1.4.0
 shapely==2.1.2
-tqdm==4.67.3
+tqdm==4.68.3
 beartype==0.22.9
 hanziconv==0.3.2
 nltk==3.9.4
-docling==2.94.0
-docling-ibm-models==3.13.0
-accelerate==1.13.0
-tencentcloud-sdk-python==3.1.72
+docling==2.107.0
+docling-ibm-models==3.13.3
+accelerate==1.14.0
+tencentcloud-sdk-python==3.1.123
 html-text==0.7.1
 readability-lxml==0.8.4.1
 
@@ -92,34 +92,34 @@ rank-bm25==0.2.2
 jieba==0.42.1
 hanlp==2.1.3
 word2number==1.1
-cn2an==0.5.23
+cn2an==0.5.24
 roman-numbers==1.0.2
 
 # Authentication
 python-jose[cryptography]==3.5.0
 passlib[bcrypt]==1.7.4
-signxml==4.4.0
+signxml==5.0.1
 
 # Utilities
 # LangChain 1.x
-pydantic==2.12.5
+pydantic==2.13.4
 pydantic-settings==2.14.2
 email-validator==2.3.0
 backports.tarfile==1.2.0
 strenum==0.4.15
 python-dotenv==1.2.2
-requests==2.33.1
+requests==2.34.2
 aiofiles==25.1.0
 pyecharts==2.1.0
-prometheus-client==0.24.1
-sentry-sdk==2.57.0
-opentelemetry-api==1.40.0
-opentelemetry-sdk==1.40.0
-opentelemetry-exporter-otlp-proto-grpc==1.40.0
-opentelemetry-instrumentation==0.61b0
-opentelemetry-instrumentation-fastapi==0.61b0
-opentelemetry-instrumentation-httpx==0.61b0
-opentelemetry-semantic-conventions==0.61b0
+prometheus-client==0.25.0
+sentry-sdk==2.63.0
+opentelemetry-api==1.43.0
+opentelemetry-sdk==1.43.0
+opentelemetry-exporter-otlp-proto-grpc==1.43.0
+opentelemetry-instrumentation==0.64b0
+opentelemetry-instrumentation-fastapi==0.64b0
+opentelemetry-instrumentation-httpx==0.64b0
+opentelemetry-semantic-conventions==0.64b0
 
 # HTTP client
 httpx[http2]==0.28.1
@@ -128,9 +128,9 @@ httpx[http2]==0.28.1
 ragas==0.4.3
 
 # LlamaIndex (advanced chunking strategies)
-llama-index-core==0.14.20
+llama-index-core==0.14.23
 
 # Task Queue / Redis (ingest throughput: task queue, idempotency locks, cache)
 # NOTE: arq 0.27.x requires redis-py < 6.
-redis==5.3.1
-arq==0.27.0
+redis==8.0.1
+arq==0.28.0
