@@ -25,12 +25,7 @@ jobs:
         env:
           HTTP_PROXY: http://127.0.0.1:35983
           HTTPS_PROXY: http://127.0.0.1:35983
-          ALL_PROXY: socks://127.0.0.1:35983/
-          http_proxy: http://127.0.0.1:35983
-          https_proxy: http://127.0.0.1:35983
-          all_proxy: socks://127.0.0.1:35983/
           NO_PROXY: 127.0.0.1,localhost,ci-service.example
-          no_proxy: 127.0.0.1,localhost,ci-service.example
 
       - name: Ensure self-hosted toolchain
         if: ${{ runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01' }}
@@ -153,12 +148,7 @@ jobs:
         env:
           HTTP_PROXY: http://127.0.0.1:35983
           HTTPS_PROXY: http://127.0.0.1:35983
-          ALL_PROXY: socks://127.0.0.1:35983/
-          http_proxy: http://127.0.0.1:35983
-          https_proxy: http://127.0.0.1:35983
-          all_proxy: socks://127.0.0.1:35983/
           NO_PROXY: 127.0.0.1,localhost,ci-service.example
-          no_proxy: 127.0.0.1,localhost,ci-service.example
 
       - name: Build backend image
         run: docker build -t mimirq-backend -f docker/Dockerfile .
@@ -176,12 +166,7 @@ jobs:
         env:
           HTTP_PROXY: http://127.0.0.1:35983
           HTTPS_PROXY: http://127.0.0.1:35983
-          ALL_PROXY: socks://127.0.0.1:35983/
-          http_proxy: http://127.0.0.1:35983
-          https_proxy: http://127.0.0.1:35983
-          all_proxy: socks://127.0.0.1:35983/
           NO_PROXY: 127.0.0.1,localhost,ci-service.example
-          no_proxy: 127.0.0.1,localhost,ci-service.example
 
       - name: Prepare self-hosted Python
         if: ${{ runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01' }}
@@ -955,12 +940,7 @@ jobs:
         env:
           HTTP_PROXY: http://127.0.0.1:35983
           HTTPS_PROXY: http://127.0.0.1:35983
-          ALL_PROXY: socks://127.0.0.1:35983/
-          http_proxy: http://127.0.0.1:35983
-          https_proxy: http://127.0.0.1:35983
-          all_proxy: socks://127.0.0.1:35983/
           NO_PROXY: 127.0.0.1,localhost,ci-service.example
-          no_proxy: 127.0.0.1,localhost,ci-service.example
 
       - name: Prepare self-hosted Python
         if: ${{ runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01' }}
@@ -1173,12 +1153,7 @@ jobs:
         env:
           HTTP_PROXY: http://127.0.0.1:35983
           HTTPS_PROXY: http://127.0.0.1:35983
-          ALL_PROXY: socks://127.0.0.1:35983/
-          http_proxy: http://127.0.0.1:35983
-          https_proxy: http://127.0.0.1:35983
-          all_proxy: socks://127.0.0.1:35983/
           NO_PROXY: 127.0.0.1,localhost,ci-service.example
-          no_proxy: 127.0.0.1,localhost,ci-service.example
 
       - name: Prepare self-hosted Python
         if: ${{ runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01' }}
