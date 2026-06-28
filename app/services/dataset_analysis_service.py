@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import logging
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -23,6 +22,7 @@ from app.rag.evaluation.poc_runner.png_tasks import (
     get_png_export_task,
     get_png_export_task_result,
 )
+from app.rag.core.logging import get_logger
 from app.rag.evaluation.poc_runner.query_pattern_miner import mine_query_patterns
 from app.rag.evaluation.poc_runner.reports.attribution_report import (
     DatasetAnalysisReportPayload,
@@ -84,7 +84,7 @@ def _coerce_mapping(value: Any) -> dict[str, Any]:
         try:
             current = getattr(value, key)
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if callable(current):
             continue
@@ -181,7 +181,7 @@ def _load_dataset_scope_rows(
                 max_bytes=10_000_000,
             )
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         for item in getattr(response, "items", []) or []:
             traces.append(_coerce_mapping(item))

@@ -36,6 +36,8 @@ def test_sonar_flagged_workflow_actions_are_pinned_to_full_sha() -> None:
 
     for workflow_path in workflow_paths:
         for line in _read(workflow_path).splitlines():
+            if not line.lstrip().startswith("uses:"):
+                continue
             if not any(action in line for action in flagged_actions):
                 continue
             assert FULL_SHA_RE.search(line), line

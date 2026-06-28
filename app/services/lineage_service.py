@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import logging
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -15,6 +14,7 @@ from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk, DocumentPermission
 from app.rag.core.hashing import stable_hash
 from app.services.connector_reconcile_service import extract_connector_source_identity
+from app.rag.core.logging import get_logger
 
 CHUNK_RETRIEVAL_LINEAGE_SCHEMA = "mimirq.chunk_retrieval_lineage.v1"
 CHUNK_LINEAGE_SCHEMA = "mimirq.lineage.chunk.v1"
@@ -83,7 +83,7 @@ def _read_jsonl_tail(path: Path, *, max_bytes: int) -> list[dict[str, Any]]:
         try:
             obj = json.loads(item)
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if isinstance(obj, dict):
             records.append(obj)

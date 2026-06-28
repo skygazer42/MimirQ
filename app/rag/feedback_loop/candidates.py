@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import hashlib
-import logging
 from typing import Any
 
 from app.rag.evaluation.hard_negative_mining import mine_hard_negatives_for_case_from_trace
 from app.rag.industry_rules.mining.auto_rules import build_ruleset_suggestions
 from app.rag.industry_rules.schema import IndustryRuleset
+from app.rag.core.logging import get_logger
 
 FEEDBACK_LOOP_CANDIDATES_SCHEMA_V1 = "mimirq.feedback_loop_candidates.v1"
 FEEDBACK_TRAINING_TRIPLE_SCHEMA_V1 = "mimirq.feedback_training_triple.v1"
@@ -22,7 +22,7 @@ def _as_mapping(row: Any) -> dict[str, Any]:
         try:
             value = getattr(row, key)
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if callable(value):
             continue

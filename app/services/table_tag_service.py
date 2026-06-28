@@ -8,7 +8,6 @@ This is intentionally conservative:
 
 from __future__ import annotations
 
-import logging
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -23,6 +22,7 @@ from app.services.table_join_stats import build_join_statistics_snapshot
 from app.services.table_schema_graph import (
     infer_schema_relationships_for_tables as infer_schema_relationships_from_graph,
 )
+from app.rag.core.logging import get_logger
 from app.services.table_schema_graph import (
     score_join_plan_candidates,
     score_multi_join_plan_candidates,
@@ -935,7 +935,7 @@ def _extract_question_limit(question: str, *, default_limit: int) -> int:
         try:
             n = int(m.group(1))
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if n > 0:
             return max(1, n)

@@ -7,7 +7,6 @@ Goal:
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -1042,7 +1041,7 @@ def _aggregate_hierarchy_recall_summary(
             try:
                 v = float(raw)
             except Exception:
-                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                 continue
             v = min(1.0, max(0.0, v))
             return round(v, 6)

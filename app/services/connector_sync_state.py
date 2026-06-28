@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -8,6 +7,7 @@ from typing import Any, TypeVar
 from uuid import UUID
 
 from app.services.connector_registry import CONNECTOR_REGISTRY, ConnectorDefinition
+from app.rag.core.logging import get_logger
 
 T = TypeVar("T")
 _STATE_SCHEMA_VERSION = 2
@@ -135,7 +135,7 @@ def _normalize_totals(*, definition: ConnectorDefinition, state: Mapping[str, An
         try:
             totals[str(key)] = int(raw)
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
     return totals or None
 

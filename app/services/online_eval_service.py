@@ -15,7 +15,6 @@ from __future__ import annotations
 import atexit
 import hashlib
 import json
-import logging
 import math
 import queue
 import threading
@@ -42,7 +41,7 @@ def _mean(values: Iterable[float]) -> float | None:
         try:
             fv = float(v)
         except Exception:
-            logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+            get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
             continue
         if math.isnan(fv):
             continue
@@ -95,7 +94,7 @@ def _read_jsonl_tail(path: Path, *, max_bytes: int) -> tuple[list[dict[str, Any]
         try:
             obj = json.loads(line)
         except Exception:
-            logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+            get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
             continue
         if isinstance(obj, dict):
             records.append(obj)
@@ -217,7 +216,7 @@ def summarize_online_quality(
         try:
             ts_ms = int(r.get("ts_ms") or 0)
         except Exception:
-            logging.getLogger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
+            get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
             continue
         if not ts_ms:
             continue

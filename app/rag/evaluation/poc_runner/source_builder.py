@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import logging
 from datetime import UTC, datetime
 from typing import Any
 
 from app.rag.evaluation.poc_runner.telemetry import feedback_polarity_from_score
+from app.rag.core.logging import get_logger
 
 
 def _coerce_mapping(value: Any) -> dict[str, Any]:
@@ -24,7 +24,7 @@ def _coerce_mapping(value: Any) -> dict[str, Any]:
         try:
             current = getattr(value, key)
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if callable(current):
             continue

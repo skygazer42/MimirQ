@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import logging
 from typing import Any, Callable, Mapping, Sequence
 from uuid import UUID
 
 from app.rag.evaluation.poc_runner.out_of_scope_verifier import verify_out_of_scope_query
 from app.rag.industry_rules.loaders import load_ruleset
 from app.rag.retriever import get_vector_store, hybrid_retriever
+from app.rag.core.logging import get_logger
 
 _SCHEMA = "mimirq.out_of_scope_live_guard.v1"
 
@@ -25,7 +25,7 @@ def _normalize_vector_hits(rows: Sequence[dict[str, Any]] | None) -> list[dict[s
         try:
             out.append({"score": float(score or 0.0)})
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
     return out
 

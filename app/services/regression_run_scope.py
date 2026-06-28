@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import logging
 from collections.abc import Sequence
 from uuid import UUID
+from app.rag.core.logging import get_logger
 
 
 class MissingCasesError(ValueError):
@@ -34,7 +34,7 @@ def validate_case_ids_belong_to_dataset(
         try:
             key = UUID(str(cid))
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if case_ds is None:
             found[key] = None

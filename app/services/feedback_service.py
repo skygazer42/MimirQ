@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from datetime import UTC, datetime
 from typing import Any, Callable
 from uuid import UUID
@@ -13,6 +12,7 @@ from app.models.feedback import MessageFeedback
 from app.rag.feedback_loop.candidates import build_feedback_loop_candidates as build_feedback_loop_candidate_payload
 from app.rag.industry_rules.schema import IndustryRuleset
 from app.services.rag_trace_service import list_rag_traces
+from app.rag.core.logging import get_logger
 
 
 def _coerce_mapping(value: Any) -> dict[str, Any]:
@@ -32,7 +32,7 @@ def _coerce_mapping(value: Any) -> dict[str, Any]:
         try:
             current = getattr(value, key)
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if callable(current):
             continue

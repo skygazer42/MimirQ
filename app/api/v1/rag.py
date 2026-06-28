@@ -7,7 +7,6 @@ For debugging and validating:
 """
 
 
-import logging
 import time
 from typing import Annotated, Any
 from uuid import UUID
@@ -29,8 +28,9 @@ from app.services.rag_config_template_defaults import merge_rag_config_template_
 from app.services.rag_config_template_resolver import build_rag_config_patch_hash, resolve_rag_config_template
 from app.services.rag_defaults import merge_rag_config_with_dataset_defaults
 from app.services.rag_runtime_limiter import run_blocking_retrieval_call
+from app.rag.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},

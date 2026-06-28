@@ -10,12 +10,12 @@ This module is intentionally dependency-light so it can be used from:
 from __future__ import annotations
 
 import hashlib
-import logging
 from collections.abc import Iterable
 from typing import Any
 
 from app.core.token_utils import estimate_tokens
 from app.services.dataset_profile_utils import CHUNK_LENGTH_BINS, CHUNK_TOKEN_BINS, HistogramBinSpec, histogram
+from app.rag.core.logging import get_logger
 
 
 def _percentile_from_sorted(sorted_values: list[int], p: int) -> int:
@@ -47,7 +47,7 @@ def compute_chunking_stats_from_lengths(
         try:
             n = int(raw)
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if n <= 0:
             continue

@@ -12,7 +12,6 @@ import asyncio
 import hashlib
 import hmac
 import json
-import logging
 import re
 import threading
 import time
@@ -53,13 +52,14 @@ from app.rag.retrieval.planner import (
     retrieval_policy_service_anchor_noise_terms,
     retrieval_policy_service_anchor_priority_terms,
 )
+from app.rag.core.logging import get_logger
 from app.rag.retrieval.plugin_policy import (
     filter_records_by_retrieval_policy_alignment,
     record_retrieval_policy_bonus,
     records_retrieval_policy_diagnostics,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},

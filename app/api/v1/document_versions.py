@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import contextlib
-import logging
 import uuid
 from typing import Annotated
 from uuid import UUID
@@ -22,6 +21,7 @@ from app.services.dataset_service import DatasetService
 from app.services.document_access_service import (
     assert_document_acl_readable,
 )
+from app.rag.core.logging import get_logger
 from app.services.indexer import Indexer
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
@@ -384,7 +384,7 @@ async def activate_document_version(
             try:
                 total_chars += int(metadata.get("content_len") or 0)
             except Exception:
-                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                 continue
     except Exception:
         total_chars = 0

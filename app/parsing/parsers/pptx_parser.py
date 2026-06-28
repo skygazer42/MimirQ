@@ -9,12 +9,12 @@ fail on certain presentations.
 
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 
 from langchain_core.documents import Document
+from app.rag.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _clean_line(text: str) -> str:
@@ -104,7 +104,7 @@ class PptxParser:
                         prefix = ("  " * level) + "- " if text else ""
                         parts.append(f"{prefix}{text}" if prefix else text)
                 except Exception:
-                    logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                    get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                     continue
 
             content = "\n".join([p for p in (parts or []) if p]).strip()

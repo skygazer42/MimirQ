@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -15,8 +14,9 @@ from app.core.database import get_db
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentPermission
 from app.services.dataset_service import DatasetService
+from app.rag.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},

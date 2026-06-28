@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
-import logging
 import math
 import re
 import uuid
@@ -566,7 +565,7 @@ def _safe_nonnegative_int_values(values: list[int]) -> list[int]:
         try:
             number = int(value)
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         out.append(max(0, number))
     return out

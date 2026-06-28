@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import io
 import json
-import logging
 import zipfile
 from pathlib import Path
 from typing import Any
+from app.rag.core.logging import get_logger
 
 
 def _as_int(value: Any) -> int | None:
@@ -64,7 +64,7 @@ def _load_page_sizes(zf: zipfile.ZipFile) -> dict[int, tuple[float, float]]:
         try:
             payload = json.loads(zf.read(name).decode("utf-8", errors="ignore"))
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
 
         if not isinstance(payload, dict):
@@ -212,7 +212,7 @@ def _load_content_list(zf: zipfile.ZipFile) -> list[dict[str, Any]]:
         try:
             payload = json.loads(zf.read(name).decode("utf-8", errors="ignore"))
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
 
         if not isinstance(payload, list):

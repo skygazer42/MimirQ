@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import logging
 import re
 from typing import Any
+from app.rag.core.logging import get_logger
 
 POSITION_TAG_RE = re.compile(r"@@([0-9-]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)##")
 
@@ -53,7 +53,7 @@ def parse_position_tags(text: Any) -> list[dict[str, Any]]:
             try:
                 page = int(token)
             except Exception:
-                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                 continue
             if page > 0 and page not in pages:
                 pages.append(page)

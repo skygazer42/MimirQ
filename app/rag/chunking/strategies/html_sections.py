@@ -11,7 +11,6 @@ character offsets.
 from __future__ import annotations
 
 import html as _html
-import logging
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -20,6 +19,7 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
+from app.rag.core.logging import get_logger
 
 
 @dataclass(frozen=True)
@@ -56,7 +56,7 @@ def _iter_headings(text: str) -> list[HtmlHeading]:
         try:
             level = int(m.group("level"))
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         title = _clean_heading_text(m.group("body") or "")
         headings.append(

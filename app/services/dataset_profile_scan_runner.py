@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
-import logging
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -428,7 +427,7 @@ def run_dataset_profile_deep_scan(
                         try:
                             s0 = int(s)
                         except Exception:
-                            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                             continue
                         if e is None:
                             try:

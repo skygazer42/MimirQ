@@ -988,7 +988,12 @@ def _parse_pipeline_json(pipeline: str | None) -> DocumentPipelineOptions | None
     if max_len > 0 and len(raw) > max_len:
         raise HTTPException(status_code=400, detail="pipeline is too large")
     try:
-        return DocumentPipelineOptions.model_validate_json(raw)
+        payload = json.loads(raw)
+        if not isinstance(payload, dict):
+            raise ValueError("pipeline must be a JSON object")
+        allowed = DocumentPipelineOptions.model_fields
+        normalized = {key: value for key, value in payload.items() if key in allowed}
+        return DocumentPipelineOptions.model_validate(normalized)
     except Exception as exc:  # noqa: BLE001
         msg = (str(exc) or exc.__class__.__name__)[:200]
         detail = "Invalid pipeline JSON" if is_production_env() else f"Invalid pipeline JSON: {msg}"

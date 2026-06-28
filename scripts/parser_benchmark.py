@@ -273,12 +273,8 @@ def _count_specialty_elements(documents: Iterable[Any]) -> dict[str, int]:
 
 
 def _count_image_visual_kinds(documents: Iterable[Any]) -> dict[str, int]:
-    from app.parsing.utils.document_elements import normalize_document_elements
-
     counts: dict[str, int] = {}
-    for item in normalize_document_elements(documents):
-        if str((item or {}).get("kind") or "").strip().lower() != "image":
-            continue
+    for item in _benchmark_image_elements(documents):
         visual_kind = str((item or {}).get("visual_kind") or "").strip().lower()
         if not visual_kind:
             continue
@@ -287,12 +283,8 @@ def _count_image_visual_kinds(documents: Iterable[Any]) -> dict[str, int]:
 
 
 def _collect_image_code_values(documents: Iterable[Any]) -> dict[str, list[str]]:
-    from app.parsing.utils.document_elements import normalize_document_elements
-
     values_by_kind: dict[str, list[str]] = {}
-    for item in normalize_document_elements(documents):
-        if str((item or {}).get("kind") or "").strip().lower() != "image":
-            continue
+    for item in _benchmark_image_elements(documents):
         visual_kind = str((item or {}).get("visual_kind") or "").strip().lower()
         text = str((item or {}).get("text") or "").strip()
         if visual_kind not in {"qr", "barcode"} or not text:
@@ -301,6 +293,37 @@ def _collect_image_code_values(documents: Iterable[Any]) -> dict[str, list[str]]
         if text not in bucket:
             bucket.append(text)
     return values_by_kind
+
+
+def _benchmark_image_elements(documents: Iterable[Any]) -> list[dict[str, Any]]:
+    from app.parsing.utils.document_elements import normalize_document_elements
+
+    images = [
+        dict(item)
+        for item in normalize_document_elements(documents)
+        if str((item or {}).get("kind") or "").strip().lower() == "image"
+    ]
+    if not images:
+        return []
+
+    grouped: dict[tuple[int | None, str], list[dict[str, Any]]] = {}
+    for item in images:
+        key = (
+            item.get("page") if isinstance(item.get("page"), int) else None,
+            str(item.get("visual_kind") or "").strip().lower(),
+        )
+        grouped.setdefault(key, []).append(item)
+
+    deduped: list[dict[str, Any]] = []
+    for group in grouped.values():
+        explicit = [
+            item
+            for item in group
+            if str(((item.get("attributes") or {}) if isinstance(item.get("attributes"), dict) else {}).get("source_content_type") or "").strip().lower()
+            != "markdown_image"
+        ]
+        deduped.extend(explicit or group)
+    return deduped
 
 
 def _augment_documents_with_inline_image_codes(*, documents: list[Any], markdown: str, origin_path: Path) -> list[Any]:

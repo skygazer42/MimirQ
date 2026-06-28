@@ -4,7 +4,6 @@ KG module can be toggled via settings.KG_ENABLED (env: KG_ENABLED).
 """
 
 import asyncio
-import logging
 import threading
 from collections.abc import Iterable, Sequence
 from typing import Any
@@ -20,6 +19,7 @@ from app.rag.kg.engine import KGEngine
 from app.rag.kg.search.cache import build_kg_search_cache_key, kg_search_cache
 from app.rag.kg.search.query_mode import classify_kg_query_mode, normalize_kg_query_mode
 from app.types.indexing import IndexingOptions
+from app.rag.core.logging import get_logger
 
 _engine: KGEngine | None = None
 _engine_lock = threading.Lock()
@@ -42,7 +42,7 @@ def _resolve_doc_pipeline_fingerprint(*, tenant_id: UUID, document_ids: list[str
         try:
             doc_uuids.append(UUID(str(d)))
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
     if not doc_uuids:
         return None
@@ -154,7 +154,7 @@ def _dedupe_uuid_list(values: Iterable[UUID] | None) -> list[UUID]:
         try:
             item = value if isinstance(value, UUID) else UUID(str(value))
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if item in seen:
             continue

@@ -9,7 +9,6 @@ Unified reranker architecture:
 
 import asyncio
 import hashlib
-import logging
 import threading
 import time
 from abc import ABC, abstractmethod
@@ -360,7 +359,7 @@ class APIReranker(BaseReranker):
             try:
                 idx = int(entry.get("index", -1))
             except Exception:
-                logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                 continue
             if idx < 0 or idx >= len(documents):
                 continue
@@ -434,7 +433,7 @@ class APIReranker(BaseReranker):
                         try:
                             index = int(entry.get("index", -1))
                         except Exception:
-                            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
                             continue
                         if index < 0 or index >= len(batch_docs):
                             continue

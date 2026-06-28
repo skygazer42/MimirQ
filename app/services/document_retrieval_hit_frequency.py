@@ -12,7 +12,6 @@ Design constraints:
 from __future__ import annotations
 
 import json
-import logging
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -74,7 +73,7 @@ def _read_jsonl_tail(path: Path, *, max_bytes: int) -> tuple[list[dict[str, Any]
         try:
             obj = json.loads(line)
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         if isinstance(obj, dict):
             records.append(obj)
@@ -169,7 +168,7 @@ def compute_document_retrieval_hit_frequency(
                 traces_with_hits += 1
         except Exception:
             # Best-effort: never break health card due to one bad line.
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
 
     hit_rate = (float(traces_with_hits) / float(traces_scanned)) if traces_scanned else None

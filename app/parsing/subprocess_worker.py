@@ -11,7 +11,6 @@ It exists so the caller can truly cancel parsing by terminating the process
 from __future__ import annotations
 
 import json
-import logging
 import time
 import traceback
 import uuid
@@ -156,7 +155,7 @@ def _materialize_images_for_ingest(
             img.save(out_path, format="JPEG", quality=85, optimize=True)
         except Exception:
             # Keep metadata.image_path for downstream best-effort, but do not crash.
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
         finally:
             try:

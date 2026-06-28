@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import io
 import json
-import logging
 import re
 import zipfile
 from dataclasses import dataclass
@@ -24,8 +23,9 @@ from app.api.utils.response_headers import download_response_headers
 from app.core.database import get_db
 from app.services.report_html import _scrub_report_for_redaction, render_dataset_report_html, render_rag_audit_html
 from app.services.report_service import DatasetReportRequest, ReportService
+from app.rag.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},

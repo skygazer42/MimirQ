@@ -14,7 +14,6 @@ Security posture:
 from __future__ import annotations
 
 import json
-import logging
 import threading
 import time
 from collections import OrderedDict
@@ -359,7 +358,7 @@ def get_cached_evidence_post_rerank_result(key: str) -> RerankResult | None:
         try:
             score_map_out[k.strip()] = float(v)
         except Exception:
-            logging.getLogger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
 
     if not ordered_ids:
