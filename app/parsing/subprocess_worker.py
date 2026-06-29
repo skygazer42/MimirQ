@@ -220,8 +220,8 @@ def _parse_documents(payload: dict[str, Any]) -> dict[str, Any]:
         provenance.setdefault("effective_backend", str(effective_backend or ""))
 
     if mode == "preview":
-        # Reuse API helpers to rewrite images into preview-time URLs and drop PIL objects.
-        from app.api.v1.documents import (  # local import to avoid heavy module import unless needed
+        # Reuse narrow preview helpers without importing the full documents router.
+        from app.services.document_preview_utils import (
             _materialize_extracted_images_for_preview,
             _materialize_local_images_for_preview,
         )
@@ -254,7 +254,7 @@ def _integrated_chunk(payload: dict[str, Any]) -> dict[str, Any]:
     documents = document_processor._integrated_chunk_file(file_path, strategy)
 
     if mode == "preview":
-        from app.api.v1.documents import _materialize_extracted_images_for_preview
+        from app.services.document_preview_utils import _materialize_extracted_images_for_preview
 
         documents = _materialize_extracted_images_for_preview(documents, tenant_id=tenant_id)
     else:

@@ -49,3 +49,41 @@ def test_subprocess_worker_parse_documents_returns_provenance(tmp_path):  # noqa
     assert prov.get("resolved_backend") == out.get("resolved_backend")
     assert "payload_requested_backend" in prov
     assert "effective_backend" in prov
+
+
+def test_subprocess_worker_preview_avoids_documents_router_import(monkeypatch, tmp_path):  # noqa: ANN001
+    import builtins
+    import uuid
+
+    from langchain_core.documents import Document
+
+    from app.parsing import subprocess_worker as sw
+
+    path = tmp_path / "a.txt"
+    path.write_text("hello\n", encoding="utf-8")
+
+    def _fake_parse_with_provenance(*_args, **_kwargs):  # noqa: ANN202
+        return [Document(page_content="hello", metadata={})], "text", {"resolved_backend": "text"}
+
+    monkeypatch.setattr(sw.parser_factory, "parse_with_provenance", _fake_parse_with_provenance)
+
+    real_import = builtins.__import__
+
+    def _guarded_import(name, globals=None, locals=None, fromlist=(), level=0):  # noqa: ANN001, ANN202
+        if name == "app.api.v1.documents" or name.startswith("app.api.v1.documents."):
+            raise AssertionError("subprocess preview worker must not import the documents router")
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", _guarded_import)
+
+    out = sw._parse_documents(  # noqa: SLF001
+        {
+            "tenant_id": str(uuid.uuid4()),
+            "file_path": str(path),
+            "parser_backend": "text",
+            "mode": "preview",
+        }
+    )
+
+    assert out["resolved_backend"] == "text"
+    assert out["documents"][0]["page_content"] == "hello"
