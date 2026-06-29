@@ -22,12 +22,19 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from langchain_core.documents import Document
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
-from app.api.schemas.document import ChunkPreviewItem
-from app.api.v1.documents import _compute_chunk_coverage_metrics, _compute_chunk_preview_quality
-from app.core.token_utils import estimate_tokens, num_tokens_from_string
-from app.rag.chunking.factory import chunker_factory
+from langchain_core.documents import Document  # noqa: E402
+
+from app.api.schemas.document import ChunkPreviewItem  # noqa: E402
+from app.core.token_utils import estimate_tokens, num_tokens_from_string  # noqa: E402
+from app.rag.chunking.factory import chunker_factory  # noqa: E402
+from app.services.document_preview_utils import (  # noqa: E402
+    _compute_chunk_coverage_metrics_from_ranges,
+    _compute_chunk_preview_quality,
+)
 
 
 def _iter_files(paths: list[str]) -> Iterable[Path]:
@@ -129,7 +136,8 @@ def main(argv: list[str] | None = None) -> int:
             )
 
         total_chars = len(text)
-        coverage = _compute_chunk_coverage_metrics(items, total_characters=total_chars)
+        chunk_ranges = [(int(it.start_index or 0), int(it.end_index or 0)) for it in items]
+        coverage = _compute_chunk_coverage_metrics_from_ranges(chunk_ranges, total_characters=total_chars)
 
         # Reuse backend quality heuristics.
         stats_obj = {
@@ -200,4 +208,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

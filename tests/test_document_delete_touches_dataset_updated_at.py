@@ -71,13 +71,13 @@ class _FakeDB:
 
 @pytest.mark.asyncio
 async def test_delete_document_lifecycle_touches_dataset_updated_at(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.documents as documents_mod
-    from app.api.v1.documents import _delete_document_lifecycle
+    import app.services.document_lifecycle_service as document_lifecycle_service
     from app.core.config import settings
     from app.services.dataset_service import DatasetService
+    from app.services.document_lifecycle_service import _delete_document_lifecycle
 
     monkeypatch.setattr(DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
-    monkeypatch.setattr(documents_mod, "audit_log_event", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(document_lifecycle_service, "audit_log_event", lambda *_a, **_k: None, raising=True)
 
     monkeypatch.setattr(settings, "TASK_QUEUE_ENABLED", False, raising=False)
     monkeypatch.setattr(settings, "MINIO_ENABLED", False, raising=False)
@@ -92,7 +92,7 @@ async def test_delete_document_lifecycle_touches_dataset_updated_at(monkeypatch:
         def delete_event_indexes(self, **_k) -> None:  # noqa: ANN003
             return None
 
-    monkeypatch.setattr(documents_mod, "Indexer", _StubIndexer, raising=True)
+    monkeypatch.setattr(document_lifecycle_service, "Indexer", _StubIndexer, raising=True)
 
     tenant_id = uuid.UUID(int=1)
     dataset_id = uuid.UUID(int=2)

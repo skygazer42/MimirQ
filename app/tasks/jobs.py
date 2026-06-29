@@ -26,6 +26,7 @@ from app.models.document import Document as DBDocument
 from app.parsing.processors.processor import document_processor
 from app.rag.core.logging import get_logger
 from app.services.audit_log_service import audit_log_event
+from app.services.connector_run_executor import execute_connector_run
 from app.services.dataset_precheck_scan_runner import run_dataset_precheck_scan
 from app.services.dataset_profile_scan_runner import run_dataset_profile_deep_scan
 from app.services.evidence_reference_repair_service import (
@@ -360,26 +361,13 @@ async def connector_run_job(ctx, tenant_id: str, run_id: str, requested_by: str)
                     run_id=run_id,
                 )
 
-        # Worker side dispatch: reuse existing executors.
-        import app.api.v1.connectors as connectors_module
-
-        if connector_id == "url_batch":
-            await connectors_module._execute_url_batch_run(run_id=rid, tenant_id=tid, requested_by=requested_by)
-        elif connector_id == "web_crawl":
-            await connectors_module._execute_web_crawl_run(run_id=rid, tenant_id=tid, requested_by=requested_by)
-        elif connector_id == "github_repo":
-            await connectors_module._execute_github_repo_run(run_id=rid, tenant_id=tid, requested_by=requested_by)
-        elif connector_id == "drive_files":
-            await connectors_module._execute_drive_files_run(run_id=rid, tenant_id=tid, requested_by=requested_by)
-        elif connector_id == "minio_bucket":
-            await connectors_module._execute_minio_bucket_run(run_id=rid, tenant_id=tid, requested_by=requested_by)
-        elif connector_id == "confluence_space":
-            await connectors_module._execute_confluence_space_run(run_id=rid, tenant_id=tid, requested_by=requested_by)
-        elif connector_id == "jira_project":
-            await connectors_module._execute_jira_project_run(run_id=rid, tenant_id=tid, requested_by=requested_by)
-        elif connector_id in {"mysql_catalog", "sqlserver_catalog"}:
-            await connectors_module._execute_db_catalog_run(run_id=rid, tenant_id=tid, requested_by=requested_by)
-        else:
+        executed = await execute_connector_run(
+            connector_id=connector_id,
+            run_id=rid,
+            tenant_id=tid,
+            requested_by=requested_by,
+        )
+        if not executed:
             return await _job_result(
                 ctx,
                 job_name="connector_run_job",

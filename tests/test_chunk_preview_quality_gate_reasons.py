@@ -3,7 +3,7 @@ from __future__ import annotations
 
 def test_chunk_preview_quality_gate_has_structured_reason_items():
     from app.api.schemas.document import ChunkPreviewStats
-    from app.api.v1.documents import _compute_chunk_preview_quality
+    from app.services.document_preview_utils import _compute_chunk_preview_quality
 
     stats = ChunkPreviewStats(
         unit="chars",
@@ -35,4 +35,3 @@ def test_chunk_preview_quality_gate_has_structured_reason_items():
     assert "coverage_lt_90" in codes
     assert "too_many_short_chunks" in codes
     assert "too_many_duplicates" in codes
-

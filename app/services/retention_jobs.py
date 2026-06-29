@@ -55,7 +55,9 @@ def _resolve_delete_document_lifecycle():  # noqa: ANN202
     global _delete_document_lifecycle
     if _delete_document_lifecycle is not None:
         return _delete_document_lifecycle
-    from app.api.v1.documents import _delete_document_lifecycle as delete_document_lifecycle  # noqa: WPS433
+    from app.services.document_lifecycle_service import (  # noqa: WPS433
+        _delete_document_lifecycle as delete_document_lifecycle,
+    )
 
     _delete_document_lifecycle = delete_document_lifecycle
     return _delete_document_lifecycle
