@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import sys
 from pathlib import Path
@@ -54,6 +55,44 @@ def test_build_chat_payload_passes_case_dify_inputs() -> None:
 
     assert payload["inputs"] == {"areaName": "新北区"}
     assert payload["query"] == "新北区社保卡补卡在哪里办理"
+
+
+def test_build_chat_payload_uses_top_level_area_name() -> None:
+    mod = _load_module()
+
+    payload = mod.build_dify_payload(
+        {
+            "id": "case-1",
+            "query": "申请表下载",
+            "areaName": "常州市本级",
+        },
+        mode="chat",
+        user="golden-eval",
+        response_mode="blocking",
+        workflow_query_key="query",
+    )
+
+    assert payload["inputs"] == {"areaName": "常州市本级"}
+    assert payload["query"] == "申请表下载"
+
+
+def test_case_dify_inputs_prefers_explicit_dify_inputs_area_name() -> None:
+    mod = _load_module()
+
+    payload = mod.build_dify_payload(
+        {
+            "id": "case-1",
+            "query": "社保卡补办",
+            "areaName": "常州市本级",
+            "dify_inputs": {"areaName": "新北区"},
+        },
+        mode="chat",
+        user="golden-eval",
+        response_mode="blocking",
+        workflow_query_key="query",
+    )
+
+    assert payload["inputs"] == {"areaName": "新北区"}
 
 
 def test_build_workflow_payload_places_query_in_inputs() -> None:
@@ -198,6 +237,85 @@ def test_request_json_retries_transient_url_errors(monkeypatch) -> None:
         == {"answer": "ok"}
     )
     assert calls == 2
+
+
+def test_request_json_retries_transient_dify_http_errors(monkeypatch) -> None:
+    mod = _load_module()
+    calls = 0
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self) -> bytes:
+            return json.dumps({"answer": "ok"}).encode("utf-8")
+
+    def fake_urlopen(_request, timeout: float):
+        nonlocal calls
+        calls += 1
+        assert timeout == 12.0
+        if calls == 1:
+            raise mod.HTTPError(
+                url="https://dify.test/v1/chat-messages",
+                code=400,
+                msg="bad request",
+                hdrs=None,
+                fp=io.BytesIO(
+                    b'{"code":"invalid_param","message":"Run failed: timed out","status":400}'
+                ),
+            )
+        return FakeResponse()
+
+    monkeypatch.setattr(mod, "urlopen", fake_urlopen)
+    monkeypatch.setattr(mod.time, "sleep", lambda _seconds: None)
+
+    assert (
+        mod._request_json(
+            url="https://dify.test/v1/chat-messages",
+            payload={"query": "q"},
+            api_key="secret-token",
+            timeout=12.0,
+        )
+        == {"answer": "ok"}
+    )
+    assert calls == 2
+
+
+def test_request_json_does_not_retry_missing_variable_http_errors(monkeypatch) -> None:
+    mod = _load_module()
+    calls = 0
+
+    def fake_urlopen(_request, timeout: float):
+        nonlocal calls
+        calls += 1
+        assert timeout == 12.0
+        raise mod.HTTPError(
+            url="https://dify.test/v1/chat-messages",
+            code=400,
+            msg="bad request",
+            hdrs=None,
+            fp=io.BytesIO(
+                b'{"code":"invalid_param","message":"Run failed: Variable #1711528914102.areaName# not found","status":400}'
+            ),
+        )
+
+    monkeypatch.setattr(mod, "urlopen", fake_urlopen)
+
+    try:
+        mod._request_json(
+            url="https://dify.test/v1/chat-messages",
+            payload={"query": "q"},
+            api_key="secret-token",
+            timeout=12.0,
+        )
+    except RuntimeError as exc:
+        assert "areaName" in str(exc)
+    else:
+        raise AssertionError("expected missing variable error")
+    assert calls == 1
 
 
 def test_collect_answers_returns_answers_json_with_errors() -> None:

@@ -124,12 +124,13 @@ def test_lint_workflow_reports_cases_missing_hidden_required_inputs() -> None:
         _workflow(),
         cases=[
             {"id": "ok-case", "query": "经开区社保卡补卡在哪里办理", "dify_inputs": {"areaName": "经开区"}},
+            {"id": "top-level-area", "query": "申请表下载", "areaName": "常州市本级"},
             {"id": "bad-case", "query": "经开区社保卡补卡在哪里办理"},
             {"id": "fallback-key", "query": "天宁区社保卡补卡在哪里办理", "app_inputs": {"areaName": "天宁区"}},
         ],
     )
 
-    assert report["summary"]["case_inputs_checked"] == 3
+    assert report["summary"]["case_inputs_checked"] == 4
     assert report["summary"]["case_input_violations"] == 1
     assert report["case_input_violations"] == [
         {
