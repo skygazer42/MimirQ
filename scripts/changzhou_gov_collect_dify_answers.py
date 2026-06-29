@@ -32,6 +32,13 @@ _REQUEST_ATTEMPTS = 3
 RequestJsonFn = Callable[..., dict[str, Any]]
 ProgressFn = Callable[[dict[str, Any]], None]
 _TRACEABLE_DIFY_INPUT_KEYS = {"areaName"}
+_TRANSIENT_DIFY_ERROR_MARKERS = (
+    "timed out",
+    "Reached maximum retries",
+    "SSL",
+    "EOF",
+    "temporarily unavailable",
+)
 
 
 def _text(value: Any) -> str:
@@ -46,9 +53,13 @@ def _case_dify_inputs(case: dict[str, Any]) -> dict[str, Any]:
     raw = case.get("dify_inputs")
     if raw is None:
         raw = case.get("app_inputs")
-    if not isinstance(raw, dict):
-        return {}
-    return {_text(key): value for key, value in raw.items() if _text(key)}
+    inputs: dict[str, Any] = {}
+    if isinstance(raw, dict):
+        inputs.update({_text(key): value for key, value in raw.items() if _text(key)})
+    area_name = _text(case.get("areaName"))
+    if area_name and "areaName" not in inputs:
+        inputs["areaName"] = area_name
+    return inputs
 
 
 def _traceable_case_dify_inputs(case: dict[str, Any]) -> dict[str, Any]:
@@ -149,6 +160,14 @@ def _extract_http_error_payload(message: str) -> dict[str, Any]:
     return out
 
 
+def _is_transient_dify_error(payload: dict[str, Any] | str) -> bool:
+    if isinstance(payload, str):
+        detail = payload
+    else:
+        detail = _text(payload.get("dify_error_message")) or _text(payload.get("message"))
+    return any(marker.lower() in detail.lower() for marker in _TRANSIENT_DIFY_ERROR_MARKERS)
+
+
 def _extract_missing_variable_selector(message: str) -> str:
     start_marker = "Variable #"
     start = message.find(start_marker)
@@ -178,6 +197,8 @@ def diagnose_dify_error(message: str) -> dict[str, Any]:
                 "missing_variable": variable,
             }
         )
+    elif _is_transient_dify_error(detail):
+        out["error_kind"] = "transient_dify_workflow_error"
     return out
 
 
@@ -199,9 +220,15 @@ def _request_json(*, url: str, payload: dict[str, Any], api_key: str, timeout: f
                 return json.loads(response.read().decode("utf-8"))
         except HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace")
+            diagnostic = _extract_http_error_payload(f"HTTP {exc.code}: {body[:800]}")
+            if _attempt < _REQUEST_ATTEMPTS - 1 and _is_transient_dify_error(diagnostic):
+                time.sleep(1.0 + _attempt)
+                continue
             raise RuntimeError(f"HTTP {exc.code}: {body[:800]}") from exc
         except (TimeoutError, URLError) as exc:
             last_error = exc
+            if _attempt < _REQUEST_ATTEMPTS - 1:
+                time.sleep(1.0 + _attempt)
     raise RuntimeError(f"request failed: {last_error}") from last_error
 
 

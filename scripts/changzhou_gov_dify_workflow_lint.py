@@ -634,9 +634,13 @@ def _case_dify_inputs(case: dict[str, Any]) -> dict[str, Any]:
     raw = case.get("dify_inputs")
     if raw is None:
         raw = case.get("app_inputs")
-    if not isinstance(raw, dict):
-        return {}
-    return {_text(key): value for key, value in raw.items() if _text(key)}
+    inputs: dict[str, Any] = {}
+    if isinstance(raw, dict):
+        inputs.update({_text(key): value for key, value in raw.items() if _text(key)})
+    area_name = _text(case.get("areaName"))
+    if area_name and "areaName" not in inputs:
+        inputs["areaName"] = area_name
+    return inputs
 
 
 def _case_input_violations(
