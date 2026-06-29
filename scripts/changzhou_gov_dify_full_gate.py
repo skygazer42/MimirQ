@@ -192,6 +192,7 @@ def run_gate(
     preflight_passed = (
         int(preflight_summary.get("case_input_violations") or 0) == 0
         and int(preflight_summary.get("prompt_template_leak_warnings") or 0) == 0
+        and int(preflight_summary.get("http_json_template_warnings") or 0) == 0
     )
     stages["preflight"] = _stage(preflight_passed, preflight)
     _emit_progress(

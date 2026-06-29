@@ -60,6 +60,41 @@ def _prompt_leak_workflow() -> dict:
     return workflow
 
 
+def _http_json_template_workflow() -> dict:
+    workflow = _workflow()
+    workflow["graph"]["nodes"].append(
+        {
+            "id": "http-1",
+            "data": {
+                "type": "http-request",
+                "title": "MimirQ HTTP检索 - 常州市政务服务",
+                "url": "http://api.test/api/v1/integrations/dify/retrieval",
+                "body": {
+                    "type": "json",
+                    "data": [
+                        {
+                            "key": "",
+                            "type": "text",
+                            "value": json.dumps(
+                                {
+                                    "knowledge_id": "changzhou_city_service",
+                                    "query": "{{#sys.query#}}",
+                                    "metadata_condition": {
+                                        "app_id": "app-1",
+                                        "workflow_source": "dify-http-rag-retrieval",
+                                    },
+                                },
+                                separators=(",", ":"),
+                            ),
+                        }
+                    ],
+                },
+            },
+        }
+    )
+    return workflow
+
+
 def test_run_gate_stops_before_dify_calls_when_case_inputs_are_missing() -> None:
     mod = _load_module()
 
@@ -108,6 +143,31 @@ def test_run_gate_stops_before_dify_calls_when_prompt_template_leaks() -> None:
     }
     assert report["stages"]["preflight"]["passed"] is False
     assert report["stages"]["preflight"]["summary"]["prompt_template_leak_warnings"] == 1
+
+
+def test_run_gate_stops_before_dify_calls_when_http_json_template_body_is_unsafe() -> None:
+    mod = _load_module()
+
+    def must_not_collect(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+        raise AssertionError("collect should not run")
+
+    report = mod.run_gate(
+        cases=[{"id": "ok-case", "query": "q", "dify_inputs": {"areaName": "经开区"}}],
+        workflow=_http_json_template_workflow(),
+        collect_answers_fn=must_not_collect,
+        live_eval_fn=lambda **_kwargs: {},
+        trace_report_fn=lambda **_kwargs: {},
+        thresholds={"generated_answer_key_point_recall": 1.0},
+        maximums={"generated_answer_fallback_rate": 0.0},
+    )
+
+    assert report["summary"] == {
+        "passed": False,
+        "failed_stages": ["preflight"],
+        "stage_count": 1,
+    }
+    assert report["stages"]["preflight"]["passed"] is False
+    assert report["stages"]["preflight"]["summary"]["http_json_template_warnings"] == 1
 
 
 def test_run_gate_aggregates_collect_eval_and_trace_success() -> None:
