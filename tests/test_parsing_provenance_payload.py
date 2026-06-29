@@ -1,6 +1,40 @@
 from __future__ import annotations
 
 
+def test_subprocess_worker_module_import_stays_parser_lightweight():  # noqa: ANN201
+    import json
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    guarded_modules = [
+        "app.parsing.factory",
+        "app.parsing.processors.parser_service",
+        "app.parsing.routing",
+    ]
+    code = f"""
+import json
+import sys
+
+import app.parsing.subprocess_worker  # noqa: F401
+
+names = {guarded_modules!r}
+print(json.dumps({{name: name in sys.modules for name in names}}, ensure_ascii=False))
+"""
+
+    result = subprocess.run(  # noqa: S603
+        [sys.executable, "-c", code],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    imported = json.loads(result.stdout.strip().splitlines()[-1])
+    assert imported == {name: False for name in guarded_modules}
+
+
 def test_parser_factory_parse_with_provenance_includes_attempts(tmp_path):  # noqa: ANN001
     from app.parsing.factory import ParserFactory
 
@@ -65,7 +99,10 @@ def test_subprocess_worker_preview_avoids_documents_router_import(monkeypatch, t
     def _fake_parse_with_provenance(*_args, **_kwargs):  # noqa: ANN202
         return [Document(page_content="hello", metadata={})], "text", {"resolved_backend": "text"}
 
-    monkeypatch.setattr(sw.parser_factory, "parse_with_provenance", _fake_parse_with_provenance)
+    class _Factory:
+        parse_with_provenance = staticmethod(_fake_parse_with_provenance)
+
+    monkeypatch.setattr(sw, "_get_parser_factory", lambda: _Factory())
 
     real_import = builtins.__import__
 
