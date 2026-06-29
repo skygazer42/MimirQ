@@ -29,8 +29,39 @@ def _draft_workflow() -> dict:
     }
 
 
-def _target_workflow(*, prompt_leak: bool = False) -> dict:
+def _target_workflow(*, prompt_leak: bool = False, http_json_template: bool = False) -> dict:
     prompt = "知识库内容中有常见问题QA知识相关内容，输出此部分内容" if prompt_leak else "请根据检索结果回答用户问题。"
+    node_data = {
+        "type": "llm",
+        "title": "LLM综合回复",
+        "prompt_template": [{"role": "system", "text": prompt}],
+    }
+    if http_json_template:
+        node_data = {
+            "type": "http-request",
+            "title": "MimirQ HTTP检索 - 常州市政务服务",
+            "url": "http://api.test/api/v1/integrations/dify/retrieval",
+            "body": {
+                "type": "json",
+                "data": [
+                    {
+                        "key": "",
+                        "type": "text",
+                        "value": json.dumps(
+                            {
+                                "knowledge_id": "changzhou_city_service",
+                                "query": "{{#sys.query#}}",
+                                "metadata_condition": {
+                                    "app_id": "app-1",
+                                    "workflow_source": "dify-http-rag-retrieval",
+                                },
+                            },
+                            separators=(",", ":"),
+                        ),
+                    }
+                ],
+            },
+        }
     return {
         "id": "workflow-target",
         "hash": "stale-target-hash",
@@ -38,11 +69,7 @@ def _target_workflow(*, prompt_leak: bool = False) -> dict:
             "nodes": [
                 {
                     "id": "new-node",
-                    "data": {
-                        "type": "llm",
-                        "title": "LLM综合回复",
-                        "prompt_template": [{"role": "system", "text": prompt}],
-                    },
+                    "data": node_data,
                 }
             ],
             "edges": [],
@@ -109,6 +136,8 @@ def test_sync_workflow_draft_dry_run_writes_backup_and_payload_without_posting(t
     assert report["summary"] == {
         "current_prompt_template_leak_warnings": 0,
         "target_prompt_template_leak_warnings": 0,
+        "current_http_json_template_warnings": 0,
+        "target_http_json_template_warnings": 0,
         "posted": False,
         "verified_after_post": False,
     }
@@ -148,6 +177,7 @@ def test_sync_workflow_draft_apply_posts_payload_and_verifies_remote_draft(tmp_p
     assert report["summary"]["verified_after_post"] is True
     assert report["post_response"] == {"result": "ok"}
     assert report["post_verify_lint"]["summary"].get("prompt_template_leak_warnings", 0) == 0
+    assert report["summary"]["post_verify_http_json_template_warnings"] == 0
 
 
 def test_sync_workflow_draft_refuses_apply_when_target_prompt_template_leaks(tmp_path: Path) -> None:
@@ -163,6 +193,31 @@ def test_sync_workflow_draft_refuses_apply_when_target_prompt_template_leaks(tmp
         mod.sync_workflow_draft(
             app_id="app-1",
             target_workflow=_target_workflow(prompt_leak=True),
+            console_base_url="https://dify.test/console/api",
+            console_token="secret-console-token",
+            request_json=fake_request_json,
+            timeout=12.0,
+            backup_out=tmp_path / "backup.json",
+            payload_out=tmp_path / "payload.json",
+            apply=True,
+        )
+
+    assert [call["method"] for call in calls] == ["GET"]
+
+
+def test_sync_workflow_draft_refuses_apply_when_target_has_http_json_template_body(tmp_path: Path) -> None:
+    mod = _load_module()
+    calls: list[dict] = []
+
+    def fake_request_json(**kwargs):  # noqa: ANN003, ANN202
+        calls.append(kwargs)
+        assert kwargs["method"] == "GET"
+        return _draft_workflow()
+
+    with pytest.raises(ValueError, match="target workflow has HTTP JSON template bodies"):
+        mod.sync_workflow_draft(
+            app_id="app-1",
+            target_workflow=_target_workflow(http_json_template=True),
             console_base_url="https://dify.test/console/api",
             console_token="secret-console-token",
             request_json=fake_request_json,

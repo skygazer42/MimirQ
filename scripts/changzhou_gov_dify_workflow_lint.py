@@ -29,6 +29,7 @@ from scripts.changzhou_gov_dify_trace_report import (  # noqa: E402
 )
 
 _TEMPLATE_REF_RE = re.compile(r"#([^#.\s]+)\.([^#\s]+)#")
+_WHOLE_TEMPLATE_REF_RE = re.compile(r"\s*\{\{#([^#.\s]+)\.([^#\s]+)#\}\}\s*")
 _PROMPT_TEMPLATE_FORBIDDEN_PHRASES = (
     "必须按顺序包含以下标题",
     "必须按以下格式输出常见问题",
@@ -86,6 +87,15 @@ def _selector_text(value: Any) -> str:
     if not _is_selector(value):
         return ""
     return f"{value[0]}.{value[1]}"
+
+
+def _selector_from_template_ref(value: Any) -> list[str] | None:
+    if not isinstance(value, str):
+        return None
+    match = _WHOLE_TEMPLATE_REF_RE.fullmatch(value)
+    if not match:
+        return None
+    return [match.group(1), match.group(2)]
 
 
 def _start_variables(nodes: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -324,6 +334,283 @@ def patch_prompt_template_leaks(workflow: dict[str, Any]) -> tuple[dict[str, Any
     return patched_workflow, patches
 
 
+def _http_json_body_entries(data: dict[str, Any]) -> list[dict[str, Any]]:
+    body = data.get("body")
+    if not isinstance(body, dict) or body.get("type") != "json":
+        return []
+    entries = body.get("data")
+    if not isinstance(entries, list):
+        return []
+    return [entry for entry in entries if isinstance(entry, dict)]
+
+
+def _http_json_template_warnings(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    warnings: list[dict[str, Any]] = []
+    for node_index, node in enumerate(nodes):
+        data = _node_data(node)
+        if data.get("type") != "http-request":
+            continue
+        for entry_index, entry in enumerate(_http_json_body_entries(data)):
+            value = entry.get("value")
+            if not isinstance(value, str) or "{{#" not in value:
+                continue
+            if _selector_from_template_ref(value):
+                continue
+            stripped = value.strip()
+            if not stripped.startswith(("{", "[")):
+                continue
+            selectors = sorted({selector for selector, _path in _iter_references(value, path="value")})
+            warnings.append(
+                {
+                    "node_id": _text(node.get("id")),
+                    "node_title": _text(data.get("title")),
+                    "node_type": _text(data.get("type")),
+                    "path": f"graph.nodes[{node_index}].data.body.data[{entry_index}].value",
+                    "template_selectors": selectors,
+                    "recommendation": (
+                        "Build the HTTP JSON body in a Code node with json.dumps, then reference "
+                        "that node's payload_json as the whole body value."
+                    ),
+                }
+            )
+    return warnings
+
+
+def _retrieval_payload_code(
+    *,
+    app_id: str,
+    knowledge_id: str,
+    retrieval_setting: dict[str, Any],
+    metadata_defaults: dict[str, Any],
+) -> str:
+    metadata_defaults_json = json.dumps(metadata_defaults, ensure_ascii=False, indent=4)
+    retrieval_setting_json = json.dumps(retrieval_setting, ensure_ascii=False, indent=4)
+    app_id_literal = json.dumps(app_id, ensure_ascii=False)
+    knowledge_id_literal = json.dumps(knowledge_id, ensure_ascii=False)
+    return (
+        "import json\n"
+        "from typing import Any\n\n"
+        f"_APP_ID = {app_id_literal}\n"
+        f"_KNOWLEDGE_ID = {knowledge_id_literal}\n"
+        f"_RETRIEVAL_SETTING = {retrieval_setting_json}\n"
+        f"_METADATA_DEFAULTS = {metadata_defaults_json}\n\n"
+        "def _text(value: Any) -> str:\n"
+        "    if value is None:\n"
+        "        return \"\"\n"
+        "    if isinstance(value, (dict, list)):\n"
+        "        return json.dumps(value, ensure_ascii=False)\n"
+        "    return str(value)\n\n"
+        "def _with_default(value: Any, default: Any = \"\") -> str:\n"
+        "    text = _text(value).strip()\n"
+        "    return text if text else _text(default).strip()\n\n"
+        "def main(query=None, area_name=None, normalized_area=None, polished_query=None) -> dict:\n"
+        "    query_text = _with_default(query, _METADATA_DEFAULTS.get(\"query\"))\n"
+        "    metadata = {\n"
+        "        \"app_id\": _APP_ID,\n"
+        "        \"workflow_source\": _METADATA_DEFAULTS.get(\"workflow_source\", \"dify-http-rag-retrieval\"),\n"
+        "        \"areaName\": _with_default(area_name, _METADATA_DEFAULTS.get(\"areaName\")),\n"
+        "        \"normalized_area\": _with_default(normalized_area, _METADATA_DEFAULTS.get(\"normalized_area\")),\n"
+        "        \"polished_query\": _with_default(polished_query, _METADATA_DEFAULTS.get(\"polished_query\") or query_text),\n"
+        "    }\n"
+        "    payload = {\n"
+        "        \"knowledge_id\": _KNOWLEDGE_ID,\n"
+        "        \"query\": query_text,\n"
+        "        \"retrieval_setting\": _RETRIEVAL_SETTING,\n"
+        "        \"metadata_condition\": metadata,\n"
+        "    }\n"
+        "    return {\"payload_json\": json.dumps(payload, ensure_ascii=False)}\n"
+    )
+
+
+def _literal_or_empty(value: Any) -> str:
+    if _selector_from_template_ref(value):
+        return ""
+    return _text(value)
+
+
+def _selector_variable(name: str, value: Any) -> dict[str, Any] | None:
+    selector = _selector_from_template_ref(value)
+    if not selector:
+        return None
+    return {"variable": name, "value_selector": selector}
+
+
+def _retrieval_patch_node_id(http_node_id: str) -> str:
+    suffix = http_node_id[-3:] if len(http_node_id) >= 3 else http_node_id
+    return f"178309900{suffix}"
+
+
+def _build_retrieval_payload_node(node: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any] | None:
+    data = _node_data(node)
+    metadata = payload.get("metadata_condition") if isinstance(payload.get("metadata_condition"), dict) else {}
+    knowledge_id = _text(payload.get("knowledge_id"))
+    if not knowledge_id:
+        return None
+    app_id = _text(metadata.get("app_id"))
+    if not app_id:
+        return None
+    node_id = _retrieval_patch_node_id(_text(node.get("id")))
+    position = node.get("position") if isinstance(node.get("position"), dict) else {}
+    x = float(position.get("x") or 0)
+    y = float(position.get("y") or 0)
+    variables = [
+        item
+        for item in (
+            _selector_variable("query", payload.get("query")),
+            _selector_variable("area_name", metadata.get("areaName")),
+            _selector_variable("normalized_area", metadata.get("normalized_area")),
+            _selector_variable("polished_query", metadata.get("polished_query")),
+        )
+        if item is not None
+    ]
+    metadata_defaults = {
+        "query": _literal_or_empty(payload.get("query")),
+        "workflow_source": _literal_or_empty(metadata.get("workflow_source")) or "dify-http-rag-retrieval",
+        "areaName": _literal_or_empty(metadata.get("areaName")),
+        "normalized_area": _literal_or_empty(metadata.get("normalized_area")),
+        "polished_query": _literal_or_empty(metadata.get("polished_query")),
+    }
+    code = _retrieval_payload_code(
+        app_id=app_id,
+        knowledge_id=knowledge_id,
+        retrieval_setting=payload.get("retrieval_setting") if isinstance(payload.get("retrieval_setting"), dict) else {},
+        metadata_defaults=metadata_defaults,
+    )
+    title = _text(data.get("title")).replace("MimirQ HTTP检索", "安全构造 MimirQ 检索请求", 1)
+    return {
+        "data": {
+            "code": code,
+            "code_language": "python3",
+            "desc": "Build a JSON-safe MimirQ retrieval payload. Keeps user text out of raw JSON templates.",
+            "outputs": {"payload_json": {"children": None, "type": "string"}},
+            "selected": False,
+            "title": title,
+            "type": "code",
+            "variables": variables,
+        },
+        "height": 114,
+        "id": node_id,
+        "position": {"x": x - 270.0, "y": y},
+        "positionAbsolute": {"x": x - 270.0, "y": y},
+        "selected": False,
+        "sourcePosition": "right",
+        "targetPosition": "left",
+        "type": "custom",
+        "width": 244,
+    }
+
+
+def _edge_to_code(edge: dict[str, Any], code_node_id: str) -> dict[str, Any]:
+    patched_edge = copy.deepcopy(edge)
+    patched_edge["target"] = code_node_id
+    patched_edge["targetHandle"] = "target"
+    source = _text(patched_edge.get("source"))
+    source_handle = _text(patched_edge.get("sourceHandle")) or "source"
+    patched_edge["id"] = f"{source}-{source_handle}-{code_node_id}-target"
+    data = patched_edge.get("data") if isinstance(patched_edge.get("data"), dict) else {}
+    data = {**data, "targetType": "code"}
+    patched_edge["data"] = data
+    return patched_edge
+
+
+def _edge_from_code(code_node_id: str, http_node_id: str) -> dict[str, Any]:
+    return {
+        "data": {
+            "isInIteration": False,
+            "sourceType": "code",
+            "targetType": "http-request",
+        },
+        "id": f"{code_node_id}-source-{http_node_id}-target",
+        "selected": False,
+        "source": code_node_id,
+        "sourceHandle": "source",
+        "target": http_node_id,
+        "targetHandle": "target",
+        "type": "custom",
+        "zIndex": 0,
+    }
+
+
+def patch_http_json_template_bodies(workflow: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Return a workflow copy with MimirQ retrieval JSON bodies built in Code nodes."""
+    patched_workflow = copy.deepcopy(workflow)
+    graph = patched_workflow.get("graph")
+    if not isinstance(graph, dict):
+        return patched_workflow, []
+    nodes = graph.get("nodes")
+    edges = graph.get("edges")
+    if not isinstance(nodes, list) or not isinstance(edges, list):
+        return patched_workflow, []
+
+    existing_ids = {_text(node.get("id")) for node in nodes if isinstance(node, dict)}
+    patches: list[dict[str, Any]] = []
+    nodes_to_append: list[dict[str, Any]] = []
+    target_http_ids: set[str] = set()
+
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        node_id = _text(node.get("id"))
+        data = _node_data(node)
+        if data.get("type") != "http-request":
+            continue
+        url = _text(data.get("url"))
+        if "/api/v1/integrations/dify/retrieval" not in url:
+            continue
+        entries = _http_json_body_entries(data)
+        if len(entries) != 1:
+            continue
+        value = entries[0].get("value")
+        if not isinstance(value, str) or "{{#" not in value or _selector_from_template_ref(value):
+            continue
+        try:
+            payload = json.loads(value)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        payload_node = _build_retrieval_payload_node(node, payload)
+        if payload_node is None:
+            continue
+        payload_node_id = _text(payload_node.get("id"))
+        if not payload_node_id or payload_node_id in existing_ids:
+            continue
+        entries[0]["value"] = f"{{{{#{payload_node_id}.payload_json#}}}}"
+        nodes_to_append.append(payload_node)
+        existing_ids.add(payload_node_id)
+        target_http_ids.add(node_id)
+        patches.append(
+            {
+                "http_node_id": node_id,
+                "http_node_title": _text(data.get("title")),
+                "payload_node_id": payload_node_id,
+                "payload_node_title": _text(payload_node["data"].get("title")),
+                "knowledge_id": _text(payload.get("knowledge_id")),
+            }
+        )
+
+    if not target_http_ids:
+        return patched_workflow, []
+
+    patched_edges: list[dict[str, Any]] = []
+    for edge in edges:
+        if not isinstance(edge, dict):
+            patched_edges.append(edge)
+            continue
+        target = _text(edge.get("target"))
+        if target not in target_http_ids:
+            patched_edges.append(edge)
+            continue
+        code_node_id = _retrieval_patch_node_id(target)
+        patched_edges.append(_edge_to_code(edge, code_node_id))
+    for http_node_id in sorted(target_http_ids):
+        patched_edges.append(_edge_from_code(_retrieval_patch_node_id(http_node_id), http_node_id))
+
+    graph["nodes"] = nodes + nodes_to_append
+    graph["edges"] = patched_edges
+    return patched_workflow, patches
+
+
 def _iter_references(value: Any, *, path: str) -> list[tuple[str, str]]:
     references: list[tuple[str, str]] = []
     if isinstance(value, str):
@@ -389,6 +676,7 @@ def lint_workflow(workflow: dict[str, Any], *, cases: list[dict[str, Any]] | Non
     start_variables = _start_variables(nodes)
     area_route_warnings = _area_route_warnings(nodes, start_variables)
     prompt_template_leak_warnings = _prompt_template_leak_warnings(nodes)
+    http_json_template_warnings = _http_json_template_warnings(nodes)
     references_by_selector: dict[str, list[dict[str, Any]]] = {selector: [] for selector in start_variables}
 
     for node_index, node in enumerate(nodes):
@@ -443,6 +731,9 @@ def lint_workflow(workflow: dict[str, Any], *, cases: list[dict[str, Any]] | Non
     if prompt_template_leak_warnings:
         summary["prompt_template_leak_warnings"] = len(prompt_template_leak_warnings)
         report["prompt_template_leak_warnings"] = prompt_template_leak_warnings
+    if http_json_template_warnings:
+        summary["http_json_template_warnings"] = len(http_json_template_warnings)
+        report["http_json_template_warnings"] = http_json_template_warnings
     if cases is not None:
         case_violations = _case_input_violations(cases, hidden_required)
         summary["case_inputs_checked"] = len(cases)
@@ -534,6 +825,7 @@ def main(argv: list[str] | None = None) -> int:
         if _text(args.patched_workflow_out):
             patched_workflow, patches = patch_area_route_selectors(workflow)
             patched_workflow, prompt_patches = patch_prompt_template_leaks(patched_workflow)
+            patched_workflow, http_json_patches = patch_http_json_template_bodies(patched_workflow)
             Path(str(args.patched_workflow_out)).write_text(
                 json.dumps(patched_workflow, ensure_ascii=False, indent=2) + "\n",
                 encoding="utf-8",
@@ -543,6 +835,8 @@ def main(argv: list[str] | None = None) -> int:
             report["area_route_patches"] = patches
             summary["prompt_template_leak_patches"] = len(prompt_patches)
             report["prompt_template_leak_patches"] = prompt_patches
+            summary["http_json_template_patches"] = len(http_json_patches)
+            report["http_json_template_patches"] = http_json_patches
     except Exception as exc:  # noqa: BLE001
         print(f"[changzhou-dify-workflow-lint] ERR: {exc}", file=sys.stderr)
         return 1
@@ -554,6 +848,8 @@ def main(argv: list[str] | None = None) -> int:
     if bool(args.preflight_gate):
         issue_count = int(summary.get("case_input_violations") or 0) + int(
             summary.get("prompt_template_leak_warnings") or 0
+        ) + int(
+            summary.get("http_json_template_warnings") or 0
         )
     elif bool(args.case_inputs_only):
         issue_count = int(summary.get("case_input_violations") or 0)
@@ -562,6 +858,8 @@ def main(argv: list[str] | None = None) -> int:
             summary.get("case_input_violations") or 0
         ) + int(
             summary.get("prompt_template_leak_warnings") or 0
+        ) + int(
+            summary.get("http_json_template_warnings") or 0
         )
     return 0 if issue_count == 0 else 1
 

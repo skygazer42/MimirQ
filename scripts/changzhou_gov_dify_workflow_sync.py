@@ -190,6 +190,8 @@ def sync_workflow_draft(
 
     current_prompt_leaks = _summary_count(current_lint, "prompt_template_leak_warnings")
     target_prompt_leaks = _summary_count(target_lint, "prompt_template_leak_warnings")
+    current_http_json_template_warnings = _summary_count(current_lint, "http_json_template_warnings")
+    target_http_json_template_warnings = _summary_count(target_lint, "http_json_template_warnings")
     report: dict[str, Any] = {
         "schema": _SCHEMA,
         "generated_at": generated_at or _utc_now_text(),
@@ -202,6 +204,8 @@ def sync_workflow_draft(
         "summary": {
             "current_prompt_template_leak_warnings": current_prompt_leaks,
             "target_prompt_template_leak_warnings": target_prompt_leaks,
+            "current_http_json_template_warnings": current_http_json_template_warnings,
+            "target_http_json_template_warnings": target_http_json_template_warnings,
             "posted": False,
             "verified_after_post": False,
         },
@@ -211,6 +215,8 @@ def sync_workflow_draft(
 
     if apply and target_prompt_leaks > 0 and not allow_prompt_leaks:
         raise ValueError("target workflow has prompt-template leaks; refusing to apply")
+    if apply and target_http_json_template_warnings > 0:
+        raise ValueError("target workflow has HTTP JSON template bodies; refusing to apply")
     if not apply:
         return report
 
@@ -240,6 +246,10 @@ def sync_workflow_draft(
     report["summary"]["post_verify_prompt_template_leak_warnings"] = _summary_count(
         post_verify_lint,
         "prompt_template_leak_warnings",
+    )
+    report["summary"]["post_verify_http_json_template_warnings"] = _summary_count(
+        post_verify_lint,
+        "http_json_template_warnings",
     )
     return report
 
@@ -290,6 +300,10 @@ def main(argv: list[str] | None = None) -> int:
     summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
     issue_count = int(summary.get("target_prompt_template_leak_warnings") or 0) + int(
         summary.get("post_verify_prompt_template_leak_warnings") or 0
+    ) + int(
+        summary.get("target_http_json_template_warnings") or 0
+    ) + int(
+        summary.get("post_verify_http_json_template_warnings") or 0
     )
     return 0 if issue_count == 0 else 1
 

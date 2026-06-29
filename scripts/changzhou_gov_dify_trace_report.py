@@ -146,6 +146,23 @@ def _result_titles(outputs: Any) -> list[str]:
     return titles
 
 
+def _is_mimirq_http_result_node(title: str, node_type: str, outputs: Any) -> bool:
+    if node_type != "code" or not isinstance(outputs, dict):
+        return False
+    result = outputs.get("result")
+    if not isinstance(result, list):
+        return False
+    if "MimirQ结果转换" in title:
+        return True
+    for item in result:
+        if not isinstance(item, dict):
+            continue
+        metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+        if _text(metadata.get("retriever_from")) == "mimirq_http":
+            return True
+    return False
+
+
 def _expected_area(answer_item: dict[str, Any]) -> str:
     inputs = answer_item.get("dify_inputs")
     if isinstance(inputs, dict):
@@ -241,7 +258,7 @@ def _summarize_executions(executions: list[dict[str, Any]]) -> dict[str, Any]:
         title = _text(execution.get("title"))
         node_type = _text(execution.get("node_type"))
         outputs = execution.get("outputs")
-        if node_type == "knowledge-retrieval":
+        if node_type == "knowledge-retrieval" or _is_mimirq_http_result_node(title, node_type, outputs):
             inputs = execution.get("inputs") if isinstance(execution.get("inputs"), dict) else {}
             retrievals.append(
                 {

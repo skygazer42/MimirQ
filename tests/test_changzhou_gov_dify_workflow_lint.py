@@ -231,6 +231,64 @@ def test_patch_prompt_template_leaks_rewrites_prompt_without_mutating_source() -
     assert mod.lint_workflow(patched)["summary"].get("prompt_template_leak_warnings", 0) == 0
 
 
+def test_lint_workflow_reports_http_json_template_body() -> None:
+    mod = _load_module()
+
+    report = mod.lint_workflow(_http_json_template_workflow())
+
+    assert report["summary"]["http_json_template_warnings"] == 1
+    assert report["http_json_template_warnings"] == [
+        {
+            "node_id": "178310100008",
+            "node_title": "MimirQ HTTP检索 - 常州市政务服务",
+            "node_type": "http-request",
+            "path": "graph.nodes[1].data.body.data[0].value",
+            "template_selectors": [
+                "1711528914102.areaName",
+                "1769586833805.area",
+                "sys.query",
+            ],
+            "recommendation": (
+                "Build the HTTP JSON body in a Code node with json.dumps, then reference "
+                "that node's payload_json as the whole body value."
+            ),
+        }
+    ]
+
+
+def test_patch_http_json_template_bodies_adds_payload_node_and_rewires_edges() -> None:
+    mod = _load_module()
+    workflow = _http_json_template_workflow()
+
+    patched, patches = mod.patch_http_json_template_bodies(workflow)
+
+    assert workflow["graph"]["nodes"][1]["data"]["body"]["data"][0]["value"].startswith("{")
+    assert patches == [
+        {
+            "http_node_id": "178310100008",
+            "http_node_title": "MimirQ HTTP检索 - 常州市政务服务",
+            "payload_node_id": "178309900008",
+            "payload_node_title": "安全构造 MimirQ 检索请求 - 常州市政务服务",
+            "knowledge_id": "changzhou_city_service",
+        }
+    ]
+    http_node = next(node for node in patched["graph"]["nodes"] if node["id"] == "178310100008")
+    payload_node = next(node for node in patched["graph"]["nodes"] if node["id"] == "178309900008")
+    assert http_node["data"]["body"]["data"][0]["value"] == "{{#178309900008.payload_json#}}"
+    assert payload_node["data"]["type"] == "code"
+    assert payload_node["data"]["outputs"] == {"payload_json": {"children": None, "type": "string"}}
+    assert payload_node["data"]["variables"] == [
+        {"variable": "query", "value_selector": ["sys", "query"]},
+        {"variable": "area_name", "value_selector": ["1711528914102", "areaName"]},
+        {"variable": "normalized_area", "value_selector": ["1769586833805", "area"]},
+        {"variable": "polished_query", "value_selector": ["sys", "query"]},
+    ]
+    edges = patched["graph"]["edges"]
+    assert any(edge["source"] == "route-1" and edge["target"] == "178309900008" for edge in edges)
+    assert any(edge["source"] == "178309900008" and edge["target"] == "178310100008" for edge in edges)
+    assert mod.lint_workflow(patched)["summary"].get("http_json_template_warnings", 0) == 0
+
+
 def test_main_writes_patched_workflow_for_area_route_warnings(tmp_path: Path) -> None:
     mod = _load_module()
     workflow_path = tmp_path / "workflow.json"
@@ -256,6 +314,33 @@ def test_main_writes_patched_workflow_for_area_route_warnings(tmp_path: Path) ->
     assert report["summary"]["area_route_patches"] == 1
     assert report["area_route_patches"][0]["conditions_patched"] == 1
     assert patched_report["summary"].get("area_route_warnings", 0) == 0
+
+
+def test_main_writes_patched_workflow_for_http_json_template_bodies(tmp_path: Path) -> None:
+    mod = _load_module()
+    workflow_path = tmp_path / "workflow.json"
+    out_path = tmp_path / "report.json"
+    patched_path = tmp_path / "workflow.patched.json"
+    workflow_path.write_text(json.dumps(_http_json_template_workflow(), ensure_ascii=False), encoding="utf-8")
+
+    exit_code = mod.main(
+        [
+            "--workflow-json",
+            str(workflow_path),
+            "--out",
+            str(out_path),
+            "--patched-workflow-out",
+            str(patched_path),
+        ]
+    )
+
+    report = json.loads(out_path.read_text(encoding="utf-8"))
+    patched = json.loads(patched_path.read_text(encoding="utf-8"))
+    patched_report = mod.lint_workflow(patched)
+    assert exit_code == 1
+    assert report["summary"]["http_json_template_warnings"] == 1
+    assert report["summary"]["http_json_template_patches"] == 1
+    assert patched_report["summary"].get("http_json_template_warnings", 0) == 0
 
 
 def test_main_writes_patched_workflow_for_prompt_template_leaks(tmp_path: Path) -> None:
@@ -351,6 +436,69 @@ def _prompt_leak_workflow() -> dict:
                     },
                 }
             ]
+        }
+    }
+
+
+def _http_json_template_workflow() -> dict:
+    body_value = json.dumps(
+        {
+            "knowledge_id": "changzhou_city_service",
+            "query": "{{#sys.query#}}",
+            "retrieval_setting": {"top_k": 5, "score_threshold": 0.0},
+            "metadata_condition": {
+                "app_id": "a3c86554-fe1d-41d5-ad3e-bf5fabff38a7",
+                "workflow_source": "dify-http-rag-retrieval",
+                "areaName": "{{#1711528914102.areaName#}}",
+                "normalized_area": "{{#1769586833805.area#}}",
+                "polished_query": "{{#sys.query#}}",
+            },
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    return {
+        "graph": {
+            "nodes": [
+                {
+                    "id": "route-1",
+                    "data": {
+                        "type": "if-else",
+                        "title": "区域条件分支",
+                    },
+                    "position": {"x": 100, "y": 100},
+                    "positionAbsolute": {"x": 100, "y": 100},
+                },
+                {
+                    "id": "178310100008",
+                    "data": {
+                        "type": "http-request",
+                        "title": "MimirQ HTTP检索 - 常州市政务服务",
+                        "url": "http://192.168.3.6:8000/api/v1/integrations/dify/retrieval",
+                        "body": {
+                            "type": "json",
+                            "data": [{"key": "", "type": "text", "value": body_value}],
+                        },
+                    },
+                    "position": {"x": 400, "y": 100},
+                    "positionAbsolute": {"x": 400, "y": 100},
+                },
+            ],
+            "edges": [
+                {
+                    "id": "route-1-false-178310100008-target",
+                    "source": "route-1",
+                    "sourceHandle": "false",
+                    "target": "178310100008",
+                    "targetHandle": "target",
+                    "type": "custom",
+                    "data": {
+                        "isInIteration": False,
+                        "sourceType": "if-else",
+                        "targetType": "http-request",
+                    },
+                }
+            ],
         }
     }
 

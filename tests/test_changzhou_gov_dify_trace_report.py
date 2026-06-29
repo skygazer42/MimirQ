@@ -209,6 +209,67 @@ def test_collect_trace_report_reuses_collected_workflow_run_id_and_emits_progres
     assert report["summary"]["nonempty_retrieval_cases"] == 1
 
 
+def test_collect_trace_report_counts_mimirq_http_conversion_code_results() -> None:
+    mod = _load_module()
+
+    def fake_request_json(*, path: str, **_kwargs) -> dict:  # noqa: ANN003
+        if path.endswith("/workflow-runs/run-1/node-executions"):
+            return {
+                "data": [
+                    {
+                        "title": "MimirQ结果转换 - 新北区政务服务",
+                        "node_type": "code",
+                        "inputs": {"body": "{\"records\": []}", "status_code": 200},
+                        "outputs": {
+                            "result": [
+                                {
+                                    "title": "01政务服务事项知识/新北区社保卡补卡指南.txt",
+                                    "content": "办理地点：新北区云河路69号",
+                                    "metadata": {"retriever_from": "mimirq_http"},
+                                }
+                            ]
+                        },
+                    },
+                    {
+                        "title": "安全构造 MimirQ 检索请求 - 新北区政务服务",
+                        "node_type": "code",
+                        "outputs": {"payload_json": "{}"},
+                    },
+                ]
+            }
+        raise AssertionError(path)
+
+    report = mod.collect_trace_report(
+        answers=[
+            {
+                "id": "case-1",
+                "query": "新北区社保卡补卡在哪里办理",
+                "message_id": "msg-1",
+                "workflow_run_id": "run-1",
+                "answer": "ok",
+                "dify_inputs": {"areaName": "新北区"},
+            }
+        ],
+        app_id="app-1",
+        console_base_url="https://dify.test/console/api",
+        console_token="secret-console-token",
+        request_json=fake_request_json,
+        timeout=12.0,
+    )
+
+    assert report["summary"]["trace_errors"] == 0
+    assert report["summary"]["nonempty_retrieval_cases"] == 1
+    assert report["summary"]["route_mismatch_cases"] == 0
+    assert report["cases"][0]["retrievals"] == [
+        {
+            "title": "MimirQ结果转换 - 新北区政务服务",
+            "query": "",
+            "count": 1,
+            "result_titles": ["01政务服务事项知识/新北区社保卡补卡指南.txt"],
+        }
+    ]
+
+
 def test_collect_trace_report_flags_area_route_mismatch() -> None:
     mod = _load_module()
 
