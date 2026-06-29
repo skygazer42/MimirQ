@@ -23,9 +23,6 @@ from langchain_core.documents import Document
 
 from app.core.config import settings
 from app.core.optional_deps import optional_import
-from app.parsing.factory import parser_factory
-from app.parsing.processors.parser_service import document_parser_service
-from app.parsing.routing import route_pdf_backend
 from app.rag.core.logging import get_logger, setup_logging
 
 logger = get_logger("parsing.subprocess_worker")
@@ -34,6 +31,18 @@ logger = get_logger("parsing.subprocess_worker")
 @lru_cache(maxsize=1)
 def _get_pil_image():  # noqa: ANN202
     return optional_import("PIL.Image", feature="parse_ingest_image_materialize", pip_name="Pillow")
+
+
+def _get_parser_factory():  # noqa: ANN202
+    from app.parsing.factory import parser_factory
+
+    return parser_factory
+
+
+def _get_document_parser_service():  # noqa: ANN202
+    from app.parsing.processors.parser_service import document_parser_service
+
+    return document_parser_service
 
 
 def _as_uuid(value: Any) -> UUID:
@@ -195,6 +204,8 @@ def _parse_documents(payload: dict[str, Any]) -> dict[str, Any]:
     if file_ext == ".pdf":
         requested = (requested_backend or "").strip().lower()
         if pdf_quality is None and (not requested or requested == "auto"):
+            from app.parsing.routing import route_pdf_backend
+
             effective_backend, pdf_quality = route_pdf_backend(
                 file_path,
                 requested,
@@ -204,6 +215,7 @@ def _parse_documents(payload: dict[str, Any]) -> dict[str, Any]:
         else:
             effective_backend = requested
 
+    parser_factory = _get_parser_factory()
     documents, resolved_backend, provenance = parser_factory.parse_with_provenance(
         file_path,
         parser_backend=effective_backend,
@@ -271,6 +283,7 @@ def _pipeline_parse_preview(payload: dict[str, Any]) -> dict[str, Any]:
     tenant_id = _as_uuid(payload["tenant_id"])
     file_path = Path(str(payload["file_path"]))
     parser_backend = payload.get("parser_backend")
+    document_parser_service = _get_document_parser_service()
     result = document_parser_service.parse_for_preview(
         file_path=file_path, tenant_id=tenant_id, parser_backend=parser_backend
     )
