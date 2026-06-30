@@ -39,6 +39,7 @@ def test_platform_surfaces_do_not_embed_changzhou_plugin_defaults() -> None:
         Path("tests/test_plugin_corpus_closed_loop_smoke.py"),
         Path("tests/test_plugin_corpus_closed_loop_evidence.py"),
         Path("tests/test_ragas_conversation_deterministic_eval.py"),
+        Path("tests/test_retrieval_plugin_policy.py"),
         Path("web/components/chunk-preview/components/workbench/sidebar-client.messages.source.test.ts"),
         Path("web/e2e/chunk-preview-plugin-readiness.spec.ts"),
         Path("docs/plans/2026-06-08-rag-retrieval-quality-closed-loop.md"),
