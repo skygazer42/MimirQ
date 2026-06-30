@@ -215,9 +215,15 @@ def _split_field_line(line: str, labels: tuple[str, ...]) -> tuple[str, str] | N
     text = str(line or "").strip().lstrip("\"“”").strip()
     for label in labels:
         for separator in ("：", ":"):
-            prefix = f"{label}{separator}"
-            if text.startswith(prefix):
-                return label, text[len(prefix) :].strip()
+            prefixes = (
+                f"{label}{separator}",
+                f"{label}\"{separator}",
+                f"{label}”{separator}",
+                f"{label}“{separator}",
+            )
+            for prefix in prefixes:
+                if text.startswith(prefix):
+                    return label, text[len(prefix) :].strip()
     return None
 
 
@@ -1285,6 +1291,41 @@ def _qa_search_anchor(meta: dict[str, Any]) -> str:
     return f"检索锚点：{'；'.join(deduped)}" if deduped else ""
 
 
+def _qa_retrieval_intents(meta: dict[str, Any]) -> list[str]:
+    question = str(meta.get("question") or "").strip()
+    primary_alias = str(meta.get("primary_alias") or "").strip()
+    aliases = [str(item).strip() for item in (meta.get("aliases") or []) if str(item).strip()]
+    keywords = [str(item).strip() for item in (meta.get("keywords") or []) if str(item).strip()]
+    intents: list[str] = []
+    seen: set[str] = set()
+    for term in _semantic_terms(question, primary_alias, *aliases, *keywords):
+        value = _clamp_meta_text(term, 160)
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        intents.append(value)
+        if len(intents) >= 16:
+            break
+    return intents
+
+
+def _qa_answer_key_points(meta: dict[str, Any]) -> list[str]:
+    answer = str(meta.get("answer") or "").strip()
+    urls = [str(item).strip() for item in (meta.get("urls") or []) if str(item).strip()]
+    points = _numbered_steps(answer) or _split_list_marker(answer) or _compact_answer_lines(answer, limit=8)
+    out: list[str] = []
+    seen: set[str] = set()
+    for point in [*points, *urls]:
+        value = _clamp_meta_text(str(point or "").strip(), 260)
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        out.append(value)
+        if len(out) >= 12:
+            break
+    return out
+
+
 def _chunk_qa(doc: Document, *, max_chars: int, start_index: int) -> list[Document]:
     meta = dict(doc.metadata or {})
     anchor = _qa_search_anchor(meta)
@@ -1303,6 +1344,12 @@ def _chunk_qa(doc: Document, *, max_chars: int, start_index: int) -> list[Docume
         )
         if anchor:
             chunk_meta["qa_anchor"] = anchor
+        retrieval_intents = _qa_retrieval_intents(meta)
+        if retrieval_intents:
+            chunk_meta["retrieval_intents"] = retrieval_intents
+        answer_key_points = _qa_answer_key_points(meta)
+        if answer_key_points:
+            chunk_meta["answer_key_points"] = answer_key_points
         if len(parts) > 1:
             chunk_meta["chunk_part_index"] = local_index
             chunk_meta["chunk_part_total"] = len(parts)

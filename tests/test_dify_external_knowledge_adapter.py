@@ -1969,6 +1969,44 @@ def test_dify_aggregate_routes_merge_explicit_and_inherited_hints(
     ]
 
 
+def test_changzhou_district_scope_inherits_city_shared_subject_routes(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    district_service_dataset = uuid.uuid4()
+    district_qa_dataset = uuid.uuid4()
+    city_faq_dataset = uuid.uuid4()
+
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        (
+            "{"
+            '"changzhou_city_service": {'
+            f'"dataset_ids": ["{city_faq_dataset}"],'
+            '"query_routes": ['
+            '{"terms": ["汽车置换", "置换补贴"], '
+            f'"dataset_ids": ["{city_faq_dataset}"], '
+            '"mode": "replace"}'
+            "]"
+            "},"
+            '"changzhou_武进区_service": {'
+            f'"dataset_ids": ["{district_service_dataset}", "{district_qa_dataset}"]'
+            "}"
+            "}"
+        ),
+        raising=False,
+    )
+
+    scope = dify_api._resolve_knowledge_dataset_scope("changzhou_武进区_service", query="武进区置换补贴到账时间")
+
+    assert list(scope.primary_dataset_ids) == [
+        city_faq_dataset,
+        district_service_dataset,
+        district_qa_dataset,
+    ]
+    assert scope.matched_terms == ("置换补贴",)
+
+
 def test_dify_metadata_anchor_fallback_query_terms_prioritize_specific_phrases() -> None:
     import app.api.v1.integrations_dify as dify_api
 
@@ -4153,6 +4191,42 @@ def test_dify_compact_prefers_records_aligned_to_plugin_retrieval_policy_intent(
     )
 
     assert compacted == [material_record]
+
+
+def test_dify_sort_prefers_exact_primary_alias_over_partial_question_match() -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    partial_question = {
+        "content": "问题：如何预约办事？\n答案：可在首页网上预约。",
+        "score": 0.9,
+        "title": "short-faq.txt",
+        "metadata": {
+            "question": "如何预约办事？",
+            "aliases": ["怎么预约？我想预约"],
+            "primary_alias": "怎么预约？我想预约",
+            "chunk_kind": "qa_pair",
+        },
+    }
+    exact_alias = {
+        "content": "问题：网上预约办事\n答案：可通过网上预约入口办理。",
+        "score": 0.9,
+        "title": "rich-faq.txt",
+        "metadata": {
+            "question": "网上预约办事",
+            "aliases": ["如何预约办事？预约办事", "怎么预约"],
+            "primary_alias": "如何预约办事？预约办事",
+            "urls": [
+                "https://example.test/app",
+                "https://example.test/pc",
+            ],
+            "chunk_kind": "qa_pair",
+        },
+    }
+    records = [partial_question, exact_alias]
+
+    dify_api._sort_records_for_query(records, query="如何预约办事？预约办事")
+
+    assert records[0] == exact_alias
 
 
 def test_dify_dedupe_collapses_chunks_from_same_source_record(monkeypatch: pytest.MonkeyPatch) -> None:

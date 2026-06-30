@@ -945,6 +945,11 @@ class Settings(BaseSettings):
     SIMILARITY_THRESHOLD: float = 0.7
     # Concurrent retrieval across query variants (multi-query / decompose / HyDE).
     RETRIEVAL_QUERY_PARALLELISM: int = 1
+    # Deterministic, no-LLM fan-out for obvious multi-intent questions. This is
+    # bounded so external retrieval can improve coverage without adding model latency.
+    RETRIEVAL_LIGHTWEIGHT_SUBQUERY_ENABLED: bool = False
+    RETRIEVAL_LIGHTWEIGHT_SUBQUERY_MAX_QUERIES: int = 3
+    RETRIEVAL_LIGHTWEIGHT_SUBQUERY_MIN_QUERY_CHARS: int = 28
     # MMR (Maximal Marginal Relevance) settings
     RETRIEVAL_MMR_LAMBDA: float = 0.7  # Balance relevance vs diversity (0=diversity, 1=relevance)
     RETRIEVAL_MMR_FETCH_K_MULTIPLIER: int = 4  # Fetch k*multiplier candidates for MMR selection

@@ -78,7 +78,7 @@ from app.rag.policy.out_of_scope_live_gate import (
     maybe_apply_out_of_scope_live_guard,
     run_default_out_of_scope_live_guard,
 )
-from app.rag.policy.query_expansion import build_clause_fastlane_queries
+from app.rag.policy.query_expansion import build_clause_fastlane_queries, build_lightweight_subquery_queries
 from app.rag.query_expansion import generate_alias_queries
 from app.rag.reranker.factory import describe_reranker_provider
 from app.rag.retrieval.contract import resolve_retrieval_contract_policy
@@ -1893,6 +1893,13 @@ Requirements:
             # retrieval query to improve exact-match recall without invoking the LLM.
             for q in build_clause_fastlane_queries(query_for_retrieval):
                 retrieval_queries_base.append(("clause", q))
+            if bool(getattr(settings, "RETRIEVAL_LIGHTWEIGHT_SUBQUERY_ENABLED", False)):
+                for q in build_lightweight_subquery_queries(
+                    query_for_retrieval,
+                    max_queries=int(getattr(settings, "RETRIEVAL_LIGHTWEIGHT_SUBQUERY_MAX_QUERIES", 3) or 3),
+                    min_query_chars=int(getattr(settings, "RETRIEVAL_LIGHTWEIGHT_SUBQUERY_MIN_QUERY_CHARS", 28) or 28),
+                ):
+                    retrieval_queries_base.append(("lite_subq", q))
             if step_back_used and step_back_query:
                 retrieval_queries_base.append(("step_back", step_back_query))
             for q in sub_questions:

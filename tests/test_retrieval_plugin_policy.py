@@ -227,3 +227,35 @@ def test_filter_records_by_retrieval_policy_alignment_keeps_plugin_declared_inte
         metadata_layers_for_record=_record_metadata_layers,
         policy_resolver=lambda ref: policy if ref == plugin_ref else {},
     ) == [records[1]]
+
+
+def test_dify_question_anchor_strength_uses_primary_alias_and_aliases() -> None:
+    from app.api.v1 import integrations_dify as mod
+
+    policy = {
+        "schema": "mimirq.retrieval_policy.v1",
+        "question_intent_terms": ["办理", "进度", "查询"],
+    }
+    record = {
+        "plugin_ref": "plugin:demo-service@1.0.0:chunk",
+        "metadata": {
+            "question": "业务进度查询",
+            "primary_alias": "查看公积金业务办理进度",
+            "aliases": ["查看常州公积金业务办理进度"],
+        },
+    }
+
+    monkey_policy_ref = "plugin:demo-service@1.0.0:chunk"
+    original = mod._retrieval_policy_for_plugin_ref
+    try:
+        mod._retrieval_policy_for_plugin_ref = lambda ref: policy if ref == monkey_policy_ref else {}
+        assert (
+            mod._record_question_anchor_strength(
+                record,
+                query="查看常州公积金业务办理进度",
+                policy_plugin_refs=(monkey_policy_ref,),
+            )
+            >= 0.9
+        )
+    finally:
+        mod._retrieval_policy_for_plugin_ref = original

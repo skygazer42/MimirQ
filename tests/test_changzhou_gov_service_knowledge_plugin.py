@@ -128,7 +128,7 @@ def test_changzhou_retrieval_policy_declares_platform_consumable_fields():
     assert descriptor.retrieval_policy["question_anchor_bonus"] >= 0.9
     assert summary["fallback_enabled"] is True
     assert summary["response_compaction_enabled"] is True
-    assert descriptor.retrieval_policy["response_compaction"]["min_records"] == 1
+    assert descriptor.retrieval_policy["response_compaction"]["min_records"] == 2
     assert summary["response_hints_enabled"] is True
     assert descriptor.retrieval_policy["response_hints"]["structured_labels"] == [
         "答案",
@@ -797,6 +797,12 @@ def test_changzhou_plugin_governs_qa_records():
     assert records[0].metadata["aliases"] == ["维修资金标准", "维修基金多少钱"]
     assert records[0].metadata["source_department"] == "常州经济开发区建设局"
     assert chunks[0].metadata["chunk_kind"] == "qa_pair"
+    assert chunks[0].metadata["retrieval_intents"][:3] == [
+        "住宅专项维修资金的交存标准是多少",
+        "维修资金标准",
+        "维修基金多少钱",
+    ]
+    assert chunks[0].metadata["answer_key_points"] == ["配备电梯的，由业主按建筑面积每平方米120元标准交存。"]
 
 
 def test_changzhou_plugin_adds_semantic_keys_for_equivalent_qa_and_service_records():
@@ -895,6 +901,8 @@ def test_changzhou_plugin_governs_qa_keywords_alias_variants_urls_and_topic():
     assert "==##关键字" not in records[0].metadata["answer"]
     assert "==##相似问" not in records[0].metadata["answer"]
     assert chunks[0].metadata["source_topic"] == records[0].metadata["source_topic"]
+    assert "小学入学需要哪些材料" in chunks[0].metadata["retrieval_intents"]
+    assert "https://www.changzhou.gov.cn/gi_news/706177908756753" in chunks[0].metadata["answer_key_points"]
     assert ("Keyword", "小学入学", "keyword") in entity_pairs
     assert ("Url", "https://www.changzhou.gov.cn/gi_news/706177908756753", "url") in entity_pairs
     assert ("GovKnowledgeTopic", "2026年常州市义务教育学校招生入学常见问题", "source_topic") in entity_pairs
@@ -995,6 +1003,38 @@ def test_changzhou_plugin_infers_common_qa_section_from_bare_uploaded_filenames(
     assert len(records) == 1
     assert records[0].metadata["knowledge_section"] == "03常州市常见问题"
     assert records[0].metadata["source_topic"] == "常州市本级12345QA"
+
+
+def test_changzhou_plugin_governs_common_qa_quoted_answer_labels():
+    source = "/data/temp50/20260522政务服务智能客服知识/03常州市常见问题/2026年实施大规模设备更新和消费品以旧换新政策.txt"
+    text = """问题：[大规模设备更新支持哪些新领域]
+答案：新增支持老旧小区加装电梯、养老机构、消防救援设施。
+==##关键字：设备更新、新增领域##==
+==##相似问：哪些新领域可以申请设备更新补贴？##==
+==##########==
+问题：[数码产品购新有补贴吗？]
+"答案": 支持手机、平板、智能手表手环、智能眼镜等4类产品，补贴15%。
+==##关键字：数码产品、智能设备、补贴15%##==
+==##相似问：买手机有补贴吗？智能手表能享受购新补贴吗？##==
+==##########==
+问题：[资金使用有哪些要求？]
+“答案”：资金实行限额管理，未用完部分2026年底收回。
+==##关键字：限额管理、统一标准##==
+==##相似问：补贴资金没用完怎么办？地方可以自己定补贴标准吗？##==
+"""
+
+    records = _run_governance(Document(page_content=text, metadata={"source": source}))
+    chunks = _run_chunk(records)
+
+    assert [record.metadata["question"] for record in records] == [
+        "大规模设备更新支持哪些新领域",
+        "数码产品购新有补贴吗？",
+        "资金使用有哪些要求？",
+    ]
+    assert records[1].metadata["primary_alias"] == "买手机有补贴吗？智能手表能享受购新补贴吗？"
+    assert "智能手表手环" in records[1].metadata["answer"]
+    assert "2026年底收回" in records[2].metadata["answer"]
+    assert [chunk.metadata["chunk_kind"] for chunk in chunks] == ["qa_pair", "qa_pair", "qa_pair"]
 
 
 def test_changzhou_plugin_governs_common_qa_structured_item_records():
