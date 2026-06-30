@@ -25,6 +25,34 @@ def _auth(token: str) -> dict[str, str]:
 _DEMO_PLUGIN_REF = "plugin:demo-service@1.0.0:chunk"
 
 
+def test_dify_citation_record_preserves_rerank_metadata() -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    record = dify_api._citation_to_dify_record(
+        {
+            "content": "公积金业务办理进度",
+            "title": "线上业务.xlsx",
+            "score": 0.72,
+            "hit_type": "keyword",
+            "rerank_score": 0.93,
+            "rerank_score_final": 0.95,
+            "reranker_provider": "openai",
+            "rerank_elapsed_sec": 0.12,
+            "rerank_model_used": "bge-reranker-large",
+        },
+        dataset_id=uuid.uuid4(),
+        query="公积金业务办理进度",
+    )
+
+    metadata = record["metadata"]
+    assert metadata["hit_type"] == "keyword"
+    assert metadata["rerank_score"] == pytest.approx(0.93)
+    assert metadata["rerank_score_final"] == pytest.approx(0.95)
+    assert metadata["reranker_provider"] == "openai"
+    assert metadata["rerank_elapsed_sec"] == pytest.approx(0.12)
+    assert metadata["rerank_model_used"] == "bge-reranker-large"
+
+
 def _demo_response_hints() -> dict[str, object]:
     return {
         "answer_prefix": "答案要点",
@@ -358,7 +386,7 @@ def test_dify_retrieval_logs_request_diagnostics(
 
 
 @pytest.mark.asyncio
-async def test_dify_direct_retrieval_uses_reranker_free_overfetch_config(
+async def test_dify_direct_retrieval_uses_configured_reranker_and_overfetch_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import app.api.v1.integrations_dify as dify_api
@@ -368,6 +396,8 @@ async def test_dify_direct_retrieval_uses_reranker_free_overfetch_config(
 
     monkeypatch.setattr(dify_api.settings, "ENABLE_RERANKER", True, raising=False)
     monkeypatch.setattr(dify_api.settings, "RERANKER_PROVIDER", "openai", raising=False)
+    monkeypatch.setattr(dify_api.settings, "RERANKER_TOP_N", 20, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_RERANKER_ENABLED", True, raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_KG_QUERY_EXPANSION_ENABLED", True, raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_INJECTION_ENABLED", True, raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_INJECTION_MAX_CHUNKS", 3, raising=False)
@@ -401,8 +431,8 @@ async def test_dify_direct_retrieval_uses_reranker_free_overfetch_config(
     assert body.dataset_id is None
     assert len(body.dataset_ids) == 1
     assert rag_config.top_k == 20
-    assert rag_config.enable_reranker is False
-    assert rag_config.reranker_provider == "none"
+    assert rag_config.enable_reranker is True
+    assert rag_config.reranker_provider == "openai"
     assert rag_config.reranker_top_n == 20
     assert rag_config.lexical_db_hybrid_fallback_only is False
     assert rag_config.lexical_db_hybrid_metadata_exact_fallback_enabled is False
@@ -1833,7 +1863,7 @@ def test_dify_metadata_anchor_supplement_uses_inherited_route_scope_for_aggregat
         calls["metadata_anchor"] += 1
         dataset_ids = list(kwargs["dataset_ids"])
         seen_fallback_dataset_ids.append(dataset_ids)
-        if dataset_ids != [north_service_dataset, north_qa_dataset]:
+        if dataset_ids[:2] != [north_service_dataset, north_qa_dataset]:
             return []
         return [
             {
@@ -1876,8 +1906,12 @@ def test_dify_metadata_anchor_supplement_uses_inherited_route_scope_for_aggregat
 
     assert res.status_code == 200, res.text
     assert calls == {"rag": 1, "metadata_anchor": 1}
-    assert seen_rag_dataset_ids == [[north_service_dataset, north_qa_dataset]]
-    assert seen_fallback_dataset_ids == [[north_service_dataset, north_qa_dataset]]
+    assert seen_rag_dataset_ids == [
+        [north_service_dataset, north_qa_dataset, south_service_dataset, south_qa_dataset]
+    ]
+    assert seen_fallback_dataset_ids == [
+        [north_service_dataset, north_qa_dataset, south_service_dataset, south_qa_dataset]
+    ]
     body = res.json()
     assert body["records"][0]["title"] == "north-service.txt"
     assert "0519-12345678" in body["records"][0]["content"]
@@ -1921,8 +1955,18 @@ def test_dify_aggregate_routes_merge_explicit_and_inherited_hints(
     inherited_scope = dify_api._resolve_knowledge_dataset_scope("aggregate", query="北区学区查询咨询电话")
     explicit_scope = dify_api._resolve_knowledge_dataset_scope("aggregate", query="城市本级工伤保险待遇恢复")
 
-    assert list(inherited_scope.primary_dataset_ids) == [north_service_dataset, north_qa_dataset]
-    assert list(explicit_scope.primary_dataset_ids) == [city_service_dataset]
+    assert list(inherited_scope.primary_dataset_ids) == [
+        north_service_dataset,
+        north_qa_dataset,
+        south_service_dataset,
+        city_service_dataset,
+    ]
+    assert list(explicit_scope.primary_dataset_ids) == [
+        city_service_dataset,
+        north_service_dataset,
+        north_qa_dataset,
+        south_service_dataset,
+    ]
 
 
 def test_dify_metadata_anchor_fallback_query_terms_prioritize_specific_phrases() -> None:
@@ -3850,7 +3894,9 @@ def test_dify_retrieval_expands_scope_when_primary_has_no_evidence(monkeypatch: 
     assert res.json()["records"][0]["content"] == "城市本级服务卡补卡兜底说明"
 
 
-def test_dify_query_routes_are_recall_hints_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_dify_query_routes_prioritize_matching_hints_without_including_unmatched_hints_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     import app.api.v1.integrations_dify as dify_api
 
     base_dataset = uuid.uuid4()
@@ -3876,19 +3922,14 @@ def test_dify_query_routes_are_recall_hints_by_default(monkeypatch: pytest.Monke
         raising=False,
     )
 
-    assert dify_api._resolve_knowledge_dataset_ids("city", query="普通查询") == [
-        base_dataset,
-        one_thing_dataset,
-        department_qa_dataset,
-    ]
+    assert dify_api._resolve_knowledge_dataset_ids("city", query="普通查询") == [base_dataset]
     assert dify_api._resolve_knowledge_dataset_ids("city", query="不动产登记交易中心地址") == [
         department_qa_dataset,
         base_dataset,
-        one_thing_dataset,
     ]
 
 
-def test_dify_unmatched_route_hints_are_primary_candidates_for_aggregate_knowledge(
+def test_dify_unmatched_route_hints_can_be_enabled_for_aggregate_knowledge(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import app.api.v1.integrations_dify as dify_api
@@ -3917,6 +3958,12 @@ def test_dify_unmatched_route_hints_are_primary_candidates_for_aggregate_knowled
     )
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_SCOPE_ENABLED", True, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_INCLUDE_UNMATCHED_ROUTE_HINTS",
+        True,
+        raising=False,
+    )
 
     async def _fake_retrieve_dataset_citations(**kwargs):  # noqa: ANN003, ANN202
         dataset_ids = kwargs["dataset_ids"]
@@ -3970,7 +4017,7 @@ def test_dify_unmatched_route_hints_are_primary_candidates_for_aggregate_knowled
     assert records[0]["metadata"]["knowledge_section"] == "03城市常见问题"
 
 
-def test_dify_matched_replace_route_uses_route_dataset_as_primary_scope(
+def test_dify_matched_replace_route_prioritizes_route_dataset_without_narrowing_primary_scope(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import app.api.v1.integrations_dify as dify_api
@@ -4007,7 +4054,7 @@ def test_dify_matched_replace_route_uses_route_dataset_as_primary_scope(
     async def _fake_retrieve_dataset_citations(**kwargs):  # noqa: ANN003, ANN202
         dataset_ids = kwargs["dataset_ids"]
         calls.append(dataset_ids)
-        assert dataset_ids == [topic_dataset]
+        assert dataset_ids == [topic_dataset, base_dataset]
         return [
             {
                 "chunk_content": "问题：居民身份证补领需要什么材料？\n答案：居民户口簿、有效身份证件之一。",
@@ -4042,7 +4089,7 @@ def test_dify_matched_replace_route_uses_route_dataset_as_primary_scope(
     )
 
     assert res.status_code == 200, res.text
-    assert calls == [[topic_dataset]]
+    assert calls == [[topic_dataset, base_dataset]]
     assert res.json()["records"][0]["metadata"]["knowledge_section"] == "03城市常见问题"
 
 

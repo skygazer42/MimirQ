@@ -90,6 +90,11 @@ _METADATA_KEYS = (
     "source_path",
     "retrieval_role",
     "hit_type",
+    "rerank_score",
+    "rerank_score_final",
+    "reranker_provider",
+    "rerank_elapsed_sec",
+    "rerank_model_used",
     "kg_pagerank",
     "kg_path_length",
     "kg_shared_events",
@@ -776,7 +781,10 @@ def _plan_query_dataset_scope(
         route_hints=route_hints,
         query=query,
         strict_routes=strict_routes,
-        matched_replace_routes_as_primary_scope=True,
+        include_unmatched_hint_datasets=bool(
+            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_INCLUDE_UNMATCHED_ROUTE_HINTS", False)
+        ),
+        matched_replace_routes_as_primary_scope=strict_routes,
     )
 
 
@@ -3137,15 +3145,23 @@ async def _retrieve_dataset_citations(
     if overfetch_max_k <= 0:
         overfetch_max_k = evidence_top_k
 
+    reranker_enabled = bool(getattr(settings, "ENABLE_RERANKER", False)) and bool(
+        getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_RERANKER_ENABLED", True)
+    )
+    reranker_top_n = max(
+        1,
+        int(getattr(settings, "RERANKER_TOP_N", evidence_top_k) or evidence_top_k),
+        int(evidence_top_k or 1),
+    )
     rag_config = ChatRAGConfig(
         top_k=evidence_top_k,
         score_threshold=score_threshold,
         retrieval_mode="hybrid",
         visible_evidence_only=True,
         metadata_filter=metadata_filter,
-        enable_reranker=False,
-        reranker_provider="none",
-        reranker_top_n=max(1, int(evidence_top_k or 1)),
+        enable_reranker=reranker_enabled,
+        reranker_provider=str(getattr(settings, "RERANKER_PROVIDER", "llm") or "llm") if reranker_enabled else "none",
+        reranker_top_n=reranker_top_n,
         lexical_db_hybrid_fallback_only=bool(
             getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_LEXICAL_DB_HYBRID_FALLBACK_ONLY", False)
         ),

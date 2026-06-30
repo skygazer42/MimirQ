@@ -821,6 +821,12 @@ class Settings(BaseSettings):
     DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MULTIPLIER: int = 4
     DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX: int = 50
     DIFY_EXTERNAL_KNOWLEDGE_RETRIEVAL_OVERFETCH_MULTIPLIER: int = 1
+    # Query routes are recall hints for matching queries. Unmatched route
+    # datasets stay out of scope by default to avoid broad aggregate noise.
+    DIFY_EXTERNAL_KNOWLEDGE_INCLUDE_UNMATCHED_ROUTE_HINTS: bool = False
+    # Use the normal RAG reranker inside Dify external knowledge retrieval.
+    # The global ENABLE_RERANKER still gates the actual reranker provider.
+    DIFY_EXTERNAL_KNOWLEDGE_RERANKER_ENABLED: bool = True
     # 0 means cap Dify external retrieval overfetch at the resolved internal candidate top_k.
     DIFY_EXTERNAL_KNOWLEDGE_RETRIEVAL_OVERFETCH_MAX_K: int = 0
     DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_SCOPE_ENABLED: bool = True
