@@ -136,6 +136,9 @@ _MIN_QUERY_INTENT_SUBJECT_OVERLAP_CHARS = 3
 _INTENT_MATCH_BONUS = 0.06
 _INTENT_MATCH_BONUS_MAX = 0.18
 _QUESTION_INTENT_MATCH_BONUS = 0.2
+_EXACT_PRIMARY_ALIAS_MATCH_BONUS = 0.16
+_URL_EVIDENCE_BONUS = 0.04
+_URL_EVIDENCE_BONUS_MAX = 0.08
 _SOURCE_RECORD_ID_KEYS = ("source_record_id", "record_id")
 _SOURCE_RECORD_SCOPE_KEYS = ("knowledge_section", "source_file", "source_topic", "document_id")
 _DEFAULT_RESPONSE_HINT_ANSWER_PREFIX = "Answer highlights"
@@ -668,14 +671,22 @@ def _inherited_query_route_hints(
 
     inherited: list[DatasetRouteHint] = []
     seen: set[tuple[tuple[str, ...], tuple[UUID, ...], str]] = set()
+    inherit_city_shared_routes = (
+        current_key.startswith("changzhou_")
+        and current_key.endswith("_service")
+        and current_key not in {"changzhou_city_service", "changzhou_all_districts_service"}
+    )
     for mapping_key, raw_mapping in knowledge_map.items():
         if mapping_key == current_key or not isinstance(raw_mapping, dict):
             continue
+        is_city_shared_route_source = inherit_city_shared_routes and mapping_key == "changzhou_city_service"
         routes = _mapping_query_routes(raw_mapping)
         if not routes:
             continue
         for route_hint in _route_hints_from_routes(routes):
-            if not route_hint.dataset_ids or not set(route_hint.dataset_ids).issubset(base_set):
+            if not route_hint.dataset_ids:
+                continue
+            if not set(route_hint.dataset_ids).issubset(base_set) and not is_city_shared_route_source:
                 continue
             identity = (route_hint.terms, route_hint.dataset_ids, route_hint.mode)
             if identity in seen:
@@ -1944,6 +1955,8 @@ def _record_rank_score(
         float(record.get("score") or 0.0)
         + _record_metadata_anchor_bonus(record, query=query)
         + _record_intent_bonus(record, query=query, policy_plugin_refs=policy_plugin_refs)
+        + _record_exact_primary_alias_bonus(record, query=query)
+        + _record_url_evidence_bonus(record)
         + _record_question_intent_bonus(record, query=query, policy_plugin_refs=policy_plugin_refs)
         + _record_answerfulness_score(record, policy_plugin_refs=policy_plugin_refs)
         + record_retrieval_policy_bonus(
@@ -1954,6 +1967,24 @@ def _record_rank_score(
             policy_resolver=_retrieval_policy_for_plugin_ref,
         )
     )
+
+
+def _record_exact_primary_alias_bonus(record: dict[str, Any], *, query: str) -> float:
+    query_term = _normalize_match_term(query)
+    if len(query_term) < 3:
+        return 0.0
+    for metadata in _iter_record_metadata_layers(record):
+        for term in _metadata_terms(metadata.get("primary_alias")):
+            if _normalize_match_term(term) == query_term:
+                return _EXACT_PRIMARY_ALIAS_MATCH_BONUS
+    return 0.0
+
+
+def _record_url_evidence_bonus(record: dict[str, Any]) -> float:
+    urls = 0
+    for metadata in _iter_record_metadata_layers(record):
+        urls += len(_metadata_terms(metadata.get("urls")))
+    return min(_URL_EVIDENCE_BONUS_MAX, _URL_EVIDENCE_BONUS * urls)
 
 
 def _compact_records_for_response(
@@ -2124,7 +2155,12 @@ def _record_question_intent_bonus(
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> float:
     if (
-        _record_question_anchor_strength(record, query=query, policy_plugin_refs=policy_plugin_refs)
+        _record_question_anchor_strength(
+            record,
+            query=query,
+            policy_plugin_refs=policy_plugin_refs,
+            anchor_fields=("question", "primary_alias"),
+        )
         >= _QUESTION_ANCHOR_COMPACTION_MIN_STRENGTH
     ):
         return _record_question_anchor_bonus_value(record, policy_plugin_refs=policy_plugin_refs)
@@ -2136,6 +2172,7 @@ def _record_question_anchor_strength(
     *,
     query: str,
     policy_plugin_refs: tuple[str, ...] = (),
+    anchor_fields: tuple[str, ...] = ("question", "primary_alias", "aliases"),
 ) -> float:
     query_term = _normalize_match_term(query)
     if len(query_term) < 4:
@@ -2146,8 +2183,11 @@ def _record_question_anchor_strength(
     )
     best = 0.0
     for metadata in _iter_record_metadata_layers(record):
-        for question in _metadata_terms(metadata.get("question")):
-            candidate = _normalize_match_term(question)
+        anchor_values: list[str] = []
+        for field in anchor_fields:
+            anchor_values.extend(_metadata_terms(metadata.get(field)))
+        for anchor_value in anchor_values:
+            candidate = _normalize_match_term(anchor_value)
             if len(candidate) < 3:
                 continue
             if candidate == query_term or candidate in query_term or query_term in candidate:
@@ -2924,6 +2964,15 @@ def _metadata_anchor_db_fallback_records(
         if not service_anchor_preferred:
             append_unique(
                 query_matching_rows(DocumentChunk.doc_metadata["question"].astext.ilike(primary_pattern), limit=max_scan)
+            )
+            append_unique(
+                query_matching_rows(
+                    or_(
+                        DocumentChunk.doc_metadata["primary_alias"].astext.ilike(primary_pattern),
+                        DocumentChunk.doc_metadata.contains({"aliases": [primary_term]}),
+                    ),
+                    limit=max_scan,
+                )
             )
             current_matches = matched_records()
             if current_matches:

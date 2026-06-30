@@ -70,7 +70,7 @@ from app.rag.policy.out_of_scope_live_gate import (
     maybe_apply_out_of_scope_live_guard,
     run_default_out_of_scope_live_guard,
 )
-from app.rag.policy.query_expansion import build_clause_fastlane_queries
+from app.rag.policy.query_expansion import build_clause_fastlane_queries, build_lightweight_subquery_queries
 from app.rag.policy.recall_obligation import build_must_recall_proof
 from app.rag.policy.router_layers import build_router_layers
 from app.rag.query_expansion import generate_alias_queries
@@ -3060,6 +3060,16 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     clause_fastlane_queries = build_clause_fastlane_queries(query_for_retrieval)
     for q in clause_fastlane_queries:
         retrieval_queries.append(("clause", q))
+    if bool(getattr(settings, "RETRIEVAL_LIGHTWEIGHT_SUBQUERY_ENABLED", False)):
+        lightweight_subqueries = build_lightweight_subquery_queries(
+            query_for_retrieval,
+            max_queries=int(getattr(settings, "RETRIEVAL_LIGHTWEIGHT_SUBQUERY_MAX_QUERIES", 3) or 3),
+            min_query_chars=int(getattr(settings, "RETRIEVAL_LIGHTWEIGHT_SUBQUERY_MIN_QUERY_CHARS", 28) or 28),
+        )
+        for q in lightweight_subqueries:
+            retrieval_queries.append(("lite_subq", q))
+    else:
+        lightweight_subqueries = []
     for q in multi_queries:
         retrieval_queries.append(("mq", q))
     if step_back_used and step_back_query:
@@ -5777,6 +5787,11 @@ def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
             "clause_fastlane": {
                 "used": bool(clause_fastlane_queries),
                 "count": int(len(clause_fastlane_queries)),
+            },
+            "lightweight_subquery": {
+                "enabled": bool(getattr(settings, "RETRIEVAL_LIGHTWEIGHT_SUBQUERY_ENABLED", False)),
+                "used": bool(lightweight_subqueries),
+                "count": int(len(lightweight_subqueries)),
             },
             "multi_query": {
                 "enabled": bool(mq_enabled),
