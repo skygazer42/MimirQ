@@ -53,12 +53,14 @@ class _FakeDB:
 @pytest.mark.asyncio
 async def test_delete_document_cleans_kg_relations_and_events(monkeypatch: pytest.MonkeyPatch) -> None:
     import app.api.v1.documents as docs_mod
+    import app.services.document_lifecycle_service as lifecycle_mod
     from app.api.v1.documents import delete_document
     from app.core import config as config_mod
     from app.services.dataset_service import DatasetService
 
     monkeypatch.setattr(DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(docs_mod, "audit_log_event", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(lifecycle_mod, "audit_log_event", lambda *_a, **_k: None, raising=True)
 
     monkeypatch.setattr(config_mod.settings, "MINIO_ENABLED", False, raising=False)
     monkeypatch.setattr(config_mod.settings, "TASK_QUEUE_ENABLED", False, raising=False)
@@ -84,6 +86,7 @@ async def test_delete_document_cleans_kg_relations_and_events(monkeypatch: pytes
             return 0
 
     monkeypatch.setattr(docs_mod, "Indexer", _FakeIndexer, raising=True)
+    monkeypatch.setattr(lifecycle_mod, "Indexer", _FakeIndexer, raising=True)
 
     tenant_id = UUID(int=1)
     document_id = UUID(int=2)
@@ -115,4 +118,3 @@ async def test_delete_document_cleans_kg_relations_and_events(monkeypatch: pytes
     assert called["kwargs"]["document_id"] == document_id
     assert called["kwargs"]["tenant_id"] == tenant_id
     assert called["kwargs"]["prune_orphan_entities"] is True
-
