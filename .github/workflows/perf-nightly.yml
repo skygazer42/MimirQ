@@ -29,7 +29,7 @@ jobs:
       - name: Install minimal deps
         run: |
           python -m pip install --upgrade pip
-          python -m pip install --no-cache-dir httpx
+          python -m pip install httpx
 
       - name: Start retrieval-dev stack
         run: |
@@ -83,4 +83,3 @@ jobs:
         if: always()
         run: |
           docker compose -f docker/docker-compose.retrieval-dev.yml down -v
-

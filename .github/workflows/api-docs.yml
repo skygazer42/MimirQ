@@ -19,6 +19,7 @@ concurrency:
 env:
   SELF_HOSTED_PYTHON_BIN: /home/user/.local/share/uv/python/cpython-3.11.13-linux-x86_64-gnu/bin
   PIP_INDEX_URL: https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
+  PIP_CACHE_DIR: /data/actions-runner/pip-cache
 
 jobs:
   deploy:
@@ -52,11 +53,14 @@ jobs:
           https_proxy: http://127.0.0.1:35983
           no_proxy: 127.0.0.1,localhost,ci-service.example
         run: |
+          mkdir -p "$PIP_CACHE_DIR"
           python -m pip install --upgrade pip
-          python -m pip install --no-cache-dir --retries 5 --timeout 120 \
+          python -m pip install --retries 5 --timeout 120 \
             "torch @ https://download-r2.pytorch.org/whl/cpu/torch-2.10.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
             "torchvision @ https://download-r2.pytorch.org/whl/cpu/torchvision-0.25.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl"
-          python -m pip install --no-cache-dir --retries 10 --timeout 120 -r requirements.txt
+          python -m pip install --retries 10 --timeout 120 \
+            --extra-index-url https://download.pytorch.org/whl/cpu \
+            -r requirements.txt
 
       - name: Prepare self-hosted Node
         if: ${{ runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01' }}

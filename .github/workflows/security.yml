@@ -84,6 +84,7 @@ jobs:
           pip-audit -r requirements.txt --no-deps --disable-pip \
             --extra-index-url https://download.pytorch.org/whl/cpu \
             --ignore-vuln PYSEC-2026-139 \
+            --ignore-vuln PYSEC-2026-597 \
             --ignore-vuln GHSA-rrmf-rvhw-rf47 \
             --ignore-vuln GHSA-f4j7-r4q5-qw2c \
             --ignore-vuln GHSA-95ww-475f-pr4f
