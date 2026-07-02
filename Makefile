@@ -1,4 +1,4 @@
-.PHONY: help init up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload web test test-web test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check api-docs-build diagnostics db-upgrade db-revision verify enterprise-checks parser-status dify-console-login dify-console-check dify-console-ensure plugin-release-gate changzhou-gov-plugin-chunk-report changzhou-gov-plugin-chunk-evidence changzhou-gov-plugin-test-report changzhou-gov-plugin-test-evidence changzhou-gov-plugin-corpus-closed-loop-smoke changzhou-gov-plugin-corpus-closed-loop-evidence changzhou-gov-delivery-pack changzhou-gov-delivery-pack-refresh changzhou-gov-delivery-pack-refresh-with-audit changzhou-dify-knowledge-map-check changzhou-dify-mimirq-direct-gate changzhou-dify-mimirq-direct-kg-off-gate changzhou-dify-mimirq-direct-kg-on-gate changzhou-dify-kg-compare-gate changzhou-dify-kg-on-off-gate changzhou-dify-external-probe changzhou-dify-workflow-lint changzhou-dify-workflow-sync-dry-run changzhou-dify-workflow-sync-apply changzhou-dify-full-gate changzhou-dify-readiness-summary changzhou-dify-readiness-status changzhou-dify-readiness-evidence changzhou-dify-readiness-persist-audit changzhou-dify-readiness-gate changzhou-dify-readiness-gate-quiet changzhou-human-mixed-cases mixed-rag-quality check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
+.PHONY: help init up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload web test test-web test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check api-docs-build api-docs-build-static diagnostics db-upgrade db-revision verify enterprise-checks parser-status dify-console-login dify-console-check dify-console-ensure plugin-release-gate changzhou-gov-plugin-chunk-report changzhou-gov-plugin-chunk-evidence changzhou-gov-plugin-test-report changzhou-gov-plugin-test-evidence changzhou-gov-plugin-corpus-closed-loop-smoke changzhou-gov-plugin-corpus-closed-loop-evidence changzhou-gov-delivery-pack changzhou-gov-delivery-pack-refresh changzhou-gov-delivery-pack-refresh-with-audit changzhou-dify-knowledge-map-check changzhou-dify-mimirq-direct-gate changzhou-dify-mimirq-direct-kg-off-gate changzhou-dify-mimirq-direct-kg-on-gate changzhou-dify-kg-compare-gate changzhou-dify-kg-on-off-gate changzhou-dify-external-probe changzhou-dify-workflow-lint changzhou-dify-workflow-sync-dry-run changzhou-dify-workflow-sync-apply changzhou-dify-full-gate changzhou-dify-readiness-summary changzhou-dify-readiness-status changzhou-dify-readiness-evidence changzhou-dify-readiness-persist-audit changzhou-dify-readiness-gate changzhou-dify-readiness-gate-quiet changzhou-human-mixed-cases mixed-rag-quality check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
 
 # Prefer project venv when available so local dev doesn't depend on global tooling.
 PY := python3
@@ -195,6 +195,7 @@ help:
 	@echo "  make openapi-validate - verify OpenAPI artifacts are present/clean"
 	@echo "  make openapi-check  - ensure OpenAPI artifacts up-to-date (regenerates)"
 	@echo "  make api-docs-build - export OpenAPI + build docs/api/site for GitHub Pages (Redoc + openapi.json + handbook/)"
+	@echo "  make api-docs-build-static - build docs/api/site from committed web/openapi.json"
 	@echo "  make handbook-build - regenerate FE/BE matrix + Docusaurus build into docs/api/site/handbook/"
 	@echo "  make diagnostics - run key ops diagnostics (api-ping/api-check/openapi-validate/compose-diagnostics/doctor)"
 	@echo "  make db-upgrade - run Alembic migrations"
@@ -795,6 +796,13 @@ api-docs-build: openapi-export
 	@cp -f web/openapi.json $(API_DOCS_SITE)/openapi.json
 	@$(MAKE) handbook-build
 	@echo "[api-docs] $(API_DOCS_SITE)/index.html + openapi.json + handbook/ (run: cd $(API_DOCS_SITE) && python3 -m http.server 8765)"
+
+api-docs-build-static:
+	@$(PY) scripts/openapi_paths_sanity.py
+	@mkdir -p $(API_DOCS_SITE)
+	@cp -f web/openapi.json $(API_DOCS_SITE)/openapi.json
+	@$(MAKE) handbook-build
+	@echo "[api-docs] static $(API_DOCS_SITE)/index.html + openapi.json + handbook/"
 
 diagnostics:
 	@$(MAKE) api-ping
