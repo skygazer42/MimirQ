@@ -1,0 +1,195 @@
+{
+  "schema": "mimirq.mixed_rag_eval_cases.v1",
+  "description": "Complex mixed Changzhou government-service RAG cases scored by deterministic evidence and subquestion coverage.",
+  "cases": [
+    {
+      "id": "mixed-xinbei-social-card-practical",
+      "knowledge_id": "changzhou_新北区_service",
+      "question": "我在新北区补办社保卡，想一次知道去哪里、咨询电话和收费情况。",
+      "answer_term_aliases": {
+        "办理地点": ["办理地址", "地点", "地址"],
+        "咨询方式": ["咨询电话", "联系电话", "联系方式", "电话"],
+        "收费情况": ["是否收费", "费用", "收费", "不收费", "免费", "无需收费"]
+      },
+      "subquestions": [
+        {
+          "id": "location",
+          "required_terms": ["新北区政务服务中心", "三楼18、19号窗口"]
+        },
+        {
+          "id": "phone",
+          "required_terms": ["0519-88516920"]
+        },
+        {
+          "id": "fee",
+          "required_terms": ["不收费"]
+        }
+      ],
+      "evidence_clauses": [
+        {
+          "id": "service",
+          "required_terms": ["社会保障卡补卡"]
+        },
+        {
+          "id": "location",
+          "required_terms": ["办理地点", "新北区政务服务中心", "18、19号窗口"]
+        },
+        {
+          "id": "phone",
+          "required_terms": ["咨询方式", "0519-88516920"]
+        },
+        {
+          "id": "fee",
+          "required_terms": ["收费情况", "不收费"]
+        }
+      ],
+      "min_evidence_coverage": 1.0,
+      "min_subquestion_coverage": 1.0,
+      "max_wrong_evidence_rate": 0.4
+    },
+    {
+      "id": "mixed-city-car-subsidy",
+      "knowledge_id": "changzhou_city_service",
+      "question": "汽车置换补贴怎么申请？请同时说明入口、2025年申请时间和两类补贴。",
+      "subquestions": [
+        {
+          "id": "entry",
+          "required_terms": ["苏服办APP"]
+        },
+        {
+          "id": "period",
+          "required_terms": ["2025年补贴申请"]
+        },
+        {
+          "id": "types",
+          "required_terms": ["卖旧置换更新补贴", "报废置换更新补贴"]
+        }
+      ],
+      "evidence_clauses": [
+        {
+          "id": "entry",
+          "required_terms": ["苏服办APP"]
+        },
+        {
+          "id": "period",
+          "required_terms": ["2025年补贴申请"]
+        },
+        {
+          "id": "types",
+          "required_terms": ["卖旧置换更新补贴", "报废置换更新补贴"]
+        }
+      ],
+      "min_evidence_coverage": 1.0,
+      "min_subquestion_coverage": 1.0,
+      "max_wrong_evidence_rate": 0.4
+    },
+    {
+      "id": "mixed-social-card-one-thing-operation",
+      "knowledge_id": "changzhou_city_service",
+      "question": "社会保障卡居民服务一件事在网上怎么办？我需要知道入口模块、登录方式和补卡申请流程。",
+      "subquestions": [
+        {
+          "id": "module",
+          "required_terms": ["社会保障卡居民服务", "一件事"]
+        },
+        {
+          "id": "login",
+          "required_terms": ["个人登录"]
+        },
+        {
+          "id": "process",
+          "required_terms": ["补卡申请流程"]
+        }
+      ],
+      "evidence_clauses": [
+        {
+          "id": "module",
+          "required_terms": ["点击社会保障卡居民服务", "一件事"]
+        },
+        {
+          "id": "login",
+          "required_terms": ["选择", "个人登录"]
+        },
+        {
+          "id": "process",
+          "required_terms": ["补卡申请流程"]
+        }
+      ],
+      "min_evidence_coverage": 1.0,
+      "min_subquestion_coverage": 1.0,
+      "max_wrong_evidence_rate": 0.4
+    },
+    {
+      "id": "mixed-id-card-materials-and-progress",
+      "knowledge_id": "changzhou_city_service",
+      "question": "身份证补领要准备哪些材料？办完以后我还能通过哪些渠道查进度？",
+      "subquestions": [
+        {
+          "id": "materials-local",
+          "required_terms": ["居民户口簿", "有效身份证件之一"]
+        },
+        {
+          "id": "materials-nonlocal",
+          "required_terms": ["省外户籍居民补领", "合法稳定就业、就学、居住"]
+        },
+        {
+          "id": "progress-query",
+          "required_terms": ["苏证通", "江苏公安微警务", "身份证办理查询"]
+        }
+      ],
+      "evidence_clauses": [
+        {
+          "id": "materials-local",
+          "required_terms": ["居民户口簿", "有效身份证件之一"]
+        },
+        {
+          "id": "materials-nonlocal",
+          "required_terms": ["省外户籍居民补领", "合法稳定就业、就学、居住"]
+        },
+        {
+          "id": "progress-query",
+          "required_terms": ["苏证通", "江苏公安微警务", "身份证办理查询"]
+        }
+      ],
+      "min_evidence_coverage": 0.8,
+      "min_subquestion_coverage": 0.8,
+      "max_wrong_evidence_rate": 0.5
+    },
+    {
+      "id": "mixed-jingkai-enterprise-and-maintenance",
+      "knowledge_id": "changzhou_经开区_service",
+      "question": "经开区企业社会保险登记在哪里办？另外住宅专项维修资金的交存标准是多少？",
+      "subquestions": [
+        {
+          "id": "enterprise-social-insurance-location",
+          "required_terms": ["常州经开区政务服务中心一楼大厅C区", "东方东路168号"]
+        },
+        {
+          "id": "maintenance-after-date",
+          "required_terms": ["2008年3月24日以后"]
+        },
+        {
+          "id": "maintenance-standard",
+          "required_terms": ["每平方米120元", "每平方米60元"]
+        }
+      ],
+      "evidence_clauses": [
+        {
+          "id": "enterprise-social-insurance-location",
+          "required_terms": ["企业社会保险登记", "常州经开区政务服务中心一楼大厅C区", "东方东路168号"]
+        },
+        {
+          "id": "maintenance-date",
+          "required_terms": ["住宅专项维修资金", "2008年3月24日以后"]
+        },
+        {
+          "id": "maintenance-standard",
+          "required_terms": ["每平方米120元", "每平方米60元"]
+        }
+      ],
+      "min_evidence_coverage": 0.8,
+      "min_subquestion_coverage": 0.8,
+      "max_wrong_evidence_rate": 0.5
+    }
+  ]
+}

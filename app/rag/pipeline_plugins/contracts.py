@@ -42,6 +42,15 @@ _SUPPORTED_RETRIEVAL_FIELD_KEYS = {"metadata", "content", "label"}
 _SUPPORTED_RETRIEVAL_POLICY_BOOST_KEYS = {"metadata", "weight", "match"}
 _SUPPORTED_RETRIEVAL_POLICY_QUERY_VALUE_KEYS = {"metadata", "value", "values", "terms"}
 _SUPPORTED_RETRIEVAL_POLICY_ANCHOR_KEYS = {"metadata", "weight", "aliases"}
+_SUPPORTED_RETRIEVAL_POLICY_ANCHOR_BINDING_KEYS = {
+    "enabled",
+    "anchor_fields",
+    "anchor_match_bonus",
+    "anchor_mismatch_penalty",
+    "slot_fields",
+    "slot_only_penalty",
+    "anchor_slot_match_bonus",
+}
 _SUPPORTED_RETRIEVAL_POLICY_FALLBACK_KEYS = {"enabled", "expand_top_k_multiplier"}
 _SUPPORTED_RETRIEVAL_POLICY_RESPONSE_COMPACTION_KEYS = {
     "enabled",
@@ -463,9 +472,19 @@ def _summarize_retrieval_policy(retrieval_policy: dict[str, Any] | None) -> dict
             "query_expansion_value_fields": [],
             "filter_fields": [],
             "boost_fields": [],
+            "anchor_fields": [],
+            "anchor_binding_fields": [],
+            "anchor_binding_enabled": False,
             "rerank_features": [],
+            "question_intent_terms": [],
+            "mixed_intent_leading_noise_terms": [],
+            "mixed_intent_subject_terms": [],
+            "service_anchor_noise_terms": [],
+            "service_anchor_priority_terms": [],
+            "service_anchor_query_rewrites": 0,
             "fallback_enabled": False,
             "response_compaction_enabled": False,
+            "response_hints_enabled": False,
         }
     raw_boosts = retrieval_policy.get("boost_fields")
     boost_fields: list[str] = []
@@ -491,6 +510,12 @@ def _summarize_retrieval_policy(retrieval_policy: dict[str, Any] | None) -> dict
                 field_name = str(raw.get("metadata") or "").strip()
                 if field_name and field_name not in value_fields:
                     value_fields.append(field_name)
+    anchor_binding = retrieval_policy.get("anchor_binding")
+    anchor_binding_fields: list[str] = []
+    if isinstance(anchor_binding, dict):
+        for field_name in _as_string_list(anchor_binding.get("anchor_fields")):
+            if field_name not in anchor_binding_fields:
+                anchor_binding_fields.append(field_name)
     fallback = retrieval_policy.get("fallback")
     response_compaction = retrieval_policy.get("response_compaction")
     return {
@@ -498,11 +523,25 @@ def _summarize_retrieval_policy(retrieval_policy: dict[str, Any] | None) -> dict
         "query_expansion_fields": list(_as_string_list(retrieval_policy.get("query_expansion_fields"))),
         "query_expansion_value_fields": value_fields,
         "question_intent_terms": list(_as_string_list(retrieval_policy.get("question_intent_terms"))),
+        "mixed_intent_leading_noise_terms": list(
+            _as_string_list(retrieval_policy.get("mixed_intent_leading_noise_terms"))
+        ),
+        "mixed_intent_subject_terms": list(_as_string_list(retrieval_policy.get("mixed_intent_subject_terms"))),
         "service_anchor_noise_terms": list(_as_string_list(retrieval_policy.get("service_anchor_noise_terms"))),
         "service_anchor_priority_terms": list(_as_string_list(retrieval_policy.get("service_anchor_priority_terms"))),
+        "metadata_anchor_preflight_block_terms": list(
+            _as_string_list(retrieval_policy.get("metadata_anchor_preflight_block_terms"))
+        ),
+        "service_anchor_query_rewrites": (
+            len(retrieval_policy.get("service_anchor_query_rewrites"))
+            if isinstance(retrieval_policy.get("service_anchor_query_rewrites"), list)
+            else 0
+        ),
         "filter_fields": list(_as_string_list(retrieval_policy.get("filter_fields"))),
         "boost_fields": boost_fields,
         "anchor_fields": anchor_fields,
+        "anchor_binding_fields": anchor_binding_fields,
+        "anchor_binding_enabled": isinstance(anchor_binding, dict) and anchor_binding.get("enabled") is True,
         "rerank_features": list(_as_string_list(retrieval_policy.get("rerank_features"))),
         "fallback_enabled": isinstance(fallback, dict) and fallback.get("enabled") is True,
         "response_compaction_enabled": (
@@ -966,6 +1005,69 @@ def _validate_retrieval_policy_response_hints(
         raise PipelinePluginContractError("retrieval_policy.response_hints.enumeration.max_terms is out of range")
 
 
+def _validate_retrieval_policy_service_anchor_query_rewrites(raw_rules: Any) -> None:
+    if raw_rules is None:
+        return
+    if not isinstance(raw_rules, list):
+        raise PipelinePluginContractError("retrieval_policy.service_anchor_query_rewrites must be a list")
+    for index, raw in enumerate(raw_rules):
+        if not isinstance(raw, dict):
+            raise PipelinePluginContractError(
+                f"retrieval_policy.service_anchor_query_rewrites[{index}] must be an object"
+            )
+        _validate_optional_string_list(
+            raw.get("when_terms") if "when_terms" in raw else raw.get("when"),
+            key=f"service_anchor_query_rewrites[{index}].when_terms",
+        )
+        _validate_optional_string_list(
+            raw.get("terms") if "terms" in raw else raw.get("rewrite_terms"),
+            key=f"service_anchor_query_rewrites[{index}].terms",
+        )
+        match = raw.get("match")
+        if match is not None and str(match or "").strip().lower() not in {"all", "any"}:
+            raise PipelinePluginContractError(
+                f"retrieval_policy.service_anchor_query_rewrites[{index}].match must be all or any"
+            )
+
+
+def _validate_retrieval_policy_anchor_binding(
+    raw_binding: Any,
+    *,
+    declared_fields: dict[str, MetadataField],
+) -> None:
+    if raw_binding is None:
+        return
+    if not isinstance(raw_binding, dict):
+        raise PipelinePluginContractError("retrieval_policy.anchor_binding must be an object")
+    unknown = _unknown_keys(raw_binding, _SUPPORTED_RETRIEVAL_POLICY_ANCHOR_BINDING_KEYS)
+    if unknown:
+        raise PipelinePluginContractError(
+            f"retrieval_policy.anchor_binding contains unknown fields: {', '.join(unknown[:20])}"
+        )
+    enabled = raw_binding.get("enabled")
+    if enabled is not None and not isinstance(enabled, bool):
+        raise PipelinePluginContractError("retrieval_policy.anchor_binding.enabled must be a boolean")
+    anchor_fields = _validate_optional_string_list(raw_binding.get("anchor_fields"), key="anchor_binding.anchor_fields")
+    slot_fields = _validate_optional_string_list(raw_binding.get("slot_fields"), key="anchor_binding.slot_fields")
+    for key in ("anchor_match_bonus", "anchor_mismatch_penalty", "slot_only_penalty", "anchor_slot_match_bonus"):
+        value = raw_binding.get(key)
+        if value is None:
+            continue
+        if not isinstance(value, int | float) or isinstance(value, bool) or value < 0 or value > 2:
+            raise PipelinePluginContractError(f"retrieval_policy.anchor_binding.{key} is out of range")
+    referenced_fields = (*anchor_fields, *slot_fields)
+    _validate_declared_policy_fields(
+        referenced_fields,
+        declared_fields=declared_fields,
+        key="anchor_binding",
+    )
+    _validate_policy_chunk_stage_fields(
+        referenced_fields,
+        declared_fields=declared_fields,
+        key="anchor_binding",
+    )
+
+
 def validate_retrieval_policy_metadata_fields(
     *,
     retrieval_policy: dict[str, Any] | None,
@@ -992,12 +1094,27 @@ def validate_retrieval_policy_metadata_fields(
     )
     _validate_optional_string_list(retrieval_policy.get("question_intent_terms"), key="question_intent_terms")
     _validate_optional_string_list(
+        retrieval_policy.get("mixed_intent_leading_noise_terms"),
+        key="mixed_intent_leading_noise_terms",
+    )
+    _validate_optional_string_list(
+        retrieval_policy.get("mixed_intent_subject_terms"),
+        key="mixed_intent_subject_terms",
+    )
+    _validate_optional_string_list(
         retrieval_policy.get("service_anchor_noise_terms"),
         key="service_anchor_noise_terms",
     )
     _validate_optional_string_list(
         retrieval_policy.get("service_anchor_priority_terms"),
         key="service_anchor_priority_terms",
+    )
+    _validate_retrieval_policy_service_anchor_query_rewrites(
+        retrieval_policy.get("service_anchor_query_rewrites"),
+    )
+    _validate_optional_string_list(
+        retrieval_policy.get("metadata_anchor_preflight_block_terms"),
+        key="metadata_anchor_preflight_block_terms",
     )
     question_anchor_bonus = retrieval_policy.get("question_anchor_bonus")
     if question_anchor_bonus is not None and (
@@ -1009,6 +1126,10 @@ def validate_retrieval_policy_metadata_fields(
         raise PipelinePluginContractError("retrieval_policy.question_anchor_bonus is out of range")
     _validate_retrieval_policy_response_hints(
         retrieval_policy.get("response_hints"),
+        declared_fields=declared_fields,
+    )
+    _validate_retrieval_policy_anchor_binding(
+        retrieval_policy.get("anchor_binding"),
         declared_fields=declared_fields,
     )
 

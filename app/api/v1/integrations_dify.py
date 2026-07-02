@@ -40,6 +40,8 @@ from app.models.dataset import Dataset
 from app.models.document import Document, DocumentChunk
 from app.rag.core.logging import get_logger
 from app.rag.pipeline_plugins.contracts import DISPLAY_METADATA_KEY, EVALUABLE_METADATA_KEY, INDEXED_METADATA_KEY
+from app.rag.reranker.factory import get_reranker
+from app.rag.reranker.types import RerankCandidate
 from app.rag.retrieval.planner import (
     DatasetRouteHint,
     DatasetScopePlan,
@@ -48,13 +50,17 @@ from app.rag.retrieval.planner import (
     plan_dataset_scope,
     resolve_internal_candidate_top_k,
     retrieval_policy_fallback_multiplier,
+    retrieval_policy_mixed_intent_leading_noise_terms,
+    retrieval_policy_mixed_intent_subject_terms,
     retrieval_policy_query_terms,
     retrieval_policy_response_compaction,
     retrieval_policy_service_anchor_noise_terms,
     retrieval_policy_service_anchor_priority_terms,
+    retrieval_policy_service_anchor_query_rewrite_terms,
 )
 from app.rag.retrieval.plugin_policy import (
     filter_records_by_retrieval_policy_alignment,
+    record_retrieval_policy_anchor_binding_scores,
     record_retrieval_policy_bonus,
     records_retrieval_policy_diagnostics,
 )
@@ -80,7 +86,9 @@ _SCORE_KEYS = (
     "vector_score",
     "bm25_score",
     "keyword_score",
+    "mimirq_score",
 )
+_METADATA_SCORE_KEYS = tuple(key for key in _SCORE_KEYS if key != "score")
 _METADATA_KEYS = (
     "document_id",
     "chunk_id",
@@ -109,6 +117,13 @@ _METADATA_KEYS = (
 _PUBLIC_METADATA_VIEW_KEYS = (EVALUABLE_METADATA_KEY, DISPLAY_METADATA_KEY)
 _RETRIEVAL_METADATA_VIEW_KEYS = (INDEXED_METADATA_KEY, *_PUBLIC_METADATA_VIEW_KEYS)
 _RETRIEVAL_INTENT_KEYS = ("retrieval_intents", "query_intents", "intent_terms")
+_EXACT_QUERY_ANCHOR_FIELDS = (
+    "question",
+    "primary_alias",
+    "aliases",
+    "source_topic",
+    "title",
+)
 _METADATA_ANCHOR_KEYS = (
     "question",
     "aliases",
@@ -153,6 +168,56 @@ _QUESTION_ANCHOR_NEAR_MATCH_MIN_RATIO = 0.86
 _QUESTION_ANCHOR_BIGRAM_MIN_OVERLAP = 3
 _QUESTION_ANCHOR_BIGRAM_MIN_RATIO = 0.5
 _QUESTION_ANCHOR_QUERY_MARKERS = ("是否", "能否", "可否", "什么是", "为什么", "怎么", "如何", "哪里", "吗", "？", "?")
+_EXPLICIT_QUESTION_FORM_MARKERS = ("请问", "是否", "能否", "可否", "吗", "？", "?", "什么是", "为什么")
+_MIXED_INTENT_QUERY_MARKERS = (
+    "另外",
+    "同时",
+    "以及",
+    "并且",
+    "还想",
+    "还要",
+    "一次知道",
+    "分别",
+    "顺便",
+    "合并回答",
+    "一并回答",
+    "一起回答",
+    "分别回答",
+    "分开回答",
+    "请合并",
+    "请分别",
+)
+_MIXED_INTENT_DEFAULT_LEADING_NOISE_TERMS = (
+    "关于",
+    "回答",
+    "告诉我",
+    "先帮我看下",
+    "帮我看下",
+    "看下",
+    "请同时说明",
+    "请说明",
+    "说明",
+    "请",
+)
+_MIXED_INTENT_SPLIT_RE = re.compile(
+    r"(?:[，,。；;、：:]\s*)?"
+    r"(?:另外|同时|以及|并且|还想|还要|一次知道|分别|顺便|请合并回答|请分别回答|合并回答|一并回答|一起回答|分别回答|分开回答|请合并|请分别)\s*"
+    r"|[；;]"
+)
+_MIXED_INTENT_LIST_SPLIT_RE = re.compile(r"[、,，/]|以及|或者|或|和")
+_MIXED_INTENT_SUBJECT_TRAILING_INSTRUCTION_RE = re.compile(
+    r"(?:[，,、：:；;]\s*)?"
+    r"(?:请|麻烦|帮我|帮忙)?"
+    r"(?:合并回答|一并回答|一起回答|分别回答|分开回答|同时说明|说明一下|告诉我|给一下|列一下|回答)\s*$"
+)
+_QUOTED_ANCHOR_RE = re.compile(
+    r'"([^"]{3,80})"'
+    r"|“([^”]{3,80})”"
+    r"|「([^」]{3,80})」"
+    r"|『([^』]{3,80})』"
+    r"|《([^》]{3,80})》"
+    r"|'([^']{3,80})'"
+)
 _QUESTION_ANCHOR_SHORT_QUERY_MIN_CHARS = 4
 _QUESTION_ANCHOR_SHORT_QUERY_MAX_CHARS = 24
 _METADATA_ANCHOR_DB_FALLBACK_MIN_SCORE = 0.72
@@ -191,6 +256,16 @@ def _resolve_internal_candidate_top_k(requested_top_k: int) -> int:
         multiplier=getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MULTIPLIER", 4),
         maximum=getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX", 50),
     )
+
+
+def _resolve_mixed_intent_subquery_top_k(*, response_top_k: int, candidate_top_k: int) -> int:
+    try:
+        configured = int(
+            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUBQUERY_TOP_K", response_top_k) or response_top_k
+        )
+    except (TypeError, ValueError):
+        configured = int(response_top_k or 1)
+    return max(1, min(max(1, int(candidate_top_k or 1)), max(1, configured)))
 
 
 class _DifyErrorRoute(APIRoute):
@@ -527,6 +602,11 @@ def _dify_response_cache_settings_signature() -> dict[str, Any]:
             getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_RELATIVE_SCORE_FLOOR", 0.65) or 0.0
         ),
         "compact_min_records": int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_RECORDS", 1) or 1),
+        "enable_reranker": bool(getattr(settings, "ENABLE_RERANKER", False)),
+        "dify_reranker_enabled": bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_RERANKER_ENABLED", True)),
+        "reranker_provider": str(getattr(settings, "RERANKER_PROVIDER", "") or ""),
+        "reranker_model": str(getattr(settings, "RERANKER_MODEL", "") or ""),
+        "reranker_top_n": int(getattr(settings, "RERANKER_TOP_N", 20) or 20),
         "metadata_anchor_enabled": bool(
             getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED", False)
         ),
@@ -538,6 +618,15 @@ def _dify_response_cache_settings_signature() -> dict[str, Any]:
         ),
         "metadata_anchor_text_scan_enabled": bool(
             getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_TEXT_SCAN_ENABLED", False)
+        ),
+        "mixed_intent_supplement_enabled": bool(
+            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUPPLEMENT_ENABLED", True)
+        ),
+        "mixed_intent_max_subqueries": int(
+            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_MAX_SUBQUERIES", 4) or 4
+        ),
+        "mixed_intent_subquery_top_k": int(
+            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUBQUERY_TOP_K", 0) or 0
         ),
         "kg_on_demand_enabled": bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_KG_ON_DEMAND_ENABLED", True)),
         "kg_query_expansion_default": bool(
@@ -1016,6 +1105,11 @@ def _citation_score(citation: dict[str, Any]) -> float:
     for key in _SCORE_KEYS:
         if citation.get(key) is not None:
             return _clamp_score(citation.get(key))
+    metadata = citation.get("metadata")
+    if isinstance(metadata, dict):
+        for key in _METADATA_SCORE_KEYS:
+            if metadata.get(key) is not None:
+                return _clamp_score(metadata.get(key))
     return 0.0
 
 
@@ -1330,14 +1424,22 @@ def _metadata_answer_highlights(metadata: dict[str, Any], *, response_hints: dic
         highlights.append(value)
 
     highlight_keys = _response_hint_string_list(response_hints, "answer_highlight_metadata")
+    field_specs = _response_hint_dict_list(response_hints, "answer_highlight_metadata_fields")
+    answer_field_configured = "answer" in highlight_keys or any(
+        str(spec.get("metadata") or spec.get("key") or spec.get("field") or "").strip() == "answer"
+        for spec in field_specs
+    )
     for layer in [metadata, *[metadata.get(key) for key in _PUBLIC_METADATA_VIEW_KEYS]]:
         if not isinstance(layer, dict):
             continue
+        if not answer_field_configured:
+            for value in _metadata_terms(layer.get("answer")):
+                add(f"答案：{_clamp_hint_value(value, limit=1600)}")
         for key in highlight_keys:
             for value in _metadata_terms(layer.get(key)):
                 text = _clamp_hint_value(value)
                 add(text)
-        for field_spec in _response_hint_dict_list(response_hints, "answer_highlight_metadata_fields"):
+        for field_spec in field_specs:
             if not _response_hint_metadata_conditions_match(layer, field_spec):
                 continue
             metadata_key = str(field_spec.get("metadata") or field_spec.get("key") or "").strip()
@@ -1472,6 +1574,650 @@ def _query_prefers_service_anchor(query: str, *, policy_plugin_refs: tuple[str, 
         if normalized in query_term:
             return True
     return False
+
+
+def _query_has_mixed_intent(query: str) -> bool:
+    text = str(query or "").strip()
+    if not text:
+        return False
+    if any(marker in text for marker in _MIXED_INTENT_QUERY_MARKERS):
+        return True
+    return len(_mixed_intent_segment_parts(text)) >= 2 and bool(re.search(r"[？?。.]?$", text))
+
+
+def _query_has_mixed_intent_for_policy(query: str, *, policy_plugin_refs: tuple[str, ...] = ()) -> bool:
+    if _query_has_mixed_intent(query):
+        return True
+    requested_slots = _requested_policy_slot_specs_for_query(query, policy_plugin_refs=policy_plugin_refs)
+    return len({(field, value) for field, value in requested_slots}) >= 2
+
+
+def _query_has_explicit_question_form(query: str) -> bool:
+    text = str(query or "").strip()
+    return bool(text) and any(marker in text for marker in _EXPLICIT_QUESTION_FORM_MARKERS)
+
+
+def _query_has_quoted_anchor_candidate(query: str) -> bool:
+    text = str(query or "").strip()
+    if not text:
+        return False
+    for match in _QUOTED_ANCHOR_RE.finditer(text):
+        if len(_normalize_match_term(_quoted_anchor_match_text(match))) >= 4:
+            return True
+    return False
+
+
+def _quoted_anchor_match_text(match: re.Match[str]) -> str:
+    for group in match.groups():
+        text = str(group or "").strip()
+        if text:
+            return text
+    return ""
+
+
+def _quoted_query_anchor_display_terms(query: str) -> tuple[str, ...]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for match in _QUOTED_ANCHOR_RE.finditer(str(query or "")):
+        text = match.group(0).strip()
+        normalized = _normalize_match_term(_quoted_anchor_match_text(match))
+        if len(normalized) >= 4 and normalized not in seen:
+            seen.add(normalized)
+            out.append(text)
+    return tuple(out)
+
+
+def _quoted_query_anchor_terms(query: str) -> tuple[str, ...]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for match in _QUOTED_ANCHOR_RE.finditer(str(query or "")):
+        normalized = _normalize_match_term(_quoted_anchor_match_text(match))
+        if len(normalized) >= 4 and normalized not in seen:
+            seen.add(normalized)
+            out.append(normalized)
+    return tuple(out)
+
+
+def _record_matches_quoted_query_anchor(record: dict[str, Any], *, query: str) -> bool:
+    return _record_matches_quoted_query_anchor_for_policy(record, query=query)
+
+
+def _record_matches_quoted_query_anchor_for_policy(
+    record: dict[str, Any],
+    *,
+    query: str,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> bool:
+    anchors = _quoted_query_anchor_terms(query)
+    if not anchors:
+        return True
+    values: list[str] = [str(record.get("content") or ""), str(record.get("title") or "")]
+    anchor_fields = _exact_query_anchor_fields_for_policy_refs(policy_plugin_refs)
+    for metadata in _iter_record_metadata_layers(record):
+        for field in anchor_fields:
+            values.extend(_metadata_terms(metadata.get(field)))
+    normalized_values = [_normalize_match_term(value) for value in values if value]
+    return any(anchor in value or value in anchor for anchor in anchors for value in normalized_values if value)
+
+
+def _anchor_binding_fields_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
+    fields: list[str] = []
+    seen: set[str] = set()
+    for plugin_ref in policy_plugin_refs or ():
+        policy = _retrieval_policy_for_plugin_ref(plugin_ref)
+        if not isinstance(policy, dict) or policy.get("schema") != "mimirq.retrieval_policy.v1":
+            continue
+        raw_binding = policy.get("anchor_binding")
+        if isinstance(raw_binding, dict) and raw_binding.get("enabled") is True:
+            for field in _metadata_terms(raw_binding.get("anchor_fields")):
+                normalized = _normalize_match_term(field)
+                if normalized and field not in seen:
+                    seen.add(field)
+                    fields.append(field)
+        raw_anchor_fields = policy.get("anchor_fields")
+        if isinstance(raw_anchor_fields, list | tuple):
+            for raw in raw_anchor_fields:
+                raw_dict = dict(raw) if isinstance(raw, dict) else {}
+                field = str(raw_dict.get("metadata") or "").strip()
+                normalized = _normalize_match_term(field)
+                if normalized and field not in seen:
+                    seen.add(field)
+                    fields.append(field)
+    return tuple(fields)
+
+
+def _exact_query_anchor_fields_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
+    fields: list[str] = []
+    seen: set[str] = set()
+    for field in (*_EXACT_QUERY_ANCHOR_FIELDS, *_anchor_binding_fields_for_policy_refs(policy_plugin_refs)):
+        text = str(field or "").strip()
+        if text and text not in seen:
+            seen.add(text)
+            fields.append(text)
+    return tuple(fields)
+
+
+def _policy_slot_intent_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
+    terms: list[str] = []
+    seen: set[str] = set()
+    for plugin_ref in policy_plugin_refs or ():
+        policy = _retrieval_policy_for_plugin_ref(plugin_ref)
+        if not isinstance(policy, dict) or policy.get("schema") != "mimirq.retrieval_policy.v1":
+            continue
+        for raw_mapping in policy.get("query_expansion_values") or ():
+            mapping = dict(raw_mapping) if isinstance(raw_mapping, dict) else {}
+            for raw_term in mapping.get("terms") or ():
+                term = str(raw_term or "").strip()
+                normalized = _normalize_match_term(term)
+                if len(normalized) < 3 or normalized in seen:
+                    continue
+                seen.add(normalized)
+                terms.append(term)
+    return tuple(terms)
+
+
+def _metadata_anchor_preflight_block_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
+    terms: list[str] = []
+    seen: set[str] = set()
+    for plugin_ref in policy_plugin_refs or ():
+        policy = _retrieval_policy_for_plugin_ref(plugin_ref)
+        if not isinstance(policy, dict) or policy.get("schema") != "mimirq.retrieval_policy.v1":
+            continue
+        for raw_term in _response_hint_string_list(policy, "metadata_anchor_preflight_block_terms"):
+            term = str(raw_term or "").strip()
+            normalized = _normalize_match_term(term)
+            if not term or not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            terms.append(term)
+    return tuple(terms)
+
+
+def _query_blocks_metadata_anchor_preflight(
+    query: str,
+    *,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> bool:
+    query_term = _normalize_match_term(query)
+    if not query_term:
+        return False
+    return any(
+        (normalized := _normalize_match_term(term)) and normalized in query_term
+        for term in _metadata_anchor_preflight_block_terms_for_policy_refs(policy_plugin_refs)
+    )
+
+
+def _requested_policy_slot_values_for_query(
+    query: str,
+    *,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> tuple[str, ...]:
+    values: list[str] = []
+    seen: set[str] = set()
+    for _field, value in _requested_policy_slot_specs_for_query(query, policy_plugin_refs=policy_plugin_refs):
+        normalized_value = _normalize_match_term(value)
+        if not value or not normalized_value or normalized_value in seen:
+            continue
+        seen.add(normalized_value)
+        values.append(value)
+    return tuple(values)
+
+
+def _requested_policy_slot_specs_for_query(
+    query: str,
+    *,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> tuple[tuple[str, str], ...]:
+    query_term = _normalize_match_term(query)
+    if len(query_term) < 3:
+        return ()
+    specs: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for plugin_ref in policy_plugin_refs or ():
+        policy = _retrieval_policy_for_plugin_ref(plugin_ref)
+        if not isinstance(policy, dict) or policy.get("schema") != "mimirq.retrieval_policy.v1":
+            continue
+        for raw_mapping in policy.get("query_expansion_values") or ():
+            mapping = dict(raw_mapping) if isinstance(raw_mapping, dict) else {}
+            field = str(mapping.get("metadata") or "").strip()
+            if not field:
+                continue
+            raw_values = mapping.get("values") if isinstance(mapping.get("values"), list | tuple | set) else None
+            slot_values = raw_values or [mapping.get("value")]
+            terms = tuple(_metadata_terms(mapping.get("terms")))
+            if not terms:
+                continue
+            if not any((normalized := _normalize_match_term(term)) and normalized in query_term for term in terms):
+                continue
+            for raw_value in slot_values:
+                value = str(raw_value or "").strip()
+                normalized_value = _normalize_match_term(value)
+                key = f"{field}\0{normalized_value}"
+                if not value or not normalized_value or key in seen:
+                    continue
+                seen.add(key)
+                specs.append((field, value))
+    return tuple(specs)
+
+
+def _query_has_policy_slot_intent(query: str, *, policy_plugin_refs: tuple[str, ...] = ()) -> bool:
+    query_term = _normalize_match_term(query)
+    if len(query_term) < 3:
+        return False
+    for term in _policy_slot_intent_terms_for_policy_refs(policy_plugin_refs):
+        normalized = _normalize_match_term(term)
+        if len(normalized) >= 3 and normalized in query_term:
+            return True
+    return False
+
+
+def _query_allows_metadata_anchor_preflight(
+    query: str,
+    *,
+    query_prefers_question_anchor: bool,
+    query_prefers_service_anchor: bool,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> bool:
+    if _query_blocks_metadata_anchor_preflight(query, policy_plugin_refs=policy_plugin_refs):
+        return False
+    if _query_has_mixed_intent_for_policy(query, policy_plugin_refs=policy_plugin_refs):
+        return bool(
+            _query_has_quoted_anchor_candidate(query)
+            and (
+                query_prefers_service_anchor
+                or _query_has_policy_slot_intent(query, policy_plugin_refs=policy_plugin_refs)
+            )
+        )
+    if (
+        query_prefers_question_anchor
+        and not query_prefers_service_anchor
+        and _query_has_policy_slot_intent(query, policy_plugin_refs=policy_plugin_refs)
+        ):
+        return False
+    return bool(query_prefers_question_anchor or query_prefers_service_anchor)
+
+
+def _metadata_anchor_should_query_question_first(
+    query: str,
+    *,
+    query_prefers_question_anchor: bool,
+    query_prefers_service_anchor: bool,
+    prefer_question_anchor_first: bool,
+) -> bool:
+    if not query_prefers_question_anchor:
+        return False
+    if query_prefers_service_anchor and _query_has_quoted_anchor_candidate(query):
+        return False
+    return bool(
+        prefer_question_anchor_first
+        or not query_prefers_service_anchor
+        or _query_has_explicit_question_form(query)
+    )
+
+
+def _strip_mixed_intent_noise(value: str, *, terms: tuple[str, ...]) -> str:
+    text = str(value or "").strip(_SERVICE_ANCHOR_QUERY_TRAILING_CHARS)
+    previous = None
+    while previous != text:
+        previous = text
+        for term in sorted(terms, key=len, reverse=True):
+            if text.startswith(term):
+                text = text[len(term) :].strip(_SERVICE_ANCHOR_QUERY_TRAILING_CHARS)
+                break
+    return text
+
+
+def _strip_mixed_intent_subject_instruction_tail(value: str) -> str:
+    text = str(value or "").strip(_SERVICE_ANCHOR_QUERY_TRAILING_CHARS)
+    previous = None
+    while previous != text:
+        previous = text
+        text = _MIXED_INTENT_SUBJECT_TRAILING_INSTRUCTION_RE.sub("", text).strip(_SERVICE_ANCHOR_QUERY_TRAILING_CHARS)
+    return text
+
+
+def _mixed_intent_subject_anchor(segment: str, *, policy_plugin_refs: tuple[str, ...] = ()) -> str:
+    text = _strip_mixed_intent_noise(
+        segment,
+        terms=_mixed_intent_leading_noise_terms_for_policy_refs(policy_plugin_refs),
+    )
+    if not text:
+        return ""
+    best_index = len(text)
+    intent_markers = _mixed_intent_subject_terms_for_policy_refs(policy_plugin_refs)
+    for marker in sorted((str(item or "").strip() for item in intent_markers), key=len, reverse=True):
+        if not marker:
+            continue
+        index = text.find(marker)
+        if index >= 0:
+            best_index = min(best_index, index)
+    anchor = _strip_mixed_intent_subject_instruction_tail(text[:best_index])
+    if any(marker in anchor for marker in ("/", "线上", "线下")):
+        return ""
+    return anchor if len(_normalize_match_term(anchor)) >= 3 else ""
+
+
+def _clean_mixed_intent_query_segment(segment: str, *, policy_plugin_refs: tuple[str, ...] = ()) -> str:
+    return _strip_mixed_intent_noise(
+        segment,
+        terms=_mixed_intent_leading_noise_terms_for_policy_refs(policy_plugin_refs),
+    )
+
+
+def _mixed_intent_retrieval_queries(
+    query: str,
+    *,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> tuple[str, ...]:
+    text = str(query or "").strip()
+    if not _query_has_mixed_intent_for_policy(text, policy_plugin_refs=policy_plugin_refs):
+        return ()
+
+    max_queries = max(
+        1,
+        min(
+            5,
+            int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_MAX_SUBQUERIES", 4) or 4),
+        ),
+    )
+    out: list[str] = []
+    seen: set[str] = {_normalize_match_term(text)}
+    quoted_subject_anchor = next(iter(_quoted_query_anchor_display_terms(text)), "")
+    subject_anchor = quoted_subject_anchor
+    for raw_segment in _MIXED_INTENT_SPLIT_RE.split(text):
+        for raw_part in _mixed_intent_segment_parts(raw_segment):
+            segment = _clean_mixed_intent_query_segment(raw_part, policy_plugin_refs=policy_plugin_refs)
+            normalized_segment = _normalize_match_term(segment)
+            if len(normalized_segment) < 3 and not (
+                subject_anchor and _mixed_intent_segment_has_intent_marker(segment, policy_plugin_refs=policy_plugin_refs)
+            ):
+                continue
+            segment_has_intent_marker = _mixed_intent_segment_has_intent_marker(
+                segment,
+                policy_plugin_refs=policy_plugin_refs,
+            )
+            segment_anchor = _mixed_intent_subject_anchor(segment, policy_plugin_refs=policy_plugin_refs)
+            if segment_anchor and not quoted_subject_anchor:
+                subject_anchor = segment_anchor
+                if not segment_has_intent_marker:
+                    continue
+                candidate = segment
+            elif subject_anchor:
+                if not segment_has_intent_marker:
+                    continue
+                candidate = f"{subject_anchor}{segment}"
+            else:
+                candidate = segment
+            normalized = _normalize_match_term(candidate)
+            if len(normalized) < 4 or normalized in seen:
+                continue
+            seen.add(normalized)
+            out.append(candidate)
+            if len(out) >= max_queries:
+                break
+            for expanded_candidate in _mixed_intent_policy_slot_queries(
+                segment=segment,
+                subject_anchor=subject_anchor,
+                policy_plugin_refs=policy_plugin_refs,
+            ):
+                normalized_expanded = _normalize_match_term(expanded_candidate)
+                if len(normalized_expanded) < 4 or normalized_expanded in seen:
+                    continue
+                seen.add(normalized_expanded)
+                out.append(expanded_candidate)
+                if len(out) >= max_queries:
+                    break
+        if len(out) >= max_queries:
+            break
+    for fallback_query in _mixed_intent_policy_slot_queries_from_inferred_subject(
+        text,
+        policy_plugin_refs=policy_plugin_refs,
+    ):
+        normalized_fallback = _normalize_match_term(fallback_query)
+        if len(normalized_fallback) < 4 or normalized_fallback in seen:
+            continue
+        seen.add(normalized_fallback)
+        out.append(fallback_query)
+        if len(out) >= max_queries:
+            break
+    return tuple(out)
+
+
+def _mixed_intent_policy_slot_queries_from_inferred_subject(
+    query: str,
+    *,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> tuple[str, ...]:
+    requested_slots = _requested_policy_slot_specs_for_query(query, policy_plugin_refs=policy_plugin_refs)
+    if len({(field, value) for field, value in requested_slots}) < 2:
+        return ()
+    subject = _infer_mixed_intent_subject_anchor(query, policy_plugin_refs=policy_plugin_refs)
+    if len(_normalize_match_term(subject)) < 3:
+        return ()
+
+    out: list[str] = []
+    seen_values: set[tuple[str, str]] = set()
+    for field, value in requested_slots:
+        key = (field, value)
+        if key in seen_values:
+            continue
+        seen_values.add(key)
+        term = _policy_slot_canonical_query_term(field=field, value=value, policy_plugin_refs=policy_plugin_refs)
+        if not term:
+            continue
+        out.append(f"{subject}{term}")
+    return tuple(out)
+
+
+def _infer_mixed_intent_subject_anchor(query: str, *, policy_plugin_refs: tuple[str, ...] = ()) -> str:
+    quoted_subject = next(iter(_quoted_query_anchor_display_terms(query)), "")
+    if quoted_subject:
+        return quoted_subject
+    direct_subject = _mixed_intent_subject_anchor(query, policy_plugin_refs=policy_plugin_refs)
+    if direct_subject:
+        return direct_subject
+    parts = _mixed_intent_segment_parts(query)
+    for part in reversed(parts):
+        cleaned = _clean_mixed_intent_query_segment(part, policy_plugin_refs=policy_plugin_refs)
+        if not _mixed_intent_segment_has_intent_marker(cleaned, policy_plugin_refs=policy_plugin_refs):
+            normalized = _normalize_match_term(cleaned)
+            if len(normalized) >= 3:
+                return cleaned.strip(_SERVICE_ANCHOR_QUERY_TRAILING_CHARS)
+    return ""
+
+
+def _policy_slot_canonical_query_term(
+    *,
+    field: str,
+    value: str,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> str:
+    normalized_field = str(field or "").strip()
+    normalized_value = _normalize_match_term(value)
+    if not normalized_field or not normalized_value:
+        return ""
+    for plugin_ref in policy_plugin_refs or ():
+        policy = _retrieval_policy_for_plugin_ref(plugin_ref)
+        if not isinstance(policy, dict) or policy.get("schema") != "mimirq.retrieval_policy.v1":
+            continue
+        mappings = [
+            dict(raw_mapping)
+            for raw_mapping in policy.get("query_expansion_values") or ()
+            if isinstance(raw_mapping, dict)
+        ]
+        mappings.sort(key=lambda mapping: 1 if isinstance(mapping.get("values"), list | tuple | set) else 0)
+        for mapping in mappings:
+            if str(mapping.get("metadata") or "").strip() != normalized_field:
+                continue
+            raw_values = mapping.get("values") if isinstance(mapping.get("values"), list | tuple | set) else None
+            values = raw_values or [mapping.get("value")]
+            if normalized_value not in {_normalize_match_term(item) for item in values}:
+                continue
+            terms = tuple(_metadata_terms(mapping.get("terms")))
+            return next((term for term in terms if len(_normalize_match_term(term)) >= 2), "")
+    return str(value or "").strip()
+
+
+def _policy_slot_query_terms(
+    *,
+    field: str,
+    value: str,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> tuple[str, ...]:
+    normalized_field = str(field or "").strip()
+    normalized_value = _normalize_match_term(value)
+    if not normalized_field or not normalized_value:
+        return ()
+    out: list[str] = []
+    seen: set[str] = set()
+    for plugin_ref in policy_plugin_refs or ():
+        policy = _retrieval_policy_for_plugin_ref(plugin_ref)
+        if not isinstance(policy, dict) or policy.get("schema") != "mimirq.retrieval_policy.v1":
+            continue
+        for raw_mapping in policy.get("query_expansion_values") or ():
+            mapping = dict(raw_mapping) if isinstance(raw_mapping, dict) else {}
+            if str(mapping.get("metadata") or "").strip() != normalized_field:
+                continue
+            raw_values = mapping.get("values") if isinstance(mapping.get("values"), list | tuple | set) else None
+            values = raw_values or [mapping.get("value")]
+            if normalized_value not in {_normalize_match_term(item) for item in values}:
+                continue
+            for raw_term in (*_metadata_terms(mapping.get("terms")), value):
+                term = str(raw_term or "").strip()
+                normalized = _normalize_match_term(term)
+                if len(normalized) < 2 or normalized in seen:
+                    continue
+                seen.add(normalized)
+                out.append(term)
+    return tuple(out)
+
+
+def _record_policy_slot_coverage_text(record: dict[str, Any]) -> str:
+    parts: list[str] = [str(record.get("title") or ""), str(record.get("content") or "")]
+    for metadata in _iter_record_metadata_layers(record):
+        for value in metadata.values():
+            parts.extend(str(term or "") for term in _metadata_terms(value))
+    return _normalize_match_term("\n".join(part for part in parts if part))
+
+
+def _record_covers_requested_policy_slots(
+    record: dict[str, Any],
+    requested_slot_specs: tuple[tuple[str, str], ...],
+    *,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> bool:
+    requested_norms = tuple(
+        dict.fromkeys(
+            (field, _normalize_match_term(value))
+            for field, value in requested_slot_specs
+            if field and _normalize_match_term(value)
+        )
+    )
+    if not requested_norms:
+        return True
+    record_text = _record_policy_slot_coverage_text(record)
+    for field, normalized_value in requested_norms:
+        value = next((raw_value for raw_field, raw_value in requested_slot_specs if raw_field == field and _normalize_match_term(raw_value) == normalized_value), "")
+        if _record_matches_requested_slot(record, ((field, value),)):
+            continue
+        terms = _policy_slot_query_terms(field=field, value=value, policy_plugin_refs=policy_plugin_refs)
+        if not any((normalized := _normalize_match_term(term)) and normalized in record_text for term in terms):
+            return False
+    return True
+
+
+def _mixed_intent_policy_slot_queries(
+    *,
+    segment: str,
+    subject_anchor: str,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> tuple[str, ...]:
+    segment_term = _normalize_match_term(segment)
+    subject = str(subject_anchor or "").strip(_SERVICE_ANCHOR_QUERY_TRAILING_CHARS)
+    if len(segment_term) < 3 or len(_normalize_match_term(subject)) < 3:
+        return ()
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for plugin_ref in policy_plugin_refs or ():
+        policy = _retrieval_policy_for_plugin_ref(plugin_ref)
+        if not isinstance(policy, dict) or policy.get("schema") != "mimirq.retrieval_policy.v1":
+            continue
+        mappings = [dict(item) for item in policy.get("query_expansion_values") or () if isinstance(item, dict)]
+        canonical_terms_by_value: dict[str, list[str]] = {}
+        for mapping in mappings:
+            if "values" in mapping:
+                continue
+            value = str(mapping.get("value") or "").strip()
+            if value:
+                canonical_terms_by_value.setdefault(value, []).extend(_metadata_terms(mapping.get("terms")))
+        for mapping in mappings:
+            mapping_terms = tuple(_metadata_terms(mapping.get("terms")))
+            if not any((normalized := _normalize_match_term(term)) and normalized in segment_term for term in mapping_terms):
+                continue
+            raw_values = mapping.get("values") if isinstance(mapping.get("values"), list | tuple | set) else None
+            for raw_value in raw_values or [mapping.get("value")]:
+                value = str(raw_value or "").strip()
+                if not value:
+                    continue
+                if any(
+                    (normalized := _normalize_match_term(term)) and normalized in segment_term
+                    for term in canonical_terms_by_value.get(value, [])
+                ):
+                    continue
+                canonical_term = next(
+                    (
+                        term
+                        for term in canonical_terms_by_value.get(value, [])
+                        if (normalized := _normalize_match_term(term)) and normalized not in segment_term
+                    ),
+                    "",
+                )
+                normalized_canonical = _normalize_match_term(canonical_term)
+                if len(normalized_canonical) < 2 or normalized_canonical in seen:
+                    continue
+                seen.add(normalized_canonical)
+                out.append(f"{subject}{canonical_term}")
+    return tuple(out)
+
+
+def _mixed_intent_segment_parts(segment: str) -> tuple[str, ...]:
+    text = str(segment or "").strip()
+    if not text:
+        return ()
+    return tuple(part.strip() for part in _MIXED_INTENT_LIST_SPLIT_RE.split(text) if part.strip())
+
+
+def _mixed_intent_segment_has_intent_marker(segment: str, *, policy_plugin_refs: tuple[str, ...] = ()) -> bool:
+    text = str(segment or "").strip()
+    if not text:
+        return False
+    markers = _mixed_intent_subject_terms_for_policy_refs(policy_plugin_refs)
+    if not markers:
+        return True
+    return any(marker and marker in text for marker in markers)
+
+
+def _filter_records_by_mixed_intent_subject_anchor(
+    records: list[dict[str, Any]],
+    *,
+    subquery: str,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> list[dict[str, Any]]:
+    subject_anchor = _mixed_intent_subject_anchor(subquery, policy_plugin_refs=policy_plugin_refs)
+    normalized_anchor = _normalize_match_term(subject_anchor)
+    if len(normalized_anchor) < 3:
+        return records
+    anchored: list[dict[str, Any]] = []
+    for record in records or []:
+        for metadata in _iter_record_metadata_layers(record):
+            values: list[str] = []
+            for key in _exact_query_anchor_fields_for_policy_refs(policy_plugin_refs):
+                values.extend(_metadata_terms(metadata.get(key)))
+            if any(normalized_anchor in _normalize_match_term(value) for value in values):
+                anchored.append(record)
+                break
+    return anchored or records
 
 
 def _question_marker_overlap_bonus(query_term: str, candidate: str) -> float:
@@ -1735,10 +2481,15 @@ def _content_with_answer_hints(
         if enumerated_prefix and not body.startswith(enumerated_prefix):
             return f"{enumerated_prefix}\n\n{body}"
         return body
+    metadata_hints = _metadata_answer_highlights(metadata, response_hints=response_hints)
     fields = _structured_fields_from_content(body, response_hints=response_hints)
-    if fields and not _matching_response_hint_group(fields, metadata, response_hints=response_hints, query=query):
+    if (
+        fields
+        and not metadata_hints
+        and not _matching_response_hint_group(fields, metadata, response_hints=response_hints, query=query)
+    ):
         return body
-    hints = _metadata_answer_highlights(metadata, response_hints=response_hints) or _answer_hints_from_fields(
+    hints = metadata_hints or _answer_hints_from_fields(
         fields,
         metadata,
         response_hints=response_hints,
@@ -1810,6 +2561,42 @@ def _record_intent_bonus(
         if folded and (folded in query_text or query_text in folded):
             matches += 1
     return min(_INTENT_MATCH_BONUS * matches, _INTENT_MATCH_BONUS_MAX)
+
+
+def _record_mixed_intent_subquery_bonus(
+    record: dict[str, Any],
+    *,
+    query: str,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> float:
+    if not _query_has_mixed_intent_for_policy(query, policy_plugin_refs=policy_plugin_refs):
+        return 0.0
+    query_term = _normalize_match_term(query)
+    best = 0.0
+    for metadata in _iter_record_metadata_layers(record):
+        subquery = str(metadata.get("dify_mixed_intent_subquery") or "").strip()
+        if not subquery:
+            continue
+        subquery_term = _normalize_match_term(subquery)
+        if not subquery_term or subquery_term == query_term:
+            continue
+        question_bonus = _record_question_intent_bonus(
+            record,
+            query=subquery,
+            policy_plugin_refs=policy_plugin_refs,
+        )
+        subquery_bonus = (
+            0.1
+            + _record_metadata_anchor_bonus(record, query=subquery)
+            + _record_intent_bonus(record, query=subquery, policy_plugin_refs=policy_plugin_refs)
+            + question_bonus
+        )
+        subquery_cap = 1.4 if question_bonus > 0 else 0.24
+        best = max(
+            best,
+            min(subquery_bonus, subquery_cap),
+        )
+    return min(best, 1.4)
 
 
 def _record_metadata_anchor_bonus(record: dict[str, Any], *, query: str) -> float:
@@ -1897,6 +2684,58 @@ def _service_anchor_priority_terms_for_policy_refs(policy_plugin_refs: tuple[str
     return tuple(terms)
 
 
+def _service_anchor_query_rewrite_terms_for_policy_refs(query: str, policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
+    terms: list[str] = []
+    seen: set[str] = set()
+    for plugin_ref in policy_plugin_refs or ():
+        policy = _retrieval_policy_for_plugin_ref(plugin_ref)
+        for raw_term in retrieval_policy_service_anchor_query_rewrite_terms(policy, query=query):
+            term = str(raw_term or "").strip()
+            normalized = _normalize_match_term(term)
+            if not term or not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            terms.append(term)
+    return tuple(terms)
+
+
+def _mixed_intent_leading_noise_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
+    terms: list[str] = []
+    seen: set[str] = set()
+    for raw_term in _MIXED_INTENT_DEFAULT_LEADING_NOISE_TERMS:
+        term = str(raw_term or "").strip()
+        normalized = _normalize_match_term(term)
+        if not term or not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        terms.append(term)
+    for plugin_ref in policy_plugin_refs or ():
+        policy = _retrieval_policy_for_plugin_ref(plugin_ref)
+        for raw_term in retrieval_policy_mixed_intent_leading_noise_terms(policy):
+            term = str(raw_term or "").strip()
+            normalized = _normalize_match_term(term)
+            if not term or not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            terms.append(term)
+    return tuple(terms)
+
+
+def _mixed_intent_subject_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
+    terms: list[str] = []
+    seen: set[str] = set()
+    for plugin_ref in policy_plugin_refs or ():
+        policy = _retrieval_policy_for_plugin_ref(plugin_ref)
+        for raw_term in retrieval_policy_mixed_intent_subject_terms(policy):
+            term = str(raw_term or "").strip()
+            normalized = _normalize_match_term(term)
+            if not term or not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            terms.append(term)
+    return tuple(terms)
+
+
 def _records_retrieval_policy_diagnostics(
     records: list[dict[str, Any]],
     *,
@@ -1942,7 +2781,165 @@ def _sort_records_for_query(
     query: str,
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> None:
-    records.sort(key=lambda item: _record_rank_score(item, query=query, policy_plugin_refs=policy_plugin_refs), reverse=True)
+    anchor_binding_scores = record_retrieval_policy_anchor_binding_scores(
+        records,
+        query=query,
+        plugin_ref_for_record=lambda item: _record_plugin_ref(item, fallback_plugin_refs=policy_plugin_refs),
+        metadata_layers_for_record=_iter_record_metadata_layers,
+        policy_resolver=_retrieval_policy_for_plugin_ref,
+    )
+    records.sort(
+        key=lambda item: _record_rank_score(item, query=query, policy_plugin_refs=policy_plugin_refs)
+        + anchor_binding_scores.get(id(item), 0.0),
+        reverse=True,
+    )
+
+
+def _dify_external_reranker_enabled() -> bool:
+    return bool(getattr(settings, "ENABLE_RERANKER", False)) and bool(
+        getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_RERANKER_ENABLED", True)
+    )
+
+
+def _record_needs_final_rerank(record: dict[str, Any]) -> bool:
+    metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
+    return not bool(record.get("reranker_provider") or metadata.get("reranker_provider"))
+
+
+def _record_final_rerank_candidate_id(record: dict[str, Any], *, index: int, used: set[str]) -> str:
+    metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
+    candidates = [
+        _record_source_identity_key(record),
+        str(metadata.get("chunk_id") or "").strip(),
+        str(metadata.get("document_id") or "").strip(),
+        str(record.get("title") or "").strip(),
+    ]
+    base = next((item for item in candidates if item), "")
+    if not base:
+        payload = f"{record.get('title') or ''}\n{record.get('content') or ''}"
+        base = hashlib.sha256(payload.encode("utf-8", errors="ignore")).hexdigest()[:16]
+    candidate_id = base
+    suffix = 1
+    while candidate_id in used:
+        suffix += 1
+        candidate_id = f"{base}#{suffix}"
+    used.add(candidate_id)
+    return candidate_id or f"idx:{index}"
+
+
+def _record_final_rerank_text(
+    record: dict[str, Any],
+    *,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> str:
+    parts: list[str] = []
+    seen: set[str] = set()
+
+    def add(value: Any) -> None:
+        text = str(value or "").strip()
+        if not text or text in seen:
+            return
+        seen.add(text)
+        parts.append(text)
+
+    add(record.get("title"))
+    add(record.get("content"))
+    metadata_fields = (*_EXACT_QUERY_ANCHOR_FIELDS, "answer", "summary", *_anchor_binding_fields_for_policy_refs(policy_plugin_refs))
+    for metadata in _iter_record_metadata_layers(record):
+        for field in metadata_fields:
+            for value in _metadata_terms(metadata.get(field)):
+                add(value)
+    return "\n".join(parts)
+
+
+async def _final_rerank_records_for_query(
+    records: list[dict[str, Any]],
+    *,
+    query: str,
+    top_k: int,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> list[dict[str, Any]]:
+    if len(records or []) <= 1:
+        return records
+    if not any(_record_needs_final_rerank(record) for record in records):
+        return records
+    if not _dify_external_reranker_enabled():
+        return records
+
+    provider = str(getattr(settings, "RERANKER_PROVIDER", "llm") or "llm").strip().lower()
+    if provider in {"none", "off", "false", "0"}:
+        return records
+
+    try:
+        configured_top_n = int(getattr(settings, "RERANKER_TOP_N", top_k) or top_k)
+    except (TypeError, ValueError):
+        configured_top_n = int(top_k or 1)
+    candidate_count = min(len(records), max(1, int(top_k or 1), configured_top_n))
+
+    used_ids: set[str] = set()
+    id_to_record: dict[str, dict[str, Any]] = {}
+    candidates: list[RerankCandidate] = []
+    for index, record in enumerate(records[:candidate_count]):
+        text = _record_final_rerank_text(record, policy_plugin_refs=policy_plugin_refs)
+        if not text:
+            continue
+        candidate_id = _record_final_rerank_candidate_id(record, index=index, used=used_ids)
+        metadata = dict(record.get("metadata") if isinstance(record.get("metadata"), dict) else {})
+        metadata["score"] = float(record.get("score") or 0.0)
+        metadata["title"] = str(record.get("title") or "")
+        candidates.append(RerankCandidate(id=candidate_id, text=text, metadata=metadata))
+        id_to_record[candidate_id] = record
+
+    if len(candidates) <= 1:
+        return records
+
+    try:
+        reranker = get_reranker(provider)
+        start = time.perf_counter()
+        result = await asyncio.to_thread(
+            reranker.rerank,
+            query,
+            candidates,
+            top_n=len(candidates),
+            tenant_id=None,
+            query_type=None,
+        )
+        elapsed_sec = result.elapsed_sec if result.elapsed_sec is not None else time.perf_counter() - start
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Dify external final reranker failed (%s): %s", provider, exc)
+        return records
+
+    rerank_provider = result.provider or provider
+    ordered: list[dict[str, Any]] = []
+    consumed: set[str] = set()
+    for candidate_id in result.ordered_ids:
+        record = id_to_record.get(str(candidate_id))
+        if record is None or candidate_id in consumed:
+            continue
+        consumed.add(str(candidate_id))
+        next_record = dict(record)
+        metadata = dict(next_record.get("metadata") if isinstance(next_record.get("metadata"), dict) else {})
+        metadata["reranker_provider"] = rerank_provider
+        metadata["rerank_elapsed_sec"] = round(float(elapsed_sec or 0.0), 3)
+        metadata["rerank_model_used"] = result.model_used
+        metadata["dify_final_rerank"] = True
+        if candidate_id in result.score_map:
+            rerank_score = _clamp_score(result.score_map[candidate_id])
+            metadata["rerank_score"] = rerank_score
+            next_record["score"] = rerank_score
+        next_record["metadata"] = metadata
+        ordered.append(next_record)
+
+    for candidate in candidates:
+        if candidate.id in consumed:
+            continue
+        record = id_to_record.get(candidate.id)
+        if record is not None:
+            ordered.append(record)
+
+    if not ordered:
+        return records
+    return ordered + records[candidate_count:]
 
 
 def _record_rank_score(
@@ -1959,6 +2956,7 @@ def _record_rank_score(
         + _record_url_evidence_bonus(record)
         + _record_question_intent_bonus(record, query=query, policy_plugin_refs=policy_plugin_refs)
         + _record_answerfulness_score(record, policy_plugin_refs=policy_plugin_refs)
+        + _record_mixed_intent_subquery_bonus(record, query=query, policy_plugin_refs=policy_plugin_refs)
         + record_retrieval_policy_bonus(
             record,
             query=query,
@@ -1994,9 +2992,28 @@ def _compact_records_for_response(
     top_k: int,
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> list[dict[str, Any]]:
+    if _query_has_mixed_intent_for_policy(query, policy_plugin_refs=policy_plugin_refs):
+        exact_anchor_compacted = _compact_mixed_intent_exact_anchor_records(
+            list(records or []),
+            query=query,
+            top_k=top_k,
+            policy_plugin_refs=policy_plugin_refs,
+        )
+        if exact_anchor_compacted:
+            return exact_anchor_compacted
+
     limited = list(records or [])[: max(1, int(top_k or 1))]
     if not limited:
         return []
+    if _query_has_mixed_intent_for_policy(query, policy_plugin_refs=policy_plugin_refs):
+        return limited
+    exact_anchor_answer = _compact_exact_anchor_answer_record(
+        limited,
+        query=query,
+        policy_plugin_refs=policy_plugin_refs,
+    )
+    if exact_anchor_answer:
+        return exact_anchor_answer
     compaction_enabled = bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_HIGH_CONFIDENCE_ENABLED", True))
     policy_compaction = _response_compaction_for_records(limited, policy_plugin_refs=policy_plugin_refs)
     if compaction_enabled and bool(policy_compaction.get("enabled")):
@@ -2046,6 +3063,346 @@ def _compact_records_for_response(
         ),
     )
     return list(compacted)
+
+
+def _compact_exact_anchor_answer_record(
+    records: list[dict[str, Any]],
+    *,
+    query: str,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> list[dict[str, Any]]:
+    candidates = [
+        record
+        for record in records or []
+        if _record_exact_query_anchor_terms(record, query=query, policy_plugin_refs=policy_plugin_refs)
+        and _record_content_is_answerful(record, policy_plugin_refs=policy_plugin_refs)
+        and _record_covers_requested_policy_slots(
+            record,
+            _requested_policy_slot_specs_for_query(query, policy_plugin_refs=policy_plugin_refs),
+            policy_plugin_refs=policy_plugin_refs,
+        )
+    ]
+    if not candidates:
+        return []
+    _sort_records_for_query(candidates, query=query, policy_plugin_refs=policy_plugin_refs)
+    return [candidates[0]]
+
+
+def _record_exact_query_anchor_terms(
+    record: dict[str, Any],
+    *,
+    query: str,
+    anchor_fields: tuple[str, ...] | None = None,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> tuple[str, ...]:
+    query_term = _normalize_match_term(query)
+    if len(query_term) < 4:
+        return ()
+    out: list[str] = []
+    seen: set[str] = set()
+    effective_anchor_fields = anchor_fields or _exact_query_anchor_fields_for_policy_refs(policy_plugin_refs)
+    for metadata in _iter_record_metadata_layers(record):
+        for field in effective_anchor_fields:
+            for term in _metadata_terms(metadata.get(field)):
+                normalized = _normalize_match_term(term)
+                if len(normalized) < 4 or normalized in seen:
+                    continue
+                if normalized in query_term:
+                    seen.add(normalized)
+                    out.append(normalized)
+    return tuple(out)
+
+
+def _record_section_type_values(record: dict[str, Any]) -> tuple[str, ...]:
+    return _record_slot_field_values(record, "section_type")
+
+
+def _record_slot_field_values(record: dict[str, Any], field: str) -> tuple[str, ...]:
+    out: list[str] = []
+    seen: set[str] = set()
+    field_name = str(field or "").strip()
+    if not field_name:
+        return ()
+    for metadata in _iter_record_metadata_layers(record):
+        for value in _metadata_terms(metadata.get(field_name)):
+            text = str(value or "").strip()
+            normalized = _normalize_match_term(text)
+            if not text or not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            out.append(text)
+    if field_name == "section_type":
+        for metadata in _iter_record_metadata_layers(record):
+            for value in _metadata_terms(metadata.get("section")):
+                text = str(value or "").strip()
+                normalized = _normalize_match_term(text)
+                if not text or not normalized or normalized in seen:
+                    continue
+                seen.add(normalized)
+                out.append(text)
+    return tuple(out)
+
+
+def _record_matches_requested_slot(record: dict[str, Any], requested_slot_specs: tuple[tuple[str, str], ...]) -> bool:
+    if not requested_slot_specs:
+        return False
+    for field, value in requested_slot_specs:
+        requested_value = _normalize_match_term(value)
+        if not field or not requested_value:
+            continue
+        record_values = {_normalize_match_term(item) for item in _record_slot_field_values(record, field)}
+        record_values.discard("")
+        if requested_value in record_values:
+            return True
+    return False
+
+
+def _record_has_any_requested_slot_field(
+    record: dict[str, Any],
+    requested_slot_specs: tuple[tuple[str, str], ...],
+) -> bool:
+    fields = tuple(dict.fromkeys(field for field, _value in requested_slot_specs if str(field or "").strip()))
+    return any(_record_slot_field_values(record, field) for field in fields)
+
+
+def _record_content_is_answerful(
+    record: dict[str, Any],
+    *,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> bool:
+    content = str(record.get("content") or "").strip()
+    return bool(content) and _record_has_answer_evidence(
+        record,
+        content=content,
+        policy_plugin_refs=policy_plugin_refs,
+    )
+
+
+def _compact_mixed_intent_exact_anchor_records(
+    records: list[dict[str, Any]],
+    *,
+    query: str,
+    top_k: int,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> list[dict[str, Any]]:
+    if not records:
+        return []
+    requested_slots = _requested_policy_slot_specs_for_query(query, policy_plugin_refs=policy_plugin_refs)
+
+    if requested_slots:
+        composite = _composite_record_for_exact_anchor_slots(
+            records,
+            query=query,
+            requested_slot_specs=requested_slots,
+            policy_plugin_refs=policy_plugin_refs,
+        )
+        if composite is not None:
+            return [composite]
+
+    if _query_has_quoted_anchor_candidate(query):
+        anchored_answer_records = [
+            record
+            for record in records
+            if _record_exact_query_anchor_terms(record, query=query, policy_plugin_refs=policy_plugin_refs)
+            and _record_content_is_answerful(record, policy_plugin_refs=policy_plugin_refs)
+        ]
+        if anchored_answer_records:
+            return anchored_answer_records[: max(1, int(top_k or 1))]
+
+    has_requested_slot_records = any(_record_has_any_requested_slot_field(record, requested_slots) for record in records)
+    if not has_requested_slot_records:
+        exact_anchor_answer = _compact_exact_anchor_answer_record(
+            records,
+            query=query,
+            policy_plugin_refs=policy_plugin_refs,
+        )
+        if exact_anchor_answer:
+            return exact_anchor_answer[: max(1, int(top_k or 1))]
+
+    top_record = records[0]
+    if has_requested_slot_records:
+        return []
+    if _record_has_any_requested_slot_field(top_record, requested_slots):
+        return []
+    if not _record_exact_query_anchor_terms(top_record, query=query, policy_plugin_refs=policy_plugin_refs):
+        return []
+    if not _record_content_is_answerful(top_record, policy_plugin_refs=policy_plugin_refs):
+        return []
+    return [top_record][: max(1, int(top_k or 1))]
+
+
+def _records_have_exact_anchor_full_answer(
+    records: list[dict[str, Any]],
+    *,
+    query: str,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> bool:
+    requested_slots = _requested_policy_slot_specs_for_query(query, policy_plugin_refs=policy_plugin_refs)
+    if not requested_slots:
+        return False
+    for record in records or []:
+        if _record_has_any_requested_slot_field(record, requested_slots):
+            continue
+        if not _record_exact_query_anchor_terms(record, query=query, policy_plugin_refs=policy_plugin_refs):
+            continue
+        if _record_content_is_answerful(record, policy_plugin_refs=policy_plugin_refs):
+            return True
+    return False
+
+
+def _composite_record_for_exact_anchor_slots(
+    records: list[dict[str, Any]],
+    *,
+    query: str,
+    requested_slot_specs: tuple[tuple[str, str], ...],
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> dict[str, Any] | None:
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for record in records:
+        if not _record_matches_requested_slot(record, requested_slot_specs):
+            continue
+        for anchor in _record_exact_query_anchor_terms(
+            record,
+            query=query,
+            policy_plugin_refs=policy_plugin_refs,
+        ):
+            groups.setdefault(anchor, []).append(record)
+
+    best_records: list[dict[str, Any]] = []
+    best_covered: set[tuple[str, str]] = set()
+    requested_norms = tuple(
+        (field, _normalize_match_term(value))
+        for field, value in requested_slot_specs
+        if field and _normalize_match_term(value)
+    )
+    for candidates in groups.values():
+        selected: list[dict[str, Any]] = []
+        covered: set[tuple[str, str]] = set()
+        seen_records: set[int] = set()
+        for requested_field, requested_norm in requested_norms:
+            requested_key = (requested_field, requested_norm)
+            if not requested_norm or requested_key in covered:
+                continue
+            matching_records = [
+                record
+                for record in candidates
+                if requested_norm in {
+                    _normalize_match_term(value)
+                    for value in _record_slot_field_values(record, requested_field)
+                }
+                and id(record) not in seen_records
+            ]
+            if not matching_records:
+                continue
+            for record in _ordered_section_sibling_records(matching_records):
+                if id(record) in seen_records:
+                    continue
+                selected.append(record)
+                seen_records.add(id(record))
+            covered.add(requested_key)
+        if len(covered) > len(best_covered):
+            best_records = selected
+            best_covered = covered
+
+    if len(best_records) < 2:
+        return None
+
+    first = best_records[0]
+    metadata = dict(first.get("metadata") if isinstance(first.get("metadata"), dict) else {})
+    source_chunk_ids: list[str] = []
+    source_document_ids: list[str] = []
+    for record in best_records:
+        record_metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
+        chunk_id = str(record_metadata.get("chunk_id") or "").strip()
+        document_id = str(record_metadata.get("document_id") or "").strip()
+        if chunk_id and chunk_id not in source_chunk_ids:
+            source_chunk_ids.append(chunk_id)
+        if document_id and document_id not in source_document_ids:
+            source_document_ids.append(document_id)
+    covered_specs = [
+        {"metadata": field, "value": value}
+        for field, value in requested_slot_specs
+        if (field, _normalize_match_term(value)) in best_covered
+    ]
+    composite_metadata = {
+        "dify_composite_exact_anchor_slots": True,
+        "dify_composite_slot_specs": covered_specs,
+        "dify_composite_source_chunk_ids": source_chunk_ids,
+        "dify_composite_source_document_ids": source_document_ids,
+    }
+    section_types = [spec["value"] for spec in covered_specs if spec.get("metadata") == "section_type"]
+    if section_types:
+        composite_metadata["section_type"] = "composite"
+        composite_metadata["dify_composite_section_types"] = section_types
+    metadata.update(composite_metadata)
+    score = min(1.0, max((float(record.get("score") or 0.0) for record in best_records), default=0.0) + 0.01)
+    content_parts = [
+        part
+        for part in (
+            _composite_stitched_section_text(best_records),
+            "\n\n".join(str(record.get("content") or "").strip() for record in best_records if record.get("content")),
+        )
+        if part
+    ]
+    content = "\n\n".join(content_parts)
+    return {
+        "content": content,
+        "score": score,
+        "title": str(first.get("title") or "composite-anchor-evidence"),
+        "metadata": metadata,
+    }
+
+
+def _composite_stitched_section_text(records: list[dict[str, Any]]) -> str:
+    section_texts = [
+        text
+        for text in (_composite_section_text(record) for record in records or [])
+        if text
+    ]
+    if not section_texts:
+        return ""
+    return "合并章节原文：\n" + "\n".join(section_texts)
+
+
+def _composite_section_text(record: dict[str, Any]) -> str:
+    content = str(record.get("content") or "").strip()
+    if not content:
+        return ""
+    source_text = content.split("原始证据：", 1)[-1].strip() if "原始证据：" in content else content
+    lines = [line.strip() for line in source_text.splitlines() if line.strip()]
+    if not lines:
+        return ""
+    for index, line in enumerate(lines):
+        if not line.startswith("章节："):
+            continue
+        label = line.split("：", 1)[1].strip() or line
+        body = lines[index + 1 :]
+        return "\n".join([label, *body]).strip()
+    return "\n".join(lines).strip()
+
+
+def _ordered_section_sibling_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def sequence_key(record: dict[str, Any]) -> tuple[str, str, int, int, int, float]:
+        metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
+        source_record_id = str(metadata.get("source_record_id") or "").strip()
+        section_type = str(metadata.get("section_type") or "").strip()
+        return (
+            source_record_id,
+            section_type,
+            _safe_int(metadata.get("source_chunk_index"), default=1_000_000),
+            _safe_int(metadata.get("chunk_part_index"), default=1_000_000),
+            _safe_int(metadata.get("chunk_index"), default=1_000_000),
+            -float(record.get("score") or 0.0),
+        )
+
+    return sorted(records, key=sequence_key)
+
+
+def _safe_int(value: Any, *, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def _record_answerfulness_score(record: dict[str, Any], *, policy_plugin_refs: tuple[str, ...] = ()) -> float:
@@ -2523,6 +3880,15 @@ def _records_from_citations(
     return records
 
 
+def _tag_mixed_intent_records(records: list[dict[str, Any]], *, subquery: str) -> list[dict[str, Any]]:
+    tagged: list[dict[str, Any]] = []
+    for record in records:
+        metadata = dict(record.get("metadata") if isinstance(record.get("metadata"), dict) else {})
+        metadata["dify_mixed_intent_subquery"] = subquery
+        tagged.append({**record, "metadata": metadata})
+    return tagged
+
+
 def _citation_to_dify_record(
     citation: dict[str, Any],
     *,
@@ -2577,6 +3943,7 @@ def _records_have_strong_question_anchor(
     return any(
         _record_question_anchor_strength(record, query=query, policy_plugin_refs=policy_plugin_refs)
         >= _QUESTION_ANCHOR_COMPACTION_MIN_STRENGTH
+        and _record_content_is_answerful(record, policy_plugin_refs=policy_plugin_refs)
         for record in records or []
     )
 
@@ -2588,12 +3955,14 @@ def _records_have_confident_metadata_anchor(
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> bool:
     for record in records or []:
+        if _record_metadata_anchor_bonus(record, query=query) >= 0.1:
+            return True
+        if not _record_content_is_answerful(record, policy_plugin_refs=policy_plugin_refs):
+            continue
         if (
             _record_question_anchor_strength(record, query=query, policy_plugin_refs=policy_plugin_refs)
             >= _QUESTION_ANCHOR_COMPACTION_MIN_STRENGTH
         ):
-            return True
-        if _record_metadata_anchor_bonus(record, query=query) >= 0.1:
             return True
     return False
 
@@ -2699,6 +4068,8 @@ def _metadata_anchor_service_name_query_terms(
         seen.add(normalized)
         terms.append(term)
 
+    for rewritten in _service_anchor_query_rewrite_terms_for_policy_refs(query, policy_plugin_refs):
+        add(rewritten)
     add(cleaned)
     for segment in _iter_anchor_word_segments(cleaned):
         add(segment)
@@ -2759,6 +4130,9 @@ def _metadata_anchor_fallback_record_score(
     query: str,
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> float:
+    content = str(record.get("content") or "").strip()
+    if content and _record_is_anchor_only_qa(record, content=content, policy_plugin_refs=policy_plugin_refs):
+        return 0.0
     question_strength = _record_question_anchor_strength(
         record,
         query=query,
@@ -2852,6 +4226,18 @@ def _metadata_anchor_fallback_records_from_rows(
 
     if not candidates:
         return []
+    _sort_records_for_query(candidates, query=query, policy_plugin_refs=policy_plugin_refs)
+    if _query_has_mixed_intent_for_policy(query, policy_plugin_refs=policy_plugin_refs) and _query_has_quoted_anchor_candidate(query):
+        requested_slots = _requested_policy_slot_specs_for_query(query, policy_plugin_refs=policy_plugin_refs)
+        if requested_slots:
+            composite = _composite_record_for_exact_anchor_slots(
+                candidates,
+                query=query,
+                requested_slot_specs=requested_slots,
+                policy_plugin_refs=policy_plugin_refs,
+            )
+            if composite is not None:
+                return [composite]
     merged = _dedupe_records(candidates, query=query, policy_plugin_refs=policy_plugin_refs)
     _sort_records_for_query(merged, query=query, policy_plugin_refs=policy_plugin_refs)
     limit = max(1, min(max(1, int(top_k or 1)), int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_MAX_RECORDS", 4) or 4)))
@@ -2868,6 +4254,7 @@ def _metadata_anchor_db_fallback_records(
     policy_plugin_refs: tuple[str, ...] = (),
     existing_records: list[dict[str, Any]] | None = None,
     metadata_filter: dict[str, Any] | None = None,
+    prefer_question_anchor_first: bool = False,
 ) -> list[dict[str, Any]]:
     if not bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED", False)):
         return []
@@ -2959,9 +4346,16 @@ def _metadata_anchor_db_fallback_records(
             )
 
         primary_term = terms[0]
+        question_anchor_preferred = _query_prefers_question_anchor(query, policy_plugin_refs=policy_plugin_refs)
         service_anchor_preferred = _query_prefers_service_anchor(query, policy_plugin_refs=policy_plugin_refs)
+        question_anchor_first = _metadata_anchor_should_query_question_first(
+            query,
+            query_prefers_question_anchor=question_anchor_preferred,
+            query_prefers_service_anchor=service_anchor_preferred,
+            prefer_question_anchor_first=bool(prefer_question_anchor_first),
+        )
         primary_pattern = f"%{primary_term.replace('%', '').replace('_', '').strip()}%"
-        if not service_anchor_preferred:
+        if question_anchor_first:
             append_unique(
                 query_matching_rows(DocumentChunk.doc_metadata["question"].astext.ilike(primary_pattern), limit=max_scan)
             )
@@ -2986,15 +4380,93 @@ def _metadata_anchor_db_fallback_records(
             if term.replace("%", "").replace("_", "").strip()
         ]
         if (
-            _query_prefers_question_anchor(query, policy_plugin_refs=policy_plugin_refs)
-            and not service_anchor_preferred
+            question_anchor_first
             and question_conditions
         ):
             append_unique(query_matching_rows(or_(*question_conditions), limit=max_scan))
             current_matches = matched_records()
             if current_matches:
                 return current_matches
-        if _query_prefers_question_anchor(query, policy_plugin_refs=policy_plugin_refs) and not service_anchor_preferred:
+
+        if (
+            _query_has_mixed_intent_for_policy(query, policy_plugin_refs=policy_plugin_refs)
+            and _query_has_quoted_anchor_candidate(query)
+            and question_anchor_preferred
+        ):
+            rows_before_exact_question = len(rows)
+            seen_before_exact_question = set(seen_chunk_ids)
+            quoted_anchor_norms = tuple(_quoted_query_anchor_terms(query))
+            exact_question_terms = list(quoted_anchor_norms)
+            seen_exact_question_terms = set(exact_question_terms)
+            for term in terms:
+                normalized_term = _normalize_match_term(term)
+                if (
+                    len(normalized_term) >= 4
+                    and normalized_term not in seen_exact_question_terms
+                    and any(normalized_term in anchor or anchor in normalized_term for anchor in quoted_anchor_norms)
+                ):
+                    seen_exact_question_terms.add(normalized_term)
+                    exact_question_terms.append(term)
+            exact_question_conditions = [
+                DocumentChunk.doc_metadata["question"].astext.ilike(
+                    f"%{anchor_term.replace('%', '').replace('_', '').strip()}%"
+                )
+                for anchor_term in exact_question_terms
+                if anchor_term.replace("%", "").replace("_", "").strip()
+            ]
+            if exact_question_conditions:
+                append_unique(query_matching_rows(or_(*exact_question_conditions), limit=max_scan))
+                current_matches = matched_records()
+                if _compact_mixed_intent_exact_anchor_records(
+                    current_matches,
+                    query=query,
+                    top_k=top_k,
+                    policy_plugin_refs=policy_plugin_refs,
+                ):
+                    return current_matches
+                del rows[rows_before_exact_question:]
+                seen_chunk_ids.clear()
+                seen_chunk_ids.update(seen_before_exact_question)
+
+        requested_slot_specs = _requested_policy_slot_specs_for_query(query, policy_plugin_refs=policy_plugin_refs)
+        if (
+            _query_has_mixed_intent_for_policy(query, policy_plugin_refs=policy_plugin_refs)
+            and _query_has_quoted_anchor_candidate(query)
+            and requested_slot_specs
+        ):
+            anchor_fields = _anchor_binding_fields_for_policy_refs(policy_plugin_refs)
+            anchor_conditions = []
+            if anchor_fields:
+                for anchor_term in _quoted_query_anchor_terms(query):
+                    cleaned_anchor = anchor_term.replace("%", "").replace("_", "").strip()
+                    if len(_normalize_match_term(cleaned_anchor)) < 4:
+                        continue
+                    pattern = f"%{cleaned_anchor}%"
+                    anchor_conditions.extend(
+                        DocumentChunk.doc_metadata[field].astext.ilike(pattern)
+                        for field in anchor_fields
+                    )
+            slot_conditions = [
+                DocumentChunk.doc_metadata[field].astext == str(slot_value).strip()
+                for field, slot_value in requested_slot_specs
+                if str(field).strip() and str(slot_value).strip()
+            ]
+            if anchor_conditions and slot_conditions:
+                append_unique(
+                    query_matching_rows(
+                        and_(or_(*anchor_conditions), or_(*slot_conditions)),
+                        limit=max_scan,
+                    )
+                )
+                current_matches = matched_records()
+                if _compact_mixed_intent_exact_anchor_records(
+                    current_matches,
+                    query=query,
+                    top_k=top_k,
+                    policy_plugin_refs=policy_plugin_refs,
+                ):
+                    return current_matches
+        if question_anchor_preferred and not service_anchor_preferred:
             return []
 
         service_name_terms = _metadata_anchor_service_name_query_terms(
@@ -3003,11 +4475,13 @@ def _metadata_anchor_db_fallback_records(
         )
         if not service_name_terms:
             service_name_terms = terms[:_METADATA_ANCHOR_DB_FALLBACK_SERVICE_NAME_MAX_TERMS]
+        service_anchor_fields = _anchor_binding_fields_for_policy_refs(policy_plugin_refs) or ("service_name",)
         service_name_conditions = [
-            DocumentChunk.doc_metadata["service_name"].astext.ilike(
+            DocumentChunk.doc_metadata[field].astext.ilike(
                 f"%{term.replace('%', '').replace('_', '').strip()}%"
             )
             for term in service_name_terms
+            for field in service_anchor_fields
             if term.replace("%", "").replace("_", "").strip()
         ]
         for service_name_condition in service_name_conditions:
@@ -3043,12 +4517,13 @@ def _metadata_anchor_db_fallback_records(
             right = normalized[-2:]
             if left == right:
                 continue
-            service_name_near_conditions.append(
-                and_(
-                    DocumentChunk.doc_metadata["service_name"].astext.ilike(f"%{left}%"),
-                    DocumentChunk.doc_metadata["service_name"].astext.ilike(f"%{right}%"),
+            for field in service_anchor_fields:
+                service_name_near_conditions.append(
+                    and_(
+                        DocumentChunk.doc_metadata[field].astext.ilike(f"%{left}%"),
+                        DocumentChunk.doc_metadata[field].astext.ilike(f"%{right}%"),
+                    )
                 )
-            )
         for service_name_near_condition in service_name_near_conditions:
             append_unique(query_matching_rows(service_name_near_condition, limit=max_scan))
             current_matches = matched_records()
@@ -3161,6 +4636,7 @@ async def _retrieve_dataset_citations(
     enable_kg_chunk_boost: bool | None = None,
     kg_chunk_boost_weight: float | None = None,
     kg_chunk_boost_max_promoted: int | None = None,
+    enable_reranker: bool | None = None,
 ) -> list[dict[str, Any]]:
     from app.api.v1.rag import EvidenceRetrieveRequest, retrieve_evidence
 
@@ -3194,9 +4670,7 @@ async def _retrieve_dataset_citations(
     if overfetch_max_k <= 0:
         overfetch_max_k = evidence_top_k
 
-    reranker_enabled = bool(getattr(settings, "ENABLE_RERANKER", False)) and bool(
-        getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_RERANKER_ENABLED", True)
-    )
+    reranker_enabled = _dify_external_reranker_enabled() if enable_reranker is None else bool(enable_reranker)
     reranker_top_n = max(
         1,
         int(getattr(settings, "RERANKER_TOP_N", evidence_top_k) or evidence_top_k),
@@ -3466,6 +4940,13 @@ async def retrieve_external_knowledge(
         multiplier=policy_fallback_multiplier,
     )
     policy_plugin_refs = _resolve_knowledge_policy_plugin_refs(body.knowledge_id)
+    external_reranker_enabled = _dify_external_reranker_enabled()
+    limit_mixed_intent_candidate_top_k = (
+        _query_has_mixed_intent_for_policy(body.query, policy_plugin_refs=policy_plugin_refs)
+        and external_reranker_enabled
+    )
+    if limit_mixed_intent_candidate_top_k:
+        candidate_top_k = min(candidate_top_k, top_k)
     score_threshold = _clamp_score(body.retrieval_setting.score_threshold)
     policy_filter_fields = _resolve_knowledge_policy_filter_fields(body.knowledge_id)
     metadata_filter = _metadata_condition_to_filter(body.metadata_condition, allowed_fields=policy_filter_fields)
@@ -3561,6 +5042,8 @@ async def retrieve_external_knowledge(
     citation_count = 0
     primary_citation_count = 0
     expansion_citation_count = 0
+    mixed_intent_citation_count = 0
+    mixed_intent_query_count = 0
     metadata_anchor_fallback_count = 0
     retrieval_path = "rag:primary_scope" if primary_scope_enabled else "rag"
     kg_on_demand_triggered = False
@@ -3578,7 +5061,12 @@ async def retrieve_external_knowledge(
             bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED", False))
             and bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED", False))
             and not metadata_filter
-            and (query_prefers_question_anchor or query_prefers_service_anchor)
+            and _query_allows_metadata_anchor_preflight(
+                body.query,
+                query_prefers_question_anchor=query_prefers_question_anchor,
+                query_prefers_service_anchor=query_prefers_service_anchor,
+                policy_plugin_refs=policy_plugin_refs,
+            )
         )
         if metadata_anchor_preflight_enabled:
             metadata_anchor_records = _metadata_anchor_db_fallback_records(
@@ -3591,6 +5079,26 @@ async def retrieve_external_knowledge(
                 existing_records=[],
                 metadata_filter=metadata_filter,
             )
+            if query_prefers_service_anchor and _query_has_quoted_anchor_candidate(body.query):
+                metadata_anchor_records = [
+                    record
+                    for record in metadata_anchor_records
+                    if _record_matches_quoted_query_anchor_for_policy(
+                        record,
+                        query=body.query,
+                        policy_plugin_refs=policy_plugin_refs,
+                    )
+                ]
+            if (
+                _query_has_mixed_intent_for_policy(body.query, policy_plugin_refs=policy_plugin_refs)
+                and _query_has_quoted_anchor_candidate(body.query)
+            ):
+                metadata_anchor_records = _compact_mixed_intent_exact_anchor_records(
+                    metadata_anchor_records,
+                    query=body.query,
+                    top_k=top_k,
+                    policy_plugin_refs=policy_plugin_refs,
+                )
             if query_prefers_service_anchor:
                 has_preflight_anchor = _records_have_confident_metadata_anchor(
                     metadata_anchor_records,
@@ -3607,6 +5115,68 @@ async def retrieve_external_knowledge(
                 metadata_anchor_fallback_count = len(metadata_anchor_records)
                 records.extend(metadata_anchor_records)
                 retrieval_path = "metadata_anchor:preflight"
+
+        if (
+            not records
+            and bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUPPLEMENT_ENABLED", True))
+            and bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED", False))
+            and _query_has_mixed_intent_for_policy(body.query, policy_plugin_refs=policy_plugin_refs)
+            and not _query_has_quoted_anchor_candidate(body.query)
+        ):
+            mixed_intent_queries = _mixed_intent_retrieval_queries(
+                body.query,
+                policy_plugin_refs=policy_plugin_refs,
+            )
+            mixed_preflight_records: list[dict[str, Any]] = []
+            mixed_preflight_query_count = 0
+            mixed_preflight_complete = True
+            mixed_intent_subquery_top_k = _resolve_mixed_intent_subquery_top_k(
+                response_top_k=top_k,
+                candidate_top_k=candidate_top_k,
+            )
+            for subquery in mixed_intent_queries:
+                subquery_prefers_question_anchor = _query_prefers_question_anchor(
+                    subquery,
+                    policy_plugin_refs=policy_plugin_refs,
+                )
+                subquery_prefers_service_anchor = _query_prefers_service_anchor(
+                    subquery,
+                    policy_plugin_refs=policy_plugin_refs,
+                )
+                if not _query_allows_metadata_anchor_preflight(
+                    subquery,
+                    query_prefers_question_anchor=subquery_prefers_question_anchor,
+                    query_prefers_service_anchor=subquery_prefers_service_anchor,
+                    policy_plugin_refs=policy_plugin_refs,
+                ):
+                    mixed_preflight_complete = False
+                    break
+                subquery_anchor_records = _metadata_anchor_db_fallback_records(
+                    db=db,
+                    tenant_id=actor.tenant_id,
+                    dataset_ids=primary_dataset_ids,
+                    query=subquery,
+                    top_k=mixed_intent_subquery_top_k,
+                    policy_plugin_refs=policy_plugin_refs,
+                    existing_records=[],
+                    metadata_filter=metadata_filter,
+                    prefer_question_anchor_first=True,
+                )
+                subquery_anchor_records = _filter_records_by_mixed_intent_subject_anchor(
+                    subquery_anchor_records,
+                    subquery=subquery,
+                    policy_plugin_refs=policy_plugin_refs,
+                )
+                if not subquery_anchor_records:
+                    mixed_preflight_complete = False
+                    break
+                mixed_preflight_query_count += 1
+                mixed_preflight_records.extend(_tag_mixed_intent_records(subquery_anchor_records, subquery=subquery))
+            if mixed_preflight_records and mixed_preflight_complete:
+                mixed_intent_query_count += mixed_preflight_query_count
+                metadata_anchor_fallback_count += len(mixed_preflight_records)
+                records.extend(mixed_preflight_records)
+                retrieval_path = "metadata_anchor:mixed_preflight"
 
         if not records:
             primary_citations = await _retrieve_dataset_citations(
@@ -3625,6 +5195,7 @@ async def retrieve_external_knowledge(
                 enable_kg_chunk_boost=primary_kg_flags.enable_chunk_boost,
                 kg_chunk_boost_weight=primary_kg_flags.chunk_boost_weight,
                 kg_chunk_boost_max_promoted=primary_kg_flags.chunk_boost_max_promoted,
+                enable_reranker=external_reranker_enabled,
             )
             primary_citation_count = len(primary_citations)
             records.extend(
@@ -3637,6 +5208,99 @@ async def retrieve_external_knowledge(
                     policy_plugin_refs=policy_plugin_refs,
                 )
             )
+            mixed_intent_supplement_skipped = _query_has_quoted_anchor_candidate(
+                body.query
+            ) and _records_have_exact_anchor_full_answer(
+                records,
+                query=body.query,
+                policy_plugin_refs=policy_plugin_refs,
+            )
+            if mixed_intent_supplement_skipped:
+                retrieval_path = f"{retrieval_path}:mixed_intent_skip_exact_anchor"
+            if (
+                bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUPPLEMENT_ENABLED", True))
+                and not mixed_intent_supplement_skipped
+            ):
+                mixed_intent_queries = _mixed_intent_retrieval_queries(
+                    body.query,
+                    policy_plugin_refs=policy_plugin_refs,
+                )
+                mixed_intent_subquery_top_k = _resolve_mixed_intent_subquery_top_k(
+                    response_top_k=top_k,
+                    candidate_top_k=candidate_top_k,
+                )
+                for subquery in mixed_intent_queries:
+                    subquery_prefers_question_anchor = _query_prefers_question_anchor(
+                        subquery,
+                        policy_plugin_refs=policy_plugin_refs,
+                    )
+                    subquery_prefers_service_anchor = _query_prefers_service_anchor(
+                        subquery,
+                        policy_plugin_refs=policy_plugin_refs,
+                    )
+                    subquery_anchor_records: list[dict[str, Any]] = []
+                    subquery_metadata_preflight_enabled = bool(
+                        bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED", False))
+                        and _query_allows_metadata_anchor_preflight(
+                            subquery,
+                            query_prefers_question_anchor=subquery_prefers_question_anchor,
+                            query_prefers_service_anchor=subquery_prefers_service_anchor,
+                            policy_plugin_refs=policy_plugin_refs,
+                        )
+                    )
+                    if subquery_metadata_preflight_enabled:
+                        subquery_anchor_records = _metadata_anchor_db_fallback_records(
+                            db=db,
+                            tenant_id=actor.tenant_id,
+                            dataset_ids=primary_dataset_ids,
+                            query=subquery,
+                            top_k=mixed_intent_subquery_top_k,
+                            policy_plugin_refs=policy_plugin_refs,
+                            existing_records=[],
+                            metadata_filter=metadata_filter,
+                            prefer_question_anchor_first=not _query_has_quoted_anchor_candidate(body.query),
+                        )
+                        subquery_anchor_records = _filter_records_by_mixed_intent_subject_anchor(
+                            subquery_anchor_records,
+                            subquery=subquery,
+                            policy_plugin_refs=policy_plugin_refs,
+                        )
+                    if subquery_anchor_records:
+                        mixed_intent_query_count += 1
+                        metadata_anchor_fallback_count += len(subquery_anchor_records)
+                        records.extend(_tag_mixed_intent_records(subquery_anchor_records, subquery=subquery))
+                        continue
+                    subquery_citations = await _retrieve_dataset_citations(
+                        db=db,
+                        tenant_id=actor.tenant_id,
+                        account_id=actor.account_id,
+                        dataset_ids=primary_dataset_ids,
+                        query=subquery,
+                        top_k=mixed_intent_subquery_top_k,
+                        requested_top_k=mixed_intent_subquery_top_k,
+                        score_threshold=score_threshold,
+                        metadata_filter=metadata_filter,
+                        enable_kg_query_expansion=primary_kg_flags.enable_query_expansion,
+                        enable_kg_chunk_injection=primary_kg_flags.enable_chunk_injection,
+                        kg_chunk_injection_max_chunks=primary_kg_flags.chunk_injection_max_chunks,
+                        enable_kg_chunk_boost=primary_kg_flags.enable_chunk_boost,
+                        kg_chunk_boost_weight=primary_kg_flags.chunk_boost_weight,
+                        kg_chunk_boost_max_promoted=primary_kg_flags.chunk_boost_max_promoted,
+                        enable_reranker=False,
+                    )
+                    mixed_intent_query_count += 1
+                    mixed_intent_citation_count += len(subquery_citations)
+                    subquery_records = _records_from_citations(
+                        db=db,
+                        tenant_id=actor.tenant_id,
+                        citations=subquery_citations,
+                        fallback_dataset_id=primary_dataset_ids[0] if primary_dataset_ids else None,
+                        query=subquery,
+                        policy_plugin_refs=policy_plugin_refs,
+                    )
+                    records.extend(_tag_mixed_intent_records(subquery_records, subquery=subquery))
+                if mixed_intent_query_count:
+                    retrieval_path = f"{retrieval_path}:mixed_intent"
             if requested_kg_flags.enabled and kg_on_demand_enabled:
                 if _records_can_skip_kg_on_demand(
                     records,
@@ -3685,6 +5349,7 @@ async def retrieve_external_knowledge(
                     enable_kg_chunk_boost=requested_kg_flags.enable_chunk_boost,
                     kg_chunk_boost_weight=requested_kg_flags.chunk_boost_weight,
                     kg_chunk_boost_max_promoted=requested_kg_flags.chunk_boost_max_promoted,
+                    enable_reranker=external_reranker_enabled,
                 )
                 expansion_citation_count = len(expansion_citations)
                 records.extend(
@@ -3718,9 +5383,15 @@ async def retrieve_external_knowledge(
                     records.extend(metadata_anchor_records)
                     retrieval_path = f"{retrieval_path}+metadata_anchor"
 
-        citation_count = primary_citation_count + expansion_citation_count
+        citation_count = primary_citation_count + expansion_citation_count + mixed_intent_citation_count
         records = _dedupe_records(records, query=body.query, policy_plugin_refs=policy_plugin_refs)
         _sort_records_for_query(records, query=body.query, policy_plugin_refs=policy_plugin_refs)
+        records = await _final_rerank_records_for_query(
+            records,
+            query=body.query,
+            top_k=top_k,
+            policy_plugin_refs=policy_plugin_refs,
+        )
         policy_diagnostics = _records_retrieval_policy_diagnostics(
             records,
             query=body.query,
@@ -3781,6 +5452,8 @@ async def retrieve_external_knowledge(
                 "citation_count": citation_count,
                 "primary_citation_count": primary_citation_count,
                 "expansion_citation_count": expansion_citation_count,
+                "mixed_intent_query_count": mixed_intent_query_count,
+                "mixed_intent_citation_count": mixed_intent_citation_count,
                 "candidate_record_count": len(records),
                 "record_count": record_count,
                 "elapsed_ms": elapsed_ms,
@@ -3832,6 +5505,8 @@ async def retrieve_external_knowledge(
                 **log_extra_base,
                 "phase": "failed",
                 "citation_count": citation_count,
+                "mixed_intent_query_count": mixed_intent_query_count,
+                "mixed_intent_citation_count": mixed_intent_citation_count,
                 "record_count": len(records),
                 "elapsed_ms": elapsed_ms,
                 "retrieval_path": retrieval_path,

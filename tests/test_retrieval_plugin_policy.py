@@ -176,6 +176,45 @@ def test_record_retrieval_policy_bonus_demotes_value_intent_mismatch() -> None:
     ) == pytest.approx(-0.08)
 
 
+def test_anchor_binding_scores_combine_declared_anchor_and_slot_fields() -> None:
+    from app.rag.retrieval.plugin_policy import record_retrieval_policy_anchor_binding_scores
+
+    plugin_ref = "plugin:demo-service@1.0.0:chunk"
+    policy = {
+        "schema": "mimirq.retrieval_policy.v1",
+        "anchor_binding": {
+            "enabled": True,
+            "anchor_fields": ["case_title"],
+            "slot_fields": ["field_kind"],
+            "anchor_match_bonus": 0.35,
+            "anchor_mismatch_penalty": 0.3,
+            "slot_only_penalty": 0.45,
+            "anchor_slot_match_bonus": 0.2,
+        },
+        "query_expansion_values": [
+            {"metadata": "field_kind", "value": "fee", "terms": ["fee", "cost"]},
+            {"metadata": "field_kind", "value": "process", "terms": ["process", "steps"]},
+        ],
+    }
+    records = [
+        {"plugin_ref": plugin_ref, "metadata": {"case_title": "Alpha Permit", "field_kind": "fee"}},
+        {"plugin_ref": plugin_ref, "metadata": {"case_title": "Alpha Permit", "field_kind": "process"}},
+        {"plugin_ref": plugin_ref, "metadata": {"case_title": "Beta Permit", "field_kind": "fee"}},
+    ]
+
+    scores = record_retrieval_policy_anchor_binding_scores(
+        records,
+        query="Alpha Permit cost",
+        plugin_ref_for_record=_record_plugin_ref,
+        metadata_layers_for_record=_record_metadata_layers,
+        policy_resolver=lambda ref: policy if ref == plugin_ref else {},
+    )
+
+    assert scores[id(records[0])] == pytest.approx(0.55)
+    assert scores[id(records[1])] == pytest.approx(0.35)
+    assert scores[id(records[2])] == pytest.approx(-0.45)
+
+
 def test_records_retrieval_policy_diagnostics_summarize_shared_policy_signals() -> None:
     from app.rag.retrieval.plugin_policy import records_retrieval_policy_diagnostics
 

@@ -499,8 +499,14 @@ class PipelinePluginRetrievalPolicyContractSummary(BaseModel):
     anchor_fields: list[str] = Field(default_factory=list)
     rerank_features: list[str] = Field(default_factory=list)
     question_intent_terms: list[str] = Field(default_factory=list)
+    mixed_intent_leading_noise_terms: list[str] = Field(default_factory=list)
+    mixed_intent_subject_terms: list[str] = Field(default_factory=list)
     service_anchor_noise_terms: list[str] = Field(default_factory=list)
     service_anchor_priority_terms: list[str] = Field(default_factory=list)
+    metadata_anchor_preflight_block_terms: list[str] = Field(default_factory=list)
+    service_anchor_query_rewrites: int = 0
+    anchor_binding_fields: list[str] = Field(default_factory=list)
+    anchor_binding_enabled: bool = False
     fallback_enabled: bool = False
     response_compaction_enabled: bool = False
     response_hints_enabled: bool = False

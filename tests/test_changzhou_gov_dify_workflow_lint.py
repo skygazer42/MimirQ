@@ -232,6 +232,62 @@ def test_patch_prompt_template_leaks_rewrites_prompt_without_mutating_source() -
     assert mod.lint_workflow(patched)["summary"].get("prompt_template_leak_warnings", 0) == 0
 
 
+def test_patch_answer_coverage_prompts_hardens_answer_llm_nodes_only() -> None:
+    mod = _load_module()
+    workflow = _answer_prompt_workflow()
+
+    patched, patches = mod.patch_answer_coverage_prompts(workflow)
+    patched_again, patches_again = mod.patch_answer_coverage_prompts(patched)
+
+    original_answer_text = workflow["graph"]["nodes"][1]["data"]["prompt_template"][0]["text"]
+    patched_question_text = patched["graph"]["nodes"][0]["data"]["prompt_template"][0]["text"]
+    patched_answer_text = patched["graph"]["nodes"][1]["data"]["prompt_template"][0]["text"]
+    assert mod._ANSWER_COVERAGE_PROMPT_MARKER not in original_answer_text
+    assert mod._ANSWER_COVERAGE_PROMPT_MARKER not in patched_question_text
+    assert mod._ANSWER_COVERAGE_PROMPT_MARKER in patched_answer_text
+    assert "事项名称：" in patched_answer_text
+    assert "收费情况：" in patched_answer_text
+    assert "不得只在摘要里写" in patched_answer_text
+    assert "承诺办结时限：" in patched_answer_text
+    assert patches == [
+        {
+            "node_id": "llm-answer",
+            "node_title": "LLM综合回复（各区知识）",
+            "path": "graph.nodes[1].data.prompt_template[0].text",
+            "marker": mod._ANSWER_COVERAGE_PROMPT_MARKER,
+        }
+    ]
+    assert patches_again == []
+    assert patched_again == patched
+
+
+def test_patch_answer_coverage_prompts_upgrades_existing_marker_text() -> None:
+    mod = _load_module()
+    workflow = _answer_prompt_workflow()
+    old_prompt = (
+        "根据知识库回答。"
+        f"\n\n# {mod._ANSWER_COVERAGE_PROMPT_MARKER}\n"
+        "旧规则：复合问题尽量覆盖。\n"
+    )
+    workflow["graph"]["nodes"][1]["data"]["prompt_template"][0]["text"] = old_prompt
+
+    patched, patches = mod.patch_answer_coverage_prompts(workflow)
+
+    patched_answer_text = patched["graph"]["nodes"][1]["data"]["prompt_template"][0]["text"]
+    assert "旧规则" not in patched_answer_text
+    assert "根据知识库回答。" in patched_answer_text
+    assert "收费情况：不收费" in patched_answer_text
+    assert "咨询方式：" in patched_answer_text
+    assert patches == [
+        {
+            "node_id": "llm-answer",
+            "node_title": "LLM综合回复（各区知识）",
+            "path": "graph.nodes[1].data.prompt_template[0].text",
+            "marker": mod._ANSWER_COVERAGE_PROMPT_MARKER,
+        }
+    ]
+
+
 def test_lint_workflow_reports_http_json_template_body() -> None:
     mod = _load_module()
 
@@ -368,6 +424,7 @@ def test_main_writes_patched_workflow_for_prompt_template_leaks(tmp_path: Path) 
     assert exit_code == 1
     assert report["summary"]["prompt_template_leak_warnings"] == 1
     assert report["summary"]["prompt_template_leak_patches"] == 1
+    assert report["summary"]["answer_coverage_prompt_patches"] == 1
     assert patched_report["summary"].get("prompt_template_leak_warnings", 0) == 0
 
 
@@ -436,6 +493,31 @@ def _prompt_leak_workflow() -> dict:
                         ],
                     },
                 }
+            ]
+        }
+    }
+
+
+def _answer_prompt_workflow() -> dict:
+    return {
+        "graph": {
+            "nodes": [
+                {
+                    "id": "llm-polish",
+                    "data": {
+                        "type": "llm",
+                        "title": "问题润色",
+                        "prompt_template": [{"role": "system", "text": "只输出润色后的问题"}],
+                    },
+                },
+                {
+                    "id": "llm-answer",
+                    "data": {
+                        "type": "llm",
+                        "title": "LLM综合回复（各区知识）",
+                        "prompt_template": [{"role": "system", "text": "请根据知识库回答用户问题"}],
+                    },
+                },
             ]
         }
     }

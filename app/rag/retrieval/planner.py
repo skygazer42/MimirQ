@@ -188,6 +188,73 @@ def retrieval_policy_service_anchor_priority_terms(retrieval_policy: dict[str, A
     return _policy_string_list(retrieval_policy.get("service_anchor_priority_terms"))
 
 
+def retrieval_policy_mixed_intent_leading_noise_terms(retrieval_policy: dict[str, Any] | None) -> tuple[str, ...]:
+    if not isinstance(retrieval_policy, dict) or retrieval_policy.get("schema") != "mimirq.retrieval_policy.v1":
+        return ()
+    return _policy_string_list(retrieval_policy.get("mixed_intent_leading_noise_terms"))
+
+
+def retrieval_policy_mixed_intent_subject_terms(retrieval_policy: dict[str, Any] | None) -> tuple[str, ...]:
+    if not isinstance(retrieval_policy, dict) or retrieval_policy.get("schema") != "mimirq.retrieval_policy.v1":
+        return ()
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw_term in (
+        *(_policy_string_list(retrieval_policy.get("mixed_intent_subject_terms"))),
+        *(_policy_string_list(retrieval_policy.get("service_anchor_noise_terms"))),
+        *(_policy_string_list(retrieval_policy.get("question_intent_terms"))),
+    ):
+        term = str(raw_term or "").strip()
+        normalized = _normalize_policy_match_text(term)
+        if not term or not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        out.append(term)
+    return tuple(out)
+
+
+def retrieval_policy_service_anchor_query_rewrite_terms(
+    retrieval_policy: dict[str, Any] | None,
+    *,
+    query: str,
+) -> tuple[str, ...]:
+    if not isinstance(retrieval_policy, dict) or retrieval_policy.get("schema") != "mimirq.retrieval_policy.v1":
+        return ()
+    query_text = _normalize_policy_match_text(query)
+    if not query_text:
+        return ()
+    raw_rules = retrieval_policy.get("service_anchor_query_rewrites")
+    if not isinstance(raw_rules, list):
+        return ()
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in raw_rules:
+        rule = _as_dict(raw)
+        when_terms = _metadata_terms(rule.get("when_terms") or rule.get("when"))
+        rewrite_terms = _metadata_terms(rule.get("terms") or rule.get("rewrite_terms"))
+        if not when_terms or not rewrite_terms:
+            continue
+        match_mode = str(rule.get("match") or "all").strip().lower()
+        normalized_when = tuple(term for term in (_normalize_policy_match_text(term) for term in when_terms) if term)
+        if not normalized_when:
+            continue
+        if match_mode == "any":
+            matched = any(term in query_text for term in normalized_when)
+        else:
+            matched = all(term in query_text for term in normalized_when)
+        if not matched:
+            continue
+        for term in rewrite_terms:
+            text = str(term or "").strip()
+            normalized = _normalize_policy_match_text(text)
+            if not text or normalized in seen:
+                continue
+            seen.add(normalized)
+            out.append(text)
+    return tuple(out)
+
+
 def _policy_value_query_term_mappings(raw_mappings: Any) -> tuple[dict[str, Any], ...]:
     if not isinstance(raw_mappings, list):
         return ()
@@ -806,8 +873,11 @@ __all__ = [
     "retrieval_policy_query_terms",
     "retrieval_policy_rerank_feature_score",
     "retrieval_policy_response_compaction",
+    "retrieval_policy_mixed_intent_leading_noise_terms",
+    "retrieval_policy_mixed_intent_subject_terms",
     "retrieval_policy_service_anchor_noise_terms",
     "retrieval_policy_service_anchor_priority_terms",
+    "retrieval_policy_service_anchor_query_rewrite_terms",
     "retrieval_policy_value_intent_mismatch_penalty",
     "resolve_internal_candidate_top_k",
     "safe_positive_int",

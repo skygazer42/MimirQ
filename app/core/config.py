@@ -858,6 +858,12 @@ class Settings(BaseSettings):
     # Avoid unindexed JSON text scans on the latency-sensitive Dify path.
     # Structured metadata fields remain available through the anchor fallback.
     DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_TEXT_SCAN_ENABLED: bool = False
+    # Compound/mixed-intent retrieval fans out into subqueries, then merges and
+    # reranks once. Keep these generic budget controls out of business plugins.
+    DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUPPLEMENT_ENABLED: bool = True
+    DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_MAX_SUBQUERIES: int = 4
+    # 0 means use the Dify response top_k for each mixed-intent subquery.
+    DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUBQUERY_TOP_K: int = 0
     # When KG is enabled for Dify external retrieval, first run normal RAG and
     # invoke KG only if the normal result lacks a confident metadata anchor.
     DIFY_EXTERNAL_KNOWLEDGE_KG_ON_DEMAND_ENABLED: bool = True
