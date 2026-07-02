@@ -688,7 +688,7 @@ changzhou-dify-full-gate:
 		$(CHANGZHOU_DIFY_EFFECTIVE_EXTRA_ARGS)
 
 changzhou-human-mixed-cases:
-	$(PY) plugins/pipelines/changzhou-gov-service-knowledge/scripts/build_human_mixed_cases.py \
+	$(PY) plugins/pipelines/changzhou-gov-service-knowledge/tools/build_human_mixed_cases.py \
 		--cases "$(CHANGZHOU_HUMAN_MIXED_SOURCE)" \
 		--out "$(CHANGZHOU_HUMAN_MIXED_OUT)" \
 		--total "$(CHANGZHOU_HUMAN_MIXED_TOTAL)" \
