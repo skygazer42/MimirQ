@@ -91,17 +91,12 @@ The Makefile is the source of truth for common workflows; these scripts are the 
   - Reads `DIFY_EXTERNAL_KNOWLEDGE_API_KEY` / `DIFY_EXTERNAL_KNOWLEDGE_API_KEYS` from the environment or repo `.env`; Dify App key and console storage state default to `/tmp/dify_remote_app_api_key.json` and `/tmp/kingdonsoft_dify_storage_state.json`.
 - `evaluate_mixed_rag_quality.py`: compare complex mixed RAG questions across MimirQ/Dify runs using objective evidence and subquestion coverage, not an LLM judge.
   - Example: `MIXED_RAG_RUNS='mimirq=/tmp/mimirq_run.json dify=/tmp/dify_run.json' make mixed-rag-quality`
-  - The Makefile defaults to `plugins/pipelines/changzhou-gov-service-knowledge/human_mixed_eval_cases.json`; override with `MIXED_RAG_CASES=/tmp/mixed_cases.json`.
+  - Override the case set with `MIXED_RAG_CASES=/tmp/mixed_cases.json`.
   - Case files use `{"schema":"mimirq.mixed_rag_eval_cases.v1","cases":[...]}`. Each case declares `question`, `subquestions[]`, and `evidence_clauses[]`; each clause/subquestion uses `required_terms` and optional `metadata`.
   - Case files may define `answer_term_aliases` to accept answer-only wording variants such as `{"Contact:":["Phone:"]}`. This does not relax evidence/record matching.
   - Run files use `{"schema":"mimirq.mixed_rag_eval_run.v1","system":"mimirq","items":[...]}`. Each item supplies `case_id`, optional `answer`, `records[]`, and optional `latency_ms`.
   - Output JSON/Markdown reports include `mean_evidence_coverage`, `mean_subquestion_coverage`, `mean_answer_supported_clause_rate`, `mean_wrong_evidence_rate`, missing clause IDs, unsupported answered clause IDs, a leaderboard, and pairwise case deltas.
   - Gate thresholds are optional: pass `MIXED_RAG_EXTRA_ARGS='--min-mean-evidence-coverage 0.8 --min-mean-subquestion-coverage 0.8 --max-mean-wrong-evidence-rate 0.3'`.
-- `build_changzhou_human_mixed_cases.py`: rebuild a Changzhou mixed-case file with natural composite questions and a capped FAQ/QA-derived share.
-  - Example: `python scripts/build_changzhou_human_mixed_cases.py --cases /tmp/changzhou_composite_100_cases.json --out plugins/pipelines/changzhou-gov-service-knowledge/human_mixed_eval_cases.json --total 100 --max-qa-ratio 0.10`
-  - Make shortcut: `make changzhou-human-mixed-cases` writes `CHANGZHOU_HUMAN_MIXED_OUT` from `CHANGZHOU_HUMAN_MIXED_SOURCE`.
-  - The script keeps evidence clauses unchanged, rewrites only `question/query`, marks all cases with `case_generation=human_mixed_v1`, and marks fill-up variants with `case_variant_of`.
-  - FAQ/QA-like cases include explicit `qa_*` cases plus cases sourced from `03常州市常见问题`, `04专题常见问答`, `05业务部门常见问题`, or `06各区常见问题`.
 - `clean.py`: remove local caches/artifacts (used by `make clean`)
   - Example: `python scripts/clean.py`
 
