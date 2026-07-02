@@ -70,9 +70,7 @@ jobs:
           python -m pip install --retries 5 --timeout 120 \
             "$TORCH_WHEEL_DIR/$TORCH_WHL" \
             "$TORCH_WHEEL_DIR/$TORCHVISION_WHL"
-          python -m pip install --retries 10 --timeout 120 \
-            --extra-index-url https://download.pytorch.org/whl/cpu \
-            -r requirements-dev.txt
+          python -m pip install --retries 10 --timeout 120 -r requirements-dev.txt
 
       - name: Install web deps
         working-directory: web
@@ -171,9 +169,7 @@ jobs:
           python -m pip install --retries 5 --timeout 120 \
             "$TORCH_WHEEL_DIR/$TORCH_WHL" \
             "$TORCH_WHEEL_DIR/$TORCHVISION_WHL"
-          python -m pip install --retries 10 --timeout 120 \
-            --extra-index-url https://download.pytorch.org/whl/cpu \
-            -r requirements.txt
+          python -m pip install --retries 10 --timeout 120 -r requirements.txt
 
       - name: Validate query-set health policy config
         run: |
@@ -951,9 +947,7 @@ jobs:
           python -m pip install --retries 5 --timeout 120 \
             "$TORCH_WHEEL_DIR/$TORCH_WHL" \
             "$TORCH_WHEEL_DIR/$TORCHVISION_WHL"
-          python -m pip install --retries 10 --timeout 120 \
-            --extra-index-url https://download.pytorch.org/whl/cpu \
-            -r requirements.txt
+          python -m pip install --retries 10 --timeout 120 -r requirements.txt
 
       - name: Download bounded gate artifacts
         uses: actions/download-artifact@v4
