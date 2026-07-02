@@ -87,7 +87,9 @@ jobs:
           python -m pip install --retries 5 --timeout 120 \
             "$TORCH_WHEEL_DIR/$TORCH_WHL" \
             "$TORCH_WHEEL_DIR/$TORCHVISION_WHL"
-          python -m pip install --retries 10 --timeout 120 -r requirements-dev.txt
+          python scripts/filter_cpu_ci_requirements.py requirements-dev.txt /tmp/requirements-dev.cpu-ci.txt
+          python -m pip install --retries 10 --timeout 120 -r /tmp/requirements-dev.cpu-ci.txt
+          python -m pip install --retries 5 --timeout 120 --no-deps xgboost==3.2.0
 
       - name: Install web deps
         working-directory: web
@@ -203,7 +205,9 @@ jobs:
           python -m pip install --retries 5 --timeout 120 \
             "$TORCH_WHEEL_DIR/$TORCH_WHL" \
             "$TORCH_WHEEL_DIR/$TORCHVISION_WHL"
-          python -m pip install --retries 10 --timeout 120 -r requirements.txt
+          python scripts/filter_cpu_ci_requirements.py requirements.txt /tmp/requirements.cpu-ci.txt
+          python -m pip install --retries 10 --timeout 120 -r /tmp/requirements.cpu-ci.txt
+          python -m pip install --retries 5 --timeout 120 --no-deps xgboost==3.2.0
 
       - name: Validate query-set health policy config
         run: |
@@ -998,7 +1002,9 @@ jobs:
           python -m pip install --retries 5 --timeout 120 \
             "$TORCH_WHEEL_DIR/$TORCH_WHL" \
             "$TORCH_WHEEL_DIR/$TORCHVISION_WHL"
-          python -m pip install --retries 10 --timeout 120 -r requirements.txt
+          python scripts/filter_cpu_ci_requirements.py requirements.txt /tmp/requirements.cpu-ci.txt
+          python -m pip install --retries 10 --timeout 120 -r /tmp/requirements.cpu-ci.txt
+          python -m pip install --retries 5 --timeout 120 --no-deps xgboost==3.2.0
 
       - name: Download bounded gate artifacts
         uses: actions/download-artifact@v4
@@ -1202,7 +1208,9 @@ jobs:
       - name: Install Python deps
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
+          python scripts/filter_cpu_ci_requirements.py requirements.txt /tmp/requirements.cpu-ci.txt
+          python -m pip install -r /tmp/requirements.cpu-ci.txt
+          python -m pip install --no-deps xgboost==3.2.0
 
       - name: Seed CI KG search fixture (DB + KG rows + cases bundle)
         env:
