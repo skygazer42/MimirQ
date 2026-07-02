@@ -1,4 +1,4 @@
-.PHONY: help init up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload web test test-web test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check api-docs-build diagnostics db-upgrade db-revision verify enterprise-checks parser-status dify-console-login dify-console-check dify-console-ensure plugin-release-gate changzhou-gov-plugin-chunk-report changzhou-gov-plugin-chunk-evidence changzhou-gov-plugin-test-report changzhou-gov-plugin-test-evidence changzhou-gov-plugin-corpus-closed-loop-smoke changzhou-gov-plugin-corpus-closed-loop-evidence changzhou-gov-delivery-pack changzhou-gov-delivery-pack-refresh changzhou-gov-delivery-pack-refresh-with-audit changzhou-dify-knowledge-map-check changzhou-dify-mimirq-direct-gate changzhou-dify-mimirq-direct-kg-off-gate changzhou-dify-mimirq-direct-kg-on-gate changzhou-dify-kg-compare-gate changzhou-dify-kg-on-off-gate changzhou-dify-external-probe changzhou-dify-workflow-lint changzhou-dify-workflow-sync-dry-run changzhou-dify-workflow-sync-apply changzhou-dify-full-gate changzhou-dify-readiness-summary changzhou-dify-readiness-status changzhou-dify-readiness-evidence changzhou-dify-readiness-persist-audit changzhou-dify-readiness-gate changzhou-dify-readiness-gate-quiet check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
+.PHONY: help init up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload web test test-web test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check api-docs-build diagnostics db-upgrade db-revision verify enterprise-checks parser-status dify-console-login dify-console-check dify-console-ensure plugin-release-gate changzhou-gov-plugin-chunk-report changzhou-gov-plugin-chunk-evidence changzhou-gov-plugin-test-report changzhou-gov-plugin-test-evidence changzhou-gov-plugin-corpus-closed-loop-smoke changzhou-gov-plugin-corpus-closed-loop-evidence changzhou-gov-delivery-pack changzhou-gov-delivery-pack-refresh changzhou-gov-delivery-pack-refresh-with-audit changzhou-dify-knowledge-map-check changzhou-dify-mimirq-direct-gate changzhou-dify-mimirq-direct-kg-off-gate changzhou-dify-mimirq-direct-kg-on-gate changzhou-dify-kg-compare-gate changzhou-dify-kg-on-off-gate changzhou-dify-external-probe changzhou-dify-workflow-lint changzhou-dify-workflow-sync-dry-run changzhou-dify-workflow-sync-apply changzhou-dify-full-gate changzhou-dify-readiness-summary changzhou-dify-readiness-status changzhou-dify-readiness-evidence changzhou-dify-readiness-persist-audit changzhou-dify-readiness-gate changzhou-dify-readiness-gate-quiet changzhou-human-mixed-cases mixed-rag-quality check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
 
 # Prefer project venv when available so local dev doesn't depend on global tooling.
 PY := python3
@@ -82,6 +82,15 @@ CHANGZHOU_DIFY_WORKFLOW_BACKUP_OUT ?= /tmp/changzhou_gov_dify_workflow_current_d
 CHANGZHOU_DIFY_WORKFLOW_PAYLOAD_OUT ?= /tmp/changzhou_gov_dify_workflow_sync_payload.json
 CHANGZHOU_DIFY_WORKFLOW_SYNC_OUT ?= /tmp/changzhou_gov_dify_workflow_sync.json
 CHANGZHOU_DIFY_WORKFLOW_SYNC_EXTRA_ARGS ?=
+MIXED_RAG_CASES ?= plugins/pipelines/changzhou-gov-service-knowledge/human_mixed_eval_cases.json
+MIXED_RAG_RUNS ?=
+MIXED_RAG_OUT ?= /tmp/mixed_rag_quality_report.json
+MIXED_RAG_MD ?= /tmp/mixed_rag_quality_report.md
+MIXED_RAG_EXTRA_ARGS ?=
+CHANGZHOU_HUMAN_MIXED_SOURCE ?= /tmp/changzhou_composite_100_cases.json
+CHANGZHOU_HUMAN_MIXED_OUT ?= plugins/pipelines/changzhou-gov-service-knowledge/human_mixed_eval_cases.json
+CHANGZHOU_HUMAN_MIXED_TOTAL ?= 100
+CHANGZHOU_HUMAN_MIXED_MAX_QA_RATIO ?= 0.0
 CHANGZHOU_GOV_PLUGIN_DIR ?= plugins/pipelines/changzhou-gov-service-knowledge
 CHANGZHOU_GOV_PLUGIN_SAMPLE ?= plugins/pipelines/changzhou-gov-service-knowledge/sample.json
 CHANGZHOU_GOV_PLUGIN_CHUNK_REPORT_OUT ?= /tmp/changzhou_gov_plugin_chunk_report.json
@@ -219,6 +228,8 @@ help:
 	@echo "  make changzhou-dify-readiness-status - print compact readiness status from the latest summary"
 	@echo "  make changzhou-dify-readiness-evidence - write PII-safe Markdown readiness evidence"
 	@echo "  make changzhou-dify-readiness-persist-audit - persist latest readiness retrieval_audit into a dataset report"
+	@echo "  make changzhou-human-mixed-cases - build human-like mixed cases with capped QA-derived share"
+	@echo "  make mixed-rag-quality - compare complex mixed RAG runs with deterministic evidence/subquestion scoring"
 	@echo "  make check-retrieval-profile-compat - validate retrieval profile + reranker compatibility"
 	@echo "  make check-queryset-health-policy - validate query-set health threshold policy JSON"
 	@echo "  make check-parsing-proof-governance - validate broader parsing-proof governance JSON"
@@ -674,6 +685,23 @@ changzhou-dify-full-gate:
 		--summary-out "$(CHANGZHOU_DIFY_OUT_PREFIX)_summary.json" \
 		--trace-timeout "$(CHANGZHOU_DIFY_TRACE_TIMEOUT)" \
 		$(CHANGZHOU_DIFY_EFFECTIVE_EXTRA_ARGS)
+
+changzhou-human-mixed-cases:
+	$(PY) scripts/build_changzhou_human_mixed_cases.py \
+		--cases "$(CHANGZHOU_HUMAN_MIXED_SOURCE)" \
+		--out "$(CHANGZHOU_HUMAN_MIXED_OUT)" \
+		--total "$(CHANGZHOU_HUMAN_MIXED_TOTAL)" \
+		--max-qa-ratio "$(CHANGZHOU_HUMAN_MIXED_MAX_QA_RATIO)"
+
+mixed-rag-quality:
+	@test -n "$(MIXED_RAG_CASES)" || (echo "MIXED_RAG_CASES is required" >&2; exit 2)
+	@test -n "$(MIXED_RAG_RUNS)" || (echo "MIXED_RAG_RUNS is required, e.g. MIXED_RAG_RUNS='mimirq=/tmp/mimirq.json dify=/tmp/dify.json'" >&2; exit 2)
+	$(PY) scripts/evaluate_mixed_rag_quality.py \
+		--cases "$(MIXED_RAG_CASES)" \
+		$(foreach run,$(MIXED_RAG_RUNS),--run "$(run)") \
+		--out "$(MIXED_RAG_OUT)" \
+		--out-md "$(MIXED_RAG_MD)" \
+		$(MIXED_RAG_EXTRA_ARGS)
 
 check-retrieval-profile-compat:
 	$(PY) scripts/check_retrieval_profile_compat.py

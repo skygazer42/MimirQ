@@ -46,6 +46,30 @@ _PROMPT_TEMPLATE_REPLACEMENTS = (
     ("输出此部分内容", "请整理为用户可读内容"),
     ("暂无相关常见问题QA知识", "如无相关常见问题，可省略常见问答部分"),
 )
+_ANSWER_COVERAGE_PROMPT_MARKER = "MimirQ evidence coverage rules v1"
+_ANSWER_COVERAGE_TARGET_TITLE_TERMS = (
+    "LLM综合回复",
+    "LLM回复一件事",
+)
+_ANSWER_COVERAGE_PROMPT_APPENDIX = f"""
+
+# {_ANSWER_COVERAGE_PROMPT_MARKER}
+为避免复合问题漏答，回答前先从用户问题中识别所有并列问题点，再逐项覆盖。
+
+1. 用户同时询问多个事项字段时，例如材料、地点、时间、条件、费用、电话、线上入口、承诺办结时限等，必须逐项回答；不得只在摘要中带过。
+2. 证据中已经出现原始字段标签时，优先保留字段标签和值，例如：事项名称：、办理材料：、办理地点：、办理时间：、受理条件：、收费情况：、咨询方式：、在线办理地址：、承诺办结时限：。
+3. 如果证据包含“答案要点”或“原始证据”，按用户问到的字段复制或压缩对应字段值；不要改写到丢失字段标签。
+4. 每个输出的问题点必须能在检索结果中找到依据。检索结果没有提供某个问题点时，明确说明“知识库未提供该项信息”，不要猜测补全。
+5. 最终答案允许保留现有模板样式，但复合问题的每个字段都要有清晰小标题或“字段名：字段值”。
+
+必答字段清单：
+- 用户问“需要哪些材料/材料/申请材料”时，必须输出“办理材料：”或“申请材料：”字段行。
+- 用户问“在哪里办理/办理地点/线下渠道”时，必须输出“办理地点：”字段行。
+- 用户问“是否收费/费用/收费”时，必须输出“收费情况：”字段行；如果证据是不收费，不得只在摘要里写“免费/无需收费”，正文也要写“收费情况：不收费”。
+- 用户问“多长时间/多久办结/承诺办结”时，必须输出“承诺办结时限：”或“办理时限：”字段行。
+- 用户问“咨询电话/联系电话/联系方式”时，必须输出“咨询方式：”字段行。
+- 用户问“线上办理/在线入口/渠道”时，必须输出“在线办理地址：”或“办理渠道：”字段行。
+"""
 
 
 def _text(value: Any) -> str:
@@ -260,8 +284,9 @@ def _prompt_template_texts(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
         for prompt_index, prompt in enumerate(prompt_template):
             if not isinstance(prompt, dict):
                 continue
-            text = _text(prompt.get("text"))
-            if not text:
+            raw_text = prompt.get("text")
+            text = raw_text if isinstance(raw_text, str) else _text(raw_text)
+            if not _text(text):
                 continue
             texts.append(
                 {
@@ -329,6 +354,54 @@ def patch_prompt_template_leaks(workflow: dict[str, Any]) -> tuple[dict[str, Any
                 "node_title": item["node_title"],
                 "path": item["path"],
                 "forbidden_phrases": forbidden,
+            }
+        )
+    return patched_workflow, patches
+
+
+def _answer_coverage_prompt_texts(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for item in _prompt_template_texts(nodes):
+        node_title = _text(item.get("node_title"))
+        node_type = _text(item.get("node_type"))
+        if node_type != "llm":
+            continue
+        if not any(term in node_title for term in _ANSWER_COVERAGE_TARGET_TITLE_TERMS):
+            continue
+        items.append(item)
+    return items
+
+
+def _upsert_answer_coverage_appendix(text: str) -> str:
+    header = f"# {_ANSWER_COVERAGE_PROMPT_MARKER}"
+    marker_index = text.find(header)
+    if marker_index >= 0:
+        return text[:marker_index].rstrip() + _ANSWER_COVERAGE_PROMPT_APPENDIX
+    return text.rstrip() + _ANSWER_COVERAGE_PROMPT_APPENDIX
+
+
+def patch_answer_coverage_prompts(workflow: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Return a workflow copy with answer-generation prompts hardened against omitted fields."""
+    patched_workflow = copy.deepcopy(workflow)
+    patches: list[dict[str, Any]] = []
+    nodes = _graph_nodes(patched_workflow)
+    for item in _answer_coverage_prompt_texts(nodes):
+        raw_text = item.get("text")
+        text = raw_text if isinstance(raw_text, str) else _text(raw_text)
+        if not text:
+            continue
+        new_text = _upsert_answer_coverage_appendix(text)
+        if new_text == text:
+            continue
+        node_index = int(item["node_index"])
+        prompt_index = int(item["prompt_index"])
+        nodes[node_index]["data"]["prompt_template"][prompt_index]["text"] = new_text
+        patches.append(
+            {
+                "node_id": item["node_id"],
+                "node_title": item["node_title"],
+                "path": item["path"],
+                "marker": _ANSWER_COVERAGE_PROMPT_MARKER,
             }
         )
     return patched_workflow, patches
@@ -830,6 +903,7 @@ def main(argv: list[str] | None = None) -> int:
             patched_workflow, patches = patch_area_route_selectors(workflow)
             patched_workflow, prompt_patches = patch_prompt_template_leaks(patched_workflow)
             patched_workflow, http_json_patches = patch_http_json_template_bodies(patched_workflow)
+            patched_workflow, answer_coverage_patches = patch_answer_coverage_prompts(patched_workflow)
             Path(str(args.patched_workflow_out)).write_text(
                 json.dumps(patched_workflow, ensure_ascii=False, indent=2) + "\n",
                 encoding="utf-8",
@@ -841,6 +915,8 @@ def main(argv: list[str] | None = None) -> int:
             report["prompt_template_leak_patches"] = prompt_patches
             summary["http_json_template_patches"] = len(http_json_patches)
             report["http_json_template_patches"] = http_json_patches
+            summary["answer_coverage_prompt_patches"] = len(answer_coverage_patches)
+            report["answer_coverage_prompt_patches"] = answer_coverage_patches
     except Exception as exc:  # noqa: BLE001
         print(f"[changzhou-dify-workflow-lint] ERR: {exc}", file=sys.stderr)
         return 1

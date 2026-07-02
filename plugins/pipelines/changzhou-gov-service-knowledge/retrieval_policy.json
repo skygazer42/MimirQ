@@ -1,6 +1,7 @@
 {
   "schema": "mimirq.retrieval_policy.v1",
   "question_anchor_bonus": 1.15,
+  "metadata_anchor_preflight_block_terms": [],
   "query_expansion_fields": [
     "service_name",
     "service_aliases",
@@ -21,17 +22,26 @@
     "applicable_area"
   ],
   "query_expansion_values": [
-    {"metadata": "section_type", "value": "related_services", "terms": ["涉及事项", "涉及哪些事项", "包含哪些事项", "联办事项", "相关服务", "联办服务"]},
+    {"metadata": "section_type", "values": ["related_services", "process"], "terms": ["涉及事项", "涉及哪些事项", "包含哪些事项", "包含哪些事", "哪些事", "涉及哪些服务", "联办事项", "相关服务", "联办服务"]},
     {"metadata": "section_type", "value": "process", "terms": ["办理须知", "办理流程", "怎么办理"]},
-    {"metadata": "section_type", "value": "materials", "terms": ["申请材料", "办理材料", "需要哪些材料", "材料清单"]},
-    {"metadata": "section_type", "value": "channels", "terms": ["办理渠道", "在哪里办理", "线上办理入口"]},
-    {"metadata": "section_type", "value": "operation_entry", "terms": ["系统入口", "办理入口", "从哪里进入办理"]},
+    {"metadata": "section_type", "value": "materials", "terms": ["材料", "申请材料", "办理材料", "主要材料", "需要哪些材料", "要交什么材料", "要准备什么材料", "材料清单"]},
+    {"metadata": "section_type", "value": "channels", "terms": ["办理渠道", "在哪里办理", "线上办理入口", "联系方式", "咨询方式", "联系电话", "电话"]},
+    {"metadata": "section_type", "value": "operation_entry", "terms": ["入口", "系统入口", "办理入口", "从哪里进入办理"]},
     {"metadata": "section_type", "value": "operation_steps", "terms": ["申报流程", "申报步骤", "网上办理怎么操作", "操作步骤"]},
     {"metadata": "section_type", "value": "operation_material_upload", "terms": ["材料上传", "上传材料", "附件上传"]},
     {"metadata": "section_type", "value": "operation_query", "terms": ["进度查询", "结果查询", "查询办理进度"]},
     {"metadata": "section_type", "value": "operation_url", "terms": ["在线入口", "网上办理地址", "操作手册入口"]},
     {"metadata": "section_type", "value": "operation_notes", "terms": ["备注", "注意事项", "办理注意事项"]}
   ],
+  "anchor_binding": {
+    "enabled": true,
+    "anchor_fields": ["service_name", "case_title", "service_aliases"],
+    "slot_fields": ["question", "section_type", "gov_knowledge_type"],
+    "anchor_match_bonus": 0.35,
+    "anchor_mismatch_penalty": 0.35,
+    "slot_only_penalty": 0.35,
+    "anchor_slot_match_bonus": 0.08
+  },
   "question_intent_terms": [
     "材料",
     "证件",
@@ -53,7 +63,59 @@
     "咨询",
     "条件",
     "时限",
+    "多长时间",
+    "多久",
+    "注意",
+    "注意事项",
     "标准"
+  ],
+  "mixed_intent_leading_noise_terms": [
+    "我要办理",
+    "我想办理",
+    "我想问一下",
+    "我想咨询一下",
+    "我想了解一下",
+    "想问一下",
+    "咨询一下",
+    "请问一下",
+    "我想问",
+    "我想咨询",
+    "我想了解",
+    "我想知道",
+    "请问",
+    "我想",
+    "想问",
+    "了解一下",
+    "了解",
+    "咨询",
+    "办理"
+  ],
+  "mixed_intent_subject_terms": [
+    "涉及事项",
+    "涉及哪些事项",
+    "包含哪些事",
+    "包含哪些事项",
+    "联办事项",
+    "材料",
+    "要交什么材料",
+    "要准备什么材料",
+    "需要什么材料",
+    "需要哪些材料",
+    "所需材料",
+    "申请材料",
+    "办理材料",
+    "入口",
+    "办理入口",
+    "办理渠道",
+    "线上入口",
+    "联系方式",
+    "联系电话",
+    "电话",
+    "怎么办理",
+    "怎么查询",
+    "如何查询",
+    "进度查询",
+    "办理进度"
   ],
   "service_anchor_noise_terms": [
     "咨询电话是多少",
@@ -71,6 +133,12 @@
     "什么时候办理",
     "什么时候能办",
     "什么时候办",
+    "需要多长时间",
+    "多长时间",
+    "办理时间多久",
+    "办理时间",
+    "时间多久",
+    "多久",
     "办理入口在哪里",
     "入口在哪里",
     "在哪里进入办理",
@@ -116,6 +184,12 @@
     "什么时候办理",
     "什么时候能办",
     "什么时候办",
+    "需要多长时间",
+    "多长时间",
+    "办理时间多久",
+    "办理时间",
+    "时间多久",
+    "多久",
     "办理入口在哪里",
     "入口在哪里",
     "在哪里进入办理",
@@ -123,6 +197,16 @@
     "在哪里办理",
     "在哪办理",
     "哪里办理"
+  ],
+  "service_anchor_query_rewrites": [
+    {
+      "when_terms": ["社保卡", "补办"],
+      "terms": ["社会保障卡补卡", "社保卡补卡"]
+    },
+    {
+      "when_terms": ["社保卡", "补卡"],
+      "terms": ["社会保障卡补卡", "社保卡补卡"]
+    }
   ],
   "response_hints": {
     "answer_prefix": "答案要点",

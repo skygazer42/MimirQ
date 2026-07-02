@@ -12,9 +12,12 @@ from app.rag.retrieval.planner import (
     resolve_internal_candidate_top_k,
     retrieval_policy_boost_score,
     retrieval_policy_fallback_multiplier,
+    retrieval_policy_mixed_intent_leading_noise_terms,
+    retrieval_policy_mixed_intent_subject_terms,
     retrieval_policy_query_terms,
     retrieval_policy_rerank_feature_score,
     retrieval_policy_response_compaction,
+    retrieval_policy_service_anchor_query_rewrite_terms,
 )
 
 
@@ -239,6 +242,50 @@ def test_retrieval_policy_extracts_query_terms_from_declared_metadata_value_map(
         "installation guide",
         "help center",
     )
+
+
+def test_retrieval_policy_extracts_service_anchor_query_rewrite_terms() -> None:
+    policy = {
+        "schema": "mimirq.retrieval_policy.v1",
+        "service_anchor_query_rewrites": [
+            {
+                "when_terms": ["access card", "replace"],
+                "terms": ["access card replacement", "badge replacement"],
+            },
+            {
+                "when_terms": ["account", "reset"],
+                "terms": ["account recovery"],
+            },
+        ],
+    }
+
+    assert retrieval_policy_service_anchor_query_rewrite_terms(
+        policy,
+        query="How do I replace an access card?",
+    ) == ("access card replacement", "badge replacement")
+    assert (
+        retrieval_policy_service_anchor_query_rewrite_terms(policy, query="Where do I pick up an access card?")
+        == ()
+    )
+
+
+def test_retrieval_policy_mixed_intent_terms_are_policy_owned() -> None:
+    policy = {
+        "schema": "mimirq.retrieval_policy.v1",
+        "mixed_intent_leading_noise_terms": ["I need", "Can you"],
+        "mixed_intent_subject_terms": ["pricing", "refund policy"],
+        "service_anchor_noise_terms": ["where to apply"],
+        "question_intent_terms": ["deadline"],
+    }
+
+    assert retrieval_policy_mixed_intent_leading_noise_terms(policy) == ("I need", "Can you")
+    assert retrieval_policy_mixed_intent_subject_terms(policy) == (
+        "pricing",
+        "refund policy",
+        "where to apply",
+        "deadline",
+    )
+    assert retrieval_policy_mixed_intent_subject_terms({"schema": "other"}) == ()
 
 
 def test_retrieval_policy_boost_scores_declared_custom_fields_without_platform_business_defaults() -> None:

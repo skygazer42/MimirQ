@@ -115,16 +115,47 @@ def test_changzhou_retrieval_policy_declares_platform_consumable_fields():
     assert "gov_knowledge_type" in summary["filter_fields"]
     assert "question" in summary["boost_fields"]
     assert "district" in summary["anchor_fields"]
+    assert summary["anchor_binding_enabled"] is True
+    assert "service_name" in summary["anchor_binding_fields"]
+    assert "case_title" in summary["anchor_binding_fields"]
+    assert "service_aliases" in summary["anchor_binding_fields"]
+    assert "question" not in summary["anchor_binding_fields"]
     assert "chunk_kind" in summary["rerank_features"]
     assert "材料" in summary["question_intent_terms"]
+    assert "我要办理" in summary["mixed_intent_leading_noise_terms"]
+    assert "了解" in summary["mixed_intent_leading_noise_terms"]
+    assert "需要什么材料" in summary["mixed_intent_subject_terms"]
+    assert "涉及事项" in summary["mixed_intent_subject_terms"]
+    assert "材料" in summary["mixed_intent_subject_terms"]
+    assert "办理入口" in summary["mixed_intent_subject_terms"]
+    assert "联系方式" in summary["mixed_intent_subject_terms"]
+    channel_expansion = next(
+        item
+        for item in descriptor.retrieval_policy["query_expansion_values"]
+        if item.get("metadata") == "section_type" and item.get("value") == "channels"
+    )
+    entry_expansion = next(
+        item
+        for item in descriptor.retrieval_policy["query_expansion_values"]
+        if item.get("metadata") == "section_type" and item.get("value") == "operation_entry"
+    )
+    assert "入口" in entry_expansion["terms"]
+    assert "电话" in channel_expansion["terms"]
+    assert "联系方式" in channel_expansion["terms"]
+    assert "咨询方式" in channel_expansion["terms"]
     assert "需要什么材料" in summary["service_anchor_noise_terms"]
     assert "咨询电话是多少" in summary["service_anchor_noise_terms"]
     assert "收费吗" in summary["service_anchor_noise_terms"]
     assert "办理入口在哪里" in summary["service_anchor_noise_terms"]
+    assert "办理时间" in summary["service_anchor_noise_terms"]
+    assert "时间多久" in summary["service_anchor_noise_terms"]
     assert "咨询电话是多少" in summary["service_anchor_priority_terms"]
     assert "办理入口在哪里" in summary["service_anchor_priority_terms"]
     assert "收费吗" in summary["service_anchor_priority_terms"]
+    assert "办理时间" in summary["service_anchor_priority_terms"]
+    assert "时间多久" in summary["service_anchor_priority_terms"]
     assert "需要什么材料" not in summary["service_anchor_priority_terms"]
+    assert summary["service_anchor_query_rewrites"] >= 1
     assert descriptor.retrieval_policy["question_anchor_bonus"] >= 0.9
     assert summary["fallback_enabled"] is True
     assert summary["response_compaction_enabled"] is True
@@ -192,10 +223,11 @@ def test_changzhou_retrieval_policy_routes_one_thing_related_service_questions()
     values = descriptor.retrieval_policy["query_expansion_values"]
     related = [
         item for item in values
-        if item.get("metadata") == "section_type" and item.get("value") == "related_services"
+        if item.get("metadata") == "section_type" and "related_services" in (item.get("values") or [item.get("value")])
     ]
 
     assert related
+    assert "process" in (related[0].get("values") or [])
     terms = set(related[0]["terms"])
     assert {"涉及哪些事项", "相关服务", "联办服务"}.issubset(terms)
     boost_matches = {
@@ -206,15 +238,16 @@ def test_changzhou_retrieval_policy_routes_one_thing_related_service_questions()
     assert boost_matches["question"] == "fuzzy_overlap"
     assert boost_matches["aliases"] == "fuzzy_overlap"
     assert boost_matches["service_aliases"] == "fuzzy_overlap"
-    value_terms = {
-        str(item.get("value")): set(item.get("terms") or [])
-        for item in descriptor.retrieval_policy.get("query_expansion_values", [])
-        if item.get("metadata") == "section_type"
-    }
+    value_terms = {}
+    for item in descriptor.retrieval_policy.get("query_expansion_values", []):
+        if item.get("metadata") != "section_type":
+            continue
+        for value in item.get("values") or [item.get("value")]:
+            value_terms.setdefault(str(value), set()).update(item.get("terms") or [])
     assert {"申请材料", "需要哪些材料", "材料清单"}.issubset(value_terms["materials"])
-    assert {"办理流程", "怎么办理"}.issubset(value_terms["process"])
-    assert {"涉及事项", "包含哪些事项"}.issubset(value_terms["related_services"])
-    assert {"办理渠道", "在哪里办理"}.issubset(value_terms["channels"])
+    assert {"办理流程", "怎么办理", "涉及事项", "包含哪些事项"}.issubset(value_terms["process"])
+    assert {"涉及事项", "包含哪些事项", "包含哪些事", "哪些事"}.issubset(value_terms["related_services"])
+    assert {"办理渠道", "在哪里办理", "咨询方式"}.issubset(value_terms["channels"])
 
 
 def test_changzhou_plugin_governs_service_item_records():
