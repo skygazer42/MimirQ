@@ -20111,10 +20111,28 @@ export interface components {
             rerank_features?: string[];
             /** Question Intent Terms */
             question_intent_terms?: string[];
+            /** Mixed Intent Leading Noise Terms */
+            mixed_intent_leading_noise_terms?: string[];
+            /** Mixed Intent Subject Terms */
+            mixed_intent_subject_terms?: string[];
             /** Service Anchor Noise Terms */
             service_anchor_noise_terms?: string[];
             /** Service Anchor Priority Terms */
             service_anchor_priority_terms?: string[];
+            /** Metadata Anchor Preflight Block Terms */
+            metadata_anchor_preflight_block_terms?: string[];
+            /**
+             * Service Anchor Query Rewrites
+             * @default 0
+             */
+            service_anchor_query_rewrites: number;
+            /** Anchor Binding Fields */
+            anchor_binding_fields?: string[];
+            /**
+             * Anchor Binding Enabled
+             * @default false
+             */
+            anchor_binding_enabled: boolean;
             /**
              * Fallback Enabled
              * @default false
