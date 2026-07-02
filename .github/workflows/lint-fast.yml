@@ -14,6 +14,7 @@ concurrency:
 env:
   SELF_HOSTED_PYTHON_BIN: /home/user/.local/share/uv/python/cpython-3.11.13-linux-x86_64-gnu/bin
   PIP_INDEX_URL: https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
+  PIP_CACHE_DIR: /data/actions-runner/pip-cache
 
 jobs:
   lint-fast:
@@ -40,6 +41,7 @@ jobs:
 
       - name: Install Python linter
         run: |
+          mkdir -p "$PIP_CACHE_DIR"
           python -m pip install --upgrade pip
           python -m pip install ruff==0.15.9
 

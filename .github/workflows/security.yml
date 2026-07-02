@@ -16,6 +16,7 @@ concurrency:
 env:
   SELF_HOSTED_PYTHON_BIN: /home/user/.local/share/uv/python/cpython-3.11.13-linux-x86_64-gnu/bin
   PIP_INDEX_URL: https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
+  PIP_CACHE_DIR: /data/actions-runner/pip-cache
 
 jobs:
   secret-scan:
@@ -69,6 +70,7 @@ jobs:
 
       - name: Install pip-audit
         run: |
+          mkdir -p "$PIP_CACHE_DIR"
           python -m pip install --upgrade pip
           # Keep aligned with repo tooling policy (see requirements.txt).
           python -m pip install pip-audit==2.10.0
