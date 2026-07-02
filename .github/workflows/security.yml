@@ -15,6 +15,7 @@ concurrency:
 
 env:
   SELF_HOSTED_PYTHON_BIN: /home/user/.local/share/uv/python/cpython-3.11.13-linux-x86_64-gnu/bin
+  SELF_HOSTED_VENV_DIR: /data/actions-runner/mimirq-main-01/_tool/mimirq-py311
   PIP_INDEX_URL: https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
   PIP_CACHE_DIR: /data/actions-runner/pip-cache
 
@@ -62,7 +63,8 @@ jobs:
       - name: Prepare self-hosted Python
         if: ${{ runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01' }}
         run: |
-          VENV_DIR="$RUNNER_TEMP/mimirq-py311"
+          VENV_DIR="${SELF_HOSTED_VENV_DIR:-$RUNNER_TEMP/mimirq-py311}"
+          mkdir -p "$(dirname "$VENV_DIR")"
           "$SELF_HOSTED_PYTHON_BIN/python3.11" -m venv "$VENV_DIR"
           echo "$VENV_DIR/bin" >> "$GITHUB_PATH"
           "$VENV_DIR/bin/python" --version

@@ -18,6 +18,7 @@ concurrency:
 
 env:
   SELF_HOSTED_PYTHON_BIN: /home/user/.local/share/uv/python/cpython-3.11.13-linux-x86_64-gnu/bin
+  SELF_HOSTED_VENV_DIR: /data/actions-runner/mimirq-main-01/_tool/mimirq-py311
   PIP_INDEX_URL: https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
   PIP_CACHE_DIR: /data/actions-runner/pip-cache
 
@@ -41,26 +42,12 @@ jobs:
       - name: Prepare self-hosted Python
         if: ${{ runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01' }}
         run: |
-          VENV_DIR="$RUNNER_TEMP/mimirq-py311"
+          VENV_DIR="${SELF_HOSTED_VENV_DIR:-$RUNNER_TEMP/mimirq-py311}"
+          mkdir -p "$(dirname "$VENV_DIR")"
           "$SELF_HOSTED_PYTHON_BIN/python3.11" -m venv "$VENV_DIR"
           echo "$VENV_DIR/bin" >> "$GITHUB_PATH"
           "$VENV_DIR/bin/python" --version
           "$VENV_DIR/bin/pip" --version
-
-      - name: Install Python dependencies
-        env:
-          http_proxy: http://127.0.0.1:35983
-          https_proxy: http://127.0.0.1:35983
-          no_proxy: 127.0.0.1,localhost,muyuan.do
-        run: |
-          mkdir -p "$PIP_CACHE_DIR"
-          python -m pip install --upgrade pip
-          python -m pip install --retries 5 --timeout 120 \
-            "torch @ https://download-r2.pytorch.org/whl/cpu/torch-2.10.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
-            "torchvision @ https://download-r2.pytorch.org/whl/cpu/torchvision-0.25.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl"
-          python -m pip install --retries 10 --timeout 120 \
-            --extra-index-url https://download.pytorch.org/whl/cpu \
-            -r requirements.txt
 
       - name: Prepare self-hosted Node
         if: ${{ runner.environment == 'self-hosted' || runner.name == 'mimirq-main-01' }}
@@ -69,7 +56,7 @@ jobs:
           npm -v
 
       - name: Build static API site (OpenAPI + Redoc + Docusaurus handbook)
-        run: make api-docs-build
+        run: make api-docs-build-static
 
       - name: Check GitHub Pages availability
         if: github.event_name != 'pull_request'
