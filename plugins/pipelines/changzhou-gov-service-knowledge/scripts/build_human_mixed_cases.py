@@ -15,6 +15,7 @@ import hashlib
 import json
 import math
 import re
+import sys
 from collections import Counter
 from itertools import combinations
 from pathlib import Path
@@ -646,12 +647,13 @@ def main(argv: list[str] | None = None) -> int:
     payload = build_payload(source_payload, cases, total=args.total, max_qa_ratio=args.max_qa_ratio)
     Path(args.out).write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     summary = payload["generation_policy"]["summary"]
-    print(
+    sys.stdout.write(
         "built {total} cases; qa_like={qa_like_cases}; variants={variant_cases}".format(
             total=summary["total"],
             qa_like_cases=summary["qa_like_cases"],
             variant_cases=summary["variant_cases"],
         )
+        + "\n"
     )
     return 0
 

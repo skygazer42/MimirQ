@@ -6,8 +6,8 @@ from pathlib import Path
 
 
 def _load_module():
-    path = Path("scripts/build_changzhou_human_mixed_cases.py")
-    spec = importlib.util.spec_from_file_location("build_changzhou_human_mixed_cases", str(path))
+    path = Path("plugins/pipelines/changzhou-gov-service-knowledge/scripts/build_human_mixed_cases.py")
+    spec = importlib.util.spec_from_file_location("build_human_mixed_cases", str(path))
     assert spec and spec.loader
     mod = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = mod
