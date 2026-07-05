@@ -57,6 +57,7 @@ def _ready_cache_key() -> tuple[object, ...]:
         bool(getattr(settings, "TASK_QUEUE_ENABLED", False)),
         bool(getattr(settings, "EMBEDDING_CACHE_ENABLED", False)),
         bool(getattr(settings, "MINIO_ENABLED", False)),
+        bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_REQUIRED_FOR_READY", False)),
         # Include endpoints so the cache doesn't hide hot-reloaded settings changes.
         str(getattr(settings, "REDIS_URL", "") or ""),
         str(getattr(settings, "MILVUS_HOST", "") or ""),
@@ -143,6 +144,32 @@ def ready(response: Response) -> dict:
     minio_status, minio_ok = check_minio(settings, mode="ready", minio_health_check=minio_health_check)
     ok &= minio_ok
 
+    dify_external_status = None
+    if bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", False)):
+        try:
+            from app.api.v1.integrations_dify import (
+                dify_external_knowledge_warmup_ready,
+                get_dify_external_knowledge_warmup_status,
+            )
+
+            dify_external_status = get_dify_external_knowledge_warmup_status()
+            warmup_required = bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_REQUIRED_FOR_READY", False))
+            warmup_ready = dify_external_knowledge_warmup_ready()
+            dify_external_status["ready"] = warmup_ready
+            dify_external_status["required_for_ready"] = warmup_required
+            if warmup_required:
+                ok &= warmup_ready
+        except Exception as exc:  # noqa: BLE001
+            dify_external_status = {
+                "enabled": True,
+                "status": "unknown",
+                "ready": False,
+                "required_for_ready": bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_REQUIRED_FOR_READY", False)),
+                "error": str(exc)[:200],
+            }
+            if bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_REQUIRED_FOR_READY", False)):
+                ok = False
+
     if not ok:
         response.status_code = 503
 
@@ -152,6 +179,7 @@ def ready(response: Response) -> dict:
         "vector": vector_status,
         "redis": redis_status,
         "minio": minio_status,
+        "dify_external_knowledge": dify_external_status,
     }
     _ready_cache["ts"] = time.monotonic()
     _ready_cache["payload"] = payload

@@ -10,6 +10,5 @@ describe('dataset folder tree source', () => {
     expect(src).toContain("useTranslations('DatasetFolderTree')")
     expect(src).toContain("collapse: t('collapse')")
     expect(src).toContain("allDirectories: '全部目录'")
-    expect(src).toContain("t('emptyWithPath')")
   })
 })

@@ -129,26 +129,52 @@ def test_changzhou_retrieval_policy_declares_platform_consumable_fields():
     assert "材料" in summary["mixed_intent_subject_terms"]
     assert "办理入口" in summary["mixed_intent_subject_terms"]
     assert "联系方式" in summary["mixed_intent_subject_terms"]
+    assert "带什么" in summary["question_intent_terms"]
+    assert "行使层级" in summary["question_intent_terms"]
+    assert "办件类型" in summary["question_intent_terms"]
+    assert "办理形式" in summary["question_intent_terms"]
+    assert "监督投诉" in summary["question_intent_terms"]
+    assert "带什么" in summary["mixed_intent_subject_terms"]
+    assert "要带什么" in summary["mixed_intent_subject_terms"]
+    assert "行使层级" in summary["mixed_intent_subject_terms"]
+    assert "办件类型" in summary["mixed_intent_subject_terms"]
+    assert "办理形式" in summary["mixed_intent_subject_terms"]
+    assert "监督投诉方式" in summary["mixed_intent_subject_terms"]
     channel_expansion = next(
         item
         for item in descriptor.retrieval_policy["query_expansion_values"]
         if item.get("metadata") == "section_type" and item.get("value") == "channels"
+    )
+    materials_expansion = next(
+        item
+        for item in descriptor.retrieval_policy["query_expansion_values"]
+        if item.get("metadata") == "section_type" and item.get("value") == "materials"
     )
     entry_expansion = next(
         item
         for item in descriptor.retrieval_policy["query_expansion_values"]
         if item.get("metadata") == "section_type" and item.get("value") == "operation_entry"
     )
+    assert {"带什么", "要带什么", "携带什么", "携带材料"}.issubset(materials_expansion["terms"])
     assert "入口" in entry_expansion["terms"]
     assert "电话" in channel_expansion["terms"]
     assert "联系方式" in channel_expansion["terms"]
     assert "咨询方式" in channel_expansion["terms"]
+    assert "监督投诉方式" in channel_expansion["terms"]
     assert "需要什么材料" in summary["service_anchor_noise_terms"]
     assert "咨询电话是多少" in summary["service_anchor_noise_terms"]
     assert "收费吗" in summary["service_anchor_noise_terms"]
     assert "办理入口在哪里" in summary["service_anchor_noise_terms"]
     assert "办理时间" in summary["service_anchor_noise_terms"]
     assert "时间多久" in summary["service_anchor_noise_terms"]
+    assert "带什么" in summary["service_anchor_noise_terms"]
+    assert "要带什么" in summary["service_anchor_noise_terms"]
+    assert "携带什么" in summary["service_anchor_noise_terms"]
+    assert "归哪个层级" in summary["service_anchor_noise_terms"]
+    assert "行使层级" in summary["service_anchor_noise_terms"]
+    assert "办件类型" in summary["service_anchor_noise_terms"]
+    assert "办理形式" in summary["service_anchor_noise_terms"]
+    assert "监督投诉方式" in summary["service_anchor_noise_terms"]
     assert "咨询电话是多少" in summary["service_anchor_priority_terms"]
     assert "办理入口在哪里" in summary["service_anchor_priority_terms"]
     assert "收费吗" in summary["service_anchor_priority_terms"]
@@ -156,6 +182,49 @@ def test_changzhou_retrieval_policy_declares_platform_consumable_fields():
     assert "时间多久" in summary["service_anchor_priority_terms"]
     assert "需要什么材料" not in summary["service_anchor_priority_terms"]
     assert summary["service_anchor_query_rewrites"] >= 1
+    rewrite_terms = {
+        term
+        for rule in descriptor.retrieval_policy["service_anchor_query_rewrites"]
+        for term in rule.get("terms", [])
+    }
+    assert "危险化学品经营许可（首次、延期、重新申请）" in rewrite_terms
+    assert {
+        "许可",
+        "审批",
+        "备案",
+        "登记",
+        "申请",
+        "变更",
+        "延续",
+        "注销",
+        "审查",
+        "认定",
+        "批准",
+        "发放",
+        "处理",
+        "检验",
+    }.issubset(
+        descriptor.retrieval_policy["service_anchor_entity_terms"]
+    )
+    assert {"麻烦帮我查一下", "查一下", "查询"}.issubset(
+        descriptor.retrieval_policy["service_anchor_leading_noise_terms"]
+    )
+    assert {"办理形式", "行使层级", "办件类型", "办理材料", "这几块"}.issubset(
+        descriptor.retrieval_policy["service_anchor_cutoff_terms"]
+    )
+    fast_rules = {
+        str(rule.get("label")): set(rule.get("markers") or [])
+        for rule in descriptor.retrieval_policy["fast_response_field_rules"]
+    }
+    assert descriptor.retrieval_policy["fast_response_always_labels"] == ["区县", "事项名称", "问题", "一件事"]
+    assert {"带什么", "准备什么"}.issubset(fast_rules["办理材料"])
+    assert {"归哪个层级", "层级"}.issubset(fast_rules["行使层级"])
+    assert {"办件类型", "办件"}.issubset(fast_rules["办件类型"])
+    assert {"办理流程", "流程"}.issubset(fast_rules["办理流程"])
+    assert {"涉及事项", "包含哪些事项"}.issubset(fast_rules["涉及事项"])
+    assert {"申请材料", "材料清单"}.issubset(fast_rules["申请材料"])
+    assert {"办理渠道", "办理入口"}.issubset(fast_rules["办理入口"])
+    assert {"精细化材料提醒", "详细材料指南"}.issubset(fast_rules["精细化材料提醒"])
     assert descriptor.retrieval_policy["question_anchor_bonus"] >= 0.9
     assert summary["fallback_enabled"] is True
     assert summary["response_compaction_enabled"] is True
@@ -166,11 +235,20 @@ def test_changzhou_retrieval_policy_declares_platform_consumable_fields():
         "事项名称",
         "问题",
         "相似问法",
+        "行使层级",
+        "办理形式",
         "办理地点",
-        "收费情况",
-        "咨询方式",
         "办理时间",
+        "办件类型",
+        "法定办结时限",
+        "承诺办结时限",
+        "收费情况",
         "受理条件",
+        "办理材料",
+        "精细化材料提醒",
+        "办理流程",
+        "咨询方式",
+        "监督投诉方式",
         "在线办理地址",
     ]
     response_hint_fields = descriptor.retrieval_policy["response_hints"]["answer_highlight_metadata_fields"]
@@ -182,8 +260,27 @@ def test_changzhou_retrieval_policy_declares_platform_consumable_fields():
         },
         {
             "metadata": "service_fields",
-            "fields": ["办理地点", "咨询方式", "办理时间", "办理材料", "在线办理地址"],
+            "fields": [
+                "行使层级",
+                "办理形式",
+                "办理地点",
+                "办理时间",
+                "办件类型",
+                "法定办结时限",
+                "承诺办结时限",
+                "收费情况",
+                "受理条件",
+                "办理材料",
+                "精细化材料提醒",
+                "办理流程",
+                "咨询方式",
+                "监督投诉方式",
+                "在线办理地址",
+            ],
             "when_metadata": {"gov_knowledge_type": "service_item"},
+            "prioritize_query_fields": True,
+            "requested_labels_prefix": "必答字段",
+            "requested_labels_separator": "、",
             "max_chars": 1200,
         },
         {
@@ -194,13 +291,13 @@ def test_changzhou_retrieval_policy_declares_platform_consumable_fields():
         {
             "metadata": "related_services",
             "label": "涉及事项",
-            "when_metadata": {"section_type": "related_services"},
+            "when_metadata": {"section_type": ["related_services", "composite"]},
             "max_chars": 1200,
         },
         {
             "metadata": "materials",
             "label": "申请材料",
-            "when_metadata": {"section_type": "materials"},
+            "when_metadata": {"section_type": ["materials", "composite"]},
             "max_chars": 1200,
         },
         {
@@ -212,7 +309,7 @@ def test_changzhou_retrieval_policy_declares_platform_consumable_fields():
         {
             "metadata": "urls",
             "label": "办理入口",
-            "when_metadata": {"section_type": ["channels", "materials", "operation_entry", "operation_url"]},
+            "when_metadata": {"section_type": ["channels", "materials", "operation_entry", "operation_url", "composite"]},
             "max_chars": 1200,
         },
     ]

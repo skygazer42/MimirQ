@@ -117,7 +117,8 @@ function parseInlineCitationHref(href?: string): { documentId?: string; chunkId?
 function buildChatCitationSourceContext(
   messageId: string,
   documentId: string | null | undefined,
-  chunkId?: string | null
+  chunkId?: string | null,
+  citation?: Citation | null
 ): DocumentViewSourceContext | null {
   const normalizedMessageId = String(messageId || '').trim()
   const normalizedDocumentId = String(documentId || '').trim()
@@ -129,6 +130,10 @@ function buildChatCitationSourceContext(
     messageId: normalizedMessageId,
     documentId: normalizedDocumentId,
     chunkId: normalizedChunkId || null,
+    documentName: String(citation?.document_name || '').trim() || null,
+    chunkContent: String(citation?.chunk_content || '').trim() || null,
+    chunkIndex: typeof citation?.chunk_index === 'number' ? citation.chunk_index : null,
+    pageNumber: typeof citation?.page_number === 'number' ? citation.page_number : null,
   }
 }
 
@@ -507,7 +512,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
       {
         activeTab: 'preview',
         previewAnchor: getDocumentPreviewAnchorFromCitation(citation),
-        sourceContext: buildChatCitationSourceContext(message.id, documentId, citation?.chunk_id || target.chunkId),
+        sourceContext: buildChatCitationSourceContext(message.id, documentId, citation?.chunk_id || target.chunkId, citation),
       }
     )
   }, [citationByChunkId, citationByDocumentId, message.id, openDocument])
@@ -548,7 +553,7 @@ export const ChatMessageItem = memo(function ChatMessageItem({
       {
         activeTab: 'preview',
         previewAnchor: getDocumentPreviewAnchorFromCitation(citation),
-        sourceContext: buildChatCitationSourceContext(message.id, citation.document_id, citation.chunk_id),
+        sourceContext: buildChatCitationSourceContext(message.id, citation.document_id, citation.chunk_id, citation),
       }
     )
   }, [message.id, openDocument])
@@ -1364,7 +1369,7 @@ const CitationCard = memo(function CitationCard({
   })()
 
   const canViewEvidence = Boolean((citation.has_image && imgUrl && !hideImage) || isTableEvidence)
-  const sourceContext = buildChatCitationSourceContext(messageId, citation.document_id, citation.chunk_id)
+  const sourceContext = buildChatCitationSourceContext(messageId, citation.document_id, citation.chunk_id, citation)
   const citationScoreTitle = buildCitationScoreTitle(citation)
   const secondaryScore = getCitationSecondaryScore(citation)
 

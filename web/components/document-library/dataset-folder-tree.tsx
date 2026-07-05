@@ -178,6 +178,7 @@ type DatasetFolderTreeProps = {
   selectedPath: string | null
   onSelect: (path: string | null) => void
   className?: string
+  showHeader?: boolean
 }
 
 export function DatasetFolderTree({
@@ -187,6 +188,7 @@ export function DatasetFolderTree({
   selectedPath,
   onSelect,
   className,
+  showHeader = true,
 }: Readonly<DatasetFolderTreeProps>) {
   const t = useTranslations('DatasetFolderTree')
   const folderTreeParams = useMemo(
@@ -227,41 +229,54 @@ export function DatasetFolderTree({
     [t]
   )
 
+  if (tree && tree.total_documents > 0 && tree.total_with_source_path <= 0) {
+    return null
+  }
+
+  let content: React.ReactNode
+  if (loading && !tree) {
+    content = (
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+        {t('loading')}
+      </div>
+    )
+  } else if (error) {
+    content = <div className="text-xs text-destructive">{error}</div>
+  } else if (!tree || tree.total_documents <= 0) {
+    content = <div className="text-xs text-muted-foreground">{t('empty')}</div>
+  } else {
+    content = (
+      <DatasetFolderTreeView
+        root={tree.root}
+        selectedPath={selectedPath}
+        onSelect={onSelect}
+        labels={labels}
+      />
+    )
+  }
+
   return (
     <div className={cn('space-y-3', className)}>
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-xs font-semibold text-muted-foreground">{t('title')}</div>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 px-2 text-muted-foreground"
-          onClick={() => {
-            folderTreeQuery.refetch()
-          }}
-          disabled={refreshing}
-          aria-label={t('refresh')}
-        >
-          {refreshing ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="h-4 w-4" />}
-        </Button>
-      </div>
+      {showHeader ? (
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-xs font-semibold text-muted-foreground">{t('title')}</div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-muted-foreground"
+            onClick={() => {
+              folderTreeQuery.refetch()
+            }}
+            disabled={refreshing}
+            aria-label={t('refresh')}
+          >
+            {refreshing ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="h-4 w-4" />}
+          </Button>
+        </div>
+      ) : null}
 
-      {(() => {
-    if (loading && !tree) {
-        return (<div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none"/>
-          {t('loading')}
-        </div>);
-    }
-    else if (error) {
-            return (<div className="text-xs text-destructive">{error}</div>);
-        }
-        else if (tree) {
-                return (tree.total_with_source_path > 0 ? (<DatasetFolderTreeView root={tree.root} selectedPath={selectedPath} onSelect={onSelect} labels={labels}/>) : (<div className="text-xs text-muted-foreground">{t('emptyWithPath')}</div>));
-            }
-            else {
-                return (<div className="text-xs text-muted-foreground">{t('empty')}</div>);
-            }
-})()}
+      {content}
     </div>
   )
 }

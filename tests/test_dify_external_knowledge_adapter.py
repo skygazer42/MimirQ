@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import logging
 import uuid
+from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI
@@ -167,6 +169,21 @@ def _demo_service_anchor_priority_terms() -> list[str]:
     ]
 
 
+def _demo_fast_response_field_rules() -> list[dict[str, object]]:
+    return [
+        {"label": "行使层级", "markers": ["行使层级", "层级"]},
+        {"label": "办理地点", "markers": ["办理地点", "地点", "哪里办理"]},
+        {"label": "办理材料", "markers": ["办理材料", "申请材料", "材料"]},
+        {"label": "法定办结时限", "markers": ["法定办结时限", "法定时限", "办结时限", "多久"]},
+        {"label": "承诺办结时限", "markers": ["承诺办结时限", "承诺时限", "办结时限", "多久"]},
+        {"label": "收费情况", "markers": ["收费", "费用"]},
+        {"label": "涉及事项", "markers": ["涉及事项", "涉及哪些事项"]},
+        {"label": "申请材料", "markers": ["申请材料", "材料"]},
+        {"label": "办理入口", "markers": ["办理渠道", "办理入口"]},
+        {"label": "答案", "markers": ["答案", "怎么", "如何"]},
+    ]
+
+
 def _demo_policy(**overrides: object) -> dict[str, object]:
     policy: dict[str, object] = {
         "schema": "mimirq.retrieval_policy.v1",
@@ -194,6 +211,25 @@ def _demo_policy(**overrides: object) -> dict[str, object]:
         ],
         "service_anchor_noise_terms": _demo_service_anchor_noise_terms(),
         "service_anchor_priority_terms": _demo_service_anchor_priority_terms(),
+        "service_anchor_entity_terms": ["许可", "审批", "备案", "登记", "申报", "申领", "核准", "审查", "证", "配发"],
+        "service_anchor_leading_noise_terms": ["麻烦帮我查一下", "麻烦查一下", "帮我查一下", "查询", "查一下"],
+        "service_anchor_cutoff_terms": [
+            "是不是能办",
+            "是否能办",
+            "这个事项",
+            "帮我直接说清楚",
+            "行使层级",
+            "受理条件",
+            "办理形式",
+            "办理地点",
+            "法定办结时限",
+            "承诺办结时限",
+            "办理材料",
+            "最好",
+        ],
+        "question_anchor_generic_subject_terms": ["事项", "材料", "申请材料", "办理材料", "办理入口", "办理流程", "流程"],
+        "fast_response_always_labels": ["区县", "事项名称", "问题", "一件事"],
+        "fast_response_field_rules": _demo_fast_response_field_rules(),
         "response_hints": _demo_response_hints(),
     }
     policy.update(overrides)
@@ -275,6 +311,10 @@ async def test_dify_warmup_runs_internal_retrieval_for_configured_knowledge_ids(
     assert [call["dataset_ids"] for call in retrieval_calls] == [[city_dataset_id], [faq_dataset_id]]
     assert {call["query"] for call in retrieval_calls} == {"warmup probe"}
     assert {call["top_k"] for call in retrieval_calls} == {1}
+    assert {call["enable_reranker"] for call in retrieval_calls} == {False}
+    assert {call["enable_kg_query_expansion"] for call in retrieval_calls} == {False}
+    assert {call["enable_kg_chunk_injection"] for call in retrieval_calls} == {False}
+    assert {call["enable_kg_chunk_boost"] for call in retrieval_calls} == {False}
 
 
 def test_dify_warmup_scheduler_is_fire_and_forget(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -289,11 +329,13 @@ def test_dify_warmup_scheduler_is_fire_and_forget(monkeypatch: pytest.MonkeyPatc
 
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_START_DELAY_SEC", 1.0, raising=False)
 
     task = dify_api.start_dify_external_knowledge_warmup(create_task=_fake_create_task)
 
     assert task is not None
     assert scheduled
+    assert getattr(scheduled[0], "cr_code").co_name == "_delayed_warmup_dify_external_knowledge"
 
 
 def test_dify_retrieval_logs_request_diagnostics(
@@ -836,6 +878,182 @@ def test_dify_metadata_anchor_fallback_composes_exact_anchor_slots_before_limit(
     assert "申请材料正文" in fallback_records[0]["content"]
 
 
+def test_dify_metadata_anchor_fallback_composes_unquoted_exact_anchor_slots_before_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    _patch_demo_policy(
+        monkeypatch,
+        dify_api,
+        anchor_binding={
+            "enabled": True,
+            "anchor_fields": ["case_title"],
+            "slot_fields": ["section_type"],
+        },
+        query_expansion_values=[
+            {"metadata": "section_type", "value": "related_services", "terms": ["涉及事项"]},
+            {"metadata": "section_type", "value": "materials", "terms": ["申请材料"]},
+            {"metadata": "section_type", "value": "channels", "terms": ["办理渠道"]},
+        ],
+        mixed_intent_subject_terms=["涉及事项", "申请材料", "办理渠道"],
+    )
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_MAX_RECORDS",
+        2,
+        raising=False,
+    )
+    dataset_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+
+    def row(section_type: str, index: int) -> dict[str, object]:
+        label = {
+            "related_services": "涉及事项",
+            "materials": "申请材料",
+            "channels": "办理渠道",
+        }[section_type]
+        return {
+            "chunk_id": uuid.uuid4(),
+            "document_id": document_id,
+            "dataset_id": dataset_id,
+            "chunk_index": index,
+            "page_number": None,
+            "filename": "one-thing.txt",
+            "content": f"一件事：Alpha Package\n章节：{label}\n{label}正文。",
+            "metadata": {
+                "case_title": "Alpha Package",
+                "section_type": section_type,
+                "section_label": label,
+                "source_record_id": "alpha",
+                "chunk_python_plugin": _DEMO_PLUGIN_REF,
+            },
+        }
+
+    fallback_records = dify_api._metadata_anchor_fallback_records_from_rows(
+        [
+            row("related_services", 1),
+            row("channels", 2),
+            row("materials", 99),
+        ],
+        dataset_ids=[dataset_id],
+        query="Alpha Package是不是能办？涉及事项、申请材料、办理渠道，最好给我依据。",
+        top_k=5,
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+        existing_records=[],
+    )
+
+    assert len(fallback_records) == 1
+    assert fallback_records[0]["metadata"]["dify_composite_exact_anchor_slots"] is True
+    assert fallback_records[0]["metadata"]["dify_composite_section_types"] == [
+        "related_services",
+        "materials",
+        "channels",
+    ]
+    assert "章节：申请材料" in fallback_records[0]["content"]
+
+
+def test_dify_exact_anchor_full_answer_does_not_skip_on_one_thing_partial_section(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    _patch_demo_policy(
+        monkeypatch,
+        dify_api,
+        anchor_binding={
+            "enabled": True,
+            "anchor_fields": ["case_title"],
+            "slot_fields": ["section_type"],
+        },
+        query_expansion_values=[
+            {"metadata": "section_type", "value": "related_services", "terms": ["涉及事项"]},
+            {"metadata": "section_type", "value": "materials", "terms": ["申请材料"]},
+            {"metadata": "section_type", "value": "channels", "terms": ["办理渠道"]},
+        ],
+        mixed_intent_subject_terms=["涉及事项", "申请材料", "办理渠道"],
+    )
+    record = {
+        "content": (
+            "答案要点：一件事：Alpha Package；涉及事项：事项A；"
+            "申请材料：材料B；办理渠道：线上办理"
+        ),
+        "score": 0.91,
+        "title": "alpha-process.txt",
+        "metadata": {
+            "case_title": "Alpha Package",
+            "section_type": "process",
+            "chunk_kind": "one_thing_process",
+            "chunk_python_plugin": _DEMO_PLUGIN_REF,
+        },
+    }
+
+    assert not dify_api._records_have_exact_anchor_full_answer(
+        [record],
+        query="Alpha Package是不是能办？涉及事项、申请材料、办理渠道，最好给我依据。",
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    )
+
+
+def test_dify_question_bonus_does_not_promote_generic_one_thing_qa_over_specific_case_anchor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    _patch_demo_policy(
+        monkeypatch,
+        dify_api,
+        anchor_binding={
+            "enabled": True,
+            "anchor_fields": ["case_title"],
+            "slot_fields": ["section_type"],
+        },
+        query_expansion_values=[
+            {"metadata": "section_type", "value": "related_services", "terms": ["涉及事项"]},
+            {"metadata": "section_type", "value": "materials", "terms": ["申请材料"]},
+            {"metadata": "section_type", "value": "channels", "terms": ["办理渠道"]},
+        ],
+        mixed_intent_subject_terms=["涉及事项", "申请材料", "办理渠道"],
+    )
+    generic_qa = {
+        "content": "答案要点：答案：企业开办一件事材料和流程。",
+        "score": 0.6,
+        "title": "qa.txt",
+        "metadata": {
+            "question": "公积金企业开办“一件事”涉及的办理事项，材料、流程有些？",
+            "chunk_kind": "qa_pair",
+            "chunk_python_plugin": _DEMO_PLUGIN_REF,
+        },
+    }
+    exact_section = {
+        "content": "答案要点：一件事：残疾人服务“一件事”；申请材料：申请表。",
+        "score": 0.72,
+        "title": "one-thing.txt",
+        "metadata": {
+            "case_title": "残疾人服务“一件事”",
+            "section_type": "materials",
+            "chunk_kind": "one_thing_materials",
+            "chunk_python_plugin": _DEMO_PLUGIN_REF,
+        },
+    }
+    query = "残疾人服务“一件事”是不是能办？我这边比较急，涉及事项、申请材料、办理渠道，最好给我依据。"
+
+    assert dify_api._record_question_intent_bonus(
+        generic_qa,
+        query=query,
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    ) == 0.0
+    assert dify_api._record_rank_score(
+        exact_section,
+        query=query,
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    ) > dify_api._record_rank_score(
+        generic_qa,
+        query=query,
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    )
+
+
 def test_dify_response_compaction_keeps_single_exact_anchor_answer_record(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1064,6 +1282,8 @@ def test_dify_metadata_anchor_db_fallback_prefers_service_anchor_before_broad_qu
             patterns = [value for value in values if value.startswith("%")]
             if "service_name" in fields:
                 service_query_pattern_counts.append(len(patterns))
+                if any(value == "重要工业产品生产许可（食品相关产品）名称变更" for value in values):
+                    return [service_row]
                 if len(patterns) == 1 and any("工业产品" in pattern for pattern in patterns):
                     return [service_row]
                 return []
@@ -1093,7 +1313,7 @@ def test_dify_metadata_anchor_db_fallback_prefers_service_anchor_before_broad_qu
         db=_FakeDB(),
         tenant_id=tenant_id,
         dataset_ids=[dataset_id],
-        query="常州市重要工业产品生产许可（食品相关产品）名称变更咨询电话是多少",
+        query="常州市重要工业产品生产许可（食品相关产品）名称变更：办理地点、办理材料？",
         top_k=5,
         policy_plugin_refs=(_DEMO_PLUGIN_REF,),
         existing_records=[],
@@ -1101,7 +1321,383 @@ def test_dify_metadata_anchor_db_fallback_prefers_service_anchor_before_broad_qu
 
     assert len(fallback_records) == 1
     assert fallback_records[0]["metadata"]["source_record_id"] == "service-expected"
-    assert service_query_pattern_counts[0] == 1
+    assert service_query_pattern_counts[0] == 0
+
+
+def test_dify_metadata_anchor_db_fallback_checks_exact_service_name_first_for_plain_service_anchor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    _patch_demo_policy(monkeypatch, dify_api)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED",
+        True,
+        raising=False,
+    )
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    service_row = {
+        "chunk_id": uuid.uuid4(),
+        "document_id": uuid.uuid4(),
+        "dataset_id": dataset_id,
+        "chunk_index": 1,
+        "page_number": None,
+        "filename": "service.txt",
+        "content": "事项名称：保健食品广告审查\n行使层级：市级\n办件类型：承诺件",
+        "metadata": {
+            "district": "常州市",
+            "service_name": "保健食品广告审查",
+            "source_record_id": "service-expected",
+            "knowledge_section": "01政务服务事项知识",
+            "gov_knowledge_type": "service_item",
+            "chunk_python_plugin": _DEMO_PLUGIN_REF,
+        },
+    }
+    seen_values_by_query: list[list[str]] = []
+
+    def _condition_values(condition):  # noqa: ANN001, ANN202
+        values: list[str] = []
+
+        def walk(node):  # noqa: ANN001, ANN202
+            value = getattr(node, "value", None)
+            if isinstance(value, str):
+                values.append(value)
+            elif isinstance(value, dict):
+                for key, raw_items in value.items():
+                    values.append(str(key))
+                    items = raw_items if isinstance(raw_items, list | tuple | set) else [raw_items]
+                    values.extend(str(item) for item in items)
+            for attr in ("left", "right"):
+                child = getattr(node, attr, None)
+                if child is not None:
+                    walk(child)
+            clauses = getattr(node, "clauses", None)
+            if clauses is not None:
+                for child in clauses:
+                    walk(child)
+
+        walk(condition)
+        return values
+
+    class _FakeQuery:
+        def __init__(self) -> None:
+            self._condition = None
+
+        def join(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+            return self
+
+        def filter(self, *_conditions):  # noqa: ANN002, ANN202
+            self._condition = _conditions[-1] if _conditions else None
+            return self
+
+        def order_by(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+            return self
+
+        def limit(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+            return self
+
+        def all(self):  # noqa: ANN202
+            values = _condition_values(self._condition)
+            seen_values_by_query.append(values)
+            if values.count("service_name") == 1 and values.count("保健食品广告审查") == 1:
+                return [service_row]
+            return []
+
+    class _FakeDB:
+        def execute(self, _statement):  # noqa: ANN001, ANN202
+            return None
+
+        def query(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+            return _FakeQuery()
+
+        def rollback(self) -> None:
+            return None
+
+    fallback_records = dify_api._metadata_anchor_db_fallback_records(
+        db=_FakeDB(),
+        tenant_id=tenant_id,
+        dataset_ids=[dataset_id],
+        query="保健食品广告审查",
+        top_k=5,
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+        existing_records=[],
+    )
+
+    assert len(fallback_records) == 1
+    assert fallback_records[0]["metadata"]["source_record_id"] == "service-expected"
+    assert seen_values_by_query
+    first_values = seen_values_by_query[0]
+    assert first_values.count("service_name") == 1
+    assert "case_title" not in first_values
+    assert "service_aliases" not in first_values
+    assert "district" not in first_values
+    assert not any(value.startswith("%") for value in first_values)
+
+
+def test_dify_metadata_anchor_db_fallback_prefers_qa_for_slot_question_before_service_item(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    _patch_demo_policy(
+        monkeypatch,
+        dify_api,
+        query_expansion_values=[
+            {"metadata": "section_type", "value": "channels", "terms": ["在哪里办理", "哪里办理"]},
+        ],
+        question_anchor_bonus=0.9,
+    )
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED",
+        True,
+        raising=False,
+    )
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    service_row = {
+        "chunk_id": uuid.uuid4(),
+        "document_id": uuid.uuid4(),
+        "dataset_id": dataset_id,
+        "chunk_index": 1,
+        "page_number": None,
+        "filename": "service.txt",
+        "content": "事项名称：企业社会保险登记\n办理地点：市政务服务中心一楼A区",
+        "metadata": {
+            "district": "区域甲",
+            "service_name": "企业社会保险登记",
+            "source_record_id": "service-wrong",
+            "knowledge_section": "01政务服务事项知识",
+            "gov_knowledge_type": "service_item",
+            "chunk_python_plugin": _DEMO_PLUGIN_REF,
+        },
+    }
+    qa_row = {
+        "chunk_id": uuid.uuid4(),
+        "document_id": uuid.uuid4(),
+        "dataset_id": dataset_id,
+        "chunk_index": 2,
+        "page_number": None,
+        "filename": "qa.txt",
+        "content": "问题：请问可以在哪里办理企业社会保险登记？\n答案：可以在区域甲政务服务中心一楼大厅C区办理。",
+        "metadata": {
+            "district": "区域甲",
+            "question": "请问可以在哪里办理企业社会保险登记？",
+            "source_record_id": "qa-expected",
+            "knowledge_section": "06各区常见问题",
+            "gov_knowledge_type": "qa",
+            "chunk_kind": "qa_pair",
+            "chunk_python_plugin": _DEMO_PLUGIN_REF,
+        },
+    }
+
+    def _condition_values(condition):  # noqa: ANN001, ANN202
+        values: list[str] = []
+
+        def walk(node):  # noqa: ANN001, ANN202
+            value = getattr(node, "value", None)
+            if isinstance(value, str):
+                values.append(value)
+            elif isinstance(value, dict):
+                for key, raw_items in value.items():
+                    values.append(str(key))
+                    items = raw_items if isinstance(raw_items, list | tuple | set) else [raw_items]
+                    values.extend(str(item) for item in items)
+            for attr in ("left", "right"):
+                child = getattr(node, attr, None)
+                if child is not None:
+                    walk(child)
+            clauses = getattr(node, "clauses", None)
+            if clauses is not None:
+                for child in clauses:
+                    walk(child)
+
+        walk(condition)
+        return values
+
+    class _FakeQuery:
+        def __init__(self) -> None:
+            self._condition = None
+
+        def join(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+            return self
+
+        def filter(self, *_conditions):  # noqa: ANN002, ANN202
+            self._condition = _conditions[-1] if _conditions else None
+            return self
+
+        def order_by(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+            return self
+
+        def limit(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+            return self
+
+        def all(self):  # noqa: ANN202
+            values = _condition_values(self._condition)
+            fields = set(values)
+            patterns = [value for value in values if value.startswith("%")]
+            if "question" in fields and any("企业社会保险登记" in pattern for pattern in patterns):
+                return [qa_row]
+            if "service_name" in fields and any("企业社会保险登记" in pattern for pattern in patterns):
+                return [service_row]
+            return []
+
+    class _FakeDB:
+        def execute(self, _statement):  # noqa: ANN001, ANN202
+            return None
+
+        def query(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+            return _FakeQuery()
+
+        def rollback(self) -> None:
+            return None
+
+    fallback_records = dify_api._metadata_anchor_db_fallback_records(
+        db=_FakeDB(),
+        tenant_id=tenant_id,
+        dataset_ids=[dataset_id],
+        query="麻烦查一下区域甲在哪里办理企业社会保险登记，区域甲政务服务中心一楼大厅C区、东方东路168号。",
+        top_k=5,
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+        existing_records=[],
+    )
+
+    assert len(fallback_records) == 1
+    assert fallback_records[0]["metadata"]["source_record_id"] == "qa-expected"
+
+
+def test_dify_metadata_anchor_db_fallback_continues_alias_scan_for_slot_question(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    _patch_demo_policy(
+        monkeypatch,
+        dify_api,
+        question_anchor_bonus=0.9,
+    )
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED",
+        True,
+        raising=False,
+    )
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    broad_row = {
+        "chunk_id": uuid.uuid4(),
+        "document_id": uuid.uuid4(),
+        "dataset_id": dataset_id,
+        "chunk_index": 1,
+        "page_number": None,
+        "filename": "id-card.txt",
+        "content": "问题：核发居民身份证（补领）\n答案：本省户籍人员凭户口簿、驾驶证、居住证、护照其中之一办理。",
+        "metadata": {
+            "question": "核发居民身份证（补领）",
+            "aliases": ["居民身份证补领需要什么材料"],
+            "source_record_id": "broad-id-card",
+            "knowledge_section": "03常州市常见问题",
+            "gov_knowledge_type": "qa",
+            "chunk_kind": "qa_pair",
+            "chunk_python_plugin": _DEMO_PLUGIN_REF,
+        },
+    }
+    material_row = {
+        "chunk_id": uuid.uuid4(),
+        "document_id": uuid.uuid4(),
+        "dataset_id": dataset_id,
+        "chunk_index": 2,
+        "page_number": None,
+        "filename": "id-card.txt",
+        "content": (
+            "问题：省外和省内人员补办身份证的办理材料和办理时限分别是什么？\n"
+            "答案：居民户口簿、有效身份证件之一；省外户籍居民补领还需合法稳定就业、就学、居住的其中一种证明材料。"
+        ),
+        "metadata": {
+            "question": "省外和省内人员补办身份证的办理材料和办理时限分别是什么？",
+            "aliases": ["身份证补办"],
+            "source_record_id": "material-id-card",
+            "knowledge_section": "03常州市常见问题",
+            "gov_knowledge_type": "qa",
+            "chunk_kind": "qa_pair",
+            "chunk_python_plugin": _DEMO_PLUGIN_REF,
+        },
+    }
+
+    def _condition_values(condition):  # noqa: ANN001, ANN202
+        values: list[str] = []
+
+        def walk(node):  # noqa: ANN001, ANN202
+            value = getattr(node, "value", None)
+            if isinstance(value, str):
+                values.append(value)
+            elif isinstance(value, dict):
+                for key, raw_items in value.items():
+                    values.append(str(key))
+                    items = raw_items if isinstance(raw_items, list | tuple | set) else [raw_items]
+                    values.extend(str(item) for item in items)
+            for attr in ("left", "right"):
+                child = getattr(node, attr, None)
+                if child is not None:
+                    walk(child)
+            clauses = getattr(node, "clauses", None)
+            if clauses is not None:
+                for child in clauses:
+                    walk(child)
+
+        walk(condition)
+        return values
+
+    class _FakeQuery:
+        def __init__(self) -> None:
+            self._condition = None
+
+        def join(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+            return self
+
+        def filter(self, *_conditions):  # noqa: ANN002, ANN202
+            self._condition = _conditions[-1] if _conditions else None
+            return self
+
+        def order_by(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+            return self
+
+        def limit(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+            return self
+
+        def all(self):  # noqa: ANN202
+            values = _condition_values(self._condition)
+            fields = set(values)
+            patterns = [value for value in values if value.startswith("%")]
+            if "aliases" in fields and any("居民身份证补领需要什么材料" in value for value in values):
+                return [broad_row]
+            if any("身份证补" in pattern for pattern in patterns):
+                return [material_row]
+            return []
+
+    class _FakeDB:
+        def execute(self, _statement):  # noqa: ANN001, ANN202
+            return None
+
+        def query(self, *_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+            return _FakeQuery()
+
+        def rollback(self) -> None:
+            return None
+
+    fallback_records = dify_api._metadata_anchor_db_fallback_records(
+        db=_FakeDB(),
+        tenant_id=tenant_id,
+        dataset_ids=[dataset_id],
+        query="居民身份证补领需要什么材料",
+        top_k=5,
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+        existing_records=[],
+    )
+
+    assert fallback_records[0]["metadata"]["source_record_id"] == "material-id-card"
 
 
 def test_dify_metadata_anchor_db_fallback_sets_statement_timeout_and_rolls_back_on_timeout(
@@ -1185,6 +1781,12 @@ def test_dify_retrieval_uses_rag_before_question_anchor_fallback(
     monkeypatch.setattr(
         dify_api.settings,
         "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED",
+        False,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUPPLEMENT_ENABLED",
         False,
         raising=False,
     )
@@ -1455,6 +2057,71 @@ def test_dify_preflight_records_still_use_final_reranker(
     assert top["score"] == pytest.approx(0.98)
 
 
+@pytest.mark.asyncio
+async def test_dify_final_rerank_cannot_override_exact_question_anchor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+    from app.rag.reranker.types import RerankResult
+
+    _patch_demo_policy(
+        monkeypatch,
+        dify_api,
+        question_intent_terms=["材料"],
+        question_anchor_bonus=0.9,
+    )
+    monkeypatch.setattr(dify_api.settings, "ENABLE_RERANKER", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_RERANKER_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "RERANKER_PROVIDER", "unit", raising=False)
+
+    correct = {
+        "content": "问题：核发居民身份证（补领）\n答案：居民户口簿、有效身份证件之一。",
+        "score": 0.99,
+        "title": "id-card.txt",
+        "metadata": {
+            "question": "核发居民身份证（补领）",
+            "primary_alias": "居民身份证补领需要什么材料",
+            "aliases": ["居民身份证补领需要什么材料"],
+            "chunk_kind": "qa_pair",
+            "chunk_python_plugin": _DEMO_PLUGIN_REF,
+        },
+    }
+    wrong = {
+        "content": "问题：核发居民身份证（首次申领）\n答案：居民户口簿。",
+        "score": 0.99,
+        "title": "id-card.txt",
+        "metadata": {
+            "question": "核发居民身份证（首次申领）",
+            "chunk_kind": "qa_pair",
+            "chunk_python_plugin": _DEMO_PLUGIN_REF,
+        },
+    }
+
+    class _FakeReranker:
+        def rerank(self, _query, candidates, **_kwargs):  # noqa: ANN001, ANN202
+            wrong_id = next(candidate.id for candidate in candidates if "首次申领" in candidate.text)
+            correct_id = next(candidate.id for candidate in candidates if "补领" in candidate.text)
+            return RerankResult(
+                ordered_ids=[wrong_id, correct_id],
+                score_map={wrong_id: 0.72, correct_id: 0.70},
+                provider="unit",
+                model_used="unit-reranker",
+                elapsed_sec=0.01,
+            )
+
+    monkeypatch.setattr(dify_api, "get_reranker", lambda _provider: _FakeReranker(), raising=True)
+
+    reranked = await dify_api._final_rerank_records_for_query(
+        [correct, wrong],
+        query="居民身份证补领需要什么材料",
+        top_k=2,
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    )
+
+    assert reranked[0]["metadata"]["question"] == "核发居民身份证（补领）"
+    assert reranked[0]["metadata"]["dify_final_rerank"] is True
+
+
 def test_dify_mixed_intent_caps_internal_candidates_without_disabling_retrieval_reranker(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1463,11 +2130,17 @@ def test_dify_mixed_intent_caps_internal_candidates_without_disabling_retrieval_
     token = "dify-test-token"
     dataset_id = uuid.uuid4()
     calls: list[dict[str, object]] = []
+    _patch_demo_policy(monkeypatch, dify_api)
 
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_ENABLED", False, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUPPLEMENT_ENABLED", False, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUPPLEMENT_ENABLED",
+        False,
+        raising=False,
+    )
     monkeypatch.setattr(dify_api.settings, "ENABLE_RERANKER", True, raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_RERANKER_ENABLED", True, raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MIN", 20, raising=False)
@@ -2268,7 +2941,12 @@ def test_dify_kg_on_demand_skips_kg_for_confident_rag_anchor(
 
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON", f'{{"city": "{dataset_id}"}}', raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        f'{{"city": {{"dataset_ids": ["{dataset_id}"], "plugin_refs": ["{_DEMO_PLUGIN_REF}"]}}}}',
+        raising=False,
+    )
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_ENABLED", False, raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_KG_ON_DEMAND_ENABLED", True, raising=False)
@@ -2328,7 +3006,12 @@ def test_dify_kg_on_demand_runs_kg_for_low_confidence_rag(
 
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
-    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON", f'{{"city": "{dataset_id}"}}', raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        f'{{"city": {{"dataset_ids": ["{dataset_id}"], "plugin_refs": ["{_DEMO_PLUGIN_REF}"]}}}}',
+        raising=False,
+    )
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_ENABLED", False, raising=False)
     monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_KG_ON_DEMAND_ENABLED", True, raising=False)
@@ -2609,6 +3292,266 @@ def test_dify_metadata_anchor_supplement_uses_inherited_route_scope_for_aggregat
     assert "0519-12345678" in body["records"][0]["content"]
 
 
+def test_dify_metadata_anchor_expands_to_sibling_policy_datasets_for_specific_service_anchor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    token = "dify-test-token"
+    city_dataset = uuid.uuid4()
+    district_dataset = uuid.uuid4()
+    calls = {"rag": 0, "metadata_anchor": 0}
+    seen_fallback_dataset_ids: list[list[uuid.UUID]] = []
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_SCOPE_ENABLED", True, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED",
+        True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED",
+        False,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUPPLEMENT_ENABLED",
+        False,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        (
+            '{"city": {'
+            f'"dataset_ids": ["{city_dataset}"], '
+            f'"plugin_refs": ["{_DEMO_PLUGIN_REF}"], '
+            '"query_routes": ['
+            '{"terms": ["区县甲"], '
+            f'"dataset_ids": ["{district_dataset}"], '
+            '"mode": "replace"}'
+            "]"
+            "},"
+            '"district": {'
+            f'"dataset_ids": ["{district_dataset}"], '
+            f'"plugin_refs": ["{_DEMO_PLUGIN_REF}"]'
+            "}}"
+        ),
+        raising=False,
+    )
+    _patch_demo_policy(monkeypatch, dify_api)
+
+    async def _fake_retrieve_dataset_citations(**kwargs):  # noqa: ANN003, ANN202
+        calls["rag"] += 1
+        dataset_ids = list(kwargs["dataset_ids"])
+        assert dataset_ids == [city_dataset]
+        return [
+            {
+                "chunk_content": "事项名称：建筑业企业资质的核准（注销）\n承诺办结时限：1个工作日",
+                "relevance_score": 0.72,
+                "document_name": "city-service.txt",
+                "chunk_id": str(uuid.uuid4()),
+                "dataset_id": str(city_dataset),
+                "metadata": {
+                    "dataset_id": str(city_dataset),
+                    "service_name": "建筑业企业资质的核准（注销）",
+                    "chunk_python_plugin": _DEMO_PLUGIN_REF,
+                },
+            }
+        ]
+
+    def _fake_metadata_anchor_db_fallback_records(**kwargs):  # noqa: ANN003, ANN202
+        calls["metadata_anchor"] += 1
+        dataset_ids = list(kwargs["dataset_ids"])
+        seen_fallback_dataset_ids.append(dataset_ids)
+        if district_dataset not in dataset_ids:
+            return []
+        return [
+            {
+                "content": "答案要点：事项名称：城市建筑垃圾处置核准\n\n原始证据：\n区县：天宁区\n事项名称：城市建筑垃圾处置核准",
+                "score": 0.99,
+                "title": "district-service.txt",
+                "metadata": {
+                    "dataset_id": str(district_dataset),
+                    "district": "天宁区",
+                    "service_name": "城市建筑垃圾处置核准",
+                    "chunk_kind": "service_item_full",
+                    "chunk_python_plugin": _DEMO_PLUGIN_REF,
+                    "dify_metadata_anchor_fallback": True,
+                },
+            }
+        ]
+
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(
+        dify_api,
+        "_metadata_anchor_db_fallback_records",
+        _fake_metadata_anchor_db_fallback_records,
+        raising=True,
+    )
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/integrations/dify/retrieval",
+        headers=_auth(token),
+        json={
+            "knowledge_id": "city",
+            "query": "城市建筑垃圾处置核准这个事项，帮我直接说清楚：行使层级、受理条件、承诺办结时限。",
+            "retrieval_setting": {"top_k": 5, "score_threshold": 0.0},
+        },
+    )
+
+    assert res.status_code == 200, res.text
+    assert calls["rag"] >= 1
+    assert calls["metadata_anchor"] >= 1
+    assert [city_dataset, district_dataset] in seen_fallback_dataset_ids
+    assert res.json()["records"][0]["metadata"]["service_name"] == "城市建筑垃圾处置核准"
+
+
+def test_dify_mixed_preflight_uses_sibling_policy_scope_for_specific_service_anchor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    token = "dify-test-token"
+    city_dataset = uuid.uuid4()
+    district_dataset = uuid.uuid4()
+    query = "城市建筑垃圾处置核准这个事项，帮我直接说清楚：行使层级、办理材料。"
+    fallback_calls: list[tuple[str, list[uuid.UUID]]] = []
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_SCOPE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUPPLEMENT_ENABLED", True, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED",
+        True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED",
+        True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        (
+            '{"city": {'
+            f'"dataset_ids": ["{city_dataset}"], '
+            f'"plugin_refs": ["{_DEMO_PLUGIN_REF}"], '
+            '"query_routes": ['
+            '{"terms": ["区县甲"], '
+            f'"dataset_ids": ["{district_dataset}"], '
+            '"mode": "replace"}'
+            "]"
+            "},"
+            '"district": {'
+            f'"dataset_ids": ["{district_dataset}"], '
+            f'"plugin_refs": ["{_DEMO_PLUGIN_REF}"]'
+            "}}"
+        ),
+        raising=False,
+    )
+    _patch_demo_policy(
+        monkeypatch,
+        dify_api,
+        mixed_intent_leading_noise_terms=["帮我直接说清楚"],
+        mixed_intent_subject_terms=["这个事项", "行使层级", "办理材料"],
+        service_anchor_noise_terms=["这个事项", "帮我直接说清楚", "行使层级", "办理材料"],
+        service_anchor_priority_terms=["行使层级", "办理材料"],
+        service_anchor_entity_terms=["核准"],
+        service_anchor_cutoff_terms=["这个事项", "帮我直接说清楚", "行使层级", "办理材料"],
+        query_expansion_values=[
+            {"metadata": "service_fields", "value": "行使层级", "terms": ["行使层级"]},
+            {"metadata": "section_type", "value": "materials", "terms": ["办理材料"]},
+        ],
+    )
+
+    async def _fake_retrieve_dataset_citations(**kwargs):  # noqa: ANN003, ANN202
+        dataset_ids = list(kwargs["dataset_ids"])
+        return [
+            {
+                "chunk_content": "事项名称：城市测量标志管护\n行使层级：市级",
+                "relevance_score": 0.72,
+                "document_name": "city-service.txt",
+                "chunk_id": str(uuid.uuid4()),
+                "dataset_id": str(dataset_ids[0]),
+                "metadata": {
+                    "dataset_id": str(dataset_ids[0]),
+                    "service_name": "城市测量标志管护",
+                    "chunk_python_plugin": _DEMO_PLUGIN_REF,
+                },
+            }
+        ]
+
+    def _fake_metadata_anchor_db_fallback_records(**kwargs):  # noqa: ANN003, ANN202
+        dataset_ids = list(kwargs["dataset_ids"])
+        fallback_calls.append((str(kwargs["query"]), dataset_ids))
+        if str(kwargs["query"]) == query:
+            return []
+        if district_dataset not in dataset_ids:
+            return []
+        return [
+            {
+                "content": "答案要点：事项名称：城市建筑垃圾处置核准\n行使层级：区级\n办理材料：申请表",
+                "score": 0.99,
+                "title": "district-service.txt",
+                "metadata": {
+                    "dataset_id": str(district_dataset),
+                    "service_name": "城市建筑垃圾处置核准",
+                    "chunk_kind": "service_item_full",
+                    "chunk_python_plugin": _DEMO_PLUGIN_REF,
+                    "dify_metadata_anchor_fallback": True,
+                },
+            }
+        ]
+
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(
+        dify_api,
+        "_metadata_anchor_db_fallback_records",
+        _fake_metadata_anchor_db_fallback_records,
+        raising=True,
+    )
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/integrations/dify/retrieval",
+        headers=_auth(token),
+        json={
+            "knowledge_id": "city",
+            "query": query,
+            "retrieval_setting": {"top_k": 5, "score_threshold": 0.0},
+        },
+    )
+
+    assert res.status_code == 200, res.text
+    subquery_calls = [(seen_query, ids) for seen_query, ids in fallback_calls if seen_query != query]
+    assert subquery_calls
+    assert all([city_dataset, district_dataset] == ids for _seen_query, ids in subquery_calls)
+    assert res.json()["records"][0]["metadata"]["service_name"] == "城市建筑垃圾处置核准"
+
+
 def test_dify_aggregate_routes_merge_explicit_and_inherited_hints(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2762,6 +3705,35 @@ def test_dify_metadata_anchor_service_terms_remove_area_and_question_noise(
     assert "入口在哪里" not in "".join(entry_terms[:4])
 
 
+def test_dify_metadata_anchor_service_terms_strip_generic_item_suffix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    _patch_demo_policy(monkeypatch, dify_api)
+
+    terms = dify_api._metadata_anchor_service_name_query_terms(
+        "城市建筑垃圾处置核准这个事项，帮我直接说清楚：行使层级、受理条件、承诺办结时限。",
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    )
+
+    assert terms[0] == "城市建筑垃圾处置核准"
+    assert "这个事项" not in "".join(terms[:4])
+
+
+def test_dify_query_treats_approval_verification_as_service_anchor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    _patch_demo_policy(monkeypatch, dify_api)
+
+    assert dify_api._query_has_specific_service_anchor_candidate(
+        "城市建筑垃圾处置核准这个事项，帮我直接说清楚：行使层级、受理条件、承诺办结时限。",
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    )
+
+
 def test_dify_metadata_anchor_service_terms_prepend_plugin_query_rewrites(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2784,6 +3756,23 @@ def test_dify_metadata_anchor_service_terms_prepend_plugin_query_rewrites(
     )
 
     assert terms[:2] == ["社会保障卡补卡", "社保卡补卡"]
+
+
+def test_dify_metadata_anchor_service_terms_prioritize_quoted_service_title(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    _patch_demo_policy(monkeypatch, dify_api)
+
+    terms = dify_api._metadata_anchor_service_name_query_terms(
+        "办理「困难残疾人生活补贴和重度残疾人护理补贴资格认定申请」前，归哪个层级办理、属于什么办件类型、法定多久办结分别是什么？",
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    )
+
+    assert terms[0] == "困难残疾人生活补贴和重度残疾人护理补贴资格认定申请"
+    assert "办理" not in terms[0]
+    assert "归哪个层级" not in terms[0]
 
 
 def test_dify_compaction_keeps_mixed_intent_evidence(
@@ -3634,6 +4623,38 @@ def test_dify_service_anchor_priority_ignores_generic_how_to_phrases(
         "常州市护士执业证书遗失补办在哪里办理",
         policy_plugin_refs=(_DEMO_PLUGIN_REF,),
     )
+    assert dify_api._query_prefers_service_anchor(
+        "办理「危险化学品经营许可首次申请」前，办理地点在哪里？",
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    )
+    assert dify_api._query_prefers_service_anchor(
+        "麻烦查一下旅客运输船舶营运证的配发（新增），行使层级、办理地点、法定办结时限。",
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    )
+    service_terms = dify_api._metadata_anchor_service_name_query_terms(
+        "保健食品广告审查是不是能办？办理形式、办理地点、承诺办结时限，最好给我依据。",
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    )
+    assert service_terms[0] == "保健食品广告审查"
+    assert dify_api._query_has_specific_service_anchor_candidate(
+        "保健食品广告审查是不是能办？办理形式、办理地点、承诺办结时限，最好给我依据。",
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    )
+    assert "service_name" in dify_api._exact_query_anchor_fields_for_policy_refs((_DEMO_PLUGIN_REF,))
+    compacted = dify_api._compact_mixed_intent_exact_anchor_records(
+        [
+            {
+                "content": "事项名称：抵押权转移登记\n行使层级：市级\n办理地点：A窗口\n办理材料：申请表",
+                "score": 0.84,
+                "title": "service.txt",
+                "metadata": {"service_name": "抵押权转移登记"},
+            }
+        ],
+        query="请按政务知识库口径核对“抵押权转移登记”：行使层级、办理地点、办理材料。",
+        top_k=5,
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    )
+    assert len(compacted) == 1
 
 
 def test_dify_question_anchor_strength_matches_reordered_cjk_question() -> None:
@@ -4799,6 +5820,85 @@ def test_dify_retrieval_skips_mixed_intent_queries_when_exact_anchor_is_complete
     assert [record["title"] for record in res.json()["records"]] == ["alpha-service.txt"]
 
 
+def test_dify_retrieval_skips_unquoted_mixed_intent_when_exact_anchor_record_is_complete(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    token = "dify-test-token"
+    dataset_id = uuid.uuid4()
+    calls: list[str] = []
+    query = "城市建筑垃圾处置核准这个事项，帮我直接说清楚：行使层级、受理条件、承诺办结时限。"
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_ENABLED", False, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_HIGH_CONFIDENCE_ENABLED",
+        False,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        (
+            '{"city": {'
+            f'"dataset_ids": ["{dataset_id}"], '
+            f'"plugin_refs": ["{_DEMO_PLUGIN_REF}"]'
+            "}}"
+        ),
+        raising=False,
+    )
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+    _patch_demo_policy(monkeypatch, dify_api)
+
+    async def _fake_retrieve_dataset_citations(**kwargs):  # noqa: ANN003, ANN202
+        calls.append(kwargs["query"])
+        return [
+            {
+                "chunk_content": (
+                    "事项名称：城市建筑垃圾处置核准\n"
+                    "行使层级：县级\n"
+                    "受理条件：建设单位、施工单位或者运输单位可申请。\n"
+                    "承诺办结时限：1个工作日\n"
+                    "收费情况：不收费"
+                ),
+                "relevance_score": 0.94,
+                "document_name": "天宁区事项清单.txt",
+                "chunk_id": str(uuid.uuid4()),
+                "dataset_id": str(dataset_id),
+                "metadata": {
+                    "service_name": "城市建筑垃圾处置核准",
+                    "chunk_kind": "service_item_full",
+                    "chunk_python_plugin": _DEMO_PLUGIN_REF,
+                },
+            }
+        ]
+
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/integrations/dify/retrieval",
+        headers=_auth(token),
+        json={
+            "knowledge_id": "city",
+            "query": query,
+            "retrieval_setting": {"top_k": 5, "score_threshold": 0.0},
+        },
+    )
+
+    assert res.status_code == 200, res.text
+    assert calls == [query]
+    assert [record["title"] for record in res.json()["records"]] == ["天宁区事项清单.txt"]
+
+
 def test_dify_retrieval_does_not_skip_mixed_intent_queries_for_unquoted_anchor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -5405,6 +6505,67 @@ def test_dify_record_ranking_uses_plugin_rerank_features(
     ]
 
 
+def test_dify_record_ranking_protects_exact_service_anchor_from_generic_qa_policy_boost(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    _patch_demo_policy(
+        monkeypatch,
+        dify_api,
+        boost_fields=[
+            {"metadata": "question", "weight": 2.4, "match": "fuzzy_overlap"},
+            {"metadata": "service_name", "weight": 1.7, "match": "contains"},
+        ],
+        rerank_features=["question", "service_name"],
+        anchor_binding={
+            "enabled": True,
+            "anchor_fields": ["service_name"],
+            "slot_fields": ["question"],
+            "anchor_match_bonus": 0.35,
+            "slot_only_penalty": 0.35,
+            "anchor_mismatch_penalty": 0.35,
+        },
+    )
+    records = [
+        {
+            "content": "问题：临时救助办理条件是什么？\n答案：临时救助条件说明。",
+            "score": 0.50,
+            "title": "qa.txt",
+            "metadata": {
+                "question": "临时救助办理条件是什么？",
+                "chunk_kind": "qa_pair",
+                "chunk_python_plugin": _DEMO_PLUGIN_REF,
+            },
+        },
+        {
+            "content": (
+                "事项名称：城市建筑垃圾处置核准\n"
+                "办理地点：13号城管综合窗口\n"
+                "行使层级：区级\n"
+                "受理条件：申请人提交申办材料齐全、符合法定形式\n"
+                "承诺办结时限：5个工作日"
+            ),
+            "score": 0.73,
+            "title": "service.txt",
+            "metadata": {
+                "service_name": "城市建筑垃圾处置核准",
+                "chunk_kind": "service_item_full",
+                "chunk_python_plugin": _DEMO_PLUGIN_REF,
+            },
+        },
+    ]
+
+    dify_api._sort_records_for_query(
+        records,
+        query="城市建筑垃圾处置核准这个事项，帮我直接说清楚：行使层级、受理条件、承诺办结时限。",
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    )
+
+    assert records[0]["metadata"]["service_name"] == "城市建筑垃圾处置核准"
+    assert records[1]["metadata"]["question"] == "临时救助办理条件是什么？"
+
+
 def test_dify_record_ranking_demotes_plugin_anchor_mismatches(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -5782,6 +6943,604 @@ def test_dify_plugin_retrieval_policy_fallback_expands_candidate_window(
 
     assert res.status_code == 200, res.text
     assert observed_top_k == [6]
+
+
+def test_dify_fast_latency_profile_uses_single_small_retrieval(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    token = "dify-test-token"
+    dataset_id = uuid.uuid4()
+    calls: list[dict[str, object]] = []
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON", f'{{"city": "{dataset_id}"}}', raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX", 10, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MIN", 20, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MULTIPLIER", 4, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX", 50, raising=False)
+    monkeypatch.setattr(dify_api.settings, "ENABLE_RERANKER", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_RERANKER_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUPPLEMENT_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED", False, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_KG_ON_DEMAND_ENABLED", True, raising=False)
+
+    async def _fake_retrieve_dataset_citations(**kwargs):  # noqa: ANN003, ANN202
+        calls.append(dict(kwargs))
+        return [
+            {
+                "chunk_content": "Alpha Desk escalation path",
+                "relevance_score": 0.91,
+                "document_name": "policy.md",
+                "chunk_id": str(uuid.uuid4()),
+                "dataset_id": str(dataset_id),
+            }
+        ]
+
+    def _unexpected_metadata_fallback(**_kwargs):  # noqa: ANN003, ANN202
+        raise AssertionError("fast latency profile must not run metadata anchor fallback")
+
+    def _unexpected_reranker(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+        raise AssertionError("fast latency profile must not run final reranker")
+
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(dify_api, "_metadata_anchor_db_fallback_records", _unexpected_metadata_fallback, raising=True)
+    monkeypatch.setattr(dify_api, "get_reranker", _unexpected_reranker, raising=True)
+    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/integrations/dify/retrieval",
+        headers=_auth(token),
+        json={
+            "knowledge_id": "city",
+            "query": "Alpha Desk escalation path",
+            "retrieval_setting": {
+                "top_k": 2,
+                "score_threshold": 0.0,
+                "latency_profile": "fast",
+                "enable_kg_query_expansion": True,
+                "enable_kg_chunk_injection": True,
+                "enable_kg_chunk_boost": True,
+            },
+        },
+    )
+
+    assert res.status_code == 200, res.text
+    assert len(calls) == 1
+    assert calls[0]["top_k"] == 2
+    assert calls[0]["requested_top_k"] == 2
+    assert calls[0]["retrieval_mode"] == "vector"
+    assert calls[0]["enable_reranker"] is False
+    assert calls[0]["enable_kg_query_expansion"] is False
+    assert calls[0]["enable_kg_chunk_injection"] is False
+    assert calls[0]["enable_kg_chunk_boost"] is False
+
+
+def test_dify_fast_latency_profile_limits_candidates_and_compacts_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    token = "dify-test-token"
+    dataset_id = uuid.uuid4()
+    calls: list[dict[str, object]] = []
+    _patch_demo_policy(monkeypatch, dify_api)
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        f'{{"city": {{"dataset_ids": ["{dataset_id}"], "plugin_refs": ["{_DEMO_PLUGIN_REF}"]}}}}',
+        raising=False,
+    )
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX", 10, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_CANDIDATE_TOP_K_MAX", 3, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_RESPONSE_TOP_K_MAX", 2, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_CONTENT_MAX_CHARS", 500, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED", False, raising=False)
+
+    async def _fake_retrieve_dataset_citations(**kwargs):  # noqa: ANN003, ANN202
+        calls.append(dict(kwargs))
+        return [
+            {
+                "chunk_content": (
+                    f"区县：常州市 | 事项名称：Alpha Desk {index} | 行使层级：市级 | "
+                    "办理地点：A区1号窗口 | 收费情况：不收费 | 办理材料：申请表、身份证"
+                ),
+                "relevance_score": 0.9 - index * 0.01,
+                "document_name": f"policy-{index}.md",
+                "chunk_id": str(uuid.uuid4()),
+                "dataset_id": str(dataset_id),
+            }
+            for index in range(5)
+        ]
+
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/integrations/dify/retrieval",
+        headers=_auth(token),
+        json={
+            "knowledge_id": "city",
+            "query": "Alpha Desk 帮我核一下行使层级、办理地点、办理材料",
+            "retrieval_setting": {
+                "top_k": 5,
+                "score_threshold": 0.0,
+                "latency_profile": "fast",
+            },
+        },
+    )
+
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert calls[0]["top_k"] == 3
+    assert calls[0]["requested_top_k"] == 5
+    assert len(body["records"]) == 2
+    assert "行使层级：市级" in body["records"][0]["content"]
+    assert "办理地点：A区1号窗口" in body["records"][0]["content"]
+    assert "办理材料：申请表、身份证" in body["records"][0]["content"]
+    assert "收费情况" not in body["records"][0]["content"]
+    assert body["records"][0]["metadata"]["dify_fast_compacted"] is True
+
+
+def test_dify_fast_response_enforces_total_context_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    _patch_demo_policy(monkeypatch, dify_api)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_RESPONSE_TOP_K_MAX", 3, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_CONTENT_MAX_CHARS", 500, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_TOTAL_CONTENT_MAX_CHARS", 200, raising=False)
+
+    records = [
+        {
+            "content": (
+                f"区县：常州市 | 事项名称：Alpha Desk {index} | 行使层级：市级 | "
+                "办理地点：A区1号窗口 | 办理材料：申请表、身份证、授权书、经办人材料"
+            ),
+            "score": 0.9 - index * 0.01,
+            "title": f"policy-{index}.md",
+            "metadata": {},
+        }
+        for index in range(3)
+    ]
+
+    compacted = dify_api._compact_fast_records_for_response(
+        records,
+        query="Alpha Desk 帮我核一下行使层级、办理地点、办理材料",
+        top_k=3,
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    )
+
+    assert len(compacted) == 2
+    assert sum(len(str(record["content"])) for record in compacted) <= 200
+    assert compacted[0]["metadata"]["dify_fast_compacted"] is True
+    assert compacted[0]["metadata"]["dify_fast_total_context_budget_chars"] == 200
+
+
+def test_dify_fast_response_prefers_exact_field_label_over_generic_marker(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    _patch_demo_policy(
+        monkeypatch,
+        dify_api,
+        fast_response_field_rules=[
+            {"label": "申请材料", "markers": ["申请材料", "材料"]},
+            {"label": "精细化材料提醒", "markers": ["精细化材料提醒", "详细材料指南"]},
+            {"label": "办理材料", "markers": ["办理材料", "材料"]},
+        ],
+    )
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_CONTENT_MAX_CHARS", 500, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_TOTAL_CONTENT_MAX_CHARS", 800, raising=False)
+
+    records = [
+        {
+            "content": (
+                "区县：常州市\n"
+                "事项名称：Alpha Desk\n"
+                "申请材料：申请表、身份证、授权书\n"
+                "精细化材料提醒：可在企业开办智能体查看详细材料指南。\n"
+                "办理材料：申请表、身份证、授权书、经办人材料"
+            ),
+            "score": 0.91,
+            "title": "policy.md",
+            "metadata": {},
+        }
+    ]
+
+    compacted = dify_api._compact_fast_records_for_response(
+        records,
+        query="Alpha Desk 的精细化材料提醒是什么？",
+        top_k=1,
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    )
+
+    content = compacted[0]["content"]
+    assert "精细化材料提醒：可在企业开办智能体查看详细材料指南。" in content
+    assert "申请材料：" not in content
+    assert "办理材料：" not in content
+
+
+def test_dify_fast_response_does_not_backfill_exact_field_with_generic_marker(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    _patch_demo_policy(
+        monkeypatch,
+        dify_api,
+        fast_response_field_rules=[
+            {"label": "申请材料", "markers": ["申请材料", "材料"]},
+            {"label": "精细化材料提醒", "markers": ["精细化材料提醒", "详细材料指南"]},
+            {"label": "办理材料", "markers": ["办理材料", "材料"]},
+        ],
+    )
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_CONTENT_MAX_CHARS", 500, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_TOTAL_CONTENT_MAX_CHARS", 800, raising=False)
+
+    records = [
+        {
+            "content": (
+                "区县：常州市\n"
+                "事项名称：Beta Desk\n"
+                "申请材料：申请表、身份证、授权书\n"
+                "办理材料：申请表、身份证、授权书、经办人材料"
+            ),
+            "score": 0.88,
+            "title": "policy.md",
+            "metadata": {},
+        }
+    ]
+
+    compacted = dify_api._compact_fast_records_for_response(
+        records,
+        query="Beta Desk 的精细化材料提醒是什么？",
+        top_k=1,
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    )
+
+    content = compacted[0]["content"]
+    assert "区县：常州市" in content
+    assert "事项名称：Beta Desk" in content
+    assert "申请材料：" not in content
+    assert "办理材料：" not in content
+
+
+def test_dify_fast_response_can_compact_from_plugin_metadata_hints(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    response_hints = _demo_response_hints()
+    response_hints["answer_highlight_metadata_fields"] = [  # type: ignore[index]
+        {
+            "metadata": "service_fields",
+            "fields": ["涉及事项", "申请材料", "办理入口"],
+            "prioritize_query_fields": True,
+            "requested_labels_prefix": "必答字段",
+            "requested_labels_separator": "、",
+        },
+        {
+            "metadata": "case_title",
+            "label": "一件事",
+            "max_chars": 200,
+        },
+        {
+            "metadata": "related_services",
+            "label": "涉及事项",
+            "when_metadata": {"section_type": "composite"},
+            "max_chars": 200,
+        },
+        {
+            "metadata": "materials",
+            "label": "申请材料",
+            "when_metadata": {"section_type": "composite"},
+            "max_chars": 200,
+        },
+        {
+            "metadata": "urls",
+            "label": "办理入口",
+            "when_metadata": {"section_type": "composite"},
+            "max_chars": 200,
+        },
+    ]
+    _patch_demo_policy(monkeypatch, dify_api, response_hints=response_hints)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_CONTENT_MAX_CHARS", 500, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_TOTAL_CONTENT_MAX_CHARS", 800, raising=False)
+
+    records = [
+        {
+            "content": "一件事：Alpha Package\n合并章节原文：\n办理须知\n" + ("这是一段不该直接塞给 Dify 的长流程说明。" * 80),
+            "score": 0.93,
+            "title": "one-thing.md",
+            "metadata": {
+                "section_type": "composite",
+                "case_title": "Alpha Package",
+                "related_services": ["事项A", "事项B"],
+                "materials": ["申请表", "身份证"],
+                "urls": ["https://example.test/apply"],
+            },
+        }
+    ]
+
+    compacted = dify_api._compact_fast_records_for_response(
+        records,
+        query="这个一件事涉及事项、申请材料、办理渠道是什么？",
+        top_k=1,
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    )
+
+    content = compacted[0]["content"]
+    assert "必答字段：涉及事项、申请材料、办理入口" in content
+    assert "一件事：Alpha Package" in content
+    assert "涉及事项：事项A" in content
+    assert "申请材料：申请表" in content
+    assert "办理入口：https://example.test/apply" in content
+    assert "不该直接塞给 Dify" not in content
+    assert compacted[0]["metadata"]["dify_fast_compacted"] is True
+
+
+def test_dify_fast_response_compacts_long_qa_answer_by_query_terms(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    _patch_demo_policy(monkeypatch, dify_api)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_CONTENT_MAX_CHARS", 1400, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_TOTAL_CONTENT_MAX_CHARS", 2200, raising=False)
+
+    records = [
+        {
+            "content": (
+                "问题：汽车置换更新\n"
+                "答案：汽车置换更新可以在苏服办APP首页进入，进行2025年补贴申请。"
+                "1.卖旧置换更新补贴，从此入口发起补贴申请。"
+                "2.报废置换更新补贴，从此入口发起补贴申请。"
+                "一、活动时间 2025年1月1日至2025年12月31日。"
+                "二、补贴范围 个人消费者转让或报废本人名下乘用车，并在江苏省内购置新车。"
+                + "三、补贴标准 各档补贴金额和资料审核规则。" * 80
+            ),
+            "score": 0.83,
+            "title": "car.md",
+            "metadata": {"chunk_python_plugin": _DEMO_PLUGIN_REF, "gov_knowledge_type": "qa"},
+        }
+    ]
+
+    compacted = dify_api._compact_fast_records_for_response(
+        records,
+        query="汽车置换补贴怎么申请：苏服办APP、2025年补贴申请、卖旧置换更新补贴、报废置换更新补贴？",
+        top_k=1,
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    )
+
+    content = compacted[0]["content"]
+    assert len(content) < 500
+    assert "苏服办APP" in content
+    assert "2025年补贴申请" in content
+    assert "卖旧置换更新补贴" in content
+    assert "报废置换更新补贴" in content
+    assert "各档补贴金额和资料审核规则" not in content
+
+
+def test_dify_fast_latency_profile_can_short_circuit_with_metadata_preflight(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    token = "dify-test-token"
+    dataset_id = uuid.uuid4()
+    chunk_id = uuid.uuid4()
+    hybrid_calls: list[dict[str, object]] = []
+    preflight_calls: list[dict[str, object]] = []
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON", f'{{"city": "{dataset_id}"}}', raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED", True, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_FAST_METADATA_PREFLIGHT_STATEMENT_TIMEOUT_MS",
+        321,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_FAST_METADATA_PREFLIGHT_MAX_ELAPSED_MS",
+        654,
+        raising=False,
+    )
+
+    def _fake_metadata_anchor_db_fallback_records(**kwargs):  # noqa: ANN003, ANN202
+        preflight_calls.append(dict(kwargs))
+        return [
+            {
+                "content": "事项名称：Alpha Desk escalation path\n办理地点：A1",
+                "score": 0.96,
+                "title": "policy.md",
+                "metadata": {
+                    "dataset_id": str(dataset_id),
+                    "chunk_id": str(chunk_id),
+                    "service_name": "Alpha Desk escalation path",
+                },
+            }
+        ]
+
+    async def _unexpected_retrieve_dataset_citations(**kwargs):  # noqa: ANN003, ANN202
+        hybrid_calls.append(dict(kwargs))
+        raise AssertionError("metadata preflight hit should skip hybrid retrieval")
+
+    monkeypatch.setattr(dify_api, "_metadata_anchor_db_fallback_records", _fake_metadata_anchor_db_fallback_records, raising=True)
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _unexpected_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(dify_api, "_query_allows_metadata_anchor_preflight", lambda *_args, **_kwargs: True, raising=True)
+    monkeypatch.setattr(dify_api, "_query_has_specific_service_anchor_candidate", lambda *_args, **_kwargs: True, raising=True)
+    monkeypatch.setattr(dify_api, "_records_have_strong_question_anchor", lambda *_args, **_kwargs: True, raising=True)
+    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/integrations/dify/retrieval",
+        headers=_auth(token),
+        json={
+            "knowledge_id": "city",
+            "query": "Alpha Desk escalation path",
+            "retrieval_setting": {
+                "top_k": 2,
+                "score_threshold": 0.0,
+                "latency_profile": "fast",
+            },
+        },
+    )
+
+    assert res.status_code == 200, res.text
+    assert hybrid_calls == []
+    assert len(preflight_calls) == 1
+    assert preflight_calls[0]["statement_timeout_ms_override"] == 321
+    assert preflight_calls[0]["max_elapsed_ms"] == 654
+    assert res.json()["records"][0]["title"] == "policy.md"
+
+
+def test_dify_fast_latency_profile_allows_quoted_question_metadata_preflight(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    token = "dify-test-token"
+    dataset_id = uuid.uuid4()
+    preflight_calls: list[dict[str, object]] = []
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON", f'{{"city": "{dataset_id}"}}', raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED", True, raising=False)
+
+    def _fake_metadata_anchor_db_fallback_records(**kwargs):  # noqa: ANN003, ANN202
+        preflight_calls.append(dict(kwargs))
+        return [
+            {
+                "content": "问题：请问我可以在哪里补办社会保障卡\n答案：雕庄街道为民服务中心。",
+                "score": 0.97,
+                "title": "qa.txt",
+                "metadata": {
+                    "dataset_id": str(dataset_id),
+                    "question": "请问我可以在哪里补办社会保障卡",
+                    "chunk_kind": "qa_pair",
+                },
+            }
+        ]
+
+    async def _unexpected_retrieve_dataset_citations(**_kwargs):  # noqa: ANN003, ANN202
+        raise AssertionError("quoted question anchor should use metadata preflight before hybrid retrieval")
+
+    monkeypatch.setattr(dify_api, "_metadata_anchor_db_fallback_records", _fake_metadata_anchor_db_fallback_records, raising=True)
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _unexpected_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(dify_api, "_query_allows_metadata_anchor_preflight", lambda *_args, **_kwargs: True, raising=True)
+    monkeypatch.setattr(dify_api, "_query_has_specific_service_anchor_candidate", lambda *_args, **_kwargs: False, raising=True)
+    monkeypatch.setattr(dify_api, "_records_have_confident_metadata_anchor", lambda *_args, **_kwargs: True, raising=True)
+    monkeypatch.setattr(dify_api, "_records_have_strong_question_anchor", lambda *_args, **_kwargs: True, raising=True)
+    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/integrations/dify/retrieval",
+        headers=_auth(token),
+        json={
+            "knowledge_id": "city",
+            "query": "我想办理“请问我可以在哪里补办社会保障卡”，不想跑错窗口。",
+            "retrieval_setting": {
+                "top_k": 2,
+                "score_threshold": 0.0,
+                "latency_profile": "fast",
+            },
+        },
+    )
+
+    assert res.status_code == 200, res.text
+    assert len(preflight_calls) == 1
+    assert res.json()["records"][0]["title"] == "qa.txt"
+
+
+def test_dify_fast_latency_profile_skips_broad_metadata_preflight(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    token = "dify-test-token"
+    dataset_id = uuid.uuid4()
+    hybrid_calls: list[dict[str, object]] = []
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON", f'{{"city": "{dataset_id}"}}', raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED", True, raising=False)
+
+    def _unexpected_metadata_anchor_db_fallback_records(**_kwargs):  # noqa: ANN003, ANN202
+        raise AssertionError("fast broad queries should not run metadata preflight")
+
+    async def _fake_retrieve_dataset_citations(**kwargs):  # noqa: ANN003, ANN202
+        hybrid_calls.append(dict(kwargs))
+        return [
+            {
+                "chunk_content": "线上业务渠道答案",
+                "relevance_score": 0.93,
+                "document_name": "qa.xlsx",
+                "chunk_id": str(uuid.uuid4()),
+                "dataset_id": str(dataset_id),
+            }
+        ]
+
+    monkeypatch.setattr(dify_api, "_metadata_anchor_db_fallback_records", _unexpected_metadata_anchor_db_fallback_records, raising=True)
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(dify_api, "_query_allows_metadata_anchor_preflight", lambda *_args, **_kwargs: True, raising=True)
+    monkeypatch.setattr(dify_api, "_query_has_specific_service_anchor_candidate", lambda *_args, **_kwargs: False, raising=True)
+    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/integrations/dify/retrieval",
+        headers=_auth(token),
+        json={
+            "knowledge_id": "city",
+            "query": "公积金线上业务渠道有哪些这个事项",
+            "retrieval_setting": {
+                "top_k": 2,
+                "score_threshold": 0.0,
+                "latency_profile": "fast",
+            },
+        },
+    )
+
+    assert res.status_code == 200, res.text
+    assert len(hybrid_calls) == 1
+    assert res.json()["records"][0]["content"] == "线上业务渠道答案"
 
 
 def test_dify_retrieval_logs_policy_diagnostics(
@@ -6667,6 +8426,77 @@ def test_dify_sort_uses_plugin_configured_question_anchor_bonus(
     assert records[0]["title"] == "区域甲12345QA.txt"
 
 
+def test_dify_sort_uses_aliases_for_question_anchor_bonus(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    _patch_demo_policy(
+        monkeypatch,
+        dify_api,
+        question_anchor_bonus=0.9,
+    )
+    calculation_answer = {
+        "content": "问题：汽车置换更新补贴怎么算？\n答案：新能源车补贴8%。",
+        "score": 0.67,
+        "title": "policy.txt",
+        "metadata": {
+            "question": "汽车置换更新补贴怎么算？",
+            "chunk_kind": "qa_pair",
+            "chunk_python_plugin": _DEMO_PLUGIN_REF,
+        },
+    }
+    application_answer = {
+        "content": "问题：汽车置换更新\n答案：可在苏服办APP申请汽车置换补贴。",
+        "score": 0.73,
+        "title": "high-frequency.xlsx",
+        "metadata": {
+            "question": "汽车置换更新",
+            "aliases": ["办理汽车置换补贴", "常州办理车辆置换补贴申请查询"],
+            "chunk_kind": "qa_pair",
+            "chunk_python_plugin": _DEMO_PLUGIN_REF,
+        },
+    }
+    records = [calculation_answer, application_answer]
+
+    dify_api._sort_records_for_query(
+        records,
+        query="汽车置换补贴怎么申请",
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    )
+
+    assert records[0] is application_answer
+
+
+def test_dify_sort_does_not_promote_url_evidence_for_non_entry_question() -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    unrelated_url_record = {
+        "content": "问题：信用修复入口在哪里？\n答案：访问江苏政务服务网。",
+        "score": 0.74,
+        "title": "one-thing.txt",
+        "metadata": {
+            "question": "信用修复入口在哪里？",
+            "urls": ["https://example.test/credit"],
+            "chunk_kind": "qa_pair",
+        },
+    }
+    exact_content_record = {
+        "content": "问题：企业员工密码输入错误5次，无法再输入密码。\n答案：企业可通过重置密码，刷新输入限制次数。",
+        "score": 0.75,
+        "title": "emergency-faq.docx",
+        "metadata": {
+            "question": "企业在应急系统注册时，系统提示该企业统一社会信用代码已被注册。",
+            "chunk_kind": "qa_pair",
+        },
+    }
+    records = [unrelated_url_record, exact_content_record]
+
+    dify_api._sort_records_for_query(records, query="企业员工密码输入错误5次怎么办")
+
+    assert records[0] is exact_content_record
+
+
 def test_dify_compaction_preserves_top_question_anchor_before_policy_alignment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -6708,6 +8538,65 @@ def test_dify_compaction_preserves_top_question_anchor_before_policy_alignment(
     )
 
     assert [record["title"] for record in compacted] == ["区域甲12345QA.txt"]
+
+
+def test_dify_compaction_does_not_drop_top_exact_answer_for_nearby_strong_questions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    _patch_demo_policy(
+        monkeypatch,
+        dify_api,
+        question_intent_terms=["材料"],
+        response_compaction={
+            "enabled": True,
+            "min_top_score": 0.8,
+            "relative_score_floor": 0.65,
+            "min_records": 1,
+        },
+    )
+    correct = {
+        "content": "问题：核发居民身份证（补领）\n答案：居民户口簿、有效身份证件之一。",
+        "score": 0.7,
+        "title": "id-card.txt",
+        "metadata": {
+            "question": "核发居民身份证（补领）",
+            "chunk_kind": "qa_pair",
+            "chunk_python_plugin": _DEMO_PLUGIN_REF,
+        },
+    }
+    first_apply = {
+        "content": "问题：居民身份证需要什么材料\n答案：居民户口簿。",
+        "score": 0.725,
+        "title": "id-card.txt",
+        "metadata": {
+            "question": "居民身份证需要什么材料",
+            "chunk_kind": "qa_pair",
+            "chunk_python_plugin": _DEMO_PLUGIN_REF,
+        },
+    }
+    renewal = {
+        "content": "问题：居民身份证材料\n答案：居民身份证。",
+        "score": 0.724,
+        "title": "id-card.txt",
+        "metadata": {
+            "question": "居民身份证材料",
+            "chunk_kind": "qa_pair",
+            "chunk_python_plugin": _DEMO_PLUGIN_REF,
+        },
+    }
+
+    records = [correct, first_apply, renewal]
+
+    compacted = dify_api._compact_records_for_response(
+        records,
+        query="居民身份证补领需要什么材料",
+        top_k=5,
+        policy_plugin_refs=(_DEMO_PLUGIN_REF,),
+    )
+
+    assert compacted[0] is correct
 
 
 def test_dify_retrieval_uses_map_plugin_refs_for_content_hints_when_citation_lacks_plugin_ref(
@@ -6878,6 +8767,65 @@ def test_dify_response_hints_can_promote_plugin_declared_metadata_fields(
     assert "咨询方式：0519-12333" in hinted
     assert "答案：请携带身份证件到窗口办理。" in hinted
     assert hinted.endswith("咨询方式：0519-12333")
+
+
+def test_dify_response_hints_can_prioritize_plugin_declared_query_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import app.api.v1.integrations_dify as dify_api
+
+    plugin_ref = "plugin:demo-service@1.0.0:chunk"
+    policy = {
+        "schema": "mimirq.retrieval_policy.v1",
+        "fast_response_field_rules": [
+            {"label": "办理材料", "markers": ["材料"]},
+            {"label": "办理流程", "markers": ["流程", "怎么办理"]},
+            {"label": "咨询方式", "markers": ["咨询", "电话"]},
+        ],
+        "response_hints": {
+            "answer_prefix": "答案要点",
+            "source_prefix": "原始证据",
+            "answer_highlight_metadata_fields": [
+                {"metadata": "service_name", "label": "事项名称"},
+                {
+                    "metadata": "service_fields",
+                    "fields": ["办理材料", "办理流程", "咨询方式"],
+                    "prioritize_query_fields": True,
+                    "requested_labels_prefix": "必答字段",
+                    "requested_labels_separator": "、",
+                },
+            ],
+        },
+    }
+    metadata = {
+        "chunk_python_plugin": plugin_ref,
+        "service_name": "服务卡补卡",
+        "service_fields": {
+            "办理材料": "居民身份证件；居民户口簿；外国人永久居留证；港澳台居民居住证",
+            "办理流程": "提交申请；窗口受理；制卡发放",
+            "咨询方式": "0519-12333",
+        },
+    }
+
+    monkeypatch.setattr(
+        dify_api,
+        "_retrieval_policy_for_plugin_ref",
+        lambda ref: policy if ref == plugin_ref else {},
+        raising=True,
+    )
+
+    hinted = dify_api._content_with_answer_hints(
+        "事项名称：服务卡补卡",
+        metadata,
+        query="服务卡补卡怎么办理，咨询电话是多少",
+        policy_plugin_refs=(plugin_ref,),
+    )
+
+    assert hinted.startswith("答案要点：")
+    assert "必答字段：办理流程、咨询方式" in hinted
+    assert hinted.index("必答字段：办理流程、咨询方式") < hinted.index("办理流程：提交申请")
+    assert hinted.index("办理流程：提交申请") < hinted.index("办理材料：居民身份证件")
+    assert hinted.index("咨询方式：0519-12333") < hinted.index("办理材料：居民身份证件")
 
 
 def test_dify_response_hints_can_promote_plugin_declared_array_metadata_fields(
@@ -8100,3 +10048,400 @@ def test_dify_record_conversion_keeps_kg_diagnostics_metadata() -> None:
     assert record["metadata"]["kg_shared_events"] == 2
     assert record["metadata"]["kg_path_length"] == 1
     assert record["metadata"]["kg_evidence_anchored"] is True
+
+
+def test_dify_external_retrieval_logs_history_rag_trace_when_conversation_context_is_present(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.api.v1 import integrations_dify as dify_api
+
+    logged: list[dict[str, object]] = []
+    monkeypatch.setattr(dify_api, "log_metrics", lambda payload: logged.append(payload))
+
+    conversation_id = uuid.uuid4()
+    tenant_id = uuid.uuid4()
+    request_id = "dify-http-trace-1"
+
+    dify_api._log_dify_external_rag_trace(
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        request_id=request_id,
+        question="保健食品广告审查归哪个层级办理？",
+        response_records=[
+            dify_api.DifyExternalKnowledgeRecord(
+                content="不应进入 trace 原文",
+                score=0.93,
+                title="service-item.txt",
+                metadata={
+                    "document_id": "doc-1",
+                    "chunk_id": "chunk-1",
+                    "chunk_index": 7,
+                    "page_number": 2,
+                    "hit_type": "hybrid",
+                    "reranker_provider": "bge",
+                    "rerank_score": 0.91,
+                    "rerank_elapsed_sec": 0.12,
+                    "rerank_model_used": "bge-reranker-large",
+                },
+            )
+        ],
+        top_k=5,
+        candidate_top_k=12,
+        retrieval_path="rag:primary_scope",
+        elapsed_ms=321.4,
+        metadata_anchor_fallback_count=1,
+        mixed_intent_query_count=2,
+    )
+
+    assert len(logged) == 1
+    payload = logged[0]
+    assert payload["event"] == "rag_trace"
+    assert payload["source"] == "dify_external_knowledge"
+    assert payload["conversation_id"] == str(conversation_id)
+    assert payload["tenant_id"] == str(tenant_id)
+    assert payload["request_id"] == request_id
+    assert payload["question"] == "保健食品广告审查归哪个层级办理？"
+    assert payload["citations_count"] == 1
+    assert payload["retrieval"] == {
+        "mode": "dify_external_knowledge",
+        "requested_mode": "external_knowledge",
+        "top_k": 5,
+        "query_count": 3,
+        "elapsed_sec": pytest.approx(0.3214),
+        "errors": [],
+        "enable_reranker": True,
+        "reranker_provider": "bge",
+        "reranker_top_n": 12,
+    }
+    assert payload["citations"][0]["document_id"] == "doc-1"
+    assert payload["citations"][0]["chunk_id"] == "chunk-1"
+    assert payload["citations"][0]["rerank_score"] == pytest.approx(0.91)
+    assert "content" not in payload["citations"][0]
+
+    from app.services.rag_trace_service import normalize_rag_trace_record
+
+    history_trace = normalize_rag_trace_record(payload)
+    assert history_trace.conversation_id == str(conversation_id)
+    assert history_trace.request_id == request_id
+    assert history_trace.retrieval.mode == "dify_external_knowledge"
+    assert history_trace.retrieval.query_count == 3
+    assert history_trace.rerank.enabled is True
+    assert history_trace.citations[0].document_id == "doc-1"
+
+
+def test_dify_trace_context_accepts_body_and_header_extensions() -> None:
+    from app.api.v1 import integrations_dify as dify_api
+
+    body_conversation_id = uuid.uuid4()
+    body = dify_api.DifyExternalKnowledgeRequest(
+        knowledge_id="external-kb",
+        query="保健食品广告审查",
+        conversation_id=body_conversation_id,
+        request_id="body-request-id",
+    )
+    request = SimpleNamespace(
+        headers={
+            "x-mimirq-conversation-id": str(uuid.uuid4()),
+            "x-mimirq-request-id": "header-request-id",
+        },
+        state=SimpleNamespace(request_id="state-request-id"),
+    )
+
+    assert dify_api._dify_trace_conversation_id(request, body) == body_conversation_id
+    assert dify_api._dify_trace_request_id(request, body) == "body-request-id"
+
+    header_conversation_id = uuid.uuid4()
+    body_without_trace = dify_api.DifyExternalKnowledgeRequest(
+        knowledge_id="external-kb",
+        query="保健食品广告审查",
+    )
+    header_request = SimpleNamespace(
+        headers={
+            "x-mimirq-conversation-id": str(header_conversation_id),
+            "x-mimirq-request-id": "header-request-id",
+        },
+        state=SimpleNamespace(request_id="state-request-id"),
+    )
+
+    assert dify_api._dify_trace_conversation_id(header_request, body_without_trace) == header_conversation_id
+    assert dify_api._dify_trace_request_id(header_request, body_without_trace) == "header-request-id"
+
+
+def test_dify_trace_context_auto_creates_mimirq_conversation_for_dify_conversation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.api.v1 import integrations_dify as dify_api
+
+    created_conversation_id = uuid.uuid4()
+    calls: list[dict[str, object]] = []
+
+    class _DB:
+        pass
+
+    db = _DB()
+    tenant_id = uuid.uuid4()
+    request = SimpleNamespace(headers={}, state=SimpleNamespace(request_id="req-1"))
+    body = dify_api.DifyExternalKnowledgeRequest(
+        knowledge_id="external-kb",
+        query="保健食品广告审查归哪个层级办理？",
+        dify_conversation_id="dify-conv-001",
+        dify_message_id="dify-msg-001",
+        dify_workflow_run_id="dify-run-001",
+    )
+
+    def fake_ensure(**kwargs):  # noqa: ANN003, ANN202
+        calls.append(dict(kwargs))
+        return created_conversation_id
+
+    monkeypatch.setattr(dify_api, "_ensure_dify_trace_conversation", fake_ensure, raising=True)
+
+    resolved = dify_api._dify_trace_conversation_id(
+        request,
+        body,
+        db=db,
+        tenant_id=tenant_id,
+        account_id="system:dify",
+    )
+
+    assert resolved == created_conversation_id
+    assert calls == [
+        {
+            "db": db,
+            "tenant_id": tenant_id,
+            "account_id": "system:dify",
+            "source_conversation_id": "dify-conv-001",
+            "source_message_id": "dify-msg-001",
+            "source_run_id": "dify-run-001",
+            "question": "保健食品广告审查归哪个层级办理？",
+        }
+    ]
+
+
+def test_dify_retrieval_endpoint_logs_trace_for_dify_conversation_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.api.v1 import integrations_dify as dify_api
+
+    token = "dify-test-token"
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    created_conversation_id = uuid.uuid4()
+    ensured: list[dict[str, object]] = []
+    logged: list[dict[str, object]] = []
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", str(tenant_id), raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_ENABLED", False, raising=False)
+    monkeypatch.setattr(
+        dify_api.settings,
+        "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON",
+        f'{{"city": "{dataset_id}"}}',
+        raising=False,
+    )
+
+    async def _fake_retrieve_dataset_citations(**_kwargs):  # noqa: ANN003, ANN202
+        return [
+            {
+                "chunk_content": "保健食品广告审查办理层级：省级。办理时间：工作日。",
+                "relevance_score": 0.93,
+                "document_name": "service-rag.txt",
+                "chunk_id": "chunk-1",
+                "dataset_id": str(dataset_id),
+                "metadata": {"document_id": "doc-1", "chunk_id": "chunk-1"},
+            }
+        ]
+
+    def _fake_ensure(**kwargs):  # noqa: ANN003, ANN202
+        ensured.append(dict(kwargs))
+        return created_conversation_id
+
+    monkeypatch.setattr(dify_api, "_retrieve_dataset_citations", _fake_retrieve_dataset_citations, raising=True)
+    monkeypatch.setattr(dify_api, "_load_chunk_content_map", lambda **_kwargs: {}, raising=True)
+    monkeypatch.setattr(dify_api, "_ensure_dify_trace_conversation", _fake_ensure, raising=True)
+    monkeypatch.setattr(dify_api, "log_metrics", lambda payload: logged.append(payload), raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/integrations/dify/retrieval",
+        headers=_auth(token),
+        json={
+            "knowledge_id": "city",
+            "query": "保健食品广告审查归哪个层级办理？",
+            "retrieval_setting": {"top_k": 5, "score_threshold": 0.0},
+            "dify_conversation_id": "dify-conv-001",
+            "dify_message_id": "dify-msg-001",
+            "dify_workflow_run_id": "dify-run-001",
+            "request_id": "dify-request-001",
+        },
+    )
+
+    assert res.status_code == 200, res.text
+    assert ensured
+    assert ensured[-1]["tenant_id"] == tenant_id
+    assert ensured[-1]["account_id"] == "system:dify"
+    assert ensured[-1]["source_conversation_id"] == "dify-conv-001"
+    assert ensured[-1]["source_message_id"] == "dify-msg-001"
+    assert ensured[-1]["source_run_id"] == "dify-run-001"
+    assert logged
+    rag_trace = [payload for payload in logged if payload.get("event") == "rag_trace"][-1]
+    assert rag_trace["conversation_id"] == str(created_conversation_id)
+    assert rag_trace["tenant_id"] == str(tenant_id)
+    assert rag_trace["request_id"] == "dify-request-001"
+    assert rag_trace["dify_message_id"] == "dify-msg-001"
+    assert rag_trace["dify_workflow_run_id"] == "dify-run-001"
+    assert rag_trace["citations_count"] == 1
+
+
+def test_dify_conversation_turn_endpoint_persists_final_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.api.v1 import integrations_dify as dify_api
+
+    token = "dify-test-token"
+    tenant_id = uuid.uuid4()
+    conversation_id = uuid.uuid4()
+    user_message_id = uuid.uuid4()
+    assistant_message_id = uuid.uuid4()
+    calls: list[dict[str, object]] = []
+
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", True, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", token, raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", str(tenant_id), raising=False)
+    monkeypatch.setattr(dify_api.settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "system:dify", raising=False)
+
+    def _fake_persist(**kwargs):  # noqa: ANN003, ANN202
+        calls.append(dict(kwargs))
+        return dify_api.DifyConversationTurnResponse(
+            conversation_id=conversation_id,
+            user_message_id=user_message_id,
+            assistant_message_id=assistant_message_id,
+            reused_user_message=True,
+        )
+
+    monkeypatch.setattr(dify_api, "_persist_dify_conversation_turn", _fake_persist, raising=True)
+
+    app = FastAPI()
+    app.dependency_overrides[get_db] = _override_get_db
+    app.include_router(dify_api.router, prefix="/api/v1/integrations/dify")
+    client = TestClient(app)
+
+    res = client.post(
+        "/api/v1/integrations/dify/conversation-turns",
+        headers=_auth(token),
+        json={
+            "query": "麻烦帮我查一下普通话考试，主要想知道要带什么。（我在常州）",
+            "answer": "普通话考试具体测试计划可以在常州市教育局官网中查看。",
+            "trace_request_id": "trace-req-001",
+            "dify_conversation_id": "dify-conv-001",
+            "dify_message_id": "dify-msg-001",
+            "dify_workflow_run_id": "dify-run-001",
+            "citations": [{"document_id": "doc-1", "chunk_id": "chunk-1"}],
+        },
+    )
+
+    assert res.status_code == 200, res.text
+    assert res.json() == {
+        "conversation_id": str(conversation_id),
+        "user_message_id": str(user_message_id),
+        "assistant_message_id": str(assistant_message_id),
+        "reused_user_message": True,
+    }
+    assert len(calls) == 1
+    call = calls[0]
+    assert call["db"].__class__.__name__ == "_DummyDB"
+    assert call["tenant_id"] == tenant_id
+    assert call["account_id"] == "system:dify"
+    assert call["query"] == "麻烦帮我查一下普通话考试，主要想知道要带什么。（我在常州）"
+    assert call["answer"] == "普通话考试具体测试计划可以在常州市教育局官网中查看。"
+    assert call["trace_request_id"] == "trace-req-001"
+    assert call["source_conversation_id"] == "dify-conv-001"
+    assert call["source_message_id"] == "dify-msg-001"
+    assert call["source_run_id"] == "dify-run-001"
+    assert call["citations"] == [{"document_id": "doc-1", "chunk_id": "chunk-1"}]
+
+
+def test_dify_turn_citations_for_storage_drops_invalid_frontend_citations() -> None:
+    from app.api.v1.integrations_dify import _dify_turn_citations_for_storage
+
+    valid_document_id = uuid.uuid4()
+    valid_chunk_id = uuid.uuid4()
+
+    stored = _dify_turn_citations_for_storage(
+        [
+            {"document_id": "live-doc", "chunk_id": "live-chunk"},
+            {
+                "document_id": str(valid_document_id),
+                "chunk_id": str(valid_chunk_id),
+                "chunk_content": "答案：普通话考试具体测试计划可以在常州市教育局官网中查看。",
+                "document_name": "常见问题优化补充.txt",
+                "retrieval_mode": "dify_external_knowledge",
+            },
+        ]
+    )
+
+    assert stored == [
+        {
+            "document_id": str(valid_document_id),
+            "chunk_id": str(valid_chunk_id),
+            "chunk_content": "答案：普通话考试具体测试计划可以在常州市教育局官网中查看。",
+            "document_name": "常见问题优化补充.txt",
+            "retrieval_mode": "dify_external_knowledge",
+        }
+    ]
+
+
+def test_dify_result_trace_logs_final_result_step_without_raw_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.api.v1 import integrations_dify as dify_api
+    from app.services.rag_trace_service import normalize_rag_trace_record
+
+    tenant_id = uuid.uuid4()
+    conversation_id = uuid.uuid4()
+    logged: list[dict[str, object]] = []
+
+    monkeypatch.setattr(dify_api, "log_metrics", lambda payload: logged.append(payload), raising=True)
+
+    dify_api._log_dify_result_rag_trace(
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        request_id="trace-req-001",
+        question="麻烦帮我查一下普通话考试，主要想知道要带什么。（我在常州）",
+        answer="普通话考试具体测试计划可以在常州市教育局官网中查看。",
+        source_conversation_id="dify-conv-001",
+        source_message_id="dify-msg-001",
+        source_run_id="dify-run-001",
+        citations=[{"document_id": "doc-1", "chunk_id": "chunk-1"}],
+    )
+
+    assert len(logged) == 1
+    payload = logged[0]
+    assert payload["event"] == "rag_trace"
+    assert payload["source"] == "dify_result"
+    assert payload["conversation_id"] == str(conversation_id)
+    assert payload["tenant_id"] == str(tenant_id)
+    assert payload["request_id"] == "trace-req-001"
+    assert "普通话考试具体测试计划" not in json.dumps(payload, ensure_ascii=False)
+    assert payload["dify_result"] == {
+        "status": "completed",
+        "answer_chars": 26,
+        "answer_hash": dify_api._diagnostic_query_hash("普通话考试具体测试计划可以在常州市教育局官网中查看。"),
+        "source_conversation_id": "dify-conv-001",
+        "source_message_id": "dify-msg-001",
+        "source_run_id": "dify-run-001",
+        "citations_count": 1,
+    }
+
+    history_trace = normalize_rag_trace_record(payload)
+    assert history_trace.conversation_id == str(conversation_id)
+    assert history_trace.request_id == "trace-req-001"
+    assert history_trace.steps[-1].key == "dify_result"
+    assert history_trace.steps[-1].label == "Dify Result"
+    assert history_trace.steps[-1].meta["answer_chars"] == 26
+    assert history_trace.steps[-1].meta["source_message_id"] == "dify-msg-001"

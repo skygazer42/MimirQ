@@ -1915,11 +1915,30 @@ export default function QuarantineQueuePage() {
         icon={ShieldAlert}
         showHeader={false}
         size="full"
-        topClassName="mx-auto w-full max-w-[1520px] bg-[radial-gradient(circle_at_top,hsl(var(--primary)/0.10),transparent_34rem)] px-4 pt-3 pb-2 md:px-5 xl:px-6"
+        // max-w-[1520px]
+        topClassName="w-full max-w-none bg-[radial-gradient(circle_at_top,hsl(var(--primary)/0.10),transparent_34rem)] px-2 pt-3 pb-2 md:px-3 xl:px-4"
         top={
           <div className="space-y-2.5">
             <PageHeader
-              title="隔离审核中心"
+              title={
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-200/70 bg-sky-50/70 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-sky-700 dark:border-sky-300/20 dark:bg-sky-300/10 dark:text-sky-200">
+                      <ShieldAlert className="size-3" />
+                      Quarantine Ops
+                    </span>
+                    <span className="inline-flex items-center rounded-full border border-amber-200/70 bg-amber-50/70 px-2.5 py-1 text-[10px] font-medium text-amber-700 dark:border-amber-300/15 dark:bg-amber-300/10 dark:text-amber-200">
+                      <ShieldCheck className="mr-1.5 size-3" />
+                      样本复核与规则回放
+                    </span>
+                  </div>
+                  <h1 className="mt-2 text-[22px] font-semibold tracking-[-0.025em] text-foreground">
+                    <span className="bg-[linear-gradient(90deg,hsl(var(--foreground)),hsl(var(--info))_92%)] bg-clip-text text-transparent">
+                      隔离审核中心
+                    </span>
+                  </h1>
+                </div>
+              }
               description="聚合命中规则，抽样预览原文，一键调参回放。这里集中处理被隔离的异常样本，帮助你快速完成复核和回放。"
               iconImage="quarantine-queue"
               icon={ShieldCheck}
@@ -1927,7 +1946,23 @@ export default function QuarantineQueuePage() {
               compact
               className="p-0"
             >
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <div className="hidden min-w-[280px] items-center justify-between gap-2 rounded-2xl border border-sky-200/70 bg-white/64 px-3 py-2 text-[11px] text-muted-foreground shadow-[0_12px_28px_-24px_rgba(14,116,144,0.45)] backdrop-blur dark:border-sky-300/15 dark:bg-background/28 md:flex">
+                  <span className="inline-flex items-center gap-1.5">
+                    <LayoutList className="size-3 text-sky-500" />
+                    发现
+                  </span>
+                  <ChevronRight className="size-3 shrink-0 text-muted-foreground/45" />
+                  <span className="inline-flex items-center gap-1.5">
+                    <Eye className="size-3 text-sky-500" />
+                    复核
+                  </span>
+                  <ChevronRight className="size-3 shrink-0 text-muted-foreground/45" />
+                  <span className="inline-flex items-center gap-1.5">
+                    <RotateCcw className="size-3 text-sky-500" />
+                    回放
+                  </span>
+                </div>
                 {demoMode ? (
                   <Button
                     variant="outline"
@@ -2047,7 +2082,7 @@ export default function QuarantineQueuePage() {
             </div>
           </div>
         }
-        bodyClassName="mx-auto w-full max-w-[1520px] px-4 pb-5 md:px-5 xl:px-6 z-10"
+        bodyClassName="w-full max-w-none px-2 pb-5 md:px-3 xl:px-4 z-10"
       >
         <div className="space-y-4">
           <div

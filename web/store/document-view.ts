@@ -13,6 +13,10 @@ export type DocumentViewSourceContext = {
   messageId: string
   documentId: string
   chunkId?: string | null
+  documentName?: string | null
+  chunkContent?: string | null
+  chunkIndex?: number | null
+  pageNumber?: number | null
 }
 export type DocumentViewResumeTarget = {
   documentId: string
@@ -64,6 +68,7 @@ interface DocumentViewState {
 
 const STORAGE_KEY = 'mimirq_document_view_v1'
 const DEFAULT_ACTIVE_TAB: DocumentViewTab = 'preview'
+const MAX_SOURCE_CONTEXT_TEXT_CHARS = 20_000
 const VALID_TABS = new Set<string>(['preview', 'text', 'chunks'])
 const VALID_TEXT_MODES = new Set<string>(['cleaned', 'original'])
 
@@ -102,6 +107,16 @@ function normalizeChunkId(chunkId: string | null | undefined): string | null {
   return normalized || null
 }
 
+function normalizeOptionalText(value: string | null | undefined, maxChars = MAX_SOURCE_CONTEXT_TEXT_CHARS): string | null {
+  const normalized = String(value || '').trim()
+  if (!normalized) return null
+  return normalized.length > maxChars ? normalized.slice(0, maxChars) : normalized
+}
+
+function normalizeOptionalNumber(value: number | null | undefined): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.trunc(value) : null
+}
+
 function isDocumentViewTab(tab: unknown): tab is DocumentViewTab {
   return typeof tab === 'string' && VALID_TABS.has(tab)
 }
@@ -122,6 +137,10 @@ function sanitizeSourceContext(sourceContext: DocumentViewSourceContext | null |
     messageId,
     documentId,
     chunkId: normalizeChunkId(sourceContext.chunkId),
+    documentName: normalizeOptionalText(sourceContext.documentName, 300),
+    chunkContent: normalizeOptionalText(sourceContext.chunkContent),
+    chunkIndex: normalizeOptionalNumber(sourceContext.chunkIndex),
+    pageNumber: normalizeOptionalNumber(sourceContext.pageNumber),
   }
 }
 

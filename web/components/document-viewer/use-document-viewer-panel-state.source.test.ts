@@ -31,4 +31,13 @@ describe('useDocumentViewerPanelState source', () => {
     expect(src).toContain('[documentId, activeTab, highlightChunkId, loadAllChunks, chunksLoaded]')
     expect(src).not.toContain('[documentId, activeTab, highlightChunkId, loadAllChunks, chunksLoaded, chunksLoading]')
   })
+
+  it('falls back to chat citation text when a highlighted backend chunk is unavailable', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'use-document-viewer-panel-state.ts'), 'utf8')
+
+    expect(src).toContain('buildCitationFallbackChunk')
+    expect(src).toContain('sourceContext?.chunkContent')
+    expect(src).toContain('source: "chat_citation_fallback"')
+    expect(src).toContain('fallback_reason: "chunk_not_available"')
+  })
 })

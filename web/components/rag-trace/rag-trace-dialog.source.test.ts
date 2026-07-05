@@ -22,4 +22,13 @@ describe('rag trace dialog source', () => {
     expect(src).toContain('t("dialog.loadingMessage")')
     expect(src).toContain('t("dialog.loadingSrMessage")')
   })
+
+  it('keeps the trace body scrollable so lower timeline sections remain reachable', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'rag-trace-dialog.tsx'), 'utf8')
+
+    expect(src).toContain('flex max-h-[90vh] max-w-6xl flex-col gap-0 overflow-hidden p-0')
+    expect(src).toContain('shrink-0 border-b border-border/60 px-6 py-4 pr-12')
+    expect(src).toContain('min-h-0 overflow-y-auto px-6 py-4')
+    expect(src).not.toContain('className="min-h-0 overflow-hidden"')
+  })
 })

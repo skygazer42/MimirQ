@@ -166,6 +166,58 @@ describe('rag trace panel pipeline timeline', () => {
     expect(interactiveHtml).toContain('aria-pressed="true"')
   })
 
+  it('surfaces Dify result trace metadata in the stage inspector', () => {
+    const trace: RagTrace = {
+      schema_version: 1,
+      ts_ms: 1710000000000,
+      request_id: 'trace-req-001',
+      conversation_id: 'conv-1',
+      retrieval: {
+        mode: 'dify_result',
+        query_count: 0,
+        top_k: 0,
+      },
+      rerank: {
+        enabled: false,
+      },
+      citations: [],
+      citations_count: 0,
+      steps: [
+        {
+          key: 'retrieve',
+          label: 'Retrieve',
+          elapsed_sec: 0,
+          meta: { mode: 'dify_result' },
+        },
+        {
+          key: 'dify_result',
+          label: 'Dify Result',
+          meta: {
+            answer_chars: 26,
+            answer_hash: 'hash-1',
+            source_message_id: 'dify-msg-001',
+            source_run_id: 'dify-run-001',
+            citations_count: 1,
+          },
+        },
+      ],
+    }
+
+    const sections = buildPipelineInspectorSections(trace)
+    const difySection = sections.find((section) => section.id === 'dify_result')
+
+    expect(difySection).toBeTruthy()
+    expect(difySection?.metrics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: 'Answer chars', value: '26' }),
+        expect.objectContaining({ label: 'Answer hash', value: 'hash-1' }),
+        expect.objectContaining({ label: 'Dify message', value: 'dify-msg-001' }),
+        expect.objectContaining({ label: 'Workflow run', value: 'dify-run-001' }),
+        expect.objectContaining({ label: 'Citations', value: '1' }),
+      ])
+    )
+  })
+
   it('simulates citation reordering from local channel weights and cycles trace selection', () => {
     const rows = buildCitationSimulationRows(
       [

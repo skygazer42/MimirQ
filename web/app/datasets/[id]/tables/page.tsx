@@ -108,6 +108,28 @@ export default function DatasetTablesPage() {
     })
   }, [items])
 
+  useEffect(() => {
+    if (!datasetId || !selected?.table_id) return
+    if (Array.isArray(selected.columns) && selected.columns.length > 0) return
+
+    let cancelled = false
+    datasetApi
+      .getTable(datasetId, selected.table_id, { include_columns: true, include_sample_rows: true })
+      .then((full) => {
+        if (cancelled) return
+        setSelected((prev) => (prev?.table_id === full.table_id ? full : prev))
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return
+        reportClientError('Failed to load selected table detail', e)
+        toast.error(formatApiError(e, '加载表格详情失败'))
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [datasetId, selected?.columns, selected?.table_id])
+
   const selectTable = async (table: DatasetTableAsset) => {
     if (!datasetId) return
     setSelected(table)
@@ -197,12 +219,15 @@ export default function DatasetTablesPage() {
     )
   }, [selected])
 
-  const tablesHeroCard = 'relative overflow-hidden rounded-2xl border border-white/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(240,249,255,0.88)_58%,rgba(236,253,245,0.62))] shadow-[0_18px_50px_rgba(15,23,42,0.08)] ring-1 ring-sky-100/70 before:pointer-events-none before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_18%_12%,rgba(14,165,233,0.14),transparent_28%),linear-gradient(90deg,rgba(14,165,233,0.035)_1px,transparent_1px),linear-gradient(0deg,rgba(14,165,233,0.035)_1px,transparent_1px)] before:bg-[length:auto,28px_28px,28px_28px] dark:border-border/60 dark:bg-card/95 dark:ring-sky-500/15'
-  const tablePanelClass = 'overflow-hidden border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.92))] p-3 shadow-[0_16px_45px_rgba(15,23,42,0.07)] ring-1 ring-slate-100/70 dark:border-border/60 dark:bg-card/95 dark:ring-white/5'
-  const sectionTitleClass = 'text-[13px] font-semibold tracking-[-0.01em] text-slate-900 dark:text-foreground'
-  const mutedHintClass = 'text-[11px] leading-4 text-muted-foreground/65'
-  const tableToolbarGroupClass = 'inline-flex flex-wrap items-center gap-1 rounded-2xl border border-white/70 bg-white/70 p-1 shadow-[0_10px_30px_rgba(15,23,42,0.055)] ring-1 ring-slate-100/70 backdrop-blur dark:border-border/60 dark:bg-card/70 dark:ring-white/5'
-  const tableToolbarButtonClass = 'h-8 gap-1.5 rounded-xl px-2.5 text-[12px] font-medium text-slate-600 shadow-none hover:bg-white/95 hover:text-slate-900 hover:shadow-sm dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
+  const tablesHeroCard = 'relative overflow-hidden rounded-[26px] border border-slate-200/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(246,248,251,0.94)_45%,rgba(232,246,250,0.72))] shadow-[0_24px_70px_rgba(15,23,42,0.10)] ring-1 ring-white/80 before:pointer-events-none before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_16%_10%,rgba(8,145,178,0.16),transparent_26%),radial-gradient(circle_at_82%_0%,rgba(15,23,42,0.075),transparent_24%),linear-gradient(90deg,rgba(15,23,42,0.035)_1px,transparent_1px)] before:bg-[length:auto,auto,34px_34px] dark:border-border/60 dark:bg-card/95 dark:ring-white/5'
+  const tablePanelClass = 'overflow-hidden rounded-[24px] border-slate-200/80 bg-white/88 shadow-[0_18px_54px_rgba(15,23,42,0.08)] ring-1 ring-white/75 backdrop-blur-xl dark:border-border/60 dark:bg-card/82 dark:ring-white/5'
+  const tablePanelHeaderClass = 'border-b border-slate-200/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(248,250,252,0.78))] px-5 py-4 dark:border-border/60 dark:bg-muted/20'
+  const sectionTitleClass = 'text-[15px] font-bold tracking-[-0.015em] text-slate-950 dark:text-foreground'
+  const mutedHintClass = 'text-[12px] leading-5 text-slate-500 dark:text-muted-foreground'
+  const tableToolbarGroupClass = 'inline-flex flex-wrap items-center gap-1 rounded-2xl border border-slate-200/80 bg-white/82 p-1 shadow-[0_12px_34px_rgba(15,23,42,0.07)] ring-1 ring-white/75 backdrop-blur dark:border-border/60 dark:bg-card/70 dark:ring-white/5'
+  const tableToolbarButtonClass = 'h-8 gap-1.5 rounded-xl px-2.5 text-[12px] font-semibold text-slate-600 shadow-none hover:bg-white hover:text-slate-950 hover:shadow-sm dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
+  const tableMetricCardClass = 'relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white/90 px-4 py-3 shadow-[0_12px_32px_rgba(15,23,42,0.055)] ring-1 ring-white/80 transition-colors hover:border-slate-300 dark:border-border/60 dark:bg-card/80 dark:ring-white/5'
+  const tableIconPillClass = 'flex size-9 shrink-0 items-center justify-center rounded-2xl border border-slate-200/80 bg-white text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_8px_22px_rgba(15,23,42,0.08)] dark:border-border/60 dark:bg-muted/30 dark:text-foreground'
   const totalRows = items.reduce((sum, item) => sum + (Number(item.row_count) || 0), 0)
   const totalColumns = items.reduce((sum, item) => sum + (Number(item.col_count) || 0), 0)
 
@@ -214,7 +239,7 @@ export default function DatasetTablesPage() {
         size="full"
         density="system-dense"
         bodyGutter="dense"
-        bodyClassName="h-full overflow-hidden bg-[radial-gradient(circle_at_18%_0%,rgba(14,165,233,0.10),transparent_28%),linear-gradient(180deg,rgba(248,250,252,0.96),rgba(241,245,249,0.68))] pb-3 dark:bg-[radial-gradient(circle_at_18%_0%,rgba(14,165,233,0.14),transparent_28%),linear-gradient(180deg,rgba(15,23,42,0.96),rgba(15,23,42,0.86))]"
+        bodyClassName="h-full overflow-hidden bg-[radial-gradient(circle_at_16%_0%,rgba(8,145,178,0.12),transparent_30%),radial-gradient(circle_at_84%_10%,rgba(15,23,42,0.055),transparent_28%),linear-gradient(180deg,rgba(248,250,252,0.98),rgba(239,244,248,0.76))] pb-3 dark:bg-[radial-gradient(circle_at_18%_0%,rgba(14,165,233,0.14),transparent_28%),linear-gradient(180deg,rgba(15,23,42,0.96),rgba(15,23,42,0.86))]"
         bodyContainerClassName="h-full min-h-0 overflow-hidden"
         top={
           <div className={tablesHeroCard}>
@@ -226,17 +251,20 @@ export default function DatasetTablesPage() {
                 </div>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h1 className="truncate text-[20px] font-medium leading-none tracking-[-0.01em] text-slate-800 dark:text-foreground">表格资产</h1>
-                    <Badge variant="soft" className="h-5 border-primary/20 bg-primary/10 px-2 text-[10px] font-medium leading-none text-primary">
+                    <h1 className="truncate text-[22px] font-semibold leading-none tracking-[-0.035em] text-slate-950 dark:text-foreground">表格资产工作台</h1>
+                    <span className="inline-flex h-5 items-center rounded-full border border-slate-300/70 bg-white/82 px-2 text-[10px] font-bold uppercase leading-none tracking-[0.12em] text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-border/60 dark:bg-muted/30 dark:text-muted-foreground">
+                      table intelligence
+                    </span>
+                    <Badge variant="soft" className="h-5 border-primary/20 bg-primary/10 px-2 text-[10px] font-bold leading-none text-primary">
                       TAG / SQL
                     </Badge>
                   </div>
-                  <div className="mt-1.5 text-[13px] leading-tight text-muted-foreground">
+                  <div className="mt-1.5 text-[13px] leading-tight text-slate-600 dark:text-muted-foreground">
                     <span className="font-semibold text-foreground">数据集：</span>
                     <span className="font-medium text-foreground">{dataset?.name || datasetId}</span>
                     <span> · 结构化表格资产、SQL 查询、TAG 问答与语义过滤</span>
                   </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11px] leading-none text-muted-foreground">
+                  <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11px] font-medium leading-none text-slate-500 dark:text-muted-foreground">
                     <span className="inline-flex items-center gap-1.5">
                       <Database className="size-3.5 text-muted-foreground/80" />
                       <span>表格</span>
@@ -260,8 +288,20 @@ export default function DatasetTablesPage() {
                   </div>
                 </div>
               </div>
-              <div className="flex shrink-0 items-center gap-2 lg:self-end">
-                <div className="inline-flex h-9 items-center gap-2 rounded-lg border border-emerald-200/80 bg-emerald-50/90 px-3 text-[13px] font-medium text-emerald-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
+              <div className="flex shrink-0 flex-col items-stretch gap-2 lg:w-[360px]">
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    ['01', '表格资产'],
+                    ['02', 'SQL / TAG'],
+                    ['03', '语义过滤'],
+                  ].map(([step, label]) => (
+                    <div key={step} className="rounded-2xl border border-white/75 bg-white/72 px-3 py-2 shadow-[0_10px_26px_rgba(15,23,42,0.07)] ring-1 ring-slate-200/40 backdrop-blur">
+                      <div className="font-mono text-[10px] font-black leading-none text-sky-600">{step}</div>
+                      <div className="mt-1 truncate text-[11px] font-bold leading-none text-slate-800">{label}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="inline-flex h-9 items-center gap-2 rounded-xl border border-emerald-200/80 bg-emerald-50/95 px-3 text-[12px] font-semibold text-emerald-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.75),0_10px_24px_rgba(5,150,105,0.10)] dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
                   <span className="size-2 rounded-full bg-emerald-500" />
                   {selected ? '已选择表格' : '等待表格资产'}
                 </div>
@@ -292,36 +332,73 @@ export default function DatasetTablesPage() {
           </div>
         }
       >
-        <div className="grid h-full min-h-0 grid-cols-1 gap-3 overflow-hidden xl:grid-cols-[320px_minmax(0,1fr)]">
-          <Panel className={cn(tablePanelClass, 'flex min-h-0 flex-col')}>
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className={sectionTitleClass}>表格资产</div>
-                <div className={cn(mutedHintClass, 'mt-0.5')}>从入库结果中提取的结构化 sheet / table</div>
+        <div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden">
+          <div className="grid shrink-0 grid-cols-2 gap-3 md:grid-cols-4">
+            {[
+              { icon: Table2, label: '表格资产', value: items.length, subValue: 'table assets', tone: 'text-sky-600 bg-sky-50 border-sky-100' },
+              { icon: BarChart3, label: '总行数', value: totalRows, subValue: 'sum(row_count)', tone: 'text-teal-600 bg-teal-50 border-teal-100' },
+              { icon: Database, label: '总列数', value: totalColumns, subValue: 'sum(col_count)', tone: 'text-amber-700 bg-amber-50 border-amber-100' },
+              { icon: FileSearch, label: '当前表', value: selected?.sheet_name || selected?.table_id || '—', subValue: selected ? 'selected table' : 'waiting asset', tone: 'text-emerald-700 bg-emerald-50 border-emerald-100' },
+            ].map((item) => (
+              <div key={item.label} className={tableMetricCardClass}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400 dark:text-muted-foreground">{item.label}</div>
+                    <div className="mt-1 truncate font-mono text-[17px] font-black leading-none tracking-[-0.02em] text-slate-950 tabular-nums dark:text-foreground">
+                      {item.value}
+                    </div>
+                    <div className="mt-1.5 truncate text-[11px] font-medium text-slate-500 dark:text-muted-foreground">{item.subValue}</div>
+                  </div>
+                  <div className={cn('flex size-8 shrink-0 items-center justify-center rounded-xl border', item.tone)}>
+                    <item.icon className="size-4" />
+                  </div>
+                </div>
               </div>
-              <Badge variant="soft" className="h-5 px-1.5 font-mono text-[10px]">
-                {items.length} tables
-              </Badge>
+            ))}
+          </div>
+
+          <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-hidden xl:grid-cols-[340px_minmax(0,1fr)]">
+          <Panel className={cn(tablePanelClass, 'flex min-h-0 flex-col')}>
+            <div className={cn(tablePanelHeaderClass, 'flex items-center justify-between gap-3')}>
+              <div className="flex min-w-0 items-start gap-3">
+                <div className={tableIconPillClass}>
+                  <Table2 className="size-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="mb-1 font-mono text-[10px] font-black uppercase tracking-[0.18em] text-sky-600">Table assets</div>
+                  <div className="flex items-center gap-2">
+                    <div className={sectionTitleClass}>表格资产</div>
+                    <Badge variant="outline" className="h-5 rounded-full px-2 font-mono text-[10px] uppercase text-slate-500">
+                      {items.length} tables
+                    </Badge>
+                  </div>
+                  <div className={cn(mutedHintClass, 'mt-1')}>从入库结果中提取的结构化 sheet / table</div>
+                </div>
+              </div>
             </div>
 
-            <div className={cn('mt-3 min-h-0 flex-1 pr-1', items.length ? 'space-y-1.5 overflow-auto no-scrollbar' : '')}>
+            <div className={cn('min-h-0 flex-1 bg-[linear-gradient(180deg,rgba(248,250,252,0.72),rgba(255,255,255,0.92))] p-4 pr-3 dark:bg-muted/5', items.length ? 'space-y-2 overflow-auto no-scrollbar' : '')}>
               {items.length === 0 && !isLoading ? (
-                <div className="rounded-xl border border-dashed border-sky-200/80 bg-sky-50/40 p-3">
-                  <div className="flex items-center gap-2 text-[12px] font-semibold text-slate-800">
-                    <Table2 className="size-4 text-sky-500" />
-                    暂无表格资产
+                <div className="rounded-[22px] border border-dashed border-sky-200/90 bg-white/72 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
+                  <div className="flex items-start gap-3">
+                    <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-sky-50 text-sky-600">
+                      <Table2 className="size-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-bold text-slate-900">暂无表格资产</div>
+                      <div className={cn(mutedHintClass, 'mt-1')}>
+                        需要在入库策略中开启表格存储，或对包含表格的文件重新入库后再查看。
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-3 h-8 rounded-xl bg-white px-2.5 text-[11px] font-semibold"
+                        onClick={() => router.push(`/datasets/${datasetId}/ingestion`)}
+                      >
+                        检查入库策略
+                      </Button>
+                    </div>
                   </div>
-                  <div className={cn(mutedHintClass, 'mt-2')}>
-                    需要在入库策略中开启表格存储，或对包含表格的文件重新入库后再查看。
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="mt-3 h-8 rounded-lg px-2.5 text-[11px]"
-                    onClick={() => router.push(`/datasets/${datasetId}/ingestion`)}
-                  >
-                    检查入库策略
-                  </Button>
                 </div>
               ) : null}
 
@@ -333,12 +410,13 @@ export default function DatasetTablesPage() {
                     type="button"
                     onClick={() => selectTable(t)}
                     className={cn(
-                      'group w-full rounded-xl border px-2.5 py-2 text-left transition-all duration-200',
+                      'group relative w-full overflow-hidden rounded-[18px] border px-3 py-3 text-left transition-all duration-200',
                       active
-                        ? 'border-sky-300 bg-sky-50/75 shadow-[0_10px_26px_rgba(14,165,233,0.10)]'
-                        : 'border-border/55 bg-white/45 hover:border-sky-200 hover:bg-sky-50/45 dark:bg-card/35'
+                        ? 'border-sky-300 bg-sky-50/85 shadow-[0_14px_30px_rgba(14,165,233,0.14)]'
+                        : 'border-slate-200/70 bg-white/78 hover:border-sky-200 hover:bg-sky-50/55 dark:bg-card/35'
                     )}
                   >
+                    {active ? <div className="absolute inset-y-3 left-0 w-1 rounded-r-full bg-gradient-to-b from-sky-500 via-cyan-400 to-emerald-400" /> : null}
                     <div className="flex items-center justify-between gap-2">
                       <div className="min-w-0">
                         <div className="truncate font-mono text-[11px] font-semibold text-slate-800 dark:text-foreground">
@@ -367,26 +445,26 @@ export default function DatasetTablesPage() {
 
           <div className="min-h-0 space-y-3 overflow-y-auto pr-1 no-scrollbar">
             {!selected ? (
-              <Panel className={cn(tablePanelClass, 'min-h-[300px]')}>
-                <div className="flex min-h-[270px] flex-col items-center justify-center rounded-2xl border border-dashed border-sky-200/80 bg-[radial-gradient(circle_at_50%_0%,rgba(14,165,233,0.10),transparent_38%),linear-gradient(180deg,rgba(255,255,255,0.76),rgba(248,250,252,0.58))] p-6 text-center">
-                  <div className="flex size-12 items-center justify-center rounded-2xl border border-sky-100 bg-white/80 text-sky-500 shadow-sm">
-                    <Table2 className="size-5" />
+              <Panel className={cn(tablePanelClass, 'min-h-[360px] p-4')}>
+                <div className="flex min-h-[330px] flex-col items-center justify-center rounded-[24px] border border-dashed border-sky-200/90 bg-[radial-gradient(circle_at_50%_0%,rgba(14,165,233,0.14),transparent_38%),linear-gradient(180deg,rgba(255,255,255,0.82),rgba(248,250,252,0.62))] p-7 text-center">
+                  <div className="flex size-14 items-center justify-center rounded-[22px] border border-sky-100 bg-white/86 text-sky-600 shadow-[0_14px_30px_rgba(14,165,233,0.12)]">
+                    <Table2 className="size-6" />
                   </div>
-                  <div className="mt-3 text-[15px] font-semibold text-slate-900">
+                  <div className="mt-4 text-[18px] font-bold tracking-[-0.02em] text-slate-950">
                     {isLoading ? '正在加载表格资产' : '选择表格后开始分析'}
                   </div>
-                  <div className="mt-1 max-w-xl text-[12px] leading-5 text-muted-foreground/70">
+                  <div className="mt-2 max-w-xl text-[13px] leading-6 text-slate-500">
                     表格工作台只在存在 table asset 时展示 SQL 查询、TAG 问答和语义过滤，避免空数据时误操作。
                   </div>
-                  <div className="mt-4 grid w-full max-w-2xl grid-cols-1 gap-2 md:grid-cols-3">
+                  <div className="mt-5 grid w-full max-w-2xl grid-cols-1 gap-2 md:grid-cols-3">
                     {[
                       ['SQL', '只读 SELECT / WITH 查询'],
                       ['TAG', '自然语言转 SQL 并执行'],
                       ['语义过滤', 'LOTUS 或 fallback NL→SQL'],
                     ].map(([name, desc]) => (
-                      <div key={name} className="rounded-xl border border-white/70 bg-white/65 px-3 py-2 text-left shadow-sm">
-                        <div className="text-[12px] font-semibold text-slate-800">{name}</div>
-                        <div className="mt-0.5 text-[10px] leading-4 text-muted-foreground/60">{desc}</div>
+                      <div key={name} className="rounded-2xl border border-white/80 bg-white/72 px-4 py-3 text-left shadow-[0_10px_24px_rgba(15,23,42,0.055)]">
+                        <div className="text-[13px] font-bold text-slate-800">{name}</div>
+                        <div className="mt-1 text-[11px] leading-4 text-slate-500">{desc}</div>
                       </div>
                     ))}
                   </div>
@@ -394,7 +472,7 @@ export default function DatasetTablesPage() {
               </Panel>
             ) : (
               <>
-                <Panel className={tablePanelClass}>
+                <Panel className={cn(tablePanelClass, 'p-4')}>
                   <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                     <div>
                       <div className={sectionTitleClass}>表格信息</div>
@@ -436,7 +514,7 @@ export default function DatasetTablesPage() {
                 </Panel>
 
                 <div className="grid grid-cols-1 gap-3 2xl:grid-cols-[minmax(0,1.08fr)_minmax(360px,0.92fr)]">
-                  <Panel className={tablePanelClass}>
+                  <Panel className={cn(tablePanelClass, 'p-4')}>
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <div className={sectionTitleClass}>SQL 查询</div>
@@ -486,7 +564,7 @@ export default function DatasetTablesPage() {
                   </Panel>
 
                   <div className="space-y-3">
-                    <Panel className={tablePanelClass}>
+                    <Panel className={cn(tablePanelClass, 'p-4')}>
                       <div className="flex items-center justify-between gap-3">
                         <div>
                           <div className="flex items-center gap-1.5">
@@ -511,7 +589,7 @@ export default function DatasetTablesPage() {
                       </div>
                     </Panel>
 
-                    <Panel className={tablePanelClass}>
+                    <Panel className={cn(tablePanelClass, 'p-4')}>
                       <div className="flex items-center justify-between gap-3">
                         <div>
                           <div className={sectionTitleClass}>语义过滤</div>
@@ -568,6 +646,7 @@ export default function DatasetTablesPage() {
                 </div>
               </>
             )}
+          </div>
           </div>
         </div>
       </PageScaffold>

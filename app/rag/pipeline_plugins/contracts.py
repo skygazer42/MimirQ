@@ -82,6 +82,9 @@ _SUPPORTED_RETRIEVAL_POLICY_RESPONSE_HINT_METADATA_FIELD_KEYS = {
     "max_chars",
     "when_metadata",
     "metadata_when",
+    "prioritize_query_fields",
+    "requested_labels_prefix",
+    "requested_labels_separator",
 }
 _SUPPORTED_RETRIEVAL_POLICY_RESPONSE_HINT_GROUP_KEYS = {
     "name",
@@ -107,6 +110,7 @@ _SUPPORTED_RETRIEVAL_POLICY_RESPONSE_HINT_ENUMERATION_KEYS = {
     "message_template",
     "term_separator",
 }
+_SUPPORTED_RETRIEVAL_POLICY_FAST_RESPONSE_FIELD_RULE_KEYS = {"label", "markers"}
 _SUPPORTED_RETRIEVAL_POLICY_MATCHES = {"exact", "contains", "overlap", "fuzzy_overlap"}
 _RESERVED_METADATA_PREFIX = "_"
 _PLATFORM_OWNED_METADATA_FIELD_ROOTS = {
@@ -481,6 +485,12 @@ def _summarize_retrieval_policy(retrieval_policy: dict[str, Any] | None) -> dict
             "mixed_intent_subject_terms": [],
             "service_anchor_noise_terms": [],
             "service_anchor_priority_terms": [],
+            "service_anchor_entity_terms": [],
+            "service_anchor_leading_noise_terms": [],
+            "service_anchor_cutoff_terms": [],
+            "question_anchor_generic_subject_terms": [],
+            "fast_response_always_labels": [],
+            "fast_response_field_rules": 0,
             "service_anchor_query_rewrites": 0,
             "fallback_enabled": False,
             "response_compaction_enabled": False,
@@ -529,6 +539,20 @@ def _summarize_retrieval_policy(retrieval_policy: dict[str, Any] | None) -> dict
         "mixed_intent_subject_terms": list(_as_string_list(retrieval_policy.get("mixed_intent_subject_terms"))),
         "service_anchor_noise_terms": list(_as_string_list(retrieval_policy.get("service_anchor_noise_terms"))),
         "service_anchor_priority_terms": list(_as_string_list(retrieval_policy.get("service_anchor_priority_terms"))),
+        "service_anchor_entity_terms": list(_as_string_list(retrieval_policy.get("service_anchor_entity_terms"))),
+        "service_anchor_leading_noise_terms": list(
+            _as_string_list(retrieval_policy.get("service_anchor_leading_noise_terms"))
+        ),
+        "service_anchor_cutoff_terms": list(_as_string_list(retrieval_policy.get("service_anchor_cutoff_terms"))),
+        "question_anchor_generic_subject_terms": list(
+            _as_string_list(retrieval_policy.get("question_anchor_generic_subject_terms"))
+        ),
+        "fast_response_always_labels": list(_as_string_list(retrieval_policy.get("fast_response_always_labels"))),
+        "fast_response_field_rules": (
+            len(retrieval_policy.get("fast_response_field_rules"))
+            if isinstance(retrieval_policy.get("fast_response_field_rules"), list)
+            else 0
+        ),
         "metadata_anchor_preflight_block_terms": list(
             _as_string_list(retrieval_policy.get("metadata_anchor_preflight_block_terms"))
         ),
@@ -843,6 +867,20 @@ def _validate_retrieval_policy_response_hints(
         )
         _validate_optional_string(raw_field.get("field"), key=f"response_hints.answer_highlight_metadata_fields[{index}].field")
         _validate_optional_string(raw_field.get("label"), key=f"response_hints.answer_highlight_metadata_fields[{index}].label")
+        _validate_optional_string(
+            raw_field.get("requested_labels_prefix"),
+            key=f"response_hints.answer_highlight_metadata_fields[{index}].requested_labels_prefix",
+        )
+        _validate_optional_string(
+            raw_field.get("requested_labels_separator"),
+            key=f"response_hints.answer_highlight_metadata_fields[{index}].requested_labels_separator",
+        )
+        prioritize_query_fields = raw_field.get("prioritize_query_fields")
+        if prioritize_query_fields is not None and not isinstance(prioritize_query_fields, bool):
+            raise PipelinePluginContractError(
+                "retrieval_policy.response_hints.answer_highlight_metadata_fields"
+                f"[{index}].prioritize_query_fields must be a boolean"
+            )
         _validate_optional_string_list(
             raw_field.get("fields"),
             key=f"response_hints.answer_highlight_metadata_fields[{index}].fields",
@@ -1030,6 +1068,35 @@ def _validate_retrieval_policy_service_anchor_query_rewrites(raw_rules: Any) -> 
             )
 
 
+def _validate_retrieval_policy_fast_response_field_rules(raw_rules: Any) -> None:
+    if raw_rules is None:
+        return
+    if not isinstance(raw_rules, list):
+        raise PipelinePluginContractError("retrieval_policy.fast_response_field_rules must be a list")
+    for index, raw_rule in enumerate(raw_rules):
+        if not isinstance(raw_rule, dict):
+            raise PipelinePluginContractError(f"retrieval_policy.fast_response_field_rules[{index}] must be an object")
+        unknown = _unknown_keys(raw_rule, _SUPPORTED_RETRIEVAL_POLICY_FAST_RESPONSE_FIELD_RULE_KEYS)
+        if unknown:
+            raise PipelinePluginContractError(
+                f"retrieval_policy.fast_response_field_rules[{index}] contains unknown fields: "
+                f"{', '.join(unknown[:20])}"
+            )
+        _validate_optional_string(raw_rule.get("label"), key=f"fast_response_field_rules[{index}].label")
+        if not str(raw_rule.get("label") or "").strip():
+            raise PipelinePluginContractError(
+                f"retrieval_policy.fast_response_field_rules[{index}].label must be non-empty"
+            )
+        markers = _validate_optional_string_list(
+            raw_rule.get("markers"),
+            key=f"fast_response_field_rules[{index}].markers",
+        )
+        if not markers:
+            raise PipelinePluginContractError(
+                f"retrieval_policy.fast_response_field_rules[{index}].markers must declare at least one marker"
+            )
+
+
 def _validate_retrieval_policy_anchor_binding(
     raw_binding: Any,
     *,
@@ -1108,6 +1175,29 @@ def validate_retrieval_policy_metadata_fields(
     _validate_optional_string_list(
         retrieval_policy.get("service_anchor_priority_terms"),
         key="service_anchor_priority_terms",
+    )
+    _validate_optional_string_list(
+        retrieval_policy.get("service_anchor_entity_terms"),
+        key="service_anchor_entity_terms",
+    )
+    _validate_optional_string_list(
+        retrieval_policy.get("service_anchor_leading_noise_terms"),
+        key="service_anchor_leading_noise_terms",
+    )
+    _validate_optional_string_list(
+        retrieval_policy.get("service_anchor_cutoff_terms"),
+        key="service_anchor_cutoff_terms",
+    )
+    _validate_optional_string_list(
+        retrieval_policy.get("question_anchor_generic_subject_terms"),
+        key="question_anchor_generic_subject_terms",
+    )
+    _validate_optional_string_list(
+        retrieval_policy.get("fast_response_always_labels"),
+        key="fast_response_always_labels",
+    )
+    _validate_retrieval_policy_fast_response_field_rules(
+        retrieval_policy.get("fast_response_field_rules"),
     )
     _validate_retrieval_policy_service_anchor_query_rewrites(
         retrieval_policy.get("service_anchor_query_rewrites"),

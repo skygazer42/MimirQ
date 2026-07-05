@@ -18,7 +18,7 @@ import { getPrefetchedChunk, getPrefetchedDocument } from "@/lib/document-view-p
 import { API_V1_BASE_URL } from "@/lib/env"
 import { globalEventBus } from "@/lib/event-bus"
 import { detachPromise } from "@/lib/utils"
-import { useDocumentView, type DocumentViewTab } from "@/store/document-view"
+import { useDocumentView, type DocumentViewSourceContext, type DocumentViewTab } from "@/store/document-view"
 import type {
   Citation,
   Document,
@@ -42,6 +42,34 @@ function isTypingTarget(target: EventTarget | null): boolean {
 
 function isDocumentViewTab(value: string): value is DocumentViewTab {
   return value === "preview" || value === "text" || value === "chunks"
+}
+
+function buildCitationFallbackChunk(params: {
+  documentId: string
+  chunkId: string
+  sourceContext: DocumentViewSourceContext | null
+}): DocumentChunk | null {
+  const content = String(params.sourceContext?.chunkContent || "").trim()
+  if (!content) return null
+
+  return {
+    id: params.chunkId,
+    content,
+    page_number: params.sourceContext?.pageNumber ?? null,
+    start_char: null,
+    end_char: null,
+    chunk_index: params.sourceContext?.chunkIndex ?? 0,
+    disabled_at: null,
+    created_at: null,
+    updated_at: null,
+    metadata: {
+      source: "chat_citation_fallback",
+      document_id: params.documentId,
+      document_name: params.sourceContext?.documentName || undefined,
+      chunk_id: params.chunkId,
+      fallback_reason: "chunk_not_available",
+    },
+  }
 }
 
 export function useDocumentViewerPanelState() {
@@ -297,6 +325,11 @@ export function useDocumentViewerPanelState() {
       })
       .catch((err) => {
         if (cancelled) return
+        const fallbackChunk = buildCitationFallbackChunk({ documentId, chunkId: highlightChunkId, sourceContext })
+        if (fallbackChunk) {
+          setHighlightChunkState(fallbackChunk)
+          return
+        }
         reportClientError("Load highlighted chunk failed", err)
         setHighlightChunkState(null)
       })
@@ -308,7 +341,7 @@ export function useDocumentViewerPanelState() {
     return () => {
       cancelled = true
     }
-  }, [documentId, highlightChunkId])
+  }, [documentId, highlightChunkId, sourceContext])
 
   React.useEffect(() => {
     if (!documentId) return

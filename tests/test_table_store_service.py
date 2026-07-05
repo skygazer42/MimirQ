@@ -137,6 +137,51 @@ def test_table_store_import_xlsx_and_query(monkeypatch):  # noqa: ANN001
         assert len(res["rows"]) >= 1
 
 
+def test_table_store_import_xlsx_with_empty_sheet(monkeypatch, tmp_path: Path):  # noqa: ANN001
+    import pandas as pd  # type: ignore
+
+    from app.core.config import settings
+    from app.services.table_store_service import import_table_document, run_table_query
+
+    tenant_id = uuid.uuid4()
+    dataset_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+
+    monkeypatch.setattr(settings, "TABLE_STORE_DIR", str(tmp_path / "table_store"), raising=False)
+    xlsx_path = tmp_path / "empty-sheet.xlsx"
+    with pd.ExcelWriter(str(xlsx_path)) as writer:
+        pd.DataFrame({"name": ["a"], "phone": ["123"]}).to_excel(writer, sheet_name="电话", index=False)
+        pd.DataFrame().to_excel(writer, sheet_name="Sheet1", index=False)
+
+    assets = import_table_document(
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        document_id=document_id,
+        file_path=xlsx_path,
+        max_rows=10,
+        max_cols=10,
+        sample_rows=2,
+    )
+
+    assert len(assets) == 2
+    assert assets[1].sheet_name == "Sheet1"
+    assert assets[1].row_count == 0
+    assert assets[1].col_count == 1
+    assert assets[1].columns == [{"name": "__empty__", "dtype": "object"}]
+
+    res = run_table_query(
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
+        table_id=assets[1].table_id,
+        sql='SELECT * FROM "sheet_1"',
+        max_rows=10,
+        max_cols=10,
+        max_bytes=100_000,
+    )
+    assert res["columns"] == ["__empty__"]
+    assert res["rows"] == []
+
+
 def test_table_store_import_docx_tables(monkeypatch):  # noqa: ANN001
     import sqlite3
 

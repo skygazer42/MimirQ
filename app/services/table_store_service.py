@@ -239,13 +239,21 @@ def _sanitize_dataframe(df: "pd.DataFrame") -> "pd.DataFrame":
     more stable across noisy inputs.
     """
     try:
-        cols = list(getattr(df, "columns", []) or [])
+        cols = list(getattr(df, "columns", []))
     except Exception as exc:
         logger.debug(_TABLE_STORE_FALLBACK_LOG_MESSAGE, exc)
         cols = []
 
     seen: dict[str, int] = {}
     new_cols = [_sanitize_column_name(c, idx=i, seen=seen) for i, c in enumerate(cols)]
+    if not new_cols:
+        # SQLite cannot create a table with zero columns. Empty Excel sheets are
+        # still valid table assets, so persist a harmless placeholder column.
+        try:
+            return pd.DataFrame({"__empty__": pd.Series(dtype="object")})
+        except Exception as exc:
+            logger.debug(_TABLE_STORE_FALLBACK_LOG_MESSAGE, exc)
+            return df
     try:
         df.columns = new_cols
     except Exception as exc:

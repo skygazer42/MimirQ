@@ -1,17 +1,18 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Download, GitCommitVertical, Loader2, MessageSquarePlus, Trash2 } from 'lucide-react'
+import { ChevronDown, Download, GitCommitVertical, Loader2, MessageSquarePlus, Trash2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import { Input } from '@/components/ui/input'
 import { Panel } from '@/components/ui/panel'
 import { chatApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import { cn, detachPromise } from '@/lib/utils'
+
+const QUICK_ACTIONS = ['Markdown', 'JSON', '检查点', '清缓存'] as const
 
 function prettyJson(value: unknown) {
   try {
@@ -50,16 +51,15 @@ function formatResultSummary(payload: unknown) {
   const record = payload as Record<string, unknown>
   if (typeof record.message === 'string' && record.message.trim()) return record.message.trim()
   if (typeof record.bytes === 'number') return `文件已生成，大小 ${formatBytes(record.bytes)}。`
-  if (Array.isArray(record.items)) return `返回 ${record.items.length} 个 checkpoint。`
-  if (record.deleted === true) return '已清理当前对话的 checkpoints。'
+  if (Array.isArray(record.items)) return `返回 ${record.items.length} 个检查点。`
+  if (record.deleted === true) return '已清理当前对话的检查点。'
   if (typeof record.id === 'string') return '新对话已创建，后续操作会自动使用该对话。'
   return `操作已完成，返回 ${Object.keys(record).length} 个字段。`
 }
 
 export function ConversationOpsPanel({ conversationId }: Readonly<{ conversationId?: string | null }>) {
   const [manualConversationId, setManualConversationId] = useState(conversationId || '')
-  const [checkpointId, setCheckpointId] = useState('')
-  const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [panelOpen, setPanelOpen] = useState(false)
   const [resultDetailsOpen, setResultDetailsOpen] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
   const [result, setResult] = useState<{ title: string; payload: unknown } | null>(null)
@@ -88,154 +88,187 @@ export function ConversationOpsPanel({ conversationId }: Readonly<{ conversation
   }
 
   return (
-    <Panel padding="md" className="border-border/60 bg-background/82 shadow-sm">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <div className="text-sm font-semibold text-foreground">对话导出与 Checkpoint</div>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            当前对话已自动绑定，默认只保留可点击动作；单个 checkpoint 排查放在高级调试里。
-          </p>
-        </div>
-        {busy ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground motion-reduce:animate-none" /> : null}
-      </div>
-
-      <div className="mt-3 rounded-xl border border-blue-500/15 bg-blue-500/[0.04] p-3">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="text-xs font-semibold text-foreground">当前对话已自动绑定</div>
-            <p className="mt-1 text-[11px] leading-5 text-muted-foreground">
-              {hasConversation
-                ? '可直接导出、查看 checkpoint 列表或清理缓存，不需要手动填写后端 ID。'
-                : '请先在左侧选择一个对话，导出和 checkpoint 操作会自动启用。'}
-            </p>
-          </div>
+    <Panel
+      padding="md"
+      className={cn(
+        'relative overflow-hidden border-slate-200/80 shadow-[0_12px_36px_rgba(15,23,42,0.08)] transition-all duration-200 motion-reduce:transition-none',
+        'bg-[linear-gradient(135deg,rgba(248,250,252,0.98),rgba(239,248,255,0.86)_48%,rgba(244,255,249,0.72))]',
+        'dark:border-slate-800/90 dark:bg-[linear-gradient(135deg,rgba(15,23,42,0.96),rgba(8,47,73,0.72)_52%,rgba(6,78,59,0.46))]',
+        panelOpen ? 'rounded-2xl' : 'rounded-[1.35rem] py-3'
+      )}
+    >
+      <div className="pointer-events-none absolute inset-y-2 left-0 w-1 rounded-r-full bg-gradient-to-b from-cyan-400 via-sky-500 to-emerald-400" />
+      <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-cyan-300/18 blur-2xl dark:bg-cyan-400/10" />
+      <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/65 to-transparent" />
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <button
+          type="button"
+          className="group flex min-w-0 flex-1 items-center gap-3 rounded-2xl py-0.5 pl-1 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-cyan-500/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          aria-expanded={panelOpen}
+          onClick={() => setPanelOpen((open) => !open)}
+        >
           <span
             className={cn(
-              'w-fit rounded-full border px-2.5 py-1 text-[11px] font-semibold',
+              'flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border shadow-sm transition-all',
+              panelOpen
+                ? 'border-cyan-500/35 bg-cyan-500/15 text-cyan-700 dark:text-cyan-200'
+                : 'border-cyan-500/20 bg-background/85 text-cyan-700 group-hover:-translate-y-0.5 group-hover:border-cyan-500/35 group-hover:bg-cyan-500/10 dark:text-cyan-200'
+            )}
+          >
+            <ChevronDown className={cn('h-4 w-4 transition-transform', panelOpen ? 'rotate-0' : '-rotate-90')} />
+          </span>
+          <span className="min-w-0">
+            <span className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-semibold tracking-tight text-foreground">对话运维工具箱</span>
+              <span className="rounded-full border border-cyan-500/15 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-semibold text-cyan-700 dark:text-cyan-200">
+                导出 · 检查点
+              </span>
+            </span>
+            <span className="mt-1 block truncate text-xs text-muted-foreground">
+              {panelOpen
+                ? '当前对话已绑定，可执行导出、检查点查询和缓存清理。'
+                : '已收起，展开后可导出对话、查看检查点或清理缓存。'}
+            </span>
+            {!panelOpen ? (
+              <span className="mt-2 hidden flex-wrap items-center gap-1.5 sm:flex">
+                {QUICK_ACTIONS.map((label) => (
+                  <span
+                    key={label}
+                    className="rounded-full border border-white/70 bg-white/72 px-2.5 py-1 text-[11px] font-medium text-slate-600 shadow-[0_1px_0_rgba(255,255,255,0.85)_inset] backdrop-blur dark:border-white/10 dark:bg-white/8 dark:text-slate-300"
+                  >
+                    {label}
+                  </span>
+                ))}
+              </span>
+            ) : null}
+          </span>
+        </button>
+        <div className="flex items-center gap-2 sm:justify-end">
+          <span
+            className={cn(
+              'w-fit rounded-full border px-2.5 py-1 text-[11px] font-semibold shadow-sm',
               hasConversation
-                ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700'
+                ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200'
                 : 'border-muted-foreground/15 bg-muted/40 text-muted-foreground'
             )}
           >
-            {hasConversation ? '已就绪' : '未选择'}
+            {hasConversation ? '已绑定' : '未选择'}
           </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className={cn(
+              'h-8 rounded-full border-cyan-500/25 px-3 text-xs font-semibold shadow-sm transition',
+              panelOpen
+                ? 'bg-background/75 hover:border-cyan-500/45 hover:bg-cyan-500/10'
+                : 'bg-slate-950 text-white hover:border-slate-950 hover:bg-slate-800 dark:bg-cyan-300 dark:text-slate-950 dark:hover:bg-cyan-200'
+            )}
+            onClick={() => setPanelOpen((open) => !open)}
+          >
+            {panelOpen ? '收起面板' : '展开操作'}
+          </Button>
+          {busy ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground motion-reduce:animate-none" /> : null}
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-2">
-        <ActionButton
-          icon={MessageSquarePlus}
-          busy={busy === 'create'}
-          disabled={Boolean(busy)}
-          label="创建空白对话"
-          onClick={() => runAction('create', '创建对话', () => chatApi.createConversation({ title: '新建对话' }))}
-        />
-        <Button
-          variant="outline"
-          className="h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold"
-          disabled={Boolean(busy) || !effectiveConversationId}
-          onClick={() =>
-            detachPromise(
-              runAction('export-md', '导出 Markdown', async () => {
-                const blob = await chatApi.exportConversation(effectiveConversationId, {
-                  fmt: 'markdown',
-                  include_citations: true,
-                })
-                downloadBlob(blob, 'conversation.md')
-                return { bytes: blob.size, type: blob.type }
-              })
-            )
-          }
-        >
-          <Download className="h-3.5 w-3.5" />
-          导出 Markdown
-        </Button>
-        <Button
-          variant="outline"
-          className="h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold"
-          disabled={Boolean(busy) || !effectiveConversationId}
-          onClick={() =>
-            detachPromise(
-              runAction('export-json', '导出 JSON', async () => {
-                const blob = await chatApi.exportConversation(effectiveConversationId, {
-                  fmt: 'json',
-                  include_citations: true,
-                })
-                downloadBlob(blob, 'conversation.json')
-                return { bytes: blob.size, type: blob.type }
-              })
-            )
-          }
-        >
-          <Download className="h-3.5 w-3.5" />
-          导出 JSON
-        </Button>
-        <ActionButton
-          icon={GitCommitVertical}
-          busy={busy === 'checkpoints'}
-          disabled={Boolean(busy) || !effectiveConversationId}
-          label="Checkpoint 列表"
-          onClick={() =>
-            runAction('checkpoints', 'Checkpoint 列表', () =>
-              chatApi.listCheckpoints(effectiveConversationId, { limit: 20, include_values: false })
-            )
-          }
-        />
-        <ConfirmDialog
-          title="清理该对话的 Checkpoints？"
-          description="将删除当前对话的持久化 checkpoints。此操作不可撤销。"
-          confirmLabel="清理"
-          onConfirm={() => runAction('delete-checkpoints', '清理 Checkpoints', async () => {
-            await chatApi.deleteCheckpoints(effectiveConversationId)
-            return { deleted: true }
-          })}
-        >
-          <Button variant="outline" className="h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold" disabled={Boolean(busy) || !effectiveConversationId}>
-            {busy === 'delete-checkpoints' ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <Trash2 className="h-3.5 w-3.5" />}
-            清理 Checkpoints
-          </Button>
-        </ConfirmDialog>
-      </div>
-
-      <div className="mt-3 rounded-xl border border-border/60 bg-muted/15">
-        <button
-          type="button"
-          className="flex w-full flex-col gap-1 p-3 text-left transition hover:bg-muted/20"
-          aria-expanded={advancedOpen}
-          onClick={() => setAdvancedOpen((open) => !open)}
-        >
-          <span className="text-xs font-semibold text-foreground">高级调试（可选）</span>
-          <span className="text-[11px] leading-5 text-muted-foreground">
-            仅在需要查看单个 checkpoint 详情时打开，普通运维不需要填写任何后端 ID。
-          </span>
-        </button>
-        {advancedOpen ? (
-          <div className="border-t border-border/60 p-3">
-            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-              <div className="space-y-1">
-                <div className="text-[11px] font-medium text-muted-foreground">Checkpoint 编号</div>
-                <Input
-                  value={checkpointId}
-                  onChange={(event) => setCheckpointId(event.target.value)}
-                  placeholder="从 checkpoint 列表复制编号，仅排查时使用"
-                  className="h-8 font-mono text-xs"
-                />
-              </div>
-              <ActionButton
-                icon={GitCommitVertical}
-                busy={busy === 'checkpoint'}
-                disabled={Boolean(busy) || !effectiveConversationId || !checkpointId.trim()}
-                label="查看详情"
-                onClick={() =>
-                  runAction('checkpoint', 'Checkpoint 详情', () =>
-                    chatApi.getCheckpoint(effectiveConversationId, checkpointId.trim(), { include_values: true })
-                  )
-                }
-              />
-            </div>
+      {panelOpen ? (
+        <>
+          <div className="mt-3 rounded-2xl border border-sky-500/15 bg-background/70 p-3 shadow-[0_1px_0_rgba(255,255,255,0.7)_inset]">
+            <div className="text-xs font-semibold text-foreground">当前对话自动绑定</div>
+            <p className="mt-1 text-[11px] leading-5 text-muted-foreground">
+              {hasConversation
+                ? '可直接导出、查看检查点列表或清理缓存，不需要手动填写后端 ID。'
+                : '请先在左侧选择一个对话，导出和检查点操作会自动启用。'}
+            </p>
           </div>
-        ) : null}
-      </div>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            <ActionButton
+              icon={MessageSquarePlus}
+              busy={busy === 'create'}
+              disabled={Boolean(busy)}
+              label="创建空白对话"
+              onClick={() => runAction('create', '创建对话', () => chatApi.createConversation({ title: '新建对话' }))}
+            />
+            <Button
+              variant="outline"
+              className="h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold"
+              disabled={Boolean(busy) || !effectiveConversationId}
+              onClick={() =>
+                detachPromise(
+                  runAction('export-md', '导出 Markdown', async () => {
+                    const blob = await chatApi.exportConversation(effectiveConversationId, {
+                      fmt: 'markdown',
+                      include_citations: true,
+                    })
+                    downloadBlob(blob, 'conversation.md')
+                    return { bytes: blob.size, type: blob.type }
+                  })
+                )
+              }
+            >
+              <Download className="h-3.5 w-3.5" />
+              导出 Markdown
+            </Button>
+            <Button
+              variant="outline"
+              className="h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold"
+              disabled={Boolean(busy) || !effectiveConversationId}
+              onClick={() =>
+                detachPromise(
+                  runAction('export-json', '导出 JSON', async () => {
+                    const blob = await chatApi.exportConversation(effectiveConversationId, {
+                      fmt: 'json',
+                      include_citations: true,
+                    })
+                    downloadBlob(blob, 'conversation.json')
+                    return { bytes: blob.size, type: blob.type }
+                  })
+                )
+              }
+            >
+              <Download className="h-3.5 w-3.5" />
+              导出 JSON
+            </Button>
+            <ActionButton
+              icon={GitCommitVertical}
+              busy={busy === 'checkpoints'}
+              disabled={Boolean(busy) || !effectiveConversationId}
+              label="检查点列表"
+              onClick={() =>
+                runAction('checkpoints', '检查点列表', () =>
+                  chatApi.listCheckpoints(effectiveConversationId, { limit: 20, include_values: false })
+                )
+              }
+            />
+            <ConfirmDialog
+              title="清理该对话的检查点？"
+              description="将删除当前对话的持久化检查点。此操作不可撤销。"
+              confirmLabel="清理"
+              onConfirm={() =>
+                runAction('delete-checkpoints', '清理检查点', async () => {
+                  await chatApi.deleteCheckpoints(effectiveConversationId)
+                  return { deleted: true }
+                })
+              }
+            >
+              <Button
+                variant="outline"
+                className="h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold"
+                disabled={Boolean(busy) || !effectiveConversationId}
+              >
+                {busy === 'delete-checkpoints' ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+                ) : (
+                  <Trash2 className="h-3.5 w-3.5" />
+                )}
+                清理检查点
+              </Button>
+            </ConfirmDialog>
+          </div>
+        </>
+      ) : null}
 
       {result ? (
         <div className="mt-3 rounded-lg border border-border/60 bg-muted/20 p-3">
