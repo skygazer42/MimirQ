@@ -223,7 +223,7 @@ def apply_runtime_migrations(engine) -> None:
             "ON document_chunks USING GIN (content gin_trgm_ops) "
             "WHERE disabled_at IS NULL;",
             # Dify external knowledge metadata-anchor fallback.
-            # Mirrors Alembic 0017 for deployments that rely on startup guardrails.
+            # Mirrors Alembic 0017/0018 for deployments that rely on startup guardrails.
             "CREATE INDEX IF NOT EXISTS ix_document_chunks_metadata_question_trgm_active "
             "ON document_chunks USING GIN (((metadata->>'question')) gin_trgm_ops) "
             "WHERE disabled_at IS NULL;",
@@ -238,6 +238,21 @@ def apply_runtime_migrations(engine) -> None:
             "WHERE disabled_at IS NULL;",
             "CREATE INDEX IF NOT EXISTS ix_document_chunks_metadata_title_trgm_active "
             "ON document_chunks USING GIN (((metadata->>'title')) gin_trgm_ops) "
+            "WHERE disabled_at IS NULL;",
+            "CREATE INDEX IF NOT EXISTS ix_document_chunks_metadata_primary_alias_trgm_active "
+            "ON document_chunks USING GIN (((metadata->>'primary_alias')) gin_trgm_ops) "
+            "WHERE disabled_at IS NULL;",
+            "CREATE INDEX IF NOT EXISTS ix_document_chunks_metadata_aliases_trgm_active "
+            "ON document_chunks USING GIN (((metadata->>'aliases')) gin_trgm_ops) "
+            "WHERE disabled_at IS NULL;",
+            "CREATE INDEX IF NOT EXISTS ix_document_chunks_metadata_service_aliases_trgm_active "
+            "ON document_chunks USING GIN (((metadata->>'service_aliases')) gin_trgm_ops) "
+            "WHERE disabled_at IS NULL;",
+            "CREATE INDEX IF NOT EXISTS ix_document_chunks_metadata_keywords_trgm_active "
+            "ON document_chunks USING GIN (((metadata->>'keywords')) gin_trgm_ops) "
+            "WHERE disabled_at IS NULL;",
+            "CREATE INDEX IF NOT EXISTS ix_document_chunks_metadata_semantic_keys_trgm_active "
+            "ON document_chunks USING GIN (((metadata->>'semantic_keys')) gin_trgm_ops) "
             "WHERE disabled_at IS NULL;",
             "CREATE INDEX IF NOT EXISTS ix_document_chunks_metadata_jsonb_active "
             "ON document_chunks USING GIN (metadata jsonb_path_ops) "

@@ -25,6 +25,7 @@ import { toast } from 'sonner'
 
 import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
+import { PageTitleIcon } from '@/components/ui/page-title-icon'
 import { Button } from '@/components/ui/button'
 import { SearchInput } from '@/components/ui/search-input'
 import {
@@ -1264,7 +1265,8 @@ export default function FeedbackTriagePage() {
         icon={MessageSquare}
         iconColor="text-indigo dark:text-indigo"
         size="full"
-        topClassName="mx-auto w-full max-w-[1480px] px-3 md:px-4 xl:px-5 pt-4 pb-2"
+        showHeader={false}
+        topClassName="w-full max-w-none px-2 md:px-3 xl:px-4 pt-4 pb-2 bg-[radial-gradient(circle_at_top,hsl(var(--info)/0.10),transparent_34rem)]"
         description={
           <div className="flex flex-wrap items-center gap-2 text-[12px] leading-5 text-muted-foreground">
             <span>汇总点赞、点踩与低分原因，快速定位需要回归验证的反馈。</span>
@@ -1279,43 +1281,94 @@ export default function FeedbackTriagePage() {
             </span>
           </div>
         }
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
-            {demoMode ? (
-              <Button
-                variant="outline"
-                className="gap-2 rounded-full bg-card/80 text-muted-foreground shadow-sm transition-colors duration-200 hover:border-border/60 hover:bg-card hover:text-foreground motion-reduce:transition-none"
-                onClick={handleExitDemoMode}
-              >
-                退出 Demo
-              </Button>
-            ) : null}
-            <Button
-              variant="outline"
-              className="gap-2 rounded-full bg-card/80 text-muted-foreground shadow-sm transition-colors duration-200 hover:border-border/60 hover:bg-card hover:text-foreground motion-reduce:transition-none"
-              onClick={() => {
-                if (demoMode) {
-                  toast.success('Demo 数据已刷新')
-                  return
-                }
-                refetch()
-                refetchLoopCandidates()
-              }}
-            >
-              <RefreshCw
-                className={cn(
-                  'h-3.5 w-3.5',
-                  isFetching || isLoopFetching
-                    ? 'animate-spin motion-reduce:animate-none'
-                    : ''
-                )}
-              />
-              刷新数据
-            </Button>
-          </div>
-        }
         top={
-          <div className="pt-2">
+          <div className="space-y-3">
+            <div className="relative overflow-hidden rounded-[28px] border border-sky-200/55 bg-[linear-gradient(135deg,rgba(248,253,255,0.92),rgba(229,245,255,0.72)_45%,rgba(255,255,255,0.82))] px-4 py-3 shadow-[0_24px_70px_-48px_rgba(14,116,144,0.55)] backdrop-blur-2xl dark:border-sky-300/15 dark:bg-[linear-gradient(135deg,rgba(8,21,34,0.82),rgba(8,47,73,0.36)_48%,rgba(15,23,42,0.72))]">
+              <div className="pointer-events-none absolute -right-10 -top-14 size-44 rounded-full bg-sky-300/22 blur-3xl" aria-hidden="true" />
+              <div className="pointer-events-none absolute bottom-0 left-8 right-8 h-px bg-gradient-to-r from-transparent via-sky-300/65 to-transparent" aria-hidden="true" />
+              <div className="relative flex min-w-0 flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="relative flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-[22px] border border-info/20 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.12))] text-info shadow-[inset_0_1px_0_hsl(var(--background)),0_18px_36px_-24px_hsl(var(--info)/0.9)]">
+                    <span className="absolute inset-x-2 top-1 h-px bg-card/70" aria-hidden="true" />
+                    <PageTitleIcon name="feedback-quality" className="size-9" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-200/70 bg-sky-50/70 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-sky-700 dark:border-sky-300/20 dark:bg-sky-300/10 dark:text-sky-200">
+                        <MessageSquare className="size-3" />
+                        Feedback Ops
+                      </span>
+                      <span className="inline-flex items-center rounded-full border border-indigo/20 bg-indigo/[0.08] px-2.5 py-1 text-[10px] font-medium text-indigo dark:text-indigo">
+                        <TestTube2 className="mr-1.5 size-3" />
+                        回归线索与质量闭环
+                      </span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                      <h1 className="text-[22px] font-semibold tracking-[-0.025em] text-foreground">
+                        <span className="bg-[linear-gradient(90deg,hsl(var(--foreground)),hsl(var(--info))_92%)] bg-clip-text text-transparent">
+                          反馈分析中心
+                        </span>
+                      </h1>
+                      <p className="text-[13px] leading-5 text-muted-foreground/85">
+                        汇总点赞、点踩与低分原因，快速定位需要回归验证的反馈。
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto] xl:min-w-[560px]">
+                  <div className="flex min-w-0 items-center justify-between gap-2 rounded-2xl border border-sky-200/70 bg-white/64 px-3 py-2 text-[11px] text-muted-foreground shadow-[0_12px_28px_-24px_rgba(14,116,144,0.45)] backdrop-blur dark:border-sky-300/15 dark:bg-background/28">
+                    <span className="inline-flex items-center gap-1.5">
+                      <MessageSquare className="size-3 text-sky-500" />
+                      收集
+                    </span>
+                    <ArrowUpRight className="size-3 shrink-0 text-muted-foreground/45" />
+                    <span className="inline-flex items-center gap-1.5">
+                      <Star className="size-3 text-sky-500" />
+                      归因
+                    </span>
+                    <ArrowUpRight className="size-3 shrink-0 text-muted-foreground/45" />
+                    <span className="inline-flex items-center gap-1.5">
+                      <CheckCheck className="size-3 text-sky-500" />
+                      回归验证
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-end gap-2">
+                    {demoMode ? (
+                      <Button
+                        variant="outline"
+                        className="h-9 gap-2 rounded-xl bg-white/64 text-muted-foreground shadow-sm transition-colors duration-200 hover:border-border/60 hover:bg-card hover:text-foreground motion-reduce:transition-none dark:bg-background/28"
+                        onClick={handleExitDemoMode}
+                      >
+                        退出 Demo
+                      </Button>
+                    ) : null}
+                    <Button
+                      variant="outline"
+                      className="h-9 gap-2 rounded-xl border-info/25 bg-white/64 text-info shadow-[0_12px_24px_-22px_hsl(var(--info)/0.5)] transition-colors duration-200 hover:border-info/40 hover:bg-info/[0.10] hover:text-info motion-reduce:transition-none dark:bg-background/28"
+                      onClick={() => {
+                        if (demoMode) {
+                          toast.success('Demo 数据已刷新')
+                          return
+                        }
+                        refetch()
+                        refetchLoopCandidates()
+                      }}
+                    >
+                      <RefreshCw
+                        className={cn(
+                          'h-3.5 w-3.5',
+                          isFetching || isLoopFetching
+                            ? 'animate-spin motion-reduce:animate-none'
+                            : ''
+                        )}
+                      />
+                      刷新数据
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
             <div className="grid gap-2.5 lg:grid-cols-2 xl:grid-cols-4">
               {summaryCards.map((card) => (
                 <FeedbackSummaryCard
@@ -1330,7 +1383,7 @@ export default function FeedbackTriagePage() {
             </div>
           </div>
         }
-        bodyClassName="mx-auto w-full max-w-[1480px] px-3 md:px-4 xl:px-5 pb-5 z-10"
+        bodyClassName="w-full max-w-none px-2 md:px-3 xl:px-4 pb-5 z-10"
       >
         <div className="grid gap-3 xl:h-[calc(100vh-14.25rem)] xl:min-h-0 xl:grid-cols-[minmax(0,1.72fr)_minmax(320px,0.78fr)]">
           <div className="xl:flex xl:min-h-0 xl:flex-col">

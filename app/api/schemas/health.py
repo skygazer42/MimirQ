@@ -45,3 +45,4 @@ class ReadyResponse(BaseModel):
     vector: VectorStatus
     redis: RedisStatus
     minio: MinioStatus
+    dify_external_knowledge: dict[str, object] | None = None

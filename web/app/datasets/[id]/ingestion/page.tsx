@@ -18,7 +18,6 @@ import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 
 import { datasetApi, pipelineApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
@@ -811,10 +810,15 @@ export default function DatasetIngestionPolicyPage() {
     }
   }, [previewFile, datasetId])
 
-  const ingestionHeroCard = 'relative overflow-hidden rounded-2xl border border-white/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(240,249,255,0.88)_58%,rgba(236,253,245,0.62))] shadow-[0_18px_50px_rgba(15,23,42,0.08)] ring-1 ring-sky-100/70 before:pointer-events-none before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_18%_12%,rgba(14,165,233,0.14),transparent_28%),linear-gradient(90deg,rgba(14,165,233,0.035)_1px,transparent_1px),linear-gradient(0deg,rgba(14,165,233,0.035)_1px,transparent_1px)] before:bg-[length:auto,28px_28px,28px_28px] dark:border-border/60 dark:bg-card/95 dark:ring-sky-500/15'
-  const ingestionToolbarGroupClass = 'inline-flex flex-wrap items-center gap-1 rounded-2xl border border-white/70 bg-white/70 p-1 shadow-[0_10px_30px_rgba(15,23,42,0.055)] ring-1 ring-slate-100/70 backdrop-blur dark:border-border/60 dark:bg-card/70 dark:ring-white/5'
-  const ingestionToolbarButtonClass = 'h-8 gap-1.5 rounded-xl px-2.5 text-[12px] font-medium text-slate-600 shadow-none hover:bg-white/95 hover:text-slate-900 hover:shadow-sm dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
-  const ingestionToolbarPrimaryButtonClass = 'h-8 min-w-[96px] gap-1.5 rounded-xl bg-gradient-to-r from-sky-500 to-cyan-500 px-3 text-[12px] font-semibold text-white shadow-[0_10px_24px_rgba(14,165,233,0.24)] hover:from-sky-600 hover:to-cyan-600 [&_svg]:size-3.5'
+  const ingestionHeroCard = 'relative overflow-hidden rounded-[26px] border border-slate-200/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(246,248,251,0.94)_45%,rgba(232,246,250,0.72))] shadow-[0_24px_70px_rgba(15,23,42,0.10)] ring-1 ring-white/80 before:pointer-events-none before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_16%_10%,rgba(8,145,178,0.16),transparent_26%),radial-gradient(circle_at_82%_0%,rgba(15,23,42,0.075),transparent_24%),linear-gradient(90deg,rgba(15,23,42,0.035)_1px,transparent_1px)] before:bg-[length:auto,auto,34px_34px] dark:border-border/60 dark:bg-card/95 dark:ring-white/5'
+  const ingestionToolbarGroupClass = 'inline-flex flex-wrap items-center gap-1 rounded-2xl border border-slate-200/80 bg-white/82 p-1 shadow-[0_12px_34px_rgba(15,23,42,0.07)] ring-1 ring-white/75 backdrop-blur dark:border-border/60 dark:bg-card/70 dark:ring-white/5'
+  const ingestionToolbarButtonClass = 'h-8 gap-1.5 rounded-xl px-2.5 text-[12px] font-semibold text-slate-600 shadow-none hover:bg-white hover:text-slate-950 hover:shadow-sm dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
+  const ingestionToolbarPrimaryButtonClass = 'h-8 min-w-[104px] gap-1.5 rounded-xl bg-slate-950 px-3.5 text-[12px] font-semibold text-white shadow-[0_12px_26px_rgba(15,23,42,0.22)] hover:bg-slate-800 dark:bg-primary dark:text-primary-foreground dark:hover:bg-primary/90 [&_svg]:size-3.5'
+  const ingestionPanelClass = 'rounded-[24px] border-slate-200/80 bg-white/88 shadow-[0_18px_54px_rgba(15,23,42,0.08)] ring-1 ring-white/75 backdrop-blur-xl dark:border-border/60 dark:bg-card/82 dark:ring-white/5'
+  const ingestionPanelHeaderClass = 'shrink-0 border-b border-slate-200/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(248,250,252,0.78))] px-5 py-4 dark:border-border/60 dark:bg-muted/20'
+  const ingestionIconPillClass = 'flex size-9 shrink-0 items-center justify-center rounded-2xl border border-slate-200/80 bg-white text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_8px_22px_rgba(15,23,42,0.08)] dark:border-border/60 dark:bg-muted/30 dark:text-foreground'
+  const ingestionActionButtonClass = 'h-9 rounded-xl px-3 text-[12px] font-semibold shadow-sm [&_svg]:size-4'
+  const ingestionMetricCardClass = 'group relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white/90 px-4 py-3 shadow-[0_12px_32px_rgba(15,23,42,0.055)] ring-1 ring-white/80 transition-colors hover:border-slate-300 dark:border-border/60 dark:bg-card/80 dark:ring-white/5'
   const activeRuleCount = rules.filter((rule) => rule.enabled !== false).length
   const parserBackendCount = new Set(rules.map((rule) => rule.parser_backend).filter(Boolean)).size
 
@@ -826,7 +830,7 @@ export default function DatasetIngestionPolicyPage() {
         size="full"
         density="system-dense"
         bodyGutter="dense"
-        bodyClassName="h-full overflow-hidden bg-[radial-gradient(circle_at_18%_0%,rgba(14,165,233,0.10),transparent_28%),linear-gradient(180deg,rgba(248,250,252,0.96),rgba(241,245,249,0.68))] pb-3 dark:bg-[radial-gradient(circle_at_18%_0%,rgba(14,165,233,0.14),transparent_28%),linear-gradient(180deg,rgba(15,23,42,0.96),rgba(15,23,42,0.86))]"
+        bodyClassName="h-full overflow-hidden bg-[radial-gradient(circle_at_16%_0%,rgba(8,145,178,0.12),transparent_30%),radial-gradient(circle_at_84%_10%,rgba(15,23,42,0.055),transparent_28%),linear-gradient(180deg,rgba(248,250,252,0.98),rgba(239,244,248,0.76))] pb-3 dark:bg-[radial-gradient(circle_at_18%_0%,rgba(14,165,233,0.14),transparent_28%),linear-gradient(180deg,rgba(15,23,42,0.96),rgba(15,23,42,0.86))]"
         bodyContainerClassName="h-full min-h-0 overflow-hidden"
         top={
           <div className={ingestionHeroCard}>
@@ -838,20 +842,20 @@ export default function DatasetIngestionPolicyPage() {
                 </div>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h1 className="truncate text-[20px] font-medium leading-none tracking-[-0.01em] text-slate-800 dark:text-foreground">入库策略</h1>
-                    <span className="inline-flex h-5 items-center rounded-full border border-slate-200/80 bg-white/70 px-2 text-[10px] font-medium leading-none text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-border/60 dark:bg-muted/30 dark:text-muted-foreground">
-                      解析前预处理
+                    <h1 className="truncate text-[22px] font-semibold leading-none tracking-[-0.035em] text-slate-950 dark:text-foreground">入库策略工作台</h1>
+                    <span className="inline-flex h-5 items-center rounded-full border border-slate-300/70 bg-white/82 px-2 text-[10px] font-bold uppercase leading-none tracking-[0.12em] text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-border/60 dark:bg-muted/30 dark:text-muted-foreground">
+                      pipeline policy
                     </span>
                     <Badge variant="soft" className="h-5 border-primary/20 bg-primary/10 px-2 font-mono text-[10px] leading-none text-primary">
                       POLICY
                     </Badge>
                   </div>
-                  <div className="mt-1.5 text-[13px] leading-tight text-muted-foreground">
+                  <div className="mt-1.5 text-[13px] leading-tight text-slate-600 dark:text-muted-foreground">
                     <span className="font-semibold text-foreground">数据集：</span>
                     <span className="font-medium text-foreground">{dataset?.name || datasetId}</span>
                     <span> · 按文件类型配置预处理、解析、治理与切块入口</span>
                   </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11px] leading-none text-muted-foreground">
+                  <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11px] font-medium leading-none text-slate-500 dark:text-muted-foreground">
                     <span className="inline-flex items-center gap-1.5">
                       <Database className="size-3.5 text-muted-foreground/80" />
                       <span>规则</span>
@@ -875,8 +879,20 @@ export default function DatasetIngestionPolicyPage() {
                   </div>
                 </div>
               </div>
-              <div className="flex shrink-0 items-center gap-2 lg:self-end">
-                <div className="inline-flex h-9 items-center gap-2 rounded-lg border border-emerald-200/80 bg-emerald-50/90 px-3 text-[13px] font-medium text-emerald-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
+              <div className="flex shrink-0 flex-col items-stretch gap-2 lg:w-[360px]">
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    ['01', '匹配规则'],
+                    ['02', '解析治理'],
+                    ['03', '切块入库'],
+                  ].map(([step, label]) => (
+                    <div key={step} className="rounded-2xl border border-white/75 bg-white/72 px-3 py-2 shadow-[0_10px_26px_rgba(15,23,42,0.07)] ring-1 ring-slate-200/40 backdrop-blur">
+                      <div className="font-mono text-[10px] font-black leading-none text-sky-600">{step}</div>
+                      <div className="mt-1 truncate text-[11px] font-bold leading-none text-slate-800">{label}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="inline-flex h-9 items-center gap-2 rounded-xl border border-emerald-200/80 bg-emerald-50/95 px-3 text-[12px] font-semibold text-emerald-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.75),0_10px_24px_rgba(5,150,105,0.10)] dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
                   <span className="size-2 rounded-full bg-emerald-500" />
                   策略可编辑
                 </div>
@@ -945,120 +961,178 @@ export default function DatasetIngestionPolicyPage() {
       >
         <div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden">
           {ingestionStats ? (
-            <StatsGrid dense className="shrink-0 grid-cols-2 md:grid-cols-4 xl:grid-cols-4">
-              <StatCard
-                dense
-                variant="minimal"
-                className="w-full justify-start"
-                icon={FileUp}
-                label="文档数"
-                value={ingestionStats.total_documents}
-                subValue={`completed ${(ingestionStats.by_status?.completed || 0)} · failed ${(ingestionStats.by_status?.failed || 0)}`}
-                color="sky"
-              />
-              <StatCard
-                dense
-                variant="minimal"
-                className="w-full justify-start"
-                icon={Scissors}
-                label="切片数"
-                value={ingestionStats.total_chunks}
-                subValue="sum(chunk_count)"
-                color="teal"
-              />
-              <StatCard
-                dense
-                variant="minimal"
-                className="w-full justify-start"
-                icon={BarChart3}
-                label="总字符数"
-                value={ingestionStats.total_characters}
-                subValue="sum(total_characters)"
-                color="amber"
-              />
-              <StatCard
-                dense
-                variant="minimal"
-                className="w-full justify-start"
-                icon={RefreshCw}
-                label="最近入库"
-                value={ingestionStats.last_processed_at ? new Date(ingestionStats.last_processed_at).toLocaleString() : '—'}
-                subValue="processed_at"
-                color="green"
-              />
-            </StatsGrid>
+            <div className="grid shrink-0 grid-cols-2 gap-3 md:grid-cols-4">
+              {[
+                {
+                  icon: FileUp,
+                  label: '文档数',
+                  value: ingestionStats.total_documents,
+                  subValue: `completed ${(ingestionStats.by_status?.completed || 0)} · failed ${(ingestionStats.by_status?.failed || 0)}`,
+                  tone: 'text-sky-600 bg-sky-50 border-sky-100',
+                },
+                {
+                  icon: Scissors,
+                  label: '切片数',
+                  value: ingestionStats.total_chunks,
+                  subValue: 'sum(chunk_count)',
+                  tone: 'text-teal-600 bg-teal-50 border-teal-100',
+                },
+                {
+                  icon: BarChart3,
+                  label: '总字符数',
+                  value: ingestionStats.total_characters,
+                  subValue: 'sum(total_characters)',
+                  tone: 'text-amber-700 bg-amber-50 border-amber-100',
+                },
+                {
+                  icon: RefreshCw,
+                  label: '最近入库',
+                  value: ingestionStats.last_processed_at ? new Date(ingestionStats.last_processed_at).toLocaleString() : '—',
+                  subValue: 'processed_at',
+                  tone: 'text-emerald-700 bg-emerald-50 border-emerald-100',
+                },
+              ].map((item) => (
+                <div key={item.label} className={ingestionMetricCardClass}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400 dark:text-muted-foreground">{item.label}</div>
+                      <div className="mt-1 truncate font-mono text-[17px] font-black leading-none tracking-[-0.02em] text-slate-950 tabular-nums dark:text-foreground">
+                        {item.value}
+                      </div>
+                      <div className="mt-1.5 truncate text-[11px] font-medium text-slate-500 dark:text-muted-foreground">{item.subValue}</div>
+                    </div>
+                    <div className={cn('flex size-8 shrink-0 items-center justify-center rounded-xl border', item.tone)}>
+                      <item.icon className="size-4" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : null}
 
-          <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_420px]">
-          <Panel variant="glass" className="flex min-h-0 flex-col overflow-hidden">
-            <div className="flex shrink-0 items-center justify-between border-b border-border/60 px-4 py-3">
-              <div className="min-w-0">
-                <div className="text-sm font-semibold">规则列表</div>
-                <div className="mt-1 max-w-3xl text-[11px] leading-4 text-muted-foreground/65">
-                  从上到下匹配，命中后应用：预处理步骤 / 解析后端 / chunk 策略 / 治理预设 / pipeline_patch
+          <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_440px]">
+          <Panel variant="glass" className={cn(ingestionPanelClass, 'flex min-h-0 flex-col overflow-hidden')}>
+            <div className={cn(ingestionPanelHeaderClass, 'flex items-center justify-between gap-4')}>
+              <div className="flex min-w-0 items-start gap-3">
+                <div className={ingestionIconPillClass}>
+                  <Settings2 className="size-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="mb-1 font-mono text-[10px] font-black uppercase tracking-[0.18em] text-sky-600">Policy routing</div>
+                  <div className="flex items-center gap-2">
+                    <div className="text-[15px] font-bold tracking-[-0.015em] text-slate-950 dark:text-foreground">规则列表</div>
+                    <Badge variant="outline" className="h-5 rounded-full px-2 font-mono text-[10px] uppercase text-slate-500">
+                      {rules.length} rules
+                    </Badge>
+                  </div>
+                  <div className="mt-1 max-w-3xl text-[12px] leading-5 text-slate-500 dark:text-muted-foreground">
+                    从上到下匹配，命中后应用：预处理步骤 / 解析后端 / chunk 策略 / 治理预设 / pipeline_patch
+                  </div>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" onClick={() => setTemplatesOpen(true)} className="gap-2">
-                  <Sparkles className="w-4 h-4" />
+              <div className="flex shrink-0 items-center gap-2">
+                <Button variant="outline" onClick={() => setTemplatesOpen(true)} className={cn(ingestionActionButtonClass, 'border-slate-200 bg-white/90 hover:bg-slate-50')}>
+                  <Sparkles className="size-4" />
                   从模板添加
                 </Button>
-                <Button onClick={openCreate} className="gap-2">
-                  <Plus className="w-4 h-4" />
+                <Button onClick={openCreate} className={cn(ingestionActionButtonClass, 'bg-sky-600 text-white shadow-[0_12px_24px_rgba(2,132,199,0.24)] hover:bg-sky-700')}>
+                  <Plus className="size-4" />
                   新增规则
                 </Button>
               </div>
             </div>
 
-            <div className="min-h-0 flex-1 divide-y divide-border/60 overflow-y-auto no-scrollbar">
+            <div className="min-h-0 flex-1 overflow-y-auto bg-[linear-gradient(180deg,rgba(248,250,252,0.72),rgba(255,255,255,0.92))] p-4 no-scrollbar dark:bg-muted/5">
               {(rules || []).length === 0 ? (
-                <div className="px-5 py-3 text-[11px] leading-5 text-muted-foreground/65">
-                  暂无规则。可先用模板生成 PDF / HTML / 纯文本规则，再按数据集调整治理预设。
+                <div className="flex min-h-[260px] flex-col justify-center rounded-[22px] border border-dashed border-slate-300 bg-white/72 px-6 py-8 text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-border dark:bg-muted/20 dark:text-muted-foreground">
+                  <div className="flex items-start gap-4">
+                    <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-500 dark:bg-muted/40">
+                      <Sparkles className="size-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[15px] font-bold tracking-[-0.01em] text-slate-900 dark:text-foreground">还没有入库规则</div>
+                      <div className="mt-1 max-w-xl text-[12px] leading-6">
+                        建议先从模板生成 PDF / HTML / 纯文本规则，再按数据集情况调整解析后端、治理预设和 chunk 策略。
+                      </div>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <Button variant="outline" size="sm" className="rounded-xl bg-white text-[12px] font-semibold" onClick={() => setTemplatesOpen(true)}>
+                          <Sparkles className="size-3.5" />
+                          从模板开始
+                        </Button>
+                        <Button size="sm" className="rounded-xl bg-slate-950 text-[12px] font-semibold text-white hover:bg-slate-800" onClick={openCreate}>
+                          <Plus className="size-3.5" />
+                          手动新增
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               ) : (
                 (rules || []).map((r, idx) => (
-                  <div key={r.id} className="p-5 flex items-start justify-between gap-6 hover:bg-muted/20 transition-colors">
+                  <div key={r.id} className="group relative mb-3 overflow-hidden rounded-[22px] border border-slate-200/80 bg-white/96 p-4 pl-5 shadow-[0_16px_38px_rgba(15,23,42,0.07)] ring-1 ring-white/85 transition-colors last:mb-0 hover:border-sky-200 dark:border-border/60 dark:bg-card/72 dark:ring-white/5">
+                    <div className="absolute inset-y-4 left-0 w-1 rounded-r-full bg-gradient-to-b from-sky-500 via-cyan-400 to-emerald-400 opacity-85" />
                     <div className="min-w-0 flex-1 space-y-2">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
-                            <span className="font-semibold truncate">{r.name}</span>
-                            <Badge variant={r.enabled ? 'soft' : 'outline'} className="text-[11px] font-mono uppercase ">
+                            <span className="truncate text-[15px] font-bold tracking-[-0.01em] text-slate-950 dark:text-foreground">{r.name}</span>
+                            <Badge variant={r.enabled ? 'soft' : 'outline'} className="h-5 rounded-full px-2 text-[10px] font-mono uppercase">
                               {r.enabled ? 'enabled' : 'disabled'}
                             </Badge>
-                            <span className="text-xs text-muted-foreground font-mono">#{idx + 1}</span>
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 font-mono text-[10px] font-semibold text-slate-500 dark:bg-muted/50 dark:text-muted-foreground">#{idx + 1}</span>
                           </div>
-                          <div className="text-xs text-muted-foreground mt-1">
+                          <div className="mt-1.5 text-[12px] font-medium text-slate-500 dark:text-muted-foreground">
                             ext: {(r.match?.extensions || []).join(', ') || '（任意）'}
                             {r.match?.filename_regex ? ` · filename_regex: ${r.match.filename_regex}` : ''}
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          <Button variant="outline" size="sm" onClick={() => moveRule(idx, -1)} disabled={idx === 0}>
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          <Button variant="outline" size="sm" className="size-8 rounded-xl px-0 text-[12px]" onClick={() => moveRule(idx, -1)} disabled={idx === 0}>
                             ↑
                           </Button>
-                          <Button variant="outline" size="sm" onClick={() => moveRule(idx, 1)} disabled={idx === rules.length - 1}>
+                          <Button variant="outline" size="sm" className="size-8 rounded-xl px-0 text-[12px]" onClick={() => moveRule(idx, 1)} disabled={idx === rules.length - 1}>
                             ↓
                           </Button>
-                          <Button variant="outline" size="sm" onClick={() => openEdit(idx)}>
+                          <Button variant="outline" size="sm" className="h-8 rounded-xl px-3 text-[12px] font-semibold" onClick={() => openEdit(idx)}>
                             编辑
                           </Button>
-                          <Button variant="destructive" size="sm" className="gap-2" onClick={() => removeRule(idx)}>
-                            <Trash2 className="w-4 h-4" />
+                          <Button variant="destructive" size="sm" className="h-8 gap-1.5 rounded-xl px-3 text-[12px] font-semibold" onClick={() => removeRule(idx)}>
+                            <Trash2 className="size-3.5" />
                             删除
                           </Button>
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-2 text-xs">
-                        <Badge variant="outline" className="font-mono">
+                      <div className="grid grid-cols-1 gap-2 text-[11px] md:grid-cols-3">
+                        <div className="rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-2">
+                          <div className="font-mono text-[9px] font-black uppercase tracking-[0.15em] text-slate-400">match</div>
+                          <div className="mt-1 truncate font-semibold text-slate-700">
+                            {(r.match?.extensions || []).join(', ') || 'any file'}
+                          </div>
+                        </div>
+                        <div className="rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-2">
+                          <div className="font-mono text-[9px] font-black uppercase tracking-[0.15em] text-slate-400">parse</div>
+                          <div className="mt-1 truncate font-semibold text-slate-700">
+                            {r.parser_backend || 'default'} · pre {r.preprocess?.enabled ? (r.preprocess?.steps || []).length : 0}
+                          </div>
+                        </div>
+                        <div className="rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-2">
+                          <div className="font-mono text-[9px] font-black uppercase tracking-[0.15em] text-slate-400">chunk</div>
+                          <div className="mt-1 truncate font-semibold text-slate-700">
+                            {r.chunk_strategy || r.governance_profile_ref || 'dataset default'}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                        <Badge variant="outline" className="rounded-lg border-slate-200 bg-slate-50/80 font-mono text-slate-600">
                           preprocess: {r.preprocess?.enabled ? (r.preprocess?.steps || []).length : 0}
                         </Badge>
-                        {r.parser_backend ? <Badge variant="outline" className="font-mono">parser: {r.parser_backend}</Badge> : null}
-                        {r.chunk_strategy ? <Badge variant="outline" className="font-mono">chunk: {r.chunk_strategy}</Badge> : null}
-                        {r.governance_profile_ref ? <Badge variant="outline" className="font-mono">profile: {r.governance_profile_ref}</Badge> : null}
+                        {r.parser_backend ? <Badge variant="outline" className="rounded-lg border-slate-200 bg-slate-50/80 font-mono text-slate-600">parser: {r.parser_backend}</Badge> : null}
+                        {r.chunk_strategy ? <Badge variant="outline" className="rounded-lg border-slate-200 bg-slate-50/80 font-mono text-slate-600">chunk: {r.chunk_strategy}</Badge> : null}
+                        {r.governance_profile_ref ? <Badge variant="outline" className="rounded-lg border-slate-200 bg-slate-50/80 font-mono text-slate-600">profile: {r.governance_profile_ref}</Badge> : null}
                         {r.pipeline_patch && Object.keys(r.pipeline_patch || {}).length > 0 ? (
-                          <Badge variant="outline" className="font-mono">patch: {Object.keys(r.pipeline_patch || {}).length}</Badge>
+                          <Badge variant="outline" className="rounded-lg border-slate-200 bg-slate-50/80 font-mono text-slate-600">patch: {Object.keys(r.pipeline_patch || {}).length}</Badge>
                         ) : null}
                       </div>
                     </div>
@@ -1068,49 +1142,57 @@ export default function DatasetIngestionPolicyPage() {
             </div>
           </Panel>
 
-          <Panel variant="glass" className="flex min-h-0 flex-col overflow-hidden">
-            <div className="flex shrink-0 items-center justify-between border-b border-border/60 px-4 py-3">
-              <div className="min-w-0">
-                <div className="text-sm font-semibold flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-primary" />
-                  入库预览（样例文件）
+          <Panel variant="glass" className={cn(ingestionPanelClass, 'flex min-h-0 flex-col overflow-hidden')}>
+            <div className={cn(ingestionPanelHeaderClass, 'space-y-3')}>
+              <div className="flex items-start gap-3">
+                <div className={ingestionIconPillClass}>
+                  <Sparkles className="size-4 text-sky-600" />
                 </div>
-                <div className="mt-1 max-w-3xl text-[11px] leading-4 text-muted-foreground/65">
-                  上传一个样例文件，后端会按当前数据集策略执行：匹配规则 → 预处理 → 解析 → 治理 diff/问题。
+                <div className="min-w-0">
+                  <div className="text-[15px] font-bold tracking-[-0.015em] text-slate-950 dark:text-foreground">入库预览（样例文件）</div>
+                  <div className="mt-1 text-[12px] leading-5 text-slate-500 dark:text-muted-foreground">
+                    上传样例文件，按当前策略执行：匹配规则 → 预处理 → 解析 → 治理 diff / 问题。
+                  </div>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <Input
-                  type="file"
-                  className="h-9 max-w-[150px] text-[11px]"
-                  onChange={(e) => setPreviewFile(e.target.files?.[0] || null)}
-                />
-                <Button onClick={runPreview} disabled={!previewFile || previewing} className="h-9 gap-2 text-xs">
-                  {previewing ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Sparkles className="w-4 h-4" />}
-                  生成预览
-                </Button>
+              <div className="rounded-[22px] border border-sky-100 bg-[linear-gradient(135deg,rgba(240,249,255,0.95),rgba(255,255,255,0.9))] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_14px_32px_rgba(2,132,199,0.10)] dark:border-border/60 dark:bg-muted/20">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400 dark:text-muted-foreground">sample file</span>
+                  {previewFile ? <span className="truncate font-mono text-[11px] text-slate-600 dark:text-muted-foreground">{previewFile.name}</span> : null}
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Input
+                    type="file"
+                    className="h-10 w-full min-w-0 rounded-2xl border-slate-200 bg-white text-[11px] shadow-sm"
+                    onChange={(e) => setPreviewFile(e.target.files?.[0] || null)}
+                  />
+                  <Button onClick={runPreview} disabled={!previewFile || previewing} className="h-10 w-full shrink-0 gap-2 rounded-2xl bg-slate-950 px-3 text-xs font-bold text-white shadow-[0_14px_28px_rgba(15,23,42,0.24)] hover:bg-slate-800">
+                    {previewing ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" /> : <Sparkles className="size-4" />}
+                    生成预览
+                  </Button>
+                </div>
               </div>
             </div>
 
             {preview ? (
-              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3 no-scrollbar">
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[linear-gradient(180deg,rgba(248,250,252,0.62),rgba(255,255,255,0.92))] p-4 no-scrollbar dark:bg-muted/5">
                 <div className="flex flex-wrap items-center gap-2 text-xs">
-                  <Badge variant={preview.rule?.matched ? 'soft' : 'outline'} className="font-mono">
+                  <Badge variant={preview.rule?.matched ? 'soft' : 'outline'} className="rounded-lg font-mono">
                     matched: {preview.rule?.matched ? 'true' : 'false'}
                   </Badge>
-                  {preview.rule?.rule_name ? <Badge variant="outline" className="font-mono">{preview.rule.rule_name}</Badge> : null}
-                  <Badge variant="outline" className="font-mono">parser: {preview.rule?.parser_backend}</Badge>
-                  {preview.rule?.chunk_strategy ? <Badge variant="outline" className="font-mono">chunk: {preview.rule.chunk_strategy}</Badge> : null}
-                  {preview.rule?.governance_profile_ref ? <Badge variant="outline" className="font-mono">profile: {preview.rule.governance_profile_ref}</Badge> : null}
-                  <Badge variant="outline" className="font-mono">preprocess_changed: {String(preview.preprocess?.changed)}</Badge>
+                  {preview.rule?.rule_name ? <Badge variant="outline" className="rounded-lg font-mono">{preview.rule.rule_name}</Badge> : null}
+                  <Badge variant="outline" className="rounded-lg font-mono">parser: {preview.rule?.parser_backend}</Badge>
+                  {preview.rule?.chunk_strategy ? <Badge variant="outline" className="rounded-lg font-mono">chunk: {preview.rule.chunk_strategy}</Badge> : null}
+                  {preview.rule?.governance_profile_ref ? <Badge variant="outline" className="rounded-lg font-mono">profile: {preview.rule.governance_profile_ref}</Badge> : null}
+                  <Badge variant="outline" className="rounded-lg font-mono">preprocess_changed: {String(preview.preprocess?.changed)}</Badge>
                 </div>
 
                 {Array.isArray(preview.clean?.issues) && preview.clean.issues.length > 0 ? (
-                  <Panel variant="muted" className="p-4">
-                    <div className="text-sm font-semibold mb-2">后端检测到的问题（issues）</div>
+                  <Panel variant="muted" className="rounded-2xl border-amber-200/70 bg-amber-50/70 p-4 shadow-none dark:border-amber-500/30 dark:bg-amber-500/10">
+                    <div className="mb-2 text-sm font-bold text-slate-950 dark:text-foreground">后端检测到的问题（issues）</div>
                     <div className="space-y-2">
                       {preview.clean.issues.slice(0, 8).map((it) => (
-                        <div key={`${it.code}-${it.message}`} className="text-xs">
+                        <div key={`${it.code}-${it.message}`} className="text-xs leading-5 text-slate-700 dark:text-muted-foreground">
                           <span className="font-mono text-muted-foreground">{it.severity}</span>{' '}
                           <span className="font-mono">{it.code}</span> · {it.message}
                           {it.count ? <span className="text-muted-foreground"> ×{it.count}</span> : null}
@@ -1123,33 +1205,40 @@ export default function DatasetIngestionPolicyPage() {
                   </Panel>
                 ) : null}
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  <Panel variant="muted" className="p-0 overflow-hidden">
-                    <div className="px-4 py-3 border-b border-border/60 text-sm font-semibold">解析后 Markdown（raw）</div>
-                    <pre className="p-4 text-xs leading-relaxed whitespace-pre-wrap overflow-y-auto max-h-[360px] no-scrollbar">
+                <div className="grid grid-cols-1 gap-3">
+                  <Panel variant="muted" className="overflow-hidden rounded-2xl border-slate-200/80 bg-white/78 p-0 shadow-none dark:border-border/60 dark:bg-card/60">
+                    <div className="border-b border-border/60 px-4 py-3 text-sm font-bold">解析后 Markdown（raw）</div>
+                    <pre className="max-h-[260px] overflow-y-auto whitespace-pre-wrap p-4 text-xs leading-relaxed no-scrollbar">
                       {preview.parse?.markdown || ''}
                     </pre>
                   </Panel>
-                  <Panel variant="muted" className="p-0 overflow-hidden">
-                    <div className="px-4 py-3 border-b border-border/60 text-sm font-semibold">治理后 Markdown（clean）</div>
-                    <pre className="p-4 text-xs leading-relaxed whitespace-pre-wrap overflow-y-auto max-h-[360px] no-scrollbar">
+                  <Panel variant="muted" className="overflow-hidden rounded-2xl border-slate-200/80 bg-white/78 p-0 shadow-none dark:border-border/60 dark:bg-card/60">
+                    <div className="border-b border-border/60 px-4 py-3 text-sm font-bold">治理后 Markdown（clean）</div>
+                    <pre className="max-h-[260px] overflow-y-auto whitespace-pre-wrap p-4 text-xs leading-relaxed no-scrollbar">
                       {preview.clean?.markdown || ''}
                     </pre>
                   </Panel>
                 </div>
 
                 {preview.clean?.diff_unified ? (
-                  <Panel variant="muted" className="p-0 overflow-hidden">
-                    <div className="px-4 py-3 border-b border-border/60 text-sm font-semibold">Unified Diff（后端）</div>
-                    <pre className="p-4 text-xs leading-relaxed whitespace-pre overflow-y-auto max-h-[320px] no-scrollbar font-mono">
+                  <Panel variant="muted" className="overflow-hidden rounded-2xl border-slate-200/80 bg-slate-950 p-0 text-slate-100 shadow-none dark:border-border/60">
+                    <div className="border-b border-white/10 px-4 py-3 text-sm font-bold">Unified Diff（后端）</div>
+                    <pre className="max-h-[320px] overflow-y-auto whitespace-pre p-4 font-mono text-xs leading-relaxed no-scrollbar">
                       {preview.clean.diff_unified}
                     </pre>
                   </Panel>
                 ) : null}
               </div>
             ) : (
-              <div className="px-5 py-3 text-[11px] leading-5 text-muted-foreground/65">
-                可选：选择 HTML / PDF / DOCX / CSV 样例后生成预览，用于检查策略命中和治理 diff。
+              <div className="flex min-h-0 flex-1 flex-col justify-between bg-[linear-gradient(180deg,rgba(248,250,252,0.62),rgba(255,255,255,0.92))] p-4 dark:bg-muted/5">
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-white/68 px-4 py-5 text-[12px] leading-6 text-slate-500 dark:border-border dark:bg-muted/20 dark:text-muted-foreground">
+                  可选：选择 HTML / PDF / DOCX / CSV 样例后生成预览，用于检查策略命中和治理 diff。
+                </div>
+                <div className="mt-4 grid gap-2 text-[11px] text-slate-500 dark:text-muted-foreground">
+                  <div className="rounded-xl bg-slate-100/70 px-3 py-2 dark:bg-muted/30">1. 先确认命中规则是否符合预期</div>
+                  <div className="rounded-xl bg-slate-100/70 px-3 py-2 dark:bg-muted/30">2. 再看解析后 Markdown 和治理后 Markdown 差异</div>
+                  <div className="rounded-xl bg-slate-100/70 px-3 py-2 dark:bg-muted/30">3. 最后保存策略并重建相关索引</div>
+                </div>
               </div>
             )}
           </Panel>

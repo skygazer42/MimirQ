@@ -503,6 +503,12 @@ class PipelinePluginRetrievalPolicyContractSummary(BaseModel):
     mixed_intent_subject_terms: list[str] = Field(default_factory=list)
     service_anchor_noise_terms: list[str] = Field(default_factory=list)
     service_anchor_priority_terms: list[str] = Field(default_factory=list)
+    service_anchor_entity_terms: list[str] = Field(default_factory=list)
+    service_anchor_leading_noise_terms: list[str] = Field(default_factory=list)
+    service_anchor_cutoff_terms: list[str] = Field(default_factory=list)
+    question_anchor_generic_subject_terms: list[str] = Field(default_factory=list)
+    fast_response_always_labels: list[str] = Field(default_factory=list)
+    fast_response_field_rules: int = 0
     metadata_anchor_preflight_block_terms: list[str] = Field(default_factory=list)
     service_anchor_query_rewrites: int = 0
     anchor_binding_fields: list[str] = Field(default_factory=list)

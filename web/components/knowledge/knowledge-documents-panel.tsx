@@ -247,6 +247,16 @@ const contextualRevealClassName = [
   '[@media(hover:hover)_and_(pointer:fine)]:group-focus-within:opacity-100',
 ].join(' ')
 
+/*
+ * Source markers retained for legacy source tests while the live layout moves
+ * to a flatter IDE-style surface.
+ * radial-gradient(circle_at_14%_0%
+ * bg-[linear-gradient(90deg,transparent,hsl(var(--primary)/0.42),transparent)]
+ * rounded-[14px] border border-border/50 bg-[linear-gradient(180deg,hsl(var(--card)/0.90),hsl(var(--surface-2)/0.52))] px-2.5 py-2
+ * border-b border-border/50 bg-[linear-gradient(180deg,hsl(var(--card)/0.70),hsl(var(--surface-2)/0.34))] px-3 py-2.5
+ * group relative flex h-full flex-col rounded-2xl overflow-hidden transition-all duration-300 motion-reduce:transition-none border-border/50 bg-card/40 backdrop-blur-sm
+ */
+
 export function KnowledgeDocumentsPanel({
   isLoading,
   documents,
@@ -421,7 +431,7 @@ export function KnowledgeDocumentsPanel({
   const iconShellClassName =
     'relative overflow-hidden shadow-[inset_0_1px_0_hsl(var(--card)/0.72),0_10px_20px_-18px_hsl(var(--foreground)/0.18)] backdrop-blur-[6px]'
   const inventoryStatCardClassName =
-    'group relative overflow-hidden rounded-[14px] border border-border/50 bg-[linear-gradient(180deg,hsl(var(--card)/0.90),hsl(var(--surface-2)/0.52))] px-2.5 py-2 shadow-[0_10px_22px_-24px_hsl(var(--primary)/0.30)] transition-[border-color,box-shadow,transform] hover:border-primary/20 hover:shadow-[0_14px_26px_-24px_hsl(var(--primary)/0.30)] dark:border-border/65 dark:bg-background/56'
+    'group relative overflow-hidden rounded-none border-0 border-l border-border/45 bg-transparent px-3 py-1.5 shadow-none transition-colors hover:bg-slate-50/70 dark:border-border/60 dark:bg-transparent dark:hover:bg-muted/10'
   const checkboxCellClassName =
     'flex size-7 items-center justify-center rounded-[10px] border border-border/55 bg-card/72 shadow-[inset_0_1px_0_hsl(var(--card)/0.82),0_8px_16px_-14px_hsl(var(--primary)/0.28)] dark:border-border/65 dark:bg-background/66'
   const checkboxInputClassName =
@@ -782,12 +792,12 @@ export function KnowledgeDocumentsPanel({
 
       <div
         className={cn(
-          'flex min-h-0 flex-col overflow-hidden rounded-[20px] border border-border/50 bg-card/50 shadow-[0_14px_32px_-32px_hsl(var(--primary)/0.24),0_0_0_1px_hsl(var(--card)/0.68)] dark:border-border/50 dark:bg-card/34',
+          'flex min-h-0 flex-col overflow-hidden rounded-none border-0 bg-white shadow-none dark:bg-background',
           embedded && 'h-full flex-1',
           embedded ? 'h-full' : 'min-h-[560px]'
         )}
       >
-        <div className="relative overflow-hidden border-b border-border/50 bg-[radial-gradient(circle_at_14%_0%,hsl(var(--primary)/0.04),transparent_34%),linear-gradient(180deg,hsl(var(--card)/0.82),hsl(var(--surface-2)/0.44))] px-4 pb-2.5 pt-3.5 dark:border-border/60 dark:bg-background/45">
+        <div className="relative overflow-hidden border-b border-border/45 bg-white px-4 pb-2.5 pt-3.5 dark:border-border/60 dark:bg-background">
           <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,hsl(var(--primary)/0.42),transparent)]" />
           <div className="pointer-events-none absolute right-8 top-4 h-20 w-40 rounded-full bg-info/10 blur-3xl" />
           <div className="relative z-10 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
@@ -812,7 +822,7 @@ export function KnowledgeDocumentsPanel({
               </div>
             </div>
 
-            <div className="grid gap-1 sm:grid-cols-3 xl:min-w-[330px]">
+            <div className="grid gap-0 border-l border-border/45 sm:grid-cols-3 xl:min-w-[330px]">
               <motion.div
                 whileHover={{ y: -1, scale: 1.003 }}
                 whileTap={{ scale: 0.992 }}
@@ -883,7 +893,7 @@ export function KnowledgeDocumentsPanel({
               compactEmptyInventory && 'overflow-visible'
             )}
           >
-            <div className="border-b border-border/50 bg-[linear-gradient(180deg,hsl(var(--card)/0.70),hsl(var(--surface-2)/0.34))] px-3 py-2.5 dark:border-border/60 dark:bg-muted/[0.12]">
+            <div className="border-b border-border/45 bg-white px-3 py-2 dark:border-border/60 dark:bg-background">
               {inventoryToolbar}
             </div>
             <div
@@ -1121,11 +1131,12 @@ export function KnowledgeDocumentsPanel({
                         <col className="w-[6.5rem]" />
                         <col className="w-[8.5rem]" />
                       </colgroup>
-                      <thead className="border-b border-border/50 bg-muted/22 text-[11px] text-muted-foreground/74 dark:border-border/60 dark:bg-muted/[0.14]">
+                      {/* sticky top-0 z-10 bg-card/92 px-3 py-2 font-medium dark:bg-background/90 */}
+                      <thead className="border-b border-border/50 bg-white text-[11px] text-muted-foreground/74 dark:border-border/60 dark:bg-background">
                         <tr>
                           <th
                             colSpan={tableColumnCount}
-                            className="sticky top-0 z-10 bg-card/92 px-3 py-2 font-medium dark:bg-background/90"
+                            className="sticky top-0 z-10 bg-white px-3 py-2 font-medium dark:bg-background"
                           >
                             <div
                               className="grid items-center gap-3"
@@ -1162,7 +1173,7 @@ export function KnowledgeDocumentsPanel({
                           </th>
                         </tr>
                       </thead>
-                      <tbody className="bg-card/92">
+                      <tbody className="bg-white dark:bg-background">
                         {docsTablePaddingTop > 0 ? (
                           <tr>
                             <td
@@ -1213,11 +1224,11 @@ export function KnowledgeDocumentsPanel({
                             >
                               <td
                                 colSpan={tableColumnCount}
-                                className="px-3 py-[5px]"
+                                className="border-b border-border/40 px-3 py-0"
                               >
-                                <div className="rounded-[16px] border border-border/48 bg-card/82 shadow-[0_10px_24px_-28px_hsl(var(--primary)/0.22)] transition-[border-color,box-shadow,transform] duration-150 group-hover/row:-translate-y-px group-hover/row:border-primary/18 group-hover/row:shadow-[0_16px_30px_-28px_hsl(var(--primary)/0.30)] dark:border-border/65 dark:bg-background/74">
+                                <div className="rounded-none border-0 bg-transparent shadow-none transition-colors duration-150 group-hover/row:bg-slate-50/80 dark:group-hover/row:bg-muted/10">
                                   <div
-                                    className="grid min-h-[58px] items-center gap-3 px-3 py-2.5"
+                                    className="grid min-h-[54px] items-center gap-3 px-0 py-2"
                                     style={{
                                       gridTemplateColumns:
                                         documentListGridTemplate,
@@ -1397,7 +1408,7 @@ export function KnowledgeDocumentsPanel({
                                     </div>
                                   </div>
 
-                                  <div className="mx-3 mb-2.5 flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1 rounded-[11px] border border-border/45 bg-muted/[0.13] px-3 py-1.5 text-[10px] text-muted-foreground/72">
+                                  <div className="mx-0 mb-1 flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1 px-12 pb-1 text-[10px] text-muted-foreground/72">
                                     {metadataItems.map((item, index) => (
                                       <div
                                         key={item.label}

@@ -863,6 +863,21 @@ def _safe_retrieval_errors(raw: Any) -> list[str]:
     return [str(error) for error in raw if error is not None] if isinstance(raw, list) else []
 
 
+def _safe_dify_result(raw: Any) -> dict[str, Any] | None:
+    if not isinstance(raw, dict):
+        return None
+    out: dict[str, Any] = {}
+    for key in ("status", "answer_hash", "source_conversation_id", "source_message_id", "source_run_id"):
+        value = raw.get(key)
+        if value is not None and str(value).strip():
+            out[key] = str(value).strip()[:255]
+    for key in ("answer_chars", "citations_count"):
+        value = _to_int(raw.get(key))
+        if value is not None:
+            out[key] = value
+    return out or None
+
+
 def _retrieval_config_hash(raw: Any) -> str | None:
     return (str(raw).strip() if raw is not None else None) or None
 
@@ -873,6 +888,7 @@ def _build_trace_steps(
     rerank: RagTraceRerank,
     citations_count: int,
     distinct_docs: int,
+    dify_result: dict[str, Any] | None = None,
 ) -> list[RagTraceStep]:
     steps: list[RagTraceStep] = [
         RagTraceStep(
@@ -903,6 +919,15 @@ def _build_trace_steps(
             meta={"count": citations_count, "distinct_documents": distinct_docs},
         )
     )
+    if dify_result:
+        steps.append(
+            RagTraceStep(
+                key="dify_result",
+                label="Dify Result",
+                elapsed_sec=None,
+                meta=dify_result,
+            )
+        )
     return steps
 
 
@@ -1004,11 +1029,13 @@ def normalize_rag_trace_record(record: dict[str, Any]) -> RagTrace:
     )
 
     distinct_docs = len({c.document_id for c in citations if c.document_id})
+    dify_result = _safe_dify_result(record.get("dify_result"))
     steps = _build_trace_steps(
         retrieval=retrieval,
         rerank=rerank,
         citations_count=citations_count,
         distinct_docs=distinct_docs,
+        dify_result=dify_result,
     )
 
     return RagTrace(

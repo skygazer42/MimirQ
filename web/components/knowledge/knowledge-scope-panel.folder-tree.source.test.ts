@@ -9,6 +9,6 @@ describe('KnowledgeScopePanel folder tree', () => {
 
     expect(src).toContain('DatasetFolderTree')
     expect(src).toContain('datasetId={selectedDatasetId}')
+    expect(src).toContain('showHeader={false}')
   })
 })
-

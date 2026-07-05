@@ -15,9 +15,11 @@ import json
 import re
 import threading
 import time
+import uuid
 from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from difflib import SequenceMatcher
 from functools import lru_cache
 from typing import Annotated, Any
@@ -36,6 +38,7 @@ from sqlalchemy.orm import Session
 from app.api.schemas.chat import ChatRAGConfig
 from app.core.config import settings
 from app.core.database import SessionLocal, get_db
+from app.models.chat import Conversation, Message
 from app.models.dataset import Dataset
 from app.models.document import Document, DocumentChunk
 from app.rag.core.logging import get_logger
@@ -64,6 +67,8 @@ from app.rag.retrieval.plugin_policy import (
     record_retrieval_policy_bonus,
     records_retrieval_policy_diagnostics,
 )
+from app.services.external_conversation_ingest import _mimirq_citations_for_storage
+from app.services.metrics_logger import log_metrics
 
 logger = get_logger(__name__)
 
@@ -364,15 +369,47 @@ class _DifyResponseCache:
 
 
 _dify_response_cache = _DifyResponseCache()
+_dify_external_warmup_state_lock = threading.Lock()
+_dify_external_warmup_state: dict[str, Any] = {
+    "enabled": False,
+    "status": "idle",
+    "attempted": 0,
+    "completed": 0,
+    "failed": 0,
+    "elapsed_ms": None,
+    "updated_at": None,
+}
 
 
 def _clear_dify_response_cache() -> None:
     _dify_response_cache.clear()
 
 
+def _set_dify_external_warmup_status(**updates: Any) -> None:
+    with _dify_external_warmup_state_lock:
+        _dify_external_warmup_state.update(updates)
+        _dify_external_warmup_state["updated_at"] = datetime.now(UTC).isoformat()
+
+
+def get_dify_external_knowledge_warmup_status() -> dict[str, Any]:
+    with _dify_external_warmup_state_lock:
+        return dict(_dify_external_warmup_state)
+
+
+def dify_external_knowledge_warmup_ready() -> bool:
+    if not bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", False)):
+        return True
+    if not bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED", True)):
+        return True
+    return str(get_dify_external_knowledge_warmup_status().get("status") or "idle") == "completed"
+
+
 class DifyRetrievalSetting(BaseModel):
     top_k: int = Field(default=5, ge=1, le=200)
     score_threshold: float = Field(default=0.0, ge=0.0, le=1.0)
+    # MimirQ extension: "fast" keeps online chat latency low by disabling
+    # expensive fallback/rerank branches. Omit for the existing quality path.
+    latency_profile: str | None = Field(default=None, max_length=32)
     # MimirQ-compatible extension for direct gates and internal probes.
     # Dify's standard payload can omit these fields; None keeps env/default behavior.
     enable_kg_query_expansion: bool | None = None
@@ -448,6 +485,16 @@ class DifyExternalKnowledgeRequest(BaseModel):
     query: str = Field(min_length=1)
     retrieval_setting: DifyRetrievalSetting = Field(default_factory=DifyRetrievalSetting)
     metadata_condition: dict[str, Any] | None = None
+    # MimirQ extension: lets Dify HTTP/workflow calls attach retrieval traces
+    # to the existing History RAG Trace panel.
+    conversation_id: UUID | str | None = None
+    request_id: str | None = Field(default=None, min_length=1, max_length=200)
+    source_conversation_id: str | None = Field(default=None, max_length=255)
+    source_message_id: str | None = Field(default=None, max_length=255)
+    source_run_id: str | None = Field(default=None, max_length=255)
+    dify_conversation_id: str | None = Field(default=None, max_length=255)
+    dify_message_id: str | None = Field(default=None, max_length=200)
+    dify_workflow_run_id: str | None = Field(default=None, max_length=200)
 
 
 class DifyExternalKnowledgeRecord(BaseModel):
@@ -459,6 +506,643 @@ class DifyExternalKnowledgeRecord(BaseModel):
 
 class DifyExternalKnowledgeResponse(BaseModel):
     records: list[DifyExternalKnowledgeRecord]
+
+
+def _resolve_dify_latency_profile(setting: DifyRetrievalSetting) -> str:
+    raw = str(setting.latency_profile or "").strip().lower().replace("-", "_")
+    if not raw or raw in {"default", "quality", "standard"}:
+        return "quality"
+    if raw in {"fast", "low_latency", "online"}:
+        return "fast"
+    raise HTTPException(status_code=400, detail=f"Unsupported Dify retrieval latency_profile: {setting.latency_profile}")
+
+
+class DifyConversationTurnRequest(BaseModel):
+    query: str = Field(min_length=1)
+    answer: str = Field(min_length=1)
+    conversation_id: UUID | str | None = None
+    trace_request_id: str | None = Field(default=None, max_length=200)
+    source_conversation_id: str | None = Field(default=None, max_length=255)
+    source_message_id: str | None = Field(default=None, max_length=255)
+    source_run_id: str | None = Field(default=None, max_length=255)
+    dify_conversation_id: str | None = Field(default=None, max_length=255)
+    dify_message_id: str | None = Field(default=None, max_length=200)
+    dify_workflow_run_id: str | None = Field(default=None, max_length=200)
+    citations: list[dict[str, Any]] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class DifyConversationTurnResponse(BaseModel):
+    conversation_id: UUID
+    user_message_id: UUID
+    assistant_message_id: UUID
+    reused_user_message: bool
+
+
+_DIFY_TRACE_CITATION_METADATA_KEYS = (
+    "document_id",
+    "chunk_id",
+    "chunk_index",
+    "page_number",
+    "start_char",
+    "end_char",
+    "retrieval_role",
+    "neighbor_of",
+    "doc_pipeline_key",
+    "pipeline_hash",
+    "relevance_score",
+    "vector_score",
+    "bm25_score",
+    "lexical_score",
+    "sparse_score",
+    "colbert_score",
+    "keyword_score",
+    "rerank_score",
+    "retrieval_score",
+    "reranker_provider",
+    "rerank_elapsed_sec",
+    "rerank_model_used",
+    "hit_type",
+    "has_image",
+    "kg_path",
+    "kg_path_provenance",
+)
+
+
+def _first_nonempty_str(*values: object) -> str | None:
+    for value in values:
+        text = str(value or "").strip()
+        if text:
+            return text
+    return None
+
+
+def _uuid_or_none(value: object) -> UUID | None:
+    if isinstance(value, UUID):
+        return value
+    try:
+        return UUID(str(value or "").strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _dify_trace_citation(record: DifyExternalKnowledgeRecord, *, elapsed_sec: float | None) -> dict[str, Any]:
+    metadata = record.metadata if isinstance(record.metadata, dict) else {}
+    citation = {
+        key: metadata.get(key)
+        for key in _DIFY_TRACE_CITATION_METADATA_KEYS
+        if metadata.get(key) is not None
+    }
+    citation.setdefault("relevance_score", _clamp_score(record.score))
+    citation.setdefault("retrieval_score", _clamp_score(record.score))
+    citation.setdefault("retrieval_mode", "dify_external_knowledge")
+    if elapsed_sec is not None:
+        citation.setdefault("retrieval_elapsed_sec", elapsed_sec)
+    return citation
+
+
+def _first_reranker_provider(records: list[DifyExternalKnowledgeRecord]) -> str | None:
+    for record in records or []:
+        metadata = record.metadata if isinstance(record.metadata, dict) else {}
+        provider = _first_nonempty_str(metadata.get("reranker_provider"))
+        if provider:
+            return provider
+    return None
+
+
+def _has_dify_rerank(records: list[DifyExternalKnowledgeRecord]) -> bool:
+    for record in records or []:
+        metadata = record.metadata if isinstance(record.metadata, dict) else {}
+        if any(metadata.get(key) is not None for key in ("reranker_provider", "rerank_score", "rerank_elapsed_sec", "rerank_model_used")):
+            return True
+    return False
+
+
+def _log_dify_external_rag_trace(
+    *,
+    tenant_id: UUID,
+    conversation_id: UUID | None,
+    request_id: str | None,
+    question: str,
+    response_records: list[DifyExternalKnowledgeRecord],
+    top_k: int,
+    candidate_top_k: int,
+    retrieval_path: str,
+    elapsed_ms: float,
+    metadata_anchor_fallback_count: int,
+    mixed_intent_query_count: int,
+    dify_message_id: str | None = None,
+    dify_workflow_run_id: str | None = None,
+) -> None:
+    if conversation_id is None:
+        return
+    resolved_request_id = _first_nonempty_str(request_id) or f"dify-{uuid.uuid4().hex}"
+    elapsed_sec = round(max(0.0, float(elapsed_ms or 0.0)) / 1000.0, 6)
+    records = list(response_records or [])
+    citations = [_dify_trace_citation(record, elapsed_sec=elapsed_sec) for record in records]
+    reranker_provider = _first_reranker_provider(records)
+    log_metrics(
+        {
+            "event": "rag_trace",
+            "source": "dify_external_knowledge",
+            "conversation_id": str(conversation_id),
+            "tenant_id": str(tenant_id),
+            "request_id": str(resolved_request_id),
+            "question": str(question or ""),
+            "query_for_retrieval": str(question or ""),
+            "citations_count": len(citations),
+            "citations": citations,
+            "retrieval": {
+                "mode": "dify_external_knowledge",
+                "requested_mode": "external_knowledge",
+                "top_k": int(top_k),
+                "query_count": 1 + max(0, int(mixed_intent_query_count or 0)),
+                "elapsed_sec": elapsed_sec,
+                "errors": [],
+                "enable_reranker": _has_dify_rerank(records),
+                "reranker_provider": reranker_provider,
+                "reranker_top_n": int(candidate_top_k),
+            },
+            "route": "dify_external_knowledge",
+            "retrieval_path": str(retrieval_path or ""),
+            "metadata_anchor_fallback_count": int(metadata_anchor_fallback_count or 0),
+            "dify_message_id": _first_nonempty_str(dify_message_id),
+            "dify_workflow_run_id": _first_nonempty_str(dify_workflow_run_id),
+        }
+    )
+
+
+def _log_dify_result_rag_trace(
+    *,
+    tenant_id: UUID,
+    conversation_id: UUID | None,
+    request_id: str | None,
+    question: str,
+    answer: str,
+    source_conversation_id: str | None,
+    source_message_id: str | None,
+    source_run_id: str | None,
+    citations: list[dict[str, Any]],
+) -> None:
+    if conversation_id is None:
+        return
+    final_answer = str(answer or "")
+    safe_citations = [item for item in citations or [] if isinstance(item, dict)]
+    log_metrics(
+        {
+            "event": "rag_trace",
+            "source": "dify_result",
+            "conversation_id": str(conversation_id),
+            "tenant_id": str(tenant_id),
+            "request_id": _first_nonempty_str(request_id) or f"dify-result-{uuid.uuid4().hex}",
+            "question_hash": _diagnostic_query_hash(str(question or "")),
+            "retrieval": {
+                "mode": "dify_result",
+                "requested_mode": "dify_workflow",
+                "top_k": 0,
+                "query_count": 0,
+                "errors": [],
+                "enable_reranker": False,
+            },
+            "citations_count": len(safe_citations),
+            "citations": [_dify_result_trace_citation(item) for item in safe_citations],
+            "dify_result": {
+                "status": "completed",
+                "answer_chars": len(final_answer),
+                "answer_hash": _diagnostic_query_hash(final_answer),
+                "source_conversation_id": _first_nonempty_str(source_conversation_id),
+                "source_message_id": _first_nonempty_str(source_message_id),
+                "source_run_id": _first_nonempty_str(source_run_id),
+                "citations_count": len(safe_citations),
+            },
+        }
+    )
+
+
+def _dify_result_trace_citation(citation: dict[str, Any]) -> dict[str, Any]:
+    safe = {
+        key: citation.get(key)
+        for key in _DIFY_TRACE_CITATION_METADATA_KEYS
+        if citation.get(key) is not None
+    }
+    safe.setdefault("retrieval_mode", "dify_result")
+    return safe
+
+
+def _dify_trace_source_conversation_id(request: Request, body: DifyExternalKnowledgeRequest) -> str | None:
+    body_conversation_id = body.conversation_id
+    non_uuid_body_conversation_id = None
+    if body_conversation_id is not None and _uuid_or_none(body_conversation_id) is None:
+        non_uuid_body_conversation_id = str(body_conversation_id).strip()
+    return _first_nonempty_str(
+        body.source_conversation_id,
+        body.dify_conversation_id,
+        non_uuid_body_conversation_id,
+        request.headers.get("x-mimirq-source-conversation-id"),
+        request.headers.get("x-dify-conversation-id"),
+        request.headers.get("x-source-conversation-id"),
+    )
+
+
+def _dify_trace_source_message_id(request: Request, body: DifyExternalKnowledgeRequest) -> str | None:
+    return _first_nonempty_str(
+        body.source_message_id,
+        body.dify_message_id,
+        request.headers.get("x-mimirq-source-message-id"),
+        request.headers.get("x-dify-message-id"),
+        request.headers.get("x-source-message-id"),
+    )
+
+
+def _dify_trace_source_run_id(request: Request, body: DifyExternalKnowledgeRequest) -> str | None:
+    return _first_nonempty_str(
+        body.source_run_id,
+        body.dify_workflow_run_id,
+        request.headers.get("x-mimirq-source-run-id"),
+        request.headers.get("x-dify-workflow-run-id"),
+        request.headers.get("x-source-run-id"),
+    )
+
+
+def _external_conversation_metadata_text(field: str):
+    return Message.message_metadata["external_conversation"][field].astext  # type: ignore[index]
+
+
+def _find_dify_trace_conversation(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    source_conversation_id: str,
+) -> UUID | None:
+    row = (
+        db.query(Message.conversation_id)
+        .filter(
+            Message.tenant_id == tenant_id,
+            _external_conversation_metadata_text("source") == "dify",
+            _external_conversation_metadata_text("source_conversation_id") == source_conversation_id,
+        )
+        .order_by(Message.created_at.asc(), Message.id.asc())
+        .first()
+    )
+    if not row:
+        return None
+    return row[0]
+
+
+def _load_dify_trace_conversation(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    conversation_id: UUID,
+) -> Conversation | None:
+    return (
+        db.query(Conversation)
+        .filter(Conversation.tenant_id == tenant_id, Conversation.id == conversation_id)
+        .first()
+    )
+
+
+def _dify_turn_source_conversation_id(body: DifyConversationTurnRequest) -> str | None:
+    body_conversation_id = body.conversation_id
+    non_uuid_body_conversation_id = None
+    if body_conversation_id is not None and _uuid_or_none(body_conversation_id) is None:
+        non_uuid_body_conversation_id = str(body_conversation_id).strip()
+    return _first_nonempty_str(
+        body.source_conversation_id,
+        body.dify_conversation_id,
+        non_uuid_body_conversation_id,
+    )
+
+
+def _dify_turn_source_message_id(body: DifyConversationTurnRequest) -> str | None:
+    return _first_nonempty_str(body.source_message_id, body.dify_message_id)
+
+
+def _dify_turn_source_run_id(body: DifyConversationTurnRequest) -> str | None:
+    return _first_nonempty_str(body.source_run_id, body.dify_workflow_run_id)
+
+
+def _dify_external_conversation_metadata(
+    *,
+    account_id: str,
+    source_conversation_id: str | None,
+    source_message_id: str | None,
+    source_run_id: str | None,
+    trace_request_id: str | None,
+    role: str,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    metadata = {
+        "external_conversation": {
+            "source": "dify",
+            "source_conversation_id": source_conversation_id,
+            "source_message_id": source_message_id,
+            "source_run_id": source_run_id,
+            "trace_request_id": trace_request_id,
+            "imported_by": account_id,
+            "imported_at": datetime.now(UTC).isoformat(),
+            "role": role,
+        }
+    }
+    if isinstance(extra, dict) and extra:
+        metadata["external_conversation"]["metadata"] = extra
+    return metadata
+
+
+def _find_reusable_dify_seed_message(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    conversation_id: UUID,
+    source_conversation_id: str | None,
+    source_message_id: str | None,
+) -> Message | None:
+    query = db.query(Message).filter(
+        Message.tenant_id == tenant_id,
+        Message.conversation_id == conversation_id,
+        Message.role == "user",
+        _external_conversation_metadata_text("source") == "dify",
+        Message.message_metadata["external_conversation"]["trace_seed"].astext == "true",  # type: ignore[index]
+    )
+    if source_conversation_id:
+        query = query.filter(_external_conversation_metadata_text("source_conversation_id") == source_conversation_id)
+    if source_message_id:
+        query = query.filter(_external_conversation_metadata_text("source_message_id") == source_message_id)
+    return query.order_by(Message.created_at.asc(), Message.id.asc()).first()
+
+
+def _dify_turn_citations_for_storage(citations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return _mimirq_citations_for_storage([item for item in citations or [] if isinstance(item, dict)])
+
+
+def _dify_trace_title(question: str) -> str:
+    title = str(question or "").strip()
+    return (title[:80] if title else "Dify external retrieval")
+
+
+def _ensure_dify_trace_conversation(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    source_conversation_id: str,
+    source_message_id: str | None,
+    source_run_id: str | None,
+    question: str,
+) -> UUID | None:
+    source_conversation_id = str(source_conversation_id or "").strip()
+    if not source_conversation_id:
+        return None
+
+    try:
+        existing_id = _find_dify_trace_conversation(
+            db,
+            tenant_id=tenant_id,
+            source_conversation_id=source_conversation_id,
+        )
+        if existing_id is not None:
+            return existing_id
+
+        if not bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TRACE_AUTO_CREATE_CONVERSATION_ENABLED", True)):
+            return None
+
+        now = datetime.now(UTC)
+        conversation = Conversation(
+            tenant_id=tenant_id,
+            title=_dify_trace_title(question),
+            title_source="auto",
+            document_ids=[],
+            message_count=1,
+            updated_at=now,
+        )
+        db.add(conversation)
+        db.flush()
+
+        message = Message(
+            tenant_id=tenant_id,
+            conversation_id=conversation.id,
+            role="user",
+            content=str(question or "").strip() or source_conversation_id,
+            citations=[],
+            message_metadata={
+                "external_conversation": {
+                    "source": "dify",
+                    "source_conversation_id": source_conversation_id,
+                    "source_message_id": source_message_id,
+                    "source_run_id": source_run_id,
+                    "imported_by": account_id,
+                    "imported_at": now.isoformat(),
+                    "trace_seed": True,
+                }
+            },
+            created_at=now,
+        )
+        db.add(message)
+        db.commit()
+        return conversation.id
+    except Exception as exc:
+        try:
+            db.rollback()
+        except Exception:
+            logger.debug("Ignoring Dify trace conversation rollback failure", exc_info=True)
+        logger.warning("Failed to ensure Dify trace conversation: %s", str(exc)[:200])
+        return None
+
+
+def _persist_dify_conversation_turn(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    account_id: str,
+    query: str,
+    answer: str,
+    trace_request_id: str | None,
+    source_conversation_id: str | None,
+    source_message_id: str | None,
+    source_run_id: str | None,
+    citations: list[dict[str, Any]],
+    metadata: dict[str, Any] | None = None,
+    conversation_id: UUID | None = None,
+) -> DifyConversationTurnResponse:
+    source_conversation_id = str(source_conversation_id or "").strip() or None
+    source_message_id = str(source_message_id or "").strip() or None
+    source_run_id = str(source_run_id or "").strip() or None
+    trace_request_id = str(trace_request_id or "").strip() or None
+    question = str(query or "").strip()
+    final_answer = str(answer or "").strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="query is required")
+    if not final_answer:
+        raise HTTPException(status_code=400, detail="answer is required")
+
+    if conversation_id is not None:
+        conversation = _load_dify_trace_conversation(db, tenant_id=tenant_id, conversation_id=conversation_id)
+        if conversation is None:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+    else:
+        if not source_conversation_id:
+            raise HTTPException(status_code=400, detail="dify_conversation_id is required")
+        resolved_id = _ensure_dify_trace_conversation(
+            db=db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            source_conversation_id=source_conversation_id,
+            source_message_id=source_message_id,
+            source_run_id=source_run_id,
+            question=question,
+        )
+        if resolved_id is None:
+            raise HTTPException(status_code=503, detail="Failed to resolve Dify conversation")
+        conversation = _load_dify_trace_conversation(db, tenant_id=tenant_id, conversation_id=resolved_id)
+        if conversation is None:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+
+    now = datetime.now(UTC)
+    user_metadata = _dify_external_conversation_metadata(
+        account_id=account_id,
+        source_conversation_id=source_conversation_id,
+        source_message_id=source_message_id,
+        source_run_id=source_run_id,
+        trace_request_id=trace_request_id,
+        role="user",
+        extra=metadata,
+    )
+    assistant_metadata = _dify_external_conversation_metadata(
+        account_id=account_id,
+        source_conversation_id=source_conversation_id,
+        source_message_id=source_message_id,
+        source_run_id=source_run_id,
+        trace_request_id=trace_request_id,
+        role="assistant",
+        extra=metadata,
+    )
+
+    reusable_user = _find_reusable_dify_seed_message(
+        db,
+        tenant_id=tenant_id,
+        conversation_id=conversation.id,
+        source_conversation_id=source_conversation_id,
+        source_message_id=source_message_id,
+    )
+    reused_user_message = reusable_user is not None
+    if reusable_user is not None:
+        reusable_user.content = question
+        reusable_user.message_metadata = {
+            **user_metadata,
+            "external_conversation": {
+                **user_metadata["external_conversation"],
+                "trace_seed": False,
+                "turn_persisted": True,
+            },
+        }
+        user_message = reusable_user
+    else:
+        user_message = Message(
+            tenant_id=tenant_id,
+            conversation_id=conversation.id,
+            role="user",
+            content=question,
+            citations=[],
+            message_metadata={
+                **user_metadata,
+                "external_conversation": {
+                    **user_metadata["external_conversation"],
+                    "turn_persisted": True,
+                },
+            },
+            created_at=now,
+        )
+        db.add(user_message)
+        db.flush()
+
+    assistant_message = Message(
+        tenant_id=tenant_id,
+        conversation_id=conversation.id,
+        role="assistant",
+        content=final_answer,
+        citations=_dify_turn_citations_for_storage(citations),
+        message_metadata={
+            **assistant_metadata,
+            "external_conversation": {
+                **assistant_metadata["external_conversation"],
+                "turn_persisted": True,
+            },
+        },
+        created_at=now,
+    )
+    db.add(assistant_message)
+    db.flush()
+
+    conversation.updated_at = now
+    conversation.message_count = (
+        db.query(Message)
+        .filter(Message.tenant_id == tenant_id, Message.conversation_id == conversation.id)
+        .count()
+    )
+    db.commit()
+    _log_dify_result_rag_trace(
+        tenant_id=tenant_id,
+        conversation_id=conversation.id,
+        request_id=trace_request_id,
+        question=question,
+        answer=final_answer,
+        source_conversation_id=source_conversation_id,
+        source_message_id=source_message_id,
+        source_run_id=source_run_id,
+        citations=citations,
+    )
+    return DifyConversationTurnResponse(
+        conversation_id=conversation.id,
+        user_message_id=user_message.id,
+        assistant_message_id=assistant_message.id,
+        reused_user_message=reused_user_message,
+    )
+
+
+def _dify_trace_conversation_id(
+    request: Request,
+    body: DifyExternalKnowledgeRequest,
+    *,
+    db: Session | None = None,
+    tenant_id: UUID | None = None,
+    account_id: str | None = None,
+) -> UUID | None:
+    body_conversation_id = _uuid_or_none(body.conversation_id)
+    if body_conversation_id is not None:
+        return body_conversation_id
+    for header_name in ("x-mimirq-conversation-id", "x-conversation-id"):
+        raw = str(request.headers.get(header_name) or "").strip()
+        if not raw:
+            continue
+        header_conversation_id = _uuid_or_none(raw)
+        if header_conversation_id is not None:
+            return header_conversation_id
+        else:
+            logger.debug("Ignoring invalid Dify trace conversation header %s", header_name)
+    if db is None or tenant_id is None or account_id is None:
+        return None
+
+    source_conversation_id = _dify_trace_source_conversation_id(request, body)
+    if not source_conversation_id:
+        return None
+    return _ensure_dify_trace_conversation(
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        source_conversation_id=source_conversation_id,
+        source_message_id=_dify_trace_source_message_id(request, body),
+        source_run_id=_dify_trace_source_run_id(request, body),
+        question=body.query,
+    )
+
+
+def _dify_trace_request_id(request: Request, body: DifyExternalKnowledgeRequest) -> str | None:
+    return _first_nonempty_str(
+        body.request_id,
+        request.headers.get("x-mimirq-request-id"),
+        request.headers.get("x-request-id"),
+        getattr(request.state, "request_id", None),
+    )
 
 
 def _split_items(raw: object) -> list[str]:
@@ -602,6 +1286,18 @@ def _dify_response_cache_settings_signature() -> dict[str, Any]:
             getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_RELATIVE_SCORE_FLOOR", 0.65) or 0.0
         ),
         "compact_min_records": int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_RECORDS", 1) or 1),
+        "fast_candidate_top_k_max": int(
+            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_CANDIDATE_TOP_K_MAX", 3) or 3
+        ),
+        "fast_response_top_k_max": int(
+            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_RESPONSE_TOP_K_MAX", 2) or 2
+        ),
+        "fast_content_max_chars": int(
+            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_CONTENT_MAX_CHARS", 1400) or 1400
+        ),
+        "fast_total_content_max_chars": int(
+            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_TOTAL_CONTENT_MAX_CHARS", 2200) or 2200
+        ),
         "enable_reranker": bool(getattr(settings, "ENABLE_RERANKER", False)),
         "dify_reranker_enabled": bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_RERANKER_ENABLED", True)),
         "reranker_provider": str(getattr(settings, "RERANKER_PROVIDER", "") or ""),
@@ -618,6 +1314,12 @@ def _dify_response_cache_settings_signature() -> dict[str, Any]:
         ),
         "metadata_anchor_text_scan_enabled": bool(
             getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_TEXT_SCAN_ENABLED", False)
+        ),
+        "metadata_anchor_extend_sibling_policy_scope_enabled": bool(
+            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_EXTEND_SIBLING_POLICY_SCOPE_ENABLED", True)
+        ),
+        "metadata_anchor_extended_scope_max_datasets": int(
+            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_EXTENDED_SCOPE_MAX_DATASETS", 80) or 80
         ),
         "mixed_intent_supplement_enabled": bool(
             getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUPPLEMENT_ENABLED", True)
@@ -858,6 +1560,70 @@ def _apply_policy_fallback_candidate_multiplier(candidate_top_k: int, *, multipl
         configured_max = 50
     max_candidates = max(safe_candidate_top_k, configured_max)
     return min(max_candidates, safe_candidate_top_k * safe_multiplier)
+
+
+def _metadata_anchor_dataset_ids_for_query(
+    *,
+    knowledge_id: str,
+    base_dataset_ids: list[UUID] | tuple[UUID, ...],
+    query: str,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> list[UUID]:
+    dataset_ids = _dedupe_dataset_ids(list(base_dataset_ids or []))
+    if not dataset_ids:
+        return []
+    if not bool(
+        getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_EXTEND_SIBLING_POLICY_SCOPE_ENABLED", True)
+    ):
+        return dataset_ids
+    if not _query_has_specific_service_anchor_candidate(query, policy_plugin_refs=policy_plugin_refs):
+        return dataset_ids
+
+    requested_refs = {str(ref or "").strip() for ref in policy_plugin_refs or () if str(ref or "").strip()}
+    if not requested_refs:
+        return dataset_ids
+
+    knowledge_map = _load_knowledge_map()
+    current_mapping = knowledge_map.get(str(knowledge_id or "").strip())
+    if not isinstance(current_mapping, dict):
+        return dataset_ids
+    try:
+        current_base_ids = _dedupe_dataset_ids(_coerce_dataset_id_list(current_mapping))
+    except HTTPException:
+        return dataset_ids
+    if set(dataset_ids) != set(current_base_ids):
+        return dataset_ids
+    current_base_set = set(current_base_ids)
+    current_route_hints = _route_hints_from_routes(_mapping_query_routes(current_mapping) or [])
+    has_external_route_hint = any(
+        any(route_dataset_id not in current_base_set for route_dataset_id in route_hint.dataset_ids)
+        for route_hint in current_route_hints
+    )
+    if not has_external_route_hint:
+        return dataset_ids
+
+    expanded: list[UUID] = list(dataset_ids)
+    for raw_mapping in knowledge_map.values():
+        if not isinstance(raw_mapping, dict):
+            continue
+        mapping_refs = set(_knowledge_mapping_plugin_refs(raw_mapping))
+        if not mapping_refs or requested_refs.isdisjoint(mapping_refs):
+            continue
+        try:
+            expanded.extend(_coerce_dataset_id_list(raw_mapping))
+        except HTTPException:
+            continue
+        for route_hint in _route_hints_from_routes(_mapping_query_routes(raw_mapping) or []):
+            expanded.extend(route_hint.dataset_ids)
+
+    max_datasets = max(
+        len(dataset_ids),
+        min(
+            200,
+            int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_EXTENDED_SCOPE_MAX_DATASETS", 80) or 80),
+        ),
+    )
+    return list(_dedupe_dataset_ids(expanded)[:max_datasets])
 
 
 def _plan_query_dataset_scope(
@@ -1412,7 +2178,13 @@ def _structured_fields_from_content(content: str, *, response_hints: dict[str, A
     return fields
 
 
-def _metadata_answer_highlights(metadata: dict[str, Any], *, response_hints: dict[str, Any]) -> list[str]:
+def _metadata_answer_highlights(
+    metadata: dict[str, Any],
+    *,
+    response_hints: dict[str, Any],
+    query: str = "",
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> list[str]:
     highlights: list[str] = []
     seen: set[str] = set()
 
@@ -1453,7 +2225,23 @@ def _metadata_answer_highlights(metadata: dict[str, Any], *, response_hints: dic
             if single_field and single_field not in fields:
                 fields = (*fields, single_field)
             if isinstance(source, dict):
-                for field in fields:
+                ordered_fields = _prioritized_response_hint_metadata_fields(
+                    fields,
+                    query=query,
+                    policy_plugin_refs=policy_plugin_refs,
+                    enabled=field_spec.get("prioritize_query_fields") is True,
+                )
+                requested_labels = _requested_response_hint_metadata_labels(
+                    ordered_fields,
+                    query=query,
+                    policy_plugin_refs=policy_plugin_refs,
+                    enabled=field_spec.get("prioritize_query_fields") is True,
+                )
+                requested_prefix = str(field_spec.get("requested_labels_prefix") or "").strip()
+                if requested_prefix and requested_labels:
+                    separator = str(field_spec.get("requested_labels_separator") or "、")
+                    add(f"{requested_prefix}：{separator.join(requested_labels)}")
+                for field in ordered_fields:
                     label = str(labels.get(field) or field).strip()
                     if not label:
                         continue
@@ -1567,12 +2355,23 @@ def _query_prefers_service_anchor(query: str, *, policy_plugin_refs: tuple[str, 
     query_term = _normalize_match_term(query)
     if len(query_term) < 3:
         return False
+    if _query_has_quoted_anchor_candidate(query):
+        return True
     for term in _service_anchor_priority_terms_for_policy_refs(policy_plugin_refs):
         normalized = _normalize_match_term(term)
         if len(normalized) < 3:
             continue
         if normalized in query_term:
             return True
+    entity_terms = tuple(
+        _normalize_match_term(term)
+        for term in _service_anchor_entity_terms_for_policy_refs(policy_plugin_refs)
+        if _normalize_match_term(term)
+    )
+    if entity_terms and any(marker in query_term for marker in entity_terms):
+        for term in _metadata_anchor_service_name_query_terms(query, policy_plugin_refs=policy_plugin_refs)[:6]:
+            if len(_normalize_match_term(term)) >= _MIN_SPECIFIC_INTENT_CHARS:
+                return True
     return False
 
 
@@ -1689,7 +2488,12 @@ def _anchor_binding_fields_for_policy_refs(policy_plugin_refs: tuple[str, ...]) 
 def _exact_query_anchor_fields_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
     fields: list[str] = []
     seen: set[str] = set()
-    for field in (*_EXACT_QUERY_ANCHOR_FIELDS, *_anchor_binding_fields_for_policy_refs(policy_plugin_refs)):
+    anchor_fields = _anchor_binding_fields_for_policy_refs(policy_plugin_refs) or (
+        "service_name",
+        "case_title",
+        "service_aliases",
+    )
+    for field in (*_EXACT_QUERY_ANCHOR_FIELDS, *anchor_fields):
         text = str(field or "").strip()
         if text and text not in seen:
             seen.add(text)
@@ -1821,11 +2625,20 @@ def _query_allows_metadata_anchor_preflight(
     if _query_blocks_metadata_anchor_preflight(query, policy_plugin_refs=policy_plugin_refs):
         return False
     if _query_has_mixed_intent_for_policy(query, policy_plugin_refs=policy_plugin_refs):
+        if (
+            query_prefers_service_anchor
+            and not _query_has_quoted_anchor_candidate(query)
+            and any(
+                marker in str(query or "")
+                for marker in ("合并回答", "一并回答", "一起回答", "分别回答", "分开回答", "请合并", "请分别")
+            )
+        ):
+            return False
         return bool(
-            _query_has_quoted_anchor_candidate(query)
-            and (
-                query_prefers_service_anchor
-                or _query_has_policy_slot_intent(query, policy_plugin_refs=policy_plugin_refs)
+            query_prefers_service_anchor
+            or (
+                _query_has_quoted_anchor_candidate(query)
+                and _query_has_policy_slot_intent(query, policy_plugin_refs=policy_plugin_refs)
             )
         )
     if (
@@ -1843,11 +2656,17 @@ def _metadata_anchor_should_query_question_first(
     query_prefers_question_anchor: bool,
     query_prefers_service_anchor: bool,
     prefer_question_anchor_first: bool,
+    policy_plugin_refs: tuple[str, ...] = (),
 ) -> bool:
     if not query_prefers_question_anchor:
         return False
     if query_prefers_service_anchor and _query_has_quoted_anchor_candidate(query):
         return False
+    if query_prefers_service_anchor and _requested_policy_slot_specs_for_query(
+        query,
+        policy_plugin_refs=policy_plugin_refs,
+    ):
+        return True
     return bool(
         prefer_question_anchor_first
         or not query_prefers_service_anchor
@@ -2481,7 +3300,12 @@ def _content_with_answer_hints(
         if enumerated_prefix and not body.startswith(enumerated_prefix):
             return f"{enumerated_prefix}\n\n{body}"
         return body
-    metadata_hints = _metadata_answer_highlights(metadata, response_hints=response_hints)
+    metadata_hints = _metadata_answer_highlights(
+        metadata,
+        response_hints=response_hints,
+        query=query,
+        policy_plugin_refs=policy_plugin_refs,
+    )
     fields = _structured_fields_from_content(body, response_hints=response_hints)
     if (
         fields
@@ -2656,6 +3480,86 @@ def _retrieval_policy_for_plugin_ref(plugin_ref: str) -> dict[str, Any]:
     return {}
 
 
+def _policy_string_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...], key: str) -> tuple[str, ...]:
+    terms: list[str] = []
+    seen: set[str] = set()
+    for plugin_ref in policy_plugin_refs or ():
+        policy = _retrieval_policy_for_plugin_ref(plugin_ref)
+        if not isinstance(policy, dict) or policy.get("schema") != "mimirq.retrieval_policy.v1":
+            continue
+        for raw_term in _metadata_terms(policy.get(key)):
+            term = str(raw_term or "").strip()
+            normalized = _normalize_match_term(term)
+            if not term or not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            terms.append(term)
+    return tuple(terms)
+
+
+def _service_anchor_entity_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
+    return _policy_string_terms_for_policy_refs(policy_plugin_refs, "service_anchor_entity_terms")
+
+
+def _service_anchor_leading_noise_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
+    return _policy_string_terms_for_policy_refs(policy_plugin_refs, "service_anchor_leading_noise_terms")
+
+
+def _service_anchor_cutoff_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
+    return _policy_string_terms_for_policy_refs(policy_plugin_refs, "service_anchor_cutoff_terms")
+
+
+def _question_anchor_generic_subject_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
+    return _policy_string_terms_for_policy_refs(policy_plugin_refs, "question_anchor_generic_subject_terms")
+
+
+def _fast_response_always_labels_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
+    return _policy_string_terms_for_policy_refs(policy_plugin_refs, "fast_response_always_labels")
+
+
+def _fast_response_field_rules_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    rules: list[tuple[str, tuple[str, ...]]] = []
+    seen_labels: set[str] = set()
+    for plugin_ref in policy_plugin_refs or ():
+        policy = _retrieval_policy_for_plugin_ref(plugin_ref)
+        if not isinstance(policy, dict) or policy.get("schema") != "mimirq.retrieval_policy.v1":
+            continue
+        for raw_rule in policy.get("fast_response_field_rules") or ():
+            rule = dict(raw_rule) if isinstance(raw_rule, dict) else {}
+            label = str(rule.get("label") or "").strip()
+            if not label or label in seen_labels:
+                continue
+            markers = tuple(
+                marker
+                for marker in _metadata_terms(rule.get("markers"))
+                if str(marker or "").strip()
+            )
+            if not markers:
+                continue
+            seen_labels.add(label)
+            rules.append((label, markers))
+    return tuple(rules)
+
+
+def _requested_label_prefixes_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
+    prefixes: list[str] = []
+    seen: set[str] = set()
+    for plugin_ref in policy_plugin_refs or ():
+        policy = _retrieval_policy_for_plugin_ref(plugin_ref)
+        if not isinstance(policy, dict) or policy.get("schema") != "mimirq.retrieval_policy.v1":
+            continue
+        response_hints = policy.get("response_hints")
+        if not isinstance(response_hints, dict):
+            continue
+        for field_spec in _response_hint_dict_list(response_hints, "answer_highlight_metadata_fields"):
+            prefix = str(field_spec.get("requested_labels_prefix") or "").strip()
+            if not prefix or prefix in seen:
+                continue
+            seen.add(prefix)
+            prefixes.append(prefix)
+    return tuple(prefixes)
+
+
 def _service_anchor_noise_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
     terms: list[str] = []
     seen: set[str] = set()
@@ -2788,11 +3692,38 @@ def _sort_records_for_query(
         metadata_layers_for_record=_iter_record_metadata_layers,
         policy_resolver=_retrieval_policy_for_plugin_ref,
     )
+    exact_anchor_scores = _record_exact_anchor_protection_scores(
+        records,
+        query=query,
+        policy_plugin_refs=policy_plugin_refs,
+    )
     records.sort(
         key=lambda item: _record_rank_score(item, query=query, policy_plugin_refs=policy_plugin_refs)
-        + anchor_binding_scores.get(id(item), 0.0),
+        + anchor_binding_scores.get(id(item), 0.0)
+        + exact_anchor_scores.get(id(item), 0.0),
         reverse=True,
     )
+
+
+def _record_exact_anchor_protection_scores(
+    records: list[dict[str, Any]],
+    *,
+    query: str,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> dict[int, float]:
+    if not records:
+        return {}
+    if _strong_question_anchor_records(records, query=query, policy_plugin_refs=policy_plugin_refs):
+        return {}
+    exact_anchor_records = [
+        record
+        for record in records
+        if _record_exact_query_anchor_terms(record, query=query, policy_plugin_refs=policy_plugin_refs)
+        and _record_content_is_answerful(record, policy_plugin_refs=policy_plugin_refs)
+    ]
+    if not exact_anchor_records:
+        return {}
+    return {id(record): 1.2 for record in exact_anchor_records}
 
 
 def _dify_external_reranker_enabled() -> bool:
@@ -2939,7 +3870,9 @@ async def _final_rerank_records_for_query(
 
     if not ordered:
         return records
-    return ordered + records[candidate_count:]
+    reranked_records = ordered + records[candidate_count:]
+    _sort_records_for_query(reranked_records, query=query, policy_plugin_refs=policy_plugin_refs)
+    return reranked_records
 
 
 def _record_rank_score(
@@ -2953,7 +3886,7 @@ def _record_rank_score(
         + _record_metadata_anchor_bonus(record, query=query)
         + _record_intent_bonus(record, query=query, policy_plugin_refs=policy_plugin_refs)
         + _record_exact_primary_alias_bonus(record, query=query)
-        + _record_url_evidence_bonus(record)
+        + _record_url_evidence_bonus(record, query=query)
         + _record_question_intent_bonus(record, query=query, policy_plugin_refs=policy_plugin_refs)
         + _record_answerfulness_score(record, policy_plugin_refs=policy_plugin_refs)
         + _record_mixed_intent_subquery_bonus(record, query=query, policy_plugin_refs=policy_plugin_refs)
@@ -2978,11 +3911,380 @@ def _record_exact_primary_alias_bonus(record: dict[str, Any], *, query: str) -> 
     return 0.0
 
 
-def _record_url_evidence_bonus(record: dict[str, Any]) -> float:
+_URL_EVIDENCE_QUERY_MARKERS = (
+    "入口",
+    "链接",
+    "网址",
+    "网站",
+    "网页",
+    "在线",
+    "线上",
+    "网上",
+    "app",
+    "小程序",
+    "二维码",
+    "url",
+    "http",
+)
+
+
+def _query_requests_url_evidence(query: str) -> bool:
+    text = str(query or "").casefold()
+    if not text:
+        return False
+    normalized = _normalize_match_term(text)
+    return any(marker in text or _normalize_match_term(marker) in normalized for marker in _URL_EVIDENCE_QUERY_MARKERS)
+
+
+def _record_url_evidence_bonus(record: dict[str, Any], *, query: str = "") -> float:
+    if not _query_requests_url_evidence(query):
+        return 0.0
     urls = 0
     for metadata in _iter_record_metadata_layers(record):
         urls += len(_metadata_terms(metadata.get("urls")))
     return min(_URL_EVIDENCE_BONUS_MAX, _URL_EVIDENCE_BONUS * urls)
+
+
+def _dify_fast_candidate_top_k(top_k: int) -> int:
+    configured = max(1, int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_CANDIDATE_TOP_K_MAX", 3) or 3))
+    return max(1, min(max(1, int(top_k or 1)), configured))
+
+
+def _dify_fast_response_top_k(top_k: int) -> int:
+    configured = max(1, int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_RESPONSE_TOP_K_MAX", 2) or 2))
+    return max(1, min(max(1, int(top_k or 1)), configured))
+
+
+def _dify_fast_content_max_chars() -> int:
+    return max(200, min(10000, int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_CONTENT_MAX_CHARS", 1400) or 1400)))
+
+
+def _dify_fast_total_content_max_chars() -> int:
+    return max(
+        200,
+        min(
+            50000,
+            int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_TOTAL_CONTENT_MAX_CHARS", 2200) or 2200),
+        ),
+    )
+
+
+def _structured_label_values_from_content(content: str) -> dict[str, str]:
+    fields: dict[str, str] = {}
+    current_label = ""
+    for segment in re.split(r"\s*\|\s*|\n+", str(content or "")):
+        text = segment.strip()
+        if not text:
+            continue
+        parts = _field_line_parts(text)
+        if parts is None:
+            if current_label and len(fields[current_label]) < _dify_fast_content_max_chars():
+                fields[current_label] = f"{fields[current_label]}；{text}"
+            continue
+        label, value = parts
+        current_label = label
+        fields.setdefault(label, value)
+    return fields
+
+
+def _requested_fast_response_labels(
+    query: str,
+    fields: dict[str, str],
+    *,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> tuple[str, ...]:
+    query_text = str(query or "")
+    labels: list[str] = []
+    seen: set[str] = set()
+
+    def add(label: str) -> None:
+        if label in seen or label not in fields:
+            return
+        seen.add(label)
+        labels.append(label)
+
+    if "答案" in fields:
+        add("问题")
+        add("答案")
+        return tuple(labels)
+
+    rules = _fast_response_field_rules_for_policy_refs(policy_plugin_refs)
+    exact_labels: set[str] = set()
+    for label in _fast_response_always_labels_for_policy_refs(policy_plugin_refs):
+        add(label)
+    for label, _markers in rules:
+        if label in query_text:
+            exact_labels.add(label)
+            add(label)
+    normalized_exact_labels = tuple(
+        normalized for normalized in (_normalize_match_term(label) for label in exact_labels) if normalized
+    )
+    for label, markers in rules:
+        if label in exact_labels:
+            continue
+        matched_markers = tuple(marker for marker in markers if marker in query_text)
+        if not matched_markers:
+            continue
+        if normalized_exact_labels:
+            shadowed = True
+            for marker in matched_markers:
+                normalized_marker = _normalize_match_term(marker)
+                if not normalized_marker:
+                    continue
+                if not any(
+                    normalized_marker != exact_label and normalized_marker in exact_label
+                    for exact_label in normalized_exact_labels
+                ):
+                    shadowed = False
+                    break
+            if shadowed:
+                continue
+        add(label)
+    return tuple(labels)
+
+
+def _requested_response_hint_metadata_labels(
+    fields: tuple[str, ...],
+    *,
+    query: str,
+    policy_plugin_refs: tuple[str, ...] = (),
+    enabled: bool,
+) -> tuple[str, ...]:
+    if not enabled:
+        return ()
+    query_text = str(query or "")
+    if not query_text:
+        return ()
+    available = set(fields)
+    labels: list[str] = []
+    seen: set[str] = set()
+    for label, markers in _fast_response_field_rules_for_policy_refs(policy_plugin_refs):
+        if label not in available or label in seen:
+            continue
+        if not any(marker in query_text for marker in markers):
+            continue
+        seen.add(label)
+        labels.append(label)
+    return tuple(labels)
+
+
+def _prioritized_response_hint_metadata_fields(
+    fields: tuple[str, ...],
+    *,
+    query: str,
+    policy_plugin_refs: tuple[str, ...] = (),
+    enabled: bool,
+) -> tuple[str, ...]:
+    if not enabled:
+        return fields
+    requested = _requested_response_hint_metadata_labels(
+        fields,
+        query=query,
+        policy_plugin_refs=policy_plugin_refs,
+        enabled=True,
+    )
+    if not requested:
+        return fields
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for field in (*requested, *fields):
+        if field in seen:
+            continue
+        seen.add(field)
+        ordered.append(field)
+    return tuple(ordered)
+
+
+_FAST_ANSWER_QUERY_STOP_TERMS = {
+    "什么",
+    "哪些",
+    "怎么",
+    "如何",
+    "申请",
+    "办理",
+    "查询",
+    "帮我",
+    "核对",
+    "依据",
+    "最好",
+    "是不是能办",
+}
+
+
+def _fast_answer_query_terms(query: str) -> tuple[str, ...]:
+    terms: list[str] = []
+    seen: set[str] = set()
+
+    def add(value: str) -> None:
+        term = str(value or "").strip(" \t\r\n，。；;、：:？?！!（）()“”\"'《》「」")
+        normalized = _normalize_match_term(term)
+        if len(normalized) < 2 or normalized in seen or normalized in _FAST_ANSWER_QUERY_STOP_TERMS:
+            return
+        seen.add(normalized)
+        terms.append(term)
+
+    for anchor in _quoted_query_anchor_terms(query):
+        add(anchor)
+    for segment in _iter_anchor_word_segments(query):
+        add(segment)
+        for suffix in ("怎么申请", "如何申请", "怎么办理", "如何办理", "怎么查", "如何查", "是什么"):
+            if segment.endswith(suffix):
+                add(segment[: -len(suffix)])
+                break
+    terms.sort(key=lambda item: len(_normalize_match_term(item)), reverse=True)
+    return tuple(terms)
+
+
+def _fast_answer_snippet_segments(answer: str) -> list[str]:
+    text = re.sub(r"\s+", " ", str(answer or "")).strip()
+    if not text:
+        return []
+    return [
+        segment.strip()
+        for segment in re.split(r"(?<=[。；;！？!?])\s*|\n+|(?<!\d)(?=[1-9][.)）])", text)
+        if segment.strip()
+    ]
+
+
+def _compact_fast_answer_value(answer: str, *, query: str, limit: int) -> str:
+    text = str(answer or "").strip()
+    if len(text) <= limit:
+        return text
+    normalized_terms = tuple(
+        _normalize_match_term(term)
+        for term in _fast_answer_query_terms(query)
+        if _normalize_match_term(term)
+    )
+    if not normalized_terms:
+        return _clamp_hint_value(text, limit=limit)
+    scored: list[tuple[int, int, str]] = []
+    for index, segment in enumerate(_fast_answer_snippet_segments(text)):
+        normalized_segment = _normalize_match_term(segment)
+        matched = {term for term in normalized_terms if term and term in normalized_segment}
+        if not matched:
+            continue
+        scored.append((index, sum(len(term) for term in matched), segment))
+    if not scored:
+        return _clamp_hint_value(text, limit=limit)
+    target_limit = max(240, min(limit, 700))
+    selected_indices = {
+        index
+        for index, _score, _segment in sorted(scored, key=lambda item: (-item[1], item[0]))[:6]
+    }
+    snippet = "".join(segment for index, _score, segment in scored if index in selected_indices).strip()
+    if not snippet:
+        return _clamp_hint_value(text, limit=limit)
+    return _clamp_hint_value(snippet, limit=target_limit)
+
+
+def _compact_fast_record_content(
+    content: str,
+    *,
+    query: str,
+    policy_plugin_refs: tuple[str, ...] = (),
+    metadata: dict[str, Any] | None = None,
+) -> str:
+    body = str(content or "").strip()
+    if not body:
+        return body
+    max_chars = _dify_fast_content_max_chars()
+    fields = _structured_label_values_from_content(body)
+    metadata_hint_text = ""
+    metadata_fields: dict[str, str] = {}
+    if isinstance(metadata, dict) and metadata:
+        response_hints = _response_hints_for_metadata(metadata, policy_plugin_refs=policy_plugin_refs)
+        metadata_hints = _metadata_answer_highlights(
+            metadata,
+            response_hints=response_hints,
+            query=query,
+            policy_plugin_refs=policy_plugin_refs,
+        )
+        if metadata_hints:
+            metadata_hint_text = "\n".join(metadata_hints)
+            metadata_fields = _structured_label_values_from_content(metadata_hint_text)
+    if metadata_fields:
+        combined_fields = dict(fields)
+        combined_fields.update(metadata_fields)
+        fields = combined_fields
+    labels = _requested_fast_response_labels(query, fields, policy_plugin_refs=policy_plugin_refs)
+    if labels:
+        if "答案" in labels and fields.get("答案"):
+            fields = dict(fields)
+            fields["答案"] = _compact_fast_answer_value(fields["答案"], query=query, limit=max_chars)
+        lines: list[str] = []
+        seen_lines: set[str] = set()
+
+        def add_line(line: str) -> None:
+            value = str(line or "").strip()
+            if not value or value in seen_lines:
+                return
+            seen_lines.add(value)
+            lines.append(value)
+
+        always_labels = set(_fast_response_always_labels_for_policy_refs(policy_plugin_refs))
+        requested_labels = [
+            label
+            for label in labels
+            if label not in always_labels and label not in {"问题", "答案"} and fields.get(label)
+        ]
+        for prefix in _requested_label_prefixes_for_policy_refs(policy_plugin_refs):
+            value = metadata_fields.get(prefix)
+            if not value and requested_labels:
+                value = "、".join(requested_labels)
+            if value:
+                add_line(f"{prefix}：{_clamp_hint_value(value, limit=max_chars)}")
+        for label in labels:
+            if fields.get(label):
+                add_line(f"{label}：{_clamp_hint_value(fields[label], limit=max_chars)}")
+        compacted = "\n".join(lines).strip()
+        if compacted:
+            return _clamp_hint_value(compacted, limit=max_chars)
+    if metadata_hint_text:
+        return _clamp_hint_value(metadata_hint_text, limit=max_chars)
+    return _clamp_hint_value(body, limit=max_chars)
+
+
+def _compact_fast_records_for_response(
+    records: list[dict[str, Any]],
+    *,
+    query: str,
+    top_k: int,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    total_budget = _dify_fast_total_content_max_chars()
+    used_chars = 0
+    for record in list(records or [])[: _dify_fast_response_top_k(top_k)]:
+        next_record = dict(record)
+        metadata = dict(next_record.get("metadata") if isinstance(next_record.get("metadata"), dict) else {})
+        original_content = str(next_record.get("content") or "")
+        compacted_content = _compact_fast_record_content(
+            original_content,
+            query=query,
+            policy_plugin_refs=policy_plugin_refs,
+            metadata=metadata,
+        )
+        remaining = total_budget - used_chars
+        if remaining <= 0:
+            break
+        budget_trimmed = False
+        if len(compacted_content) > remaining:
+            if out:
+                break
+            compacted_content = _clamp_hint_value(compacted_content, limit=remaining)
+            budget_trimmed = compacted_content != original_content
+        if compacted_content != original_content:
+            metadata["dify_fast_compacted"] = True
+            metadata["dify_original_content_chars"] = len(original_content)
+        if budget_trimmed or used_chars + len(compacted_content) >= total_budget:
+            metadata["dify_fast_context_budget_applied"] = True
+        metadata["dify_fast_total_context_budget_chars"] = total_budget
+        metadata["dify_fast_context_chars"] = len(compacted_content)
+        next_record["content"] = compacted_content
+        next_record["metadata"] = metadata
+        used_chars += len(compacted_content)
+        out.append(next_record)
+    return out
 
 
 def _compact_records_for_response(
@@ -2992,7 +4294,8 @@ def _compact_records_for_response(
     top_k: int,
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> list[dict[str, Any]]:
-    if _query_has_mixed_intent_for_policy(query, policy_plugin_refs=policy_plugin_refs):
+    mixed_intent_query = _query_has_mixed_intent_for_policy(query, policy_plugin_refs=policy_plugin_refs)
+    if mixed_intent_query:
         exact_anchor_compacted = _compact_mixed_intent_exact_anchor_records(
             list(records or []),
             query=query,
@@ -3000,13 +4303,32 @@ def _compact_records_for_response(
             policy_plugin_refs=policy_plugin_refs,
         )
         if exact_anchor_compacted:
-            return exact_anchor_compacted
+            strong_question_supplements = [
+                record
+                for record in _strong_question_anchor_records(
+                    list(records or []),
+                    query=query,
+                    policy_plugin_refs=policy_plugin_refs,
+                )
+                if record not in exact_anchor_compacted
+            ]
+            if len(exact_anchor_compacted) == 1 and strong_question_supplements and not _query_has_quoted_anchor_candidate(query):
+                exact_anchor_compacted = []
+            else:
+                return exact_anchor_compacted
 
     limited = list(records or [])[: max(1, int(top_k or 1))]
     if not limited:
         return []
-    if _query_has_mixed_intent_for_policy(query, policy_plugin_refs=policy_plugin_refs):
+    if mixed_intent_query:
         return limited
+    strong_question_records = _strong_question_anchor_records(
+        limited,
+        query=query,
+        policy_plugin_refs=policy_plugin_refs,
+    )
+    if any(record is limited[0] for record in strong_question_records):
+        return strong_question_records[: max(1, int(top_k or 1))]
     exact_anchor_answer = _compact_exact_anchor_answer_record(
         limited,
         query=query,
@@ -3063,6 +4385,21 @@ def _compact_records_for_response(
         ),
     )
     return list(compacted)
+
+
+def _strong_question_anchor_records(
+    records: list[dict[str, Any]],
+    *,
+    query: str,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> list[dict[str, Any]]:
+    return [
+        record
+        for record in records or []
+        if _record_question_anchor_strength(record, query=query, policy_plugin_refs=policy_plugin_refs)
+        >= _QUESTION_ANCHOR_COMPACTION_MIN_STRENGTH
+        and _record_content_is_answerful(record, policy_plugin_refs=policy_plugin_refs)
+    ]
 
 
 def _compact_exact_anchor_answer_record(
@@ -3178,6 +4515,26 @@ def _record_content_is_answerful(
     )
 
 
+def _record_is_full_answer_chunk(record: dict[str, Any]) -> bool:
+    for metadata in _iter_record_metadata_layers(record):
+        chunk_kind = str(metadata.get("chunk_kind") or "").strip().lower()
+        answer_kind = str(metadata.get("answer_kind") or "").strip().lower()
+        if answer_kind in {"full_record", "record_full"}:
+            return True
+        if chunk_kind in {"full_record", "record_full"}:
+            return True
+        if chunk_kind.endswith("_full") or chunk_kind.endswith("_record_full"):
+            return True
+    return False
+
+
+def _record_is_composite_exact_anchor_answer(record: dict[str, Any]) -> bool:
+    return any(
+        bool(metadata.get("dify_composite_exact_anchor_slots"))
+        for metadata in _iter_record_metadata_layers(record)
+    )
+
+
 def _compact_mixed_intent_exact_anchor_records(
     records: list[dict[str, Any]],
     *,
@@ -3204,7 +4561,10 @@ def _compact_mixed_intent_exact_anchor_records(
             record
             for record in records
             if _record_exact_query_anchor_terms(record, query=query, policy_plugin_refs=policy_plugin_refs)
-            and _record_content_is_answerful(record, policy_plugin_refs=policy_plugin_refs)
+            and (
+                _record_content_is_answerful(record, policy_plugin_refs=policy_plugin_refs)
+                or _records_have_confident_metadata_anchor([record], query=query, policy_plugin_refs=policy_plugin_refs)
+            )
         ]
         if anchored_answer_records:
             return anchored_answer_records[: max(1, int(top_k or 1))]
@@ -3226,7 +4586,10 @@ def _compact_mixed_intent_exact_anchor_records(
         return []
     if not _record_exact_query_anchor_terms(top_record, query=query, policy_plugin_refs=policy_plugin_refs):
         return []
-    if not _record_content_is_answerful(top_record, policy_plugin_refs=policy_plugin_refs):
+    if not (
+        _record_content_is_answerful(top_record, policy_plugin_refs=policy_plugin_refs)
+        or _records_have_confident_metadata_anchor([top_record], query=query, policy_plugin_refs=policy_plugin_refs)
+    ):
         return []
     return [top_record][: max(1, int(top_k or 1))]
 
@@ -3238,14 +4601,17 @@ def _records_have_exact_anchor_full_answer(
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> bool:
     requested_slots = _requested_policy_slot_specs_for_query(query, policy_plugin_refs=policy_plugin_refs)
-    if not requested_slots:
-        return False
+    quoted_anchor_query = _query_has_quoted_anchor_candidate(query)
     for record in records or []:
-        if _record_has_any_requested_slot_field(record, requested_slots):
-            continue
         if not _record_exact_query_anchor_terms(record, query=query, policy_plugin_refs=policy_plugin_refs):
             continue
         if _record_content_is_answerful(record, policy_plugin_refs=policy_plugin_refs):
+            if requested_slots and not (
+                quoted_anchor_query
+                or _record_is_full_answer_chunk(record)
+                or _record_is_composite_exact_anchor_answer(record)
+            ):
+                continue
             return True
     return False
 
@@ -3505,20 +4871,151 @@ def _record_question_anchor_bonus_value(
     return max(0.0, min(2.0, value))
 
 
+_QUESTION_ANCHOR_INTENT_GROUPS = (
+    ("application", ("申请", "申报", "办理", "申领", "领取", "怎么领", "怎么申请", "如何申请", "流程", "步骤")),
+    ("amount", ("怎么算", "计算", "多少钱", "多少", "补贴多少", "标准", "金额")),
+    ("timing", ("多久", "多久到账", "何时", "什么时候", "时间", "进度")),
+)
+_QUESTION_ANCHOR_SUBJECT_NOISE_TERMS = (
+    "办理",
+    "办",
+    "事项",
+    "这个事项",
+    "这个",
+    "请问",
+    "可以",
+    "能否",
+    "是否",
+    "怎么",
+    "如何",
+    "是什么",
+    "什么",
+    "帮我",
+    "直接说清楚",
+    "麻烦查一下",
+    "麻烦帮我查一下",
+    "主要想确认",
+)
+def _question_anchor_intent_groups(text: str) -> set[str]:
+    normalized = _normalize_match_term(text)
+    if not normalized:
+        return set()
+    groups: set[str] = set()
+    for group, terms in _QUESTION_ANCHOR_INTENT_GROUPS:
+        if any((term_text := _normalize_match_term(term)) and term_text in normalized for term in terms):
+            groups.add(group)
+    return groups
+
+
+def _record_question_anchor_has_intent_conflict(
+    record: dict[str, Any],
+    *,
+    query: str,
+    anchor_fields: tuple[str, ...],
+) -> bool:
+    query_groups = _question_anchor_intent_groups(query)
+    if not query_groups:
+        return False
+    matching_groups: set[str] = set()
+    for metadata in _iter_record_metadata_layers(record):
+        for field in anchor_fields:
+            for anchor_value in _metadata_terms(metadata.get(field)):
+                candidate_groups = _question_anchor_intent_groups(anchor_value)
+                if candidate_groups:
+                    matching_groups.update(candidate_groups)
+    return bool(matching_groups and not query_groups.intersection(matching_groups))
+
+
+def _record_question_anchor_lacks_specific_query_subject(
+    record: dict[str, Any],
+    *,
+    query: str,
+    anchor_fields: tuple[str, ...],
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> bool:
+    if not _requested_policy_slot_specs_for_query(query, policy_plugin_refs=policy_plugin_refs):
+        return False
+    generic_terms = {
+        _normalize_match_term(term)
+        for term in _question_anchor_generic_subject_terms_for_policy_refs(policy_plugin_refs)
+    }
+    query_subject_terms: list[str] = []
+    seen_terms: set[str] = set()
+    for term in _metadata_anchor_title_query_terms(query, policy_plugin_refs=policy_plugin_refs):
+        normalized = _normalize_match_term(term)
+        if len(normalized) < 4 or normalized in seen_terms or normalized in generic_terms:
+            continue
+        seen_terms.add(normalized)
+        query_subject_terms.append(normalized)
+    if not query_subject_terms:
+        return False
+
+    record_subject_parts: list[str] = []
+    for metadata in _iter_record_metadata_layers(record):
+        for field in anchor_fields:
+            record_subject_parts.extend(_normalize_match_term(value) for value in _metadata_terms(metadata.get(field)))
+    record_subject = "\n".join(part for part in record_subject_parts if part)
+    if not record_subject:
+        return False
+    return not any(term in record_subject for term in query_subject_terms)
+
+
+def _question_anchor_subject_text(value: str, *, intent_terms: tuple[str, ...]) -> str:
+    text = _normalize_match_term(value)
+    if not text:
+        return ""
+    noise_terms = [
+        *(_normalize_match_term(term) for term in intent_terms),
+        *(_normalize_match_term(term) for term in _QUESTION_ANCHOR_SUBJECT_NOISE_TERMS),
+    ]
+    for term in sorted((term for term in noise_terms if term), key=len, reverse=True):
+        text = text.replace(term, "")
+    return text
+
+
 def _record_question_intent_bonus(
     record: dict[str, Any],
     *,
     query: str,
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> float:
-    if (
-        _record_question_anchor_strength(
-            record,
-            query=query,
-            policy_plugin_refs=policy_plugin_refs,
-            anchor_fields=("question", "primary_alias"),
-        )
-        >= _QUESTION_ANCHOR_COMPACTION_MIN_STRENGTH
+    primary_anchor_fields = ("question", "primary_alias")
+    if _record_question_anchor_strength(
+        record,
+        query=query,
+        policy_plugin_refs=policy_plugin_refs,
+        anchor_fields=primary_anchor_fields,
+    ) >= _QUESTION_ANCHOR_COMPACTION_MIN_STRENGTH and not _record_question_anchor_has_intent_conflict(
+        record,
+        query=query,
+        anchor_fields=primary_anchor_fields,
+    ) and not _record_question_anchor_lacks_specific_query_subject(
+        record,
+        query=query,
+        anchor_fields=primary_anchor_fields,
+        policy_plugin_refs=policy_plugin_refs,
+    ):
+        return _record_question_anchor_bonus_value(record, policy_plugin_refs=policy_plugin_refs)
+    if _requested_policy_slot_specs_for_query(query, policy_plugin_refs=policy_plugin_refs) or _query_intent_terms(
+        query,
+        intent_terms=_record_question_intent_terms(record, policy_plugin_refs=policy_plugin_refs),
+    ):
+        return 0.0
+    alias_anchor_fields = ("aliases",)
+    if _record_question_anchor_strength(
+        record,
+        query=query,
+        policy_plugin_refs=policy_plugin_refs,
+        anchor_fields=alias_anchor_fields,
+    ) >= _QUESTION_ANCHOR_COMPACTION_MIN_STRENGTH and not _record_question_anchor_has_intent_conflict(
+        record,
+        query=query,
+        anchor_fields=alias_anchor_fields,
+    ) and not _record_question_anchor_lacks_specific_query_subject(
+        record,
+        query=query,
+        anchor_fields=alias_anchor_fields,
+        policy_plugin_refs=policy_plugin_refs,
     ):
         return _record_question_anchor_bonus_value(record, policy_plugin_refs=policy_plugin_refs)
     return 0.0
@@ -3540,39 +5037,41 @@ def _record_question_anchor_strength(
     )
     best = 0.0
     for metadata in _iter_record_metadata_layers(record):
-        anchor_values: list[str] = []
         for field in anchor_fields:
-            anchor_values.extend(_metadata_terms(metadata.get(field)))
-        for anchor_value in anchor_values:
-            candidate = _normalize_match_term(anchor_value)
-            if len(candidate) < 3:
-                continue
-            if candidate == query_term or candidate in query_term or query_term in candidate:
-                best = max(best, 1.0)
-                continue
-            if _near_question_anchor_match(query_term, candidate):
-                best = max(best, 0.9)
-                continue
-            if (
-                _cjk_bigram_overlap_count(query_term, candidate) >= _QUESTION_ANCHOR_BIGRAM_MIN_OVERLAP
-                and _cjk_bigram_overlap_ratio(query_term, candidate) >= _QUESTION_ANCHOR_BIGRAM_MIN_RATIO
-            ):
-                overlap_count = _cjk_bigram_overlap_count(query_term, candidate)
-                overlap_ratio = _cjk_bigram_overlap_ratio(query_term, candidate)
-                lcs_ratio = _longest_common_substring_length(query_term, candidate) / max(
-                    1,
-                    min(len(query_term), len(candidate)),
-                )
-                marker_bonus = _question_marker_overlap_bonus(query_term, candidate)
-                strength = 0.66 + min(0.09, overlap_ratio * 0.09) + min(0.07, lcs_ratio * 0.07) + marker_bonus
-                if overlap_count >= 8 and overlap_ratio >= 0.7:
-                    strength = max(strength, 0.82)
-                best = max(best, min(0.96, strength))
-                continue
-            if intent_terms and any(term in candidate for term in intent_terms):
-                overlap = _longest_common_substring_length(query_term, candidate)
-                if overlap >= _MIN_QUERY_INTENT_SUBJECT_OVERLAP_CHARS:
-                    best = max(best, 0.8)
+            for anchor_value in _metadata_terms(metadata.get(field)):
+                candidate = _normalize_match_term(anchor_value)
+                if len(candidate) < 3:
+                    continue
+                if candidate == query_term or candidate in query_term or query_term in candidate:
+                    best = max(best, 1.0)
+                    continue
+                if _near_question_anchor_match(query_term, candidate):
+                    best = max(best, 0.9)
+                    continue
+                lcs = _longest_common_substring_length(query_term, candidate)
+                lcs_ratio = lcs / max(1, min(len(query_term), len(candidate)))
+                if field == "aliases" and lcs >= 6 and lcs_ratio >= 0.68:
+                    best = max(best, 0.86)
+                    continue
+                if (
+                    _cjk_bigram_overlap_count(query_term, candidate) >= _QUESTION_ANCHOR_BIGRAM_MIN_OVERLAP
+                    and _cjk_bigram_overlap_ratio(query_term, candidate) >= _QUESTION_ANCHOR_BIGRAM_MIN_RATIO
+                ):
+                    overlap_count = _cjk_bigram_overlap_count(query_term, candidate)
+                    overlap_ratio = _cjk_bigram_overlap_ratio(query_term, candidate)
+                    marker_bonus = _question_marker_overlap_bonus(query_term, candidate)
+                    strength = 0.66 + min(0.09, overlap_ratio * 0.09) + min(0.07, lcs_ratio * 0.07) + marker_bonus
+                    if overlap_count >= 8 and overlap_ratio >= 0.7:
+                        strength = max(strength, 0.82)
+                    best = max(best, min(0.96, strength))
+                    continue
+                if intent_terms and any(term in candidate for term in intent_terms):
+                    overlap = _longest_common_substring_length(
+                        _question_anchor_subject_text(query_term, intent_terms=intent_terms),
+                        _question_anchor_subject_text(candidate, intent_terms=intent_terms),
+                    )
+                    if overlap >= _MIN_QUERY_INTENT_SUBJECT_OVERLAP_CHARS:
+                        best = max(best, 0.8)
     return best
 
 
@@ -3973,6 +5472,12 @@ def _records_can_skip_metadata_anchor_fallback(
     query: str,
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> bool:
+    if _query_has_specific_service_anchor_candidate(query, policy_plugin_refs=policy_plugin_refs):
+        return any(
+            _record_exact_query_anchor_terms(record, query=query, policy_plugin_refs=policy_plugin_refs)
+            and _records_have_confident_metadata_anchor([record], query=query, policy_plugin_refs=policy_plugin_refs)
+            for record in records or []
+        )
     if _query_prefers_question_anchor(query, policy_plugin_refs=policy_plugin_refs) and not _query_prefers_service_anchor(
         query,
         policy_plugin_refs=policy_plugin_refs,
@@ -4019,10 +5524,22 @@ def _metadata_anchor_fallback_query_terms(query: str) -> list[str]:
     return terms[:_METADATA_ANCHOR_DB_FALLBACK_MAX_QUERY_TERMS]
 
 
-def _strip_service_anchor_query_noise(query: str, *, noise_terms: tuple[str, ...] = ()) -> str:
+def _strip_service_anchor_query_noise(
+    query: str,
+    *,
+    noise_terms: tuple[str, ...] = (),
+    leading_noise_terms: tuple[str, ...] = (),
+    cutoff_terms: tuple[str, ...] = (),
+) -> str:
     text = str(query or "").strip()
     if not text:
         return ""
+    for phrase in sorted((str(term or "").strip() for term in leading_noise_terms), key=len, reverse=True):
+        if not phrase:
+            continue
+        if text.startswith(phrase):
+            text = text[len(phrase) :].strip(_SERVICE_ANCHOR_QUERY_TRAILING_CHARS)
+            break
     for _ in range(2):
         prefix_parts = _split_service_anchor_admin_prefix(text)
         if prefix_parts is None:
@@ -4032,6 +5549,13 @@ def _strip_service_anchor_query_noise(query: str, *, noise_terms: tuple[str, ...
             text = text[2:].strip()
         if prefix.endswith(("区", "县", "镇", "乡", "街道")):
             break
+    cutoff_indexes = [
+        index
+        for marker in sorted((str(term or "").strip() for term in cutoff_terms), key=len, reverse=True)
+        if marker and (index := text.find(marker)) > 0
+    ]
+    if cutoff_indexes:
+        text = text[: min(cutoff_indexes)].strip()
     for phrase in sorted((str(term or "").strip() for term in noise_terms), key=len, reverse=True):
         if not phrase:
             continue
@@ -4053,6 +5577,8 @@ def _metadata_anchor_service_name_query_terms(
     cleaned = _strip_service_anchor_query_noise(
         query,
         noise_terms=_service_anchor_noise_terms_for_policy_refs(policy_plugin_refs),
+        leading_noise_terms=_service_anchor_leading_noise_terms_for_policy_refs(policy_plugin_refs),
+        cutoff_terms=_service_anchor_cutoff_terms_for_policy_refs(policy_plugin_refs),
     )
     if not cleaned:
         return []
@@ -4070,6 +5596,8 @@ def _metadata_anchor_service_name_query_terms(
 
     for rewritten in _service_anchor_query_rewrite_terms_for_policy_refs(query, policy_plugin_refs):
         add(rewritten)
+    for quoted_anchor in _quoted_query_anchor_terms(query):
+        add(quoted_anchor)
     add(cleaned)
     for segment in _iter_anchor_word_segments(cleaned):
         add(segment)
@@ -4085,6 +5613,45 @@ def _metadata_anchor_service_name_query_terms(
     return terms[:_METADATA_ANCHOR_DB_FALLBACK_SERVICE_NAME_MAX_TERMS]
 
 
+def _query_has_specific_service_anchor_candidate(
+    query: str,
+    *,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> bool:
+    for term in _metadata_anchor_service_name_query_terms(query, policy_plugin_refs=policy_plugin_refs)[:3]:
+        normalized = _normalize_match_term(term)
+        if not _CJK_RE.search(normalized):
+            continue
+        if len(normalized) < _MIN_SPECIFIC_INTENT_CHARS or len(normalized) > 30:
+            continue
+        entity_terms = tuple(
+            _normalize_match_term(term)
+            for term in _service_anchor_entity_terms_for_policy_refs(policy_plugin_refs)
+            if _normalize_match_term(term)
+        )
+        if entity_terms and any(marker in normalized for marker in entity_terms):
+            return True
+    return False
+
+
+def _query_has_specific_fast_metadata_anchor_candidate(
+    query: str,
+    *,
+    policy_plugin_refs: tuple[str, ...] = (),
+) -> bool:
+    if _query_has_specific_service_anchor_candidate(query, policy_plugin_refs=policy_plugin_refs):
+        return True
+    if not _query_has_quoted_anchor_candidate(query):
+        return False
+    for term in _quoted_query_anchor_terms(query):
+        normalized = _normalize_match_term(term)
+        if not _CJK_RE.search(normalized):
+            continue
+        if _MIN_SPECIFIC_INTENT_CHARS <= len(normalized) <= 50:
+            return True
+    return False
+
+
 def _metadata_anchor_title_query_terms(
     query: str,
     *,
@@ -4093,6 +5660,8 @@ def _metadata_anchor_title_query_terms(
     cleaned = _strip_service_anchor_query_noise(
         query,
         noise_terms=_service_anchor_noise_terms_for_policy_refs(policy_plugin_refs),
+        leading_noise_terms=_service_anchor_leading_noise_terms_for_policy_refs(policy_plugin_refs),
+        cutoff_terms=_service_anchor_cutoff_terms_for_policy_refs(policy_plugin_refs),
     )
     if not cleaned:
         return []
@@ -4227,7 +5796,7 @@ def _metadata_anchor_fallback_records_from_rows(
     if not candidates:
         return []
     _sort_records_for_query(candidates, query=query, policy_plugin_refs=policy_plugin_refs)
-    if _query_has_mixed_intent_for_policy(query, policy_plugin_refs=policy_plugin_refs) and _query_has_quoted_anchor_candidate(query):
+    if _query_has_mixed_intent_for_policy(query, policy_plugin_refs=policy_plugin_refs):
         requested_slots = _requested_policy_slot_specs_for_query(query, policy_plugin_refs=policy_plugin_refs)
         if requested_slots:
             composite = _composite_record_for_exact_anchor_slots(
@@ -4255,6 +5824,8 @@ def _metadata_anchor_db_fallback_records(
     existing_records: list[dict[str, Any]] | None = None,
     metadata_filter: dict[str, Any] | None = None,
     prefer_question_anchor_first: bool = False,
+    statement_timeout_ms_override: int | None = None,
+    max_elapsed_ms: int | None = None,
 ) -> list[dict[str, Any]]:
     if not bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED", False)):
         return []
@@ -4281,25 +5852,35 @@ def _metadata_anchor_db_fallback_records(
             int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_MAX_SCAN", 80) or 80),
         ),
     )
+    started = time.perf_counter()
+    max_elapsed_ms_value = max(0, min(30000, int(max_elapsed_ms or 0)))
+
+    class MetadataAnchorBudgetExceeded(Exception):
+        pass
+
+    def budget_exceeded() -> bool:
+        return bool(max_elapsed_ms_value) and ((time.perf_counter() - started) * 1000 >= max_elapsed_ms_value)
+
+    def is_statement_timeout_error(exc: Exception) -> bool:
+        text = str(exc).lower()
+        return "statement timeout" in text or "querycanceled" in text or "canceling statement due to statement timeout" in text
+
+    rows: list[Any] = []
+    seen_chunk_ids: set[str] = set()
+
     try:
-        statement_timeout_ms = max(
-            0,
-            min(
-                30000,
-                int(
-                    getattr(
-                        settings,
-                        "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_STATEMENT_TIMEOUT_MS",
-                        2500,
-                    )
-                    or 0
-                ),
-            ),
+        configured_statement_timeout = (
+            statement_timeout_ms_override
+            if statement_timeout_ms_override is not None
+            else getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_STATEMENT_TIMEOUT_MS", 2500)
         )
+        statement_timeout_ms = max(0, min(30000, int(configured_statement_timeout or 0)))
+        if statement_timeout_ms and max_elapsed_ms_value:
+            statement_timeout_ms = min(statement_timeout_ms, max_elapsed_ms_value)
+        elif max_elapsed_ms_value:
+            statement_timeout_ms = max_elapsed_ms_value
         if statement_timeout_ms:
             db.execute(sql_text(f"SET LOCAL statement_timeout = {statement_timeout_ms}"))
-        rows: list[Any] = []
-        seen_chunk_ids: set[str] = set()
 
         def append_unique(batch: list[Any] | tuple[Any, ...]) -> None:
             for row in batch:
@@ -4310,6 +5891,8 @@ def _metadata_anchor_db_fallback_records(
                 rows.append(row)
 
         def query_matching_rows(condition: Any, *, limit: int) -> list[Any]:
+            if budget_exceeded():
+                raise MetadataAnchorBudgetExceeded
             return (
                 db.query(
                     DocumentChunk.id.label("chunk_id"),
@@ -4348,13 +5931,98 @@ def _metadata_anchor_db_fallback_records(
         primary_term = terms[0]
         question_anchor_preferred = _query_prefers_question_anchor(query, policy_plugin_refs=policy_plugin_refs)
         service_anchor_preferred = _query_prefers_service_anchor(query, policy_plugin_refs=policy_plugin_refs)
+        query_has_slot_question_intent = bool(
+            _requested_policy_slot_specs_for_query(query, policy_plugin_refs=policy_plugin_refs)
+            or _query_intent_terms(
+                query,
+                intent_terms=_question_anchor_intent_terms_for_policy_refs(policy_plugin_refs),
+            )
+        )
         question_anchor_first = _metadata_anchor_should_query_question_first(
             query,
             query_prefers_question_anchor=question_anchor_preferred,
             query_prefers_service_anchor=service_anchor_preferred,
             prefer_question_anchor_first=bool(prefer_question_anchor_first),
+            policy_plugin_refs=policy_plugin_refs,
         )
+        requested_slot_specs = _requested_policy_slot_specs_for_query(query, policy_plugin_refs=policy_plugin_refs)
+        service_name_terms = _metadata_anchor_service_name_query_terms(
+            query,
+            policy_plugin_refs=policy_plugin_refs,
+        )
+        if not service_name_terms:
+            service_name_terms = terms[:_METADATA_ANCHOR_DB_FALLBACK_SERVICE_NAME_MAX_TERMS]
+        service_anchor_fields = _anchor_binding_fields_for_policy_refs(policy_plugin_refs) or ("service_name",)
+        mixed_intent_retrieval_queries = _mixed_intent_retrieval_queries(query, policy_plugin_refs=policy_plugin_refs)
+        if (
+            service_anchor_preferred
+            and (
+                not (question_anchor_first and query_has_slot_question_intent)
+                or len(mixed_intent_retrieval_queries) >= 2
+            )
+        ):
+            primary_service_name_term = (
+                service_name_terms[0].replace("%", "").replace("_", "").strip()
+                if service_name_terms
+                else ""
+            )
+            exact_service_name_conditions = [
+                DocumentChunk.doc_metadata["service_name"].astext == primary_service_name_term
+            ] if primary_service_name_term else []
+            if exact_service_name_conditions:
+                append_unique(query_matching_rows(or_(*exact_service_name_conditions), limit=max_scan))
+                current_matches = matched_records()
+                if current_matches:
+                    return current_matches
         primary_pattern = f"%{primary_term.replace('%', '').replace('_', '').strip()}%"
+        if (
+            _query_has_mixed_intent_for_policy(query, policy_plugin_refs=policy_plugin_refs)
+            and requested_slot_specs
+            and _query_has_quoted_anchor_candidate(query)
+        ):
+            anchor_fields = _anchor_binding_fields_for_policy_refs(policy_plugin_refs) or ("service_name",)
+            exact_anchor_terms = list(_quoted_query_anchor_terms(query))
+            seen_exact_anchor_terms = {_normalize_match_term(term) for term in exact_anchor_terms}
+            for term in _metadata_anchor_title_query_terms(
+                query,
+                policy_plugin_refs=policy_plugin_refs,
+            )[:_METADATA_ANCHOR_DB_FALLBACK_SERVICE_NAME_MAX_TERMS]:
+                normalized = _normalize_match_term(term)
+                if len(normalized) < 4 or normalized in seen_exact_anchor_terms:
+                    continue
+                seen_exact_anchor_terms.add(normalized)
+                exact_anchor_terms.append(term)
+            anchor_conditions = []
+            for anchor_term in exact_anchor_terms:
+                cleaned_anchor = anchor_term.replace("%", "").replace("_", "").strip()
+                if len(_normalize_match_term(cleaned_anchor)) < 4:
+                    continue
+                pattern = f"%{cleaned_anchor}%"
+                anchor_conditions.extend(
+                    DocumentChunk.doc_metadata[field].astext.ilike(pattern)
+                    for field in anchor_fields
+                )
+            slot_conditions = [
+                DocumentChunk.doc_metadata[field].astext == str(slot_value).strip()
+                for field, slot_value in requested_slot_specs
+                if str(field).strip() and str(slot_value).strip()
+            ]
+            if anchor_conditions and slot_conditions:
+                rows_before_exact_slot_scan = len(rows)
+                seen_before_exact_slot_scan = set(seen_chunk_ids)
+                append_unique(
+                    query_matching_rows(
+                        and_(or_(*anchor_conditions), or_(*slot_conditions)),
+                        limit=max_scan,
+                    )
+                )
+                current_matches = matched_records()
+                if any(_record_is_composite_exact_anchor_answer(record) for record in current_matches):
+                    return current_matches
+                del rows[rows_before_exact_slot_scan:]
+                seen_chunk_ids.clear()
+                seen_chunk_ids.update(seen_before_exact_slot_scan)
+
         if question_anchor_first:
             append_unique(
                 query_matching_rows(DocumentChunk.doc_metadata["question"].astext.ilike(primary_pattern), limit=max_scan)
@@ -4363,22 +6031,55 @@ def _metadata_anchor_db_fallback_records(
                 query_matching_rows(
                     or_(
                         DocumentChunk.doc_metadata["primary_alias"].astext.ilike(primary_pattern),
+                        DocumentChunk.doc_metadata["aliases"].astext.ilike(primary_pattern),
                         DocumentChunk.doc_metadata.contains({"aliases": [primary_term]}),
                     ),
                     limit=max_scan,
                 )
             )
             current_matches = matched_records()
-            if current_matches:
+            if current_matches and not query_has_slot_question_intent:
                 return current_matches
 
-        question_conditions = [
-            DocumentChunk.doc_metadata["question"].astext.ilike(
-                f"%{term.replace('%', '').replace('_', '').strip()}%"
+        if question_anchor_first and query_has_slot_question_intent:
+            alias_scan_terms = _metadata_anchor_title_query_terms(
+                query,
+                policy_plugin_refs=policy_plugin_refs,
+            )[:_METADATA_ANCHOR_DB_FALLBACK_SERVICE_NAME_MAX_TERMS]
+            alias_scan_conditions = []
+            for alias_term in alias_scan_terms:
+                cleaned_alias_term = alias_term.replace("%", "").replace("_", "").strip()
+                if not cleaned_alias_term:
+                    continue
+                pattern = f"%{cleaned_alias_term}%"
+                alias_scan_conditions.append(
+                    or_(
+                        DocumentChunk.doc_metadata["question"].astext.ilike(pattern),
+                        DocumentChunk.doc_metadata["primary_alias"].astext.ilike(pattern),
+                        DocumentChunk.doc_metadata["aliases"].astext.ilike(pattern),
+                        DocumentChunk.doc_metadata.contains({"aliases": [alias_term]}),
+                    )
+                )
+            if alias_scan_conditions:
+                rows_before_alias_scan = len(rows)
+                append_unique(query_matching_rows(or_(*alias_scan_conditions), limit=max_scan))
+                if len(rows) > rows_before_alias_scan:
+                    current_matches = matched_records()
+                    if current_matches:
+                        return current_matches
+
+        question_conditions = []
+        for term in terms[1:]:
+            cleaned_term = term.replace("%", "").replace("_", "").strip()
+            if not cleaned_term:
+                continue
+            pattern = f"%{cleaned_term}%"
+            question_conditions.append(
+                or_(
+                    DocumentChunk.doc_metadata["question"].astext.ilike(pattern),
+                    DocumentChunk.doc_metadata["primary_alias"].astext.ilike(pattern),
+                )
             )
-            for term in terms[1:]
-            if term.replace("%", "").replace("_", "").strip()
-        ]
         if (
             question_anchor_first
             and question_conditions
@@ -4428,7 +6129,6 @@ def _metadata_anchor_db_fallback_records(
                 seen_chunk_ids.clear()
                 seen_chunk_ids.update(seen_before_exact_question)
 
-        requested_slot_specs = _requested_policy_slot_specs_for_query(query, policy_plugin_refs=policy_plugin_refs)
         if (
             _query_has_mixed_intent_for_policy(query, policy_plugin_refs=policy_plugin_refs)
             and _query_has_quoted_anchor_candidate(query)
@@ -4469,13 +6169,17 @@ def _metadata_anchor_db_fallback_records(
         if question_anchor_preferred and not service_anchor_preferred:
             return []
 
-        service_name_terms = _metadata_anchor_service_name_query_terms(
-            query,
-            policy_plugin_refs=policy_plugin_refs,
-        )
-        if not service_name_terms:
-            service_name_terms = terms[:_METADATA_ANCHOR_DB_FALLBACK_SERVICE_NAME_MAX_TERMS]
-        service_anchor_fields = _anchor_binding_fields_for_policy_refs(policy_plugin_refs) or ("service_name",)
+        exact_service_name_conditions = [
+            DocumentChunk.doc_metadata[field].astext == term.replace("%", "").replace("_", "").strip()
+            for term in service_name_terms[:_METADATA_ANCHOR_DB_FALLBACK_SERVICE_NAME_MAX_TERMS]
+            for field in service_anchor_fields
+            if term.replace("%", "").replace("_", "").strip()
+        ]
+        if exact_service_name_conditions:
+            append_unique(query_matching_rows(or_(*exact_service_name_conditions), limit=max_scan))
+            current_matches = matched_records()
+            if current_matches:
+                return current_matches
         service_name_conditions = [
             DocumentChunk.doc_metadata[field].astext.ilike(
                 f"%{term.replace('%', '').replace('_', '').strip()}%"
@@ -4601,13 +6305,43 @@ def _metadata_anchor_db_fallback_records(
                 current_matches = matched_records()
                 if current_matches:
                     return current_matches
-    except Exception:  # noqa: BLE001
+    except MetadataAnchorBudgetExceeded:
+        logger.info(
+            "Dify metadata anchor fallback budget exhausted query_hash=%s elapsed_ms=%s max_elapsed_ms=%s rows=%s",
+            _diagnostic_query_hash(query),
+            round((time.perf_counter() - started) * 1000, 2),
+            max_elapsed_ms_value,
+            len(rows),
+            extra={
+                "event": "dify_metadata_anchor_budget_exhausted",
+                "query_hash": _diagnostic_query_hash(query),
+                "elapsed_ms": round((time.perf_counter() - started) * 1000, 2),
+                "max_elapsed_ms": max_elapsed_ms_value,
+            },
+        )
+    except Exception as exc:  # noqa: BLE001
         try:
             db.rollback()
         except Exception:  # noqa: BLE001
             logger.debug("Failed to rollback Dify metadata anchor fallback transaction", exc_info=True)
-        logger.warning("Failed to run Dify metadata anchor fallback", exc_info=True)
-        return []
+        if is_statement_timeout_error(exc):
+            logger.info(
+                "Dify metadata anchor fallback budget exhausted query_hash=%s elapsed_ms=%s statement_timeout_ms=%s rows=%s",
+                _diagnostic_query_hash(query),
+                round((time.perf_counter() - started) * 1000, 2),
+                statement_timeout_ms if "statement_timeout_ms" in locals() else None,
+                len(rows),
+                extra={
+                    "event": "dify_metadata_anchor_budget_exhausted",
+                    "query_hash": _diagnostic_query_hash(query),
+                    "elapsed_ms": round((time.perf_counter() - started) * 1000, 2),
+                    "statement_timeout_ms": statement_timeout_ms if "statement_timeout_ms" in locals() else None,
+                    "row_count": len(rows),
+                },
+            )
+        else:
+            logger.warning("Failed to run Dify metadata anchor fallback", exc_info=True)
+            return []
 
     return _metadata_anchor_fallback_records_from_rows(
         rows,
@@ -4637,9 +6371,11 @@ async def _retrieve_dataset_citations(
     kg_chunk_boost_weight: float | None = None,
     kg_chunk_boost_max_promoted: int | None = None,
     enable_reranker: bool | None = None,
+    retrieval_mode: str = "hybrid",
 ) -> list[dict[str, Any]]:
     from app.api.v1.rag import EvidenceRetrieveRequest, retrieve_evidence
 
+    started = time.perf_counter()
     evidence_top_k = max(1, int(top_k or 1))
     if requested_top_k is None:
         evidence_top_k = _resolve_internal_candidate_top_k(evidence_top_k)
@@ -4679,7 +6415,7 @@ async def _retrieve_dataset_citations(
     rag_config = ChatRAGConfig(
         top_k=evidence_top_k,
         score_threshold=score_threshold,
-        retrieval_mode="hybrid",
+        retrieval_mode=str(retrieval_mode or "hybrid"),
         visible_evidence_only=True,
         metadata_filter=metadata_filter,
         enable_reranker=reranker_enabled,
@@ -4726,7 +6462,29 @@ async def _retrieve_dataset_citations(
         account_id=account_id,
         db=db,
     )
-    return list(response.citations or [])
+    elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
+    response_metrics = getattr(response, "metrics", None)
+    response_trace = getattr(response, "retrieval_trace", None)
+    metrics = response_metrics if isinstance(response_metrics, dict) else {}
+    trace = response_trace if isinstance(response_trace, dict) else {}
+    logger.info(
+        "Dify evidence retrieve completed query_hash=%s dataset_count=%s top_k=%s requested_top_k=%s "
+        "citations=%s elapsed_ms=%s retrieval_elapsed_sec=%s vector_backend=%s retrieval_mode=%s "
+        "post_rerank_elapsed_sec=%s hard_fallback_elapsed_sec=%s trace_passes=%s",
+        _diagnostic_query_hash(query),
+        len(scoped_dataset_ids),
+        evidence_top_k,
+        requested_top_k,
+        len(getattr(response, "citations", None) or []),
+        elapsed_ms,
+        metrics.get("retrieval_elapsed_sec"),
+        metrics.get("vector_backend"),
+        metrics.get("retrieval_mode") or metrics.get("requested_retrieval_mode"),
+        metrics.get("evidence_post_rerank_elapsed_sec"),
+        metrics.get("hard_fallback_elapsed_sec"),
+        len(trace.get("passes") or []) if isinstance(trace, dict) else 0,
+    )
+    return list(getattr(response, "citations", None) or [])
 
 
 def _resolve_dify_warmup_tenant_id() -> UUID | None:
@@ -4768,28 +6526,85 @@ def _resolve_dify_warmup_timeout_sec() -> float:
     return max(1.0, timeout_sec)
 
 
+def _resolve_dify_warmup_start_delay_sec() -> float:
+    try:
+        delay_sec = float(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_START_DELAY_SEC", 1.0) or 0.0)
+    except (TypeError, ValueError):
+        delay_sec = 1.0
+    return max(0.0, min(60.0, delay_sec))
+
+
 async def warmup_dify_external_knowledge(
     *,
     db_factory: Callable[[], Session] | None = None,
 ) -> dict[str, Any]:
     started = time.perf_counter()
     if not bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", False)):
+        _set_dify_external_warmup_status(
+            enabled=False,
+            status="disabled",
+            attempted=0,
+            completed=0,
+            failed=0,
+            elapsed_ms=0,
+        )
         return {"enabled": False, "reason": "external_knowledge_disabled", "attempted": 0, "completed": 0, "failed": 0}
     if not bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED", True)):
+        _set_dify_external_warmup_status(
+            enabled=True,
+            status="disabled",
+            attempted=0,
+            completed=0,
+            failed=0,
+            elapsed_ms=0,
+        )
         return {"enabled": False, "reason": "warmup_disabled", "attempted": 0, "completed": 0, "failed": 0}
+    _set_dify_external_warmup_status(
+        enabled=True,
+        status="running",
+        attempted=0,
+        completed=0,
+        failed=0,
+        elapsed_ms=None,
+    )
 
     try:
         knowledge_map = _load_knowledge_map()
     except Exception:  # noqa: BLE001
         logger.warning("Skipping Dify external warmup: knowledge map is invalid", exc_info=True)
+        _set_dify_external_warmup_status(
+            enabled=True,
+            status="failed",
+            attempted=0,
+            completed=0,
+            failed=1,
+            elapsed_ms=round((time.perf_counter() - started) * 1000, 2),
+        )
         return {"enabled": True, "reason": "invalid_knowledge_map", "attempted": 0, "completed": 0, "failed": 1}
 
     knowledge_ids = _resolve_dify_warmup_knowledge_ids(knowledge_map)
     tenant_id = _resolve_dify_warmup_tenant_id()
     if tenant_id is None:
+        _set_dify_external_warmup_status(
+            enabled=True,
+            status="skipped",
+            attempted=0,
+            completed=0,
+            failed=0,
+            elapsed_ms=round((time.perf_counter() - started) * 1000, 2),
+        )
         return {"enabled": True, "reason": "tenant_not_configured", "attempted": 0, "completed": 0, "failed": 0}
     if not knowledge_ids:
+        _set_dify_external_warmup_status(
+            enabled=True,
+            status="skipped",
+            attempted=0,
+            completed=0,
+            failed=0,
+            elapsed_ms=round((time.perf_counter() - started) * 1000, 2),
+        )
         return {"enabled": True, "reason": "no_knowledge_ids", "attempted": 0, "completed": 0, "failed": 0}
+    _set_dify_external_warmup_status(enabled=True, status="running", attempted=len(knowledge_ids))
 
     factory = db_factory or SessionLocal
     account_id = str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "") or "system:dify").strip()
@@ -4820,6 +6635,10 @@ async def warmup_dify_external_knowledge(
                     top_k=top_k,
                     requested_top_k=top_k,
                     score_threshold=score_threshold,
+                    enable_kg_query_expansion=False,
+                    enable_kg_chunk_injection=False,
+                    enable_kg_chunk_boost=False,
+                    enable_reranker=False,
                 ),
                 timeout=timeout_sec,
             )
@@ -4868,6 +6687,14 @@ async def warmup_dify_external_knowledge(
         "failed": failed,
         "elapsed_ms": elapsed_ms,
     }
+    _set_dify_external_warmup_status(
+        enabled=True,
+        status="completed" if failed == 0 else "failed",
+        attempted=len(knowledge_ids),
+        completed=completed,
+        failed=failed,
+        elapsed_ms=elapsed_ms,
+    )
     logger.info(
         "Dify external warmup finished attempted=%s completed=%s failed=%s elapsed_ms=%s",
         result["attempted"],
@@ -4877,6 +6704,20 @@ async def warmup_dify_external_knowledge(
         extra={"event": "dify_external_warmup", "phase": "finished", **result},
     )
     return result
+
+
+def _run_warmup_dify_external_knowledge_sync() -> dict[str, Any]:
+    return asyncio.run(warmup_dify_external_knowledge())
+
+
+async def _delayed_warmup_dify_external_knowledge() -> dict[str, Any]:
+    delay_sec = _resolve_dify_warmup_start_delay_sec()
+    if delay_sec > 0:
+        await asyncio.sleep(delay_sec)
+    else:
+        # Yield once so lifespan can return before any cold retrieval work runs.
+        await asyncio.sleep(0)
+    return await asyncio.to_thread(_run_warmup_dify_external_knowledge_sync)
 
 
 def _log_dify_warmup_task_result(task: Any) -> None:
@@ -4893,11 +6734,15 @@ def start_dify_external_knowledge_warmup(
     create_task: Callable[[Any], Any] | None = None,
 ) -> Any | None:
     if not bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", False)):
+        _set_dify_external_warmup_status(enabled=False, status="disabled")
         return None
     if not bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED", True)):
+        _set_dify_external_warmup_status(enabled=True, status="disabled")
         return None
 
-    coro = warmup_dify_external_knowledge()
+    delay_sec = _resolve_dify_warmup_start_delay_sec()
+    _set_dify_external_warmup_status(enabled=True, status="scheduled", start_delay_sec=delay_sec)
+    coro = _delayed_warmup_dify_external_knowledge()
     try:
         task = create_task(coro) if create_task is not None else asyncio.create_task(coro)
     except RuntimeError:
@@ -4912,8 +6757,34 @@ def start_dify_external_knowledge_warmup(
     add_done_callback = getattr(task, "add_done_callback", None)
     if callable(add_done_callback):
         add_done_callback(_log_dify_warmup_task_result)
-    logger.info("Dify external warmup scheduled")
+    logger.info("Dify external warmup scheduled start_delay_sec=%s", delay_sec)
     return task
+
+
+@router.post(
+    "/conversation-turns",
+    response_model=DifyConversationTurnResponse,
+    responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
+)
+async def persist_dify_conversation_turn(
+    body: DifyConversationTurnRequest,
+    actor: Annotated[_DifyActor, Depends(_require_dify_actor)],
+    db: Annotated[Session, Depends(get_db)],
+) -> DifyConversationTurnResponse:
+    return _persist_dify_conversation_turn(
+        db=db,
+        tenant_id=actor.tenant_id,
+        account_id=actor.account_id,
+        query=body.query,
+        answer=body.answer,
+        trace_request_id=body.trace_request_id,
+        source_conversation_id=_dify_turn_source_conversation_id(body),
+        source_message_id=_dify_turn_source_message_id(body),
+        source_run_id=_dify_turn_source_run_id(body),
+        citations=body.citations,
+        metadata=body.metadata,
+        conversation_id=_uuid_or_none(body.conversation_id),
+    )
 
 
 @router.post("/retrieval", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -4933,15 +6804,22 @@ async def retrieve_external_knowledge(
     expansion_dataset_ids = list(scope_plan.expansion_dataset_ids if primary_scope_enabled else ())
     configured_max = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX", 5) or 5)
     top_k = max(1, min(int(body.retrieval_setting.top_k), configured_max))
-    candidate_top_k = _resolve_internal_candidate_top_k(top_k)
-    policy_fallback_multiplier = _resolve_knowledge_policy_fallback_multiplier(body.knowledge_id)
-    candidate_top_k = _apply_policy_fallback_candidate_multiplier(
-        candidate_top_k,
-        multiplier=policy_fallback_multiplier,
-    )
+    latency_profile = _resolve_dify_latency_profile(body.retrieval_setting)
+    fast_latency_profile = latency_profile == "fast"
+    candidate_top_k = _dify_fast_candidate_top_k(top_k) if fast_latency_profile else _resolve_internal_candidate_top_k(top_k)
+    response_top_k = _dify_fast_response_top_k(top_k) if fast_latency_profile else top_k
+    policy_fallback_multiplier = 1
+    if not fast_latency_profile:
+        policy_fallback_multiplier = _resolve_knowledge_policy_fallback_multiplier(body.knowledge_id)
+        candidate_top_k = _apply_policy_fallback_candidate_multiplier(
+            candidate_top_k,
+            multiplier=policy_fallback_multiplier,
+        )
     policy_plugin_refs = _resolve_knowledge_policy_plugin_refs(body.knowledge_id)
-    external_reranker_enabled = _dify_external_reranker_enabled()
+    external_reranker_enabled = False if fast_latency_profile else _dify_external_reranker_enabled()
     limit_mixed_intent_candidate_top_k = (
+        not fast_latency_profile
+        and
         _query_has_mixed_intent_for_policy(body.query, policy_plugin_refs=policy_plugin_refs)
         and external_reranker_enabled
     )
@@ -4950,12 +6828,26 @@ async def retrieve_external_knowledge(
     score_threshold = _clamp_score(body.retrieval_setting.score_threshold)
     policy_filter_fields = _resolve_knowledge_policy_filter_fields(body.knowledge_id)
     metadata_filter = _metadata_condition_to_filter(body.metadata_condition, allowed_fields=policy_filter_fields)
+    metadata_anchor_dataset_ids = _metadata_anchor_dataset_ids_for_query(
+        knowledge_id=body.knowledge_id,
+        base_dataset_ids=primary_dataset_ids,
+        query=body.query,
+        policy_plugin_refs=policy_plugin_refs,
+    )
     requested_kg_flags = _resolve_dify_kg_flags(body.retrieval_setting)
-    kg_on_demand_enabled = bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_KG_ON_DEMAND_ENABLED", True))
+    kg_on_demand_enabled = (
+        False
+        if fast_latency_profile
+        else bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_KG_ON_DEMAND_ENABLED", True))
+    )
     primary_kg_flags = (
         _disabled_dify_kg_flags()
-        if requested_kg_flags.enabled and kg_on_demand_enabled
-        else requested_kg_flags
+        if fast_latency_profile
+        else (
+            _disabled_dify_kg_flags()
+            if requested_kg_flags.enabled and kg_on_demand_enabled
+            else requested_kg_flags
+        )
     )
     log_extra_base = {
         "event": "dify_external_retrieval",
@@ -4966,6 +6858,8 @@ async def retrieve_external_knowledge(
         "query_chars": len(str(body.query or "")),
         "top_k": top_k,
         "candidate_top_k": candidate_top_k,
+        "response_top_k": response_top_k,
+        "latency_profile": latency_profile,
         "policy_fallback_multiplier": policy_fallback_multiplier,
         "score_threshold": score_threshold,
         "dataset_count": len(dataset_ids),
@@ -4978,6 +6872,14 @@ async def retrieve_external_knowledge(
         "kg_requested": requested_kg_flags.enabled,
         "kg_on_demand_enabled": kg_on_demand_enabled,
     }
+    trace_conversation_id = _dify_trace_conversation_id(
+        request,
+        body,
+        db=db,
+        tenant_id=actor.tenant_id,
+        account_id=actor.account_id,
+    )
+    trace_request_id = _dify_trace_request_id(request, body)
 
     response_cache_key: str | None = None
     response_cache_ttl_sec = max(
@@ -4993,11 +6895,17 @@ async def retrieve_external_knowledge(
         and response_cache_ttl_sec > 0
         and response_cache_max_entries > 0
     )
+    stage_timings_ms: dict[str, Any] = {}
     if response_cache_enabled:
+        cache_token_started = time.perf_counter()
         corpus_token = _resolve_dify_response_cache_corpus_token(
             db=db,
             tenant_id=actor.tenant_id,
             dataset_ids=dataset_ids,
+        )
+        stage_timings_ms["response_cache_corpus_token_ms"] = round(
+            (time.perf_counter() - cache_token_started) * 1000,
+            2,
         )
         if corpus_token:
             response_cache_key = _build_dify_response_cache_key(
@@ -5036,6 +6944,21 @@ async def retrieve_external_knowledge(
                         "response_cache_hit": True,
                     },
                 )
+                _log_dify_external_rag_trace(
+                    tenant_id=actor.tenant_id,
+                    conversation_id=trace_conversation_id,
+                    request_id=trace_request_id,
+                    question=body.query,
+                    response_records=response_records,
+                    top_k=top_k,
+                    candidate_top_k=candidate_top_k,
+                    retrieval_path="cache_hit",
+                    elapsed_ms=elapsed_ms,
+                    metadata_anchor_fallback_count=0,
+                    mixed_intent_query_count=0,
+                    dify_message_id=body.dify_message_id,
+                    dify_workflow_run_id=body.dify_workflow_run_id,
+                )
                 return DifyExternalKnowledgeResponse(records=response_records)
 
     records: list[dict[str, Any]] = []
@@ -5057,9 +6980,20 @@ async def retrieve_external_knowledge(
             body.query,
             policy_plugin_refs=policy_plugin_refs,
         )
+        metadata_anchor_db_fallback_enabled = bool(
+            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED", False)
+        )
+        mixed_intent_supplement_enabled = (
+            not fast_latency_profile
+            and bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUPPLEMENT_ENABLED", True))
+        )
         metadata_anchor_preflight_enabled = (
             bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED", False))
-            and bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED", False))
+            and metadata_anchor_db_fallback_enabled
+            and (
+                not fast_latency_profile
+                or _query_has_specific_fast_metadata_anchor_candidate(body.query, policy_plugin_refs=policy_plugin_refs)
+            )
             and not metadata_filter
             and _query_allows_metadata_anchor_preflight(
                 body.query,
@@ -5069,15 +7003,26 @@ async def retrieve_external_knowledge(
             )
         )
         if metadata_anchor_preflight_enabled:
+            preflight_started = time.perf_counter()
             metadata_anchor_records = _metadata_anchor_db_fallback_records(
                 db=db,
                 tenant_id=actor.tenant_id,
-                dataset_ids=primary_dataset_ids,
+                dataset_ids=metadata_anchor_dataset_ids,
                 query=body.query,
                 top_k=top_k,
                 policy_plugin_refs=policy_plugin_refs,
                 existing_records=[],
                 metadata_filter=metadata_filter,
+                statement_timeout_ms_override=(
+                    int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_METADATA_PREFLIGHT_STATEMENT_TIMEOUT_MS", 600) or 0)
+                    if fast_latency_profile
+                    else None
+                ),
+                max_elapsed_ms=(
+                    int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_METADATA_PREFLIGHT_MAX_ELAPSED_MS", 900) or 0)
+                    if fast_latency_profile
+                    else None
+                ),
             )
             if query_prefers_service_anchor and _query_has_quoted_anchor_candidate(body.query):
                 metadata_anchor_records = [
@@ -5111,6 +7056,12 @@ async def retrieve_external_knowledge(
                     query=body.query,
                     policy_plugin_refs=policy_plugin_refs,
                 )
+            stage_timings_ms["metadata_preflight_ms"] = round(
+                (time.perf_counter() - preflight_started) * 1000,
+                2,
+            )
+            stage_timings_ms["metadata_preflight_records"] = len(metadata_anchor_records)
+            stage_timings_ms["metadata_preflight_accepted"] = bool(has_preflight_anchor)
             if has_preflight_anchor:
                 metadata_anchor_fallback_count = len(metadata_anchor_records)
                 records.extend(metadata_anchor_records)
@@ -5118,8 +7069,8 @@ async def retrieve_external_knowledge(
 
         if (
             not records
-            and bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUPPLEMENT_ENABLED", True))
-            and bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED", False))
+            and mixed_intent_supplement_enabled
+            and metadata_anchor_db_fallback_enabled
             and _query_has_mixed_intent_for_policy(body.query, policy_plugin_refs=policy_plugin_refs)
             and not _query_has_quoted_anchor_candidate(body.query)
         ):
@@ -5154,7 +7105,7 @@ async def retrieve_external_knowledge(
                 subquery_anchor_records = _metadata_anchor_db_fallback_records(
                     db=db,
                     tenant_id=actor.tenant_id,
-                    dataset_ids=primary_dataset_ids,
+                    dataset_ids=metadata_anchor_dataset_ids,
                     query=subquery,
                     top_k=mixed_intent_subquery_top_k,
                     policy_plugin_refs=policy_plugin_refs,
@@ -5179,6 +7130,7 @@ async def retrieve_external_knowledge(
                 retrieval_path = "metadata_anchor:mixed_preflight"
 
         if not records:
+            primary_retrieve_started = time.perf_counter()
             primary_citations = await _retrieve_dataset_citations(
                 db=db,
                 tenant_id=actor.tenant_id,
@@ -5196,8 +7148,14 @@ async def retrieve_external_knowledge(
                 kg_chunk_boost_weight=primary_kg_flags.chunk_boost_weight,
                 kg_chunk_boost_max_promoted=primary_kg_flags.chunk_boost_max_promoted,
                 enable_reranker=external_reranker_enabled,
+                retrieval_mode="vector" if fast_latency_profile else "hybrid",
+            )
+            stage_timings_ms["primary_retrieve_ms"] = round(
+                (time.perf_counter() - primary_retrieve_started) * 1000,
+                2,
             )
             primary_citation_count = len(primary_citations)
+            records_started = time.perf_counter()
             records.extend(
                 _records_from_citations(
                     db=db,
@@ -5208,9 +7166,11 @@ async def retrieve_external_knowledge(
                     policy_plugin_refs=policy_plugin_refs,
                 )
             )
-            mixed_intent_supplement_skipped = _query_has_quoted_anchor_candidate(
-                body.query
-            ) and _records_have_exact_anchor_full_answer(
+            stage_timings_ms["primary_records_from_citations_ms"] = round(
+                (time.perf_counter() - records_started) * 1000,
+                2,
+            )
+            mixed_intent_supplement_skipped = _records_have_exact_anchor_full_answer(
                 records,
                 query=body.query,
                 policy_plugin_refs=policy_plugin_refs,
@@ -5218,7 +7178,7 @@ async def retrieve_external_knowledge(
             if mixed_intent_supplement_skipped:
                 retrieval_path = f"{retrieval_path}:mixed_intent_skip_exact_anchor"
             if (
-                bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUPPLEMENT_ENABLED", True))
+                mixed_intent_supplement_enabled
                 and not mixed_intent_supplement_skipped
             ):
                 mixed_intent_queries = _mixed_intent_retrieval_queries(
@@ -5240,7 +7200,7 @@ async def retrieve_external_knowledge(
                     )
                     subquery_anchor_records: list[dict[str, Any]] = []
                     subquery_metadata_preflight_enabled = bool(
-                        bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED", False))
+                        metadata_anchor_db_fallback_enabled
                         and _query_allows_metadata_anchor_preflight(
                             subquery,
                             query_prefers_question_anchor=subquery_prefers_question_anchor,
@@ -5327,7 +7287,7 @@ async def retrieve_external_knowledge(
                         kg_on_demand_skipped = True
                         retrieval_path = f"{retrieval_path}:kg_on_demand_empty"
 
-            if expansion_dataset_ids and not _records_meet_primary_scope(
+            if (not fast_latency_profile) and expansion_dataset_ids and not _records_meet_primary_scope(
                 records,
                 query=body.query,
                 policy_plugin_refs=policy_plugin_refs,
@@ -5363,7 +7323,7 @@ async def retrieve_external_knowledge(
                     )
                 )
 
-            if not _records_can_skip_metadata_anchor_fallback(
+            if (not fast_latency_profile) and not _records_can_skip_metadata_anchor_fallback(
                 records,
                 query=body.query,
                 policy_plugin_refs=policy_plugin_refs,
@@ -5371,7 +7331,7 @@ async def retrieve_external_knowledge(
                 metadata_anchor_records = _metadata_anchor_db_fallback_records(
                     db=db,
                     tenant_id=actor.tenant_id,
-                    dataset_ids=primary_dataset_ids,
+                    dataset_ids=metadata_anchor_dataset_ids,
                     query=body.query,
                     top_k=top_k,
                     policy_plugin_refs=policy_plugin_refs,
@@ -5384,14 +7344,16 @@ async def retrieve_external_knowledge(
                     retrieval_path = f"{retrieval_path}+metadata_anchor"
 
         citation_count = primary_citation_count + expansion_citation_count + mixed_intent_citation_count
+        postprocess_started = time.perf_counter()
         records = _dedupe_records(records, query=body.query, policy_plugin_refs=policy_plugin_refs)
         _sort_records_for_query(records, query=body.query, policy_plugin_refs=policy_plugin_refs)
-        records = await _final_rerank_records_for_query(
-            records,
-            query=body.query,
-            top_k=top_k,
-            policy_plugin_refs=policy_plugin_refs,
-        )
+        if external_reranker_enabled:
+            records = await _final_rerank_records_for_query(
+                records,
+                query=body.query,
+                top_k=top_k,
+                policy_plugin_refs=policy_plugin_refs,
+            )
         policy_diagnostics = _records_retrieval_policy_diagnostics(
             records,
             query=body.query,
@@ -5400,10 +7362,18 @@ async def retrieve_external_knowledge(
         compacted_records = _compact_records_for_response(
             records,
             query=body.query,
-            top_k=top_k,
+            top_k=response_top_k,
             policy_plugin_refs=policy_plugin_refs,
         )
+        if fast_latency_profile:
+            compacted_records = _compact_fast_records_for_response(
+                compacted_records,
+                query=body.query,
+                top_k=response_top_k,
+                policy_plugin_refs=policy_plugin_refs,
+            )
         response_records = [DifyExternalKnowledgeRecord(**record) for record in compacted_records]
+        stage_timings_ms["postprocess_ms"] = round((time.perf_counter() - postprocess_started) * 1000, 2)
         if response_cache_key is not None:
             _dify_response_cache.set(
                 response_cache_key,
@@ -5421,7 +7391,7 @@ async def retrieve_external_knowledge(
             "retrieval_path=%s metadata_anchor_fallback_records=%s policy_records=%s "
             "policy_boosted_records=%s policy_boost_field_records=%s "
             "policy_query_expansion_records=%s policy_rerank_feature_records=%s "
-            "policy_anchor_mismatch_records=%s",
+            "policy_anchor_mismatch_records=%s stage_timings=%s",
             log_extra_base["client_ip_hash"],
             log_extra_base["knowledge_id_hash"],
             log_extra_base["query_hash"],
@@ -5446,6 +7416,7 @@ async def retrieve_external_knowledge(
             policy_diagnostics["retrieval_policy_query_expansion_record_count"],
             policy_diagnostics["retrieval_policy_rerank_feature_record_count"],
             policy_diagnostics["retrieval_policy_anchor_mismatch_record_count"],
+            stage_timings_ms,
             extra={
                 **log_extra_base,
                 "phase": "finished",
@@ -5463,6 +7434,21 @@ async def retrieve_external_knowledge(
                 "kg_on_demand_skipped": kg_on_demand_skipped,
                 **policy_diagnostics,
             },
+        )
+        _log_dify_external_rag_trace(
+            tenant_id=actor.tenant_id,
+            conversation_id=trace_conversation_id,
+            request_id=trace_request_id,
+            question=body.query,
+            response_records=response_records,
+            top_k=top_k,
+            candidate_top_k=candidate_top_k,
+            retrieval_path=retrieval_path,
+            elapsed_ms=elapsed_ms,
+            metadata_anchor_fallback_count=metadata_anchor_fallback_count,
+            mixed_intent_query_count=mixed_intent_query_count,
+            dify_message_id=body.dify_message_id,
+            dify_workflow_run_id=body.dify_workflow_run_id,
         )
         return DifyExternalKnowledgeResponse(records=response_records)
     except Exception:

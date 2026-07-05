@@ -95,3 +95,12 @@ class ExternalConversationIngestResponse(BaseModel):
     skipped_messages: int
     message_ids: list[UUID] = Field(default_factory=list)
     skipped_source_message_ids: list[str] = Field(default_factory=list)
+
+
+class ExternalConversationAsyncIngestResponse(BaseModel):
+    success: bool = True
+    accepted: bool = True
+    queued: bool = True
+    request_id: str
+    source: str
+    source_conversation_id: str

@@ -82,6 +82,54 @@ def test_external_conversation_ingest_is_source_generic(monkeypatch):
     assert captured["request"].source == "coze"
 
 
+def test_external_conversation_ingest_can_ack_async_for_dify(monkeypatch):
+    client, captured = _client(monkeypatch)
+    queued_calls = []
+
+    def fake_enqueue(**kwargs):  # noqa: ANN001
+        queued_calls.append(kwargs)
+
+    monkeypatch.setattr(
+        conversations_integration,
+        "_enqueue_external_conversation_ingest",
+        fake_enqueue,
+    )
+
+    response = client.post(
+        "/api/v1/integrations/conversations/ingest",
+        headers={"X-MimirQ-Async-Ingest": "true"},
+        json={
+            "source": "dify",
+            "source_conversation_id": "dify-conv-1",
+            "source_run_id": "run-1",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "普通话考试要带什么？",
+                    "source_message_id": "m-user-1",
+                },
+                {
+                    "role": "assistant",
+                    "content": "请携带身份证、准考证等材料。",
+                    "source_message_id": "m-assistant-1",
+                },
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["success"] is True
+    assert body["queued"] is True
+    assert body["source"] == "dify"
+    assert body["source_conversation_id"] == "dify-conv-1"
+    assert "request_id" in body
+    assert "conversation_id" not in body
+    assert captured == {}
+    assert len(queued_calls) == 1
+    assert queued_calls[0]["request_body"].source == "dify"
+
+
 def test_external_conversation_ingest_rejects_unsafe_source(monkeypatch):
     client, _ = _client(monkeypatch)
 

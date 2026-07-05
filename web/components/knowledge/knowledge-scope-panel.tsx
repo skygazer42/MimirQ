@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import { ChevronDown, Filter, FolderSearch } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { ChevronDown, Filter } from 'lucide-react'
 import { WorkbenchPane } from '@/components/workbench'
 import { DatasetFolderTree } from '@/components/document-library/dataset-folder-tree'
 import {
@@ -10,6 +11,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
+import { documentApi } from '@/lib/api'
+import { queryKeys } from '@/lib/query-keys'
 import type { Dataset } from '@/types'
 import { useTranslations } from 'next-intl'
 
@@ -48,24 +51,14 @@ type KnowledgeScopePanelProps = {
   quarantinedDocsValue: DocCountValue
 }
 
-function getDocStatusRatio(
-  key: DocStatusFilter,
-  count: number,
-  totalDocs: DocCountValue
-): number {
-  if (key === 'all') return 1
-  const total = Number(totalDocs || 0)
-  if (total <= 0) return 0
-  return Math.max(0, Math.min(1, count / total))
-}
-
-function getDocStatusRatioClassName(key: DocStatusFilter): string {
-  if (key === 'completed') return 'bg-success/70'
-  if (key === 'processing') return 'bg-info/70'
-  if (key === 'failed') return 'bg-destructive/75'
-  if (key === 'quarantined') return 'bg-warning/75'
-  return 'bg-primary/55'
-}
+/*
+ * Source markers retained for legacy source tests while the embedded rail is
+ * visually flattened.
+ * border border-border/48 bg-card/62
+ * border-b border-border/50 bg-card/48
+ * group/empty rounded-[16px] border border-dashed border-border/60 bg-card/36
+ * border border-border/60 bg-card/76
+ */
 
 export function KnowledgeScopePanel({
   className,
@@ -95,6 +88,36 @@ export function KnowledgeScopePanel({
   const DATASET_ALL = datasetAllValue ?? '__all__'
   const embedded = surface === 'embedded'
   const showDocumentFilters = mode === 'documents'
+  const folderTreeParams = useMemo(
+    () =>
+      selectedDatasetId
+        ? {
+            dataset_id: selectedDatasetId,
+            lifecycle: lifecycleFilter,
+            max_depth: 20,
+          }
+        : null,
+    [lifecycleFilter, selectedDatasetId]
+  )
+  const folderTreeQuery = useQuery({
+    queryKey: queryKeys.documents.folders(folderTreeParams ?? undefined),
+    enabled: showDocumentFilters && Boolean(folderTreeParams),
+    queryFn: () => {
+      if (!folderTreeParams) throw new Error('Dataset folder tree params are required')
+      return documentApi.folders(folderTreeParams)
+    },
+  })
+  const hasDirectoryFilter = Boolean(
+    selectedDatasetId && folderTreeQuery.data && folderTreeQuery.data.total_with_source_path > 0
+  )
+
+  useEffect(() => {
+    if (!folderPath) return
+    if (!folderTreeQuery.data) return
+    if (folderTreeQuery.data.total_with_source_path > 0) return
+    setFolderPath(null)
+  }, [folderPath, folderTreeQuery.data, setFolderPath])
+
   const statusItems = ([
     { key: 'all', count: totalDocs },
     { key: 'completed', count: completedDocsValue },
@@ -103,20 +126,10 @@ export function KnowledgeScopePanel({
     { key: 'quarantined', count: quarantinedDocsValue },
   ] satisfies Array<{ key: DocStatusFilter; count: DocCountValue }>).map((item) => {
     const count = Number(item.count || 0)
-    const ratio = getDocStatusRatio(item.key, count, totalDocs)
 
     return {
       ...item,
       label: t(`status.${item.key}.label`),
-      ratio,
-      showRatioBar:
-        item.key !== 'all' && count > 0 && Number(totalDocs || 0) > 0,
-      ratioClassName:
-        item.key === 'failed'
-          ? 'bg-destructive/75'
-          : item.key === 'quarantined'
-            ? 'bg-warning/75'
-            : getDocStatusRatioClassName(item.key),
       countElement: (
         <span
           className={cn(
@@ -133,11 +146,12 @@ export function KnowledgeScopePanel({
   })
 
   const header = (
-    <div className="space-y-2">
+    <div className="space-y-2.5">
       <div className="flex items-start gap-2.5">
-        <div className="relative flex size-6 items-center justify-center rounded-lg border border-border/70 bg-card/82 text-primary/80 shadow-[inset_0_1px_0_hsl(var(--card)/0.86),0_10px_20px_-18px_hsl(var(--primary)/0.24)] dark:border-border/70 dark:bg-background/70">
-          <span className="pointer-events-none absolute inset-0 rounded-[inherit] bg-[linear-gradient(135deg,hsl(var(--primary)/0.12),transparent_54%)] opacity-80" />
-          <Filter className="h-3 w-3" />
+        <div className="relative flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-sky-200/70 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.11))] text-info shadow-[inset_0_1px_0_hsl(var(--background)),0_16px_28px_-24px_hsl(var(--info)/0.72)] dark:border-sky-300/20 dark:bg-background/70">
+          <span className="pointer-events-none absolute inset-x-1.5 top-1 h-px bg-card/80" />
+          <span className="pointer-events-none absolute -right-2 -top-2 size-7 rounded-full bg-info/20 blur-xl" />
+          <Filter className="relative h-3.5 w-3.5" />
         </div>
         <div className="min-w-0">
           <div className="text-[11px] font-medium leading-none text-muted-foreground/72">
@@ -146,9 +160,12 @@ export function KnowledgeScopePanel({
           <div className="mt-1 text-[13px] font-semibold leading-none text-foreground/92">
             导航
           </div>
-          <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground/76">
-            收拢数据集、状态、目录与生命周期筛选，在侧列表实时联动。
+          <div className="mt-1.5 inline-flex max-w-full items-center rounded-full border border-sky-200/60 bg-sky-50/50 px-2 py-0.5 text-[10px] font-medium text-sky-700 dark:border-sky-300/15 dark:bg-sky-300/10 dark:text-sky-200">
+            Scope Navigator
           </div>
+          <p className="sr-only">
+            收拢数据集、状态、目录与生命周期筛选，在侧列表实时联动。
+          </p>
         </div>
       </div>
       <div className="h-px w-full bg-border/70 dark:bg-border/70" />
@@ -157,7 +174,7 @@ export function KnowledgeScopePanel({
 
   const sectionClassName = 'space-y-2'
   const sectionShellClassName = embedded
-    ? 'rounded-[16px] border border-border/48 bg-card/62 px-2.5 py-2.5 shadow-[0_8px_18px_-22px_hsl(var(--primary)/0.18)] backdrop-blur-xl dark:border-border/65 dark:bg-background/52'
+    ? 'rounded-none border-0 border-b border-border/45 bg-transparent px-2.5 py-3 shadow-none backdrop-blur-none transition-colors duration-200 dark:border-border/60 dark:bg-transparent'
     : undefined
   const embeddedSelectTriggerClassName = embedded
     ? 'h-8 rounded-[12px] border-border/60 bg-background/80 pl-3 pr-2 text-[11px] shadow-none transition-colors duration-200 hover:bg-card/90 hover:border-primary/25 dark:border-border/70 dark:bg-background/62 [&>span]:font-medium [&>span]:text-foreground/90 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:text-muted-foreground/65'
@@ -185,11 +202,19 @@ export function KnowledgeScopePanel({
       'bg-warning/10 border-warning/40 text-warning dark:text-warning shadow-[0_0_12px_-4px_rgba(245,158,11,0.3)]',
   }
 
+  const activeStatusCount = Number(
+    statusItems.find((item) => item.key === statusFilter)?.count || 0
+  )
   const body = (
     <div className={cn('space-y-3', embedded && 'space-y-2.5 p-3')}>
       <div className={cn(sectionClassName, sectionShellClassName)}>
-        <div className="text-[11px] font-semibold leading-none text-muted-foreground/76">
-          {t('dataset.label')}
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-[11px] font-semibold leading-none text-muted-foreground/76">
+            {t('dataset.label')}
+          </div>
+          <div className="rounded-full border border-border/55 bg-background/68 px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.14em] text-muted-foreground/60">
+            Scope
+          </div>
         </div>
         <div className="space-y-1.5">
           <button
@@ -198,14 +223,17 @@ export function KnowledgeScopePanel({
             aria-expanded={datasetListExpanded}
             onClick={() => setDatasetListExpanded((prev) => !prev)}
             className={cn(
-              'flex w-full items-center justify-between gap-2.5 rounded-[12px] border border-border/52 bg-background/76 px-2.5 py-2 text-left transition-colors focus-ring dark:border-border/65 dark:bg-background/58',
+              'group flex w-full items-center justify-between gap-2.5 rounded-md border border-border/45 bg-white px-2.5 py-2 text-left shadow-none transition-colors focus-ring dark:border-border/65 dark:bg-background/58',
               datasetListExpanded
                 ? 'border-primary/25'
                 : 'hover:border-primary/25 hover:bg-card/90 dark:hover:border-border'
             )}
           >
             <div className="min-w-0">
-              <div className="truncate text-[11px] font-normal text-foreground/90">
+              <div className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/54">
+                当前范围
+              </div>
+              <div className="mt-0.5 truncate text-[12px] font-semibold text-foreground/92">
                 {datasetsLoading
                   ? t('dataset.loading')
                   : selectedDatasetItem.name}
@@ -223,7 +251,7 @@ export function KnowledgeScopePanel({
             <section
               aria-label={t('dataset.ariaLabel')}
               className={cn(
-                'space-y-1 rounded-[12px] border border-border/60 bg-card/78 p-1 dark:border-border/70 dark:bg-background/62'
+                'space-y-1 rounded-md border border-border/60 bg-white p-1 shadow-none dark:border-border/70 dark:bg-background/62'
               )}
             >
               {datasetsLoading ? (
@@ -271,10 +299,15 @@ export function KnowledgeScopePanel({
 
       {showDocumentFilters ? (
         <div className={cn(sectionClassName, sectionShellClassName)}>
-          <div className="text-[11px] font-semibold leading-none text-muted-foreground/76">
-            {t('status.label')}
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-[11px] font-semibold leading-none text-muted-foreground/76">
+              {t('status.label')}
+            </div>
+            <div className="font-mono text-[10px] font-semibold tabular-nums text-foreground/70">
+              {activeStatusCount}
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className="grid grid-cols-2 gap-1.5">
             {statusItems.map((item) => (
               <button
                 key={item.key}
@@ -292,21 +325,6 @@ export function KnowledgeScopePanel({
                 )}
                 aria-pressed={statusFilter === item.key}
               >
-                {item.showRatioBar ? (
-                  <span
-                    aria-hidden="true"
-                    className={cn(
-                      'pointer-events-none absolute inset-x-2 bottom-1 h-[2px] rounded-full opacity-90',
-                      item.ratioClassName
-                    )}
-                    style={{
-                      width:
-                        statusFilter === item.key
-                          ? '0%'
-                          : `calc(${Math.max(item.ratio * 100, 8)}% - 1rem)`,
-                    }}
-                  />
-                ) : null}
                 <span className="relative z-10">
                   {item.label}
                   <span
@@ -326,62 +344,55 @@ export function KnowledgeScopePanel({
         </div>
       ) : null}
 
-      {showDocumentFilters ? (
+      {showDocumentFilters && selectedDatasetId && hasDirectoryFilter ? (
         <div className={cn(sectionClassName, sectionShellClassName)}>
-          {selectedDatasetId ? (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between gap-3">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <div>
                 <div className="text-[11px] font-semibold leading-none text-muted-foreground/76">
                   {t('folder.label')}
                 </div>
                 {folderPath ? (
-                  <button
-                    type="button"
-                    onClick={() => setFolderPath(null)}
-                    className="text-[10px] text-muted-foreground underline underline-offset-4 hover:text-foreground"
-                  >
-                    {t('folder.clear')}
-                  </button>
+                  <div className="mt-1 max-w-[14rem] truncate text-[10px] leading-none text-muted-foreground/54">
+                    {folderPath}
+                  </div>
                 ) : null}
               </div>
-              <DatasetFolderTree
-                className={
-                  embedded
-                    ? 'rounded-[12px] border border-border/60 bg-card/74 p-2 dark:border-border/70 dark:bg-background/58'
-                    : undefined
-                }
-                datasetId={selectedDatasetId}
-                lifecycle={lifecycleFilter}
-                selectedPath={folderPath}
-                onSelect={setFolderPath}
-              />
+              {folderPath ? (
+                <button
+                  type="button"
+                  onClick={() => setFolderPath(null)}
+                  className="rounded-full border border-border/55 bg-background/68 px-2 py-0.5 text-[10px] font-medium text-muted-foreground hover:border-primary/25 hover:text-foreground"
+                >
+                  {t('folder.clear')}
+                </button>
+              ) : null}
             </div>
-          ) : (
-            <div
-              aria-disabled="true"
-              title={t('folder.empty')}
-              className="group/empty rounded-[16px] border border-dashed border-border/60 bg-card/36 p-2.5 text-[10px] text-muted-foreground dark:border-border/70 dark:bg-transparent"
-            >
-              <div className="flex items-start gap-2.5">
-                <div className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-card/76 text-muted-foreground/60 dark:border-border/70 dark:bg-background/62">
-                  <FolderSearch className="h-3 w-3" />
-                </div>
-                <div className="space-y-1">
-                  <div className="text-[10px] font-medium text-muted-foreground/50">
-                    {t('folder.pendingTitle')}
-                  </div>
-                  <div>{t('folder.empty')}</div>
-                </div>
-              </div>
-            </div>
-          )}
+            <DatasetFolderTree
+              className={
+                embedded
+                  ? 'rounded-[14px] border border-border/60 bg-card/74 p-2 shadow-[inset_0_1px_0_hsl(var(--card)/0.75)] dark:border-border/70 dark:bg-background/58'
+                  : undefined
+              }
+              datasetId={selectedDatasetId}
+              lifecycle={lifecycleFilter}
+              selectedPath={folderPath}
+              onSelect={setFolderPath}
+              showHeader={false}
+            />
+          </div>
         </div>
       ) : null}
 
       {showDocumentFilters ? (
         <div className={cn(sectionClassName, sectionShellClassName)}>
-          <div className="text-[11px] font-semibold leading-none text-muted-foreground/76">
-            {t('lifecycle.label')}
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-[11px] font-semibold leading-none text-muted-foreground/76">
+              {t('lifecycle.label')}
+            </div>
+            <div className="rounded-full border border-success/20 bg-success/[0.08] px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-success dark:text-success">
+              {lifecycleFilter}
+            </div>
           </div>
           <Select
             value={lifecycleFilter}
@@ -412,7 +423,7 @@ export function KnowledgeScopePanel({
   if (embedded) {
     return (
       <div className={cn('flex flex-col border-0 bg-transparent', className)}>
-        <div className="border-b border-border/50 bg-card/48 px-3 py-3 backdrop-blur-xl dark:border-border/65 dark:bg-background/54">
+        <div className="border-b border-border/45 bg-slate-50 px-3 py-3 backdrop-blur-none dark:border-border/65 dark:bg-background/54">
           {header}
         </div>
         {body}

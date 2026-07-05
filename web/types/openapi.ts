@@ -12812,6 +12812,14 @@ export interface components {
             metadata_condition?: {
                 [key: string]: unknown;
             } | null;
+            /** Conversation Id */
+            conversation_id?: string | null;
+            /** Request Id */
+            request_id?: string | null;
+            /** Dify Message Id */
+            dify_message_id?: string | null;
+            /** Dify Workflow Run Id */
+            dify_workflow_run_id?: string | null;
         };
         /** DifyExternalKnowledgeResponse */
         DifyExternalKnowledgeResponse: {

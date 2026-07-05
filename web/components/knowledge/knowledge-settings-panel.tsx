@@ -472,13 +472,13 @@ export function KnowledgeSettingsPanel({
                       <Database className="size-3" />
                     </div>
                     <div className="min-w-0">
-                      <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-foreground/68">
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-foreground/78">
                         Navigation
                       </div>
                       <div className="mt-0.5 text-[13px] font-medium text-foreground/92">
                         配置作用域
                       </div>
-                      <div className="mt-0.5 text-[11px] leading-4 text-muted-foreground/76">
+                      <div className="mt-1 text-[11px] font-medium leading-4 text-muted-foreground/88">
                         选择数据集后，embedding 配置只保存到该数据集。
                       </div>
                     </div>
@@ -486,7 +486,7 @@ export function KnowledgeSettingsPanel({
                 </div>
                 <div className="space-y-2.5 p-3">
                   <div className="space-y-1.5">
-                    <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/72">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/84">
                       选择数据集
                     </div>
                     <Select
@@ -516,31 +516,43 @@ export function KnowledgeSettingsPanel({
                       </SelectContent>
                     </Select>
                     {datasets.length === 0 && !datasetsLoading ? (
-                      <div className="rounded-[11px] border border-dashed border-border/60 bg-background/52 px-2.5 py-2 text-[10px] leading-4 text-muted-foreground/70 dark:border-border/70 dark:bg-background/45">
+                      <div className="rounded-[11px] border border-dashed border-border/60 bg-background/52 px-2.5 py-2 text-[11px] font-medium leading-4 text-muted-foreground/84 dark:border-border/70 dark:bg-background/45">
                         暂无可选数据集，可先使用系统默认配置。
                       </div>
                     ) : null}
                   </div>
 
-                  <div className={cn('rounded-[14px] p-2.5', SETTINGS_INSET_CLASS)}>
-                    <div className="text-[10px] text-muted-foreground/72">
-                      作用范围
+                  <div
+                    className={cn(
+                      'rounded-[14px] p-2.5',
+                      SETTINGS_INSET_CLASS
+                    )}
+                    title={`${scopeLabel} · ${scopeDatasetId}`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-[10px] font-semibold text-muted-foreground/84">
+                        作用范围
+                      </div>
+                      <span className="rounded-full border border-info/15 bg-info/[0.04] px-1.5 py-0.5 text-[9px] font-semibold text-info">
+                        {isDatasetScoped ? 'DATASET' : 'DEFAULT'}
+                      </span>
                     </div>
-                    <div className="mt-1 truncate text-[11px] font-medium text-foreground">
+                    <div className="mt-1 truncate text-[11px] font-semibold text-foreground">
                       {scopeLabel}
                     </div>
-                    <div className="mt-1 flex min-w-0 items-center gap-1.5 text-[9px] text-muted-foreground/64">
+                    <div className="mt-1 flex min-w-0 items-center gap-1.5 text-[9px] font-medium text-muted-foreground/72">
                       <span className="shrink-0 uppercase tracking-[0.14em]">
                         ID
                       </span>
-                      <span className="truncate font-mono">{scopeDatasetId}</span>
+                      <span className="truncate font-mono">
+                        {scopeDatasetId === 'global-default'
+                          ? scopeDatasetId
+                          : scopeDatasetId.slice(0, 8)}
+                      </span>
                     </div>
-                  </div>
-
-                  <div className="rounded-[13px] border border-info/15 bg-info/[0.04] px-2.5 py-2 text-[10px] leading-4 text-muted-foreground/76 dark:border-info/20 dark:bg-info/[0.06]">
-                    {isDatasetScoped
-                      ? '保存后只影响这个数据集的后续入库和显式重建。'
-                      : '保存后作为新数据集或未设置独立配置的数据集默认值。'}
+                    <div className="mt-1.5 truncate text-[10px] font-medium text-muted-foreground/80">
+                      {isDatasetScoped ? '仅影响后续入库' : '新数据集默认值'}
+                    </div>
                   </div>
                 </div>
               </Panel>
@@ -554,7 +566,7 @@ export function KnowledgeSettingsPanel({
                   <Info className="size-3 text-primary" />
                   配置指引
                 </div>
-                <p className="mt-1.5 text-[10px] leading-4.5 text-muted-foreground/74">
+                <p className="mt-1.5 text-[11px] font-medium leading-4.5 text-muted-foreground/86">
                   选择合适的模型与参数，可显著提升检索效果与召回准确率。
                 </p>
                 <button
@@ -575,7 +587,7 @@ export function KnowledgeSettingsPanel({
                 {guideExpanded ? (
                   <div
                     id={SETTINGS_GUIDE_PANEL_ID}
-                    className="mt-2.5 space-y-2 rounded-[13px] border border-border/60 bg-background/74 p-2.5 text-[9px] leading-4 text-muted-foreground/76 shadow-[inset_0_1px_0_hsl(var(--card)/0.65)] dark:border-border/70 dark:bg-background/55"
+                    className="mt-2.5 space-y-2 rounded-[13px] border border-border/60 bg-background/74 p-2.5 text-[10px] font-medium leading-4 text-muted-foreground/86 shadow-[inset_0_1px_0_hsl(var(--card)/0.65)] dark:border-border/70 dark:bg-background/55"
                   >
                     <div>
                       <span className="font-medium text-foreground/82">
@@ -705,13 +717,13 @@ export function KnowledgeSettingsPanel({
                       <h3 className="text-[14px] font-semibold text-foreground">
                         嵌入模型配置 / Embedding
                       </h3>
-                      <p className="mt-1 text-[9px] leading-4 text-muted-foreground/70">
+                      <p className="mt-1 text-[11px] font-medium leading-4 text-muted-foreground/84">
                         配置作用域：{scopeDetail}
                         。选择合适的向量模型，将文本转换为向量表示。
                       </p>
                     </div>
                   </div>
-                  <span className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-[9px] font-medium text-primary dark:border-border/70 dark:bg-background/62">
+                  <span className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-[10px] font-semibold text-primary dark:border-border/70 dark:bg-background/62">
                     {isDatasetScoped
                       ? hasDatasetEmbeddingOverride
                         ? '数据集独立配置'
@@ -775,14 +787,14 @@ export function KnowledgeSettingsPanel({
                             </span>
                             <div
                               className={cn(
-                                'text-[11px] font-medium',
+                                'text-[12px] font-semibold',
                                 selected ? 'text-primary' : 'text-foreground'
                               )}
                             >
                               {model}
                             </div>
                             {model === 'text-embedding-v4' ? (
-                              <span className="rounded-full bg-success/10 px-1.5 py-0.5 text-[9px] font-medium text-success">
+                              <span className="rounded-full bg-success/10 px-1.5 py-0.5 text-[10px] font-semibold text-success">
                                 推荐
                               </span>
                             ) : null}
@@ -792,15 +804,15 @@ export function KnowledgeSettingsPanel({
                           ) : null}
                         </div>
 
-                        <p className="mt-2 text-[10px] leading-4.5 text-muted-foreground/74">
+                        <p className="mt-2 text-[11px] font-medium leading-4.5 text-muted-foreground/86">
                           {EMBEDDING_MODEL_META[model].description}
                         </p>
 
-                        <div className="mt-2 flex items-center justify-between gap-3 text-[9px]">
-                          <span className="rounded-full border border-border/60 bg-background/74 px-2 py-0.5 font-medium text-foreground/75 dark:border-border/70 dark:bg-background/62">
+                        <div className="mt-2 flex items-center justify-between gap-3 text-[10px]">
+                          <span className="rounded-full border border-border/60 bg-background/74 px-2 py-0.5 font-semibold text-foreground/84 dark:border-border/70 dark:bg-background/62">
                             {preset.brand}
                           </span>
-                          <span className="font-mono text-muted-foreground/62">
+                          <span className="font-mono font-medium text-muted-foreground/78">
                             {preset.provider}
                           </span>
                         </div>
@@ -808,10 +820,10 @@ export function KnowledgeSettingsPanel({
                         <div className="mt-3 grid grid-cols-4 gap-1.5">
                           {metrics.map((metric) => (
                             <div key={metric.label} className="space-y-1">
-                              <div className="text-[9px] text-muted-foreground/62">
+                              <div className="text-[10px] font-medium text-muted-foreground/78">
                                 {metric.label}
                               </div>
-                              <div className="text-[9px] font-medium text-foreground">
+                              <div className="text-[10px] font-semibold text-foreground">
                                 {metric.value}
                               </div>
                               <div className="flex items-center gap-1">
@@ -851,7 +863,7 @@ export function KnowledgeSettingsPanel({
                     <div className="flex size-5 items-center justify-center rounded-full bg-info/10 text-info">
                       <Info className="size-2.5" />
                     </div>
-                    <div className="text-[10px] text-foreground/82">
+                    <div className="text-[11px] font-medium text-foreground/90">
                       当前数据建议：您的数据集中中文占比较高，建议优先使用{' '}
                       <span className="font-medium text-foreground">
                         text-embedding-v4
@@ -877,7 +889,7 @@ export function KnowledgeSettingsPanel({
                       <h3 className="text-[14px] font-semibold text-foreground">
                         检索策略 / Retrieval Strategy
                       </h3>
-                      <p className="mt-1 text-[9px] leading-4 text-muted-foreground/70">
+                      <p className="mt-1 text-[11px] font-medium leading-4 text-muted-foreground/84">
                         控制召回的数量与相似度阈值，影响检索结果的质量与范围。
                       </p>
                     </div>
@@ -901,7 +913,7 @@ export function KnowledgeSettingsPanel({
                       <div className="text-[11px] font-medium text-foreground">
                         TOP K（结果数量）
                       </div>
-                      <div className="mt-1 text-[9px] text-muted-foreground/72">
+                      <div className="mt-1 text-[10px] font-medium text-muted-foreground/84">
                         返回最相关的 Top K 个结果
                       </div>
                     </div>
@@ -937,14 +949,14 @@ export function KnowledgeSettingsPanel({
                         className="relative z-10 h-5 w-full cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-5 [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:mt-0 [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-primary/45 [&::-webkit-slider-thumb]:bg-card [&::-webkit-slider-thumb]:shadow-[0_6px_14px_-8px_hsl(var(--primary)/0.45)] dark:[&::-webkit-slider-thumb]:border-border dark:[&::-webkit-slider-thumb]:bg-card [&::-moz-range-track]:h-5 [&::-moz-range-track]:bg-transparent [&::-moz-range-progress]:h-5 [&::-moz-range-progress]:bg-transparent [&::-moz-range-thumb]:size-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-primary/45 [&::-moz-range-thumb]:bg-card"
                       />
                     </div>
-                    <div className="mt-2 flex items-center justify-between text-[9px] text-muted-foreground/62">
+                    <div className="mt-2 flex items-center justify-between text-[10px] font-medium text-muted-foreground/78">
                       <span>1</span>
                       <span>5</span>
                       <span>10</span>
                       <span>20</span>
                       <span>50</span>
                     </div>
-                    <div className="mt-2 rounded-[12px] border border-border/60 bg-background/74 px-2.5 py-1.5 text-[9px] text-muted-foreground/72 dark:border-border/70 dark:bg-background/55">
+                    <div className="mt-2 rounded-[12px] border border-border/60 bg-background/74 px-2.5 py-1.5 text-[10px] font-medium text-muted-foreground/84 dark:border-border/70 dark:bg-background/55">
                       建议范围：8 ～ 20
                     </div>
                   </div>
@@ -956,7 +968,7 @@ export function KnowledgeSettingsPanel({
                       <div className="text-[11px] font-medium text-foreground">
                         相似度阈值（Similarity Threshold）
                       </div>
-                      <div className="mt-1 text-[9px] text-muted-foreground/72">
+                      <div className="mt-1 text-[10px] font-medium text-muted-foreground/84">
                         过滤相似度低于阈值的结果
                       </div>
                     </div>
@@ -995,14 +1007,14 @@ export function KnowledgeSettingsPanel({
                         className="relative z-10 h-5 w-full cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-5 [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:mt-0 [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-primary/45 [&::-webkit-slider-thumb]:bg-card [&::-webkit-slider-thumb]:shadow-[0_6px_14px_-8px_hsl(var(--primary)/0.45)] dark:[&::-webkit-slider-thumb]:border-border dark:[&::-webkit-slider-thumb]:bg-card [&::-moz-range-track]:h-5 [&::-moz-range-track]:bg-transparent [&::-moz-range-progress]:h-5 [&::-moz-range-progress]:bg-transparent [&::-moz-range-thumb]:size-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-primary/45 [&::-moz-range-thumb]:bg-card"
                       />
                     </div>
-                    <div className="mt-2 flex items-center justify-between text-[9px] text-muted-foreground/62">
+                    <div className="mt-2 flex items-center justify-between text-[10px] font-medium text-muted-foreground/78">
                       <span>0</span>
                       <span>0.25</span>
                       <span>0.50</span>
                       <span>0.75</span>
                       <span>1</span>
                     </div>
-                    <div className="mt-2 rounded-[12px] border border-border/60 bg-background/74 px-2.5 py-1.5 text-[9px] text-muted-foreground/72 dark:border-border/70 dark:bg-background/55">
+                    <div className="mt-2 rounded-[12px] border border-border/60 bg-background/74 px-2.5 py-1.5 text-[10px] font-medium text-muted-foreground/84 dark:border-border/70 dark:bg-background/55">
                       建议范围：0.50 ～ 0.80
                     </div>
                   </div>
@@ -1012,7 +1024,7 @@ export function KnowledgeSettingsPanel({
                   <div className="text-[11px] font-medium text-foreground">
                     召回策略（Retrieval Mode）
                   </div>
-                  <div className="mt-1 text-[9px] text-muted-foreground/72">
+                  <div className="mt-1 text-[10px] font-medium text-muted-foreground/84">
                     平衡召回率与结果多样性
                   </div>
                   <div className="mt-3">
@@ -1030,7 +1042,7 @@ export function KnowledgeSettingsPanel({
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="mt-2 rounded-[12px] border border-border/60 bg-background/74 px-2.5 py-1.5 text-[9px] text-muted-foreground/72 dark:border-border/70 dark:bg-muted/30">
+                  <div className="mt-2 rounded-[12px] border border-border/60 bg-background/74 px-2.5 py-1.5 text-[10px] font-medium text-muted-foreground/84 dark:border-border/70 dark:bg-muted/30">
                     默认策略，适合大多数场景
                   </div>
                 </div>

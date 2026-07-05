@@ -816,6 +816,11 @@ class Settings(BaseSettings):
     DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TOP_K: int = 1
     DIFY_EXTERNAL_KNOWLEDGE_WARMUP_MAX_KNOWLEDGE_IDS: int = 8
     DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TIMEOUT_SEC: float = 60.0
+    DIFY_EXTERNAL_KNOWLEDGE_WARMUP_START_DELAY_SEC: float = 1.0
+    # When true, /health/ready returns 503 until the Dify external knowledge
+    # warmup has completed. This prevents Dify/LB traffic from hitting a cold
+    # process and paying BM25 lazy-build latency in the first user request.
+    DIFY_EXTERNAL_KNOWLEDGE_WARMUP_REQUIRED_FOR_READY: bool = False
     DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX: int = 5
     DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MIN: int = 20
     DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MULTIPLIER: int = 4
@@ -841,6 +846,14 @@ class Settings(BaseSettings):
     DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_TOP_SCORE: float = 0.7
     DIFY_EXTERNAL_KNOWLEDGE_COMPACT_RELATIVE_SCORE_FLOOR: float = 0.65
     DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_RECORDS: int = 1
+    DIFY_EXTERNAL_KNOWLEDGE_FAST_CANDIDATE_TOP_K_MAX: int = 3
+    DIFY_EXTERNAL_KNOWLEDGE_FAST_RESPONSE_TOP_K_MAX: int = 2
+    DIFY_EXTERNAL_KNOWLEDGE_FAST_CONTENT_MAX_CHARS: int = 1400
+    DIFY_EXTERNAL_KNOWLEDGE_FAST_TOTAL_CONTENT_MAX_CHARS: int = 2200
+    # Fast preflight is only a latency shortcut. It must never dominate the
+    # request; if it cannot prove an exact anchor quickly, normal RAG should run.
+    DIFY_EXTERNAL_KNOWLEDGE_FAST_METADATA_PREFLIGHT_STATEMENT_TIMEOUT_MS: int = 600
+    DIFY_EXTERNAL_KNOWLEDGE_FAST_METADATA_PREFLIGHT_MAX_ELAPSED_MS: int = 900
     # Dify external retrieval is latency-sensitive and query strings are often
     # short entity/fact questions, so keep lexical DB as a parallel sparse
     # candidate channel instead of only a late fallback.
@@ -2411,6 +2424,11 @@ class Settings(BaseSettings):
             warmup_timeout_sec = float(getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TIMEOUT_SEC", 60.0) or 0.0)
             if warmup_timeout_sec < 1.0 or warmup_timeout_sec > 600.0:
                 raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TIMEOUT_SEC must be between 1 and 600")
+            warmup_start_delay_sec = float(
+                getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_START_DELAY_SEC", 1.0) or 0.0
+            )
+            if warmup_start_delay_sec < 0.0 or warmup_start_delay_sec > 60.0:
+                raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_WARMUP_START_DELAY_SEC must be between 0 and 60")
             dify_overfetch_multiplier = int(
                 getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_RETRIEVAL_OVERFETCH_MULTIPLIER", 1) or 0
             )
@@ -2452,6 +2470,42 @@ class Settings(BaseSettings):
             compact_min_records = int(getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_RECORDS", 1) or 0)
             if compact_min_records < 1 or compact_min_records > top_k_max:
                 raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_RECORDS must be between 1 and TOP_K_MAX")
+            fast_candidate_top_k_max = int(
+                getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_FAST_CANDIDATE_TOP_K_MAX", 3) or 0
+            )
+            if fast_candidate_top_k_max < 1 or fast_candidate_top_k_max > top_k_max:
+                raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_FAST_CANDIDATE_TOP_K_MAX must be between 1 and TOP_K_MAX")
+            fast_response_top_k_max = int(
+                getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_FAST_RESPONSE_TOP_K_MAX", 2) or 0
+            )
+            if fast_response_top_k_max < 1 or fast_response_top_k_max > top_k_max:
+                raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_FAST_RESPONSE_TOP_K_MAX must be between 1 and TOP_K_MAX")
+            fast_content_max_chars = int(
+                getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_FAST_CONTENT_MAX_CHARS", 1400) or 0
+            )
+            if fast_content_max_chars < 200 or fast_content_max_chars > 10000:
+                raise ValueError("DIFY_EXTERNAL_KNOWLEDGE_FAST_CONTENT_MAX_CHARS must be between 200 and 10000")
+            fast_total_content_max_chars = int(
+                getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_FAST_TOTAL_CONTENT_MAX_CHARS", 2200) or 0
+            )
+            if fast_total_content_max_chars < 200 or fast_total_content_max_chars > 50000:
+                raise ValueError(
+                    "DIFY_EXTERNAL_KNOWLEDGE_FAST_TOTAL_CONTENT_MAX_CHARS must be between 200 and 50000"
+                )
+            fast_metadata_preflight_statement_timeout_ms = int(
+                getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_FAST_METADATA_PREFLIGHT_STATEMENT_TIMEOUT_MS", 600) or 0
+            )
+            if fast_metadata_preflight_statement_timeout_ms < 0 or fast_metadata_preflight_statement_timeout_ms > 30000:
+                raise ValueError(
+                    "DIFY_EXTERNAL_KNOWLEDGE_FAST_METADATA_PREFLIGHT_STATEMENT_TIMEOUT_MS must be between 0 and 30000"
+                )
+            fast_metadata_preflight_max_elapsed_ms = int(
+                getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_FAST_METADATA_PREFLIGHT_MAX_ELAPSED_MS", 900) or 0
+            )
+            if fast_metadata_preflight_max_elapsed_ms < 0 or fast_metadata_preflight_max_elapsed_ms > 30000:
+                raise ValueError(
+                    "DIFY_EXTERNAL_KNOWLEDGE_FAST_METADATA_PREFLIGHT_MAX_ELAPSED_MS must be between 0 and 30000"
+                )
             kg_injection_max_chunks = int(
                 getattr(self, "DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_INJECTION_MAX_CHUNKS", 3) or 0
             )
