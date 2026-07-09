@@ -15,7 +15,7 @@ import {
   sanitizeDocumentPreviewAnchor,
 } from "@/lib/document-preview-anchor"
 import { getPrefetchedChunk, getPrefetchedDocument } from "@/lib/document-view-prefetch"
-import { API_V1_BASE_URL } from "@/lib/env"
+import { API_V1_BASE_URL, toAbsoluteBackendUrl } from "@/lib/env"
 import { globalEventBus } from "@/lib/event-bus"
 import { detachPromise } from "@/lib/utils"
 import { useDocumentView, type DocumentViewSourceContext, type DocumentViewTab } from "@/store/document-view"
@@ -619,7 +619,10 @@ export function useDocumentViewerPanelState() {
 
   const rawDownloadUrl = React.useMemo(() => {
     if (!documentId) return null
-    const url = new URL(`${API_V1_BASE_URL}/documents/${documentId}/download`)
+    const url = new URL(
+      toAbsoluteBackendUrl(`/api/v1/documents/${documentId}/download`),
+      globalThis.window?.location.origin || "http://localhost"
+    )
     url.searchParams.set("inline", "0")
     return url.toString()
   }, [documentId])

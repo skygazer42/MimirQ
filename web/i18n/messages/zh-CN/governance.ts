@@ -13,7 +13,7 @@ GovernanceProfilesRoutePage: {
   },
 GovernanceCommonLinesRoutePage: {
     loading: {
-      message: '正在加载重复行学习...',
+      message: '正在加载重复内容治理...',
       srMessage: 'Loading common lines learning page',
     },
   },

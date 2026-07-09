@@ -14,7 +14,6 @@ describe('navigation page title coverage', () => {
     ['app/diagnostics/page-client.tsx'],
     ['app/evaluations/page.tsx'],
     ['app/prompts/page.tsx'],
-    ['components/chunk-preview/components/workbench/index.tsx'],
     ['components/evaluation/retrieval-ablations-page.tsx'],
     ['components/graph/kg-diagnostics-page.tsx'],
     ['components/graph/kg-snapshots-page.tsx'],
@@ -44,11 +43,20 @@ describe('navigation page title coverage', () => {
   it('styles custom dense workbench titles that cannot use the full shared header', () => {
     const knowledgeSrc = read('components/knowledge/knowledge-page.tsx')
     const ingestionSrc = read('app/knowledge/ingestion/operation-page-client.tsx')
+    const chunkPreviewSrc = read('components/chunk-preview/components/workbench/index.tsx')
+    const parsingSrc = read('components/parsing/parsing-workbench-shell.tsx')
 
     expect(knowledgeSrc).toContain('bg-[linear-gradient(90deg,hsl(var(--foreground)),hsl(var(--info))_92%)] bg-clip-text text-transparent')
-    expect(ingestionSrc).toContain('入库中心')
-    expect(ingestionSrc).toContain('<PageHeader')
-    expect(ingestionSrc).toContain('iconImage="ingestion-operation"')
+    expect(ingestionSrc).toContain('Knowledge Ops')
+    expect(ingestionSrc).toContain('文档资产治理中枢')
+    expect(ingestionSrc).toContain('入库管理')
+    expect(ingestionSrc).toContain('<PageTitleIcon name="ingestion-operation" className="size-9" />')
     expect(ingestionSrc).toContain('选择数据集与来源，先登记原始文件；解析、切块、建索引在后续流程手动控制。')
+    expect(chunkPreviewSrc).toContain('KnowledgeOpsHero')
+    expect(chunkPreviewSrc).toContain('文档资产治理中枢')
+    expect(chunkPreviewSrc).toContain("title={t('workbench.title')}")
+    expect(parsingSrc).toContain('KnowledgeOpsHero')
+    expect(parsingSrc).toContain('文档资产治理中枢')
+    expect(parsingSrc).toContain("title={t('title')}")
   })
 })

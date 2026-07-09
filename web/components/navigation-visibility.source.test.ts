@@ -16,14 +16,14 @@ describe('admin controlled navigation visibility wiring', () => {
 
     expect(navbar).toContain("import { canShowAdminControlledNavigationModule")
     expect(navbar).toContain("visibilityKey: 'knowledgeGraph'")
-    expect(navbar).toContain("visibilityKey: 'graphSnapshots'")
-    expect(navbar).toContain("visibilityKey: 'graphDiagnostics'")
+    expect(navbar).not.toContain("visibilityKey: 'graphSnapshots'")
+    expect(navbar).not.toContain("visibilityKey: 'graphDiagnostics'")
     expect(navbar).toContain("visibilityKey: 'ragas'")
     expect(navbar).toContain("visibilityKey: 'ablations'")
     expect(navbar).toContain("visibilityKey: 'reports'")
     expect(navbar).toContain("visibilityKey: 'prompts'")
     expect(navbar).toContain("visibilityKey: 'governanceProfiles'")
-    expect(navbar).toContain("visibilityKey: 'commonLines'")
+    expect(navbar).not.toContain("visibilityKey: 'commonLines'")
     expect(navbar).toContain('canShowNavigationModule(item.visibilityKey)')
 
     expect(commandMenu).toContain("import { canShowAdminControlledNavigationModule")

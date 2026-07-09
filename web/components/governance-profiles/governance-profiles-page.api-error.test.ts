@@ -24,4 +24,11 @@ describe('governance profiles page api error formatting', () => {
     expect(src).not.toContain('detachPromise(load())')
     expect(src).not.toContain('await pipelineApi.listGovernanceProfiles(params)')
   })
+
+  it('surfaces the repeated-content governance wizard as a secondary shortcut inside governance profiles', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'governance-profiles-page.tsx'), 'utf8')
+
+    expect(src).toContain("href=\"/data-governance/common-lines\"")
+    expect(src).toContain('重复内容治理')
+  })
 })

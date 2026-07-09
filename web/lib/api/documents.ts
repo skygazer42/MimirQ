@@ -193,12 +193,11 @@ export const documentApi = {
     },
     options?: ApiRequestOptions
   ): Promise<DocumentList> {
-    return openapiRequest({
-      path: '/api/v1/documents/',
-      method: 'get',
-      query: params,
+    const { data } = await apiClient.get('/documents', {
+      params,
       signal: options?.signal,
     })
+    return data
   },
 
   async listDeadLetters(

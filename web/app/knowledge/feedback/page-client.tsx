@@ -68,6 +68,7 @@ type FeedbackSourceFilter =
   | 'mobile'
   | 'enterprise'
   | 'api'
+  | 'benchmark'
   | 'other'
 type FeedbackTimeRange = '7d' | '30d' | '90d' | 'all'
 type FeedbackMetricKey = 'all' | FeedbackType | 'neutral'
@@ -143,6 +144,7 @@ const FEEDBACK_KIND_BADGE_CLASSES: Record<FeedbackKind, string> = {
 
 const SOURCE_BADGE_LABELS: Record<Exclude<FeedbackSourceFilter, 'all'>, string> = {
   api: '引用不足',
+  benchmark: '评测样本',
   enterprise: '引用不足',
   mobile: '解析问题',
   other: '引用不足',
@@ -274,7 +276,8 @@ function getFeedbackSource(
   item: MessageFeedbackEnriched
 ): FeedbackSourceFilter {
   const raw =
-    `${feedbackDisplayString(item.account_id)} ${firstFeedbackDisplayString(item.extra?.source)}`.toLowerCase()
+    `${feedbackDisplayString(item.account_id)} ${firstFeedbackDisplayString(item.extra?.source, item.extra?.benchmark_source)} ${(item.tags || []).join(' ')}`.toLowerCase()
+  if (raw.includes('benchmark') || raw.includes('评测')) return 'benchmark'
   if (
     raw.includes('mobile') ||
     raw.includes('ios') ||
@@ -300,6 +303,8 @@ function getFeedbackSourceLabel(source: FeedbackSourceFilter): string {
       return '企业微信'
     case 'api':
       return 'API 接口'
+    case 'benchmark':
+      return '评测样本'
     case 'other':
       return '其他'
     case 'all':
@@ -309,6 +314,11 @@ function getFeedbackSourceLabel(source: FeedbackSourceFilter): string {
 }
 
 function getFeedbackIssueLabel(item: MessageFeedbackEnriched): string {
+  const explicitIssue = firstFeedbackDisplayString(
+    item.extra?.feedback_issue,
+    item.extra?.quality_label
+  )
+  if (explicitIssue) return explicitIssue
   const text =
     `${item.reason || ''} ${(item.tags || []).join(' ')} ${item.message_content || ''}`.toLowerCase()
   if (
@@ -997,7 +1007,7 @@ export default function FeedbackTriagePage() {
       const key = getFeedbackSource(item)
       counts.set(key, (counts.get(key) ?? 0) + 1)
     })
-    return (['web', 'mobile', 'enterprise', 'api', 'other'] as const)
+    return (['web', 'mobile', 'enterprise', 'api', 'benchmark', 'other'] as const)
       .map((key) => ({
         label: getFeedbackSourceLabel(key),
         value: counts.get(key) ?? 0,
@@ -1011,6 +1021,7 @@ export default function FeedbackTriagePage() {
       'mobile',
       'enterprise',
       'api',
+      'benchmark',
       'other',
     ]
     return (
@@ -1518,6 +1529,7 @@ export default function FeedbackTriagePage() {
                         <SelectItem value="mobile">移动端 APP</SelectItem>
                         <SelectItem value="enterprise">企业微信</SelectItem>
                         <SelectItem value="api">API 接口</SelectItem>
+                        <SelectItem value="benchmark">评测样本</SelectItem>
                         <SelectItem value="other">其他</SelectItem>
                       </SelectContent>
                     </Select>
@@ -2037,6 +2049,7 @@ export default function FeedbackTriagePage() {
                 'hsl(var(--success))',
                 'hsl(var(--warning))',
                 'hsl(var(--accent))',
+                'hsl(var(--indigo))',
                 'hsl(var(--muted-foreground) / 0.5)',
               ]}
               actionLabel={primarySourceFilter === 'all' ? undefined : '更多'}

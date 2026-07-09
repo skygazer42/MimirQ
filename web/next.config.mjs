@@ -1,4 +1,5 @@
 import { withSentryConfig } from '@sentry/nextjs'
+import { networkInterfaces } from 'node:os'
 import createNextIntlPlugin from 'next-intl/plugin'
 
 const sentryEnabled = Boolean(
@@ -37,11 +38,80 @@ if (shouldSendHsts) {
   })
 }
 
+function isPrivateLanAddress(value) {
+  const text = String(value || '').trim()
+  if (!text) return false
+  if (text === '127.0.0.1' || text === '0.0.0.0') return true
+  if (text.startsWith('10.')) return true
+  if (text.startsWith('192.168.')) return true
+
+  const match = /^172\.(\d{1,3})\./.exec(text)
+  if (!match) return false
+
+  const secondOctet = Number(match[1])
+  return Number.isFinite(secondOctet) && secondOctet >= 16 && secondOctet <= 31
+}
+
+function collectLanInterfaceOrigins(interfaces) {
+  const out = []
+
+  for (const items of Object.values(interfaces || {})) {
+    for (const item of items || []) {
+      if (!item || item.family !== 'IPv4') continue
+      if (item.internal) continue
+      if (!isPrivateLanAddress(item.address)) continue
+      out.push(String(item.address))
+    }
+  }
+
+  return out
+}
+
+function trimConfigUrl(value) {
+  return String(value || '').trim().replace(/\/+$/, '')
+}
+
+export function resolveAllowedDevOrigins(
+  env = process.env,
+  interfaces = networkInterfaces()
+) {
+  const extra = String(env.NEXT_ALLOWED_DEV_ORIGINS || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+
+  return Array.from(
+    new Set([
+      '127.0.0.1',
+      'localhost',
+      '0.0.0.0',
+      ...collectLanInterfaceOrigins(interfaces),
+      ...extra,
+    ])
+  )
+}
+
+export function resolveBackendProxyBase(env = process.env) {
+  const candidates = [
+    trimConfigUrl(env.API_INTERNAL_URL),
+    trimConfigUrl(env.NEXT_PUBLIC_API_URL),
+    'http://127.0.0.1:8000',
+  ]
+
+  for (const candidate of candidates) {
+    if (candidate.startsWith('http://') || candidate.startsWith('https://')) {
+      return candidate
+    }
+  }
+
+  return 'http://127.0.0.1:8000'
+}
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
-  allowedDevOrigins: ['127.0.0.1', 'localhost'],
+  allowedDevOrigins: resolveAllowedDevOrigins(),
   distDir:
     process.env.NEXT_DIST_DIR ||
     (process.env.NODE_ENV === 'production' ? '.next_build' : '.next'),
@@ -83,6 +153,19 @@ const nextConfig = {
       {
         source: '/:path*',
         headers: sharedSecurityHeaders,
+      },
+    ]
+  },
+  async rewrites() {
+    const backendBase = resolveBackendProxyBase()
+    return [
+      {
+        source: '/api/v1/documents',
+        destination: `${backendBase}/api/v1/documents/`,
+      },
+      {
+        source: '/api/v1/:path*',
+        destination: `${backendBase}/api/v1/:path*`,
       },
     ]
   },

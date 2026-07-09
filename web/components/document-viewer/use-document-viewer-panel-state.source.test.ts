@@ -22,6 +22,9 @@ describe('useDocumentViewerPanelState source', () => {
     expect(src).toContain('const shouldResolveDownloadUrl = isOpen && activeTab === "preview"')
     expect(src).toContain('const downloadUrl = useResolvedAuthAssetUrl(rawDownloadUrl, {')
     expect(src).toContain('enabled: shouldResolveDownloadUrl')
+    expect(src).toContain('toAbsoluteBackendUrl(')
+    expect(src).toContain('globalThis.window?.location.origin || "http://localhost"')
+    expect(src).not.toContain('new URL(`${API_V1_BASE_URL}/documents/${documentId}/download`)')
   })
 
   it('does not cancel chunk loading when the loading flag turns true', () => {

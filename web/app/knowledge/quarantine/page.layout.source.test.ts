@@ -15,8 +15,11 @@ describe('quarantine queue page layout', () => {
     expectSourceNotToContain(src, 'toolbar={')
     expectSourceNotToContain(src, 'xl:grid-cols-[1.2fr_0.8fr]')
     expectSourceToContain(src, 'showHeader={false}')
-    expectSourceToContain(src, '<PageHeader')
-    expectSourceToContain(src, 'description="聚合命中规则，抽样预览原文，一键调参回放。这里集中处理被隔离的异常样本，帮助你快速完成复核和回放。"')
+    expectSourceToContain(src, 'data-quarantine-page-root="true"')
+    expectSourceToContain(src, 'QUARANTINE_BACKGROUND_CLASS')
+    expectSourceToContain(src, 'QUARANTINE_HERO_PANEL_CLASS')
+    expectSourceToContain(src, '<PageTitleIcon name="quarantine-queue" className="size-9" />')
+    expectSourceToContain(src, '聚合命中规则，抽样预览原文，一键调参回放。这里集中处理被隔离的异常样本，帮助你快速完成复核和回放。')
     expectSourceToContain(
       src,
       "searchParams.get('datasetId') || 'all'"
@@ -34,8 +37,10 @@ describe('quarantine queue page layout', () => {
     expectSourceToContain(src, 'min-h-[104px]')
     expectSourceToContain(
       src,
-      'bg-[radial-gradient(circle_at_top,hsl(var(--primary)/0.10),transparent_34rem)'
+      'bg-white bg-[radial-gradient(circle_at_top,hsl(var(--info)/0.10),transparent_34rem)] dark:bg-background'
     )
+    expectSourceToContain(src, 'rounded-[28px] border border-sky-200/55')
+    expectSourceToContain(src, 'via-sky-300/65')
     expectSourceToContain(src, '规则命中分布 TOP5')
     expectSourceToContain(src, '快捷操作')
     expectSourceToContain(
@@ -55,7 +60,7 @@ describe('quarantine queue page layout', () => {
     expectSourceNotToContain(src, 'text-blue-700')
     expectSourceNotToContain(src, 'hover:bg-blue-50')
     expectSourceNotToContain(src, 'data-[state=checked]:bg-blue-600')
-    expectSourceToContain(src, 'hsl(var(--primary)/0.10)')
+    expectSourceToContain(src, 'hsl(var(--info)/0.10)')
     expectSourceToContain(src, 'border-primary/35')
     expectSourceToContain(src, 'text-primary')
     expectSourceToContain(src, 'data-[state=checked]:bg-primary')

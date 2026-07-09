@@ -26,6 +26,17 @@ describe('feedback page source', () => {
     expect(src).toContain('规则候选')
   })
 
+  it('labels imported benchmark feedback as a first-class evaluation source', () => {
+    const src = read('./page-client.tsx')
+
+    expect(src).toContain("| 'benchmark'")
+    expect(src).toContain("benchmark: '评测样本'")
+    expect(src).toContain("raw.includes('benchmark')")
+    expect(src).toContain("return 'benchmark'")
+    expect(src).toContain("<SelectItem value=\"benchmark\">评测样本</SelectItem>")
+    expect(src).toContain('item.extra?.feedback_issue')
+  })
+
   it('uses real day-over-day feedback deltas instead of fixed placeholder percentages', () => {
     const src = read('./page-client.tsx')
 

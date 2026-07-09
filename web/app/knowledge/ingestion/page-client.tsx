@@ -94,6 +94,10 @@ const EXECUTION_TASK_PAGE_SIZE = 5
 const PRECHECK_SAMPLE_NUMERATOR = 3
 const PRECHECK_SAMPLE_DENOMINATOR = 1000
 const PRECHECK_SAMPLE_MAX = 2000
+const INGESTION_BACKGROUND_CLASS =
+  'bg-white bg-[radial-gradient(circle_at_top,hsl(var(--info)/0.10),transparent_34rem)] dark:bg-background'
+const INGESTION_HERO_PANEL_CLASS =
+  'relative overflow-hidden rounded-[28px] border border-sky-200/55 bg-[linear-gradient(135deg,rgba(248,253,255,0.92),rgba(229,245,255,0.72)_45%,rgba(255,255,255,0.82))] shadow-[0_24px_70px_-48px_rgba(14,116,144,0.55)] backdrop-blur-2xl dark:border-sky-300/15 dark:bg-[linear-gradient(135deg,rgba(8,21,34,0.82),rgba(8,47,73,0.36)_48%,rgba(15,23,42,0.72))]'
 
 type IngestionMode = 'sales-audit' | 'execution-monitor'
 type SampleDisposition = 'approved' | 'manual'
@@ -4289,8 +4293,12 @@ export default function KnowledgeIngestionPageClient() {
   return (
     <div
       ref={scrollContainerRef}
+      data-ingestion-page-root="true"
       data-page-scroll-container="true"
-      className="flex-1 h-full min-h-0 overflow-y-auto overscroll-contain no-scrollbar scroll-fade-bottom bg-[radial-gradient(circle_at_top,hsl(var(--primary)/0.08),transparent_42%),linear-gradient(180deg,hsl(var(--background)),hsl(var(--surface-2)/0.56))] text-foreground"
+      className={cn(
+        'flex-1 h-full min-h-0 overflow-y-auto overscroll-contain no-scrollbar scroll-fade-bottom text-foreground',
+        INGESTION_BACKGROUND_CLASS
+      )}
     >
       <DropZone
         ref={dropZoneRef}
@@ -4604,7 +4612,10 @@ export default function KnowledgeIngestionPageClient() {
           <div className="min-w-0 flex-1">
             <div className="sticky top-3 z-30">
               <motion.div
-                className="relative overflow-hidden rounded-[1.35rem] border border-border/60 bg-[linear-gradient(135deg,hsl(var(--background)/0.92),hsl(var(--muted)/0.36))] shadow-[0_20px_56px_-34px_rgba(15,23,42,0.28)] backdrop-blur-xl"
+                className={cn(
+                  'relative overflow-hidden',
+                  INGESTION_HERO_PANEL_CLASS
+                )}
                 animate={headerAnimation}
                 transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
               >
@@ -4613,7 +4624,11 @@ export default function KnowledgeIngestionPageClient() {
                   aria-hidden="true"
                 />
                 <div
-                  className="pointer-events-none absolute -right-9 -top-12 size-28 rounded-full bg-info/10 blur-2xl"
+                  className="pointer-events-none absolute -right-10 -top-14 size-44 rounded-full bg-sky-300/22 blur-3xl"
+                  aria-hidden="true"
+                />
+                <div
+                  className="pointer-events-none absolute bottom-0 left-8 right-8 h-px bg-gradient-to-r from-transparent via-sky-300/65 to-transparent"
                   aria-hidden="true"
                 />
                 <div
@@ -4645,8 +4660,12 @@ export default function KnowledgeIngestionPageClient() {
                         )}
                       >
                         <div className="flex min-w-0 items-start gap-2">
-                          <div className="flex size-8 shrink-0 items-center justify-center rounded-[14px] border border-info/18 bg-background/78 text-info shadow-[inset_0_1px_0_hsl(var(--background)),0_12px_24px_-22px_hsl(var(--info)/0.7)]">
-                            <PageTitleIcon name="ingestion-monitor" className="size-6" />
+                          <div className="relative flex size-12 shrink-0 items-center justify-center rounded-[22px] border border-info/20 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.12))] text-info shadow-[inset_0_1px_0_hsl(var(--background)),0_18px_36px_-24px_hsl(var(--info)/0.9)]">
+                            <span
+                              className="absolute inset-x-2 top-1 h-px bg-card/70"
+                              aria-hidden="true"
+                            />
+                            <PageTitleIcon name="ingestion-monitor" className="size-9" />
                           </div>
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">

@@ -24,6 +24,10 @@ import {
 
 import { useRouter } from '@/i18n/navigation'
 import { PageScaffold } from '@/components/ui/page-scaffold'
+import {
+  KnowledgeOpsFlowCard,
+  KnowledgeOpsHero,
+} from '@/components/ui/knowledge-ops-hero'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -97,8 +101,8 @@ const DEFAULT_COMMON_LINES_PROFILE_KEY = 'common-lines-default'
 
 const DEFAULT_COMMON_LINES_PROFILE: GovernanceProfileCreate = {
   key: DEFAULT_COMMON_LINES_PROFILE_KEY,
-  name: '重复行学习默认配置',
-  description: '用于承接重复行学习生成的页眉、页脚、导航和免责声明清洗规则。',
+  name: '重复内容治理默认配置',
+  description: '用于承接重复内容治理生成的页眉、页脚、导航和免责声明清洗规则。',
   payload: {
     version: '1',
     extends: null,
@@ -537,7 +541,7 @@ export function GovernanceCommonLinesPage() {
 
   return (
     <PageScaffold
-      title="重复行学习"
+      title="重复内容治理"
       badge="规则生成"
       iconImage="profile-discovery"
       icon={Hash}
@@ -545,39 +549,72 @@ export function GovernanceCommonLinesPage() {
       description="跨文档识别页眉、页脚、导航和免责声明等反复出现的行,可一键写入自定义治理配置。"
       size="full"
       density="system-dense"
-      headerClassName="max-w-none"
+      showHeader={false}
+      topClassName="relative z-10 w-full max-w-none px-3 md:px-4 lg:px-5 pt-3 md:pt-4 pb-2 md:pb-3"
       bodyContainerClassName="max-w-none"
-      actions={
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-10 gap-2 rounded-xl border-border/60 bg-card px-4 text-[13px] font-semibold shadow-subtle"
-            onClick={refreshMeta}
-            disabled={loadingMeta}
-          >
-            <RefreshCw
-              className={cn(
-                'w-4 h-4',
-                loadingMeta && 'animate-spin motion-reduce:animate-none'
-              )}
-            />
-            刷新
-          </Button>
-          <Button
-            size="sm"
-            className="h-10 gap-2 rounded-xl px-5 text-[13px] font-semibold shadow-soft"
-            onClick={() => detachPromise(runLearn())}
-            disabled={loading}
-          >
-            {loading ? (
-              <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
-            ) : (
-              <Wand2 className="w-4 h-4" />
-            )}
-            扫描
-          </Button>
-        </div>
+      top={
+        <KnowledgeOpsHero
+          iconImage="profile-discovery"
+          title="重复内容治理"
+          description="跨文档识别页眉、页脚、导航和免责声明等反复出现的行，可一键写入自定义治理配置。"
+          summary={
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-2 rounded-2xl border border-sky-200/70 bg-white/64 px-3 py-2 text-[11px] text-muted-foreground shadow-[0_12px_28px_-24px_rgba(14,116,144,0.45)] backdrop-blur dark:border-sky-300/15 dark:bg-background/28">
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="size-1 rounded-full bg-info/70" aria-hidden />
+                  候选
+                </span>
+                <span className="font-mono tabular-nums text-foreground">
+                  {candidates.length}
+                </span>
+                <span className="h-3.5 w-px bg-border/70" />
+                <span>已选</span>
+                <span className="font-mono tabular-nums text-foreground">
+                  {selectedCandidates.length}
+                </span>
+              </div>
+              <KnowledgeOpsFlowCard
+                steps={[
+                  { icon: FileSearch, label: '扫描文档' },
+                  { icon: Wand2, label: '聚合候选' },
+                  { icon: Database, label: '写入配置' },
+                ]}
+              />
+            </div>
+          }
+          actions={
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-10 gap-2 rounded-xl border-border/60 bg-card px-4 text-[13px] font-semibold shadow-subtle"
+                onClick={refreshMeta}
+                disabled={loadingMeta}
+              >
+                <RefreshCw
+                  className={cn(
+                    'w-4 h-4',
+                    loadingMeta && 'animate-spin motion-reduce:animate-none'
+                  )}
+                />
+                刷新
+              </Button>
+              <Button
+                size="sm"
+                className="h-10 gap-2 rounded-xl px-5 text-[13px] font-semibold shadow-soft"
+                onClick={() => detachPromise(runLearn())}
+                disabled={loading}
+              >
+                {loading ? (
+                  <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+                ) : (
+                  <Wand2 className="w-4 h-4" />
+                )}
+                扫描
+              </Button>
+            </>
+          }
+        />
       }
     >
       <input

@@ -33,6 +33,10 @@ import {
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
+import {
+  KnowledgeOpsFlowCard,
+  KnowledgeOpsHero,
+} from '@/components/ui/knowledge-ops-hero'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import {
   AlertDialog,
@@ -1381,6 +1385,32 @@ export function DataGovernancePanel() {
     return { totalFiles, completedFiles, modifiedFiles, avgScore }
   }, [governanceStates, scopedFiles])
 
+  const governanceHeroSummary = (
+    <div className="grid gap-2 sm:grid-cols-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-2 rounded-2xl border border-sky-200/70 bg-white/64 px-3 py-2 text-[11px] text-muted-foreground shadow-[0_12px_28px_-24px_rgba(14,116,144,0.45)] backdrop-blur dark:border-sky-300/15 dark:bg-background/28">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="size-1 rounded-full bg-info/70" aria-hidden />
+          文件
+        </span>
+        <span className="font-mono tabular-nums text-foreground">
+          {stats.totalFiles}
+        </span>
+        <span className="h-3.5 w-px bg-border/70" />
+        <span>已完成</span>
+        <span className="font-mono tabular-nums text-foreground">
+          {stats.completedFiles}
+        </span>
+      </div>
+      <KnowledgeOpsFlowCard
+        steps={[
+          { icon: ScanLine, label: '质检' },
+          { icon: Tag, label: '标注' },
+          { icon: Layers, label: '切块' },
+        ]}
+      />
+    </div>
+  )
+
   // 绌虹姸鎬?- 鏀逛负涓婁紶寮曞
   if (isLoaded && files.length === 0) {
     return (
@@ -1391,17 +1421,17 @@ export function DataGovernancePanel() {
         icon={ShieldCheck}
         iconColor="text-success"
         compactHeader
-        description={
-          <span className="flex items-center gap-2 text-[13px] text-muted-foreground/80">
-            <span
-              className="h-1.5 w-1.5 rounded-full bg-primary/20"
-              aria-hidden="true"
-            />
-            <span>{headerSubtitle}</span>
-          </span>
-        }
+        description={headerSubtitle}
         size="full"
         bodyClassName="px-0 pb-0"
+        header={
+          <KnowledgeOpsHero
+            iconImage="data-governance"
+            title={headerTitle}
+            description={headerSubtitle}
+            summary={governanceHeroSummary}
+          />
+        }
         pipelineRail={<PipelineRail />}
         mainPanel={
           <div className="flex-1 flex flex-col min-h-0">
@@ -1732,14 +1762,51 @@ export function DataGovernancePanel() {
       icon={ShieldCheck}
       iconColor="text-info"
       compactHeader
-      description={
-        <span className="flex items-center gap-2 text-[13px] text-muted-foreground/80">
-          <span
-            className="w-1.5 h-1.5 rounded-full bg-info/10 dark:bg-info/20"
-            aria-hidden="true"
-          />
-          <span>{t('header.workspaceSubtitle')}</span>
-        </span>
+      description={t('header.workspaceSubtitle')}
+      header={
+        <KnowledgeOpsHero
+          iconImage="data-governance"
+          title={headerTitle}
+          description={t('header.workspaceSubtitle')}
+          summary={governanceHeroSummary}
+          actions={
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleReset}
+                disabled={!governanceState?.isModified}
+                className="gap-1.5 h-8 text-xs"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                {t('actions.reset')}
+              </Button>
+              <Button
+                variant="info"
+                size="sm"
+                onClick={handleSave}
+                disabled={!governanceState}
+                className="gap-2 h-8 text-xs"
+              >
+                <Save className="w-3.5 h-3.5" />
+                {t('actions.save')}
+              </Button>
+              <div className="w-px h-4 bg-border dark:bg-card mx-1" />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSubmitSelectedToChunkPreview}
+                disabled={selectedReadyChunkCount === 0}
+                className="gap-2 h-8 text-xs"
+              >
+                <Layers className="w-3.5 h-3.5" />
+                {t('actions.submitSelectedToChunkPreview', {
+                  count: selectedReadyChunkCount,
+                })}
+              </Button>
+            </>
+          }
+        />
       }
       actions={
         <div className="flex items-center gap-3">
