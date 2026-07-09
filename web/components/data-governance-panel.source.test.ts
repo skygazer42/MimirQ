@@ -23,13 +23,15 @@ describe('data governance panel source', () => {
     )
     expectSourceToContain(src, 'const headerTitle = t("header.title")')
     expectSourceToContain(src, 'const headerSubtitle = t("header.subtitle")')
+    expectSourceToContain(src, 'KnowledgeOpsHero')
+    expectSourceToContain(src, 'KnowledgeOpsFlowCard')
     expectSourceToContain(
       src,
-      '<span className="h-1.5 w-1.5 rounded-full bg-primary/20" aria-hidden="true" />'
+      'title={headerTitle}'
     )
     expectSourceToContain(
       src,
-      '<span className="w-1.5 h-1.5 rounded-full bg-info/10 dark:bg-info/20" aria-hidden="true" />'
+      "description={t('header.workspaceSubtitle')}"
     )
     expectSourceToContain(src, "aria-label={t('emptyUpload.openUploadDialog')}")
     expectSourceToContain(

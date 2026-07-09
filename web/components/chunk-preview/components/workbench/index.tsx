@@ -22,7 +22,10 @@ import { ChunkList } from './preview/chunk-list'
 import { useChunkPreview } from '@/components/chunk-preview/context'
 import { ChunkingHelpDialog } from '@/components/chunk-preview/components/chunking-help-dialog'
 import { Button } from '@/components/ui/button'
-import { PageHeader } from '@/components/ui/page-header'
+import {
+  KnowledgeOpsFlowCard,
+  KnowledgeOpsHero,
+} from '@/components/ui/knowledge-ops-hero'
 import {
   PipelineRail,
   WorkbenchPane,
@@ -34,18 +37,41 @@ import { cn } from '@/lib/utils'
 
 function ChunkPreviewWorkbenchHeader() {
   const t = useTranslations('ChunkPreview')
+  const { currentFileItem, datasetId, fileList } = useChunkPreview()
 
   return (
     <header>
-      <PageHeader
+      <KnowledgeOpsHero
+        iconImage="chunk-preview"
+        eyebrow="Knowledge Ops"
+        badge="文档资产治理中枢"
         title={t('workbench.title')}
         description={t('workbench.description')}
-        iconImage="chunk-preview"
-        icon={Layers}
-        iconColor="text-primary"
-        badge={String(t('workbench.header.eyebrow'))}
-        compact
-        className="p-0"
+        summary={
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-2 rounded-2xl border border-sky-200/70 bg-white/64 px-3 py-2 text-[11px] text-muted-foreground shadow-[0_12px_28px_-24px_rgba(14,116,144,0.45)] backdrop-blur dark:border-sky-300/15 dark:bg-background/28">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="size-1 rounded-full bg-info/70" aria-hidden />
+                范围
+              </span>
+              <span className="min-w-0 truncate font-medium text-foreground">
+                {datasetId || '解析工作区'}
+              </span>
+              <span className="h-3.5 w-px bg-border/70" />
+              <span>文件</span>
+              <span className="font-mono tabular-nums text-foreground">
+                {fileList.length}
+              </span>
+            </div>
+            <KnowledgeOpsFlowCard
+              steps={[
+                { icon: BookOpen, label: '解析' },
+                { icon: ScanLine, label: '切块' },
+                { icon: Layers, label: currentFileItem ? '复核' : '预览' },
+              ]}
+            />
+          </div>
+        }
       />
     </header>
   )

@@ -3,6 +3,7 @@
 import { type ReactNode, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Archive,
+  ArrowRight,
   BarChart3,
   Cloud,
   Copy,
@@ -19,6 +20,8 @@ import {
   Play,
   Plus,
   RefreshCw,
+  ShieldCheck,
+  Sparkles,
   Trash2,
   UploadCloud,
   type LucideIcon,
@@ -30,7 +33,7 @@ import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { PageHeader } from '@/components/ui/page-header'
+import { PageTitleIcon } from '@/components/ui/page-title-icon'
 import {
   Select,
   SelectContent,
@@ -61,6 +64,10 @@ const TASK_LIST_PAGE_SIZE = 6
 const DEFAULT_COLLECTION = 'default'
 const NO_DATASET_FILE_BUCKET = '__mimirq_no_dataset__'
 const EMPTY_FILES: File[] = []
+const OPERATION_BACKGROUND_CLASS =
+  'bg-white bg-[radial-gradient(circle_at_top,hsl(var(--info)/0.10),transparent_34rem)] dark:bg-background'
+const OPERATION_HERO_PANEL_CLASS =
+  'relative overflow-hidden rounded-[28px] border border-sky-200/55 bg-[linear-gradient(135deg,rgba(248,253,255,0.92),rgba(229,245,255,0.72)_45%,rgba(255,255,255,0.82))] px-4 py-3 shadow-[0_24px_70px_-48px_rgba(14,116,144,0.55)] backdrop-blur-2xl dark:border-sky-300/15 dark:bg-[linear-gradient(135deg,rgba(8,21,34,0.82),rgba(8,47,73,0.36)_48%,rgba(15,23,42,0.72))]'
 
 type UploadSource = 'local' | 'folder' | 'url' | 'object' | 'api'
 type ParserBackend = 'auto' | 'docling' | 'markitdown' | 'deepdoc' | 'csv' | 'json' | 'markdown'
@@ -1106,17 +1113,102 @@ export default function KnowledgeIngestionOperationPage() {
   }
 
   return (
-    <div className="flex min-h-full overflow-y-auto bg-[radial-gradient(circle_at_14%_0%,hsl(var(--primary)/0.07),transparent_32%),radial-gradient(circle_at_86%_10%,hsl(var(--accent)/0.05),transparent_30%),linear-gradient(180deg,hsl(var(--background))_0%,hsl(var(--surface-2)/0.54)_46%,hsl(var(--background))_100%)] px-4 py-2.5 text-foreground lg:px-5">
+    <div
+      data-ingestion-operation-root="true"
+      className={cn(
+        'flex min-h-full overflow-y-auto px-4 py-2.5 text-foreground lg:px-5',
+        OPERATION_BACKGROUND_CLASS
+      )}
+    >
       <div className="mx-auto flex min-h-[calc(100dvh-1.25rem)] w-full max-w-[1680px] flex-col gap-2">
-        <PageHeader
-          title="入库中心"
-          description="选择数据集与来源，先登记原始文件；解析、切块、建索引在后续流程手动控制。"
-          iconImage="ingestion-operation"
-          badge="INGESTION"
-          compact
+        <div
+          className={cn(
+            'flex min-w-0 flex-col gap-4 lg:flex-row lg:items-center lg:justify-between',
+            OPERATION_HERO_PANEL_CLASS
+          )}
         >
-          <IngestionViewSwitch />
-        </PageHeader>
+          <div className="pointer-events-none absolute -right-10 -top-14 size-44 rounded-full bg-sky-300/22 blur-3xl" aria-hidden="true" />
+          <div className="pointer-events-none absolute bottom-0 left-8 right-8 h-px bg-gradient-to-r from-transparent via-sky-300/65 to-transparent" aria-hidden="true" />
+          <div className="relative flex min-w-0 items-center gap-3">
+            <div className="relative flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-[22px] border border-info/20 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.12))] text-info shadow-[inset_0_1px_0_hsl(var(--background)),0_18px_36px_-24px_hsl(var(--info)/0.9)]">
+              <span
+                className="absolute inset-x-2 top-1 h-px bg-card/70"
+                aria-hidden="true"
+              />
+              <PageTitleIcon name="ingestion-operation" className="size-9" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-200/70 bg-sky-50/70 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-sky-700 dark:border-sky-300/20 dark:bg-sky-300/10 dark:text-sky-200">
+                  <Sparkles className="size-3" />
+                  Knowledge Ops
+                </span>
+                <span className="inline-flex items-center rounded-full border border-emerald-200/65 bg-emerald-50/70 px-2.5 py-1 text-[10px] font-medium text-emerald-700 dark:border-emerald-300/15 dark:bg-emerald-300/10 dark:text-emerald-200">
+                  <ShieldCheck className="mr-1.5 size-3" />
+                  文档资产治理中枢
+                </span>
+              </div>
+              <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <h1 className="text-[22px] font-semibold tracking-[-0.025em] text-foreground">
+                  <span className="bg-[linear-gradient(90deg,hsl(var(--foreground)),hsl(var(--info))_92%)] bg-clip-text text-transparent">
+                    入库管理
+                  </span>
+                </h1>
+                <p className="text-[13px] leading-5 text-muted-foreground/85">
+                  选择数据集与来源，先登记原始文件；解析、切块、建索引在后续流程手动控制。
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="relative flex min-w-0 flex-col gap-2 lg:min-w-[470px]">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-2 rounded-2xl border border-sky-200/70 bg-white/64 px-3 py-2 text-[11px] text-muted-foreground shadow-[0_12px_28px_-24px_rgba(14,116,144,0.45)] backdrop-blur dark:border-sky-300/15 dark:bg-background/28">
+                <span className="inline-flex items-center gap-1.5">
+                  <span
+                    className="size-1 rounded-full bg-info/70"
+                    aria-hidden
+                  />
+                  范围
+                </span>
+                <span className="min-w-0 truncate font-medium text-foreground">
+                  {selectedDataset?.name ?? (datasetsQuery.isLoading ? '正在加载数据集' : '选择目标数据集')}
+                </span>
+                <span className="h-3.5 w-px bg-border/70" />
+                <span>文档</span>
+                <span className="font-mono tabular-nums text-foreground">
+                  {totalDocuments}
+                </span>
+              </div>
+              <div className="flex min-w-0 items-center justify-between gap-2 rounded-2xl border border-sky-200/70 bg-white/64 px-3 py-2 text-[11px] text-muted-foreground shadow-[0_12px_28px_-24px_rgba(14,116,144,0.45)] backdrop-blur dark:border-sky-300/15 dark:bg-background/28">
+                <span className="inline-flex items-center gap-1.5">
+                  <UploadCloud className="size-3 text-sky-500" />
+                  登记
+                </span>
+                <ArrowRight className="size-3 shrink-0 text-muted-foreground/45" />
+                <span className="inline-flex items-center gap-1.5">
+                  <FileText className="size-3 text-sky-500" />
+                  解析
+                </span>
+                <ArrowRight className="size-3 shrink-0 text-muted-foreground/45" />
+                <span className="inline-flex items-center gap-1.5">
+                  <Database className="size-3 text-sky-500" />
+                  建索引
+                </span>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <IngestionViewSwitch />
+              <Button
+                variant="outline"
+                className="h-9 rounded-xl border-border/55 bg-card/76 px-3.5 text-[12px] font-medium text-foreground shadow-none hover:!border-primary/20 hover:!bg-card/82 hover:!text-foreground"
+                onClick={() => detachPromise(handleSyncDatasets())}
+              >
+                <RefreshCw className="mr-1.5 size-4" />
+                同步数据
+              </Button>
+            </div>
+          </div>
+        </div>
 
         <section className={cn(WORKBENCH_SURFACE_CLASS, 'space-y-2 p-3')}>
           <div className="grid gap-2 xl:grid-cols-[1.1fr_0.85fr_1.15fr_1.7fr_auto]">

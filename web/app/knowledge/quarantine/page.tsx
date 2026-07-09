@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query'
 import type { LucideIcon } from 'lucide-react'
 import {
   AlertCircle,
+  ArrowRight,
   BarChart3,
   ChevronLeft,
   ChevronRight,
@@ -22,13 +23,14 @@ import {
   Settings2,
   ShieldAlert,
   ShieldCheck,
+  Sparkles,
   Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { AppFrame } from '@/components/app-frame'
 import { PageScaffold } from '@/components/ui/page-scaffold'
-import { PageHeader } from '@/components/ui/page-header'
+import { PageTitleIcon } from '@/components/ui/page-title-icon'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { getDocumentKind } from '@/components/ingestion/monitor-utils'
@@ -75,6 +77,11 @@ type QueueSyncStatus = {
 }
 
 const QUARANTINE_PAGE_SIZE = 6
+const QUARANTINE_BACKGROUND_CLASS =
+  'bg-white bg-[radial-gradient(circle_at_top,hsl(var(--info)/0.10),transparent_34rem)] dark:bg-background'
+const QUARANTINE_GRID_OVERLAY_CLASS = 'hidden'
+const QUARANTINE_HERO_PANEL_CLASS =
+  'relative overflow-hidden rounded-[28px] border border-sky-200/55 bg-[linear-gradient(135deg,rgba(248,253,255,0.92),rgba(229,245,255,0.72)_45%,rgba(255,255,255,0.82))] px-4 py-3 shadow-[0_24px_70px_-48px_rgba(14,116,144,0.55)] backdrop-blur-2xl dark:border-sky-300/15 dark:bg-[linear-gradient(135deg,rgba(8,21,34,0.82),rgba(8,47,73,0.36)_48%,rgba(15,23,42,0.72))]'
 
 const STATUS_LABELS: Record<string, string> = {
   completed: '已解决',
@@ -1910,21 +1917,43 @@ export default function QuarantineQueuePage() {
 
   return (
     <AppFrame rightPanel={<DocumentViewerPanel />} withDocumentViewerPadding>
-      <PageScaffold
-        title="隔离审核中心"
-        icon={ShieldAlert}
-        showHeader={false}
-        size="full"
-        // max-w-[1520px]
-        topClassName="w-full max-w-none bg-[radial-gradient(circle_at_top,hsl(var(--primary)/0.10),transparent_34rem)] px-2 pt-3 pb-2 md:px-3 xl:px-4"
-        top={
+      <div
+        data-quarantine-page-root="true"
+        className={cn(
+          'relative h-full overflow-hidden',
+          QUARANTINE_BACKGROUND_CLASS
+        )}
+      >
+        <div className={QUARANTINE_GRID_OVERLAY_CLASS} aria-hidden="true" />
+        <PageScaffold
+          title="隔离审核中心"
+          icon={ShieldAlert}
+          showHeader={false}
+          size="full"
+          // max-w-[1520px]
+          topClassName="relative z-10 w-full max-w-none px-2 pt-3 pb-2 md:px-3 xl:px-4"
+          top={
           <div className="space-y-2.5">
-            <PageHeader
-              title={
+            <div
+              className={cn(
+                'flex min-w-0 flex-col gap-4 lg:flex-row lg:items-center lg:justify-between',
+                QUARANTINE_HERO_PANEL_CLASS
+              )}
+            >
+              <div className="pointer-events-none absolute -right-10 -top-14 size-44 rounded-full bg-sky-300/22 blur-3xl" aria-hidden="true" />
+              <div className="pointer-events-none absolute bottom-0 left-8 right-8 h-px bg-gradient-to-r from-transparent via-sky-300/65 to-transparent" aria-hidden="true" />
+              <div className="relative flex min-w-0 items-center gap-3">
+                <div className="relative flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-[22px] border border-info/20 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.12))] text-info shadow-[inset_0_1px_0_hsl(var(--background)),0_18px_36px_-24px_hsl(var(--info)/0.9)]">
+                  <span
+                    className="absolute inset-x-2 top-1 h-px bg-card/70"
+                    aria-hidden="true"
+                  />
+                  <PageTitleIcon name="quarantine-queue" className="size-9" />
+                </div>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-200/70 bg-sky-50/70 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-sky-700 dark:border-sky-300/20 dark:bg-sky-300/10 dark:text-sky-200">
-                      <ShieldAlert className="size-3" />
+                      <Sparkles className="size-3" />
                       Quarantine Ops
                     </span>
                     <span className="inline-flex items-center rounded-full border border-amber-200/70 bg-amber-50/70 px-2.5 py-1 text-[10px] font-medium text-amber-700 dark:border-amber-300/15 dark:bg-amber-300/10 dark:text-amber-200">
@@ -1932,83 +1961,102 @@ export default function QuarantineQueuePage() {
                       样本复核与规则回放
                     </span>
                   </div>
-                  <h1 className="mt-2 text-[22px] font-semibold tracking-[-0.025em] text-foreground">
-                    <span className="bg-[linear-gradient(90deg,hsl(var(--foreground)),hsl(var(--info))_92%)] bg-clip-text text-transparent">
-                      隔离审核中心
+                  <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <h1 className="text-[22px] font-semibold tracking-[-0.025em] text-foreground">
+                      <span className="bg-[linear-gradient(90deg,hsl(var(--foreground)),hsl(var(--info))_92%)] bg-clip-text text-transparent">
+                        隔离审核中心
+                      </span>
+                    </h1>
+                    <p className="text-[13px] leading-5 text-muted-foreground/85">
+                      聚合命中规则，抽样预览原文，一键调参回放。这里集中处理被隔离的异常样本，帮助你快速完成复核和回放。
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="relative flex min-w-0 flex-col gap-2 lg:min-w-[470px]">
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2 rounded-2xl border border-sky-200/70 bg-white/64 px-3 py-2 text-[11px] text-muted-foreground shadow-[0_12px_28px_-24px_rgba(14,116,144,0.45)] backdrop-blur dark:border-sky-300/15 dark:bg-background/28">
+                    <span className="inline-flex items-center gap-1.5">
+                      <span
+                        className="size-1 rounded-full bg-info/70"
+                        aria-hidden
+                      />
+                      队列
                     </span>
-                  </h1>
+                    <span className="min-w-0 truncate font-medium text-foreground">
+                      {stats.total} 条样本
+                    </span>
+                    <span className="h-3.5 w-px bg-border/70" />
+                    <span>待审核</span>
+                    <span className="font-mono tabular-nums text-foreground">
+                      {stats.unreviewed}
+                    </span>
+                  </div>
+                  <div className="flex min-w-0 items-center justify-between gap-2 rounded-2xl border border-sky-200/70 bg-white/64 px-3 py-2 text-[11px] text-muted-foreground shadow-[0_12px_28px_-24px_rgba(14,116,144,0.45)] backdrop-blur dark:border-sky-300/15 dark:bg-background/28">
+                    <span className="inline-flex items-center gap-1.5">
+                      <LayoutList className="size-3 text-sky-500" />
+                      发现
+                    </span>
+                    <ArrowRight className="size-3 shrink-0 text-muted-foreground/45" />
+                    <span className="inline-flex items-center gap-1.5">
+                      <Eye className="size-3 text-sky-500" />
+                      复核
+                    </span>
+                    <ArrowRight className="size-3 shrink-0 text-muted-foreground/45" />
+                    <span className="inline-flex items-center gap-1.5">
+                      <RotateCcw className="size-3 text-sky-500" />
+                      回放
+                    </span>
+                  </div>
                 </div>
-              }
-              description="聚合命中规则，抽样预览原文，一键调参回放。这里集中处理被隔离的异常样本，帮助你快速完成复核和回放。"
-              iconImage="quarantine-queue"
-              icon={ShieldCheck}
-              iconColor="text-info"
-              compact
-              className="p-0"
-            >
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                <div className="hidden min-w-[280px] items-center justify-between gap-2 rounded-2xl border border-sky-200/70 bg-white/64 px-3 py-2 text-[11px] text-muted-foreground shadow-[0_12px_28px_-24px_rgba(14,116,144,0.45)] backdrop-blur dark:border-sky-300/15 dark:bg-background/28 md:flex">
-                  <span className="inline-flex items-center gap-1.5">
-                    <LayoutList className="size-3 text-sky-500" />
-                    发现
-                  </span>
-                  <ChevronRight className="size-3 shrink-0 text-muted-foreground/45" />
-                  <span className="inline-flex items-center gap-1.5">
-                    <Eye className="size-3 text-sky-500" />
-                    复核
-                  </span>
-                  <ChevronRight className="size-3 shrink-0 text-muted-foreground/45" />
-                  <span className="inline-flex items-center gap-1.5">
-                    <RotateCcw className="size-3 text-sky-500" />
-                    回放
-                  </span>
-                </div>
-                {demoMode ? (
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  {demoMode ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-9 gap-2 rounded-xl border-primary/35 bg-background px-4 text-[12px] font-medium text-primary shadow-[0_16px_30px_-26px_hsl(var(--primary)/0.55)] hover:bg-primary/10"
+                      onClick={handleExitDemoMode}
+                    >
+                      <Play className="size-4 fill-current" />
+                      退出 Demo
+                    </Button>
+                  ) : null}
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-9 gap-2 rounded-xl border-primary/35 bg-background px-4 text-[12px] font-medium text-primary shadow-[0_16px_30px_-26px_hsl(var(--primary)/0.55)] hover:bg-primary/10"
-                    onClick={handleExitDemoMode}
+                    className="h-9 gap-2 rounded-xl border-info/25 bg-info/[0.06] px-3.5 text-[12px] font-medium text-info shadow-[0_12px_24px_-22px_hsl(var(--info)/0.5)] hover:border-info/40 hover:bg-info/[0.12] hover:text-info"
+                    onClick={() => {
+                      if (demoMode) {
+                        toast.success('Demo 数据已刷新')
+                        return
+                      }
+                      detachPromise(refreshQueue({ notify: true }))
+                    }}
                   >
-                    <Play className="size-4 fill-current" />
-                    退出 Demo
+                    <RefreshCw
+                      className={cn(
+                        'h-4 w-4',
+                        queueFetching
+                          ? 'animate-spin motion-reduce:animate-none'
+                          : ''
+                      )}
+                    />
+                    同步数据
                   </Button>
-                ) : null}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9 gap-2 rounded-xl border-info/25 bg-info/[0.06] px-3.5 text-[12px] font-medium text-info shadow-[0_12px_24px_-22px_hsl(var(--info)/0.5)] hover:border-info/40 hover:bg-info/[0.12] hover:text-info"
-                  onClick={() => {
-                    if (demoMode) {
-                      toast.success('Demo 数据已刷新')
-                      return
-                    }
-                    detachPromise(refreshQueue({ notify: true }))
-                  }}
-                >
-                  <RefreshCw
-                    className={cn(
-                      'h-4 w-4',
-                      queueFetching
-                        ? 'animate-spin motion-reduce:animate-none'
-                        : ''
-                    )}
-                  />
-                  同步数据
-                </Button>
 
-                <div className="flex h-9 items-center gap-2 rounded-xl border border-transparent bg-background/70 px-2.5">
-                  <span className="text-[11px] font-medium text-muted-foreground">
-                    自动刷新
-                  </span>
-                  <Switch
-                    checked={autoRefresh}
-                    onCheckedChange={setAutoRefresh}
-                    className="data-[state=checked]:bg-primary"
-                  />
+                  <div className="flex h-9 items-center gap-2 rounded-xl border border-transparent bg-background/70 px-2.5">
+                    <span className="text-[11px] font-medium text-muted-foreground">
+                      自动刷新
+                    </span>
+                    <Switch
+                      checked={autoRefresh}
+                      onCheckedChange={setAutoRefresh}
+                      className="data-[state=checked]:bg-primary"
+                    />
+                  </div>
                 </div>
               </div>
-            </PageHeader>
+            </div>
 
             {queueErrorMessage ? (
               <div className="flex items-start gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-[12px] text-red-700 dark:text-red-300">
@@ -2082,8 +2130,8 @@ export default function QuarantineQueuePage() {
             </div>
           </div>
         }
-        bodyClassName="w-full max-w-none px-2 pb-5 md:px-3 xl:px-4 z-10"
-      >
+          bodyClassName="relative z-10 w-full max-w-none px-2 pb-5 md:px-3 xl:px-4"
+        >
         <div className="space-y-4">
           <div
             aria-label="审计主画布"
@@ -2686,7 +2734,8 @@ export default function QuarantineQueuePage() {
             </div>
           </div>
         </div>
-      </PageScaffold>
+        </PageScaffold>
+      </div>
 
       <QuarantineReviewDrawer
         open={reviewDrawerOpen}

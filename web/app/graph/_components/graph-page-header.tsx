@@ -2,8 +2,9 @@
 
 import type { ChangeEventHandler, ReactNode, RefObject } from 'react'
 
-import { BarChart3, FileCode, FileText, Filter, MoreHorizontal, Network, RefreshCw, Share2, Link as LinkIcon } from 'lucide-react'
+import { BarChart3, FileCode, FileText, Filter, GitCompare, MoreHorizontal, Network, RefreshCw, Share2, Link as LinkIcon, Wrench } from 'lucide-react'
 
+import { Link } from '@/i18n/navigation'
 import { Button } from '@/components/ui/button'
 import { PageTitleIcon } from '@/components/ui/page-title-icon'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -303,6 +304,30 @@ export function GraphPageHeader({
                     实体、关系、证据入库并自动关联事件
                   </span>
                 </span>
+              </Button>
+
+              <Button
+                asChild
+                variant="outline"
+                size="sm"
+                className="justify-start gap-2 border-border/60 bg-background/70 text-muted-foreground shadow-none hover:bg-amber-500/10 hover:text-amber-700 dark:hover:text-amber-300"
+              >
+                <Link href="/graph/diagnostics">
+                  <Wrench className="h-4 w-4" />
+                  Diagnostics
+                </Link>
+              </Button>
+
+              <Button
+                asChild
+                variant="outline"
+                size="sm"
+                className="justify-start gap-2 border-border/60 bg-background/70 text-muted-foreground shadow-none hover:bg-violet-500/10 hover:text-violet-700 dark:hover:text-violet-300"
+              >
+                <Link href="/graph/snapshots">
+                  <GitCompare className="h-4 w-4" />
+                  Snapshots
+                </Link>
               </Button>
 
               {dataSource === 'live' ? (

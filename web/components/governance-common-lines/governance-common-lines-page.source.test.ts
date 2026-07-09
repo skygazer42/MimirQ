@@ -29,7 +29,7 @@ describe('governance common lines source', () => {
       src,
       "const DEFAULT_COMMON_LINES_PROFILE_KEY = 'common-lines-default'"
     )
-    expectSourceToContain(src, "name: '重复行学习默认配置'")
+    expectSourceToContain(src, "name: '重复内容治理默认配置'")
     expectSourceToContain(
       src,
       'pipelineApi.createGovernanceProfile(DEFAULT_COMMON_LINES_PROFILE)'

@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl'
 
 import { NavigationVisibilityGate } from '@/components/auth/navigation-visibility-gate'
 import { AppFrame } from '@/components/app-frame'
+import { KNOWLEDGE_OPS_BACKGROUND_CLASS } from '@/components/ui/knowledge-ops-hero'
 import { PageLoading } from '@/components/ui/page-loading'
 
 const GovernanceProfilesPage = dynamic(
@@ -22,7 +23,9 @@ export default function GovernanceProfilesRoutePage() {
   return (
     <NavigationVisibilityGate moduleKey="governanceProfiles" pageName="治理配置">
       <AppFrame>
-        <GovernanceProfilesPage />
+        <div className={KNOWLEDGE_OPS_BACKGROUND_CLASS}>
+          <GovernanceProfilesPage />
+        </div>
       </AppFrame>
     </NavigationVisibilityGate>
   )

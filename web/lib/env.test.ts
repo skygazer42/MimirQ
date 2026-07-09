@@ -29,17 +29,21 @@ describe('env', () => {
 
     const oldPublic = process.env.NEXT_PUBLIC_API_URL
     const oldInternal = process.env.API_INTERNAL_URL
+    const oldNodeEnv = process.env.NODE_ENV
     process.env.NEXT_PUBLIC_API_URL = 'http://localhost:8000'
     process.env.API_INTERNAL_URL = ''
+    Object.assign(process.env, { NODE_ENV: 'development' })
 
     vi.resetModules()
     const env = await import('./env')
 
-    expect(env.API_BASE_URL).toBe('http://192.168.1.10:8000')
+    expect(env.API_BASE_URL).toBe('')
+    expect(env.API_V1_BASE_URL).toBe('/api/v1')
 
     // Restore.
     process.env.NEXT_PUBLIC_API_URL = oldPublic
     process.env.API_INTERNAL_URL = oldInternal
+    Object.assign(process.env, { NODE_ENV: oldNodeEnv })
     vi.stubGlobal('window', originalWindow)
   })
 
@@ -49,16 +53,42 @@ describe('env', () => {
 
     const oldPublic = process.env.NEXT_PUBLIC_API_URL
     const oldInternal = process.env.API_INTERNAL_URL
+    const oldNodeEnv = process.env.NODE_ENV
     process.env.NEXT_PUBLIC_API_URL = 'http://localhost:8000'
     process.env.API_INTERNAL_URL = ''
+    Object.assign(process.env, { NODE_ENV: 'development' })
 
     vi.resetModules()
     const env = await import('./env')
 
-    expect(env.API_BASE_URL).toBe('http://127.0.0.1:8000')
+    expect(env.API_BASE_URL).toBe('')
+    expect(env.toAbsoluteBackendUrl('/api/v1/health')).toBe('/api/v1/health')
 
     process.env.NEXT_PUBLIC_API_URL = oldPublic
     process.env.API_INTERNAL_URL = oldInternal
+    Object.assign(process.env, { NODE_ENV: oldNodeEnv })
+    vi.stubGlobal('window', originalWindow)
+  })
+
+  it('keeps explicit remote API origins in browser when not using a loopback dev backend', async () => {
+    const originalWindow = (globalThis as any).window
+    vi.stubGlobal('window', { location: { hostname: '192.168.1.10' } })
+
+    const oldPublic = process.env.NEXT_PUBLIC_API_URL
+    const oldInternal = process.env.API_INTERNAL_URL
+    const oldNodeEnv = process.env.NODE_ENV
+    process.env.NEXT_PUBLIC_API_URL = 'https://api.example.com'
+    process.env.API_INTERNAL_URL = ''
+    Object.assign(process.env, { NODE_ENV: 'development' })
+
+    vi.resetModules()
+    const env = await import('./env')
+
+    expect(env.API_BASE_URL).toBe('https://api.example.com')
+
+    process.env.NEXT_PUBLIC_API_URL = oldPublic
+    process.env.API_INTERNAL_URL = oldInternal
+    Object.assign(process.env, { NODE_ENV: oldNodeEnv })
     vi.stubGlobal('window', originalWindow)
   })
 })

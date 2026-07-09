@@ -11,17 +11,9 @@ import { decorateLinksForDisplay } from '@/lib/graph-edge-display'
 import { buildGraphLinkProvenanceTooltipHtml } from '@/lib/graph-provenance'
 import { buildGraphViewportLod, type GraphViewportLod, type GraphViewportRect } from '@/lib/graph-viewport-lod'
 import { reportClientError } from '@/lib/client-logging'
+import { buildTypeColorMap, EVENT_COLOR, NODE_COLOR_PALETTE } from './graph-colors'
 import { GraphMinimap } from './graph-minimap'
 import { Loader2 } from 'lucide-react'
-
-export const NODE_COLOR_PALETTE = [
-  '#ccfeff', '#8ed8ff', '#6fb7ff', '#79c7c5', '#8fd3a8',
-  '#b8df8a', '#f2d27b', '#f5b97a', '#c6c9ff', '#9bb5ff',
-  '#a6e7ff', '#7fd9f3', '#5cc7de', '#6ebfd1', '#82cfff',
-  '#b6e4ff', '#c7f1e0', '#def5c8', '#ffe6b6', '#e2dcff',
-  '#c2d8ff', '#9bd1ff', '#8adfd8', '#a7c4ff',
-]
-export const EVENT_COLOR = '#8ea2ff'
 
 export const EDGE_KIND_COLORS: Record<string, string> = {
   entity_relation: '#3b82f6', // blue
@@ -275,25 +267,6 @@ function hashTypeToIndex(type: string): number {
     hash = Math.trunc((hash * 31 + (type.codePointAt(i) ?? 0)) % 0x7fffffff)
   }
   return Math.abs(hash) % NODE_COLOR_PALETTE.length
-}
-
-function graphNodeRecord(node: unknown): { meta?: Record<string, unknown> | null; type?: unknown } {
-  return node && typeof node === 'object' ? node : {}
-}
-
-export function buildTypeColorMap(nodes: readonly unknown[]): Map<string, string> {
-  const map = new Map<string, string>()
-  for (const node of nodes) {
-    const record = graphNodeRecord(node)
-    const meta = record.meta && typeof record.meta === 'object' ? record.meta : {}
-    const kind = graphDisplayString(meta.kind)
-    if (kind === 'event') continue
-    const type = firstGraphDisplayString(meta.type, record.type) || 'unknown'
-    if (!map.has(type)) {
-      map.set(type, NODE_COLOR_PALETTE[hashTypeToIndex(type)])
-    }
-  }
-  return map
 }
 
 function graphCursorStyle(

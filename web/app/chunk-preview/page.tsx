@@ -2,6 +2,7 @@
 
 import dynamic from 'next/dynamic'
 import { AppFrame } from '@/components/app-frame'
+import { KNOWLEDGE_OPS_BACKGROUND_CLASS } from '@/components/ui/knowledge-ops-hero'
 import { PageLoading } from '@/components/ui/page-loading'
 
 const ChunkPreview = dynamic(
@@ -15,7 +16,9 @@ const ChunkPreview = dynamic(
 export default function ChunkPreviewPage() {
   return (
     <AppFrame>
-      <ChunkPreview />
+      <div className={KNOWLEDGE_OPS_BACKGROUND_CLASS}>
+        <ChunkPreview />
+      </div>
     </AppFrame>
   )
 }

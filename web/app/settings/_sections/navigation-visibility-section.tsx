@@ -28,7 +28,7 @@ const MODULE_GROUPS: Array<{
 }> = [
   {
     title: '入库治理',
-    description: '治理规则和重复行学习入口，适合交付/数据治理人员开放',
+    description: '治理规则和重复内容治理入口，适合交付/数据治理人员开放',
     items: [
       {
         key: 'governanceProfiles',
@@ -38,7 +38,7 @@ const MODULE_GROUPS: Array<{
       },
       {
         key: 'commonLines',
-        label: '重复行学习',
+        label: '重复内容治理',
         description: '跨文档识别页眉、页脚和重复噪声',
         icon: Hash,
       },

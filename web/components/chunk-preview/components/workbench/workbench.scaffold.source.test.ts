@@ -10,7 +10,8 @@ describe('Chunk preview workbench scaffold', () => {
     expect(src).toContain('WorkbenchScaffold')
     expect(src).toContain('function ChunkPreviewWorkbenchHeader')
     expect(src).toContain('header={<ChunkPreviewWorkbenchHeader />}')
-    expect(src).toContain("t('workbench.header.eyebrow')")
+    expect(src).toContain('KnowledgeOpsHero')
+    expect(src).toContain('badge="文档资产治理中枢"')
   })
 
   it('does not duplicate active file facts in the page header', () => {

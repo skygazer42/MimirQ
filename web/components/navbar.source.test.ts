@@ -86,4 +86,29 @@ describe('navbar source', () => {
     expect(src).toContain('w-[264px] -translate-x-full')
     expect(src).toContain('left-[264px]')
   })
+
+  it('keeps knowledge and analysis navigation labels ordered for the current IA', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'navbar.tsx'), 'utf8')
+    const chatMessages = fs.readFileSync(
+      path.resolve(__dirname, '../i18n/messages/zh-CN/chat.ts'),
+      'utf8'
+    )
+
+    expect(src).toContain("{ icon: Database, labelKey: 'items.knowledgeBase', href: '/knowledge' }")
+    expect(src).toContain("{ icon: Layers, labelKey: 'items.datasets', href: '/datasets' }")
+    expect(src.indexOf("labelKey: 'items.datasets'")).toBeLessThan(
+      src.indexOf("labelKey: 'items.knowledgeBase'")
+    )
+
+    expect(src.indexOf("labelKey: 'items.knowledgeGraph'")).toBeLessThan(
+      src.indexOf("labelKey: 'items.ragVisualization'")
+    )
+    expect(src.indexOf("labelKey: 'items.ragVisualization'")).toBeLessThan(
+      src.indexOf("labelKey: 'items.ragas'")
+    )
+
+    expect(chatMessages).toContain("datasets: '知识库'")
+    expect(chatMessages).toContain("knowledgeBase: '数据集'")
+    expect(chatMessages).toContain("ragas: 'RAG评测'")
+  })
 })

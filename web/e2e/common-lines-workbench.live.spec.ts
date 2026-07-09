@@ -404,7 +404,7 @@ test.describe('live governance common-lines workbench', () => {
         waitUntil: 'networkidle',
       })
       await expect(
-        page.getByRole('heading', { name: '重复行学习' })
+        page.getByRole('heading', { name: '重复内容治理' })
       ).toBeVisible({ timeout: LIVE_EXPECT_TIMEOUT_MS })
 
       const comboboxes = page.getByRole('combobox')

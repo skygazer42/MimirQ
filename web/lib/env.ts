@@ -5,6 +5,11 @@ function hasHttpProtocol(value: string): boolean {
   return lower.startsWith('http://') || lower.startsWith('https://')
 }
 
+function isLoopbackHost(value: string): boolean {
+  const host = String(value || '').trim().toLowerCase()
+  return host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0'
+}
+
 function resolveApiBaseUrl(): string {
   const publicUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').trim()
   const internalUrl = (process.env.API_INTERNAL_URL || '').trim()
@@ -23,13 +28,19 @@ function resolveApiBaseUrl(): string {
       const apiHost = (url.hostname || '').toLowerCase()
       const rawPageHost = (globalThis.window.location.hostname || '').toLowerCase()
       const pageHost = rawPageHost === '0.0.0.0' ? 'localhost' : rawPageHost
-      const loopbacks = new Set(['localhost', '127.0.0.1', '0.0.0.0'])
+      const isDev = (process.env.NODE_ENV || '').trim().toLowerCase() !== 'production'
+
+      // In browser dev mode, prefer same-origin `/api/v1` so LAN clients do not
+      // need direct access to the backend port (e.g. :8000).
+      if (isDev && isLoopbackHost(apiHost)) {
+        return ''
+      }
 
       if (
-        loopbacks.has(apiHost) &&
+        isLoopbackHost(apiHost) &&
         pageHost &&
         (apiHost === '0.0.0.0' ||
-          !loopbacks.has(pageHost) ||
+          !isLoopbackHost(pageHost) ||
           apiHost !== pageHost)
       ) {
         url.hostname = pageHost

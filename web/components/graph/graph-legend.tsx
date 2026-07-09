@@ -4,7 +4,8 @@ import { useState, useMemo } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { cn } from '@/lib/utils'
-import { buildTypeColorMap, EDGE_KIND_COLORS, EVENT_COLOR } from './graph-viewer'
+import { buildTypeColorMap, EVENT_COLOR } from './graph-colors'
+import { EDGE_KIND_COLORS } from './graph-viewer'
 
 interface EntityTypeEntry {
   type: string

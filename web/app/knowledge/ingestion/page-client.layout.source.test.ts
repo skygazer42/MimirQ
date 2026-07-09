@@ -16,6 +16,9 @@ describe('knowledge ingestion dual-mode layout', () => {
     )
 
     expectSourceToContain(src, 'data-page-scroll-container="true"')
+    expectSourceToContain(src, 'data-ingestion-page-root="true"')
+    expectSourceToContain(src, 'INGESTION_BACKGROUND_CLASS')
+    expectSourceToContain(src, 'INGESTION_HERO_PANEL_CLASS')
     expectSourceToContain(
       src,
       'flex-1 h-full min-h-0 overflow-y-auto overscroll-contain no-scrollbar scroll-fade-bottom'
@@ -144,5 +147,8 @@ describe('knowledge ingestion dual-mode layout', () => {
     expectSourceNotToContain(src, '清隐已处理')
     expectSourceNotToContain(src, 'text-[clamp(1.8rem,3vw,3rem)]')
     expectSourceNotToContain(src, 'h-10 rounded-2xl')
+    expectSourceToContain(src, 'rounded-[28px] border border-sky-200/55')
+    expectSourceToContain(src, 'via-sky-300/65')
+    expectSourceToContain(src, '<PageTitleIcon name="ingestion-monitor" className="size-9" />')
   })
 })

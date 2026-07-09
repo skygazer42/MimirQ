@@ -23,13 +23,11 @@ import type { GraphEndpointRef, GraphLinkLike, GraphNodeLike } from "@/app/graph
 import { getCssHslColor } from "@/lib/css-vars"
 import { buildGraphLinkProvenanceTooltipHtml } from "@/lib/graph-provenance"
 import { toTrimmedPrimitiveString } from "@/lib/primitive-text"
+import { buildTypeColorMap, EVENT_COLOR, NODE_COLOR_PALETTE } from "./graph-colors"
 import { GraphLoadingIndicator } from "./graph-loading-indicator"
 import {
-  buildTypeColorMap,
   EDGE_KIND_COLORS,
-  EVENT_COLOR,
   mixHexColors,
-  NODE_COLOR_PALETTE,
   truncateGraphLabel,
   type LayoutMode,
   withAlpha,

@@ -8,6 +8,7 @@ import dynamic from 'next/dynamic'
 import { useTranslations } from 'next-intl'
 
 import { AppFrame } from '@/components/app-frame'
+import { KNOWLEDGE_OPS_BACKGROUND_CLASS } from '@/components/ui/knowledge-ops-hero'
 import { PageLoading } from '@/components/ui/page-loading'
 
 const DataGovernancePanel = dynamic(
@@ -21,7 +22,9 @@ const DataGovernancePanel = dynamic(
 export default function DataGovernancePage() {
   return (
     <AppFrame>
-      <DataGovernancePanel />
+      <div className={KNOWLEDGE_OPS_BACKGROUND_CLASS}>
+        <DataGovernancePanel />
+      </div>
     </AppFrame>
   )
 }

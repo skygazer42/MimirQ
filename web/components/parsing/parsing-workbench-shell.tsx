@@ -39,7 +39,10 @@ import { ParsingMobileInspectorContent } from '@/components/parsing/parsing-mobi
 import { ParsingMobileQueueContent } from '@/components/parsing/parsing-mobile-queue-content'
 import { ParsingSidebarPane } from '@/components/parsing/parsing-sidebar-pane'
 import { Button } from '@/components/ui/button'
-import { PageTitleIcon } from '@/components/ui/page-title-icon'
+import {
+  KnowledgeOpsFlowCard,
+  KnowledgeOpsHero,
+} from '@/components/ui/knowledge-ops-hero'
 import {
   PipelineRail,
   WorkbenchPanelDialog,
@@ -1260,59 +1263,62 @@ export function ParsingWorkbenchShell({
         title={t('title')}
         description={t('description')}
         header={
-          <header className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div
-              data-testid="parsing-workbench-title"
-              className="relative flex min-w-0 flex-1 items-center gap-4 overflow-hidden rounded-[28px] border border-transparent bg-[linear-gradient(120deg,hsl(var(--background)/0.98),hsl(var(--info)/0.08))] px-5 py-3.5"
-            >
-              <div
-                className="pointer-events-none absolute inset-0 overflow-hidden rounded-[28px]"
-                aria-hidden="true"
-              >
-                <div className="absolute -right-20 -top-20 h-36 w-72 rounded-full bg-info/10 blur-2xl" />
-                <div className="absolute bottom-0 right-0 h-14 w-[34rem] rounded-tl-full bg-[linear-gradient(90deg,transparent,hsl(var(--info)/0.10))]" />
-              </div>
-              <span
-                className="relative flex size-12 shrink-0 items-center justify-center rounded-[18px] border border-info/15 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.10))] text-info shadow-[0_18px_38px_-30px_hsl(var(--info)/0.8)]"
-                aria-hidden="true"
-              >
-                <PageTitleIcon name="parsing" className="size-8" />
-              </span>
-              <div className="relative min-w-0">
-                <div className="flex min-w-0 items-center gap-2">
-                  <h1 className="truncate text-[24px] font-semibold leading-8 tracking-[-0.02em] text-foreground">
-                    {t('title')}
-                  </h1>
+          <header data-testid="parsing-workbench-title">
+            <KnowledgeOpsHero
+              iconImage="parsing"
+              badge="文档资产治理中枢"
+              title={t('title')}
+              description={t('description')}
+              summary={
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2 rounded-2xl border border-sky-200/70 bg-white/64 px-3 py-2 text-[11px] text-muted-foreground shadow-[0_12px_28px_-24px_rgba(14,116,144,0.45)] backdrop-blur dark:border-sky-300/15 dark:bg-background/28">
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="size-1 rounded-full bg-info/70" aria-hidden />
+                      {selectedDatasetId ? '数据集' : '全部来源'}
+                    </span>
+                    <span className="min-w-0 truncate font-medium text-foreground">
+                      {selectedDatasetId || activeFolderPathLabel}
+                    </span>
+                    <span className="h-3.5 w-px bg-border/70" />
+                    <span>文件</span>
+                    <span className="font-mono tabular-nums text-foreground">
+                      {currentFolderFileCount}
+                    </span>
+                  </div>
+                  <KnowledgeOpsFlowCard
+                    steps={[
+                      { icon: UploadCloud, label: '上传' },
+                      { icon: FileText, label: '解析' },
+                      { icon: ShieldCheck, label: '治理' },
+                    ]}
+                  />
                 </div>
-                <p className="mt-1 flex max-w-[60ch] items-center gap-2 text-[14px] leading-[1.45] text-muted-foreground">
-                  <span className="size-1.5 shrink-0 rounded-full bg-info/55 shadow-[0_0_0_4px_hsl(var(--info)/0.08)]" />
-                  {t('description')}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="gap-2 lg:hidden"
-                onClick={() => setQueueOpen(true)}
-              >
-                <FileStack className="w-4 h-4" />
-                {t('queue')}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="gap-2 lg:hidden"
-                onClick={() => setInspectorOpen(true)}
-              >
-                <Settings2 className="w-4 h-4" />
-                {t('tools')}
-              </Button>
-            </div>
+              }
+              actions={
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-2 lg:hidden"
+                    onClick={() => setQueueOpen(true)}
+                  >
+                    <FileStack className="w-4 h-4" />
+                    {t('queue')}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-2 lg:hidden"
+                    onClick={() => setInspectorOpen(true)}
+                  >
+                    <Settings2 className="w-4 h-4" />
+                    {t('tools')}
+                  </Button>
+                </>
+              }
+            />
           </header>
         }
         size="full"

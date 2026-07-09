@@ -1,4 +1,4 @@
-import { NODE_COLOR_PALETTE } from '@/components/graph/graph-viewer'
+import { NODE_COLOR_PALETTE } from '@/components/graph/graph-colors'
 import type { GraphClusterResult } from '@/lib/graph-clustering'
 import type { GraphData } from '@/lib/graph-parser'
 

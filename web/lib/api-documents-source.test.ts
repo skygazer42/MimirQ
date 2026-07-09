@@ -37,4 +37,12 @@ describe('document api service source', () => {
     expect(batchUploadBlock).toContain('if (options.upload_only)')
     expect(batchUploadBlock).toContain("formData.append('upload_only', 'true')")
   })
+
+  it('uses the canonical documents collection path without a trailing slash to avoid redirecting LAN clients to localhost', () => {
+    const src = fs.readFileSync(path.resolve(__dirname, 'api/documents.ts'), 'utf8')
+    const listBlock = src.slice(src.indexOf('async list('), src.indexOf('async listDeadLetters('))
+
+    expect(listBlock).toContain("apiClient.get('/documents'")
+    expect(listBlock).not.toContain("path: '/api/v1/documents/'")
+  })
 })

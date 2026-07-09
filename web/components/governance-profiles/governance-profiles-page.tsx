@@ -6,6 +6,7 @@ import {
   Copy,
   Download,
   Eye,
+  Hash,
   Layers,
   MoreHorizontal,
   Plus,
@@ -17,6 +18,7 @@ import {
   Upload,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { Link } from '@/i18n/navigation'
 
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import { Panel } from '@/components/ui/panel'
@@ -24,6 +26,10 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Switch } from '@/components/ui/switch'
+import {
+  KnowledgeOpsFlowCard,
+  KnowledgeOpsHero,
+} from '@/components/ui/knowledge-ops-hero'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -236,76 +242,114 @@ export function GovernanceProfilesPage() {
       <PageScaffold
         title="治理配置"
         iconImage="governance-config"
-        description={
-          <span className="flex items-center gap-2 text-[13px] text-muted-foreground/85">
-            <span className="size-1.5 rounded-full bg-info/40" aria-hidden />
-            <span>
-              创建和管理可复用的治理模板，用于清洗规则与 pipeline_patch 编排。
-            </span>
-          </span>
-        }
+        description="创建和管理可复用的治理模板，用于清洗规则与 pipeline_patch 编排。"
         icon={ShieldCheck}
         iconColor="text-info"
         size="7xl"
-        actions={
-          <div className="flex items-center gap-2">
-            <input
-              ref={importInputRef}
-              type="file"
-              accept="application/json"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0]
-                if (!file) return
-                importProfilesMutation.mutate(file)
-              }}
-            />
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-8 gap-1.5 text-[12px]"
-              disabled={loading}
-              onClick={() => {
-                profilesQuery.refetch()
-              }}
-            >
-              <RefreshCw
-                className={cn(
-                  'w-3.5 h-3.5',
-                  loading && 'animate-spin motion-reduce:animate-none'
-                )}
-              />
-              刷新
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-8 gap-1.5 text-[12px]"
-              disabled={importProfilesMutation.isPending}
-              onClick={() => importInputRef.current?.click()}
-            >
-              <Upload
-                className={cn(
-                  'w-3.5 h-3.5',
-                  importProfilesMutation.isPending && 'animate-pulse'
-                )}
-              />
-              导入
-            </Button>
-            <Button
-              size="sm"
-              className="h-8 gap-1.5 text-[12px] bg-info text-info-foreground hover:bg-info/90 dark:bg-info/85 dark:hover:bg-info"
-              onClick={() => {
-                setEditorMode('create')
-                setEditorProfileRef(null)
-                setEditorSeedCreate(null)
-                setEditorOpen(true)
-              }}
-            >
-              <Plus className="w-3.5 h-3.5" />
-              新建
-            </Button>
-          </div>
+        showHeader={false}
+        topClassName="relative z-10 w-full max-w-none px-4 md:px-6 pt-3 md:pt-4 pb-2 md:pb-3"
+        top={
+          <KnowledgeOpsHero
+            iconImage="governance-config"
+            title="治理配置"
+            description="创建和管理可复用的治理模板，用于清洗规则与 pipeline_patch 编排。"
+            summary={
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div className="flex min-w-0 flex-wrap items-center gap-2 rounded-2xl border border-sky-200/70 bg-white/64 px-3 py-2 text-[11px] text-muted-foreground shadow-[0_12px_28px_-24px_rgba(14,116,144,0.45)] backdrop-blur dark:border-sky-300/15 dark:bg-background/28">
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="size-1 rounded-full bg-info/70" aria-hidden />
+                    配置
+                  </span>
+                  <span className="font-mono tabular-nums text-foreground">
+                    {items.length}
+                  </span>
+                  <span className="h-3.5 w-px bg-border/70" />
+                  <span>自定义</span>
+                  <span className="font-mono tabular-nums text-foreground">
+                    {customCount}
+                  </span>
+                </div>
+                <KnowledgeOpsFlowCard
+                  steps={[
+                    { icon: Upload, label: '导入' },
+                    { icon: Layers, label: '编排' },
+                    { icon: ShieldCheck, label: '复用' },
+                  ]}
+                />
+              </div>
+            }
+            actions={
+              <>
+                <input
+                  ref={importInputRef}
+                  type="file"
+                  accept="application/json"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (!file) return
+                    importProfilesMutation.mutate(file)
+                  }}
+                />
+                <Button
+                  asChild
+                  size="sm"
+                  variant="outline"
+                  className="h-9 gap-2 rounded-xl border-border/60 bg-card px-4 text-[12px] font-semibold shadow-subtle"
+                >
+                  <Link href="/data-governance/common-lines">
+                    <Hash className="w-3.5 h-3.5" />
+                    重复内容治理
+                  </Link>
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-9 gap-2 rounded-xl border-border/60 bg-card px-4 text-[12px] font-semibold shadow-subtle"
+                  disabled={loading}
+                  onClick={() => {
+                    profilesQuery.refetch()
+                  }}
+                >
+                  <RefreshCw
+                    className={cn(
+                      'w-3.5 h-3.5',
+                      loading && 'animate-spin motion-reduce:animate-none'
+                    )}
+                  />
+                  刷新
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-9 gap-2 rounded-xl border-border/60 bg-card px-4 text-[12px] font-semibold shadow-subtle"
+                  disabled={importProfilesMutation.isPending}
+                  onClick={() => importInputRef.current?.click()}
+                >
+                  <Upload
+                    className={cn(
+                      'w-3.5 h-3.5',
+                      importProfilesMutation.isPending && 'animate-pulse'
+                    )}
+                  />
+                  导入
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-9 gap-2 rounded-xl border-info/25 bg-info/[0.06] px-4 text-[12px] font-semibold text-info shadow-[0_12px_24px_-22px_hsl(var(--info)/0.5)] hover:border-info/40 hover:bg-info/[0.12] hover:text-info"
+                  onClick={() => {
+                    setEditorMode('create')
+                    setEditorProfileRef(null)
+                    setEditorSeedCreate(null)
+                    setEditorOpen(true)
+                  }}
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  新建
+                </Button>
+              </>
+            }
+          />
         }
         >
           {profileLoadError ? (
