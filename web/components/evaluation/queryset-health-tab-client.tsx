@@ -241,31 +241,7 @@ export function QuerysetHealthTab({
   return (
     <div className={cn('space-y-2.5', embedded ? '' : 'p-5')}>
       {embedded ? (
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="text-base font-semibold text-foreground">
-              检索集健康度
-            </div>
-            <div className="mt-0.5 text-[12px] text-muted-foreground">
-              趋势 + 差异 + 退化标记
-            </div>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-2"
-            onClick={() => runsQuery.refetch()}
-            disabled={loadingRuns}
-          >
-            <RefreshCw
-              className={cn(
-                'h-4 w-4',
-                loadingRuns && 'animate-spin motion-reduce:animate-none'
-              )}
-            />
-            刷新
-          </Button>
-        </div>
+        null
       ) : (
         <div className="flex items-start justify-between gap-2.5">
           <div>

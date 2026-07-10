@@ -46,7 +46,8 @@ describe('navigation page title coverage', () => {
     const chunkPreviewSrc = read('components/chunk-preview/components/workbench/index.tsx')
     const parsingSrc = read('components/parsing/parsing-workbench-shell.tsx')
 
-    expect(knowledgeSrc).toContain('bg-[linear-gradient(90deg,hsl(var(--foreground)),hsl(var(--info))_92%)] bg-clip-text text-transparent')
+    expect(knowledgeSrc).toContain('rounded-3xl border border-sky-200/60 bg-gradient-to-br from-white via-sky-50/40 to-blue-50/30')
+    expect(knowledgeSrc).toContain('text-[26px] font-black tracking-tight text-slate-900')
     expect(ingestionSrc).toContain('Knowledge Ops')
     expect(ingestionSrc).toContain('文档资产治理中枢')
     expect(ingestionSrc).toContain('入库管理')

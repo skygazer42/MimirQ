@@ -82,7 +82,7 @@ const KNOWLEDGE_GLASS_CARD_CLASS =
 const KNOWLEDGE_WORKBENCH_SURFACE_CLASS =
   'border-border/45 bg-white shadow-none backdrop-blur-none dark:border-border/50 dark:bg-background'
 const KNOWLEDGE_HERO_PANEL_CLASS =
-  'relative overflow-hidden rounded-[28px] border border-sky-200/55 bg-[linear-gradient(135deg,rgba(248,253,255,0.92),rgba(229,245,255,0.72)_45%,rgba(255,255,255,0.82))] px-4 py-3 shadow-[0_24px_70px_-48px_rgba(14,116,144,0.55)] backdrop-blur-2xl dark:border-sky-300/15 dark:bg-[linear-gradient(135deg,rgba(8,21,34,0.82),rgba(8,47,73,0.36)_48%,rgba(15,23,42,0.72))]'
+  'relative overflow-hidden rounded-3xl border border-sky-200/60 bg-gradient-to-br from-white via-sky-50/40 to-blue-50/30 px-5 py-4 shadow-xl shadow-sky-200/30 backdrop-blur-xl dark:border-sky-300/15 dark:bg-gradient-to-br dark:from-slate-900 dark:via-sky-950/40 dark:to-blue-950/30'
 const DOCUMENTS_PAGE_SIZE = 20
 type TabKey = 'documents' | 'retrieval' | 'settings'
 
@@ -440,27 +440,27 @@ export default function KnowledgePage() {
 
   const documentScopeSummary = useMemo(
     () => (
-      <div className="inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-[14px] border border-border/50 bg-white/58 px-2.5 py-1.5 text-[11px] shadow-[0_10px_24px_-28px_hsl(var(--primary)/0.32)] backdrop-blur-xl dark:border-border/55 dark:bg-background/30">
-        <span className="inline-flex items-center font-medium text-foreground/82">
-          <Database className="mr-1.5 size-3 text-info" />
+      <div className="inline-flex max-w-full flex-wrap items-center gap-2 rounded-2xl border border-sky-200/60 bg-gradient-to-r from-white to-sky-50/30 px-3.5 py-2 text-[12px] shadow-md shadow-sky-200/20 backdrop-blur-sm dark:border-sky-300/15 dark:bg-background/40">
+        <span className="inline-flex items-center gap-2 font-bold text-slate-700 dark:text-slate-200">
+          <Database className="size-4 text-sky-500" />
           数据范围
-          <span className="ml-1.5 max-w-[14rem] truncate text-[11px] text-muted-foreground/80">
+          <span className="max-w-[14rem] truncate text-[12px] font-black text-slate-900 dark:text-white">
             {selectedDatasetLabel || scopeT('dataset.all')}
           </span>
         </span>
-        <span className="h-3.5 w-px bg-border/80 dark:bg-border/70" />
-        <span className="inline-flex items-center font-medium text-foreground/82">
-          <Eye className="mr-1.5 size-3 text-info" />
+        <span className="h-4 w-px bg-sky-200/70" />
+        <span className="inline-flex items-center gap-2 font-bold text-slate-700 dark:text-slate-200">
+          <Eye className="size-4 text-sky-500" />
           可见
-          <span className="ml-1.5 font-mono tabular-nums text-[11px] text-foreground">
+          <span className="font-mono font-black tabular-nums text-sky-600 dark:text-sky-400">
             {filteredDocuments.length}
           </span>
         </span>
-        <span className="h-3.5 w-px bg-border/80 dark:bg-border/70" />
-        <span className="inline-flex items-center font-medium text-foreground/82">
-          <Activity className="mr-1.5 size-3 text-success" />
+        <span className="h-4 w-px bg-sky-200/70" />
+        <span className="inline-flex items-center gap-2 font-bold text-slate-700 dark:text-slate-200">
+          <Activity className="size-4 text-emerald-500" />
           生命周期
-          <span className="ml-1.5 text-[11px] text-muted-foreground/80">
+          <span className="text-[12px] font-black text-emerald-600 dark:text-emerald-400">
             {lifecycleFilter}
           </span>
         </span>
@@ -476,7 +476,7 @@ export default function KnowledgePage() {
         label: '文档总数',
         value: totalDocs,
         caption: `${datasets.length} 库`,
-        iconShell: 'border-info/15 bg-info/[0.08] text-info dark:text-info',
+        iconShell: 'border-sky-200/60 bg-gradient-to-br from-sky-100 to-blue-100 text-sky-600 dark:text-sky-400',
       },
       {
         icon: CheckCircle,
@@ -484,7 +484,7 @@ export default function KnowledgePage() {
         value: completedDocsValue,
         caption: `可用 ${readyRate}%`,
         iconShell:
-          'border-success/15 bg-success/[0.08] text-success dark:text-success',
+          'border-emerald-200/60 bg-gradient-to-br from-emerald-100 to-teal-100 text-emerald-600 dark:text-emerald-400',
       },
       {
         icon: Layers,
@@ -492,14 +492,14 @@ export default function KnowledgePage() {
         value: processingDocsValue + quarantinedDocsValue + failedDocsValue,
         caption: `${quarantinedDocsValue} 隔离 · ${failedDocsValue} 失败`,
         iconShell:
-          'border-accent/15 bg-accent/[0.08] text-accent dark:text-accent',
+          'border-amber-200/60 bg-gradient-to-br from-amber-100 to-orange-100 text-amber-600 dark:text-amber-400',
       },
       {
         icon: HardDrive,
         label: '总体体量',
         value: totalSizeValue,
         caption: `${totalChunksValue} 分块`,
-        iconShell: 'border-info/15 bg-info/[0.08] text-info dark:text-info',
+        iconShell: 'border-cyan-200/60 bg-gradient-to-br from-cyan-100 to-sky-100 text-cyan-600 dark:text-cyan-400',
       },
     ],
     [
@@ -522,7 +522,7 @@ export default function KnowledgePage() {
         label: '文档总数',
         value: totalDocs,
         caption: `${completedDocsValue} 已就绪`,
-        iconShell: 'border-info/15 bg-info/[0.08] text-info dark:text-info',
+        iconShell: 'border-sky-200/60 bg-gradient-to-br from-sky-100 to-blue-100 text-sky-600 dark:text-sky-400',
       },
       {
         icon: CheckCircle,
@@ -530,14 +530,14 @@ export default function KnowledgePage() {
         value: completedDocsValue,
         caption: `健康 ${readyRate}%`,
         iconShell:
-          'border-success/15 bg-success/[0.08] text-success dark:text-success',
+          'border-emerald-200/60 bg-gradient-to-br from-emerald-100 to-teal-100 text-emerald-600 dark:text-emerald-400',
       },
       {
         icon: Database,
         label: '知识分类',
         value: datasets.length,
         caption: '数据集范围',
-        iconShell: 'border-info/15 bg-info/[0.08] text-info dark:text-info',
+        iconShell: 'border-indigo-200/60 bg-gradient-to-br from-indigo-100 to-purple-100 text-indigo-600 dark:text-indigo-400',
       },
       {
         icon: HardDrive,
@@ -545,7 +545,7 @@ export default function KnowledgePage() {
         value: totalSizeValue,
         caption: `${totalChunksValue} 分块`,
         iconShell:
-          'border-success/15 bg-success/[0.08] text-success dark:text-success',
+          'border-cyan-200/60 bg-gradient-to-br from-cyan-100 to-sky-100 text-cyan-600 dark:text-cyan-400',
       },
     ],
     [
@@ -711,69 +711,67 @@ export default function KnowledgePage() {
           <div className={cn('flex min-w-0 flex-col gap-4 lg:flex-row lg:items-center lg:justify-between', KNOWLEDGE_HERO_PANEL_CLASS)}>
             <div className="pointer-events-none absolute -right-10 -top-14 size-44 rounded-full bg-sky-300/22 blur-3xl" aria-hidden="true" />
             <div className="pointer-events-none absolute bottom-0 left-8 right-8 h-px bg-gradient-to-r from-transparent via-sky-300/65 to-transparent" aria-hidden="true" />
-            <div className="relative flex min-w-0 items-center gap-3">
-              <div className="relative flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-[22px] border border-info/20 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.12))] text-info shadow-[inset_0_1px_0_hsl(var(--background)),0_18px_36px_-24px_hsl(var(--info)/0.9)]">
+            <div className="relative flex min-w-0 items-center gap-4">
+              <div className="relative flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-sky-200/60 bg-gradient-to-br from-white to-sky-100 text-sky-600 shadow-lg shadow-sky-200/40">
                 <span
-                  className="absolute inset-x-2 top-1 h-px bg-card/70"
+                  className="absolute inset-x-2 top-1.5 h-px bg-white/80"
                   aria-hidden="true"
                 />
-                <PageTitleIcon name="knowledge-management" className="size-9" />
+                <PageTitleIcon name="knowledge-management" className="size-10" />
               </div>
               <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-200/70 bg-sky-50/70 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-sky-700 dark:border-sky-300/20 dark:bg-sky-300/10 dark:text-sky-200">
-                    <Sparkles className="size-3" />
+                <div className="flex flex-wrap items-center gap-2 mb-2">
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-300/60 bg-gradient-to-r from-sky-100/80 to-blue-100/60 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-sky-700 shadow-sm dark:border-sky-300/20 dark:bg-sky-300/10 dark:text-sky-200">
+                    <Sparkles className="size-3.5" />
                     Knowledge Ops
                   </span>
-                  <span className="inline-flex items-center rounded-full border border-emerald-200/65 bg-emerald-50/70 px-2.5 py-1 text-[10px] font-medium text-emerald-700 dark:border-emerald-300/15 dark:bg-emerald-300/10 dark:text-emerald-200">
-                    <ShieldCheck className="mr-1.5 size-3" />
+                  <span className="inline-flex items-center rounded-full border border-emerald-300/60 bg-gradient-to-r from-emerald-100/80 to-teal-100/60 px-3 py-1.5 text-[10px] font-bold text-emerald-700 shadow-sm dark:border-emerald-300/15 dark:bg-emerald-300/10 dark:text-emerald-200">
+                    <ShieldCheck className="mr-1.5 size-3.5" />
                     文档资产治理中枢
                   </span>
                 </div>
-                <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                  <h1 className="text-[22px] font-semibold tracking-[-0.025em] text-foreground">
-                    <span className="bg-[linear-gradient(90deg,hsl(var(--foreground)),hsl(var(--info))_92%)] bg-clip-text text-transparent">
-                      {t('header.title')}
-                    </span>
+                <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                  <h1 className="text-[26px] font-black tracking-tight text-slate-900 dark:text-white">
+                    {t('header.title')}
                   </h1>
-                  <p className="text-[13px] leading-5 text-muted-foreground/85">
+                  <p className="text-[13px] font-semibold leading-5 text-sky-600/90 dark:text-sky-400">
                     {t('header.description')}
                   </p>
                 </div>
               </div>
             </div>
-            <div className="relative grid min-w-0 gap-2 sm:grid-cols-2 lg:min-w-[470px]">
-              <div className="flex min-w-0 flex-wrap items-center gap-2 rounded-2xl border border-sky-200/70 bg-white/64 px-3 py-2 text-[11px] text-muted-foreground shadow-[0_12px_28px_-24px_rgba(14,116,144,0.45)] backdrop-blur dark:border-sky-300/15 dark:bg-background/28">
-                <span className="inline-flex items-center gap-1.5">
+            <div className="relative grid min-w-0 gap-3 sm:grid-cols-2 lg:min-w-[500px]">
+              <div className="flex min-w-0 flex-wrap items-center gap-2.5 rounded-2xl border border-sky-200/70 bg-white/80 px-4 py-3 text-[12px] shadow-md shadow-sky-200/20 backdrop-blur-sm dark:border-sky-300/15 dark:bg-background/40">
+                <span className="inline-flex items-center gap-2 font-bold text-slate-700 dark:text-slate-200">
                   <span
-                    className="size-1 rounded-full bg-info/70"
+                    className="size-1.5 rounded-full bg-sky-500 shadow-sm shadow-sky-300"
                     aria-hidden
                   />
                   范围
                 </span>
-                <span className="min-w-0 truncate font-medium text-foreground">
+                <span className="min-w-0 truncate font-black text-slate-900 dark:text-white">
                   {selectedDatasetLabel || scopeT('dataset.all')}
                 </span>
-                <span className="h-3.5 w-px bg-border/70" />
-                <span>任务</span>
-                <span className="font-mono tabular-nums text-foreground">
+                <span className="h-4 w-px bg-sky-200/70" />
+                <span className="font-bold text-slate-600 dark:text-slate-300">任务</span>
+                <span className="font-mono font-black tabular-nums text-sky-600 dark:text-sky-400">
                   {activeTasksCount}
                 </span>
               </div>
-              <div className="flex min-w-0 items-center justify-between gap-2 rounded-2xl border border-sky-200/70 bg-white/64 px-3 py-2 text-[11px] text-muted-foreground shadow-[0_12px_28px_-24px_rgba(14,116,144,0.45)] backdrop-blur dark:border-sky-300/15 dark:bg-background/28">
-                <span className="inline-flex items-center gap-1.5">
-                  <Database className="size-3 text-sky-500" />
+              <div className="flex min-w-0 items-center justify-between gap-2 rounded-2xl border border-sky-200/70 bg-white/80 px-4 py-3 text-[12px] shadow-md shadow-sky-200/20 backdrop-blur-sm dark:border-sky-300/15 dark:bg-background/40">
+                <span className="inline-flex items-center gap-2 font-bold text-slate-700 dark:text-slate-200">
+                  <Database className="size-4 text-sky-500" />
                   采集
                 </span>
-                <ArrowRight className="size-3 shrink-0 text-muted-foreground/45" />
-                <span className="inline-flex items-center gap-1.5">
-                  <FileStack className="size-3 text-sky-500" />
+                <ArrowRight className="size-4 shrink-0 text-sky-400" />
+                <span className="inline-flex items-center gap-2 font-bold text-slate-700 dark:text-slate-200">
+                  <FileStack className="size-4 text-sky-500" />
                   资产
                 </span>
-                <ArrowRight className="size-3 shrink-0 text-muted-foreground/45" />
-                <span className="inline-flex items-center gap-1.5">
-                  <Search className="size-3 text-sky-500" />
-                  检索验证
+                <ArrowRight className="size-4 shrink-0 text-sky-400" />
+                <span className="inline-flex items-center gap-2 font-bold text-slate-700 dark:text-slate-200">
+                  <Search className="size-4 text-sky-500" />
+                  验证
                 </span>
               </div>
             </div>
@@ -783,7 +781,7 @@ export default function KnowledgePage() {
           activeTab === 'documents' ||
           activeTab === 'settings' ||
           activeTab === 'retrieval' ? (
-            <div className="grid border-y border-border/45 bg-white md:grid-cols-2 xl:grid-cols-4 dark:bg-background">
+            <div className="grid border-y border-sky-100/50 bg-gradient-to-r from-white via-sky-50/20 to-blue-50/20 md:grid-cols-2 xl:grid-cols-4 dark:bg-background">
               {(activeTab === 'settings'
                 ? settingsSummaryCards
                 : summaryCards
@@ -791,37 +789,36 @@ export default function KnowledgePage() {
                 <div
                   key={card.label}
                   className={cn(
-                    'group relative overflow-hidden border-0 border-r border-border/45 last:border-r-0 transition-colors duration-150 hover:bg-slate-50/70 dark:hover:bg-muted/10',
-                    KNOWLEDGE_GLASS_CARD_CLASS,
-                    'min-h-[56px] rounded-none px-4 py-2.5'
+                    'group relative overflow-hidden border-0 border-r border-sky-100/50 last:border-r-0 transition-all duration-200 hover:bg-gradient-to-br hover:from-sky-50/60 hover:to-blue-50/40 dark:hover:bg-muted/10',
+                    'min-h-[68px] rounded-none px-5 py-3.5'
                   )}
                 >
                   <span
-                    className="pointer-events-none absolute inset-x-4 top-0 h-px bg-gradient-to-r from-transparent via-sky-300/65 to-transparent"
+                    className="pointer-events-none absolute inset-x-4 top-0 h-px bg-gradient-to-r from-transparent via-sky-300/50 to-transparent"
                     aria-hidden="true"
                   />
                   <span
-                    className="pointer-events-none absolute -right-8 -top-8 size-20 rounded-full bg-sky-300/12 blur-2xl transition-opacity duration-200 group-hover:opacity-90"
+                    className="pointer-events-none absolute -right-8 -top-8 size-24 rounded-full bg-sky-300/8 blur-2xl transition-opacity duration-200 group-hover:opacity-100"
                     aria-hidden="true"
                   />
-                  <div className="relative flex h-full items-center gap-2.5">
+                  <div className="relative flex h-full items-center gap-3">
                     <div
                       className={cn(
-                        'flex size-8 shrink-0 items-center justify-center rounded-lg border shadow-none',
+                        'flex size-10 shrink-0 items-center justify-center rounded-xl border shadow-sm transition-all duration-200 group-hover:scale-110',
                         card.iconShell
                       )}
                     >
-                      <card.icon className="size-3.5" />
+                      <card.icon className="size-5" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-[11px] font-medium leading-none text-muted-foreground/82">
+                      <div className="truncate text-[11px] font-black uppercase tracking-wide text-slate-600 dark:text-slate-400">
                         {card.label}
                       </div>
-                      <div className="mt-1 flex min-w-0 items-baseline gap-2">
-                        <span className="truncate text-[15px] font-semibold leading-none tabular-nums text-foreground">
+                      <div className="mt-1.5 flex min-w-0 items-baseline gap-2">
+                        <span className="truncate text-[18px] font-black leading-none tabular-nums text-slate-900 dark:text-white">
                           {card.value}
                         </span>
-                        <span className="min-w-0 truncate text-[11px] text-muted-foreground/72">
+                        <span className="min-w-0 truncate text-[11px] font-semibold text-sky-600 dark:text-sky-400">
                           {card.caption}
                         </span>
                       </div>
@@ -836,17 +833,16 @@ export default function KnowledgePage() {
         toolbar={
           <div
             className={cn(
-              'relative flex flex-col overflow-hidden rounded-none border-y border-x-0 xl:flex-row xl:items-center xl:justify-between',
-              KNOWLEDGE_GLASS_CARD_CLASS,
-              activeTab === 'settings' ? 'gap-2 px-1 py-2' : 'gap-3 px-1 py-2'
+              'relative flex flex-col overflow-hidden rounded-none border-y border-x-0 bg-white backdrop-blur-sm xl:flex-row xl:items-center xl:justify-between dark:bg-background',
+              activeTab === 'settings' ? 'gap-2 px-2 py-3' : 'gap-3 px-2 py-3'
             )}
           >
             <span
-              className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-sky-300/60 to-transparent"
+              className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-sky-300/40 to-transparent"
               aria-hidden="true"
             />
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="inline-flex items-center gap-0 border-0 bg-transparent p-0 shadow-none">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <div className="inline-flex items-center gap-1.5 rounded-full border border-sky-200/60 bg-gradient-to-r from-sky-50 to-blue-50 p-1 shadow-sm">
                 {tabs.map((tab) => (
                   <motion.button
                     key={tab.key}
@@ -859,26 +855,16 @@ export default function KnowledgePage() {
                     whileTap={reduceMotion ? undefined : { scale: 0.985 }}
                     transition={{ type: 'spring', stiffness: 380, damping: 24 }}
                     className={cn(
-                      'relative flex h-9 min-w-[94px] items-center justify-center gap-2 rounded-none border-b-2 border-transparent px-3 text-[12px] font-medium transition-colors focus-ring',
+                      'relative flex h-10 min-w-[100px] items-center justify-center gap-2.5 rounded-xl border-0 px-4 text-[13px] font-bold transition-all duration-200 focus-ring',
                       activeTab === tab.key
-                        ? 'text-primary'
-                        : 'text-muted-foreground hover:text-foreground'
+                        ? 'bg-gradient-to-r from-sky-500 to-blue-600 text-white shadow-lg shadow-sky-200/40'
+                        : 'bg-transparent text-slate-600 hover:bg-gradient-to-r hover:from-sky-50 hover:to-blue-50 hover:text-sky-700'
                     )}
                   >
-                    {activeTab === tab.key ? (
-                      <>
-                        <motion.span
-                          layoutId="knowledge-tab-active-underline"
-                          transition={layoutTransition}
-                          className="absolute inset-x-3 bottom-0 h-[2px] rounded-none bg-primary shadow-none"
-                        />
-                        <span className="absolute inset-0 bg-transparent" />
-                      </>
-                    ) : null}
                     <tab.icon
                       className={cn(
-                        'relative z-10 size-3.5 transition-transform duration-200',
-                        activeTab === tab.key && 'scale-105'
+                        'relative z-10 size-4 transition-transform duration-200',
+                        activeTab === tab.key && 'scale-110'
                       )}
                     />
                     <span className="relative z-10">{tab.label}</span>
@@ -895,9 +881,9 @@ export default function KnowledgePage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="h-9 rounded-xl border-border/60 bg-card px-3 text-[12px] lg:hidden"
+                    className="h-10 rounded-xl border-sky-200/60 bg-white px-4 text-[13px] font-bold shadow-sm hover:bg-gradient-to-r hover:from-sky-50 hover:to-blue-50 hover:shadow-md lg:hidden"
                   >
-                    <Filter className="mr-2 size-3.5" />
+                    <Filter className="mr-2 size-4" />
                     筛选
                   </Button>
                 }
@@ -938,9 +924,9 @@ export default function KnowledgePage() {
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="h-9 rounded-xl border-border/60 bg-card px-3 text-[12px] xl:hidden"
+                      className="h-10 rounded-xl border-sky-200/60 bg-white px-4 text-[13px] font-bold shadow-sm hover:bg-gradient-to-r hover:from-sky-50 hover:to-blue-50 hover:shadow-md xl:hidden"
                     >
-                      <History className="mr-2 size-3.5" />
+                      <History className="mr-2 size-4" />
                       任务
                     </Button>
                   }

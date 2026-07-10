@@ -63,6 +63,7 @@ import { formatApiError } from '@/lib/api-errors'
 import { datasetApi } from '@/lib/api/datasets'
 import { evaluationApi } from '@/lib/api/evaluation'
 import { settingsApi } from '@/lib/api/settings'
+import { Link } from '@/i18n/navigation'
 import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { queryKeys } from '@/lib/query-keys'
 import {
@@ -118,6 +119,14 @@ type AblationRunPayloadConfig = {
   enableReranker: boolean
   rerankerProvider: string
   rerankerTopN: number
+}
+
+type AutoBootstrapStage = 'top_k' | 'reranker' | 'retrieval_mode'
+
+type AutoBootstrapPlan = {
+  stage: AutoBootstrapStage
+  label: string
+  helper: string
 }
 
 const ABLATION_INLINE_TONE_CLASSES: Record<
@@ -197,6 +206,34 @@ function toNumber(value: unknown): number | null {
 
 function clampNumber(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(value, max))
+}
+
+function pickAutoCandidateTopK(currentTopK: number): number {
+  const base = clampNumber(currentTopK, 1, 50)
+  const plus = clampNumber(base + 10, 1, 50)
+  if (plus !== base) return plus
+  const minus = clampNumber(base - 10, 1, 50)
+  if (minus !== base) return minus
+  return base >= 50 ? 49 : base + 1
+}
+
+function runParamNumber(run: RegressionRun, key: string): number | null {
+  const params = run.params && typeof run.params === 'object' ? run.params : null
+  return toNumber(params ? (params as Record<string, unknown>)[key] : null)
+}
+
+function runParamBoolean(run: RegressionRun, key: string): boolean | null {
+  const params = run.params && typeof run.params === 'object' ? run.params : null
+  const raw = params ? (params as Record<string, unknown>)[key] : null
+  if (typeof raw === 'boolean') return raw
+  if (raw === 'true') return true
+  if (raw === 'false') return false
+  return null
+}
+
+function runParamString(run: RegressionRun, key: string): string {
+  const params = run.params && typeof run.params === 'object' ? run.params : null
+  return toTrimmedPrimitiveString(params ? (params as Record<string, unknown>)[key] : null)
 }
 
 const RAGAS_METRIC_OPTIONS = [
@@ -721,12 +758,73 @@ function AblationLeaderboardEmptyState() {
   )
 }
 
-function AblationDiffEmptyState() {
-  const steps = [
-    { label: '选择基线运行', hint: '选择作为基准的实验运行结果。' },
-    { label: '选择候选运行', hint: '选择需要对比的实验运行结果。' },
-    { label: '生成差异对比', hint: '点击“生成差异对比”查看配置差异与指标变化。' },
-  ]
+function AblationDiffEmptyState({
+  datasetId,
+  caseCount,
+  runCount,
+  autoRunLabel,
+  autoRunHelper,
+  autoRunPending,
+  onAutoRun,
+}: Readonly<{
+  datasetId: string
+  caseCount: number
+  runCount: number
+  autoRunLabel?: string | null
+  autoRunHelper?: string | null
+  autoRunPending?: boolean
+  onAutoRun?: () => void
+}>) {
+  const hasDataset = Boolean(datasetId.trim())
+  const hasCases = caseCount > 0
+  const hasComparableRuns = runCount >= 2
+  const title = !hasDataset
+    ? '先选择数据集'
+    : !hasCases
+      ? '当前数据集还没有 Golden 样本'
+      : !runCount
+        ? '已有 Golden 样本，但还没有实验运行'
+        : !hasComparableRuns
+          ? '已有 Golden 样本，但还差 1 条实验运行'
+          : '等待生成差异对比'
+  const description = !hasDataset
+    ? '先固定一个数据集，这里才能加载可对比的运行记录。'
+    : !hasCases
+      ? '这个页面不是用来创建 Golden 样本的。请先回“评测中心”准备标准问题、标准答案和标准证据。'
+      : !runCount
+        ? `当前数据集已经有 ${caseCount} 条 Golden/Regression 样本，但还没有实验运行。先点击左下角“运行消融实验”跑出第一条基线记录。`
+        : !hasComparableRuns
+          ? `当前数据集已经有 ${caseCount} 条 Golden/Regression 样本，也已经跑出 1 条实验记录。差异对比至少需要 2 条：先保留这条作为基线，再改一个参数跑第二条候选。`
+          : '请先选择基线运行与候选运行，然后点击“生成差异对比”。系统将对两次运行进行结构化对比，展示差异与影响分析。'
+  const steps = !hasDataset
+    ? [
+        { label: '选择数据集', hint: '固定本次要比较的知识库数据集。' },
+        { label: '确认 Golden 样本', hint: '确保该数据集已有标准问题、标准答案和标准证据。' },
+        { label: '进入对比', hint: '完成后这里才会出现可比较的实验记录。' },
+      ]
+    : !hasCases
+      ? [
+          { label: '返回评测中心', hint: '去 Golden 回归评测页维护样本。' },
+          { label: '准备 Golden 样本', hint: '至少要有标准问题、标准答案和标准证据。' },
+          { label: '再回到这里', hint: '有了样本后再运行检索调参对比。' },
+        ]
+      : !runCount
+        ? [
+            { label: '保留当前参数', hint: '先用你认为最稳定的一套检索参数跑第一条基线。' },
+            { label: '运行消融实验', hint: '点击左下角“运行消融实验”生成第一条记录。' },
+            { label: '再改一个参数', hint: '例如 top_k、检索模式或 reranker，准备第二次运行。' },
+          ]
+        : !hasComparableRuns
+          ? [
+              { label: '把现有记录当基线', hint: '当前这 1 条实验记录先作为稳定方案。' },
+              { label: '只改一个参数', hint: '例如 top_k、reranker 开关或 score threshold。' },
+              { label: '再运行一次', hint: '生成第 2 条候选记录后，这里才能比较差异。' },
+            ]
+          : [
+              { label: '选择基线运行', hint: '选择作为基准的实验运行结果。' },
+              { label: '选择候选运行', hint: '选择需要对比的实验运行结果。' },
+              { label: '生成差异对比', hint: '点击“生成差异对比”查看配置差异与指标变化。' },
+            ]
 
   return (
     <div className="flex min-h-[530px] flex-col items-center justify-center px-6 py-8 text-center">
@@ -755,11 +853,34 @@ function AblationDiffEmptyState() {
         <div className="absolute left-[88px] top-3 h-8 w-[184px] rounded-t-2xl border-x border-t border-dashed border-emerald-300" />
       </div>
       <div className="mt-3 text-[16px] font-semibold text-slate-950">
-        等待生成差异对比
+        {title}
       </div>
       <p className="mt-2 max-w-[430px] text-[13px] leading-6 text-slate-500">
-        请先选择基线运行与候选运行，然后点击“生成差异对比”。系统将对两次运行进行结构化对比，展示差异与影响分析。
+        {description}
       </p>
+      <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1.5 text-[11px] font-medium text-blue-700">
+        <span>Golden 样本 {caseCount}</span>
+        <span className="h-3 w-px bg-blue-200" />
+        <span>实验运行 {runCount}</span>
+      </div>
+      {autoRunLabel && onAutoRun ? (
+        <div className="mt-4 flex max-w-[430px] flex-col items-center">
+          <Button
+            type="button"
+            className="h-10 rounded-full bg-sky-600 px-5 text-[13px] font-semibold text-white hover:bg-sky-700"
+            disabled={autoRunPending}
+            onClick={onAutoRun}
+          >
+            <PlayCircle className="mr-2 h-4 w-4" />
+            {autoRunPending ? '正在自动补齐...' : autoRunLabel}
+          </Button>
+          {autoRunHelper ? (
+            <div className="mt-2 text-[11px] leading-5 text-sky-700">
+              {autoRunHelper}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       <div className="mt-7 w-full max-w-[390px] rounded-2xl border border-dashed border-blue-200 bg-card/85 p-4 text-left">
         {steps.map((step, index) => (
           <div
@@ -937,13 +1058,39 @@ function AblationOverviewTab({
   diffScoreFmt,
   diffDeltaClass,
   metricDiffRows,
+  datasetId,
+  caseCount,
+  runCount,
+  autoRunLabel,
+  autoRunHelper,
+  autoRunPending,
+  onAutoRun,
 }: Readonly<{
   diff: RagasRegressionRunDiffResponse | null
   diffScoreFmt: AblationDiffScoreDisplay
   diffDeltaClass: string
   metricDiffRows: RegressionRunMetricDiff[]
+  datasetId: string
+  caseCount: number
+  runCount: number
+  autoRunLabel?: string | null
+  autoRunHelper?: string | null
+  autoRunPending?: boolean
+  onAutoRun?: () => void
 }>) {
-  if (!diff) return <AblationDiffEmptyState />
+  if (!diff) {
+    return (
+      <AblationDiffEmptyState
+        datasetId={datasetId}
+        caseCount={caseCount}
+        runCount={runCount}
+        autoRunLabel={autoRunLabel}
+        autoRunHelper={autoRunHelper}
+        autoRunPending={autoRunPending}
+        onAutoRun={onAutoRun}
+      />
+    )
+  }
 
   return (
     <div className="px-5 py-3">
@@ -1179,6 +1326,11 @@ function AblationComparisonWorkspace({
   leaderboardMetricKey,
   deepDiveMetricKeys,
   diffJson,
+  caseCount,
+  autoRunLabel,
+  autoRunHelper,
+  autoBootstrapPending,
+  runAutoBootstrap,
 }: Readonly<{
   leaderboardCollapsed: boolean
   leftSidebarCollapsed: boolean
@@ -1214,6 +1366,11 @@ function AblationComparisonWorkspace({
   leaderboardMetricKey: string
   deepDiveMetricKeys: string[]
   diffJson: string
+  caseCount: number
+  autoRunLabel: string | null
+  autoRunHelper: string | null
+  autoBootstrapPending: boolean
+  runAutoBootstrap: () => Promise<void>
 }>) {
   const basePlaceholder = runsLoading ? '加载中...' : '选择基线运行'
   const targetPlaceholder = runsLoading ? '加载中...' : '选择候选运行'
@@ -1423,6 +1580,13 @@ function AblationComparisonWorkspace({
               diffScoreFmt={diffScoreFmt}
               diffDeltaClass={diffDeltaClass}
               metricDiffRows={metricDiffRows}
+              datasetId={datasetId}
+              caseCount={caseCount}
+              runCount={runsByDataset.length}
+              autoRunLabel={autoRunLabel}
+              autoRunHelper={autoRunHelper}
+              autoRunPending={autoBootstrapPending}
+              onAutoRun={autoRunLabel ? () => detachPromise(runAutoBootstrap()) : undefined}
             />
           </TabsContent>
 
@@ -1500,6 +1664,7 @@ export function RetrievalAblationsPage() {
   const [rerankerTopN, setRerankerTopN] = useState(20)
   const [settingsDefaultsApplied, setSettingsDefaultsApplied] = useState(false)
   const [defaultDatasetApplied, setDefaultDatasetApplied] = useState(false)
+  const [autoBootstrapPending, setAutoBootstrapPending] = useState(false)
 
   const datasetsQuery = useQuery({
     queryKey: queryKeys.datasets.list(RETRIEVAL_ABLATION_DATASET_PARAMS),
@@ -1725,6 +1890,125 @@ export function RetrievalAblationsPage() {
     )
   }
 
+  async function runAutoBootstrap(): Promise<void> {
+    if (runDisabledReason) {
+      toast.error(runDisabledReason)
+      return
+    }
+
+    const plan = autoBootstrapPlan
+    if (!plan) {
+      await runAblation()
+      return
+    }
+
+    const baselineTopK = clampNumber(topK, 1, 50)
+    const candidateTopK = pickAutoCandidateTopK(baselineTopK)
+    setAutoBootstrapPending(true)
+
+    try {
+      const payload = buildCurrentRegressionRunPayload()
+      if (!payload) {
+        toast.error('请选择数据集')
+        return
+      }
+
+      if (plan.stage === 'top_k') {
+        if (runsByDataset.length === 0) {
+          const batch = await evaluationApi.createRegressionAblationBatch({
+            ...payload,
+            grid: {
+              top_k: [baselineTopK, candidateTopK],
+            },
+            max_combinations: 2,
+            ablation_label_prefix: 'auto-bootstrap-top-k',
+          })
+          await runsQuery.refetch()
+          if (batch.run_ids[0]) setSelectedBaseRunId(String(batch.run_ids[0]))
+          if (batch.run_ids[1]) setSelectedTargetRunId(String(batch.run_ids[1]))
+          toast.success(
+            `已自动生成第 1 轮对比：top_k ${baselineTopK} vs ${candidateTopK}`
+          )
+          return
+        }
+
+        const baselineRun =
+          runsByDataset.find((run) => runParamNumber(run, 'top_k') !== candidateTopK) ||
+          runsByDataset[0] ||
+          null
+        const run = await evaluationApi.createRegressionRun({
+          ...payload,
+          top_k: candidateTopK,
+        })
+        await runsQuery.refetch()
+        if (baselineRun?.id) setSelectedBaseRunId(String(baselineRun.id))
+        setSelectedTargetRunId(run.id)
+        toast.success(`已自动补齐第 1 轮对比：top_k ${candidateTopK}`)
+        return
+      }
+
+      if (plan.stage === 'reranker') {
+        const existingStates = new Set(
+          runsByDataset
+            .map((run) => runParamBoolean(run, 'enable_reranker'))
+            .filter((value): value is boolean => typeof value === 'boolean')
+        )
+        const nextEnableReranker = existingStates.has(false)
+          ? true
+          : existingStates.has(true)
+            ? false
+            : !enableReranker
+        const baselineRun =
+          runsByDataset.find(
+            (run) => runParamBoolean(run, 'enable_reranker') !== nextEnableReranker
+          ) || runsByDataset[0] || null
+        const run = await evaluationApi.createRegressionRun({
+          ...payload,
+          enable_reranker: nextEnableReranker,
+        })
+        await runsQuery.refetch()
+        if (baselineRun?.id) setSelectedBaseRunId(String(baselineRun.id))
+        setSelectedTargetRunId(run.id)
+        toast.success(
+          `已自动生成第 2 轮对比：reranker ${nextEnableReranker ? 'ON' : 'OFF'}`
+        )
+        return
+      }
+
+      const existingModes = new Set(
+        runsByDataset
+          .map((run) => runParamString(run, 'retrieval_mode'))
+          .filter((value) => value === 'hybrid' || value === 'vector')
+      )
+      const nextRetrievalMode =
+        existingModes.has('hybrid') && !existingModes.has('vector')
+          ? 'vector'
+          : existingModes.has('vector') && !existingModes.has('hybrid')
+            ? 'hybrid'
+            : retrievalMode === 'vector'
+              ? 'hybrid'
+              : 'vector'
+      const baselineRun =
+        runsByDataset.find(
+          (run) => runParamString(run, 'retrieval_mode') !== nextRetrievalMode
+        ) || runsByDataset[0] || null
+      const run = await evaluationApi.createRegressionRun({
+        ...payload,
+        retrieval_mode: nextRetrievalMode,
+      })
+      await runsQuery.refetch()
+      if (baselineRun?.id) setSelectedBaseRunId(String(baselineRun.id))
+      setSelectedTargetRunId(run.id)
+      toast.success(
+        `已自动生成第 3 轮对比：${nextRetrievalMode === 'hybrid' ? 'hybrid' : 'vector'}`
+      )
+    } catch (err) {
+      toast.error(formatApiError(err, '自动补齐基线/候选失败'))
+    } finally {
+      setAutoBootstrapPending(false)
+    }
+  }
+
   async function runGridBatch(
     grid: Record<string, RegressionAblationGridValue[]>,
     maxCombinations: number
@@ -1787,6 +2071,56 @@ export function RetrievalAblationsPage() {
     _stableId(selectedTargetRunId) &&
     _stableId(selectedBaseRunId) !== _stableId(selectedTargetRunId)
   )
+  const autoBootstrapPlan = useMemo<AutoBootstrapPlan | null>(() => {
+    if (runDisabledReason) return null
+
+    const topKValues = new Set(
+      runsByDataset
+        .map((run) => runParamNumber(run, 'top_k'))
+        .filter((value): value is number => typeof value === 'number')
+    )
+    if (topKValues.size < 2) {
+      const candidateTopK = pickAutoCandidateTopK(topK)
+      return {
+        stage: 'top_k',
+        label:
+          runsByDataset.length === 0
+            ? '自动生成第 1 轮对比'
+            : '自动补齐第 1 轮对比',
+        helper: `系统会先比较 top_k：${clampNumber(topK, 1, 50)} vs ${candidateTopK}。`,
+      }
+    }
+
+    const rerankerStates = new Set(
+      runsByDataset
+        .map((run) => runParamBoolean(run, 'enable_reranker'))
+        .filter((value): value is boolean => typeof value === 'boolean')
+    )
+    if (!(rerankerStates.has(true) && rerankerStates.has(false))) {
+      return {
+        stage: 'reranker',
+        label: '自动生成第 2 轮对比',
+        helper: '系统会在保持其他参数基本不变时，补一组 reranker ON/OFF 对比。',
+      }
+    }
+
+    const retrievalModes = new Set(
+      runsByDataset
+        .map((run) => runParamString(run, 'retrieval_mode'))
+        .filter((value) => value === 'hybrid' || value === 'vector')
+    )
+    if (!(retrievalModes.has('hybrid') && retrievalModes.has('vector'))) {
+      return {
+        stage: 'retrieval_mode',
+        label: '自动生成第 3 轮对比',
+        helper: '系统会补一组 hybrid vs vector 对比，帮你看检索模式切换的影响。',
+      }
+    }
+
+    return null
+  }, [runDisabledReason, runsByDataset, topK])
+  const autoRunLabel = autoBootstrapPlan?.label || null
+  const autoRunHelper = autoBootstrapPlan?.helper || null
   const runsSelectionHint = useMemo(() => {
     if (!datasetId.trim()) return '先选择数据集，再加载可对比的运行记录。'
     if (runsLoading) return '正在加载当前数据集的运行记录...'
@@ -1832,8 +2166,8 @@ export function RetrievalAblationsPage() {
       <div className="flex h-[111.111%] w-[111.111%] origin-top-left scale-[0.9] flex-col bg-slate-50">
         <header className="shrink-0 border-b border-slate-200/80 bg-card/95 px-6 py-3.5">
           <PageHeader
-            title="检索消融实验"
-            description="围绕同一数据集调召回参数、查看实验排行，并对基线与候选做结构化差异对比。"
+            title="检索调参对比"
+            description="围绕同一数据集调召回参数、查看实验排行，并对基线与候选做结构化差异对比（也就是检索消融实验）。"
             iconImage="retrieval-ablation"
             icon={BarChart3}
             iconColor="text-info"
@@ -1842,6 +2176,16 @@ export function RetrievalAblationsPage() {
             className="p-0"
           >
               <div className="mr-14 flex shrink-0 items-center gap-2">
+                <Button
+                  asChild
+                  variant="outline"
+                  className="h-9 rounded-xl border-slate-200 bg-card px-3 text-[12px] text-slate-700 hover:bg-slate-50 hover:text-slate-900"
+                >
+                  <Link href="/evaluations">
+                    <ChevronLeft className="mr-1.5 h-4 w-4" />
+                    返回评测中心
+                  </Link>
+                </Button>
                 <Button
                   variant="outline"
                   size="icon"
@@ -2248,15 +2592,25 @@ export function RetrievalAblationsPage() {
                   </div>
                   <Button
                     className="mt-2 h-10 w-full gap-2 rounded-lg border border-sky-200 bg-sky-50 text-sky-700 shadow-[0_8px_18px_rgba(14,116,144,0.10)] transition-colors hover:border-sky-300 hover:bg-sky-100 hover:text-sky-800"
-                    disabled={Boolean(runDisabledReason)}
-                    onClick={() => detachPromise(runAblation())}
+                    disabled={Boolean(runDisabledReason) || autoBootstrapPending}
+                    onClick={() =>
+                      detachPromise(
+                        autoRunLabel ? runAutoBootstrap() : runAblation()
+                      )
+                    }
                   >
                     <PlayCircle className="h-4 w-4" />
-                    运行消融实验
+                    {autoBootstrapPending
+                      ? '正在自动补齐...'
+                      : autoRunLabel || '运行消融实验'}
                   </Button>
                   {runDisabledReason ? (
                     <div className="mt-2 text-[11px] leading-5 text-amber-700">
                       {runDisabledReason}
+                    </div>
+                  ) : autoRunLabel ? (
+                    <div className="mt-2 text-[11px] leading-5 text-sky-700">
+                      {autoRunHelper}
                     </div>
                   ) : null}
                 </div>
@@ -2470,6 +2824,11 @@ export function RetrievalAblationsPage() {
                 leaderboardMetricKey={leaderboardMetricKey}
                 deepDiveMetricKeys={deepDiveMetricKeys}
                 diffJson={diffJson}
+                caseCount={selectedDatasetCaseCount}
+                autoRunLabel={autoRunLabel}
+                autoRunHelper={autoRunHelper}
+                autoBootstrapPending={autoBootstrapPending}
+                runAutoBootstrap={runAutoBootstrap}
               />
             </div>
           </div>

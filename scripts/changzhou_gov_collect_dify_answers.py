@@ -9,6 +9,7 @@ with fixed golden questions and writes an answers JSON that can be scored by
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import os
 import sys
@@ -18,7 +19,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.parse import urlparse
+from urllib.request import ProxyHandler, Request, build_opener, urlopen
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -39,6 +41,7 @@ _TRANSIENT_DIFY_ERROR_MARKERS = (
     "EOF",
     "temporarily unavailable",
 )
+_DIRECT_DIFY_HOSTS = {"dify.example.com"}
 
 
 def _text(value: Any) -> str:
@@ -197,6 +200,8 @@ def diagnose_dify_error(message: str) -> dict[str, Any]:
                 "missing_variable": variable,
             }
         )
+    elif "credentials is not initialized" in detail.lower():
+        out["error_kind"] = "app_model_credentials_missing"
     elif _is_transient_dify_error(detail):
         out["error_kind"] = "transient_dify_workflow_error"
     return out
@@ -216,7 +221,7 @@ def _request_json(*, url: str, payload: dict[str, Any], api_key: str, timeout: f
     last_error: Exception | None = None
     for _attempt in range(_REQUEST_ATTEMPTS):
         try:
-            with urlopen(request, timeout=timeout) as response:
+            with _open_request(request, timeout=timeout) as response:
                 return json.loads(response.read().decode("utf-8"))
         except HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace")
@@ -230,6 +235,27 @@ def _request_json(*, url: str, payload: dict[str, Any], api_key: str, timeout: f
             if _attempt < _REQUEST_ATTEMPTS - 1:
                 time.sleep(1.0 + _attempt)
     raise RuntimeError(f"request failed: {last_error}") from last_error
+
+
+def _should_bypass_proxy(url: str) -> bool:
+    host = _text(urlparse(url).hostname).lower()
+    if not host:
+        return False
+    if host in _DIRECT_DIFY_HOSTS:
+        return True
+    if host == "localhost" or host.endswith(".localhost"):
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return bool(ip.is_loopback or ip.is_private or ip.is_link_local)
+
+
+def _open_request(request: Request, *, timeout: float):
+    if _should_bypass_proxy(request.full_url):
+        return build_opener(ProxyHandler({})).open(request, timeout=timeout)
+    return urlopen(request, timeout=timeout)
 
 
 def load_api_key(api_key: str, api_key_file: str, *, env: Mapping[str, str] | None = None) -> str:

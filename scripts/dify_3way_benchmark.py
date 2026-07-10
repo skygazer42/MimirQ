@@ -53,6 +53,9 @@ DEFAULT_GOLDEN_CASES = os.getenv("DIFY_3WAY_GOLDEN_CASES", "")
 DEFAULT_OUT_DIR = "artifacts/dify_3way_benchmark"
 DEFAULT_TARGET_COUNT = 800
 DEFAULT_MIMIRQ_BASE_URL = "http://127.0.0.1:8000"
+TIMEOUT_RETRY_MULTIPLIER = 2.0
+TIMEOUT_RETRY_MIN_ADD_SEC = 30.0
+TIMEOUT_RETRY_MAX_SEC = 600.0
 
 DEFAULT_APP_SPECS = [
     {
@@ -189,6 +192,17 @@ def build_benchmark_cases(
     return cases
 
 
+def resolve_expected_case_count(
+    *,
+    prebuilt_cases: str,
+    target_count: int,
+    cases: list[dict[str, Any]],
+) -> int:
+    if _text(prebuilt_cases):
+        return len(cases)
+    return int(target_count)
+
+
 def summarize_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
     def count_by(key: str) -> dict[str, int]:
         out: dict[str, int] = {}
@@ -267,6 +281,17 @@ def build_truth_manifest(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
             }
         )
     return rows
+
+
+def load_prebuilt_cases(path: str) -> list[dict[str, Any]]:
+    payload = load_cases(path)
+    if isinstance(payload, dict):
+        cases = payload.get("cases")
+        if isinstance(cases, list):
+            return [dict(item) for item in cases if isinstance(item, dict)]
+    if isinstance(payload, list):
+        return [dict(item) for item in payload if isinstance(item, dict)]
+    raise ValueError("prebuilt cases file must be a list or an object with cases[]")
 
 
 def _endpoint_path(mode: str) -> str:
@@ -1024,7 +1049,14 @@ def _post_json_no_proxy(url: str, api_key: str, payload: dict[str, Any], *, time
         return json.loads(body) if body else {}
 
 
-def _call_mimirq_case(*, case: dict[str, Any], base_url: str, token: str, timeout: float) -> dict[str, Any]:
+def _call_mimirq_case(
+    *,
+    case: dict[str, Any],
+    base_url: str,
+    token: str,
+    timeout: float,
+    retrieval_overrides: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     started = time.perf_counter()
     case_id = _case_id(case)
     item: dict[str, Any] = {
@@ -1047,6 +1079,10 @@ def _call_mimirq_case(*, case: dict[str, Any], base_url: str, token: str, timeou
             "dify_message_id": f"dify-3way-direct-msg-{case_id}",
             "dify_workflow_run_id": "dify-3way-direct-run",
         }
+        if isinstance(retrieval_overrides, dict):
+            payload["retrieval_setting"].update(
+                {str(key): value for key, value in retrieval_overrides.items()}
+            )
         response = _post_json_no_proxy(
             f"{base_url.rstrip('/')}/api/v1/integrations/dify/retrieval",
             token,
@@ -1089,6 +1125,25 @@ def _safe_error(message: Any, *, secrets: list[str]) -> str:
         if secret_text:
             text = text.replace(secret_text, "<redacted>")
     return text
+
+
+def _is_timeout_error_text(value: Any) -> bool:
+    text = _text(value).lower()
+    return "timed out" in text or "timeout" in text or "readtimeout" in text
+
+
+def _retry_timeout_seconds(timeout: float) -> float:
+    base = float(timeout or 0.0)
+    return min(max(base * TIMEOUT_RETRY_MULTIPLIER, base + TIMEOUT_RETRY_MIN_ADD_SEC), TIMEOUT_RETRY_MAX_SEC)
+
+
+def _merge_items_by_case_id(items: list[dict[str, Any]], replacements: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    merged = {_text(item.get("case_id") or item.get("id")): dict(item) for item in items if _text(item.get("case_id") or item.get("id"))}
+    for item in replacements:
+        key = _text(item.get("case_id") or item.get("id"))
+        if key:
+            merged[key] = dict(item)
+    return sorted(merged.values(), key=_run_item_sort_key)
 
 
 def _pending_cases(
@@ -1409,6 +1464,42 @@ def run_app(
             if run_path is not None and int(flush_every or 0) > 0 and len(items) % int(flush_every) == 0:
                 snapshot()
 
+    timeout_case_ids = {
+        _text(item.get("case_id") or item.get("id"))
+        for item in items
+        if item.get("ok") is not True and _is_timeout_error_text(item.get("error"))
+    }
+    if timeout_case_ids:
+        retry_cases = [case for case in pending if _case_id(case) in timeout_case_ids]
+        retry_timeout = _retry_timeout_seconds(timeout)
+        if retry_cases:
+            print(
+                f"[{app.label}] retrying {len(retry_cases)} timed out cases with timeout={retry_timeout:.1f}s",
+                flush=True,
+            )
+            retry_results: list[dict[str, Any]] = []
+            with ThreadPoolExecutor(max_workers=max(1, min(concurrency, len(retry_cases)))) as executor:
+                futures = [
+                    executor.submit(
+                        _call_case,
+                        app=app,
+                        case=case,
+                        base_url=base_url,
+                        timeout=retry_timeout,
+                        response_mode=response_mode,
+                        workflow_query_key=workflow_query_key,
+                        user_prefix=user_prefix,
+                        history_records_fn=history_records_fn,
+                        console_records_fn=console_records_fn,
+                    )
+                    for case in retry_cases
+                ]
+                for future in as_completed(futures):
+                    retry_results.append(future.result())
+            items = _merge_items_by_case_id(items, retry_results)
+            if run_path is not None:
+                snapshot()
+
     items.sort(key=_run_item_sort_key)
     succeeded = sum(1 for item in items if item.get("ok") is True)
     return {
@@ -1436,6 +1527,7 @@ def run_mimirq_direct(
     token: str,
     timeout: float,
     concurrency: int,
+    retrieval_overrides: dict[str, Any] | None = None,
     existing_items: list[dict[str, Any]] | None = None,
     retry_failures: bool = False,
     run_path: Path | None = None,
@@ -1484,7 +1576,14 @@ def run_mimirq_direct(
 
     with ThreadPoolExecutor(max_workers=max(1, concurrency)) as executor:
         futures = [
-            executor.submit(_call_mimirq_case, case=case, base_url=base_url, token=token, timeout=timeout)
+            executor.submit(
+                _call_mimirq_case,
+                case=case,
+                base_url=base_url,
+                token=token,
+                timeout=timeout,
+                retrieval_overrides=retrieval_overrides,
+            )
             for case in pending
         ]
         for future in as_completed(futures):
@@ -1493,6 +1592,38 @@ def run_mimirq_direct(
                 ok = sum(1 for item in items if item.get("ok") is True)
                 print(f"[mimirq_direct] progress={len(items)}/{len(cases)} ok={ok}", flush=True)
             if run_path is not None and int(flush_every or 0) > 0 and len(items) % int(flush_every) == 0:
+                snapshot()
+
+    timeout_case_ids = {
+        _text(item.get("case_id") or item.get("id"))
+        for item in items
+        if item.get("ok") is not True and _is_timeout_error_text(item.get("error"))
+    }
+    if timeout_case_ids:
+        retry_cases = [case for case in pending if _case_id(case) in timeout_case_ids]
+        retry_timeout = _retry_timeout_seconds(timeout)
+        if retry_cases:
+            print(
+                f"[mimirq_direct] retrying {len(retry_cases)} timed out cases with timeout={retry_timeout:.1f}s",
+                flush=True,
+            )
+            retry_results: list[dict[str, Any]] = []
+            with ThreadPoolExecutor(max_workers=max(1, min(concurrency, len(retry_cases)))) as executor:
+                futures = [
+                    executor.submit(
+                        _call_mimirq_case,
+                        case=case,
+                        base_url=base_url,
+                        token=token,
+                        timeout=retry_timeout,
+                        retrieval_overrides=retrieval_overrides,
+                    )
+                    for case in retry_cases
+                ]
+                for future in as_completed(futures):
+                    retry_results.append(future.result())
+            items = _merge_items_by_case_id(items, retry_results)
+            if run_path is not None:
                 snapshot()
 
     items.sort(key=_run_item_sort_key)
@@ -2072,8 +2203,11 @@ def build_completion_status(
     requested_cases: int,
     executed_cases: int,
     expected_cases: int = DEFAULT_TARGET_COUNT,
+    include_mimirq_direct: bool = False,
 ) -> dict[str, Any]:
     required_systems = {app.label for app in apps}
+    if include_mimirq_direct:
+        required_systems.add("mimirq_direct")
     run_by_system = {_text(run.get("system")): run for run in runs if _text(run.get("system"))}
     missing_systems = sorted(required_systems - set(run_by_system))
     skipped_systems: list[str] = []
@@ -2108,15 +2242,19 @@ def build_completion_status(
     target_case_count_ok = requested_cases >= expected_cases and executed_cases == expected_cases
     all_systems_present = not missing_systems
     all_systems_executed = not skipped_systems and not incomplete_systems
+    completion_key = f"complete_{len(required_systems)}way_{expected_cases}"
     return {
         "expected_cases": expected_cases,
         "requested_cases": requested_cases,
         "executed_cases": executed_cases,
+        "expected_systems": len(required_systems),
         "required_systems": sorted(required_systems),
         "target_case_count_ok": target_case_count_ok,
         "all_systems_present": all_systems_present,
         "all_systems_executed": all_systems_executed,
         "all_systems_succeeded": not failed_systems,
+        "completion_key": completion_key,
+        "complete": target_case_count_ok and all_systems_present and all_systems_executed,
         "complete_3way_800": target_case_count_ok and all_systems_present and all_systems_executed,
         "missing_systems": missing_systems,
         "skipped_systems": skipped_systems,
@@ -2304,13 +2442,17 @@ def build_sharing_markdown(report: dict[str, Any]) -> str:
     top_issue_cases = report.get("top_issue_cases") if isinstance(report.get("top_issue_cases"), list) else []
     audit_review = report.get("audit_review") if isinstance(report.get("audit_review"), dict) else {}
     skipped_systems = summary.get("skipped_systems") if isinstance(summary.get("skipped_systems"), list) else []
+    expected_systems = int(completion.get("expected_systems") or len(leaderboard) or 0)
+    expected_cases = int(completion.get("expected_cases") or DEFAULT_TARGET_COUNT)
+    completion_key = _text(completion.get("completion_key")) or f"complete_{expected_systems}way_{expected_cases}"
+    title = f"Dify {expected_systems}路评测摘要" if expected_systems > 0 else "Dify 评测摘要"
 
     lines = [
-        "# Dify 三路评测摘要",
+        f"# {title}",
         "",
         f"- 生成时间：`{report.get('generated_at')}`",
-        f"- 执行题数：`{summary.get('executed_cases', summary.get('cases'))}` / 目标 `{completion.get('expected_cases', DEFAULT_TARGET_COUNT)}`",
-        f"- 完整性：`complete_3way_800={str(completion.get('complete_3way_800')).lower()}`",
+        f"- 执行题数：`{summary.get('executed_cases', summary.get('cases'))}` / 目标 `{expected_cases}`",
+        f"- 完整性：`{completion_key}={str(completion.get('complete')).lower()}`",
     ]
     if skipped_systems:
         lines.append(f"- 未纳入完整结论的系统：`{', '.join(_text(item) for item in skipped_systems)}`")
@@ -2414,6 +2556,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Generate and run an evidence-first Dify/MimirQ benchmark.")
     parser.add_argument("--cases", default=DEFAULT_CASES)
     parser.add_argument("--golden-cases", default=DEFAULT_GOLDEN_CASES)
+    parser.add_argument("--prebuilt-cases", default="", help="Use a prebuilt benchmark cases JSON (list or {cases:[...]}) and skip internal 800-case expansion.")
     parser.add_argument("--target-count", type=int, default=DEFAULT_TARGET_COUNT)
     parser.add_argument("--seed", type=int, default=20260704)
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL)
@@ -2480,16 +2623,24 @@ def main(argv: list[str] | None = None) -> int:
     args = build_arg_parser().parse_args(argv)
     out_dir = Path(args.out_dir)
     apps = load_app_specs(list(args.app or []), str(args.app_key_file))
-    cases = build_benchmark_cases(
-        mixed_cases=load_cases(str(args.cases)),
-        golden_cases=load_cases(str(args.golden_cases)),
-        target_count=int(args.target_count),
-        seed=int(args.seed),
-    )
+    if _text(args.prebuilt_cases):
+        cases = load_prebuilt_cases(str(args.prebuilt_cases))
+    else:
+        cases = build_benchmark_cases(
+            mixed_cases=load_cases(str(args.cases)),
+            golden_cases=load_cases(str(args.golden_cases)),
+            target_count=int(args.target_count),
+            seed=int(args.seed),
+        )
     cases_to_run = select_cases_to_run(
         cases,
         limit=int(args.limit or 0),
         sample_per_type=int(args.sample_per_type or 0),
+    )
+    expected_case_count = resolve_expected_case_count(
+        prebuilt_cases=str(args.prebuilt_cases),
+        target_count=int(args.target_count),
+        cases=cases,
     )
     _write_json(out_dir / "key_requirements.json", build_key_requirements(apps))
     _write_json(
@@ -2639,7 +2790,8 @@ def main(argv: list[str] | None = None) -> int:
         apps=apps,
         requested_cases=len(cases),
         executed_cases=len(cases_to_run),
-        expected_cases=DEFAULT_TARGET_COUNT,
+        expected_cases=expected_case_count,
+        include_mimirq_direct=bool(args.include_mimirq_direct),
     )
     report["completion_status"] = completion_status
     report["business_score_weights"] = {

@@ -19,7 +19,7 @@ describe('admin controlled navigation visibility wiring', () => {
     expect(navbar).not.toContain("visibilityKey: 'graphSnapshots'")
     expect(navbar).not.toContain("visibilityKey: 'graphDiagnostics'")
     expect(navbar).toContain("visibilityKey: 'ragas'")
-    expect(navbar).toContain("visibilityKey: 'ablations'")
+    expect(navbar).not.toContain("visibilityKey: 'ablations'")
     expect(navbar).toContain("visibilityKey: 'reports'")
     expect(navbar).toContain("visibilityKey: 'prompts'")
     expect(navbar).toContain("visibilityKey: 'governanceProfiles'")
@@ -50,6 +50,16 @@ describe('admin controlled navigation visibility wiring', () => {
       expect(src, route).toContain("NavigationVisibilityGate")
       expect(src, route).toContain(`moduleKey="${key}"`)
     }
+  })
+
+  it('keeps ablations discoverable from the evaluations workspace under the same RBAC policy', () => {
+    const evaluationsPage = read('app/evaluations/page.tsx')
+
+    expect(evaluationsPage).toContain("import { useTenantAccess } from '@/hooks/use-tenant-access'")
+    expect(evaluationsPage).toContain("import { canShowAdminControlledNavigationModule } from '@/lib/navigation-visibility'")
+    expect(evaluationsPage).toContain("canShowAdminControlledNavigationModule(tenantAccess.data, 'ablations')")
+    expect(evaluationsPage).toContain('href="/evaluations/ablations"')
+    expect(evaluationsPage).toContain('检索调参对比')
   })
 
   it('keeps the direct route visibility gate hydration-stable', () => {

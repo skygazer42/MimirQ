@@ -106,6 +106,19 @@ CHANGZHOU_GOV_CORPUS_DATASET_ID ?=
 CHANGZHOU_GOV_CORPUS_REPORT_OUT ?= /tmp/changzhou_gov_plugin_corpus_closed_loop_report.json
 CHANGZHOU_GOV_CORPUS_EVIDENCE_OUT ?= /tmp/changzhou_gov_plugin_corpus_closed_loop_evidence.json
 CHANGZHOU_GOV_CORPUS_EVIDENCE_MD ?= /tmp/changzhou_gov_plugin_corpus_closed_loop_evidence.md
+CHANGZHOU_EVAL_CORPUS_ROOT ?= /path/to/gov-service-knowledge
+CHANGZHOU_EVAL_QA_COUNT ?= 100
+CHANGZHOU_EVAL_SERVICE_COUNT ?= 200
+CHANGZHOU_EVAL_USER_COUNT ?= 800
+CHANGZHOU_EVAL_BACKEND_BASE_URL ?= http://127.0.0.1:8000/api/v1
+CHANGZHOU_EVAL_OUT ?= artifacts/changzhou_eval_pack_full
+CHANGZHOU_EVAL_LIVE_OUT ?= artifacts/changzhou_eval_pack_full_live
+CHANGZHOU_DIFY_4WAY_PREFLIGHT_OUT ?= artifacts/changzhou_dify_4way_preflight
+CHANGZHOU_DIFY_4WAY_SMOKE_OUT ?= artifacts/changzhou_dify_4way_smoke
+CHANGZHOU_DIFY_4WAY_FULL_OUT ?= artifacts/changzhou_dify_4way_full
+CHANGZHOU_DIFY_4WAY_APP_KEYS ?= /tmp/dify_4way_app_keys.json
+CHANGZHOU_DIFY_4WAY_MERGED_OUT ?= artifacts/changzhou_dify_4way_merged
+CHANGZHOU_KG_ON_OFF_OUT ?= artifacts/changzhou_kg_on_off_benchmark
 CHANGZHOU_GOV_CORPUS_EXTENSIONS ?= .txt,.docx,.xlsx,.doc
 CHANGZHOU_GOV_CORPUS_MAX_FILES ?= 0
 CHANGZHOU_GOV_CORPUS_MAX_FILES_PER_GROUP ?= 0
@@ -230,6 +243,13 @@ help:
 	@echo "  make changzhou-dify-readiness-evidence - write PII-safe Markdown readiness evidence"
 	@echo "  make changzhou-dify-readiness-persist-audit - persist latest readiness retrieval_audit into a dataset report"
 	@echo "  make changzhou-human-mixed-cases - build human-like mixed cases with capped QA-derived share"
+	@echo "  make changzhou-eval-pack-generate - build the 1100-question corpus-grounded eval pack from raw政务知识"
+	@echo "  make changzhou-eval-pack-import - resolve live chunk refs, import regression cases, and seed local /evaluations records"
+	@echo "  make changzhou-dify-4way-preflight - validate native/http/external/MimirQ-direct against the generated eval pack"
+	@echo "  make changzhou-dify-4way-smoke - run a small 4-way smoke benchmark from the generated eval pack"
+	@echo "  make changzhou-dify-4way-full - run the full 4-way benchmark from the generated eval pack"
+	@echo "  make changzhou-dify-4way-merge-report - merge separately produced native/http/external/direct runs into one final report"
+	@echo "  make changzhou-kg-on-off-benchmark - compare local MimirQ direct results with KG off vs on on the same eval pack"
 	@echo "  make mixed-rag-quality - compare complex mixed RAG runs with deterministic evidence/subquestion scoring"
 	@echo "  make check-retrieval-profile-compat - validate retrieval profile + reranker compatibility"
 	@echo "  make check-queryset-health-policy - validate query-set health threshold policy JSON"
@@ -693,6 +713,92 @@ changzhou-human-mixed-cases:
 		--out "$(CHANGZHOU_HUMAN_MIXED_OUT)" \
 		--total "$(CHANGZHOU_HUMAN_MIXED_TOTAL)" \
 		--max-qa-ratio "$(CHANGZHOU_HUMAN_MIXED_MAX_QA_RATIO)"
+
+changzhou-eval-pack-generate:
+	$(PY) scripts/changzhou_gov_eval_pack.py \
+		--corpus-root "$(CHANGZHOU_EVAL_CORPUS_ROOT)" \
+		--out-dir "$(CHANGZHOU_EVAL_OUT)" \
+		--qa-count "$(CHANGZHOU_EVAL_QA_COUNT)" \
+		--service-count "$(CHANGZHOU_EVAL_SERVICE_COUNT)" \
+		--user-count "$(CHANGZHOU_EVAL_USER_COUNT)"
+
+changzhou-eval-pack-import:
+	$(PY) scripts/changzhou_gov_eval_pack.py \
+		--corpus-root "$(CHANGZHOU_EVAL_CORPUS_ROOT)" \
+		--out-dir "$(CHANGZHOU_EVAL_LIVE_OUT)" \
+		--qa-count "$(CHANGZHOU_EVAL_QA_COUNT)" \
+		--service-count "$(CHANGZHOU_EVAL_SERVICE_COUNT)" \
+		--user-count "$(CHANGZHOU_EVAL_USER_COUNT)" \
+		--resolve-live-refs \
+		--import-regression \
+		--overwrite \
+		--create-retrieval-run \
+		--backend-base-url "$(CHANGZHOU_EVAL_BACKEND_BASE_URL)"
+
+changzhou-dify-4way-preflight:
+	$(PY) scripts/dify_3way_benchmark.py \
+		--prebuilt-cases "$(CHANGZHOU_EVAL_OUT)/cases_1000.json" \
+		--out-dir "$(CHANGZHOU_DIFY_4WAY_PREFLIGHT_OUT)" \
+		--limit 1 \
+		--app-key-file "$(CHANGZHOU_DIFY_4WAY_APP_KEYS)" \
+		--app 'dify_native_kb:00000000-0000-0000-0000-000000000001:native_dify_knowledge:dify_native_kb:auto' \
+		--app 'dify_http_mimirq:00000000-0000-0000-0000-000000000002:http_to_mimirq:dify_http_mimirq:auto' \
+		--app 'dify_external_mimirq:00000000-0000-0000-0000-000000000003:external_to_mimirq:dify_external_mimirq:auto' \
+		--include-mimirq-direct \
+		--auto-mode \
+		--timeout 120 \
+		--preflight
+
+changzhou-dify-4way-smoke:
+	$(PY) scripts/dify_3way_benchmark.py \
+		--prebuilt-cases "$(CHANGZHOU_EVAL_OUT)/cases_1000.json" \
+		--out-dir "$(CHANGZHOU_DIFY_4WAY_SMOKE_OUT)" \
+		--sample-per-type 2 \
+		--app-key-file "$(CHANGZHOU_DIFY_4WAY_APP_KEYS)" \
+		--app 'dify_native_kb:00000000-0000-0000-0000-000000000001:native_dify_knowledge:dify_native_kb:auto' \
+		--app 'dify_http_mimirq:00000000-0000-0000-0000-000000000002:http_to_mimirq:dify_http_mimirq:auto' \
+		--app 'dify_external_mimirq:00000000-0000-0000-0000-000000000003:external_to_mimirq:dify_external_mimirq:auto' \
+		--include-mimirq-direct \
+		--auto-mode \
+		--concurrency 4 \
+		--timeout 180 \
+		--resume \
+		--write-bundle
+
+changzhou-dify-4way-full:
+	$(PY) scripts/dify_3way_benchmark.py \
+		--prebuilt-cases "$(CHANGZHOU_EVAL_OUT)/cases_1000.json" \
+		--out-dir "$(CHANGZHOU_DIFY_4WAY_FULL_OUT)" \
+		--app-key-file "$(CHANGZHOU_DIFY_4WAY_APP_KEYS)" \
+		--app 'dify_native_kb:00000000-0000-0000-0000-000000000001:native_dify_knowledge:dify_native_kb:auto' \
+		--app 'dify_http_mimirq:00000000-0000-0000-0000-000000000002:http_to_mimirq:dify_http_mimirq:auto' \
+		--app 'dify_external_mimirq:00000000-0000-0000-0000-000000000003:external_to_mimirq:dify_external_mimirq:auto' \
+		--include-mimirq-direct \
+		--auto-mode \
+		--concurrency 4 \
+		--timeout 180 \
+		--resume \
+		--write-bundle
+
+changzhou-dify-4way-merge-report:
+	$(PY) scripts/assemble_dify_benchmark_report.py \
+		--cases "$(CHANGZHOU_EVAL_OUT)/cases_1000.json" \
+		--out-dir "$(CHANGZHOU_DIFY_4WAY_MERGED_OUT)" \
+		--app-key-file "$(CHANGZHOU_DIFY_4WAY_APP_KEYS)" \
+		--source-dir "$(CHANGZHOU_DIFY_4WAY_FULL_OUT)" \
+		--source-dir artifacts/changzhou_dify_http_full \
+		--source-dir artifacts/changzhou_dify_external_full \
+		--include-mimirq-direct \
+		--write-bundle \
+		--app 'dify_native_kb:00000000-0000-0000-0000-000000000001:native_dify_knowledge:dify_native_kb:auto' \
+		--app 'dify_http_mimirq:00000000-0000-0000-0000-000000000002:http_to_mimirq:dify_http_mimirq:auto' \
+		--app 'dify_external_mimirq:00000000-0000-0000-0000-000000000003:external_to_mimirq:dify_external_mimirq:auto'
+
+changzhou-kg-on-off-benchmark:
+	$(PY) scripts/changzhou_gov_kg_on_off_benchmark.py \
+		--cases "$(CHANGZHOU_EVAL_OUT)/cases_1000.json" \
+		--out-dir "$(CHANGZHOU_KG_ON_OFF_OUT)" \
+		--base-url "$(CHANGZHOU_EVAL_BACKEND_BASE_URL)"
 
 mixed-rag-quality:
 	@test -n "$(MIXED_RAG_CASES)" || (echo "MIXED_RAG_CASES is required" >&2; exit 2)
