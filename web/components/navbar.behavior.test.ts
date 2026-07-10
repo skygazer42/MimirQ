@@ -202,7 +202,7 @@ describe('Navbar behavior', () => {
     vi.restoreAllMocks()
   })
 
-  it('marks only the analysis section as current on the RAG visualization route', () => {
+  it('keeps the advanced similarity route out of the primary sidebar', () => {
     const view = renderComponent(React.createElement(Navbar))
 
     const knowledgeSection = view.container.querySelector(
@@ -214,9 +214,12 @@ describe('Navbar behavior', () => {
     const knowledgeBaseLink = Array.from(
       view.container.querySelectorAll('a')
     ).find((node) => node.textContent?.includes('items.knowledgeBase'))
-    const ragVisualizationLink = Array.from(
-      view.container.querySelectorAll('a')
-    ).find((node) => node.textContent?.includes('items.ragVisualization'))
+    const evaluationsLink = Array.from(view.container.querySelectorAll('a')).find(
+      (node) => node.textContent?.includes('items.ragas')
+    )
+    const ragVisualizationLink = Array.from(view.container.querySelectorAll('a')).find(
+      (node) => node.textContent?.includes('items.ragVisualization')
+    )
 
     // After V3: "current" badge removed; verify active section is identified by expanded state
     const analysisToggle = view.container.querySelector(
@@ -224,7 +227,8 @@ describe('Navbar behavior', () => {
     ) as HTMLButtonElement
     expect(analysisToggle?.getAttribute('aria-expanded')).toBe('true')
     expect(knowledgeBaseLink?.getAttribute('aria-current')).toBeNull()
-    expect(ragVisualizationLink?.getAttribute('aria-current')).toBe('page')
+    expect(evaluationsLink?.getAttribute('aria-current')).toBe('page')
+    expect(ragVisualizationLink).toBeUndefined()
 
     view.unmount()
   })

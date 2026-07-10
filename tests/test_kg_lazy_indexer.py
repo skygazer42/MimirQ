@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 from app.rag.kg.search.lazy_indexer import build_lazy_index_plan
 

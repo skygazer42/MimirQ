@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 import json
 import logging
@@ -335,7 +334,7 @@ def test_dify_warmup_scheduler_is_fire_and_forget(monkeypatch: pytest.MonkeyPatc
 
     assert task is not None
     assert scheduled
-    assert getattr(scheduled[0], "cr_code").co_name == "_delayed_warmup_dify_external_knowledge"
+    assert scheduled[0].cr_code.co_name == "_delayed_warmup_dify_external_knowledge"
 
 
 def test_dify_retrieval_logs_request_diagnostics(

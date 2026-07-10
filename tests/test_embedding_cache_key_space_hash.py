@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 
 def test_embed_cache_key_includes_embedding_space_hash(monkeypatch):  # noqa: ANN001

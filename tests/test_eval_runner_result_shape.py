@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 from app.rag.evaluation.runners.base import build_runner_result
 

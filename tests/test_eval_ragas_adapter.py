@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 from app.rag.evaluation.metrics.ragas_adapter import adapt_ragas_scores
 

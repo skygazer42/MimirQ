@@ -20,7 +20,7 @@ describe('history route source', () => {
     expect(client).toContain('initialMessages')
     expect(client).toContain('initialConversationId')
     expect(client).toContain("import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'")
-    expect(client).toContain('queryKey: queryKeys.chat.conversations({ limit: CONVERSATION_PAGE_SIZE })')
+    expect(client).toContain('queryKey: queryKeys.chat.conversationPages({ limit: CONVERSATION_PAGE_SIZE })')
     expect(client).toContain('getNextPageParam: (lastPage, allPages) =>')
     expect(client).toContain('data-history-sidebar-scroll')
     expect(client).toContain('conversationLoadMoreRef')

@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 from app.rag.evaluation.metrics.retrieval import evaluate_retrieval_metrics
 

@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 
 def test_extract_parsing_fields_prefers_matching_seal_elements_with_bbox_evidence():
