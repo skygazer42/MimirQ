@@ -30,7 +30,6 @@ import {
   Share2,
   ShieldAlert,
   ShieldCheck,
-  SlidersHorizontal,
   Star,
   User,
   Users,
@@ -105,7 +104,6 @@ const menuSections: MenuSection[] = [
       { icon: Share2, labelKey: 'items.knowledgeGraph', href: '/graph', visibilityKey: 'knowledgeGraph' },
       { icon: Grid3X3, labelKey: 'items.ragVisualization', href: '/knowledge/similarity' },
       { icon: BarChart3, labelKey: 'items.ragas', href: '/evaluations', visibilityKey: 'ragas' },
-      { icon: SlidersHorizontal, labelKey: 'items.ablations', href: '/evaluations/ablations', visibilityKey: 'ablations' },
       { icon: FileText, labelKey: 'items.reports', href: '/reports', visibilityKey: 'reports' },
       { icon: Wand2, labelKey: 'items.prompts', href: '/prompts', visibilityKey: 'prompts' },
     ],
@@ -524,9 +522,9 @@ export function Navbar({
         )}
       >
         {/* Logo 区域 */}
-        <div className="h-14 px-5 border-b border-sidebar-border/50 flex items-center gap-3">
+        <div className="h-14 px-5 border-b border-sky-100/50 bg-gradient-to-r from-sky-50/30 to-blue-50/20 flex items-center gap-3">
           <Link href="/" className="flex items-center gap-3 group rounded-xl focus-ring">
-            <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-card shadow-[0_8px_22px_-18px_rgba(15,23,42,0.65)] ring-1 ring-slate-200/70 transition-transform duration-200 group-hover:scale-[1.03] motion-reduce:transition-none">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-white to-sky-50 shadow-lg shadow-sky-200/30 ring-1 ring-sky-200/70 transition-all duration-200 group-hover:scale-110 group-hover:shadow-xl group-hover:shadow-sky-300/40 motion-reduce:transition-none">
               <Image
                 src="/brand/mimirq-mark.png"
                 alt=""
@@ -539,8 +537,8 @@ export function Navbar({
               />
             </div>
             <div className="flex flex-col">
-              <span className="font-semibold text-foreground leading-none">MimirQ</span>
-              <span className="text-micro text-muted-foreground font-medium mt-1">{t('brand.tagline')}</span>
+              <span className="font-bold text-slate-900 leading-none">MimirQ</span>
+              <span className="text-micro text-sky-600/80 font-semibold mt-1">{t('brand.tagline')}</span>
             </div>
           </Link>
         </div>
@@ -550,17 +548,17 @@ export function Navbar({
           <Button
             ref={firstActionRef}
             className={cn(
-              "w-full justify-start gap-2 h-11 rounded-2xl font-semibold transition-colors duration-200",
-              "bg-card border border-border shadow-sm text-foreground",
-              "hover:bg-[#CAF0F8]/55 hover:border-[#CAF0F8]/70",
-              "active:bg-accent/80"
+              "w-full justify-start gap-2.5 h-11 rounded-2xl font-bold transition-all duration-200 shadow-md",
+              "bg-gradient-to-r from-sky-500 to-blue-600 text-white border-0",
+              "hover:from-sky-600 hover:to-blue-700 hover:shadow-lg hover:shadow-sky-200/50",
+              "active:scale-[0.98]"
             )}
             onClick={() => {
               router.push('/')
               closeSidebarOnMobile()
             }}
           >
-            <Plus className="size-4" />
+            <Plus className="size-4.5" />
             <span>{t('actions.newConversation')}</span>
           </Button>
         </div>
@@ -568,7 +566,7 @@ export function Navbar({
         <div className="px-4 pb-2">
           <button
             type="button"
-            className="group flex w-full items-center justify-between gap-3 rounded-2xl border border-dashed border-border/70 bg-background/70 px-3 py-3 text-left transition-colors duration-200 hover:border-[#CAF0F8]/70 hover:bg-[#CAF0F8]/55 focus-ring"
+            className="group flex w-full items-center justify-between gap-3 rounded-2xl border border-sky-200/60 bg-white/80 px-3 py-3 text-left shadow-sm backdrop-blur-sm transition-all duration-200 hover:border-sky-300 hover:bg-gradient-to-r hover:from-sky-50 hover:to-blue-50 hover:shadow-md focus-ring"
             onClick={() => {
               setCommandMenuOpen(true)
               closeSidebarOnMobile()
@@ -580,15 +578,15 @@ export function Navbar({
             title={t('command.triggerLabel')}
           >
             <div className="flex min-w-0 items-center gap-3">
-              <div className="flex size-9 items-center justify-center rounded-xl bg-muted text-muted-foreground transition-colors duration-200 group-hover:bg-[#CAF0F8]/65 group-hover:text-foreground">
+              <div className="flex size-9 items-center justify-center rounded-xl bg-gradient-to-br from-sky-100 to-blue-100 text-sky-600 transition-all duration-200 group-hover:from-sky-200 group-hover:to-blue-200 group-hover:scale-110 group-hover:text-sky-700">
                 <Search className="size-4" />
               </div>
               <div className="min-w-0">
-                <p className="text-sm font-medium text-foreground">{t('command.triggerLabel')}</p>
-                <p className="text-[11px] text-muted-foreground">{t('command.triggerHint')}</p>
+                <p className="text-sm font-bold text-slate-900">{t('command.triggerLabel')}</p>
+                <p className="text-[11px] font-medium text-sky-600">{t('command.triggerHint')}</p>
               </div>
             </div>
-            <span className="rounded-md border border-border/50 bg-muted/40 px-2 py-0.5 text-[11px] font-medium text-muted-foreground shadow-subtle">⌘K</span>
+            <span className="rounded-lg border border-sky-200/60 bg-gradient-to-br from-sky-50 to-blue-50 px-2 py-0.5 text-[11px] font-bold text-sky-700 shadow-sm">⌘K</span>
           </button>
         </div>
 
@@ -604,20 +602,20 @@ export function Navbar({
               return (
                 <section
                   key={section.id}
-                  className={cn('space-y-1', index > 0 ? 'border-t border-sidebar-border/50 pt-2' : '')}
+                  className={cn('space-y-1', index > 0 ? 'border-t border-sky-100/50 pt-2' : '')}
                 >
                   <button
                     type="button"
                     className={cn(
-                      'flex w-full items-center justify-between gap-3 rounded-xl px-3 py-1.5 text-left transition-colors duration-200 focus-ring',
-                      hasActiveItem ? 'text-foreground' : 'text-muted-foreground/70 hover:bg-foreground/[0.04] hover:text-foreground'
+                      'flex w-full items-center justify-between gap-3 rounded-xl px-3 py-1.5 text-left transition-all duration-200 focus-ring',
+                      hasActiveItem ? 'text-sky-700 font-bold' : 'text-slate-500 hover:bg-gradient-to-r hover:from-sky-50/50 hover:to-blue-50/30 hover:text-sky-700'
                     )}
                     onClick={() => toggleSection(section.id)}
                     aria-expanded={isOpen}
                     aria-controls={`sidebar-section-${section.id}`}
                   >
                     <div className="min-w-0">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground/50">{t(section.titleKey)}</p>
+                      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-sky-600/70">{t(section.titleKey)}</p>
                     </div>
                     <div className="flex items-center gap-2">
                       <ToggleIcon className="size-4 shrink-0" />
@@ -627,8 +625,8 @@ export function Navbar({
                   <div
                     id={`sidebar-section-${section.id}`}
                     className={cn(
-                      'grid overflow-hidden transition-[grid-template-rows,opacity] duration-200 ease-out',
-                      isOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-70'
+                      'grid overflow-hidden transition-[grid-template-rows,opacity] duration-300 ease-out',
+                      isOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
                     )}
                   >
                     <div className="overflow-hidden">
@@ -645,17 +643,17 @@ export function Navbar({
                                 onClick={closeSidebarOnMobile}
                                 aria-current={isActive ? 'page' : undefined}
                                 className={cn(
-                                  'relative flex items-center gap-3 px-3 py-2 rounded-lg transition-colors duration-200 group focus-ring',
-                                  'before:pointer-events-none before:absolute before:left-1 before:top-2 before:bottom-2 before:w-[2.5px] before:rounded-full before:bg-transparent',
+                                  'relative flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group focus-ring',
+                                  'before:pointer-events-none before:absolute before:left-1 before:top-2 before:bottom-2 before:w-[3px] before:rounded-full before:transition-all before:duration-200',
                                   isActive
-                                    ? 'text-foreground font-medium before:bg-foreground/80'
-                                    : 'text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground'
+                                    ? 'text-sky-700 font-bold bg-gradient-to-r from-sky-50 to-blue-50 border border-sky-200/50 shadow-sm before:bg-gradient-to-b before:from-sky-500 before:to-blue-600'
+                                    : 'text-slate-600 hover:bg-gradient-to-r hover:from-sky-50/40 hover:to-blue-50/30 hover:text-sky-700 before:bg-transparent hover:before:bg-sky-300/50'
                                 )}
                               >
                                 <Icon
                                   className={cn(
-                                    'size-4 transition-colors',
-                                    isActive ? 'text-foreground' : 'text-muted-foreground/70 group-hover:text-foreground'
+                                    'size-4 transition-all duration-200',
+                                    isActive ? 'text-sky-600' : 'text-slate-500 group-hover:text-sky-600 group-hover:scale-110'
                                   )}
                                 />
                                 <span className="text-sm">{t(item.labelKey)}</span>
@@ -673,13 +671,13 @@ export function Navbar({
         </div>
 
         {/* 底部信息 */}
-        <div className="p-3 border-t border-sidebar-border/50 bg-transparent">
+        <div className="p-3 border-t border-sky-100/50 bg-gradient-to-r from-sky-50/20 to-blue-50/10">
           <div className="flex items-center gap-2">
             <button
               type="button"
               aria-label={isAuthenticated ? t('user.openSettings') : t('auth.goToLogin')}
               title={isAuthenticated ? t('user.openSettings') : t('auth.goToLogin')}
-              className="flex-1 flex items-center gap-3 p-2 rounded-xl hover:bg-[#CAF0F8]/55 transition-colors duration-200 border border-transparent hover:border-[#CAF0F8]/70 group text-left focus-ring"
+              className="flex-1 flex items-center gap-3 p-2 rounded-xl hover:bg-gradient-to-r hover:from-sky-50 hover:to-blue-50 transition-all duration-200 border border-transparent hover:border-sky-200/60 hover:shadow-md group text-left focus-ring"
               onClick={() => {
                 if (isAuthenticated) {
                   router.push(canOpenSettings ? '/settings' : '/')
@@ -690,8 +688,8 @@ export function Navbar({
               }}
             >
               <div className="relative w-10 h-10 flex-shrink-0">
-                <div className="absolute inset-0 rounded-xl border border-border bg-muted/50 shadow-sm group-hover:border-[#CAF0F8]/70 group-hover:bg-[#CAF0F8]/45 transition-colors duration-200" />
-                <div className="absolute inset-0 flex items-center justify-center transition-transform duration-200 group-hover:scale-[1.03] motion-reduce:transition-none">
+                <div className="absolute inset-0 rounded-xl border border-sky-200/60 bg-gradient-to-br from-white to-sky-50 shadow-md group-hover:border-sky-300 group-hover:from-sky-50 group-hover:to-blue-50 group-hover:shadow-lg transition-all duration-200" />
+                <div className="absolute inset-0 flex items-center justify-center transition-transform duration-200 group-hover:scale-110 motion-reduce:transition-none">
                   <Image
                     src="/brand/mimirq-mark-badge.png"
                     alt=""
@@ -703,14 +701,14 @@ export function Navbar({
                   />
                 </div>
                 {isAuthenticated && (
-                  <div className="absolute -right-0.5 -bottom-0.5 size-3 bg-success border-2 border-background rounded-full" />
+                  <div className="absolute -right-0.5 -bottom-0.5 size-3 bg-gradient-to-br from-emerald-400 to-teal-500 border-2 border-background rounded-full shadow-sm" />
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-foreground truncate group-hover:text-primary transition-colors">
+                <p className="text-sm font-bold text-slate-900 truncate group-hover:text-sky-700 transition-colors">
                   {userDisplayName}
                 </p>
-                <p className="text-[11px] text-muted-foreground truncate leading-tight mt-0.5">
+                <p className="text-[11px] font-medium text-sky-600 truncate leading-tight mt-0.5">
                   {userStatusLine}
                 </p>
               </div>
@@ -719,7 +717,7 @@ export function Navbar({
               <Button
                 variant="ghost"
                 size="icon"
-                className="size-8 rounded-lg hover:bg-[#CAF0F8]/55 hover:text-destructive transition-colors duration-200"
+                className="size-8 rounded-lg hover:bg-gradient-to-br hover:from-rose-50 hover:to-pink-50 hover:text-rose-600 transition-all duration-200"
                 onClick={() => {
                   if (isAuthenticated) {
                     logout()

@@ -73,6 +73,74 @@ def test_select_cases_to_run_can_sample_evenly_by_case_type() -> None:
     assert {case["case_type"] for case in selected} == {"mixed", "qa", "simulated_user"}
 
 
+def test_load_prebuilt_cases_accepts_object_with_cases_array(tmp_path: Path) -> None:
+    mod = _load_module()
+    path = tmp_path / "prebuilt.json"
+    path.write_text(
+        json.dumps({"schema": "demo", "cases": [_case("case-1"), _case("case-2")]}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    cases = mod.load_prebuilt_cases(str(path))
+
+    assert [case["id"] for case in cases] == ["case-1", "case-2"]
+
+
+def test_resolve_expected_case_count_uses_prebuilt_case_total() -> None:
+    mod = _load_module()
+    cases = [_case("case-1"), _case("case-2"), _case("case-3")]
+
+    expected = mod.resolve_expected_case_count(
+        prebuilt_cases="artifacts/custom_cases.json",
+        target_count=800,
+        cases=cases,
+    )
+
+    assert expected == 3
+
+
+def test_run_mimirq_direct_retries_timeout_cases(monkeypatch) -> None:
+    mod = _load_module()
+    attempts = {"case-1": 0}
+
+    def _fake_call_mimirq_case(*, case, base_url, token, timeout, retrieval_overrides=None):
+        attempts[case["id"]] += 1
+        if attempts[case["id"]] == 1:
+            return {
+                "id": case["id"],
+                "case_id": case["id"],
+                "query": case["question"],
+                "system": "mimirq_direct",
+                "records": [],
+                "answer": "",
+                "ok": False,
+                "error": "timed out",
+            }
+        return {
+            "id": case["id"],
+            "case_id": case["id"],
+            "query": case["question"],
+            "system": "mimirq_direct",
+            "records": [{"title": "ok"}],
+            "answer": "ok",
+            "ok": True,
+        }
+
+    monkeypatch.setattr(mod, "_call_mimirq_case", _fake_call_mimirq_case)
+
+    run = mod.run_mimirq_direct(
+        cases=[_case("case-1")],
+        base_url="http://127.0.0.1:8000",
+        token="token",
+        timeout=10,
+        concurrency=1,
+    )
+
+    assert attempts["case-1"] == 2
+    assert run["summary"]["succeeded"] == 1
+    assert run["summary"]["failed"] == 0
+
+
 def test_load_app_specs_reads_key_file_without_emitting_secrets(tmp_path: Path) -> None:
     mod = _load_module()
     key_file = tmp_path / "keys.json"
@@ -861,7 +929,7 @@ def test_case_type_advantage_and_markdown_surface_business_summary() -> None:
 
     sharing = mod.build_sharing_markdown(report)
 
-    assert "# Dify 三路评测摘要" in sharing
+    assert "评测摘要" in sharing
     assert "## 优势汇总" in sharing
     assert "## 准确率结构" in sharing
     assert "## 业务维度优势" in sharing

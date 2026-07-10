@@ -3,7 +3,7 @@ import { RetrievalAblationsPage } from '@/components/evaluation/retrieval-ablati
 
 export default function EvaluationsAblationsPage() {
   return (
-    <NavigationVisibilityGate moduleKey="ablations" pageName="检索消融">
+    <NavigationVisibilityGate moduleKey="ablations" pageName="检索调参对比">
       <RetrievalAblationsPage />
     </NavigationVisibilityGate>
   )

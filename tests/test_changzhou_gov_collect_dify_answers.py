@@ -195,6 +195,23 @@ def test_diagnose_dify_error_extracts_missing_start_variable() -> None:
     }
 
 
+def test_diagnose_dify_error_extracts_model_credentials_missing() -> None:
+    mod = _load_module()
+
+    detail = (
+        'HTTP 400: {"code": "invalid_param", '
+        '"message": "Run failed: Model bge-reranker-large credentials is not initialized.", '
+        '"status": 400}'
+    )
+
+    assert mod.diagnose_dify_error(detail) == {
+        "http_status": 400,
+        "dify_error_code": "invalid_param",
+        "dify_error_message": "Run failed: Model bge-reranker-large credentials is not initialized.",
+        "error_kind": "app_model_credentials_missing",
+    }
+
+
 def test_load_api_key_file_reads_token_without_leaking_shape(tmp_path: Path) -> None:
     mod = _load_module()
     key_path = tmp_path / "key.json"
@@ -316,6 +333,92 @@ def test_request_json_does_not_retry_missing_variable_http_errors(monkeypatch) -
     else:
         raise AssertionError("expected missing variable error")
     assert calls == 1
+
+
+def test_request_json_bypasses_proxy_for_private_dify_url(monkeypatch) -> None:
+    mod = _load_module()
+    calls: dict[str, object] = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self) -> bytes:
+            return json.dumps({"answer": "ok"}).encode("utf-8")
+
+    class FakeOpener:
+        def open(self, request, *, timeout: float):
+            calls["url"] = request.full_url
+            calls["timeout"] = timeout
+            return FakeResponse()
+
+    def fake_build_opener(*handlers):
+        calls["handlers"] = handlers
+        return FakeOpener()
+
+    def fail_urlopen(*_args, **_kwargs):
+        raise AssertionError("private Dify URLs must bypass environment proxies")
+
+    monkeypatch.setattr(mod, "urlopen", fail_urlopen)
+    monkeypatch.setattr(mod, "build_opener", fake_build_opener, raising=False)
+
+    result = mod._request_json(
+        url="http://192.168.3.6:5001/v1/chat-messages",
+        payload={"query": "q"},
+        api_key="secret-token",
+        timeout=12.0,
+    )
+
+    assert result == {"answer": "ok"}
+    assert calls["url"] == "http://192.168.3.6:5001/v1/chat-messages"
+    assert calls["timeout"] == 12.0
+    assert calls["handlers"]
+
+
+def test_request_json_bypasses_proxy_for_kingdonsoft_dify_host(monkeypatch) -> None:
+    mod = _load_module()
+    calls: dict[str, object] = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self) -> bytes:
+            return json.dumps({"answer": "ok"}).encode("utf-8")
+
+    class FakeOpener:
+        def open(self, request, *, timeout: float):
+            calls["url"] = request.full_url
+            calls["timeout"] = timeout
+            return FakeResponse()
+
+    def fake_build_opener(*handlers):
+        calls["handlers"] = handlers
+        return FakeOpener()
+
+    def fail_urlopen(*_args, **_kwargs):
+        raise AssertionError("benchmark Dify host should bypass environment proxies")
+
+    monkeypatch.setattr(mod, "urlopen", fail_urlopen)
+    monkeypatch.setattr(mod, "build_opener", fake_build_opener, raising=False)
+
+    result = mod._request_json(
+        url="https://ai.kingdonsoft.com:5001/v1/chat-messages",
+        payload={"query": "q"},
+        api_key="secret-token",
+        timeout=12.0,
+    )
+
+    assert result == {"answer": "ok"}
+    assert calls["url"] == "https://ai.kingdonsoft.com:5001/v1/chat-messages"
+    assert calls["timeout"] == 12.0
+    assert calls["handlers"]
 
 
 def test_collect_answers_returns_answers_json_with_errors() -> None:

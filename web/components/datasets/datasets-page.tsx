@@ -642,87 +642,90 @@ export default function DatasetsPage() {
         description={<span>管理知识库集合与访问权限</span>}
         topClassName="px-3 md:px-4 lg:px-5 pt-4 pb-2.5 bg-[radial-gradient(circle_at_top,hsl(var(--info)/0.10),transparent_34rem)]"
         top={
-          <div className="relative overflow-hidden rounded-[28px] border border-sky-200/55 bg-[linear-gradient(135deg,rgba(248,253,255,0.92),rgba(229,245,255,0.72)_45%,rgba(255,255,255,0.82))] px-4 py-3 shadow-[0_24px_70px_-48px_rgba(14,116,144,0.55)] backdrop-blur-2xl dark:border-sky-300/15 dark:bg-[linear-gradient(135deg,rgba(8,21,34,0.82),rgba(8,47,73,0.36)_48%,rgba(15,23,42,0.72))]">
+          <div className="relative overflow-hidden rounded-3xl border border-sky-200/60 bg-gradient-to-br from-white via-sky-50/40 to-blue-50/30 px-5 py-4 shadow-xl shadow-sky-200/30 backdrop-blur-xl dark:border-sky-300/15 dark:bg-gradient-to-br dark:from-slate-900 dark:via-sky-950/40 dark:to-blue-950/30">
             <div className="pointer-events-none absolute -right-10 -top-14 size-44 rounded-full bg-sky-300/22 blur-3xl" aria-hidden="true" />
             <div className="pointer-events-none absolute bottom-0 left-8 right-8 h-px bg-gradient-to-r from-transparent via-sky-300/65 to-transparent" aria-hidden="true" />
             <div className="relative flex min-w-0 flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-              <div className="flex min-w-0 items-center gap-3">
-                <div className="relative flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-[22px] border border-info/20 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--info)/0.12))] text-info shadow-[inset_0_1px_0_hsl(var(--background)),0_18px_36px_-24px_hsl(var(--info)/0.9)]">
-                  <span className="absolute inset-x-2 top-1 h-px bg-card/70" aria-hidden="true" />
+              <div className="flex min-w-0 items-center gap-4">
+                <div className="relative flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-sky-200/60 bg-gradient-to-br from-white to-sky-100 text-sky-600 shadow-lg shadow-sky-200/40">
+                  <span className="absolute inset-x-2 top-1.5 h-px bg-white/80" aria-hidden="true" />
                   <PageTitleIcon name="dataset" className="size-9" />
                 </div>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-200/70 bg-sky-50/70 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-sky-700 dark:border-sky-300/20 dark:bg-sky-300/10 dark:text-sky-200">
-                      <Database className="size-3" />
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-300/60 bg-gradient-to-r from-sky-100/80 to-blue-100/60 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-sky-700 shadow-sm dark:border-sky-300/20 dark:bg-sky-300/10 dark:text-sky-200">
+                      <Database className="size-3.5" />
                       Dataset Ops
                     </span>
-                    <span className="inline-flex items-center rounded-full border border-emerald-200/65 bg-emerald-50/70 px-2.5 py-1 text-[10px] font-medium text-emerald-700 dark:border-emerald-300/15 dark:bg-emerald-300/10 dark:text-emerald-200">
-                      <ShieldCheck className="mr-1.5 size-3" />
+                    <span className="inline-flex items-center rounded-full border border-emerald-300/60 bg-gradient-to-r from-emerald-100/80 to-teal-100/60 px-3 py-1.5 text-[10px] font-bold text-emerald-700 shadow-sm dark:border-emerald-300/15 dark:bg-emerald-300/10 dark:text-emerald-200">
+                      <ShieldCheck className="mr-1.5 size-3.5" />
                       权限与资产编排
                     </span>
                   </div>
-                  <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                    <h1 className="text-[22px] font-semibold tracking-[-0.025em] text-foreground">
-                      <span className="bg-[linear-gradient(90deg,hsl(var(--foreground)),hsl(var(--info))_92%)] bg-clip-text text-transparent">
-                        数据集
-                      </span>
+                  <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                    <h1 className="text-[26px] font-black tracking-tight text-slate-900 dark:text-white">
+                      数据集
                     </h1>
-                    <p className="text-[13px] leading-5 text-muted-foreground/85">
+                    <p className="text-[13px] font-semibold leading-5 text-sky-600/90 dark:text-sky-400">
                       <span>管理知识库集合与访问权限</span>
                     </p>
                   </div>
                 </div>
               </div>
 
-              <div className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto] xl:min-w-[560px]">
-                <div className="flex min-w-0 items-center justify-between gap-2 rounded-2xl border border-sky-200/70 bg-white/64 px-3 py-2 text-[11px] text-muted-foreground shadow-[0_12px_28px_-24px_rgba(14,116,144,0.45)] backdrop-blur dark:border-sky-300/15 dark:bg-background/28">
-                  <span className="inline-flex items-center gap-1.5">
-                    <Layers className="size-3 text-sky-500" />
+              <div className="grid min-w-0 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] xl:min-w-[560px]">
+                <div className="flex min-w-0 items-center justify-between gap-2 rounded-2xl border border-sky-200/70 bg-white/80 px-4 py-3 text-[12px] shadow-md shadow-sky-200/20 backdrop-blur-sm dark:border-sky-300/15 dark:bg-background/40">
+                  <span className="inline-flex items-center gap-2 font-bold text-slate-700 dark:text-slate-200">
+                    <Layers className="size-4 text-sky-500" />
                     集合
                   </span>
-                  <ChevronRight className="size-3 shrink-0 text-muted-foreground/45" />
-                  <span className="inline-flex items-center gap-1.5">
-                    <ShieldCheck className="size-3 text-sky-500" />
+                  <ChevronRight className="size-4 shrink-0 text-sky-400" />
+                  <span className="inline-flex items-center gap-2 font-bold text-slate-700 dark:text-slate-200">
+                    <ShieldCheck className="size-4 text-sky-500" />
                     权限
                   </span>
-                  <ChevronRight className="size-3 shrink-0 text-muted-foreground/45" />
-                  <span className="inline-flex items-center gap-1.5">
-                    <FileSearch className="size-3 text-sky-500" />
+                  <ChevronRight className="size-4 shrink-0 text-sky-400" />
+                  <span className="inline-flex items-center gap-2 font-bold text-slate-700 dark:text-slate-200">
+                    <FileSearch className="size-4 text-sky-500" />
                     检索验证
                   </span>
                 </div>
                 <div className="flex items-center justify-end gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-9 rounded-xl border-info/25 bg-white/64 px-3 text-info shadow-[0_12px_24px_-22px_hsl(var(--info)/0.5)] hover:border-info/40 hover:bg-info/[0.10] hover:text-info dark:bg-background/28"
-                    onClick={() => { detachPromise(refreshDatasets()) }}
-                    disabled={isRefreshing}
-                  >
-                    <RefreshCw className={cn('mr-2 size-3.5', isRefreshing && 'animate-spin motion-reduce:animate-none')} />
-                    刷新
-                  </Button>
-                  <Dialog open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (open) resetForm() }}>
-                    <DialogTrigger asChild>
-                      <CreateDatasetButton />
-                    </DialogTrigger>
-                    <DialogContent className="max-w-xl p-0 sm:rounded-2xl">
-                      <div className="flex max-h-[min(88vh,860px)] flex-col">
-                        <DialogHeader className="border-b border-border/60 px-6 pt-6 pb-4">
-                          <DialogTitle>新建数据集</DialogTitle>
-                          <DialogDescription>为文档分组并设置访问权限</DialogDescription>
-                        </DialogHeader>
-                        <div className="flex-1 overflow-y-auto custom-scrollbar px-6 py-5">
-                          <DatasetForm form={form} setForm={setForm} />
+                  <div className="flex items-center gap-2 rounded-2xl border border-sky-200/70 bg-white/80 px-3 py-2 shadow-md shadow-sky-200/20 backdrop-blur-sm dark:border-sky-300/15 dark:bg-background/40">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-10 rounded-xl border-sky-200/60 bg-white/90 px-4 text-[13px] font-bold text-sky-700 shadow-sm hover:bg-gradient-to-r hover:from-sky-50 hover:to-blue-50 hover:shadow-md dark:bg-background/55 dark:text-sky-300"
+                      onClick={() => { detachPromise(refreshDatasets()) }}
+                      disabled={isRefreshing}
+                    >
+                      <RefreshCw className={cn('mr-2 size-4', isRefreshing && 'animate-spin motion-reduce:animate-none')} />
+                      刷新
+                    </Button>
+                    <Dialog open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (open) resetForm() }}>
+                      <DialogTrigger asChild>
+                        <CreateDatasetButton
+                          variant="outline"
+                          className="h-10 border-sky-200/60 bg-white/90 text-[13px] font-bold text-sky-700 shadow-sm hover:bg-gradient-to-r hover:from-sky-50 hover:to-blue-50 hover:text-sky-800 hover:shadow-md dark:bg-background/55 dark:text-sky-300"
+                        />
+                      </DialogTrigger>
+                      <DialogContent className="max-w-xl p-0 sm:rounded-2xl">
+                        <div className="flex max-h-[min(88vh,860px)] flex-col">
+                          <DialogHeader className="border-b border-border/60 px-6 pt-6 pb-4">
+                            <DialogTitle>新建数据集</DialogTitle>
+                            <DialogDescription>为文档分组并设置访问权限</DialogDescription>
+                          </DialogHeader>
+                          <div className="flex-1 overflow-y-auto custom-scrollbar px-6 py-5">
+                            <DatasetForm form={form} setForm={setForm} />
+                          </div>
+                          <DialogFooter className="border-t border-border/60 px-6 py-4">
+                            <Button variant="ghost" onClick={() => setCreateOpen(false)}>取消</Button>
+                            <Button onClick={handleCreate} disabled={!canSubmit}>确认创建</Button>
+                          </DialogFooter>
                         </div>
-                        <DialogFooter className="border-t border-border/60 px-6 py-4">
-                          <Button variant="ghost" onClick={() => setCreateOpen(false)}>取消</Button>
-                          <Button onClick={handleCreate} disabled={!canSubmit}>确认创建</Button>
-                        </DialogFooter>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
                 </div>
               </div>
             </div>
