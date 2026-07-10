@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 from app.parsing.preprocess.industry_noise_patterns.finance import RULES as FINANCE_RULES
 from app.parsing.preprocess.industry_noise_patterns.industrial_control import RULES as INDUSTRIAL_CONTROL_RULES

@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 KB_ASSISTANT_ONESHOT = {
     "question": "What does the deployment guide require before starting the service?",

@@ -5,7 +5,6 @@ This derives a folder hierarchy from document metadata `source_path` values
 (directory-preserving upload keys like "folder/sub/file.pdf").
 """
 
-from __future__ import annotations
 
 from collections.abc import Iterable
 

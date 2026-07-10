@@ -7,7 +7,6 @@ to scans. These indexes keep exact-anchor preflight bounded without changing
 retrieval behavior.
 """
 
-from __future__ import annotations
 
 from alembic import op
 

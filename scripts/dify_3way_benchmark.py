@@ -11,7 +11,6 @@ The benchmark is intentionally evidence-first:
 No App API key is written to output artifacts.
 """
 
-from __future__ import annotations
 
 import argparse
 import csv
@@ -35,12 +34,12 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from scripts.changzhou_gov_collect_dify_answers import (  # noqa: E402
+    _request_json,
     build_dify_payload,
     diagnose_dify_error,
     extract_dify_answer,
     extract_dify_response_refs,
     load_cases,
-    _request_json,
 )
 from scripts.evaluate_mixed_rag_quality import (  # noqa: E402
     build_markdown_report,
@@ -2281,7 +2280,7 @@ def build_comparison_markdown(report: dict[str, Any], *, apps: list[AppSpec], ca
         "",
         f"- Generated at: `{report.get('generated_at')}`",
         f"- Cases: `{(report.get('summary') or {}).get('cases')}`",
-        f"- Judge: deterministic evidence-clause matching, no LLM judge.",
+        "- Judge: deterministic evidence-clause matching, no LLM judge.",
         "",
         "## 中文结论摘要",
         "",
@@ -2543,8 +2542,8 @@ def build_sharing_markdown(report: dict[str, Any]) -> str:
             "",
             "## 附件",
             "",
-            f"- 详细报告：`comparison_report.md`",
-            f"- 机器可读报告：`comparison_report.json`",
+            "- 详细报告：`comparison_report.md`",
+            "- 机器可读报告：`comparison_report.json`",
             f"- 逐题审计 JSONL：`{audit_review.get('jsonl_path', 'audit_review.jsonl')}`",
             f"- 逐题审计 CSV：`{audit_review.get('csv_path', 'audit_review.csv')}`",
         ]

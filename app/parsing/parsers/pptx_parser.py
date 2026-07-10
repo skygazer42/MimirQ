@@ -7,11 +7,11 @@ This is used as a robust fallback when general converters (MarkItDown/Pandoc)
 fail on certain presentations.
 """
 
-from __future__ import annotations
 
 from pathlib import Path
 
 from langchain_core.documents import Document
+from pptx import Presentation
 
 from app.rag.core.logging import get_logger
 
@@ -49,11 +49,6 @@ class PptxParser:
         ext = file_path.suffix.lower()
         if ext != ".pptx":
             raise ValueError(f"PptxParser supports only .pptx, got: {ext or '(no ext)'}")
-
-        try:
-            from pptx import Presentation  # type: ignore
-        except ImportError as exc:  # pragma: no cover
-            raise RuntimeError("python-pptx is not installed; cannot parse .pptx files") from exc
 
         prs = Presentation(str(file_path))
         total_slides = len(getattr(prs, "slides", []) or [])

@@ -16,6 +16,8 @@ from pathlib import Path
 from typing import Any, BinaryIO
 from urllib.parse import urlparse
 
+from minio import Minio
+
 from app.core.config import settings
 from app.rag.core.logging import get_logger
 
@@ -79,12 +81,6 @@ class MinIOService:
             raise RuntimeError("MinIO is disabled (MINIO_ENABLED=false)")
 
         if self._client is None:
-            try:
-                from minio import Minio  # type: ignore
-            except ImportError as exc:
-                raise RuntimeError(
-                    "MinIO dependencies are missing. Install `minio` or set MINIO_ENABLED=false."
-                ) from exc
             self._client = Minio(
                 endpoint=settings.MINIO_ENDPOINT,
                 access_key=settings.MINIO_ACCESS_KEY,

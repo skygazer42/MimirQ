@@ -6,7 +6,6 @@ Notes:
   `alembic stamp head` after validating schema compatibility.
 """
 
-from __future__ import annotations
 
 import sqlalchemy as sa
 

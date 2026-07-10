@@ -5,7 +5,6 @@ Precheck scans are intended for "before ingestion" analysis on a local folder.
 They are run-based (async), store progress in DB, and store per-file records on disk.
 """
 
-from __future__ import annotations
 
 import asyncio
 import json

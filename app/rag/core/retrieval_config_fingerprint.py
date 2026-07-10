@@ -5,7 +5,6 @@ Used to compare retrieval runs across environments without persisting raw querie
 or scope identifiers (tenant/dataset/document ids).
 """
 
-from __future__ import annotations
 
 import json
 from typing import Any

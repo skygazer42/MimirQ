@@ -5,7 +5,6 @@ These helpers are intentionally dependency-light so they can be unit-tested with
 requiring a full backend runtime (DB, Milvus, LLM config, etc.).
 """
 
-from __future__ import annotations
 
 import math
 from typing import Any

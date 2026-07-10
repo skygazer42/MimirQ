@@ -4,7 +4,6 @@ Ingestion run manifest schemas.
 These schemas expose a unified run_id view for ingestion entrypoints.
 """
 
-from __future__ import annotations
 
 from datetime import datetime
 from typing import Any

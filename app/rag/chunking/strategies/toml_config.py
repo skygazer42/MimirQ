@@ -10,7 +10,6 @@ The chunker splits by table blocks first, then groups key/value entries within
 each block while preserving character offsets.
 """
 
-from __future__ import annotations
 
 import re
 from dataclasses import dataclass

@@ -6,7 +6,6 @@ This module keeps checks best-effort and dependency-light:
 - Return structured status dicts instead of raising, so endpoints can decide 200 vs 503.
 """
 
-from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path

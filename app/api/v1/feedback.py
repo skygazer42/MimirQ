@@ -5,7 +5,6 @@ Currently provides minimal loop capability:
 - List queries (isolated by tenant)
 """
 
-from __future__ import annotations
 
 from typing import Annotated, Any
 from uuid import UUID

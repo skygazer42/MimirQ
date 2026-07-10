@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """Generate docs-site/docs tree (Chinese). Run from repo root: python scripts/docs/bootstrap_handbook.py"""
-from __future__ import annotations
 
 import json
 from pathlib import Path

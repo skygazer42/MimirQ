@@ -9,7 +9,6 @@ Design constraints:
 - Bounded IO: tail-read of the metrics file (max_bytes)
 """
 
-from __future__ import annotations
 
 import json
 from datetime import UTC, datetime

@@ -11,7 +11,6 @@ that helps drive iterative improvements to:
 Optional persistence (compact run snapshots) is handled at the API layer.
 """
 
-from __future__ import annotations
 
 import asyncio
 import time

@@ -36,18 +36,8 @@ from PIL import Image
 from pypdf import PdfReader as pdf2_read
 
 from ..src.model import rag_tokenizer
-
-_VISION_IMPORT_ERROR: Exception | None = None
-
-try:
-    from ..vision import OCR, LayoutRecognizer, TableStructureRecognizer
-    from ..vision.recognizer import Recognizer
-except Exception as exc:  # pragma: no cover - exercised in dependency-light test envs
-    OCR = None
-    LayoutRecognizer = None
-    TableStructureRecognizer = None
-    Recognizer = None
-    _VISION_IMPORT_ERROR = exc
+from ..vision import OCR, LayoutRecognizer, TableStructureRecognizer
+from ..vision.recognizer import Recognizer
 
 LIGHTEN = int(os.getenv("LIGHTEN", "0"))  # Result is 0
 PARALLEL_DEVICES = 0  # cuda torch
@@ -183,26 +173,6 @@ def picture_vision_llm_chunk(binary, vision_model, prompt=None, callback=None):
 
 
 def _ensure_vision_runtime():
-    global OCR, LayoutRecognizer, TableStructureRecognizer, Recognizer, _VISION_IMPORT_ERROR
-
-    if all(dep is not None for dep in (OCR, LayoutRecognizer, TableStructureRecognizer, Recognizer)):
-        return OCR, LayoutRecognizer, TableStructureRecognizer, Recognizer
-
-    try:
-        from ..vision import OCR as _OCR
-        from ..vision import LayoutRecognizer as _LayoutRecognizer
-        from ..vision import TableStructureRecognizer as _TableStructureRecognizer
-        from ..vision.recognizer import Recognizer as _Recognizer
-    except Exception:
-        if _VISION_IMPORT_ERROR is not None:
-            raise _VISION_IMPORT_ERROR
-        raise
-
-    OCR = _OCR
-    LayoutRecognizer = _LayoutRecognizer
-    TableStructureRecognizer = _TableStructureRecognizer
-    Recognizer = _Recognizer
-    _VISION_IMPORT_ERROR = None
     return OCR, LayoutRecognizer, TableStructureRecognizer, Recognizer
 
 

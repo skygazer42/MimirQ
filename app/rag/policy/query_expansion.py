@@ -10,7 +10,6 @@ Constraints:
 - Deterministic and safe for logs/storage
 """
 
-from __future__ import annotations
 
 import re
 

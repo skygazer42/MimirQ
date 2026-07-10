@@ -7,7 +7,6 @@ This module is intended for ops tooling and incident response:
 - Dependency-light (avoid importing optional deps at import time)
 """
 
-from __future__ import annotations
 
 import time
 from dataclasses import dataclass

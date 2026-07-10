@@ -22,61 +22,20 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.constants import DEFAULT_OPENAI_API_BASE
 from app.core.env import is_production_env
+from app.rag.retrieval.contract import (
+    VALID_RETRIEVAL_CONTRACT_MODES,
+    normalize_retrieval_contract_mode,
+)
+from app.rag.retrieval.sparse import (
+    VALID_SPARSE_PROVIDERS,
+    normalize_sparse_provider_name,
+)
 
 _DEFAULT_RAG_EVAL_SUMMARY_PATH = "tests/rag/evaluation/fixtures/rag_eval_summary.sample.json"
 _COMMA_OR_WHITESPACE_RE = r"[,\\s]+"
 _LEGACY_DEV_SECRET_KEY = "".join(("your-secret-key", "-change-in-production"))
 _LOCAL_MINIO_DEFAULT_CREDENTIAL = "".join(("minio", "admin"))
 _ALL_INTERFACES_HOST = str(ipaddress.IPv4Address(0))
-
-try:
-    from app.rag.retrieval.contract import (
-        VALID_RETRIEVAL_CONTRACT_MODES,
-        normalize_retrieval_contract_mode,
-    )
-except ImportError:
-    # Keep config importable even when app.rag triggers circular imports during
-    # process bootstrap (e.g., settings imported before rag modules are fully ready).
-    VALID_RETRIEVAL_CONTRACT_MODES = {
-        "",
-        "deterministic_recall",
-        "must_recall_strict",
-        "evidence_strict",
-        "audit_trace",
-    }
-
-    def normalize_retrieval_contract_mode(value: str | None) -> str:
-        raw = str(value or "").strip().lower()
-        if raw in {"none", "off", "disabled"}:
-            return ""
-        if raw in {"deterministic", "deterministic_recall"}:
-            return "deterministic_recall"
-        if raw in {"must_recall", "must_recall_strict"}:
-            return "must_recall_strict"
-        if raw in {"evidence", "evidence_strict", "strict"}:
-            return "evidence_strict"
-        if raw in {"audit", "audit_trace", "trace"}:
-            return "audit_trace"
-        return raw
-
-try:
-    from app.rag.retrieval.sparse import (
-        VALID_SPARSE_PROVIDERS,
-        normalize_sparse_provider_name,
-    )
-except ImportError:
-    VALID_SPARSE_PROVIDERS = {"deterministic", "splade"}
-
-    def normalize_sparse_provider_name(provider: str | None) -> str:
-        raw = str(provider or "").strip().lower()
-        if not raw:
-            return "deterministic"
-        if raw in {"det", "deterministic"}:
-            return "deterministic"
-        if raw == "splade":
-            return "splade"
-        return raw
-
 
 DEFAULT_RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_LEVELS = "high,medium"
 
@@ -1572,6 +1531,7 @@ class Settings(BaseSettings):
     RAGAS_RUN_MAX_RETRIES: int = 1
     RAGAS_RUN_MAX_WAIT_SEC: int = 2
     RAGAS_RUN_MAX_WORKERS: int = 4
+    RAGAS_CONVERSATION_WALL_TIMEOUT_SEC: int = 90
     RAGAS_CONVERSATION_DETERMINISTIC_MODE_ENABLED: bool = False
 
     # Observability: simple anomaly detection (rolling baseline; PII-safe).

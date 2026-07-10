@@ -7,7 +7,6 @@ runner so upstream layers (ingest pipeline / API) can:
 - apply bounded retries only when it makes sense
 """
 
-from __future__ import annotations
 
 from typing import Any
 

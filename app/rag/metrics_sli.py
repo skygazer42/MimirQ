@@ -7,7 +7,6 @@ Design goals:
   otherwise values are collapsed to "all".
 """
 
-from __future__ import annotations
 
 from prometheus_client import Counter, Histogram
 

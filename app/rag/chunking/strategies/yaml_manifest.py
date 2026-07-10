@@ -12,7 +12,6 @@ The chunker splits the text into YAML documents first, then applies a fallback
 RecursiveCharacterTextSplitter inside each document while preserving offsets.
 """
 
-from __future__ import annotations
 
 import re
 from dataclasses import dataclass

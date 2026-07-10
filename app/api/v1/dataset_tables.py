@@ -5,7 +5,6 @@ This provides a safe, SQL-first interface for structured table assets
 that were ingested into the per-document table store.
 """
 
-from __future__ import annotations
 
 import hashlib
 from typing import Annotated, Any

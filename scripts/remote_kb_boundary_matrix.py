@@ -5,7 +5,6 @@ This script intentionally uses only the Python standard library so it can run
 on production-like hosts without extra dependencies.
 """
 
-from __future__ import annotations
 
 import argparse
 import json

@@ -9,7 +9,6 @@ Design goals:
 - Deterministic-ish: indexing is stable given the same (image bytes, model, settings).
 """
 
-from __future__ import annotations
 
 import contextlib
 import io

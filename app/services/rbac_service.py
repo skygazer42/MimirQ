@@ -4,7 +4,6 @@ Tenant-scoped RBAC utilities.
 Centralizes role/permission checks so API endpoints avoid ad-hoc role sets.
 """
 
-from __future__ import annotations
 
 from uuid import UUID
 

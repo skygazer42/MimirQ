@@ -5,7 +5,6 @@ Used as a best-effort fallback when MarkItDown is unavailable or fails.
 Relies on python-docx (pure Python) to extract paragraphs and tables.
 """
 
-from __future__ import annotations
 
 import re
 from pathlib import Path

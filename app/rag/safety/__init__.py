@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 from app.rag.safety.input_guard import GuardResult, InputGuard, get_input_guard
 from app.rag.safety.llama_guard import LlamaGuard, LlamaGuardResult

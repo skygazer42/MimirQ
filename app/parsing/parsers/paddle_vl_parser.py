@@ -9,7 +9,6 @@ Config via env/.env:
 - PADDLE_VL_API_URL=http://localhost:9030/convert  (your service endpoint)
 """
 
-from __future__ import annotations
 
 import json
 import re

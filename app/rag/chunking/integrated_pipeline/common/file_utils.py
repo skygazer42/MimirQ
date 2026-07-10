@@ -3,7 +3,6 @@
 Do not edit directly; edit the canonical implementation under app/third_party/integrated_pipeline.
 """
 
-from __future__ import annotations
 
 from importlib import import_module as _import_module
 

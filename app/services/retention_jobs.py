@@ -12,7 +12,6 @@ Principles:
 - Fail-open: retention must never crash product flows
 """
 
-from __future__ import annotations
 
 from collections import Counter
 from datetime import UTC, datetime, timedelta

@@ -5,7 +5,6 @@ Adds:
 - index for common retrieval filters (tenant/dataset + publication_status)
 """
 
-from __future__ import annotations
 
 from alembic import op
 

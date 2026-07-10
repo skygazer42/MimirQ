@@ -10,7 +10,6 @@ The initial implementation focuses on:
 - Extensibility (connector_id + config JSON)
 """
 
-from __future__ import annotations
 
 import uuid
 

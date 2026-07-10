@@ -4,7 +4,6 @@ Usage / cost endpoints (admin-only).
 Focus: low-friction, DB-backed aggregates for chat token usage.
 """
 
-from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from typing import Annotated

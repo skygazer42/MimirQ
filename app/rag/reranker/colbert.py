@@ -10,7 +10,6 @@ It provides the plumbing/integration point. A production-grade ColBERT model
 can be wired in by implementing a TokenEmbedder that uses HF/torch.
 """
 
-from __future__ import annotations
 
 import hashlib
 import re

@@ -9,7 +9,6 @@ Defaults are PII-safe:
 Use --include-text if you explicitly want to print raw text fields.
 """
 
-from __future__ import annotations
 
 import argparse
 import json

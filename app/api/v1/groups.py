@@ -2,7 +2,6 @@
 Tenant groups API (enterprise directory primitive).
 """
 
-from __future__ import annotations
 
 import contextlib
 from typing import Annotated

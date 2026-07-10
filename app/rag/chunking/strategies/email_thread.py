@@ -11,7 +11,6 @@ The chunker tries to keep whole messages together and uses message-level
 overlap when possible.
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any

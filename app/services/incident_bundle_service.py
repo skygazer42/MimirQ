@@ -5,7 +5,6 @@ These are thin utilities intended for ops tooling (scripts/CLI) to package a sma
 set of diagnostics artifacts into a single zip file for sharing/debugging.
 """
 
-from __future__ import annotations
 
 import json
 import zipfile

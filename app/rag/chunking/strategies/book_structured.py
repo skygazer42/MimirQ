@@ -10,7 +10,6 @@ fallback RecursiveCharacterTextSplitter inside each section to respect the
 configured chunk size/overlap while preserving positions.
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any

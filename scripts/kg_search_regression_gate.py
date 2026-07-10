@@ -11,7 +11,6 @@ Expected CI env:
 - KG_SEARCH_VECTOR_RECALL_ENABLED=false (so Milvus/embeddings are not required)
 """
 
-from __future__ import annotations
 
 import argparse
 import json

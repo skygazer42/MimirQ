@@ -10,7 +10,6 @@ This module is intentionally best-effort:
 - It avoids storing raw chunk text in Redis progress payloads.
 """
 
-from __future__ import annotations
 
 import json
 import time

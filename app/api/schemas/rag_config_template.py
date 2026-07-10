@@ -5,7 +5,6 @@ These templates store a partial RAG config patch (retrieval/rerank knobs) that c
 selected via template_id / template_key / ab_experiment_key (stable routing).
 """
 
-from __future__ import annotations
 
 from datetime import datetime
 from uuid import UUID

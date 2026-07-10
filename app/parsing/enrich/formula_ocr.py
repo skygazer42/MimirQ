@@ -11,7 +11,6 @@ Design constraints:
 - Security: only read local image files under the origin/asset base dir.
 """
 
-from __future__ import annotations
 
 import asyncio
 import re

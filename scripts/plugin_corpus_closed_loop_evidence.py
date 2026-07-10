@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Build shareable evidence from a raw plugin corpus closed-loop smoke report."""
 
-from __future__ import annotations
 
 import argparse
 import json

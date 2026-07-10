@@ -6,7 +6,6 @@ Used by:
 - URL ingestion (metadata)
 """
 
-from __future__ import annotations
 
 import re
 from urllib.parse import urljoin, urlsplit, urlunsplit

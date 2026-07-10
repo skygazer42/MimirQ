@@ -6,7 +6,6 @@ Notes:
   diffing metrics over time without persisting full event/entity payloads.
 """
 
-from __future__ import annotations
 
 from alembic import op
 

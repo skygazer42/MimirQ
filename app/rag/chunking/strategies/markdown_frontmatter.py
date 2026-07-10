@@ -6,7 +6,6 @@ The chunker keeps the frontmatter as its own chunk(s), then chunks the body
 using markdown-friendly separators while preserving character offsets.
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any

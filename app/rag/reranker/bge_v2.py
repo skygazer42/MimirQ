@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 from app.rag.reranker.local_bge_v2_m3 import LocalBGEV2M3Reranker
 

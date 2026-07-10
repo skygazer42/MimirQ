@@ -13,7 +13,6 @@ Metrics (binary relevance, chunk_id match):
 - NDCG@K
 """
 
-from __future__ import annotations
 
 import argparse
 import hashlib

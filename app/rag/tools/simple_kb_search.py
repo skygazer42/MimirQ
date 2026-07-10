@@ -5,7 +5,6 @@ Note: `app.rag.tools` is a package (MCP tools). This module lives under that
 package to avoid the legacy `app/rag/tools.py` name collision.
 """
 
-from __future__ import annotations
 
 from uuid import UUID
 

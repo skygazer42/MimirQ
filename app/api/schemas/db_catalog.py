@@ -5,7 +5,6 @@ These schemas cover read-only metadata and safe, aggregate profiling snapshots
 for SQLServer/MySQL catalog connectors.
 """
 
-from __future__ import annotations
 
 from datetime import datetime
 from typing import Any

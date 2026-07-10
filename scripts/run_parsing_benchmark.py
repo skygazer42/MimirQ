@@ -20,7 +20,6 @@ Golden-set format:
 Paths are resolved relative to --golden-dir when not absolute.
 """
 
-from __future__ import annotations
 
 import argparse
 import json

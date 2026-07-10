@@ -6,7 +6,6 @@ These tables store:
 - safe (digest-only) profiling snapshots; no raw rows are stored here
 """
 
-from __future__ import annotations
 
 import uuid
 

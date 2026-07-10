@@ -6,7 +6,6 @@ sections (stages/variables/include/etc). The chunker splits the document into
 top-level blocks while preserving character offsets.
 """
 
-from __future__ import annotations
 
 import re
 from dataclasses import dataclass

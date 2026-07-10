@@ -6,7 +6,6 @@ Dify calls this endpoint with a `knowledge_id`; MimirQ maps it to one or more
 dataset IDs, runs the existing retrieval-only pipeline, and returns Dify records.
 """
 
-from __future__ import annotations
 
 import asyncio
 import hashlib
@@ -5855,7 +5854,7 @@ def _metadata_anchor_db_fallback_records(
     started = time.perf_counter()
     max_elapsed_ms_value = max(0, min(30000, int(max_elapsed_ms or 0)))
 
-    class MetadataAnchorBudgetExceeded(Exception):
+    class MetadataAnchorBudgetExceededError(Exception):
         pass
 
     def budget_exceeded() -> bool:
@@ -5892,7 +5891,7 @@ def _metadata_anchor_db_fallback_records(
 
         def query_matching_rows(condition: Any, *, limit: int) -> list[Any]:
             if budget_exceeded():
-                raise MetadataAnchorBudgetExceeded
+                raise MetadataAnchorBudgetExceededError
             return (
                 db.query(
                     DocumentChunk.id.label("chunk_id"),
@@ -6305,7 +6304,7 @@ def _metadata_anchor_db_fallback_records(
                 current_matches = matched_records()
                 if current_matches:
                     return current_matches
-    except MetadataAnchorBudgetExceeded:
+    except MetadataAnchorBudgetExceededError:
         logger.info(
             "Dify metadata anchor fallback budget exhausted query_hash=%s elapsed_ms=%s max_elapsed_ms=%s rows=%s",
             _diagnostic_query_hash(query),

@@ -6,7 +6,6 @@ CPU xgboost in CI and in the default backend image, so those environments
 install xgboost separately with `--no-deps` after installing this filtered file.
 """
 
-from __future__ import annotations
 
 import argparse
 from pathlib import Path

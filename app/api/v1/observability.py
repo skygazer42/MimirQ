@@ -5,7 +5,6 @@ Currently provides a small, PII-safe dashboard summary for RAG metrics based on 
 JSONL metrics log (ENABLE_METRICS_LOG / METRICS_LOG_PATH).
 """
 
-from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal

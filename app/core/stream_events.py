@@ -9,7 +9,6 @@ Implementation notes:
 - Emission is best-effort and never raises to callers.
 """
 
-from __future__ import annotations
 
 import asyncio
 import contextvars

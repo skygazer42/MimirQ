@@ -8,7 +8,6 @@ This module should only be imported by tooling (e.g. Alembic) or test code. Impo
 it in request paths is discouraged to avoid eager loading side effects.
 """
 
-from __future__ import annotations
 
 # Import each module for side effects: table registration into Base.metadata.
 from app.models import audit_log as _audit_log  # noqa: F401

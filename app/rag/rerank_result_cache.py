@@ -11,7 +11,6 @@ Security posture:
 - Cache values store only ordered ids + numeric scores (PII-safe identifiers only)
 """
 
-from __future__ import annotations
 
 import json
 import threading

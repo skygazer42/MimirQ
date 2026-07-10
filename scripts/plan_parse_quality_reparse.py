@@ -3,7 +3,6 @@
 Build a deterministic reparse candidate plan from dataset report parse-risk summary.
 """
 
-from __future__ import annotations
 
 import argparse
 import json

@@ -4,7 +4,6 @@ Document permission service (document-level ACL allowlist).
 This mirrors DatasetPermissionService but is scoped to individual documents.
 """
 
-from __future__ import annotations
 
 from uuid import UUID
 

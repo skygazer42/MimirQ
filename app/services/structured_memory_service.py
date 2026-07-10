@@ -16,7 +16,6 @@ Important safety notes:
 - Conservative PII filtering: we avoid storing email/URLs/long numeric strings.
 """
 
-from __future__ import annotations
 
 import re
 from typing import Any

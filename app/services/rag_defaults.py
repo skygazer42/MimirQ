@@ -6,7 +6,6 @@ We treat dataset defaults as *fallbacks*:
 - Otherwise, apply the dataset's override (if any).
 """
 
-from __future__ import annotations
 
 from collections.abc import Iterable
 from typing import Any

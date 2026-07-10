@@ -1,6 +1,5 @@
 """Dataset category schemas (tree + membership)."""
 
-from __future__ import annotations
 
 from uuid import UUID
 

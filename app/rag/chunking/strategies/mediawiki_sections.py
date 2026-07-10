@@ -9,7 +9,6 @@ The chunker splits the document into heading sections while preserving
 character offsets.
 """
 
-from __future__ import annotations
 
 import re
 from dataclasses import dataclass

@@ -6,7 +6,6 @@ METRICS_LOG_INCLUDE_TEXT=true, because this endpoint is meant for UI tooling
 and should stay PII-safe by construction.
 """
 
-from __future__ import annotations
 
 import json
 import time

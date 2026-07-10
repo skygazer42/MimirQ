@@ -21,7 +21,6 @@ Examples:
   python scripts/run_db_maintenance_jobs.py --audit-logs --regression-runs --all-tenants --execute
 """
 
-from __future__ import annotations
 
 import argparse
 import json

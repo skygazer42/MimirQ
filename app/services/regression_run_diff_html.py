@@ -4,7 +4,6 @@ Regression run diff HTML exporter.
 Goal: produce a shareable, offline-friendly HTML artifact for before/after comparisons.
 """
 
-from __future__ import annotations
 
 import json
 from datetime import datetime

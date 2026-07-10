@@ -10,7 +10,6 @@ Design goals:
 - Best-effort: callers should treat failures as "no embeddings" (never block ingest/retrieval).
 """
 
-from __future__ import annotations
 
 import threading
 from collections.abc import Iterable

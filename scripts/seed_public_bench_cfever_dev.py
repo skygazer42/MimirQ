@@ -23,7 +23,6 @@ Notes:
   and ablations, not re-embedding the corpus.
 """
 
-from __future__ import annotations
 
 import argparse
 import json

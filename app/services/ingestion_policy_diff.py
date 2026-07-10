@@ -5,7 +5,6 @@ Used by precheck "suggest ingestion policy" to show how the suggested policy dif
 from the currently configured dataset policy.
 """
 
-from __future__ import annotations
 
 import json
 from typing import Any

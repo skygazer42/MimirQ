@@ -2501,7 +2501,8 @@ export function DataGovernancePanel() {
                     {/* 宸ュ叿鍐呭鍖?*/}
                     <div
                       key={activeTab}
-                      className="flex-1 overflow-y-auto overscroll-contain no-scrollbar bg-surface-2 animate-fade-in-up"
+                      data-governance-tool-scroll="true"
+                      className="flex-1 min-h-0 overflow-y-auto overscroll-contain custom-scrollbar bg-surface-2 animate-fade-in-up"
                     >
                       {activeTab === 'quality' && (
                         <QualityChecker

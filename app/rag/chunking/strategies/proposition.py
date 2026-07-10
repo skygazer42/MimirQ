@@ -10,7 +10,6 @@ Why baseline first:
 - Provides an upgrade path to LLM-based proposition rewriting later.
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any

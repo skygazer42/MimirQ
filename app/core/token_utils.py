@@ -13,18 +13,15 @@ def _get_encoder():
     """Lazy load the tiktoken encoder."""
     global _encoder
     if _encoder is None:
+        import tiktoken
+
         try:
-            import tiktoken
-        except ImportError:
-            _encoder = False  # Mark as unavailable
-        else:
-            try:
-                _encoder = tiktoken.get_encoding("cl100k_base")
-            except Exception:  # noqa: BLE001
-                # tiktoken may attempt to download encoding assets on first use in some
-                # environments. In CI/offline contexts this can fail (network/proxy).
-                # Fail open to the heuristic fallback instead of crashing the request.
-                _encoder = False
+            _encoder = tiktoken.get_encoding("cl100k_base")
+        except Exception:  # noqa: BLE001
+            # tiktoken may attempt to download encoding assets on first use in some
+            # environments. In CI/offline contexts this can fail (network/proxy).
+            # Fail open to the heuristic fallback instead of crashing the request.
+            _encoder = False
     return _encoder
 
 

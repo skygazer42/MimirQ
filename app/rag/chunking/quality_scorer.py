@@ -8,7 +8,6 @@ This is intentionally lightweight and heuristic-driven:
 Used initially by chunk preview to surface "needs_review" signals for data governance.
 """
 
-from __future__ import annotations
 
 import re
 from typing import Any

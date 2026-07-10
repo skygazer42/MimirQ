@@ -6,7 +6,6 @@ does not attempt to be a full document understanding pipeline. It provides stabl
 counts for common UI panels (parsing/governance/chunk-preview).
 """
 
-from __future__ import annotations
 
 import re
 from collections.abc import Iterable, Mapping

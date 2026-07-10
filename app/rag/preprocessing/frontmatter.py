@@ -5,7 +5,6 @@ The goal is metadata enrichment (title/tags/date/author) without adding heavy
 YAML dependencies. Parsing is intentionally limited and safe.
 """
 
-from __future__ import annotations
 
 import re
 from dataclasses import dataclass

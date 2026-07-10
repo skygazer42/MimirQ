@@ -6,7 +6,6 @@ Design constraints:
 - PII-safe: never return raw user question/query or chunk text.
 """
 
-from __future__ import annotations
 
 from typing import Any
 

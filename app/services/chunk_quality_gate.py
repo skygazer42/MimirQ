@@ -9,7 +9,6 @@ This logic is shared across:
 Important: This module is intentionally dependency-light and returns JSON-safe dicts.
 """
 
-from __future__ import annotations
 
 from typing import Any, Literal
 

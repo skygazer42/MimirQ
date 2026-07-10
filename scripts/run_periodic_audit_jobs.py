@@ -22,7 +22,6 @@ Examples:
   python scripts/run_periodic_audit_jobs.py --index-audit --all-tenants --execute --force
 """
 
-from __future__ import annotations
 
 import argparse
 import json

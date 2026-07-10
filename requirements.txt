@@ -106,7 +106,6 @@ pydantic==2.12.5
 pydantic-settings==2.14.2
 email-validator==2.3.0
 backports.tarfile==1.2.0
-strenum==0.4.15
 python-dotenv==1.2.2
 requests==2.33.1
 aiofiles==25.1.0

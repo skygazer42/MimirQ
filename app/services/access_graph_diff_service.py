@@ -10,7 +10,6 @@ Security posture:
 - Never emits document content/filenames/URLs (not present in the export; we also ignore extra keys).
 """
 
-from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Iterable

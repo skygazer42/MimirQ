@@ -9,7 +9,6 @@ PII safety:
 - Never emit chunk content or raw quotes. Only ids + counters + bounded metadata.
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any

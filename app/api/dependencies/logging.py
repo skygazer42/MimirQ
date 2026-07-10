@@ -5,7 +5,6 @@ These are used to enrich request-scoped structured logs (contextvars) with
 low-cardinality fields like the route template.
 """
 
-from __future__ import annotations
 
 import asyncio
 

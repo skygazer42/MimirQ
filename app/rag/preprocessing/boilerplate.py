@@ -9,7 +9,6 @@ This module targets low-value blocks such as:
 The implementation is intentionally conservative and code-fence aware.
 """
 
-from __future__ import annotations
 
 import re
 from dataclasses import dataclass

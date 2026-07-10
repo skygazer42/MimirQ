@@ -1,8 +1,9 @@
-from __future__ import annotations
 
 import time
 from pathlib import Path
 from typing import Any
+
+from minio import Minio
 
 from app.storage.object.minio import MinIOService
 
@@ -67,12 +68,6 @@ class S3CompatibleObjectStore(MinIOService):
             raise RuntimeError(f"{self._provider_name} bucket is required")
 
         if self._client is None:
-            try:
-                from minio import Minio  # type: ignore
-            except ImportError as exc:
-                raise RuntimeError(
-                    "S3-compatible object storage dependencies are missing. Install `minio`."
-                ) from exc
             self._client = Minio(
                 endpoint=self._endpoint,
                 access_key=self._access_key,

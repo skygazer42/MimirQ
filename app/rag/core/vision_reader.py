@@ -14,7 +14,6 @@ Design principles:
 - OpenAI-compatible API: uses /chat/completions with image_url data URLs.
 """
 
-from __future__ import annotations
 
 import asyncio
 import base64

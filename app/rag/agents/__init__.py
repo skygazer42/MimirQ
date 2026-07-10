@@ -6,7 +6,6 @@ Provides:
 - Integration with LangGraph's official prebuilt components
 """
 
-from __future__ import annotations
 
 import langchain
 
@@ -18,41 +17,17 @@ if not hasattr(langchain, "llm_cache"):
     langchain.llm_cache = None
 
 from app.rag.agents.multi_agent import MultiAgentPlanStep, MultiAgentRAGRunner, get_multi_agent_runner
+from app.rag.agents.prebuilt import (
+    RAGAgent,
+    RAGAgentConfig,
+    ToolNode,
+    create_rag_agent,
+    create_rag_tool_node,
+    create_retriever_tool,
+    create_search_tool,
+    tools_condition,
+)
 from app.rag.agents.rag_agent import AgenticPlanStep, AgenticRAGRunner, get_agentic_runner
-from app.rag.core.logging import get_logger
-
-logger = get_logger("rag.agents")
-
-_PREBUILT_IMPORT_ERROR: Exception | None = None
-
-try:
-    from app.rag.agents.prebuilt import (
-        RAGAgent,
-        RAGAgentConfig,
-        ToolNode,
-        create_rag_agent,
-        create_rag_tool_node,
-        create_retriever_tool,
-        create_search_tool,
-        tools_condition,
-    )
-except Exception as exc:  # noqa: BLE001
-    _PREBUILT_IMPORT_ERROR = exc
-    logger.warning("LangGraph prebuilt agents unavailable: %s", str(exc)[:200])
-    RAGAgent = None  # type: ignore[assignment]
-    RAGAgentConfig = None  # type: ignore[assignment]
-    ToolNode = None  # type: ignore[assignment]
-
-    def _raise_prebuilt_unavailable(*_args, **_kwargs):  # noqa: ANN202, ANN001
-        raise RuntimeError(
-            "LangGraph prebuilt agent integration is unavailable in this environment"
-        ) from _PREBUILT_IMPORT_ERROR
-
-    create_rag_agent = _raise_prebuilt_unavailable  # type: ignore[assignment]
-    create_rag_tool_node = _raise_prebuilt_unavailable  # type: ignore[assignment]
-    create_retriever_tool = _raise_prebuilt_unavailable  # type: ignore[assignment]
-    create_search_tool = _raise_prebuilt_unavailable  # type: ignore[assignment]
-    tools_condition = _raise_prebuilt_unavailable  # type: ignore[assignment]
 
 __all__ = [
     "AgenticPlanStep",

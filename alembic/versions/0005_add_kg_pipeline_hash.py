@@ -10,7 +10,6 @@ Notes:
   documents.metadata (active_pipeline_hash/pipeline_hash) for existing rows.
 """
 
-from __future__ import annotations
 
 from alembic import op
 

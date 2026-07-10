@@ -8,7 +8,7 @@ import { PageTitleIcon, type PageTitleIconName } from '@/components/ui/page-titl
 import { cn } from '@/lib/utils'
 
 export const KNOWLEDGE_OPS_BACKGROUND_CLASS =
-  'bg-white bg-[radial-gradient(circle_at_top,hsl(var(--info)/0.10),transparent_34rem)] dark:bg-background'
+  'flex min-h-0 flex-1 flex-col overflow-hidden bg-white bg-[radial-gradient(circle_at_top,hsl(var(--info)/0.10),transparent_34rem)] dark:bg-background'
 
 export const KNOWLEDGE_OPS_HERO_PANEL_CLASS =
   'relative overflow-hidden rounded-[28px] border border-sky-200/55 bg-[linear-gradient(135deg,rgba(248,253,255,0.92),rgba(229,245,255,0.72)_45%,rgba(255,255,255,0.82))] px-4 py-3 shadow-[0_24px_70px_-48px_rgba(14,116,144,0.55)] backdrop-blur-2xl dark:border-sky-300/15 dark:bg-[linear-gradient(135deg,rgba(8,21,34,0.82),rgba(8,47,73,0.36)_48%,rgba(15,23,42,0.72))]'

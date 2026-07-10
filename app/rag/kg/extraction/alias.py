@@ -11,7 +11,6 @@ This is intentionally conservative: it only fires on explicit patterns (parenthe
 and should prefer precision over recall.
 """
 
-from __future__ import annotations
 
 import re
 import unicodedata

@@ -7,7 +7,6 @@ This module is intentionally deterministic and bounded:
 - Expansion provenance is included with each generated variant.
 """
 
-from __future__ import annotations
 
 import re
 from pathlib import Path

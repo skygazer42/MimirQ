@@ -7,7 +7,6 @@ This file is intentionally kept lightweight:
 - Imports all model modules so `Base.metadata` is complete for autogeneration.
 """
 
-from __future__ import annotations
 
 import os
 import sys

@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 import contextlib
 from datetime import UTC, datetime

@@ -13,7 +13,6 @@ This script is intentionally deterministic and CI-friendly:
 - no interactive prompts
 """
 
-from __future__ import annotations
 
 import argparse
 import itertools

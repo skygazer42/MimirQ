@@ -7,7 +7,6 @@ This module is intentionally dependency-light so it can be used from:
 - manual chunk ingestion endpoints
 """
 
-from __future__ import annotations
 
 import hashlib
 from collections.abc import Iterable

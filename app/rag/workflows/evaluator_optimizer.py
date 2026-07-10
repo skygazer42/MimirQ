@@ -13,6 +13,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from app.core.config import settings
+from app.core.optional_deps import require_dependency
 from app.rag.core.logging import get_logger
 from app.rag.workflows.base import (
     BaseWorkflow,
@@ -386,11 +387,17 @@ def create_ragas_evaluator(
         answer: str,
         contexts: list[dict[str, Any]],
     ) -> EvaluationResult:
-        try:
-            from datasets import Dataset
-            from ragas import evaluate
-            from ragas.metrics import answer_relevancy, faithfulness
+        datasets_module = require_dependency("datasets", feature="ragas_evaluator", pip_name="datasets")
+        ragas_module = require_dependency("ragas", feature="ragas_evaluator", pip_name="ragas")
+        ragas_metrics_module = require_dependency("ragas.metrics", feature="ragas_evaluator", pip_name="ragas")
+        dataset_cls = getattr(datasets_module, "Dataset", None)
+        evaluate = getattr(ragas_module, "evaluate", None)
+        answer_relevancy = getattr(ragas_metrics_module, "answer_relevancy", None)
+        faithfulness = getattr(ragas_metrics_module, "faithfulness", None)
+        if dataset_cls is None or evaluate is None or answer_relevancy is None or faithfulness is None:
+            raise RuntimeError("RAGAS evaluator dependencies are missing required exports")
 
+        try:
             # Prepare data
             context_texts = [ctx.get("content", "") for ctx in contexts]
 
@@ -399,7 +406,7 @@ def create_ragas_evaluator(
                 "answer": [answer],
                 "contexts": [context_texts],
             }
-            dataset = Dataset.from_dict(data)
+            dataset = dataset_cls.from_dict(data)
 
             # Run evaluation
             result = await asyncio.to_thread(evaluate, dataset, metrics=[faithfulness, answer_relevancy])
@@ -417,12 +424,6 @@ def create_ragas_evaluator(
                 feedback=f"RAGAS scores: {scores}",
                 criteria_scores=scores,
             )
-
-        except ImportError:
-            logger.warning("RAGAS not available, using fallback evaluation")
-            # Fallback to simple heuristics
-            score = 0.6 if len(answer) > 100 else 0.4
-            return EvaluationResult(score, "RAGAS not available")
         except Exception as e:
             logger.exception("RAGAS evaluation failed: %s", e)
             return EvaluationResult(0.5, f"Evaluation error: {e}")

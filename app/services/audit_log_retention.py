@@ -9,7 +9,6 @@ Notes:
 - Keep outputs PII-minimal: return counts only by default.
 """
 
-from __future__ import annotations
 
 import contextlib
 from collections.abc import Sequence

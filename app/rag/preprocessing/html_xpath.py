@@ -8,9 +8,10 @@ Use cases:
 This module never performs any network access.
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass
+
+from app.core.optional_deps import optional_import
 
 
 @dataclass(frozen=True)
@@ -25,14 +26,13 @@ def extract_text_from_html(html: str, *, xpath: str | None = None) -> HtmlXPathE
     if not raw.strip():
         return HtmlXPathExtractResult(text="", matched_nodes=0)
 
-    try:
-        from lxml import etree  # type: ignore
-        from lxml import html as lxml_html
-    except ImportError:
+    lxml_etree = optional_import("lxml.etree", feature="html_xpath_extraction", pip_name="lxml")
+    lxml_html = optional_import("lxml.html", feature="html_xpath_extraction", pip_name="lxml")
+    if lxml_etree is None or lxml_html is None:
         # No lxml available: best-effort strip using html_text if present.
-        try:
-            from html_text import extract_text  # type: ignore
-
+        html_text = optional_import("html_text", feature="html_xpath_text_extraction", pip_name="html-text")
+        extract_text = getattr(html_text, "extract_text", None) if html_text is not None else None
+        if callable(extract_text):
             try:
                 return HtmlXPathExtractResult(
                     text=extract_text(raw, guess_layout=True) or "",
@@ -41,12 +41,12 @@ def extract_text_from_html(html: str, *, xpath: str | None = None) -> HtmlXPathE
                 )
             except Exception:
                 return HtmlXPathExtractResult(text=raw, matched_nodes=0, xpath_error="dependency_missing:lxml")
-        except ImportError:
-            return HtmlXPathExtractResult(
-                text=raw,
-                matched_nodes=0,
-                xpath_error="dependency_missing:lxml (hint: pip install lxml)",
-            )
+
+        return HtmlXPathExtractResult(
+            text=raw,
+            matched_nodes=0,
+            xpath_error="dependency_missing:lxml (hint: pip install lxml)",
+        )
 
     parser = lxml_html.HTMLParser(recover=True, remove_comments=False)
     try:
@@ -73,9 +73,9 @@ def extract_text_from_html(html: str, *, xpath: str | None = None) -> HtmlXPathE
         matched = len(nodes)
         fragments: list[str] = []
         for node in nodes:
-            if isinstance(node, etree._Element):  # type: ignore[attr-defined]
+            if isinstance(node, lxml_etree._Element):  # type: ignore[attr-defined]
                 try:
-                    fragments.append(etree.tostring(node, encoding="unicode", method="html") or "")
+                    fragments.append(lxml_etree.tostring(node, encoding="unicode", method="html") or "")
                 except Exception:
                     fragments.append(node.text_content() or "")
             else:
@@ -83,29 +83,24 @@ def extract_text_from_html(html: str, *, xpath: str | None = None) -> HtmlXPathE
         fragments_html = "\n".join([f for f in fragments if (f or "").strip()])
 
     # Convert to plain text.
-    extract_text = None
-    try:
-        from html_text import extract_text as _extract_text  # type: ignore
-
-        extract_text = _extract_text
-    except ImportError:
-        extract_text = None
+    html_text = optional_import("html_text", feature="html_xpath_text_extraction", pip_name="html-text")
+    extract_text = getattr(html_text, "extract_text", None) if html_text is not None else None
 
     text = ""
-    if extract_text is not None:
+    if callable(extract_text):
         try:
             text = extract_text(fragments_html or "", guess_layout=True) or ""
         except Exception:
             # Best-effort: fall back to lxml extraction.
             extract_text = None
 
-    if extract_text is None:
+    if not callable(extract_text):
         try:
             # lxml fallback.
             if nodes:
                 extracted: list[str] = []
                 for node in nodes:
-                    if isinstance(node, etree._Element):  # type: ignore[attr-defined]
+                    if isinstance(node, lxml_etree._Element):  # type: ignore[attr-defined]
                         extracted.append(node.text_content() or "")
                     else:
                         extracted.append(str(node))

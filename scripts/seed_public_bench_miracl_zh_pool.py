@@ -21,7 +21,6 @@ Notes:
 - Nightly should only run retrieval evaluation (no re-embedding / no reindex).
 """
 
-from __future__ import annotations
 
 import argparse
 import gzip

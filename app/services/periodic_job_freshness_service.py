@@ -11,7 +11,6 @@ Design goals:
 - Cheap: at most one indexed query per job (latest audit log row).
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime

@@ -10,7 +10,6 @@ Design goals:
 - Conservative (no new facts; queries are just rephrasings / alias pressure)
 """
 
-from __future__ import annotations
 
 import re
 from collections.abc import Iterable, Sequence

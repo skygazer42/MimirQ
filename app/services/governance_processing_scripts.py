@@ -14,7 +14,6 @@ therefore intentionally side-effect free reference code customers can copy as
 a starting point — not a guarantee of runtime behavior.
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Literal

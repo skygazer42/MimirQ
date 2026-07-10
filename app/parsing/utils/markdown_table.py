@@ -6,7 +6,6 @@ Goals:
 - Produce stable "table blocks" so markdown-aware chunkers can keep tables intact.
 """
 
-from __future__ import annotations
 
 import re
 

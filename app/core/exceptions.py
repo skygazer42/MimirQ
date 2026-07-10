@@ -12,25 +12,14 @@ from starlette.status import (
     HTTP_401_UNAUTHORIZED,
     HTTP_403_FORBIDDEN,
     HTTP_404_NOT_FOUND,
+    HTTP_413_CONTENT_TOO_LARGE,
+    HTTP_422_UNPROCESSABLE_CONTENT,
     HTTP_429_TOO_MANY_REQUESTS,
     HTTP_500_INTERNAL_SERVER_ERROR,
     HTTP_503_SERVICE_UNAVAILABLE,
 )
 
 from app.rag.core.logging import get_logger
-
-# Starlette exposes `HTTP_422_UNPROCESSABLE_ENTITY` (422). Some codebases refer to
-# a non-standard `HTTP_422_UNPROCESSABLE_CONTENT` name; keep a compatibility alias.
-try:
-    from starlette.status import HTTP_422_UNPROCESSABLE_CONTENT  # type: ignore
-except ImportError:  # pragma: no cover
-    from starlette.status import HTTP_422_UNPROCESSABLE_ENTITY as HTTP_422_UNPROCESSABLE_CONTENT
-
-# Starlette renamed 413 constant; keep compatibility alias.
-try:
-    from starlette.status import HTTP_413_CONTENT_TOO_LARGE  # type: ignore
-except ImportError:  # pragma: no cover
-    from starlette.status import HTTP_413_REQUEST_ENTITY_TOO_LARGE as HTTP_413_CONTENT_TOO_LARGE
 
 logger = get_logger("core.exceptions")
 

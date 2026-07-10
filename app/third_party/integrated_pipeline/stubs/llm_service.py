@@ -13,7 +13,6 @@ When not configured, this class raises NotImplementedError so callers can
 fail-soft and fall back to plaintext parsing (see `integrated/chunkers/naive.py`).
 """
 
-from __future__ import annotations
 
 import base64
 from typing import Any

@@ -8,7 +8,6 @@ imports (e.g. book -> chunkers -> book). This module exposes a stable API withou
 importing all chunkers eagerly.
 """
 
-from __future__ import annotations
 
 from collections.abc import Callable
 from importlib import import_module

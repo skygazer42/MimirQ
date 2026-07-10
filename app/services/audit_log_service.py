@@ -4,7 +4,6 @@ Audit log service.
 Best-effort, fail-open: logging must never break product flows.
 """
 
-from __future__ import annotations
 
 import hashlib
 from typing import Any

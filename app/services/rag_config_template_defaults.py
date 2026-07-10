@@ -6,7 +6,6 @@ We treat dataset default selectors as *fallbacks*:
 - Otherwise, apply the dataset default (if present).
 """
 
-from __future__ import annotations
 
 from collections.abc import Iterable
 from typing import Any

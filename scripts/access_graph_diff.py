@@ -16,7 +16,6 @@ Examples:
   python scripts/access_graph_diff.py --a a.json.gz --b b.json.gz --compact > diff.json
 """
 
-from __future__ import annotations
 
 import argparse
 import gzip

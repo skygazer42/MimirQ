@@ -5,7 +5,6 @@ These helpers build bounded invalidation tokens for cache keys that depend on
 the currently served corpus version.
 """
 
-from __future__ import annotations
 
 import json
 from collections.abc import Sequence

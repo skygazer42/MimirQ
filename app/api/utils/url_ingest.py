@@ -8,7 +8,6 @@ This module is intentionally conservative to reduce SSRF risk:
 - Streaming download with hard size limit
 """
 
-from __future__ import annotations
 
 import asyncio
 import contextlib

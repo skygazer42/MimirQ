@@ -15,7 +15,6 @@ for a query) instead of running community detection over the entire dataset grap
 latency bounded and avoids ACL/versioning pitfalls.
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any

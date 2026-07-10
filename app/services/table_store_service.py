@@ -7,7 +7,6 @@ This module intentionally keeps execution *declarative* and safe:
 - Query execution is SELECT-only and uses sqlite authorizer to restrict table access.
 """
 
-from __future__ import annotations
 
 import datetime as dt
 import hashlib
@@ -617,7 +616,7 @@ def _docx_row_looks_like_header(padded: list[list[str]]) -> bool:
     return len(set(keys)) == len(keys) and numeric <= max(1, len(non_empty) // 3) and avg_len <= 40
 
 
-def _docx_dataframe_from_rows(raw_rows: list[list[str]], *, max_cols: int) -> "pd.DataFrame" | None:
+def _docx_dataframe_from_rows(raw_rows: list[list[str]], *, max_cols: int) -> "pd.DataFrame | None":
     if not raw_rows:
         return None
     padded = _docx_padded_rows(raw_rows, max_cols=max_cols)

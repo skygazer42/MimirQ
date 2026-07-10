@@ -17,7 +17,6 @@ We therefore implement a minimal, safe version here:
 Note: This is *not* a drop-in replacement for full LOTUS. It is intentionally scoped.
 """
 
-from __future__ import annotations
 
 import json
 from dataclasses import dataclass

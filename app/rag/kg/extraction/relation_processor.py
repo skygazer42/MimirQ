@@ -7,7 +7,6 @@ Key goals:
 - Return a compact, provenance-friendly payload to be persisted in `kg_relations`.
 """
 
-from __future__ import annotations
 
 import math
 import re

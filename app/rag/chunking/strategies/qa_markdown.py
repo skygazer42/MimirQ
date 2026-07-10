@@ -10,7 +10,6 @@ This complements `qa_pairs` which focuses on plain "Q: ... / A: ..." lines.
 The chunker keeps each Q/A pair together and uses pair-level overlap.
 """
 
-from __future__ import annotations
 
 import re
 from dataclasses import dataclass

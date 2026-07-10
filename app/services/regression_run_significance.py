@@ -1,6 +1,5 @@
 """Case-paired statistics for RAGAS regression run diffs."""
 
-from __future__ import annotations
 
 import hashlib
 import math

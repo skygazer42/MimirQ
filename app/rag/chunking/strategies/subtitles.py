@@ -8,7 +8,6 @@ Targets subtitle documents with timecode cue lines, e.g.:
 The chunker keeps whole cues together and uses cue-level overlap.
 """
 
-from __future__ import annotations
 
 import re
 from dataclasses import dataclass

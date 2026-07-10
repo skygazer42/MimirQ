@@ -11,7 +11,6 @@ Config via env/.env:
 - QIANFAN_OCR_LAYOUT_AS_THOUGHT=false
 """
 
-from __future__ import annotations
 
 import json
 import re

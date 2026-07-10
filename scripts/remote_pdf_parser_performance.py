@@ -7,7 +7,6 @@ signals. Standard-library only so it can run on a deployment host without
 installing benchmark dependencies.
 """
 
-from __future__ import annotations
 
 import argparse
 import json

@@ -8,7 +8,6 @@ term/metadata matching so reviewers can inspect exactly which evidence was
 missed.
 """
 
-from __future__ import annotations
 
 import argparse
 import itertools

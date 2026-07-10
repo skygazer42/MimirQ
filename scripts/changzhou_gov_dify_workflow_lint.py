@@ -6,7 +6,6 @@ directly. In that shape the public App API may return a runtime 400 before the
 request reaches MimirQ retrieval. This script keeps that boundary diagnosable.
 """
 
-from __future__ import annotations
 
 import argparse
 import copy

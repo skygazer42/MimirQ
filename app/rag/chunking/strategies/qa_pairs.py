@@ -11,7 +11,6 @@ The chunker tries to keep each Q/A pair together and uses pair-level overlap
 when possible.
 """
 
-from __future__ import annotations
 
 import re
 from dataclasses import dataclass

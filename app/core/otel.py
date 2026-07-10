@@ -30,18 +30,11 @@ def init_otel() -> bool:
     if not bool(getattr(settings, "OTEL_ENABLED", False)):
         return False
 
-    try:
-        from opentelemetry import trace
-        from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-        from opentelemetry.sdk.resources import Resource
-        from opentelemetry.sdk.trace import TracerProvider
-        from opentelemetry.sdk.trace.export import BatchSpanProcessor
-    except ImportError as exc:
-        logger.warning(
-            "OpenTelemetry enabled but core deps are missing: %s (hint: pip install opentelemetry-sdk opentelemetry-exporter-otlp-proto-grpc)",
-            str(exc)[:200],
-        )
-        return False
+    from opentelemetry import trace
+    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+    from opentelemetry.sdk.resources import Resource
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
     service_name = str(getattr(settings, "OTEL_SERVICE_NAME", "mimirq") or "mimirq").strip() or "mimirq"
     endpoint = str(getattr(settings, "OTEL_EXPORTER_OTLP_ENDPOINT", "") or "").strip()
@@ -70,14 +63,7 @@ def instrument_httpx() -> None:
     if not _initialized:
         return
 
-    try:
-        from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
-    except ImportError as exc:
-        logger.warning(
-            "OpenTelemetry httpx instrumentation missing: %s (hint: pip install opentelemetry-instrumentation-httpx)",
-            str(exc)[:200],
-        )
-        return
+    from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 
     try:
         HTTPXClientInstrumentor().instrument()
@@ -90,14 +76,7 @@ def instrument_fastapi(app) -> None:  # type: ignore[no-untyped-def]
     if not _initialized or _fastapi_instrumented:
         return
 
-    try:
-        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-    except ImportError as exc:
-        logger.warning(
-            "OpenTelemetry FastAPI instrumentation missing: %s (hint: pip install opentelemetry-instrumentation-fastapi)",
-            str(exc)[:200],
-        )
-        return
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
     try:
         FastAPIInstrumentor.instrument_app(app)

@@ -11,7 +11,6 @@ It combines existing signals that are already persisted in doc metadata:
 - pdf_quality.reading_order_score (0..1) when available
 """
 
-from __future__ import annotations
 
 from collections.abc import Mapping
 from typing import Any

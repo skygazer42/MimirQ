@@ -6,7 +6,6 @@ data (datasets/documents/regression cases) so the frontend can compute
 collection-collection similarity heatmaps similar to Kumi.
 """
 
-from __future__ import annotations
 
 import time
 from dataclasses import dataclass

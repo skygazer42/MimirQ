@@ -7,7 +7,6 @@ failure snippets. It intentionally uses only the standard library so it can run
 on production-like hosts without installing test dependencies.
 """
 
-from __future__ import annotations
 
 import argparse
 import json

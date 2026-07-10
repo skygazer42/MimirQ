@@ -5,7 +5,6 @@ Returns a deterministic retrieval-only explain payload so contributors can
 diagnose recall/rerank behavior without running the full chat flow.
 """
 
-from __future__ import annotations
 
 from typing import Annotated, Any
 from uuid import UUID

@@ -8,7 +8,6 @@ These templates provide versioned retrieval/rerank config patches that can be us
 All operations are tenant-isolated and admin-gated (settings.write / settings.read).
 """
 
-from __future__ import annotations
 
 from typing import Annotated
 from uuid import UUID

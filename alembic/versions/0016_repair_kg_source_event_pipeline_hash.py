@@ -6,7 +6,6 @@ model and KG API already rely on this column for pipeline-scoped graph queries,
 so this repair migration is intentionally idempotent.
 """
 
-from __future__ import annotations
 
 from alembic import op
 

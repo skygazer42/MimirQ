@@ -1,6 +1,5 @@
 """Add ingest dead letters and structured document failure fields."""
 
-from __future__ import annotations
 
 from alembic import op
 

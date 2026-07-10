@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Validate Changzhou Dify external-knowledge mapping before remote probes."""
 
-from __future__ import annotations
 
 import argparse
 import json

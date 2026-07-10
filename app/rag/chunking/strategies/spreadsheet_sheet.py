@@ -8,7 +8,6 @@ The chunker splits by sheets first, then applies a fallback splitter inside
 each sheet while preserving character offsets.
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any

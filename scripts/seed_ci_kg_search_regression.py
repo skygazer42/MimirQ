@@ -11,7 +11,6 @@ It also exports a portable regression cases bundle (mimirq.regression_cases.v1) 
 imported via the existing regression-case import API.
 """
 
-from __future__ import annotations
 
 import argparse
 import json

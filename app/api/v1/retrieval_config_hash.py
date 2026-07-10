@@ -5,7 +5,6 @@ Provides a stable hash for effective retrieval knobs so external tooling can
 pin runs and compare behavior across environments.
 """
 
-from __future__ import annotations
 
 from typing import Annotated, Any
 from uuid import UUID

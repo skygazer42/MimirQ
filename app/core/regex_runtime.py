@@ -11,15 +11,13 @@ Notes:
   replacement is a callable (match-type differences across engines).
 """
 
-from __future__ import annotations
 
 import re
 from typing import Any
 
-try:  # optional dependency (installed in many environments)
-    import regex as _regex  # type: ignore[import-not-found]
-except ImportError:  # pragma: no cover
-    _regex = None
+from app.core.optional_deps import optional_import
+
+_regex = optional_import("regex", feature="governance_regex_timeout")
 
 
 DEFAULT_REGEX_TIMEOUT_MS = 100

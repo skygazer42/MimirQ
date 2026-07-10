@@ -15,7 +15,6 @@ import {
   Coins,
   Database,
   FileText,
-  Grid3X3,
   History,
   Layers,
   LogIn,
@@ -102,7 +101,6 @@ const menuSections: MenuSection[] = [
     titleKey: 'sections.analysis',
     items: [
       { icon: Share2, labelKey: 'items.knowledgeGraph', href: '/graph', visibilityKey: 'knowledgeGraph' },
-      { icon: Grid3X3, labelKey: 'items.ragVisualization', href: '/knowledge/similarity' },
       { icon: BarChart3, labelKey: 'items.ragas', href: '/evaluations', visibilityKey: 'ragas' },
       { icon: FileText, labelKey: 'items.reports', href: '/reports', visibilityKey: 'reports' },
       { icon: Wand2, labelKey: 'items.prompts', href: '/prompts', visibilityKey: 'prompts' },
@@ -124,6 +122,9 @@ const menuSections: MenuSection[] = [
 
 const DEFAULT_OPEN_SECTIONS = new Set<SectionId>(['core', 'knowledge', 'ingestion', 'analysis'])
 const OPEN_SECTIONS_STORAGE_KEY = 'mimirq_navbar_open_sections_v2'
+const NAVIGATION_PARENT_ROUTES: Record<string, string> = {
+  '/knowledge/similarity': '/evaluations',
+}
 
 function isActiveRoute(pathname: string, href: string) {
   if (href === '/') return pathname === '/'
@@ -260,7 +261,8 @@ export function Navbar({
     [canAccessPermission, canShowNavigationModule]
   )
   const visibleMenuItems = useMemo(() => visibleMenuSections.flatMap((section) => section.items), [visibleMenuSections])
-  const activeHref = getMostSpecificActiveHref(pathname, visibleMenuItems)
+  const activePathname = NAVIGATION_PARENT_ROUTES[pathname] || pathname
+  const activeHref = getMostSpecificActiveHref(activePathname, visibleMenuItems)
   const readyDetails = backendReady.data ?? null
   const backendOk =
     (() => {

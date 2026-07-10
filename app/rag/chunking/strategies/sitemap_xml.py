@@ -5,7 +5,6 @@ Targets sitemap.xml / sitemap index XML and splits by <url> or <sitemap> entry
 blocks while preserving offsets.
 """
 
-from __future__ import annotations
 
 import re
 from dataclasses import dataclass

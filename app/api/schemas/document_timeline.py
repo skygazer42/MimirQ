@@ -5,7 +5,6 @@ The timeline is a user-facing aggregation of audit logs + a few synthetic docume
 Keep it PII-minimal by default.
 """
 
-from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, Literal

@@ -8,7 +8,6 @@ It is intended to run as a background job (arq worker) but can also run inline
 when TASK_QUEUE_ENABLED=false.
 """
 
-from __future__ import annotations
 
 import contextlib
 import hashlib

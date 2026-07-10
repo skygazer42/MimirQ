@@ -10,7 +10,6 @@ During KG search, we treat different predicates as having different usefulness f
 This keeps relation-driven expansion helpful for RAG recall while limiting query drift.
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass
 

@@ -11,7 +11,6 @@ Notes:
   is tenant-wide and should remain stable across document re-processing versions.
 """
 
-from __future__ import annotations
 
 from alembic import op
 

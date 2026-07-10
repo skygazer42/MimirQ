@@ -11,7 +11,6 @@ Intended use:
   2) Run scripts/replay_retrieval_replay.py to verify determinism across builds.
 """
 
-from __future__ import annotations
 
 import argparse
 import json

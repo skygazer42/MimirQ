@@ -6,7 +6,6 @@ MimirQ's Dify adapter with fixed cases and scores whether the expected source
 or chunk appears in the returned records.
 """
 
-from __future__ import annotations
 
 import argparse
 import ipaddress

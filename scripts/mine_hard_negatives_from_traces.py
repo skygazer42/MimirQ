@@ -16,7 +16,6 @@ Output:
 - PII-safe by construction: NO raw query text is written.
 """
 
-from __future__ import annotations
 
 import argparse
 import json

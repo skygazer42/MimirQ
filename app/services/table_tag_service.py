@@ -6,7 +6,6 @@ This is intentionally conservative:
 - Result size is strictly bounded (rows/cols/bytes) before being passed back to the model.
 """
 
-from __future__ import annotations
 
 import re
 from dataclasses import dataclass

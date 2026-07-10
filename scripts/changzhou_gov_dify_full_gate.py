@@ -6,7 +6,6 @@ case-input preflight, Dify generated-answer collection, direct MimirQ golden
 evaluation, and Dify workflow trace validation.
 """
 
-from __future__ import annotations
 
 import argparse
 import json

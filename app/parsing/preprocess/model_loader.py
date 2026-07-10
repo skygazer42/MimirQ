@@ -9,7 +9,6 @@ It provides a thin optional-dependency wrapper that can be used by deployments
 that choose to run DocTr/LaMa/etc in-process.
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache

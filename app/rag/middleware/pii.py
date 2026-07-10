@@ -12,7 +12,6 @@ This middleware is disabled by default (see settings.PII_REDACTION_ENABLED).
 """
 
 
-from __future__ import annotations
 
 from typing import Any
 

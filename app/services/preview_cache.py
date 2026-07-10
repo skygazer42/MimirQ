@@ -5,7 +5,6 @@ Goal: speed up interactive tuning on large documents by avoiding repeated parsin
 Scope: best-effort, per-process only (works even without Redis).
 """
 
-from __future__ import annotations
 
 import asyncio
 import threading

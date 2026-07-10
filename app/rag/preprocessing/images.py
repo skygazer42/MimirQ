@@ -8,7 +8,6 @@ image tags. Removal is code-fence aware and supports:
 - mode="all": remove all images
 """
 
-from __future__ import annotations
 
 import re
 from dataclasses import dataclass

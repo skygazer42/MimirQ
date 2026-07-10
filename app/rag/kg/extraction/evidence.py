@@ -8,7 +8,6 @@ We persist evidence (quote + best-effort char span) for:
 This module is intentionally dependency-light and deterministic.
 """
 
-from __future__ import annotations
 
 import re
 import unicodedata

@@ -4,7 +4,6 @@ Conversation summaries (persistent summary memory).
 Used to keep long conversations usable without stuffing the entire history into prompts.
 """
 
-from __future__ import annotations
 
 import uuid
 

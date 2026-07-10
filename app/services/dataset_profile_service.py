@@ -8,7 +8,6 @@ Provides:
 Deep scan/backfill is implemented separately (see dataset_profile_scan.py).
 """
 
-from __future__ import annotations
 
 import re
 import time

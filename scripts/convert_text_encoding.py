@@ -10,7 +10,6 @@ Defaults:
 - uses app.parsing.utils.text.read_text_file() for best-effort decoding
 """
 
-from __future__ import annotations
 
 import argparse
 import os

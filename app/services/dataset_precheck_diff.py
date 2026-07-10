@@ -4,7 +4,6 @@ Dataset precheck diff helpers (pure functions).
 Goal: compare two scan-run summaries and return objective deltas for reporting.
 """
 
-from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import Any

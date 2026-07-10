@@ -9,7 +9,6 @@ Rules:
 - conservative cleaning (boilerplate removal is heading/code-fence aware)
 """
 
-from __future__ import annotations
 
 import re
 from collections import defaultdict

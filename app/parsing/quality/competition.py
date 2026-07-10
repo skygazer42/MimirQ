@@ -4,7 +4,6 @@ Helpers for "multi-parser competition" selection.
 This module stays pure so it can be unit-tested without running parsers.
 """
 
-from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from typing import Any

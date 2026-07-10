@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# ruff: noqa: E402, I001
 """Run a remote governance ingest matrix against a live MimirQ API.
 
 This script validates governance behavior on real document ingestion paths:
@@ -8,7 +9,6 @@ This script validates governance behavior on real document ingestion paths:
 - quarantine behavior for low-signal documents
 """
 
-from __future__ import annotations
 
 import argparse
 import json
@@ -25,31 +25,19 @@ def ensure_repo_root_on_sys_path(script_path: str | Path) -> str:
     return repo_root
 
 
-try:
-    from scripts.remote_real_pdf_chain import (
-        DEFAULT_TENANT_ID,
-        DOCUMENT_CHUNK_LIST_LIMIT,
-        LiveApi,
-        list_count,
-        ok_status,
-        parsed_text_from_response,
-        perform_cleanup,
-        record_step,
-        snippet,
-    )
-except ModuleNotFoundError:
-    ensure_repo_root_on_sys_path(__file__)
-    from scripts.remote_real_pdf_chain import (
-        DEFAULT_TENANT_ID,
-        DOCUMENT_CHUNK_LIST_LIMIT,
-        LiveApi,
-        list_count,
-        ok_status,
-        parsed_text_from_response,
-        perform_cleanup,
-        record_step,
-        snippet,
-    )
+ensure_repo_root_on_sys_path(__file__)
+
+from scripts.remote_real_pdf_chain import (
+    DEFAULT_TENANT_ID,
+    DOCUMENT_CHUNK_LIST_LIMIT,
+    LiveApi,
+    list_count,
+    ok_status,
+    parsed_text_from_response,
+    perform_cleanup,
+    record_step,
+    snippet,
+)
 
 BASE_PIPELINE: dict[str, Any] = {
     "governance_enabled": True,

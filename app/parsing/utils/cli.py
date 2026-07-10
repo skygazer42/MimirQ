@@ -2,7 +2,6 @@
 Small helpers for resolving optional CLI tools.
 """
 
-from __future__ import annotations
 
 import os
 import shutil

@@ -7,7 +7,6 @@ Key goals:
 - Sync approved evidence into RAGAS regression cases for retrieval-only evaluation
 """
 
-from __future__ import annotations
 
 import csv
 import hashlib

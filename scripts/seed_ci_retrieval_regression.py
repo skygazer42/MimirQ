@@ -9,7 +9,6 @@ This is intended for CI:
 It also exports a portable regression cases bundle (mimirq.regression_cases.v1).
 """
 
-from __future__ import annotations
 
 import argparse
 import json

@@ -5,7 +5,6 @@ These heuristics are optional and meant to guard against indexing low-value
 documents (e.g., outline-only exports, garbled/noisy OCR output).
 """
 
-from __future__ import annotations
 
 import re
 from dataclasses import dataclass

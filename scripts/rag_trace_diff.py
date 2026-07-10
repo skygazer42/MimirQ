@@ -10,7 +10,6 @@ Example:
   python scripts/rag_trace_diff.py --request-id-a <reqA> --request-id-b <reqB>
 """
 
-from __future__ import annotations
 
 import argparse
 import json

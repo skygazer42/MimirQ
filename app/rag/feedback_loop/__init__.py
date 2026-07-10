@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 from app.rag.feedback_loop.candidates import build_feedback_loop_candidates
 from app.rag.feedback_loop.dispatcher import dispatch_feedback_loop_batch, dispatch_scheduled_feedback_loop_batch

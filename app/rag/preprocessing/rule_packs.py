@@ -6,7 +6,6 @@ They are disabled by default and must be explicitly enabled via pipeline options
 or governance profiles.
 """
 
-from __future__ import annotations
 
 from app.rag.preprocessing.cleaning import RegexRule
 

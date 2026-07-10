@@ -6,7 +6,6 @@ Goal:
 - Keep dependency-light and JSON-safe so it can be stored in doc_metadata and used by UI/retrieval.
 """
 
-from __future__ import annotations
 
 import re
 from collections.abc import Mapping, Sequence

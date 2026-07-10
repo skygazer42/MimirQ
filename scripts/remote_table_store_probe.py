@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
+# ruff: noqa: E402, I001
 """Verify table-store dataset table endpoints against a live API."""
 
-from __future__ import annotations
 
 import argparse
 import json
@@ -19,16 +19,9 @@ def ensure_repo_root_on_sys_path(script_path: str | Path) -> str:
     return repo_root
 
 
-try:
-    from scripts.remote_kb_boundary_matrix import LiveApi, ensure_success, record_step, wait_for_document_completed
-except ModuleNotFoundError:
-    ensure_repo_root_on_sys_path(__file__)
-    from scripts.remote_kb_boundary_matrix import (  # type: ignore[no-redef]
-        LiveApi,
-        ensure_success,
-        record_step,
-        wait_for_document_completed,
-    )
+ensure_repo_root_on_sys_path(__file__)
+
+from scripts.remote_kb_boundary_matrix import LiveApi, ensure_success, record_step, wait_for_document_completed
 
 
 DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000000"

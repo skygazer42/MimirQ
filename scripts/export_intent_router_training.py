@@ -3,7 +3,6 @@
 Export intent-router training rows from retrieval traces / metrics payloads.
 """
 
-from __future__ import annotations
 
 import argparse
 import json

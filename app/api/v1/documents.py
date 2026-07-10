@@ -390,11 +390,7 @@ def _read_preview_image_bytes(img_path: Path, max_bytes: int) -> bytes | None:
 def _convert_preview_image_to_jpeg(local_id: str, raw: bytes) -> bytes | None:
     from io import BytesIO
 
-    try:
-        from PIL import Image as PILImage  # type: ignore[import-untyped]
-    except ImportError:
-        logger.warning("Pillow not available; skipping preview image upload to MinIO")
-        return None
+    from PIL import Image as PILImage  # type: ignore[import-untyped]
 
     img = None
     converted = None

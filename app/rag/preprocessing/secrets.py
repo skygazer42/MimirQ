@@ -7,7 +7,6 @@ Goals:
 - Be code-fence agnostic (callers decide where to apply).
 """
 
-from __future__ import annotations
 
 import re
 from collections.abc import Callable

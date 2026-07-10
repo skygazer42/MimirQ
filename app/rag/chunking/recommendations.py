@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 MAINSTREAM_RAG_STRATEGIES: set[str] = {
     "auto",

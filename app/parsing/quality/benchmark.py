@@ -9,7 +9,6 @@ benchmark parsing backends in CI/nightly jobs without requiring heavyweight
 evaluation packages in the core backend image.
 """
 
-from __future__ import annotations
 
 import difflib
 import re

@@ -11,7 +11,6 @@ Design constraints:
 - Model loading must be explicit (model_path required) so defaults do not change behavior.
 """
 
-from __future__ import annotations
 
 import hashlib
 import json

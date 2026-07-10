@@ -1,6 +1,5 @@
 """Runtime limiters for blocking RAG work executed from async API routes."""
 
-from __future__ import annotations
 
 import asyncio
 import threading

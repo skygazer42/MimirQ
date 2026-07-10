@@ -16,7 +16,6 @@ Security / Safety
 - Query execution remains SELECT-only with strict caps (run_table_query safeguards).
 """
 
-from __future__ import annotations
 
 import json
 import re

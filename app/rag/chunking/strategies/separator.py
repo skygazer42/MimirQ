@@ -2,7 +2,6 @@
 Custom separator-based chunking strategy.
 """
 
-from __future__ import annotations
 
 import re
 

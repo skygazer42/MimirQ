@@ -7,7 +7,6 @@ Design constraints:
 - only reads files under the provided origin path
 """
 
-from __future__ import annotations
 
 import time
 from dataclasses import dataclass

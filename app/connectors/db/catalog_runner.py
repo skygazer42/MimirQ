@@ -7,7 +7,6 @@ intentionally dependency-light:
 - Provides deterministic control flow and a stable metrics structure
 """
 
-from __future__ import annotations
 
 import contextlib
 import hashlib

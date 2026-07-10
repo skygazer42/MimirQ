@@ -6,7 +6,6 @@ change blocks (lines like "# aws_instance.example will be created") while
 preserving character offsets.
 """
 
-from __future__ import annotations
 
 import re
 from dataclasses import dataclass

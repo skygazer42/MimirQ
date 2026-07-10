@@ -11,7 +11,6 @@ The chunker:
    respect chunk_size/chunk_overlap while preserving absolute offsets.
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any

@@ -11,7 +11,6 @@ Design constraints:
 - Best-effort: do not fail the request if evidence mapping is imperfect.
 """
 
-from __future__ import annotations
 
 import re
 from collections.abc import Iterable

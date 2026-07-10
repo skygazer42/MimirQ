@@ -4,7 +4,6 @@ Persistent conversation summary memory.
 This is used as a compact, durable memory layer that can be injected into prompts.
 """
 
-from __future__ import annotations
 
 from datetime import UTC, datetime
 from uuid import UUID
@@ -15,8 +14,6 @@ from app.core.config import settings
 from app.models.chat import Message
 from app.models.conversation_summary import ConversationSummary
 from app.rag.core.logging import get_logger
-from app.rag.engine import get_rag_engine
-from app.rag.memory.short_term import summarize_messages
 
 logger = get_logger(__name__)
 
@@ -101,6 +98,9 @@ async def update_conversation_summary(
     rows = list(reversed(rows))
 
     msgs = [{"role": str(role or ""), "content": str(content or "")} for role, content, _ts in rows]
+
+    from app.rag.engine import get_rag_engine
+    from app.rag.memory.short_term import summarize_messages
 
     engine = get_rag_engine()
     llm = engine.models.get("fast") or engine.models.get("default") or engine.models.get("heavy")

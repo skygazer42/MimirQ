@@ -7,7 +7,6 @@ captures two signals:
 - content: whether normalized cell text matches at the same row/column slot
 """
 
-from __future__ import annotations
 
 import re
 from collections import Counter

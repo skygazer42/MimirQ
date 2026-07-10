@@ -25,7 +25,6 @@ Examples:
   python scripts/backfill_kg_event_vector_metadata.py --tenant-id <uuid> --document-id <uuid> --document-id <uuid> --execute
 """
 
-from __future__ import annotations
 
 import argparse
 import sys

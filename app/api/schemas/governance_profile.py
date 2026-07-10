@@ -6,7 +6,6 @@ Important:
   and optional regex cleanup rules. It must never contain executable code.
 """
 
-from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, Literal

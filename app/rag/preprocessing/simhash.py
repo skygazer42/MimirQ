@@ -6,7 +6,6 @@ Used for:
 - optional cross-document near-duplicate dropping
 """
 
-from __future__ import annotations
 
 import hashlib
 import re

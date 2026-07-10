@@ -5,7 +5,6 @@ We keep these as small pure-ish wrappers so unit tests can validate event shape
 without needing to run connector background tasks.
 """
 
-from __future__ import annotations
 
 from collections.abc import Mapping
 from typing import Any

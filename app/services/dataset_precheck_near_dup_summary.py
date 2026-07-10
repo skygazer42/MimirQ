@@ -6,7 +6,6 @@ bundles and dashboards we also want a compact, stable summary that doesn't requi
 full artifact.
 """
 
-from __future__ import annotations
 
 from typing import Any
 

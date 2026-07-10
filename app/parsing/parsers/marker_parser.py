@@ -9,7 +9,6 @@ Config via env/.env:
 - MARKER_API_URL=http://localhost:2080/v1/marker/convert  (recommended: full endpoint)
 """
 
-from __future__ import annotations
 
 import json
 import re

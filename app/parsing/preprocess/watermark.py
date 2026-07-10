@@ -7,7 +7,6 @@ This provides three best-effort paths:
 3) Local ONNX inpainting with OCR/rule/geometry-derived mask boxes.
 """
 
-from __future__ import annotations
 
 import asyncio
 import math

@@ -8,7 +8,6 @@ Targets documents where each event starts with a date (optionally time), e.g.:
 The chunker keeps whole events together and uses event-level overlap.
 """
 
-from __future__ import annotations
 
 import re
 from dataclasses import dataclass

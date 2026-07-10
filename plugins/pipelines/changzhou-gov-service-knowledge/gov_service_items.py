@@ -1,6 +1,5 @@
 """Governance and chunk helpers owned by the Changzhou service plugin."""
 
-from __future__ import annotations
 
 import hashlib
 import re

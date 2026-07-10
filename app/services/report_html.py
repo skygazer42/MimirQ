@@ -7,7 +7,6 @@ Design goals:
 - Optional redaction for sharing (hide dataset id/name/path)
 """
 
-from __future__ import annotations
 
 from datetime import datetime
 from html import escape

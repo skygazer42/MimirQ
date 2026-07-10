@@ -633,12 +633,9 @@ async def health_check():
     vector_backend = (getattr(settings, "VECTOR_BACKEND", "milvus") or "milvus").lower()
     milvus_get_count = None
     if vector_backend == "milvus":
-        try:
-            from app.storage.vector.milvus import milvus_store
+        from app.storage.vector.milvus import milvus_store
 
-            milvus_get_count = milvus_store.get_collection_count
-        except ImportError:
-            milvus_get_count = None
+        milvus_get_count = milvus_store.get_collection_count
 
     vector_status, milvus_status, _vector_ok = check_vector(
         settings,
@@ -649,12 +646,9 @@ async def health_check():
     # MinIO (optional)
     minio_health_check = None
     if bool(getattr(settings, "MINIO_ENABLED", False)):
-        try:
-            from app.storage.object.minio import minio_service
+        from app.storage.object.minio import minio_service
 
-            minio_health_check = minio_service.health_check
-        except ImportError:
-            minio_health_check = None
+        minio_health_check = minio_service.health_check
 
     minio_status, _minio_ok = check_minio(
         settings,

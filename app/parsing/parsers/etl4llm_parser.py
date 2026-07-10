@@ -10,7 +10,6 @@ Example endpoint:
   http://localhost:10001/v1/etl4llm/predict
 """
 
-from __future__ import annotations
 
 import base64
 import hashlib
@@ -23,6 +22,7 @@ from typing import Any
 import fitz  # PyMuPDF
 import requests
 from langchain_core.documents import Document
+from PIL import Image as PILImage
 
 from app.core.config import settings
 from app.core.constants import NON_CRITICAL_EXCEPTION_LOG_MESSAGE
@@ -119,12 +119,6 @@ class Etl4LlmParser:
         Returns (count, element_id->relative_path mapping).
         """
         if not self._extract_images:
-            return 0, {}
-
-        try:
-            from PIL import Image as PILImage  # type: ignore
-        except ImportError:
-            logger.warning("Pillow is not installed; skipping ETL4LLM image extraction (hint: pip install Pillow)")
             return 0, {}
 
         images_dir.mkdir(parents=True, exist_ok=True)

@@ -6,7 +6,6 @@ top-level `jobs:` section. The chunker splits by job blocks while preserving
 character offsets.
 """
 
-from __future__ import annotations
 
 import re
 from dataclasses import dataclass

@@ -10,7 +10,6 @@ Goal (P0):
 - Provide a small dashboard summary (window + timeseries + alerts)
 """
 
-from __future__ import annotations
 
 import atexit
 import hashlib

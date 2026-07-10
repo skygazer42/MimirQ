@@ -7,7 +7,6 @@ Provides a small, file-based registry for LTR reranker artifacts:
 - activation + one-step rollback controls
 """
 
-from __future__ import annotations
 
 from typing import Annotated, Any
 from uuid import UUID

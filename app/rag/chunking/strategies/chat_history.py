@@ -9,7 +9,6 @@ Optimized for exported/pasted chat logs with timestamps, e.g.:
 The chunker keeps whole messages together and uses message-level overlap.
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any

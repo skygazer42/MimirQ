@@ -12,7 +12,6 @@ Expected service behaviors (best-effort):
   - text/*: markdown directly
 """
 
-from __future__ import annotations
 
 import re
 import zipfile

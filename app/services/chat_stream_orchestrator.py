@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 import json
 from dataclasses import replace
@@ -10,7 +9,6 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.env import is_production_env
 from app.rag.core.logging import get_logger
-from app.rag.engine import get_rag_engine
 from app.services.chat_execution_runtime import (
     ChatExecutionContext,
     execute_extractive_fallback_once,
@@ -332,6 +330,8 @@ async def stream_chat_sse_events(
             return
 
     try:
+        from app.rag.engine import get_rag_engine
+
         engine = get_rag_engine()
         heartbeat_sec = max(
             0.0,

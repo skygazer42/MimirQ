@@ -10,7 +10,6 @@ RecursiveCharacterTextSplitter inside each section to respect chunk_size and
 chunk_overlap while preserving character offsets.
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any

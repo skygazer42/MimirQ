@@ -5,7 +5,6 @@ These endpoints expose metadata and safe, aggregate profiling snapshots stored
 by DB catalog connectors. They do NOT expose raw DB rows.
 """
 
-from __future__ import annotations
 
 from typing import Annotated
 from uuid import UUID

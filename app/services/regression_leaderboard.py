@@ -6,7 +6,6 @@ Goal:
 - Attach a stable retrieval_config_hash so downstream dashboards can group runs by config.
 """
 
-from __future__ import annotations
 
 import json
 from collections.abc import Iterable

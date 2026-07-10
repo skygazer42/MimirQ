@@ -6,7 +6,6 @@ This stage is feature-flagged and best-effort:
 - http backend: forward the file to a remote cleanup service and store returned bytes
 """
 
-from __future__ import annotations
 
 import asyncio
 from concurrent.futures import ThreadPoolExecutor

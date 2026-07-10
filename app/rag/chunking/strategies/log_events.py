@@ -9,7 +9,6 @@ Targets application / system logs with timestamped entry lines, e.g.:
 The chunker keeps whole log entries together and uses entry-level overlap.
 """
 
-from __future__ import annotations
 
 import re
 from dataclasses import dataclass

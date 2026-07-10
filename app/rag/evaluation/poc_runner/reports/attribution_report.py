@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -26,7 +25,7 @@ def _metric_card_rows(metrics: dict[str, Any]) -> list[dict[str, Any]]:
     return rows
 
 
-def _report_meta(payload: DatasetAnalysisReportPayload) -> dict[str, Any]:
+def _report_meta(payload: "DatasetAnalysisReportPayload") -> dict[str, Any]:
     return {
         "dataset_id": str(payload.dataset_id or ""),
         "dataset_name": str(payload.dataset_name or ""),

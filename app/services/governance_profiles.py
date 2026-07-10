@@ -6,7 +6,6 @@ This module intentionally keeps profiles declarative:
 - Profiles are used to patch pipeline options and provide additional regex rules.
 """
 
-from __future__ import annotations
 
 import re
 from dataclasses import dataclass

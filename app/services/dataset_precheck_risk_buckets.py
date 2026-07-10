@@ -12,7 +12,6 @@ Buckets (v3):
 - table_heavy: spreadsheet-like content (often better served by structured indexing)
 """
 
-from __future__ import annotations
 
 from collections.abc import Iterable
 

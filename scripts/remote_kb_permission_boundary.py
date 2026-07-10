@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
+# ruff: noqa: E402, I001
 """Verify permission-sensitive knowledge-base boundaries against a live API."""
 
-from __future__ import annotations
 
 import argparse
 import json
@@ -20,35 +20,21 @@ def ensure_repo_root_on_sys_path(script_path: str | Path) -> str:
     return repo_root
 
 
-try:
-    from scripts.remote_kb_boundary_matrix import (
-        LiveApi,
-        citation_document_ids,
-        ensure_success,
-        evaluate_boundary_case,
-        exported_document_ids,
-        make_fixture_files,
-        parsed_text_from_response,
-        record_step,
-        response_text_from_body,
-        wait_for_document_completed,
-    )
-    from scripts.remote_permission_matrix import force_member_role_via_docker
-except ModuleNotFoundError:
-    ensure_repo_root_on_sys_path(__file__)
-    from scripts.remote_kb_boundary_matrix import (
-        LiveApi,
-        citation_document_ids,
-        ensure_success,
-        evaluate_boundary_case,
-        exported_document_ids,
-        make_fixture_files,
-        parsed_text_from_response,
-        record_step,
-        response_text_from_body,
-        wait_for_document_completed,
-    )
-    from scripts.remote_permission_matrix import force_member_role_via_docker
+ensure_repo_root_on_sys_path(__file__)
+
+from scripts.remote_kb_boundary_matrix import (
+    LiveApi,
+    citation_document_ids,
+    ensure_success,
+    evaluate_boundary_case,
+    exported_document_ids,
+    make_fixture_files,
+    parsed_text_from_response,
+    record_step,
+    response_text_from_body,
+    wait_for_document_completed,
+)
+from scripts.remote_permission_matrix import force_member_role_via_docker
 
 
 def evaluate_http_expectation(name: str, status: int, expected_statuses: list[int]) -> list[str]:

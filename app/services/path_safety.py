@@ -11,7 +11,6 @@ Design:
 - Keep helpers small and dependency-free so they can be used across API/services.
 """
 
-from __future__ import annotations
 
 from pathlib import Path
 

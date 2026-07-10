@@ -4,7 +4,6 @@ Field-level security (FLS) / redacted view policy schemas.
 Policies are stored in dataset metadata and enforced server-side on structured responses.
 """
 
-from __future__ import annotations
 
 from pydantic import BaseModel, Field
 

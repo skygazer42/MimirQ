@@ -8,6 +8,7 @@ import logging
 import threading
 from typing import Any
 
+import h2  # noqa: F401
 import httpx
 
 from app.core.config import settings
@@ -16,14 +17,7 @@ from app.core.logging_config import get_request_context
 from app.core.secure_random import secure_jitter
 
 logger = logging.getLogger("http_client")
-
-try:
-    import h2  # noqa: F401
-
-    _HTTP2_AVAILABLE = True
-except ImportError:
-    # Optional dependency for httpx HTTP/2 support.
-    _HTTP2_AVAILABLE = False
+_HTTP2_AVAILABLE = True
 
 
 class HTTPClientPool:

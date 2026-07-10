@@ -1,7 +1,6 @@
-from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from typing import Annotated
 from uuid import UUID
 

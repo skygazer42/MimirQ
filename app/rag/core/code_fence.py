@@ -5,7 +5,6 @@ We intentionally avoid regex for code-fence parsing to keep runtime linear-time 
 to avoid catastrophic-backtracking hotspots.
 """
 
-from __future__ import annotations
 
 from collections.abc import Iterable
 

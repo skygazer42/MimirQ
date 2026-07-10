@@ -438,6 +438,11 @@ export default function KnowledgePage() {
     return map
   }, [datasets])
 
+  const retrievalDatasetIds = useMemo(
+    () => datasets.map((dataset) => dataset.id).filter(Boolean),
+    [datasets]
+  )
+
   const documentScopeSummary = useMemo(
     () => (
       <div className="inline-flex max-w-full flex-wrap items-center gap-2 rounded-2xl border border-sky-200/60 bg-gradient-to-r from-white to-sky-50/30 px-3.5 py-2 text-[12px] shadow-md shadow-sky-200/20 backdrop-blur-sm dark:border-sky-300/15 dark:bg-background/40">
@@ -1379,6 +1384,7 @@ export default function KnowledgePage() {
             {/* <KnowledgeRetrievalPanel selectedDatasetId={selectedDatasetId} compact /> */}
             <RetrievePreviewPanel
               selectedDatasetId={selectedDatasetId}
+              availableDatasetIds={retrievalDatasetIds}
               className="h-full border-0 bg-transparent p-0 shadow-none"
             />
           </motion.div>

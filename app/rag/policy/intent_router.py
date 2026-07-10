@@ -10,7 +10,6 @@ This is used to automatically pick retrieval presets/profiles and toggles
 based on the query "shape" (faq/howto/api/log) when enabled.
 """
 
-from __future__ import annotations
 
 import re
 from typing import Any

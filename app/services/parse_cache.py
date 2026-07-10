@@ -16,7 +16,6 @@ Implementation:
 - Enforce TTL client-side by checking stored created_at timestamps.
 """
 
-from __future__ import annotations
 
 import contextlib
 import json

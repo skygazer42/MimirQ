@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Run or print the repeatable RAG pipeline quality/performance gate suite."""
 
-from __future__ import annotations
 
 import argparse
 import json

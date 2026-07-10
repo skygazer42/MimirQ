@@ -8,7 +8,6 @@ The chunker splits the document into sections first, then applies a fallback
 RecursiveCharacterTextSplitter inside each section while preserving offsets.
 """
 
-from __future__ import annotations
 
 import re
 from dataclasses import dataclass

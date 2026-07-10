@@ -8,7 +8,6 @@ Profiles are declarative "governance scripts" that store:
 They must never contain executable code.
 """
 
-from __future__ import annotations
 
 import uuid
 
