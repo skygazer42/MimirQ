@@ -7,7 +7,6 @@ evidence clauses unchanged; only the user-facing question/query text and case
 sampling mix are adjusted.
 """
 
-from __future__ import annotations
 
 import argparse
 import copy

@@ -3,7 +3,6 @@
 Verify parse-repair effectiveness by checking parse-risk tail shrinkage.
 """
 
-from __future__ import annotations
 
 import argparse
 import json

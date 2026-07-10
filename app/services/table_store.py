@@ -7,7 +7,6 @@ Design goals:
 - Keep SQL table names internal and generated (avoid SQL injection via identifiers).
 """
 
-from __future__ import annotations
 
 import re
 from dataclasses import dataclass

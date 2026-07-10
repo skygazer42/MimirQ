@@ -11,7 +11,6 @@ tests, and offline jobs without requiring an LLM. A future LLM-backed path can
 layer on top of the same output schema.
 """
 
-from __future__ import annotations
 
 import re
 from typing import Any

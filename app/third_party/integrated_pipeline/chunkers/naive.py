@@ -29,6 +29,8 @@ from docx.opc.pkgreader import _SerializedRelationship, _SerializedRelationships
 from markdown import markdown
 from PIL import Image
 
+import app.deepdoc.parser as deepdoc_parser
+from app.core.optional_deps import optional_import
 from app.deepdoc.parser import (
     DocxParser,
     ExcelParser,
@@ -43,7 +45,6 @@ from app.deepdoc.parser.figure_parser import (
     vision_figure_parser_docx_wrapper,
     vision_figure_parser_pdf_wrapper,
 )
-from app.deepdoc.parser.mineru_parser import MinerUParser
 from app.deepdoc.parser.pdf_parser import PlainParser, VisionParser
 from app.rag.core.logging import get_logger
 from app.third_party.integrated_pipeline.common.constants import LLMType
@@ -87,6 +88,8 @@ def by_deepdoc(filename, binary=None, from_page=0, to_page=100000, lang="Chinese
 
 
 def by_mineru(filename, binary=None, from_page=0, to_page=100000, lang="Chinese", callback=None, pdf_cls = None ,**kwargs):
+    from app.deepdoc.parser.mineru_parser import MinerUParser
+
     mineru_executable = os.environ.get("MINERU_EXECUTABLE", "mineru")
     mineru_api = os.environ.get("MINERU_APISERVER", "http://host.docker.internal:9987")
     pdf_parser = MinerUParser(mineru_path=mineru_executable, mineru_api=mineru_api)
@@ -110,11 +113,7 @@ def by_mineru(filename, binary=None, from_page=0, to_page=100000, lang="Chinese"
 
 
 def by_docling(filename, binary=None, from_page=0, to_page=100000, lang="Chinese", callback=None, pdf_cls = None ,**kwargs):
-    try:
-        from app.deepdoc.parser.docling_parser import DoclingParser
-    except Exception:  # noqa: BLE001
-        callback(-1, "Docling parser dependency missing. Please install docling.")
-        return None, None, None
+    from app.deepdoc.parser.docling_parser import DoclingParser
 
     pdf_parser = DoclingParser()
     parse_method = kwargs.get("parse_method", "raw")
@@ -135,11 +134,7 @@ def by_docling(filename, binary=None, from_page=0, to_page=100000, lang="Chinese
 
 
 def by_tcadp(filename, binary=None, from_page=0, to_page=100000, lang="Chinese", callback=None, pdf_cls = None ,**kwargs):
-    try:
-        from app.deepdoc.parser.tcadp_parser import TCADPParser
-    except Exception:  # noqa: BLE001
-        callback(-1, "TCADP parser dependency missing. Please install/enable Tencent Cloud SDK (lkeap).")
-        return None, None, None
+    from app.deepdoc.parser.tcadp_parser import TCADPParser
 
     tcadp_parser = TCADPParser()
 
@@ -616,10 +611,7 @@ class Markdown(MarkdownParser):
         # To eliminate duplicate tables in chunking result, uncomment code below and set separate_tables to True in line 410.
         # extractor = MarkdownElementExtractor(remainder)
         image_refs = self.extract_image_urls_with_lines(txt)
-        try:
-            from app.deepdoc.parser import MarkdownElementExtractor  # type: ignore[attr-defined]
-        except ImportError:  # pragma: no cover
-            MarkdownElementExtractor = None
+        MarkdownElementExtractor = getattr(deepdoc_parser, "MarkdownElementExtractor", None)
 
         if MarkdownElementExtractor is None:
             # Fallback: keep the whole markdown document as a single section.
@@ -798,11 +790,7 @@ def chunk(filename, binary=None, from_page=0, to_page=100000, lang="Chinese", ca
         # Check if tcadp_parser is selected for spreadsheet files
         layout_recognizer = parser_config.get("layout_recognize", "DeepDOC")
         if layout_recognizer == "TCADP Parser":
-            try:
-                from app.deepdoc.parser.tcadp_parser import TCADPParser
-            except Exception:  # noqa: BLE001
-                callback(-1, "TCADP parser dependency missing. Please install/enable Tencent Cloud SDK (lkeap).")
-                return res
+            from app.deepdoc.parser.tcadp_parser import TCADPParser
 
             table_result_type = parser_config.get("table_result_type", "1")
             markdown_image_response_type = parser_config.get("markdown_image_response_type", "1")
@@ -909,11 +897,10 @@ def chunk(filename, binary=None, from_page=0, to_page=100000, lang="Chinese", ca
     elif re.search(r"\.doc$", filename, re.IGNORECASE):
         callback(0.1, "Start to parse.")
 
-        try:
-            from tika import parser as tika_parser
-        except ImportError as e:
-            callback(0.8, f"tika not available: {e}. Unsupported .doc parsing. (hint: pip install tika)")
-            logging.warning(f"tika not available: {e}. Unsupported .doc parsing for {filename}. (hint: pip install tika)")
+        tika_parser = optional_import("tika.parser", feature="integrated_pipeline_naive_doc_parser", pip_name="tika")
+        if tika_parser is None:
+            callback(0.8, "tika not available. Unsupported .doc parsing. (hint: pip install tika)")
+            logging.warning("tika not available. Unsupported .doc parsing for %s. (hint: pip install tika)", filename)
             return []
 
         binary = BytesIO(binary)

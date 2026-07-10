@@ -6,7 +6,6 @@ Groups are tenant-scoped and are intended to support enterprise directory needs:
 - optional IdP-driven provisioning (OIDC group claims / SCIM)
 """
 
-from __future__ import annotations
 
 from datetime import datetime
 from uuid import UUID

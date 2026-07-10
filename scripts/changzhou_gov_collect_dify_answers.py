@@ -6,7 +6,6 @@ with fixed golden questions and writes an answers JSON that can be scored by
 `scripts/changzhou_gov_golden_eval.py --answers`.
 """
 
-from __future__ import annotations
 
 import argparse
 import ipaddress

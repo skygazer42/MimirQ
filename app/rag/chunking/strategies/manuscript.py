@@ -64,7 +64,6 @@ where the best chunking method depends on the content shape:
 - Otherwise -> semantic_sentence or langchain_recursive
 """
 
-from __future__ import annotations
 
 import json
 import re

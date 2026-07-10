@@ -5,7 +5,6 @@ This store persists DB catalog metadata into the application's primary database.
 It intentionally does not commit; callers manage transaction boundaries.
 """
 
-from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import datetime

@@ -2,7 +2,6 @@
 Document folder tree schemas (derived from document.metadata.source_path).
 """
 
-from __future__ import annotations
 
 from uuid import UUID
 

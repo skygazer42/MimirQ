@@ -6,7 +6,6 @@ Adds:
 - index for tenant_members lookups (tenant_id, user_id)
 """
 
-from __future__ import annotations
 
 from alembic import op
 

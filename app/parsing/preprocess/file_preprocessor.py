@@ -11,7 +11,6 @@ Security:
 - Preprocessing is bounded by a maximum byte budget to avoid OOM/DoS.
 """
 
-from __future__ import annotations
 
 import hashlib
 import os

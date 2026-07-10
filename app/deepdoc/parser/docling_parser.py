@@ -25,6 +25,7 @@ from os import PathLike
 from pathlib import Path
 from typing import Any
 
+import fitz  # PyMuPDF
 import pdfplumber
 from docling.document_converter import DocumentConverter
 from PIL import Image
@@ -227,11 +228,6 @@ class DoclingParser(IntegratedPipelinePdfParser):
         # which is often missing in Windows/self-hosted environments. Use PyMuPDF to render page
         # images so figure/table cropping can still work.
         if self.page_images:
-            return
-
-        try:
-            import fitz  # PyMuPDF
-        except ImportError:
             return
 
         doc = None

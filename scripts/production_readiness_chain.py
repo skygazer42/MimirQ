@@ -6,41 +6,26 @@ an isolated dataset, uploads a multi-format corpus, waits for backend processing
 checks chunking/KG/RAG/chat behavior, and writes machine-readable evidence.
 """
 
-from __future__ import annotations
 
 import argparse
 import csv
 import json
 import os
-import shutil
 import sys
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
-from urllib.request import Request, urlopen
 
-try:
-    import requests
-except ModuleNotFoundError:  # pragma: no cover - exercised via explicit fallback tests
-    requests = None  # type: ignore[assignment]
+import requests
+from docx import Document
+from openpyxl import Workbook
 
 TENANT_ID = "00000000-0000-0000-0000-000000000000"
 USER_ID = "production-readiness"
 UTC = timezone.utc
-
-
-@dataclass
-class StdlibResponse:
-    status_code: int
-    text: str
-    headers: dict[str, str]
-
-    def json(self) -> Any:
-        return json.loads(self.text)
 
 
 @dataclass(frozen=True)
@@ -140,10 +125,8 @@ def load_llm_probe_api_key(api_base: str) -> tuple[str, str]:
 class Api:
     def __init__(self, base_url: str, tenant_id: str, user_id: str, timeout: float) -> None:
         self.base_url = base_url.rstrip("/")
-        self.session = requests.Session() if requests is not None else None
-        if self.session is not None:
-            self.session.headers.update({"X-Tenant-ID": tenant_id, "X-User-ID": user_id})
-        self.headers = {"X-Tenant-ID": tenant_id, "X-User-ID": user_id}
+        self.session = requests.Session()
+        self.session.headers.update({"X-Tenant-ID": tenant_id, "X-User-ID": user_id})
         self.timeout = timeout
         self.max_rate_limit_retries = 5
 
@@ -164,36 +147,12 @@ class Api:
             pass
         return min(5.0, 0.5 * (2 ** max(0, int(attempt))))
 
-    def _request_via_stdlib(self, method: str, url: str, **kwargs: Any) -> StdlibResponse:
-        headers = dict(self.headers)
-        data = None
-        if "json" in kwargs and kwargs["json"] is not None:
-            headers["Content-Type"] = "application/json"
-            data = json.dumps(kwargs["json"], ensure_ascii=False).encode("utf-8")
-        req = Request(url, data=data, headers=headers, method=method)
-        try:
-            with urlopen(req, timeout=self.timeout) as resp:
-                raw = resp.read()
-                status = int(getattr(resp, "status", 200))
-                raw_headers = dict(getattr(resp, "headers", {}) or {})
-        except HTTPError as exc:
-            raw = exc.read()
-            status = int(exc.code)
-            raw_headers = dict(getattr(exc, "headers", {}) or {})
-        except URLError as exc:
-            raise RuntimeError(f"{method} {url} transport failed: {exc}") from exc
-        text = raw.decode("utf-8", errors="replace")
-        return StdlibResponse(status_code=status, text=text, headers={str(k): str(v) for k, v in raw_headers.items()})
-
     def request(self, method: str, path: str, **kwargs: Any) -> tuple[Any, float]:
         url = f"{self.base_url}{path}"
         started = time.perf_counter()
         resp: Any = None
         for attempt in range(self.max_rate_limit_retries + 1):
-            if self.session is not None:
-                resp = self.session.request(method, url, timeout=self.timeout, **kwargs)
-            else:
-                resp = self._request_via_stdlib(method, url, **kwargs)
+            resp = self.session.request(method, url, timeout=self.timeout, **kwargs)
             if resp.status_code != 429 or attempt >= self.max_rate_limit_retries:
                 break
             time.sleep(self._retry_delay(resp, attempt))
@@ -222,28 +181,14 @@ def download_corpus(corpus_dir: Path, evidence: Evidence) -> list[Path]:
     for source in SOURCES:
         out = corpus_dir / source.filename
         if not out.exists() or out.stat().st_size < 64:
-            if requests is not None:
-                response = requests.get(
-                    source.url,
-                    timeout=60,
-                    headers={"User-Agent": "MimirQ-production-readiness/1.0"},
-                )
-                if response.status_code != 200:
-                    fail(f"download failed {source.url}: HTTP {response.status_code}")
-                out.write_bytes(response.content)
-            else:
-                request = Request(source.url, headers={"User-Agent": "MimirQ-production-readiness/1.0"})
-                try:
-                    with urlopen(request, timeout=60) as response:
-                        status = int(getattr(response, "status", 200))
-                        payload = response.read()
-                except HTTPError as exc:
-                    fail(f"download failed {source.url}: HTTP {exc.code}")
-                except URLError as exc:
-                    fail(f"download failed {source.url}: {exc}")
-                if status != 200:
-                    fail(f"download failed {source.url}: HTTP {status}")
-                out.write_bytes(payload)
+            response = requests.get(
+                source.url,
+                timeout=60,
+                headers={"User-Agent": "MimirQ-production-readiness/1.0"},
+            )
+            if response.status_code != 200:
+                fail(f"download failed {source.url}: HTTP {response.status_code}")
+            out.write_bytes(response.content)
         size = out.stat().st_size
         if size < 256:
             fail(f"downloaded file is too small: {out} ({size} bytes)")
@@ -275,31 +220,6 @@ def generate_office_files(corpus_dir: Path, evidence: Evidence) -> list[Path]:
     iris = corpus_dir / "iris.csv"
     docx_path = corpus_dir / "mixed-rag-operations-brief.docx"
     xlsx_path = corpus_dir / "iris-quality-sample.xlsx"
-
-    try:
-        from docx import Document
-        from openpyxl import Workbook
-    except ModuleNotFoundError:
-        repo_root = Path(__file__).resolve().parents[1]
-        fallback_docx = repo_root / "tests/fixtures/parsing_golden_broader/word_project_brief_docx/input/sample.docx"
-        fallback_xlsx = repo_root / "tests/fixtures/parsing_golden_broader/excel_budget_sheet_xlsx/input/sample.xlsx"
-        if not fallback_docx.exists() or not fallback_xlsx.exists():
-            fail(
-                "office fallback samples missing; expected checked-in DOCX/XLSX fixtures under "
-                "tests/fixtures/parsing_golden_broader/"
-            )
-        shutil.copyfile(fallback_docx, docx_path)
-        shutil.copyfile(fallback_xlsx, xlsx_path)
-        out = [docx_path, xlsx_path]
-        for path in out:
-            evidence.generated_files.append(
-                {
-                    "filename": path.name,
-                    "bytes": path.stat().st_size,
-                    "fallback_source": "checked_in_sample",
-                }
-            )
-        return out
 
     doc = Document()
     doc.add_heading("MimirQ Production Readiness Brief", level=1)

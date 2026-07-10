@@ -12,7 +12,6 @@ Security posture:
 - Best-effort fail-open: cache failures never break retrieval.
 """
 
-from __future__ import annotations
 
 import hashlib
 import json

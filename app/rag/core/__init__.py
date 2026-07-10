@@ -6,7 +6,6 @@ symbols are resolved lazily so callers can import a specific submodule without
 dragging in heavier text / HTTP / model dependencies from unrelated helpers.
 """
 
-from __future__ import annotations
 
 from importlib import import_module
 

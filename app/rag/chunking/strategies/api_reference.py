@@ -11,7 +11,6 @@ fallback RecursiveCharacterTextSplitter inside each block while preserving
 character offsets.
 """
 
-from __future__ import annotations
 
 import re
 from dataclasses import dataclass

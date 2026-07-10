@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
 """Assemble a unified Dify/MimirQ benchmark report from separately produced run files."""
 
-from __future__ import annotations
 
 import argparse
 import json
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
-
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 

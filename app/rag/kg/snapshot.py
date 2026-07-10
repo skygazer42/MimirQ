@@ -10,7 +10,6 @@ Note:
 - This module focuses on the pure diff logic so it is easy to unit-test.
 """
 
-from __future__ import annotations
 
 import hashlib
 import json

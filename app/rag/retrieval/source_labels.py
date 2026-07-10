@@ -1,6 +1,5 @@
 """Source label helpers for generation and citation metadata."""
 
-from __future__ import annotations
 
 import re
 from pathlib import Path

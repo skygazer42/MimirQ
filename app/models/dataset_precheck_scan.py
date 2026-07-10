@@ -10,7 +10,6 @@ Heavy per-file details are stored on disk as JSONL under uploads/{tenant}/preche
 and queried on demand (drill-down).
 """
 
-from __future__ import annotations
 
 import uuid
 

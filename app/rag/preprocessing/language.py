@@ -6,7 +6,6 @@ This module is intentionally dependency-free and conservative:
 - It is used for metadata/enrichment (not for semantic rewriting).
 """
 
-from __future__ import annotations
 
 import re
 from dataclasses import dataclass

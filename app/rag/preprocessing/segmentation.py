@@ -6,7 +6,6 @@ simple, code-fence-aware helpers to control the number of consecutive blank
 lines kept in the final text.
 """
 
-from __future__ import annotations
 
 import re
 

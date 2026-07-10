@@ -9,7 +9,6 @@ Supports:
 This mirrors `app/services/prompt_resolver.py` but targets retrieval/rerank knobs.
 """
 
-from __future__ import annotations
 
 import hashlib
 import json

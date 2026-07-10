@@ -11,7 +11,6 @@ Security:
 - symlinks are not followed (by design)
 """
 
-from __future__ import annotations
 
 import csv
 import hashlib

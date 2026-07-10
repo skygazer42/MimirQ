@@ -5,7 +5,6 @@ Keep audit records small and PII-minimal by default; callers should avoid storin
 questions/content in `details` unless explicitly required and compliant.
 """
 
-from __future__ import annotations
 
 import uuid
 

@@ -3,7 +3,6 @@
 This exposes a unified run_id view for ingestion entrypoints (upload/batch/URL/connector).
 """
 
-from __future__ import annotations
 
 import contextlib
 import json

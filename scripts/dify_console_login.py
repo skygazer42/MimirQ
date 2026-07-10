@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Refresh a Dify console storage_state file without printing secrets."""
 
-from __future__ import annotations
 
 import argparse
 import base64

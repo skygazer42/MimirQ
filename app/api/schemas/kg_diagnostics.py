@@ -8,7 +8,6 @@ Optionally, callers can persist a compact run snapshot (summary + per-case attri
 to support metric diffs over time.
 """
 
-from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, Literal

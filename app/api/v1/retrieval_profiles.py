@@ -6,7 +6,6 @@ Goal:
 - avoid leaking scope/query/internal request fields
 """
 
-from __future__ import annotations
 
 import json
 from typing import Any

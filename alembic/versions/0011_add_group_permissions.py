@@ -5,7 +5,6 @@ Adds:
 - document_group_permissions
 """
 
-from __future__ import annotations
 
 from alembic import op
 

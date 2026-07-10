@@ -7,7 +7,6 @@ These schemas power the Evidence Workbench (enterprise ground-truth evidence man
 - Sync into RAGAS regression cases for retrieval-only evaluation
 """
 
-from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, Literal

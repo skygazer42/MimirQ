@@ -11,7 +11,6 @@ Security hardening:
 - Best-effort regex ReDoS guard (nested quantifiers)
 """
 
-from __future__ import annotations
 
 import json
 import re

@@ -5,7 +5,6 @@ Targets OpenAPI YAML with a `paths:` section and splits the spec into per-path
 blocks to keep endpoint documentation together while preserving offsets.
 """
 
-from __future__ import annotations
 
 import re
 from dataclasses import dataclass

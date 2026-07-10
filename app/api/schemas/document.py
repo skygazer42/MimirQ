@@ -825,10 +825,8 @@ class PipelineEffectiveSnapshot(BaseModel):
 
 
 def _active_pipeline_hash_from_metadata(meta: dict[str, Any]) -> str | None:
-    try:
-        from app.core.pipeline_versions import get_active_pipeline_hash
-    except ImportError:
-        return _metadata_text_value(meta, "active_pipeline_hash") or _metadata_text_value(meta, "pipeline_hash")
+    from app.core.pipeline_versions import get_active_pipeline_hash
+
     return get_active_pipeline_hash(meta)
 
 

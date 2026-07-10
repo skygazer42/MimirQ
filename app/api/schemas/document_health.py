@@ -4,7 +4,6 @@ Document health card schemas (Gap10).
 This is a thin, PII-safe aggregation layer over existing parsing/chunking/KG/retrieval signals.
 """
 
-from __future__ import annotations
 
 from datetime import datetime
 from typing import Any

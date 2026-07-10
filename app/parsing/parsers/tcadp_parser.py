@@ -54,19 +54,7 @@ class TCADPParser(BaseAdvancedParser):
         return "tcadp"
 
     def _create_parser(self) -> Any:
-        try:
-            from app.deepdoc.parser.tcadp_parser import TCADPParser as DeepDocTCADPParser
-        except ImportError as exc:
-            class _UnavailableTCADPParser:  # local stub
-                def __init__(self, reason: str):
-                    self._unavailable_reason = reason
-
-                def check_installation(self) -> bool:
-                    return False
-
-            return _UnavailableTCADPParser(
-                f"TCADP dependency missing: {type(exc).__name__}: {exc} (hint: pip install tencentcloud-sdk-python)"
-            )
+        from app.deepdoc.parser.tcadp_parser import TCADPParser as DeepDocTCADPParser
 
         return DeepDocTCADPParser(
             secret_id=self.secret_id,
@@ -77,9 +65,6 @@ class TCADPParser(BaseAdvancedParser):
         )
 
     def _check_parser_installation(self, parser: Any) -> tuple[bool, str]:
-        unavailable_reason = getattr(parser, "_unavailable_reason", "")
-        if unavailable_reason:
-            return (False, unavailable_reason)
         ok = parser.check_installation()
         return (ok, "" if ok else "TCADP not configured")
 

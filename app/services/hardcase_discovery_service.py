@@ -10,7 +10,6 @@ This module is intentionally dependency-light so it can be used from API handler
 scripts, and unit tests without pulling in heavy service graphs.
 """
 
-from __future__ import annotations
 
 import json
 from collections import defaultdict

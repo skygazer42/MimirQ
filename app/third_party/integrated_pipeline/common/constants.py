@@ -2,24 +2,7 @@
 Constants for integrated.
 Integrated from third_party/integrated/common/constants.py
 """
-from enum import Enum, IntEnum
-
-try:
-    from enum import StrEnum  # py>=3.11
-except ImportError:  # pragma: no cover
-    try:
-        from strenum import StrEnum  # type: ignore[assignment]  # py<3.11
-    except ImportError:  # pragma: no cover
-        class StrEnum(str, Enum):  # type: ignore[misc]
-            """
-            Minimal StrEnum fallback.
-
-            Prefer the standard library (py>=3.11) or the `strenum` package.
-            This fallback keeps the key semantic: `str(MyEnum.X) == MyEnum.X.value`.
-            """
-
-            def __str__(self) -> str:
-                return str(self.value)
+from enum import Enum, IntEnum, StrEnum
 
 
 class CustomEnum(Enum):

@@ -10,7 +10,6 @@ This is intentionally deterministic and conservative:
 - Heuristics aim to avoid misclassifying generic outlines
 """
 
-from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass

@@ -5,7 +5,6 @@ Connector runs (app.models.connector) represent individual ingestion executions.
 Connector configs represent saved, reusable connector definitions per dataset.
 """
 
-from __future__ import annotations
 
 import uuid
 

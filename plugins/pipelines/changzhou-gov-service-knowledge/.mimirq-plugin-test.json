@@ -1,8 +1,8 @@
 {
   "plugin_id": "changzhou-gov-service-knowledge",
   "version": "1.0.0",
-  "package_hash": "52626b4bbaf4e4db83da9aa33d6da8acd92046174aca32b30b2a63bffc7071f2",
-  "tested_at": "2026-07-05T13:02:36.363417+00:00",
+  "package_hash": "bdf4bb47ad8dbbd511b51b3d87e0c591e4fe6f4160cafa8a6352ce6079c61f75",
+  "tested_at": "2026-07-10T12:42:47.884346+00:00",
   "passed": true,
   "stages": {
     "governance": {

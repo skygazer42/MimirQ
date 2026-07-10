@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 from typing import Any, Callable, Mapping, Sequence
 from uuid import UUID

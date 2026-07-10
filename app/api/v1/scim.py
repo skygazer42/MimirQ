@@ -12,7 +12,6 @@ Notes:
   and each token may be stored as raw or `sha256:<hex>` for safer config handling.
 """
 
-from __future__ import annotations
 
 import contextlib
 import hashlib

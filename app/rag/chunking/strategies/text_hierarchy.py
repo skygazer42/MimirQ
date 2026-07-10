@@ -13,7 +13,6 @@ This is designed to work with the retrieval-time hierarchy overlay:
 It intentionally does NOT attempt to build a full offline tree index.
 """
 
-from __future__ import annotations
 
 from langchain_core.documents import Document
 

@@ -5,7 +5,6 @@ Provides collection-to-collection similarity matrix endpoints used by the
 frontend heatmap page (Kumi-style).
 """
 
-from __future__ import annotations
 
 from typing import Annotated, Any
 from uuid import UUID

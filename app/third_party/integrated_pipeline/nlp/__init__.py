@@ -21,19 +21,11 @@ import re
 from collections import Counter
 
 import chardet
+from cn2an import cn2an
 from PIL import Image
+from word2number import w2n
 
 from app.third_party.integrated_pipeline.common.token_utils import num_tokens_from_string
-
-try:
-    from word2number import w2n
-except Exception:  # noqa: BLE001
-    w2n = None
-
-try:
-    from cn2an import cn2an
-except Exception:  # noqa: BLE001
-    cn2an = None
 
 
 def _roman_to_int(text: str) -> int:
@@ -171,13 +163,9 @@ def index_int(index_str):
         res = int(index_str)
     except ValueError:
         try:
-            if w2n is None:
-                raise ValueError("word2number_not_installed")
             res = w2n.word_to_num(index_str)
         except Exception:
             try:
-                if cn2an is None:
-                    raise ValueError("cn2an_not_installed")
                 res = cn2an(index_str)
             except Exception:
                 try:

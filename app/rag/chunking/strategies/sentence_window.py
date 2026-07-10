@@ -9,7 +9,6 @@ This is useful for long plain text where character-based overlap would cut
 sentences in half.
 """
 
-from __future__ import annotations
 
 import re
 from dataclasses import dataclass

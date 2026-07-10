@@ -4,7 +4,6 @@ Chunk presets API.
 Tenant-scoped CRUD endpoints for reusable chunking configurations.
 """
 
-from __future__ import annotations
 
 from typing import Annotated, Any
 from uuid import UUID

@@ -6,7 +6,6 @@ conversation per selected benchmark row: user question, assistant answer, and
 one feedback record on the assistant message.
 """
 
-from __future__ import annotations
 
 import argparse
 import json

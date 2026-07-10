@@ -10,7 +10,6 @@ The chunker groups whole instruction blocks together, and splits by stages
 when multiple FROM instructions exist. Offsets are preserved.
 """
 
-from __future__ import annotations
 
 import re
 from dataclasses import dataclass

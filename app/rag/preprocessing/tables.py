@@ -9,7 +9,6 @@ This module intentionally avoids semantic rewriting. It only:
 It is code-fence aware (caller can safely apply to Markdown-like text).
 """
 
-from __future__ import annotations
 
 import re
 from dataclasses import dataclass

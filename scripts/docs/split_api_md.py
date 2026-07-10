@@ -4,7 +4,6 @@ Split docs/API.md on level-1 Markdown headings (# Foo) into docs/api/reference/*
 Headings inside fenced code blocks (```) are ignored.
 Writes docs/api/reference/_index.md manifest. Run from repo root.
 """
-from __future__ import annotations
 
 import re
 from pathlib import Path

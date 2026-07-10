@@ -11,7 +11,6 @@ This helper normalizes an extracted directory into a stable layout:
 - Markdown image references rewritten to `images/<new_name>`
 """
 
-from __future__ import annotations
 
 import re
 import shutil

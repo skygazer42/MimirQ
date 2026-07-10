@@ -8,7 +8,6 @@ Adds:
 - indexes for common ops queries (tenant/dataset + review_due, supersedes)
 """
 
-from __future__ import annotations
 
 from alembic import op
 

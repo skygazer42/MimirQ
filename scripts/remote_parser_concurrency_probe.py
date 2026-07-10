@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
+# ruff: noqa: E402, I001
 """Run a small parser concurrency probe against a live API."""
 
-from __future__ import annotations
 
 import argparse
 import json
@@ -20,11 +20,9 @@ def ensure_repo_root_on_sys_path(script_path: str | Path) -> str:
     return repo_root
 
 
-try:
-    from scripts.remote_pdf_parser_performance import Api, classify_result, summarize_body
-except ModuleNotFoundError:
-    ensure_repo_root_on_sys_path(__file__)
-    from scripts.remote_pdf_parser_performance import Api, classify_result, summarize_body
+ensure_repo_root_on_sys_path(__file__)
+
+from scripts.remote_pdf_parser_performance import Api, classify_result, summarize_body
 
 
 DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000000"

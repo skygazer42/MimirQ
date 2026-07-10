@@ -6,7 +6,6 @@ trigger catastrophic-backtracking hotspots. Consolidating them also
 reduces duplicated-lines density on new code, keeping the quality gate green.
 """
 
-from __future__ import annotations
 
 _CN_HEADING_NUM_CHARS = frozenset("0123456789一二三四五六七八九十百千")
 _CN_CLAUSE_NUM_CHARS = frozenset("0123456789一二三四五六七八九十")

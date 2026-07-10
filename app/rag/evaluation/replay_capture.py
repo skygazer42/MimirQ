@@ -7,7 +7,6 @@ Wave7(B) goals:
 - Provide deterministic fingerprints for candidate lists (for CI gating / diffs).
 """
 
-from __future__ import annotations
 
 import json
 from typing import Any

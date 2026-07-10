@@ -11,7 +11,6 @@ RecursiveCharacterTextSplitter inside each slide to respect chunk_size and
 chunk_overlap while preserving character offsets.
 """
 
-from __future__ import annotations
 
 import re
 from dataclasses import dataclass

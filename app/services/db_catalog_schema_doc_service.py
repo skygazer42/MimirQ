@@ -6,7 +6,6 @@ Task intent (from AGENTS.md / project notes):
   so RAG retrieval can hit table/field knowledge without exposing raw DB rows.
 """
 
-from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import UTC

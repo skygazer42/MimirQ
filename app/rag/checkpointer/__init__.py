@@ -7,28 +7,23 @@ Provides:
 - TimeTravel: Time travel debugging for replaying and forking
 """
 
+from langgraph.checkpoint.memory import InMemorySaver as MemorySaver
+
 from app.rag.checkpointer.factory import get_checkpointer
 from app.rag.checkpointer.sqlite import SqliteSaver
-from app.rag.core.logging import get_logger
+from app.rag.checkpointer.time_travel import (
+    CheckpointInfo,
+    ForkResult,
+    TimeTravel,
+    get_time_travel,
+)
 
-logger = get_logger(__name__)
-
-try:  # LangGraph 1.0.x compatibility
-    from langgraph.checkpoint.memory import InMemorySaver as MemorySaver  # type: ignore
-except Exception:  # pragma: no cover
-    from langgraph.checkpoint.memory import MemorySaver  # type: ignore
-
-__all__ = ["SqliteSaver", "MemorySaver", "get_checkpointer"]
-
-# Optional: time-travel utilities depend on LangGraph graph internals (version-sensitive).
-try:  # pragma: no cover
-    from app.rag.checkpointer.time_travel import (  # noqa: F401
-        CheckpointInfo,
-        ForkResult,
-        TimeTravel,
-        get_time_travel,
-    )
-
-    __all__.extend(["TimeTravel", "CheckpointInfo", "ForkResult", "get_time_travel"])
-except Exception as exc:
-    logger.debug("Ignoring optional time-travel checkpointer import failure: %s", exc)
+__all__ = [
+    "SqliteSaver",
+    "MemorySaver",
+    "get_checkpointer",
+    "TimeTravel",
+    "CheckpointInfo",
+    "ForkResult",
+    "get_time_travel",
+]

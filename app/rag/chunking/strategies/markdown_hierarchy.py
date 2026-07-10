@@ -10,7 +10,6 @@ This is intentionally "overlay-first":
   can treat them as a tree (similar to KohakuRAG's online behavior).
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass
 

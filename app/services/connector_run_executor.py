@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 import importlib
 from collections.abc import Awaitable, Callable

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
+# ruff: noqa: E402, I001
 """Run a mixed-backend parser contention probe against a live API."""
 
-from __future__ import annotations
 
 import argparse
 import json
@@ -20,13 +20,10 @@ def ensure_repo_root_on_sys_path(script_path: str | Path) -> str:
     return repo_root
 
 
-try:
-    from scripts.remote_parser_service_matrix import write_fixture_pdf
-    from scripts.remote_pdf_parser_performance import Api, classify_result, summarize_body
-except ModuleNotFoundError:
-    ensure_repo_root_on_sys_path(__file__)
-    from scripts.remote_parser_service_matrix import write_fixture_pdf
-    from scripts.remote_pdf_parser_performance import Api, classify_result, summarize_body
+ensure_repo_root_on_sys_path(__file__)
+
+from scripts.remote_parser_service_matrix import write_fixture_pdf
+from scripts.remote_pdf_parser_performance import Api, classify_result, summarize_body
 
 
 DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000000"
@@ -125,7 +122,7 @@ def run_case(api: Api, *, pdf_path: Path, backend: str, min_markdown_chars: int,
 
 
 def _child_run(
-    queue: multiprocessing.queues.Queue,
+    queue: Any,
     *,
     base_url: str,
     tenant_id: str,
@@ -191,10 +188,10 @@ def main() -> int:
     started = time.perf_counter()
     results: list[dict[str, Any]] = []
     ctx = multiprocessing.get_context("spawn")
-    workers: list[tuple[tuple[str, int], multiprocessing.Process, multiprocessing.queues.Queue, float]] = []
+    workers: list[tuple[tuple[str, int], multiprocessing.Process, Any, float]] = []
     for backend, round_idx in tasks:
         fixture_path = backend_fixture_overrides.get(backend, default_fixture_path)
-        queue: multiprocessing.queues.Queue = ctx.Queue()
+        queue: Any = ctx.Queue()
         proc = ctx.Process(
             target=_child_run,
             kwargs={

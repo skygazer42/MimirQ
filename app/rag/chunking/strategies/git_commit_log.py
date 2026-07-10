@@ -9,7 +9,6 @@ Targets `git log` / `git show` like text with repeated commit headers:
 The chunker splits by commit blocks and preserves offsets.
 """
 
-from __future__ import annotations
 
 import re
 from dataclasses import dataclass

@@ -7,7 +7,6 @@ This is a minimal v1 implementation focused on:
 """
 # ruff: noqa: F401
 
-from __future__ import annotations
 
 import asyncio
 import contextlib

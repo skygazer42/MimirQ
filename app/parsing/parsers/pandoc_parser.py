@@ -10,7 +10,6 @@ This parser is intentionally optional because it relies on external CLIs:
 - soffice (LibreOffice) for legacy formats
 """
 
-from __future__ import annotations
 
 import re
 from pathlib import Path

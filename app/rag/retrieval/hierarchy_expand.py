@@ -10,7 +10,6 @@ Use-cases:
   metadata-only hierarchy overlay (hierarchy_node_key, hierarchy_parent_key, prev/next keys).
 """
 
-from __future__ import annotations
 
 import hashlib
 from collections.abc import Callable, Iterable

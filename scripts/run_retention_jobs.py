@@ -30,7 +30,6 @@ Examples:
   python scripts/run_retention_jobs.py --audit-logs --all-tenants --execute
 """
 
-from __future__ import annotations
 
 import argparse
 import asyncio

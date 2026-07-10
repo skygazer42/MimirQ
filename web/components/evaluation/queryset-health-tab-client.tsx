@@ -53,6 +53,40 @@ type QuerysetTrendRow = {
   weak_hit_rate: number | null
 }
 
+const QUERYSET_DELTA_METRICS = [
+  {
+    key: 'hit_at_k_delta',
+    label: '命中率（Hit@K）',
+    kind: 'percent',
+    lowerIsBetter: false,
+  },
+  { key: 'mrr_delta', label: 'MRR', kind: 'number', lowerIsBetter: false },
+  {
+    key: 'ndcg_at_k_delta',
+    label: 'NDCG@K',
+    kind: 'number',
+    lowerIsBetter: false,
+  },
+  {
+    key: 'p95_latency_ms_delta',
+    label: 'P95 延迟',
+    kind: 'ms',
+    lowerIsBetter: true,
+  },
+  {
+    key: 'miss_rate_delta',
+    label: '漏检率',
+    kind: 'percent',
+    lowerIsBetter: true,
+  },
+  {
+    key: 'weak_hit_rate_delta',
+    label: '弱命中率',
+    kind: 'percent',
+    lowerIsBetter: true,
+  },
+] as const
+
 function isJsonObject(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -117,6 +151,30 @@ function fmtNum(v?: unknown, digits = 3) {
 function fmtMs(v?: unknown) {
   if (v == null || !Number.isFinite(Number(v))) return '—'
   return `${Math.round(Number(v))}ms`
+}
+
+function formatSignedDelta(
+  value: unknown,
+  kind: (typeof QUERYSET_DELTA_METRICS)[number]['kind']
+) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return '—'
+  const sign = numeric > 0 ? '+' : ''
+  if (kind === 'percent') return `${sign}${(numeric * 100).toFixed(1)}%`
+  if (kind === 'ms') return `${sign}${numeric.toFixed(1)}ms`
+  return `${sign}${numeric.toFixed(3)}`
+}
+
+function deltaState(value: unknown, lowerIsBetter: boolean) {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric) || Math.abs(numeric) < 1e-9) {
+    return { label: '持平', className: 'bg-slate-100 text-slate-600' }
+  }
+  const improved = lowerIsBetter ? numeric < 0 : numeric > 0
+  if (improved) {
+    return { label: '改善', className: 'bg-emerald-50 text-emerald-700' }
+  }
+  return { label: '退化', className: 'bg-rose-50 text-rose-700' }
 }
 
 function QuerysetChartEmptyState() {
@@ -536,24 +594,33 @@ export function QuerysetHealthTab({
 
             {diffMetricDeltas && Object.keys(diffMetricDeltas).length ? (
               <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-1.5 text-xs">
-                {[
-                  'hit_at_k_delta',
-                  'mrr_delta',
-                  'ndcg_at_k_delta',
-                  'p95_latency_ms_delta',
-                  'miss_rate_delta',
-                  'weak_hit_rate_delta',
-                ].map((k) => (
-                  <div
-                    key={k}
-                    className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/30 px-3 py-2"
-                  >
-                    <span className="font-mono text-muted-foreground">{k}</span>
-                    <span className="tabular-nums text-foreground/90">
-                      {String(diffMetricDeltas[k] ?? '—')}
-                    </span>
-                  </div>
-                ))}
+                {QUERYSET_DELTA_METRICS.map((metric) => {
+                  const value = diffMetricDeltas[metric.key]
+                  const state = deltaState(value, metric.lowerIsBetter)
+                  return (
+                    <div
+                      key={metric.key}
+                      className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/30 px-3 py-2"
+                    >
+                      <span className="font-medium text-muted-foreground">
+                        {metric.label}
+                      </span>
+                      <span className="flex items-center gap-2">
+                        <span className="font-mono tabular-nums text-foreground/90">
+                          {formatSignedDelta(value, metric.kind)}
+                        </span>
+                        <span
+                          className={cn(
+                            'rounded-full px-2 py-0.5 text-[10px] font-semibold',
+                            state.className
+                          )}
+                        >
+                          {state.label}
+                        </span>
+                      </span>
+                    </div>
+                  )
+                })}
               </div>
             ) : null}
           </div>
@@ -567,7 +634,8 @@ export function QuerysetHealthTab({
                 如何解读差异
               </div>
               <div className="mt-1 text-[12px] leading-5 text-slate-500">
-                正值表示当前优于基线，负值表示退化；仅对相同评测配置的快照进行可比对。
+                命中率、MRR、NDCG 为正表示提升；P95 延迟、漏检率、弱命中率为负表示改善。
+                仅对相同评测配置的快照进行可比对。
               </div>
             </div>
           </div>

@@ -25,16 +25,8 @@ import string
 import sys
 from pathlib import Path
 
-try:
-    import datrie  # type: ignore
-except Exception:  # pragma: no cover
-    datrie = None
 import nltk
-
-try:
-    from hanziconv import HanziConv
-except Exception:  # pragma: no cover
-    HanziConv = None
+from hanziconv import HanziConv
 from nltk import word_tokenize
 from nltk.stem import PorterStemmer, WordNetLemmatizer
 
@@ -43,7 +35,7 @@ _NLTK_DATA_DIR = Path(__file__).resolve().parents[2] / "resources" / "nltk_data"
 if str(_NLTK_DATA_DIR) not in nltk.data.path:
     nltk.data.path.insert(0, str(_NLTK_DATA_DIR))
 
-class _FallbackTrie:
+class _JsonTrie:
     def __init__(self, _alphabet: str = ""):
         self._data: dict[str, object] = {}
         self._sorted_keys: list[str] | None = None
@@ -70,13 +62,13 @@ class _FallbackTrie:
                 if os.path.exists(tmp):
                     os.remove(tmp)
             except Exception as exc:
-                logging.debug("Failed to remove temporary fallback trie cache %s: %s", tmp, exc)
+                logging.debug("Failed to remove temporary trie cache %s: %s", tmp, exc)
 
     @classmethod
-    def load(cls, path: str) -> "_FallbackTrie":
+    def load(cls, path: str) -> "_JsonTrie":
         # The cache file may be:
-        # - JSON (this fallback implementation)
-        # - a binary datrie cache generated in a different environment
+        # - JSON (the supported format)
+        # - a legacy binary cache generated in a different environment
         # - partially written / corrupted
         # Fast sniff prevents noisy UnicodeDecodeError on binary caches.
         with open(path, "rb") as f:
@@ -85,7 +77,7 @@ class _FallbackTrie:
         if head.startswith(b"\xef\xbb\xbf"):
             head = head[3:]
         if not head or head[:1] not in (b"{", b"["):
-            raise ValueError("Trie cache is not JSON (possibly a binary datrie cache)")
+            raise ValueError("Trie cache is not JSON")
 
         try:
             with open(path, "r", encoding="utf-8") as f:
@@ -109,7 +101,7 @@ class _FallbackTrie:
         return idx < len(keys) and keys[idx].startswith(prefix)
 
 
-Trie = datrie.Trie if datrie is not None else _FallbackTrie  # type: ignore[attr-defined]
+Trie = _JsonTrie
 
 
 def get_default_resource_dir():
@@ -182,7 +174,7 @@ class RagTokenizer:
                 return
             except Exception as exc:
                 # Fail to load trie from file, rebuild from source dictionary.
-                # In dev, this may happen if a binary datrie cache exists but datrie is not installed.
+                # Legacy or partial cache files are discarded and rebuilt from the source dictionary.
                 if self.DEBUG:
                     logging.exception(
                         f"[HUQIE]:Fail to load trie file {trie_file_name}, rebuild the default trie file"
@@ -233,8 +225,6 @@ class RagTokenizer:
         return rstring
 
     def _tradi2simp(self, line):
-        if HanziConv is None:
-            return line
         return HanziConv.toSimplified(line)
 
     def dfs_(self, chars, s, pre_tks, tkslist, _depth=0, _memo=None):

@@ -5,7 +5,6 @@ This backend converts PDF pages into images and uses DeepSeek-OCR to return
 Markdown. Intended for scanned PDFs or image-heavy documents.
 """
 
-from __future__ import annotations
 
 import base64
 import hashlib
@@ -14,12 +13,14 @@ import shutil
 import threading
 import time
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from io import BytesIO
 from pathlib import Path
 from urllib.parse import unquote
 
 import fitz  # PyMuPDF
 import requests
 from langchain_core.documents import Document
+from PIL import Image
 
 from app.core.config import settings
 from app.core.constants import NON_CRITICAL_EXCEPTION_LOG_MESSAGE
@@ -110,17 +111,8 @@ class DeepSeekOCRParser:
         max_images = int(getattr(settings, "ZIP_MAX_IMAGES", 0) or 0)
         max_images = max(0, max_images)
 
-        # Best-effort: Pillow may be unavailable in minimal installs.
-        from io import BytesIO
-
-        try:
-            from PIL import Image  # type: ignore
-        except ImportError:
-            pil_image = None  # type: ignore[assignment]
-            pillow_ok = False
-        else:
-            pil_image = Image
-            pillow_ok = True
+        pil_image = Image
+        pillow_ok = True
 
         def normalize_ext(ext: str) -> str:
             e = (ext or "").strip().lower()

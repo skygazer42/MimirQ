@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Print a compact human-readable Changzhou Dify readiness status."""
 
-from __future__ import annotations
 
 import argparse
 import json

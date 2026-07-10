@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 import contextlib
 import hashlib
@@ -12,6 +11,7 @@ from urllib.parse import unquote, urlparse
 from uuid import UUID
 
 from langchain_core.documents import Document
+from PIL import Image
 
 from app.api.schemas.document import (
     ChunkPreviewItem,
@@ -226,10 +226,6 @@ def _preview_images_dir(tenant_id: UUID) -> Path:
 
 
 def _load_preview_pillow_image_class() -> tuple[Any | None, bool]:
-    try:
-        from PIL import Image  # type: ignore
-    except ImportError:
-        return None, False
     return Image, True
 
 

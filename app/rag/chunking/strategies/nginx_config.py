@@ -10,7 +10,6 @@ The chunker prefers splitting by server blocks when present; otherwise it falls
 back to a brace-aware block splitter. Offsets are preserved.
 """
 
-from __future__ import annotations
 
 import re
 from dataclasses import dataclass

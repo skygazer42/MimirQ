@@ -4,7 +4,6 @@ Dataset health dashboard schemas.
 This is a thin aggregation layer over existing dataset profile/precheck/ingestion signals.
 """
 
-from __future__ import annotations
 
 from datetime import datetime
 from uuid import UUID

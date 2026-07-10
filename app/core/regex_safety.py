@@ -5,7 +5,6 @@ These helpers are used to validate user-provided regex rules (e.g. governance pr
 pipeline clean-preview custom rules) to reduce ReDoS risk and keep payloads bounded.
 """
 
-from __future__ import annotations
 
 import re
 from collections.abc import Mapping, Sequence

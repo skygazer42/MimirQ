@@ -12,7 +12,6 @@ This module provides small, deterministic helpers:
 - aggregate summary metrics for CI gates (Hit@K/MRR/Recall/NDCG, abstain rate)
 """
 
-from __future__ import annotations
 
 import math
 from collections.abc import Iterable

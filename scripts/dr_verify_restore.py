@@ -15,7 +15,6 @@ Notes:
 - Safe-by-default: does not print tokens; relies on smoke_test redaction.
 """
 
-from __future__ import annotations
 
 import argparse
 import json

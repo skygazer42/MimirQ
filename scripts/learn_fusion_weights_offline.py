@@ -28,7 +28,6 @@ Example:
     --out-json runs/fusion_weights/search.json
 """
 
-from __future__ import annotations
 
 import argparse
 import json

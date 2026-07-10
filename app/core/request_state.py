@@ -7,7 +7,6 @@ via a contextvar, without threading a `Request` object through every call.
 Primary use-case: request-scoped caches (e.g. tenant group membership lookups).
 """
 
-from __future__ import annotations
 
 import contextvars
 from typing import Any

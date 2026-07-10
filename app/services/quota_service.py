@@ -4,7 +4,6 @@ Quota helpers (best-effort).
 Currently supports a rolling per-tenant assistant-token quota for chat.
 """
 
-from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from typing import Any

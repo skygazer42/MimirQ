@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Build a node-level Dify workflow trace report from collected golden answers."""
 
-from __future__ import annotations
 
 import argparse
 import json

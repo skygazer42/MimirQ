@@ -1,6 +1,5 @@
 """Shared HTTP response header helpers."""
 
-from __future__ import annotations
 
 import re
 from urllib.parse import quote

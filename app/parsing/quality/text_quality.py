@@ -8,7 +8,6 @@ This is used after parsing (before chunking) to:
 It is intentionally cheap and dependency-free.
 """
 
-from __future__ import annotations
 
 import re
 from dataclasses import dataclass

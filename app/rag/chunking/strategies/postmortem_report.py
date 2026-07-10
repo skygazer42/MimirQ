@@ -9,7 +9,6 @@ Splits the document into these sections first, then applies a fallback splitter
 while preserving character offsets.
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any

@@ -5,7 +5,6 @@ The default mode is dry-run: fetch the current draft, write a backup, build the
 POST payload, and report lint deltas. Remote writes require explicit --apply.
 """
 
-from __future__ import annotations
 
 import argparse
 import json

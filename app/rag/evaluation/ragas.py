@@ -6,7 +6,9 @@ RAGAS evaluation service.
 """
 
 import math
+import queue
 import re
+import threading
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -132,6 +134,31 @@ _DETERMINISTIC_SCORE_META_KEYS = {
     "multihop_path_completeness": "multihop_path_completeness",
     "multihop_order_consistency": "multihop_order_consistency",
 }
+
+
+def _run_with_wall_timeout(func, *, timeout_sec: float) -> Any:
+    """Run a blocking evaluation without allowing it to hold a run forever."""
+    timeout = float(timeout_sec or 0.0)
+    if timeout <= 0:
+        return func()
+
+    outcomes: queue.Queue[tuple[bool, Any]] = queue.Queue(maxsize=1)
+
+    def worker() -> None:
+        try:
+            outcomes.put((True, func()))
+        except BaseException as exc:  # noqa: BLE001
+            outcomes.put((False, exc))
+
+    threading.Thread(target=worker, name="ragas-evaluation", daemon=True).start()
+    try:
+        succeeded, value = outcomes.get(timeout=timeout)
+    except queue.Empty as exc:
+        raise TimeoutError(f"RAGAS evaluation exceeded {timeout:g} seconds") from exc
+
+    if not succeeded:
+        raise value
+    return value
 
 
 @dataclass(frozen=True)
@@ -1153,57 +1180,69 @@ def _resolve_metrics(metric_names: list[str]):
     Map user-friendly names to RAGAS metric objects.
     Returns: list[Metric]
     """
-    try:
-        from ragas.metrics import (
-            AnswerCorrectness,
-            AnswerSimilarity,
-            ContextPrecision,
-            ContextRecall,
-            Faithfulness,
-            IDBasedContextPrecision,
-            IDBasedContextRecall,
-            LLMContextPrecisionWithoutReference,
-            ResponseRelevancy,
-        )
-    except ImportError as exc:  # pragma: no cover
-        raise RuntimeError(
-            "RAGAS is not installed. Please run: pip install ragas"
-        ) from exc
+    from ragas.metrics import AnswerCorrectness as answer_correctness_cls
+    from ragas.metrics import AnswerSimilarity as answer_similarity_cls
+    from ragas.metrics import ContextPrecision as context_precision_cls
+    from ragas.metrics import ContextRecall as context_recall_cls
+    from ragas.metrics import Faithfulness as faithfulness_cls
+    from ragas.metrics import IDBasedContextPrecision as id_context_precision_cls
+    from ragas.metrics import IDBasedContextRecall as id_context_recall_cls
+    from ragas.metrics import LLMContextPrecisionWithoutReference as llm_context_precision_cls
+    from ragas.metrics import ResponseRelevancy as response_relevancy_cls
 
     resolved = []
     for name in metric_names or []:
         key = (name or "").strip().lower()
         if key in {"faithfulness"}:
-            resolved.append(Faithfulness())
+            resolved.append(faithfulness_cls())
             continue
         if key in {"response_relevancy", "answer_relevancy"}:
-            resolved.append(ResponseRelevancy(strictness=_resolve_response_relevancy_strictness()))
+            resolved.append(response_relevancy_cls(strictness=_resolve_response_relevancy_strictness()))
             continue
         if key in {"answer_similarity"}:
-            resolved.append(AnswerSimilarity())
+            resolved.append(answer_similarity_cls())
             continue
         if key in {"answer_correctness"}:
-            resolved.append(AnswerCorrectness())
+            resolved.append(answer_correctness_cls())
             continue
         if key in {"context_recall"}:
-            resolved.append(ContextRecall())
+            resolved.append(context_recall_cls())
             continue
         if key in {"context_precision"}:
-            resolved.append(ContextPrecision())
+            resolved.append(context_precision_cls())
             continue
         if key in {"id_based_context_recall"}:
-            resolved.append(IDBasedContextRecall())
+            resolved.append(id_context_recall_cls())
             continue
         if key in {"id_based_context_precision"}:
-            resolved.append(IDBasedContextPrecision())
+            resolved.append(id_context_precision_cls())
             continue
         if key in {"llm_context_precision_without_reference"}:
-            resolved.append(LLMContextPrecisionWithoutReference())
+            resolved.append(llm_context_precision_cls())
             continue
         raise ValueError(f"Unsupported RAGAS metric: {name}")
     if not resolved:
-        resolved = [Faithfulness(), ResponseRelevancy(strictness=_resolve_response_relevancy_strictness())]
+        resolved = [
+            faithfulness_cls(),
+            response_relevancy_cls(strictness=_resolve_response_relevancy_strictness()),
+        ]
     return resolved
+
+
+def _load_ragas_evaluation_runtime() -> tuple[Any, Any, Any, Any, Any]:
+    from ragas import EvaluationDataset as evaluation_dataset_cls
+    from ragas import SingleTurnSample as single_turn_sample_cls
+    from ragas import evaluate as evaluate_fn
+    from ragas.embeddings import LangchainEmbeddingsWrapper as embeddings_wrapper_cls
+    from ragas.llms import LangchainLLMWrapper as llm_wrapper_cls
+
+    return (
+        evaluation_dataset_cls,
+        single_turn_sample_cls,
+        evaluate_fn,
+        embeddings_wrapper_cls,
+        llm_wrapper_cls,
+    )
 
 
 def _resolve_response_relevancy_strictness() -> int:
@@ -1280,6 +1319,99 @@ def _build_conversation_deterministic_scores(
         scores["quote_verifiability"] = quote_verifiability
 
     return scores
+
+
+def _persist_conversation_deterministic_result(
+    *,
+    db,
+    run: RagasEvaluationRun,
+    run_id: UUID,
+    tenant_id: UUID,
+    conversation_id: UUID,
+    eval_items: list[dict[str, Any]],
+    metric_names: list[str],
+    max_turns: int,
+    skip_empty_contexts: bool,
+    reason: str,
+    ragas_attempted: bool = False,
+    fallback_error: str | None = None,
+) -> None:
+    score_rows: list[dict[str, Any]] = []
+    db.query(RagasEvaluationItem).filter(
+        RagasEvaluationItem.run_id == run_id,
+        RagasEvaluationItem.tenant_id == tenant_id,
+    ).delete(synchronize_session=False)
+
+    for item in eval_items:
+        scores = _build_conversation_deterministic_scores(
+            user_input=item["user_input"],
+            response=item["response"],
+            retrieved_contexts=item["retrieved_contexts"],
+        )
+        score_rows.append(scores)
+        db.add(
+            RagasEvaluationItem(
+                run_id=run_id,
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                turn_index=item["turn_index"],
+                user_message_id=item["user_message_id"],
+                assistant_message_id=item["assistant_message_id"],
+                user_input=item["user_input"],
+                response=item["response"],
+                retrieved_contexts=item["retrieved_contexts"],
+                citations=item["citations"],
+                scores=scores,
+            )
+        )
+
+    metric_keys = _normalized_metric_names(metric_names) or ["faithfulness", "response_relevancy"]
+    metric_keys = ["response_relevancy" if key == "answer_relevancy" else key for key in metric_keys]
+    tracked_zero = 0 if not ragas_attempted else None
+    tracked_cost_zero = 0.0 if not ragas_attempted else None
+    summary: dict[str, Any] = {
+        "items": len(eval_items),
+        "mode": "deterministic_conversation",
+        "ragas_skipped_reason": reason,
+        "ragas_attempted": bool(ragas_attempted),
+        "total_tokens": tracked_zero,
+        "total_cost": tracked_cost_zero,
+        "eval_llm_tokens_input_ragas": tracked_zero,
+        "eval_llm_tokens_output_ragas": tracked_zero,
+        "eval_estimated_cost_usd_ragas": tracked_cost_zero,
+        "eval_llm_tokens_input": tracked_zero,
+        "eval_llm_tokens_output": tracked_zero,
+        "eval_estimated_cost_usd": tracked_cost_zero,
+    }
+    if fallback_error:
+        summary["ragas_fallback_error"] = str(fallback_error)[:300]
+    for key in (
+        "faithfulness",
+        "response_relevancy",
+        "faithfulness_det",
+        "response_relevancy_det",
+        "atomic_faithfulness",
+        "hallucination_rate",
+        "quote_verifiability",
+    ):
+        value = _mean(row.get(key) for row in score_rows)
+        if value is not None:
+            summary[key] = value
+
+    run.status = "completed"
+    run.metrics = metric_keys
+    run.params = {
+        "requested_metrics": metric_names,
+        "max_turns": max_turns,
+        "skip_empty_contexts": skip_empty_contexts,
+        "mode": "deterministic_conversation",
+        "ragas_attempted": bool(ragas_attempted),
+        "fallback_reason": reason,
+    }
+    run.summary = summary
+    run.error_message = None
+    run.finished_at = datetime.now(UTC).replace(tzinfo=None)
+    db.commit()
 
 
 def _build_llm_and_embeddings():
@@ -1425,108 +1557,43 @@ def run_conversation_ragas_evaluation(
             return
 
         if _should_use_conversation_deterministic_eval(metric_names):
-            score_rows: list[dict[str, Any]] = []
-            db.query(RagasEvaluationItem).filter(
-                RagasEvaluationItem.run_id == run_id,
-                RagasEvaluationItem.tenant_id == tenant_id,
-            ).delete(synchronize_session=False)
-
-            for item in eval_items:
-                scores = _build_conversation_deterministic_scores(
-                    user_input=item["user_input"],
-                    response=item["response"],
-                    retrieved_contexts=item["retrieved_contexts"],
-                )
-                score_rows.append(scores)
-                db.add(
-                    RagasEvaluationItem(
-                        run_id=run_id,
-                        tenant_id=tenant_id,
-                        conversation_id=conversation_id,
-                        turn_index=item["turn_index"],
-                        user_message_id=item["user_message_id"],
-                        assistant_message_id=item["assistant_message_id"],
-                        user_input=item["user_input"],
-                        response=item["response"],
-                        retrieved_contexts=item["retrieved_contexts"],
-                        citations=item["citations"],
-                        scores=scores,
-                    )
-                )
-
-            metric_keys = _normalized_metric_names(metric_names) or ["faithfulness", "response_relevancy"]
-            metric_keys = ["response_relevancy" if key == "answer_relevancy" else key for key in metric_keys]
-            summary: dict[str, Any] = {
-                "items": len(eval_items),
-                "mode": "deterministic_conversation",
-                "ragas_skipped_reason": "eval_llm_provider_compatibility",
-                "eval_llm_tokens_input_ragas": 0,
-                "eval_llm_tokens_output_ragas": 0,
-                "eval_estimated_cost_usd_ragas": 0.0,
-                "eval_llm_tokens_input": 0,
-                "eval_llm_tokens_output": 0,
-                "eval_estimated_cost_usd": 0.0,
-            }
-            for key in (
-                "faithfulness",
-                "response_relevancy",
-                "faithfulness_det",
-                "response_relevancy_det",
-                "atomic_faithfulness",
-                "hallucination_rate",
-                "quote_verifiability",
-            ):
-                value = _mean(row.get(key) for row in score_rows)
-                if value is not None:
-                    summary[key] = value
-
-            run.status = "completed"
-            run.metrics = metric_keys
-            run.params = {
-                "requested_metrics": metric_names,
-                "max_turns": max_turns,
-                "skip_empty_contexts": skip_empty_contexts,
-                "mode": "deterministic_conversation",
-            }
-            run.summary = summary
-            run.finished_at = datetime.now(UTC).replace(tzinfo=None)
-            db.commit()
+            _persist_conversation_deterministic_result(
+                db=db,
+                run=run,
+                run_id=run_id,
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                eval_items=eval_items,
+                metric_names=metric_names,
+                max_turns=max_turns,
+                skip_empty_contexts=skip_empty_contexts,
+                reason="eval_llm_provider_compatibility",
+            )
             return
 
-        # Import ragas lazily
-        try:
-            from ragas import EvaluationDataset, SingleTurnSample, evaluate
-            from ragas.embeddings import LangchainEmbeddingsWrapper
-            from ragas.llms import LangchainLLMWrapper
-        except ImportError as exc:  # pragma: no cover
-            run.status = "failed"
-            run.error_message = f"RAGAS is not installed: {exc} (hint: pip install ragas)"
-            run.finished_at = datetime.now(UTC).replace(tzinfo=None)
-            db.commit()
-            return
-        except Exception as exc:  # pragma: no cover
-            run.status = "failed"
-            run.error_message = f"RAGAS import failed: {type(exc).__name__}: {exc}"
-            run.finished_at = datetime.now(UTC).replace(tzinfo=None)
-            db.commit()
-            raise
-
+        (
+            evaluation_dataset_cls,
+            single_turn_sample_cls,
+            evaluate_fn,
+            embeddings_wrapper_cls,
+            llm_wrapper_cls,
+        ) = _load_ragas_evaluation_runtime()
         llm, embeddings = _build_llm_and_embeddings()
-        ragas_llm = LangchainLLMWrapper(llm)
-        ragas_embeddings = LangchainEmbeddingsWrapper(embeddings)
+        ragas_llm = llm_wrapper_cls(llm)
+        ragas_embeddings = embeddings_wrapper_cls(embeddings)
 
         metrics = _resolve_metrics(metric_names)
         metric_keys = [getattr(m, "name", None) or str(m) for m in metrics]
 
         samples = [
-            SingleTurnSample(
+            single_turn_sample_cls(
                 user_input=item["user_input"],
                 response=item["response"],
                 retrieved_contexts=item["retrieved_contexts"],
             )
             for item in eval_items
         ]
-        dataset = EvaluationDataset(samples=samples)
+        dataset = evaluation_dataset_cls(samples=samples)
         run_config = _build_ragas_run_config()
 
         eval_prompt_tokens: int | None = None
@@ -1542,9 +1609,28 @@ def run_conversation_ragas_evaluation(
         except Exception:
             get_openai_callback = None
 
-        if get_openai_callback is not None:
-            with get_openai_callback() as cb:
-                result = evaluate(
+        def evaluate_dataset():
+            if get_openai_callback is not None:
+                with get_openai_callback() as cb:
+                    evaluation_result = evaluate_fn(
+                        dataset=dataset,
+                        metrics=metrics,
+                        llm=ragas_llm,
+                        embeddings=ragas_embeddings,
+                        run_config=run_config,
+                        show_progress=False,
+                        raise_exceptions=False,
+                        allow_nest_asyncio=False,
+                    )
+                return (
+                    evaluation_result,
+                    int(getattr(cb, "prompt_tokens", 0) or 0),
+                    int(getattr(cb, "completion_tokens", 0) or 0),
+                    float(getattr(cb, "total_cost", 0.0) or 0.0),
+                )
+
+            return (
+                evaluate_fn(
                     dataset=dataset,
                     metrics=metrics,
                     llm=ragas_llm,
@@ -1553,21 +1639,42 @@ def run_conversation_ragas_evaluation(
                     show_progress=False,
                     raise_exceptions=False,
                     allow_nest_asyncio=False,
-                )
-            eval_prompt_tokens = int(getattr(cb, "prompt_tokens", 0) or 0)
-            eval_completion_tokens = int(getattr(cb, "completion_tokens", 0) or 0)
-            eval_total_cost = float(getattr(cb, "total_cost", 0.0) or 0.0)
-        else:
-            result = evaluate(
-                dataset=dataset,
-                metrics=metrics,
-                llm=ragas_llm,
-                embeddings=ragas_embeddings,
-                run_config=run_config,
-                show_progress=False,
-                raise_exceptions=False,
-                allow_nest_asyncio=False,
+                ),
+                None,
+                None,
+                None,
             )
+
+        wall_timeout_sec = max(
+            5.0,
+            float(getattr(settings, "RAGAS_CONVERSATION_WALL_TIMEOUT_SEC", 90) or 90),
+        )
+        try:
+            result, eval_prompt_tokens, eval_completion_tokens, eval_total_cost = _run_with_wall_timeout(
+                evaluate_dataset,
+                timeout_sec=wall_timeout_sec,
+            )
+        except TimeoutError as exc:
+            logger.warning(
+                "Conversation RAGAS evaluation timed out after %.1fs; using deterministic fallback run_id=%s",
+                wall_timeout_sec,
+                run_id,
+            )
+            _persist_conversation_deterministic_result(
+                db=db,
+                run=run,
+                run_id=run_id,
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                eval_items=eval_items,
+                metric_names=metric_names,
+                max_turns=max_turns,
+                skip_empty_contexts=skip_empty_contexts,
+                reason="ragas_wall_timeout",
+                ragas_attempted=True,
+                fallback_error=str(exc),
+            )
+            return
 
         # Persist items
         db.query(RagasEvaluationItem).filter(
@@ -2282,35 +2389,25 @@ def run_regression_ragas_evaluation(
             db.commit()
             return
 
-        try:
-            from ragas import EvaluationDataset, SingleTurnSample, evaluate
-            from ragas.embeddings import LangchainEmbeddingsWrapper
-            from ragas.llms import LangchainLLMWrapper
-        except ImportError as exc:  # pragma: no cover
-            run.status = "failed"
-            run.error_message = f"RAGAS is not installed: {exc} (hint: pip install ragas)"
-            run.finished_at = datetime.now(UTC).replace(tzinfo=None)
-            db.commit()
-            return
-        except Exception as exc:  # pragma: no cover
-            run.status = "failed"
-            run.error_message = f"RAGAS import failed: {type(exc).__name__}: {exc}"
-            run.finished_at = datetime.now(UTC).replace(tzinfo=None)
-            db.commit()
-            raise
-
+        (
+            evaluation_dataset_cls,
+            single_turn_sample_cls,
+            evaluate_fn,
+            embeddings_wrapper_cls,
+            llm_wrapper_cls,
+        ) = _load_ragas_evaluation_runtime()
         llm = shared_llm
         embeddings = shared_embeddings
         if llm is None or embeddings is None:
             llm, embeddings = _build_llm_and_embeddings()
-        ragas_llm = LangchainLLMWrapper(llm)
-        ragas_embeddings = LangchainEmbeddingsWrapper(embeddings)
+        ragas_llm = llm_wrapper_cls(llm)
+        ragas_embeddings = embeddings_wrapper_cls(embeddings)
 
         metrics = _resolve_metrics(metric_split.ragas)
         metric_keys = [getattr(m, "name", None) or str(m) for m in metrics]
 
-        samples = [SingleTurnSample(**(item.get("sample_kwargs") or {})) for item in eval_items]
-        dataset = EvaluationDataset(samples=samples)
+        samples = [single_turn_sample_cls(**(item.get("sample_kwargs") or {})) for item in eval_items]
+        dataset = evaluation_dataset_cls(samples=samples)
         run_config = _build_ragas_run_config()
         eval_prompt_tokens: int | None = None
         eval_completion_tokens: int | None = None
@@ -2327,7 +2424,7 @@ def run_regression_ragas_evaluation(
 
         if get_openai_callback is not None:
             with get_openai_callback() as cb:
-                result = evaluate(
+                result = evaluate_fn(
                     dataset=dataset,
                     metrics=metrics,
                     llm=ragas_llm,
@@ -2341,7 +2438,7 @@ def run_regression_ragas_evaluation(
             eval_completion_tokens = int(getattr(cb, "completion_tokens", 0) or 0)
             eval_total_cost = float(getattr(cb, "total_cost", 0.0) or 0.0)
         else:
-            result = evaluate(
+            result = evaluate_fn(
                 dataset=dataset,
                 metrics=metrics,
                 llm=ragas_llm,

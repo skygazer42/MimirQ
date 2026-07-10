@@ -8,7 +8,6 @@ Design goals:
 - Fail-closed for activation/validation; fail-open for reads/listing.
 """
 
-from __future__ import annotations
 
 import hashlib
 import json

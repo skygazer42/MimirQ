@@ -7,7 +7,6 @@ without changing the URL path/host.
 This is opt-in because rewriting URLs can be surprising in some domains.
 """
 
-from __future__ import annotations
 
 import re
 from dataclasses import dataclass

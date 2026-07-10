@@ -266,10 +266,8 @@ def _connector_run_has_abortable_task(*, task_queue_enabled: bool, task_id: obje
 
 
 def _load_arq_job_class():
-    try:
-        from arq.jobs import Job
-    except ImportError:
-        return None
+    from arq.jobs import Job
+
     return Job
 
 
@@ -289,9 +287,6 @@ async def _abort_connector_run_task_if_possible(run: ConnectorRun) -> None:
         return
 
     job_cls = connectors_module._load_arq_job_class()
-    if job_cls is None:
-        return
-
     queue = await connectors_module._get_queue_or_none()
     if queue is None:
         return

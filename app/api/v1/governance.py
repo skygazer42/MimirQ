@@ -4,7 +4,6 @@ Governance helper endpoints.
 This is primarily used by the UI for rule-pack discovery and profile editors.
 """
 
-from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal

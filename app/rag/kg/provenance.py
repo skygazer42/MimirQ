@@ -5,7 +5,6 @@ This module is intentionally dependency-light so it can be used by both
 indexing and API layers without pulling in DB/LLM components.
 """
 
-from __future__ import annotations
 
 from typing import Any
 from uuid import UUID

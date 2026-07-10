@@ -5,22 +5,16 @@ MarkItDown PDF/Document parser adapter.
 from pathlib import Path
 
 from langchain_core.documents import Document
+from markitdown import MarkItDown
 
 from app.core.config import settings
+from app.core.optional_deps import require_dependency
 
 
 class MarkItDownParser:
     """Wraps Microsoft's MarkItDown converter so it fits our parser interface."""
 
     def __init__(self):
-        try:
-            from markitdown import MarkItDown  # type: ignore
-        except ImportError as exc:  # pragma: no cover - import guard
-            raise RuntimeError(
-                "MarkItDown is not installed. Please run `pip install markitdown` "
-                "or enable it via requirements.txt before setting MARKITDOWN_ENABLED=True."
-            ) from exc
-
         converter_kwargs = {
             "enable_plugins": settings.MARKITDOWN_USE_PLUGINS,
         }
@@ -28,14 +22,15 @@ class MarkItDownParser:
         if settings.MARKITDOWN_DOCINTEL_ENDPOINT:
             converter_kwargs["docintel_endpoint"] = settings.MARKITDOWN_DOCINTEL_ENDPOINT
             if settings.MARKITDOWN_DOCINTEL_KEY:
-                try:
-                    from azure.core.credentials import AzureKeyCredential  # type: ignore
-                except ImportError as exc:  # pragma: no cover - optional dependency
-                    raise RuntimeError(
-                        "MARKITDOWN_DOCINTEL_KEY is set but azure-core is not installed. "
-                        "Install markitdown[all] or azure-core to enable Document Intelligence."
-                    ) from exc
-                converter_kwargs["docintel_credential"] = AzureKeyCredential(
+                credentials_mod = require_dependency(
+                    "azure.core.credentials",
+                    feature="markitdown_docintel",
+                    pip_name="azure-core",
+                )
+                credential_cls = getattr(credentials_mod, "AzureKeyCredential", None)
+                if credential_cls is None:
+                    raise RuntimeError("azure.core.credentials.AzureKeyCredential missing (unsupported azure-core version)")
+                converter_kwargs["docintel_credential"] = credential_cls(
                     settings.MARKITDOWN_DOCINTEL_KEY
                 )
 

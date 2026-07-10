@@ -10,7 +10,6 @@ Design constraints:
 - Safe: never return raw question/query/chunk text; only numeric + categorical aggregates.
 """
 
-from __future__ import annotations
 
 import gzip
 import hashlib

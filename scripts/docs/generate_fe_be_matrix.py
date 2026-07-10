@@ -6,7 +6,6 @@ Run from repo root: python scripts/docs/generate_fe_be_matrix.py
 Reads: web/openapi.json, web/lib/api/*.ts, web/app/**/page.tsx
 Writes: docs-site/docs/integration/generated/fe-be-matrix.mdx
 """
-from __future__ import annotations
 
 import json
 import re

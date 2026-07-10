@@ -5,7 +5,6 @@ This module is intentionally located under app.core to avoid import cycles and t
 ensure PII_REDACTION_ENABLED cannot be silently bypassed by internal try-imports.
 """
 
-from __future__ import annotations
 
 import re
 from dataclasses import dataclass

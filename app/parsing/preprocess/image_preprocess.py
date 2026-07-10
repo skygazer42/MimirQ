@@ -12,7 +12,6 @@ Scope (per docs/plans/2026-03-19-model-based-deskew-watermark-removal.md):
 - Best-effort PDF watermark annotation stripping (cheap path) before model-based removal.
 """
 
-from __future__ import annotations
 
 import re
 import time
@@ -93,7 +92,7 @@ def _run_handwriting_cleanup_stage(
     artifact_root: Path,
     output_stem: str,
     warnings: list[str],
-) -> tuple[Path, bool, ImagePreprocessStepLog, dict[str, Any] | None]:
+) -> "tuple[Path, bool, ImagePreprocessStepLog, dict[str, Any] | None]":
     t0 = time.perf_counter()
     if not bool(getattr(settings, "HANDWRITING_CLEANUP_ENABLED", False)):
         return (
@@ -141,7 +140,7 @@ def _run_paddle_doc_preprocess_stage(
     artifact_root: Path,
     output_stem: str,
     warnings: list[str],
-) -> tuple[Path, bool, ImagePreprocessStepLog, dict[str, Any] | None]:
+) -> "tuple[Path, bool, ImagePreprocessStepLog, dict[str, Any] | None]":
     t0 = time.perf_counter()
     if not bool(getattr(settings, "PADDLE_OCR_PREPROCESS_ENABLED", False)):
         return (

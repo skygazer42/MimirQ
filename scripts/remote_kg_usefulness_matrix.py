@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
+# ruff: noqa: E402, I001
 """Run a remote KG usefulness matrix against a live MimirQ API."""
 
-from __future__ import annotations
 
 import argparse
 import json
@@ -19,25 +19,16 @@ def ensure_repo_root_on_sys_path(script_path: str | Path) -> str:
     return repo_root
 
 
-try:
-    from scripts.remote_real_pdf_chain import (
-        DEFAULT_TENANT_ID,
-        LiveApi,
-        ok_status,
-        perform_cleanup,
-        record_step,
-        snippet,
-    )
-except ModuleNotFoundError:
-    ensure_repo_root_on_sys_path(__file__)
-    from scripts.remote_real_pdf_chain import (
-        DEFAULT_TENANT_ID,
-        LiveApi,
-        ok_status,
-        perform_cleanup,
-        record_step,
-        snippet,
-    )
+ensure_repo_root_on_sys_path(__file__)
+
+from scripts.remote_real_pdf_chain import (
+    DEFAULT_TENANT_ID,
+    LiveApi,
+    ok_status,
+    perform_cleanup,
+    record_step,
+    snippet,
+)
 
 
 FIXTURES: list[dict[str, str]] = [

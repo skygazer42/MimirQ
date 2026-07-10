@@ -5,7 +5,6 @@ This keeps explicit chunk boundaries while emitting the metadata contract for a
 "embed whole document then pool by boundary" retrieval lane.
 """
 
-from __future__ import annotations
 
 from langchain_core.documents import Document
 

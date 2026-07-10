@@ -6,7 +6,6 @@ These utilities exist primarily to avoid security hotspots caused by the standar
 cryptographic unpredictability is desired or required by static analysis rules.
 """
 
-from __future__ import annotations
 
 import secrets
 from collections.abc import Sequence

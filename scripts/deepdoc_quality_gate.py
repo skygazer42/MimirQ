@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Run a repeatable DeepDoc QA/retrieval/KG quality gate against a live dataset."""
 
-from __future__ import annotations
 
 import argparse
 import asyncio

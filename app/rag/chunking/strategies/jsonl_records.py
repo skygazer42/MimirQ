@@ -5,7 +5,6 @@ Targets newline-delimited JSON where each non-empty line is a JSON object/array.
 The chunker groups whole records together while preserving character offsets.
 """
 
-from __future__ import annotations
 
 import json
 import re

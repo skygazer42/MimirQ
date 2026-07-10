@@ -8,7 +8,6 @@ The chunker groups whole rows into chunks and uses row-level overlap when
 possible.
 """
 
-from __future__ import annotations
 
 import re
 from dataclasses import dataclass

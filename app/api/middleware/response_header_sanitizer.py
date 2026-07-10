@@ -8,7 +8,6 @@ after the app has produced the response. This middleware is still useful for
 headers produced by the application stack.
 """
 
-from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 

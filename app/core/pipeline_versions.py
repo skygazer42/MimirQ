@@ -6,7 +6,6 @@ pipeline version (`pipeline_hash`) and the derived `doc_pipeline_key` that ties
 chunks/vectors/BM25 entries to a specific processing configuration.
 """
 
-from __future__ import annotations
 
 from collections.abc import Mapping
 from typing import Any

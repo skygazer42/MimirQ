@@ -8,7 +8,6 @@ Config via env/.env:
 - TEXTIN_SECRET_CODE=<secret-code>
 """
 
-from __future__ import annotations
 
 import json
 import re

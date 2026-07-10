@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Live API smoke for plugin-backed corpus ingest plus Golden regression."""
 
-from __future__ import annotations
 
 import argparse
 import json
@@ -14,10 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-try:
-    import requests
-except ModuleNotFoundError:  # pragma: no cover - depends on integration environment
-    requests = None  # type: ignore[assignment]
+import requests
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
@@ -91,9 +87,6 @@ class CorpusApiClient(LiveApiClient):
         raise RuntimeError(f"{method} {path} failed after rate-limit retries")
 
     def upload_file(self, path: str, *, data: dict[str, str], file: CorpusFile) -> dict[str, Any]:
-        if requests is None:
-            raise RuntimeError("requests is required for multipart uploads")
-
         headers = {
             key: value
             for key, value in self.headers.items()

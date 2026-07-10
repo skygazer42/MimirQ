@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 import re
 import threading
@@ -211,14 +210,14 @@ def get_agentic_tool_registry() -> Any:
     return register_default_tools(registry)
 
 
-def get_multi_agent_runner(*, engine: RAGEngine | None = None) -> Any:
+def get_multi_agent_runner(*, engine: "RAGEngine | None" = None) -> Any:
     from app.rag.agents.multi_agent import get_multi_agent_runner as _get_multi_agent_runner
 
     return _get_multi_agent_runner(engine=engine)
 
 
 class AgenticRAGRunner:
-    def __init__(self, engine: RAGEngine) -> None:
+    def __init__(self, engine: "RAGEngine") -> None:
         self._engine = engine
 
     async def _plan(
@@ -745,7 +744,7 @@ _AGENTIC_RUNNER: AgenticRAGRunner | None = None
 _AGENTIC_LOCK = threading.Lock()
 
 
-def get_agentic_runner(*, engine: RAGEngine | None = None) -> AgenticRAGRunner:
+def get_agentic_runner(*, engine: "RAGEngine | None" = None) -> AgenticRAGRunner:
     global _AGENTIC_RUNNER
     if engine is not None:
         return AgenticRAGRunner(engine=engine)

@@ -10,7 +10,6 @@ Notes:
 - Attachments are not extracted in Phase 1 (future work).
 """
 
-from __future__ import annotations
 
 import re
 from email import policy

@@ -8,7 +8,6 @@ Notes:
 - This is additive and safe to apply online.
 """
 
-from __future__ import annotations
 
 from alembic import op
 

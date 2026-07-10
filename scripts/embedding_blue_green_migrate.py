@@ -21,7 +21,6 @@ Typical flow:
    - Disable shadow dual-write after a safety window
 """
 
-from __future__ import annotations
 
 import argparse
 import json

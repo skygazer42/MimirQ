@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 
 def compute_context_cliff_metrics(*, context_tokens: int, threshold_tokens: int) -> dict[str, int | bool]:

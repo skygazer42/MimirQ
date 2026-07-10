@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 from app.rag.core.logging import get_logger
 from app.rag.reranker.cross_encoder import CrossEncoderReranker

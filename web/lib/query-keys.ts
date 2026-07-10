@@ -54,6 +54,8 @@ export const queryKeys = {
   chat: {
     all: ['chat'] as const,
     conversations: (params?: QueryParams) => ['chat', 'conversations', params] as const,
+    conversationPages: (params?: QueryParams) =>
+      ['chat', 'conversation-pages', params] as const,
     messages: (conversationId: string) => ['chat', 'messages', conversationId] as const,
     summary: (conversationId: string) => ['chat', 'summary', conversationId] as const,
     ragTraces: (conversationId: string, params?: QueryParams) =>

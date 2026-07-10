@@ -9,6 +9,7 @@ import {
   Archive,
   BarChart3,
   CheckCircle2,
+  ChevronDown,
   Clock3,
   Database,
   Download,
@@ -36,7 +37,20 @@ import { AppFrame } from '@/components/app-frame'
 import { AnalysisPageShell } from '@/components/ui/analysis-page-shell'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { EmptyState } from '@/components/ui/empty-state'
+import {
+  KNOWLEDGE_OPS_BACKGROUND_CLASS,
+  KnowledgeOpsHero,
+} from '@/components/ui/knowledge-ops-hero'
 import { Label } from '@/components/ui/label'
 import { SafeResponsiveChart } from '@/components/ui/safe-responsive-chart'
 import {
@@ -86,29 +100,31 @@ const CHART_TOOLTIP_LABEL_STYLE = { color: '#334155', fontWeight: 600 }
 const CHART_TOOLTIP_CURSOR = { fill: 'rgba(148,163,184,0.08)' }
 const DEFAULT_PIPELINE_VERSION_VALUE = '__mimirq_default_pipeline_version__'
 const REPORT_LABEL_CLASS =
-  'text-[0.6875rem] font-medium tracking-[0.02em] text-slate-500/90'
+  'text-xs font-medium tracking-[0.02em] text-slate-500/90'
 const REPORT_VALUE_CLASS =
   'truncate text-[0.875rem] font-semibold leading-5 tracking-[-0.01em] text-slate-900'
-const REPORT_SUBTEXT_CLASS = 'text-[0.71875rem] leading-4 text-slate-500'
+const REPORT_SUBTEXT_CLASS = 'text-xs leading-4 text-slate-500'
 const REPORT_METRIC_VALUE_CLASS =
-  'text-[1.125rem] font-semibold leading-none tracking-[-0.035em] tabular-nums text-slate-950'
+  'text-[1.375rem] font-semibold leading-none tracking-[-0.04em] tabular-nums text-slate-950'
 const REPORT_PANEL_TITLE_CLASS =
-  'text-[0.875rem] font-semibold leading-5 tracking-[-0.015em] text-slate-950'
+  'text-[0.9375rem] font-semibold leading-5 tracking-[-0.015em] text-slate-950'
 const REPORT_TABLE_HEADER_CLASS =
   'text-[0.6875rem] font-medium uppercase tracking-[0.1em] text-slate-500'
-const REPORT_TABLE_ROW_CLASS = 'text-[0.75rem] leading-4 text-slate-700'
+const REPORT_TABLE_ROW_CLASS = 'text-[0.8125rem] leading-5 text-slate-700'
 const REPORT_PANEL_CLASS =
-  'rounded-[0.9rem] border border-slate-200/80 bg-card p-2 shadow-[0_6px_18px_rgba(15,23,42,0.03)]'
+  'rounded-[1.15rem] border border-slate-200/75 bg-white/92 p-3.5 shadow-[0_16px_36px_-30px_rgba(15,23,42,0.28)]'
 const REPORT_SECONDARY_ACTION_CLASS =
-  'h-7 gap-1.5 rounded-full border-slate-200/80 bg-white/85 px-2.5 text-[0.71875rem] font-medium text-slate-600 shadow-none hover:bg-slate-50 hover:text-slate-800'
+  'h-9 gap-1.5 rounded-xl border-slate-200/80 bg-white/90 px-3 text-xs font-medium text-slate-600 shadow-none hover:border-sky-200 hover:bg-sky-50/70 hover:text-sky-800'
 const REPORT_PRIMARY_ACTION_CLASS =
-  'h-8 gap-1.5 rounded-full bg-blue-600 px-3 text-[0.75rem] font-semibold text-info-foreground shadow-[0_10px_22px_rgba(37,99,235,0.18)] hover:bg-blue-700'
+  'h-9 gap-1.5 rounded-xl bg-sky-600 px-3.5 text-xs font-semibold text-white shadow-[0_12px_24px_-14px_rgba(2,132,199,0.8)] hover:bg-sky-700'
 const REPORT_FILTER_LABEL_CLASS =
-  'text-[0.6875rem] font-medium tracking-[0.02em] text-slate-500'
+  'text-xs font-medium tracking-[0.02em] text-slate-600'
 const REPORT_SELECT_TRIGGER_CLASS =
-  'h-7 w-full border-slate-200/80 bg-white/90 text-[0.75rem] font-medium text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)]'
+  'h-9 w-full rounded-xl border-slate-200/80 bg-white/90 text-xs font-medium text-slate-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] hover:border-sky-200'
 const REPORT_SELECT_ITEM_CLASS =
-  'py-1.5 text-[0.75rem] font-medium text-slate-700'
+  'py-2 text-xs font-medium text-slate-700'
+const REPORT_METRIC_LEDGER_CLASS =
+  'grid overflow-hidden rounded-[1.2rem] border border-slate-200/75 bg-slate-200/75 shadow-[0_18px_42px_-34px_rgba(15,23,42,0.35)] md:grid-cols-3 2xl:grid-cols-6'
 type DataPillTone = 'blue' | 'green' | 'amber' | 'rose' | 'violet' | 'slate'
 type ReportMetricDatum = { name: string; value: number }
 type CategoryMetricDatum = ReportMetricDatum & { depth: number }
@@ -694,14 +710,14 @@ function DataPill({
   }[tone]
 
   return (
-    <div className="flex min-w-0 items-center gap-2 rounded-xl border border-slate-200/70 bg-white/80 px-2.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
+    <div className="flex min-w-0 items-center gap-2.5 bg-white/88 px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
       <div
         className={cn(
-          'flex size-7 shrink-0 items-center justify-center rounded-lg ring-1',
+          'flex size-8 shrink-0 items-center justify-center rounded-xl ring-1',
           toneClass
         )}
       >
-        <Icon className="size-3.5" />
+        <Icon className="size-4" />
       </div>
       <div className="min-w-0">
         <div className={REPORT_LABEL_CLASS}>{label}</div>
@@ -739,15 +755,15 @@ function AuditMetricCard({
   }[tone]
 
   return (
-    <div className={REPORT_PANEL_CLASS}>
-      <div className="flex items-center gap-2.5">
+    <article className="min-w-0 bg-white/95 px-4 py-3.5">
+      <div className="flex items-center gap-3">
         <div
           className={cn(
-            'flex size-8 shrink-0 items-center justify-center rounded-xl ring-1',
+            'flex size-9 shrink-0 items-center justify-center rounded-[0.85rem] ring-1',
             toneClass
           )}
         >
-          <Icon className="size-4" />
+          <Icon className="size-[1.05rem]" />
         </div>
         <div className="min-w-0 flex-1">
           <div className={REPORT_LABEL_CLASS}>{label}</div>
@@ -759,7 +775,7 @@ function AuditMetricCard({
           </div>
         </div>
       </div>
-    </div>
+    </article>
   )
 }
 
@@ -1097,7 +1113,7 @@ function ReportMetricGrid({
   latestAuditTime: string
 }>) {
   return (
-    <div className="grid gap-1.5 md:grid-cols-3 xl:grid-cols-6">
+    <div className={REPORT_METRIC_LEDGER_CLASS}>
       <AuditMetricCard
         icon={FileText}
         label="文档总数"
@@ -1656,6 +1672,34 @@ function IssueRowsPanel({ issueRows }: Readonly<{ issueRows: IssueRow[] }>) {
   )
 }
 
+function ReportSectionHeading({
+  index,
+  title,
+  description,
+}: Readonly<{
+  index: string
+  title: string
+  description: string
+}>) {
+  return (
+    <div className="flex items-end gap-3 border-b border-slate-200/70 pb-2.5">
+      <span className="pb-0.5 font-mono text-[11px] font-semibold tracking-[0.16em] text-sky-600">
+        {index}
+      </span>
+      <div className="min-w-0 flex-1">
+        <h2 className="text-[0.9375rem] font-semibold tracking-[-0.015em] text-slate-950">
+          {title}
+        </h2>
+        <p className="mt-0.5 text-xs leading-4 text-slate-500">{description}</p>
+      </div>
+      <span
+        className="mb-1 hidden h-px w-20 bg-gradient-to-r from-sky-300/80 to-transparent sm:block"
+        aria-hidden="true"
+      />
+    </div>
+  )
+}
+
 function ReportsDashboard({
   totalDocs,
   totalBytes,
@@ -1720,7 +1764,12 @@ function ReportsDashboard({
   issueRows: IssueRow[]
 }>) {
   return (
-    <section className="space-y-2">
+    <section className="space-y-4">
+      <ReportSectionHeading
+        index="01"
+        title="报告摘要"
+        description="先核对规模、处理结果与召回门禁，再进入质量细节。"
+      />
       <ReportMetricGrid
         totalDocs={totalDocs}
         totalBytes={totalBytes}
@@ -1735,7 +1784,12 @@ function ReportsDashboard({
 
       <RetrievalAuditPanel retrievalAudit={retrievalAudit} />
 
-      <div className="grid gap-2 xl:grid-cols-[1.05fr_1.2fr_1.05fr_0.95fr]">
+      <ReportSectionHeading
+        index="02"
+        title="数据质量"
+        description="从风险、字段覆盖、内容规模和治理痕迹四个维度检查当前快照。"
+      />
+      <div className="grid gap-3 xl:grid-cols-2 2xl:grid-cols-[1.05fr_1.2fr_1.05fr_0.95fr]">
         <RiskMetricPanel
           missingFindingCount={missingFindingCount}
           duplicateFindingCount={duplicateFindingCount}
@@ -1766,14 +1820,21 @@ function ReportsDashboard({
         />
       </div>
 
-      <div className="grid gap-2 xl:grid-cols-[1.2fr_0.9fr_1.4fr]">
+      <ReportSectionHeading
+        index="03"
+        title="结构与风险"
+        description="查看分类分布、处理版本与可追溯的风险命中记录。"
+      />
+      <div className="grid gap-3 xl:grid-cols-2 2xl:grid-cols-[1.2fr_0.9fr_1.4fr]">
         <CategoryChartPanel categoryBarData={categoryBarData} />
         <PipelineVersionsPanel
           pipelineVersions={pipelineVersions}
           pipelineVersionsWithFill={pipelineVersionsWithFill}
           versionTotal={versionTotal}
         />
-        <IssueRowsPanel issueRows={issueRows} />
+        <div className="xl:col-span-2 2xl:col-span-1">
+          <IssueRowsPanel issueRows={issueRows} />
+        </div>
       </div>
     </section>
   )
@@ -1811,7 +1872,7 @@ function ReportsHeaderPills({
   dataProvenance: DatasetReportDataProvenance | null
 }>) {
   return (
-    <div className="grid min-w-0 gap-1.5 sm:grid-cols-2 xl:grid-cols-[1.35fr_0.86fr_0.9fr_0.88fr_1.15fr]">
+    <div className="grid min-w-0 gap-px overflow-hidden rounded-2xl border border-sky-200/70 bg-sky-200/60 shadow-[0_16px_38px_-30px_rgba(14,116,144,0.5)] sm:grid-cols-2 xl:grid-cols-[1.35fr_0.86fr_0.9fr_0.88fr_1.15fr]">
       <DataPill
         icon={Database}
         label="数据集"
@@ -1873,31 +1934,14 @@ function ReportsPageHero({
   dataProvenance: DatasetReportDataProvenance | null
 }>) {
   return (
-    <div className="relative overflow-hidden rounded-[1.1rem] border border-slate-200/80 bg-[linear-gradient(120deg,#f8fbff_0%,#ffffff_58%,#eaf7ff_100%)] px-3 py-2 shadow-[0_10px_28px_rgba(15,23,42,0.045)]">
-      <div
-        className="pointer-events-none absolute inset-y-3 left-0 w-1 rounded-r-full bg-[linear-gradient(180deg,#0ea5e9,#2563eb)]"
-        aria-hidden="true"
-      />
-      <div className="grid min-w-0 gap-2 xl:grid-cols-[minmax(230px,0.38fr)_minmax(0,1fr)] xl:items-center">
-        <div className="flex min-w-0 items-center gap-2.5 pl-2">
-          <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-sky-100 bg-sky-50 text-sky-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.95)]">
-            <FileText className="size-4" />
-          </div>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="truncate text-[1.05rem] font-semibold leading-6 tracking-[-0.018em] text-slate-950 md:text-[1.12rem]">
-                数据报告与审计概览
-              </h1>
-              <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-medium tracking-[0.08em] text-sky-700">
-                报告
-              </span>
-            </div>
-            <p className="mt-0.5 truncate text-[0.75rem] leading-4 text-slate-500">
-              数据集画像、召回审计与导出证据集中在这里。
-            </p>
-          </div>
-        </div>
-
+    <KnowledgeOpsHero
+      iconImage="report-export"
+      eyebrow="Report Ops"
+      badge="审计证据与导出中心"
+      title="数据报告"
+      description="汇总数据集画像、召回门禁与治理风险，形成可导出的审计快照。"
+      className="lg:flex-col lg:items-stretch 2xl:flex-row 2xl:items-start"
+      summary={
         <ReportsHeaderPills
           selectedDatasetName={selectedDatasetName}
           datasetId={datasetId}
@@ -1909,8 +1953,8 @@ function ReportsPageHero({
           dataSourceSub={dataSourceSub}
           dataProvenance={dataProvenance}
         />
-      </div>
-    </div>
+      }
+    />
   )
 }
 
@@ -1972,8 +2016,8 @@ function ReportsControlPanel({
   onRefresh: () => void
 }>) {
   return (
-    <section className="space-y-2 rounded-[0.9rem] border border-slate-200/80 bg-card p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.95)]">
-      <div className="grid gap-2 xl:grid-cols-[1.25fr_1.1fr_0.85fr_auto] xl:items-end">
+    <section className="space-y-3 rounded-[1.2rem] border border-slate-200/75 bg-white/88 p-3.5 shadow-[0_18px_44px_-36px_rgba(15,23,42,0.35)] backdrop-blur">
+      <div className="grid gap-3 xl:grid-cols-[1.25fr_1.1fr_0.85fr_auto] xl:items-end">
         <div className="space-y-1.5">
           <Label
             htmlFor="dataset-select"
@@ -2087,7 +2131,7 @@ function ReportsControlPanel({
           </Select>
         </div>
 
-        <div className="flex items-center gap-2 pb-0.5">
+        <div className="flex h-9 items-center gap-2 rounded-xl border border-slate-200/70 bg-slate-50/70 px-3">
           <Switch
             id="only-issues-switch"
             checked={showOnlyIssues}
@@ -2095,15 +2139,15 @@ function ReportsControlPanel({
           />
           <Label
             htmlFor="only-issues-switch"
-            className="whitespace-nowrap text-[0.75rem] font-medium text-slate-600"
+            className="whitespace-nowrap text-xs font-medium text-slate-600"
           >
             只看异常
           </Label>
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200/80 pt-2">
-        <div className="flex items-center gap-2 rounded-full bg-slate-50/80 px-2.5 py-1">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200/70 pt-3">
+        <div className="flex h-9 items-center gap-2 rounded-xl bg-slate-50/90 px-3 ring-1 ring-inset ring-slate-200/70">
           <Switch
             id="redact-switch"
             checked={redact}
@@ -2111,76 +2155,108 @@ function ReportsControlPanel({
           />
           <Label
             htmlFor="redact-switch"
-            className="text-[0.75rem] font-medium text-slate-600"
+            className="text-xs font-medium text-slate-600"
           >
             导出脱敏
           </Label>
         </div>
 
-        <div className="flex flex-wrap items-center gap-1.5 rounded-full border border-slate-200/70 bg-slate-50/70 p-1">
-          <Button
-            variant="outline"
-            className={REPORT_SECONDARY_ACTION_CLASS}
-            onClick={onExportJson}
-            disabled={!datasetId || isExportingJson}
-            aria-label="导出 JSON"
-          >
-            <LoadingButtonIcon loading={isExportingJson} icon={Download} />
-            <span>JSON</span>
-          </Button>
-          <Button
-            variant="outline"
-            className={REPORT_SECONDARY_ACTION_CLASS}
-            onClick={onExportCompleteJson}
-            disabled={!datasetId || !report}
-            aria-label="导出完整 JSON"
-          >
-            <Archive className="size-3.5" />
-            <span>完整 JSON</span>
-          </Button>
-          <Button
-            variant="outline"
-            className={REPORT_SECONDARY_ACTION_CLASS}
-            onClick={onExportChartsJson}
-            disabled={!datasetId || !report}
-            aria-label="导出 RAG 统计"
-          >
-            <BarChart3 className="size-3.5" />
-            <span>RAG 统计</span>
-          </Button>
-          <Button
-            variant="outline"
-            className={REPORT_SECONDARY_ACTION_CLASS}
-            onClick={onExportRagAuditHtml}
-            disabled={!datasetId || isExportingRagAuditHtml}
-            aria-label="导出 RAG 审计报告"
-          >
-            <LoadingButtonIcon
-              loading={isExportingRagAuditHtml}
-              icon={Download}
-            />
-            <span>RAG 审计</span>
-          </Button>
-          <Button
-            variant="outline"
-            className={REPORT_SECONDARY_ACTION_CLASS}
-            onClick={onExportBundleZip}
-            disabled={!datasetId || isExportingBundle}
-            aria-label="导出数据包 ZIP"
-          >
-            <LoadingButtonIcon loading={isExportingBundle} icon={Download} />
-            <span>Bundle ZIP</span>
-          </Button>
-          <Button
-            variant="outline"
-            className={REPORT_SECONDARY_ACTION_CLASS}
-            onClick={onExportHtml}
-            disabled={!datasetId || isExportingHtml}
-            aria-label="导出 HTML"
-          >
-            <LoadingButtonIcon loading={isExportingHtml} icon={Download} />
-            <span>HTML</span>
-          </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                className={REPORT_SECONDARY_ACTION_CLASS}
+                disabled={!datasetId}
+                aria-label="打开报告导出菜单"
+              >
+                <LoadingButtonIcon
+                  loading={
+                    isExportingJson ||
+                    isExportingHtml ||
+                    isExportingRagAuditHtml ||
+                    isExportingBundle
+                  }
+                  icon={Download}
+                />
+                <span>导出报告</span>
+                <ChevronDown className="size-3.5 text-slate-400" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              className="w-64 rounded-2xl border-slate-200/80 bg-white/95 p-1.5 shadow-[0_24px_70px_-28px_rgba(15,23,42,0.38)] backdrop-blur-xl"
+            >
+              <DropdownMenuLabel className="px-2.5 pb-1 pt-2 text-[11px] font-semibold tracking-[0.08em] text-slate-400">
+                基础与完整数据
+              </DropdownMenuLabel>
+              <DropdownMenuGroup>
+                <DropdownMenuItem
+                  onSelect={onExportJson}
+                  disabled={!datasetId || isExportingJson}
+                  className="rounded-xl px-2.5 py-2 text-xs focus:bg-sky-50 focus:text-sky-800"
+                  aria-label="导出 JSON"
+                >
+                  <LoadingButtonIcon loading={isExportingJson} icon={Download} />
+                  <span>标准 JSON 报告</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={onExportCompleteJson}
+                  disabled={!datasetId || !report}
+                  className="rounded-xl px-2.5 py-2 text-xs focus:bg-sky-50 focus:text-sky-800"
+                  aria-label="导出完整 JSON"
+                >
+                  <Archive className="size-3.5" />
+                  <span>完整 JSON 快照</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={onExportChartsJson}
+                  disabled={!datasetId || !report}
+                  className="rounded-xl px-2.5 py-2 text-xs focus:bg-sky-50 focus:text-sky-800"
+                  aria-label="导出 RAG 统计"
+                >
+                  <BarChart3 className="size-3.5" />
+                  <span>RAG 统计数据</span>
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator className="my-1.5" />
+              <DropdownMenuLabel className="px-2.5 pb-1 pt-1 text-[11px] font-semibold tracking-[0.08em] text-slate-400">
+                审计与交付物
+              </DropdownMenuLabel>
+              <DropdownMenuGroup>
+                <DropdownMenuItem
+                  onSelect={onExportRagAuditHtml}
+                  disabled={!datasetId || isExportingRagAuditHtml}
+                  className="rounded-xl px-2.5 py-2 text-xs focus:bg-sky-50 focus:text-sky-800"
+                  aria-label="导出 RAG 审计报告"
+                >
+                  <LoadingButtonIcon
+                    loading={isExportingRagAuditHtml}
+                    icon={ShieldCheck}
+                  />
+                  <span>RAG 审计报告</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={onExportBundleZip}
+                  disabled={!datasetId || isExportingBundle}
+                  className="rounded-xl px-2.5 py-2 text-xs focus:bg-sky-50 focus:text-sky-800"
+                  aria-label="导出数据包 ZIP"
+                >
+                  <LoadingButtonIcon loading={isExportingBundle} icon={Archive} />
+                  <span>数据包 Bundle ZIP</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={onExportHtml}
+                  disabled={!datasetId || isExportingHtml}
+                  className="rounded-xl px-2.5 py-2 text-xs focus:bg-sky-50 focus:text-sky-800"
+                  aria-label="导出 HTML"
+                >
+                  <LoadingButtonIcon loading={isExportingHtml} icon={FileText} />
+                  <span>HTML 阅读版</span>
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button
             className={REPORT_PRIMARY_ACTION_CLASS}
             onClick={onRegenerateReport}
@@ -2902,20 +2978,23 @@ export default function ReportsCenterPage() {
 
   return (
     <AppFrame>
-      <AnalysisPageShell
-        title="数据报告与审计概览"
-        description="一键导出数据报告与审计结果，支持多种格式与指标视图，便于数据治理与合规审查。"
-        icon={FileText}
-        iconColor="text-primary"
-        badge="报告"
-        size="full"
-        showHeader={false}
-        bodyGutter="none"
-        bodyClassName="!pb-0"
-        bodyContainerClassName="max-w-none"
-      >
-        <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_22%)] shadow-[0_1px_0_rgba(15,23,42,0.04)]">
-          <div className="border-b border-slate-200/80 bg-[linear-gradient(180deg,#f8fbff_0%,#ffffff_100%)] p-2.5">
+      <div className={KNOWLEDGE_OPS_BACKGROUND_CLASS}>
+        <AnalysisPageShell
+          title="数据报告与审计概览"
+          description="一键导出数据报告与审计结果，支持多种格式与指标视图，便于数据治理与合规审查。"
+          icon={FileText}
+          iconColor="text-primary"
+          badge="报告"
+          size="full"
+          showHeader={false}
+          bodyGutter="none"
+          bodyClassName="!pb-0 !pt-0"
+          bodyContainerClassName="max-w-none"
+        >
+          <div
+            data-reports-dossier="true"
+            className="space-y-4 px-4 py-4 md:px-6 md:py-5"
+          >
             <ReportsPageHero
               selectedDatasetName={selectedDatasetName}
               datasetId={datasetId}
@@ -2927,8 +3006,6 @@ export default function ReportsCenterPage() {
               dataSourceSub={dataSourceSub}
               dataProvenance={dataProvenance}
             />
-          </div>
-          <div className="space-y-2.5 p-2.5">
             <ReportsControlPanel
               datasetId={datasetId}
               datasets={datasets}
@@ -2995,8 +3072,8 @@ export default function ReportsCenterPage() {
               issueRows={issueRows}
             />
           </div>
-        </div>
-      </AnalysisPageShell>
+        </AnalysisPageShell>
+      </div>
     </AppFrame>
   )
 }

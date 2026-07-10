@@ -7,7 +7,6 @@ These utilities keep "per-dataset defaults" logic out of API endpoints so it can
 - future workers/tasks (ingestion, evaluation, etc.)
 """
 
-from __future__ import annotations
 
 from typing import Any
 from uuid import UUID

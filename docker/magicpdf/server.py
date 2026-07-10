@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 import asyncio
 import json
@@ -11,6 +10,7 @@ import uuid
 from pathlib import Path
 from typing import Annotated
 
+import torch
 import yaml
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 
@@ -71,10 +71,8 @@ def _resolve_cli() -> str:
 
 def _cuda_available() -> bool:
     try:
-        import torch  # type: ignore[import-not-found]
-
         return bool(torch.cuda.is_available())
-    except (AttributeError, ImportError, OSError, RuntimeError):
+    except (AttributeError, OSError, RuntimeError):
         return False
 
 

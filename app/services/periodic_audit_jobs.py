@@ -15,7 +15,6 @@ Design principles (mirrors retention/stale jobs):
 - Fail-open: never crash product flows due to automation
 """
 
-from __future__ import annotations
 
 from collections import Counter
 from datetime import UTC, datetime

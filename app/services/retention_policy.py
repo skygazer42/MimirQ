@@ -11,7 +11,6 @@ Design goals:
 - Reuse existing delete/version cleanup logic where possible
 """
 
-from __future__ import annotations
 
 import contextlib
 from dataclasses import dataclass

@@ -20,7 +20,6 @@ Examples:
   python scripts/apply_fusion_weights_to_dataset.py --dataset-id <uuid> --clear --execute
 """
 
-from __future__ import annotations
 
 import argparse
 import json

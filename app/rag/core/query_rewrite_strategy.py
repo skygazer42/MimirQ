@@ -11,7 +11,6 @@ This module exposes:
 - a stable strategy_hash derived from the strategy definition (prompt template, etc)
 """
 
-from __future__ import annotations
 
 import json
 from functools import lru_cache

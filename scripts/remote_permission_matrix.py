@@ -4,7 +4,6 @@
 Uses only the Python standard library so it can run on production-like hosts.
 """
 
-from __future__ import annotations
 
 import argparse
 import json

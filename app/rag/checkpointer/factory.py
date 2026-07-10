@@ -5,15 +5,11 @@ Provides configuration-based checkpoint saver selection.
 """
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
+from langgraph.checkpoint.memory import InMemorySaver
 
 from app.core.config import settings
 from app.rag.checkpointer.sqlite import SqliteSaver
 from app.rag.core.logging import get_logger
-
-try:  # LangGraph 1.0.x compatibility
-    from langgraph.checkpoint.memory import InMemorySaver  # type: ignore
-except Exception:  # pragma: no cover
-    from langgraph.checkpoint.memory import MemorySaver as InMemorySaver  # type: ignore
 
 logger = get_logger("rag.checkpointer.factory")
 

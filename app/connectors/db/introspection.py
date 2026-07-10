@@ -8,7 +8,6 @@ Important:
   rather than string interpolation.
 """
 
-from __future__ import annotations
 
 
 def mysql_list_tables_sql(*, database: str) -> str:

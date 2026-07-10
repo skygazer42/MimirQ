@@ -6,7 +6,6 @@ importing `app.parsing.factory` does not pull heavy PDF dependencies such as
 PyMuPDF unless a parser is actually constructed.
 """
 
-from __future__ import annotations
 
 from typing import Any
 

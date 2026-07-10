@@ -6,7 +6,6 @@ MimirQ data; it only proves which side of the Dify external-knowledge boundary
 is returning empty results.
 """
 
-from __future__ import annotations
 
 import argparse
 import ipaddress

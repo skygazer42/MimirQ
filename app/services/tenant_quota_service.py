@@ -9,7 +9,6 @@ Design goals:
 - Deterministic: rolling windows are computed server-side with UTC.
 """
 
-from __future__ import annotations
 
 import math
 from datetime import UTC, datetime, timedelta

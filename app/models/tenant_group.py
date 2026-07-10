@@ -11,7 +11,6 @@ their memberships. Group-based permissions are implemented via separate
 permission tables (see follow-up migrations/models).
 """
 
-from __future__ import annotations
 
 import uuid
 from datetime import datetime

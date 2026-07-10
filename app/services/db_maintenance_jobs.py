@@ -10,7 +10,6 @@ Design principles:
 - Script-friendly: return small JSON-safe summaries
 """
 
-from __future__ import annotations
 
 import re
 import time

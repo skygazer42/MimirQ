@@ -7,7 +7,6 @@ Design goals:
 - Allow authenticated crawling via headers (cookie/bearer/basic), without storing plaintext secrets.
 """
 
-from __future__ import annotations
 
 import contextlib
 import hashlib

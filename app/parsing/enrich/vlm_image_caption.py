@@ -10,7 +10,6 @@ Design constraints:
 - Best-effort: failures must not crash ingest/preview.
 """
 
-from __future__ import annotations
 
 import asyncio
 import re

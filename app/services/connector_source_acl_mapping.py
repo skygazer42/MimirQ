@@ -7,7 +7,6 @@ This module is intentionally connector-agnostic. Individual connectors are expec
 - Convert the result into a document-level ACL override (`DocumentAccessUpdateRequest`)
 """
 
-from __future__ import annotations
 
 from uuid import UUID
 

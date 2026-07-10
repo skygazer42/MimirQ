@@ -7,7 +7,6 @@ Design goals:
 - Optional: enabled only when PROMETHEUS_ENABLED=true.
 """
 
-from __future__ import annotations
 
 from prometheus_client import Counter
 

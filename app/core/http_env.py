@@ -6,7 +6,6 @@ importing the whole RAG package (which has heavier imports and may create
 cycles).
 """
 
-from __future__ import annotations
 
 import logging
 import os

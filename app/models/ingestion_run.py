@@ -8,7 +8,6 @@ Goal:
 This is intentionally lightweight and "best-effort" (enterprise observability).
 """
 
-from __future__ import annotations
 
 import uuid
 

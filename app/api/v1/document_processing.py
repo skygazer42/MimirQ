@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 import asyncio
 import contextlib
@@ -137,34 +136,26 @@ async def cancel_document_processing(
             task_ids.append(raw.strip())
 
     if bool(getattr(documents_module.settings, "TASK_QUEUE_ENABLED", False)) and task_ids:
+        from arq.jobs import Job
+
+        from app.tasks.queue import get_queue
+
         try:
-            from arq.jobs import Job
-        except ImportError as exc:
+            queue = await get_queue()
+        except Exception as exc:  # noqa: BLE001
             documents_module.logger.warning(
-                "TASK_QUEUE_ENABLED=true but arq is missing; cannot abort tasks %s for document %s: %s (hint: pip install arq)",
+                "Failed to access task queue while aborting tasks %s for document %s: %s",
                 task_ids,
                 document_id,
                 str(exc)[:200],
             )
         else:
-            from app.tasks.queue import get_queue
-
-            try:
-                queue = await get_queue()
-            except Exception as exc:  # noqa: BLE001
-                documents_module.logger.warning(
-                    "Failed to access task queue while aborting tasks %s for document %s: %s",
-                    task_ids,
-                    document_id,
-                    str(exc)[:200],
-                )
-            else:
-                if queue is not None:
-                    queue_name = getattr(documents_module.settings, "TASK_QUEUE_NAME", "mimirq")
-                    for task in task_ids:
-                        job = Job(task, queue, _queue_name=queue_name)
-                        with contextlib.suppress(TimeoutError, asyncio.TimeoutError):
-                            await job.abort(timeout=0.2)
+            if queue is not None:
+                queue_name = getattr(documents_module.settings, "TASK_QUEUE_NAME", "mimirq")
+                for task in task_ids:
+                    job = Job(task, queue, _queue_name=queue_name)
+                    with contextlib.suppress(TimeoutError, asyncio.TimeoutError):
+                        await job.abort(timeout=0.2)
 
     return _document_status_payload(document)
 

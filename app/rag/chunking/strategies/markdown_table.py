@@ -8,7 +8,6 @@ substring of the original text so highlight offsets remain valid).
 Non-table text is chunked with a fallback RecursiveCharacterTextSplitter.
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any

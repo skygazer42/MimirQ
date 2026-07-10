@@ -9,7 +9,6 @@ Design goals:
 - PII-safe payloads (no raw query/doc content)
 """
 
-from __future__ import annotations
 
 import uuid
 

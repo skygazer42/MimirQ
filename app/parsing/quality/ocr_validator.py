@@ -11,6 +11,7 @@ from typing import Any
 
 import fitz  # PyMuPDF
 from PIL import Image
+from rapidocr_onnxruntime import RapidOCR
 
 from app.rag.core.logging import get_logger
 
@@ -30,15 +31,8 @@ class RapidOCRService:
             return
 
         try:
-            from rapidocr_onnxruntime import RapidOCR  # type: ignore
-
             self._ocr = RapidOCR(det_box_thresh=self.det_box_thresh)
             logger.info("RapidOCR model loaded (det_box_thresh=%s)", self.det_box_thresh)
-        except ImportError as e:
-            raise RuntimeError(
-                "RapidOCR is not installed. Install `rapidocr-onnxruntime` (and its runtime deps) "
-                "or set RAPIDOCR_ENABLED=false."
-            ) from e
         except Exception as e:
             raise RuntimeError(f"Failed to load RapidOCR model: {e}") from e
 

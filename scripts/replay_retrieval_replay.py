@@ -11,7 +11,6 @@ Outputs:
 - Optional JSON report for CI artifacts
 """
 
-from __future__ import annotations
 
 import argparse
 import json

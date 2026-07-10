@@ -13,7 +13,6 @@ Keeping the singletons in a separate module prevents accidental re-initializatio
 when `app.core.database` is removed from `sys.modules`.
 """
 
-from __future__ import annotations
 
 import contextlib
 from typing import Any

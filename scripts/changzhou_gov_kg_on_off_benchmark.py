@@ -8,7 +8,6 @@ This script is intentionally local-first:
 - writes both reports plus a compact comparison summary
 """
 
-from __future__ import annotations
 
 import argparse
 import json
@@ -22,7 +21,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from scripts import dify_3way_benchmark as bench
+from scripts import dify_3way_benchmark as bench  # noqa: E402
 
 DEFAULT_CASES = "artifacts/changzhou_eval_pack_full/cases_1000.json"
 DEFAULT_OUT_DIR = "artifacts/changzhou_kg_on_off_benchmark"

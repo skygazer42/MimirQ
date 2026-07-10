@@ -11,7 +11,6 @@ This module provides a *synchronous* retrieval runner that:
 It is intentionally usable without the LangGraph orchestration layer.
 """
 
-from __future__ import annotations
 
 import asyncio
 import concurrent.futures

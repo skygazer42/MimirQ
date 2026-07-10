@@ -6,7 +6,6 @@ These schemas are used to:
 - Return summary statistics + actionable finding buckets
 """
 
-from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, Literal

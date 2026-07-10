@@ -9,7 +9,6 @@ Targets documents that look like term-definition lists, e.g.:
 The chunker tries to keep a full entry together and uses entry-level overlap.
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any

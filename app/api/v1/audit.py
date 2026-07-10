@@ -4,7 +4,6 @@ Audit log endpoints (admin-only).
 This is intentionally minimal and PII-safe by default.
 """
 
-from __future__ import annotations
 
 import gzip as gzip_lib
 import io

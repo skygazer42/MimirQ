@@ -10,7 +10,6 @@ Purpose-built smoke test (CI / post-deploy):
 Default behavior is PII-safe: it uploads synthetic content and avoids printing secrets.
 """
 
-from __future__ import annotations
 
 import argparse
 import json

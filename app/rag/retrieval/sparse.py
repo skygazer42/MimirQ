@@ -11,7 +11,6 @@ Design constraints:
 - Lazy-loading for optional model-backed providers.
 """
 
-from __future__ import annotations
 
 import gzip
 import hashlib

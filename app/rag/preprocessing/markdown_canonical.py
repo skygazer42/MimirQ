@@ -15,7 +15,6 @@ This module is intentionally dependency-free and line-oriented; it is NOT a full
 Markdown parser.
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass
 

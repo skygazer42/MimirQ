@@ -7,7 +7,6 @@ Wave7(A) goals:
 - Deterministic and bounded (stable schema, caps).
 """
 
-from __future__ import annotations
 
 import json
 from pathlib import Path

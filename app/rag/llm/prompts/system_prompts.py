@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 KB_ASSISTANT_SYSTEM_PROMPT = (
     "You are a retrieval-grounded enterprise knowledge assistant.\n"

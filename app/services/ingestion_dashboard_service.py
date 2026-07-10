@@ -9,7 +9,6 @@ Design goals:
 - Practical: works with current schema (processed_at may be null for many rows).
 """
 
-from __future__ import annotations
 
 import re
 from collections import Counter

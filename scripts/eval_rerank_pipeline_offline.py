@@ -17,7 +17,6 @@ Notes:
   This keeps the script dependency-light but may under-estimate late-interaction wins.
 """
 
-from __future__ import annotations
 
 import argparse
 import json

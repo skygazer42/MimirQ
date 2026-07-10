@@ -3,7 +3,6 @@
 Provides exportable, shareable dataset-level bundles (quality + compliance).
 """
 
-from __future__ import annotations
 
 import io
 import json

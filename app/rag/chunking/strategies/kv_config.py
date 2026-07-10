@@ -10,7 +10,6 @@ The chunker keeps whole key-value entries together and can split by INI
 sections when present. Offsets are preserved.
 """
 
-from __future__ import annotations
 
 import re
 from dataclasses import dataclass

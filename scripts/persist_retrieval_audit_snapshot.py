@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Persist a sanitized retrieval_audit snapshot into dataset metadata."""
 
-from __future__ import annotations
 
 import argparse
 import json

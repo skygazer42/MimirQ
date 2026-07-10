@@ -9,7 +9,6 @@ This is an optional second LLM pass designed to:
 All outputs are gated by deterministic evidence checks in the caller.
 """
 
-from __future__ import annotations
 
 import math
 from collections.abc import Sequence

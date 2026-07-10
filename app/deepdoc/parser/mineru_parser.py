@@ -23,6 +23,7 @@ import threading
 import zipfile
 from collections.abc import Callable
 from dataclasses import dataclass
+from enum import StrEnum
 from io import BytesIO
 from os import PathLike
 from pathlib import Path
@@ -32,11 +33,6 @@ import httpx
 import numpy as np
 import pdfplumber
 from PIL import Image
-
-try:
-    from enum import StrEnum  # py>=3.11
-except ImportError:  # pragma: no cover
-    from strenum import StrEnum  # py<3.11
 
 from app.deepdoc.parser.pdf_parser import IntegratedPipelinePdfParser
 

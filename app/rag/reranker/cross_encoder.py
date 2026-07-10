@@ -6,7 +6,6 @@ Design constraints:
 - CI/offline friendly: allow injecting a fake model for unit tests (no model downloads).
 """
 
-from __future__ import annotations
 
 import threading
 import time

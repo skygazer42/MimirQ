@@ -6,7 +6,6 @@ strategy safe for backend-only workflows while exposing the metadata contract
 needed for future offline batch re-chunking.
 """
 
-from __future__ import annotations
 
 from langchain_core.documents import Document
 

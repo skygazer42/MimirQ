@@ -20,6 +20,7 @@ from io import BytesIO
 
 from docx import Document
 
+from app.core.optional_deps import optional_import
 from app.deepdoc.parser import DocxParser, HtmlParser, PdfParser
 from app.deepdoc.parser.utils import get_text
 from app.third_party.integrated_pipeline.chunkers.naive import PARSERS, by_plaintext
@@ -208,11 +209,10 @@ def chunk(filename, binary=None, from_page=0, to_page=100000,
     elif re.search(r"\.doc$", filename, re.IGNORECASE):
         callback(0.1, "Start to parse.")
 
-        try:
-            from tika import parser as tika_parser
-        except ImportError as e:
-            callback(0.8, f"tika not available: {e}. Unsupported .doc parsing. (hint: pip install tika)")
-            logging.warning(f"tika not available: {e}. Unsupported .doc parsing for {filename}. (hint: pip install tika)")
+        tika_parser = optional_import("tika.parser", feature="integrated_pipeline_laws_doc_parser", pip_name="tika")
+        if tika_parser is None:
+            callback(0.8, "tika not available. Unsupported .doc parsing. (hint: pip install tika)")
+            logging.warning("tika not available. Unsupported .doc parsing for %s. (hint: pip install tika)", filename)
             return []
 
         binary = BytesIO(binary)

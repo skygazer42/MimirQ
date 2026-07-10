@@ -1,29 +1,26 @@
 #!/usr/bin/env python3
+# ruff: noqa: E402, I001
 """Probe the live KG quality report endpoint against a disposable dataset."""
 
-from __future__ import annotations
 
 import argparse
 import json
+import sys
 import time
 from pathlib import Path
 from typing import Any
 
 
 def ensure_repo_root_on_sys_path(script_path: str | Path) -> str:
-    import sys
-
     repo_root = str(Path(script_path).resolve().parents[1])
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
     return repo_root
 
 
-try:
-    from scripts.remote_kb_boundary_matrix import LiveApi, ensure_success, record_step, wait_for_document_completed
-except ModuleNotFoundError:
-    ensure_repo_root_on_sys_path(__file__)
-    from scripts.remote_kb_boundary_matrix import LiveApi, ensure_success, record_step, wait_for_document_completed
+ensure_repo_root_on_sys_path(__file__)
+
+from scripts.remote_kb_boundary_matrix import LiveApi, ensure_success, record_step, wait_for_document_completed
 
 
 DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000000"

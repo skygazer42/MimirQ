@@ -6,7 +6,6 @@ Adds:
 - composite FK to ensure dataset_id belongs to the same tenant
 """
 
-from __future__ import annotations
 
 from alembic import op
 

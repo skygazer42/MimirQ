@@ -5,7 +5,6 @@ Targets JUnit-style XML reports with repeated <testcase> elements and splits by
 testcase blocks while preserving offsets.
 """
 
-from __future__ import annotations
 
 import re
 from dataclasses import dataclass

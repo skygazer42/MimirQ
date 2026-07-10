@@ -8,7 +8,6 @@ collapsed tree:
 - summary parent chunks (layer 1)
 """
 
-from __future__ import annotations
 
 import re
 

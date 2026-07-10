@@ -24,7 +24,6 @@ Examples:
   python scripts/run_nightly_ablations.py --all-datasets --execute --max-datasets 10
 """
 
-from __future__ import annotations
 
 import argparse
 import json

@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 import ast
 import hashlib
@@ -17,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from app.core.config import settings
+from app.core.optional_deps import optional_import
 from app.rag.pipeline_plugins.contracts import (
     PipelinePluginContractError,
     summarize_contracts,
@@ -26,10 +26,7 @@ from app.rag.pipeline_plugins.contracts import (
 )
 from app.services.pipeline_patch_validator import normalize_document_pipeline_patch
 
-try:
-    import yaml
-except Exception:  # pragma: no cover - JSON manifests remain supported without PyYAML.
-    yaml = None  # type: ignore[assignment]
+yaml = optional_import("yaml", feature="pipeline_plugin_yaml_manifest", pip_name="PyYAML")
 
 PLUGIN_MANIFEST_FILENAMES = (
     "mimirq-plugin.json",

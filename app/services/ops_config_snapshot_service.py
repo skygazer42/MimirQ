@@ -6,7 +6,6 @@ incident response workflows (diff across deploys/environments) without leaking
 secrets.
 """
 
-from __future__ import annotations
 
 import json
 import os

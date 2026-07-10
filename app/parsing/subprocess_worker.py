@@ -8,7 +8,6 @@ It exists so the caller can truly cancel parsing by terminating the process
 (docling/torch-based parsers are not cooperatively cancellable in-process).
 """
 
-from __future__ import annotations
 
 import json
 import time

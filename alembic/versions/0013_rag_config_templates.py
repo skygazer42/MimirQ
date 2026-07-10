@@ -4,7 +4,6 @@ Adds:
 - rag_config_templates: versioned retrieval/rerank config patches with A/B routing fields.
 """
 
-from __future__ import annotations
 
 from alembic import op
 

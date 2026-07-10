@@ -7,7 +7,6 @@ This is intended as an operator workflow helper:
   Evidence Pack → Regression bundle → API import → Regression gate
 """
 
-from __future__ import annotations
 
 import argparse
 import json

@@ -13,7 +13,6 @@ Limitations:
   a forward cursor. For chunkers that rewrite content heavily, coverage signals may be noisy.
 """
 
-from __future__ import annotations
 
 import argparse
 import json

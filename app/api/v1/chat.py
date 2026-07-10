@@ -24,7 +24,6 @@ from app.core.database import get_db
 from app.core.token_utils import num_tokens_from_string
 from app.models.chat import Message
 from app.rag.core.logging import get_logger
-from app.rag.engine import get_rag_engine
 from app.services.audit_log_service import (
     audit_log_event,
     build_chat_audit_details,
@@ -410,6 +409,8 @@ async def chat(
                                 runtime_metrics=offload_metrics,
                             )
                         else:
+                            from app.rag.engine import get_rag_engine
+
                             engine = get_rag_engine()
                             chat_result = await _execute_langchain_chat_once(
                                 engine=engine,

@@ -3,6 +3,7 @@ SentenceTransformer local embedding model.
 
 Supports local sentence-transformers models for embeddings.
 """
+from app.core.optional_deps import require_dependency
 from app.rag.embedding.base import BaseEmbeddingModel
 from app.rag.embedding.utils import logger
 
@@ -34,30 +35,27 @@ class SentenceTransformerEmbedding(BaseEmbeddingModel):
 
     def _get_device(self) -> str:
         """Detect available device for inference."""
-        try:
-            import torch
-
-            return "cuda" if torch.cuda.is_available() else "cpu"
-        except ImportError:
-            return "cpu"
+        torch = require_dependency("torch", feature="local_embeddings", pip_name="torch")
+        return "cuda" if torch.cuda.is_available() else "cpu"
 
     def _load_model(self):
         """Lazy load the sentence-transformers model."""
         if self._model is not None:
             return self._model
 
-        try:
-            from sentence_transformers import SentenceTransformer
-        except ImportError as e:
-            raise ImportError(
-                "sentence_transformers is required for local embeddings.\n"
-                "Please install: pip install sentence-transformers torch"
-            ) from e
+        sentence_transformers = require_dependency(
+            "sentence_transformers",
+            feature="local_embeddings",
+            pip_name="sentence-transformers",
+        )
+        sentence_transformer_cls = getattr(sentence_transformers, "SentenceTransformer", None)
+        if sentence_transformer_cls is None:
+            raise RuntimeError("sentence_transformers.SentenceTransformer missing (unsupported sentence-transformers version)")
 
         logger.info(
             f"Loading sentence-transformers model: {self.model} on {self._device}"
         )
-        self._model = SentenceTransformer(self.model, device=self._device)
+        self._model = sentence_transformer_cls(self.model, device=self._device)
 
         # Auto-detect dimension if not set
         if self.dimension is None:

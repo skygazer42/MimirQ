@@ -5,7 +5,6 @@ belongs outside MimirQ; MimirQ only validates and imports curated entity/relatio
 rows into the existing KG storage model with document-level provenance.
 """
 
-from __future__ import annotations
 
 import hashlib
 import re

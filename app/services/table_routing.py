@@ -16,7 +16,6 @@ This module implements a conservative, dependency-light *auto route* decision:
 The decision is explainable (route + reason + stats) and safe (bounded reads).
 """
 
-from __future__ import annotations
 
 import csv
 import io

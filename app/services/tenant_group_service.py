@@ -6,7 +6,6 @@ This is intentionally simple:
 - user_id is a string (matches current tenant_members.user_id model)
 """
 
-from __future__ import annotations
 
 import contextlib
 from collections.abc import Iterable

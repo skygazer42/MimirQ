@@ -6,7 +6,6 @@ Why this exists:
 - This wrapper makes `make db-upgrade` work reliably via `python scripts/alembic_cli.py ...`.
 """
 
-from __future__ import annotations
 
 import sys
 

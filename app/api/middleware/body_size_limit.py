@@ -8,7 +8,6 @@ This is a lightweight DoS guardrail:
 It is intentionally simple and fail-open for unknown body sizes.
 """
 
-from __future__ import annotations
 
 from collections.abc import Callable
 

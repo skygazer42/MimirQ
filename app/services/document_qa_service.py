@@ -11,7 +11,6 @@ Design notes:
   include/exclude them via metadata_filter.
 """
 
-from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass

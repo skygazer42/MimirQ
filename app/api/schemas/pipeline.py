@@ -3,7 +3,6 @@ Document processing pipeline schemas.
 Defines data models for document parsing, chunking, and other pipeline operations.
 """
 
-from __future__ import annotations
 
 import re
 from typing import Any, Literal
@@ -84,7 +83,7 @@ class IngestionPreviewResponse(BaseModel):
     rule: IngestionPreviewRule
     preprocess: PreprocessSummary
     parse: ParsePreviewResponse
-    clean: CleanPreviewResponse
+    clean: "CleanPreviewResponse"
     # Explain payload for UI export/auditing (best-effort; does not affect ingestion).
     explain: dict[str, Any] = Field(default_factory=dict)
 

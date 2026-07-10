@@ -8,7 +8,6 @@ We apply template patches as *fallback overrides*:
 This keeps debug/probe callers in control while enabling safe rollout for default traffic.
 """
 
-from __future__ import annotations
 
 from collections.abc import Iterable
 from typing import Any

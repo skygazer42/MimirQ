@@ -10,7 +10,6 @@ fallback RecursiveCharacterTextSplitter inside each section while preserving
 character offsets.
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any

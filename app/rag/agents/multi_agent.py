@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 import asyncio
 import threading
@@ -104,7 +103,7 @@ class _SubAgentResult:
 
 
 class MultiAgentRAGRunner:
-    def __init__(self, engine: RAGEngine) -> None:
+    def __init__(self, engine: "RAGEngine") -> None:
         self._engine = engine
 
     async def _decompose(
@@ -404,7 +403,7 @@ _MULTI_AGENT_RUNNER: MultiAgentRAGRunner | None = None
 _MULTI_AGENT_LOCK = threading.Lock()
 
 
-def get_multi_agent_runner(*, engine: RAGEngine | None = None) -> MultiAgentRAGRunner:
+def get_multi_agent_runner(*, engine: "RAGEngine | None" = None) -> MultiAgentRAGRunner:
     global _MULTI_AGENT_RUNNER
     if engine is not None:
         return MultiAgentRAGRunner(engine=engine)

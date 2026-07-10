@@ -18,7 +18,6 @@ Exit codes:
   1: unexpected error (network/parse/etc)
 """
 
-from __future__ import annotations
 
 import argparse
 import json

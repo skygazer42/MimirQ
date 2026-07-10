@@ -9,7 +9,6 @@ Notes:
 - This module intentionally avoids reading/storing chunk content; it operates on ids + metadata only.
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any

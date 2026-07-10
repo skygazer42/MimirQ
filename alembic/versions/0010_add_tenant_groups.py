@@ -5,7 +5,6 @@ Adds:
 - tenant_group_members
 """
 
-from __future__ import annotations
 
 from alembic import op
 

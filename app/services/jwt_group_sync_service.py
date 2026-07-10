@@ -8,7 +8,6 @@ Security/PII notes:
 - Keep all actions tenant-scoped.
 """
 
-from __future__ import annotations
 
 import contextlib
 import threading

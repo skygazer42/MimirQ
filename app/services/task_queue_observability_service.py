@@ -11,7 +11,6 @@ Design goals:
 - Low cardinality: do not emit per-worker label series in Prometheus.
 """
 
-from __future__ import annotations
 
 import asyncio
 import contextlib

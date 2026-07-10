@@ -19,7 +19,6 @@ Notes:
 - When tags are missing, this strategy falls back to `langchain_recursive` behavior.
 """
 
-from __future__ import annotations
 
 import re
 from collections.abc import Iterable, Mapping

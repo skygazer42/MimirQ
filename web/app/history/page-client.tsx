@@ -144,7 +144,7 @@ function HistoryPageContent({
   const shouldScrollToEndRef = useRef(false)
   const deferredSearchQuery = useDeferredValue(searchQuery)
   const conversationsQuery = useInfiniteQuery({
-    queryKey: queryKeys.chat.conversations({ limit: CONVERSATION_PAGE_SIZE }),
+    queryKey: queryKeys.chat.conversationPages({ limit: CONVERSATION_PAGE_SIZE }),
     initialPageParam: 0,
     queryFn: async ({ pageParam }) => {
       const result = await chatApi.listConversations({
@@ -335,7 +335,7 @@ function HistoryPageContent({
     try {
       await chatApi.deleteConversation(conversationId)
       queryClient.setQueryData(
-        queryKeys.chat.conversations({ limit: CONVERSATION_PAGE_SIZE }),
+        queryKeys.chat.conversationPages({ limit: CONVERSATION_PAGE_SIZE }),
         (
           current:
             | {

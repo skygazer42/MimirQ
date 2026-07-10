@@ -12,7 +12,6 @@ Auth:
 - AUTH_MODE=jwt: provide --bearer (Authorization: Bearer ...)
 """
 
-from __future__ import annotations
 
 import argparse
 import difflib

@@ -10,7 +10,6 @@ Key components (per project guidance):
 - profile_version
 """
 
-from __future__ import annotations
 
 import time
 from typing import Any

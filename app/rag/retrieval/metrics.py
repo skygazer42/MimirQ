@@ -5,7 +5,6 @@ Keep labels low-cardinality:
 - Do not label by tenant/dataset/query.
 """
 
-from __future__ import annotations
 
 from prometheus_client import Counter, Histogram
 

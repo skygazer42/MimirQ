@@ -3,7 +3,6 @@
 Generate a compact intent-router model artifact from exported training rows.
 """
 
-from __future__ import annotations
 
 import argparse
 import json

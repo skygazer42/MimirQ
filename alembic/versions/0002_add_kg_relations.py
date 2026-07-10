@@ -5,7 +5,6 @@ Notes:
 - Relations are used for triples extraction and SkillNet-like skill edges.
 """
 
-from __future__ import annotations
 
 from alembic import op
 

@@ -1,6 +1,5 @@
 """Ablation batch helpers for RAGAS regression runs."""
 
-from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from typing import Any

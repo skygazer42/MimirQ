@@ -4,7 +4,6 @@ Regression run diff helpers (pure-ish functions).
 Goal: compare two RAGAS regression run summaries and return objective deltas for sharing.
 """
 
-from __future__ import annotations
 
 import math
 from datetime import UTC, datetime

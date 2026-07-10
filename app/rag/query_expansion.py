@@ -5,7 +5,6 @@ Goal: reduce false negatives (missed recall) by generating additional query vari
 in a controlled, auditable way (no surprise Cartesian products).
 """
 
-from __future__ import annotations
 
 import re
 from typing import Any

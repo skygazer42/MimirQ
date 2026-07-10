@@ -8,7 +8,6 @@ Outputs:
 - optional regression import + retrieval-only run against the local backend
 """
 
-from __future__ import annotations
 
 import argparse
 import hashlib
@@ -32,9 +31,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from app.core.database import SessionLocal
-from app.models.document import Document, DocumentChunk
-from app.services.regression_case_bundle import REGRESSION_CASE_BUNDLE_SCHEMA_V1
+from app.core.database import SessionLocal  # noqa: E402
+from app.models.document import Document, DocumentChunk  # noqa: E402
+from app.services.regression_case_bundle import REGRESSION_CASE_BUNDLE_SCHEMA_V1  # noqa: E402
 
 DEFAULT_CORPUS_ROOT = "/path/to/gov-service-knowledge"
 DEFAULT_OUT_DIR = "artifacts/changzhou_eval_pack_1000"
@@ -134,6 +133,13 @@ class SourceRecord:
     answer: str
     similar_questions: list[str]
     fields: dict[str, str]
+
+
+@dataclass(frozen=True, slots=True)
+class ReferenceSearchPlan:
+    source_filename: str
+    anchor_terms: list[str]
+    fallback_terms: list[str]
 
 
 def _text(value: Any) -> str:
@@ -843,9 +849,9 @@ def _detect_local_dataset_id(corpus_root: Path, *, tenant_id: UUID) -> str:
         db.close()
 
 
-def _iter_search_terms(case: dict[str, Any]) -> list[str]:
+def _fallback_search_terms(case: dict[str, Any], *, excluded: set[str]) -> list[str]:
     out: list[str] = []
-    seen: set[str] = set()
+    seen = set(excluded)
     for clause in case.get("evidence_clauses") or []:
         if not isinstance(clause, dict):
             continue
@@ -871,6 +877,40 @@ def _iter_search_terms(case: dict[str, Any]) -> list[str]:
     return out[:8]
 
 
+def _reference_search_plan(case: dict[str, Any]) -> ReferenceSearchPlan:
+    source_filename = Path(_text(case.get("source_file"))).name
+    title = _text(case.get("source_record_title"))
+    question = _text(case.get("question"))
+    clause_terms = {
+        _text(term)
+        for clause in case.get("evidence_clauses") or []
+        if isinstance(clause, dict)
+        for term in clause.get("required_terms") or []
+        if _text(term)
+    }
+    service_title = f"事项名称：{title}" if title else ""
+    is_service_case = bool(service_title and service_title in clause_terms)
+
+    anchors: list[str] = []
+    if is_service_case:
+        anchors.append(service_title)
+    elif title:
+        anchors.append(title)
+    if question and question not in anchors:
+        anchors.append(question)
+
+    return ReferenceSearchPlan(
+        source_filename=source_filename,
+        anchor_terms=anchors,
+        fallback_terms=_fallback_search_terms(case, excluded=set(anchors)),
+    )
+
+
+def _iter_search_terms(case: dict[str, Any]) -> list[str]:
+    plan = _reference_search_plan(case)
+    return [*plan.anchor_terms, *plan.fallback_terms]
+
+
 def resolve_reference_sources(
     cases: list[dict[str, Any]],
     *,
@@ -883,13 +923,16 @@ def resolve_reference_sources(
     tenant_uuid = UUID(str(tenant_id))
     resolved_items: list[dict[str, Any]] = []
     unresolved_items: list[dict[str, Any]] = []
-    term_cache: dict[str, list[dict[str, Any]]] = {}
+    term_cache: dict[tuple[str, str], list[dict[str, Any]]] = {}
     try:
       for case in cases:
         refs: list[dict[str, Any]] = []
-        for term in _iter_search_terms(case):
-            if term not in term_cache:
-                rows = (
+        plan = _reference_search_plan(case)
+
+        def search(term: str, source_filename: str = "") -> list[dict[str, Any]]:
+            cache_key = (term, source_filename)
+            if cache_key not in term_cache:
+                query = (
                     db.query(DocumentChunk, Document.filename)
                     .join(
                         Document,
@@ -904,11 +947,15 @@ def resolve_reference_sources(
                         DocumentChunk.disabled_at.is_(None),
                         DocumentChunk.content.ilike(f"%{term}%"),
                     )
-                    .order_by(DocumentChunk.document_id.asc(), DocumentChunk.chunk_index.asc())
+                )
+                if source_filename:
+                    query = query.filter(Document.filename == source_filename)
+                rows = (
+                    query.order_by(DocumentChunk.document_id.asc(), DocumentChunk.chunk_index.asc())
                     .limit(10)
                     .all()
                 )
-                term_cache[term] = [
+                term_cache[cache_key] = [
                     {
                         "document_id": str(chunk.document_id),
                         "chunk_id": str(chunk.id),
@@ -922,14 +969,24 @@ def resolve_reference_sources(
                     }
                     for chunk, filename in rows
                 ]
-            for item in term_cache.get(term, []):
-                if any(existing["chunk_id"] == item["chunk_id"] for existing in refs):
-                    continue
-                refs.append({k: v for k, v in item.items() if k != "document_name"})
-                if len(refs) >= max_refs_per_case:
-                    break
-            if len(refs) >= max_refs_per_case:
-                break
+            return term_cache.get(cache_key, [])
+
+        def add_matches(terms: list[str], source_filename: str = "") -> None:
+            for term in terms:
+                for item in search(term, source_filename):
+                    if any(existing["chunk_id"] == item["chunk_id"] for existing in refs):
+                        continue
+                    refs.append({k: v for k, v in item.items() if k != "document_name"})
+                    if len(refs) >= max_refs_per_case:
+                        return
+
+        add_matches(plan.anchor_terms, plan.source_filename)
+        if not refs:
+            add_matches(plan.anchor_terms)
+        if not refs:
+            add_matches(plan.fallback_terms, plan.source_filename)
+        if not refs:
+            add_matches(plan.fallback_terms)
 
         target = {
             "question": _text(case.get("question")),

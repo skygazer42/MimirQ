@@ -9,7 +9,6 @@ Design goals:
 - Safe defaults: fall back to "text" when unsure.
 """
 
-from __future__ import annotations
 
 import re
 

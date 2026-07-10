@@ -12,7 +12,6 @@ This module is intentionally light-weight so it can be used by both API and
 pipeline services without pulling in FastAPI-specific code.
 """
 
-from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass

@@ -11,7 +11,6 @@ This module is intentionally best-effort:
 - Optional OIDC discovery can derive jwks_uri from JWT_ISSUER
 """
 
-from __future__ import annotations
 
 import asyncio
 import time

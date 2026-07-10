@@ -31,6 +31,7 @@ from typing import Any, TypeVar
 from uuid import uuid4
 
 from app.core.config import settings
+from app.core.optional_deps import require_dependency
 from app.rag.core.logging import get_logger
 
 logger = get_logger("rag.tracing.langsmith")
@@ -45,11 +46,10 @@ LANGSMITH_TRACING_ENABLED = getattr(settings, "LANGSMITH_TRACING_ENABLED", False
 # Import langsmith if tracing is enabled
 LangSmithClient = None  # type: ignore
 if LANGSMITH_TRACING_ENABLED:
-    try:
-        from langsmith import Client as LangSmithClient  # type: ignore
-    except ImportError as exc:
-        logger.warning("LangSmith tracing enabled but 'langsmith' is not available: %s (hint: pip install langsmith)", exc)
-        LangSmithClient = None  # type: ignore
+    langsmith_module = require_dependency("langsmith", feature="langsmith_tracing", pip_name="langsmith")
+    LangSmithClient = getattr(langsmith_module, "Client", None)  # type: ignore[assignment]
+    if LangSmithClient is None:
+        raise RuntimeError("langsmith.Client missing (unsupported langsmith version)")
 
 
 # Type variable for decorators

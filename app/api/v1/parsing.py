@@ -13,7 +13,6 @@ It also reuses dataset permissions for access control by placing workspace docum
 per-user ONLY_ME dataset (auto-created on demand).
 """
 
-from __future__ import annotations
 
 import asyncio
 import contextlib
@@ -115,7 +114,7 @@ class ParsingContentResponse(BaseModel):
     stats: dict[str, int] | None = Field(default=None)
     parse_duration_sec: float | None = Field(default=None)
     pdf_quality: dict[str, Any] | None = Field(default=None)
-    quality_gate: ParsingQualityGate | None = Field(default=None)
+    quality_gate: "ParsingQualityGate | None" = Field(default=None)
     elements: list[ParsingElementOut] | None = Field(default=None)
 
 

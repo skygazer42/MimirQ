@@ -11,7 +11,6 @@ Design principles (similar to retention jobs):
 - Fail-open: never crash the product due to reporting automation
 """
 
-from __future__ import annotations
 
 import contextlib
 from collections import Counter

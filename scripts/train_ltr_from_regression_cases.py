@@ -15,7 +15,6 @@ Notes:
 - By default it disables the built-in reranker so the collected candidates are pre-rerank.
 """
 
-from __future__ import annotations
 
 import argparse
 import hashlib

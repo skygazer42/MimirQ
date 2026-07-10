@@ -10,7 +10,6 @@ Input payload can be:
 The auditor validates proof object shape and simple consistency constraints.
 """
 
-from __future__ import annotations
 
 import argparse
 import json

@@ -17,7 +17,6 @@ Notes:
   cleanup to avoid duplicating side effects in a second code path.
 """
 
-from __future__ import annotations
 
 import contextlib
 from datetime import UTC, datetime

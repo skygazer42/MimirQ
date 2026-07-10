@@ -6,7 +6,6 @@ Goal:
 - emit stable, compact drift summary for PR/release review
 """
 
-from __future__ import annotations
 
 from collections.abc import Mapping
 from typing import Any

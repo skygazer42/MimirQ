@@ -17,7 +17,6 @@ Examples:
   python scripts/run_stale_report_jobs.py --all-tenants --execute
 """
 
-from __future__ import annotations
 
 import argparse
 import json

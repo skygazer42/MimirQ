@@ -6,7 +6,6 @@ indexes keep that platform-level fallback from degrading into JSONB table scans
 on larger corpora.
 """
 
-from __future__ import annotations
 
 from alembic import op
 

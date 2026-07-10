@@ -33,6 +33,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { StatusBadge } from '@/components/ui/status-badge'
 import {
   evaluationApi,
@@ -52,6 +60,7 @@ import {
   ChevronRight,
   Database,
   Filter,
+  Grid3X3,
   Info,
   Loader2,
   ListChecks,
@@ -79,6 +88,8 @@ type ConversationEvidenceFilter = 'ready' | 'missing' | 'all'
 
 const EMPTY_CONVERSATIONS: Conversation[] = []
 const EMPTY_RUNS: RagasRun[] = []
+const ADVANCED_DIAGNOSTIC_ITEM_CLASS =
+  'items-start rounded-lg px-2.5 py-2.5 data-[highlighted]:bg-sky-50/80 data-[highlighted]:text-slate-900 focus:bg-sky-50/80 focus:text-slate-900'
 
 const CONVERSATION_EVIDENCE_FILTERS: Array<{
   id: ConversationEvidenceFilter
@@ -121,6 +132,15 @@ const TAB_META: Array<{
 
 function metricLabel(key: string): string {
   return ragasMetricLabel(key)
+}
+
+function displayMetricsFor(summary: JsonObject, metricKeys: string[]) {
+  return metricKeys.flatMap((key) => {
+    const value = summary[key]
+    return typeof value === 'number' && Number.isFinite(value)
+      ? [{ key, value }]
+      : []
+  })
 }
 
 function parseEvaluationTab(value: string | null | undefined): TabType | null {
@@ -454,6 +474,13 @@ function EvaluationResultsStage({
       : readiness.tone === 'checking'
         ? 'bg-gradient-to-r from-sky-100 to-blue-100 text-sky-700'
         : 'bg-gradient-to-r from-amber-100 to-orange-100 text-amber-800'
+  const isDeterministicEvaluation =
+    String(summary.mode || '') === 'deterministic_conversation'
+  const deterministicReason = String(summary.ragas_skipped_reason || '')
+  const deterministicDescription =
+    deterministicReason === 'ragas_wall_timeout'
+      ? 'RAGAS 超时后已自动降级；当前分数由答案与 citations 证据的可核验一致性计算，不是 LLM Judge 分数。'
+      : '当前分数由答案与 citations 证据的可核验一致性计算，不是 LLM Judge 分数。'
 
   return (
     <section
@@ -519,6 +546,19 @@ function EvaluationResultsStage({
           <p className="max-w-3xl text-[12.5px] leading-5 text-slate-600">
             {readiness.description}
           </p>
+          {isDeterministicEvaluation ? (
+            <div className="rounded-xl border border-cyan-200/70 bg-cyan-50/70 px-3 py-2.5 text-[11.5px] leading-5 text-cyan-950">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-medium text-cyan-700">评测方式</span>
+                <span className="rounded-full bg-white px-2.5 py-0.5 font-bold text-cyan-800 shadow-sm ring-1 ring-cyan-200/70">
+                  确定性证据校验
+                </span>
+              </div>
+              <p className="mt-1 text-cyan-900/80">
+                {deterministicDescription}
+              </p>
+            </div>
+          ) : null}
           {readiness.showMissingEvidenceFailure ? (
             <p className="rounded-xl border border-amber-200/70 bg-amber-100/60 px-3 py-2 text-[11.5px] font-semibold leading-5 text-amber-900">
               当前 run 的失败原因是缺少证据，不是 RAGAS 算出低分。
@@ -685,6 +725,7 @@ function EvaluationHeroCard({
   focusValue,
   onRefresh,
   isLoading,
+  showAblationsEntry,
 }: Readonly<{
   title: string
   description: string
@@ -696,6 +737,7 @@ function EvaluationHeroCard({
   focusValue: number
   onRefresh: () => void
   isLoading: boolean
+  showAblationsEntry: boolean
 }>) {
   return (
     <section className="relative overflow-hidden rounded-3xl border border-sky-200/60 bg-gradient-to-br from-white via-sky-50/40 to-blue-50/30 px-5 py-4 shadow-xl shadow-sky-200/30 backdrop-blur-xl">
@@ -765,20 +807,81 @@ function EvaluationHeroCard({
             </span>
           </div>
 
-          <Button
-            type="button"
-            variant="outline"
-            className="h-10 rounded-xl border-sky-200/60 bg-white/90 px-4 text-[13px] font-bold text-sky-700 shadow-sm hover:bg-gradient-to-r hover:from-sky-50 hover:to-blue-50 hover:shadow-md"
-            onClick={onRefresh}
-          >
-            <RefreshCw
-              className={cn(
-                'mr-2 h-4 w-4',
-                isLoading && 'animate-spin motion-reduce:animate-none'
-              )}
-            />
-            刷新
-          </Button>
+          <div className="flex items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-10 flex-1 rounded-xl border-sky-200/60 bg-white/90 px-4 text-[13px] font-bold text-slate-700 shadow-sm hover:bg-sky-50 hover:text-sky-700 sm:flex-none"
+                >
+                  <SlidersHorizontal className="mr-2 h-4 w-4" />
+                  高级诊断
+                  <ChevronDown className="ml-2 h-3.5 w-3.5 text-slate-400" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                className="w-72 rounded-xl border-sky-200/70 bg-white/95 p-1.5 shadow-xl backdrop-blur-xl"
+              >
+                <DropdownMenuLabel className="px-2.5 py-2 text-[11px] font-bold uppercase tracking-[0.14em] text-sky-700">
+                  召回与向量诊断
+                </DropdownMenuLabel>
+                <DropdownMenuItem
+                  asChild
+                  className={ADVANCED_DIAGNOSTIC_ITEM_CLASS}
+                >
+                  <Link href="/knowledge/similarity">
+                    <Grid3X3 className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" />
+                    <span className="min-w-0">
+                      <span className="block text-[13px] font-bold text-slate-800">
+                        向量相似度诊断
+                      </span>
+                      <span className="mt-0.5 block text-[11px] leading-4 text-slate-500">
+                        用热力图检查问题、切片与数据集之间的语义重叠。
+                      </span>
+                    </span>
+                  </Link>
+                </DropdownMenuItem>
+                {showAblationsEntry ? (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      asChild
+                      className={ADVANCED_DIAGNOSTIC_ITEM_CLASS}
+                    >
+                      <Link href="/evaluations/ablations">
+                        <SlidersHorizontal className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" />
+                        <span className="min-w-0">
+                          <span className="block text-[13px] font-bold text-slate-800">
+                            检索调参对比
+                          </span>
+                          <span className="mt-0.5 block text-[11px] leading-4 text-slate-500">
+                            对比检索配置、消融结果和参数影响。
+                          </span>
+                        </span>
+                      </Link>
+                    </DropdownMenuItem>
+                  </>
+                ) : null}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <Button
+              type="button"
+              variant="outline"
+              className="h-10 flex-1 rounded-xl border-sky-200/60 bg-white/90 px-4 text-[13px] font-bold text-sky-700 shadow-sm hover:bg-gradient-to-r hover:from-sky-50 hover:to-blue-50 hover:shadow-md sm:flex-none"
+              onClick={onRefresh}
+            >
+              <RefreshCw
+                className={cn(
+                  'mr-2 h-4 w-4',
+                  isLoading && 'animate-spin motion-reduce:animate-none'
+                )}
+              />
+              刷新
+            </Button>
+          </div>
         </div>
       </div>
     </section>
@@ -1347,11 +1450,8 @@ function EvaluationsPageContent() {
     [runDetail?.run?.summary]
   )
   const displayMetrics = useMemo(() => {
-    const ignore = new Set(['items', 'total_tokens', 'total_cost'])
-    return Object.entries(summary)
-      .filter(([k, v]) => !ignore.has(k) && typeof v === 'number')
-      .map(([k, v]) => ({ key: k, value: Number(v) }))
-  }, [summary])
+    return displayMetricsFor(summary, runDetail?.run?.metrics || [])
+  }, [runDetail?.run?.metrics, summary])
 
   const activeTabMeta =
     TAB_META.find((item) => item.id === activeTab) || TAB_META[0]
@@ -1549,6 +1649,7 @@ function EvaluationsPageContent() {
             focusValue={heroFocusValue}
             onRefresh={refreshEvaluationWorkspace}
             isLoading={isLoading}
+            showAblationsEntry={showAblationsEntry}
           />
 
           <section className="overflow-hidden rounded-2xl border border-sky-100/50 bg-white/80 shadow-md backdrop-blur-sm">
@@ -1570,15 +1671,6 @@ function EvaluationsPageContent() {
                     {tab.label}
                   </button>
                 ))}
-                {showAblationsEntry ? (
-                  <Link
-                    href="/evaluations/ablations"
-                    className="inline-flex h-8 items-center gap-2 rounded-lg border border-sky-200/60 bg-white/80 px-3.5 text-[12px] font-medium text-slate-600 transition-all duration-200 hover:bg-sky-50/70 hover:text-sky-700"
-                  >
-                    <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
-                    检索调参对比
-                  </Link>
-                ) : null}
               </nav>
             </div>
           </section>

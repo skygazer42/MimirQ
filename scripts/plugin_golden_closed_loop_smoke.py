@@ -6,7 +6,6 @@ remote hosts and inside minimal containers without installing test-only
 dependencies.
 """
 
-from __future__ import annotations
 
 import argparse
 import json

@@ -10,7 +10,6 @@ It must be safe and fast:
 - Uses conservative heuristics (no heavy NLP).
 """
 
-from __future__ import annotations
 
 import re
 from dataclasses import dataclass

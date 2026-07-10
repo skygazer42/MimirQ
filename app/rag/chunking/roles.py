@@ -11,7 +11,6 @@ Notes:
   structural roles (parent/child/qa/etc).
 """
 
-from __future__ import annotations
 
 import re
 from collections.abc import Mapping

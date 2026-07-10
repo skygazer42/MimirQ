@@ -6,7 +6,6 @@ stable set of token + latency breakdown fields. Keep this module pure and
 dependency-light so it can be unit-tested without DB/LLM/vector backends.
 """
 
-from __future__ import annotations
 
 from typing import Any
 

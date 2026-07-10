@@ -11,7 +11,6 @@ Security posture:
 - best-effort fail-open (cache errors never break chat)
 """
 
-from __future__ import annotations
 
 import asyncio
 import hashlib

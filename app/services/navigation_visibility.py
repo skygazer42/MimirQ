@@ -1,6 +1,5 @@
 """Navigation visibility policy shared by settings and RBAC surfaces."""
 
-from __future__ import annotations
 
 from collections.abc import Iterable
 from typing import Any

@@ -32,6 +32,7 @@ import { useDocumentView } from '@/store/document-view'
 
 type RetrievePreviewPanelProps = {
   selectedDatasetId: string | null | undefined
+  availableDatasetIds?: readonly string[]
   className?: string
 }
 
@@ -68,6 +69,19 @@ type RecentQueryItem = {
 
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+export function buildRetrieveDatasetScope(
+  selectedDatasetId: string | null | undefined,
+  availableDatasetIds: readonly string[]
+): Pick<EvidenceRetrieveRequest, 'dataset_id' | 'dataset_ids'> {
+  const selected = String(selectedDatasetId || '').trim()
+  if (selected) return { dataset_id: selected }
+
+  const datasetIds = Array.from(
+    new Set(availableDatasetIds.map((id) => String(id || '').trim()).filter(Boolean))
+  )
+  return datasetIds.length ? { dataset_ids: datasetIds } : {}
 }
 
 function normalizeCitations(response: EvidenceRetrieveResponse): RetrievePreviewCitation[] {
@@ -212,7 +226,13 @@ function SemanticRetrievalMark() {
   )
 }
 
-export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<RetrievePreviewPanelProps>) {
+const EMPTY_DATASET_IDS: readonly string[] = []
+
+export function RetrievePreviewPanel({
+  selectedDatasetId,
+  availableDatasetIds = EMPTY_DATASET_IDS,
+  className,
+}: Readonly<RetrievePreviewPanelProps>) {
   const { openDocument } = useDocumentView()
   const [searchQuery, setSearchQuery] = useState('')
   const [searchQueryForRetrieval, setSearchQueryForRetrieval] = useState('')
@@ -238,6 +258,13 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
   const visibleRecentQueries = useMemo(() => recentQueries.slice(0, 3), [recentQueries])
   const scoreThresholdPercent = Math.round(scoreThreshold * 100)
   const alphaPercent = Math.round(alpha * 100)
+  const retrievalScope = useMemo(
+    () => buildRetrieveDatasetScope(selectedDatasetId, availableDatasetIds),
+    [availableDatasetIds, selectedDatasetId]
+  )
+  const hasRetrievalScope = Boolean(
+    retrievalScope.dataset_id || retrievalScope.dataset_ids?.length
+  )
 
   const handlePrefetchHitDocument = useCallback((hit: RetrievePreviewCitation) => {
     const documentId = String(hit.document_id || '').trim()
@@ -276,6 +303,14 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
     const query = searchQuery.trim()
     if (!query || isSearching) return
 
+    if (!hasRetrievalScope) {
+      setSearchError('暂无可检索数据集，请先创建或选择数据集。')
+      setHasSearched(true)
+      setSearchResults([])
+      setActiveHit(null)
+      return
+    }
+
     setIsSearching(true)
     setSearchError(null)
     try {
@@ -295,7 +330,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
 
       const response = await ragApi.retrieveEvidence({
         query,
-        dataset_id: selectedDatasetId || undefined,
+        ...retrievalScope,
         rag_config: ragConfig,
       })
       const citations = normalizeCitations(response)
@@ -318,12 +353,13 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
   }, [
     alpha,
     enableWeightRerank,
+    hasRetrievalScope,
     isSearching,
     maxTokens,
     retrievalMode,
     scoreThreshold,
     searchQuery,
-    selectedDatasetId,
+    retrievalScope,
     topK,
   ])
 
@@ -424,7 +460,10 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
             <div className="flex flex-wrap items-center gap-3 text-[12px] text-muted-foreground/72">
               <span className="inline-flex h-8 items-center rounded-full border border-sky-100/80 bg-card/90 px-3 dark:border-border/70 dark:bg-background/62">
                 <Database className="mr-2 size-3.5 text-blue-500" />
-                {selectedDatasetId || '全部数据集'}
+                {selectedDatasetId ||
+                  (availableDatasetIds.length
+                    ? `全部数据集 · ${availableDatasetIds.length} 库`
+                    : '暂无可用数据集')}
               </span>
               <span className="font-mono text-[11px] opacity-70">Enter 发送</span>
               <span className="font-mono text-[11px] opacity-70">Shift + Enter 换行</span>
@@ -433,7 +472,7 @@ export function RetrievePreviewPanel({ selectedDatasetId, className }: Readonly<
             <Button
               type="button"
               className="h-9 rounded-[14px] bg-primary px-[18px] text-[13px] font-medium text-primary-foreground shadow-[0_14px_22px_-18px_rgba(37,99,235,0.52)]"
-              disabled={!searchQuery.trim() || isSearching}
+              disabled={!searchQuery.trim() || isSearching || !hasRetrievalScope}
               onClick={() => detachPromise(handleSearch())}
             >
               {isSearching ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Zap className="mr-2 size-4" />}

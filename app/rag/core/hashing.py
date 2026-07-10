@@ -6,7 +6,6 @@ Why:
 - For RAG replay/debug/eval, we want deterministic IDs/keys when we fall back to hashing.
 """
 
-from __future__ import annotations
 
 import hashlib
 import hmac
