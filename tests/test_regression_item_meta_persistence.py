@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 
 def test_regression_item_model_has_meta_column():

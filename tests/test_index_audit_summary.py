@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 
 def test_compute_index_audit_summary_reports_missing_and_orphan_samples() -> None:

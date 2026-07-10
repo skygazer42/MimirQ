@@ -1,4 +1,4 @@
-.PHONY: help init up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload web test test-web test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check api-docs-build api-docs-build-static diagnostics db-upgrade db-revision verify enterprise-checks parser-status dify-console-login dify-console-check dify-console-ensure plugin-release-gate changzhou-gov-plugin-chunk-report changzhou-gov-plugin-chunk-evidence changzhou-gov-plugin-test-report changzhou-gov-plugin-test-evidence changzhou-gov-plugin-corpus-closed-loop-smoke changzhou-gov-plugin-corpus-closed-loop-evidence changzhou-gov-delivery-pack changzhou-gov-delivery-pack-refresh changzhou-gov-delivery-pack-refresh-with-audit changzhou-dify-knowledge-map-check changzhou-dify-mimirq-direct-gate changzhou-dify-mimirq-direct-kg-off-gate changzhou-dify-mimirq-direct-kg-on-gate changzhou-dify-kg-compare-gate changzhou-dify-kg-on-off-gate changzhou-dify-external-probe changzhou-dify-workflow-lint changzhou-dify-workflow-sync-dry-run changzhou-dify-workflow-sync-apply changzhou-dify-full-gate changzhou-dify-readiness-summary changzhou-dify-readiness-status changzhou-dify-readiness-evidence changzhou-dify-readiness-persist-audit changzhou-dify-readiness-gate changzhou-dify-readiness-gate-quiet changzhou-human-mixed-cases mixed-rag-quality check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
+.PHONY: help init up up-web up-lite up-retrieval-dev up-etl4llm up-marker up-paddlevl up-mineru up-mineru-vlm up-olmocr up-qianfanocr up-dev up-dev-web up-prod up-prod-web infra-up infra-up-etl4llm infra-up-marker infra-up-paddlevl infra-up-mineru infra-up-mineru-vlm infra-up-olmocr infra-up-qianfanocr infra-ps infra-down down down-lite down-retrieval-dev ps ps-lite ps-retrieval-dev logs logs-lite restart backend backend-no-reload web test test-full test-web test-web-full test-management-smoke test-matrix perf-smoke api-check api-ping web-api-ping api-smoke typecheck ui-check lint-py lint-py-docker compileall-docker verify-docker audit-py audit-web audit openapi-export openapi-types openapi-validate openapi-check api-docs-build api-docs-build-static diagnostics db-upgrade db-revision verify enterprise-checks parser-status dify-console-login dify-console-check dify-console-ensure plugin-release-gate changzhou-gov-plugin-chunk-report changzhou-gov-plugin-chunk-evidence changzhou-gov-plugin-test-report changzhou-gov-plugin-test-evidence changzhou-gov-plugin-corpus-closed-loop-smoke changzhou-gov-plugin-corpus-closed-loop-evidence changzhou-gov-delivery-pack changzhou-gov-delivery-pack-refresh changzhou-gov-delivery-pack-refresh-with-audit changzhou-dify-knowledge-map-check changzhou-dify-mimirq-direct-gate changzhou-dify-mimirq-direct-kg-off-gate changzhou-dify-mimirq-direct-kg-on-gate changzhou-dify-kg-compare-gate changzhou-dify-kg-on-off-gate changzhou-dify-external-probe changzhou-dify-workflow-lint changzhou-dify-workflow-sync-dry-run changzhou-dify-workflow-sync-apply changzhou-dify-full-gate changzhou-dify-readiness-summary changzhou-dify-readiness-status changzhou-dify-readiness-evidence changzhou-dify-readiness-persist-audit changzhou-dify-readiness-gate changzhou-dify-readiness-gate-quiet changzhou-human-mixed-cases mixed-rag-quality check-retrieval-profile-compat check-queryset-health-policy check-parsing-proof-governance check-parsing-proof-rollout compose-diagnostics helm-template helm-lint clean doctor
 
 # Prefer project venv when available so local dev doesn't depend on global tooling.
 PY := python3
@@ -148,6 +148,110 @@ MIMIRQ_ACCOUNT_ID ?= demo
 MIMIRQ_USER_ID ?= demo
 MIMIRQ_API_TOKEN ?= $(AUTH_TOKEN)
 MIMIRQ_API_TIMEOUT ?= 60
+PYTEST_ARGS ?=
+VITEST_ARGS ?=
+
+# Fast merge gate. Keep this list focused on stable product-spine contracts;
+# use `make test-full` for the complete regression inventory.
+CORE_TESTS := \
+	tests/test_worker_startup_logs.py \
+	tests/test_request_id_middleware.py \
+	tests/test_validation_error_includes_request_id.py \
+	tests/test_allowed_hosts_validation.py \
+	tests/test_auth_dependency_sets_request_state.py \
+	tests/test_auth_saml_exchange_endpoint.py \
+	tests/test_tenant_dependency_prefers_verified_jwt_tenant.py \
+	tests/test_tenant_rls.py \
+	tests/test_tenant_quota.py \
+	tests/test_rbac_current_access_endpoint.py \
+	tests/test_documents_upload_url_endpoint.py \
+	tests/test_document_lifecycle_metadata_endpoints.py \
+	tests/test_documents_batch_reingest_endpoint.py \
+	tests/test_document_version_diff_integration.py \
+	tests/test_document_versions_integration.py \
+	tests/test_parsing_extract_api.py \
+	tests/test_parsing_extract_service.py \
+	tests/test_parsing_quality_gate.py \
+	tests/test_chunk_quality_gate_service.py \
+	tests/test_chunk_quality_scoring.py \
+	tests/test_chunking_stats_tokens.py \
+	tests/test_chunk_presets.py \
+	tests/test_chunking_recommendations.py \
+	tests/test_dataset_ingestion_policy_endpoints.py \
+	tests/test_indexer_upsert_entities.py \
+	tests/test_index_audit_summary.py \
+	tests/test_adaptive_retrieval_routing.py \
+	tests/test_retrieval_fusion_budgeted_rrf.py \
+	tests/test_mmr_reranker.py \
+	tests/test_rerank_score_calibration.py \
+	tests/test_retrieval_secondary_pass.py \
+	tests/test_retrieval_contract_fail_reasons.py \
+	tests/test_context_expansion_framework.py \
+	tests/test_query_decomposition_chain.py \
+	tests/test_evidence_post_rerank_pipeline.py \
+	tests/test_evidence_span_strict_orchestrator.py \
+	tests/test_kg_search_diagnostics_metrics.py \
+	tests/test_kg_path_provenance.py \
+	tests/test_kg_shortest_path_provenance.py \
+	tests/test_kg_relation_expansion_provenance.py \
+	tests/test_kg_lazy_indexer.py \
+	tests/test_chat_response_cache_does_not_cross_scopes.py \
+	tests/test_chat_cache_corpus_invalidation.py \
+	tests/test_chat_persistence_metrics.py \
+	tests/test_external_conversation_ingest.py \
+	tests/test_corrective_streaming.py \
+	tests/test_rag_trace_schema.py \
+	tests/test_retrieval_trace_schema_v1.py \
+	tests/test_observability_trace_bundle.py \
+	tests/test_feedback_service.py \
+	tests/test_dify_external_knowledge_adapter.py \
+	tests/test_import_dify_benchmark_feedback.py \
+	tests/test_changzhou_gov_dify_trace_report.py \
+	tests/test_assemble_dify_benchmark_report.py \
+	tests/rag/evaluation/test_rag_quality_gate.py \
+	tests/test_eval_ragas_adapter.py \
+	tests/test_eval_rerank_pipeline_offline.py \
+	tests/test_eval_retrieval_metrics.py \
+	tests/test_eval_fusion_metrics.py \
+	tests/test_eval_runner_result_shape.py \
+	tests/test_regression_gate_report.py \
+	tests/test_evidence_api_offline_regression_gate.py \
+	tests/test_reports_endpoints.py \
+	tests/test_reports_export_bundle.py \
+	tests/test_reports_dataset_report.py \
+	tests/test_dataset_retention_policy.py \
+	tests/test_persist_retrieval_audit_snapshot.py \
+	tests/test_table_store_service.py \
+	tests/test_embedding_cache_key_space_hash.py \
+	tests/test_regression_item_meta_persistence.py \
+	tests/test_no_future_annotations_imports.py \
+	tests/test_no_module_level_import_fallbacks.py \
+	tests/test_no_import_error_fallbacks.py \
+	tests/test_source_guard_contracts.py \
+	tests/test_test_inventory_contract.py \
+	tests/test_core_test_suite_contract.py
+
+CORE_WEB_TESTS := \
+	app/history/page.source.test.ts \
+	app/history/page.empty-state.test.ts \
+	app/history/page.delete-action.test.ts \
+	lib/server-history-page-data.source.test.ts \
+	app/knowledge/knowledge-page.entry.test.ts \
+	app/knowledge/retrieval-evidence-route.test.ts \
+	app/knowledge/evidence/page.source.test.ts \
+	app/evaluations/ablations/page.entry.test.ts \
+	app/evaluations/page.query.source.test.ts \
+	app/reports/page.bundle-export.source.test.ts \
+	app/reports/page.real-data.source.test.ts \
+	components/navbar.source.test.ts \
+	components/navbar.active-indicator.test.ts \
+	components/navbar.behavior.test.ts \
+	lib/api-client.source.test.ts \
+	lib/api-client-auth.test.ts \
+	lib/api-client-chat-stream.test.ts \
+	lib/api-client.rag-evidence.test.ts \
+	lib/openapi-request.test.ts \
+	lib/api-runtime-contracts.test.ts
 
 help:
 	@echo "MimirQ dev commands (run from repo root):"
@@ -186,8 +290,10 @@ help:
 	@echo "  make backend   - run backend locally from the project venv (uvicorn --reload)"
 	@echo "  make backend-no-reload - run backend locally from the project venv without file watching"
 	@echo "  make web       - run web locally (pnpm dev)"
-	@echo "  make test      - run backend tests (pytest)"
-	@echo "  make test-web  - run frontend unit/integration tests (vitest)"
+	@echo "  make test      - run the fast backend core suite"
+	@echo "  make test-full - run all backend tests"
+	@echo "  make test-web  - run the fast frontend core suite"
+	@echo "  make test-web-full - run all frontend unit/integration tests"
 	@echo "  make test-management-smoke - run Playwright smoke against management surfaces"
 	@echo "  make test-matrix - generate full-stack test coverage matrix artifacts"
 	@echo "  make perf-smoke - run perf harness in LLM mock mode (writes runs/perf/perf-smoke.json)"
@@ -377,10 +483,16 @@ web:
 	cd web && pnpm dev
 
 test:
-	$(PY) -m pytest -q
+	$(PY) -m pytest -q $(CORE_TESTS) $(PYTEST_ARGS)
+
+test-full:
+	$(PY) -m pytest -q $(PYTEST_ARGS)
 
 test-web:
-	cd web && pnpm run test
+	cd web && pnpm exec vitest run $(CORE_WEB_TESTS) $(VITEST_ARGS)
+
+test-web-full:
+	cd web && pnpm exec vitest run $(VITEST_ARGS)
 
 test-management-smoke:
 	cd web && PLAYWRIGHT_USE_PROD_SERVER=1 pnpm exec playwright test e2e/management-surfaces.smoke.spec.ts

@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 from app.rag.chunking.recommendations import decorate_chunk_strategy_note
 

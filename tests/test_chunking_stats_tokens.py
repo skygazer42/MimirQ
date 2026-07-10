@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 
 def test_compute_chunking_stats_from_texts_tokens_counts_and_histogram() -> None:

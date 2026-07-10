@@ -261,7 +261,7 @@ test.describe('management surfaces smoke', () => {
 
   test('loads reports page with mocked dataset data', async ({ page }) => {
     await page.goto('/reports')
-    await expect(page.getByText('数据报告与审计概览')).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByRole('heading', { name: '数据报告' })).toBeVisible({ timeout: 60_000 })
     await expect(page.getByRole('combobox', { name: '数据集' })).toContainText('Smoke Dataset')
   })
 

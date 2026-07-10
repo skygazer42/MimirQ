@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 
 def test_chunk_quality_gate_service_returns_structured_reasons() -> None:

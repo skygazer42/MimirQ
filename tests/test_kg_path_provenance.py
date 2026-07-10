@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 
 def test_build_kg_path_provenance_is_bounded_and_pii_safe() -> None:

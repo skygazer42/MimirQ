@@ -87,7 +87,7 @@ describe('navbar source', () => {
     expect(src).toContain('left-[264px]')
   })
 
-  it('keeps knowledge and analysis navigation labels ordered for the current IA', () => {
+  it('keeps daily navigation focused while advanced vector diagnostics stay out of the sidebar', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'navbar.tsx'), 'utf8')
     const chatMessages = fs.readFileSync(
       path.resolve(__dirname, '../i18n/messages/zh-CN/chat.ts'),
@@ -100,10 +100,11 @@ describe('navbar source', () => {
       src.indexOf("labelKey: 'items.knowledgeBase'")
     )
 
-    expect(src.indexOf("labelKey: 'items.knowledgeGraph'")).toBeLessThan(
-      src.indexOf("labelKey: 'items.ragVisualization'")
+    expect(src).not.toContain(
+      "{ icon: Grid3X3, labelKey: 'items.ragVisualization', href: '/knowledge/similarity' }"
     )
-    expect(src.indexOf("labelKey: 'items.ragVisualization'")).toBeLessThan(
+    expect(src).toContain("'/knowledge/similarity': '/evaluations'")
+    expect(src.indexOf("labelKey: 'items.knowledgeGraph'")).toBeLessThan(
       src.indexOf("labelKey: 'items.ragas'")
     )
 

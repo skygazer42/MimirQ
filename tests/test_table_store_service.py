@@ -1,5 +1,5 @@
-from __future__ import annotations
 
+import re
 import tempfile
 import uuid
 from pathlib import Path
@@ -286,3 +286,8 @@ def test_table_store_import_db_row_snapshots(monkeypatch):  # noqa: ANN001
         )
         assert got["columns"] == ["id", "name", "__row_pk_hash"]
         assert got["rows"] == [[1, "alice", "pkhash-1"], [2, "bob", "pkhash-2"]]
+
+
+def test_table_store_service_no_longer_uses_silent_pass_fallbacks() -> None:
+    text = Path("app/services/table_store_service.py").read_text(encoding="utf-8")
+    assert re.search(r"except[^\n]*:\n[ \t]*pass\b", text) is None
