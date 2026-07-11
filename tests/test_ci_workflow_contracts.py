@@ -76,3 +76,21 @@ def test_docker_ci_supports_cold_web_builds() -> None:
     assert "timeout-minutes: 45" in docker_job
     assert "target=/root/.local/share/pnpm/store" in web_dockerfile
     assert "https://registry.npmmirror.com" in web_dockerfile
+
+
+def test_dockerfiles_bypass_broken_docker_hub_mirror() -> None:
+    backend_dockerfile = _read("docker/Dockerfile")
+    web_dockerfile = _read("web/Dockerfile.prod")
+
+    assert re.search(
+        r"^ARG PYTHON_BASE_IMAGE=public\.ecr\.aws/docker/library/python:3\.11-slim@sha256:[0-9a-f]{64}$",
+        backend_dockerfile,
+        re.MULTILINE,
+    )
+    assert "FROM ${PYTHON_BASE_IMAGE} AS base" in backend_dockerfile
+    assert re.search(
+        r"^ARG NODE_BASE_IMAGE=public\.ecr\.aws/docker/library/node:20-alpine@sha256:[0-9a-f]{64}$",
+        web_dockerfile,
+        re.MULTILINE,
+    )
+    assert "FROM ${NODE_BASE_IMAGE} AS base" in web_dockerfile
