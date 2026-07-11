@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -42,3 +43,24 @@ def test_backend_dockerfile_uses_bundled_buildkit_frontend() -> None:
     dockerfile = _read("docker/Dockerfile")
 
     assert not dockerfile.lstrip().startswith("# syntax=docker/dockerfile:")
+
+
+def test_cpu_torch_wheels_match_linux_runtime_requirements() -> None:
+    requirements = _read("requirements.txt")
+    torch_version = re.search(
+        r'^torch==([^;]+); platform_system == "Linux"$', requirements, re.MULTILINE
+    )
+    torchvision_version = re.search(
+        r'^torchvision==([^;]+); platform_system == "Linux"$', requirements, re.MULTILINE
+    )
+
+    assert torch_version is not None
+    assert torchvision_version is not None
+    for install_surface in ("docker/Dockerfile", ".github/workflows/ci.yml"):
+        content = _read(install_surface)
+        assert set(re.findall(r"\btorch-([0-9.]+)\+cpu-", content)) == {
+            torch_version.group(1)
+        }
+        assert set(re.findall(r"\btorchvision-([0-9.]+)\+cpu-", content)) == {
+            torchvision_version.group(1)
+        }

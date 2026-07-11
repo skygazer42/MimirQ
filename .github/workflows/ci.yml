@@ -73,8 +73,8 @@ jobs:
         run: |
           mkdir -p "$PIP_CACHE_DIR" "$TORCH_WHEEL_DIR"
           python -m pip install --upgrade pip
-          TORCH_WHL="torch-2.10.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl"
-          TORCHVISION_WHL="torchvision-0.25.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl"
+          TORCH_WHL="torch-2.13.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl"
+          TORCHVISION_WHL="torchvision-0.28.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl"
           download_wheel() {
             local out="$1"
             local url="$2"
@@ -95,9 +95,9 @@ jobs:
             curl --fail --location --continue-at - --retry 10 --retry-all-errors --retry-delay 5 -o "$out" "$url"
           }
           download_wheel "$TORCH_WHEEL_DIR/$TORCH_WHL" \
-            "https://download-r2.pytorch.org/whl/cpu/torch-2.10.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl"
+            "https://download-r2.pytorch.org/whl/cpu/$TORCH_WHL"
           download_wheel "$TORCH_WHEEL_DIR/$TORCHVISION_WHL" \
-            "https://download-r2.pytorch.org/whl/cpu/torchvision-0.25.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl"
+            "https://download-r2.pytorch.org/whl/cpu/$TORCHVISION_WHL"
           python -m pip install --retries 5 --timeout 120 \
             "$TORCH_WHEEL_DIR/$TORCH_WHL" \
             "$TORCH_WHEEL_DIR/$TORCHVISION_WHL"
@@ -207,8 +207,8 @@ jobs:
         run: |
           mkdir -p "$PIP_CACHE_DIR" "$TORCH_WHEEL_DIR"
           python -m pip install --upgrade pip
-          TORCH_WHL="torch-2.10.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl"
-          TORCHVISION_WHL="torchvision-0.25.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl"
+          TORCH_WHL="torch-2.13.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl"
+          TORCHVISION_WHL="torchvision-0.28.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl"
           download_wheel() {
             local out="$1"
             local url="$2"
@@ -229,9 +229,9 @@ jobs:
             curl --fail --location --continue-at - --retry 10 --retry-all-errors --retry-delay 5 -o "$out" "$url"
           }
           download_wheel "$TORCH_WHEEL_DIR/$TORCH_WHL" \
-            "https://download-r2.pytorch.org/whl/cpu/torch-2.10.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl"
+            "https://download-r2.pytorch.org/whl/cpu/$TORCH_WHL"
           download_wheel "$TORCH_WHEEL_DIR/$TORCHVISION_WHL" \
-            "https://download-r2.pytorch.org/whl/cpu/torchvision-0.25.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl"
+            "https://download-r2.pytorch.org/whl/cpu/$TORCHVISION_WHL"
           python -m pip install --retries 5 --timeout 120 \
             "$TORCH_WHEEL_DIR/$TORCH_WHL" \
             "$TORCH_WHEEL_DIR/$TORCHVISION_WHL"
@@ -1003,8 +1003,8 @@ jobs:
         run: |
           mkdir -p "$PIP_CACHE_DIR"
           python -m pip install --upgrade pip
-          TORCH_WHL="torch-2.10.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl"
-          TORCHVISION_WHL="torchvision-0.25.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl"
+          TORCH_WHL="torch-2.13.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl"
+          TORCHVISION_WHL="torchvision-0.28.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl"
           mkdir -p "$TORCH_WHEEL_DIR"
           download_wheel() {
             local out="$1"
@@ -1026,9 +1026,9 @@ jobs:
             curl --fail --location --continue-at - --retry 10 --retry-all-errors --retry-delay 5 -o "$out" "$url"
           }
           download_wheel "$TORCH_WHEEL_DIR/$TORCH_WHL" \
-            "https://download-r2.pytorch.org/whl/cpu/torch-2.10.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl"
+            "https://download-r2.pytorch.org/whl/cpu/$TORCH_WHL"
           download_wheel "$TORCH_WHEEL_DIR/$TORCHVISION_WHL" \
-            "https://download-r2.pytorch.org/whl/cpu/torchvision-0.25.0%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl"
+            "https://download-r2.pytorch.org/whl/cpu/$TORCHVISION_WHL"
           python -m pip install --retries 5 --timeout 120 \
             "$TORCH_WHEEL_DIR/$TORCH_WHL" \
             "$TORCH_WHEEL_DIR/$TORCHVISION_WHL"
